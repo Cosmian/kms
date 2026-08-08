@@ -1,12 +1,8 @@
 # AWS KMS - Bring Your Own Key (BYOK)
 
-Eviden KMS provides an `aws byok` command in its CLI (also available in the ui) to facilitate the import of an AWS wrapping key (KEK) in Eviden KMS, and the export of the wrapped keys for direct import in AWS KMS. To use the AWS KMS terminology, the key that will be created in the [Eviden KMS](https://cosmian.com/data-protection-suite/cosmian-kms/) will be called the _external key material_ as stated in the [AWS KMS docs](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-conceptual.html).
+Eviden KMS provides an `aws byok` command in its CLI (also available in the ui) to facilitate the import of an AWS wrapping key (KEK) in Eviden KMS, and the export of the wrapped keys for direct import in AWS KMS. To use the AWS KMS terminology, the key that will be created in the [Eviden KMS](../../../index.md) will be called the _external key material_ as stated in the [AWS KMS docs](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-conceptual.html).
 
 The **key material** refers to the actual cryptographic key bytes that form the basis of a KMS key. While AWS KMS keys include additional metadata, policies, and access controls, the BYOK process allows Eviden KMS users to maintain full control over key generation while leveraging AWS KMS's infrastructure for other usages.
-
-## Table of Contents
-
-[TOC]
 
 ## Overview
 
@@ -35,9 +31,9 @@ Supported wrapping algorithms:
 ## Prerequisites
 
 - An active AWS account
-- Either: AWS CLI installed and configured on your machine (**recommended**) or an access to AWS Management Console and open the AWS Key Management Service (AWS KMS) console at [https://console.aws.amazon.com/kms](https://console.aws.amazon.com/kms).
-- A running [Eviden KMS](https://docs.cosmian.com/key_management_system/quick_start/) instance.
-- Either: [Eviden KMS CLI](https://docs.cosmian.com/cosmian_cli/installation/) installed and configured on your machine or an access to the [Eviden KMS UI](../../../configuration/ui.md) of your deployed KMS instance.
+- Either: AWS CLI installed and configured on your machine (**recommended**) or an access to AWS Management Console and open the AWS Key Management Service (AWS KMS) console at `https://console.aws.amazon.com/kms`.
+- A running [Eviden KMS](../../../quick_start.md) instance.
+- Either: [Eviden KMS CLI](../../../kms_clients/index.md) installed and configured on your machine or an access to the [Eviden KMS UI](../../../configuration/ui.md) of your deployed KMS instance.
 - Any tool to convert base64 values to their binary counterparts (e.g. [openssl](https://openssl.org/), python, etc).
 
 ## Creating an AES key and importing it using the AWS CLI and the Eviden CLI
@@ -222,11 +218,11 @@ Receiving this response means that the key material has been successfully import
 
 For this example, we will create an 2048 bits RSA key material, wrapped using a 4096 kek with RSAES_OAEP_SHA_256.
 
-First, Sign in to the AWS Management Console and open the AWS Key Management Service (AWS KMS) console at [https://console.aws.amazon.com/kms](https://console.aws.amazon.com/kms) and complete the necessary steps to [create a KMS key with external key material](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-create-cmk.html). Be mindful to provide the correct [key spec](https://docs.aws.amazon.com/kms/latest/developerguide/symm-asymm-choose-key-spec.html) - otherwise the console will expect a symmetric key by default. For this example, we will use `RSA_2048`.
+First, Sign in to the AWS Management Console and open the AWS Key Management Service (AWS KMS) console at `https://console.aws.amazon.com/kms` and complete the necessary steps to [create a KMS key with external key material](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-create-cmk.html). Be mindful to provide the correct [key spec](https://docs.aws.amazon.com/kms/latest/developerguide/symm-asymm-choose-key-spec.html) - otherwise the console will expect a symmetric key by default. For this example, we will use `RSA_2048`.
 
 The next step is to [download the wrapping public key and import token](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-get-public-key-and-token.html#importing-keys-get-public-key-and-token-console). **Be mindful that an RSA_AES_KEY_WRAP_SHA wrapping algorithm is required for wrapping RSA private key material (except in China Regions).** Choosing `RSAES_OAEP_SHA_256` will work for this example.
 
-Once this is done, create your key on the cosmian KMS like follow, we call it `rsa_key_material` :
+Once this is done, create your key on the Eviden KMS like follow, we call it `rsa_key_material` :
 
 ![Create an RSA key in Eviden KMS](create_rsa.png)
 

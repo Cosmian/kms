@@ -18,7 +18,7 @@ interface ECVerifyFormData {
 
 const ECVerifyForm: React.FC = () => {
     const [form] = Form.useForm<ECVerifyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [dataBytes, setDataBytes] = useState<Uint8Array | undefined>(undefined);
     const [sigBytes, setSigBytes] = useState<Uint8Array | undefined>(undefined);
 
@@ -67,7 +67,7 @@ const ECVerifyForm: React.FC = () => {
                 throw new Error("Error: signature file is empty or unreadable. Please re-upload the signature.");
             }
             const request = wasmClient.signature_verify_ttlv_request(id, dataBuf!, sigBuf, undefined, values.digested);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await wasmClient.parse_signature_verify_ttlv_response(result_str);
                 const respObj = response as unknown as Record<string, unknown>;

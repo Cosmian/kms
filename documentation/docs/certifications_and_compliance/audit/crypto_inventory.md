@@ -48,7 +48,6 @@
     HIGH findings are not covered by a KMIP-spec mitigation.
     Review the [Priority Remediation](#priority-remediation) section below.
 
-
 ---
 
 ## 📊 Discovery Overview
@@ -156,14 +155,13 @@
 
 ---
 
-## ⚡ Priority Remediation
+## Priority Remediation
 
 > **62** CRITICAL + HIGH total | **1** actionable | **61** suppressed by KMIP policy
 
 | # | Severity | Algorithm | File | Detail | Remediation |
 |---|----------|-----------|------|--------|-------------|
 | 1 | 🟠 HIGH | `EC-P192` | `ttlv/enum_lookup.rs:200` | P-192 is below the 112-bit security level. Use P-256 or higher. | Upgrade to P-256 or higher curve. |
-
 
 ---
 
@@ -228,7 +226,7 @@ across the codebase — automatic key-material zeroing on drop (CWE-316 mitigati
 flowchart LR
     A["Discover\nScan Rust sources\n& Cargo.toml"] --> B["Analyze\nApply risk rules\nMatch KMIP context"]
     B --> C["Prioritize\nSeverity scoring\nMitigation tagging"]
-    C --> D["Report\nCBOM & MkDocs\nJSON + Markdown"]
+    C --> D["Report\nCBOM & mdBook\nJSON + Markdown"]
     D --> E["Monitor\nPre-commit hook\nCI integration"]
     style A fill:#f0f9ff,stroke:#0ea5e9
     style B fill:#fefce8,stroke:#eab308
@@ -245,7 +243,7 @@ flowchart LR
 | Live TLS | `testssl.sh` (optional) | Cipher suites, certificate chain, TLS version |
 
 The sensor outputs a **Cryptographic Bill of Materials (CBOM)** in CycloneDX 1.6 format
-(see [`cbom/cbom.cdx.json`](../../../../cbom/cbom.cdx.json)).
+(see [`cbom/cbom.cdx.json`](../../../cbom/cbom.cdx.json)).
 
 ---
 
@@ -292,5 +290,5 @@ Output files are written to `cbom/sensor/` (stable path — overwritten on each 
 - [FIPS 140-3](../fips.md) — FIPS compliance details
 - [Cryptographic algorithms](../cryptographic_algorithms/algorithms.md) — algorithm reference
 - [Zeroization](../zeroization.md) — memory-safety approach for key material
-- [Security Audit (OWASP)](audit/owasp_security_audit.md) — OWASP Top 10 audit
-- [Multi-Framework Audit](audit/multi_framework_security_audit.md) — NIST/CIS/ISO/OSSTMM audit
+- [Security Audit (OWASP)](owasp_security_audit.md) — OWASP Top 10 audit
+- [Multi-Framework Audit](multi_framework_security_audit.md) — NIST/CIS/ISO/OSSTMM audit

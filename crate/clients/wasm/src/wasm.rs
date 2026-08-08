@@ -1149,9 +1149,7 @@ pub fn create_opaque_object_ttlv_request(
     let vendor_id = vendor_id.as_str();
     let object_id = none_if_empty(object_id);
     let wrap_key_id = none_if_empty(wrap_key_id);
-    // Allow empty opaque object when value not provided
-    #[allow(clippy::redundant_closure_for_method_calls)]
-    let data = object_value.map(|v| v.into_bytes()).unwrap_or_default();
+    let data = object_value.map(String::into_bytes).unwrap_or_default();
 
     let mut object = Object::OpaqueObject(KmipOpaqueObject {
         opaque_data_type: OpaqueDataType::Unknown,

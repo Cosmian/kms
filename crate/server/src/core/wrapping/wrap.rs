@@ -23,26 +23,7 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-/// Wrap the object and store the unwrapped object in the unwrapped cache
-///
-/// This is a Cosmian-specific extension
-/// to wrap the key with a wrapping key stored in the database
-/// or in the HSM.
-/// Either the user has provided a wrapping key ID or a key wrapping key is
-/// supplied in the parameters.
-///
-/// The wrapping key ID is stored in the database
-/// or in the HSM.
-///
-/// The unwrapped object is stored in the unwrapped cache
-///
-/// # Arguments
-///
-/// * `kms` - The KMS instance
-/// * `owner` - The owner of the object
-/// * `params` - The parameters to use
-/// * `unique_identifier` - The unique identifier of the object
-/// * `object` - The object to wrap
+/// Wrap the object using a wrapping key from the database or HSM, then cache the unwrapped copy.
 pub(crate) async fn wrap_and_cache(
     kms: &KMS,
     owner: &str,

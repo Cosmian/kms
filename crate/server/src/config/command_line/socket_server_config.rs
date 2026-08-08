@@ -16,7 +16,7 @@ const DEFAULT_SOCKET_SERVER_HOSTNAME: &str = "127.0.0.1";
 const DEFAULT_SOCKET_SERVER_HOSTNAME: &str = "0.0.0.0";
 
 #[derive(Args, ConfigArgs, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct SocketServerConfig {
     /// Start the KMIP socket server?
     /// If this is set to true, the TLS config must be provided, featuring

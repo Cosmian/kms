@@ -17,7 +17,7 @@ Accepted
 
 ## Context
 
-The Cosmian KMS must support systematic cryptographic key rotation — replacing old key material with
+The Eviden KMS must support systematic cryptographic key rotation — replacing old key material with
 new material on a schedule or on demand — while satisfying several hard constraints:
 
 1. **KMIP 2.1 compliance**: rotation must be exposed as standard `Re-Key` (§6.1.46),

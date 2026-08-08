@@ -5,7 +5,7 @@ description: 'Create an Architectural Decision Record (ADR) under documentation/
 
 # Architectural Decision Record Generator
 
-Create an ADR document for the Cosmian KMS repository.
+Create an ADR document for the Eviden KMS repository.
 
 ## ADR Storage
 

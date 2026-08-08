@@ -132,9 +132,9 @@ jobs:
           ssh ${SSH_OPTS} cosmian@package.cosmian.com mkdir -p "${REMOTE_DIR}"
 
           # Copy cpu_scaling.md and flamegraph/ SVGs/PNGs.
-          scp -r ${SSH_OPTS} \
-            flamegraph-docs/. \
-            cosmian@package.cosmian.com:"${REMOTE_DIR}/"
+          # Use tar-over-ssh instead of `scp dir/.` — newer OpenSSH (SFTP mode)
+          # rejects the trailing-dot trick with "unexpected filename: .".
+          tar -C flamegraph-docs -cf - . | ssh ${SSH_OPTS} cosmian@package.cosmian.com "tar -xf - -C '${REMOTE_DIR}'"
 
           echo ""
           echo "Published: https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/flamegraph/cpu_scaling.md"

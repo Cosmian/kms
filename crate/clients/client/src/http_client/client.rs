@@ -1,14 +1,19 @@
+use std::time::Duration;
+
 use bytes::Bytes;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
 use hyper_openssl::client::legacy::HttpsConnector;
-use hyper_util::{client::legacy::Client, rt::TokioExecutor};
+use hyper_util::{
+    client::legacy::Client,
+    rt::{TokioExecutor, TokioTimer},
+};
 use serde::{Deserialize, Deserializer, Serialize};
 use tracing::{info, warn};
 
 use super::{
-    Oauth2LoginConfig, ProxyParams,
+    AuthVerifierLoginConfig, Oauth2LoginConfig, ProxyParams,
     error::{HttpClientError, result::HttpClientResult},
     proxy::SmartConnector,
     tls::build_ssl_connector,
@@ -54,6 +59,12 @@ pub struct HttpClientConfig {
     pub verified_cert: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_token: Option<String>,
+    /// Vault-compatible token obtained via `ckms login approle`.
+    ///
+    /// When set, it is forwarded as an `X-Vault-Token` header on every request
+    /// so the KMS SPIRE-token middleware can authenticate the caller.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tls_client_pkcs12_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -71,6 +82,8 @@ pub struct HttpClientConfig {
     pub database_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth2_conf: Option<Oauth2LoginConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cosmian_conf: Option<AuthVerifierLoginConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proxy_params: Option<ProxyParams>,
     /// Colon-separated list of cipher suites to use for TLS connections.
@@ -94,12 +107,14 @@ impl Default for HttpClientConfig {
             server_url: "http://127.0.0.1:9998".to_owned(),
             verified_cert: None,
             access_token: None,
+            vault_token: None,
             database_secret: None,
             tls_client_pkcs12_path: None,
             tls_client_pkcs12_password: None,
             tls_client_pem_cert_path: None,
             tls_client_pem_key_path: None,
             oauth2_conf: None,
+            cosmian_conf: None,
             proxy_params: None,
             cipher_suites: None,
             custom_headers: None,
@@ -119,6 +134,7 @@ const fn not(b: &bool) -> bool {
 /// names as distinct fields lets us detect which key was actually present in the
 /// config file and emit a deprecation warning before merging the values.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct HttpClientConfigDeserHelper {
     #[serde(default)]
     accept_invalid_certs: bool,
@@ -127,6 +143,8 @@ struct HttpClientConfigDeserHelper {
     verified_cert: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     access_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vault_token: Option<String>,
     // Canonical (new) names
     tls_client_pkcs12_path: Option<String>,
     tls_client_pkcs12_password: Option<String>,
@@ -141,6 +159,8 @@ struct HttpClientConfigDeserHelper {
     database_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     oauth2_conf: Option<Oauth2LoginConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cosmian_conf: Option<AuthVerifierLoginConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     proxy_params: Option<ProxyParams>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -173,6 +193,7 @@ impl<'de> Deserialize<'de> for HttpClientConfig {
             server_url: raw.server_url,
             verified_cert: raw.verified_cert,
             access_token: raw.access_token,
+            vault_token: raw.vault_token,
             tls_client_pkcs12_path: merge_deprecated!(
                 raw.tls_client_pkcs12_path,
                 raw.ssl_client_pkcs12_path,
@@ -199,6 +220,7 @@ impl<'de> Deserialize<'de> for HttpClientConfig {
             ),
             database_secret: raw.database_secret,
             oauth2_conf: raw.oauth2_conf,
+            cosmian_conf: raw.cosmian_conf,
             proxy_params: raw.proxy_params,
             cipher_suites: raw.cipher_suites,
             custom_headers: raw.custom_headers,
@@ -270,6 +292,10 @@ impl std::fmt::Debug for HttpClient {
 }
 
 impl HttpClient {
+    /// Pool idle timeout — must stay below the server keep-alive window (120 s, see
+    /// `start_kms_server.rs`) so idle connections are evicted before the server closes them.
+    const POOL_IDLE_TIMEOUT_SECS: u64 = 90;
+
     /// Instantiate a new HTTP(S) Client backed by OpenSSL for TLS.
     ///
     /// Supports PQC algorithms (ML-DSA, ML-KEM, SLH-DSA) via OpenSSL 3.6.2.
@@ -320,6 +346,12 @@ impl HttpClient {
                 HeaderValue::from_str(format!("Bearer {bearer_token}").as_str())?,
             );
         }
+        if let Some(vault_token) = http_conf.vault_token.clone() {
+            headers.insert(
+                "X-Vault-Token",
+                HeaderValue::from_str(vault_token.as_str())?,
+            );
+        }
         if let Some(database_secret) = http_conf.database_secret.clone() {
             headers.insert("DatabaseSecret", HeaderValue::from_str(&database_secret)?);
         }
@@ -361,8 +393,11 @@ impl HttpClient {
                 HttpClientError::Default(format!("Failed to build HTTPS connector: {e}"))
             })?;
 
-        // Build hyper client with connection pooling
-        let client = Client::builder(TokioExecutor::new()).build(https_connector);
+        // Evict idle connections before the server's keep-alive window closes them.
+        let client = Client::builder(TokioExecutor::new())
+            .pool_idle_timeout(Duration::from_secs(Self::POOL_IDLE_TIMEOUT_SECS))
+            .pool_timer(TokioTimer::new())
+            .build(https_connector);
 
         Ok(Self {
             server_url,
@@ -527,13 +562,65 @@ impl HttpClient {
     }
 
     /// Send a prepared HTTP request and collect the response.
+    ///
+    /// Retries once on a connection-level error (`is_connect()`), which occurs when
+    /// hyper's connection pool hands back a stale idle connection that the server has
+    /// already closed (e.g. after a keep-alive timeout).  The retry opens a fresh
+    /// TCP connection, making the failure transparent to callers.
     async fn send(&self, request: http::Request<Full<Bytes>>) -> HttpClientResult<HttpResponse> {
-        let response: http::Response<Incoming> = self
-            .client
-            .request(request)
-            .await
-            .map_err(|e| HttpClientError::Default(format!("HTTP request failed: {e}")))?;
+        let (req, retry_req) = Self::split_for_retry(request)?;
+        let response = match self.client.request(req).await {
+            Ok(r) => r,
+            Err(e) if e.is_connect() => {
+                // Stale pooled connection — retry once with a fresh connection.
+                tracing::debug!("Stale connection from pool, retrying (is_connect): {e}");
+                self.client
+                    .request(*retry_req)
+                    .await
+                    .map_err(|e| HttpClientError::Default(format!("HTTP request failed: {e}")))?
+            }
+            Err(e) => {
+                return Err(HttpClientError::Default(format!(
+                    "HTTP request failed: {e}"
+                )));
+            }
+        };
 
+        Self::collect_response(response).await
+    }
+
+    /// Clone `request` for a potential retry and return both the original and
+    /// the boxed copy.
+    ///
+    /// [`http::request::Parts`] does not implement `Clone` (extensions are
+    /// type-erased), so method, URI, version, and headers are copied
+    /// individually.  The copy is `Box`ed so the async state machine in
+    /// [`send`](Self::send) only stores a pointer (8 bytes) across the first
+    /// `.await`, avoiding `clippy::large_futures` in callers.
+    #[expect(
+        clippy::type_complexity,
+        reason = "Box is load-bearing for state machine compactness; a type alias would obscure this"
+    )]
+    fn split_for_retry(
+        request: http::Request<Full<Bytes>>,
+    ) -> HttpClientResult<(http::Request<Full<Bytes>>, Box<http::Request<Full<Bytes>>>)> {
+        let mut builder = http::Request::builder()
+            .method(request.method().clone())
+            .uri(request.uri().clone())
+            .version(request.version());
+        for (name, value) in request.headers() {
+            builder = builder.header(name, value);
+        }
+        let retry = builder
+            .body(request.body().clone())
+            .map_err(|e| HttpClientError::Default(format!("Failed to build request: {e}")))?;
+        Ok((request, Box::new(retry)))
+    }
+
+    /// Consume a hyper response and convert it to [`HttpResponse`].
+    async fn collect_response(
+        response: http::Response<Incoming>,
+    ) -> HttpClientResult<HttpResponse> {
         let status = response.status();
         let headers = response.headers().clone();
         let body = response
@@ -548,5 +635,60 @@ impl HttpClient {
             headers,
             body,
         })
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod default_header_tests {
+    use super::{HttpClient, HttpClientConfig};
+
+    /// A `vault_token` must be injected as a raw `X-Vault-Token` header so the
+    /// KMS SPIRE-token middleware can authenticate the caller.
+    #[test]
+    fn test_vault_token_injects_x_vault_token_header() {
+        let config = HttpClientConfig {
+            vault_token: Some("hvs.deadbeef".to_owned()),
+            ..Default::default()
+        };
+        let client = HttpClient::instantiate(&config).expect("client should instantiate");
+        let value = client
+            .default_headers
+            .get("X-Vault-Token")
+            .expect("X-Vault-Token header must be present when vault_token is set");
+        assert_eq!(value.to_str().unwrap(), "hvs.deadbeef");
+        // A vault-token login must not set an Authorization header.
+        assert!(
+            client.default_headers.get("Authorization").is_none(),
+            "no Authorization header expected when only vault_token is set"
+        );
+    }
+
+    /// An `access_token` must be injected as an `Authorization: Bearer` header.
+    #[test]
+    fn test_access_token_injects_bearer_header() {
+        let config = HttpClientConfig {
+            access_token: Some("jwt-token".to_owned()),
+            ..Default::default()
+        };
+        let client = HttpClient::instantiate(&config).expect("client should instantiate");
+        let value = client
+            .default_headers
+            .get("Authorization")
+            .expect("Authorization header must be present when access_token is set");
+        assert_eq!(value.to_str().unwrap(), "Bearer jwt-token");
+        assert!(
+            client.default_headers.get("X-Vault-Token").is_none(),
+            "no X-Vault-Token header expected when only access_token is set"
+        );
+    }
+
+    /// With neither credential set, neither auth header must be present.
+    #[test]
+    fn test_no_tokens_no_auth_headers() {
+        let client =
+            HttpClient::instantiate(&HttpClientConfig::default()).expect("client instantiates");
+        assert!(client.default_headers.get("Authorization").is_none());
+        assert!(client.default_headers.get("X-Vault-Token").is_none());
     }
 }

@@ -12,13 +12,13 @@ interface ValidateCertificateFormData {
 
 const CertificateValidateForm: React.FC = () => {
     const [form] = Form.useForm<ValidateCertificateFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: ValidateCertificateFormData) => {
         await execute(async () => {
             const validityTime = values.validityTime ? values.validityTime.toISOString() : undefined;
             const request = validate_certificate_ttlv_request(values.uniqueIdentifier, validityTime);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await parse_validate_ttlv_response(result_str);
                 return `Validation Status: ${response.ValidityIndicator}`;

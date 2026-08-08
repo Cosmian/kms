@@ -10,7 +10,7 @@ use crate::{config::IdpConfig as IdpConfigStruct, error::KmsError};
 // and following pages
 
 #[derive(Debug, Default, Args, ConfigArgs, Deserialize, Serialize, Clone)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct IdpAuthConfig {
     /// JWT authentication provider configuration.
     ///

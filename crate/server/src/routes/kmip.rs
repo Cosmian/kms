@@ -16,6 +16,7 @@ use cosmian_kms_server_database::reexport::{
             },
             kmip_types::{BlockCipherMode, ProtocolVersion},
         },
+        kmip_1_4::kmip_attributes::Attribute as Kmip14Attribute,
         ttlv::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, from_ttlv, to_ttlv},
     },
     cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_128_GCM_MAC_LENGTH,
@@ -155,7 +156,8 @@ pub(crate) async fn kmip_2_1_json(
     let ttlv = serde_json::from_str::<TTLV>(&body)?;
 
     let user = kms.get_user(&req_http);
-    debug!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
+    let auth_method = kms.get_auth_method(&req_http);
+    debug!(target: "kmip", user=user, ?auth_method, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1)).await?;
 
@@ -552,9 +554,10 @@ fn perform_response_tweaks(response: &mut ResponseMessage, major: i32, minor: i3
     }
     if major == 1 {
         strip_asymmetric_key_value_attributes(response);
+        strip_kmip1_version_unsupported_attrs(response, minor);
     }
     if major == 1 && minor == 0 {
-        strip_kmip_10_unsupported_attrs(response);
+        strip_kmip_10_initial_date(response);
     }
 }
 
@@ -603,11 +606,90 @@ fn strip_asymmetric_key_value_attributes(response: &mut ResponseMessage) {
     }
 }
 
-/// KMIP 1.0: strip attributes that do not exist in that version
-/// (`Fresh`, `InitialDate`) from `Get` and `GetAttributes` responses.
-fn strip_kmip_10_unsupported_attrs(response: &mut ResponseMessage) {
+/// Minimum KMIP 1.x *minor* version in which `attribute` is defined by the specification.
+///
+/// A KMIP server SHALL NOT return an attribute that the client's protocol version does
+/// not define. Sources (OASIS KMIP Specification, Section 3 "Attributes"):
+/// - KMIP 1.1: `Fresh` (§3.34), `Certificate Length` (§3.9), `X.509 Certificate
+///   Identifier`/`Subject`/`Issuer` (§3.10–§3.12), `Digital Signature Algorithm` (§3.16)
+/// - KMIP 1.2: `Alternative Name` (§3.40), `Key Value Present` (§3.41),
+///   `Key Value Location` (§3.42), `Original Creation Date` (§3.43)
+/// - KMIP 1.3: `Random Number Generator` (§3.44)
+/// - KMIP 1.4: `PKCS#12 Friendly Name` (§3.45), `Description` (§3.46), `Comment` (§3.47),
+///   `Sensitive` (§3.48), `Always Sensitive` (§3.49), `Extractable` (§3.50),
+///   `Never Extractable` (§3.51)
+///
+/// Everything else is available since KMIP 1.0 and therefore maps to `0`.
+const fn kmip1_minor_version_introduced(attribute: &Kmip14Attribute) -> i32 {
+    match attribute {
+        Kmip14Attribute::CertificateLength(_)
+        | Kmip14Attribute::DigitalSignatureAlgorithm(_)
+        | Kmip14Attribute::Fresh(_)
+        | Kmip14Attribute::X509CertificateIdentifier(_)
+        | Kmip14Attribute::X509CertificateIssuer(_)
+        | Kmip14Attribute::X509CertificateSubject(_) => 1,
+        Kmip14Attribute::AlternativeName(_)
+        | Kmip14Attribute::KeyValueLocation(_)
+        | Kmip14Attribute::KeyValuePresent(_)
+        | Kmip14Attribute::OriginalCreationDate(_) => 2,
+        Kmip14Attribute::RandomNumberGenerator(_) => 3,
+        Kmip14Attribute::AlwaysSensitive(_)
+        | Kmip14Attribute::Comment(_)
+        | Kmip14Attribute::Description(_)
+        | Kmip14Attribute::Extractable(_)
+        | Kmip14Attribute::NeverExtractable(_)
+        | Kmip14Attribute::Pkcs12FriendlyName(_)
+        | Kmip14Attribute::Sensitive(_) => 4,
+        _ => 0,
+    }
+}
+
+/// KMIP 1.x: strip every attribute that was introduced *after* the client's protocol
+/// version from `Get` (inside `KeyValue`) and `GetAttributes` responses.
+///
+/// Returning an attribute that a pre-1.`minor` client cannot decode is a protocol
+/// violation and breaks strict clients (e.g. Synology DSM, `PyKMIP`, Percona).
+fn strip_kmip1_version_unsupported_attrs(response: &mut ResponseMessage, minor: i32) {
+    retain_kmip1_response_attributes(response, |attribute| {
+        kmip1_minor_version_introduced(attribute) <= minor
+    });
+}
+
+/// KMIP 1.0: strip `Initial Date` (§3.18) from the `Get` response `KeyValue`.
+///
+/// This is not a specification requirement — `Initial Date` exists in KMIP 1.0 — but
+/// some strict KMIP 1.0 clients (Percona) reject the encapsulated attribute.
+fn strip_kmip_10_initial_date(response: &mut ResponseMessage) {
     use cosmian_kmip::kmip_1_4::{
-        kmip_attributes::Attribute,
+        kmip_data_structures::KeyValue, kmip_operations::Operation::GetResponse,
+    };
+    for batch_item in &mut response.batch_item {
+        let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
+            continue;
+        };
+        let Some(GetResponse(gr)) = item.response_payload.as_mut() else {
+            continue;
+        };
+        if let Ok(kb) = gr.object.key_block_mut() {
+            if let Some(KeyValue::Structure { attribute, .. }) = kb.key_value.as_mut() {
+                if let Some(attrs) = attribute {
+                    attrs.retain(|a| !matches!(a, Kmip14Attribute::InitialDate(_)));
+                    if attrs.is_empty() {
+                        *attribute = None;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Apply `keep` to every attribute carried by a KMIP 1.x `Get` (inside `KeyValue`) or
+/// `GetAttributes` response, dropping those for which it returns `false`.
+fn retain_kmip1_response_attributes(
+    response: &mut ResponseMessage,
+    keep: impl Fn(&Kmip14Attribute) -> bool,
+) {
+    use cosmian_kmip::kmip_1_4::{
         kmip_data_structures::KeyValue,
         kmip_operations::Operation::{GetAttributesResponse, GetResponse},
     };
@@ -620,10 +702,7 @@ fn strip_kmip_10_unsupported_attrs(response: &mut ResponseMessage) {
                 if let Ok(kb) = gr.object.key_block_mut() {
                     if let Some(KeyValue::Structure { attribute, .. }) = kb.key_value.as_mut() {
                         if let Some(attrs) = attribute {
-                            // KMIP 1.0: Fresh does not exist; InitialDate rejected by Percona.
-                            attrs.retain(|a| {
-                                !matches!(a, Attribute::Fresh(_) | Attribute::InitialDate(_))
-                            });
+                            attrs.retain(&keep);
                             if attrs.is_empty() {
                                 *attribute = None;
                             }
@@ -633,7 +712,7 @@ fn strip_kmip_10_unsupported_attrs(response: &mut ResponseMessage) {
             }
             Some(GetAttributesResponse(gar)) => {
                 if let Some(attrs) = gar.attribute.as_mut() {
-                    attrs.retain(|a| !matches!(a, Attribute::Fresh(_)));
+                    attrs.retain(&keep);
                     if attrs.is_empty() {
                         gar.attribute = None;
                     }

@@ -319,13 +319,11 @@ impl RedisWithFindex {
         new_keywords: &HashSet<Keyword>,
     ) -> DbResult<()> {
         let indexed_uid = IndexedValue::from(uid.as_bytes());
-        // Insert keywords that are new or still present
         for keyword in new_keywords {
             self.findex
                 .insert(keyword.clone(), [indexed_uid.clone()])
                 .await?;
         }
-        // Delete keywords that were removed
         for keyword in old_keywords.difference(new_keywords) {
             self.findex
                 .delete(keyword.clone(), [indexed_uid.clone()])

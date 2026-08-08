@@ -1,4 +1,6 @@
-### Specification
+# Import
+
+## Specification
 
 This operation requests the server to Import a Managed Object specified by its Unique Identifier.
 The request specifies the object being imported and all the attributes to be assigned to the object.
@@ -9,7 +11,7 @@ attributes MUST be set to the supplied values rather than any server-generated v
 The response contains the Unique Identifier provided in the request or assigned by the server. The server SHALL copy the
 Unique Identifier returned by this operation into the ID Placeholder variable.
 
-### Implementation
+## Implementation
 
 Key unwrapping on import is supported for all keys. Please check the
 [algorithms page](../certifications_and_compliance/cryptographic_algorithms/algorithms.md)
@@ -17,17 +19,17 @@ for more details.
 
 For the list of supported key formats, please check the [formats page](./formats.md).
 
-### Example - A NIST P-256 EC private key in SEC1 format
+## Example - A NIST P-256 EC private key in SEC1 format
 
 Importing a NIST P-256 EC Private Key in SEC1 format.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
 ckms ec keys import cra../kms_clients/test_data/certificates/openssl/prime256v1-private-key.pem --key-format pem
 ```
 
-The conversion from PEM to DER is done by the [KMS CLI](../../kms_clients/index.md).
+The conversion from PEM to DER is done by the [KMS CLI](../kms_clients/index.md).
 
 In the JSON TTLV requests, please note:
 
@@ -139,17 +141,17 @@ In the JSON TTLV requests, please note:
     }
     ```
 
-### Example - A RSA 2048 private key in PKCS#8 format
+## Example - A RSA 2048 private key in PKCS#8 format
 
 Importing a RSA 2048 key in PKCS#8 format with tags `MyRSAKey`and `2048`.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
   ckms ec keys import cra../kms_clients/test_data/certificates/openssl/rsa-2048-private-key.pem --key-format pem --tag "MyRSAKey" --tag "2048"
 ```
 
-The conversion from PEM to DER is done by the [KMS CLI](../../kms_clients/index.md).
+The conversion from PEM to DER is done by the [KMS CLI](../kms_clients/index.md).
 
 In the JSON TTLV Request, please note:
 
@@ -262,12 +264,12 @@ In the JSON TTLV Request, please note:
     }
     ```
 
-### Example - Covercrypt user key with unwrapping on import
+## Example - Covercrypt user key with unwrapping on import
 
 Importing a wrapped Covercrypt user key after unwrapping it with symmetric key
 `027cced1-ff2b-4bd3-a200-db1041583bdc` using RFC 5649.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
 ckms cc keys import /tmp/sym_key.json  -u
@@ -577,11 +579,11 @@ In the JSON TTLV request, please note:
     }
     ```
 
-### Example - A PKCS#12 container
+## Example - A PKCS#12 container
 
 Importing a PKCS#12 container containing an EC private key, a certificate and an intermediate certificate.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
   ckms certificates import cra../kms_clients/test_data/certificates/p12/output.p12 --tag "MyPKCS12" -f pkcs12 -p secret
@@ -724,11 +726,11 @@ In the request, please note:
     }
     ```
 
-### Example - A X509 Certificate
+## Example - A X509 Certificate
 
 Importing a X509 certificate.  The certificate must be imported an X509, DER encoded.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
   ckms certificates import --tag "MyImportedCert" cra../kms_clients/test_data/certificates/ca.crt -f pem

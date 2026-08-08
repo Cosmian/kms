@@ -92,8 +92,7 @@ credentials, update both the KMS config **and** the AWS key store settings in th
 [aws_xks_config]
 aws_xks_enable = true
 aws_xks_region = "eu-west-1"           # region where your new KMS is deployed
-aws_xks_service = "xks-kms"
-aws_xks_uri_path_prefix = "/aws/"
+aws_xks_service = "kms-xks-proxy"
 aws_xks_sigv4_access_key_id = "YOUR_AWS_KEYID"
 aws_xks_sigv4_secret_access_key = "YOUR_AWS_SECRETKEY"
 aws_xks_kek_user = "admin"

@@ -1,7 +1,7 @@
-# EDB Postgres Advanced Server TDE with Cosmian KMS
+# EDB Postgres Advanced Server TDE with Eviden KMS
 
 This guide demonstrates how to configure **EDB Postgres Advanced Server 17
-Transparent Data Encryption (TDE)** to use Cosmian KMS as its key management
+Transparent Data Encryption (TDE)** to use Eviden KMS as its key management
 server via KMIP over mTLS.
 
 ## Overview
@@ -13,9 +13,7 @@ server via KMIP over mTLS.
 | **Key type** | AES-256 symmetric key (CBC mode with PKCS#5 padding) |
 | **EDB version** | EDB Postgres Advanced Server 15.2+ and 17.x |
 | **Client** | `edb_tde_kmip_client.py` (shipped inside the EDB image) |
-| **Cosmian KMS feature** | Works in **non-FIPS** mode (PyKMIP uses `ssl.wrap_socket`) |
-
-[TOC]
+| **Eviden KMS feature** | Works in **non-FIPS** mode (PyKMIP uses `ssl.wrap_socket`) |
 
 ---
 
@@ -25,7 +23,7 @@ server via KMIP over mTLS.
 flowchart TB
     pg["EDB Postgres Advanced Server<br/>(initdb --data-encryption)"]
     client["edb_tde_kmip_client.py<br/>(PGDATAKEYWRAPCMD / PGDATAKEYUNWRAPCMD)"]
-    kms["Cosmian KMS<br/>(KMIP 2.1, mTLS, port 15696)"]
+    kms["Eviden KMS<br/>(KMIP 2.1, mTLS, port 15696)"]
 
     pg -- "wrap DEK on initdb" --> client
     pg -- "unwrap DEK on startup" --> client
@@ -36,7 +34,7 @@ During `initdb --data-encryption`:
 
 1. Postgres generates a random cluster DEK.
 2. It invokes `PGDATAKEYWRAPCMD` — the `edb_tde_kmip_client.py encrypt` command.
-3. The client calls **KMIP Encrypt** on the Cosmian KMS, which returns `[IV][ciphertext]`.
+3. The client calls **KMIP Encrypt** on the Eviden KMS, which returns `[IV][ciphertext]`.
 4. The wrapped DEK is written to `pg_encryption/key.bin`.
 
 On every subsequent server start, Postgres calls `PGDATAKEYUNWRAPCMD`
@@ -60,18 +58,18 @@ The client supports two `--variant` options that differ in how they call KMIP:
 
 | Variant | `Encrypt` | `Decrypt` |
 |---------|-----------|-----------|
-| `pykmip` (**required for Cosmian KMS**) | `Encrypt(data=DEK)` → KMS returns `IVCounterNonce=IV, Data=CT` | `Decrypt(Data=CT, IVCounterNonce=IV)` — standard KMIP |
+| `pykmip` (**required for Eviden KMS**) | `Encrypt(data=DEK)` → KMS returns `IVCounterNonce=IV, Data=CT` | `Decrypt(Data=CT, IVCounterNonce=IV)` — standard KMIP |
 | `thales` | Same as pykmip | `Decrypt(Data=IV‖CT)` — no `IVCounterNonce`; specific to Thales CipherTrust Manager |
 
-> **Note:** Cosmian KMS follows the KMIP mandatory conformance requirement: a Decrypt
+> **Note:** Eviden KMS follows the KMIP mandatory conformance requirement: a Decrypt
 > request without `IVCounterNonce` returns `Invalid_Message`.  Always use
-> `--variant=pykmip` when connecting `edb_tde_kmip_client.py` to Cosmian KMS.
+> `--variant=pykmip` when connecting `edb_tde_kmip_client.py` to Eviden KMS.
 
 ---
 
 ## Prerequisites
 
-- A running Cosmian KMS server with the **KMIP socket** enabled (`listen_address` / `port`).
+- A running Eviden KMS server with the **KMIP socket** enabled (`listen_address` / `port`).
 - mTLS certificates: CA, server, and client certificate+key.
 - EDB Postgres Advanced Server 15.2+ or 17.x.
 - `edb_tde_kmip_client.py` installed via the `edb-tde-kmip-client` package from
@@ -95,12 +93,12 @@ server_port = 15696
 ```
 
 Generate or reuse mTLS certificates for the KMS and the EDB client.
-See [Certificates](../pki/certificates.md) for details.
+See [Public Key Infrastructure (PKI)](../../use_cases/pki.md) for details.
 
 ### 2. Create the Master Key
 
 The `edb_tde_kmip_client.py` script does not implement key creation.
-Use `create_master_key.py` (bundled with the Cosmian KMS test scripts)
+Use `create_master_key.py` (bundled with the Eviden KMS test scripts)
 or any other KMIP client to create an AES-256 key:
 
 ```bash
@@ -110,7 +108,7 @@ python3 .mise/scripts/edb_tde/create_master_key.py \
 # → prints the key UID, e.g. 0193a4b2-...
 ```
 
-The `pykmip.conf` file must point to the Cosmian KMS KMIP socket:
+The `pykmip.conf` file must point to the Eviden KMS KMIP socket:
 
 ```ini
 [client]
@@ -191,7 +189,7 @@ pg_ctl -D $PGDATA restart
 
 ## Running the Integration Tests
 
-The Cosmian KMS repository includes a full integration test suite for EDB TDE.
+The Eviden KMS repository includes a full integration test suite for EDB TDE.
 It requires an EDB subscription token to pull the `edb-postgres-advanced:17`
 Docker image.
 
@@ -204,7 +202,7 @@ The test suite:
 
 1. Logs in to `docker.enterprisedb.com`, starts the EDB container.
 2. Runs `initdb` with TDE — the real `edb_tde_kmip_client.py` seals the cluster
-   DEK against Cosmian KMS over KMIP/mTLS.
+   DEK against Eviden KMS over KMIP/mTLS.
 3. Verifies `data_encryption_version = 1`.
 4. Exercises both `--variant=pykmip` and `--variant=thales` wrap/unwrap roundtrips.
 5. Tests key rotation (re-wrap DEK with a new master key).

@@ -160,7 +160,7 @@ impl OtelMetrics {
     /// # Panics
     ///
     /// May panic if system time is before `UNIX_EPOCH`
-    #[allow(clippy::cast_precision_loss, clippy::as_conversions)]
+    #[allow(clippy::cast_precision_loss, clippy::as_conversions)] // metric values are counters/durations well within f64 precision range
     pub fn new(meter_provider: SdkMeterProvider) -> KResult<Self> {
         let meter = MeterProvider::meter(&meter_provider, "cosmian_kms");
 
@@ -407,7 +407,7 @@ impl OtelMetrics {
     ///
     /// Panics if system time is before `UNIX_EPOCH` (only possible on systems
     /// with a misconfigured clock; safe to treat as unrecoverable).
-    #[allow(clippy::expect_used)]
+    #[allow(clippy::expect_used)] // documented panic: only fails on a misconfigured system clock before UNIX_EPOCH
     pub fn update_active_user(&self, user: &str) {
         let now = i64::try_from(
             std::time::SystemTime::now()
@@ -629,7 +629,7 @@ impl DbMetricsRecorder for OtelMetrics {
 mod tests {
     use opentelemetry_sdk::metrics::{
         InMemoryMetricExporter, PeriodicReader,
-        data::{Gauge as GaugeData, Sum},
+        data::{AggregatedMetrics, GaugeDataPoint, Metric, MetricData, ScopeMetrics, SumDataPoint},
     };
 
     use super::*;
@@ -659,11 +659,11 @@ mod tests {
         let Some(last) = batches.last() else {
             return 0;
         };
-        for sm in &last.scope_metrics {
-            for metric in &sm.metrics {
-                if metric.name.as_ref() == name {
-                    if let Some(sum) = metric.data.as_any().downcast_ref::<Sum<u64>>() {
-                        return sum.data_points.iter().map(|dp| dp.value).sum();
+        for sm in last.scope_metrics() {
+            for metric in sm.metrics() {
+                if metric.name() == name {
+                    if let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data() {
+                        return sum.data_points().map(SumDataPoint::value).sum();
                     }
                 }
             }
@@ -677,11 +677,11 @@ mod tests {
         let Some(last) = batches.last() else {
             return 0;
         };
-        for sm in &last.scope_metrics {
-            for metric in &sm.metrics {
-                if metric.name.as_ref() == name {
-                    if let Some(sum) = metric.data.as_any().downcast_ref::<Sum<i64>>() {
-                        return sum.data_points.iter().map(|dp| dp.value).sum();
+        for sm in last.scope_metrics() {
+            for metric in sm.metrics() {
+                if metric.name() == name {
+                    if let AggregatedMetrics::I64(MetricData::Sum(sum)) = metric.data() {
+                        return sum.data_points().map(SumDataPoint::value).sum();
                     }
                 }
             }
@@ -695,11 +695,11 @@ mod tests {
         let Some(last) = batches.last() else {
             return 0;
         };
-        for sm in &last.scope_metrics {
-            for metric in &sm.metrics {
-                if metric.name.as_ref() == name {
-                    if let Some(g) = metric.data.as_any().downcast_ref::<GaugeData<i64>>() {
-                        return g.data_points.last().map_or(0, |dp| dp.value);
+        for sm in last.scope_metrics() {
+            for metric in sm.metrics() {
+                if metric.name() == name {
+                    if let AggregatedMetrics::I64(MetricData::Gauge(g)) = metric.data() {
+                        return g.data_points().last().map_or(0, GaugeDataPoint::value);
                     }
                 }
             }
@@ -756,10 +756,9 @@ mod tests {
         provider.force_flush().expect("flush");
         let batches = exporter.get_finished_metrics().unwrap_or_default();
         let names: Vec<&str> = batches.last().map_or(vec![], |rm| {
-            rm.scope_metrics
-                .iter()
-                .flat_map(|sm| &sm.metrics)
-                .map(|m| m.name.as_ref())
+            rm.scope_metrics()
+                .flat_map(ScopeMetrics::metrics)
+                .map(Metric::name)
                 .collect()
         });
         assert!(

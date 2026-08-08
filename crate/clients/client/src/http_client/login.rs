@@ -333,9 +333,12 @@ pub(crate) async fn request_token(
         .extend_pairs(params)
         .finish();
 
+    // TLS certificate validation MUST remain enabled for the OAuth2 token
+    // exchange: the authorization code and PKCE verifier are transmitted to the
+    // token endpoint, so a MITM with an invalid certificate could steal them.
     let client = super::HttpClient::instantiate(&super::HttpClientConfig {
         server_url: login_config.token_url.clone(),
-        accept_invalid_certs: true,
+        accept_invalid_certs: false,
         ..Default::default()
     })
     .map_err(|e| HttpClientError::Default(format!("failed to create HTTP client: {e}")))?;
@@ -362,4 +365,262 @@ pub(crate) async fn request_token(
     response.json().map_err(|e| {
         HttpClientError::Default(format!("failed parsing token exchange response: {e:?}"))
     })
+}
+
+/// Configuration for the Auth Verifier server login.
+///
+/// Used by the `ckms login cosmian` subcommand.  Set the corresponding
+/// `cosmian_conf` section in the KMS client configuration file:
+///
+/// ```toml
+/// [http_config.cosmian_conf]
+/// server_url = "https://auth.example.com"
+/// realm      = "kms"
+/// ```
+#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
+pub struct AuthVerifierLoginConfig {
+    /// Base URL of the Auth Verifier server (no trailing slash).
+    pub server_url: String,
+    /// Realm to authenticate against (e.g. `"kms"`).
+    pub realm: String,
+}
+
+/// The next step the authentication server requires after a login attempt.
+///
+/// Mirrors the server-side `AuthenticationNextStep` enum, serialized as `PascalCase`
+/// string variants (e.g. `"TotpRequired"`).
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+pub(super) enum AuthenticationNextStep {
+    /// Authentication succeeded; the session cookie is set.
+    Authenticated,
+    /// Server requires a TOTP code before granting the session.
+    TotpRequired,
+    /// The user's password has expired and must be changed before logging in.
+    ChangePassword,
+}
+
+/// JSON body returned by the authentication server on every login response.
+#[derive(Deserialize, Debug)]
+struct AuthenticationResult {
+    next_step: AuthenticationNextStep,
+}
+
+/// The outcome of a [`auth_verifier_login`] call.
+#[derive(Debug)]
+pub enum AuthVerifierLoginStep {
+    /// Authentication succeeded. Contains the JWT extracted from the `_ea_` cookie.
+    Authenticated(String),
+    /// The server requires a TOTP code. Re-call [`auth_verifier_login`] with `totp_code: Some(...)`.
+    TotpRequired,
+}
+
+/// Login to a Auth Verifier server using HTTP Basic credentials.
+///
+/// Sends `POST {server_url}/login?realm={realm}` with an
+/// `Authorization: Basic <base64(username:password)>` header.
+///
+/// If `totp_code` is `Some`, it is included in the JSON body so that TOTP
+/// verification is completed in a single request. Pass `None` on the first
+/// call; if the server responds with [`AuthVerifierLoginStep::TotpRequired`],
+/// prompt the user and re-call with the code.
+///
+/// On success the JWT is extracted from the `Set-Cookie: _ea_=<JWT>` header
+/// and returned inside [`AuthVerifierLoginStep::Authenticated`]. The caller stores
+/// it in `http_config.access_token` and forwards it as a Bearer token on every
+/// subsequent KMS request.
+///
+/// # Errors
+///
+/// Returns [`HttpClientError`] if the HTTP request fails, the server responds
+/// with a non-2xx status, the password has expired, or the `_ea_` cookie is
+/// absent from a successful response.
+pub async fn auth_verifier_login(
+    config: &AuthVerifierLoginConfig,
+    username: &str,
+    password: &str,
+    // TODO: remove accept_invalid_certs
+    accept_invalid_certs: bool,
+    totp_code: Option<&str>,
+) -> HttpClientResult<AuthVerifierLoginStep> {
+    /// Name of the session cookie set by the Auth Verifier server.
+    const AUTH_VERIFIER_SESSION_COOKIE: &str = "_ea_";
+
+    let mut url = Url::parse(config.server_url.trim_end_matches('/')).map_err(|e| {
+        HttpClientError::Default(format!("Invalid Auth Verifier server URL: {e:?}"))
+    })?;
+    url.path_segments_mut()
+        .map_err(|()| {
+            HttpClientError::Default(
+                "Invalid Auth Verifier server URL: cannot be a base".to_owned(),
+            )
+        })?
+        .push("login");
+    url.query_pairs_mut().append_pair("realm", &config.realm);
+
+    let body = totp_code.map_or_else(
+        || "{}".to_owned(),
+        |code| format!(r#"{{"totp_code":"{code}"}}"#),
+    );
+
+    let client = reqwest::Client::builder()
+        // TODO: remove accept_invalid_certs
+        .danger_accept_invalid_certs(accept_invalid_certs)
+        .build()
+        .map_err(|e| HttpClientError::Default(format!("Failed to build reqwest client: {e:?}")))?;
+    let response = client
+        .post(url)
+        .basic_auth(username, Some(password))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| HttpClientError::Default(format!("Cosmian login request failed: {e:?}")))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<failed to read response>".to_owned());
+        return Err(HttpClientError::Default(format!(
+            "Cosmian login failed ({status}): {error_text}"
+        )));
+    }
+
+    // Collect headers before consuming the response body.
+    let headers = response.headers().clone();
+
+    // Parse the JSON body to determine the authentication next step.
+    let body_bytes = response.bytes().await.map_err(|e| {
+        HttpClientError::Default(format!("Failed to read login response body: {e}"))
+    })?;
+    let result: AuthenticationResult = serde_json::from_slice(&body_bytes)
+        .map_err(|e| HttpClientError::Default(format!("Failed to parse login response: {e}")))?;
+
+    match result.next_step {
+        AuthenticationNextStep::TotpRequired => return Ok(AuthVerifierLoginStep::TotpRequired),
+        AuthenticationNextStep::ChangePassword => {
+            return Err(HttpClientError::Default(
+                "Your password has expired. Please change it via the Auth Verifier \
+                 server before logging in."
+                    .to_owned(),
+            ));
+        }
+        AuthenticationNextStep::Authenticated => {}
+    }
+
+    // The access token is delivered via `Set-Cookie: _ea_=<JWT>; ...`.
+    // There may be multiple Set-Cookie headers; find the first one whose
+    // cookie name is exactly `_ea_`.
+    for header_value in headers.get_all(reqwest::header::SET_COOKIE) {
+        let raw = header_value
+            .to_str()
+            .map_err(|e| HttpClientError::Default(format!("invalid Set-Cookie header: {e}")))?;
+
+        // Each Set-Cookie value has the form:
+        //   name=value[; attribute[=value]]*
+        // Split at the first ';' to isolate the name=value pair, then split
+        // at the first '=' to separate name from value.
+        let name_value = raw.split(';').next().unwrap_or(raw);
+        if let Some((name, value)) = name_value.split_once('=') {
+            if name.trim() == AUTH_VERIFIER_SESSION_COOKIE {
+                return Ok(AuthVerifierLoginStep::Authenticated(
+                    value.trim().to_owned(),
+                ));
+            }
+        }
+    }
+
+    Err(HttpClientError::Default(format!(
+        "Cosmian login response did not set the `{AUTH_VERIFIER_SESSION_COOKIE}` session cookie"
+    )))
+}
+
+/// Request body for the Vault-compatible `AppRole` login endpoint.
+///
+/// Serialized as `{"role_id": "...", "secret_id": "..."}`. `secret_id` is
+/// omitted when the role has `bind_secret_id = false`.
+#[derive(Serialize, Debug)]
+struct AppRoleLoginRequest<'a> {
+    role_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    secret_id: Option<&'a str>,
+}
+
+/// Response body returned by `POST /v1/auth/approle/login`.
+///
+/// Mirrors the auth-verifier `AppAuthResponse` wire type; only the
+/// `auth.client_token` field is consumed by the client.
+#[derive(Deserialize, Debug)]
+struct AppRoleLoginResponse {
+    auth: AppRoleLoginAuth,
+}
+
+/// The `auth` object nested inside [`AppRoleLoginResponse`].
+#[derive(Deserialize, Debug)]
+struct AppRoleLoginAuth {
+    /// The Vault-compatible token to forward as `X-Vault-Token`.
+    client_token: String,
+}
+
+/// Login to the KMS SPIRE/Vault-compatible API using an `AppRole` identity.
+///
+/// Sends `POST {server_url}/v1/auth/approle/login` with a JSON body of
+/// `{"role_id": ..., "secret_id": ...}`. The KMS transparently proxies this to
+/// the configured auth-verifier (`/auth/approle/login`), which validates the
+/// credentials and returns a Vault-compatible token.
+///
+/// The returned `client_token` is stored in `http_config.vault_token` and
+/// forwarded as an `X-Vault-Token` header on every subsequent KMS request,
+/// where the SPIRE-token middleware validates it against the auth-verifier.
+///
+/// `secret_id` may be `None` for roles configured with `bind_secret_id = false`.
+///
+/// The full [`HttpClientConfig`] is used so that the request reuses the same TLS
+/// trust store, client certificates, and proxy settings as ordinary KMS calls.
+///
+/// # Errors
+///
+/// Returns [`HttpClientError`] if the HTTP client cannot be built, the request
+/// fails, the server responds with a non-2xx status, or the response body does
+/// not contain an `auth.client_token` field.
+pub async fn approle_login(
+    http_config: &super::HttpClientConfig,
+    role_id: &str,
+    secret_id: Option<&str>,
+) -> HttpClientResult<String> {
+    let client = super::HttpClient::instantiate(http_config)
+        .map_err(|e| HttpClientError::Default(format!("failed to create HTTP client: {e}")))?;
+
+    let url = format!(
+        "{}/v1/auth/approle/login",
+        client.server_url.trim_end_matches('/')
+    );
+
+    let response = client
+        .post_json(&url, &AppRoleLoginRequest { role_id, secret_id })
+        .await
+        .map_err(|e| HttpClientError::Default(format!("AppRole login request failed: {e}")))?;
+
+    if response.status != StatusCode::OK {
+        let error_text = response
+            .text()
+            .unwrap_or_else(|_| "<failed to read response>".to_owned());
+        return Err(HttpClientError::Default(format!(
+            "AppRole login failed ({}): {error_text}",
+            response.status
+        )));
+    }
+
+    let parsed: AppRoleLoginResponse = response.json().map_err(|e| {
+        HttpClientError::Default(format!("failed parsing AppRole login response: {e}"))
+    })?;
+
+    if parsed.auth.client_token.is_empty() {
+        return Err(HttpClientError::Default(
+            "AppRole login response contained an empty client_token".to_owned(),
+        ));
+    }
+
+    Ok(parsed.auth.client_token)
 }

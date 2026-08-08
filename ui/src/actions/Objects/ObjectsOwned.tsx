@@ -15,7 +15,7 @@ const ObjectsOwnedList: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [objects, setObjects] = useState<OwnedObject[]>([]);
     const [res, setRes] = useState<string | undefined>(undefined);
-    const { idToken, serverUrl } = useAuth();
+    const { serverUrl } = useAuth();
 
     const columns = [
         {
@@ -41,7 +41,7 @@ const ObjectsOwnedList: React.FC = () => {
         setRes(undefined);
         setObjects([]);
         try {
-            const response = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
+            const response = await getNoTTLVRequest("/access/owned", serverUrl);
             if (response.length) {
                 setObjects(response);
             } else {
@@ -53,7 +53,7 @@ const ObjectsOwnedList: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [idToken, serverUrl]);
+    }, [serverUrl]);
 
     useEffect(() => {
         fetchOwnedObjects();

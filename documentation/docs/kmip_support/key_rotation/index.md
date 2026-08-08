@@ -1,6 +1,6 @@
 # Key Rotation
 
-Cosmian KMS supports **manual key rotation** for all key types through the
+Eviden KMS supports **manual key rotation** for all key types through the
 standard KMIP operations:
 
 | KMIP operation   | Applies to                              | CLI command                      |
@@ -419,8 +419,8 @@ ckms certificates certify \
 | Standard | Relevance |
 | -------- | --------- |
 | [KMIP 2.1 §6.1.45](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115677) | Normative definition of `ReCertify` |
-| [RFC 4210](https://www.rfc-editor.org/rfc/rfc4210.html) §5.3.5–5.3.6 | CMP Key Update Request / Response (`kur`/`kup`) — the wire-protocol equivalent |
-| [RFC 5280](https://www.rfc-editor.org/rfc/rfc5280.html) | X.509v3 certificate structure and validity periods |
+| [RFC 4210](https://datatracker.ietf.org/doc/html/rfc4210.html) §5.3.5–5.3.6 | CMP Key Update Request / Response (`kur`/`kup`) — the wire-protocol equivalent |
+| [RFC 5280](https://datatracker.ietf.org/doc/html/rfc5280.html) | X.509v3 certificate structure and validity periods |
 
 ---
 

@@ -40,6 +40,8 @@ jobs:
           - secret_aws
           - secret_azure
           - secret_cosmian_kms
+          - spire
+          - kmip-go
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -76,6 +78,9 @@ jobs:
           - type: secret_aws
             features: fips
           - type: secret_azure
+            features: fips
+          # spire relies on the Vault API which is non-fips only
+          - type: spire
             features: fips
         include:
           # Docker services required per test type (types without an entry need no containers)
@@ -189,7 +194,7 @@ jobs:
       matrix:
         hsm-type:
           - utimaco
-          - proteccio
+          # - proteccio # on July 2026, Proteccio test-HSM is unavailable
           - softhsm2
           - crypt2pay
         features: [fips, non-fips]
@@ -229,6 +234,33 @@ jobs:
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
+  helm:
+    name: Helm chart E2E (minikube)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Install Helm
+        uses: azure/setup-helm@v5
+
+      - name: Start Minikube
+        uses: medyagh/setup-minikube@v0.0.21
+        with:
+          driver: docker
+          kubernetes-version: v1.30.0
+          cpus: 2
+          memory: 4096m
+
+      - name: Test (lint + template + E2E deployment)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mise run test:helm --e2e
+
   windows-2022:
     # Windows is slow: only run on PRs (catches regressions before merge) and tags (release gate).
     if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
@@ -242,9 +274,10 @@ jobs:
     needs:
       - test-nix
       - hsm
+      - helm
     uses: ./.github/workflows/cargo-publish.yml
     with:
-      toolchain: 1.91.0
+      toolchain: 1.97.0
     secrets:
       token: ${{ secrets.CRATES_IO }}
 

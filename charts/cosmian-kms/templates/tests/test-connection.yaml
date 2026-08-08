@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "cosmian-kms.fullname" . }}-test-connection
+  labels:
+    {{- include "cosmian-kms.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+  containers:
+    - name: wget
+      image: "{{ .Values.test.image.repository }}:{{ .Values.test.image.tag }}"
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+      command:
+        - wget
+      args:
+        - --spider
+        - -q
+        {{- if .Values.kms.tls.enabled }}
+        - --no-check-certificate
+        - https://{{ include "cosmian-kms.fullname" . }}:{{ .Values.service.port }}/health
+        {{- else }}
+        - http://{{ include "cosmian-kms.fullname" . }}:{{ .Values.service.port }}/health
+        {{- end }}
+  restartPolicy: Never

@@ -16,6 +16,9 @@ crate/cli/*.sqlite
 http_cache.sqlite
 **/*cosmian-kms*
 **/*cosmian-kms/sqlite-data*
+# Helm chart source is tracked despite the broad runtime-artifact rule above
+!charts/cosmian-kms/
+!charts/cosmian-kms/**
 **/data/private
 **/data/public
 **/data/shared
@@ -27,6 +30,7 @@ resources/cli.zip
 # HSM / Crypto Libraries
 .openssl
 resources/tarballs/openssl-3.1.2.tar.gz
+resources/tarballs/openssl-3.6.2.tar.gz
 .utimaco
 .softhsm2*
 *.xz*
@@ -48,9 +52,8 @@ ui/test-results
 .claude
 .agent/
 .agents/
-.qwen/
-QWEN.md
-.qwen/
+.qwen/tmp/
+.github/agents/
 
 # Misc
 TODO.md

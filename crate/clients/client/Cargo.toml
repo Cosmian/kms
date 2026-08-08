@@ -26,7 +26,7 @@ actix-web = { workspace = true, features = ["macros"] }
 base64 = { workspace = true }
 bytes = "1"
 cosmian_crypto_core = { workspace = true }
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.25.0" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.26.0" }
 cosmian_logger = { workspace = true }
 der = { workspace = true, features = ["std"] }
 http = { workspace = true }
@@ -42,6 +42,7 @@ hyper-util = { version = "0.1", features = [
 oauth2 = { version = "5.0", default-features = false }
 openssl = { workspace = true }
 pem = { workspace = true }
+reqwest = { workspace = true, features = ["rustls-tls"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_urlencoded = "0.7"

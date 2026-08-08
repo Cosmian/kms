@@ -450,6 +450,43 @@ jwks_endpoint_max_keys = 50
 #
 # This setting has no effect on keys created directly through the KMIP protocol.
 jwks_endpoint_auto_tag = true
+
+[auth_verifier]
+# Accept invalid or self-signed TLS certificates when fetching the JWKS.
+#
+# **Development and testing only.** Never set this in production.
+auth_verifier_accept_invalid_certs = false
+
+
+[vault]
+# Enable the Vault-compatible `/v1/transit/` and `/v1/<vault_pki_mount>/` scopes.
+#
+# Defaults to `false`. Set to `true` to enable the Vault-compatible API. Requires `vault_auth_verifier_url` to be set.
+vault_api_enabled = false
+# Skip TLS certificate verification when calling the auth-verifier.
+#
+# **Security warning**: only set this to `true` in test or development environments. In production, use `vault_auth_verifier_ca_cert` to provide the correct CA certificate. Defaults to `false`.
+vault_auth_verifier_accept_invalid_certs = false
+# Vault transit mount name used by the `/v1/<mount>/keys/…` routes.
+#
+# Transit keys are served at `/v1/<vault_transit_mount>/keys/<name>`.
+# Defaults to `"transit"`.
+vault_transit_mount = ""
+# Vault PKI mount name used by the `/v1/<mount>/root/sign-intermediate` route.
+#
+# Defaults to `"pki"`.
+vault_pki_mount = ""
+# KMIP label of the KMS key used as the intermediate CA signing key for the PKI engine.
+#
+# The key must already exist in the KMS (create with `ckms ec keys create --tag <label>`).
+# Defaults to `"vault_pki_ca"`.
+vault_pki_ca_key_label = ""
+# Lifetime of vault token validation cache entries in seconds.
+#
+# Successful `lookup-self` responses from the auth-verifier are cached
+# for this duration to reduce round-trips on every transit/PKI request.
+# Set to `0` to disable caching. Defaults to `30`.
+vault_token_cache_ttl_secs = 0
 ```
 
 ---

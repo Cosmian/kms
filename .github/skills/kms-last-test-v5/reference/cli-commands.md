@@ -1,6 +1,7 @@
 # CLI Commands Reference
 
 ## Contents
+
 - [General pattern](#general-pattern)
 - [Command tree](#command-tree)
 - [Roundtrip examples](#roundtrip-examples)

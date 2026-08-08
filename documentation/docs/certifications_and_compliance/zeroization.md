@@ -18,7 +18,7 @@ Regarding OpenSSL `PKey` types, they are being zeroized by OpenSSL itself, which
 
 > EVP_PKEYs are dropped with EVP_PKEY_free, which should use the appropriate cipher-internal freeing
 > function, which in turn should cleanse all private data unless there is a bug in the underlying
-> OpenSSL library [...].
+> OpenSSL library \[...].
 > [source](https://github.com/sfackler/rust-openssl/issues/2147)
 
 ## Regulatory Compliance

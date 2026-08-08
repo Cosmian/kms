@@ -11,6 +11,6 @@ mod jwks;
 pub(crate) use jwks::JwksManager;
 
 mod jwt_middleware;
-pub(crate) use jwt_middleware::JwtAuth;
+pub(crate) use jwt_middleware::jwt_auth_middleware;
 
 mod jwt_token_auth;

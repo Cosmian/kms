@@ -16,7 +16,7 @@ interface ECDecryptFormData {
 
 const ECDecryptForm: React.FC = () => {
     const [form] = Form.useForm<ECDecryptFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: ECDecryptFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -25,7 +25,7 @@ const ECDecryptForm: React.FC = () => {
                 throw new Error("Missing key identifier.");
             }
             const request = decrypt_ec_ttlv_request(id, values.inputFile);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await parse_decrypt_ttlv_response(result_str);
                 const name = values.fileName.slice(0, -4);

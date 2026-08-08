@@ -16,7 +16,7 @@ interface AttributeDeleteFormData {
 
 const DeleteAttribute: React.FC = () => {
     const [form] = Form.useForm<AttributeDeleteFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: AttributeDeleteFormData) => {
         const id = values.id ? values.id : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -30,7 +30,7 @@ const DeleteAttribute: React.FC = () => {
             }
 
             const request = delete_attribute_ttlv_request(id, values.attribute_name);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
 
             if (result_str) {
                 const response = parse_delete_attribute_ttlv_response(result_str);

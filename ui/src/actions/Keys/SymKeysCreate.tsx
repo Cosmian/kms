@@ -25,7 +25,7 @@ type CreateResponse = {
 
 const SymKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<SymKeyCreateFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [algoOptions, setAlgoOptions] = useState<{ value: string; label: string }[]>([]);
 
     useEffect(() => {
@@ -49,7 +49,7 @@ const SymKeyCreateForm: React.FC = () => {
                 values.wrappingKeyId,
                 values.bytesB64,
             );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: CreateResponse = await wasm.parse_create_ttlv_response(result_str);
                 const keyId = result.UniqueIdentifier;
@@ -58,16 +58,16 @@ const SymKeyCreateForm: React.FC = () => {
                 if (values.enrollKeyset || values.rotateInterval !== undefined || values.rotateOffset !== undefined) {
                     if (values.rotateInterval !== undefined) {
                         const req = wasm.set_rotate_interval_ttlv_request(keyId, BigInt(values.rotateInterval));
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                     if (values.rotateOffset !== undefined) {
                         const req = wasm.set_rotate_offset_ttlv_request(keyId, BigInt(values.rotateOffset));
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                     if (values.enrollKeyset) {
                         // rotation name must equal the key ID for SQL-backed keys
                         const req = wasm.set_rotate_name_ttlv_request(keyId, keyId);
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                 }
 

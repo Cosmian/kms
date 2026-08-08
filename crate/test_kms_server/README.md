@@ -236,7 +236,7 @@ replays the steps sequentially.
 | Serialization | `import_destroy_reimport` | Imports a key with explicit UID, destroys it, then re-imports with the same UID — verifies lifecycle state transitions work correctly with the new serialization format | 6 |
 | Serialization | `rsa_sign_verify_roundtrip` | Creates an RSA-2048 key pair, signs data with private key, verifies with public key — verifies asymmetric key material and attributes survive DB serialization | 3 |
 | **K8s Plugin** | | | |
-| K8s Plugin | `dek_wrap_unwrap` | Simulates the exact sequence performed by cosmian-kms-plugin when kube-apiserver | 5 |
+| K8s Plugin | `dek_wrap_unwrap` | Simulates the exact sequence performed by kubernetes-kms-plugin when kube-apiserver | 5 |
 | **Access Control** | | | |
 | Access Control | `grant_access_aes` | Owner creates AES key, grants user access, user can Get/Encrypt/Decrypt, owner destroys key | 7 |
 | Access Control | `grant_partial_permissions` | Owner grants only Get; user Get succeeds and Encrypt is denied | 6 |
@@ -263,16 +263,16 @@ replays the steps sequentially.
 | HSM / KEK Create | `hsm/kek_rsa2048_create_sign` | Creates an RSA-2048 keypair on a KMS server with SoftHSM2 KEK enabled. | 2 |
 | HSM / KEK Create | `hsm/kek_sign_verify` | Imports an Ed25519 private key into a KMS server backed by a SoftHSM2 KEK. | 2 |
 | HSM / Negative | `hsm/no_kek_baseline` | Imports the same AES-256 key as kek_encrypt_decrypt scenario but on a plain SQLite | 3 |
-| HSM / Permissions | `hsm/permissions/admin_create_encrypt_destroy` | HSM admin (<owner.client@acme.com>) creates an AES-256 key directly in the HSM, | 5 |
+| HSM / Permissions | `hsm/permissions/admin_create_encrypt_destroy` | HSM admin (<o<wner.client@acme.co>m>) creates an AES-256 key directly in the HSM, | 5 |
 | HSM / Permissions | `hsm/permissions/admin_grant_encrypt_decrypt` | HSM admin creates an AES-256 key in the HSM, grants Encrypt and Decrypt | 6 |
 | HSM / Permissions | `hsm/permissions/admin_grant_revoke` | HSM admin creates an AES key, grants Encrypt to user, user can encrypt, | 7 |
 | HSM / Permissions | `hsm/permissions/cannot_grant_destroy` | HSM admin creates an AES key in the HSM, then attempts to grant Destroy to | 4 |
 | HSM / Permissions | `hsm/permissions/get_not_wildcard` | HSM admin creates an AES-256 key in the HSM, grants only Get to | 6 |
 | HSM / Permissions | `hsm/permissions/locate_visibility` | HSM admin creates two AES keys in the HSM. Grants user Encrypt on only the | 10 |
-| HSM / Permissions | `hsm/permissions/user_cannot_create` | Non-admin user (<user.client@acme.com>) attempts to create an AES key directly | 1 |
-| HSM / Permissions | `hsm/permissions/user_cannot_destroy` | HSM admin creates an AES key, then non-admin user (<user.client@acme.com>) | 4 |
-| HSM / Permissions | `hsm/permissions/user_cannot_encrypt` | HSM admin creates an AES key in the HSM. Non-admin user (<user.client@acme.com>) | 4 |
-| HSM / Permissions | `hsm/permissions/user_cannot_grant` | HSM admin creates an AES key in the HSM. Non-admin user (<user.client@acme.com>) | 4 |
+| HSM / Permissions | `hsm/permissions/user_cannot_create` | Non-admin user (<u<ser.client@acme.co>m>) attempts to create an AES key directly | 1 |
+| HSM / Permissions | `hsm/permissions/user_cannot_destroy` | HSM admin creates an AES key, then non-admin user (<u<ser.client@acme.co>m>) | 4 |
+| HSM / Permissions | `hsm/permissions/user_cannot_encrypt` | HSM admin creates an AES key in the HSM. Non-admin user (<u<ser.client@acme.co>m>) | 4 |
+| HSM / Permissions | `hsm/permissions/user_cannot_grant` | HSM admin creates an AES key in the HSM. Non-admin user (<u<ser.client@acme.co>m>) | 4 |
 | HSM / Resident Encrypt | `hsm/resident_aes128_create_encrypt` | Creates an AES-128 key directly on the HSM (key material lives in the HSM token). | 5 |
 | HSM / Resident Encrypt | `hsm/resident_aes256_create_encrypt` | Creates an AES-256 key directly on the HSM (key material lives in the HSM token). | 5 |
 | HSM / Resident Encrypt | `hsm/resident_aes256_encrypt_cbc` | Creates an AES-256 key on the HSM, then encrypts and decrypts with AES-CBC mode. | 5 |
@@ -595,7 +595,7 @@ description = "Creates an AES-256 symmetric key and retrieves it via Get"
 # Optional: override default server config (defaults to auth_plain.toml)
 # Vectors with server_config start a dedicated server instance instead of
 # using the shared singleton.
-# server_config = "test_data/configs/server/test/cert_auth.toml"
+# server_config = "test_data/configs/server/cert_auth.toml"
 
 # Optional: wire format — "json" (default) or "binary"
 # "json" sends TTLV-JSON to /kmip/2_1

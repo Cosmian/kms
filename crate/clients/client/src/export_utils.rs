@@ -110,7 +110,6 @@ pub async fn export_object(
             None,
         )
     };
-    // Return the object after post fixing the object type
     Ok((id, object, attributes))
 }
 

@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#MISE description="Run Playwright E2E auth tests against a real Authentication Verifier"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+
+REPO_ROOT="$(get_repo_root)"
+
+# ── Build auth_verifier BEFORE entering the nix shell ────────────────────────
+# The authentication submodule requires a newer rustc (≥1.94) than the KMS
+# nix shell provides.  Build it with the system/host toolchain instead.
+# Guard with IN_NIX_SHELL: ensure_nix_shell re-execs this entire script inside
+# the nix shell, so this block must only run on the first (host) invocation.
+if [ "${IN_NIX_SHELL:-0}" != "1" ]; then
+  AUTH_VERIFIER_REPO="${AUTH_VERIFIER_REPO:-${REPO_ROOT}/authentication}"
+  if [ ! -f "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" ]; then
+    print_error "authentication submodule not found at '${AUTH_VERIFIER_REPO}'.
+         Run: git submodule update --init authentication"
+  fi
+  echo "==> Building auth_verifier (host toolchain) …"
+  (
+    cd "${AUTH_VERIFIER_REPO}"
+    cargo build -p auth_verifier
+  )
+fi
+
+export WITH_WASM=1 WITH_HSM=1 WITH_CURL=1
+
+if [ -n "${OPENSSL_MODULES:-}" ] && [ -d "$OPENSSL_MODULES" ]; then
+  sudo -n mkdir -p /usr/local/cosmian/lib/ossl-modules 2>/dev/null || true
+  for f in "$OPENSSL_MODULES"/*.so "$OPENSSL_MODULES"/*.dylib; do
+    [ -f "$f" ] && sudo -n ln -sf "$f" /usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
+  done
+  if [ -f "${OPENSSL_CONF:-}" ]; then
+    sudo -n mkdir -p /usr/local/cosmian/lib/ssl 2>/dev/null || true
+    sudo -n ln -sf "$OPENSSL_CONF" /usr/local/cosmian/lib/ssl/openssl.cnf 2>/dev/null || true
+  fi
+fi
+
+ensure_nix_shell
+
+bash "${REPO_ROOT}/.mise/scripts/test/test_ui_auth.sh" --variant "${VARIANT}" --link "${LINK}"

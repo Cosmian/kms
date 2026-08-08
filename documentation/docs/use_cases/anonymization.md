@@ -1,12 +1,10 @@
 # Anonymization
 
-Cosmian KMS exposes a set of data anonymization methods through a dedicated REST endpoint. These methods are stateless, require no cryptographic key, and are available under `/tokenize/{method}` on any KMS instance built with the `non-fips` feature.
+Eviden KMS exposes a set of data anonymization methods through a dedicated REST endpoint. These methods are stateless, require no cryptographic key, and are available under `/tokenize/{method}` on any KMS instance built with the `non-fips` feature.
 
 All endpoints accept a JSON body and return a JSON object with a single `result` field. Errors come back as HTTP 422 with `{ "code": 422, "message": "..." }`.
 
 The `ckms tokenize` CLI command wraps each of these endpoints if you prefer working from the command line.
-
-[TOC]
 
 ## Endpoints
 

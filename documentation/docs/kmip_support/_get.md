@@ -1,4 +1,6 @@
-#### Specification
+# Get
+
+## Specification
 
 This operation requests that the server returns the Managed Object specified by its Unique Identifier. Only a single
 object is returned.
@@ -14,7 +16,7 @@ format:
 - Any other format conversion MAY be supported by the server.
 
 If Key Format Type is specified to be PKCS#12 then the response payload shall be a PKCS#12 container as specified
-by [RFC7292].
+by \[RFC7292].
 
 The Unique Identifier shall be either that of a private key or certificate to be included in the response.
 
@@ -24,7 +26,7 @@ link to get the corresponding public key (where relevant) and then using that pu
 get the base certificate, and then using each certificate's Certificate Link to build the certificate chain. It is an
 error if there is more than one valid certificate chain.
 
-#### Implementation
+## Implementation
 
 The `Get` operation allows exporting `Active` objects only.
 When an object is `Destroyed` or `Deactivated`, the `Export` operation must be used instead.
@@ -34,7 +36,7 @@ for more details.
 
 For the list of supported key formats, please check the [formats page](./formats.md).
 
-#### Example - A symmetric key
+## Example - A symmetric key
 
 Exporting a symmetric key `027cced1-ff2b-4bd3-a200-db1041583bdc` (go to [Create](./_create.md) to see how to create the
 symmetric key).
@@ -43,10 +45,9 @@ Instead of using the UID of the key, we can use the unique tag of the key `my_sy
 identified. It is possible to use multiple tags to identify a key; for instance symmetric keys automatically get a
 *system* tag `_kk`. See [tagging](./tagging.md) for more information on tags.
 
-The response is in `Raw`format, the default format for symmetric keys specified by KMIP 2.1; see the [formats page](.
-/formats.md) for details.
+The response is in `Raw`format, the default format for symmetric keys specified by KMIP 2.1; see the [formats page](./formats.md) for details.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
   ckms sym keys create my_symmetric_key
@@ -165,13 +166,13 @@ Corresponding [KMS CLI](../../kms_clients/index.md) command:
     }
     ```
 
-#### Example - A wrapped Covercrypt user key
+## Example - A wrapped Covercrypt user key
 
 Exporting a wrapped Covercrypt user key `df871e79-0923-47cd-9078-bbec83287c85` (go to [Create](./_create.md) to
 see how to create the Covercrypt user key) after wrapping it with symmetric key
 `027cced1-ff2b-4bd3-a200-db1041583bdc` using RFC 5649.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
  ckms cc keys export -k df871e79-0923-47cd-9078-bbec83287c85 /tmp/sym_key.json  -w 027cced1-ff2b-4bd3-a200-db1041583bdc
@@ -406,12 +407,12 @@ more details.
     }
     ```
 
-### Example - An EC private key in PKCS#8, linked to a certificate
+## Example - An EC private key in PKCS#8, linked to a certificate
 
 Exporting in PKCS#8 an EC private key `bf614d45-5a3e-49b9-95c0-5586d3c0d17b` which was imported as part of a PKCS#12
 container.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
   ckms ec keys export /tmp/pkey.pem -f pkcs8-pem -k bf614d45-5a3e-49b9-95c0-5586d3c0d17b
@@ -556,11 +557,11 @@ Please note:
     }
     ```
 
-### Example - A certificate in X509
+## Example - A certificate in X509
 
 Exporting in X509 a certificate `d2f4e937-dda9-4a86-bbe8-c866646a612f` which was imported as part of a PKCS#12.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
   ckms certificates export /tmp/cert.x509 -f pem -c d2f4e937-dda9-4a86-bbe8-c866646a612f
@@ -638,7 +639,7 @@ Please note:
     }
     ```
 
-### Example - A PKCS#12 container
+## Example - A PKCS#12 container
 
 Export a PKCS#12 container using the unique identifier of the private key.
 The Private Key must have a link to:
@@ -649,7 +650,7 @@ The Private Key must have a link to:
 - for intermediate certificates to be included, the certificate must have a link to a certificate with a link of type
    `CertificateLink` to its issuer.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
   ckms certificates export /tmp/exported.p12 -c bf614d45-5a3e-49b9-95c0-5586d3c0d17b -f pkcs12 -p secret

@@ -62,7 +62,7 @@ static HSM_CLEANUP_DONE: OnceCell<()> = OnceCell::const_new();
 /// ```toml
 /// name = "AES Create, Encrypt, Decrypt"
 /// description = "Full lifecycle of an AES-256 symmetric key"
-/// server_config = "test_data/configs/server/test/auth_plain.toml"
+/// server_config = "test_data/configs/server/auth_plain.toml"
 ///
 /// [[steps]]
 /// operation = "Create"
@@ -90,7 +90,7 @@ pub struct TestManifest {
     /// Optional description
     pub description: Option<String>,
     /// Path to a TOML server config file (relative to the repo root).
-    /// If omitted, defaults to `test_data/configs/server/test/auth_plain.toml`.
+    /// If omitted, defaults to `test_data/configs/server/auth_plain.toml`.
     pub server_config: Option<String>,
     /// Server type to use for this vector.
     ///
@@ -116,9 +116,9 @@ pub struct TestManifest {
     ///
     /// Each backend maps to a config TOML override:
     /// - `sqlite` → default (`auth_plain.toml` or `server_config`)
-    /// - `postgresql` → `test_data/configs/server/test/postgres.toml`
-    /// - `mysql` → `test_data/configs/server/test/mysql.toml`
-    /// - `redis-findex` → `test_data/configs/server/test/redis_findex.toml`
+    /// - `postgresql` → `test_data/configs/server/postgres.toml`
+    /// - `mysql` → `test_data/configs/server/mysql.toml`
+    /// - `redis-findex` → `test_data/configs/server/redis_findex.toml`
     #[serde(default = "default_backends")]
     pub backends: Vec<String>,
     /// Wire format: `"json"` (default) or `"binary"`.
@@ -767,7 +767,7 @@ async fn get_or_init_vector_server(backend: &str) -> Result<&'static TestsContex
         ),
         _ => (&ONCE_VECTOR_SQLITE, "auth_plain.toml", ""),
     };
-    let p = root.join("test_data/configs/server/test").join(toml);
+    let p = root.join("test_data/configs/server").join(toml);
     // Override the database URL from the environment when set (e.g. MariaDB on
     // port 3308 or Percona on port 3307 reuse the "mysql" backend with a
     // different connection URL).
@@ -940,7 +940,7 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
         if let Some(server_config) = &manifest.server_config {
             let config_path = root.join(server_config);
             let context = match server_config.as_str() {
-                "test_data/configs/server/test/auth_https.toml" => {
+                "test_data/configs/server/auth_https.toml" => {
                     ONCE_VECTOR_AUTH_HTTPS
                         .get_or_try_init(|| crate::start_test_server_from_toml(&config_path))
                         .await?
@@ -4467,6 +4467,16 @@ ObjectType = "SymmetricKey"
     async fn test_vec_serial_import_destroy_reimport() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/serialization/import_destroy_reimport").await
+    }
+
+    // ── K8s KMS Plugin vectors ────────────────────────────────────────────
+
+    /// Verifies the AES-256-GCM wrap/unwrap flow used by `kubernetes-kms-plugin`
+    /// when `kube-apiserver` calls Encrypt (wrap DEK) and Decrypt (unwrap DEK).
+    #[tokio::test]
+    async fn test_vec_k8s_plugin_dek_wrap_unwrap() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/k8s_plugin/dek_wrap_unwrap").await
     }
 
     // ─── Keyset resolution & try-each-key vectors ────────────────────────────

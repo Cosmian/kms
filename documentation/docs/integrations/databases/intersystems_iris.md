@@ -4,10 +4,6 @@
 
 ---
 
-[TOC]
-
----
-
 ## Architecture overview
 
 ```mermaid
@@ -111,7 +107,7 @@ All configuration is done via ObjectScript in the `%SYS` namespace. You can run 
 
 ### Step 1 — Create a TLS/SSL configuration
 
-IRIS uses named SSL configurations to reference certificate material. Create one for the Cosmian KMS connection:
+IRIS uses named SSL configurations to reference certificate material. Create one for the Eviden KMS connection:
 
 ```objectscript
 zn "%SYS"

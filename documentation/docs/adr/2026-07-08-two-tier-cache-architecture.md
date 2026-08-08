@@ -16,7 +16,7 @@ Accepted
 
 ## Context
 
-The Cosmian KMS serves as an encryption-as-a-service backend: callers repeatedly
+The Eviden KMS serves as an encryption-as-a-service backend: callers repeatedly
 request the same key object for bulk encrypt/decrypt workloads. Without caching,
 every cryptographic operation requires:
 

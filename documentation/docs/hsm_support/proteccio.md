@@ -1,6 +1,8 @@
+# Trustway Proteccio
+
 Eviden KMS natively integrates with the [Trustway Proteccio](https://eviden.com/solutions/digital-security/data-encryption/trustway-proteccio-nethsm/) HSM.
 
-### Proteccio library setup
+## Proteccio library setup
 
 This solution works on Linux (x86_64) and has been validated against the Proteccio `nethsm` library version 3.17.
 
@@ -9,7 +11,7 @@ The KMS expects:
 - the Proteccio `nethsm` library to be installed in `/lib/libnethsm.so`
 - and the Proteccio configuration files in `/etc/proteccio`.
 
-#### `/etc/proteccio` configuration files
+### `/etc/proteccio` configuration files
 
 The Proteccio client library reads its configuration from `/etc/proteccio`. The directory must contain the
 following files:
@@ -44,8 +46,10 @@ SecChlClntPrivKey=secchl_clt_privkey.pem  ; Client secure-channel private key
 SecChlClntPubKey=secchl_clt_pubkey.pem    ; Client secure-channel public key
 ```
 
-> **_NOTE:_** All filenames in the configuration file are relative to `/etc/proteccio` unless an
-> absolute path is given.
+!!! note "Note"
+
+    All filenames in the configuration file are relative to `/etc/proteccio` unless an
+    absolute path is given.
 
 A secondary status log (`HSM_Status.log`) is written to `/etc/proteccio` by the `nethsmstatus`
 monitoring daemon and records HSM availability events. It is not read by the KMS.
@@ -53,7 +57,7 @@ monitoring daemon and records HSM availability events. It is not read by the KMS
 Please run the `nethsmstatus` tool to check the status of the HSM before proceeding with the
 rest of the installation.
 
-### KMS configuration
+## KMS configuration
 
 At least one slot and its corresponding password must be configured. Any slot and any number of slots may be used.
 
@@ -67,9 +71,11 @@ hsm_slot = [0, 0, ] # example [1,4] for slots 1 and 4
 hsm_password = ["<password>", "<password>", ] # example ["pass1", "pass4"] for slots 1 and 4
 ```
 
-> **_NOTE:_**  `hsm_slot` and `hsm_password` must always be arrays, even if only one slot is used.
->
-> The order of the passwords must match the order of the slots in the `hsm_slot` array.
+!!! warning "Warning"
+
+    `hsm_slot` and `hsm_password` must always be arrays, even if only one slot is used.
+
+    The order of the passwords must match the order of the slots in the `hsm_slot` array.
 >
 > If you want to login with an empty (null) password, use an empty string.
 >

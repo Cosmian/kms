@@ -1,6 +1,6 @@
 # Auto-Rotation Policy
 
-Cosmian KMS supports **scheduled, policy-driven key rotation** for SQL-backed
+Eviden KMS supports **scheduled, policy-driven key rotation** for SQL-backed
 symmetric keys and asymmetric key pairs.  A per-key *rotation policy* is
 attached to a key object; a background scheduler then rotates any key whose
 interval has elapsed — without any operator action.

@@ -26,18 +26,21 @@ repos:
             --config=.github/.markdownlint.yaml,
             --disable=MD013,
             --disable=MD033,
-            --disable=MD041,
             --disable=MD046,
             --fix,
+            # MD041 (first heading must be #) and MD025 (only one # per file) are intentionally enabled
           ]
-        exclude: cli_documentation/docs/cli/main_commands.md|documentation/docs/certifications_and_compliance/audit/crypto_inventory\.md
+        exclude: >-
+          documentation/docs/kms_clients/cli/main_commands.md|documentation/docs/certifications_and_compliance/audit/crypto_inventory\.md|\.github/skills/|crate/|^CHANGELOG/|^\.cargo/|documentation/docs/SUMMARY\.md|documentation/docs/kms_clients/cli/main_commands\.md
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.3
     hooks:
       - id: yamlfmt
         args: [--mapping, "2", --sequence, "4", --offset, "2"]
-        exclude: ansible|ui/pnpm-lock.yaml
+        # Helm templates use Go template syntax ({{- ... }}) which is not
+        # valid standalone YAML and cannot be parsed/reformatted by yamlfmt.
+        exclude: ansible|ui/pnpm-lock.yaml|charts/.*/templates/
 
   - repo: https://github.com/crate-ci/typos
     rev: v1.31.1
@@ -83,7 +86,7 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-added-large-files
-        exclude: ui/public|cli_documentation/docs/pkcs11/images|documentation/docs/benchmarks/
+        exclude: ui/public|documentation/docs/integrations/disk_encryption/images|documentation/docs/benchmarks/
       - id: check-ast
       - id: check-byte-order-marker
       - id: check-builtin-literals
@@ -99,7 +102,8 @@ repos:
       - id: check-xml
         exclude: crate/server/resources/production.drawio.svg
       - id: check-yaml
-        exclude: monitoring
+        # Helm templates use Go template syntax and are not valid standalone YAML.
+        exclude: monitoring|charts/.*/templates/
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
@@ -180,7 +184,7 @@ repos:
           Master doc-generation script. Runs all steps that are triggered by Rust
           source changes:
             1. server_cli.md + server_configuration_file.md (from --help / --print-default-config)
-            2. cli_documentation/docs/cli/main_commands.md + usage.md (from ckms markdown)
+            2. documentation/docs/kms_clients/cli/main_commands.md + usage.md (from ckms markdown)
             3. KMIP support tables (README.md + kmip_support/support.md)
             4. crypto_inventory.md (cryptographic asset sensor, no network)
           CBOM generation (step 5) is skipped on every commit (manual stage only —
@@ -206,7 +210,7 @@ repos:
 
       - id: cargo-deny-licenses
         name: Release - generate SBOM licenses list
-        entry: bash -c 'cargo deny list -l crate > sbom/licenses.txt'
+        entry: bash -c "cargo deny list -l crate | sed 's/\\x1b\[[0-9;]*m//g' > sbom/licenses.txt"
         language: system
         pass_filenames: false
         always_run: true
@@ -305,6 +309,7 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
 
       - id: nix-build-all
         name: Nix build all derivations (ui → cli → server)
@@ -338,9 +343,8 @@ repos:
       - id: cargo-format # in last du to clippy fixes
       - id: docker-compose-down
 
-  - repo: https://github.com/tcort/markdown-link-check
-    rev: v3.13.7
+  - repo: https://github.com/lycheeverse/lychee
+    rev: v0.15.1
     hooks:
-      - id: markdown-link-check
-        args: [-q, --config, ./.github/.markdown-link-check.json]
-        exclude: .github/copilot-instructions.md
+      - id: lychee
+        args: [--config, lychee.toml, 'documentation/docs/**/*.md']

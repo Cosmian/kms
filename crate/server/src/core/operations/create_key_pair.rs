@@ -112,6 +112,12 @@ pub(crate) async fn create_key_pair(
     let private_key_attributes =
         private_key.setup_with_lifecycle(ObjectType::PrivateKey, requested_sk_activation_date)?;
     let mut private_key_attributes = private_key_attributes;
+    // The server SHALL create the AlwaysSensitive attribute (KMIP 2.1 §4.3):
+    // True iff the private key is created Sensitive.
+    private_key_attributes.initialize_always_sensitive();
+    if let Ok(object_attributes) = private_key.attributes_mut() {
+        object_attributes.always_sensitive = private_key_attributes.always_sensitive;
+    }
     // Initialise keyset metadata for gen-0 on SQL key pairs only.
     if sk_rotate_name.is_some() && has_prefix(&sk_uid).is_none() {
         private_key_attributes.rotate_generation = Some(0);
@@ -138,6 +144,12 @@ pub(crate) async fn create_key_pair(
     let mut public_key = key_pair.public_key().to_owned();
     let mut public_key_attributes =
         public_key.setup_with_lifecycle(ObjectType::PublicKey, requested_pk_activation_date)?;
+    // Public keys are never Sensitive; AlwaysSensitive SHALL always have a value
+    // (KMIP 2.1 §4.3, Table 34: applies to all objects).
+    public_key_attributes.initialize_always_sensitive();
+    if let Ok(object_attributes) = public_key.attributes_mut() {
+        object_attributes.always_sensitive = public_key_attributes.always_sensitive;
+    }
     trace!(
         "Public key attributes after lifecycle update: {}",
         public_key_attributes

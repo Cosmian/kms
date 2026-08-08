@@ -5,7 +5,7 @@ This page lists the supported algorithms, their details and their reference in v
 FIPS compliant algorithms are also listed with the corresponding NIST standard.
 
 Keys and certificates for all the listed algorithms can be generated, imported, exported, wrapped,
-unwrapped... using the Eviden KMS server [API](../../kmip_support/json_ttlv_api.md) or [KMS CLI](../../../kms_clients/index.md)
+unwrapped... using the Eviden KMS server [API](../../kmip_support/json_ttlv_api.md) or [KMS CLI](../../kms_clients/index.md)
 
 Should you require a specific algorithm or standard to be supported, please directly open a ticket or pull request on the [Github repository](https://github.com/Cosmian/kms).
 
@@ -47,7 +47,7 @@ The supported encryption algorithms are:
 | AES XTS           | Symmetric, not authenticated                            | NIST SP 800-38E     | Used in disk encryption. Requires 2 keys (e.g. a double-sized key)                                                       |
 | AES GCM-SIV       | Symmetric, authenticated, synthetic IV                  | No                  | Used for deterministic encryption and encryption of very large data sets.                                                |
 | FPE FF1           | Symmetric, format-preserving encryption                 | No                  | NIST SP 800-38G FF1 format-preserving encryption for text, integers, and floating-point values through KMIP Encrypt/Decrypt. |
-| ChaCha20-Poly1305 | Symmetric authenticated encryption with additional data | No                  | A popular symmetric encryption algorithm standardized in [RFC-8439](https://www.rfc-editor.org/rfc/rfc8439)              |
+| ChaCha20-Poly1305 | Symmetric authenticated encryption with additional data | No                  | A popular symmetric encryption algorithm standardized in [RFC-8439](https://www.rfc-editor.org/info/rfc8439/)              |
 | CKM_RSA_PKCS      | RSA PKCS#1 v1.5                                         | Not anymore         | RSA WITH PKCS#1 v1.5 padding - removed by NIST approved algorithms for encryption in FIPS 140-3                          |
 | CKM_RSA_PKCS_OAEP | RSA encryption with OAEP padding                        | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                                  |
 | Salsa Sealed Box  | X25519, Ed25519 and Salsa20 Poly1305                    | No                  | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).          |
@@ -71,7 +71,7 @@ with and key sizes of 128, 192 or 256 bits.
 
 ### FPE FF1
 
-Cosmian KMS supports [NIST SP 800-38G](https://csrc.nist.gov/pubs/sp/800/38/g/final) FF1
+Eviden KMS supports [NIST SP 800-38G](https://csrc.nist.gov/pubs/sp/800/38/g/final) FF1
 format-preserving encryption in non-FIPS mode through the KMIP `Encrypt` and `Decrypt`
 operations when the `Cryptographic Algorithm` is set to `FPE_FF1`.
 
@@ -87,7 +87,7 @@ commands: `ckms fpe keys create`, `ckms fpe encrypt`, and `ckms fpe decrypt`.
 ### ChaCha20-Poly1305
 
 ChaCha20-Poly1305 is a symmetric authenticated encryption algorithm that is described
-in [RFC-8439](https://www.rfc-editor.org/rfc/rfc8439). The algorithm is not standardized by NIST but
+in [RFC-8439](https://www.rfc-editor.org/info/rfc8439/). The algorithm is not standardized by NIST but
 is a popular secure alternative to AES-GCM and is used in the same way, in particular by Google.
 
 ### AES-KWP

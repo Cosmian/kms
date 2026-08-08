@@ -12,7 +12,7 @@ const TokenizeWordMaskForm: React.FC = () => {
     const [form] = Form.useForm<WordListFormData>();
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
+    const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -25,12 +25,7 @@ const TokenizeWordMaskForm: React.FC = () => {
         setIsLoading(true);
         setRes(undefined);
         try {
-            const response = await postNoTTLVRequest(
-                "/tokenize/word-mask",
-                { data: values.data, words: values.words ?? [] },
-                idToken,
-                serverUrl,
-            );
+            const response = await postNoTTLVRequest("/tokenize/word-mask", { data: values.data, words: values.words ?? [] }, serverUrl);
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {
                 setRes(`Result: ${typed.result}`);

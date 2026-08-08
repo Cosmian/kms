@@ -1,4 +1,4 @@
-export type AuthMethod = "None" | "JWT" | "CERT" | undefined;
+export type AuthMethod = "None" | "JWT" | "CERT" | "AUTH_VERIFIER" | undefined;
 
 /** Strip HTML tags from error responses (server may return HTML error pages). */
 const stripHtml = (text: string): string =>
@@ -22,16 +22,16 @@ export const formatFileSize = (bytes: number): string => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-export const fetchIdToken = async (serverUrl: string): Promise<{ id_token: string; user_id: string } | null> => {
+export const fetchWhoAmI = async (serverUrl: string): Promise<{ user_id: string } | null> => {
     try {
-        const kmsUrl = serverUrl + "/ui/token";
+        const kmsUrl = serverUrl + "/ui/whoami";
         const response = await fetch(kmsUrl, {
             method: "GET",
             credentials: "include",
         });
-        if (!response.ok) throw new Error("Failed to fetch token");
+        if (!response.ok) throw new Error("Failed to fetch session user");
 
-        const data: { id_token: string; user_id: string } = await response.json();
+        const data: { user_id: string } = await response.json();
         return data;
     } catch {
         return null;
@@ -59,14 +59,52 @@ export const fetchAuthMethod = async (serverUrl: string): Promise<AuthMethod> =>
     }
 };
 
-export const sendKmipRequest = async (request: object, idToken: string | null, serverUrl: string) => {
+/** Outcome of a `POST /ui/login_as` call — mirrors the KMS server's `AuthVerifierLoginResponse`. */
+type AuthVerifierLoginNextStep = "Authenticated" | "TotpRequired";
+
+/**
+ * Log in against the Auth Verifier authentication server via the KMS's BFF proxy
+ * (`POST /ui/login_as`). On success the KMS stores the authenticated user in the
+ * session cookie; the AS's JWT never reaches the browser.
+ *
+ * Pass `totpCode` once the caller has already received a `"TotpRequired"` response.
+ */
+export const loginAuthVerifier = async (
+    serverUrl: string,
+    username: string,
+    password: string,
+    totpCode?: string,
+): Promise<AuthVerifierLoginNextStep> => {
+    const kmsUrl = serverUrl + "/ui/login_as";
+    const response = await fetch(kmsUrl, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password, totp_code: totpCode }),
+    });
+
+    const data: unknown = await response.json().catch(() => null);
+
+    if (!response.ok) {
+        const message =
+            data && typeof data === "object" && "error" in data && typeof (data as { error: unknown }).error === "string"
+                ? (data as { error: string }).error
+                : `Login failed (${response.status})`;
+        throw new Error(message);
+    }
+
+    return (data as { next_step: AuthVerifierLoginNextStep }).next_step;
+};
+
+export const sendKmipRequest = async (request: object, serverUrl: string) => {
     const kmsUrl = serverUrl + "/kmip/2_1";
     const response = await fetch(kmsUrl, {
         method: "POST",
         credentials: "include",
         headers: {
             "Content-Type": "application/json",
-            ...(idToken && { Authorization: `Bearer ${idToken}` }),
         },
         body: JSON.stringify(request),
     });
@@ -79,14 +117,13 @@ export const sendKmipRequest = async (request: object, idToken: string | null, s
     return JSON.stringify(await response.json());
 };
 
-export const postNoTTLVRequest = async (path: string, request: object, idToken: string | null, serverUrl: string) => {
+export const postNoTTLVRequest = async (path: string, request: object, serverUrl: string) => {
     const kmsUrl = serverUrl + path;
     const response = await fetch(kmsUrl, {
         method: "POST",
         credentials: "include",
         headers: {
             "Content-Type": "application/json",
-            ...(idToken && { Authorization: `Bearer ${idToken}` }),
         },
         body: JSON.stringify(request),
     });
@@ -99,7 +136,7 @@ export const postNoTTLVRequest = async (path: string, request: object, idToken: 
     return await response.json();
 };
 
-export const getNoTTLVRequest = async (path: string, idToken: string | null, serverUrl: string) => {
+export const getNoTTLVRequest = async (path: string, serverUrl: string) => {
     const kmsUrl = serverUrl + path;
 
     const controller = new AbortController();
@@ -110,9 +147,7 @@ export const getNoTTLVRequest = async (path: string, idToken: string | null, ser
         method: "GET",
         credentials: "include",
         signal: controller.signal,
-        headers: {
-            ...(idToken && { Authorization: `Bearer ${idToken}` }),
-        },
+        headers: {},
     });
 
     clearTimeout(timeoutHandle);
@@ -125,7 +160,7 @@ export const getNoTTLVRequest = async (path: string, idToken: string | null, ser
     return await response.json();
 };
 
-export const getNoTTLVRequestWithTimeout = async (path: string, idToken: string | null, serverUrl: string, timeoutMs: number) => {
+export const getNoTTLVRequestWithTimeout = async (path: string, serverUrl: string, timeoutMs: number) => {
     const kmsUrl = serverUrl + path;
     const controller = new AbortController();
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
@@ -135,9 +170,7 @@ export const getNoTTLVRequestWithTimeout = async (path: string, idToken: string 
             method: "GET",
             credentials: "include",
             signal: controller.signal,
-            headers: {
-                ...(idToken && { Authorization: `Bearer ${idToken}` }),
-            },
+            headers: {},
         });
 
         if (!response.ok) {

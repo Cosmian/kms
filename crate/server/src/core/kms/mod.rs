@@ -51,7 +51,7 @@ use crate::{
 /// Macro to instantiate an HSM with support for environment variable override.
 /// Returns an `Arc<dyn HSM + Send + Sync>` without touching any global state.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-#[allow(unused_macros)]
+#[allow(unused_macros)] // only expanded on linux/macos targets that instantiate an HSM
 macro_rules! instantiate_hsm_with_env {
     ($hsm_type:ty, $env_var:expr, $default_lib:expr, $hsm_name:expr, $slot_passwords:expr) => {{
         let lib_path = std::env::var($env_var).unwrap_or_else(|_| $default_lib.to_owned());

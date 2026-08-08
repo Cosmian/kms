@@ -1,4 +1,6 @@
-#### Specification
+# Hash
+
+## Specification
 
 This operation requests the server to perform a hash operation on provided data, using a specified Hashing Algorithm.
 The operation can be performed in a single request or as a series of requests for long data streams or by-parts cryptographic operations.
@@ -13,7 +15,7 @@ When a stream or by-parts operation is requested:
 - The server SHALL use the Correlation Value for subsequent Hash requests.
 - The server SHALL close the stream or by-parts operation when Final Indicator is True.
 
-#### Implementation
+## Implementation
 
 The Eviden KMS server supports the following hashing algorithms:
 
@@ -23,11 +25,11 @@ The Eviden KMS server supports the following hashing algorithms:
 
 For the complete list of supported hashing algorithms, please check the [algorithms page](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
-#### Example - Simple hash
+## Example - Simple hash
 
 Hashing data with SHA256.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
 ckms hash --algorithm sha3-512 --data 0011223344556677889900
@@ -86,11 +88,11 @@ ckms hash --algorithm sha3-512 --data 0011223344556677889900
     }
     ```
 
-#### Example - Stream hash
+## Example - Stream hash
 
 Hashing a large file in multiple parts using SHA256.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
 # First part with init indicator

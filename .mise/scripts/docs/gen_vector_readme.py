@@ -8,6 +8,7 @@ Usage:
 Outputs: crate/test_kms_server/README.md (overwritten in place)
 """
 import os
+import re
 import sys
 import tomllib
 from collections import OrderedDict
@@ -32,6 +33,12 @@ for root, _dirs, files in os.walk(BASE):
             manifest = tomllib.load(f)
         name = manifest.get('name', os.path.basename(rel))
         desc = manifest.get('description', '').strip().split('\n')[0]  # First line only
+        # Wrap bare email addresses in <> so markdownlint MD034 is satisfied
+        desc = re.sub(
+            r'(?<![<\`])([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(?![>\`])',
+            r'<\1>',
+            desc,
+        )
         steps = len(manifest.get('steps', []))
         vectors.append(
             {
@@ -549,7 +556,7 @@ description = "Creates an AES-256 symmetric key and retrieves it via Get"
 # Optional: override default server config (defaults to auth_plain.toml)
 # Vectors with server_config start a dedicated server instance instead of
 # using the shared singleton.
-# server_config = "test_data/configs/server/test/cert_auth.toml"
+# server_config = "test_data/configs/server/cert_auth.toml"
 
 # Optional: wire format — "json" (default) or "binary"
 # "json" sends TTLV-JSON to /kmip/2_1

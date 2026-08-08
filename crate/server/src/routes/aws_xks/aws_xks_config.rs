@@ -8,7 +8,7 @@ use clap_config_fallback::ConfigArgs;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Args, ConfigArgs, Deserialize, Serialize, Clone)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 #[derive(Default)]
 pub struct AwsXksConfig {
     /// This setting turns on endpoints handling the AWS XKS feature

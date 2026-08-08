@@ -24,7 +24,7 @@ const RSA_ENCRYPTION_ALGORITHMS = [
 
 const CertificateDecryptForm: React.FC = () => {
     const [form] = Form.useForm<CertificateDecryptFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: CertificateDecryptFormData) => {
         const id = values.privateKeyId ? values.privateKeyId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -33,7 +33,7 @@ const CertificateDecryptForm: React.FC = () => {
                 throw new Error("Missing key identifier.");
             }
             const request = decrypt_certificate_ttlv_request(id, values.inputFile, values.authenticationData, values.encryptionAlgorithm);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await parse_decrypt_ttlv_response(result_str);
                 const name = values.fileName.slice(0, -4);

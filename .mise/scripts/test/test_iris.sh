@@ -390,28 +390,38 @@ if ! echo "${KMIP_MENU_PROBE}" | grep -qi "KMIP"; then
   echo "==> SKIPPED: IRIS KMIP support not available (likely Community edition); mTLS checks passed."
   exit 0
 fi
-KMIP_OUTPUT=$(printf '%s\n' \
-  'zn "%SYS"' \
-  'do ^SECURITY' \
-  '14' \
-  '1' \
-  'CosmianKMS' \
-  'Cosmian KMS - mTLS CI test' \
-  "${KMS_HOST_FROM_IRIS}" \
-  "${KMS_KMIP_PORT}" \
-  '6' \
-  'CosmianKMSTLS' \
-  'Y' \
-  'N' \
-  '30' \
-  'N' \
-  'N' \
-  'Y' \
-  '' \
-  '8' \
-  '17' \
-  'halt' |
-  docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+KMIP_OUTPUT=""
+for _kmip_attempt in 1 2 3; do
+  KMIP_OUTPUT=$(printf '%s\n' \
+    'zn "%SYS"' \
+    'do ^SECURITY' \
+    '14' \
+    '1' \
+    'CosmianKMS' \
+    'Cosmian KMS - mTLS CI test' \
+    "${KMS_HOST_FROM_IRIS}" \
+    "${KMS_KMIP_PORT}" \
+    '6' \
+    'CosmianKMSTLS' \
+    'Y' \
+    'N' \
+    '30' \
+    'N' \
+    'N' \
+    'Y' \
+    '' \
+    '8' \
+    '17' \
+    'halt' |
+    docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+  # Retry if IRIS is in a transient "Access to database inhibited" state (write-behind cache not flushed)
+  if echo "${KMIP_OUTPUT}" | grep -qi "Access to database inhibited"; then
+    echo "  Attempt ${_kmip_attempt}/3: IRIS database temporarily inhibited — waiting 15s before retry…" >&2
+    sleep 15
+    continue
+  fi
+  break
+done
 echo "IRIS KMIP server setup output: ${KMIP_OUTPUT}"
 if echo "${KMIP_OUTPUT}" | grep -qiE "creat.*CosmianKMS|CosmianKMS.*creat|KMIP server.*created|created.*KMIP"; then
   echo "==> PASS: IRIS KMIP server configuration created via ^SECURITY."

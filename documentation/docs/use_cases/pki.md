@@ -8,14 +8,14 @@ storing, validating, and revoking certificates for both **classical** and
 
 | Standard | Description | Scope |
 | -------- | ----------- | ----- |
-| [RFC 5280](https://www.rfc-editor.org/rfc/rfc5280) | X.509 PKI Certificate and CRL Profile | All certificate operations |
-| [RFC 8017](https://www.rfc-editor.org/rfc/rfc8017) | PKCS #1 v2.2 — RSA Cryptography | RSA key pairs & certificates |
-| [RFC 5480](https://www.rfc-editor.org/rfc/rfc5480) | ECC Subject Public Key Information | EC/ECDSA key pairs & certificates |
-| [RFC 8032](https://www.rfc-editor.org/rfc/rfc8032) | Edwards-Curve Digital Signature Algorithm (EdDSA) | Ed25519/Ed448 certificates |
-| [RFC 9881](https://www.rfc-editor.org/rfc/rfc9881) | ML-DSA in X.509 (FIPS 204) | Post-quantum signing certificates |
-| [RFC 9909](https://www.rfc-editor.org/rfc/rfc9909) | SLH-DSA in X.509 (FIPS 205) | Post-quantum signing certificates |
-| [RFC 9935](https://www.rfc-editor.org/rfc/rfc9935) | ML-KEM in X.509 (FIPS 203) | Post-quantum KEM certificates |
-| [RFC 9608](https://www.rfc-editor.org/rfc/rfc9608) | No Revocation Available extension | All self-signed end-entity certs |
+| [RFC 5280](https://datatracker.ietf.org/doc/html/rfc5280) | X.509 PKI Certificate and CRL Profile | All certificate operations |
+| [RFC 8017](https://datatracker.ietf.org/doc/html/rfc8017) | PKCS #1 v2.2 — RSA Cryptography | RSA key pairs & certificates |
+| [RFC 5480](https://datatracker.ietf.org/doc/html/rfc5480) | ECC Subject Public Key Information | EC/ECDSA key pairs & certificates |
+| [RFC 8032](https://datatracker.ietf.org/doc/html/rfc8032) | Edwards-Curve Digital Signature Algorithm (EdDSA) | Ed25519/Ed448 certificates |
+| [RFC 9881](https://datatracker.ietf.org/doc/html/rfc9881) | ML-DSA in X.509 (FIPS 204) | Post-quantum signing certificates |
+| [RFC 9909](https://datatracker.ietf.org/doc/html/rfc9909) | SLH-DSA in X.509 (FIPS 205) | Post-quantum signing certificates |
+| [RFC 9935](https://datatracker.ietf.org/doc/html/rfc9935) | ML-KEM in X.509 (FIPS 203) | Post-quantum KEM certificates |
+| [RFC 9608](https://datatracker.ietf.org/doc/html/rfc9608) | No Revocation Available extension | All self-signed end-entity certs |
 
 ### Not supported
 

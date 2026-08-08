@@ -15,13 +15,13 @@ interface AccessRight {
 
 const AccessListForm: React.FC = () => {
     const [form] = Form.useForm<AccessListFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [accessRights, setAccessRights] = useState<AccessRight[]>([]);
 
     const onFinish = async (values: AccessListFormData) => {
         setAccessRights([]);
         await execute(async () => {
-            const response = await getNoTTLVRequest(`/access/list/${values.unique_identifier}`, idToken, serverUrl);
+            const response = await getNoTTLVRequest(`/access/list/${values.unique_identifier}`, serverUrl);
             if (response.length) {
                 setAccessRights(response);
             } else {

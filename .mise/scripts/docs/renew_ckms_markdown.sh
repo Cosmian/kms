@@ -1,5 +1,5 @@
 #!/bin/bash
-# Regenerate cli_documentation/docs/cli/main_commands.md from the ckms binary.
+# Regenerate documentation/docs/kms_clients/cli/main_commands.md from the ckms binary.
 # Builds ckms with --features non-fips so that the full (non-FIPS) command set
 # is documented.
 
@@ -12,10 +12,10 @@ cargo build -p ckms --features non-fips
 
 # Regenerate the detailed per-subcommand reference.
 "${REPO_ROOT}/target/debug/ckms" markdown \
-  "${REPO_ROOT}/cli_documentation/docs/cli/main_commands.md"
+  "${REPO_ROOT}/documentation/docs/kms_clients/cli/main_commands.md"
 
 # Regenerate the top-level usage overview from `ckms --help`.
-USAGE_MD="${REPO_ROOT}/cli_documentation/docs/usage.md"
+USAGE_MD="${REPO_ROOT}/documentation/docs/kms_clients/usage.md"
 {
   echo "# Usage"
   echo ""

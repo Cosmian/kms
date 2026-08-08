@@ -5,7 +5,7 @@
   # Optional external overrides; if null, will be constructed from nix/openssl.nix
   openssl36 ? null,
   openssl312 ? null,
-  # Provide a rustPlatform that uses the desired Rust (e.g., 1.91.0) but
+  # Provide a rustPlatform that uses the desired Rust (e.g., 1.97.0) but
   # links against pkgs234 (glibc 2.34) on Linux for Rocky Linux 9 compatibility.
   rustPlatform ? pkgs.rustPlatform,
   # KMS version (from Cargo.toml)
@@ -39,43 +39,21 @@ let
 
   variant = "${baseVariant}${if static then "-static-openssl" else "-dynamic-openssl"}";
 
-  # Expected deterministic sha256 of the final installed binary (cosmian_kms)
-  # Naming convention (matches repository files):
+  # Binary hash naming convention (matches repository files):
   #   cosmian-kms-server.<fips|non-fips>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256
-
-  # Pre-compute all platform-specific expected hash file paths at Nix evaluation time.
-  # If the file exists and contains a non-zero hash, it will be embedded in the
-  # installCheckPhase shell script for mandatory comparison.
+  # The hash is written to $out/bin/ during installCheckPhase so that
+  # the packaging script can copy it into nix/expected-hashes/ for cross-run tracking.
+  # NOTE: reading these hash files back into the Nix derivation at eval time (to enforce
+  # determinism inside installCheckPhase) was removed because it made the derivation hash
+  # depend on nix/expected-hashes/ contents.  When the packaging script writes the hash
+  # after the first `nix-build`, subsequent `nix-build` calls within the same CI step
+  # (deb → rpm → pkcs11-zip) saw a changed source, triggered a full rebuild, and produced
+  # a different binary on bistable non-deterministic builds — causing a hash mismatch on
+  # every other invocation.  Hash enforcement is now handled solely by enforce_binary_hash()
+  # in .mise/scripts/package/package_common.sh.
   linkTag = if static then "static-openssl" else "dynamic-openssl";
-  expectedHashDir = ./expected-hashes;
-
-  # Helper: read & trim a hash file, returning null when absent or placeholder (all zeros).
-  readHashFile =
-    name:
-    let
-      path = expectedHashDir + "/${name}";
-    in
-    if builtins.pathExists path then
-      let
-        raw = builtins.readFile path;
-        trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
-        isPlaceholder = builtins.match "^0+$" trimmed != null;
-      in
-      if trimmed != "" && !isPlaceholder then trimmed else null
-    else
-      null;
-
-  # Pre-read expected hashes for every arch+os combination this derivation supports.
-  # Only the matching platform will actually use its value at build time.
-  expectedHash_x86_64_linux = readHashFile "cosmian-kms-server.${baseVariant}.${linkTag}.x86_64.linux.sha256";
-  expectedHash_aarch64_linux = readHashFile "cosmian-kms-server.${baseVariant}.${linkTag}.aarch64.linux.sha256";
-  expectedHash_x86_64_darwin = readHashFile "cosmian-kms-server.${baseVariant}.${linkTag}.x86_64.darwin.sha256";
-  expectedHash_arm64_darwin = readHashFile "cosmian-kms-server.${baseVariant}.${linkTag}.arm64.darwin.sha256";
-
-  # Compute the actual hash file path for writing during build
 
   filteredSrc = mkFilteredSrc [
-    "nix/expected-hashes"
     "test_data"
     "documentation"
   ];
@@ -143,7 +121,11 @@ let
       echo "$ACTUAL" > "$out/bin/cosmian_kms.sha256"
       echo "Binary hash: $ACTUAL (saved to $out/bin/cosmian_kms.sha256)"
 
-      # Determine expected hash (resolved at Nix evaluation time from nix/expected-hashes/)
+      # Write the binary hash for the packaging script to pick up.
+      # Hash enforcement (determinism gate) is handled by enforce_binary_hash() in
+      # .mise/scripts/package/package_common.sh — reading it back here at Nix eval
+      # time would bake the hash into the derivation, causing a new store path on
+      # every subsequent nix-build call within the same CI step (deb→rpm→pkcs11-zip).
       ARCH_LINUX="$(uname -m)"
       case "$ARCH_LINUX" in
         x86_64) ARCH_TAG="x86_64" ;;
@@ -151,33 +133,8 @@ let
         *) ARCH_TAG="$ARCH_LINUX" ;;
       esac
       HASH_FILENAME="cosmian-kms-server.${baseVariant}.${linkTag}.$ARCH_TAG.linux.sha256"
-
-      # Pick the expected hash for the current architecture
-      EXPECTED=""
-      case "$ARCH_LINUX" in
-        x86_64)  EXPECTED="${toString expectedHash_x86_64_linux}" ;;
-        aarch64) EXPECTED="${toString expectedHash_aarch64_linux}" ;;
-      esac
-
-      if [ -n "$EXPECTED" ]; then
-        if [ "$ACTUAL" = "$EXPECTED" ]; then
-          echo "Deterministic hash check PASSED: $ACTUAL"
-        else
-          echo "ERROR: Deterministic hash MISMATCH!"
-          echo "  Expected: $EXPECTED"
-          echo "  Actual:   $ACTUAL"
-          echo "  File:     nix/expected-hashes/$HASH_FILENAME"
-          echo ""
-          echo "If this is an intentional change, update the expected hash:"
-          echo "  echo '$ACTUAL' > nix/expected-hashes/$HASH_FILENAME"
-          exit 1
-        fi
-      else
-        echo "NOTE: No expected hash file for $HASH_FILENAME — skipping enforcement (bootstrap mode)"
-      fi
-
       echo "$ACTUAL" > "$out/bin/$HASH_FILENAME"
-      echo "Expected hash file saved to: $out/bin/$HASH_FILENAME"
+      echo "Binary hash saved to: $out/bin/$HASH_FILENAME"
       echo "To update repository, copy this file to: nix/expected-hashes/$HASH_FILENAME"
     elif [ "$(uname)" = "Darwin" ]; then
       # macOS-specific checks
@@ -200,36 +157,12 @@ let
       echo "$ACTUAL" > "$out/bin/cosmian_kms.sha256"
       echo "Binary hash: $ACTUAL (saved to $out/bin/cosmian_kms.sha256)"
 
-      # Determine expected hash (resolved at Nix evaluation time from nix/expected-hashes/)
+      # Write the binary hash for the packaging script to pick up.
+      # See Linux section comment above for why hash enforcement was moved out of Nix.
       ARCH="$(uname -m)"
       HASH_FILENAME="cosmian-kms-server.${baseVariant}.${linkTag}.$ARCH.darwin.sha256"
-
-      # Pick the expected hash for the current architecture
-      EXPECTED=""
-      case "$ARCH" in
-        x86_64)       EXPECTED="${toString expectedHash_x86_64_darwin}" ;;
-        arm64|aarch64) EXPECTED="${toString expectedHash_arm64_darwin}" ;;
-      esac
-
-      if [ -n "$EXPECTED" ]; then
-        if [ "$ACTUAL" = "$EXPECTED" ]; then
-          echo "Deterministic hash check PASSED: $ACTUAL"
-        else
-          echo "ERROR: Deterministic hash MISMATCH!"
-          echo "  Expected: $EXPECTED"
-          echo "  Actual:   $ACTUAL"
-          echo "  File:     nix/expected-hashes/$HASH_FILENAME"
-          echo ""
-          echo "If this is an intentional change, update the expected hash:"
-          echo "  echo '$ACTUAL' > nix/expected-hashes/$HASH_FILENAME"
-          exit 1
-        fi
-      else
-        echo "NOTE: No expected hash file for $HASH_FILENAME — skipping enforcement (bootstrap mode)"
-      fi
-
       echo "$ACTUAL" > "$out/bin/$HASH_FILENAME"
-      echo "Expected hash file saved to: $out/bin/$HASH_FILENAME"
+      echo "Binary hash saved to: $out/bin/$HASH_FILENAME"
       echo "To update repository, copy this file to: nix/expected-hashes/$HASH_FILENAME"
     fi
 

@@ -1,9 +1,9 @@
 # Windows CNG Key Storage Provider (KSP)
 
-> **Microsoft Intune integration** — The Cosmian KMS CNG KSP integrates natively
+> **Microsoft Intune integration** — The Eviden KMS CNG KSP integrates natively
 > with [Microsoft Intune](https://learn.microsoft.com/en-us/mem/intune/fundamentals/what-is-intune)
 > SCEP and PKCS certificate profiles. When Intune provisions a device certificate,
-> the private key is created and permanently stored in Cosmian KMS — never on the
+> the private key is created and permanently stored in Eviden KMS — never on the
 > endpoint. See the [Intune integration section](#microsoft-intune-integration)
 > for setup details.
 
@@ -15,10 +15,10 @@ sequenceDiagram
     participant Intune as Microsoft Intune<br/>(Cloud UEM)
     participant Endpoint as Windows Endpoint<br/>(Intune-managed)
     participant KSP as cosmian_cng.dll<br/>(CNG KSP)
-    participant KMS as Cosmian KMS<br/>(KMIP 2.1)
+    participant KMS as Eviden KMS<br/>(KMIP 2.1)
     participant SCEP as SCEP / PKCS<br/>Certificate Authority
 
-    Admin->>Intune: 1. Create SCEP certificate profile<br/>KSP = "Cosmian KMS Key Storage Provider"
+    Admin->>Intune: 1. Create SCEP certificate profile<br/>KSP = "Eviden KMS Key Storage Provider"
     Intune->>Endpoint: 2. Push certificate profile
     Endpoint->>KSP: 3. NCryptCreatePersistedKey()
     KSP->>KMS: 4. KMIP CreateKeyPair<br/>(private key stays in KMS)
@@ -26,7 +26,7 @@ sequenceDiagram
     KSP-->>Endpoint: 6. Key handle (public key blob)
     Endpoint->>SCEP: 7. Submit CSR<br/>(public key only)
     SCEP-->>Endpoint: 8. Signed certificate
-    Note over Endpoint,KMS: All subsequent Sign / Decrypt operations<br/>are forwarded to Cosmian KMS via the KSP
+    Note over Endpoint,KMS: All subsequent Sign / Decrypt operations<br/>are forwarded to Eviden KMS via the KSP
     Endpoint->>KSP: 9. NCryptSignHash() (e.g. TLS handshake)
     KSP->>KMS: 10. KMIP Sign
     KMS-->>KSP: 11. Signature
@@ -37,8 +37,8 @@ sequenceDiagram
 
 ## What is it?
 
-Cosmian KMS provides a Windows **CNG Key Storage Provider (KSP)** DLL —
-`cosmian_cng.dll` — that stores private keys inside Cosmian KMS rather
+Eviden KMS provides a Windows **CNG Key Storage Provider (KSP)** DLL —
+`cosmian_cng.dll` — that stores private keys inside Eviden KMS rather
 than the local Windows machine store.
 
 A **Key Storage Provider** is a pluggable module defined by the Windows
@@ -48,7 +48,7 @@ that calls the standard `NCrypt*` family of functions — including the Windows
 certificate enrollment engine, Schannel (TLS), and Code Signing — automatically
 uses whichever KSP is associated with a given key, with no application changes
 required. By deploying `cosmian_cng.dll`, all private key material is
-kept inside Cosmian KMS: it never exists on the device disk.
+kept inside Eviden KMS: it never exists on the device disk.
 
 ---
 
@@ -56,8 +56,8 @@ kept inside Cosmian KMS: it never exists on the device disk.
 
 | Need | How the KSP addresses it |
 |---|---|
-| **Private-key protection** | Keys are generated and stored exclusively inside Cosmian KMS — never on the endpoint disk or in the Windows registry. |
-| **FIPS 140-3 compliance** | Cosmian KMS is FIPS 140-3 validated. All cryptographic operations (sign, decrypt, key generation) are executed by the KMS, not by Windows. |
+| **Private-key protection** | Keys are generated and stored exclusively inside Eviden KMS — never on the endpoint disk or in the Windows registry. |
+| **FIPS 140-3 compliance** | Eviden KMS is FIPS 140-3 validated. All cryptographic operations (sign, decrypt, key generation) are executed by the KMS, not by Windows. |
 | **Centralised audit trail** | Every sign / decrypt operation is logged in the KMS with user identity, timestamp, and key identifier. |
 | **Key revocation** | Revoking a key in the KMS immediately blocks all devices using it, without requiring an MDM policy push. |
 | **Zero-touch provisioning** | Works natively with Microsoft Intune SCEP and PKCS certificate profiles — no custom enrollment agent is needed. |
@@ -84,7 +84,7 @@ kept inside Cosmian KMS: it never exists on the device disk.
 Use the CNG KSP when:
 
 - You are enrolling **device certificates** through Microsoft Intune SCEP or
-  PKCS profiles and you want the private key to remain inside Cosmian KMS rather
+  PKCS profiles and you want the private key to remain inside Eviden KMS rather
   than in the Windows software KSP or TPM.
 - You need to **remotely wipe** a key (e.g. lost device): destroy the key in the
   KMS and all signing / decryption operations on that device fail immediately.
@@ -126,7 +126,7 @@ corresponding Rust function.
 sequenceDiagram
     participant App as Windows Application<br/>(Intune SCEP, MMC, certutil)
     participant DLL as cosmian_cng.dll
-    participant KMS as Cosmian KMS<br/>(HTTPS / KMIP 2.1)
+    participant KMS as Eviden KMS<br/>(HTTPS / KMIP 2.1)
 
     App->>DLL: NCrypt* call<br/>(OpenStorageProvider, SignHash, …)
     Note over DLL: 1. Validate handle (magic check)<br/>2. Translate NCrypt params → KMIP request<br/>3. Block on shared Tokio runtime
@@ -217,7 +217,7 @@ certificate), or unauthenticated (for local dev/test only).
 ```mermaid
 flowchart LR
     App["Windows Application<br/>(Intune SCEP, MMC, certutil)"] -->|NCrypt API calls| DLL["cosmian_cng.dll<br/><br/>NCRYPT_KEY_STORAGE_FUNCTION_TABLE<br/>GetKeyStorageInterface()"]
-    DLL -->|"CreateKeyPair / Sign / Decrypt<br/>Locate / Destroy"| KMS["Cosmian KMS<br/>(REST / KMIP 2.1)"]
+    DLL -->|"CreateKeyPair / Sign / Decrypt<br/>Locate / Destroy"| KMS["Eviden KMS<br/>(REST / KMIP 2.1)"]
     style DLL fill:#f5f5f5,stroke:#333
     style KMS fill:#e8f4e8,stroke:#2d7d2d
 ```
@@ -240,15 +240,15 @@ flowchart LR
 
 ## Installation
 
-### 1. Install the Cosmian KMS CLI
+### 1. Install the Eviden KMS CLI
 
-The `cosmian_cng.dll` is bundled inside the **Cosmian KMS CLI installer**
+The `cosmian_cng.dll` is bundled inside the **Eviden KMS CLI installer**
 alongside `ckms.exe`. Download and run the installer for your platform:
 
 ```powershell
 # Download the CLI installer (adjust the version number as needed)
 Invoke-WebRequest `
-    -Uri "https://package.cosmian.com/kms/5.25.0/windows/x86_64/non-fips/static-openssl/cosmian-kms-cli-non-fips-static-openssl_5.25.0_x86_64.exe" `
+    -Uri "https://package.cosmian.com/kms/5.26.0/windows/x86_64/non-fips/static-openssl/cosmian-kms-cli-non-fips-static-openssl_5.26.0_x86_64.exe" `
     -OutFile "$env:TEMP\cosmian-kms-cli.exe"
 
 # Run the installer (accepts the default installation directory)
@@ -258,15 +258,15 @@ Start-Process -FilePath "$env:TEMP\cosmian-kms-cli.exe" -ArgumentList "/S" -Wait
 The installer places both files in the default installation directory:
 
 ```text
-C:\Users\<username>\AppData\Local\Cosmian KMS CLI\ckms.exe
-C:\Users\<username>\AppData\Local\Cosmian KMS CLI\cosmian_cng.dll
+C:\Users\<username>\AppData\Local\Eviden KMS CLI\ckms.exe
+C:\Users\<username>\AppData\Local\Eviden KMS CLI\cosmian_cng.dll
 ```
 
 Ensure the installation directory is on your `PATH` (the installer does
 this automatically):
 
 ```powershell
-$env:PATH += ";$env:LOCALAPPDATA\Cosmian KMS CLI"
+$env:PATH += ";$env:LOCALAPPDATA\Eviden KMS CLI"
 ```
 
 ### 2. Configure the KMS connection
@@ -287,7 +287,7 @@ Before registering the KSP, confirm that the DLL loads correctly and can reach
 the KMS server:
 
 ```powershell
-ckms cng verify --dll "$env:LOCALAPPDATA\Cosmian KMS CLI\cosmian_cng.dll"
+ckms cng verify --dll "$env:LOCALAPPDATA\Eviden KMS CLI\cosmian_cng.dll"
 ```
 
 Expected output (with a running KMS):
@@ -295,7 +295,7 @@ Expected output (with a running KMS):
 ```text
 === Cosmian CNG KSP Verification ===
 
-Loading DLL: C:\Users\<user>\AppData\Local\Cosmian KMS CLI\cosmian_cng.dll
+Loading DLL: C:\Users\<user>\AppData\Local\Eviden KMS CLI\cosmian_cng.dll
 
   [OK]   OpenProvider
 ── RSA key pair + sign + export + lookup ──
@@ -312,7 +312,7 @@ the KMS server — check `ckms.toml` and network connectivity before proceeding.
 
 ```powershell
 # From an elevated PowerShell prompt:
-ckms cng register --dll "$env:LOCALAPPDATA\Cosmian KMS CLI\cosmian_cng.dll"
+ckms cng register --dll "$env:LOCALAPPDATA\Eviden KMS CLI\cosmian_cng.dll"
 ```
 
 This performs the following steps:
@@ -323,7 +323,7 @@ This performs the following steps:
 
    ```text
    HKLM\SYSTEM\CurrentControlSet\Control\Cryptography\Providers\
-       Cosmian KMS Key Storage Provider\
+       Eviden KMS Key Storage Provider\
            UM\
                Image        REG_SZ     "cosmian_cng.dll"
                00010001\
@@ -338,11 +338,11 @@ This performs the following steps:
 
 ```powershell
 ckms cng status
-# Expected: Cosmian KMS CNG KSP: REGISTERED
+# Expected: Eviden KMS CNG KSP: REGISTERED
 
 # Also verify Windows sees the provider:
 certutil -csplist | Select-String "Cosmian"
-# Expected output includes: "Cosmian KMS Key Storage Provider"
+# Expected output includes: "Eviden KMS Key Storage Provider"
 ```
 
 ---
@@ -353,13 +353,13 @@ certutil -csplist | Select-String "Cosmian"
 
 The KSP is automatically available to any Windows application that calls
 `NCryptOpenStorageProvider` with the provider name
-`"Cosmian KMS Key Storage Provider"`.
+`"Eviden KMS Key Storage Provider"`.
 
 ```c
 NCRYPT_PROV_HANDLE hProv;
 NCryptOpenStorageProvider(
     &hProv,
-    L"Cosmian KMS Key Storage Provider",
+    L"Eviden KMS Key Storage Provider",
     0
 );
 
@@ -367,16 +367,16 @@ NCRYPT_KEY_HANDLE hKey;
 NCryptCreatePersistedKey(hProv, &hKey, BCRYPT_RSA_ALGORITHM, L"my-key", 0, 0);
 NCryptSetProperty(hKey, NCRYPT_LENGTH_PROPERTY, (PBYTE)&keyLength, sizeof(DWORD), 0);
 NCryptFinalizeKey(hKey, 0);
-// The private key is now stored in Cosmian KMS
+// The private key is now stored in Eviden KMS
 // FinalizeKey returns only after the KMS confirms creation
 ```
 
 ### Intune SCEP device certificate
 
 Microsoft Intune uses the Windows CNG CSR pipeline. Once the KSP is registered,
-configure the Intune SCEP profile to use the **Cosmian KMS Key Storage Provider**
+configure the Intune SCEP profile to use the **Eviden KMS Key Storage Provider**
 as the key storage location. The private key backing the device certificate will
-be created and permanently stored in Cosmian KMS.
+be created and permanently stored in Eviden KMS.
 
 ### List all CNG KSP keys in the KMS
 
@@ -423,7 +423,7 @@ ckms locate --tag "cng-ksp::my-key"
 
 ## Security considerations
 
-- Private keys are **never** stored locally; they exist only in Cosmian KMS.
+- Private keys are **never** stored locally; they exist only in Eviden KMS.
 - All key operations require an authenticated connection to the KMS.
 - The `NCRYPT_ALLOW_PLAINTEXT_EXPORT_FLAG` is **off** by default; private keys cannot
   be exported in plaintext.
@@ -446,7 +446,7 @@ infrastructure. When Intune provisions a certificate on a Windows endpoint, the
 private key is generated locally via a **Key Storage Provider**. By default
 Windows uses its built-in software KSP, which stores keys in the registry.
 
-With the Cosmian KMS CNG KSP registered on the device, Intune can be configured
+With the Eviden KMS CNG KSP registered on the device, Intune can be configured
 to use it instead: the private key is created and permanently stored in Cosmian
 KMS rather than on the device. This gives the organisation centralised custody,
 FIPS 140-3 compliance, real-time revocation, and a full audit trail — all
@@ -461,7 +461,7 @@ without any change to the Intune enrollment workflow itself.
    exactly as:
 
    ```text
-   Cosmian KMS Key Storage Provider
+   Eviden KMS Key Storage Provider
    ```
 
 3. Ensure the `ckms.toml` configuration file and the DLL are deployed to managed
@@ -469,7 +469,7 @@ without any change to the Intune enrollment workflow itself.
    profile is applied.
 4. The Intune SCEP agent will call `NCryptCreatePersistedKey` on the Cosmian KSP,
    then send the resulting CSR (public key only) to the SCEP server. The private
-   key never leaves Cosmian KMS.
+   key never leaves Eviden KMS.
 
 ### PKCS certificate profile
 
@@ -489,14 +489,14 @@ PowerShell module, follow these steps on the Certificate Connector server:
 2. **Register the KSP** (see [Installation](#installation) above):
 
     ```powershell
-    ckms cng register --dll "$env:LOCALAPPDATA\Cosmian KMS CLI\cosmian_cng.dll"
+    ckms cng register --dll "$env:LOCALAPPDATA\Eviden KMS CLI\cosmian_cng.dll"
     ```
 
 3. **Verify Windows discovers the provider**:
 
     ```powershell
     certutil -csplist | Select-String "Cosmian"
-    # Expected: "Cosmian KMS Key Storage Provider"
+    # Expected: "Eviden KMS Key Storage Provider"
     ```
 
 4. **Import the IntunePfxImport module** (from the
@@ -507,18 +507,18 @@ PowerShell module, follow these steps on the Certificate Connector server:
     Import-Module .\IntunePfxImport.psd1
     ```
 
-5. **Create the encryption key pair** in Cosmian KMS:
+5. **Create the encryption key pair** in Eviden KMS:
 
     ```powershell
     Add-IntuneKspKey `
-        -ProviderName "Cosmian KMS Key Storage Provider" `
+        -ProviderName "Eviden KMS Key Storage Provider" `
         -KeyName "PFXEncryptionKey" `
         -MakeExportable
     ```
 
     This calls `NCryptCreatePersistedKey` → `NCryptSetProperty(Export Policy)` →
     `NCryptFinalizeKey` on the Cosmian KSP. The RSA key pair is created and
-    stored exclusively in Cosmian KMS. The `-MakeExportable` flag sets the
+    stored exclusively in Eviden KMS. The `-MakeExportable` flag sets the
     `NCRYPT_ALLOW_EXPORT_FLAG` so the public key can be exported for use on
     other connector servers.
 
@@ -526,7 +526,7 @@ PowerShell module, follow these steps on the Certificate Connector server:
 
     ```powershell
     Export-IntunePublicKey `
-        -ProviderName "Cosmian KMS Key Storage Provider" `
+        -ProviderName "Eviden KMS Key Storage Provider" `
         -KeyName "PFXEncryptionKey" `
         -FilePath "C:\temp\PFXEncryptionKey.pfx"
     ```
@@ -538,7 +538,7 @@ PowerShell module, follow these steps on the Certificate Connector server:
         -PathToPfxFile "C:\temp\userA.pfx" `
         $SecureFilePassword `
         "userA@contoso.com" `
-        "Cosmian KMS Key Storage Provider" `
+        "Eviden KMS Key Storage Provider" `
         "PFXEncryptionKey" `
         "smimeEncryption"
     Import-IntuneUserPfxCertificate -CertificateList $userPFXObject
@@ -576,7 +576,7 @@ or an Intune tenant.
 | **vcpkg with `openssl_x64-windows-static`** | Set `OPENSSL_DIR` or `VCPKG_INSTALLATION_ROOT`. |
 
 No Azure account, Intune license, or SCEP infrastructure is needed — all tests
-run against a **local Cosmian KMS server** with a SQLite backend.
+run against a **local Eviden KMS server** with a SQLite backend.
 
 ### Test layers
 
@@ -672,7 +672,7 @@ path that Intune SCEP uses when it calls `NCryptCreatePersistedKey` and
 | Microsoft Intune tenant (Azure AD / Entra ID) | Manages the SCEP certificate profile |
 | SCEP server (NDES or third-party) | Signs the CSR generated by the endpoint |
 | Intune-enrolled Windows device | Receives the SCEP profile and triggers key creation |
-| Cosmian KMS instance reachable from the device | Stores the private key |
+| Eviden KMS instance reachable from the device | Stores the private key |
 
 This is typically validated manually or in a dedicated staging environment,
 not in CI.
@@ -714,7 +714,7 @@ not in CI.
 | **HKLM** | HKEY_LOCAL_MACHINE | The Windows registry hive containing system-wide configuration settings that apply to all users on the machine. |
 | **HSM** | Hardware Security Module | A tamper-resistant physical device that generates, stores, and protects cryptographic keys and performs cryptographic operations. |
 | **HTTPS** | Hypertext Transfer Protocol Secure | HTTP layered over TLS, providing encrypted and authenticated communication between client and server. |
-| **KMS** | Key Management System / Key Management Service | A centralised service that manages cryptographic keys throughout their lifecycle (creation, distribution, rotation, revocation, destruction). In this document, refers to Cosmian KMS. |
+| **KMS** | Key Management System / Key Management Service | A centralised service that manages cryptographic keys throughout their lifecycle (creation, distribution, rotation, revocation, destruction). In this document, refers to Eviden KMS. |
 | **KMIP** | Key Management Interoperability Protocol | An OASIS standard (current version 2.1) defining a protocol for communication between clients and key management servers. |
 | **KSP** | Key Storage Provider | A pluggable Windows CNG component (a DLL implementing `NCRYPT_KEY_STORAGE_FUNCTION_TABLE`) that stores private keys and performs asymmetric key operations on behalf of Windows and applications. |
 | **LSASS** | Local Security Authority Subsystem Service | The Windows process responsible for enforcing security policy, handling authentication, and loading CNG/CAPI providers. |
@@ -739,5 +739,5 @@ not in CI.
 | **TLS** | Transport Layer Security | The cryptographic protocol that secures communications over networks, successor to SSL. Used for all HTTPS connections between the KSP DLL and the KMS server. |
 | **TPM** | Trusted Platform Module | A hardware chip embedded in many PCs that provides secure key generation and storage tied to the physical machine. The CNG KSP is an alternative to TPM-backed key storage, offering remote management capabilities. |
 | **UEM** | Unified Endpoint Management | A category of IT management solutions that provide a single platform for managing all endpoint types (PCs, mobiles, IoT). Microsoft Intune is a UEM service. |
-| **UUID** | Universally Unique Identifier | A 128-bit identifier (RFC 4122) used by Cosmian KMS to uniquely identify every managed key object. |
+| **UUID** | Universally Unique Identifier | A 128-bit identifier (RFC 4122) used by Eviden KMS to uniquely identify every managed key object. |
 | **vcpkg** | Visual C++ Package Manager | Microsoft's open-source C/C++ package manager, used in this project to obtain pre-built OpenSSL static libraries for Windows builds. |

@@ -168,6 +168,16 @@ export const ATTRIBUTE_REGISTRY: AttributeEntry[] = [
         deletable: true,
     },
     {
+        // Server-managed attribute (KMIP 2.1 §4.3): read-only — not writable or
+        // deletable by clients. Shown only in the Get selector.
+        value: "always_sensitive",
+        deleteValue: "AlwaysSensitive",
+        label: "Always Sensitive",
+        inputType: "boolean",
+        writable: false,
+        deletable: false,
+    },
+    {
         value: "extractable",
         deleteValue: "Extractable",
         label: "Extractable",

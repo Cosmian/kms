@@ -12,7 +12,7 @@ interface PqcEncapsulateFormData {
 
 const PqcEncapsulateForm: React.FC = () => {
     const [form] = Form.useForm<PqcEncapsulateFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: PqcEncapsulateFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -22,7 +22,7 @@ const PqcEncapsulateForm: React.FC = () => {
             }
             // ML-KEM encapsulation: send empty plaintext, server returns shared_secret + ciphertext
             const request = encrypt_ec_ttlv_request(id, new Uint8Array());
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await parse_encrypt_ttlv_response(result_str);
                 const respObj = response as unknown as Record<string, unknown>;

@@ -6,11 +6,25 @@ This directory contains Software Bill of Materials (SBOM) reports for Cosmian KM
 
 An SBOM is a formal record containing the details and supply chain relationships of components used in building software. These SBOMs are generated from the Nix build outputs, providing a complete and reproducible view of dependencies.
 
+### Component coverage
+
+The generation pipeline covers **three layers** of components:
+
+| Layer | Tool | Scope |
+|-------|------|-------|
+| System / Nix runtime | sbomnix | Shared libraries linked at runtime (glibc, openssl, libidn2…) |
+| Rust crates | `enrich_sbom_authors.py` | ~580 third-party crates compiled into the binary (from `Cargo.lock`) |
+| npm/pnpm packages | `enrich_sbom_authors.py` | ~320 third-party UI packages (from `ui/pnpm-lock.yaml`) |
+
+The `bom.cdx.json` and `bom.spdx.json` files produced by `generate_sbom.sh` are
+automatically enriched in-place by `.mise/scripts/sbom/enrich_sbom_authors.py`
+after sbomnix completes. Every component receives a `supplier` / `originator` field.
+
 Report locations:
 
 - `sbom/openssl_3_1_2/` — SBOM + vulnerability scan for the OpenSSL 3.1.2 (FIPS) derivation
 - `sbom/openssl_3_6_2/` — SBOM + vulnerability scan for the OpenSSL 3.6.2 (non-FIPS) derivation
-- `sbom/server/<variant>/<link>/` — SBOM + vulnerability scan for the KMS server derivation
+- `sbom/server/<variant>/<link>/` — SBOM + vulnerability scan for the server derivation
     - `<variant>`: `fips` | `non-fips`
     - `<link>`: `static` | `dynamic`
 
@@ -18,25 +32,59 @@ Report locations:
 
 The SBOM generator produces several "base" reports.
 
+Important: folders are kept clean on purpose. Each SBOM output directory contains only **two CSV files**:
+
+- `sbom.csv` — component inventory
+- `vulns.csv` — vulnerability rows
+
 | Report | Where | Purpose |
-|------|------|------|
-| `bom.cdx.json` | `sbom/**/` | CycloneDX 1.5 SBOM for import into SBOM platforms (e.g., Dependency-Track) |
-| `bom.spdx.json` | `sbom/**/` | SPDX 2.3 SBOM for compliance workflows and SPDX tooling |
-| `vulns.csv` | `sbom/**/` | Vulnerability rows from `vulnxscan`, then deduplicated by CVE YEAR-ID (see below) |
+|------|------|---------|
+| `bom.cdx.json` | `sbom/**/` | CycloneDX 1.5 SBOM — enriched with supplier, Rust crates and npm packages |
+| `bom.spdx.json` | `sbom/**/` | SPDX 2.3 SBOM — enriched with originator/supplier, Rust crates and npm packages |
+| `sbom.csv` | `sbom/**/` | Tabular component inventory (package name/version/system metadata) |
+| `vulns.csv` | `sbom/**/` | Vulnerability rows from `vulnxscan` |
 | `graph.png` | `sbom/**/` | Visual dependency graph |
 | `meta.json` | `sbom/**/` | Build metadata (target/variant/link, counts, timestamps) |
 
-### CVE deduplication
-
-During generation, `vulns.csv` is deduplicated in-place by an external script:
-
-- `.mise/scripts/sbom/filter_vulns.py`
-
-It removes duplicate CVE-like rows based on the normalized **YEAR-ID** key, so e.g. `CVE-2026-0915`, `UBUNTU-CVE-2026-0915`, and `DEBIAN-CVE-2026-0915` collapse to a single row.
-
-This script intentionally does **not** treat advisory IDs such as `RHSA-2026:0794` as CVEs.
-
 ## 🔧 Tools Used
+
+### enrich_sbom_authors.py (Cosmian — built-in)
+
+**Purpose:** Enrich `bom.cdx.json` and `bom.spdx.json` with author/supplier data and add Rust + npm components that sbomnix does not capture.
+
+**Script:** `.mise/scripts/sbom/enrich_sbom_authors.py`
+
+**How it works (no external tool required — only Python 3.6+):**
+
+1. **Rust crates** — parses `Cargo.lock`, resolves author metadata from the local
+   cargo registry cache (`~/.cargo/registry`) already populated by `cargo build`.
+   Falls back to the [crates.io REST API](https://crates.io/api/v1/crates/{name}/owners)
+   for crates whose `Cargo.toml` has no `authors` field (opt-in via `--api-limit N`).
+2. **npm packages** — parses `ui/pnpm-lock.yaml`, reads `author` from each
+   `ui/node_modules/<pkg>/package.json`.
+3. **Enrichment** — adds `supplier` (CycloneDX) / `originator` + `supplier` (SPDX)
+   to every component, including the system-level ones from sbomnix.
+
+**Data sources (in priority order):**
+
+| Priority | Source | Requires network? | Coverage |
+|----------|--------|------------------|----------|
+| 1 | Local `~/.cargo/registry` Cargo.toml | ❌ No | ~98% of crates after `cargo build` |
+| 2 | `ui/node_modules/*/package.json` | ❌ No | ~100% of npm packages after `pnpm install` |
+| 3 | crates.io API owners endpoint | ✅ Yes (opt-in) | Remaining crates |
+| 4 | Hard-coded mapping (system libs) | ❌ No | glibc, openssl, libidn2… |
+
+**Result:** `bom.cdx.json` (CycloneDX 1.5) and `bom.spdx.json` (SPDX 2.3) grow
+from ~4 Nix components to ~900 components (4 system + ~580 Rust + ~320 npm),
+each with a `supplier` / `originator` field identifying the author or organization.
+
+**Invocation:** enrichment runs automatically at the end of `mise run sbom:generate`
+(for the `server` target it adds Rust + npm components; for OpenSSL-only targets it
+enriches the system-level components). It is not a separate command.
+
+**crates.io rate limit:** 100 req/s. The script uses a 100 ms delay between
+calls and a disk cache (`/tmp/cosmian-kms-sbom-authors.json`) to avoid redundant
+requests across runs.
 
 ### [sbomnix](https://github.com/tiiuae/sbomnix)
 
@@ -162,8 +210,6 @@ tail -n +2 vulns.csv | cut -d',' -f3 | sort | uniq -c | sort -rn
 
 ## 🔍 Vulnerability analysis notes
 
-Note: `vulnxscan` aggregates multiple sources, so the raw scan may contain multiple rows for the same underlying CVE. The generator deduplicates CVE-like rows into a single `vulns.csv` to keep the output directory tidy.
-
 The vulnerability scan combines results from multiple sources:
 
 - **Grype**: Scans against NVD, GitHub Security Advisories, and other databases
@@ -217,11 +263,8 @@ mise run sbom:generate --target server --variant fips --link static
 
 # Notes:
 # - --variant/--link are only valid with: --target server (otherwise the command errors)
-# - `vulns.csv` is deduplicated in-place (no extra CSV/TXT reports are generated)
+# - No extra CSV/TXT reports are generated (folders are kept clean)
 # - Generation is run from an isolated temporary work directory to avoid accidental `sbom.*` files being written to the repository root
-
-# Run the generator script directly (supports --target/--variant/--link/--output)
-.mise/scripts/sbom/generate_sbom.sh --target server --variant non-fips --link dynamic --output /custom/path
 ```
 
 ## 📚 Standards & Specifications

@@ -5,7 +5,7 @@
   # KMS version (from Cargo.toml)
   version,
   features ? [ ], # [ "non-fips" ] or []
-  rustToolchain ? null, # Optional custom Rust toolchain (e.g., 1.91.0 for edition2024 support)
+  rustToolchain ? null, # Optional custom Rust toolchain (e.g., 1.97.0 for edition2024 support)
 }:
 
 let
@@ -84,7 +84,7 @@ let
       hash = "sha256-ROxo4izYh4w04BtV/FFOr3W9OxwtCV3usCL6b4hW0XQ=";
     };
 
-    cargoHash = "sha256-IZ/BxfY4UljVVeXl4AeRLmJzZGuzP10/0WOgWyvqjrs=";
+    cargoHash = "sha256-4TrLIGLubOjppAGz2AIYfZ4LFuUhbObrVEQIYBwQRHg=";
     doCheck = false;
   };
 

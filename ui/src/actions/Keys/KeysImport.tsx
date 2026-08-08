@@ -38,7 +38,7 @@ type KeyImportResponse = {
 
 const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
     const [form] = Form.useForm<ImportKeyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: ImportKeyFormData) => {
         await execute(async () => {
@@ -55,7 +55,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                 values.keyUsage,
                 values.wrappingKeyId,
             );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: KeyImportResponse = await parse_import_ttlv_response(result_str);
                 return `File has been imported - imported object id: ${result.UniqueIdentifier}`;

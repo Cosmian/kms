@@ -1,0 +1,30 @@
+[book]
+title = "Key Management System"
+authors = ["Cosmian"]
+language = "en"
+src = "docs"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+site-url = "https://docs.cosmian.com/"
+additional-css = ["theme/css/eviden.css", "theme/css/mdbook-admonish.css", "theme/css/tabs.css"]
+additional-js = ["theme/mermaid.min.js", "theme/js/mermaid-init.js", "theme/js/tabs.js", "theme/js/theme-invert.js"]
+
+[output.html.search]
+enable = true
+
+[output.html.fold]
+enable = true
+level = 1
+
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.1.0"
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"

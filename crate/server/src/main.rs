@@ -358,7 +358,7 @@ mod tests {
             aws_xks_config: AwsXksConfig {
                 aws_xks_enable: true,
                 aws_xks_region: Some("us-east-1".to_owned()),
-                aws_xks_service: Some("xks-kms".to_owned()),
+                aws_xks_service: Some("kms-xks-proxy".to_owned()),
                 aws_xks_sigv4_access_key_id: Some("AKIAIOSFODNN7EXAMPLE".to_owned()),
                 aws_xks_sigv4_secret_access_key: Some(
                     "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_owned(),
@@ -369,9 +369,11 @@ mod tests {
             non_revocable_key_id: None,
             privileged_users: None,
             secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
+            auth_verifier: cosmian_kms_server::config::AuthVerifierConfig::default(),
             print_default_config: false,
             auto_rotation_check_interval_secs: 0,
             keyset_warn_depth: 5,
+            vault: cosmian_kms_server::config::VaultConfig::default(),
         };
 
         let toml_string = r#"
@@ -425,6 +427,9 @@ proxy_exclusion_list = ["domain1", "domain2"]
 [idp_auth]
 jwt_auth_provider = ["jwt issuer uri 1,jwks uri 1,jwt audience 1", "jwt issuer uri 2,jwks uri 2,jwt audience 2"]
 
+[auth_verifier]
+auth_verifier_accept_invalid_certs = false
+
 [ui_config]
 enable = true
 ui_index_html_folder = "[ui index html folder]"
@@ -462,7 +467,7 @@ ansi_colors = false
 [aws_xks_config]
 aws_xks_enable = true
 aws_xks_region = "us-east-1"
-aws_xks_service = "xks-kms"
+aws_xks_service = "kms-xks-proxy"
 aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
 aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 
@@ -472,6 +477,14 @@ aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 jwks_endpoint_enabled = false
 jwks_endpoint_max_keys = 50
 jwks_endpoint_auto_tag = true
+
+[vault]
+vault_api_enabled = false
+vault_auth_verifier_accept_invalid_certs = false
+vault_transit_mount = ""
+vault_pki_mount = ""
+vault_pki_ca_key_label = ""
+vault_token_cache_ttl_secs = 0
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

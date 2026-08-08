@@ -24,6 +24,7 @@ mod mtls_db;
 mod revoke_tests;
 mod secret_data_tests;
 mod security_regression;
+mod test_always_sensitive;
 mod test_modify_attribute;
 pub(crate) mod test_set_attribute;
 mod test_sign;

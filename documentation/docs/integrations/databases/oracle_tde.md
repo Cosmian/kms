@@ -57,12 +57,12 @@ graph TD
 
 Before configuring a HSM such as described in [Oracle Key Vault](https://docs.oracle.com/en/database/oracle/key-vault/21.10/okvhm/index.html), some steps are needed:
 
-For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.25.0/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.25.0_linux-amd64.zip).
+For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.26.0/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.26.0_linux-amd64.zip).
 
 - Extract the package:
 
     ```bash
-    unzip cosmian-pkcs11-non-fips-static-openssl_5.25.0_linux-amd64.zip
+    unzip cosmian-pkcs11-non-fips-static-openssl_5.26.0_linux-amd64.zip
     ```
 
 - Copy the PKCS#11 provider library to the Oracle Key Vault server to `/usr/local/okv/hsm/generic/libcosmian_pkcs11.so`
@@ -137,11 +137,11 @@ graph TD
 
 1. **Install Eviden PKCS#11 Library**
 
-    For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.25.0/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.25.0_linux-amd64.zip).
+    For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.26.0/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.26.0_linux-amd64.zip).
 
     ```bash
     # Extract library from PKCS#11 ZIP package.
-    unzip cosmian-pkcs11-non-fips-static-openssl_5.25.0_linux-amd64.zip
+    unzip cosmian-pkcs11-non-fips-static-openssl_5.26.0_linux-amd64.zip
 
     # Copy to Oracle's HSM directory
     mkdir -p /opt/oracle/extapi/64/hsm/Cosmian/
@@ -408,7 +408,7 @@ This approach lets Oracle authenticate to the KMS without storing any credential
 `ckms.toml` or on the filesystem.
 
 For all other KMS authentication methods (mTLS, static bearer token, OAuth2/OIDC), configure
-`ckms.toml` using the [CLI Authentication guide](../../../cli_documentation/docs/authentication.md).
+`ckms.toml` using the [CLI Authentication guide](../../kms_clients/authentication.md).
 
 ## Wallet Migration
 

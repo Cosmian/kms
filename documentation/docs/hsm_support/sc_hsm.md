@@ -1,3 +1,4 @@
+# Smart card HSM / Nitrokey HSM 2
 
 The Smartcard HSM integration is supported on **Linux (x86_64)**.
 It has been tested with the following devices:
@@ -5,7 +6,7 @@ It has been tested with the following devices:
 - **SC HSM 4k** (Smartcard and USB variants)
 - **Nitrokey HSM 2**
 
-### Smartcard HSM library setup
+## Smartcard HSM library setup
 
 To use a Smartcard HSM with the KMS, the **`sc-hsm-embedded` PKCS#11 library** must be installed.
 The integration has been validated with **version 2.12**.
@@ -14,8 +15,8 @@ The KMS expects the library to be installed at `/usr/local/lib/libsc-hsm-pkcs11.
 
 To build and install the library, follow the instructions in the [sc-hsm-embedded GitHub repository](https://github.com/CardContact/sc-hsm-embedded).
 
-### Smartcard HSM initialisation
-
+## Smartcard HSM initialisation
+>
 > ⚠️ **Warning:**
 >
 > - Initialization is **destructive**. It will erase all existing keys and objects on the HSM.
@@ -26,7 +27,7 @@ To build and install the library, follow the instructions in the [sc-hsm-embedde
 
 Before use, the HSM must be initialized. There are two ways to accomplish this:
 
-#### Graphical Initialization (SmartCard-HSM Key Manager)
+### Graphical Initialization (SmartCard-HSM Key Manager)
 
 1. Download and install [Smart Card Shell](https://www.openscdp.org/scsh3/download.html).
 2. Launch Smart Card Shell and insert the HSM.
@@ -34,7 +35,7 @@ Before use, the HSM must be initialized. There are two ways to accomplish this:
 4. Right-click on the HSM entry and select **Initialize Device**.
 5. Follow the on-screen guide.
 
-#### Using sc-hsm-tool
+### Using sc-hsm-tool
 
 1. Install the [OpenSC for your distribution](https://github.com/OpenSC/OpenSC/wiki/Linux-Distributions).
 
@@ -44,14 +45,14 @@ Before use, the HSM must be initialized. There are two ways to accomplish this:
    sc-hsm-tool --initialize --so-pin 3537363231383830 --pin 648219 --label "SC HSM test"
    ```
 
-   Additional initialisation options are [documented in the sc-hsm-tool man page](https://manpages.ubuntu.com/manpages/en/man1/sc-hsm-tool.1.html).
+   Additional initialisation options are [documented in the sc-hsm-tool man page](https://manpages.ubuntu.com/manpages/noble/man1/sc-hsm-tool.1.html).
 
-### KMS configuration
+## KMS configuration
 
 At least one slot and its corresponding PIN must be configured.
 Multiple slots can be used simultaneously, with each represented by a separate slot.
 
-#### Configuration via config file
+### Configuration via config file
 
 When using the [TOML configuration file](../configuration/server_configuration_file.md#toml-configuration-file), enable HSM support by setting these parameters:
 
@@ -70,7 +71,7 @@ hsm_password = ["<password>", "<password>", ] # example ["648219", "648219"] for
 >
 > If you do not want to login, use the special password value `<NO_LOGIN>`
 
-#### Configuration via command-line
+### Configuration via command-line
 
 HSM support can also be enabled with command-line arguments:
 

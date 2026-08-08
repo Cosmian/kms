@@ -1,8 +1,10 @@
+# Deploying in a Cosmian Confidential VM
+
 A KMS-ready instance based on Eviden Confidential VM can be deployed on virtual machines
 that supports AMD SEV-SNP or Intel TDX technologies, and is available on the marketplace of the major cloud providers.
 
 If you are interested in the confidential computing technology and the Eviden VM,
-please first read the guide about [how to setup an Eviden VM](../../cosmian_vm/deployment_guide.md).
+please first read the guide about [how to setup an Eviden VM](../../eviden_vm/deployment_guide.md).
 
 ## Deploy Eviden VM KMS on a cloud provider
 
@@ -80,7 +82,7 @@ hostname = "0.0.0.0"
 ### Override the default configuration
 
 The default configuration can be overridden remotely by using the
-[Eviden VM CLI](../../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli-on-your-local-machine)
+    [Eviden VM CLI](../../eviden_vm/deployment_guide.md#install-the-eviden-vm-cli-on-your-local-machine)
 without any SSH connection.
 
 It is safe to provide secrets (such as passwords) in
@@ -88,7 +90,7 @@ the configuration file because this file is going to be stored in the encrypted
 folder (LUKS) of the Eviden VM KMS (which is mounted by default on `/var/lib/cosmian_vm/data`).
 
 Eviden VM CLI has to be installed on the client machine (Ubuntu, RHEL or via Docker).
-Please follow the [installation instructions](../../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli-on-your-local-machine).
+Please follow the [installation instructions](../../eviden_vm/deployment_guide.md#install-the-eviden-vm-cli-on-your-local-machine).
 
 Then proceed as follows:
 
@@ -146,7 +148,7 @@ journalctl -u cosmian_vm_agent
 
 ```console
 $ curl --insecure https://${EVIDEN_VM_IP_ADDR}/version
-"5.25.0"
+"5.26.0"
 ```
 
 !!! info "Why `--allow-insecure-tls` and `--insecure` flags?"
@@ -157,9 +159,9 @@ $ curl --insecure https://${EVIDEN_VM_IP_ADDR}/version
     These certificates must be replaced by trusted ones using tools like
     `cosmian_certtool` or Linux tools (`certbot` with **Let's Encrypt** for instance).
 
-    See [how to setup trusted certificates](../../cosmian_vm/deployment_guide.md#configure-https-with-your-own-domain).
+    See [how to setup trusted certificates](../../eviden_vm/deployment_guide.md#configure-https-with-your-own-domain).
 
-## Snapshot the VM 📸
+## Snapshot the VM
 
 Once the VM is configured as needed, Eviden VM Agent can do a snapshot of the
 VM containing fingerprint of the executables and metadata related to TEE and TPM.
@@ -170,7 +172,7 @@ information, creates self-signed certificate for Nginx and starts a snapshot.
 Wait for the agent to initialize the LUKS and generate the certificates.
 This is automatically at boot.
 
-In short, to generate a snapshot, please [follow](../../cosmian_vm/deployment_guide.md#snapshot-the-vm-remotely).
+In short, to generate a snapshot, please [follow](../../eviden_vm/deployment_guide.md#snapshot-the-vm-remotely).
 
 The associated command is:
 
@@ -181,9 +183,9 @@ cosmian_vm --url https://${EVIDEN_VM_IP_ADDR}:5555 --allow-insecure-tls snapshot
 ## Verify the Eviden VM KMS integrity ✅
 
 Verifying trustworthiness of the Eviden VM KMS is exactly the same process
-as [verifying the Eviden VM](../../cosmian_vm/index.md) itself.
+as [verifying the Eviden VM](../../eviden_vm/index.md) itself.
 
-In short, to verify a snapshot, please [follow](../../cosmian_vm/deployment_guide.md#verify-the-vm-snapshot).
+In short, to verify a snapshot, please [follow](../../eviden_vm/deployment_guide.md#verify-the-vm-snapshot).
 
 The associated command is:
 

@@ -6,6 +6,7 @@ use crate::http_client::HttpClientConfig;
 /// The configuration that is used by the google command
 /// to perform actions over Gmail API.
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct GmailApiConf {
     #[serde(rename = "type")]
     pub account_type: String,
@@ -22,6 +23,7 @@ pub struct GmailApiConf {
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct KmsClientConfig {
     pub http_config: HttpClientConfig,
     #[serde(skip_serializing_if = "Option::is_none")]

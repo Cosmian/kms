@@ -7,7 +7,7 @@ on:
       toolchain:
         required: true
         type: string
-        default: 1.91.0
+        default: 1.97.0
 
   workflow_dispatch:
     inputs:
@@ -15,13 +15,13 @@ on:
         description: Rust toolchain version
         required: false
         type: string
-        default: 1.91.0
+        default: 1.97.0
 
 jobs:
   windows-package:
     uses: ./.github/workflows/build_windows.yml
     with:
-      toolchain: 1.91.0
+      toolchain: 1.97.0
       archive-name: windows
 
   docker:
@@ -29,7 +29,7 @@ jobs:
       'schedule'
     uses: ./.github/workflows/packaging-docker.yml
     with:
-      toolchain: 1.91.0
+      toolchain: 1.97.0
     secrets: inherit
 
   packages:
@@ -103,6 +103,10 @@ jobs:
           path: result-*-${{ matrix.features }}-${{ matrix.link }}/*
           retention-days: 1
           if-no-files-found: error
+
+  kubernetes:
+    uses: ./.github/workflows/packaging-kubernetes.yml
+    secrets: inherit
 
   publish-release:
     if: |
@@ -365,4 +369,4 @@ jobs:
     needs: packages
     uses: ./.github/workflows/packaging-tests.yml
     with:
-      toolchain: 1.91.0
+      toolchain: 1.97.0

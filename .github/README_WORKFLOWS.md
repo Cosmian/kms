@@ -1,6 +1,6 @@
 # GitHub Workflows Documentation
 
-This document provides a visual representation of all GitHub Actions workflows in the Cosmian KMS repository, their triggers, dependencies, and execution flows.
+This document provides a visual representation of all GitHub Actions workflows in the Eviden KMS repository, their triggers, dependencies, and execution flows.
 
 ## Workflow Overview
 
@@ -154,7 +154,7 @@ Builds and packages KMS for multiple platforms using Nix.
 
 - **`workflow_call`**: called by `pr.yml` or other reusable callers (passes `toolchain` input)
 - **`workflow_dispatch`**: manual dispatch from the GitHub UI
-    - Input: `toolchain` — Rust toolchain version (default: `1.91.0`)
+    - Input: `toolchain` — Rust toolchain version (default: `1.97.0`)
 
 > **`packages` job**: runs only on git tags (`refs/tags/*`) or manual dispatch (`workflow_dispatch`).
 > The `docker`, `publish-release`, `publish-sbom`, and `build-monitoring-archive` jobs still

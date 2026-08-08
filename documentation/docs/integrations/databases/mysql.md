@@ -6,10 +6,6 @@ This document provides a comprehensive guide for integrating MySQL Enterprise wi
 
 ---
 
-[TOC]
-
----
-
 ## Version Requirements
 
 ### Minimum Versions for TDE with keyring_okv
@@ -1062,7 +1058,7 @@ sudo -u mysql /usr/local/mysql/bin/mysqld \
 - [MySQL keyring_okv KMIP Plugin](https://dev.mysql.com/doc/refman/8.4/en/keyring-okv-plugin.html)
 - [MySQL Transparent Data Encryption](https://dev.mysql.com/doc/refman/8.4/en/innodb-tablespace-encryption.html)
 - [MySQL 8.0 Release Notes](https://dev.mysql.com/doc/relnotes/mysql/8.0/en/)
-- [Eviden KMS Documentation](https://docs.cosmian.com/key_management_system/)
+- [Eviden KMS Documentation](../../index.md)
 - [KMIP Specification](http://docs.oasis-open.org/kmip/spec/)
 
 ### Key Files and Paths

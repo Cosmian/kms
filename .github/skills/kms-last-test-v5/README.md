@@ -1,6 +1,6 @@
 # cosmian-kms-last-tester-v4
 
-The **Final** quality gate for Cosmian KMS pull requests befor being merged.
+The **Final** quality gate for Eviden KMS pull requests before being merged.
 
 **It assumes all unit, integration, and E2E tests are already green upstream.**
 
@@ -18,15 +18,15 @@ A live KMS server must also be reachable before any test scenario can execute. T
 pnpm -C ui build && cargo run -p cosmian_kms_server --features non-fips -- -c test_data/configs/server/no_auth.toml
 ```
 
-### External systems:
+### External systems
 
-If the KMS has to interact with other systems: a HSM, another server, another KMS, it is almost mandatory to instanciate them in advance and prompt him with maximum info. Otherwise, hallucinations _can_ happen because a skill can't figure out how to use external systems (red the AWS prompt)
+If the KMS has to interact with other systems: a HSM, another server, another KMS, it is almost mandatory to instantiate them in advance and prompt him with maximum info. Otherwise, hallucinations _can_ happen because a skill can't figure out how to use external systems (red the AWS prompt)
 
 ## Sample prompts
 
 #### _Example: PR that introduces AWS BYOK_
 
-> You are the last testing gate. In this PR, I added an API, Cli commands and an AI that lets us communicate with an Amazon KMS (or AWS KMS) and perform the BYOK flow as per the docs joint in this chat. I have made the AWS KMS available at adress=... port=... and the Cosmian KMS at=... . Read the diffs and perform the tests
+> You are the last testing gate. In this PR, I added an API, Cli commands and an AI that lets us communicate with an Amazon KMS (or AWS KMS) and perform the BYOK flow as per the docs joint in this chat. I have made the AWS KMS available at address=... port=... and the Eviden KMS at=... . Read the diffs and perform the tests
 
 #### _Example: A simple UI button_
 

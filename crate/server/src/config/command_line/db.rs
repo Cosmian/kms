@@ -89,7 +89,7 @@ impl Display for DatabaseType {
 
 /// Configuration for the database
 #[derive(Args, ConfigArgs, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct MainDBConfig {
     /// The main database of the KMS server that holds default cryptographic objects and permissions.
     /// - postgresql: `PostgreSQL`. The database URL must be provided

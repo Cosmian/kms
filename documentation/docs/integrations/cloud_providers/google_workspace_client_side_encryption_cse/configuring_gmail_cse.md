@@ -1,10 +1,12 @@
+# Generating Gmail keys
+
 Follow the [Google documentation](https://support.google.com/a/answer/13069736?hl=en&ref_topic=10742486) to enable S/MIME for client-side encryption in your organization and create a service account to interact with the Gmail API.
 
 ## Configure KMS CLIent (CLI)
 
 The `cosmian` command line interface (CLI) simplifies the setup of S/MIME keys and certificates for users.
 
-After completing the setup, update your [KMS CLI](../../../../kms_clients/configuration.md#smime-gmail-service-account-configuration-for-kms-server) with the necessary information for the service account you created for the Gmail API.
+After completing the setup, update your [KMS CLI](../../../kms_clients/configuration.md#smime-gmail-service-account-configuration-for-kms-server) with the necessary information for the service account you created for the Gmail API.
 
 ## Choosing the Certificate Authority
 
@@ -101,7 +103,7 @@ ckms google identities insert \
     --user-id user@your_organization.com CREATED_KEYPAIR_ID
 ```
 
-You can manage key-pairs (get, list, enable, disable, obliterate) and identities (get, list, delete, patch) using the other available commands in the `ckms` [commands documentation](../../../../kms_clients/cli/main_commands.md).
+You can manage key-pairs (get, list, enable, disable, obliterate) and identities (get, list, delete, patch) using the other available commands in the `ckms` [commands documentation](../../../kms_clients/cli/main_commands.md).
 
 Note: It may take a few hours for Google to propagate the uploaded elements, after which users can begin using S/MIME for secure email exchanges.
 

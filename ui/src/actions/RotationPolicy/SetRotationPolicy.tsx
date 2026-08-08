@@ -14,27 +14,27 @@ interface SetRotationPolicyFormData {
 
 const SetRotationPolicyForm: React.FC = () => {
     const [form] = Form.useForm<SetRotationPolicyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: SetRotationPolicyFormData) => {
         await execute(async () => {
             if (values.interval !== undefined && values.interval !== null) {
                 const intervalRequest = wasm.set_rotate_interval_ttlv_request(values.keyId, BigInt(values.interval));
-                const intervalResult = await sendKmipRequest(intervalRequest, idToken, serverUrl);
+                const intervalResult = await sendKmipRequest(intervalRequest, serverUrl);
                 if (!intervalResult) return;
                 wasm.parse_set_attribute_ttlv_response(intervalResult);
             }
 
             if (values.offset !== undefined && values.offset !== null) {
                 const offsetRequest = wasm.set_rotate_offset_ttlv_request(values.keyId, BigInt(values.offset));
-                const offsetResult = await sendKmipRequest(offsetRequest, idToken, serverUrl);
+                const offsetResult = await sendKmipRequest(offsetRequest, serverUrl);
                 if (!offsetResult) return;
                 wasm.parse_set_attribute_ttlv_response(offsetResult);
             }
 
             if (values.name) {
                 const nameRequest = wasm.set_rotate_name_ttlv_request(values.keyId, values.name);
-                const nameResult = await sendKmipRequest(nameRequest, idToken, serverUrl);
+                const nameResult = await sendKmipRequest(nameRequest, serverUrl);
                 if (!nameResult) return;
                 wasm.parse_set_attribute_ttlv_response(nameResult);
             }

@@ -25,7 +25,7 @@ type ImportResponse = {
 
 const SecretDataCreateForm: React.FC = () => {
     const [form] = Form.useForm<SecretDataCreateFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const secretValue = Form.useWatch("secretValue", form);
 
     useEffect(() => {
@@ -44,7 +44,7 @@ const SecretDataCreateForm: React.FC = () => {
                 values.sensitive,
                 values.wrappingKeyId,
             );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 if (values.secretValue) {
                     const result: ImportResponse = await parse_import_ttlv_response(result_str);

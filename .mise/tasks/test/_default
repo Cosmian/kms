@@ -35,6 +35,7 @@ if [ "${VARIANT}" = "non-fips" ]; then
   run_step "redis" bash "${TASK_DIR}/redis" --variant "${VARIANT}" --link "${LINK}"
 fi
 
+run_step "helm" bash "${TASK_DIR}/helm"
 run_step "wasm" bash "${TASK_DIR}/wasm" --variant "${VARIANT}" --link "${LINK}"
 run_step "hsm" bash "${TASK_DIR}/hsm/_default" --variant "${VARIANT}" --link "${LINK}"
 

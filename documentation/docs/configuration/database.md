@@ -1,9 +1,9 @@
+# Databases
+
 By default, the server runs using a [SQLite](https://www.sqlite.org/) database, but it can be configured to use a choice
 of databases: SQLite encrypted, [PostgreSQL](https://www.postgresql.org/), [MariaDB](https://mariadb.org/),
 [MySQL](https://www.mysql.com/), and [Percona XtraDB Cluster](https://www.percona.com/software/mysql-database/percona-xtradb-cluster),
 as well as [Redis](https://redis.io/), using the [Redis-with-Findex](#redis-with-findex) configuration.
-
-[TOC]
 
 ## Selecting the database
 
@@ -104,13 +104,20 @@ handle — is passed directly to the PostgreSQL driver.
 
 Use the `target_session_attrs` query parameter to control which node the driver connects to:
 
-| Value | Behaviour |
-|---|---|
-| `read-write` | Connect only to the primary (default for HA) |
-| `any` | Connect to any available node (suitable for read replicas) |
-| `read-only` | Connect only to a standby |
+| Value        | Behaviour                                                  |
+| ------------ | ---------------------------------------------------------- |
+| `read-write` | Connect only to the primary (default for HA)               |
+| `any`        | Connect to any available node (suitable for read replicas) |
+| `read-only`  | Connect only to a standby                                  |
 
-**Example — two-node HA cluster:**
+!!! note "Host order"
+    The driver tries hosts **left to right** in the URL. With `target_session_attrs=read-write`,
+    standbys are automatically skipped (they return `transaction_read_write=off`), so the primary
+    is always found regardless of its position. However, **put the expected primary first** to
+    avoid an unnecessary round-trip to the standby on every new connection under normal
+    conditions.
+
+**Example — two-node HA cluster (primary listed first):**
 
 === "kms.toml"
 
@@ -130,18 +137,62 @@ Use the `target_session_attrs` query parameter to control which node the driver 
 The URL must start with `postgresql://` or `postgres://`; any other scheme is rejected at
 startup.
 
+##### Replication and standby writability
+
+!!! warning "A standby is read-only"
+    In standard PostgreSQL streaming replication, the standby node operates in **hot standby
+    mode**: it accepts read queries but **rejects all writes**. The KMS requires a read-write
+    connection for every operation, so `target_session_attrs=read-write` will skip a standby
+    automatically — but this also means **the KMS cannot use the standby as a fallback by
+    itself**. The standby only becomes usable by the KMS after it has been **promoted** to
+    primary.
+
+    Replication is entirely managed by the PostgreSQL infrastructure — the KMS does not
+    configure, trigger, or monitor it.
+
+###### Recommended setup: use an HA manager
+
+For automatic failover, deploy an HA manager such as [Patroni](https://patroni.readthedocs.io/),
+[pg_auto_failover](https://pg-auto-failover.readthedocs.io/), or
+[repmgr](https://www.repmgr.org/). These tools:
+
+1. Monitor the primary continuously.
+2. **Promote the standby** when the primary is unreachable.
+3. **Demote the old primary** back to standby automatically when it recovers (Patroni uses
+   `pg_rewind` to resync it with the new primary's WAL timeline).
+
+The KMS URL requires no change: with `target_session_attrs=read-write` the driver
+always connects to whichever node is currently the primary.
+
+**What happens when the primary goes down then comes back up?**
+
+| Phase | State | KMS behaviour |
+| ----- | ----- | ------------- |
+| Primary down, standby still read-only | No writable node exists | KMS retries exhaust (≤ ~3.2 s), requests fail with a database error |
+| HA manager promotes the standby | Standby becomes new primary | KMS reconnects on next retry/request, normal operation resumes |
+| Old primary recovers | HA manager demotes it to new standby | Transparent; KMS skips it (read-only) and connects to the new primary |
+| Old primary recovers **without** an HA manager | Old primary restarts as a standalone node — **data divergence risk** | Manual intervention required before reconnecting the KMS |
+
+!!! tip "Eliminate URL maintenance with a virtual IP or DNS endpoint"
+    After a permanent failover without an HA manager, the roles of `primary:5432` and
+    `standby:5432` are reversed. The KMS still works (it finds the read-write node), but it
+    tries the old-primary address first on every connection, adding latency. To avoid this,
+    front the cluster with a **virtual IP** (Keepalived, AWS RDS Multi-AZ endpoint, Azure
+    Flexible Server read-write endpoint, GCP Cloud SQL HA endpoint) and use a single-host
+    URL — failover then becomes completely transparent to the KMS.
+
 ##### PostgreSQL failover retry
 
 When a PostgreSQL primary fails over, the driver may return transient connection errors before
 the new primary is ready. The KMS automatically retries failed queries with **exponential
 backoff** for the following PostgreSQL SQLSTATE codes:
 
-| SQLSTATE | Meaning |
-|---|---|
-| `08001` | `sqlclient_unable_to_establish_sqlconnection` |
-| `08004` | `sqlserver_rejected_establishment_of_sqlconnection` |
-| `57P02` | `crash_shutdown` |
-| `57P03` | `cannot_connect_now` |
+| SQLSTATE | Meaning                                             |
+| -------- | --------------------------------------------------- |
+| `08001`  | `sqlclient_unable_to_establish_sqlconnection`       |
+| `08004`  | `sqlserver_rejected_establishment_of_sqlconnection` |
+| `57P02`  | `crash_shutdown`                                    |
+| `57P03`  | `cannot_connect_now`                                |
 
 No additional configuration is required; the retry behaviour is enabled automatically for all
 PostgreSQL connections.
@@ -252,12 +303,12 @@ for PostgreSQL and MySQL-compatible databases. All TLS parameters are configured
 
 PostgreSQL TLS is configured using the standard `libpq`-style query parameters in the connection URL.
 
-| Parameter     | Description                                     |
-|---------------|-------------------------------------------------|
+| Parameter     | Description                                                                    |
+| ------------- | ------------------------------------------------------------------------------ |
 | `sslmode`     | TLS mode: `disable`, `prefer` (default), `require`, `verify-ca`, `verify-full` |
-| `sslrootcert` | Path to the CA certificate (PEM) used to verify the server |
-| `sslcert`     | Path to the client certificate (PEM) for mTLS   |
-| `sslkey`      | Path to the client private key (PEM) for mTLS   |
+| `sslrootcert` | Path to the CA certificate (PEM) used to verify the server                     |
+| `sslcert`     | Path to the client certificate (PEM) for mTLS                                  |
+| `sslkey`      | Path to the client private key (PEM) for mTLS                                  |
 
 **Server-authenticated TLS only** (encrypt the connection and verify the server certificate):
 
@@ -306,12 +357,12 @@ PostgreSQL TLS is configured using the standard `libpq`-style query parameters i
 MySQL TLS is configured using query parameters in the connection URL.
 Both dash (`ssl-mode`) and underscore (`ssl_mode`) variants are accepted.
 
-| Parameter                       | Description                                                |
-|---------------------------------|------------------------------------------------------------|
-| `ssl-mode`                      | TLS mode: `DISABLED`, `PREFERRED`, `REQUIRED`, `VERIFY_CA`, `VERIFY_IDENTITY` |
-| `ssl-ca`                        | Path to the CA certificate (PEM) for server verification   |
-| `ssl-client-identity`           | Path to the client PKCS#12 (`.p12`) bundle for mTLS        |
-| `ssl-client-identity-password`  | Password protecting the PKCS#12 bundle                     |
+| Parameter                      | Description                                                                   |
+| ------------------------------ | ----------------------------------------------------------------------------- |
+| `ssl-mode`                     | TLS mode: `DISABLED`, `PREFERRED`, `REQUIRED`, `VERIFY_CA`, `VERIFY_IDENTITY` |
+| `ssl-ca`                       | Path to the CA certificate (PEM) for server verification                      |
+| `ssl-client-identity`          | Path to the client PKCS#12 (`.p12`) bundle for mTLS                           |
+| `ssl-client-identity-password` | Password protecting the PKCS#12 bundle                                        |
 
 **Server-authenticated TLS only** (encrypt the connection and verify the server certificate):
 

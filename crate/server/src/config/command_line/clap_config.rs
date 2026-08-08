@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 use super::{
     GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig,
     MainDBConfig, WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
-    ui_config::UiConfig,
+    ui_config::UiConfig, vault_config::VaultConfig,
 };
 use crate::{
-    config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
+    config::{AuthVerifierConfig, AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
     routes::aws_xks::AwsXksConfig,
@@ -52,6 +52,7 @@ impl Default for ClapConfig {
             proxy: ProxyConfig::default(),
             kms_public_url: None,
             idp_auth: IdpAuthConfig::default(),
+            auth_verifier: AuthVerifierConfig::default(),
             ui_config: UiConfig::default(),
             google_cse_config: GoogleCseConfig::default(),
             workspace: WorkspaceConfig::default(),
@@ -75,6 +76,7 @@ impl Default for ClapConfig {
             keyset_warn_depth: 5,
             jwks_endpoint: JwksEndpointConfig::default(),
             secret_backends: SecretBackendConfig::default(),
+            vault: VaultConfig::default(),
         }
     }
 }
@@ -178,6 +180,9 @@ pub struct ClapConfig {
     #[command(flatten)]
     pub idp_auth: IdpAuthConfig,
 
+    #[clap(flatten)]
+    pub auth_verifier: AuthVerifierConfig,
+
     #[command(flatten)]
     pub ui_config: UiConfig,
 
@@ -242,6 +247,11 @@ pub struct ClapConfig {
 
     #[command(flatten)]
     pub jwks_endpoint: JwksEndpointConfig,
+
+    /// Configuration for the Vault-compatible REST API (`/v1/transit/` and `/v1/<pki_mount>/`).
+    #[command(flatten)]
+    #[serde(default)]
+    pub vault: VaultConfig,
 }
 
 impl ClapConfig {
@@ -453,7 +463,11 @@ impl ClapConfig {
         //  1. Read the file.
         //  2. Parse into a `toml::Value`.
         //  3. Resolve `secret://` URIs in string leaves via the selected backend.
-        //  4. Deserialize into `ClapConfig`.
+        //  4. Deserialize into `ClapConfig`, collecting any unknown fields as errors.
+        //     `serde_ignored` wraps the deserializer and calls the callback for every
+        //     field the target type does not recognise — including fields that bubble up
+        //     via `#[serde(flatten)]` (e.g. `HsmConfig`), where `deny_unknown_fields`
+        //     would conflict with the flatten and cannot be used directly.
         let load_file = |p: &PathBuf| -> KResult<Self> {
             let conf_content = std::fs::read_to_string(p).map_err(|e| {
                 KmsError::ServerError(format!(
@@ -473,12 +487,26 @@ impl ClapConfig {
                 &preliminary.secret_backends,
             )?;
 
-            config_value.try_into().map_err(|e| {
+            let mut unknown_fields: Vec<String> = Vec::new();
+            let config: Self = serde_ignored::deserialize(config_value, |path| {
+                unknown_fields.push(path.to_string());
+            })
+            .map_err(|e| {
                 KmsError::ServerError(format!(
                     "Cannot deserialize KMS server config at: {} - {e:?}",
                     p.display()
                 ))
-            })
+            })?;
+
+            if !unknown_fields.is_empty() {
+                return Err(KmsError::ServerError(format!(
+                    "Unknown key(s) in KMS configuration file: {}. Check for typos or remove \
+                     obsolete fields.",
+                    unknown_fields.join(", ")
+                )));
+            }
+
+            Ok(config)
         };
 
         if let Some(path) = explicit {
@@ -705,6 +733,11 @@ impl fmt::Debug for ClapConfig {
             &self.auto_rotation_check_interval_secs,
         );
         let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
+        let x = if self.auth_verifier.is_enabled() {
+            x.field("auth_verifier_url", &self.auth_verifier.auth_verifier_url)
+        } else {
+            x
+        };
 
         x.finish()
     }
@@ -1031,5 +1064,65 @@ mod tests {
         ]);
         let conf_str = toml::to_string_pretty(&conf).unwrap();
         debug!("Configuration TOML: {conf_str}");
+    }
+
+    // ── Strict TOML parsing tests ──────────────────────────────────────────────────
+
+    /// An unknown top-level key must be rejected when loading from a config file.
+    #[test]
+    fn unknown_top_level_key_is_rejected() {
+        with_clean_env(|| {
+            // "typo_database" is not a valid ClapConfig key
+            let bad_file = write_temp("[http]\nport = 9998\n\ntypo_database = \"sqlite\"\n");
+            let args = vec!["kms", "-c", bad_file.to_str().unwrap()];
+            let res = ClapConfig::load_from_args(args);
+            assert!(
+                res.is_err(),
+                "unknown top-level key must cause a parse error"
+            );
+            let err_msg = res.unwrap_err().to_string();
+            assert!(
+                err_msg.contains("Unknown key(s)") || err_msg.contains("typo_database"),
+                "error message must identify the unknown key; got: {err_msg}"
+            );
+            cleanup_temp(&bad_file);
+        });
+    }
+
+    /// An unknown key inside a nested table (`[http]`) must be rejected.
+    #[test]
+    fn unknown_nested_key_is_rejected() {
+        with_clean_env(|| {
+            // "typo_port" is not a valid field inside [http]
+            let bad_file = write_temp("[http]\nport = 9998\ntypo_port = 1234\n");
+            let args = vec!["kms", "-c", bad_file.to_str().unwrap()];
+            let res = ClapConfig::load_from_args(args);
+            assert!(
+                res.is_err(),
+                "unknown key inside [http] section must cause a parse error"
+            );
+            let err_msg = res.unwrap_err().to_string();
+            assert!(
+                err_msg.contains("typo_port") || err_msg.contains("unknown field"),
+                "error message must identify the unknown nested key; got: {err_msg}"
+            );
+            cleanup_temp(&bad_file);
+        });
+    }
+
+    /// A valid minimal config must still load successfully (regression guard).
+    #[test]
+    fn valid_minimal_config_loads_ok() {
+        with_clean_env(|| {
+            let good_file = write_temp("[http]\nport = 9998\n");
+            let args = vec!["kms", "-c", good_file.to_str().unwrap()];
+            let res = ClapConfig::load_from_args(args);
+            assert!(
+                res.is_ok(),
+                "valid config must still load successfully: {:?}",
+                res.err()
+            );
+            cleanup_temp(&good_file);
+        });
     }
 }

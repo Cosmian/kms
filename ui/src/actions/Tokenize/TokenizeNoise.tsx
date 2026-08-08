@@ -36,7 +36,7 @@ const TokenizeNoiseForm: React.FC = () => {
     const [form] = Form.useForm<NoiseFormData>();
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
+    const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
     const method = Form.useWatch("method", form);
 
@@ -65,7 +65,7 @@ const TokenizeNoiseForm: React.FC = () => {
                 body.min_bound = values.min_bound;
                 body.max_bound = values.max_bound;
             }
-            const response = await postNoTTLVRequest("/tokenize/noise", body, idToken, serverUrl);
+            const response = await postNoTTLVRequest("/tokenize/noise", body, serverUrl);
             const typed = response as { result?: unknown; code?: number; message?: string };
             if (typed.result !== undefined) {
                 setRes(`Result: ${JSON.stringify(typed.result)}`);

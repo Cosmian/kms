@@ -32,7 +32,7 @@ The HSM is responsible for storing the Master keys and securing the Eviden KMS k
 
 ## Deployment
 
-1. Deploy a Eviden KMS in your AWS tenant. You can find the product on the [AWS Marketplace](https://aws.amazon.com/marketplace/search/results?searchTerms=COSMIAN+KMS) and follow the deployment instructions in the product documentation.
+1. Deploy an Eviden KMS in your AWS tenant. You can find the product on the [AWS Marketplace](https://aws.amazon.com/marketplace/search/results?searchTerms=COSMIAN+KMS) and follow the deployment instructions in the product documentation.
 
 2. Configure the KMS for use with AWS XKS by filling up the `aws_xks_config` section of the configuration file with the following values:
 
@@ -43,7 +43,7 @@ The HSM is responsible for storing the Master keys and securing the Eviden KMS k
    # this is the region you Eviden KMS is deployed in
    aws_xks_region = "us-east-1"
    # keep this to this value
-   aws_xks_service = "xks-kms"
+   aws_xks_service = "kms-xks-proxy"
    # used for sigv4. The values set here must match the values configured
    # when setting up the KMS as an external keystore for AWS KMS (see next step)
    aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"

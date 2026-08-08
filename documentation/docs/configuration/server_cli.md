@@ -370,6 +370,38 @@ Options:
 
           [env: KMS_JWT_AUTH_PROVIDER=]
 
+      --auth-verifier-url <AUTH_VERIFIER_URL>
+          Base URL of the Auth Verifier server (e.g. `https://auth.example.com`).
+
+          When set, the KMS validates bearer tokens against the JWKS published by this
+          server.  The `sub` claim is used as the user identity.
+
+          [env: KMS_AUTH_VERIFIER_URL=]
+
+      --auth-verifier-jwks-uri <AUTH_VERIFIER_JWKS_URI>
+          JWKS URI of the Auth Verifier server.
+
+          Defaults to `{auth_verifier_url}/.well-known/jwks.json` when not set.
+
+          [env: KMS_AUTH_VERIFIER_JWKS_URI=]
+
+      --auth-verifier-realm <AUTH_VERIFIER_REALM>
+          Realm to authenticate the Web UI against on the Auth Verifier server.
+
+          Required only to enable the Web UI login form for the Auth Verifier
+          server (`POST /ui/login_as`); bearer-token validation of already-issued tokens
+          does not need a realm. When unset, the UI falls back to any other configured
+          authentication method (OIDC/JWT or client certificate).
+
+          [env: KMS_AUTH_VERIFIER_REALM=]
+
+      --auth-verifier-accept-invalid-certs
+          Accept invalid or self-signed TLS certificates when fetching the JWKS.
+
+          **Development and testing only.** Never set this in production.
+
+          [env: KMS_AUTH_VERIFIER_ACCEPT_INVALID_CERTS=]
+
       --enable
           Disable the embedded web UI. When set to false, the UI HTML assets are not served and all `/ui/` routes return 404
 
@@ -467,7 +499,7 @@ Options:
           Product Name and Version of the EKMS to report in the /info endpoint
 
           [env: KMS_AZURE_EKM_PRODUCT=]
-          [default: "Cosmian KMS v5.25.0"]
+          [default: "Cosmian KMS v5.26.0"]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory
@@ -679,6 +711,70 @@ Options:
           This setting has no effect on keys created directly through the KMIP protocol.
 
           [env: KMS_JWKS_ENDPOINT_AUTO_TAG=]
+
+      --vault-api-enabled
+          Enable the Vault-compatible `/v1/transit/` and `/v1/<vault_pki_mount>/` scopes.
+
+          Defaults to `false`. Set to `true` to enable the Vault-compatible API. Requires `vault_auth_verifier_url` to be set.
+
+          [env: KMS_VAULT_API_ENABLED=]
+
+      --vault-auth-verifier-url <VAULT_AUTH_VERIFIER_URL>
+          Base URL of the auth-verifier server used to validate `X-Vault-Token` headers.
+
+          Required when `vault_api_enabled = true`. Example: `https://auth.example.com`
+
+          [env: KMS_VAULT_AUTH_VERIFIER_URL=]
+
+      --vault-auth-verifier-ca-cert <VAULT_AUTH_VERIFIER_CA_CERT>
+          Path to a PEM-encoded CA certificate used to verify the auth-verifier's TLS certificate.
+
+          Optional. When set, the KMS will trust this CA when connecting to `vault_auth_verifier_url`. Useful when auth-verifier uses a self-signed or private CA certificate.
+
+          [env: KMS_VAULT_AUTH_VERIFIER_CA_CERT=]
+
+      --vault-auth-verifier-accept-invalid-certs
+          Skip TLS certificate verification when calling the auth-verifier.
+
+          **Security warning**: only set this to `true` in test or development environments. In production, use `vault_auth_verifier_ca_cert` to provide the correct CA certificate. Defaults to `false`.
+
+          [env: KMS_VAULT_AUTH_VERIFIER_ACCEPT_INVALID_CERTS=]
+
+      --vault-transit-mount <VAULT_TRANSIT_MOUNT>
+          Vault transit mount name used by the `/v1/<mount>/keys/…` routes.
+
+          Transit keys are served at `/v1/<vault_transit_mount>/keys/<name>`.
+          Defaults to `"transit"`.
+
+          [env: KMS_VAULT_TRANSIT_MOUNT=]
+          [default: transit]
+
+      --vault-pki-mount <VAULT_PKI_MOUNT>
+          Vault PKI mount name used by the `/v1/<mount>/root/sign-intermediate` route.
+
+          Defaults to `"pki"`.
+
+          [env: KMS_VAULT_PKI_MOUNT=]
+          [default: pki]
+
+      --vault-pki-ca-key-label <VAULT_PKI_CA_KEY_LABEL>
+          KMIP label of the KMS key used as the intermediate CA signing key for the PKI engine.
+
+          The key must already exist in the KMS (create with `ckms ec keys create --tag <label>`).
+          Defaults to `"vault_pki_ca"`.
+
+          [env: KMS_VAULT_PKI_CA_KEY_LABEL=]
+          [default: vault_pki_ca]
+
+      --vault-token-cache-ttl-secs <VAULT_TOKEN_CACHE_TTL_SECS>
+          Lifetime of vault token validation cache entries in seconds.
+
+          Successful `lookup-self` responses from the auth-verifier are cached
+          for this duration to reduce round-trips on every transit/PKI request.
+          Set to `0` to disable caching. Defaults to `30`.
+
+          [env: KMS_VAULT_TOKEN_CACHE_TTL_SECS=]
+          [default: 30]
 
   -h, --help
           Print help (see a summary with '-h')

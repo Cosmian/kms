@@ -197,6 +197,14 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
     project_dir.join(format!("{name}_{thread_id:?}.sqlite"))
 }
 
+/// `log_init(None)` + `test_app` combo — cuts 2-line boilerplate to 1 per test.
+pub(crate) async fn setup_app(
+    kms_public_url: Option<String>,
+) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
+    cosmian_logger::log_init(None);
+    test_app(kms_public_url).await
+}
+
 /// Creates a test application instance with KMIP and Google CSE capabilities.
 ///
 /// # Arguments

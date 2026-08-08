@@ -15,8 +15,7 @@ info:
     - **API Token** — pass an API token in `Authorization: Bearer <token>` (server-issued opaque token)
     - **Mutual TLS (mTLS)** — present a client certificate during the TLS handshake
 
-    Public endpoints (`/health`, `/version`) require no authentication.
-    API documentation (`/openapi.yaml`, `/swagger`) requires authentication.
+    Public endpoints (`/health`, `/version`, `/swagger`, `/openapi.yaml`) require no authentication.
 
 servers:
   - url: /
@@ -45,6 +44,17 @@ tags:
     description: OAuth2/OIDC flow endpoints for the built-in web UI — not part of the KMS API proper
   - name: Tokenize
     description: Anonymization and tokenization REST endpoints — hash, noise, masking, aggregation, scaling (non-FIPS only)
+  - name: Vault Transit
+    description: |
+      Vault-compatible Transit secrets engine (key management + signing).
+      Enabled only when `vault_api_enabled = true` in server config.
+      All endpoints require a valid `X-Vault-Token` header, which is validated
+      by calling the Cosmian auth-verifier's `GET /v1/auth/token/lookup-self`.
+  - name: Vault PKI
+    description: |
+      Vault-compatible PKI secrets engine (intermediate CA certificate signing).
+      Enabled only when `vault_api_enabled = true` in server config.
+      All endpoints require a valid `X-Vault-Token` header.
 
 components:
   securitySchemes:
@@ -56,8 +66,14 @@ components:
     mtls:
       type: mutualTLS
       description: Client certificate presented during TLS handshake
-
-  schemas:
+    vaultToken:
+      type: apiKey
+      in: header
+      name: X-Vault-Token
+      description: |
+        Vault-compatible bearer token issued by the Cosmian auth-verifier.
+        Required on all `/v1/transit/*` and `/v1/pki/*` endpoints when
+        `vault_api_enabled = true`.
     # ── REST Crypto tag management ───────────────────────────────────────────
 
     TagsRequest:
@@ -1448,6 +1464,182 @@ components:
           type: string
           description: Human-readable error description
 
+    # ── Vault Transit / PKI ───────────────────────────────────────────────────
+
+    CreateTransitKeyRequest:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: |
+            Key algorithm and size. Supported values:
+            `ecdsa-p256`, `ecdsa-p384`, `rsa-2048`, `rsa-4096`.
+            Non-FIPS only: `ed25519`, `ml-dsa-65`.
+          example: ecdsa-p256
+        exportable:
+          type: boolean
+          default: false
+          description: Accepted but always forced to `false` — transit keys are not exportable.
+        auto_rotate_period:
+          description: |
+            Vault's key auto-rotation interval. The KMS performs **no** time-based
+            key rotation, so only a disabled value (`0`, `"0"`, `""`, `null`, or the
+            field omitted) is accepted. Any non-zero interval is rejected with
+            `400`. SPIRE always sends `0`.
+          default: 0
+          example: 0
+
+    TransitKeyVersion:
+      type: object
+      required: [public_key, creation_time]
+      properties:
+        public_key:
+          type: string
+          description: SPKI PEM-encoded public key (`-----BEGIN PUBLIC KEY-----`).
+          example: "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZI...\n-----END PUBLIC KEY-----\n"
+        creation_time:
+          type: string
+          format: date-time
+          description: RFC 3339 creation timestamp.
+          example: '2026-07-27T10:00:00Z'
+
+    TransitKeyInfo:
+      type: object
+      required: [name, type, exportable, allow_deletion, latest_version, keys]
+      properties:
+        name:
+          type: string
+          description: Transit key name.
+          example: spire-server-key-1
+        type:
+          type: string
+          description: Vault key type (e.g. `ecdsa-p256`, `rsa-2048`).
+          example: ecdsa-p256
+        exportable:
+          type: boolean
+          description: Always `false` — transit keys are not exportable.
+          example: false
+        allow_deletion:
+          type: boolean
+          description: Always `true`.
+          example: true
+        latest_version:
+          type: integer
+          description: Current key version (always `1` — in-place rotation is not supported).
+          example: 1
+        keys:
+          type: object
+          description: Map of version number string to key version metadata.
+          additionalProperties:
+            $ref: '#/components/schemas/TransitKeyVersion'
+          example:
+            '1':
+              public_key: "-----BEGIN PUBLIC KEY-----\nMFkwE...\n-----END PUBLIC KEY-----\n"
+              creation_time: '2026-07-27T10:00:00Z'
+
+    TransitKeyInfoWrapper:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TransitKeyInfo'
+
+    TransitKeyListData:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            type: string
+          description: List of transit key names.
+          example: [spire-server-key-1, spire-server-key-2]
+
+    TransitKeyListWrapper:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TransitKeyListData'
+
+    SignTransitRequest:
+      type: object
+      required: [input]
+      properties:
+        input:
+          type: string
+          description: Base64-encoded data to sign.
+          example: dGVzdA==
+        prehashed:
+          type: boolean
+          default: true
+          description: |
+            When `true` (default), `input` is already a digest and is signed directly.
+            When `false`, the server hashes `input` before signing.
+
+    SignTransitResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [signature]
+          properties:
+            signature:
+              type: string
+              description: Vault-prefixed signature string `vault:v1:<base64-encoded DER signature>`.
+              example: vault:v1:MEUCIQDtv...
+
+    SignIntermediateRequest:
+      type: object
+      required: [csr, uri_sans]
+      properties:
+        csr:
+          type: string
+          description: PEM-encoded Certificate Signing Request.
+          example: "-----BEGIN CERTIFICATE REQUEST-----\n...\n-----END CERTIFICATE REQUEST-----\n"
+        uri_sans:
+          type: array
+          items:
+            type: string
+          description: |
+            SPIFFE URI SANs. Must contain at least one entry. Used only to reject
+            requests carrying no SPIFFE identity; the SANs and Subject on the signed
+            certificate are taken from the CSR, not from this field.
+        ttl:
+          type: string
+          description: |
+            Certificate validity duration. Accepted formats:
+            `"8760h"` (hours), `"365d"` (days), `"31536000s"` (seconds), `"31536000"` (bare seconds).
+            Parsed and forwarded to the KMS `Certify` operation as `requested_validity_days`.
+            Omit to use the KMS server's configured default TTL.
+          example: 8760h
+
+    SignIntermediateData:
+      type: object
+      required: [certificate, issuing_ca, ca_chain]
+      properties:
+        certificate:
+          type: string
+          description: Signed certificate PEM.
+          example: "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+        issuing_ca:
+          type: string
+          description: Issuing CA certificate PEM.
+        ca_chain:
+          type: array
+          items:
+            type: string
+          description: Certificate chain PEM array (issuing CA first, root excluded).
+
+    SignIntermediateResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SignIntermediateData'
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 paths:
@@ -1512,13 +1704,11 @@ paths:
 
   /openapi.yaml:
     get:
-      tags: [Server]
+      tags: [Public]
       summary: OpenAPI schema
       description: Returns this OpenAPI 3.1 schema in YAML format.
       operationId: getOpenapiYaml
-      security:
-        - bearerAuth: []
-        - mtls: []
+      security: []
       responses:
         '200':
           description: OpenAPI YAML schema
@@ -1529,13 +1719,11 @@ paths:
 
   /swagger:
     get:
-      tags: [Server]
+      tags: [Public]
       summary: Swagger UI
       description: Browser-accessible Swagger UI for this API.
       operationId: getSwaggerUi
-      security:
-        - bearerAuth: []
-        - mtls: []
+      security: []
       responses:
         '200':
           description: Swagger UI HTML page
@@ -2909,6 +3097,53 @@ paths:
         '200':
           description: Login page HTML (when no OIDC provider configured)
 
+  /ui/login_as:
+    post:
+      tags: [UI Auth]
+      summary: Login against the Cosmian authentication server
+      description: |
+        Authenticates the browser against the configured Cosmian authentication server
+        ('AS') using username/password (and optionally a TOTP code), mirroring `ckms
+        login cosmian`. On success, only the validated username is stored in the
+        session cookie — the AS's JWT never reaches the browser. Only available when
+        `cosmian_auth_server_url` and `cosmian_auth_realm` are both configured.
+      operationId: uiLoginAs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                totp_code:
+                  type: string
+                  description: 'Required when a prior call returned `next_step: "TotpRequired"`'
+      responses:
+        '200':
+          description: Authenticated, or a TOTP code is required to proceed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [next_step]
+                properties:
+                  next_step:
+                    type: string
+                    enum: [Authenticated, TotpRequired]
+        '401':
+          description: Invalid credentials or TOTP code
+        '403':
+          description: Account requires a password change on the Cosmian authentication server
+        '500':
+          description: Cosmian authentication server not configured for Web UI login
+        '502':
+          description: Cosmian authentication server unreachable or returned an unexpected response
+
   /ui/callback:
     get:
       tags: [UI Auth]
@@ -2933,25 +3168,27 @@ paths:
         '400':
           description: Invalid callback parameters
 
-  /ui/token:
+  /ui/whoami:
     get:
       tags: [UI Auth]
-      summary: Get current JWT token
-      description: Returns the JWT access token for the currently authenticated UI session.
-      operationId: uiGetToken
+      summary: Current session user
+      description: Returns the user ID of the currently authenticated UI session. Returns 401 if no valid session exists.
+      operationId: uiWhoAmI
       responses:
         '200':
-          description: JWT token
+          description: Authenticated user identity
           content:
             application/json:
               schema:
                 type: object
+                required: [user_id]
                 properties:
-                  token:
+                  user_id:
                     type: string
-                    description: JWT access token
+                    description: The authenticated user's identifier (email or subject claim)
+                    example: alice@example.com
         '401':
-          description: Not authenticated
+          description: No active session
 
   /ui/logout:
     get:
@@ -2967,7 +3204,7 @@ paths:
     get:
       tags: [UI Auth]
       summary: Auth method configuration
-      description: Returns the authentication method configured on the server (JWT, cert, API token, or none).
+      description: Returns the authentication method configured for the web UI (OIDC/JWT, client certificate, Cosmian authentication server, or none).
       operationId: uiAuthMethod
       responses:
         '200':
@@ -2979,10 +3216,10 @@ paths:
                 properties:
                   auth_method:
                     type: string
-                    enum: [jwt, cert, api_token, none]
+                    enum: [JWT, CERT, COSMIAN, None]
                   oidc_issuer:
                     type: string
-                    description: OIDC issuer URL (only when auth_method is jwt)
+                    description: OIDC issuer URL (only when auth_method is JWT)
 
   # ── Tokenize (non-FIPS only) ─────────────────────────────────────────────
 
@@ -3399,3 +3636,309 @@ paths:
                     y: x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0
         '500':
           description: Internal server error
+
+  # ── Vault Transit ──────────────────────────────────────────────────────────
+  # Enabled only when vault_api_enabled = true in server config.
+  # The {transit_mount} defaults to "transit" but is configurable.
+  # All endpoints require X-Vault-Token validated against auth-verifier.
+
+  /v1/transit/keys/{name}:
+    post:
+      tags: [Vault Transit]
+      summary: Create a transit key
+      description: |
+        Create a new asymmetric transit key pair stored in the KMS under the tag
+        `vault_transit:{name}`. Supported types: `ecdsa-p256`, `ecdsa-p384`,
+        `rsa-2048`, `rsa-4096`. Non-FIPS only: `ed25519`, `ml-dsa-65`.
+      operationId: vaultTransitCreateKey
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          example: spire-server-key-1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransitKeyRequest'
+            example:
+              type: ecdsa-p256
+      security:
+        - vaultToken: []
+      responses:
+        '200':
+          description: Key created. Returns the key metadata (keys map will be empty on create).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransitKeyInfoWrapper'
+        '400':
+          description: Unsupported key type.
+        '500':
+          description: Internal error.
+
+    get:
+      tags: [Vault Transit]
+      summary: Get transit key info
+      description: |
+        Return full metadata for a transit key, including `latest_version` and
+        the `keys` map with the SPKI PEM public key for each version.
+        SPIRE's `KeyManager` plugin calls this at startup to warm its key cache.
+      operationId: vaultTransitGetKey
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          example: spire-server-key-1
+      security:
+        - vaultToken: []
+      responses:
+        '200':
+          description: Transit key metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransitKeyInfoWrapper'
+              example:
+                data:
+                  name: spire-server-key-1
+                  type: ecdsa-p256
+                  exportable: false
+                  allow_deletion: true
+                  latest_version: 1
+                  keys:
+                    '1':
+                      public_key: "-----BEGIN PUBLIC KEY-----\nMFkwE...\n-----END PUBLIC KEY-----\n"
+                      creation_time: '2026-07-27T10:00:00Z'
+        '404':
+          description: Key not found.
+        '500':
+          description: Internal error.
+
+    delete:
+      tags: [Vault Transit]
+      summary: Delete a transit key
+      description: |
+        Revoke and destroy a transit key pair. SPIRE's delete worker first calls
+        `POST /v1/transit/keys/{name}/config` with `deletion_allowed: true` and
+        then calls this endpoint.
+      operationId: vaultTransitDeleteKey
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          example: spire-server-key-1
+      security:
+        - vaultToken: []
+      responses:
+        '204':
+          description: Key deleted.
+        '404':
+          description: Key not found.
+        '500':
+          description: Internal error.
+
+  /v1/transit/keys/{name}/config:
+    post:
+      tags: [Vault Transit]
+      summary: Configure a transit key (no-op)
+      description: |
+        Vault clients call this endpoint with `{"deletion_allowed": true}` before
+        deleting a key. This server always permits deletion; the request is accepted
+        and `204 No Content` is returned without modifying any state.
+      operationId: vaultTransitConfigureKey
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          example: spire-server-key-1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deletion_allowed:
+                  type: boolean
+                  description: Accepted but ignored — deletion is always permitted server-side.
+            example:
+              deletion_allowed: true
+      security:
+        - vaultToken: []
+      responses:
+        '204':
+          description: Accepted (no-op).
+
+  /v1/transit/keys:
+    get:
+      tags: [Vault Transit]
+      summary: List transit keys
+      description: Return the names of all transit keys visible to the authenticated user.
+      operationId: vaultTransitListKeys
+      security:
+        - vaultToken: []
+      responses:
+        '200':
+          description: List of transit key names.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransitKeyListWrapper'
+              example:
+                data:
+                  keys: [spire-server-key-1, spire-server-key-2]
+        '500':
+          description: Internal error.
+
+  /v1/transit/sign/{name}/{hash_alg}:
+    post:
+      tags: [Vault Transit]
+      summary: Sign with a transit key
+      description: |
+        Sign prehashed (or raw) data with the named transit key.
+        The response signature is prefixed with `vault:v1:` for Vault API compatibility.
+        Called by SPIRE's `KeyManager` plugin to sign CA certificates and SVIDs.
+      operationId: vaultTransitSign
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Transit key name.
+          example: spire-server-key-1
+        - name: hash_alg
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [sha2-256, sha2-384, sha2-512]
+          description: Hash algorithm identifier.
+          example: sha2-256
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignTransitRequest'
+            example:
+              input: dGVzdA==
+              prehashed: true
+      security:
+        - vaultToken: []
+      responses:
+        '200':
+          description: Signature (Vault-prefixed).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignTransitResponse'
+              example:
+                data:
+                  signature: vault:v1:MEUCIQDtv...
+        '400':
+          description: Invalid request (e.g. malformed base64 `input` or unsupported hash algorithm).
+        '404':
+          description: Key not found.
+        '500':
+          description: Signing failed.
+
+  # ── Vault PKI ──────────────────────────────────────────────────────────────
+
+  /v1/pki/root/sign-intermediate:
+    post:
+      tags: [Vault PKI]
+      summary: Sign an intermediate CA CSR
+      description: |
+        Sign a Certificate Signing Request (CSR) with the configured CA private key
+        (identified by `vault_pki_ca_key_label` in server config) and return the
+        signed certificate chain in Vault-compatible JSON.
+
+        The `ttl` field is parsed and forwarded to the KMS `Certify` operation as
+        `requested_validity_days`. Supported formats: `"8760h"`, `"365d"`,
+        `"31536000s"`, or a bare integer (treated as seconds).
+
+        Called by SPIRE's `UpstreamAuthority` plugin when the server's intermediate CA
+        needs signing.
+      operationId: vaultPkiSignIntermediate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignIntermediateRequest'
+            example:
+              csr: "-----BEGIN CERTIFICATE REQUEST-----\n...\n-----END CERTIFICATE REQUEST-----\n"
+              uri_sans:
+                - spiffe://example.org/spire/server
+              ttl: 8760h
+      security:
+        - vaultToken: []
+      responses:
+        '200':
+          description: Signed certificate chain.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignIntermediateResponse'
+              example:
+                data:
+                  certificate: "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+                  issuing_ca: "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+                  ca_chain:
+                    - "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+        '400':
+          description: Missing or empty `uri_sans`, or `vault_pki_ca_key_label` not configured.
+        '500':
+          description: Internal error (CSR parsing, CA key not found, Certify failure).
+  # ── Vault Auth (transparent proxy) ─────────────────────────────────────────
+
+  /v1/auth/{path}:
+    parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+        description: |
+          Arbitrary sub-path under `/v1/auth/` (e.g. `approle/login`,
+          `token/lookup-self`, `token/renew-self`, `token/revoke-self`).
+        example: approle/login
+    get: &vaultAuthProxy
+      tags: [Vault Auth]
+      summary: Transparent auth proxy
+      description: |
+        Catch-all reverse proxy for the Vault auth API. When the
+        Vault-compatible API is enabled, the KMS becomes the single `vault_addr`
+        endpoint for SPIRE, so every `/v1/auth/*` request (AppRole login, token
+        `lookup-self`, `renew-self`, `revoke-self`) is forwarded **unchanged** to
+        the auth-verifier configured via `vault_auth_verifier_url`, with the
+        `/v1` prefix stripped.
+
+        This route is intentionally **unauthenticated** (it carries the login
+        credentials themselves) and accepts **any HTTP method**; the client's
+        verb, query string, `X-Vault-Token`/`Authorization`/`Content-Type`
+        headers, and raw body are preserved. Paths containing `.`/`..` segments
+        are rejected with `400` to prevent traversal outside the `/auth/*` scope.
+        The auth-verifier response status and body are returned byte-for-byte.
+      operationId: vaultAuthProxy
+      responses:
+        '200':
+          description: Response forwarded verbatim from the auth-verifier.
+        '400':
+          description: Invalid path (`.`/`..` segments are not allowed).
+        '502':
+          description: The auth-verifier is unreachable.
+    post: *vaultAuthProxy
+    put: *vaultAuthProxy
+    delete: *vaultAuthProxy

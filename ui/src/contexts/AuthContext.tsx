@@ -4,7 +4,6 @@ import { AuthContext } from "./AuthContextDef.tsx";
 export { useAuth } from "./useAuth";
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [idToken, setIdToken] = useState<string | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
     const [serverUrl, setServerUrl] = useState<string>("");
 
@@ -18,14 +17,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const logout = () => {
-        setIdToken(null);
+        setUserId(null);
         const kmsUrl = serverUrl + "/ui/logout";
         window.location.href = kmsUrl;
     };
 
-    return (
-        <AuthContext.Provider value={{ serverUrl, setServerUrl, idToken, setIdToken, userId, setUserId, login, logout }}>
-            {children}
-        </AuthContext.Provider>
-    );
+    return <AuthContext.Provider value={{ serverUrl, setServerUrl, userId, setUserId, login, logout }}>{children}</AuthContext.Provider>;
 };

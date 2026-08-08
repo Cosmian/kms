@@ -14,10 +14,6 @@ force_default_username = false
 # the URL should be something like <https://cse.my_domain.com/google_cse>
 # google_cse_kacls_url = "<google cse kacls url>"
 
-# This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server
-# Useful for testing purposes
-google-cse-disable-tokens-validation = false
-
 # This setting enables this server's Microsoft Double Key Encryption service feature.
 # It should contain the external URL of this server as configured in Azure App Registrations
 # as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
@@ -73,11 +69,10 @@ unwrapped_cache_max_age = 15 # minutes
 
 # TLS configuration of the Socket server and HTTP server
 [tls]
-# The KMS server's optional PKCS#12 Certificates and Key file.
-# If provided, this will start the server in HTTPS mode.
-tls_p12_file = "test_data/certificates/client_server/server/kmserver.acme.com.p12"
-# The password to open the PKCS#12 certificates and key file.
-tls_p12_password = "password"
+# The server's X.509 certificate in PEM format.
+tls_cert_file = "test_data/certificates/client_server/server/kmserver.acme.com.crt"
+# The server's private key in PEM format.
+tls_key_file = "test_data/certificates/client_server/server/kmserver.acme.com.key"
 # The server's optional authority X509 certificate in PEM format
 # used to validate the client certificate presented for authentication.
 # If provided, clients must present a certificate signed by this authority for authentication.

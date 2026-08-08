@@ -216,7 +216,7 @@ services:
   # Started on demand with: docker compose up -d iris
   # The profile keeps it out of the default `docker compose up -d` that runs
   iris:
-    image: ${IRIS_DOCKER_IMAGE:-intersystemsdc/iris-community:latest}
+    image: ${IRIS_DOCKER_IMAGE:-intersystems/iris-community:2026.1}
     container_name: ${IRIS_CONTAINER_NAME:-iris-kmip-test}
     # The Community image is amd64-only; Rosetta handles this on Apple Silicon.
     platform: linux/amd64
@@ -239,3 +239,219 @@ services:
       # hostname verification requires this alias to resolve to the host.
       - host.docker.internal:host-gateway
       - kmserver.acme.com:host-gateway
+
+  # ── SPIRE integration test services (multi-tenant) ──────────────────────────
+  # Start with: docker compose --profile spire up -d
+  # cosmian-kms and auth-verifier run on the host via `cargo run`.
+  # KMS proxies /v1/auth/* to auth-verifier; no nginx vault-proxy needed.
+  #
+  # Two INDEPENDENT SPIRE deployments (tenants "a" and "b") run against the SAME
+  # KMS, each with its own trust domain, its own AppRole, its own agent, and its
+  # own intermediate CA — all signed by the same KMS root CA (tag vault_pki_ca).
+  # This proves the KMS is a valid multi-tenant Vault upstream authority.
+
+  # ── Tenant A: trust domain cosmian-test-a.local ─────────────────────────────
+  spire-server-a:
+    image: ghcr.io/spiffe/spire-server:1.15.2
+    profiles: [spire]
+    container_name: spire-server-a
+    # SPIRE 1.15+ images run as non-root (uid 1000); run as root for writes.
+    user: 0:0
+    network_mode: host
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ${SPIRE_SERVER_CONFIG_FILE_A:-./test_data/spire/config/spire-server-a.conf}:/etc/spire/server/server.conf:ro
+      - ./test_data/spire/certs/ca.crt:/etc/spire/server/ca.crt:ro
+      - spire-data-a:/data/spire-server
+    environment:
+      # AppRole credentials injected by the mise task from /tmp/spire-secrets.env.
+      # SPIRE vault plugin reads VAULT_APPROLE_ID and VAULT_APPROLE_SECRET_ID;
+      # each server sees its OWN tenant role under those fixed names.
+      - VAULT_APPROLE_ID=${VAULT_APPROLE_ID_A:-}
+      - VAULT_APPROLE_SECRET_ID=${VAULT_APPROLE_SECRET_ID_A:-}
+    command: [-config, /etc/spire/server/server.conf]
+    healthcheck:
+      test:
+        - CMD
+        - /opt/spire/bin/spire-server
+        - healthcheck
+      interval: 10s
+      timeout: 30s
+      retries: 12
+
+  spire-agent-a:
+    image: ghcr.io/spiffe/spire-agent:1.15.2
+    profiles: [spire]
+    container_name: spire-agent-a
+    # See spire-server-a: run as root for 1.15+ non-root image.
+    user: 0:0
+    network_mode: host
+    depends_on:
+      spire-server-a:
+        condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      # SPIRE_AGENT_CONFIG_FILE_A is overridden by the mise task to inject a
+      # real join token (generated at runtime). Defaults to the template
+      # config with a placeholder token.
+      - ${SPIRE_AGENT_CONFIG_FILE_A:-./test_data/spire/config/spire-agent-a.conf}:/etc/spire/agent/agent.conf:ro
+      - ./test_data/spire/certs/ca.crt:/etc/spire/agent/ca.crt:ro
+      # Named volume (not a host bind mount) so the unix socket at
+      # /tmp/spire-agent/public/api.sock is correctly shared with the
+      # mistral-agent containers on all platforms, including macOS Docker
+      # Desktop where host-bind-mount unix sockets are not accessible
+      # between containers.
+      - spire-agent-socket-a:/tmp/spire-agent
+    command: [-config, /etc/spire/agent/agent.conf]
+    pid: host
+    healthcheck:
+      # Use the SPIRE agent binary itself: the image is distroless and has no
+      # shell or 'test' utility. Reports healthy once the workload API socket
+      # is ready and accepting connections.
+      test:
+        - CMD
+        - /opt/spire/bin/spire-agent
+        - healthcheck
+        - -socketPath
+        - /tmp/spire-agent/public/api.sock
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 15s
+
+  mistral-agent-a1:
+    build:
+      context: ./test_data/spire/mistral-client
+    profiles: [spire]
+    container_name: mistral-agent-a1
+    depends_on:
+      spire-agent-a:
+        condition: service_healthy
+    volumes:
+      - spire-agent-socket-a:/tmp/spire-agent:ro
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - AGENT_ID=mistral-agent-a1
+      - TRUST_DOMAIN=cosmian-test-a.local
+      - EXPECTED_SPIFFE_PATH=/mistral-agent
+      - JWT_AUDIENCE=cosmian-kms
+      - MAX_SVID_TTL_SECONDS=7200
+
+  mistral-agent-a2:
+    build:
+      context: ./test_data/spire/mistral-client
+    profiles: [spire]
+    container_name: mistral-agent-a2
+    depends_on:
+      spire-agent-a:
+        condition: service_healthy
+    volumes:
+      - spire-agent-socket-a:/tmp/spire-agent:ro
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - AGENT_ID=mistral-agent-a2
+      - TRUST_DOMAIN=cosmian-test-a.local
+      - EXPECTED_SPIFFE_PATH=/mistral-agent
+      - JWT_AUDIENCE=cosmian-kms
+      - MAX_SVID_TTL_SECONDS=7200
+
+  # ── Tenant B: trust domain cosmian-test-b.local ─────────────────────────────
+  spire-server-b:
+    image: ghcr.io/spiffe/spire-server:1.15.2
+    profiles: [spire]
+    container_name: spire-server-b
+    # See spire-server-a: run as root for 1.15+ non-root image.
+    user: 0:0
+    network_mode: host
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ${SPIRE_SERVER_CONFIG_FILE_B:-./test_data/spire/config/spire-server-b.conf}:/etc/spire/server/server.conf:ro
+      - ./test_data/spire/certs/ca.crt:/etc/spire/server/ca.crt:ro
+      - spire-data-b:/data/spire-server
+    environment:
+      - VAULT_APPROLE_ID=${VAULT_APPROLE_ID_B:-}
+      - VAULT_APPROLE_SECRET_ID=${VAULT_APPROLE_SECRET_ID_B:-}
+    command: [-config, /etc/spire/server/server.conf]
+    healthcheck:
+      test:
+        - CMD
+        - /opt/spire/bin/spire-server
+        - healthcheck
+      interval: 10s
+      timeout: 30s
+      retries: 12
+
+  spire-agent-b:
+    image: ghcr.io/spiffe/spire-agent:1.15.2
+    profiles: [spire]
+    container_name: spire-agent-b
+    # See spire-server-a: run as root for 1.15+ non-root image.
+    user: 0:0
+    network_mode: host
+    depends_on:
+      spire-server-b:
+        condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ${SPIRE_AGENT_CONFIG_FILE_B:-./test_data/spire/config/spire-agent-b.conf}:/etc/spire/agent/agent.conf:ro
+      - ./test_data/spire/certs/ca.crt:/etc/spire/agent/ca.crt:ro
+      - spire-agent-socket-b:/tmp/spire-agent
+    command: [-config, /etc/spire/agent/agent.conf]
+    pid: host
+    healthcheck:
+      test:
+        - CMD
+        - /opt/spire/bin/spire-agent
+        - healthcheck
+        - -socketPath
+        - /tmp/spire-agent/public/api.sock
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 15s
+
+  mistral-agent-b1:
+    build:
+      context: ./test_data/spire/mistral-client
+    profiles: [spire]
+    container_name: mistral-agent-b1
+    depends_on:
+      spire-agent-b:
+        condition: service_healthy
+    volumes:
+      - spire-agent-socket-b:/tmp/spire-agent:ro
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - AGENT_ID=mistral-agent-b1
+      - TRUST_DOMAIN=cosmian-test-b.local
+      - EXPECTED_SPIFFE_PATH=/mistral-agent
+      - JWT_AUDIENCE=cosmian-kms
+      - MAX_SVID_TTL_SECONDS=7200
+
+  mistral-agent-b2:
+    build:
+      context: ./test_data/spire/mistral-client
+    profiles: [spire]
+    container_name: mistral-agent-b2
+    depends_on:
+      spire-agent-b:
+        condition: service_healthy
+    volumes:
+      - spire-agent-socket-b:/tmp/spire-agent:ro
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - AGENT_ID=mistral-agent-b2
+      - TRUST_DOMAIN=cosmian-test-b.local
+      - EXPECTED_SPIFFE_PATH=/mistral-agent
+      - JWT_AUDIENCE=cosmian-kms
+      - MAX_SVID_TTL_SECONDS=7200
+
+volumes:
+  spire-data-a:
+  spire-data-b:
+  spire-agent-socket-a:
+  spire-agent-socket-b:

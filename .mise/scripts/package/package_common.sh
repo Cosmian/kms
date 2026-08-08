@@ -208,7 +208,22 @@ build_or_reuse_server() {
 
   OUT_LINK="$REPO_ROOT/result-server-${VARIANT}-${LINK}"
 
-  # Always run nix-build to validate changes to expected hashes (e.g., server.vendor.*.sha256, cli.vendor.*.sha256)
+  # Reuse the result from a previous build within the same CI step (e.g., when
+  # package:deb already ran before package:rpm).  Without this guard the second
+  # invocation would run nix-build against a source tree that now includes
+  # nix/expected-hashes/ content written by sync_server_expected_hash_file(),
+  # producing a new derivation hash and triggering a full rebuild.  On a
+  # bistable (non-deterministic) Rust build that second build can produce a
+  # different binary, causing the packaging step to fail.
+  if [ -L "$OUT_LINK" ] && [ -x "$(readlink -f "$OUT_LINK")/bin/cosmian_kms" ]; then
+    REAL_SERVER=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
+    BIN_OUT="$REAL_SERVER/bin/cosmian_kms"
+    echo "Reusing/built server OK: binary present (UI handled separately)"
+    return 0
+  fi
+
+  # First build for this variant/link in the current step: run nix-build to
+  # validate vendor hash files (server.vendor.*.sha256, cli.vendor.*.sha256).
   nix-build -I "nixpkgs=${PIN_URL}" --option substituters "" "$REPO_ROOT/default.nix" -A "$attr" -o "$OUT_LINK"
   REAL_SERVER=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
 
@@ -645,7 +660,7 @@ resolve_openssl_path() {
 
 # 2.5) Ensure modern rust toolchain (Cargo 1.90) from Nix is on PATH to avoid rustup downloads
 ensure_modern_rust() {
-  local link="$REPO_ROOT/result-rust-1_91"
+  local link="$REPO_ROOT/result-rust-1_97"
   if [ -L "$link" ] && [ -x "$link/bin/cargo" ] && [ -x "$link/bin/rustc" ]; then
     :
   else

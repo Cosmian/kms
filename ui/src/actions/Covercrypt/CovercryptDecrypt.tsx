@@ -16,7 +16,7 @@ interface CCDecryptFormData {
 
 const CCDecryptForm: React.FC = () => {
     const [form] = Form.useForm<CCDecryptFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: CCDecryptFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -27,7 +27,7 @@ const CCDecryptForm: React.FC = () => {
 
             const request = decrypt_cc_ttlv_request(id, values.inputFile, values.authenticationData);
 
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await parse_decrypt_ttlv_response(result_str);
                 const data = new Uint8Array(response.Data);

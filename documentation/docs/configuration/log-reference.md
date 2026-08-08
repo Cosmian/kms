@@ -1,6 +1,6 @@
 # Log Call-Site Directory
 
-This page lists every production log call-site across all Cosmian KMS components,
+This page lists every production log call-site across all Eviden KMS components,
 grouped by domain and crate.
 
 It is not listed in the navigation menu but is accessible via
@@ -123,7 +123,6 @@ Crate path: `crate/server`
 | `info` | `Socket server listening on {}` | `src/socket_server.rs` | - | - |
 | `info` | `Socket server shutting down due to stop request` | `src/socket_server.rs` | - | - |
 | `info` | `Socket server stop signal sent` | `src/socket_server.rs` | - | - |
-| `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
 | `info` | `Starting the HTTPS KMS server...` | `src/start_kms_server.rs` | - | - |
 | `info` | `Windows service received Stop signal, shutting down...` | `src/windows_service.rs` | - | - |
 | `info` | `Windows service reporting Running to SCM` | `src/windows_service.rs` | - | - |
@@ -246,7 +245,6 @@ Crate path: `crate/server`
 | `debug` | `socket server: received request: {}` | `src/socket_server.rs` | - | - |
 | `debug` | `success` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `The wrapping key {wrapping_key_uid} is itself wrapped, unwrapping it first` | `src/core/wrapping/wrap.rs` | `wrapping_key_uid`: UID of the wrapping key | - |
-| `debug` | `TLS Authentication enabled` | `src/middlewares/tls_auth.rs` | - | - |
 | `debug` | `tls_config: {config:#?}` | `src/config/params/tls_params.rs` | `config`: configuration (debug display) | - |
 | `debug` | `Token authentication successful` | `src/middlewares/api_token/api_token_auth.rs` | - | - |
 | `debug` | `unwrap key` | `src/routes/google_cse/operations.rs` | - | ×2 in this file |
@@ -505,7 +503,6 @@ Crate path: `crate/server`
 | `debug` | `DeriveKey: No derivation data provided - this may be acceptable if a Secret Data              object identifier is provided` | `src/core/operations/derive_key.rs` | — | — |
 | `debug` | `Import: certificate is revoked per CRL check,                              setting state to Compromised` | `src/core/operations/import.rs` | — | — |
 | `debug` | `JWT: An authenticated user was found; there is no need to authenticate                      twice...` | `src/middlewares/jwt/jwt_middleware.rs` | — | — |
-| `debug` | `JWT: An authenticated user was found; there is no need to authenticate                      twice...` | `src/middlewares/tls_auth.rs` | — | — |
 | `debug` | `Request bytes: {}` | `src/routes/kmip.rs` | — | — |
 | `debug` | `Request TTLV: {ttlv:#?}` | `src/routes/kmip.rs` | `ttlv` | — |
 | `debug` | `Response Message Bytes: {}` | `src/routes/kmip.rs` | — | — |
@@ -552,7 +549,7 @@ Crate path: `crate/server`
 | `trace` | `SetAttribute: writing CKA_LABEL '{}' on HSM key '{}'` | `src/core/operations/attributes/set.rs` | - | - |
 | `trace` | `SetAttribute: writing CKA_START_DATE={} CKA_END_DATE={} on HSM key '{}'` | `src/core/operations/attributes/set.rs` | - | - |
 | `trace` | `walk_keyset_chain: keyset '{}' has {} keys in chain` | `src/core/uid_utils.rs` | - | - |
-| `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral              session key. Sessions will be invalidated on server restart and are not              portable across instances. For persistent sessions and load-balanced              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong              random secret value. `` | `src/start_kms_server.rs` | - | - |
+| `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral              session key. Sessions will be invalidated on server restart and are not              portable across instances. For persistent sessions and load-balanced              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong              random secret value. `` | `src/start_kms_server.rs` | - | Emitted at session-key derivation time when `ui_session_salt` is absent. The ephemeral key means all browser sessions are lost on restart. Set `ui_session_salt` (or env `KMS_UI_SESSION_SALT`) to a stable 32-byte+ secret for production. |
 | `trace` | `` Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `jwk` | - |
 | `trace` | `` Ignoring invalid JWK in JWKS at `{jwks_uri}`: {e}: {v:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `e`, `v` | - |
 | `trace` | `` PKCS#11 `C_CloseSession` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
@@ -624,6 +621,57 @@ Crate path: `crate/server`
 | `warn` | `JOSE CEK cache: unexpected object type for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `JOSE CEK cache hit for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `JOSE CEK cached for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
+| `debug` | `TLS: an authenticated user was already present; skipping certificate check` | `src/middlewares/tls_auth.rs` | - | - |
+| `warn` | `OIDC: discovery document at {discovery_url} is missing required fields` | `src/start_kms_server.rs` | `discovery_url` | - |
+| `warn` | `OIDC: failed to build HTTP client for discovery: {e}` | `src/start_kms_server.rs` | `e` | - |
+| `warn` | `OIDC: failed to build JwksManager for UI OIDC: {e}` | `src/start_kms_server.rs` | `e` | - |
+| `warn` | `OIDC: failed to fetch discovery document from {discovery_url}: {e}` | `src/start_kms_server.rs` | `discovery_url`, `e` | - |
+| `warn` | `OIDC: failed to parse discovery document from {discovery_url}: {e}` | `src/start_kms_server.rs` | `discovery_url`, `e` | - |
+| `warn` | `Session: failed to read user_id from session: {e:?}` | `src/middlewares/session_auth.rs` | `e` | - |
+| `info` | `OIDC: discovered endpoints from {discovery_url}` | `src/start_kms_server.rs` | `discovery_url` | - |
+| `debug` | `OIDC: authorization_endpoint={authorization_endpoint}` | `src/start_kms_server.rs` | `authorization_endpoint` | - |
+| `debug` | `OIDC: jwks_uri={jwks_uri}` | `src/start_kms_server.rs` | `jwks_uri` | - |
+| `debug` | `OIDC: token_endpoint={token_endpoint}` | `src/start_kms_server.rs` | `token_endpoint` | - |
+| `debug` | `Session: authenticated user '{user_id}'` | `src/middlewares/session_auth.rs` | `user_id` | - |
+| `debug` | `Session: request already authenticated, skipping` | `src/middlewares/session_auth.rs` | - | - |
+| `trace` | `Session Authentication...` | `src/middlewares/session_auth.rs` | - | - |
+| `trace` | `Session: no user_id in session, passing through` | `src/middlewares/session_auth.rs` | - | - |
+| `warn` | `vault_api_enabled = true but vault_auth_verifier_url is not set —                      Vault-compatible API will NOT be registered.                      Set vault_auth_verifier_url in the server config.` | `src/start_kms_server.rs` | - | - |
+| `debug` | `vault pki sign-intermediate: requested_validity_days={days} (from ttl='{ttl_str}')` | `src/routes/spire/pki.rs` | `days`, `ttl_str` | - |
+| `debug` | `vault pki: signed intermediate certificate uid={cert_uid}` | `src/routes/spire/pki.rs` | `cert_uid` | - |
+| `debug` | `vault pki: using CA private key uid={ca_private_key_uid}` | `src/routes/spire/pki.rs` | `ca_private_key_uid` | - |
+| `debug` | `vault transit: created EC key '{name}' type={}` | `src/routes/spire/transit.rs` | `name` | - |
+| `debug` | `vault transit: created ML-DSA-65 key '{name}'` | `src/routes/spire/transit.rs` | `name` | - |
+| `debug` | `vault transit: created RSA key '{name}' bits={bits}` | `src/routes/spire/transit.rs` | `name`, `bits` | - |
+| `debug` | `vault transit: deleted key '{name}'` | `src/routes/spire/transit.rs` | `name` | - |
+| `trace` | `POST vault transit keys/{}/config (no-op)` | `src/routes/spire/transit.rs` | - | - |
+| `trace` | `POST/PUT vault pki root/sign-intermediate` | `src/routes/spire/pki.rs` | - | - |
+| `warn` | `vault auth proxy: auth-verifier unreachable: {e}` | `src/routes/spire/auth_proxy.rs` | `e`: reqwest error detail | Raised when KMS cannot reach auth-verifier to forward a `/v1/auth/*` request; SPIRE will fail to authenticate |
+| `warn` | `SPIRE API internal error: {m}` | `src/routes/spire/error.rs` | `m` | - |
+| `debug` | `SPIRE auth proxy → {target}` | `src/routes/spire/auth_proxy.rs` | `target` | - |
+| `warn` | `SPIRE auth proxy: rejected path traversal attempt: {path}` | `src/routes/spire/auth_proxy.rs` | `path` — the offending request path (with `/v1` stripped) that contained a `.`/`..` segment | Security: emitted when the unauthenticated `/v1/auth/*` proxy blocks a path-traversal attempt (HTTP 400). Repeated occurrences may indicate probing of internal auth-verifier endpoints. |
+| `trace` | `{} vault transit keys/{name} type={}` | `src/routes/spire/transit.rs` | `name` | - |
+| `trace` | `{} vault transit sign/{name}/{hash_alg_path}` | `src/routes/spire/transit.rs` | `name`, `hash_alg_path` | - |
+| `warn` | `vault auth proxy: failed to read auth-verifier response body: {e}` | `src/routes/spire/auth_proxy.rs` | `e` | - |
+| `info` | `Vault-compatible API enabled: transit at {transit_scope_path}, PKI at {pki_scope_path}, auth proxy at /v1/auth` | `src/start_kms_server.rs` | `transit_scope_path`, `pki_scope_path` | - |
+| `warn` | `{log_prefix}: validation failed: {e}; rejecting request` | `src/middlewares/spire_token.rs` | `log_prefix`, `e` | - |
+| `debug` | `{log_prefix}: non-ASCII X-Vault-Token header; rejecting` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `debug` | `{log_prefix}: validated entity={}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `trace` | `{log_prefix}: missing X-Vault-Token header` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `trace` | `{log_prefix}: no X-Vault-Token; deferring to native auth` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `debug` | `AuthVerifier Middleware: an authenticated user was already found; skipping.` | `src/middlewares/auth_verifier/middleware.rs` | - | - |
+| `debug` | `` AuthVerifier Middleware: authenticated user `{}` `` | `src/middlewares/auth_verifier/middleware.rs` | - | - |
+| `debug` | `AuthVerifier Middleware: authentication failed: {e:?}` | `src/middlewares/auth_verifier/middleware.rs` | `e` | - |
+| `error` | `SECURITY: KMS compiled with 'insecure' feature — ALL JWT and Auth Verifier signature              validation is DISABLED. Any syntactically valid token is accepted without signature              verification. This binary MUST NOT be used in production.` | `src/start_kms_server.rs` | - | Emitted at startup when the `insecure` Cargo feature is enabled. This disables all JWT signature verification. **Never ship this binary to production.** |
+| `warn` | `SECURITY: auth_verifier_accept_invalid_certs is TRUE — TLS certificate verification              is DISABLED for Auth Verifier JWKS fetches. Only use in dev/test environments.` | `src/start_kms_server.rs` | - | Emitted when `auth_verifier_accept_invalid_certs = true`. Disables TLS cert verification for Auth Verifier JWKS fetches. Dev/test only; set to `false` (default) in production. |
+| `warn` | `SECURITY: vault_api_enabled is true but rate_limit_per_second is not set. The              unauthenticated auth proxy at /v1/auth/* can be used as a DoS amplifier. Set              rate_limit_per_second in the server config for production deployments.` | `src/start_kms_server.rs` | - | Emitted when Vault API proxy is enabled without a rate limit. The unauthenticated `/v1/auth/*` endpoint can be DoS-amplified. Set `rate_limit_per_second` in `[server]` config. |
+| `warn` | `SECURITY: vault_auth_verifier_accept_invalid_certs is TRUE — TLS certificate              verification is DISABLED for Vault auth-verifier connections. Only use in dev/test.` | `src/start_kms_server.rs` | - | Emitted when `vault_auth_verifier_accept_invalid_certs = true`. Disables TLS cert verification for Vault auth-verifier connections. Dev/test only; set to `false` (default) in production. |
+| `warn` | `UI is enabled but ui_session_salt is not set. A random salt will be generated                  per process, which invalidates existing sessions on restart. Set a persistent                  salt for production use.` | `src/start_kms_server.rs` | - | Emitted when the web UI is enabled but `ui_session_salt` (or `KMS_UI_SESSION_SALT`) is not configured. Sessions will not survive server restarts. Set a stable secret value for production. |
+| `trace` | `force_refresh: cooldown active, skipping` | `src/middlewares/jwt/jwks.rs` | - | JWKS cache force-refresh was requested but the cooldown window has not elapsed; the refresh is skipped to prevent DoS via repeated JWKS fetches. |
+| `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
+| `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
+| `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
+| `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -740,7 +788,6 @@ Crate path: `crate/kmip`
 | ------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------- | --------------- |
 | `warn`  | `Custom attribute name does not start with 'x-' or 'y-': {}`                                                              | `src/kmip_1_4/kmip_attributes.rs`                                  | -                                                  | -               |
 | `warn`  | `Failed to deserialize KMIP 2.1 attribute: {}`                                                                            | `src/kmip_1_4/kmip_attributes.rs`                                  | -                                                  | -               |
-| `warn`  | `KMIP 1.4 Lease Time ({v}) exceeds i32::MAX; clamping to {}`                                                              | `src/kmip_1_4/kmip_attributes.rs`                                  | `v`: parsed value                                  | ×2 in this file |
 | `warn`  | `KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}`                                                            | `src/kmip_1_4/kmip_attributes.rs`                                  | `attribute`: KMIP attribute (debug display)        | ×9 in this file |
 | `warn`  | `Unexpected value type for y-unsupported-2_1-attribute: {:?}`                                                             | `src/kmip_1_4/kmip_attributes.rs`                                  | -                                                  | -               |
 | `debug` | `[serialize] writing tag: {}`                                                                                             | `src/ttlv/wire/ttlv_bytes_serializer.rs`                           | -                                                  | -               |
@@ -1022,6 +1069,7 @@ Crate path: `crate/clients/client`
 | `debug` | `CONNECT tunnel: {proxy_addr} → {target_host}:{target_port}` | `src/http_client/proxy.rs` | `proxy_addr`, `target_host`, `target_port` | — |
 | `trace` | `Error response on {endpoint}: status={status}, body={text}` | `src/kms_rest_client.rs` | `endpoint`, `status`, `text` | — |
 | `warn` | `` ckms config: `{}` is deprecated — rename it to `{}` in your                          ckms.toml to silence this warning. `` | `src/http_client/client.rs` | - | - |
+| `debug` | `Stale connection from pool, retrying (is_connect): {e}` | `src/http_client/client.rs` | `e` | - |
 
 ---
 
@@ -1174,7 +1222,8 @@ Crate path: `crate/clients/pkcs11/module`
 | `debug` | `C_GenerateKey: session: {hSession:?}, pMechanism: {pMechanism:?}, pTemplate:              {pTemplate:?}, ulCount: {ulCount:?}, phKey: {phKey:?}` | `src/pkcs11.rs` | `hSession`, `pMechanism`, `pTemplate`, `ulCount`, `phKey` | — |
 | `debug` | `load_find_context_by_class: loading for class: {search_class:?} and options:              {search_options:?}, attributes: {attributes:?}` | `src/sessions.rs` | `search_class`, `search_options`, `attributes` | — |
 | `debug` | `load_find_context_by_class: search by id: {} -> handle:                                          {} -> certificate: {}:{}` | `src/sessions.rs` | — | — |
-| `debug` | `load_find_context_by_class: search by id: {} -> handle: {} -> object:                          {}:{}` | `src/sessions.rs` | — | — |
+| `warn` | `load_find_context_by_class: no {search_class:?} object found for id                              {id}` | `src/sessions.rs` | `search_class`, `id` | - |
+| `debug` | `load_find_context_by_class: search by id: {} -> handle: {} ->                              object: {}:{}` | `src/sessions.rs` | - | - |
 
 ---
 
@@ -1281,6 +1330,9 @@ Crate path: `ui/src/`
 | `debug` | `ECVerify: dataBuf len`                                  | `actions/EC/ECVerify.tsx`                         | —                                                             | —               |
 | `debug` | `RsaSign: signature length`                              | `actions/RSA/RsaSign.tsx`                         | —                                                             | —               |
 | `debug` | `RsaVerify: dataBuf len`                                 | `actions/RSA/RsaVerify.tsx`                       | —                                                             | —               |
-| `error` | `JWT fallback failed:`                                   | `App.tsx`                                         | -                                                             | -               |
+| `error` | `Session fallback failed:` | `App.tsx` | - | - |
+| `error` | `Auth Verifier login failed:` | `pages/LoginPage.tsx` | - | - |
 
 ---
+
+<script src="../javascripts/log_filter.js"></script>

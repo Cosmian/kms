@@ -1,17 +1,17 @@
 # Contributing to Cosmian KMS
 
 - [Contributing to Cosmian KMS](#contributing-to-cosmian-kms)
-  - [Issues](#issues)
-    - [Reporting an Issue](#reporting-an-issue)
-    - [Issue Lifecycle](#issue-lifecycle)
-  - [Pull Requests](#pull-requests)
-    - [Changelog Entries](#changelog-entries)
-  - [Contributing to the UI](#contributing-to-the-ui)
-  - [Setting up Rust to work on Cosmian KMS](#setting-up-rust-to-work-on-cosmian-kms)
-  - [Testing](#testing)
-  - [Contributor License Agreement](#contributor-license-agreement)
-  - [Code of Conduct](#code-of-conduct)
-  - [Getting Help](#getting-help)
+    - [Issues](#issues)
+        - [Reporting an Issue](#reporting-an-issue)
+        - [Issue Lifecycle](#issue-lifecycle)
+    - [Pull Requests](#pull-requests)
+        - [Changelog Entries](#changelog-entries)
+    - [Contributing to the UI](#contributing-to-the-ui)
+    - [Setting up Rust to work on Cosmian KMS](#setting-up-rust-to-work-on-cosmian-kms)
+    - [Testing](#testing)
+    - [Contributor License Agreement](#contributor-license-agreement)
+    - [Code of Conduct](#code-of-conduct)
+    - [Getting Help](#getting-help)
 
 ---
 
@@ -111,8 +111,8 @@ All three test layers must pass before merging (E2E Playwright, Vitest integrati
 If you have never worked with Rust before, you will have to complete the following steps:
 
 1. Install Rust using [rustup](https://rustup.rs/)
-2. Install the required stable toolchain: `rustup toolchain install 1.91.0`
-3. Install required components: `rustup component add rustfmt clippy --toolchain 1.91.0`
+2. Install the required stable toolchain: `rustup toolchain install 1.97.0`
+3. Install required components: `rustup component add rustfmt clippy --toolchain 1.97.0`
 4. Build the project: `cargo build --release`
 
 For build commands and local setup, see [Quick start](README.md#-quick-start) in the README. For Nix-based

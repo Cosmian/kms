@@ -8,6 +8,7 @@ import { smokeRender } from "../test-utils";
 test("renders AccessObtained", () => {
     smokeRender(React.createElement(AccessObtained));
     expect(screen.getByRole("heading", { name: "Access rights obtained" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
+    // Button may be in loading state since fetch starts immediately on mount
+    expect(screen.getByRole("button", { name: /Refresh/ })).toBeInTheDocument();
     expect(screen.getByText("Create access right")).toBeInTheDocument();
 });

@@ -1,5 +1,5 @@
 ---
-name: Packaging
+name: Nightly Packaging
 
 # Triggered nightly (schedule), manually, on tag pushes, or on push to
 # develop/main.  Bot commits from nix-update-hashes.yml carry [skip ci] so
@@ -44,4 +44,4 @@ jobs:
     uses: ./.github/workflows/packaging.yml
     secrets: inherit
     with:
-      toolchain: 1.91.0
+      toolchain: 1.97.0

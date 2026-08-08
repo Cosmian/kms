@@ -56,14 +56,14 @@ const HsmStatus: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [instances, setInstances] = useState<HsmInstanceStatus[]>([]);
     const [error, setError] = useState<string | undefined>(undefined);
-    const { idToken, serverUrl } = useAuth();
+    const { serverUrl } = useAuth();
 
     const fetchHsmStatus = useCallback(async () => {
         setIsLoading(true);
         setError(undefined);
         setInstances([]);
         try {
-            const response = (await getNoTTLVRequest("/hsm/status", idToken, serverUrl)) as HsmInstanceStatus[];
+            const response = (await getNoTTLVRequest("/hsm/status", serverUrl)) as HsmInstanceStatus[];
             setInstances(response);
         } catch (e) {
             setError(`Error fetching HSM status: ${e}`);
@@ -71,7 +71,7 @@ const HsmStatus: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [idToken, serverUrl]);
+    }, [serverUrl]);
 
     useEffect(() => {
         fetchHsmStatus();

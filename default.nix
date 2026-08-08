@@ -74,12 +74,12 @@ let
     url = "https://package.cosmian.com/nixpkgs/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
     sha256 = "sha256-CqCX4JG7UiHvkrBTpYC3wcEurvbtTADLbo3Ns2CEoL8=";
   };
-  # Bring a modern Rust toolchain (1.91.0) via oxalica/rust-overlay for Cargo edition2024 support
+  # Bring a modern Rust toolchain (1.97.0) via oxalica/rust-overlay for Cargo edition2024 support
   rustOverlay = import (
     builtins.fetchTarball {
       # Mirrored on package.cosmian.com to avoid transient GitHub curl failures on macOS CI runners.
-      url = "https://package.cosmian.com/nixpkgs/rust-overlay-23dd7fa91602a68bd04847ac41bc10af1e6e2fd2.tar.gz";
-      sha256 = "sha256-KvmjUeA7uODwzbcQoN/B8DCZIbhT/Q/uErF1BBMcYnw=";
+      url = "https://package.cosmian.com/nixpkgs/rust-overlay-e598b37857b895b81020a65a802ef55f5bbed72f.tar.gz";
+      sha256 = "sha256-KlepQu/O5m11lAjcJ4ER5bc6bIzyX2UMPDARzMzQfIw=";
     }
   );
   pkgsWithRust = import nixpkgsSrc {
@@ -87,7 +87,7 @@ let
     config.allowUnfree = true;
   };
   # Use minimal Rust profile (no docs) and add only needed components to save disk space
-  rustToolchain = pkgsWithRust.rust-bin.stable."1.91.0".minimal.override {
+  rustToolchain = pkgsWithRust.rust-bin.stable."1.97.0".minimal.override {
     extensions = [
       "rustfmt"
       "clippy"
@@ -96,7 +96,7 @@ let
   };
 
   # For Linux, pin nixpkgs 22.05 (glibc 2.34) to get its stdenv while using a modern
-  # Rust toolchain (1.91.0) from rust-overlay. Rocky Linux 9 compatibility requires GLIBC <= 2.34.
+  # Rust toolchain (1.97.0) from rust-overlay. Rocky Linux 9 compatibility requires GLIBC <= 2.34.
   # Hardcoded URL+hash for full determinism — override via `--arg pkgs234 ...` if needed.
   pkgs234 =
     if pkgs.stdenv.isLinux then
@@ -189,7 +189,7 @@ let
       hash = "sha256-DgCpOT5mN/E/eIRKAonzbjwEWjXv2qCa68O1CacZfjk=";
     };
     # Pinned cargo vendor hash for reproducible builds
-    cargoSha256 = "sha256-mUsoPBgv60Eir/uIK+Xe+GmXdSFKXoopB4PlvFvHZuA=";
+    cargoSha256 = "sha256-AK0RUnbkArn/mU3osZm4+bIynS6UMTOVCCEZviJ1RH0=";
     nativeBuildInputs = [
       rustToolchain
       pkgs.pkg-config
@@ -346,6 +346,40 @@ let
     opensslDrv = openssl36-static;
   };
 
+  # Kubernetes in-cluster binary derivations (operator + CSI provider).
+  # These are thin HTTP/gRPC clients with no own crypto → single (non-FIPS) variant.
+  k8s-binaries = pkgs.callPackage ./nix/k8s-binaries.nix {
+    rustPlatform = rustPlatform190_228;
+    version = kmsVersion;
+    features = [ ];
+    static = true;
+    openssl36 = openssl36-static-228;
+    openssl312 = openssl312-static-228;
+  };
+
+  k8s-operator-bin = k8s-binaries.operator;
+  k8s-csi-provider-bin = k8s-binaries.csiProvider;
+
+  # Plugin binary derivation (deb/rpm target; runs on Kubernetes control-plane node).
+  k8s-plugin-bin = pkgs.callPackage ./nix/k8s-plugin.nix {
+    rustPlatform = rustPlatform190_228;
+    version = kmsVersion;
+    features = [ ];
+    static = true;
+    openssl36 = openssl36-static-228;
+    openssl312 = openssl312-static-228;
+  };
+
+  # Docker images for in-cluster Kubernetes components.
+  k8s-images = pkgs.callPackage ./nix/k8s-images.nix {
+    operatorDrv = k8s-operator-bin;
+    csiProviderDrv = k8s-csi-provider-bin;
+    version = kmsVersion;
+  };
+
+  k8s-operator-image = k8s-images.operatorImage;
+  k8s-csi-provider-image = k8s-images.csiProviderImage;
+
 in
 rec {
   # Binary packages (can be installed with nix-env)
@@ -369,6 +403,15 @@ rec {
     docker-image-non-fips
     ;
 
+  # Kubernetes in-cluster Docker images
+  inherit
+    k8s-operator-image
+    k8s-csi-provider-image
+    ;
+
+  # Kubernetes plugin binary (for deb/rpm packaging)
+  inherit k8s-plugin-bin k8s-operator-bin k8s-csi-provider-bin;
+
   # Export OpenSSL 3.1.2 FIPS derivations for tooling (packaging script)
   inherit openssl312 openssl312-static openssl312-dynamic;
 
@@ -378,7 +421,7 @@ rec {
   # Export cargo-packager and cargo-generate-rpm tools for scripts and dev shell
   inherit cargoPackagerTool cargoGenerateRpmTool;
 
-  # Export the pinned Rust toolchain (1.91.0) so scripts can use a modern Cargo (edition2024)
+  # Export the pinned Rust toolchain (1.97.0) so scripts can use a modern Cargo (edition2024)
   inherit rustToolchain;
 
   # Default to FIPS variant

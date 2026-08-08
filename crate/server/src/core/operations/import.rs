@@ -229,6 +229,11 @@ pub(super) async fn process_symmetric_key(
     if let Ok(object_attributes) = object.key_block()?.attributes() {
         attributes.merge(object_attributes, false);
     }
+    // On registration, the server SHALL create the AlwaysSensitive attribute
+    // (KMIP 2.1 §4.3) when the client did not provide one.
+    if attributes.always_sensitive.is_none() {
+        attributes.initialize_always_sensitive();
+    }
     // make sure we have a CryptographicAlgorithm set; default to AES
     if attributes.cryptographic_algorithm.is_none() {
         attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::AES);
@@ -400,9 +405,10 @@ pub(super) async fn process_public_key(
     if let Ok(object_attributes) = object.attributes() {
         attributes.merge(object_attributes, false);
     }
-    // If AlwaysSensitive not explicitly set, default it to Sensitive value at creation time
+    // If AlwaysSensitive not explicitly set, the server SHALL create it from the
+    // Sensitive value at registration time (KMIP 2.1 §4.3).
     if attributes.always_sensitive.is_none() {
-        attributes.always_sensitive = attributes.sensitive;
+        attributes.initialize_always_sensitive();
     }
 
     // If the key is not wrapped and not a Covercrypt Key, try to parse it as an OpenSSL object and
@@ -581,6 +587,12 @@ pub(super) async fn process_private_key(
     // Ensure InitialDate is set for imported private keys
     if attributes.initial_date.is_none() {
         attributes.initial_date = Some(time_normalize()?);
+    }
+
+    // On registration, the server SHALL create the AlwaysSensitive attribute
+    // (KMIP 2.1 §4.3) when the client did not provide one.
+    if attributes.always_sensitive.is_none() {
+        attributes.initialize_always_sensitive();
     }
 
     // Replace updated attributes in the object structure if the object is not wrapped.
@@ -1011,6 +1023,12 @@ pub(super) async fn process_secret_data(
     // Ensure InitialDate is set for imported secret data
     if attributes.initial_date.is_none() {
         attributes.initial_date = Some(time_normalize()?);
+    }
+
+    // On registration, the server SHALL create the AlwaysSensitive attribute
+    // (KMIP 2.1 §4.3) when the client did not provide one.
+    if attributes.always_sensitive.is_none() {
+        attributes.initialize_always_sensitive();
     }
 
     // force the usage mask to unrestricted if not in FIPS mode

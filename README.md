@@ -1,10 +1,10 @@
 # Cosmian KMS
 
-[![CI](https://img.shields.io/github/actions/workflow/status/Cosmian/kms/main.yml?branch=develop&label=CI&logo=github)](https://github.com/Cosmian/kms/actions/workflows/main.yml) [![Tests](https://img.shields.io/github/actions/workflow/status/Cosmian/kms/pr.yml?branch=develop&label=Packaging&logo=github)](https://github.com/Cosmian/kms/actions/workflows/pr.yml) [![Release](https://img.shields.io/github/v/release/Cosmian/kms)](https://github.com/Cosmian/kms/releases) [![Docs](https://img.shields.io/badge/Docs-cosmian.com-0A84FF?logo=readthedocs&logoColor=white)](https://docs.cosmian.com/key_management_system/) [![Container](https://img.shields.io/badge/ghcr.io%2Fcosmian%2Fkms-Image-2496ED?logo=docker&logoColor=white)](https://github.com/Cosmian/kms/pkgs/container/kms) [![Security](https://img.shields.io/badge/Security-Policy-0A84FF?logo=github&logoColor=white)](SECURITY.md) [![License](https://img.shields.io/badge/License-BSL%201.1-blue)](LICENSE) [![FIPS](https://img.shields.io/badge/FIPS%20140--3-Mode-blue)](./documentation/docs/fips.md)
+[![CI](https://img.shields.io/github/actions/workflow/status/Cosmian/kms/main.yml?branch=develop&label=CI&logo=github)](https://github.com/Cosmian/kms/actions/workflows/main.yml) [![Tests](https://img.shields.io/github/actions/workflow/status/Cosmian/kms/nightly.yml?branch=develop&label=Packaging&logo=github)](https://github.com/Cosmian/kms/actions/workflows/nightly.yml) [![Release](https://img.shields.io/github/v/release/Cosmian/kms)](https://github.com/Cosmian/kms/releases) [![Docs](https://img.shields.io/badge/Docs-cosmian.com-0A84FF?logo=readthedocs&logoColor=white)](https://docs.cosmian.com/key_management_system/) [![Container](https://img.shields.io/badge/ghcr.io%2Fcosmian%2Fkms-Image-2496ED?logo=docker&logoColor=white)](https://github.com/Cosmian/kms/pkgs/container/kms) [![Security](https://img.shields.io/badge/Security-Policy-0A84FF?logo=github&logoColor=white)](SECURITY.md) [![License](https://img.shields.io/badge/License-BSL%201.1-blue)](LICENSE) [![FIPS](https://img.shields.io/badge/FIPS%20140--3-Mode-blue)](./documentation/docs/certifications_and_compliance/fips.md)
 
 > **Note**: Cosmian has become part of [Eviden](https://eviden.com/). The Cosmian KMS is now the **Eviden KMS**.
 
-The **Cosmian KMS** is a high-performance, source-available [FIPS 140-3 compliant](./documentation/docs/fips.md) server application written in [Rust](https://www.rust-lang.org/).
+The **Cosmian KMS** is a high-performance, source-available [FIPS 140-3 compliant](./documentation/docs/certifications_and_compliance/fips.md) server application written in [Rust](https://www.rust-lang.org/).
 
 Online [documentation](https://docs.cosmian.com/key_management_system/).
 
@@ -19,10 +19,11 @@ The **Cosmian KMS** presents some unique features, such as:
 - **Disk encryption**: [Veracrypt](./documentation/docs/integrations/disk_encryption/veracrypt.md), [LUKS](./documentation/docs/integrations/disk_encryption/luks.md), and [Cryhod](./documentation/docs/integrations/disk_encryption/cryhod.md).
 - **Big Data**: [Snowflake Native App](./documentation/docs/integrations/big_data/snowflake_native_app/index.md) and [PySpark/Databricks Python UDF](./documentation/docs/integrations/big_data/user_defined_function_for_pyspark_databricks_in_python/index.md) for large-scale data encryption.
 - **Storage integrations**: [VMware vCenter Trust Key Provider](./documentation/docs/integrations/storage/vcenter.md), [Synology DSM](./documentation/docs/integrations/storage/synology_dsm.md), [VAST Data](./documentation/docs/integrations/storage/vast_data.md), and [Veeam Backup & Replication](./documentation/docs/integrations/storage/veeam.md).
-- **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [S/MIME email encryption](./documentation/docs/integrations/smime.md), and [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md).
+- **Container Orchestration**: [Kubernetes KMS Provider Plugin](./documentation/docs/integrations/kubernetes/index.md) — etcd Secrets encrypted at rest via the KMS v2 API.
+- **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [S/MIME email encryption](./documentation/docs/integrations/smime.md), [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md), and [SPIRE / SPIFFE Zero-Trust M2M](./documentation/docs/integrations/spire_spiffe.md).
 - **Security and standards**: [FIPS 140-3](./documentation/docs/certifications_and_compliance/fips.md), [KMIP 1.0-2.1 binary and JSON TTLV support](./documentation/docs/kmip_support/introduction/index.md), [state-of-the-art authentication mechanisms](./documentation/docs/configuration/authentication.md), and native compatibility with network appliances such as [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md).
 - **HSM support**: [Utimaco, SmartCard-HSM/Nitrokey HSM 2, Proteccio, Crypt2pay, and others](./documentation/docs/hsm_support/introduction/index.md), with KMS keys wrapped by HSMs.
-- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), [OpenTelemetry integration](./documentation/docs/configuration/logging.md), [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/kmip_support/openapi.md) for interactive API exploration, and [scheduled key auto-rotation](./documentation/docs/kmip_support/key_auto_rotation.md).
+- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), [OpenTelemetry integration](./documentation/docs/configuration/logging.md), [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/integrations/openapi.md) for interactive API exploration, and [scheduled key auto-rotation](./documentation/docs/kmip_support/key_rotation/auto_rotation_policy.md).
 
 The **Cosmian KMS** is both a Key Management System and a Public Key Infrastructure. As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic services such as on-the-fly key generation, encryption, and decryption operations.
 
@@ -34,7 +35,7 @@ The **Cosmian KMS** has extensive online [documentation](https://docs.cosmian.co
 
 ## 🚀 Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.25.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.26.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
 
 Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, run the following command:
 
@@ -88,7 +89,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 
 - Performance: built in Rust for low-latency crypto and high throughput.
 - Trust by design: FIPS 140-3 mode by default; non-FIPS for broader algorithm access when needed.
-- Interoperable: full KMIP 1.0–2.1 support, PKCS#11 integrations, rich client tooling, and a built-in [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/kmip_support/openapi.md).
+- Interoperable: full KMIP 1.0–2.1 support, PKCS#11 integrations, rich client tooling, and a built-in [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/integrations/openapi.md).
 - HSM-first: optional HSM key-wrapping and vendor modules (Utimaco, SmartCard-HSM, Proteccio, Crypt2pay…).
 - Cloud-native: official Docker image, simple horizontal scaling, and OpenTelemetry observability.
 - End-to-end: server, CLI, and web UI for a complete developer and operator experience.
@@ -151,7 +152,7 @@ There are three distinct delegation models:
 
 #### Amazon Web Services (AWS)
 
-AWS XKS is a **single proxy API** that AWS KMS calls on behalf of every service — S3, EBS, RDS, DynamoDB, Secrets Manager, etc. all route through the same endpoint. Implementing the [XKS Proxy API](https://github.com/aws/aws-kms-xks-proxy) once gives Cosmian KMS live-proxy coverage for all XKS-capable AWS services with no per-service work.
+AWS XKS is a **single proxy API** that AWS KMS calls on behalf of every service — S3, EBS, RDS, DynamoDB, Secrets Manager, etc. all route through the same endpoint. Implementing the [XKS Proxy API](https://docs.aws.amazon.com/kms/latest/developerguide/xks.html) once gives Cosmian KMS live-proxy coverage for all XKS-capable AWS services with no per-service work.
 
 | Delegation model     | Description                                                                                                                                                                                                                                                                                               | Status |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
@@ -230,6 +231,12 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 | Snowflake              | Native App — column-level encryption ([docs](./documentation/docs/integrations/big_data/snowflake_native_app/index.md))                                            | 2.1          | ✅      |
 | Big Data / Python UDFs | Bulk encrypt/decrypt for PySpark / Databricks ([docs](./documentation/docs/integrations/big_data/user_defined_function_for_pyspark_databricks_in_python/index.md)) | —            | ✅      |
 
+### ☸️ Container Orchestration
+
+| Product    | Integration                                                                                                           | Status |
+| ---------- | --------------------------------------------------------------------------------------------------------------------- | ------ |
+| Kubernetes | etcd Secrets encryption via KMS v2 provider API ([docs](./documentation/docs/integrations/kubernetes/index.md)) | ✅      |
+
 ### 🔗 Other Integrations
 
 | Product             | Integration                                                                                                    | KMIP Version | Status |
@@ -245,12 +252,12 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 
 <!-- KMIP_SUPPORT_START -->
 <!-- This section is auto-generated from documentation/docs/kmip/support.md by scripts/update_readme_kmip.py. Do not edit manually. -->
-## KMIP support by Cosmian KMS
+## KMIP support by Eviden KMS
 
-This page summarizes the KMIP coverage in Cosmian KMS. The support status is
+This page summarizes the KMIP coverage in Eviden KMS. The support status is
 derived from the actual implementation in `crate/server/src/core/operations`.
 
-**Cosmian KMS Server supports KMIP versions:** 2.1, 2.0, 1.4, 1.3, 1.2, 1.1, 1.0
+**Eviden KMS Server supports KMIP versions:** 2.1, 2.0, 1.4, 1.3, 1.2, 1.1, 1.0
 
 Legend:
 
@@ -330,7 +337,7 @@ The following table shows operation support across all KMIP versions.
 #### Methodology
 
 - Operations marked ✅ are backed by a Rust implementation file under `crate/server/src/core/operations`.
-- Operations marked ❌ are defined in the KMIP specification but not implemented in Cosmian KMS.
+- Operations marked ❌ are defined in the KMIP specification but not implemented in Eviden KMS.
 - Operations marked N/A do not exist in that particular KMIP version.
 - This documentation is auto-generated by analyzing source code and KMIP specifications.
 
@@ -421,81 +428,86 @@ Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
 
 #### Attributes
 
-| Attribute | Current |
-| --------- | ------: |
-| Activation Date                     |       ✅ |
-| Alternative Name                    |       ✅ |
-| Always Sensitive                    |       ✅ |
-| Application Specific Information    |       ✅ |
-| Archive Date                        |       ✅ |
-| Attribute Index                     |       ✅ |
-| Certificate Attributes              |       ✅ |
-| Certificate Length                  |       ✅ |
-| Certificate Type                    |       ✅ |
-| Comment                             |       ✅ |
-| Compromise Date                     |       ✅ |
-| Compromise Occurrence Date          |       ✅ |
-| Contact Information                 |       ✅ |
-| Critical                            |       ✅ |
-| Cryptographic Algorithm             |       ✅ |
-| Cryptographic Domain Parameters     |       ✅ |
-| Cryptographic Length                |       ✅ |
-| Cryptographic Parameters            |       ✅ |
-| Cryptographic Usage Mask            |       ✅ |
-| Deactivation Date                   |       ✅ |
-| Description                         |       ✅ |
-| Destroy Date                        |       ✅ |
-| Digest                              |       ✅ |
-| Digital Signature Algorithm         |       ✅ |
-| Extractable                         |       ✅ |
-| Fresh                               |       ✅ |
-| Initial Date                        |       ✅ |
-| Key Format Type                     |       ✅ |
-| Key Value Location                  |       ✅ |
-| Key Value Present                   |       ✅ |
-| Last Change Date                    |       ✅ |
-| Lease Time                          |       ✅ |
-| Link                                |       ✅ |
-| Name                                |       ✅ |
-| Never Extractable                   |       ✅ |
-| Nist Key Type                       |       ✅ |
-| Object Group                        |       ✅ |
-| Object Group Member                 |       ✅ |
-| Object Type                         |       ✅ |
-| Opaque Data Type                    |       ✅ |
-| Original Creation Date              |       ✅ |
-| PKCS#12 Friendly Name               |       ✅ |
-| Process Start Date                  |       ✅ |
-| Protect Stop Date                   |       ✅ |
-| Protection Level                    |       ✅ |
-| Protection Period                   |       ✅ |
-| Protection Storage Masks            |       ✅ |
-| Quantum Safe                        |       ✅ |
-| Random Number Generator             |       ✅ |
-| Revocation Reason                   |       ✅ |
-| Rotate Automatic                    |       ✅ |
-| Rotate Date                         |       ✅ |
-| Rotate Generation                   |       ✅ |
-| Rotate Interval                     |       ✅ |
-| Rotate Latest                       |       ✅ |
-| Rotate Name                         |       ✅ |
-| Rotate Offset                       |       ✅ |
-| Sensitive                           |       ✅ |
-| Short Unique Identifier             |       ✅ |
-| State                               |       ✅ |
-| Unique Identifier                   |       ✅ |
-| Usage Limits                        |       ✅ |
-| Vendor Attribute                    |       ✅ |
-| X.509 Certificate Identifier        |       ✅ |
-| X.509 Certificate Issuer            |       ✅ |
-| X.509 Certificate Subject           |       ✅ |
+| Attribute                                |  1.0  |  1.1  |  1.2  |  1.3  |  1.4  |  2.0  |  2.1  |
+| ---------------------------------------- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Activation Date                          |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Alternative Name                         |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Always Sensitive                         |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Application Specific Information         |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Archive Date                             |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Attribute Index                          |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |
+| Certificate Attributes                   |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Certificate Length                       |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Certificate Type                         |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Comment                                  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Compromise Date                          |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Compromise Occurrence Date               |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Contact Information                      |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Critical                                 |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |
+| Cryptographic Algorithm                  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Cryptographic Domain Parameters          |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Cryptographic Length                     |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Cryptographic Parameters                 |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Cryptographic Usage Mask                 |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Deactivation Date                        |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Description                              |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Destroy Date                             |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Digest                                   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Digital Signature Algorithm              |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Extractable                              |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Fresh                                    |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Initial Date                             |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Key Format Type                          |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Key Value Location                       |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Key Value Present                        |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Last Change Date                         |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Lease Time                               |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Link                                     |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Name                                     |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Never Extractable                        |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Nist Key Type                            |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Object Group                             |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Object Group Member                      |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |
+| Object Type                              |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Opaque Data Type                         |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Original Creation Date                   |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| PKCS#12 Friendly Name                    |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Process Start Date                       |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Protect Stop Date                        |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Protection Level                         |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Protection Period                        |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Protection Storage Masks                 |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Quantum Safe                             |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Random Number Generator                  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Revocation Reason                        |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Rotate Automatic                         |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Rotate Date                              |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Rotate Generation                        |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Rotate Interval                          |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Rotate Latest                            |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Rotate Name                              |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Rotate Offset                            |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Sensitive                                |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Short Unique Identifier                  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| State                                    |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Unique Identifier                        |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Usage Limits                             |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Vendor Attribute                         |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| X.509 Certificate Identifier             |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| X.509 Certificate Issuer                 |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| X.509 Certificate Subject                |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
 
 Notes:
 
+- ✅ = attribute defined in that KMIP version **and** implemented by this server.
+- ❌ = attribute defined in that KMIP version but **not yet implemented**.
+- N/A = attribute was **not defined** in that KMIP version (protocol gap, not a server limitation).
+- 🔧 = **Cosmian-specific extension** — attribute is absent from all standard KMIP versions.
 - GetAttributes returns a union of metadata attributes and those embedded in KeyBlock structures.
 - "Vendor Attributes" are available via the Cosmian vendor namespace and are accessible via GetAttributes.
-- A ✅ indicates the attribute is used or updated by at least one KMIP operation implementation in `crate/server/src/core/operations`, including attribute handlers (Add/Delete/Set/Get Attribute).
-- Most attributes are present across all KMIP versions with some additions in newer versions.
+- `AlwaysSensitive`, `NeverExtractable`, `Extractable`, and `Sensitive` were introduced in **KMIP 1.4**
+  and must not appear in responses to KMIP 1.0–1.3 clients (the server enforces this automatically).
+- `Rotate*` attributes were introduced in **KMIP 2.1**.
 
 <!-- KMIP_SUPPORT_END -->
 
@@ -571,7 +583,7 @@ flowchart TD
 
 ### 📁 Additional Directories
 
-- **`documentation/`** - Comprehensive project documentation built with MkDocs
+- **`documentation/`** - Comprehensive project documentation built with mdBook
 - **`examples/`** - Code examples and integration samples
 - **`scripts/`** - Build and deployment scripts
 - **`test_data/`** - Test fixtures and sample data

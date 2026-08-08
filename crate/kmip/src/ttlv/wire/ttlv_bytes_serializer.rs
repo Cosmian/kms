@@ -36,6 +36,21 @@ fn write_length<W: Write>(writer: &mut W, length: usize) -> Result<(), TtlvError
     Ok(())
 }
 
+/// Write zero-padding so that a value of length `content_len` is aligned to the
+/// next 8-byte boundary, as required by the KMIP TTLV encoding for `TextString`
+/// and `ByteString` values.
+///
+/// Uses a static zero buffer to avoid the per-call heap allocation that a
+/// `vec![0u8; padding]` would incur on every padded value.
+fn write_padding<W: Write>(writer: &mut W, content_len: usize) -> Result<(), TtlvError> {
+    const ZEROES: [u8; 8] = [0; 8];
+    let padding = (8 - (content_len % 8)) % 8;
+    if let Some(pad) = ZEROES.get(..padding) {
+        writer.write_all(pad)?;
+    }
+    Ok(())
+}
+
 pub struct TTLVBytesSerializer<W> {
     writer: W,
 }
@@ -108,22 +123,14 @@ where
                 write_length(&mut self.writer, utf8_bytes.len())?;
                 self.writer.write_all(utf8_bytes)?;
                 // pad to a multiple of 8 bytes
-                let padding = 8 - (utf8_bytes.len() % 8);
-                if padding != 8 {
-                    let padding_bytes = vec![0_u8; padding];
-                    self.writer.write_all(&padding_bytes)?;
-                }
+                write_padding(&mut self.writer, utf8_bytes.len())?;
             }
             TTLValue::ByteString(value) => {
                 write_type(&mut self.writer, TtlvType::ByteString)?;
                 write_length(&mut self.writer, value.len())?;
                 self.writer.write_all(value)?;
                 // pad to a multiple of 8 bytes
-                let padding = 8 - (value.len() % 8);
-                if padding != 8 {
-                    let padding_bytes = vec![0_u8; padding];
-                    self.writer.write_all(&padding_bytes)?;
-                }
+                write_padding(&mut self.writer, value.len())?;
             }
             TTLValue::DateTime(value) => {
                 write_type(&mut self.writer, TtlvType::DateTime)?;

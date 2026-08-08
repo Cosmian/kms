@@ -41,7 +41,7 @@ Apply this path → rule mapping to the detected file list:
 | `Cargo.lock` or `ui/pnpm-lock.yaml` | **4.11** |
 | `crate/server/src/routes/aws_xks/**` or `azure_ekm/**` or `google_cse/**` or `ms_dke/**` | **4.12**, 4.10 |
 | `crate/hsm/**` | **4.13** |
-| `documentation/**` or `cli_documentation/**` or `README.md` | **4.14** |
+| `documentation/**` or `README.md` | **4.14** |
 | `ui/tests/e2e/**` | **4.16** |
 | `crate/crypto/build.rs` | **4.17** |
 
@@ -190,18 +190,18 @@ Output **only** the sub-rules that were triggered. For each, print the full chec
 
 ### Rule 4.14 — Documentation ⇔ mkdocs ⇔ README
 
-*(triggered by: `documentation/**`, `cli_documentation/**`, `README.md`)*
+*(triggered by: `documentation/**`, `README.md`)*
 
 - [ ] `documentation/docs/` — relevant `.md` page added/updated (run `/docs-writer`)
 - [ ] `documentation/mkdocs.yml` — nav entry added under correct section
 - [ ] `README.md` — brief summary + link added (no full duplication)
-- [ ] `cli_documentation/docs/` — CLI docs regenerated if CLI-visible (see Rule 4.15)
+- [ ] `documentation/docs/kms_clients/` — CLI docs regenerated if CLI-visible (see Rule 4.15)
 
 ### Rule 4.15 — CLI documentation auto-generation
 
 *(triggered by: `crate/clients/ckms/src/**`, `crate/clients/clap/src/**`)*
 
-- [ ] Run: `cargo run --bin ckms -- markdown cli_documentation/docs/cli/main_commands.md`
+- [ ] Run: `cargo run --bin ckms -- markdown documentation/docs/kms_clients/cli/main_commands.md`
 - [ ] Commit the regenerated file (manual edits will be overwritten next time)
 
 ### Rule 4.16 — E2E test documentation

@@ -113,6 +113,29 @@ pub fn ecdsa_verify(
         }
     }
 
+    // For non-P256/K256 EC keys with prehashed data, use raw EcdsaSig::verify
+    // (symmetric to EcdsaSig::sign used in the sign path).  Verifier::new_without_digest
+    // with verify_oneshot still applies the algorithm-default hash, so ECDSA_verify of a
+    // raw digest would fail.  EcdsaSig::verify maps to ECDSA_do_verify and takes the
+    // digest bytes directly without any additional hashing.
+    if is_digested {
+        if let Ok(ec_key) = verification_key.ec_key() {
+            let ecdsa_sig = openssl::ecdsa::EcdsaSig::from_der(signature).map_err(|e| {
+                CryptoError::ConversionError(format!(
+                    "ECDSA prehash verify: invalid DER signature: {e}"
+                ))
+            })?;
+            let is_valid = ecdsa_sig
+                .verify(data, &ec_key)
+                .map_err(|e| CryptoError::Kmip(format!("ECDSA prehash verify failed: {e}")))?;
+            return Ok(if is_valid {
+                ValidityIndicator::Valid
+            } else {
+                ValidityIndicator::Invalid
+            });
+        }
+    }
+
     let mut verifier = if is_digested {
         Verifier::new_without_digest(verification_key)?
     } else {

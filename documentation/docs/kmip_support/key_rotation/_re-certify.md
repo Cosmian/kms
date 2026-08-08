@@ -1,4 +1,6 @@
-#### Specification
+# Re-Certify
+
+## Specification
 
 This request is used to generate a **replacement certificate** for an existing
 X.509 certificate. It is analogous to the Certify operation, except that the
@@ -8,7 +10,7 @@ The server creates a new certificate with a **fresh Unique Identifier**, copies
 the subject public key and the requested validity period from the existing
 certificate, and re-signs it using the specified (or inherited) issuer key.
 
-> **[KMIP 2.1], §6.1.6, "Certify"** — "This request supports the certification
+> **\[KMIP 2.1], §6.1.6, "Certify"** — "This request supports the certification
 > of a new public key, as well as the certification of a public key that has
 > already been certified (i.e., certificate update)."
 >
@@ -31,7 +33,7 @@ certificate, and re-signs it using the specified (or inherited) issuer key.
 6. The old certificate is **not** automatically deactivated — its state remains
    unchanged. Call `Revoke` explicitly to deactivate it when ready.
 
-#### Request Payload
+## Request Payload
 
 | Item                     | Required | Description                                                                                       |
 | ------------------------ | :------: | ------------------------------------------------------------------------------------------------- |
@@ -42,13 +44,13 @@ certificate, and re-signs it using the specified (or inherited) issuer key.
 | `Attributes`             | No       | Desired attributes for the new certificate (e.g., issuer private key ID, issuer certificate ID, number of days). |
 | `ProtectionStorageMasks` | No       | Permissible protection storage mask selections for the new object.                                |
 
-#### Response Payload
+## Response Payload
 
 | Item               | Description                                             |
 | ------------------ | ------------------------------------------------------- |
 | `UniqueIdentifier` | The Unique Identifier of the newly created replacement certificate. |
 
-#### Implementation
+## Implementation
 
 The `ReCertify` operation rotates an X.509 certificate.  It is the certificate
 equivalent of `Re-Key` for symmetric keys and `Re-Key Key Pair` for asymmetric
@@ -73,7 +75,7 @@ ckms certificates certify \
   --number-of-days 365
 ```
 
-### Example — Re-certify a self-signed certificate
+## Example — Re-certify a self-signed certificate
 
 === "Request"
 
@@ -106,7 +108,7 @@ ckms certificates certify \
     }
     ```
 
-### Example — Re-certify with a future activation date (Offset)
+## Example — Re-certify with a future activation date (Offset)
 
 An `Offset` of `86400` (24 h) produces a **Pre-Active** certificate whose
 `Activation Date` is set to `Initial Date + 86400 s`, allowing a zero-downtime
@@ -148,7 +150,7 @@ switchover by pre-staging the replacement before the old one expires.
     }
     ```
 
-### KMIP link chain after re-certification
+## KMIP link chain after re-certification
 
 ```mermaid
 flowchart LR

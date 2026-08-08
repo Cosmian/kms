@@ -23,6 +23,7 @@ use crate::{
         },
     },
     time_utils::time_normalize,
+    ttlv::Interval,
 };
 
 /// The following subsections describe the attributes that are associated with
@@ -247,9 +248,10 @@ pub struct Attributes {
     pub last_change_date: Option<OffsetDateTime>,
 
     /// The Lease Time attribute is the length of time in seconds that the object MAY
-    /// be retained by the client. KMIP Interval type (32-bit signed integer in TTLV).
+    /// be retained by the client. Encoded as the TTLV `Interval` primitive
+    /// (KMIP 2.1 §4.29 Table 88), not as `Integer`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub lease_time: Option<i32>,
+    pub lease_time: Option<Interval>,
 
     /// The Link attribute is a structure used to create a link from one Managed
     /// Cryptographic Object to another, closely related target Managed
@@ -472,6 +474,54 @@ pub struct Attributes {
 }
 
 impl Attributes {
+    /// Initialize the server-managed `AlwaysSensitive` attribute at object
+    /// creation or registration time (KMIP 2.1 §4.3, Table 34).
+    ///
+    /// The server SHALL create this attribute and set it to `True` if the
+    /// `Sensitive` attribute is `True` at creation, otherwise `False`. It
+    /// SHALL always have a value.
+    pub fn initialize_always_sensitive(&mut self) -> &mut Self {
+        self.always_sensitive = Some(self.sensitive == Some(true));
+        self
+    }
+
+    /// Apply a change to the client-modifiable `Sensitive` attribute and
+    /// recompute the server-managed `AlwaysSensitive` attribute accordingly
+    /// (KMIP 2.1 §4.3).
+    ///
+    /// `AlwaysSensitive` is `True` only if `Sensitive` has *always* been
+    /// `True`; it is permanently set to `False` once `Sensitive` has *ever*
+    /// been set to `False`. Consequently, once `AlwaysSensitive` is `False`
+    /// it can never return to `True`, even if `Sensitive` is set back to
+    /// `True`.
+    pub fn apply_sensitive(&mut self, sensitive: bool) -> &mut Self {
+        // Previous AlwaysSensitive value; if absent, seed it from the incoming
+        // Sensitive value so a first assignment behaves like initialization.
+        let previous_always_sensitive = self.always_sensitive.unwrap_or(sensitive);
+        self.sensitive = Some(sensitive);
+        self.always_sensitive = Some(previous_always_sensitive && sensitive);
+        self
+    }
+
+    /// Apply a new `Extractable` value and update `NeverExtractable` accordingly.
+    ///
+    /// `NeverExtractable` is the logical complement of `Extractable`, but with latch
+    /// semantics: once `NeverExtractable` becomes `False` (i.e., the key has been extractable),
+    /// it remains `False` even if `Extractable` is later set back to `False`.
+    ///
+    /// This mirrors the KMIP 2.1 §4.33 / KMIP 1.4 §3.50 specification for the
+    /// Never Extractable attribute.
+    pub fn apply_extractable(&mut self, extractable: bool) -> &mut Self {
+        // Previous NeverExtractable value; if absent, seed it from the complement
+        // of the incoming Extractable value so a first assignment behaves like initialization.
+        let previous_never_extractable = self.never_extractable.unwrap_or(!extractable);
+        self.extractable = Some(extractable);
+        // NeverExtractable latches to False once Extractable has been True.
+        // It can only transition from True to False, never back to True.
+        self.never_extractable = Some(previous_never_extractable && !extractable);
+        self
+    }
+
     /// Add a vendor attribute to the list of vendor attributes.
     pub fn add_vendor_attribute(&mut self, vendor_attribute: VendorAttribute) -> &mut Self {
         if let Some(vas) = &mut self.vendor_attributes {
@@ -1171,7 +1221,7 @@ pub enum Attribute {
 
     /// The Lease Time attribute is the length of time in seconds that the object MAY
     /// be retained by the client. KMIP Interval type (32-bit signed integer in TTLV).
-    LeaseTime(i32),
+    LeaseTime(Interval),
 
     /// The Link attribute is a structure used to create a link from one Managed
     /// Cryptographic Object to another, closely related target Managed
@@ -1441,6 +1491,9 @@ impl From<Attributes> for Vec<Attribute> {
         }
         if let Some(nist_key_type) = attributes.nist_key_type {
             vec.push(Attribute::NistKeyType(nist_key_type));
+        }
+        if let Some(never_extractable) = attributes.never_extractable {
+            vec.push(Attribute::NeverExtractable(never_extractable));
         }
         if let Some(object_group) = attributes.object_group {
             vec.push(Attribute::ObjectGroup(object_group));
