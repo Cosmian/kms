@@ -342,9 +342,10 @@ mod tests {
 
     #[test]
     fn make_success_draft_all_attributes() {
-        use crate::core::audit::make_success_draft;
         use cosmian_kms_access::audit::AuditResult;
         use time::OffsetDateTime;
+
+        use crate::core::audit::make_success_draft;
 
         let ts = OffsetDateTime::now_utc();
 
@@ -378,9 +379,10 @@ mod tests {
 
     #[test]
     fn make_failure_draft_all_attributes() {
-        use crate::core::audit::make_failure_draft;
         use cosmian_kms_access::audit::AuditResult;
         use time::OffsetDateTime;
+
+        use crate::core::audit::make_failure_draft;
 
         let ts = OffsetDateTime::now_utc();
 
