@@ -25,6 +25,7 @@ use cosmian_logger::{debug, error, trace, warn};
 use time::OffsetDateTime;
 use tracing::Instrument;
 
+use super::audit::{inject_audit_request, inject_response_uid};
 use crate::{
     core::{
         KMS,
@@ -33,8 +34,6 @@ use crate::{
     error::KmsError,
     result::KResult,
 };
-
-use super::audit::{inject_audit_request, inject_response_uid};
 
 /// When an Error occurs and generating an Error Response message fails, this message is sent
 /// with "Unknown Error" as the error message
