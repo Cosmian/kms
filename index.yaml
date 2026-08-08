@@ -4,6 +4,44 @@ entries:
   - annotations:
       artifacthub.io/images: |
         - name: kms-fips
+          image: ghcr.io/cosmian/kms-fips:5.26.0
+        - name: kms
+          image: ghcr.io/cosmian/kms:5.26.0
+      artifacthub.io/license: BUSL-1.1
+      artifacthub.io/links: |
+        - name: Source
+          url: https://github.com/Cosmian/kms
+        - name: Documentation
+          url: https://docs.cosmian.com/installation/kubernetes_helm/
+    apiVersion: v2
+    appVersion: 5.26.0
+    created: "2026-08-08T11:23:55.675407832Z"
+    description: A Helm chart for deploying Eviden KMS, a FIPS 140-3 compliant Key
+      Management System, on Kubernetes.
+    digest: 5cf01bc267cff7584c444e1afd497a839d5882848d2ff9c828e9953c2e4beae3
+    home: https://github.com/Cosmian/kms
+    icon: https://raw.githubusercontent.com/Cosmian/kms/develop/documentation/docs/images/cosmian_logo.png
+    keywords:
+    - kms
+    - key-management
+    - kmip
+    - cryptography
+    - fips
+    - cosmian
+    kubeVersion: '>=1.24.0-0'
+    maintainers:
+    - name: Cosmian
+      url: https://cosmian.com
+    name: cosmian-kms
+    sources:
+    - https://github.com/Cosmian/kms
+    type: application
+    urls:
+    - cosmian-kms-5.26.0.tgz
+    version: 5.26.0
+  - annotations:
+      artifacthub.io/images: |
+        - name: kms-fips
           image: ghcr.io/cosmian/kms-fips:5.25.0
         - name: kms
           image: ghcr.io/cosmian/kms:5.25.0
@@ -39,4 +77,4 @@ entries:
     urls:
     - https://github.com/Cosmian/kms/releases/download/cosmian-kms-0.1.0/cosmian-kms-0.1.0.tgz
     version: 0.1.0
-generated: "2026-08-06T06:58:48.713793633Z"
+generated: "2026-08-08T11:23:55.675415506Z"
