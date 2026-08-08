@@ -676,6 +676,9 @@ Crate path: `crate/server`
 | `error` | `AuditFileStore: writer task has stopped, audit event dropped` | `src/core/audit/file_store.rs` | - | Channel closed; `enqueue` silently drops the event |
 | `debug` | `AuditFileStore: resuming at id={next_id}, prev_hash={}` | `src/core/audit/file_store.rs` | `next_id`, `prev_hash` | `prev_hash` is truncated to its first 8 bytes (hex) |
 | `debug` | `AuditFileStore: writer loop exited (channel closed)` | `src/core/audit/file_store.rs` | - | Graceful shutdown complete |
+| `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
+| `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
+| `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
