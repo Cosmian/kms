@@ -449,10 +449,9 @@ mod tests {
         sync::{Arc, atomic::AtomicU64},
     };
 
+    use cosmian_kms_access::audit::{AuditEvent, AuditEventDraft, verify_event};
     use time::OffsetDateTime;
     use tokio::sync::mpsc;
-
-    use cosmian_kms_access::audit::{AuditEvent, AuditEventDraft, verify_event};
 
     use super::{AuditFileStore, AuditSink, WriterMsg, make_success_draft, writer_loop};
 

@@ -3,7 +3,6 @@
 //! These functions peek at the raw TTLV *before* full deserialization and inject
 //! `KmipOperationName`, `KmipObjectUid`, and `KmipAlgorithm` into the Actix
 //! request extensions so the audit middleware can record them after dispatch.
-//!
 
 // Note: Infallibility
 //

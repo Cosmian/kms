@@ -112,8 +112,10 @@ pub fn verify_chain_link(current: &AuditEvent, prev: Option<&AuditEvent>) -> boo
 mod tests {
     use time::OffsetDateTime;
 
-    use super::super::event::{AuditEvent, AuditResult};
-    use super::{canonical_bytes, compute_row_hash, verify_chain_link, verify_event};
+    use super::{
+        super::event::{AuditEvent, AuditResult},
+        canonical_bytes, compute_row_hash, verify_chain_link, verify_event,
+    };
 
     fn make_event(id: i64, prev_hash: [u8; 32], result: AuditResult) -> AuditEvent {
         let mut ev = AuditEvent {

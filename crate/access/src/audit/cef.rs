@@ -147,8 +147,10 @@ fn escape_ext_value(s: &str) -> String {
 mod tests {
     use time::OffsetDateTime;
 
-    use super::super::event::{AuditEvent, AuditResult};
-    use super::{escape_ext_value, escape_header, to_cef_line};
+    use super::{
+        super::event::{AuditEvent, AuditResult},
+        escape_ext_value, escape_header, to_cef_line,
+    };
     use crate::audit::hash::compute_row_hash;
 
     fn make_event(result: AuditResult) -> AuditEvent {

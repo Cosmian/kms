@@ -760,6 +760,33 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_per_user_metric_labels() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.record_kmip_operation("Create", "alice");
+        metrics.record_kmip_operation("Get", "bob");
+        provider.force_flush().expect("flush");
+        let mut labels = user_labels(&exporter, "kms.kmip.operations.per_user.total");
+        labels.sort();
+        assert_eq!(labels, vec!["alice".to_owned(), "bob".to_owned()]);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_per_user_cardinality_overflow() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        // Fill the tracker to the cardinality cap directly, avoiding the cost
+        // of `MAX_TRACKED_CARDINALITY` real `record_kmip_operation` calls.
+        for i in 0..MAX_TRACKED_CARDINALITY {
+            metrics
+                .active_users_tracker
+                .insert(format!("user{i}"), i64::MAX);
+        }
+        metrics.record_kmip_operation("Create", "new_user");
+        provider.force_flush().expect("flush");
+        let labels = user_labels(&exporter, "kms.kmip.operations.per_user.total");
+        assert_eq!(labels, vec![OVERFLOW_USER_LABEL.to_owned()]);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_permission_recording() {
         let (metrics, provider, exporter) = setup_observing_metrics();
         metrics.record_permission_grant("user1", "read");
