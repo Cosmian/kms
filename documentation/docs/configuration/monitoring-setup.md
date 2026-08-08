@@ -30,7 +30,7 @@ unzip cosmian-kms-monitoring.zip
 cd monitoring/
 ```
 
-Replace `<version>` with the KMS version you are deploying (e.g. `5.25.0`).
+Replace `<version>` with the KMS version you are deploying (e.g. `5.26.0`).
 The list of available versions is at <https://package.cosmian.com/kms/>.
 
 Alternatively, clone the [KMS repository](https://github.com/Cosmian/kms) and navigate to the
