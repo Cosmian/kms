@@ -32,7 +32,7 @@ fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> O
 /// The main entry point of the program.
 ///
 /// This function sets up the necessary environment variables and logging options,
-/// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
+/// then parses the command line arguments using [`clap::Parser::parse()`].
 ///
 /// On Windows, if the process was launched by the Service Control Manager, it
 /// dispatches to the Windows service entry point instead.

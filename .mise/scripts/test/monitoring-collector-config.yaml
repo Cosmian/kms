@@ -1,0 +1,36 @@
+---
+# OTel collector config for monitoring integration test.
+# Receives KMS metrics via gRPC OTLP and exposes them via Prometheus scrape endpoint.
+# VictoriaMetrics scrapes this endpoint.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    send_timestamps: true
+    metric_expiration: 5m
+  debug:
+    verbosity: normal
+
+service:
+  telemetry:
+    logs:
+      level: warn
+    metrics:
+      level: basic
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus, debug]

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+#MISE description="Run all SIEM integration tests (proves siems.md is correct)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="Feature variant (must be non-fips)" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "--suite <suite>" env="SUITE" help="Which sub-tests to run" default="all" {
+#USAGE   choices "all" "fluent-bit" "filebeat"
+#USAGE }
+# SIEM tests require non-fips: audit middleware uses non-fips features.
+# Uses Docker containers (Fluent Bit, Filebeat, Elasticsearch) + KMS binary.
+# No Nix shell needed. For --suite filebeat or --suite all:
+#   docker compose up -d elasticsearch
+# CEF tests (format, UDP syslog, TCP syslog) are in mise test:cef
+# Audit log tests are in mise test:audit
+# Monitoring stack tests are in mise test:monitoring
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+VARIANT="${usage_variant:-non-fips}"
+if [[ "${VARIANT}" == "fips" ]]; then
+  echo "ERROR: SIEM integration tests require --variant non-fips." >&2
+  echo "       CEF export and audit features are only available in non-fips builds." >&2
+  exit 1
+fi
+
+kms_init_env "${VARIANT}" "static"
+setup_test_logging
+
+SUITE="${SUITE:-all}"
+REPO_ROOT="$(get_repo_root)"
+
+run_sub() {
+  local name="$1"
+  local script="$2"
+  print_header "SIEM sub-test: ${name}"
+  bash "${REPO_ROOT}/.mise/scripts/test/${script}" --variant "${VARIANT}"
+  print_success "SIEM sub-test passed: ${name}"
+}
+
+print_header "Running SIEM integration tests — suite='${SUITE}' (${VARIANT_NAME})"
+echo "Purpose: prove Fluent Bit / Filebeat sections of siems.md"
+echo ""
+
+case "${SUITE}" in
+  all)
+    run_sub "Fluent Bit JSONL file-tailing" "test_siem_fluent_bit.sh"
+    run_sub "Filebeat → Elasticsearch" "test_siem_filebeat.sh"
+    ;;
+  fluent-bit)
+    run_sub "Fluent Bit JSONL file-tailing" "test_siem_fluent_bit.sh"
+    ;;
+  filebeat)
+    run_sub "Filebeat → Elasticsearch" "test_siem_filebeat.sh"
+    ;;
+  *)
+    print_error "Unknown suite '${SUITE}'. Valid: all, fluent-bit, filebeat"
+    print_error "  CEF tests → mise test:cef --suite [all|format|syslog|tcp-syslog]"
+    print_error "  Audit log → mise test:audit"
+    print_error "  Monitoring → mise test:monitoring"
+    exit 1
+    ;;
+esac
+
+print_success "All SIEM integration tests passed (suite=${SUITE}, variant=${VARIANT})"
