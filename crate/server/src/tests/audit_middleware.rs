@@ -298,11 +298,11 @@ async fn audit_records_create_encrypt_failure_and_batch() -> KResult<()> {
             "unexpected CEF header for event id={}: {cef}",
             ev.id
         );
-        // Events with request_id must include cs5
+        // Events with request_id must include devicePayloadId (standard CEF key)
         if ev.request_id.is_some() {
             assert!(
-                cef.contains("cs5Label=requestId"),
-                "CEF missing cs5Label for event id={}: {cef}",
+                cef.contains("devicePayloadId="),
+                "CEF missing devicePayloadId for event id={}: {cef}",
                 ev.id
             );
         }

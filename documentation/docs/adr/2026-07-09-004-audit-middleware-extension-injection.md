@@ -20,7 +20,7 @@ Every KMIP operation — including authentication failures — must produce an a
 (see ADR-0003). The challenge is _where_ in the call stack to intercept it. The KMS has
 a layered architecture:
 
-```
+```text
 HTTP client
   │
   ▼  Actix-web middlewares (CORS, EnsureAuth, JwtAuth, TlsAuth, RateLimit, …)

@@ -39,8 +39,8 @@ Implement the audit subsystem as a **single-writer background task** accessed vi
 - One background `tokio::spawn` task is the sole owner of the open file, the monotonic id
   counter, and the rolling `prev_hash`. No mutex is needed.
 - Each persisted JSONL row carries a SHA-256 hash chain:
-  - `prev_hash` — SHA-256 of the previous row's canonical bytes (all-zeros for row 0)
-  - `row_hash` — SHA-256 of this row's canonical bytes (including `prev_hash`)
+    - `prev_hash` — SHA-256 of the previous row's canonical bytes (all-zeros for row 0)
+    - `row_hash` — SHA-256 of this row's canonical bytes (including `prev_hash`)
 - Every write is followed by `sync_data()` (one `fsync` per event) to guarantee durability
   against OS crash or power failure.
 - On server restart the writer reads only the last 64 KiB of the existing log (O(1) regardless

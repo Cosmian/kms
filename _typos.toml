@@ -26,3 +26,8 @@ tme = "tme"
 PNGs = "PNGs"
 # Base64url fragment inside an example JWK "y" coordinate in openapi.yaml.
 Stik = "Stik"
+# Security Information and Event Management
+SIEM = "SIEM"
+SIEMs = "SIEMs"
+SIE = "SIE"
+sie = "sie"
