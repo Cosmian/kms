@@ -36,6 +36,7 @@ exclude = [
   'pkipubpc\.cnp\.recouv',
   # Local / internal references
   'localhost',
+  '127\.0\.0\.1',
   'host\.docker\.internal',
   '@',
   'eviden_vm',

@@ -39,7 +39,7 @@ usage() {
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
       iris                   Run IRIS ↔ KMS mTLS integration tests (requires Docker + IRIS image)
-      cef_interop            Run CEF audit export interoperability test (jc)
+      cef                    Run CEF audit export test (live server + jc)
       hsm [backend]          Run HSM tests (Linux + macOS for softhsm2)
                              backend: softhsm2 | utimaco | proteccio | all (default)
       ui                     Run UI E2E tests with Playwright (non-FIPS only)
@@ -495,8 +495,8 @@ test_command() {
     iris)
       SCRIPT="$REPO_ROOT/.mise/scripts/test/test_iris.sh"
       ;;
-    cef_interop)
-      SCRIPT="$REPO_ROOT/.mise/scripts/test/test_cef_interop.sh"
+    cef)
+      SCRIPT="$REPO_ROOT/.mise/scripts/test/test_cef.sh"
       ;;
     gcp_cmek)
       SCRIPT="$REPO_ROOT/.mise/scripts/test/test_gcp_cmek.sh"
@@ -591,7 +591,7 @@ test_command() {
       ;;
     *)
       echo "Error: Unknown test type '$TEST_TYPE'" >&2
-      echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, iris, jose, cef_interop, hsm [softhsm2|utimaco|proteccio|all], ui, secret_vault, secret_aws, secret_azure, secret_cosmian_kms" >&2
+      echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, iris, jose, cef, hsm [softhsm2|utimaco|proteccio|all], ui, secret_vault, secret_aws, secret_azure, secret_cosmian_kms" >&2
       usage
       ;;
   esac
@@ -605,7 +605,7 @@ test_command() {
     export WITH_WASM=1
   fi
   # For PyKMIP/Synology DSM tests, JOSE interop, CEF interop, and EDB TDE tests, ensure Python tooling is present inside the Nix shell
-  if [ "$TEST_TYPE" = "pykmip" ] || [ "$TEST_TYPE" = "jose" ] || [ "$TEST_TYPE" = "edb_tde" ] || [ "$TEST_TYPE" = "cef_interop" ]; then
+  if [ "$TEST_TYPE" = "pykmip" ] || [ "$TEST_TYPE" = "jose" ] || [ "$TEST_TYPE" = "edb_tde" ] || [ "$TEST_TYPE" = "cef" ]; then
     export WITH_PYTHON=1
   fi
   # For OpenSSH PKCS#11 tests, ensure openssh (ssh-keygen) is present on Linux CI
