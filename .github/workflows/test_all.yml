@@ -42,6 +42,7 @@ jobs:
           - secret_cosmian_kms
           - spire
           - kmip-go
+          - cef
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -81,6 +82,8 @@ jobs:
             features: fips
           # spire relies on the Vault API which is non-fips only
           - type: spire
+            features: fips
+          - type: cef
             features: fips
         include:
           # Docker services required per test type (types without an entry need no containers)

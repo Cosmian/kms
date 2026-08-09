@@ -1,5 +1,5 @@
 ---
-title: "ADR-0005: CEF v25 as SIEM Export Format for Audit Events"
+title: "ADR-0005: CEF v27 as SIEM Export Format for Audit Events"
 status: "Accepted"
 date: "2026-07-09"
 authors: "contributors, security operations engineers, compliance engineers"
@@ -8,7 +8,7 @@ supersedes: ""
 superseded_by: ""
 ---
 
-# ADR-0005: CEF v25 as SIEM Export Format for Audit Events
+# ADR-0005: CEF v27 as SIEM Export Format for Audit Events
 
 ## Status
 
@@ -35,22 +35,25 @@ a proprietary JSON schema. The KMS must choose a serialisation format that:
 
 ## Decision
 
-Implement `to_cef_line()` on `AuditEvent` producing a **CEF v25** (ArcSight Common Event
-Format, revision 25) line string.
+Implement `to_cef_line()` on `AuditEvent` producing a **CEF v27** (ArcSight Common Event
+Format, revision 27) line string.
 
 ```text
 CEF:0|Cosmian|KMS|<version>|<operation>|<operation>|<severity>|<extensions>
 ```
 
 Severity mapping:
+
 | Outcome | CEF severity | Rationale |
 |---|---|---|
 | `Success` | 5 (Medium) | Normal operation |
 | Auth failure (401/403) | 7 (High) | Potential intrusion |
 | Other failure | 6 (Medium-High) | Operational issue |
 
-Extension fields: `rt` (epoch ms), `suser` (user), `src` (client IP), `outcome`,
-`act` (operation), `duid` (object UID), `cs1` (algorithm), `cs2` (duration ms).
+Extension fields (all keys from the CEF v27 standard dictionary):
+`rt` (epoch ms), `suser` (user), `src` (client IP), `outcome`, `reason` (failure message),
+`act` (operation), `cn1` (duration ms), `cs1` (object UID), `cs2` (algorithm),
+`externalId` (audit record ID), `devicePayloadId` (request correlation UUID).
 
 CEF is implemented as a **pure serialisation method** (`fn to_cef_line(&self) -> String`)
 on `AuditEvent`. It is not a transport; callers are responsible for forwarding the string
@@ -69,8 +72,9 @@ SIEM-specific network transport dependencies.
   `fluentd`, or direct UDP/TCP without framing issues.
 - **POS-004**: Pure serialisation: zero network dependencies added to the codebase;
   no async runtime required; no TLS certificate management for the SIEM transport.
-- **POS-005**: `object_uid`, `algorithm`, and `client_ip` map directly to CEF standard
-  extension keys (`duid`, `cs1`, `src`) — no custom-key gymnastics.
+- **POS-005**: `object_uid`, `algorithm`, and `client_ip` map to CEF standard
+  extension keys (`cs1`, `cs2`, `src`). Audit ID and request ID use standard keys
+  `externalId` and `devicePayloadId` — no custom labels.
 
 ### Negative
 
@@ -84,8 +88,8 @@ SIEM-specific network transport dependencies.
   tail agent). There is no built-in forwarding; operators must configure their own
   pipeline.
 - **NEG-004**: CEF `cs` (custom string) fields have no semantic standard — `cs1` for
-  algorithm and `cs2` for duration are KMS-specific conventions that must be documented
-  for SIEM operators.
+  object UID and `cs2` for algorithm are KMS-specific conventions that must be documented
+  for SIEM operators. The `csNLabel` fields describe the purpose of each custom field.
 
 ## Alternatives Considered
 
@@ -127,8 +131,8 @@ SIEM-specific network transport dependencies.
 ## Implementation Notes
 
 - **IMP-001**: Serialiser: `crate/access/src/audit/cef.rs` — `to_cef_line()`
-- **IMP-002**: CEF v25 spec reference: ArcSight CEF Implementation Standard, version 25
-  (HP/Micro Focus/OpenText)
+- **IMP-002**: CEF v27 spec reference: [ArcSight CEF Implementation Standard, version 27](https://www.microfocus.com/documentation/arcsight/arcsight-smartconnectors-24.2/pdfdoc/cef-implementation-standard/cef-implementation-standard.pdf)
+  (OpenText, April 2024)
 - **IMP-003**: Severity thresholds (5/6/7) are constants in `cef.rs`; operators needing
   different mappings should adjust there.
 - **IMP-004**: Transport is out of scope for this implementation. Recommended pattern:
@@ -145,6 +149,6 @@ SIEM-specific network transport dependencies.
 
 - **REF-001**: ADR-0003 — Tamper-Evident JSONL Audit Log (authoritative record)
 - **REF-002**: ADR-0004 — HTTP-Layer Audit Middleware (capture architecture)
-- **REF-003**: ArcSight CEF Implementation Standard v25 (HP/Micro Focus/OpenText)
-- **REF-004**: OCSF v1.x specification — https://schema.ocsf.io
+- **REF-003**: [ArcSight CEF Implementation Standard v27](https://www.microfocus.com/documentation/arcsight/arcsight-smartconnectors-24.2/pdfdoc/cef-implementation-standard/cef-implementation-standard.pdf) (OpenText, April 2024)
+- **REF-004**: OCSF v1.x specification — <https://schema.ocsf.io>
 - **REF-005**: `crate/access/src/audit/cef.rs`

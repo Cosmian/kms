@@ -1,15 +1,15 @@
-## ckms audit
+# ckms audit
 
 Manage the KMS audit log file offline.
 
 All `ckms audit` commands work **directly on a JSONL file** — no running KMS server is required.
 The subcommands are suitable for scripts, cron jobs, and SIEM export pipelines.
 
-### Usage
+## Usage
 
 `ckms audit <subcommand>`
 
-### Subcommands
+## Subcommands
 
 **`export`** Export events from the audit log in JSON or CEF format.
 
@@ -44,11 +44,11 @@ If omitted the field is left blank. Useful when merging exports from multiple no
 
 **`cef`** — Emits one CEF line per event on stdout (`CEF:0` header, Common Event Format spec 0.1):
 
-```
+```text
 CEF:0|Cosmian|KMS|<version>|<operation>|<operation>|<severity>|rt=<epoch_ms> suser=<user> ...
 ```
 
-#### CEF field mapping
+### CEF field mapping
 
 The CEF header fields (`Device Vendor`, `Device Product`, `Device Version`, `Signature ID`, `Name`, `Severity`)
 are set automatically. Extension fields carry the structured event data:
@@ -64,8 +64,8 @@ are set automatically. Extension fields carry the structured event data:
 | `cn1`             | `durationMs` | Wall-clock operation duration in milliseconds.                     |
 | `cs1`             | `objectUID`  | KMIP `UniqueIdentifier`. **Omitted** when `null`.                  |
 | `cs2`             | `algorithm`  | Cryptographic algorithm. **Omitted** when `null`.                  |
-| `cs3`             | `auditId`    | Monotonically increasing event ID (integer, from `event.id`).      |
-| `cs4`             | `timestamp`  | RFC 3339 UTC timestamp string (human-readable complement to `rt`). |
+| `externalId`      | —            | Monotonically increasing event ID (integer, from `event.id`).      |
+| `devicePayloadId` | —            | Request correlation UUID. **Omitted** when no request ID is set.   |
 
 > **CEF severity** is derived from the result: `5` (Medium) for `Success`; `7` (High) for
 > authorization failures (401 / 403); `6` (Medium-High) for all other failures.
@@ -105,7 +105,7 @@ Exits with code **0** when the chain is intact, or **1** when a broken link is d
 
 `ckms audit verify --path <FILE> [options]`
 
-### Arguments
+#### Arguments
 
 `--path [-p] <FILE>` Path to the JSONL audit log file.
 _Required._ Can also be set via `KMS_AUDIT_FILE_PATH`.
@@ -113,30 +113,30 @@ _Required._ Can also be set via `KMS_AUDIT_FILE_PATH`.
 `--verbose` Print a summary line for every event even when the chain is valid.
 _Default: false._
 
-### Exit codes
+#### Exit codes
 
 | Code | Meaning                                 |
 | ---- | --------------------------------------- |
 | `0`  | All events verified — chain is intact.  |
 | `1`  | A tampered or broken link was detected. |
 
-### Output examples
+#### Output examples
 
 Chain intact:
 
-```
+```text
 Verified 42 events. Chain is intact.
 ```
 
 Tampered file:
 
-```
+```text
 TAMPERED: event id=17 row_hash mismatch
 ```
 
 Verbose mode:
 
-```
+```text
 id=0  2026-05-06T20:31:15Z  Create   chain=ok
 id=1  2026-05-06T20:31:15Z  Encrypt  chain=ok
 ...
