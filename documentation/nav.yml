@@ -140,8 +140,10 @@ nav:
       - Obtaining TLS Certificates: configuration/certificates.md
       - Logging and telemetry: configuration/logging.md
       - Log reference: configuration/log-reference.md
-      - Audit logs: configuration/audit-logs.md
-      - SIEMs: configuration/siems.md
+      - Audit & SIEM:
+          - Audit logs: configuration/audit-logs.md
+          - CEF export format: configuration/cef-export.md
+          - SIEM integration: configuration/siems.md
       - Monitoring:
           - Setup: configuration/monitoring-setup.md
           - Metrics reference: configuration/otlp-metrics.md

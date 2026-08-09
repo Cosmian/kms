@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run CEF audit export interoperability test (jc)"
+#MISE description="Run CEF audit export test (live server + jc validation)"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
@@ -13,11 +13,11 @@ kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
 ensure_nix_shell
 
-print_header "Running CEF export interoperability test (${VARIANT_NAME})"
+print_header "Running CEF export test (${VARIANT_NAME})"
 
 REPO_ROOT="$(get_repo_root)"
 
-# Delegate to the existing CEF interop test script
-bash "${REPO_ROOT}/.mise/scripts/test/test_cef_interop.sh" --variant "$VARIANT" --link "$LINK"
+# Delegate to the CEF test script
+bash "${REPO_ROOT}/.mise/scripts/test/test_cef.sh" --variant "$VARIANT" --link "$LINK"
 
-print_success "CEF export interoperability test completed"
+print_success "CEF export test completed"

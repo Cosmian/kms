@@ -107,7 +107,7 @@ the same `request_id`, enabling correlation in SIEM / log-analysis tools.
 The field is optional (`#[serde(skip_serializing_if = "Option::is_none")]`) so
 existing audit files without it remain valid and hash-chain-verifiable.
 
-CEF output gains a `cs5=<uuid> cs5Label=requestId` extension field when
+CEF output gains a `devicePayloadId=<uuid>` extension field (standard CEF v27 key) when
 `request_id` is `Some`.
 
 ### Drop-detection sentinel (T3)
