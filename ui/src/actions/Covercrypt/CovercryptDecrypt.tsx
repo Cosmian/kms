@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { getMimeType, saveDecryptedFile, sendKmipRequest } from "../../utils/utils";
 import { decrypt_cc_ttlv_request, parse_decrypt_ttlv_response } from "../../wasm/pkg";
@@ -17,12 +18,13 @@ interface CCDecryptFormData {
 const CCDecryptForm: React.FC = () => {
     const [form] = Form.useForm<CCDecryptFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: CCDecryptFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("covercryptDecrypt.missingKeyId"));
             }
 
             const request = decrypt_cc_ttlv_request(id, values.inputFile, values.authenticationData);
@@ -36,31 +38,31 @@ const CCDecryptForm: React.FC = () => {
                 const fileName = lastDotIndex !== -1 ? name : `${name}.plain`;
                 const mimeType = getMimeType(fileName);
                 saveDecryptedFile(data, fileName, mimeType);
-                return "File has been decrypted";
+                return t("covercryptDecrypt.success");
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Covercrypt Decryption</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("covercryptDecrypt.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Decrypt a file using Covercrypt.</p>
-                <p>The key can be identified using either its ID or associated tags.</p>
-                <p className="text-sm text-yellow-600">Note: This operation loads the entire file in memory.</p>
+                <p>{t("covercryptDecrypt.intro")}</p>
+                <p>{t("covercryptDecrypt.introKey")}</p>
+                <p className="text-sm text-yellow-600">{t("covercryptDecrypt.note")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Input File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("covercryptDecrypt.inputFile")}</h3>
 
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
 
-                        <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to decrypt" }]}>
+                        <Form.Item name="inputFile" rules={[{ required: true, message: t("covercryptDecrypt.pleaseSelectFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
@@ -77,30 +79,30 @@ const CCDecryptForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag file to this area to decrypt</p>
+                                <p className="ant-upload-text">{t("covercryptDecrypt.uploadText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Key ID" help="The unique identifier of the user decryption key">
-                            <Input placeholder="Enter key ID" />
+                        <h3 className="text-m font-bold mb-4">{t("covercryptDecrypt.keyIdentification")}</h3>
+                        <Form.Item name="keyId" label={t("common:keyId")} help={t("covercryptDecrypt.keyIdHelp")}>
+                            <Input placeholder={t("common:enterKeyId")} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("covercryptDecrypt.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Additional Options</h3>
+                        <h3 className="text-m font-bold mb-4">{t("covercryptDecrypt.additionalOptions")}</h3>
                         <Form.Item
                             name="authenticationData"
-                            label="Authentication Data"
-                            help="Optional: authentication data that was supplied during encryption"
+                            label={t("covercryptDecrypt.authenticationData")}
+                            help={t("covercryptDecrypt.authenticationDataHelp")}
                         >
-                            <Input.TextArea placeholder="Enter authentication data" rows={2} />
+                            <Input.TextArea placeholder={t("covercryptDecrypt.enterAuthenticationData")} rows={2} />
                         </Form.Item>
                     </Card>
 
@@ -112,12 +114,12 @@ const CCDecryptForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Decrypt File
+                            {t("covercryptDecrypt.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="Covercrypt decrypt response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("covercryptDecrypt.responseTitle")} />
         </div>
     );
 };

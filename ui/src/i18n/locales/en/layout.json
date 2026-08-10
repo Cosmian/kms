@@ -1,0 +1,39 @@
+{
+    "footer": {
+        "version": "KMS Server Version: {{version}}",
+        "apiDocumentation": "API Documentation"
+    },
+    "header": {
+        "noHsmConfigured": "No HSM configured",
+        "hsmSlot": "slot"
+    },
+    "main": {
+        "devUnrestricted": "DEV unrestricted mode running",
+        "downloadCli": "Download CLI",
+        "logout": "Logout",
+        "authDisabledTitle": "Authentication is disabled on this KMS server",
+        "authDisabledDescription": "This KMS server was started without authentication method configured.",
+        "wasmUnavailableTitle": "WebAssembly is not available. It may be blocked by an extension, disabled manually, or restricted by a security policy.",
+        "wasmUnavailableDescription": "Please enable WASM in your browser and refresh this page to be able to use the KMS UI. In Firefox, you can enable it by setting <code>javascript.options.wasm</code> = true in <code>about:config</code>.",
+        "healthDb": "Health DB: {{status}}",
+        "healthDbWithLatency": "Health DB: {{status}} ({{latency}}ms)",
+        "unavailable": "Unavailable"
+    },
+    "notFound": {
+        "title": "404 - Page Not Found",
+        "message": "Oops! The page you're looking for doesn't exist.",
+        "goHome": "Go Home"
+    },
+    "login": {
+        "signUp": "Sign up for free and explore rights delegation for multiple users",
+        "certFailed": "CERT identity verification failed",
+        "authFailed": "Authentication failed",
+        "totpPlaceholder": "One-time code (TOTP)",
+        "usernamePlaceholder": "Username",
+        "passwordPlaceholder": "Password",
+        "verifyCode": "VERIFY CODE",
+        "login": "LOGIN",
+        "accessKms": "ACCESS KMS",
+        "certErrorDescription": "No client certificate was provided or it is invalid. If the problem persists, close all instances of your browser and relaunch with the correct client certificate previously loaded."
+    }
+}

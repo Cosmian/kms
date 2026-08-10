@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { encrypt_ec_ttlv_request, parse_encrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
@@ -13,12 +14,13 @@ interface PqcEncapsulateFormData {
 const PqcEncapsulateForm: React.FC = () => {
     const [form] = Form.useForm<PqcEncapsulateFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: PqcEncapsulateFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("pqcEncapsulate.missingKeyId"));
             }
             // ML-KEM encapsulation: send empty plaintext, server returns shared_secret + ciphertext
             const request = encrypt_ec_ttlv_request(id, new Uint8Array());
@@ -41,36 +43,33 @@ const PqcEncapsulateForm: React.FC = () => {
                     downloadFile(ssBytes, "shared_secret.key", "application/octet-stream");
                 }
 
-                return "Encapsulation successful. Ciphertext and shared secret downloaded.";
+                return t("pqcEncapsulate.success");
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">PQC KEM Encapsulate</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("pqcEncapsulate.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Encapsulate a shared secret using a PQC KEM public key (ML-KEM or Hybrid KEM).</p>
+                <p>{t("pqcEncapsulate.intro")}</p>
                 <p>
-                    This produces a <strong>shared secret</strong> and a <strong>ciphertext</strong> (encapsulation).
+                    <Trans ns="actions" i18nKey="pqcEncapsulate.introSharedSecret" components={{ strong: <strong /> }} />
                 </p>
-                <p>
-                    The ciphertext should be sent to the decapsulating party, who can recover the same shared secret using the corresponding
-                    private key.
-                </p>
+                <p>{t("pqcEncapsulate.introCiphertext")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Public Key ID" help="The unique identifier of the PQC KEM public key">
-                            <Input placeholder="Enter public key ID" />
+                        <h3 className="text-m font-bold mb-4">{t("pqcEncapsulate.keyIdentification")}</h3>
+                        <Form.Item name="keyId" label={t("pqcEncapsulate.publicKeyId")} help={t("pqcEncapsulate.publicKeyIdHelp")}>
+                            <Input placeholder={t("pqcEncapsulate.enterPublicKeyId")} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("pqcEncapsulate.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Form.Item>
@@ -81,12 +80,12 @@ const PqcEncapsulateForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Encapsulate
+                            {t("pqcEncapsulate.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="PQC KEM encapsulate response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("pqcEncapsulate.responseTitle")} />
         </div>
     );
 };

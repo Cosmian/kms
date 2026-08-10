@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import { postNoTTLVRequest } from "../../utils/utils";
 
@@ -13,6 +14,7 @@ const TokenizeWordMaskForm: React.FC = () => {
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const { serverUrl } = useAuth();
+    const { t } = useTranslation("actions");
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -28,12 +30,12 @@ const TokenizeWordMaskForm: React.FC = () => {
             const response = await postNoTTLVRequest("/tokenize/word-mask", { data: values.data, words: values.words ?? [] }, serverUrl);
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {
-                setRes(`Result: ${typed.result}`);
+                setRes(t("tokenizeWordMask.resultPrefix", { value: typed.result }));
             } else {
-                setRes(`Error: ${typed.message ?? "Unknown error"}`);
+                setRes(`${t("common:errorPrefix")}${typed.message ?? t("tokenizeWordMask.unknownError")}`);
             }
         } catch (e) {
-            setRes(`Error: ${e}`);
+            setRes(`${t("common:errorPrefix")}${e}`);
             console.error("Word mask error:", e);
         } finally {
             setIsLoading(false);
@@ -42,13 +44,13 @@ const TokenizeWordMaskForm: React.FC = () => {
 
     return (
         <div className="rounded-lg p-6 m-4">
-            <h1 className="text-2xl font-bold mb-6">Anonymize — Word Mask</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("tokenizeWordMask.title")}</h1>
 
             <div className="mb-8 space-y-2">
                 <p>
-                    Replace occurrences of sensitive words in a text with <code>XXXX</code>.
+                    <Trans ns="actions" i18nKey="tokenizeWordMask.intro" components={{ code: <code /> }} />
                 </p>
-                <p>Word matching is case-insensitive.</p>
+                <p>{t("tokenizeWordMask.introCaseInsensitive")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
@@ -56,27 +58,27 @@ const TokenizeWordMaskForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="data"
-                            label="Input text"
-                            rules={[{ required: true, message: "Please enter the text to mask" }]}
-                            help="Text containing sensitive words to replace"
+                            label={t("tokenizeWordMask.inputText")}
+                            rules={[{ required: true, message: t("tokenizeWordMask.pleaseEnterText") }]}
+                            help={t("tokenizeWordMask.inputTextHelp")}
                         >
-                            <Input.TextArea rows={4} placeholder="e.g. Confidential: contains secret documents" />
+                            <Input.TextArea rows={4} placeholder={t("tokenizeWordMask.inputTextPlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Card>
                         <Form.Item
                             name="words"
-                            label="Words to mask"
-                            rules={[{ required: true, message: "Please enter at least one word to mask" }]}
-                            help="Type a word and press Enter to add it to the list"
+                            label={t("tokenizeWordMask.wordsToMask")}
+                            rules={[{ required: true, message: t("tokenizeWordMask.pleaseEnterWords") }]}
+                            help={t("tokenizeWordMask.wordsHelp")}
                         >
-                            <Select mode="tags" placeholder="e.g. confidential, secret" open={false} />
+                            <Select mode="tags" placeholder={t("tokenizeWordMask.wordsPlaceholder")} open={false} />
                         </Form.Item>
                     </Card>
 
                     <Button type="primary" htmlType="submit" loading={isLoading} data-testid="submit-btn">
-                        Mask Words
+                        {t("tokenizeWordMask.submit")}
                     </Button>
                 </Space>
             </Form>
@@ -84,13 +86,13 @@ const TokenizeWordMaskForm: React.FC = () => {
             {res && (
                 <div ref={responseRef} className="mt-6">
                     <Alert
-                        message={res.startsWith("Error") ? "Error" : "Success"}
+                        message={res.startsWith(t("common:errorPrefix")) ? t("common:error") : t("tokenizeWordMask.success")}
                         description={
                             <div data-testid="response-output" className="break-all font-mono text-sm whitespace-pre-wrap">
                                 {res}
                             </div>
                         }
-                        type={res.startsWith("Error") ? "error" : "success"}
+                        type={res.startsWith(t("common:errorPrefix")) ? "error" : "success"}
                         showIcon
                     />
                 </div>

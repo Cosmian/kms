@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { encrypt_sym_ttlv_request, parse_encrypt_ttlv_response } from "../../wasm/pkg";
@@ -21,12 +22,13 @@ const SymmetricEncryptForm: React.FC = () => {
     const [form] = Form.useForm<SymmetricEncryptFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const selectedEncryptionAlgorithm = Form.useWatch("dataEncryptionAlgorithm", form);
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: SymmetricEncryptFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("symmetricEncrypt.missingKeyId"));
             }
             const request = encrypt_sym_ttlv_request(
                 id,
@@ -46,23 +48,23 @@ const SymmetricEncryptForm: React.FC = () => {
                 const mimeType = "application/octet-stream";
                 const filename = `${values.fileName}.enc`;
                 downloadFile(combinedData, filename, mimeType);
-                return "File has been encrypted";
+                return t("symmetricEncrypt.success");
             }
         });
     };
 
     return (
         <div className="rounded-lg p-6 m-4">
-            <h1 className="text-2xl font-bold  mb-6">Symmetric Encryption</h1>
+            <h1 className="text-2xl font-bold  mb-6">{t("symmetricEncrypt.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Encrypt a file using a symmetric key.</p>
-                <p>Encryption can happen in two ways:</p>
+                <p>{t("symmetricEncrypt.intro")}</p>
+                <p>{t("symmetricEncrypt.introTwoWays")}</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    <li>Server side: the data is sent to the server and encrypted there.</li>
-                    <li>Client side: The data encryption key (DEK) is encrypted server-side, then data is encrypted locally.</li>
+                    <li>{t("symmetricEncrypt.serverSide")}</li>
+                    <li>{t("symmetricEncrypt.clientSide")}</li>
                 </ul>
-                <p className="text-sm text-yellow-600">Note: Server-side encryption loads the entire file in memory.</p>
+                <p className="text-sm text-yellow-600">{t("symmetricEncrypt.note")}</p>
             </div>
 
             <Form
@@ -75,13 +77,13 @@ const SymmetricEncryptForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Input File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("symmetricEncrypt.inputFile")}</h3>
 
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
 
-                        <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to encrypt" }]}>
+                        <Form.Item name="inputFile" rules={[{ required: true, message: t("symmetricEncrypt.pleaseSelectFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
@@ -98,26 +100,26 @@ const SymmetricEncryptForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag file to this area to encrypt</p>
+                                <p className="ant-upload-text">{t("symmetricEncrypt.uploadText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Key ID" help="The unique identifier of the symmetric key">
-                            <Input placeholder="Enter key ID" />
+                        <h3 className="text-m font-bold mb-4">{t("symmetricEncrypt.keyIdentification")}</h3>
+                        <Form.Item name="keyId" label={t("common:keyId")} help={t("symmetricEncrypt.keyIdHelp")}>
+                            <Input placeholder={t("common:enterKeyId")} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("symmetricEncrypt.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Card>
                         <Form.Item
                             name="dataEncryptionAlgorithm"
-                            label="Data Encryption Algorithm"
+                            label={t("symmetricEncrypt.dataEncryptionAlgorithm")}
                             rules={[{ required: true }]}
-                            help="Algorithm used to encrypt the data"
+                            help={t("symmetricEncrypt.algorithmHelp")}
                         >
                             <Select>
                                 <Select.Option value="AesGcm">AES-GCM</Select.Option>
@@ -130,20 +132,16 @@ const SymmetricEncryptForm: React.FC = () => {
 
                         {selectedEncryptionAlgorithm !== "AesXts" && selectedEncryptionAlgorithm !== "AesCbc" && (
                             <>
-                                <Form.Item
-                                    name="nonce"
-                                    label="Nonce/IV"
-                                    help="Optional: random value will be generated if not provided (hex string)"
-                                >
-                                    <Input placeholder="Enter nonce in hex format" />
+                                <Form.Item name="nonce" label={t("symmetricEncrypt.nonceIv")} help={t("symmetricEncrypt.nonceHelp")}>
+                                    <Input placeholder={t("symmetricEncrypt.enterNonce")} />
                                 </Form.Item>
 
                                 <Form.Item
                                     name="authenticationData"
-                                    label="Authentication Data"
-                                    help="Optional: additional authentication data (hex string)"
+                                    label={t("symmetricEncrypt.authenticationData")}
+                                    help={t("symmetricEncrypt.authenticationDataHelp")}
                                 >
-                                    <Input placeholder="Enter authentication data in hex format" />
+                                    <Input placeholder={t("symmetricEncrypt.enterAuthenticationData")} />
                                 </Form.Item>
                             </>
                         )}
@@ -157,12 +155,12 @@ const SymmetricEncryptForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Encrypt File (Server-side)
+                            {t("symmetricEncrypt.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="Symmetric keys encrypt response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("symmetricEncrypt.responseTitle")} />
         </div>
     );
 };

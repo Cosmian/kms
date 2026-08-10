@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
@@ -12,23 +13,6 @@ interface FpeEncryptFormData {
     tweak?: string;
     plaintext: string;
 }
-
-const DATA_TYPES = [
-    { label: "Text", value: "text" },
-    { label: "Integer", value: "integer" },
-    { label: "Float", value: "float" },
-];
-
-const ALPHABET_PRESETS = [
-    { label: "Alpha-numeric (a-z A-Z 0-9)", value: "alpha_numeric" },
-    { label: "Numeric (0-9)", value: "numeric" },
-    { label: "Alpha lower (a-z)", value: "alpha_lower" },
-    { label: "Alpha upper (A-Z)", value: "alpha_upper" },
-    { label: "Alpha (a-z A-Z)", value: "alpha" },
-    { label: "Hexadecimal (0-9 a-f)", value: "hexa_decimal" },
-    { label: "Chinese", value: "chinese" },
-    { label: "Latin-1 Supplement", value: "latin1sup" },
-];
 
 /** Build the authenticated_data bytes that the KMS server expects for FPE. */
 function buildAuthenticatedData(dataType: string, alphabet?: string): Uint8Array | undefined {
@@ -55,12 +39,12 @@ const HEX_RE = /^[0-9a-fA-F]*$/;
  * Returns undefined if the input is empty.
  * Throws if the length is odd or contains non-hex characters.
  */
-function hexToBytes(hex: string): Uint8Array {
+function hexToBytes(hex: string, t: (key: string) => string): Uint8Array {
     if (hex.length % 2 !== 0) {
-        throw new Error("Tweak must contain an even number of hex digits.");
+        throw new Error(t("fpeEncrypt.tweakEvenHexError"));
     }
     if (!HEX_RE.test(hex)) {
-        throw new Error("Tweak must contain only hex characters (0-9 a-f A-F).");
+        throw new Error(t("fpeEncrypt.tweakHexCharsError"));
     }
     const bytes = new Uint8Array(hex.length / 2);
     for (let i = 0; i < hex.length; i += 2) {
@@ -74,8 +58,24 @@ const FpeEncryptForm: React.FC = () => {
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const { serverUrl } = useAuth();
+    const { t } = useTranslation("actions");
     const responseRef = useRef<HTMLDivElement>(null);
     const dataType = Form.useWatch("dataType", form);
+    const DATA_TYPES = [
+        { label: t("fpeEncrypt.dataTypeText"), value: "text" },
+        { label: t("fpeEncrypt.dataTypeInteger"), value: "integer" },
+        { label: t("fpeEncrypt.dataTypeFloat"), value: "float" },
+    ];
+    const ALPHABET_PRESETS = [
+        { label: t("fpeEncrypt.alphabetAlphaNumeric"), value: "alpha_numeric" },
+        { label: t("fpeEncrypt.alphabetNumeric"), value: "numeric" },
+        { label: t("fpeEncrypt.alphabetAlphaLower"), value: "alpha_lower" },
+        { label: t("fpeEncrypt.alphabetAlphaUpper"), value: "alpha_upper" },
+        { label: t("fpeEncrypt.alphabetAlpha"), value: "alpha" },
+        { label: t("fpeEncrypt.alphabetHexaDecimal"), value: "hexa_decimal" },
+        { label: t("fpeEncrypt.alphabetChinese"), value: "chinese" },
+        { label: t("fpeEncrypt.alphabetLatin1Sup"), value: "latin1sup" },
+    ];
 
     useEffect(() => {
         if (res && responseRef.current) {
@@ -96,11 +96,11 @@ const FpeEncryptForm: React.FC = () => {
         setRes(undefined);
         try {
             // Validate tweak early so we get a clear error even if key ID is missing
-            const tweak = values.tweak ? hexToBytes(values.tweak) : undefined;
+            const tweak = values.tweak ? hexToBytes(values.tweak, t) : undefined;
 
             const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
             if (id === undefined) {
-                setRes("Error: Missing key identifier.");
+                setRes(`${t("common:errorPrefix")}${t("fpeEncrypt.missingKeyId")}`);
                 return;
             }
             const w = wasm as unknown as {
@@ -112,7 +112,7 @@ const FpeEncryptForm: React.FC = () => {
                 ) => object;
             };
             if (!w.encrypt_fpe_ttlv_request) {
-                setRes("Error: WASM FPE functions not available. Rebuild WASM with non-fips feature.");
+                setRes(`${t("common:errorPrefix")}${t("fpeEncrypt.wasmUnavailable")}`);
                 return;
             }
 
@@ -126,15 +126,15 @@ const FpeEncryptForm: React.FC = () => {
                 const typed = response as { Data?: number[] };
                 if (typed.Data) {
                     const resultText = new TextDecoder().decode(new Uint8Array(typed.Data));
-                    setRes(`Ciphertext: ${resultText}`);
+                    setRes(t("fpeEncrypt.ciphertext", { value: resultText }));
                 } else {
-                    setRes("Error: Empty response from server.");
+                    setRes(`${t("common:errorPrefix")}${t("fpeEncrypt.emptyResponse")}`);
                 }
             } else {
-                setRes("Error: No response from server.");
+                setRes(`${t("common:errorPrefix")}${t("fpeEncrypt.noResponse")}`);
             }
         } catch (e) {
-            setRes(`Error: ${e}`);
+            setRes(`${t("common:errorPrefix")}${e}`);
             console.error("FPE encrypt error:", e);
         } finally {
             setIsLoading(false);
@@ -143,14 +143,14 @@ const FpeEncryptForm: React.FC = () => {
 
     return (
         <div className="rounded-lg p-6 m-4">
-            <h1 className="text-2xl font-bold mb-6">FPE Encrypt</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("fpeEncrypt.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Encrypt data using Format-Preserving Encryption (FPE-FF1).</p>
+                <p>{t("fpeEncrypt.intro")}</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    <li>FPE preserves the format of the input data (e.g. a credit card number stays a credit card number).</li>
-                    <li>Non-alphabet characters (spaces, dashes, punctuation) are preserved in place.</li>
-                    <li>The tweak is an optional context parameter (hex-encoded).</li>
+                    <li>{t("fpeEncrypt.bullet1")}</li>
+                    <li>{t("fpeEncrypt.bullet2")}</li>
+                    <li>{t("fpeEncrypt.bullet3")}</li>
                 </ul>
             </div>
 
@@ -159,36 +159,37 @@ const FpeEncryptForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="plaintext"
-                            label="Plaintext"
-                            rules={[{ required: true, message: "Please enter the text to encrypt" }]}
-                            help="The data to encrypt (text, integer, or float)"
+                            label={t("fpeEncrypt.plaintext")}
+                            rules={[{ required: true, message: t("fpeEncrypt.pleaseEnterPlaintext") }]}
+                            help={t("fpeEncrypt.plaintextHelp")}
                         >
-                            <Input.TextArea data-testid="fpe-plaintext" placeholder="e.g. 1234-5678-9012-3456" rows={3} />
+                            <Input.TextArea data-testid="fpe-plaintext" placeholder={t("fpeEncrypt.plaintextPlaceholder")} rows={3} />
                         </Form.Item>
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Key ID" help="The unique identifier of the FPE key">
-                            <Input placeholder="Enter key ID" />
+                        <h3 className="text-m font-bold mb-4">{t("fpeEncrypt.keyIdentification")}</h3>
+                        <Form.Item name="keyId" label={t("common:keyId")} help={t("fpeEncrypt.keyIdHelp")}>
+                            <Input placeholder={t("common:enterKeyId")} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("fpeEncrypt.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
 
                     <Card>
-                        <Form.Item name="dataType" label="Data Type" rules={[{ required: true }]} help="The type of data being encrypted">
+                        <Form.Item
+                            name="dataType"
+                            label={t("fpeEncrypt.dataType")}
+                            rules={[{ required: true }]}
+                            help={t("fpeEncrypt.dataTypeHelpEncrypt")}
+                        >
                             <Select data-testid="fpe-datatype-select" options={DATA_TYPES} />
                         </Form.Item>
 
                         {dataType === "text" && (
-                            <Form.Item
-                                name="alphabet"
-                                label="Alphabet"
-                                help="Characters that can appear in the plaintext (non-alphabet chars are preserved)"
-                            >
+                            <Form.Item name="alphabet" label={t("fpeEncrypt.alphabet")} help={t("fpeEncrypt.alphabetHelpText")}>
                                 <Select data-testid="fpe-alphabet-select" options={ALPHABET_PRESETS} />
                             </Form.Item>
                         )}
@@ -196,26 +197,26 @@ const FpeEncryptForm: React.FC = () => {
                         {dataType === "integer" && (
                             <Form.Item
                                 name="alphabet"
-                                label="Radix Alphabet"
-                                help="Radix alphabet for integer encryption (default: numeric / base-10)"
+                                label={t("fpeEncrypt.radixAlphabet")}
+                                help={t("fpeEncrypt.radixAlphabetHelpInteger")}
                             >
                                 <Select
                                     data-testid="fpe-alphabet-select"
                                     options={[
-                                        { label: "Numeric (base-10)", value: "numeric" },
-                                        { label: "Hexadecimal (base-16)", value: "hexa_decimal" },
+                                        { label: t("fpeEncrypt.alphabetNumericBase10"), value: "numeric" },
+                                        { label: t("fpeEncrypt.alphabetHexaDecimalBase16"), value: "hexa_decimal" },
                                     ]}
                                 />
                             </Form.Item>
                         )}
 
-                        <Form.Item name="tweak" label="Tweak (hex)" help="Optional tweak bytes as a hex string (e.g. aabbccdd)">
-                            <Input placeholder="e.g. aabbccdd" />
+                        <Form.Item name="tweak" label={t("fpeEncrypt.tweak")} help={t("fpeEncrypt.tweakHelp")}>
+                            <Input placeholder={t("fpeEncrypt.tweakPlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Button type="primary" htmlType="submit" loading={isLoading} data-testid="submit-btn">
-                        Encrypt (FPE)
+                        {t("fpeEncrypt.submit")}
                     </Button>
                 </Space>
             </Form>
@@ -223,13 +224,13 @@ const FpeEncryptForm: React.FC = () => {
             {res && (
                 <div ref={responseRef} className="mt-6">
                     <Alert
-                        message={res.startsWith("Error") ? "Error" : "Success"}
+                        message={res.startsWith(t("common:errorPrefix")) ? t("common:error") : t("fpeEncrypt.success")}
                         description={
                             <div data-testid="response-output" className="break-all font-mono text-sm whitespace-pre-wrap">
                                 {res}
                             </div>
                         }
-                        type={res.startsWith("Error") ? "error" : "success"}
+                        type={res.startsWith(t("common:errorPrefix")) ? "error" : "success"}
                         showIcon
                     />
                 </div>

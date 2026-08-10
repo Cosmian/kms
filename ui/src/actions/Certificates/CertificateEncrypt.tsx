@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Radio, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { encrypt_certificate_ttlv_request, parse_encrypt_ttlv_response } from "../../wasm/pkg";
@@ -19,12 +20,13 @@ interface CertificateEncryptFormData {
 const CertificateEncryptForm: React.FC = () => {
     const [form] = Form.useForm<CertificateEncryptFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: CertificateEncryptFormData) => {
         const id = values.certificateId ? values.certificateId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing certificate identifier.");
+                throw new Error(`${t("common:errorPrefix")}${t("certificateEncrypt.missingCertificateId")}`);
             }
             const request = encrypt_certificate_ttlv_request(id, values.inputFile, values.authenticationData, values.encryptionAlgorithm);
             const result_str = await sendKmipRequest(request, serverUrl);
@@ -41,19 +43,19 @@ const CertificateEncryptForm: React.FC = () => {
                 }
 
                 downloadFile(data, filename, mimeType);
-                return "File has been encrypted";
+                return t("certificateEncrypt.success");
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Certificate Encryption</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("certificateEncrypt.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Encrypt a file using the certificate public key.</p>
-                <p>The certificate can be identified using either its ID or associated tags.</p>
-                <p className="text-sm text-yellow-600">Note: This operation loads the entire file in memory.</p>
+                <p>{t("certificateEncrypt.intro")}</p>
+                <p>{t("certificateEncrypt.introKey")}</p>
+                <p className="text-sm text-yellow-600">{t("certificateEncrypt.note")}</p>
             </div>
 
             <Form
@@ -67,13 +69,13 @@ const CertificateEncryptForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Input File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("certificateEncrypt.inputFile")}</h3>
 
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
 
-                        <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to encrypt" }]}>
+                        <Form.Item name="inputFile" rules={[{ required: true, message: t("certificateEncrypt.pleaseSelectFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
@@ -90,36 +92,40 @@ const CertificateEncryptForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag file to this area to encrypt</p>
+                                <p className="ant-upload-text">{t("certificateEncrypt.uploadText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Certificate Identification (required)</h3>
-                        <Form.Item name="certificateId" label="Certificate ID" help="The unique identifier of the certificate">
-                            <Input placeholder="Enter certificate ID" />
+                        <h3 className="text-m font-bold mb-4">{t("certificateEncrypt.certificateIdentification")}</h3>
+                        <Form.Item
+                            name="certificateId"
+                            label={t("certificateEncrypt.certificateId")}
+                            help={t("certificateEncrypt.certificateIdHelp")}
+                        >
+                            <Input placeholder={t("certificateEncrypt.enterCertificateId")} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Alternative to Certificate ID: specify tags to identify the certificate">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("certificateEncrypt.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Encryption Options</h3>
+                        <h3 className="text-m font-bold mb-4">{t("certificateEncrypt.encryptionOptions")}</h3>
                         <Form.Item
                             name="authenticationData"
-                            label="Authentication Data"
-                            help="Optional: this data needs to be provided back for decryption"
+                            label={t("certificateEncrypt.authenticationData")}
+                            help={t("certificateEncrypt.authenticationDataHelp")}
                         >
-                            <Input.TextArea placeholder="Enter authentication data" rows={2} />
+                            <Input.TextArea placeholder={t("certificateEncrypt.enterAuthenticationData")} rows={2} />
                         </Form.Item>
 
                         <Form.Item
                             name="encryptionAlgorithm"
-                            label="Encryption Algorithm"
-                            help="Optional: only available for RSA keys. Default is PKCS#1 RSA OAEP"
+                            label={t("certificateEncrypt.encryptionAlgorithm")}
+                            help={t("certificateEncrypt.encryptionAlgorithmHelp")}
                         >
                             <Radio.Group>
                                 <Radio value="CkmRsaPkcsOaep">PKCS#1 RSA OAEP</Radio>
@@ -128,8 +134,12 @@ const CertificateEncryptForm: React.FC = () => {
                             </Radio.Group>
                         </Form.Item>
 
-                        <Form.Item name="outputFile" label="Output File Path" help="Optional: specify a custom output file path">
-                            <Input placeholder="Enter output file path" />
+                        <Form.Item
+                            name="outputFile"
+                            label={t("certificateEncrypt.outputFile")}
+                            help={t("certificateEncrypt.outputFileHelp")}
+                        >
+                            <Input placeholder={t("certificateEncrypt.enterOutputFile")} />
                         </Form.Item>
                     </Card>
 
@@ -141,12 +151,12 @@ const CertificateEncryptForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Encrypt File with Certificate
+                            {t("certificateEncrypt.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="Certificate encrypt response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("certificateEncrypt.responseTitle")} />
         </div>
     );
 };

@@ -1,5 +1,6 @@
 import { Button, Card, Space, Table, Tag } from "antd";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import { getNoTTLVRequest } from "../../utils/utils";
 
@@ -17,6 +18,7 @@ const AccessObtainedList: React.FC = () => {
 
     const [res, setRes] = useState<string | undefined>(undefined);
     const { serverUrl } = useAuth();
+    const { t } = useTranslation("actions");
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -27,23 +29,23 @@ const AccessObtainedList: React.FC = () => {
 
     const columns = [
         {
-            title: "Object UID",
+            title: t("accessObtained.colObjectUid"),
             dataIndex: "object_id",
             key: "object_id",
         },
         {
-            title: "State",
+            title: t("accessObtained.colState"),
             dataIndex: "state",
             key: "state",
             render: (state: string) => <Tag color={state === "Active" ? "green" : "orange"}>{state}</Tag>,
         },
         {
-            title: "Owner",
+            title: t("accessObtained.colOwner"),
             dataIndex: "owner_id",
             key: "owner_id",
         },
         {
-            title: "Granted Operations",
+            title: t("accessObtained.colOperations"),
             dataIndex: "operations",
             key: "operations",
             render: (operations: string[]) => (
@@ -67,15 +69,15 @@ const AccessObtainedList: React.FC = () => {
             if (response.length) {
                 setAccessRights(response);
             } else {
-                setRes("Empty result - no access obtained.");
+                setRes(t("accessObtained.emptyResult"));
             }
         } catch (e) {
-            setRes(`Error listing objects: ${e}`);
+            setRes(t("accessObtained.errorListing", { error: e }));
             console.error("Error listing objects:", e);
         } finally {
             setIsLoading(false);
         }
-    }, [serverUrl]);
+    }, [serverUrl, t]);
 
     const fetchCreatePermission = useCallback(async () => {
         setHasCreatePermission(undefined);
@@ -95,27 +97,25 @@ const AccessObtainedList: React.FC = () => {
     return (
         <div className="p-6">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold ">Access rights obtained</h1>
+                <h1 className="text-2xl font-bold ">{t("accessObtained.title")}</h1>
                 <Button type="primary" onClick={fetchAccessRights} loading={isLoading} className="bg-primary">
-                    Refresh
+                    {t("accessObtained.refresh")}
                 </Button>
             </div>
 
             <div className="mb-8 space-y-2">
-                <p>
-                    List of objects you have been granted access to, along with their current state, owner, and the operations you can
-                    perform.
-                </p>
+                <p>{t("accessObtained.intro")}</p>
             </div>
             <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                 <Card>
                     <div className="mb-4 space-y-2">
-                        <h3 className="text-m font-bold mb-4">Create access right</h3>
-                        <Tag color={hasCreatePermission ? "green" : "red"}>Create</Tag>
-                        {hasCreatePermission ? "You have" : "You don't have"} Create access right, enabling object creation and import from
-                        KMS.
+                        <h3 className="text-m font-bold mb-4">{t("accessObtained.createAccessRight")}</h3>
+                        <Tag color={hasCreatePermission ? "green" : "red"}>{t("common:create")}</Tag>
+                        {t("accessObtained.createAccessStatus", {
+                            status: hasCreatePermission ? t("accessObtained.youHave") : t("accessObtained.youDontHave"),
+                        })}
                     </div>
-                    <h3 className="text-m font-bold mb-4">Objects access rights</h3>
+                    <h3 className="text-m font-bold mb-4">{t("accessObtained.objectsAccessRights")}</h3>
                     <Table
                         dataSource={accessRights}
                         columns={columns}
@@ -132,7 +132,7 @@ const AccessObtainedList: React.FC = () => {
             </Space>
             {res && (
                 <div ref={responseRef}>
-                    <Card title="Obtained access response">{res}</Card>
+                    <Card title={t("accessObtained.responseTitle")}>{res}</Card>
                 </div>
             )}
         </div>

@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Form, Input, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import { postNoTTLVRequest } from "../../utils/utils";
 
@@ -14,6 +15,7 @@ const TokenizeWordPatternMaskForm: React.FC = () => {
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const { serverUrl } = useAuth();
+    const { t } = useTranslation("actions");
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -33,12 +35,12 @@ const TokenizeWordPatternMaskForm: React.FC = () => {
             );
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {
-                setRes(`Result: ${typed.result}`);
+                setRes(t("tokenizeWordPatternMask.resultPrefix", { value: typed.result }));
             } else {
-                setRes(`Error: ${typed.message ?? "Unknown error"}`);
+                setRes(`${t("common:errorPrefix")}${typed.message ?? t("tokenizeWordPatternMask.unknownError")}`);
             }
         } catch (e) {
-            setRes(`Error: ${e}`);
+            setRes(`${t("common:errorPrefix")}${e}`);
             console.error("Word pattern mask error:", e);
         } finally {
             setIsLoading(false);
@@ -47,11 +49,11 @@ const TokenizeWordPatternMaskForm: React.FC = () => {
 
     return (
         <div className="rounded-lg p-6 m-4">
-            <h1 className="text-2xl font-bold mb-6">Anonymize — Pattern Mask</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("tokenizeWordPatternMask.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Replace all substrings matching a regular expression with a replacement string.</p>
-                <p>Uses Rust regex syntax. The pattern is limited to 1 024 characters to prevent ReDoS attacks.</p>
+                <p>{t("tokenizeWordPatternMask.intro")}</p>
+                <p>{t("tokenizeWordPatternMask.introRegex")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
@@ -59,36 +61,36 @@ const TokenizeWordPatternMaskForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="data"
-                            label="Input text"
-                            rules={[{ required: true, message: "Please enter the text to process" }]}
-                            help="Text in which to apply the pattern substitution"
+                            label={t("tokenizeWordPatternMask.inputText")}
+                            rules={[{ required: true, message: t("tokenizeWordPatternMask.pleaseEnterText") }]}
+                            help={t("tokenizeWordPatternMask.inputTextHelp")}
                         >
-                            <Input.TextArea rows={4} placeholder="e.g. Call +33 6 12 34 56 78 or +1 800 555 0199" />
+                            <Input.TextArea rows={4} placeholder={t("tokenizeWordPatternMask.inputTextPlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Card>
                         <Form.Item
                             name="pattern"
-                            label="Regex pattern"
-                            rules={[{ required: true, message: "Please enter a regex pattern" }]}
-                            help="Regular expression to match (max 1 024 chars)"
+                            label={t("tokenizeWordPatternMask.pattern")}
+                            rules={[{ required: true, message: t("tokenizeWordPatternMask.pleaseEnterPattern") }]}
+                            help={t("tokenizeWordPatternMask.patternHelp")}
                         >
-                            <Input data-testid="pattern-input" placeholder={String.raw`e.g. \+\d[\d\s]{7,14}\d`} />
+                            <Input data-testid="pattern-input" placeholder={t("tokenizeWordPatternMask.patternPlaceholder")} />
                         </Form.Item>
 
                         <Form.Item
                             name="replace"
-                            label="Replacement string"
-                            rules={[{ required: true, message: "Please enter a replacement string" }]}
-                            help="String to substitute for each match"
+                            label={t("tokenizeWordPatternMask.replacement")}
+                            rules={[{ required: true, message: t("tokenizeWordPatternMask.pleaseEnterReplacement") }]}
+                            help={t("tokenizeWordPatternMask.replacementHelp")}
                         >
-                            <Input placeholder="e.g. [PHONE]" />
+                            <Input placeholder={t("tokenizeWordPatternMask.replacementPlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Button type="primary" htmlType="submit" loading={isLoading} data-testid="submit-btn">
-                        Apply Pattern Mask
+                        {t("tokenizeWordPatternMask.submit")}
                     </Button>
                 </Space>
             </Form>
@@ -96,13 +98,13 @@ const TokenizeWordPatternMaskForm: React.FC = () => {
             {res && (
                 <div ref={responseRef} className="mt-6">
                     <Alert
-                        message={res.startsWith("Error") ? "Error" : "Success"}
+                        message={res.startsWith(t("common:errorPrefix")) ? t("common:error") : t("tokenizeWordPatternMask.success")}
                         description={
                             <div data-testid="response-output" className="break-all font-mono text-sm whitespace-pre-wrap">
                                 {res}
                             </div>
                         }
-                        type={res.startsWith("Error") ? "error" : "success"}
+                        type={res.startsWith(t("common:errorPrefix")) ? "error" : "success"}
                         showIcon
                     />
                 </div>

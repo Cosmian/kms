@@ -2,6 +2,7 @@
 import { CopyOutlined } from "@ant-design/icons";
 import { Button, Card, Tooltip, Typography, message } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 
 const { Title } = Typography;
 
@@ -10,12 +11,13 @@ interface HashMapDisplayProps {
 }
 
 const HashMapDisplay: React.FC<HashMapDisplayProps> = ({ data }) => {
+    const { t } = useTranslation("common");
     // Function to copy Map to clipboard as JSON
     const copyToClipboard = (): void => {
         if (data) {
             const mapObject = Object.fromEntries(data);
             navigator.clipboard.writeText(JSON.stringify(mapObject, null, 2));
-            message.success("Copied to clipboard");
+            message.success(t("copiedToClipboard"));
         }
     };
 
@@ -109,9 +111,9 @@ const HashMapDisplay: React.FC<HashMapDisplayProps> = ({ data }) => {
                     title={
                         <div className="flex justify-between items-center">
                             <Title level={4} className="m-0">
-                                HashMap Display
+                                {t("hashMapDisplay")}
                             </Title>
-                            <Tooltip title="Copy JSON">
+                            <Tooltip title={t("copyJson")}>
                                 <Button type="text" icon={<CopyOutlined />} onClick={copyToClipboard} />
                             </Tooltip>
                         </div>
@@ -119,7 +121,7 @@ const HashMapDisplay: React.FC<HashMapDisplayProps> = ({ data }) => {
                     className="shadow-md"
                 >
                     <div>
-                        <Title level={5}>HashMap Preview</Title>
+                        <Title level={5}>{t("hashMapPreview")}</Title>
                         {renderMapPreview(data)}
                     </div>
                 </Card>

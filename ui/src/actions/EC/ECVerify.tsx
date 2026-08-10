@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space, Switch } from "antd";
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasmClient from "../../wasm/pkg/cosmian_kms_client_wasm";
@@ -19,6 +20,7 @@ interface ECVerifyFormData {
 const ECVerifyForm: React.FC = () => {
     const [form] = Form.useForm<ECVerifyFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
     const [dataBytes, setDataBytes] = useState<Uint8Array | undefined>(undefined);
     const [sigBytes, setSigBytes] = useState<Uint8Array | undefined>(undefined);
 
@@ -26,7 +28,7 @@ const ECVerifyForm: React.FC = () => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("ecVerify.missingKeyId"));
             }
             const dataBuf = dataBytes ?? (values.dataFile ? new Uint8Array(values.dataFile) : undefined);
             let sigBuf = sigBytes ?? (values.signatureFile ? new Uint8Array(values.signatureFile) : undefined);
@@ -64,7 +66,7 @@ const ECVerifyForm: React.FC = () => {
             }
             console.debug("ECVerify: dataBuf len", dataBuf?.byteLength ?? 0, "sigBuf len", sigBuf?.byteLength ?? 0);
             if (!sigBuf || sigBuf.byteLength === 0) {
-                throw new Error("Error: signature file is empty or unreadable. Please re-upload the signature.");
+                throw new Error(`${t("common:errorPrefix")}${t("ecVerify.emptySignature")}`);
             }
             const request = wasmClient.signature_verify_ttlv_request(id, dataBuf!, sigBuf, undefined, values.digested);
             const result_str = await sendKmipRequest(request, serverUrl);
@@ -73,28 +75,28 @@ const ECVerifyForm: React.FC = () => {
                 const respObj = response as unknown as Record<string, unknown>;
                 const validityRaw = respObj.ValidityIndicator ?? respObj.validity_indicator ?? respObj.validityIndicator;
                 const validity = typeof validityRaw === "string" ? validityRaw : String(validityRaw ?? "Unknown");
-                return `Signature validity: ${validity}`;
+                return t("ecVerify.validity", { validity });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Elliptic Curve Verify</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("ecVerify.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Verify an ECDSA signature for a given data file.</p>
-                <p>The key can be identified using either its ID or associated tags.</p>
+                <p>{t("ecVerify.intro")}</p>
+                <p>{t("ecVerify.introKey")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ digested: false }}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Data File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("ecVerify.dataFile")}</h3>
                         <Form.Item name="dataFileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
-                        <Form.Item name="dataFile" rules={[{ required: true, message: "Please select the data file" }]}>
+                        <Form.Item name="dataFile" rules={[{ required: true, message: t("ecVerify.pleaseSelectDataFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("dataFileName", file.name);
@@ -112,16 +114,16 @@ const ECVerifyForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag data file here</p>
+                                <p className="ant-upload-text">{t("ecVerify.uploadDataText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Signature File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("ecVerify.signatureFile")}</h3>
                         <Form.Item name="signatureFileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
-                        <Form.Item name="signatureFile" rules={[{ required: true, message: "Please select the signature file" }]}>
+                        <Form.Item name="signatureFile" rules={[{ required: true, message: t("ecVerify.pleaseSelectSignatureFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("signatureFileName", file.name);
@@ -139,22 +141,22 @@ const ECVerifyForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag signature file here</p>
+                                <p className="ant-upload-text">{t("ecVerify.uploadSignatureText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Key ID" help="The unique identifier of the key">
-                            <Input placeholder="Enter key ID" />
+                        <h3 className="text-m font-bold mb-4">{t("ecVerify.keyIdentification")}</h3>
+                        <Form.Item name="keyId" label={t("common:keyId")} help={t("ecVerify.keyIdHelp")}>
+                            <Input placeholder={t("common:enterKeyId")} />
                         </Form.Item>
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("ecVerify.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Card>
                         {/* Curve and signature algorithm are determined by key type (ECDSA). */}
-                        <Form.Item name="digested" label="Data Is Digested" valuePropName="checked">
+                        <Form.Item name="digested" label={t("ecVerify.dataIsDigested")} valuePropName="checked">
                             <Switch />
                         </Form.Item>
                     </Card>
@@ -166,12 +168,12 @@ const ECVerifyForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Verify Signature
+                            {t("ecVerify.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="EC verify response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("ecVerify.responseTitle")} />
         </div>
     );
 };

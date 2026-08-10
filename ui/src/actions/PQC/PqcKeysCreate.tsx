@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Divider, Form, Input, InputNumber, Select, Space } from "antd";
 import React, { useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useBranding } from "../../contexts/useBranding";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
@@ -23,6 +24,7 @@ type CreateKeyPairResponse = {
 const PqcKeysCreateForm: React.FC = () => {
     const [form] = Form.useForm<PqcKeyCreateFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
     const branding = useBranding();
     const [algorithmOptions, setAlgorithmOptions] = useState<{ value: string; label: string }[]>([]);
 
@@ -71,35 +73,34 @@ const PqcKeysCreateForm: React.FC = () => {
                     }
                 }
 
-                return `Key pair has been created. Private key Id: ${skId} - Public key Id: ${result.PublicKeyUniqueIdentifier}`;
+                return t("pqcKeysCreate.success", {
+                    privateKeyId: skId,
+                    publicKeyId: result.PublicKeyUniqueIdentifier,
+                });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Create a Post-Quantum key pair</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("pqcKeysCreate.title")}</h1>
             <div className="mb-8 space-y-2">
-                <p>Create a new Post-Quantum Cryptography key pair:</p>
+                <p>{t("pqcKeysCreate.intro")}</p>
                 <ul className="list-disc pl-5 space-y-1">
                     <li>
-                        <strong>ML-KEM</strong> (Key Encapsulation Mechanism): the public key is used to encapsulate a shared secret, and
-                        the private key to decapsulate it.
+                        <Trans ns="actions" i18nKey="pqcKeysCreate.introMlKem" components={{ strong: <strong /> }} />
                     </li>
                     <li>
-                        <strong>Hybrid KEM</strong> (X25519MLKEM768, X448MLKEM1024): combines a classical key exchange with ML-KEM for
-                        hybrid post-quantum key encapsulation.
+                        <Trans ns="actions" i18nKey="pqcKeysCreate.introHybridKem" components={{ strong: <strong /> }} />
                     </li>
                     <li>
-                        <strong>ML-DSA</strong> (Digital Signature Algorithm): the private key is used to sign data, and the public key to
-                        verify the signature.
+                        <Trans ns="actions" i18nKey="pqcKeysCreate.introMlDsa" components={{ strong: <strong /> }} />
                     </li>
                     <li>
-                        <strong>SLH-DSA</strong> (Stateless Hash-Based Signature): a hash-based signature scheme offering an alternative
-                        post-quantum signature approach.
+                        <Trans ns="actions" i18nKey="pqcKeysCreate.introSlhDsa" components={{ strong: <strong /> }} />
                     </li>
                 </ul>
-                <p>When creating a key pair with a specified tag, the tag is applied to both keys.</p>
+                <p>{t("pqcKeysCreate.introTags")}</p>
             </div>
 
             <Form
@@ -116,43 +117,49 @@ const PqcKeysCreateForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="algorithm"
-                            label="Algorithm"
-                            help="Select the PQC algorithm to use"
-                            rules={[{ required: true, message: "Please select an algorithm" }]}
+                            label={t("common:algorithm")}
+                            help={t("pqcKeysCreate.algorithmHelp")}
+                            rules={[{ required: true, message: t("pqcKeysCreate.pleaseSelectAlgorithm") }]}
                         >
                             <Select options={algorithmOptions} data-testid="pqc-algorithm-select" />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Optional: Add tags to help retrieve the keys later">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("pqcKeysCreate.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
-                        <Form.Item name="sensitive" valuePropName="checked" help="If set, the private key will not be exportable">
-                            <Checkbox>Sensitive</Checkbox>
+                        <Form.Item name="sensitive" valuePropName="checked" help={t("pqcKeysCreate.sensitiveHelp")}>
+                            <Checkbox>{t("pqcKeysCreate.sensitive")}</Checkbox>
                         </Form.Item>
 
                         <Divider orientation="left" plain>
-                            Rotation Policy (optional)
+                            {t("pqcKeysCreate.rotationPolicy")}
                         </Divider>
 
-                        <Form.Item
-                            name="rotateName"
-                            label="Rotation Name"
-                            help="Keyset name for addressing generations via name@latest, name@first, name@N"
-                        >
-                            <Input placeholder="e.g. my-keyset" data-testid="pqc-rotation-name" />
+                        <Form.Item name="rotateName" label={t("pqcKeysCreate.rotateName")} help={t("pqcKeysCreate.rotateNameHelp")}>
+                            <Input placeholder={t("pqcKeysCreate.rotateNamePlaceholder")} data-testid="pqc-rotation-name" />
                         </Form.Item>
 
                         <Form.Item
                             name="rotateInterval"
-                            label="Rotation Interval (seconds)"
-                            help="Auto-rotate the key pair every N seconds. Set 0 to disable."
+                            label={t("pqcKeysCreate.rotateInterval")}
+                            help={t("pqcKeysCreate.rotateIntervalHelp")}
                         >
-                            <InputNumber className="w-[200px]" min={0} placeholder="e.g. 86400" data-testid="pqc-rotation-interval" />
+                            <InputNumber
+                                className="w-[200px]"
+                                min={0}
+                                placeholder={t("pqcKeysCreate.rotateIntervalPlaceholder")}
+                                data-testid="pqc-rotation-interval"
+                            />
                         </Form.Item>
 
-                        <Form.Item name="rotateOffset" label="Rotation Offset (seconds)" help="Delay before the first rotation occurs.">
-                            <InputNumber className="w-[200px]" min={0} placeholder="e.g. 3600" data-testid="pqc-rotation-offset" />
+                        <Form.Item name="rotateOffset" label={t("pqcKeysCreate.rotateOffset")} help={t("pqcKeysCreate.rotateOffsetHelp")}>
+                            <InputNumber
+                                className="w-[200px]"
+                                min={0}
+                                placeholder={t("pqcKeysCreate.rotateOffsetPlaceholder")}
+                                data-testid="pqc-rotation-offset"
+                            />
                         </Form.Item>
                     </Card>
 
@@ -164,12 +171,12 @@ const PqcKeysCreateForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Create PQC Keypair
+                            {t("pqcKeysCreate.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="PQC key pair creation response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("pqcKeysCreate.responseTitle")} />
         </div>
     );
 };

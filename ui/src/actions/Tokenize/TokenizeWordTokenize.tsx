@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import { postNoTTLVRequest } from "../../utils/utils";
 
@@ -13,6 +14,7 @@ const TokenizeWordTokenizeForm: React.FC = () => {
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const { serverUrl } = useAuth();
+    const { t } = useTranslation("actions");
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -32,12 +34,12 @@ const TokenizeWordTokenizeForm: React.FC = () => {
             );
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {
-                setRes(`Result: ${typed.result}`);
+                setRes(t("tokenizeWordTokenize.resultPrefix", { value: typed.result }));
             } else {
-                setRes(`Error: ${typed.message ?? "Unknown error"}`);
+                setRes(`${t("common:errorPrefix")}${typed.message ?? t("tokenizeWordTokenize.unknownError")}`);
             }
         } catch (e) {
-            setRes(`Error: ${e}`);
+            setRes(`${t("common:errorPrefix")}${e}`);
             console.error("Word tokenize error:", e);
         } finally {
             setIsLoading(false);
@@ -46,11 +48,11 @@ const TokenizeWordTokenizeForm: React.FC = () => {
 
     return (
         <div className="rounded-lg p-6 m-4">
-            <h1 className="text-2xl font-bold mb-6">Anonymize — Word Tokenize</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("tokenizeWordTokenize.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Replace occurrences of sensitive words in a text with consistent random hex tokens.</p>
-                <p>The same word always maps to the same token within a single request, preserving referential integrity.</p>
+                <p>{t("tokenizeWordTokenize.intro")}</p>
+                <p>{t("tokenizeWordTokenize.introConsistency")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
@@ -58,27 +60,27 @@ const TokenizeWordTokenizeForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="data"
-                            label="Input text"
-                            rules={[{ required: true, message: "Please enter the text to tokenize" }]}
-                            help="Text containing words to replace with tokens"
+                            label={t("tokenizeWordTokenize.inputText")}
+                            rules={[{ required: true, message: t("tokenizeWordTokenize.pleaseEnterText") }]}
+                            help={t("tokenizeWordTokenize.inputTextHelp")}
                         >
-                            <Input.TextArea rows={4} placeholder="e.g. Alice sent the report to Alice and Bob" />
+                            <Input.TextArea rows={4} placeholder={t("tokenizeWordTokenize.inputTextPlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Card>
                         <Form.Item
                             name="words"
-                            label="Words to tokenize"
-                            rules={[{ required: true, message: "Please enter at least one word to tokenize" }]}
-                            help="Type a word and press Enter to add it to the list"
+                            label={t("tokenizeWordTokenize.wordsToTokenize")}
+                            rules={[{ required: true, message: t("tokenizeWordTokenize.pleaseEnterWords") }]}
+                            help={t("tokenizeWordTokenize.wordsHelp")}
                         >
-                            <Select mode="tags" placeholder="e.g. Alice, Bob" open={false} />
+                            <Select mode="tags" placeholder={t("tokenizeWordTokenize.wordsPlaceholder")} open={false} />
                         </Form.Item>
                     </Card>
 
                     <Button type="primary" htmlType="submit" loading={isLoading} data-testid="submit-btn">
-                        Tokenize Words
+                        {t("tokenizeWordTokenize.submit")}
                     </Button>
                 </Space>
             </Form>
@@ -86,13 +88,13 @@ const TokenizeWordTokenizeForm: React.FC = () => {
             {res && (
                 <div ref={responseRef} className="mt-6">
                     <Alert
-                        message={res.startsWith("Error") ? "Error" : "Success"}
+                        message={res.startsWith(t("common:errorPrefix")) ? t("common:error") : t("tokenizeWordTokenize.success")}
                         description={
                             <div data-testid="response-output" className="break-all font-mono text-sm whitespace-pre-wrap">
                                 {res}
                             </div>
                         }
-                        type={res.startsWith("Error") ? "error" : "success"}
+                        type={res.startsWith(t("common:errorPrefix")) ? "error" : "success"}
                         showIcon
                     />
                 </div>

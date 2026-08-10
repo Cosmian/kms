@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { getMimeType, saveDecryptedFile, sendKmipRequest } from "../../utils/utils";
 import { decrypt_sym_ttlv_request, parse_decrypt_ttlv_response } from "../../wasm/pkg";
@@ -16,24 +17,24 @@ interface SymmetricDecryptFormData {
     authenticationData?: Uint8Array;
 }
 
-const DATA_ENCRYPTION_ALGORITHMS = [
-    { label: "AES-GCM (default)", value: "AesGcm" },
-    { label: "AES-CBC", value: "AesCbc" },
-    { label: "AES-XTS", value: "AesXts" },
-    { label: "AES-GCM-SIV", value: "AesGcmSiv" },
-    { label: "ChaCha20-Poly1305", value: "Chacha20Poly1305" },
-];
-
 const SymmetricDecryptForm: React.FC = () => {
     const [form] = Form.useForm<SymmetricDecryptFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const selectedEncryptionAlgorithm = Form.useWatch("dataEncryptionAlgorithm", form);
+    const { t } = useTranslation("actions");
+    const DATA_ENCRYPTION_ALGORITHMS = [
+        { label: t("symmetricDecrypt.algorithmDefault", { algorithm: "AES-GCM" }), value: "AesGcm" },
+        { label: "AES-CBC", value: "AesCbc" },
+        { label: "AES-XTS", value: "AesXts" },
+        { label: "AES-GCM-SIV", value: "AesGcmSiv" },
+        { label: "ChaCha20-Poly1305", value: "Chacha20Poly1305" },
+    ];
 
     const onFinish = async (values: SymmetricDecryptFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("symmetricDecrypt.missingKeyId"));
             }
             const request = decrypt_sym_ttlv_request(id, values.inputFile, values.authenticationData, values.dataEncryptionAlgorithm);
             const result_str = await sendKmipRequest(request, serverUrl);
@@ -44,23 +45,23 @@ const SymmetricDecryptForm: React.FC = () => {
                 const fileName = lastDotIndex !== -1 ? name : `${name}.plain`;
                 const mimeType = getMimeType(fileName);
                 saveDecryptedFile(response.Data, fileName, mimeType);
-                return "File has been decrypted";
+                return t("symmetricDecrypt.success");
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Symmetric Decryption</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("symmetricDecrypt.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Decrypt a file using a symmetric key.</p>
-                <p>Decryption can happen in two ways:</p>
+                <p>{t("symmetricDecrypt.intro")}</p>
+                <p>{t("symmetricDecrypt.introTwoWays")}</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    <li>Server side: the data is sent to the server and decrypted there.</li>
-                    <li>Client side: The data encryption key (DEK) is decrypted server-side, then data is decrypted locally.</li>
+                    <li>{t("symmetricDecrypt.serverSide")}</li>
+                    <li>{t("symmetricDecrypt.clientSide")}</li>
                 </ul>
-                <p className="text-sm text-yellow-600">Note: Server-side decryption loads the entire file in memory.</p>
+                <p className="text-sm text-yellow-600">{t("symmetricDecrypt.note")}</p>
             </div>
 
             <Form
@@ -73,13 +74,13 @@ const SymmetricDecryptForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Input File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("symmetricDecrypt.inputFile")}</h3>
 
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
 
-                        <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to decrypt" }]}>
+                        <Form.Item name="inputFile" rules={[{ required: true, message: t("symmetricDecrypt.pleaseSelectFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
@@ -96,26 +97,26 @@ const SymmetricDecryptForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag file to this area to decrypt</p>
+                                <p className="ant-upload-text">{t("symmetricDecrypt.uploadText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Key ID" help="The unique identifier of the symmetric key">
-                            <Input placeholder="Enter key ID" />
+                        <h3 className="text-m font-bold mb-4">{t("symmetricDecrypt.keyIdentification")}</h3>
+                        <Form.Item name="keyId" label={t("common:keyId")} help={t("symmetricDecrypt.keyIdHelp")}>
+                            <Input placeholder={t("common:enterKeyId")} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("symmetricDecrypt.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Card>
                         <Form.Item
                             name="dataEncryptionAlgorithm"
-                            label="Data Encryption Algorithm"
+                            label={t("symmetricDecrypt.dataEncryptionAlgorithm")}
                             rules={[{ required: true }]}
-                            help="Algorithm used to encrypt the data"
+                            help={t("symmetricDecrypt.algorithmHelp")}
                         >
                             <Select options={DATA_ENCRYPTION_ALGORITHMS} />
                         </Form.Item>
@@ -123,10 +124,10 @@ const SymmetricDecryptForm: React.FC = () => {
                         {selectedEncryptionAlgorithm !== "AesXts" && selectedEncryptionAlgorithm !== "AesCbc" && (
                             <Form.Item
                                 name="authenticationData"
-                                label="Authentication Data"
-                                help="Optional hex-encoded authentication data used during encryption"
+                                label={t("symmetricDecrypt.authenticationData")}
+                                help={t("symmetricDecrypt.authenticationDataHelp")}
                             >
-                                <Input placeholder="Enter authentication data (hex)" />
+                                <Input placeholder={t("symmetricDecrypt.enterAuthenticationData")} />
                             </Form.Item>
                         )}
                     </Card>
@@ -139,12 +140,12 @@ const SymmetricDecryptForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Decrypt File
+                            {t("symmetricDecrypt.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="Symmetric keys decrypt response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("symmetricDecrypt.responseTitle")} />
         </div>
     );
 };

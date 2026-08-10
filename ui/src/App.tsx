@@ -73,6 +73,7 @@ import LocateForm from "./components/common/Locate";
 import MainLayout from "./components/layout/MainLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { useBranding } from "./contexts/useBranding";
+import { useAppLocale } from "./i18n/useAppLocale";
 import LoginPage from "./pages/LoginPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import { AuthMethod, fetchAuthMethod, fetchWhoAmI, getNoTTLVRequest } from "./utils/utils";
@@ -330,10 +331,10 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                         </Route>
                         <Route path="fpe">
                             <Route path="keys/create" element={<FpeKeyCreateForm />} />
-                            <Route path="keys/export" element={<KeyExportForm key_type={"symmetric"} />} />
-                            <Route path="keys/import" element={<KeyImportForm key_type="symmetric" />} />
-                            <Route path="keys/revoke" element={<RevokeForm objectType="symmetric" />} />
-                            <Route path="keys/destroy" element={<DestroyForm objectType="symmetric" />} />
+                            <Route path="keys/export" element={<KeyExportForm key_type={"fpe"} />} />
+                            <Route path="keys/import" element={<KeyImportForm key_type="fpe" />} />
+                            <Route path="keys/revoke" element={<RevokeForm objectType="fpe" />} />
+                            <Route path="keys/destroy" element={<DestroyForm objectType="fpe" />} />
                             <Route path="encrypt" element={<FpeEncryptForm />} />
                             <Route path="decrypt" element={<FpeDecryptForm />} />
                         </Route>
@@ -421,6 +422,7 @@ function App() {
     const [isWasmReady, setIsWasmReady] = useState(false);
     const [wasmError, setWasmError] = useState(false);
     const branding = useBranding();
+    const { antdLocale } = useAppLocale();
 
     useEffect(() => {
         async function loadWasm() {
@@ -535,6 +537,7 @@ function App() {
     return (
         <BrowserRouter basename="/ui">
             <ConfigProvider
+                locale={antdLocale}
                 theme={{
                     ...theme.defaultConfig,
                     ...(isDarkMode ? darkTheme : lightTheme),

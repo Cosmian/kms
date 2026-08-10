@@ -1,0 +1,39 @@
+{
+    "footer": {
+        "version": "KMS 服务器版本：{{version}}",
+        "apiDocumentation": "API 文档"
+    },
+    "header": {
+        "noHsmConfigured": "未配置 HSM",
+        "hsmSlot": "插槽"
+    },
+    "main": {
+        "devUnrestricted": "正在运行 DEV 无限制模式",
+        "downloadCli": "下载 CLI",
+        "logout": "退出登录",
+        "authDisabledTitle": "此 KMS 服务器已禁用身份认证",
+        "authDisabledDescription": "此 KMS 服务器启动时未配置身份认证方法。",
+        "wasmUnavailableTitle": "WebAssembly 不可用。可能被扩展程序阻止、被手动禁用，或受安全策略限制。",
+        "wasmUnavailableDescription": "请在浏览器中启用 WASM 并刷新此页面以使用 KMS UI。在 Firefox 中，可通过在 <code>about:config</code> 中设置 <code>javascript.options.wasm</code> = true 来启用。",
+        "healthDb": "数据库健康：{{status}}",
+        "healthDbWithLatency": "数据库健康：{{status}}（{{latency}}ms）",
+        "unavailable": "不可用"
+    },
+    "notFound": {
+        "title": "404 - 页面未找到",
+        "message": "哎呀！您查找的页面不存在。",
+        "goHome": "返回首页"
+    },
+    "login": {
+        "signUp": "免费注册，体验多用户权限委托",
+        "certFailed": "CERT 身份验证失败",
+        "authFailed": "身份认证失败",
+        "totpPlaceholder": "一次性代码（TOTP）",
+        "usernamePlaceholder": "用户名",
+        "passwordPlaceholder": "密码",
+        "verifyCode": "验证代码",
+        "login": "登录",
+        "accessKms": "访问 KMS",
+        "certErrorDescription": "未提供客户端证书或证书无效。如果问题持续存在，请关闭浏览器的所有实例，并使用之前加载的正确客户端证书重新启动。"
+    }
+}

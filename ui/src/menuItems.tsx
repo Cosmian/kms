@@ -28,6 +28,8 @@ export interface MenuItem {
     children?: MenuItem[];
     component?: React.ComponentType;
     disabled?: boolean;
+    /** When true, `label` is displayed as-is (e.g. branding-provided) and never translated. */
+    rawLabel?: boolean;
 }
 
 // Covercrypt is conditionally shown based on branding.enableCovercrypt
@@ -361,7 +363,9 @@ export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: 
     const isFips = options?.isFips ?? false;
 
     let menu = baseMenu.map((item) => {
-        if (item.key === "pqc") return { ...item, label: pqcLabel };
+        // The PQC section label comes from branding (pqcLabel) and must be
+        // displayed as-is; Sidebar skips translation for rawLabel items.
+        if (item.key === "pqc") return { ...item, label: pqcLabel, rawLabel: true };
         return item;
     });
 

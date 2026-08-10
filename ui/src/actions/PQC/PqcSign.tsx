@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import * as wasmClient from "../../wasm/pkg/cosmian_kms_client_wasm";
@@ -16,12 +17,13 @@ interface PqcSignFormData {
 const PqcSignForm: React.FC = () => {
     const [form] = Form.useForm<PqcSignFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: PqcSignFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("pqcSign.missingKeyId"));
             }
             // ML-DSA sign: no crypto parameters needed, not digested
             const request = await wasmClient.sign_ttlv_request(id, values.inputFile, undefined, false);
@@ -43,28 +45,28 @@ const PqcSignForm: React.FC = () => {
                 }
                 const filename = `${values.fileName}.sig`;
                 downloadFile(signature, filename, "application/octet-stream");
-                return `Signature created and downloaded (${signature.byteLength} bytes).`;
+                return t("pqcSign.success", { size: signature.byteLength });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">PQC Signature Sign</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("pqcSign.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Sign a file using a PQC signature private key (ML-DSA or SLH-DSA).</p>
-                <p>The key can be identified using either its ID or associated tags.</p>
+                <p>{t("pqcSign.intro")}</p>
+                <p>{t("pqcSign.introKey")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Input File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("pqcSign.inputFile")}</h3>
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
-                        <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to sign" }]}>
+                        <Form.Item name="inputFile" rules={[{ required: true, message: t("pqcSign.pleaseSelectFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
@@ -81,17 +83,17 @@ const PqcSignForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag file to this area to sign</p>
+                                <p className="ant-upload-text">{t("pqcSign.uploadText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Private Key ID" help="The unique identifier of the PQC signature private key">
-                            <Input placeholder="Enter private key ID" />
+                        <h3 className="text-m font-bold mb-4">{t("pqcSign.keyIdentification")}</h3>
+                        <Form.Item name="keyId" label={t("pqcSign.privateKeyId")} help={t("pqcSign.privateKeyIdHelp")}>
+                            <Input placeholder={t("pqcSign.enterPrivateKeyId")} />
                         </Form.Item>
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("pqcSign.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Form.Item>
@@ -102,12 +104,12 @@ const PqcSignForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Sign File
+                            {t("pqcSign.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="PQC sign response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("pqcSign.responseTitle")} />
         </div>
     );
 };

@@ -1,6 +1,7 @@
 import type { UploadProps } from "antd";
 import { Upload, message } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { MAX_UPLOAD_SIZE_BYTES, formatFileSize } from "../../utils/utils";
 
 type Props = UploadProps & {
@@ -12,12 +13,13 @@ type Props = UploadProps & {
 };
 
 export const FormUpload: React.FC<Props> = (props) => {
+    const { t } = useTranslation("common");
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { value, maxFileSize = MAX_UPLOAD_SIZE_BYTES, beforeUpload, ...rest } = props;
 
     const wrappedBeforeUpload: UploadProps["beforeUpload"] = (file, fileList) => {
         if (file.size > maxFileSize) {
-            message.error(`File is too large (${formatFileSize(file.size)}). Maximum allowed size is ${formatFileSize(maxFileSize)}.`);
+            message.error(t("fileTooLarge", { size: formatFileSize(file.size), max: formatFileSize(maxFileSize) }));
             return Upload.LIST_IGNORE;
         }
         if (beforeUpload) {
@@ -30,12 +32,13 @@ export const FormUpload: React.FC<Props> = (props) => {
 };
 
 export const FormUploadDragger: React.FC<Props> = (props) => {
+    const { t } = useTranslation("common");
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { value, maxFileSize = MAX_UPLOAD_SIZE_BYTES, beforeUpload, ...rest } = props;
 
     const wrappedBeforeUpload: UploadProps["beforeUpload"] = (file, fileList) => {
         if (file.size > maxFileSize) {
-            message.error(`File is too large (${formatFileSize(file.size)}). Maximum allowed size is ${formatFileSize(maxFileSize)}.`);
+            message.error(t("fileTooLarge", { size: formatFileSize(file.size), max: formatFileSize(maxFileSize) }));
             return Upload.LIST_IGNORE;
         }
         if (beforeUpload) {

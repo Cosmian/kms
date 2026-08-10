@@ -1,6 +1,8 @@
 import { CopyOutlined } from "@ant-design/icons";
 import { Badge, Button, Card, Space, Table, Tag, Tooltip, message } from "antd";
+import type { TFunction } from "i18next";
 import React, { useCallback, useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
 import { getNoTTLVRequest } from "../../utils/utils";
 
@@ -15,19 +17,19 @@ interface HsmInstanceStatus {
     slots: HsmSlotStatus[];
 }
 
-const makeSlotColumns = (prefix: string) => [
+const makeSlotColumns = (prefix: string, t: TFunction) => [
     {
-        title: "Slot ID",
+        title: t("hsmStatus.colSlotId"),
         dataIndex: "slot_id",
         key: "slot_id",
     },
     {
-        title: "Key prefix",
+        title: t("hsmStatus.colKeyPrefix"),
         key: "key_prefix",
         render: (_: unknown, record: HsmSlotStatus) => {
             const uid = `${prefix}::${record.slot_id}::`;
             return (
-                <Tooltip title="Copy key-prefix (append your key ID)">
+                <Tooltip title={t("hsmStatus.copyTooltip")}>
                     <span className="font-mono text-xs">{uid}</span>
                     <Button
                         type="text"
@@ -35,7 +37,7 @@ const makeSlotColumns = (prefix: string) => [
                         icon={<CopyOutlined />}
                         onClick={() => {
                             void navigator.clipboard.writeText(uid).then(() => {
-                                void message.success(`Copied: ${uid}`);
+                                void message.success(t("hsmStatus.copied", { uid }));
                             });
                         }}
                     />
@@ -44,11 +46,15 @@ const makeSlotColumns = (prefix: string) => [
         },
     },
     {
-        title: "Accessible",
+        title: t("hsmStatus.colAccessible"),
         dataIndex: "accessible",
         key: "accessible",
         render: (accessible: boolean) =>
-            accessible ? <Badge status="success" text="Yes" /> : <Badge status="error" text="No (no password)" />,
+            accessible ? (
+                <Badge status="success" text={t("hsmStatus.accessibleYes")} />
+            ) : (
+                <Badge status="error" text={t("hsmStatus.accessibleNo")} />
+            ),
     },
 ];
 
@@ -56,6 +62,7 @@ const HsmStatus: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [instances, setInstances] = useState<HsmInstanceStatus[]>([]);
     const [error, setError] = useState<string | undefined>(undefined);
+    const { t } = useTranslation("actions");
     const { serverUrl } = useAuth();
 
     const fetchHsmStatus = useCallback(async () => {
@@ -66,12 +73,12 @@ const HsmStatus: React.FC = () => {
             const response = (await getNoTTLVRequest("/hsm/status", serverUrl)) as HsmInstanceStatus[];
             setInstances(response);
         } catch (e) {
-            setError(`Error fetching HSM status: ${e}`);
+            setError(t("hsmStatus.errorFetching", { error: String(e) }));
             console.error("Error fetching HSM status:", e);
         } finally {
             setIsLoading(false);
         }
-    }, [serverUrl]);
+    }, [serverUrl, t]);
 
     useEffect(() => {
         fetchHsmStatus();
@@ -80,7 +87,7 @@ const HsmStatus: React.FC = () => {
     return (
         <div className="p-6">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold">HSM Status</h1>
+                <h1 className="text-2xl font-bold">{t("hsmStatus.title")}</h1>
                 <Button
                     type="primary"
                     onClick={fetchHsmStatus}
@@ -88,21 +95,20 @@ const HsmStatus: React.FC = () => {
                     data-testid="submit-btn"
                     className="bg-black-500 hover:bg-blue-700 border-0"
                 >
-                    Refresh
+                    {t("hsmStatus.refresh")}
                 </Button>
             </div>
 
             <div className="mb-8 space-y-2">
-                <p>Displays all Hardware Security Module (HSM) instances connected to this KMS server.</p>
+                <p>{t("hsmStatus.intro")}</p>
                 <p>
-                    Each instance is identified by a routing prefix (e.g. <code>hsm</code>, <code>hsm1</code>) and a model name. The slot
-                    table shows which PKCS#11 slots are configured and whether a login password has been provided.
+                    <Trans ns="actions" i18nKey="hsmStatus.intro2" components={{ code: <code /> }} />
                 </p>
             </div>
 
             {instances.length === 0 && !isLoading && !error && (
                 <Card data-testid="response-output">
-                    <p className="text-gray-500">No HSM instances configured on this server.</p>
+                    <p className="text-gray-500">{t("hsmStatus.noInstances")}</p>
                 </Card>
             )}
 
@@ -120,18 +126,18 @@ const HsmStatus: React.FC = () => {
                     >
                         <Table<HsmSlotStatus>
                             dataSource={inst.slots}
-                            columns={makeSlotColumns(inst.prefix)}
+                            columns={makeSlotColumns(inst.prefix, t)}
                             rowKey="slot_id"
                             pagination={false}
                             size="small"
-                            locale={{ emptyText: "No slots configured" }}
+                            locale={{ emptyText: t("hsmStatus.noSlots") }}
                         />
                     </Card>
                 ))}
             </Space>
 
             {error && (
-                <Card title="Error" className="mt-4">
+                <Card title={t("hsmStatus.errorCard")} className="mt-4">
                     <p className="text-red-500" data-testid="response-output">
                         {error}
                     </p>

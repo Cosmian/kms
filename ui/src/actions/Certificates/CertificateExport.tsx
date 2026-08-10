@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { export_certificate_ttlv_request, parse_export_certificate_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
@@ -26,6 +27,7 @@ const CertificateExportForm: React.FC = () => {
     const [form] = Form.useForm<CertificateExportFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [selectedFormat, setSelectedFormat] = useState<CertificateExportFormat>("JsonTtlv");
+    const { t } = useTranslation("actions");
 
     const handleFormatChange = (value: CertificateExportFormat) => {
         setSelectedFormat(value);
@@ -35,7 +37,7 @@ const CertificateExportForm: React.FC = () => {
         const id = values.certificateId ? values.certificateId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing certificate identifier.");
+                throw new Error(`${t("common:errorPrefix")}${t("certificateExport.missingCertificateId")}`);
             }
             const request = export_certificate_ttlv_request(id, values.outputFormat, values.pkcs12Password);
             const result_str = await sendKmipRequest(request, serverUrl);
@@ -61,27 +63,27 @@ const CertificateExportForm: React.FC = () => {
                         mimeType = "application/octet-stream";
                 }
                 downloadFile(data, filename, mimeType);
-                return "Certificate has been exported";
+                return t("certificateExport.success");
             }
         });
     };
 
     const certificateFormats = [
-        { label: "JSON TTLV (default)", value: "JsonTtlv" },
-        { label: "X509 PEM", value: "Pem" },
-        { label: "PKCS12 (with private key)", value: "Pkcs12" },
-        { label: "PKCS12 Legacy (compatible with openssl 1.x)", value: "Pkcs12Legacy" },
-        { label: "PKCS7 (certificate chain)", value: "Pkcs7" },
+        { label: t("certificateExport.formatJsonTtlv"), value: "JsonTtlv" },
+        { label: t("certificateExport.formatPem"), value: "Pem" },
+        { label: t("certificateExport.formatPkcs12"), value: "Pkcs12" },
+        { label: t("certificateExport.formatPkcs12Legacy"), value: "Pkcs12Legacy" },
+        { label: t("certificateExport.formatPkcs7"), value: "Pkcs7" },
     ];
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Export Certificate</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("certificateExport.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Export a certificate from the KMS. The certificate can be identified using either its ID or associated tags.</p>
-                <p>For PKCS#12 formats, provide the private key ID instead of certificate ID.</p>
-                <p className="text-sm text-yellow-600">Note: PKCS12-legacy format is not available in FIPS mode.</p>
+                <p>{t("certificateExport.intro")}</p>
+                <p>{t("certificateExport.introPkcs12")}</p>
+                <p className="text-sm text-yellow-600">{t("certificateExport.note")}</p>
             </div>
 
             <Form
@@ -94,24 +96,24 @@ const CertificateExportForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Certificate Identification (required)</h3>
+                        <h3 className="text-m font-bold mb-4">{t("certificateExport.certificateIdentification")}</h3>
                         <Form.Item
                             name="certificateId"
-                            label="Certificate ID"
-                            help="The unique identifier of the certificate stored in the KMS. For PKCS#12, provide the private key ID."
+                            label={t("certificateExport.certificateId")}
+                            help={t("certificateExport.certificateIdHelp")}
                         >
-                            <Input placeholder="Enter certificate ID" />
+                            <Input placeholder={t("certificateExport.enterCertificateId")} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Alternative to Certificate ID: specify tags to identify the certificate">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("certificateExport.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Card>
                         <Form.Item
                             name="outputFormat"
-                            label="Certificate Format"
-                            help="Format for the exported certificate. JSON TTLV is recommended for later re-import."
+                            label={t("certificateExport.certificateFormat")}
+                            help={t("certificateExport.certificateFormatHelp")}
                             rules={[{ required: true }]}
                         >
                             <Select options={certificateFormats} onChange={handleFormatChange} />
@@ -122,11 +124,11 @@ const CertificateExportForm: React.FC = () => {
                         <Card>
                             <Form.Item
                                 name="pkcs12Password"
-                                label="PKCS#12 Password"
-                                help="Password to protect the PKCS#12 file"
+                                label={t("certificateExport.pkcs12Password")}
+                                help={t("certificateExport.pkcs12PasswordHelp")}
                                 rules={[{ required: true }]}
                             >
-                                <Input.Password placeholder="Enter password for PKCS#12" />
+                                <Input.Password placeholder={t("certificateExport.enterPkcs12Password")} />
                             </Form.Item>
                         </Card>
                     )}
@@ -138,12 +140,12 @@ const CertificateExportForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Export Certificate
+                            {t("certificateExport.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="Certificate export response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("certificateExport.responseTitle")} />
         </div>
     );
 };

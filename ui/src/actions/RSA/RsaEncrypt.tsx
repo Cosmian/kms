@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { encrypt_rsa_ttlv_request, parse_encrypt_ttlv_response } from "../../wasm/pkg";
@@ -15,12 +16,6 @@ interface RsaEncryptFormData {
     hashingAlgorithm: "Sha1" | "Sha224" | "Sha256" | "Sha384" | "Sha512";
 }
 
-const ENCRYPTION_ALGORITHMS = [
-    { label: "RSA PKCS #1 v1.5 (Legacy)", value: "CkmRsaPkcs" },
-    { label: "RSA OAEP (Recommended)", value: "CkmRsaPkcsOaep" },
-    { label: "RSA AES Key Wrap", value: "CkmRsaAesKeyWrap" },
-];
-
 const HASH_ALGORITHMS = [
     { label: "SHA-1", value: "Sha1" },
     { label: "SHA-224", value: "Sha224" },
@@ -32,12 +27,18 @@ const HASH_ALGORITHMS = [
 const RsaEncryptForm: React.FC = () => {
     const [form] = Form.useForm<RsaEncryptFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
+    const encryptionAlgorithms = [
+        { label: t("rsaEncrypt.algorithmRsaPkcs"), value: "CkmRsaPkcs" },
+        { label: t("rsaEncrypt.algorithmRsaOaep"), value: "CkmRsaPkcsOaep" },
+        { label: t("rsaEncrypt.algorithmRsaAesKeyWrap"), value: "CkmRsaAesKeyWrap" },
+    ];
 
     const onFinish = async (values: RsaEncryptFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("rsaEncrypt.missingKeyId"));
             }
             const request = encrypt_rsa_ttlv_request(id, values.inputFile, values.encryptionAlgorithm, values.hashingAlgorithm);
             const result_str = await sendKmipRequest(request, serverUrl);
@@ -47,19 +48,19 @@ const RsaEncryptForm: React.FC = () => {
                 const mimeType = "application/octet-stream";
                 const filename = `${values.fileName}.enc`;
                 downloadFile(data, filename, mimeType);
-                return "File has been encrypted";
+                return t("rsaEncrypt.success");
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">RSA Encryption</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("rsaEncrypt.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Encrypt a file using RSA public key.</p>
-                <p>The key can be identified using either its ID or associated tags.</p>
-                <p className="text-sm text-yellow-600">Note: RSA PKCS #1 v1.5 is deprecated in FIPS 140-3.</p>
+                <p>{t("rsaEncrypt.intro")}</p>
+                <p>{t("rsaEncrypt.introKey")}</p>
+                <p className="text-sm text-yellow-600">{t("rsaEncrypt.note")}</p>
             </div>
 
             <Form
@@ -73,13 +74,13 @@ const RsaEncryptForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Input File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("rsaEncrypt.inputFile")}</h3>
 
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
 
-                        <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to encrypt" }]}>
+                        <Form.Item name="inputFile" rules={[{ required: true, message: t("rsaEncrypt.pleaseSelectFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
@@ -96,35 +97,35 @@ const RsaEncryptForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag file to this area to encrypt</p>
+                                <p className="ant-upload-text">{t("rsaEncrypt.uploadText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Key ID" help="The unique identifier of the public key">
-                            <Input placeholder="Enter key ID" />
+                        <h3 className="text-m font-bold mb-4">{t("rsaEncrypt.keyIdentification")}</h3>
+                        <Form.Item name="keyId" label={t("common:keyId")} help={t("rsaEncrypt.keyIdHelp")}>
+                            <Input placeholder={t("common:enterKeyId")} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("rsaEncrypt.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Card>
                         <Form.Item
                             name="encryptionAlgorithm"
-                            label="Encryption Algorithm"
+                            label={t("rsaEncrypt.encryptionAlgorithm")}
                             rules={[{ required: true }]}
-                            help="RSA OAEP is recommended for security"
+                            help={t("rsaEncrypt.encryptionAlgorithmHelp")}
                         >
-                            <Select options={ENCRYPTION_ALGORITHMS} />
+                            <Select options={encryptionAlgorithms} />
                         </Form.Item>
 
                         <Form.Item
                             name="hashingAlgorithm"
-                            label="Hashing Algorithm"
+                            label={t("rsaEncrypt.hashingAlgorithm")}
                             rules={[{ required: true }]}
-                            help="SHA-256 or stronger is recommended"
+                            help={t("rsaEncrypt.hashingAlgorithmHelp")}
                         >
                             <Select options={HASH_ALGORITHMS} />
                         </Form.Item>
@@ -137,12 +138,12 @@ const RsaEncryptForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Encrypt File
+                            {t("rsaEncrypt.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="RSA encrypt response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("rsaEncrypt.responseTitle")} />
         </div>
     );
 };

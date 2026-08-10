@@ -66,7 +66,9 @@ export default defineConfig({
     projects: [
         {
             name: "chromium",
-            use: { ...devices["Desktop Chrome"] },
+            // Pin the browser locale so E2E assertions on English UI text stay
+            // stable regardless of the host/browser default language.
+            use: { ...devices["Desktop Chrome"], locale: "en-US" },
         },
     ],
     // In CI the preview server is started by the CI script; do not start a

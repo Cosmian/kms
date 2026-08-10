@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { getMimeType, saveDecryptedFile, sendKmipRequest } from "../../utils/utils";
 import { decrypt_certificate_ttlv_request, parse_decrypt_ttlv_response } from "../../wasm/pkg";
@@ -16,21 +17,21 @@ interface CertificateDecryptFormData {
     encryptionAlgorithm: "CkmRsaPkcs" | "CkmRsaPkcsOaep" | "CkmRsaAesKeyWrap";
 }
 
-const RSA_ENCRYPTION_ALGORITHMS = [
-    { label: "RSA PKCS #1 v1.5 (Legacy)", value: "CkmRsaPkcs" },
-    { label: "RSA OAEP (Recommended)", value: "CkmRsaPkcsOaep" },
-    { label: "RSA AES Key Wrap", value: "CkmRsaAesKeyWrap" },
-];
-
 const CertificateDecryptForm: React.FC = () => {
     const [form] = Form.useForm<CertificateDecryptFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
+    const rsaEncryptionAlgorithms = [
+        { label: t("certificateDecrypt.algorithmRsaPkcs"), value: "CkmRsaPkcs" },
+        { label: t("certificateDecrypt.algorithmRsaOaep"), value: "CkmRsaPkcsOaep" },
+        { label: t("certificateDecrypt.algorithmRsaAesKeyWrap"), value: "CkmRsaAesKeyWrap" },
+    ];
 
     const onFinish = async (values: CertificateDecryptFormData) => {
         const id = values.privateKeyId ? values.privateKeyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(`${t("common:errorPrefix")}${t("certificateDecrypt.missingKeyId")}`);
             }
             const request = decrypt_certificate_ttlv_request(id, values.inputFile, values.authenticationData, values.encryptionAlgorithm);
             const result_str = await sendKmipRequest(request, serverUrl);
@@ -41,19 +42,19 @@ const CertificateDecryptForm: React.FC = () => {
                 const fileName = lastDotIndex !== -1 ? name : `${name}.plain`;
                 const mimeType = getMimeType(fileName);
                 saveDecryptedFile(response.Data, fileName, mimeType);
-                return "File has been decrypted";
+                return t("certificateDecrypt.success");
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Certificate Decryption</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("certificateDecrypt.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Decrypt a file using the private key of a certificate.</p>
-                <p>The private key can be identified using either its ID or associated tags.</p>
-                <p className="text-sm text-yellow-600">Note: This operation loads the entire file in memory.</p>
+                <p>{t("certificateDecrypt.intro")}</p>
+                <p>{t("certificateDecrypt.introKey")}</p>
+                <p className="text-sm text-yellow-600">{t("certificateDecrypt.note")}</p>
             </div>
 
             <Form
@@ -66,12 +67,12 @@ const CertificateDecryptForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Input File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("certificateDecrypt.inputFile")}</h3>
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
 
-                        <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to decrypt" }]}>
+                        <Form.Item name="inputFile" rules={[{ required: true, message: t("certificateDecrypt.pleaseSelectFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
@@ -88,43 +89,47 @@ const CertificateDecryptForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag file to this area to decrypt</p>
+                                <p className="ant-upload-text">{t("certificateDecrypt.uploadText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Private Key Identification (required)</h3>
+                        <h3 className="text-m font-bold mb-4">{t("certificateDecrypt.privateKeyIdentification")}</h3>
                         <Form.Item
                             name="privateKeyId"
-                            label="Private Key ID"
-                            help="The unique identifier of the private key related to certificate"
+                            label={t("certificateDecrypt.privateKeyId")}
+                            help={t("certificateDecrypt.privateKeyIdHelp")}
                         >
-                            <Input placeholder="Enter private key ID" />
+                            <Input placeholder={t("certificateDecrypt.enterPrivateKeyId")} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("certificateDecrypt.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Card>
                         <Form.Item
                             name="encryptionAlgorithm"
-                            label="Encryption Algorithm"
-                            help="Optional: This is only available for RSA keys (default is PKCS_OAEP)"
+                            label={t("certificateDecrypt.encryptionAlgorithm")}
+                            help={t("certificateDecrypt.encryptionAlgorithmHelp")}
                         >
-                            <Select options={RSA_ENCRYPTION_ALGORITHMS} />
+                            <Select options={rsaEncryptionAlgorithms} />
                         </Form.Item>
 
                         <Form.Item
                             name="authenticationData"
-                            label="Authentication Data"
-                            help="Optional: Authentication data that was supplied during encryption"
+                            label={t("certificateDecrypt.authenticationData")}
+                            help={t("certificateDecrypt.authenticationDataHelp")}
                         >
-                            <Input placeholder="Enter authentication data" />
+                            <Input placeholder={t("certificateDecrypt.enterAuthenticationData")} />
                         </Form.Item>
 
-                        <Form.Item name="outputFile" label="Output File Path" help="Optional: Specify a custom output file path">
-                            <Input placeholder="Enter output file path" />
+                        <Form.Item
+                            name="outputFile"
+                            label={t("certificateDecrypt.outputFile")}
+                            help={t("certificateDecrypt.outputFileHelp")}
+                        >
+                            <Input placeholder={t("certificateDecrypt.enterOutputFile")} />
                         </Form.Item>
                     </Card>
                     <Form.Item>
@@ -135,12 +140,12 @@ const CertificateDecryptForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Decrypt File
+                            {t("certificateDecrypt.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="Certificate decrypt response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("certificateDecrypt.responseTitle")} />
         </div>
     );
 };
