@@ -1224,6 +1224,8 @@ Crate path: `crate/clients/pkcs11/module`
 | `debug` | `load_find_context_by_class: search by id: {} -> handle:                                          {} -> certificate: {}:{}` | `src/sessions.rs` | — | — |
 | `warn` | `load_find_context_by_class: no {search_class:?} object found for id                              {id}` | `src/sessions.rs` | `search_class`, `id` | - |
 | `debug` | `load_find_context_by_class: search by id: {} -> handle: {} ->                              object: {}:{}` | `src/sessions.rs` | - | - |
+| `warn` | `load_find_context_by_class: no {search_class:?} object found for                                  id {id}` | `src/sessions.rs` | `search_class`, `id` | - |
+| `debug` | `load_find_context_by_class: backend fallback — search by id: {}                                  -> handle: {} -> object: {}:{}` | `src/sessions.rs` | - | - |
 
 ---
 
