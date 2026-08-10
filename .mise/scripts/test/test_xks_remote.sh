@@ -118,6 +118,24 @@ echo "Running vendored AWS XKS curl-based test client..."
 
 cd "${REPO_ROOT}/test_data/aws_xks/scripts"
 
+# Each individual test script sources utils/config.sh which hard-codes
+# SIGV4_ACCESS_KEY_ID, SIGV4_SECRET_ACCESS_KEY, and XKS_PROXY_HOST to
+# the example values, overriding our exports. Replace config.sh with a
+# version that uses ${VAR:-default} so our env vars take precedence.
+CONFIG_ORIG="utils/config.sh"
+CONFIG_BAK="utils/config.sh.remote-bak"
+cp "${CONFIG_ORIG}" "${CONFIG_BAK}"
+cat >"${CONFIG_ORIG}" <<'CFEOF'
+# Patched by test_xks_remote.sh: respects caller-exported env vars.
+export XKS_PROXY_HOST="${XKS_PROXY_HOST:-localhost:9998}"
+export URI_PREFIX="${URI_PREFIX:-aws}"
+export SIGV4_ACCESS_KEY_ID="${SIGV4_ACCESS_KEY_ID:-AKIAIOSFODNN7EXAMPLE}"
+export SIGV4_SECRET_ACCESS_KEY="${SIGV4_SECRET_ACCESS_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}"
+export KEY_ID="${KEY_ID:-aws_xks_kek}"
+CFEOF
+restore_config() { mv "${CONFIG_BAK}" "${CONFIG_ORIG}" 2>/dev/null || true; }
+trap restore_config EXIT
+
 export XKS_PROXY_HOST="${KMS_XKS_HOST}"
 export URI_PREFIX="${KMS_XKS_URI_PREFIX}"
 export SIGV4_ACCESS_KEY_ID="${KMS_XKS_SIGV4_ACCESS_KEY_ID}"
