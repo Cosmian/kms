@@ -3,15 +3,12 @@ name: AWS XKS remote
 
 on:
   push:
-    branches:
-      - develop
-      - main
-      - fix/xks*
-      - feat/xks*
+    tags:
+      - '**'
   pull_request:
   workflow_dispatch:
   schedule:
-    - cron: 0 6 * * *   # Daily at 06:00 UTC
+    - cron: 0 6 * * * # Daily at 06:00 UTC
 
 # Prevent parallel runs against the same remote server.
 concurrency:
