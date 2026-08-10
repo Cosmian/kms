@@ -159,3 +159,4 @@ mechanism is in place; filling it is incremental per-operation work.
 - **REF-003**: `tradeoofs.md` T1, T2, T7 — known gaps in this design
 - **REF-004**: `crate/server/src/middlewares/audit.rs` — "Design decisions" doc comment
 - **REF-005**: `crate/server/src/start_kms_server.rs` — middleware registration order
+- **REF-006**: ADR-0006 — OTLP Log Record Export (side-car injected at the same hook point)
