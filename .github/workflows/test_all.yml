@@ -43,6 +43,9 @@ jobs:
           - spire
           - kmip-go
           - cef
+          - siem
+          - audit
+          - monitoring
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -85,6 +88,17 @@ jobs:
             features: fips
           - type: cef
             features: fips
+          # siem integration tests are format-agnostic (same audit output in both variants);
+          # run non-fips only to avoid duplicating test time.
+          - type: siem
+            features: fips
+          # audit integration tests require non-fips (audit middleware + CEF features)
+          - type: audit
+            features: fips
+          # monitoring tests work with both variants, but run non-fips only to avoid
+          # duplicating Docker-heavy test time (OTel + VictoriaMetrics + Grafana).
+          - type: monitoring
+            features: fips
         include:
           # Docker services required per test type (types without an entry need no containers)
           - type: psql
@@ -99,6 +113,13 @@ jobs:
             docker: redis
           - type: otel
             docker: otel-collector jaeger
+          # siem-filebeat sub-test requires Elasticsearch; fluent-bit and cef-syslog
+          # use docker run internally and do not need a pre-started compose service.
+          - type: siem
+            docker: elasticsearch
+          # monitoring test starts OTel collector, VictoriaMetrics, Grafana via docker run;
+          # no pre-started compose service needed.
+          # audit test has no external Docker dependencies (uses KMS binary directly).
 
     steps:
       - uses: actions/checkout@v7

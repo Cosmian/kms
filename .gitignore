@@ -69,6 +69,7 @@ vcpkg_installed/
 perf.data
 perf.data.old
 target/flamegraphs/
+REVIEW_REPORT*.md
 
 scripts/
 
