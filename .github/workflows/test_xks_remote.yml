@@ -34,7 +34,7 @@ jobs:
         env:
           KMS_XKS_HOST: aws-xks-kms.cosmian.dev
           KMS_XKS_URI_PREFIX: aws
-          KMS_XKS_REGION: us-east-1
+          KMS_XKS_REGION: eu-west-1
           KMS_XKS_SIGV4_ACCESS_KEY_ID: ${{ secrets.KMS_XKS_SIGV4_ACCESS_KEY_ID }}
           KMS_XKS_SIGV4_SECRET_ACCESS_KEY: ${{ secrets.KMS_XKS_SIGV4_SECRET_ACCESS_KEY }}
         run: |

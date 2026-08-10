@@ -19,7 +19,7 @@ require_cmd bash "bash 4.2+ is required by the XKS test client."
 # Host only (no scheme) — all calls use HTTPS.
 KMS_XKS_HOST="${KMS_XKS_HOST:-aws-xks-kms.cosmian.dev}"
 KMS_XKS_URI_PREFIX="${KMS_XKS_URI_PREFIX:-aws}"
-KMS_XKS_REGION="${KMS_XKS_REGION:-us-east-1}"
+KMS_XKS_REGION="${KMS_XKS_REGION:-eu-west-1}"
 
 # SigV4 credentials — required: set them in the environment or as CI secrets.
 : "${KMS_XKS_SIGV4_ACCESS_KEY_ID:?KMS_XKS_SIGV4_ACCESS_KEY_ID is required}"
