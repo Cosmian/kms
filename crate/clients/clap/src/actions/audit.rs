@@ -7,7 +7,7 @@
 //!
 //! Subcommands
 //! ===========
-//! * `export` — reads the file and writes events to stdout (JSON or CEF v25)
+//! * `export` — reads the file and writes events to stdout (JSON or CEF v27)
 //! * `verify` — validates the SHA-256 hash chain; exits non-zero if broken
 
 use std::{
@@ -28,7 +28,7 @@ use crate::error::result::KmsCliResult;
 /// required.
 #[derive(Subcommand, Debug)]
 pub enum AuditCommands {
-    /// Export audit events to stdout (JSON lines or CEF v25 format).
+    /// Export audit events to stdout (JSON lines or CEF v27 format).
     Export(ExportAuditAction),
     /// Verify the SHA-256 hash chain of the audit file.
     Verify(VerifyAuditAction),
@@ -53,14 +53,14 @@ pub enum ExportFormat {
     /// Output each event as a JSON object (default — same as the stored format).
     #[default]
     Json,
-    /// Output each event as a CEF v25 syslog line.
+    /// Output each event as a CEF v27 syslog line.
     Cef,
 }
 
 /// Export audit events from the JSONL log file to stdout.
 ///
 /// Each event is printed on its own line.  Use `--since` to filter by time and
-/// `--format` to choose between JSON (default) and CEF v25 output.
+/// `--format` to choose between JSON (default) and CEF v27 output.
 ///
 /// # Examples
 ///
