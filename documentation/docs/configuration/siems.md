@@ -65,18 +65,19 @@ activity.
 
 ### Elasticsearch / OpenSearch
 
-Ship the JSONL file via Filebeat with the `decode_json_fields` processor:
+Ship the JSONL file via Filebeat's `filestream` input with the `ndjson` parser:
 
 ```yaml
 filebeat.inputs:
-  - type: log
+  - type: filestream
+    id: cosmian-kms-audit
     paths:
       - /var/log/cosmian-kms/audit.jsonl
-    processors:
-      - decode_json_fields:
-          fields: ["message"]
+    parsers:
+      - ndjson:
           target: ""
           overwrite_keys: true
+          add_error_key: true
 ```
 
 ### JSONL field reference for SIEM mapping
@@ -140,32 +141,6 @@ ckms audit export --format cef \
       occupied by the system syslog daemon.
     - **No cursor state**: each run re-exports from the beginning of the file (or from
       `--since`). This is fine for verification and unsuitable for continuous delivery.
-
-### Continuous CEF forwarding with rsyslog
-
-For continuous CEF delivery, combine `ckms audit export` with rsyslog's output module:
-
-```bash
-# /etc/rsyslog.d/kms-audit.conf
-# Forward CEF events to a remote SIEM collector
-template(name="CEFLine" type="string"
-    string="%msg%\n")
-
-if $programname == 'kms-audit' then {
-    action(type="omfwd"
-        target="siem-collector.example.com"
-        port="514"
-        protocol="tcp"
-        template="CEFLine")
-}
-```
-
-Pipe CEF output into syslog:
-
-```bash
-ckms audit export --path /var/log/cosmian-kms/audit.jsonl --format cef \
-  | logger -t kms-audit -p local0.info
-```
 
 ### ArcSight / CEF-native SIEMs
 
