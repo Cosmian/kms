@@ -12,9 +12,9 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 source "$SCRIPT_DIR/../common.sh"
 
 # sbomnix version to use — fetched directly from GitHub via Nix flakes so it
-# is independent of the global nixpkgs pin.  v1.7.4 is the first version that
+# is independent of the global nixpkgs pin.  v1.8.0 is the first version that
 # ships both --impure and --include-vulns for sbomnix.
-SBOMNIX_VERSION="v1.7.4"
+SBOMNIX_VERSION="v1.8.0"
 
 # Nix experimental features needed for `nix run` (flake-based tool invocation)
 export NIX_CONFIG="experimental-features = nix-command flakes"
@@ -450,6 +450,28 @@ if [ "$TARGET" != "server" ] && [ "$TARGET" != "ckms" ]; then
   ENRICH_OPTS="$ENRICH_OPTS --no-rust --no-npm"
 fi
 
+# ── Pre-populate caches for enrichment ◀─────────────────────────────────────
+# The enrichment script reads author/supplier metadata from:
+#   • ~/.cargo/registry/src/  — Cargo.toml files for Rust crate author fields
+#   • ui/node_modules/         — package.json files for npm package author fields
+# In Nix-based CI builds neither cache exists; cargo fetch + pnpm install
+# populate them so enrichment gets author data without hitting remote APIs.
+if [ "$TARGET" = "server" ] || [ "$TARGET" = "ckms" ]; then
+  if command -v cargo >/dev/null 2>&1 && [ -f "$REPO_ROOT/Cargo.toml" ]; then
+    echo "Populating cargo registry cache for SBOM enrichment..."
+    if ! cargo fetch --manifest-path "$REPO_ROOT/Cargo.toml" --quiet; then
+      echo "  ⚠ cargo fetch failed; enrichment will lack crate author data" >&2
+    fi
+  fi
+  if command -v pnpm >/dev/null 2>&1 && [ -f "$REPO_ROOT/ui/pnpm-lock.yaml" ]; then
+    echo "Installing UI dependencies for SBOM enrichment..."
+    if ! (cd "$REPO_ROOT/ui" && pnpm install --frozen-lockfile >/dev/null 2>&1); then
+      echo "  ⚠ pnpm install failed; enrichment will lack npm author data" >&2
+    fi
+  fi
+  echo ""
+fi
+
 if [ -f "$ENRICH_SCRIPT" ] && command -v python3 >/dev/null 2>&1; then
   echo "Running author/supplier enrichment..."
   # In CI / release builds, set SBOM_API_LIMIT=500 in the environment to also
@@ -459,6 +481,7 @@ if [ -f "$ENRICH_SCRIPT" ] && command -v python3 >/dev/null 2>&1; then
   SBOM_API_LIMIT="${SBOM_API_LIMIT:-0}"
   # Use --in-place to overwrite bom.*.json directly so downstream consumers
   # always get enriched files at the canonical paths.
+  # shellcheck disable=SC2086
   python3 "$ENRICH_SCRIPT" $ENRICH_OPTS --in-place --api-limit "$SBOM_API_LIMIT"
   echo ""
 else
