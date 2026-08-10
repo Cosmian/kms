@@ -153,6 +153,42 @@ services:
       - ${KMS_SLOT_OTEL_HTTP_PORT:-4318}:4318   # OTLP HTTP receiver (host)
       - ${KMS_SLOT_OTEL_METRICS_PORT:-8889}:8889   # Prometheus metrics endpoint (host)
 
+  # ── rsyslog (SIEM TCP syslog integration test) ────────────────────────────
+  #
+  # Used by: mise run test:siem-cef-tcp-syslog, mise run test:siem
+  # No special startup needed — the test script manages the container lifecycle
+  # with the .mise/scripts/test/rsyslog.conf config.
+  #
+  # Start manually for debugging:
+  #   docker run --rm --name kms-rsyslog -p 51514:514 \
+  #     -v ./.mise/scripts/test/rsyslog.conf:/etc/rsyslog.conf:ro \
+  #     -v /tmp/rsyslog:/var/log:rw \
+  #     rsyslog/syslog_appliance_alpine:latest
+
+  # ── Elasticsearch 8.x (SIEM integration tests) ───────────────────────────
+  #
+  # Used by: mise run test:siem-filebeat, mise run test:siem
+  # Start with: docker compose up -d elasticsearch
+  #
+  # Security is disabled (xpack.security.enabled=false) for CI simplicity —
+  # no TLS certificates or credentials are required.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - ${KMS_SLOT_ES_PORT:-9200}:9200
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf http://localhost:9200/_cluster/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   # ── EDB Postgres Advanced Server 17 with Transparent Data Encryption ──────
   #
   # Requires:

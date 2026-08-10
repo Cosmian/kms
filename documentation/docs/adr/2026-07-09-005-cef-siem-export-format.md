@@ -135,9 +135,9 @@ SIEM-specific network transport dependencies.
   (OpenText, April 2024)
 - **IMP-003**: Severity thresholds (5/6/7) are constants in `cef.rs`; operators needing
   different mappings should adjust there.
-- **IMP-004**: Transport is out of scope for this implementation. Recommended pattern:
-  tail the JSONL file with `filebeat` / `fluent-bit`, convert each line via
-  `ckms audit to-cef`, pipe to a syslog destination.
+- **IMP-004**: Transport is out of scope for this implementation. For production TCP
+  syslog delivery with RFC 6587 octet-counting framing, see ADR-0007. File-tailing
+  ingestion (filebeat, fluent-bit) is documented in `siems.md`.
 - **IMP-005**: CEF escaping: `|` → `\|`, `\` → `\\` in header fields;
   `=` → `\=`, `\n` → `\\n`, `\r` → `\\r` in extension values. Covered by unit tests
   in `cef.rs`.
@@ -152,3 +152,4 @@ SIEM-specific network transport dependencies.
 - **REF-003**: [ArcSight CEF Implementation Standard v27](https://www.microfocus.com/documentation/arcsight/arcsight-smartconnectors-24.2/pdfdoc/cef-implementation-standard/cef-implementation-standard.pdf) (OpenText, April 2024)
 - **REF-004**: OCSF v1.x specification — <https://schema.ocsf.io>
 - **REF-005**: `crate/access/src/audit/cef.rs`
+- **REF-006**: ADR-0007 — TCP Syslog CEF Transport (production delivery)
