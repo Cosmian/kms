@@ -1,0 +1,44 @@
+---
+name: AWS XKS remote
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+      - fix/xks*
+      - feat/xks*
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 6 * * *   # Daily at 06:00 UTC
+
+# Prevent parallel runs against the same remote server.
+concurrency:
+  group: xks-remote
+  cancel-in-progress: false
+
+jobs:
+  xks-remote:
+    name: AWS XKS — remote server
+    runs-on: ubuntu-latest
+    # Skip for fork PRs (secrets not available) and dependabot.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Run XKS tests against remote server
+        env:
+          KMS_XKS_HOST: aws-xks-kms.cosmian.dev
+          KMS_XKS_URI_PREFIX: aws
+          KMS_XKS_REGION: us-east-1
+          KMS_XKS_SIGV4_ACCESS_KEY_ID: ${{ secrets.KMS_XKS_SIGV4_ACCESS_KEY_ID }}
+          KMS_XKS_SIGV4_SECRET_ACCESS_KEY: ${{ secrets.KMS_XKS_SIGV4_SECRET_ACCESS_KEY }}
+        run: |
+          bash .mise/scripts/test/test_xks_remote.sh
