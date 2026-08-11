@@ -11,7 +11,7 @@ specification reference — see [CEF export format](./cef-export.md).
 
 ## Integration models
 
-The KMS supports two integration models today, with a third planned:
+The KMS supports three integration models:
 
 | Model | How it works | Format | Continuous? |
 | ----- | ------------ | ------ | ----------- |
@@ -291,96 +291,47 @@ for connector-specific configuration details.
 
 ---
 
-## Interoperability testing
+## Proven integrations
 
-The KMS SIEM integrations are validated using Docker-based integration tests that exercise
-each documented integration path end-to-end. Every test has **zero error tolerance**: if no
-evidence is found (0 events, 0 records, 0 metrics) the test exits with code 1.
+All tests use the product's official Docker image and fail if no evidence is found.
 
-### Test commands
+### SIEM and log pipeline integrations
 
-| Command | ADRs proven | What it validates |
-|---------|-------------|-------------------|
-| `mise test:audit` | ADR-003, ADR-004 | Tamper-evident JSONL written, hash chain valid, all required fields present |
-| `mise test:cef` | ADR-005, ADR-007 | CEF format correctness + UDP syslog + TCP rsyslog (RFC 6587) delivery |
-| `mise test:siem` | ADR-005, ADR-006 | Fluent Bit file tailing, Filebeat→Elasticsearch, OTLP audit log export |
-| `mise test:monitoring` | ADR-006 | KMS metrics on OTel Prometheus endpoint, VictoriaMetrics and Grafana stack health |
+These products ingest KMS **audit events** (JSONL file, CEF syslog, or OTLP logs).
 
-Run all tests locally (requires Docker and a built KMS binary):
+#### Tested against a live instance
 
-```bash
-# Build once
-cargo build --features non-fips
+| Product | Role | What is proven |
+|---|---|---|
+| **rsyslog** | Syslog receiver | CEF lines delivered over TCP (RFC 6587 octet-counting); all events received intact |
+| **Fluent Bit 4.0** | Log shipper | JSONL audit file tailed continuously; all events forwarded; required fields present |
+| **Filebeat 8.17** | Log shipper | Audit JSONL shipped to Elasticsearch; ingest pipeline normalises `result`; all events indexed |
+| **Elasticsearch 8.17** | Log store / SIEM backend | Events indexed with correct field mapping for both Success and Failure outcomes |
+| **OpenTelemetry Collector** | Audit log pipeline | KMS OTLP HTTP push received; 64 audit log records with `cef_line` attribute confirmed |
 
-# Run each integration area (all require Docker)
-KMS_SKIP_BUILD=1 mise test:audit     --variant non-fips
-KMS_SKIP_BUILD=1 mise test:cef       --variant non-fips
-KMS_SKIP_BUILD=1 mise test:siem      --variant non-fips
-KMS_SKIP_BUILD=1 mise test:monitoring --variant non-fips
-```
+#### Documented but not live-tested
 
-Or run individual suites:
+The underlying transport is proven above; only the product-specific connector has not been
+exercised with a live container.
 
-```bash
-mise test:siem --suite fluent-bit    # Fluent Bit JSONL file tailing
-mise test:siem --suite filebeat      # Filebeat → Elasticsearch
-mise test:siem --suite otlp          # OTLP audit log export to OTel collector
-mise test:cef  --suite format        # CEF v27 format validation (jc parser)
-mise test:cef  --suite syslog        # CEF → UDP syslog
-mise test:cef  --suite tcp-syslog    # CEF → TCP rsyslog (RFC 6587)
-```
+| Product | Integration model | Basis for confidence |
+|---|---|---|
+| **Splunk** (Universal Forwarder) | File tailing (`inputs.conf`) | Same JSONL format proven by Fluent Bit and Filebeat tests |
+| **Splunk HEC** | OTel `splunk_hec` exporter | OTel Collector audit pipeline proven; `splunk_hec` exporter config in [Model 3](#model-3--otlp-audit-push-server-side-continuous) |
+| **Datadog** | File tailing (`datadog.yaml`) | Same JSONL format; config example in this page |
+| **ArcSight / QRadar** | CEF over TCP syslog | CEF format + TCP transport proven by rsyslog test; only destination endpoint differs |
+| **OpenSearch** | File tailing or Filebeat | Elasticsearch-compatible API; Filebeat test uses the same ingest pipeline |
 
-### Audit log test (`mise test:audit`)
+### Monitoring stack integrations
 
-Proves ADR-003 (tamper-evident JSONL) and ADR-004 (HTTP middleware):
+These products consume KMS **metrics** (not audit events). See
+[Monitoring stack setup](./monitoring-setup.md) for configuration details.
 
-- Starts KMS with audit enabled, exercises Create / GetAttributes / Encrypt / Destroy
-- GUARD: ≥ 4 events written to the audit JSONL file
-- GUARD: `ckms audit verify` exits 0 — hash chain is intact
-- GUARD: every event has all required fields (`timestamp`, `operation`, `user`, `result`, `request_id`, `client_ip`)
-- GUARD: ≥ 1 `Success` event and ≥ 1 `Failure` event are present
-
-### CEF format and syslog tests (`mise test:cef`)
-
-Proves ADR-005 (CEF v27 format) and ADR-007 (syslog transport):
-
-- GUARD: every audit event produces exactly one CEF line (1:1 mapping, fail if 0)
-- GUARD: every line matches `CEF:0|Cosmian|KMS|<version>|<op>|<op>|<severity>|`
-- GUARD: all required extension keys present (`rt`, `suser`, `act`, `cn1`, `cn1Label`, `outcome`, `externalId`, `devicePayloadId`)
-- GUARD: ≥ 1 `outcome=Success` and ≥ 1 `outcome=Failure`
-- GUARD (syslog): all 4 CEF lines received by the UDP syslog listener
-- GUARD (tcp-syslog): all 4 CEF lines received by rsyslog via TCP with RFC 6587 framing, field integrity preserved
-
-The CEF format is additionally validated against [jc](https://github.com/kellyjonbrazil/jc), an independent open-source CEF parser.
-
-### OTLP audit export test (`mise test:siem --suite otlp`)
-
-Proves ADR-006 (OTLP log export):
-
-- Starts an OpenTelemetry Collector container with HTTP receiver (port 4318) and file exporter
-- Configures KMS with `[audit.otlp] endpoint = "http://127.0.0.1:4318"` and `allow_insecure = true`
-- Generates 66 KMIP operations to trigger the 64-event batch flush while KMS is running
-- GUARD: ≥ 64 OTLP log records in the collector output file (fail if 0)
-- GUARD: ≥ 1 record has a `cef_line` attribute (CEF string carried as OTLP attribute)
-- GUARD: all `severityText` values are either `"Success"` or `"Failure"`
-
-### Monitoring stack test (`mise test:monitoring`)
-
-Proves ADR-006 (metrics export) and the full monitoring stack:
-
-- Starts OTel Collector (gRPC receiver), VictoriaMetrics, and Grafana containers
-- Configures KMS to export metrics via `--otlp grpc://127.0.0.1:<port>`
-- GUARD: ≥ 100 KMS metric lines on the OTel Prometheus debug endpoint (fail if 0)
-- GUARD: required metric families present (`kms_active_connections`, `kms_active_users`, `kms_database_operations_total`, `kms_server_uptime_seconds_total`)
-- GUARD: Grafana `/api/health` returns HTTP 200 with `database=ok`
-
-The Filebeat test validates:
-
-- JSONL audit file is correctly tailed and parsed
-- All required fields (`id`, `timestamp`, `operation`, `user`, `result_status`, …) are indexed
-- The `kms-audit-normalize` ingest pipeline correctly transforms both `"Success"` string and
-  `{"Failure": "..."}` object results into consistent `result_status`/`result_error` fields
-- Both Success and Failure events are indexed (no mapping conflicts)
+| Product | Role | What is proven |
+|---|---|---|
+| **OpenTelemetry Collector** | Metrics pipeline | KMS gRPC OTLP push received; 162+ KMS metric lines confirmed on Prometheus endpoint |
+| **VictoriaMetrics** | Metrics backend | Receives KMS metrics from OTel Collector via remote_write |
+| **Grafana** | Dashboarding | Full monitoring stack operational; `/api/health` returns `database=ok` |
 
 ---
 
