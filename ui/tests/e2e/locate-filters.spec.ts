@@ -42,7 +42,7 @@ test.describe("Locate filters – basic", () => {
         await gotoAndWait(page, "/ui/locate");
         await selectOptionById(page, "#objectType", "SymmetricKey");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/objects? located/i);
+        expect(text).toMatch(/object\(s\) located/i);
         expect(extractCount(text)).toBeGreaterThanOrEqual(1);
     });
 
@@ -52,7 +52,7 @@ test.describe("Locate filters – basic", () => {
         await gotoAndWait(page, "/ui/locate");
         await selectOptionById(page, "#state", "Active");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/objects? located/i);
+        expect(text).toMatch(/object\(s\) located/i);
         expect(extractCount(text)).toBeGreaterThanOrEqual(1);
     });
 
@@ -69,7 +69,7 @@ test.describe("Locate filters – basic", () => {
     test("locate without filters returns all objects", async ({ page }) => {
         await gotoAndWait(page, "/ui/locate");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/objects? located/i);
+        expect(text).toMatch(/object\(s\) located/i);
         expect(extractCount(text)).toBeGreaterThanOrEqual(1);
     });
 });
@@ -81,7 +81,7 @@ test.describe("Locate filters – algorithm", () => {
         await gotoAndWait(page, "/ui/locate");
         await selectOptionById(page, "#cryptographicAlgorithm", "AES");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/objects? located/i);
+        expect(text).toMatch(/object\(s\) located/i);
         expect(extractCount(text)).toBeGreaterThanOrEqual(1);
     });
 
@@ -91,7 +91,7 @@ test.describe("Locate filters – algorithm", () => {
         await gotoAndWait(page, "/ui/locate");
         await selectOptionById(page, "#cryptographicAlgorithm", "RSA");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/objects? located/i);
+        expect(text).toMatch(/object\(s\) located/i);
         expect(extractCount(text)).toBeGreaterThanOrEqual(1);
     });
 
@@ -102,7 +102,7 @@ test.describe("Locate filters – algorithm", () => {
         // EC keys created with NIST P-256 are stored as ECDH (see build_algorithm_from_curve).
         await selectOptionById(page, "#cryptographicAlgorithm", "ECDH");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/objects? located/i);
+        expect(text).toMatch(/object\(s\) located/i);
         expect(extractCount(text)).toBeGreaterThanOrEqual(1);
     });
 });
@@ -134,7 +134,7 @@ test.describe("Locate filters – key format type", () => {
         await gotoAndWait(page, "/ui/locate");
         await selectOptionById(page, "#keyFormatType", "Raw");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/objects? located/i);
+        expect(text).toMatch(/object\(s\) located/i);
         expect(extractCount(text)).toBeGreaterThanOrEqual(1);
     });
 });
@@ -146,7 +146,7 @@ test.describe("Locate filters – linked object IDs", () => {
         await gotoAndWait(page, "/ui/locate");
         await page.fill('[id="publicKeyId"]', pubKeyId);
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/objects? located/i);
+        expect(text).toMatch(/object\(s\) located/i);
         // The private key is linked to the public key
         expect(extractCount(text)).toBeGreaterThanOrEqual(1);
     });
@@ -157,7 +157,7 @@ test.describe("Locate filters – linked object IDs", () => {
         await gotoAndWait(page, "/ui/locate");
         await page.fill('[id="privateKeyId"]', privKeyId);
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/objects? located/i);
+        expect(text).toMatch(/object\(s\) located/i);
         expect(extractCount(text)).toBeGreaterThanOrEqual(1);
     });
 });
@@ -171,7 +171,7 @@ test.describe("Locate filters – combined", () => {
         await selectOptionById(page, "#cryptographicAlgorithm", "RSA");
         await selectOptionById(page, "#objectType", "PrivateKey");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/objects? located/i);
+        expect(text).toMatch(/object\(s\) located/i);
         const count = extractCount(text);
         expect(count).toBeGreaterThanOrEqual(1);
 
@@ -189,7 +189,7 @@ test.describe("Locate filters – combined", () => {
         await selectOptionById(page, "#cryptographicAlgorithm", "AES");
         await page.fill("#cryptographicLength", "256");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/objects? located/i);
+        expect(text).toMatch(/object\(s\) located/i);
         expect(extractCount(text)).toBeGreaterThanOrEqual(1);
     });
 
@@ -200,7 +200,7 @@ test.describe("Locate filters – combined", () => {
         await selectOptionById(page, "#objectType", "SymmetricKey");
         await selectOptionById(page, "#state", "Active");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/objects? located/i);
+        expect(text).toMatch(/object\(s\) located/i);
         expect(extractCount(text)).toBeGreaterThanOrEqual(1);
     });
 });
@@ -288,7 +288,7 @@ test.describe("Locate – response table rendering", () => {
         await page.keyboard.type("e2e-locate-test-tag");
         await page.keyboard.press("Enter");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/objects? located/i);
+        expect(text).toMatch(/object\(s\) located/i);
         expect(extractCount(text)).toBeGreaterThanOrEqual(1);
 
         // Verify the created key appears in results

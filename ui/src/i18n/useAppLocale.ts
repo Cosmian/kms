@@ -1,5 +1,4 @@
 import dayjs from "dayjs";
-import "dayjs/locale/fr";
 import "dayjs/locale/zh-cn";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
