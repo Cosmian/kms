@@ -73,7 +73,12 @@ const TokenizeWordMaskForm: React.FC = () => {
                             rules={[{ required: true, message: t("tokenizeWordMask.pleaseEnterWords") }]}
                             help={t("tokenizeWordMask.wordsHelp")}
                         >
-                            <Select mode="tags" placeholder={t("tokenizeWordMask.wordsPlaceholder")} open={false} />
+                            <Select
+                                mode="tags"
+                                placeholder={t("tokenizeWordMask.wordsPlaceholder")}
+                                open={false}
+                                data-testid="tags-select"
+                            />
                         </Form.Item>
                     </Card>
 
