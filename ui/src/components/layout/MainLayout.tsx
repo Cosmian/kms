@@ -116,13 +116,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                         />
                     )}
                     <div className="flex items-center h-full ml-auto" style={{ gap: "16px" }}>
-                        {downloadTarget && (
-                            <Link to={downloadTarget} target="_blank">
-                                <Button type="primary" shape="round" icon={<DownloadOutlined />}>
-                                    {t("main.downloadCli")}
-                                </Button>
-                            </Link>
-                        )}
                         <LanguageSwitcher />
                         <Switch
                             className="w-20"
@@ -131,6 +124,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                             checkedChildren={<MoonOutlined />}
                             unCheckedChildren={<SunOutlined />}
                         />
+                        {downloadTarget && (
+                            <Link to={downloadTarget} target="_blank">
+                                <Button type="primary" shape="round" icon={<DownloadOutlined />}>
+                                    {t("main.downloadCli")}
+                                </Button>
+                            </Link>
+                        )}
                         {authMethod === "JWT" || authMethod === "AUTH_VERIFIER" ? (
                             <div className="flex justify-center items-center h-full overflow-hidden ml-4">
                                 {userId && (

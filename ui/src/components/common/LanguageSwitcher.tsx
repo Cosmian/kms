@@ -1,4 +1,3 @@
-import { GlobalOutlined } from "@ant-design/icons";
 import { Select } from "antd";
 import React from "react";
 import { useTranslation } from "react-i18next";
@@ -6,8 +5,8 @@ import { useTranslation } from "react-i18next";
 import { SUPPORTED_LOCALES, SupportedLocale } from "../../i18n";
 
 const localeOptions: { value: SupportedLocale; label: string }[] = [
-    { value: "en", label: "English" },
-    { value: "zh-CN", label: "中文" },
+    { value: "en", label: "🇺🇸 English" },
+    { value: "zh-CN", label: "🇨🇳 中文" },
 ];
 
 /**
@@ -29,7 +28,6 @@ const LanguageSwitcher: React.FC = () => {
             options={localeOptions}
             size="small"
             variant="borderless"
-            suffixIcon={<GlobalOutlined />}
             popupMatchSelectWidth={false}
             data-testid="language-switcher"
             aria-label="Language"
