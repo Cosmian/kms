@@ -1,5 +1,6 @@
 import type { Locale as AntdLocale } from "antd/es/locale";
 import enUS from "antd/locale/en_US";
+import frFR from "antd/locale/fr_FR";
 import zhCN from "antd/locale/zh_CN";
 
 import actionsEn from "./locales/en/actions.json";
@@ -7,6 +8,12 @@ import commonEn from "./locales/en/common.json";
 import layoutEn from "./locales/en/layout.json";
 import locateEn from "./locales/en/locate.json";
 import menuEn from "./locales/en/menu.json";
+
+import actionsFr from "./locales/fr/actions.json";
+import commonFr from "./locales/fr/common.json";
+import layoutFr from "./locales/fr/layout.json";
+import locateFr from "./locales/fr/locate.json";
+import menuFr from "./locales/fr/menu.json";
 
 import actionsZh from "./locales/zh-CN/actions.json";
 import commonZh from "./locales/zh-CN/common.json";
@@ -22,7 +29,7 @@ interface LocaleResources {
     actions: object;
 }
 
-export interface LocaleDefinition {
+interface LocaleDefinition {
     label: string;
     antdLocale: AntdLocale;
     dayjsLocale: string;
@@ -57,6 +64,19 @@ export const LOCALE_REGISTRY = {
             layout: layoutZh,
             locate: locateZh,
             actions: actionsZh,
+        },
+    },
+    fr: {
+        label: "🇫🇷 Français",
+        antdLocale: frFR,
+        dayjsLocale: "fr",
+        matches: (lng) => lng.toLowerCase().startsWith("fr"),
+        resources: {
+            common: commonFr,
+            menu: menuFr,
+            layout: layoutFr,
+            locate: locateFr,
+            actions: actionsFr,
         },
     },
 } as const satisfies Record<string, LocaleDefinition>;

@@ -115,8 +115,8 @@ test.describe("Tokenize — Word Mask", () => {
             'textarea[placeholder="e.g. Confidential: contains secret documents"]',
             "Confidential: contains -secret- documents",
         );
-        // Add words using tags Select
-        const tagsInput = page.locator(".ant-select-selector input").first();
+        // Add words using tags Select (scoped to the form to avoid matching the header LanguageSwitcher)
+        const tagsInput = page.locator("form .ant-select-selector input").first();
         await tagsInput.click();
         await tagsInput.fill("confidential");
         await tagsInput.press("Enter");
@@ -137,7 +137,7 @@ test.describe("Tokenize — Word Tokenize", () => {
 
         await gotoAndWait(page, "/ui/tokenize/word-tokenize");
         await page.fill('textarea[placeholder="e.g. Alice sent the report to Alice and Bob"]', "Alice sent the report to Alice");
-        const tagsInput = page.locator(".ant-select-selector input").first();
+        const tagsInput = page.locator("form .ant-select-selector input").first();
         await tagsInput.click();
         await tagsInput.fill("Alice");
         await tagsInput.press("Enter");
