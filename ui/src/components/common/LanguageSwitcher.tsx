@@ -3,11 +3,12 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 
 import { SUPPORTED_LOCALES, SupportedLocale } from "../../i18n";
+import { LOCALE_REGISTRY } from "../../i18n/localeRegistry";
 
-const localeOptions: { value: SupportedLocale; label: string }[] = [
-    { value: "en", label: "🇺🇸 English" },
-    { value: "zh-CN", label: "🇨🇳 中文" },
-];
+const localeOptions: { value: SupportedLocale; label: string }[] = SUPPORTED_LOCALES.map((value) => ({
+    value,
+    label: LOCALE_REGISTRY[value].label,
+}));
 
 /**
  * Header language switcher. Persists the selection via i18next-browser-
