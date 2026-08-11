@@ -474,11 +474,22 @@ async fn start_http_kms_server(
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     // Instantiate and prepare the KMS server
-    let server = prepare_kms_server(kms_server).await?;
+    let server = prepare_kms_server(kms_server.clone()).await?;
 
     // send the server handle to the caller
     if let Some(tx) = &server_handle_transmitter {
         tx.send(server.handle())?;
+    }
+
+    // A sink failure that survived the retry budget means requests would be served unaudited.
+    // For a deployment that switched audit logging on, that is worse than being unavailable.
+    if let Some(store) = kms_server.audit_store.clone() {
+        let handle = server.handle();
+        tokio::spawn(async move {
+            let reason = store.wait_fatal().await;
+            error!("FATAL: {reason} — stopping the KMS server");
+            handle.stop(true).await;
+        });
     }
 
     info!("Starting the HTTPS KMS server...");
@@ -1610,7 +1621,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             // successful and failed authentication attempts are recorded (LIFO wrap order).
             .wrap(AuditMiddleware::new(
                 kms_server_for_http.audit_store.clone(),
-                kms_server_for_http.params.audit_trusted_proxy_cidrs.clone(),
+                kms_server_for_http
+                    .params
+                    .audit
+                    .as_ref()
+                    .map(|a| a.trusted_proxy_cidrs.clone())
+                    .unwrap_or_default(),
             ))
             // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
             // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via

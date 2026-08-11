@@ -17,7 +17,7 @@ use tokio::sync::RwLock;
 use crate::error::DbResult;
 
 mod main_db_params;
-pub use main_db_params::{AdditionalObjectStoresParams, MainDbParams};
+pub use main_db_params::{AdditionalObjectStoresParams, MainDbParams, redact_connection_string};
 pub(crate) mod fingerprinter;
 mod object_cache;
 mod unwrapped_cache;

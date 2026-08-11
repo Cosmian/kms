@@ -26,10 +26,10 @@ use time::{OffsetDateTime, format_description::well_known::Iso8601};
 use super::google_cse::utils::google_cse_auth;
 use crate::{
     config::{
-        ClapConfig, GoogleCseConfig, HttpConfig, MainDBConfig, ServerParams, SocketServerConfig,
-        TlsConfig,
+        AuditBackendParams, AuditParams, ClapConfig, GoogleCseConfig, HttpConfig, MainDBConfig,
+        ServerParams, SocketServerConfig, TlsConfig,
     },
-    core::{KMS, audit::AuditFileStore},
+    core::{KMS, audit::AuditStore},
     kms_bail,
     middlewares::{AuditMiddleware, ensure_auth_middleware},
     result::KResult,
@@ -373,15 +373,15 @@ pub(crate) async fn test_app_with_clap_config(
 
 /// Creates a test application that records every KMIP request to an audit file.
 ///
-/// Returns the initialised Actix service **and** the `AuditFileStore` handle.
+/// Returns the initialised Actix service **and** the `AuditStore` handle.
 /// After the test sends its requests, drop the service then
 /// `tokio::time::sleep(Duration::from_millis(200)).await` to let the background
-/// writer flush — the same pattern used in `core::audit::file_store` tests.
+/// writer flush — the same pattern used in `core::audit::store` tests.
 pub(crate) async fn test_app_with_audit(
     audit_path: &std::path::Path,
 ) -> (
     impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
-    AuditFileStore,
+    AuditStore,
 ) {
     let clap_config = https_clap_config();
     let server_params =
@@ -399,7 +399,15 @@ pub(crate) async fn test_app_with_audit(
             .expect("start KMS server: failed managing Google CSE RSA Keypair");
     }
 
-    let store = AuditFileStore::start(audit_path, 128).expect("cannot start audit store");
+    let store = AuditStore::start(&AuditParams {
+        backend: AuditBackendParams::File {
+            path: audit_path.to_path_buf(),
+        },
+        channel_capacity: 128,
+        trusted_proxy_cidrs: vec![],
+    })
+    .await
+    .expect("cannot start audit store");
 
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
@@ -466,7 +474,7 @@ pub(crate) async fn test_app_with_audit_and_auth(
     audit_path: &std::path::Path,
 ) -> (
     impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
-    AuditFileStore,
+    AuditStore,
 ) {
     let clap_config = https_clap_config();
     let server_params =
@@ -478,7 +486,15 @@ pub(crate) async fn test_app_with_audit_and_auth(
             .expect("cannot instantiate KMS server"),
     );
 
-    let store = AuditFileStore::start(audit_path, 128).expect("cannot start audit store");
+    let store = AuditStore::start(&AuditParams {
+        backend: AuditBackendParams::File {
+            path: audit_path.to_path_buf(),
+        },
+        channel_capacity: 128,
+        trusted_proxy_cidrs: vec![],
+    })
+    .await
+    .expect("cannot start audit store");
 
     let app = App::new()
         .app_data(Data::new(kms_server.clone()))

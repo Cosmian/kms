@@ -7,5 +7,5 @@ mod tls_params;
 pub use kmip_policy_params::KmipPolicyParams;
 pub use open_telemetry_params::OpenTelemetryConfig;
 pub use proxy_params::ProxyParams;
-pub use server_params::{HsmInstanceParams, ServerParams};
+pub use server_params::{AuditBackendParams, AuditParams, HsmInstanceParams, ServerParams};
 pub use tls_params::TlsParams;

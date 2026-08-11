@@ -13,6 +13,19 @@ services:
       - POSTGRES_PASSWORD=kms
       - PGDATA=/tmp/postgres2
 
+  # ── PostgreSQL audit backend ────────────────────────────────────────────────
+  # Deliberately a SEPARATE database/service from `postgres` above: the audit backend
+  # refuses to start if the audit URL resolves to the same database as the main store.
+  postgres-audit:
+    image: postgres:16
+    ports:
+      - ${KMS_SLOT_POSTGRES_AUDIT_PORT:-5436}:5432
+    environment:
+      - POSTGRES_USER=kms_audit
+      - POSTGRES_DB=kms_audit
+      - POSTGRES_PASSWORD=kms_audit
+      - PGDATA=/tmp/postgres-audit
+
   # ── PostgreSQL failover-retry test nodes ────────────────────────────────────
   # Two independent PostgreSQL instances used by test_db_postgresql_failover.
   # Start with: docker compose --profile pg-failover up -d
