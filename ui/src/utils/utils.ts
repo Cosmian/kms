@@ -73,8 +73,7 @@ export const fetchAuthMethod = async (serverUrl: string): Promise<AuthMethod> =>
  * ambient client certificate does not preempt the user's method choice when
  * multiple methods are configured.
  */
-export const shouldAutoLoginWithCert = (methods: AuthMethod[]): boolean =>
-    methods.length === 1 && methods[0] === "CERT";
+export const shouldAutoLoginWithCert = (methods: AuthMethod[]): boolean => methods.length === 1 && methods[0] === "CERT";
 
 export const fetchAuthMethods = async (serverUrl: string): Promise<AuthMethod[] | undefined> => {
     // Skip the fetch in dev mode to avoid unnecessary friction (no auth enforced).

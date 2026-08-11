@@ -1332,7 +1332,6 @@ Crate path: `ui/src/`
 | `debug` | `ECVerify: dataBuf len`                                  | `actions/EC/ECVerify.tsx`                         | —                                                             | —               |
 | `debug` | `RsaSign: signature length`                              | `actions/RSA/RsaSign.tsx`                         | —                                                             | —               |
 | `debug` | `RsaVerify: dataBuf len`                                 | `actions/RSA/RsaVerify.tsx`                       | —                                                             | —               |
-| `error` | `Session fallback failed:` | `App.tsx` | - | - |
 | `error` | `Auth Verifier login failed:` | `pages/LoginPage.tsx` | - | - |
 
 ---
