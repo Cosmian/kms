@@ -1,3 +1,5 @@
+mod audit;
+pub use audit::{PgAuditReader, PgAuditSink};
 mod migrate;
 #[cfg(feature = "non-fips")]
 mod redis;

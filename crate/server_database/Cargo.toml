@@ -32,6 +32,7 @@ interop = ["cosmian_kmip/interop"]
 async-trait = { workspace = true }
 cosmian_findex = { version = "8.0.2", optional = true }
 cosmian_kmip = { path = "../kmip", version = "5.26.0" }
+cosmian_kms_access = { path = "../access", version = "5.26.0" }
 cosmian_kms_crypto = { path = "../crypto", version = "5.26.0" }
 cosmian_kms_interfaces = { path = "../interfaces", version = "5.26.0" }
 cosmian_logger = { workspace = true }
@@ -63,6 +64,7 @@ tokio = { workspace = true, features = ["full"] }
 tokio-postgres = { version = "0.7.18", features = [
   "with-uuid-1",
   "with-serde_json-1",
+  "with-time-0_3",
 ] }
 tokio-rusqlite = "0.7"
 url = { workspace = true }

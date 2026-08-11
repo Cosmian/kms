@@ -166,7 +166,7 @@ impl KmsActions {
 
         match self {
             Self::Audit(action) => {
-                action.process()?;
+                action.process().await?;
             }
             Self::AccessRights(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Attributes(action) => Box::pin(action.process(kms_rest_client)).await?,

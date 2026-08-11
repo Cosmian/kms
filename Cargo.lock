@@ -1449,6 +1449,7 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
+ "cosmian_kms_server_database",
  "cosmian_logger",
  "criterion",
  "der",
@@ -1614,6 +1615,7 @@ version = "5.26.0"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
+ "cosmian_kms_access",
  "cosmian_logger",
  "mockall",
  "num-bigint-dig",
@@ -1688,6 +1690,7 @@ dependencies = [
  "actix-tls",
  "actix-web",
  "async-recursion",
+ "async-trait",
  "base64 0.22.1",
  "chrono",
  "clap",
@@ -1705,6 +1708,7 @@ dependencies = [
  "futures",
  "governor",
  "hex",
+ "hostname",
  "http 1.5.0",
  "ipnet",
  "jsonwebtoken",
@@ -1748,6 +1752,7 @@ dependencies = [
  "async-trait",
  "cosmian_findex",
  "cosmian_kmip",
+ "cosmian_kms_access",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
  "cosmian_logger",
@@ -4839,6 +4844,7 @@ dependencies = [
  "postgres-protocol",
  "serde_core",
  "serde_json",
+ "time",
  "uuid",
 ]
 
