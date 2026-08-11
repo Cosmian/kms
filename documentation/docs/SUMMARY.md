@@ -70,6 +70,8 @@
         - [KMS Provider Plugin](integrations/kubernetes/kms-provider-plugin.md)
         - [Kubernetes Operator](integrations/kubernetes/operator.md)
         - [Secrets Store CSI Driver Provider](integrations/kubernetes/csi-provider.md)
+    - [Infrastructure as Code]()
+        - [Terraform / OpenTofu Provider](integrations/terraform.md)
     - [Other]()
         - [FortiGate / FortiOS](integrations/fortigate.md)
         - [OpenSSH](integrations/openssh.md)

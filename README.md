@@ -20,6 +20,7 @@ The **Cosmian KMS** presents some unique features, such as:
 - **Big Data**: [Snowflake Native App](./documentation/docs/integrations/big_data/snowflake_native_app/index.md) and [PySpark/Databricks Python UDF](./documentation/docs/integrations/big_data/user_defined_function_for_pyspark_databricks_in_python/index.md) for large-scale data encryption.
 - **Storage integrations**: [VMware vCenter Trust Key Provider](./documentation/docs/integrations/storage/vcenter.md), [Synology DSM](./documentation/docs/integrations/storage/synology_dsm.md), [VAST Data](./documentation/docs/integrations/storage/vast_data.md), and [Veeam Backup & Replication](./documentation/docs/integrations/storage/veeam.md).
 - **Container Orchestration**: [Kubernetes KMS Provider Plugin](./documentation/docs/integrations/kubernetes/index.md) — etcd Secrets encrypted at rest via the KMS v2 API.
+- **Infrastructure as Code**: [Terraform / OpenTofu Provider](./documentation/docs/integrations/terraform.md) — manage keys, certificates, and access rights as code; published on the [Terraform Registry](https://registry.terraform.io/providers/Cosmian/kms).
 - **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [S/MIME email encryption](./documentation/docs/integrations/smime.md), [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md), and [SPIRE / SPIFFE Zero-Trust M2M](./documentation/docs/integrations/spire_spiffe.md).
 - **Security and standards**: [FIPS 140-3](./documentation/docs/certifications_and_compliance/fips.md), [KMIP 1.0-2.1 binary and JSON TTLV support](./documentation/docs/kmip_support/introduction/index.md), [state-of-the-art authentication mechanisms](./documentation/docs/configuration/authentication.md), and native compatibility with network appliances such as [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md).
 - **HSM support**: [Utimaco, SmartCard-HSM/Nitrokey HSM 2, Proteccio, Crypt2pay, and others](./documentation/docs/hsm_support/introduction/index.md), with KMS keys wrapped by HSMs.
@@ -236,6 +237,12 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 | Product    | Integration                                                                                                           | Status |
 | ---------- | --------------------------------------------------------------------------------------------------------------------- | ------ |
 | Kubernetes | etcd Secrets encryption via KMS v2 provider API ([docs](./documentation/docs/integrations/kubernetes/index.md)) | ✅      |
+
+### 🏗️ Infrastructure as Code
+
+| Product              | Integration                                                                                                                                                                                           | Status |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Terraform / OpenTofu | Keys, key pairs, certificates, and access rights as IaC ([docs](./documentation/docs/integrations/terraform.md), [registry](https://registry.terraform.io/providers/Cosmian/kms)) | ✅      |
 
 ### 🔗 Other Integrations
 
