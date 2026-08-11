@@ -105,6 +105,44 @@ The most common flags (accepted by most tasks):
 | `test:monitoring` | non-fips | Monitoring stack (VictoriaMetrics + Grafana) |
 | `test:otel` | fips | OTLP/OpenTelemetry export integration |
 
+All audit/SIEM tests require a non-fips KMS binary and Docker. Every guard exits 1 if no
+evidence is found — no silent skips. A pre-flight step removes any stale Docker container
+occupying the test ports before starting.
+
+Run all four integration areas at once:
+
+```bash
+cargo build --features non-fips          # build once
+KMS_SKIP_BUILD=1 mise test:audit      --variant non-fips
+KMS_SKIP_BUILD=1 mise test:cef        --variant non-fips
+KMS_SKIP_BUILD=1 mise test:siem       --variant non-fips
+KMS_SKIP_BUILD=1 mise test:monitoring --variant non-fips
+```
+
+Or run individual suites:
+
+```bash
+mise test:cef  --suite format        # CEF v27 format validation (jc parser)
+mise test:cef  --suite syslog        # CEF → UDP syslog
+mise test:cef  --suite tcp-syslog    # CEF → TCP rsyslog (RFC 6587)
+mise test:siem --suite fluent-bit    # Fluent Bit JSONL file tailing
+mise test:siem --suite filebeat      # Filebeat → Elasticsearch
+mise test:siem --suite otlp          # OTLP audit log export to OTel collector
+```
+
+#### Guard summary
+
+| Command | Docker images used | Key guards |
+|---|---|---|
+| `mise test:audit` | — (KMS binary only) | ≥ 4 events written; hash chain intact (`ckms audit verify`); required fields present; ≥ 1 Success + ≥ 1 Failure |
+| `mise test:cef --suite format` | — | CEF header format; 1:1 audit-to-CEF mapping; all extension keys; Success + Failure `outcome` |
+| `mise test:cef --suite syslog` | — (nc listener) | All 4 CEF lines received via UDP |
+| `mise test:cef --suite tcp-syslog` | `rsyslog/syslog_appliance_alpine:latest` | All 4 CEF lines received via TCP; field integrity preserved |
+| `mise test:siem --suite fluent-bit` | `fluent/fluent-bit:4.0` | All events forwarded; required fields present |
+| `mise test:siem --suite filebeat` | `docker.elastic.co/beats/filebeat:8.17.0` + `elasticsearch:8.17.0` | All events indexed; ingest pipeline normalises Success/Failure |
+| `mise test:siem --suite otlp` | `otel/opentelemetry-collector-contrib:latest` | ≥ 64 OTLP log records; `cef_line` attribute present; `severityText` valid |
+| `mise test:monitoring` | `otel/opentelemetry-collector-contrib:latest` + `victoriametrics/victoria-metrics:latest` + `grafana/grafana:latest` | ≥ 100 KMS metric lines on Prometheus endpoint; required metric families present; Grafana `database=ok` |
+
 ### Protocol & interoperability
 
 | Task | Default variant | Description |
