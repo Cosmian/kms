@@ -75,7 +75,12 @@ const TokenizeWordTokenizeForm: React.FC = () => {
                             rules={[{ required: true, message: t("tokenizeWordTokenize.pleaseEnterWords") }]}
                             help={t("tokenizeWordTokenize.wordsHelp")}
                         >
-                            <Select mode="tags" placeholder={t("tokenizeWordTokenize.wordsPlaceholder")} open={false} />
+                            <Select
+                                mode="tags"
+                                placeholder={t("tokenizeWordTokenize.wordsPlaceholder")}
+                                open={false}
+                                data-testid="tags-select"
+                            />
                         </Form.Item>
                     </Card>
 

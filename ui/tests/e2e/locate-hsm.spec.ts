@@ -92,7 +92,7 @@ test.describe("Locate – software keys alongside HSM keys", () => {
         await gotoAndWait(page, "/ui/locate");
         await selectOptionById(page, "#state", "Active");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/object\(s\) located/i);
+        expect(text).toMatch(/objects? located/i);
         const countMatch = text.match(/(\d+)\s*object/i);
         expect(countMatch).not.toBeNull();
         expect(Number.parseInt(countMatch![1], 10)).toBeGreaterThanOrEqual(1);
@@ -106,7 +106,7 @@ test.describe("Locate – HSM keys (real SoftHSM2)", () => {
         await gotoAndWait(page, "/ui/locate");
         await selectOptionById(page, "#objectType", "SymmetricKey");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/object\(s\) located/i);
+        expect(text).toMatch(/objects? located/i);
 
         await page.waitForLoadState("networkidle");
         const rows = page.locator(".ant-table-tbody .ant-table-row");
@@ -122,7 +122,7 @@ test.describe("Locate – HSM keys (real SoftHSM2)", () => {
         await selectOptionById(page, "#state", "Active");
         await selectOptionById(page, "#objectType", "SymmetricKey");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/object\(s\) located/i);
+        expect(text).toMatch(/objects? located/i);
 
         await page.waitForLoadState("networkidle");
         const rows = page.locator(".ant-table-tbody .ant-table-row");
@@ -165,7 +165,7 @@ test.describe("Locate – multi-HSM prefix routing (pw_locate_aes keys)", () => 
         await gotoAndWait(page, "/ui/locate");
         await selectOptionById(page, "#objectType", "SymmetricKey");
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/object\(s\) located/i);
+        expect(text).toMatch(/objects? located/i);
 
         await page.waitForLoadState("networkidle");
         const rows = page.locator(".ant-table-tbody .ant-table-row");

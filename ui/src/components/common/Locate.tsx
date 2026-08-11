@@ -159,30 +159,43 @@ const LocateForm: React.FC = () => {
         return (parsed || {}) as Record<string, unknown>;
     };
 
+    // Fetch and parse Get-attributes for one UID, retrying once on failure.
+    // HSM-backed keys go through PKCS#11 and can occasionally reject a Get under
+    // concurrent load (session contention); a single retry absorbs that without
+    // masking a persistently unreachable object (which still falls back to undefined).
+    const getAttributesRetrying = async (uid: string, serverUrl: string): Promise<Record<string, unknown> | undefined> => {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                const getReq = wasm.get_attributes_ttlv_request(uid);
+                const getRespStr = await sendKmipRequest(getReq, serverUrl);
+                if (getRespStr) {
+                    const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
+                    return extractMeta(parsed);
+                }
+            } catch (e) {
+                if (attempt === 2) console.error(`Error fetching Get for ${uid}:`, e);
+            }
+        }
+        return undefined;
+    };
+
     // Utility: enrich a list of UIDs via KMIP Get
     const enrichUids = async (uids: string[], serverUrl: string): Promise<LocatedRow[]> => {
         const rows = await Promise.all(
             uids.map(async (uid) => {
-                try {
-                    const getReq = wasm.get_attributes_ttlv_request(uid);
-                    const getRespStr = await sendKmipRequest(getReq, serverUrl);
-                    if (getRespStr) {
-                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
-                        const m = extractMeta(parsed);
-                        // HSM keys are always Active; use that as default when state is missing
-                        const isHsm = /^hsm[0-9]*::/.test(uid);
-                        return {
-                            object_id: uid,
-                            attributes: { ObjectType: m["object_type"] as string | undefined },
-                            state: stateEnumToName(m["state"]) || (isHsm ? "Active" : undefined),
-                            meta: m,
-                        } as LocatedRow;
-                    }
-                } catch (e) {
-                    console.error(`Error fetching Get for ${uid}:`, e);
+                const m = await getAttributesRetrying(uid, serverUrl);
+                // HSM keys are always Active; use that as default when state is missing
+                const isHsm = /^hsm[0-9]*::/.test(uid);
+                if (m) {
+                    return {
+                        object_id: uid,
+                        attributes: { ObjectType: m["object_type"] as string | undefined },
+                        state: stateEnumToName(m["state"]) || (isHsm ? "Active" : undefined),
+                        meta: m,
+                    } as LocatedRow;
                 }
                 // Fallback: HSM keys default to Active
-                return { object_id: uid, state: /^hsm[0-9]*::/.test(uid) ? "Active" : undefined } as LocatedRow;
+                return { object_id: uid, state: isHsm ? "Active" : undefined } as LocatedRow;
             }),
         );
         return rows;

@@ -444,10 +444,13 @@ const KMS_API_URL =
  */
 const _certDir = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.PLAYWRIGHT_CERT_DIR ?? "";
 
-async function kmsFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
-    if (!_certDir || !KMS_API_URL.startsWith("https://")) {
-        return fetch(url, init);
-    }
+/** Connection-level errors worth a single retry — mTLS handshakes can blip under concurrent CI load. */
+function isTransientConnectionError(err: unknown): boolean {
+    const code = (err as { code?: string } | undefined)?.code;
+    return code === "ECONNRESET" || code === "EPROTO" || code === "ECONNREFUSED" || code === "ECONNABORTED";
+}
+
+async function mtlsRequest(url: string | URL | Request, init?: RequestInit): Promise<Response> {
     // Use node:https for mTLS support (cert + key + rejectUnauthorized).
     const https = await import("node:https");
     const ownerCert = fs.readFileSync(path.join(_certDir, "owner/owner.client.acme.com.crt"));
@@ -487,6 +490,18 @@ async function kmsFetch(url: string | URL | Request, init?: RequestInit): Promis
         if (body) req.write(body);
         req.end();
     });
+}
+
+async function kmsFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
+    if (!_certDir || !KMS_API_URL.startsWith("https://")) {
+        return fetch(url, init);
+    }
+    try {
+        return await mtlsRequest(url, init);
+    } catch (e) {
+        if (!isTransientConnectionError(e)) throw e;
+        return mtlsRequest(url, init);
+    }
 }
 
 /**
