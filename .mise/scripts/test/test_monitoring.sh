@@ -132,6 +132,7 @@ service:
       processors: [batch]
       exporters: [file, prometheus]
 EOF
+chmod 644 "${COLLECTOR_CONFIG_FILE}"
 
 # The file exporter writes to the container's /tmp — we need a host-mounted dir.
 # Use a tmpdir so docker can mount it (not /var/folders which Docker Desktop can't see).
@@ -295,8 +296,11 @@ echo "    Proof pipeline: KMS --gRPC-> OTel collector --Prometheus--> (debug end
 found_metrics=false
 metric_count=0
 for i in $(seq 1 12); do
-  metric_count=$(curl -sf "http://127.0.0.1:${OTEL_PROM_PORT}/metrics" 2>/dev/null |
-    grep -c "^kms_" 2>/dev/null || echo 0)
+  metric_count=$(
+    curl -sf "http://127.0.0.1:${OTEL_PROM_PORT}/metrics" 2>/dev/null |
+      grep -c "^kms_" 2>/dev/null
+    true
+  )
   if [ "${metric_count}" -gt 0 ]; then
     found_metrics=true
     echo "    Found ${metric_count} KMS metric lines on OTel Prometheus endpoint (after $((i * 5))s)"
