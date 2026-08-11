@@ -22,7 +22,7 @@ interface LocaleResources {
     actions: object;
 }
 
-export interface LocaleDefinition {
+interface LocaleDefinition {
     label: string;
     antdLocale: AntdLocale;
     dayjsLocale: string;
