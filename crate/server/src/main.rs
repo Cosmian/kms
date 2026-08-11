@@ -502,6 +502,9 @@ trusted_proxy_cidrs = []
 failure_mode = "continue"
 
 [audit.file]
+
+[audit.otlp]
+allow_insecure = false
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

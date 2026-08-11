@@ -79,6 +79,10 @@ done
 echo "==> Starting OTel collector (HTTP port ${OTLP_HTTP_PORT}, file exporter)..."
 COLLECTOR_CONTAINER="kms-siem-test-otlp-collector-$$"
 
+# Pull first so the container starts immediately rather than pulling during the readiness wait.
+echo "==> Pulling OTel collector image..."
+docker pull otel/opentelemetry-collector-contrib:latest 2>/dev/null
+
 docker run --rm --name "${COLLECTOR_CONTAINER}" \
   -p "${OTLP_HTTP_PORT}:4318" \
   -v "${SCRIPT_DIR}/otlp-audit-collector-config.yaml:/etc/otel-collector-config.yaml:ro" \
@@ -92,9 +96,9 @@ docker run --rm --name "${COLLECTOR_CONTAINER}" \
 echo "==> Waiting for OTel collector on port ${OTLP_HTTP_PORT}..."
 waited=0
 while ! nc -z 127.0.0.1 "${OTLP_HTTP_PORT}" 2>/dev/null; do
-  if [ "${waited}" -ge 60 ]; then
-    echo "ERROR: OTel collector did not become ready within 60s." >&2
-    docker logs "${COLLECTOR_CONTAINER}" 2>/dev/null >&2 || true
+  if [ "${waited}" -ge 90 ]; then
+    echo "ERROR: OTel collector did not become ready within 90s." >&2
+    docker logs "${COLLECTOR_CONTAINER}" 2>&1 || true
     exit 1
   fi
   sleep 1
