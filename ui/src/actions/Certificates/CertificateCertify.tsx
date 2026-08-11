@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Divider, Form, Input, InputNumber, Radio, RadioChangeEvent, Select, Space } from "antd";
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ActionResponse } from "../../components/common/ActionResponse";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { useActionState } from "../../hooks/useActionState";
@@ -32,6 +33,7 @@ const CertificateCertifyForm: React.FC = () => {
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [certifyMethod, setCertifyMethod] = useState<string>("csr");
     const [algorithmOptions, setAlgorithmOptions] = useState<AlgoOption[]>([]);
+    const { t } = useTranslation("actions");
 
     useEffect(() => {
         try {
@@ -70,7 +72,8 @@ const CertificateCertifyForm: React.FC = () => {
             // new certificate with a fresh UID and links old ↔ new via replacement links.
             if (certifyMethod === "reCertify") {
                 const certIdToRenew = normalize(values.certificateIdToReCertify);
-                if (!certIdToRenew) throw new Error("Certificate ID to re-certify is required");
+                if (!certIdToRenew)
+                    throw new Error(`${t("common:errorPrefix")}${t("certificateCertify.certificateIdToReCertifyRequired")}`);
                 const request = wasm.re_certify_ttlv_request(
                     certIdToRenew,
                     normalize(values.issuerPrivateKeyId),
@@ -94,7 +97,7 @@ const CertificateCertifyForm: React.FC = () => {
                         const req = wasm.set_rotate_offset_ttlv_request(newCertId, BigInt(values.rotateOffset));
                         await sendKmipRequest(req, serverUrl);
                     }
-                    return `Certificate successfully re-certified with new ID: ${newCertId}`;
+                    return t("certificateCertify.successReCertify", { newCertId });
                 }
                 return;
             }
@@ -130,22 +133,22 @@ const CertificateCertifyForm: React.FC = () => {
                     const req = wasm.set_rotate_offset_ttlv_request(newCertId, BigInt(values.rotateOffset));
                     await sendKmipRequest(req, serverUrl);
                 }
-                return `Certificate successfully created with ID: ${newCertId}`;
+                return t("certificateCertify.success", { newCertId });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Certificate Issuance and Renewal</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("certificateCertify.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Issue or renew an X509 certificate using one of four methods:</p>
+                <p>{t("certificateCertify.intro")}</p>
                 <ol className="list-decimal ml-5">
-                    <li>Provide a Certificate Signing Request (CSR)</li>
-                    <li>Provide a public key ID to certify</li>
-                    <li>Provide the ID of an existing certificate to re-certify</li>
-                    <li>Generate a new keypair and create a certificate</li>
+                    <li>{t("certificateCertify.methodCsr")}</li>
+                    <li>{t("certificateCertify.methodPublicKey")}</li>
+                    <li>{t("certificateCertify.methodReCertify")}</li>
+                    <li>{t("certificateCertify.methodGenerate")}</li>
                 </ol>
             </div>
 
@@ -164,23 +167,20 @@ const CertificateCertifyForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Certificate ID (Optional)</h3>
-                        <Form.Item
-                            name="certificateId"
-                            help="If not provided, a random one will be generated when issuing a certificate, or the original one will be used when renewing"
-                        >
-                            <Input placeholder="Enter certificate ID" />
+                        <h3 className="text-m font-bold mb-4">{t("certificateCertify.certificateIdOptional")}</h3>
+                        <Form.Item name="certificateId" help={t("certificateCertify.certificateIdHelp")}>
+                            <Input placeholder={t("certificateCertify.enterCertificateId")} />
                         </Form.Item>
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Certification Method</h3>
+                        <h3 className="text-m font-bold mb-4">{t("certificateCertify.certificationMethod")}</h3>
                         <Radio.Group onChange={onCertifyMethodChange} value={certifyMethod}>
                             <Space direction="vertical">
-                                <Radio value="csr">1. Certificate Signing Request (CSR)</Radio>
-                                <Radio value="publicKey">2. Public Key ID to Certify</Radio>
-                                <Radio value="reCertify">3. Certificate ID to Re-certify</Radio>
-                                <Radio value="generate">4. Generate New Keypair</Radio>
+                                <Radio value="csr">{t("certificateCertify.radioCsr")}</Radio>
+                                <Radio value="publicKey">{t("certificateCertify.radioPublicKey")}</Radio>
+                                <Radio value="reCertify">{t("certificateCertify.radioReCertify")}</Radio>
+                                <Radio value="generate">{t("certificateCertify.radioGenerate")}</Radio>
                             </Space>
                         </Radio.Group>
 
@@ -188,8 +188,8 @@ const CertificateCertifyForm: React.FC = () => {
                             <div className="mt-4">
                                 <Form.Item
                                     name="certificateSigningRequest"
-                                    label="Certificate Signing Request"
-                                    rules={[{ required: true, message: "Please upload a CSR file" }]}
+                                    label={t("certificateCertify.csrLabel")}
+                                    rules={[{ required: true, message: t("certificateCertify.pleaseUploadCsr") }]}
                                 >
                                     <FormUploadDragger
                                         beforeUpload={(file) => {
@@ -206,11 +206,11 @@ const CertificateCertifyForm: React.FC = () => {
                                         }}
                                         maxCount={1}
                                     >
-                                        <p className="ant-upload-text">Click or drag CSR file to this area</p>
+                                        <p className="ant-upload-text">{t("certificateCertify.uploadCsrText")}</p>
                                     </FormUploadDragger>
                                 </Form.Item>
 
-                                <Form.Item name="csrFormat" label="CSR Format" rules={[{ required: true }]}>
+                                <Form.Item name="csrFormat" label={t("certificateCertify.csrFormat")} rules={[{ required: true }]}>
                                     <Radio.Group>
                                         <Radio value="pem">PEM</Radio>
                                         <Radio value="der">DER</Radio>
@@ -223,19 +223,19 @@ const CertificateCertifyForm: React.FC = () => {
                             <div className="mt-4">
                                 <Form.Item
                                     name="publicKeyIdToCertify"
-                                    label="Public Key ID to Certify"
-                                    rules={[{ required: true, message: "Please enter a public key ID" }]}
+                                    label={t("certificateCertify.publicKeyIdToCertify")}
+                                    rules={[{ required: true, message: t("certificateCertify.pleaseEnterPublicKeyId") }]}
                                 >
-                                    <Input placeholder="Enter public key ID" />
+                                    <Input placeholder={t("certificateCertify.enterPublicKeyId")} />
                                 </Form.Item>
 
                                 <Form.Item
                                     name="subjectName"
-                                    label="Subject Name"
-                                    rules={[{ required: true, message: "Subject name is required" }]}
-                                    help='For instance: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"'
+                                    label={t("certificateCertify.subjectName")}
+                                    rules={[{ required: true, message: t("certificateCertify.subjectNameRequired") }]}
+                                    help={t("certificateCertify.subjectNameHelp")}
                                 >
-                                    <Input placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US" />
+                                    <Input placeholder={t("certificateCertify.subjectNamePlaceholder")} />
                                 </Form.Item>
                             </div>
                         )}
@@ -244,10 +244,10 @@ const CertificateCertifyForm: React.FC = () => {
                             <div className="mt-4">
                                 <Form.Item
                                     name="certificateIdToReCertify"
-                                    label="Certificate ID to Re-certify"
-                                    rules={[{ required: true, message: "Please enter a certificate ID" }]}
+                                    label={t("certificateCertify.certificateIdToReCertify")}
+                                    rules={[{ required: true, message: t("certificateCertify.pleaseEnterCertificateId") }]}
                                 >
-                                    <Input placeholder="Enter certificate ID to re-certify" />
+                                    <Input placeholder={t("certificateCertify.enterCertificateIdToReCertify")} />
                                 </Form.Item>
                             </div>
                         )}
@@ -255,22 +255,22 @@ const CertificateCertifyForm: React.FC = () => {
                         {certifyMethod === "generate" && (
                             <div className="mt-4">
                                 <Form.Item name="generateKeyPair" valuePropName="checked" hidden={true}>
-                                    <Checkbox>Generate Key Pair</Checkbox>
+                                    <Checkbox>{t("certificateCertify.generateKeyPair")}</Checkbox>
                                 </Form.Item>
 
                                 <Form.Item
                                     name="subjectName"
-                                    label="Subject Name"
-                                    rules={[{ required: true, message: "Subject name is required" }]}
-                                    help='For instance: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"'
+                                    label={t("certificateCertify.subjectName")}
+                                    rules={[{ required: true, message: t("certificateCertify.subjectNameRequired") }]}
+                                    help={t("certificateCertify.subjectNameHelp")}
                                 >
-                                    <Input placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US" />
+                                    <Input placeholder={t("certificateCertify.subjectNamePlaceholder")} />
                                 </Form.Item>
 
                                 <Form.Item
                                     name="algorithm"
-                                    label="Key Algorithm"
-                                    rules={[{ required: true, message: "Please select an algorithm" }]}
+                                    label={t("certificateCertify.keyAlgorithm")}
+                                    rules={[{ required: true, message: t("certificateCertify.pleaseSelectAlgorithm") }]}
                                 >
                                     <Select options={algorithmOptions} data-testid="cert-algorithm-select" virtual={false} />
                                 </Form.Item>
@@ -279,41 +279,41 @@ const CertificateCertifyForm: React.FC = () => {
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Issuer Information</h3>
-                        <p className="text-sm mb-4">If no issuer is provided, the certificate will be self-signed (not valid for CSR).</p>
+                        <h3 className="text-m font-bold mb-4">{t("certificateCertify.issuerInformation")}</h3>
+                        <p className="text-sm mb-4">{t("certificateCertify.issuerHint")}</p>
 
                         <Form.Item
                             name="issuerPrivateKeyId"
-                            label="Issuer Private Key ID"
-                            help="The unique identifier of the private key of the issuer"
+                            label={t("certificateCertify.issuerPrivateKeyId")}
+                            help={t("certificateCertify.issuerPrivateKeyIdHelp")}
                         >
-                            <Input placeholder="Enter issuer private key ID" />
+                            <Input placeholder={t("certificateCertify.enterIssuerPrivateKeyId")} />
                         </Form.Item>
 
                         <Form.Item
                             name="issuerCertificateId"
-                            label="Issuer Certificate ID"
-                            help="The unique identifier of the certificate of the issuer"
+                            label={t("certificateCertify.issuerCertificateId")}
+                            help={t("certificateCertify.issuerCertificateIdHelp")}
                         >
-                            <Input placeholder="Enter issuer certificate ID" />
+                            <Input placeholder={t("certificateCertify.enterIssuerCertificateId")} />
                         </Form.Item>
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Certificate Options</h3>
+                        <h3 className="text-m font-bold mb-4">{t("certificateCertify.certificateOptions")}</h3>
                         <Form.Item
                             name="numberOfDays"
-                            label="Validity Period (days)"
-                            rules={[{ required: true, message: "Please enter number of days" }]}
-                            help="The requested number of validity days (server may grant a different value)"
+                            label={t("certificateCertify.validityPeriod")}
+                            rules={[{ required: true, message: t("certificateCertify.pleaseEnterDays") }]}
+                            help={t("certificateCertify.validityPeriodHelp")}
                         >
                             <Input type="number" min={1} />
                         </Form.Item>
 
                         <Form.Item
                             name="certificateExtensions"
-                            label="X509 Extensions File"
-                            help="File containing a 'v3_ca' paragraph with X509 extensions"
+                            label={t("certificateCertify.x509ExtensionsFile")}
+                            help={t("certificateCertify.x509ExtensionsHelp")}
                         >
                             <FormUploadDragger
                                 beforeUpload={(file) => {
@@ -330,24 +330,20 @@ const CertificateCertifyForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag extensions file to this area</p>
+                                <p className="ant-upload-text">{t("certificateCertify.uploadExtensionsText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Tags to associate with the certificate (optional)">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("certificateCertify.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
                         <Divider orientation="left" plain>
-                            Rotation Policy (optional)
+                            {t("certificateCertify.rotationPolicy")}
                         </Divider>
 
-                        <Form.Item
-                            name="enrollKeyset"
-                            valuePropName="checked"
-                            help="When enabled, sets the rotation name to the certificate ID so this certificate can be addressed via name@latest, name@first, name@N syntax. Also configures the rotation interval and offset below."
-                        >
-                            <Checkbox data-testid="cert-enroll-keyset">Enroll in keyset (rotation name = certificate ID)</Checkbox>
+                        <Form.Item name="enrollKeyset" valuePropName="checked" help={t("certificateCertify.enrollKeysetHelp")}>
+                            <Checkbox data-testid="cert-enroll-keyset">{t("certificateCertify.enrollKeyset")}</Checkbox>
                         </Form.Item>
 
                         <Form.Item noStyle shouldUpdate={(prev, curr) => prev.enrollKeyset !== curr.enrollKeyset}>
@@ -356,26 +352,26 @@ const CertificateCertifyForm: React.FC = () => {
                                     <>
                                         <Form.Item
                                             name="rotateInterval"
-                                            label="Rotation Interval (seconds)"
-                                            help="Auto-rotate the certificate every N seconds (e.g. 7776000 = 90 days)."
+                                            label={t("certificateCertify.rotateInterval")}
+                                            help={t("certificateCertify.rotateIntervalHelp")}
                                         >
                                             <InputNumber
                                                 className="w-[200px]"
                                                 min={1}
-                                                placeholder="e.g. 7776000"
+                                                placeholder={t("certificateCertify.rotateIntervalPlaceholder")}
                                                 data-testid="cert-rotation-interval"
                                             />
                                         </Form.Item>
 
                                         <Form.Item
                                             name="rotateOffset"
-                                            label="Rotation Offset (seconds)"
-                                            help="Delay before the first rotation occurs (optional)."
+                                            label={t("certificateCertify.rotateOffset")}
+                                            help={t("certificateCertify.rotateOffsetHelp")}
                                         >
                                             <InputNumber
                                                 className="w-[200px]"
                                                 min={0}
-                                                placeholder="e.g. 3600"
+                                                placeholder={t("certificateCertify.rotateOffsetPlaceholder")}
                                                 data-testid="cert-rotation-offset"
                                             />
                                         </Form.Item>
@@ -393,12 +389,12 @@ const CertificateCertifyForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Issue/Renew Certificate
+                            {t("certificateCertify.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="Certificate Response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("certificateCertify.responseTitle")} />
         </div>
     );
 };

@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getNoTTLVRequest, postNoTTLVRequest } from "../../utils/utils";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
@@ -16,6 +17,7 @@ const AccessGrantForm: React.FC = () => {
     const [form] = Form.useForm<AccessGrantFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [isPrivilegedUser, setIsPrivilegedUser] = useState<boolean | undefined>(undefined);
+    const { t } = useTranslation("actions");
 
     const kmipOperations = useMemo(() => {
         try {
@@ -53,11 +55,11 @@ const AccessGrantForm: React.FC = () => {
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Grant access rights</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("accessGrant.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Grant access rights to another user for specific KMIP operations on an object.</p>
-                <p>This action can only be performed by the owner of the object.</p>
+                <p>{t("accessGrant.intro")}</p>
+                <p>{t("accessGrant.ownerOnly")}</p>
             </div>
 
             <Form
@@ -70,18 +72,22 @@ const AccessGrantForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="user_id"
-                            label="User Identifier"
-                            rules={[{ required: true, message: "Please enter the user identifier" }]}
-                            help="The user to grant access to"
+                            label={t("accessGrant.userIdentifier")}
+                            rules={[{ required: true, message: t("accessGrant.pleaseEnterUserId") }]}
+                            help={t("accessGrant.userIdHelp")}
                         >
-                            <Input placeholder="Enter user identifier" />
+                            <Input placeholder={t("accessGrant.enterUserId")} />
                         </Form.Item>
 
-                        <Form.Item name="operation_types" label="KMIP Operations" help="Select one or more operations to grant access to">
+                        <Form.Item
+                            name="operation_types"
+                            label={t("accessGrant.kmipOperations")}
+                            help={t("accessGrant.kmipOperationsHelp")}
+                        >
                             <Select
                                 mode="multiple"
                                 options={kmipOperations}
-                                placeholder="Select operations"
+                                placeholder={t("accessGrant.selectOperations")}
                                 data-testid="operation-types-select"
                                 onChange={() => {
                                     form.validateFields(["unique_identifier"]);
@@ -90,7 +96,7 @@ const AccessGrantForm: React.FC = () => {
                         </Form.Item>
 
                         <Form.Item
-                            label="Object UID"
+                            label={t("accessGrant.objectUid")}
                             shouldUpdate={(prevValues, currentValues) => prevValues.operation_types !== currentValues.operation_types}
                         >
                             {({ getFieldValue }) => {
@@ -101,24 +107,20 @@ const AccessGrantForm: React.FC = () => {
                                         rules={[
                                             {
                                                 required: ops.length > 0,
-                                                message: "Please enter the object UID",
+                                                message: t("accessGrant.pleaseEnterObjectUid"),
                                             },
                                         ]}
-                                        help="The unique identifier of the object stored in the KMS"
+                                        help={t("accessGrant.objectUidHelp")}
                                     >
-                                        <Input placeholder="Enter object UID" disabled={ops.length === 0} />
+                                        <Input placeholder={t("accessGrant.enterObjectUid")} disabled={ops.length === 0} />
                                     </Form.Item>
                                 );
                             }}
                         </Form.Item>
 
                         {isPrivilegedUser && (
-                            <Form.Item
-                                name="grant_create_access_right"
-                                valuePropName="checked"
-                                help="If set, the user will have the right to create and import Kms objects."
-                            >
-                                <Checkbox>Grant create access right to user</Checkbox>
+                            <Form.Item name="grant_create_access_right" valuePropName="checked" help={t("accessGrant.createAccessHelp")}>
+                                <Checkbox>{t("accessGrant.createAccess")}</Checkbox>
                             </Form.Item>
                         )}
                     </Card>
@@ -131,12 +133,12 @@ const AccessGrantForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Grant Access
+                            {t("accessGrant.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="Grant access response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("accessGrant.responseTitle")} />
         </div>
     );
 };

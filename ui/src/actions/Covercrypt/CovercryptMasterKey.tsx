@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { sendKmipRequest } from "../../utils/utils";
 import { create_cc_master_keypair_ttlv_request, parse_create_keypair_ttlv_response } from "../../wasm/pkg";
@@ -30,6 +31,7 @@ const SPECIFICATION_EXAMPLE = `{
 const CovercryptMasterKeyForm: React.FC = () => {
     const [form] = Form.useForm<CovercryptMasterKeyFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
     const [specificationType, setSpecificationType] = React.useState<"json-file" | "json-text">("json-file");
 
     const onFinish = async (values: CovercryptMasterKeyFormData) => {
@@ -43,40 +45,43 @@ const CovercryptMasterKeyForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result = await parse_create_keypair_ttlv_response(result_str);
-                return `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`;
+                return t("covercryptMasterKey.success", {
+                    privateKeyId: result.PrivateKeyUniqueIdentifier,
+                    publicKeyId: result.PublicKeyUniqueIdentifier,
+                });
             }
         });
     };
 
     const SpecificationExplanation = () => (
         <div className="mt-2 space-y-1">
-            <p className="font-medium">This example creates a specification with:</p>
+            <p className="font-medium">{t("covercryptMasterKey.exampleIntro")}</p>
             <ul className="list-disc pl-5 space-y-1">
                 <li>
-                    Two specification axes: <code>Security Level</code> and <code>Department</code>
+                    <Trans ns="actions" i18nKey="covercryptMasterKey.exampleAxes" components={{ code: <code /> }} />
                 </li>
                 <li>
-                    Hierarchical <code>Security Level</code> axis (indicated by <code>::&lt;</code> suffix)
+                    <Trans ns="actions" i18nKey="covercryptMasterKey.exampleHierarchy" components={{ code: <code /> }} />
                 </li>
-                <li>Three security levels: Protected, Confidential, and Top Secret</li>
-                <li>Four departments: R&D, HR, MKG, and FIN</li>
+                <li>{t("covercryptMasterKey.exampleLevels")}</li>
+                <li>{t("covercryptMasterKey.exampleDepartments")}</li>
                 <li>
-                    Post-quantum encryption for Top Secret level (indicated by <code>::+</code> suffix)
+                    <Trans ns="actions" i18nKey="covercryptMasterKey.examplePq" components={{ code: <code /> }} />
                 </li>
-                <li>Classic cryptography for other levels</li>
+                <li>{t("covercryptMasterKey.exampleClassic")}</li>
             </ul>
         </div>
     );
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold  mb-6">Create a Covercrypt master key pair</h1>
+            <h1 className="text-2xl font-bold  mb-6">{t("covercryptMasterKey.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Create a new master key pair for a given specification.</p>
+                <p>{t("covercryptMasterKey.intro")}</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    <li>The master public key is used to encrypt files and can be safely shared</li>
-                    <li>The master secret key is used to generate user decryption keys and must be kept confidential</li>
+                    <li>{t("covercryptMasterKey.introPublicKey")}</li>
+                    <li>{t("covercryptMasterKey.introSecretKey")}</li>
                 </ul>
             </div>
 
@@ -92,7 +97,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <div className="p-4 rounded-lg space-y-4">
-                            <h3 className="text-m font-bold mb-4">Specification Configuration (required)</h3>
+                            <h3 className="text-m font-bold mb-4">{t("covercryptMasterKey.specificationConfig")}</h3>
 
                             <Form.Item>
                                 <Select
@@ -100,14 +105,17 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                     onChange={(value) => setSpecificationType(value)}
                                     data-testid="spec-type-select"
                                     options={[
-                                        { label: "Upload JSON Specification File", value: "json-file" },
-                                        { label: "Enter JSON Specification", value: "json-text" },
+                                        { label: t("covercryptMasterKey.uploadJsonFile"), value: "json-file" },
+                                        { label: t("covercryptMasterKey.enterJson"), value: "json-text" },
                                     ]}
                                 />
                             </Form.Item>
 
                             {specificationType === "json-file" && (
-                                <Form.Item name="specificationFile" rules={[{ required: true, message: "Please provide specifications" }]}>
+                                <Form.Item
+                                    name="specificationFile"
+                                    rules={[{ required: true, message: t("covercryptMasterKey.pleaseProvideSpecifications") }]}
+                                >
                                     <FormUploadDragger
                                         accept=".json"
                                         beforeUpload={(file) => {
@@ -123,7 +131,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                         }}
                                         maxCount={1}
                                     >
-                                        <p className="ant-upload-text">Click or drag JSON specification file</p>
+                                        <p className="ant-upload-text">{t("covercryptMasterKey.uploadText")}</p>
                                     </FormUploadDragger>
                                 </Form.Item>
                             )}
@@ -132,14 +140,14 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                 <Form.Item
                                     name="specification"
                                     rules={[
-                                        { required: true, message: "Please enter specification JSON" },
+                                        { required: true, message: t("covercryptMasterKey.pleaseEnterSpecJson") },
                                         {
                                             validator: async (_, value) => {
                                                 if (value) {
                                                     try {
                                                         JSON.parse(value);
                                                     } catch (e) {
-                                                        throw new Error(`Invalid JSON format: ${e}`);
+                                                        throw new Error(t("covercryptMasterKey.invalidJson", { error: e }));
                                                     }
                                                 }
                                             },
@@ -148,7 +156,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                 >
                                     <Input.TextArea
                                         data-testid="spec-json-textarea"
-                                        placeholder="Paste your JSON Specification here"
+                                        placeholder={t("covercryptMasterKey.placeholderSpec")}
                                         rows={10}
                                         className="font-mono text-sm"
                                     />
@@ -157,22 +165,26 @@ const CovercryptMasterKeyForm: React.FC = () => {
                         </div>
 
                         <div className="p-4 rounded mb-4">
-                            <p className="text-sm mb-2">Example Specification Format:</p>
+                            <p className="text-sm mb-2">{t("covercryptMasterKey.exampleFormat")}</p>
                             <pre className="p-2 rounded text-xs overflow-auto">{SPECIFICATION_EXAMPLE}</pre>
                             <SpecificationExplanation />
                         </div>
 
-                        <Form.Item name="tags" label="Tags" help="Optional tags to help retrieve the keys later">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("covercryptMasterKey.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
-                        <Form.Item name="wrappingKeyId" label="Wrapping Key ID" help="Optional: ID of the key to wrap this new key with">
-                            <Input placeholder="Enter wrapping key ID" />
+                        <Form.Item
+                            name="wrappingKeyId"
+                            label={t("covercryptMasterKey.wrappingKeyId")}
+                            help={t("covercryptMasterKey.wrappingKeyIdHelp")}
+                        >
+                            <Input placeholder={t("covercryptMasterKey.enterWrappingKeyId")} />
                         </Form.Item>
 
-                        <Form.Item name="sensitive" valuePropName="checked" help="If enabled, the private key will not be exportable">
+                        <Form.Item name="sensitive" valuePropName="checked" help={t("covercryptMasterKey.sensitiveHelp")}>
                             <Checkbox>
-                                <span>Sensitive Key</span>
+                                <span>{t("covercryptMasterKey.sensitive")}</span>
                             </Checkbox>
                         </Form.Item>
                     </Card>
@@ -185,12 +197,12 @@ const CovercryptMasterKeyForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Create Master Key pair
+                            {t("covercryptMasterKey.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="Covercrypt Master keys creation response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("covercryptMasterKey.responseTitle")} />
         </div>
     );
 };

@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import { useActionState } from "../../hooks/useActionState";
 
@@ -39,12 +40,13 @@ const buildMacRequest = (keyId: string, algorithm: string, dataHex: string) => (
 const MacComputeForm: React.FC = () => {
     const [form] = Form.useForm<MacComputeFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: MacComputeFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("macCompute.missingKeyId"));
             }
             const request = buildMacRequest(id, values.algorithm, values.data);
             const result_str = await sendKmipRequest(request, serverUrl);
@@ -52,9 +54,9 @@ const MacComputeForm: React.FC = () => {
                 const response = JSON.parse(result_str) as { tag?: string; value?: Array<{ tag: string; type: string; value: string }> };
                 const dataItem = response.value?.find((item) => item.tag === "MACData");
                 if (dataItem) {
-                    return `MAC (hex): ${dataItem.value}`;
+                    return t("macCompute.successMac", { mac: dataItem.value });
                 } else {
-                    return `Response: ${result_str}`;
+                    return t("macCompute.responseRaw", { response: result_str });
                 }
             }
         });
@@ -62,33 +64,33 @@ const MacComputeForm: React.FC = () => {
 
     return (
         <div className="rounded-lg p-6 m-4">
-            <h1 className="text-2xl font-bold mb-6">MAC Compute</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("macCompute.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Compute a Message Authentication Code (MAC / HMAC) over data using a MAC key.</p>
+                <p>{t("macCompute.intro")}</p>
                 <p>
-                    The data must be provided as a hexadecimal string (e.g. <code>0011223344556677</code>).
+                    <Trans ns="actions" i18nKey="macCompute.introHex" components={{ code: <code /> }} />
                 </p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ algorithm: "SHA256" }}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Key ID" help="The unique identifier of the MAC key">
-                            <Input placeholder="Enter key ID" />
+                        <h3 className="text-m font-bold mb-4">{t("macCompute.keyIdentification")}</h3>
+                        <Form.Item name="keyId" label={t("common:keyId")} help={t("macCompute.keyIdHelp")}>
+                            <Input placeholder={t("common:enterKeyId")} />
                         </Form.Item>
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("macCompute.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
 
                     <Card>
                         <Form.Item
                             name="algorithm"
-                            label="Hashing Algorithm"
-                            rules={[{ required: true, message: "Please select a hashing algorithm" }]}
-                            help="Hash function used for the HMAC computation"
+                            label={t("macCompute.hashingAlgorithm")}
+                            rules={[{ required: true, message: t("macCompute.pleaseSelectHashingAlgorithm") }]}
+                            help={t("macCompute.hashingAlgorithmHelp")}
                         >
                             <Select data-testid="mac-algorithm-select" options={MAC_HASHING_ALGORITHMS} />
                         </Form.Item>
@@ -97,22 +99,22 @@ const MacComputeForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="data"
-                            label="Data (hex)"
+                            label={t("macCompute.dataLabel")}
                             rules={[
-                                { required: true, message: "Please enter data to authenticate" },
+                                { required: true, message: t("macCompute.pleaseEnterData") },
                                 {
                                     pattern: /^[0-9a-fA-F]*$/,
-                                    message: "Data must be a hexadecimal string",
+                                    message: t("macCompute.dataHexError"),
                                 },
                             ]}
-                            help="Data to authenticate, as a hexadecimal string"
+                            help={t("macCompute.dataHelp")}
                         >
-                            <Input.TextArea rows={4} placeholder="e.g. 0011223344556677" />
+                            <Input.TextArea rows={4} placeholder={t("macCompute.dataPlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Button type="primary" htmlType="submit" loading={isLoading} data-testid="submit-btn">
-                        Compute MAC
+                        {t("macCompute.submit")}
                     </Button>
                 </Space>
             </Form>

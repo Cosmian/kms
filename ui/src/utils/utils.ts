@@ -253,13 +253,14 @@ export const getMimeType = (fileName: string): string => {
     return mimeTypes[extension] || "application/octet-stream";
 };
 
-export type ObjectType = "rsa" | "ec" | "symmetric" | "covercrypt" | "pqc" | "certificate" | "secret-data" | "opaque-object";
+export type ObjectType = "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "certificate" | "secret-data" | "opaque-object";
 
 export const getObjectLabel = (type: ObjectType): string => {
     switch (type) {
         case "rsa":
         case "ec":
         case "symmetric":
+        case "fpe":
         case "covercrypt":
         case "pqc":
             return "key";
@@ -271,28 +272,5 @@ export const getObjectLabel = (type: ObjectType): string => {
             return "opaque object";
         default:
             return "object";
-    }
-};
-
-export const getTypeString = (type: ObjectType): string => {
-    switch (type) {
-        case "rsa":
-            return "an RSA";
-        case "ec":
-            return "an EC";
-        case "covercrypt":
-            return "a CoverCrypt";
-        case "symmetric":
-            return "a symmetric";
-        case "pqc":
-            return "a PQC";
-        case "certificate":
-            return "a";
-        case "secret-data":
-            return "a";
-        case "opaque-object":
-            return "an";
-        default:
-            return "a";
     }
 };

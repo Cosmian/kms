@@ -1,5 +1,6 @@
 import { Alert, Button, Input, Spin } from "antd";
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
 import { useBranding } from "../contexts/useBranding";
@@ -22,6 +23,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
     const { login, serverUrl } = useAuth();
     const navigate = useNavigate();
     const branding = useBranding();
+    const { t } = useTranslation("layout");
 
     const handleLogin = async () => {
         try {
@@ -44,9 +46,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                 navigate("/locate");
             } catch (err) {
                 console.error("Certificate validation failed:", err);
-                setCertError(
-                    "No client certificate was provided or it is invalid. If the problem persists, close all instances of your browser and relaunch with the correct client certificate previously loaded.",
-                );
+                setCertError(t("login.certErrorDescription"));
             } finally {
                 setIsLoading(false);
             }
@@ -95,16 +95,10 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                 <div className="text-center text-7xl font-bold text-white mb-10 z-10">{branding.loginTitle}</div>
                 {branding.loginSubtitle && <div className="text-center text-xl text-white/90 mb-10 z-10">{branding.loginSubtitle}</div>}
                 <div className="space-y-6 text-center w-1/2">
-                    {auth && <p className="text-white">Sign up for free and explore rights delegation for multiple users</p>}
+                    {auth && <p className="text-white">{t("login.signUp")}</p>}
                     {error && <p className="text-purple-700">{error}</p>}
                     {certError && (
-                        <Alert
-                            type="error"
-                            showIcon
-                            message="CERT identity verification failed"
-                            description={certError}
-                            className="text-left mb-8"
-                        />
+                        <Alert type="error" showIcon message={t("login.certFailed")} description={certError} className="text-left mb-8" />
                     )}
                     {authMethod === "AUTH_VERIFIER" ? (
                         <div className="space-y-4 text-left" data-testid="auth-verifier-login-form">
@@ -112,7 +106,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                                 <Alert
                                     type="error"
                                     showIcon
-                                    message="Authentication failed"
+                                    message={t("login.authFailed")}
                                     description={authVerifierError}
                                     className="text-left mb-4"
                                     data-testid="auth-verifier-login-error"
@@ -121,7 +115,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                             {authVerifierTotpRequired ? (
                                 <Input
                                     autoFocus
-                                    placeholder="One-time code (TOTP)"
+                                    placeholder={t("login.totpPlaceholder")}
                                     value={authVerifierTotpCode}
                                     onChange={(e) => setAuthVerifierTotpCode(e.target.value)}
                                     onPressEnter={handleAuthVerifierLogin}
@@ -131,7 +125,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                                 <>
                                     <Input
                                         autoFocus
-                                        placeholder="Username"
+                                        placeholder={t("login.usernamePlaceholder")}
                                         autoComplete="username"
                                         value={authVerifierUsername}
                                         onChange={(e) => setAuthVerifierUsername(e.target.value)}
@@ -139,7 +133,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                                         data-testid="auth-verifier-username-input"
                                     />
                                     <Input.Password
-                                        placeholder="Password"
+                                        placeholder={t("login.passwordPlaceholder")}
                                         autoComplete="current-password"
                                         value={authVerifierPassword}
                                         onChange={(e) => setAuthVerifierPassword(e.target.value)}
@@ -155,18 +149,18 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                                 loading={isLoading}
                                 data-testid="auth-verifier-login-submit"
                             >
-                                {authVerifierTotpRequired ? "VERIFY CODE" : "LOGIN"}
+                                {authVerifierTotpRequired ? t("login.verifyCode") : t("login.login")}
                             </Button>
                         </div>
                     ) : isLoading ? (
                         <Spin size="large" />
                     ) : auth ? (
                         <Button type="primary" block onClick={handleLogin} loading={isLoading} data-testid="oidc-login-btn">
-                            LOGIN
+                            {t("login.login")}
                         </Button>
                     ) : (
                         <Button type="primary" block onClick={handleAccessKms} loading={isLoading}>
-                            ACCESS KMS
+                            {t("login.accessKms")}
                         </Button>
                     )}
                 </div>

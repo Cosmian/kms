@@ -1,5 +1,6 @@
 import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, TableColumnsType, Tag, Tooltip } from "antd";
 import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import HashMapDisplay from "./HashMapDisplay";
 import { getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
@@ -9,6 +10,9 @@ const formatUnixDate = (unixMs: number): string => {
     const d = new Date(unixMs);
     return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 };
+
+/** Structured outcome of a Locate run — rendered through i18n (avoids string-splicing display text). */
+type LocateResult = { kind: "located"; count: number } | { kind: "message"; text: string } | { kind: "error"; text: string };
 
 /** Attribute keys fetched for every located row — sourced from WASM (single source of truth).
  *  Lazily initialised on first access so the WASM module is guaranteed to be
@@ -50,10 +54,11 @@ interface LocateFormData {
 type AlgoOption = { value: string; label: string };
 
 const LocateForm: React.FC = () => {
-    const NO_FILTER: AlgoOption = { value: "", label: "— No filter —" };
+    const { t } = useTranslation(["locate", "common"]);
+    const NO_FILTER: AlgoOption = { value: "", label: t("noFilter") };
     const [form] = Form.useForm<LocateFormData>();
     const [isLoading, setIsLoading] = useState(false);
-    const [res, setRes] = useState<string | undefined>(undefined);
+    const [result, setResult] = useState<LocateResult | undefined>(undefined);
     const [cryptoAlgorithms, setCryptoAlgorithms] = useState<AlgoOption[]>([]);
     const [keyFormatTypes, setKeyFormatTypes] = useState<AlgoOption[]>([]);
     const [objectTypes, setObjectTypes] = useState<AlgoOption[]>([]);
@@ -88,6 +93,23 @@ const LocateForm: React.FC = () => {
         // If s already a textual state (possibly with hyphen), return as-is
         return s;
     };
+    // Lifecycle state names are kept in English internally (they participate in
+    // filtering/sorting); only the rendered text is translated.
+    const STATE_DISPLAY_KEYS: Record<string, string> = {
+        "Pre-Active": "state.preActive",
+        Active: "state.active",
+        Deactivated: "state.deactivated",
+        Compromised: "state.compromised",
+        Destroyed: "state.destroyed",
+        "Destroyed Compromised": "state.destroyedCompromised",
+        Archived: "state.archived",
+        Unknown: "state.unknown",
+    };
+    const stateDisplay = (state?: string): string => {
+        if (!state) return t("state.unknown");
+        const key = STATE_DISPLAY_KEYS[state];
+        return key ? t(key) : state;
+    };
     const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
     const [detailsVisible, setDetailsVisible] = useState<boolean>(false);
@@ -96,10 +118,10 @@ const LocateForm: React.FC = () => {
     const [actionLoadingId, setActionLoadingId] = useState<string | undefined>(undefined);
 
     useEffect(() => {
-        if (res && responseRef.current) {
+        if (result && responseRef.current) {
             responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
-    }, [res]);
+    }, [result]);
 
     useEffect(() => {
         try {
@@ -228,7 +250,7 @@ const LocateForm: React.FC = () => {
 
     const onFinish = async (values: LocateFormData) => {
         setIsLoading(true);
-        setRes(undefined);
+        setResult(undefined);
         setObjects(undefined);
         try {
             // unauthenticated attempt allowed only when auth method is None
@@ -305,7 +327,7 @@ const LocateForm: React.FC = () => {
                             }
                         }
                         setObjects(enriched);
-                        setRes(`${enriched.length} Object(s) located.`);
+                        setResult({ kind: "located", count: enriched.length });
                         return;
                     }
 
@@ -359,7 +381,7 @@ const LocateForm: React.FC = () => {
                         });
                     }
                     setObjects(enriched);
-                    setRes(`${enriched.length} Object(s) located.`);
+                    setResult({ kind: "located", count: enriched.length });
                     return;
                 } catch {
                     // Fall back to Locate below
@@ -403,7 +425,7 @@ const LocateForm: React.FC = () => {
                                 state: row.state || (row.object_id.startsWith("hsm::") ? "Active" : undefined),
                             })),
                         );
-                        setRes(`${merged.length} Object(s) located.`);
+                        setResult({ kind: "located", count: merged.length });
                         return;
                     }
                     // Try to supplement state from non-TTLV owned list when available
@@ -425,7 +447,7 @@ const LocateForm: React.FC = () => {
                         // Do not re-filter by tags/criteria; Locate already applied them
 
                         setObjects(merged);
-                        setRes(`${merged.length} Object(s) located.`);
+                        setResult({ kind: "located", count: merged.length });
                     } catch {
                         // If owned endpoint not available, keep KMIP-only enrichment
                         let filtered = enriched;
@@ -443,7 +465,7 @@ const LocateForm: React.FC = () => {
                         // Do not re-filter by tags/criteria; Locate already applied them
 
                         setObjects(filtered);
-                        setRes(`${filtered.length} Object(s) located.`);
+                        setResult({ kind: "located", count: filtered.length });
                     }
                 } catch {
                     /* ignore */
@@ -465,7 +487,7 @@ const LocateForm: React.FC = () => {
                     try {
                         const merged = await ownedFallbackNoCriteria(serverUrl);
                         setObjects(merged);
-                        setRes(`${merged.length} Object(s) located.`);
+                        setResult({ kind: "located", count: merged.length });
                         return;
                     } catch {
                         /* owned fallback failed */
@@ -542,7 +564,7 @@ const LocateForm: React.FC = () => {
                                 filtered = filtered.filter((r) => normalizeState(r.state) === targetState);
                             }
                             setObjects(filtered);
-                            setRes(`${filtered.length} Object(s) located.`);
+                            setResult({ kind: "located", count: filtered.length });
                             return;
                         }
                     } catch (e) {
@@ -551,15 +573,15 @@ const LocateForm: React.FC = () => {
                 }
                 // Still nothing: show explicit 0 objects
                 setObjects([]);
-                setRes("0 Object(s) located.");
+                setResult({ kind: "located", count: 0 });
             }
             // set by post-filtering to reflect visible rows
         } catch (e) {
             const msg = String(e || "");
             if (msg.startsWith("401:") || msg.startsWith("403:")) {
-                setRes("Authentication required or forbidden. Please log in or check permissions.");
+                setResult({ kind: "message", text: t("authRequired") });
             } else {
-                setRes(`Error locating object: ${e}`);
+                setResult({ kind: "error", text: t("errorLocatingObject", { error: String(e) }) });
             }
         } finally {
             setIsLoading(false);
@@ -595,7 +617,7 @@ const LocateForm: React.FC = () => {
     // Optional TTLV helpers for actions (best-effort; may depend on WASM exports)
     const handleRevoke = async (uid: string) => {
         if (!uid) return;
-        const ok = window.confirm("Revoke this object? This will set its state to Revoked/Compromised as per policy.");
+        const ok = window.confirm(t("revokeConfirm"));
         if (!ok) return;
         setActionLoadingId(uid);
         try {
@@ -604,7 +626,7 @@ const LocateForm: React.FC = () => {
                 const req = w.revoke_ttlv_request(uid, "User-initiated revoke");
                 await sendKmipRequest(req, serverUrl);
                 await handleRefreshRow(uid);
-                setRes((prev) => (prev ? String(prev).replace(/\d+ Object\(s\) located\./, "Action completed.") : "Action completed."));
+                setResult({ kind: "message", text: t("actionCompleted") });
             } else {
                 console.warn("revoke_ttlv_request not available in WASM package");
             }
@@ -617,7 +639,7 @@ const LocateForm: React.FC = () => {
 
     const handleDestroy = async (uid: string) => {
         if (!uid) return;
-        const ok = window.confirm("Destroy this object? This operation is irreversible.");
+        const ok = window.confirm(t("destroyConfirm"));
         if (!ok) return;
         setActionLoadingId(uid);
         try {
@@ -626,7 +648,7 @@ const LocateForm: React.FC = () => {
                 const req = w.destroy_ttlv_request(uid, true);
                 await sendKmipRequest(req, serverUrl);
                 setObjects((prev) => (prev ? prev.filter((r) => r.object_id !== uid) : prev));
-                setRes("Object destroyed.");
+                setResult({ kind: "message", text: t("objectDestroyed") });
             } else {
                 /* destroy_ttlv_request not available in WASM package */
             }
@@ -668,76 +690,72 @@ const LocateForm: React.FC = () => {
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Locate Cryptographic Objects</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Search for cryptographic objects in the KMS using various criteria.</p>
+                <p>{t("intro")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Basic Search Criteria</h3>
+                        <h3 className="text-m font-bold mb-4">{t("basicSearchCriteria")}</h3>
                         <Row gutter={[16, 16]}>
                             <Col xs={24} sm={12} md={12} lg={12} xl={6}>
-                                <Form.Item name="tags" label="Tags" help="User tags or system tags to locate the object">
-                                    <Select mode="tags" placeholder="Enter tags" open={false} suffixIcon={null} />
+                                <Form.Item name="tags" label={t("common:tags")} help={t("tagsHelp")}>
+                                    <Select mode="tags" placeholder={t("common:enterTags")} open={false} suffixIcon={null} />
                                 </Form.Item>
                             </Col>
                             <Col xs={24} sm={12} md={12} lg={12} xl={6}>
-                                <Form.Item
-                                    name="cryptographicAlgorithm"
-                                    label="Cryptographic Algorithm"
-                                    help="Algorithm used by the cryptographic object"
-                                >
-                                    <Select options={[NO_FILTER, ...cryptoAlgorithms]} allowClear placeholder="Select algorithm" />
+                                <Form.Item name="cryptographicAlgorithm" label={t("cryptoAlgorithm")} help={t("cryptoAlgorithmHelp")}>
+                                    <Select options={[NO_FILTER, ...cryptoAlgorithms]} allowClear placeholder={t("selectAlgorithm")} />
                                 </Form.Item>
                             </Col>
                             <Col xs={24} sm={12} md={12} lg={12} xl={6}>
-                                <Form.Item name="cryptographicLength" label="Cryptographic Length" help="Key size in bits">
-                                    <Input type="number" placeholder="Enter length in bits" min={0} />
+                                <Form.Item name="cryptographicLength" label={t("cryptoLength")} help={t("cryptoLengthHelp")}>
+                                    <Input type="number" placeholder={t("enterLengthInBits")} min={0} />
                                 </Form.Item>
                             </Col>
                             <Col xs={24} sm={12} md={12} lg={12} xl={6}>
-                                <Form.Item name="state" label="State" help="Lifecycle state of the object">
-                                    <Select allowClear placeholder="Select state" options={[NO_FILTER, ...objectStates]} />
+                                <Form.Item name="state" label={t("common:state")} help={t("common:state")}>
+                                    <Select allowClear placeholder={t("selectState")} options={[NO_FILTER, ...objectStates]} />
                                 </Form.Item>
                             </Col>
                         </Row>
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Object Type and Format</h3>
+                        <h3 className="text-m font-bold mb-4">{t("objectTypeAndFormat")}</h3>
                         <Row gutter={[16, 16]}>
                             <Col xs={24} sm={12} md={12} lg={12} xl={12}>
-                                <Form.Item name="objectType" label="Object Type" help="Type of cryptographic object">
-                                    <Select options={[NO_FILTER, ...objectTypes]} allowClear placeholder="Select object type" />
+                                <Form.Item name="objectType" label={t("common:objectType")} help={t("objectTypeHelp")}>
+                                    <Select options={[NO_FILTER, ...objectTypes]} allowClear placeholder={t("selectObjectType")} />
                                 </Form.Item>
                             </Col>
                             <Col xs={24} sm={12} md={12} lg={12} xl={12}>
-                                <Form.Item name="keyFormatType" label="Key Format Type" help="Format used to store the key">
-                                    <Select options={[NO_FILTER, ...keyFormatTypes]} allowClear placeholder="Select key format" />
+                                <Form.Item name="keyFormatType" label={t("keyFormatType")} help={t("keyFormatTypeHelp")}>
+                                    <Select options={[NO_FILTER, ...keyFormatTypes]} allowClear placeholder={t("selectKeyFormat")} />
                                 </Form.Item>
                             </Col>
                         </Row>
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Linked Objects</h3>
+                        <h3 className="text-m font-bold mb-4">{t("linkedObjects")}</h3>
                         <Row gutter={[16, 16]}>
                             <Col xs={24} sm={12} md={12} lg={8} xl={8}>
-                                <Form.Item name="publicKeyId" label="Public Key ID" help="Find objects linked to this public key">
-                                    <Input placeholder="Enter public key ID" />
+                                <Form.Item name="publicKeyId" label={t("publicKeyId")} help={t("publicKeyIdHelp")}>
+                                    <Input placeholder={t("enterPublicKeyId")} />
                                 </Form.Item>
                             </Col>
                             <Col xs={24} sm={12} md={12} lg={8} xl={8}>
-                                <Form.Item name="privateKeyId" label="Private Key ID" help="Find objects linked to this private key">
-                                    <Input placeholder="Enter private key ID" />
+                                <Form.Item name="privateKeyId" label={t("privateKeyId")} help={t("privateKeyIdHelp")}>
+                                    <Input placeholder={t("enterPrivateKeyId")} />
                                 </Form.Item>
                             </Col>
                             <Col xs={24} sm={12} md={12} lg={8} xl={8}>
-                                <Form.Item name="certificateId" label="Certificate ID" help="Find objects linked to this certificate">
-                                    <Input placeholder="Enter certificate ID" />
+                                <Form.Item name="certificateId" label={t("certificateId")} help={t("certificateIdHelp")}>
+                                    <Input placeholder={t("enterCertificateId")} />
                                 </Form.Item>
                             </Col>
                         </Row>
@@ -751,16 +769,18 @@ const LocateForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Search Objects
+                            {t("searchObjects")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
+            {result && (
                 <div ref={responseRef} data-testid="response-output">
-                    <Card title="Locate response">
+                    <Card title={t("responseTitle")}>
                         <Space direction="vertical" size="middle" style={{ display: "flex" }}>
-                            <div className="font-bold">{res}</div>
+                            <div className="font-bold">
+                                {result.kind === "located" ? t("objectsLocated", { count: result.count }) : result.text}
+                            </div>
 
                             <Table<LocateObjectRow>
                                 dataSource={objects || []}
@@ -781,66 +801,66 @@ const LocateForm: React.FC = () => {
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) => a.object_id.localeCompare(b.object_id),
                                         },
                                         {
-                                            title: "Type",
+                                            title: t("colType"),
                                             key: "attributes.ObjectType",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
                                                 (a.attributes?.ObjectType ?? "").localeCompare(b.attributes?.ObjectType ?? ""),
                                             filters: [
-                                                ...objectTypes.map((t) => ({ text: t.label, value: t.value })),
-                                                { text: "N/A", value: "N/A" },
+                                                ...objectTypes.map((opt) => ({ text: opt.label, value: opt.value })),
+                                                { text: t("common:na"), value: "N/A" },
                                             ],
                                             // OpaqueObject among probably others are not keys and have no KeyFormatType so N/A is a catch-all handled separately
                                             onFilter: (value: React.Key | boolean, record: LocateObjectRow) => {
                                                 return record.attributes?.ObjectType === value;
                                             },
-                                            render: (record: LocateObjectRow) => record.attributes?.ObjectType || "N/A",
+                                            render: (record: LocateObjectRow) => record.attributes?.ObjectType || t("common:na"),
                                         },
                                         {
-                                            title: "Algorithm",
+                                            title: t("colAlgorithm"),
                                             key: "cryptographic_algorithm",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
                                                 ((a.meta?.cryptographic_algorithm as string | undefined) ?? "").localeCompare(
                                                     (b.meta?.cryptographic_algorithm as string | undefined) ?? "",
                                                 ),
                                             render: (record: LocateObjectRow) =>
-                                                (record.meta?.cryptographic_algorithm as string | undefined) || "N/A",
+                                                (record.meta?.cryptographic_algorithm as string | undefined) || t("common:na"),
                                         },
                                         {
-                                            title: "Length",
+                                            title: t("colLength"),
                                             key: "cryptographic_length",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
                                                 ((a.meta?.cryptographic_length as number | undefined) ?? 0) -
                                                 ((b.meta?.cryptographic_length as number | undefined) ?? 0),
                                             render: (record: LocateObjectRow) => {
                                                 const len = record.meta?.cryptographic_length as number | undefined;
-                                                return len != null ? `${len} bits` : "N/A";
+                                                return len != null ? t("bits", { len }) : t("common:na");
                                             },
                                         },
                                         {
-                                            title: "Format",
+                                            title: t("colFormat"),
                                             key: "key_format_type",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
                                                 (a.meta?.key_format_type ?? "").localeCompare(b.meta?.key_format_type ?? ""),
                                             filters: [
-                                                ...keyFormatTypes.map((k) => ({ text: k.label, value: k.value })),
-                                                { text: "N/A", value: "N/A" },
+                                                ...keyFormatTypes.map((opt) => ({ text: opt.label, value: opt.value })),
+                                                { text: t("common:na"), value: "N/A" },
                                             ],
                                             onFilter: (value: React.Key | boolean, record: LocateObjectRow) => {
                                                 const v = record.meta?.key_format_type as string | undefined;
                                                 if (value === "N/A") return !v;
                                                 return v ? normalizeKeyFormatType(v) === normalizeKeyFormatType(String(value)) : false;
                                             },
-                                            render: (record: LocateObjectRow) => record.meta?.key_format_type || "N/A",
+                                            render: (record: LocateObjectRow) => record.meta?.key_format_type || t("common:na"),
                                         },
                                         {
-                                            title: "State",
+                                            title: t("common:state"),
                                             dataIndex: "state",
                                             key: "state",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
                                                 (a.state ?? "").localeCompare(b.state ?? ""),
                                             filters: [
-                                                ...objectStates.map((s) => ({ text: s.label, value: s.value })),
-                                                { text: "Unknown", value: "Unknown" },
+                                                ...objectStates.map((opt) => ({ text: opt.label, value: opt.value })),
+                                                { text: t("state.unknown"), value: "Unknown" },
                                             ],
                                             onFilter: (value: React.Key | boolean, record: LocateObjectRow) => {
                                                 if (value === "Unknown") return !record.state;
@@ -848,12 +868,12 @@ const LocateForm: React.FC = () => {
                                             },
                                             render: (state?: string) => (
                                                 <Space size={4}>
-                                                    <Tag color={state === "Active" ? "green" : "orange"}>{state || "Unknown"}</Tag>
+                                                    <Tag color={state === "Active" ? "green" : "orange"}>{stateDisplay(state)}</Tag>
                                                 </Space>
                                             ),
                                         },
                                         {
-                                            title: "Date",
+                                            title: t("colDate"),
                                             key: "date",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) => {
                                                 const getDate = (row: LocateObjectRow) => {
@@ -877,7 +897,7 @@ const LocateForm: React.FC = () => {
                                                 if (!dateValue) {
                                                     if (/^hsm[0-9]*::/.test(row.object_id)) {
                                                         return (
-                                                            <Tooltip title="HSM-resident keys have no creation date stored in the PKCS#11 token">
+                                                            <Tooltip title={t("hsmNoDate")}>
                                                                 <span style={{ color: "#bbb", fontSize: "12px" }}>HSM</span>
                                                             </Tooltip>
                                                         );
@@ -885,12 +905,12 @@ const LocateForm: React.FC = () => {
                                                     return <span style={{ color: "#bbb" }}>—</span>;
                                                 }
                                                 const label = rotateDate
-                                                    ? "Last rotation"
+                                                    ? t("lastRotation")
                                                     : initialDate
-                                                      ? "Created"
+                                                      ? t("created")
                                                       : activationDate
-                                                        ? "Activated"
-                                                        : "Created";
+                                                        ? t("activated")
+                                                        : t("created");
                                                 return (
                                                     <Tooltip title={`${label}: ${formatUnixDate(dateValue)}`}>
                                                         <span style={{ fontSize: "12px", whiteSpace: "nowrap" }}>
@@ -902,7 +922,7 @@ const LocateForm: React.FC = () => {
                                             },
                                         },
                                         {
-                                            title: "Actions",
+                                            title: t("colActions"),
                                             key: "actions",
                                             render: (row: LocateObjectRow) => (
                                                 <Space size="small">
@@ -911,7 +931,7 @@ const LocateForm: React.FC = () => {
                                                         onClick={() => handleRevoke(row.object_id)}
                                                         loading={actionLoadingId === row.object_id}
                                                     >
-                                                        Revoke
+                                                        {t("common:revoke")}
                                                     </Button>
                                                     <Button
                                                         danger
@@ -919,14 +939,14 @@ const LocateForm: React.FC = () => {
                                                         onClick={() => handleDestroy(row.object_id)}
                                                         loading={actionLoadingId === row.object_id}
                                                     >
-                                                        Destroy
+                                                        {t("common:destroy")}
                                                     </Button>
                                                     <Button
                                                         size="small"
                                                         onClick={() => handleShowDetails(row.object_id)}
                                                         loading={actionLoadingId === row.object_id}
                                                     >
-                                                        Details
+                                                        {t("details")}
                                                     </Button>
                                                 </Space>
                                             ),
@@ -939,12 +959,12 @@ const LocateForm: React.FC = () => {
                 </div>
             )}
             <Modal
-                title={detailsForId ? `Attributes for ${detailsForId}` : "Attributes"}
+                title={detailsForId ? t("attributesFor", { id: detailsForId }) : t("attributes")}
                 open={detailsVisible}
                 onCancel={() => setDetailsVisible(false)}
-                footer={<Button onClick={() => setDetailsVisible(false)}>Close</Button>}
+                footer={<Button onClick={() => setDetailsVisible(false)}>{t("close")}</Button>}
             >
-                {detailsData && detailsData.size ? <HashMapDisplay data={detailsData} /> : <div>No attributes found.</div>}
+                {detailsData && detailsData.size ? <HashMapDisplay data={detailsData} /> : <div>{t("noAttributesFound")}</div>}
             </Modal>
         </div>
     );

@@ -1,5 +1,6 @@
 import { Layout, Menu, MenuProps, Tooltip } from "antd";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/useAuth";
 import { useBranding } from "../../contexts/useBranding";
@@ -18,6 +19,7 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
     const navigate = useNavigate();
     const [stateOpenKeys, setStateOpenKeys] = useState<string[]>([]);
     const branding = useBranding();
+    const { t } = useTranslation("menu");
     const menuItems = useMemo(
         () => getMenuItems({ enableCovercrypt: branding.enableCovercrypt, pqcLabel: branding.pqcLabel, isFips }),
         [branding.enableCovercrypt, branding.pqcLabel, isFips],
@@ -123,10 +125,25 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
         }
     };
 
-    const modifiedMenuItems = processedMenuItems.map((item) => ({
-        ...item,
-        label: collapsed ? <Tooltip title={item.label}>{item.icon ? item.icon : item.collapsedlabel}</Tooltip> : item.label,
-    }));
+    // Menu labels are i18n keys: translate via the "menu" namespace, falling
+    // back to the English/branding label. rawLabel items (e.g. the branding-
+    // provided PQC label) are rendered verbatim.
+    const displayLabel = (item: MenuItem) => (item.rawLabel ? item.label : t(item.key, { defaultValue: item.label }));
+
+    // Recursively decorate every menu level so that sub-menu labels are
+    // translated too, not just the top level.
+    const decorateMenuItems = (items: MenuItem[]): NonNullable<MenuProps["items"]> =>
+        items.map((item) => ({
+            ...item,
+            label: collapsed ? (
+                <Tooltip title={displayLabel(item)}>{item.icon ? item.icon : item.collapsedlabel}</Tooltip>
+            ) : (
+                displayLabel(item)
+            ),
+            ...(item.children ? { children: decorateMenuItems(item.children) } : {}),
+        }));
+
+    const modifiedMenuItems = decorateMenuItems(processedMenuItems);
 
     return (
         <Sider

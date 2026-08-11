@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Divider, Form, Input, InputNumber, Select, Space } from "antd";
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
@@ -27,6 +28,7 @@ const SymKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<SymKeyCreateFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [algoOptions, setAlgoOptions] = useState<{ value: string; label: string }[]>([]);
+    const { t } = useTranslation("actions");
 
     useEffect(() => {
         try {
@@ -71,21 +73,21 @@ const SymKeyCreateForm: React.FC = () => {
                     }
                 }
 
-                return `${keyId} has been created.`;
+                return t("symKeysCreate.success", { keyId });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Create a symmetric key</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("symKeysCreate.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Create a new symmetric key:</p>
+                <p>{t("symKeysCreate.intro")}</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    <li>When bytes are specified, the key will be created from the provided bytes.</li>
-                    <li>Otherwise, the key will be randomly generated with the specified number of bits.</li>
-                    <li>If no options are specified, a fresh 256-bit AES key will be created.</li>
+                    <li>{t("symKeysCreate.introBytes")}</li>
+                    <li>{t("symKeysCreate.introRandom")}</li>
+                    <li>{t("symKeysCreate.introDefault")}</li>
                 </ul>
             </div>
 
@@ -103,48 +105,48 @@ const SymKeyCreateForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item name="algorithm" label="Algorithm" rules={[{ required: true, message: "Please select an algorithm" }]}>
+                        <Form.Item
+                            name="algorithm"
+                            label={t("common:algorithm")}
+                            rules={[{ required: true, message: t("symKeysCreate.pleaseSelectAlgorithm") }]}
+                        >
                             <Select options={algoOptions} />
                         </Form.Item>
 
-                        <Form.Item name="numberOfBits" label="Number of Bits" help="The length of the generated random key in bits">
+                        <Form.Item name="numberOfBits" label={t("symKeysCreate.numberOfBits")} help={t("symKeysCreate.numberOfBitsHelp")}>
                             <InputNumber className="w-[200px]" min={128} step={128} max={512} />
                         </Form.Item>
 
+                        <Form.Item name="bytesB64" label={t("symKeysCreate.keyBytes")} help={t("symKeysCreate.keyBytesHelp")}>
+                            <Input.TextArea placeholder={t("symKeysCreate.enterKeyBytes")} rows={4} />
+                        </Form.Item>
+
+                        <Form.Item name="keyId" label={t("common:keyId")} help={t("symKeysCreate.keyIdHelp")}>
+                            <Input placeholder={t("common:enterKeyId")} />
+                        </Form.Item>
+
+                        <Form.Item name="tags" label={t("common:tags")} help={t("symKeysCreate.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
+                        </Form.Item>
+
                         <Form.Item
-                            name="bytesB64"
-                            label="Key Bytes (Base64)"
-                            help="Optional: specify the key bytes directly instead of generating random ones"
+                            name="wrappingKeyId"
+                            label={t("symKeysCreate.wrappingKeyId")}
+                            help={t("symKeysCreate.wrappingKeyIdHelp")}
                         >
-                            <Input.TextArea placeholder="Enter base64 encoded key bytes" rows={4} />
+                            <Input placeholder={t("symKeysCreate.enterWrappingKeyId")} />
                         </Form.Item>
 
-                        <Form.Item name="keyId" label="Key ID" help="Optional: a random UUID will be generated if not specified">
-                            <Input placeholder="Enter key ID" />
-                        </Form.Item>
-
-                        <Form.Item name="tags" label="Tags" help="Optional: Add tags to help retrieve the key later">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
-                        </Form.Item>
-
-                        <Form.Item name="wrappingKeyId" label="Wrapping Key ID" help="Optional: ID of the key to wrap this new key with">
-                            <Input placeholder="Enter wrapping key ID" />
-                        </Form.Item>
-
-                        <Form.Item name="sensitive" valuePropName="checked" help="If set, the key will not be exportable">
-                            <Checkbox>Sensitive</Checkbox>
+                        <Form.Item name="sensitive" valuePropName="checked" help={t("symKeysCreate.sensitiveHelp")}>
+                            <Checkbox>{t("symKeysCreate.sensitive")}</Checkbox>
                         </Form.Item>
 
                         <Divider orientation="left" plain>
-                            Rotation Policy (optional)
+                            {t("symKeysCreate.rotationPolicy")}
                         </Divider>
 
-                        <Form.Item
-                            name="enrollKeyset"
-                            valuePropName="checked"
-                            help="When checked, the rotation name is set to the key ID so this key can be addressed via name@latest, name@first, name@N"
-                        >
-                            <Checkbox data-testid="sym-enroll-keyset">Enroll in keyset (rotation name = key ID)</Checkbox>
+                        <Form.Item name="enrollKeyset" valuePropName="checked" help={t("symKeysCreate.enrollKeysetHelp")}>
+                            <Checkbox data-testid="sym-enroll-keyset">{t("symKeysCreate.enrollKeyset")}</Checkbox>
                         </Form.Item>
 
                         <Form.Item noStyle shouldUpdate={(prev, curr) => prev.enrollKeyset !== curr.enrollKeyset}>
@@ -153,26 +155,26 @@ const SymKeyCreateForm: React.FC = () => {
                                     <>
                                         <Form.Item
                                             name="rotateInterval"
-                                            label="Rotation Interval (seconds)"
-                                            help="Auto-rotate the key every N seconds. Set 0 to disable."
+                                            label={t("symKeysCreate.rotateInterval")}
+                                            help={t("symKeysCreate.rotateIntervalHelp")}
                                         >
                                             <InputNumber
                                                 className="w-[200px]"
                                                 min={0}
-                                                placeholder="e.g. 86400"
+                                                placeholder={t("symKeysCreate.rotateIntervalPlaceholder")}
                                                 data-testid="sym-rotation-interval"
                                             />
                                         </Form.Item>
 
                                         <Form.Item
                                             name="rotateOffset"
-                                            label="Rotation Offset (seconds)"
-                                            help="Delay before the first rotation occurs."
+                                            label={t("symKeysCreate.rotateOffset")}
+                                            help={t("symKeysCreate.rotateOffsetHelp")}
                                         >
                                             <InputNumber
                                                 className="w-[200px]"
                                                 min={0}
-                                                placeholder="e.g. 3600"
+                                                placeholder={t("symKeysCreate.rotateOffsetPlaceholder")}
                                                 data-testid="sym-rotation-offset"
                                             />
                                         </Form.Item>
@@ -190,11 +192,11 @@ const SymKeyCreateForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Create Symmetric Key
+                            {t("symKeysCreate.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
-                <ActionResponse res={res} responseRef={responseRef} title="Symmetric keys creation response" />
+                <ActionResponse res={res} responseRef={responseRef} title={t("symKeysCreate.responseTitle")} />
             </Form>
         </div>
     );

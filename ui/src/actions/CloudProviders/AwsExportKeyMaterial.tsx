@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import ExternalLink from "../../components/common/ExternalLink";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg/cosmian_kms_client_wasm";
@@ -41,6 +42,7 @@ interface AwsExportKeyMaterialFormData {
 const AwsExportKeyMaterialForm: React.FC = () => {
     const [form] = Form.useForm<AwsExportKeyMaterialFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: AwsExportKeyMaterialFormData) => {
         await execute(async () => {
@@ -49,7 +51,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
             const attrsResultStr = await sendKmipRequest(getAttrsRequest, serverUrl);
 
             if (!attrsResultStr) {
-                return "Failed to retrieve KEK attributes";
+                return t("awsExportKeyMaterial.failedRetrieveKekAttributes");
                 return;
             }
 
@@ -69,7 +71,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
             const tags = getTags(attributes);
 
             if (!tags.includes("aws")) {
-                return "The KEK is not an AWS Key Encryption Key: missing 'aws' tag. Import it using the Import KEK command.";
+                return t("awsExportKeyMaterial.notAwsKekMissingTag");
                 return;
             }
 
@@ -78,7 +80,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
 
             const wrappingAlgTag = tags.find((t: string) => t.startsWith("wrapping_algorithm:"));
             if (!wrappingAlgTag) {
-                return "The KEK is not an AWS Key Encryption Key: wrapping algorithm not found. Import it using the Import KEK command.";
+                return t("awsExportKeyMaterial.notAwsKekNoWrappingAlg");
                 return;
             }
             const wrappingAlgorithm = wrappingAlgTag.substring(19);
@@ -95,7 +97,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
             const exportResultStr = await sendKmipRequest(exportRequest, serverUrl);
 
             if (!exportResultStr) {
-                return "Failed to export wrapped key";
+                return t("awsExportKeyMaterial.failedExport");
                 return;
             }
 
@@ -111,7 +113,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
                     wrappedKeyBytes[i] = binaryString.charCodeAt(i);
                 }
             } else {
-                return "Unexpected wrapped key format";
+                return t("awsExportKeyMaterial.unexpectedFormat");
                 return;
             }
 
@@ -127,23 +129,28 @@ const AwsExportKeyMaterialForm: React.FC = () => {
     --import-token fileb://${values.tokenFile || "<IMPORT_TOKEN_FILE>"} \\
     --expiration-model KEY_MATERIAL_DOES_NOT_EXPIRE`;
 
-                return `The encrypted key material (${wrappedKeyBytes.length} bytes) was successfully written to ${values.byokFile} for key ${values.wrappedKeyId}.\n\nTo import into AWS KMS using the CLI, you can run:\n\n${awsCommand}`;
+                return t("awsExportKeyMaterial.successWithCommand", {
+                    size: wrappedKeyBytes.length,
+                    byokFile: values.byokFile,
+                    wrappedKeyId: values.wrappedKeyId,
+                    awsCommand,
+                });
             } else {
                 // Display as base64
                 const b64Key = btoa(String.fromCharCode(...wrappedKeyBytes));
-                return `Wrapped key material (base64-encoded):\n\n${b64Key}`;
+                return t("awsExportKeyMaterial.base64Result", { b64: b64Key });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Export AWS Key Material</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("awsExportKeyMaterial.title")}</h1>
             <div className="mb-8 space-y-2">
-                <p>Wrap a Cosmian KMS key with an AWS KMS wrapping key and generate the key material to be imported into.</p>
-                <p>The KEK must be previously imported using the Import KEK command.</p>
+                <p>{t("awsExportKeyMaterial.intro")}</p>
+                <p>{t("awsExportKeyMaterial.introKek")}</p>
                 <p className="text-sm text-gray-600">
-                    See:{" "}
+                    {t("awsExportKeyMaterial.see")}:{" "}
                     <ExternalLink href="https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-import-key-material.html">
                         AWS KMS Import Key Material
                     </ExternalLink>
@@ -152,51 +159,47 @@ const AwsExportKeyMaterialForm: React.FC = () => {
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identifiers</h3>
+                        <h3 className="text-m font-bold mb-4">{t("awsExportKeyMaterial.keyIdentifiers")}</h3>
                         <Form.Item
                             name="wrappedKeyId"
-                            label="Key ID to Wrap"
-                            rules={[{ required: true, message: "Please enter the key ID to wrap" }]}
-                            help="The unique ID of the KMS key that will be wrapped and exported to AWS"
+                            label={t("awsExportKeyMaterial.wrappedKeyId")}
+                            rules={[{ required: true, message: t("awsExportKeyMaterial.pleaseEnterWrappedKeyId") }]}
+                            help={t("awsExportKeyMaterial.wrappedKeyIdHelp")}
                         >
-                            <Input placeholder="Enter the KMS key ID to export" />
+                            <Input placeholder={t("awsExportKeyMaterial.enterWrappedKeyId")} />
                         </Form.Item>
                         <Form.Item
                             name="kekId"
-                            label="AWS KEK ID"
-                            rules={[{ required: true, message: "Please enter the KEK ID" }]}
-                            help="The ID of the AWS KEK in this KMS (previously imported using Import KEK)"
+                            label={t("awsExportKeyMaterial.kekId")}
+                            rules={[{ required: true, message: t("awsExportKeyMaterial.pleaseEnterKekId") }]}
+                            help={t("awsExportKeyMaterial.kekIdHelp")}
                         >
-                            <Input placeholder="Enter the AWS KEK ID" />
+                            <Input placeholder={t("awsExportKeyMaterial.enterKekId")} />
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Output Options (Optional)</h3>
+                        <h3 className="text-m font-bold mb-4">{t("awsExportKeyMaterial.outputOptions")}</h3>
                         <Form.Item
                             name="tokenFile"
-                            label="Import Token File Path"
-                            help="The path to the import token file from AWS (used only for generating the CLI command)"
+                            label={t("awsExportKeyMaterial.tokenFile")}
+                            help={t("awsExportKeyMaterial.tokenFileHelp")}
                         >
-                            <Input placeholder="path/to/import-token.bin" />
+                            <Input placeholder={t("awsExportKeyMaterial.tokenFilePlaceholder")} />
                         </Form.Item>
-                        <Form.Item
-                            name="byokFile"
-                            label="Output Filename"
-                            help="Filename for the wrapped key material. If not specified, base64-encoded output will be displayed."
-                        >
-                            <Input placeholder="encrypted-key-material.bin" />
+                        <Form.Item name="byokFile" label={t("awsExportKeyMaterial.byokFile")} help={t("awsExportKeyMaterial.byokFileHelp")}>
+                            <Input placeholder={t("awsExportKeyMaterial.byokFilePlaceholder")} />
                         </Form.Item>
                     </Card>
                     <Form.Item>
                         <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
-                            Export Key Material
+                            {t("awsExportKeyMaterial.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
             {res && (
                 <div ref={responseRef}>
-                    <Card title="Export Result">
+                    <Card title={t("awsExportKeyMaterial.exportResult")}>
                         <pre className="whitespace-pre-wrap">{res}</pre>
                     </Card>
                 </div>

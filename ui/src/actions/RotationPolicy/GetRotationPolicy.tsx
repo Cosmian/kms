@@ -1,5 +1,6 @@
 import { Button, Card, Descriptions, Form, Input, Space } from "antd";
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ActionResponse } from "../../components/common/ActionResponse";
 import { useActionState } from "../../hooks/useActionState";
 import { sendKmipRequest } from "../../utils/utils";
@@ -20,6 +21,7 @@ interface RotationPolicy {
 const GetRotationPolicyForm: React.FC = () => {
     const [form] = Form.useForm<GetRotationPolicyFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
     const [policy, setPolicy] = useState<RotationPolicy | null>(null);
 
     const onFinish = async (values: GetRotationPolicyFormData) => {
@@ -31,26 +33,30 @@ const GetRotationPolicyForm: React.FC = () => {
                 const result: RotationPolicy = await wasm.parse_rotation_policy_response(result_str);
                 setPolicy(result);
                 if (!result.interval && !result.name && !result.generation) {
-                    return "No rotation policy configured for this key.";
+                    return t("getRotationPolicy.noPolicy");
                 }
-                return "Rotation policy retrieved successfully.";
+                return t("getRotationPolicy.success");
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Get Rotation Policy</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("getRotationPolicy.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Retrieve the current automatic rotation policy for a key.</p>
+                <p>{t("getRotationPolicy.intro")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item name="keyId" label="Key ID" rules={[{ required: true, message: "Please enter the key ID" }]}>
-                            <Input placeholder="Enter the unique identifier of the key" data-testid="get-rotation-key-id" />
+                        <Form.Item
+                            name="keyId"
+                            label={t("common:keyId")}
+                            rules={[{ required: true, message: t("getRotationPolicy.pleaseEnterKeyId") }]}
+                        >
+                            <Input placeholder={t("getRotationPolicy.keyIdPlaceholder")} data-testid="get-rotation-key-id" />
                         </Form.Item>
                     </Card>
 
@@ -62,21 +68,31 @@ const GetRotationPolicyForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Get Rotation Policy
+                            {t("getRotationPolicy.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
-                <ActionResponse res={res} responseRef={responseRef} title="Rotation Policy response" />
+                <ActionResponse res={res} responseRef={responseRef} title={t("getRotationPolicy.responseTitle")} />
             </Form>
 
             {policy && (policy.interval || policy.name || policy.generation) && (
-                <Card className="mt-6" title="Rotation Policy Details" data-testid="rotation-policy-details">
+                <Card className="mt-6" title={t("getRotationPolicy.detailsTitle")} data-testid="rotation-policy-details">
                     <Descriptions bordered column={1}>
-                        <Descriptions.Item label="Interval (seconds)">{policy.interval ?? "Not set"}</Descriptions.Item>
-                        <Descriptions.Item label="Offset (seconds)">{policy.offset ?? "Not set"}</Descriptions.Item>
-                        <Descriptions.Item label="Keyset Name">{policy.name ?? "Not set"}</Descriptions.Item>
-                        <Descriptions.Item label="Generation">{policy.generation ?? "Not set"}</Descriptions.Item>
-                        <Descriptions.Item label="Last Rotation Date">{policy.date ?? "Never"}</Descriptions.Item>
+                        <Descriptions.Item label={t("getRotationPolicy.interval")}>
+                            {policy.interval ?? t("getRotationPolicy.notSet")}
+                        </Descriptions.Item>
+                        <Descriptions.Item label={t("getRotationPolicy.offset")}>
+                            {policy.offset ?? t("getRotationPolicy.notSet")}
+                        </Descriptions.Item>
+                        <Descriptions.Item label={t("getRotationPolicy.keysetName")}>
+                            {policy.name ?? t("getRotationPolicy.notSet")}
+                        </Descriptions.Item>
+                        <Descriptions.Item label={t("getRotationPolicy.generation")}>
+                            {policy.generation ?? t("getRotationPolicy.notSet")}
+                        </Descriptions.Item>
+                        <Descriptions.Item label={t("getRotationPolicy.lastRotationDate")}>
+                            {policy.date ?? t("getRotationPolicy.never")}
+                        </Descriptions.Item>
                     </Descriptions>
                 </Card>
             )}

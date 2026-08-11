@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space, Tag } from "antd";
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import { useActionState } from "../../hooks/useActionState";
 
@@ -41,6 +42,7 @@ const buildMacVerifyRequest = (keyId: string, algorithm: string, dataHex: string
 const MacVerifyForm: React.FC = () => {
     const [form] = Form.useForm<MacVerifyFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
     const [isValid, setIsValid] = useState<boolean | undefined>(undefined);
 
     const onFinish = async (values: MacVerifyFormData) => {
@@ -48,7 +50,7 @@ const MacVerifyForm: React.FC = () => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("macVerify.missingKeyId"));
             }
             const request = buildMacVerifyRequest(id, values.algorithm, values.data, values.macData);
             const result_str = await sendKmipRequest(request, serverUrl);
@@ -58,9 +60,9 @@ const MacVerifyForm: React.FC = () => {
                 if (validityItem) {
                     const valid = validityItem.value === "Valid" || validityItem.value === true;
                     setIsValid(valid);
-                    return valid ? "MAC is valid." : "MAC is invalid.";
+                    return valid ? t("macVerify.valid") : t("macVerify.invalid");
                 } else {
-                    return `Response: ${result_str}`;
+                    return t("macVerify.responseRaw", { response: result_str });
                 }
             }
         });
@@ -68,31 +70,31 @@ const MacVerifyForm: React.FC = () => {
 
     return (
         <div className="rounded-lg p-6 m-4">
-            <h1 className="text-2xl font-bold mb-6">MAC Verify</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("macVerify.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Verify a Message Authentication Code (MAC / HMAC) over data using a MAC key.</p>
-                <p>Both the data and the MAC value must be provided as hexadecimal strings.</p>
+                <p>{t("macVerify.intro")}</p>
+                <p>{t("macVerify.introHex")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ algorithm: "SHA256" }}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Key ID" help="The unique identifier of the MAC key">
-                            <Input placeholder="Enter key ID" />
+                        <h3 className="text-m font-bold mb-4">{t("macVerify.keyIdentification")}</h3>
+                        <Form.Item name="keyId" label={t("common:keyId")} help={t("macVerify.keyIdHelp")}>
+                            <Input placeholder={t("common:enterKeyId")} />
                         </Form.Item>
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("macVerify.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
 
                     <Card>
                         <Form.Item
                             name="algorithm"
-                            label="Hashing Algorithm"
-                            rules={[{ required: true, message: "Please select a hashing algorithm" }]}
-                            help="Hash function used for the HMAC computation"
+                            label={t("macVerify.hashingAlgorithm")}
+                            rules={[{ required: true, message: t("macVerify.pleaseSelectHashingAlgorithm") }]}
+                            help={t("macVerify.hashingAlgorithmHelp")}
                         >
                             <Select data-testid="mac-verify-algorithm-select" options={MAC_HASHING_ALGORITHMS} />
                         </Form.Item>
@@ -101,37 +103,37 @@ const MacVerifyForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="data"
-                            label="Data (hex)"
+                            label={t("macVerify.dataLabel")}
                             rules={[
-                                { required: true, message: "Please enter data to verify" },
+                                { required: true, message: t("macVerify.pleaseEnterData") },
                                 {
                                     pattern: /^[0-9a-fA-F]*$/,
-                                    message: "Data must be a hexadecimal string",
+                                    message: t("macVerify.dataHexError"),
                                 },
                             ]}
-                            help="Original data, as a hexadecimal string"
+                            help={t("macVerify.dataHelp")}
                         >
-                            <Input.TextArea rows={4} placeholder="e.g. 0011223344556677889900" />
+                            <Input.TextArea rows={4} placeholder={t("macVerify.dataPlaceholder")} />
                         </Form.Item>
 
                         <Form.Item
                             name="macData"
-                            label="MAC Value (hex)"
+                            label={t("macVerify.macDataLabel")}
                             rules={[
-                                { required: true, message: "Please enter the MAC value to verify" },
+                                { required: true, message: t("macVerify.pleaseEnterMacData") },
                                 {
                                     pattern: /^[0-9a-fA-F]*$/,
-                                    message: "MAC value must be a hexadecimal string",
+                                    message: t("macVerify.macDataHexError"),
                                 },
                             ]}
-                            help="Previously computed MAC value to verify against, as a hexadecimal string"
+                            help={t("macVerify.macDataHelp")}
                         >
-                            <Input.TextArea rows={3} placeholder="e.g. F91DDB96D12CF8FA..." />
+                            <Input.TextArea rows={3} placeholder={t("macVerify.macDataPlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Button type="primary" htmlType="submit" loading={isLoading} data-testid="submit-btn">
-                        Verify MAC
+                        {t("macVerify.submit")}
                     </Button>
                 </Space>
             </Form>
@@ -141,7 +143,7 @@ const MacVerifyForm: React.FC = () => {
                     {isValid !== undefined && (
                         <div className="mb-2">
                             <Tag color={isValid ? "success" : "error"} style={{ fontSize: "1rem", padding: "4px 12px" }}>
-                                {isValid ? "✓ Valid" : "✗ Invalid"}
+                                {isValid ? t("macVerify.validTag") : t("macVerify.invalidTag")}
                             </Tag>
                         </div>
                     )}

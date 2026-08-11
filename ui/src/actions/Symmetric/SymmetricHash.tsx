@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Radio, Select, Space } from "antd";
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
@@ -18,6 +19,7 @@ const SymmetricHashForm: React.FC = () => {
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const inputMode = Form.useWatch("inputMode", form);
     const [algorithmOptions, setAlgorithmOptions] = useState<{ value: string; label: string }[]>([]);
+    const { t } = useTranslation("actions");
 
     useEffect(() => {
         try {
@@ -34,12 +36,12 @@ const SymmetricHashForm: React.FC = () => {
             let data: Uint8Array;
             if (values.inputMode === "file") {
                 if (!values.inputFile || values.inputFile.byteLength === 0) {
-                    return "Please select a file to hash.";
+                    return t("symmetricHash.pleaseSelectFileError");
                 }
                 data = values.inputFile;
             } else {
                 if (!values.inputText) {
-                    return "Please enter text to hash.";
+                    return t("symmetricHash.pleaseEnterTextError");
                 }
                 data = new TextEncoder().encode(values.inputText);
             }
@@ -68,11 +70,11 @@ const SymmetricHashForm: React.FC = () => {
 
     return (
         <div className="rounded-lg p-6 m-4">
-            <h1 className="text-2xl font-bold mb-6">Hash</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("symmetricHash.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Compute a cryptographic hash of data using the KMS server.</p>
-                <p>You can hash data from a file or from text input.</p>
+                <p>{t("symmetricHash.intro")}</p>
+                <p>{t("symmetricHash.introTwoWays")}</p>
             </div>
 
             <Form
@@ -86,10 +88,10 @@ const SymmetricHashForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item name="inputMode" label="Input Mode">
+                        <Form.Item name="inputMode" label={t("symmetricHash.inputMode")}>
                             <Radio.Group>
-                                <Radio value="file">File</Radio>
-                                <Radio value="text">Text</Radio>
+                                <Radio value="file">{t("symmetricHash.fileMode")}</Radio>
+                                <Radio value="text">{t("symmetricHash.textMode")}</Radio>
                             </Radio.Group>
                         </Form.Item>
 
@@ -100,7 +102,7 @@ const SymmetricHashForm: React.FC = () => {
                                 </Form.Item>
                                 <Form.Item
                                     name="inputFile"
-                                    rules={[{ required: inputMode === "file", message: "Please select a file to hash" }]}
+                                    rules={[{ required: inputMode === "file", message: t("symmetricHash.pleaseSelectFile") }]}
                                 >
                                     <FormUploadDragger
                                         beforeUpload={(file) => {
@@ -118,17 +120,17 @@ const SymmetricHashForm: React.FC = () => {
                                         }}
                                         maxCount={1}
                                     >
-                                        <p className="ant-upload-text">Click or drag file to this area to hash</p>
+                                        <p className="ant-upload-text">{t("symmetricHash.uploadText")}</p>
                                     </FormUploadDragger>
                                 </Form.Item>
                             </>
                         ) : (
                             <Form.Item
                                 name="inputText"
-                                label="Text Input"
-                                rules={[{ required: inputMode === "text", message: "Please enter text to hash" }]}
+                                label={t("symmetricHash.textInput")}
+                                rules={[{ required: inputMode === "text", message: t("symmetricHash.pleaseEnterText") }]}
                             >
-                                <Input.TextArea rows={4} placeholder="Enter text to hash" />
+                                <Input.TextArea rows={4} placeholder={t("symmetricHash.enterText")} />
                             </Form.Item>
                         )}
                     </Card>
@@ -136,9 +138,9 @@ const SymmetricHashForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="hashAlgorithm"
-                            label="Hash Algorithm"
+                            label={t("symmetricHash.hashAlgorithm")}
                             rules={[{ required: true }]}
-                            help="Select the hash algorithm to use"
+                            help={t("symmetricHash.hashAlgorithmHelp")}
                         >
                             <Select options={algorithmOptions} data-testid="hash-algorithm-select" />
                         </Form.Item>
@@ -152,14 +154,14 @@ const SymmetricHashForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Compute Hash
+                            {t("symmetricHash.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
             {res && (
                 <div ref={responseRef} data-testid="response-output">
-                    <Card title="Hash result">
+                    <Card title={t("symmetricHash.resultTitle")}>
                         <p className="font-mono break-all">{res}</p>
                     </Card>
                 </div>

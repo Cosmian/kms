@@ -1,6 +1,7 @@
 import { UploadOutlined } from "@ant-design/icons";
 import { Button, Card, Form, Input, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { FormUpload } from "../../components/common/FormUpload";
 import { azureKekKeyUsage, azureKekTags } from "../../utils/azureKek";
 import { sendKmipRequest } from "../../utils/utils";
@@ -22,6 +23,7 @@ type KeyImportResponse = {
 const ImportAzureKekForm: React.FC = () => {
     const [form] = Form.useForm<ImportAzureKekFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: ImportAzureKekFormData) => {
         await execute(async () => {
@@ -46,20 +48,20 @@ const ImportAzureKekForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: KeyImportResponse = await parse_import_ttlv_response(result_str);
-                return `Azure KEK has been successfully imported - Key ID: ${result.UniqueIdentifier}`;
+                return t("azureImportKek.success", { keyId: result.UniqueIdentifier });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Import Azure Key Encryption Key (KEK)</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("azureImportKek.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Import an RSA Key Encryption Key (KEK) generated on Azure Key Vault into the KMS.</p>
-                <p>The KEK should be exported from Azure in PKCS#8 PEM format.</p>
+                <p>{t("azureImportKek.intro")}</p>
+                <p>{t("azureImportKek.introPem")}</p>
                 <p className="text-sm text-gray-600">
-                    See:{" "}
+                    {t("azureImportKek.see")}:{" "}
                     <ExternalLink href="https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification#generate-kek">
                         Azure BYOK Specification - Generate KEK
                     </ExternalLink>
@@ -69,12 +71,12 @@ const ImportAzureKekForm: React.FC = () => {
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">KEK File (required)</h3>
+                        <h3 className="text-m font-bold mb-4">{t("azureImportKek.kekFileCard")}</h3>
                         <Form.Item
                             name="kekFile"
-                            label="RSA Key Encryption Key (KEK) File"
-                            rules={[{ required: true, message: "Please upload the KEK file" }]}
-                            help="The KEK file exported from Azure Key Vault in PKCS#8 PEM format"
+                            label={t("azureImportKek.kekFile")}
+                            rules={[{ required: true, message: t("azureImportKek.pleaseUploadKek") }]}
+                            help={t("azureImportKek.kekFileHelp")}
                         >
                             <FormUpload
                                 beforeUpload={(file) => {
@@ -96,37 +98,33 @@ const ImportAzureKekForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <Button icon={<UploadOutlined />}>Select KEK File</Button>
+                                <Button icon={<UploadOutlined />}>{t("azureImportKek.selectKekFile")}</Button>
                             </FormUpload>
                         </Form.Item>
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Azure Key ID (required)</h3>
+                        <h3 className="text-m font-bold mb-4">{t("azureImportKek.azureKeyIdCard")}</h3>
                         <Form.Item
                             name="kid"
-                            label="Azure Key ID (kid)"
-                            rules={[{ required: true, message: "Please enter the Azure Key ID" }]}
+                            label={t("azureImportKek.azureKeyId")}
+                            rules={[{ required: true, message: t("azureImportKek.pleaseEnterAzureKeyId") }]}
                             help={
                                 <span>
-                                    The Azure Key ID should be in the format:
+                                    {t("azureImportKek.azureKeyIdHelp")}
                                     <br />
                                     https://mypremiumkeyvault.vault.azure.net/keys/KEK-BYOK/664f5aa2797a4075b8e36ca4500636d8
                                 </span>
                             }
                         >
-                            <Input placeholder="https://your-vault.vault.azure.net/keys/KEK-BYOK/..." />
+                            <Input placeholder={t("azureImportKek.azureKeyIdPlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">KMS Key ID (optional)</h3>
-                        <Form.Item
-                            name="keyId"
-                            label="Key ID in KMS"
-                            help="The unique ID for this key in the KMS. A random UUID will be generated if not specified."
-                        >
-                            <Input placeholder="Enter custom key ID (optional)" />
+                        <h3 className="text-m font-bold mb-4">{t("azureImportKek.kmsKeyIdCard")}</h3>
+                        <Form.Item name="keyId" label={t("azureImportKek.keyIdLabel")} help={t("azureImportKek.keyIdHelp")}>
+                            <Input placeholder={t("azureImportKek.keyIdPlaceholder")} />
                         </Form.Item>
                     </Card>
 
@@ -138,13 +136,13 @@ const ImportAzureKekForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Import Azure KEK
+                            {t("azureImportKek.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
 
-            <ActionResponse res={res} responseRef={responseRef} title="Import Response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("azureImportKek.responseTitle")} />
         </div>
     );
 };

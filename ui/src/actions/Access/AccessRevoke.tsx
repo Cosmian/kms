@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getNoTTLVRequest, postNoTTLVRequest } from "../../utils/utils";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
@@ -16,6 +17,7 @@ const AccessRevokeForm: React.FC = () => {
     const [form] = Form.useForm<AccessRevokeFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [isPrivilegedUser, setIsPrivilegedUser] = useState<boolean | undefined>(undefined);
+    const { t } = useTranslation("actions");
 
     const kmipOperations = useMemo(() => {
         try {
@@ -53,11 +55,11 @@ const AccessRevokeForm: React.FC = () => {
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Revoke access rights</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("accessRevoke.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Revoke access rights from a user for specific KMIP operations on an object.</p>
-                <p>This action can only be performed by the owner of the object.</p>
+                <p>{t("accessRevoke.intro")}</p>
+                <p>{t("accessRevoke.ownerOnly")}</p>
             </div>
 
             <Form
@@ -70,18 +72,22 @@ const AccessRevokeForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="user_id"
-                            label="User Identifier"
-                            rules={[{ required: true, message: "Please enter the user identifier" }]}
-                            help="The user to revoke access from"
+                            label={t("accessRevoke.userIdentifier")}
+                            rules={[{ required: true, message: t("accessRevoke.pleaseEnterUserId") }]}
+                            help={t("accessRevoke.userIdHelp")}
                         >
-                            <Input placeholder="Enter user identifier" />
+                            <Input placeholder={t("accessRevoke.enterUserId")} />
                         </Form.Item>
 
-                        <Form.Item name="operation_types" label="KMIP Operations" help="Select one or more operations to revoke access to">
+                        <Form.Item
+                            name="operation_types"
+                            label={t("accessRevoke.kmipOperations")}
+                            help={t("accessRevoke.kmipOperationsHelp")}
+                        >
                             <Select
                                 mode="multiple"
                                 options={kmipOperations}
-                                placeholder="Select operations"
+                                placeholder={t("accessRevoke.selectOperations")}
                                 onChange={() => {
                                     form.validateFields(["unique_identifier"]);
                                 }}
@@ -89,7 +95,7 @@ const AccessRevokeForm: React.FC = () => {
                         </Form.Item>
 
                         <Form.Item
-                            label="Object UID"
+                            label={t("accessRevoke.objectUid")}
                             shouldUpdate={(prevValues, currentValues) => prevValues.operation_types !== currentValues.operation_types}
                         >
                             {({ getFieldValue }) => {
@@ -100,23 +106,19 @@ const AccessRevokeForm: React.FC = () => {
                                         rules={[
                                             {
                                                 required: ops.length > 0,
-                                                message: "Please enter the object UID",
+                                                message: t("accessRevoke.pleaseEnterObjectUid"),
                                             },
                                         ]}
-                                        help="The unique identifier of the object stored in the KMS"
+                                        help={t("accessRevoke.objectUidHelp")}
                                     >
-                                        <Input placeholder="Enter object UID" disabled={ops.length === 0} />
+                                        <Input placeholder={t("accessRevoke.enterObjectUid")} disabled={ops.length === 0} />
                                     </Form.Item>
                                 );
                             }}
                         </Form.Item>
                         {isPrivilegedUser && (
-                            <Form.Item
-                                name="revoke_create_access_right"
-                                valuePropName="checked"
-                                help="If set, the user will no longer have the right to create or import Kms objects."
-                            >
-                                <Checkbox>Revoke create access right to user</Checkbox>
+                            <Form.Item name="revoke_create_access_right" valuePropName="checked" help={t("accessRevoke.createAccessHelp")}>
+                                <Checkbox>{t("accessRevoke.createAccess")}</Checkbox>
                             </Form.Item>
                         )}
                     </Card>
@@ -129,12 +131,12 @@ const AccessRevokeForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Revoke Access
+                            {t("accessRevoke.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="Revoke access response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("accessRevoke.responseTitle")} />
         </div>
     );
 };

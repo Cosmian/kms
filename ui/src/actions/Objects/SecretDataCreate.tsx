@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React, { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import { create_secret_data_ttlv_request, parse_create_ttlv_response, parse_import_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
@@ -26,6 +27,7 @@ type ImportResponse = {
 const SecretDataCreateForm: React.FC = () => {
     const [form] = Form.useForm<SecretDataCreateFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
     const secretValue = Form.useWatch("secretValue", form);
 
     useEffect(() => {
@@ -48,10 +50,10 @@ const SecretDataCreateForm: React.FC = () => {
             if (result_str) {
                 if (values.secretValue) {
                     const result: ImportResponse = await parse_import_ttlv_response(result_str);
-                    return `${result.UniqueIdentifier} has been created.`;
+                    return t("secretDataCreate.success", { secretId: result.UniqueIdentifier });
                 } else {
                     const result: CreateResponse = await parse_create_ttlv_response(result_str);
-                    return `${result.UniqueIdentifier} has been created.`;
+                    return t("secretDataCreate.success", { secretId: result.UniqueIdentifier });
                 }
             }
         });
@@ -59,14 +61,14 @@ const SecretDataCreateForm: React.FC = () => {
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Create a new secret data</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("secretDataCreate.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Create a new secret data:</p>
+                <p>{t("secretDataCreate.intro")}</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    <li>When the secret value is specified, the secret will be created from the provided value.</li>
-                    <li>Otherwise, a fresh 256-bit random seed will be created.</li>
-                    <li>Tags can later be used to retrieve the secret. Tags are optional.</li>
+                    <li>{t("secretDataCreate.introValue")}</li>
+                    <li>{t("secretDataCreate.introRandom")}</li>
+                    <li>{t("secretDataCreate.introTags")}</li>
                 </ul>
             </div>
 
@@ -84,17 +86,17 @@ const SecretDataCreateForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="secretValue"
-                            label="Secret Value"
-                            help="Optional secret data string, UTF-8 encoded. If not provided, a random 32-byte seed will be generated."
+                            label={t("secretDataCreate.secretValue")}
+                            help={t("secretDataCreate.secretValueHelp")}
                         >
-                            <Input.TextArea placeholder="Enter secret value" rows={2} />
+                            <Input.TextArea placeholder={t("secretDataCreate.enterSecretValue")} rows={2} />
                         </Form.Item>
 
                         <Form.Item
                             name="secretType"
-                            label="Secret Data Type"
-                            help="Defaults to a randomly generated Seed. To use a Password type, you must provide both this and a valid secret value"
-                            rules={[{ required: true, message: "Please select a secret type" }]}
+                            label={t("secretDataCreate.secretType")}
+                            help={t("secretDataCreate.secretTypeHelp")}
+                            rules={[{ required: true, message: t("secretDataCreate.pleaseSelectSecretType") }]}
                         >
                             <Select disabled={!secretValue} data-testid="secret-type-select">
                                 <Select.Option value="Seed">Seed</Select.Option>
@@ -102,24 +104,24 @@ const SecretDataCreateForm: React.FC = () => {
                             </Select>
                         </Form.Item>
 
-                        <Form.Item name="secretId" label="Secret Data ID" help="Optional: a random UUID will be generated if not specified">
-                            <Input placeholder="Enter secret ID" />
+                        <Form.Item name="secretId" label={t("secretDataCreate.secretId")} help={t("secretDataCreate.secretIdHelp")}>
+                            <Input placeholder={t("secretDataCreate.enterSecretId")} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Optional: Add tags to help retrieve the secret later">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("secretDataCreate.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
                         <Form.Item
                             name="wrappingKeyId"
-                            label="Wrapping Key ID"
-                            help="Optional: ID of the key to wrap this new secret data with"
+                            label={t("secretDataCreate.wrappingKeyId")}
+                            help={t("secretDataCreate.wrappingKeyIdHelp")}
                         >
-                            <Input placeholder="Enter wrapping key ID" />
+                            <Input placeholder={t("secretDataCreate.enterWrappingKeyId")} />
                         </Form.Item>
 
-                        <Form.Item name="sensitive" valuePropName="checked" help="If set, the secret will not be exportable">
-                            <Checkbox>Sensitive</Checkbox>
+                        <Form.Item name="sensitive" valuePropName="checked" help={t("secretDataCreate.sensitiveHelp")}>
+                            <Checkbox>{t("secretDataCreate.sensitive")}</Checkbox>
                         </Form.Item>
                     </Card>
 
@@ -131,11 +133,11 @@ const SecretDataCreateForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Create Secret Data
+                            {t("secretDataCreate.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
-                <ActionResponse res={res} responseRef={responseRef} title="Secret data creation response" />
+                <ActionResponse res={res} responseRef={responseRef} title={t("secretDataCreate.responseTitle")} />
             </Form>
         </div>
     );
