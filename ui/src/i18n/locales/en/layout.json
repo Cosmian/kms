@@ -33,6 +33,9 @@
         "passwordPlaceholder": "Password",
         "verifyCode": "VERIFY CODE",
         "login": "LOGIN",
+        "oidc": "OIDC",
+        "certificate": "Client certificate",
+        "authVerifier": "Username & password",
         "accessKms": "ACCESS KMS",
         "certErrorDescription": "No client certificate was provided or it is invalid. If the problem persists, close all instances of your browser and relaunch with the correct client certificate previously loaded."
     }

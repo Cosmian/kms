@@ -59,6 +59,52 @@ export const fetchAuthMethod = async (serverUrl: string): Promise<AuthMethod> =>
     }
 };
 
+/**
+ * Fetch the ordered list of configured UI login methods (primary first).
+ *
+ * Reads the `auth_methods` array from `GET /ui/auth_method`. Falls back to the
+ * singular `auth_method` field for older servers that don't yet return the array.
+ * Returns an empty array when authentication is disabled ("None") and `undefined`
+ * on network/parse failure (so callers can distinguish "no methods" from
+ * "server unreachable").
+ */
+/**
+ * True only when CERT is the sole configured method, so auto-login via the
+ * ambient client certificate does not preempt the user's method choice when
+ * multiple methods are configured.
+ */
+export const shouldAutoLoginWithCert = (methods: AuthMethod[]): boolean =>
+    methods.length === 1 && methods[0] === "CERT";
+
+export const fetchAuthMethods = async (serverUrl: string): Promise<AuthMethod[] | undefined> => {
+    // Skip the fetch in dev mode to avoid unnecessary friction (no auth enforced).
+    if (import.meta.env.VITE_DEV_MODE === "true") {
+        return [];
+    }
+    try {
+        const kmsUrl = serverUrl + "/ui/auth_method";
+        const response = await fetch(kmsUrl, {
+            method: "GET",
+            credentials: "include",
+        });
+        if (!response.ok) throw new Error("Failed to fetch auth methods");
+
+        const data: { auth_method?: AuthMethod; auth_methods?: AuthMethod[] } = await response.json();
+        if (Array.isArray(data.auth_methods)) {
+            // Filter out the "None" sentinel: an empty array means no auth configured.
+            return data.auth_methods.filter((m): m is AuthMethod => m !== undefined && m !== "None");
+        }
+        // Backward-compatibility: older servers only return the singular field.
+        if (data.auth_method && data.auth_method !== "None") {
+            return [data.auth_method];
+        }
+        return [];
+    } catch (error) {
+        console.error(error);
+        return undefined;
+    }
+};
+
 /** Outcome of a `POST /ui/login_as` call — mirrors the KMS server's `AuthVerifierLoginResponse`. */
 type AuthVerifierLoginNextStep = "Authenticated" | "TotpRequired";
 

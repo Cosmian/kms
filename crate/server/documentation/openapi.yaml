@@ -3204,7 +3204,12 @@ paths:
     get:
       tags: [UI Auth]
       summary: Auth method configuration
-      description: Returns the authentication method configured for the web UI (OIDC/JWT, client certificate, Cosmian authentication server, or none).
+      description: >-
+        Returns the authentication methods configured for the web UI as an ordered
+        `auth_methods` array (priority first: OIDC/JWT, then auth-verifier
+        username/password, then client certificate). The singular `auth_method`
+        field is the primary method (auth_methods[0]) or `None`, retained for
+        backward compatibility.
       operationId: uiAuthMethod
       responses:
         '200':
@@ -3216,7 +3221,14 @@ paths:
                 properties:
                   auth_method:
                     type: string
-                    enum: [JWT, CERT, COSMIAN, None]
+                    enum: [JWT, AUTH_VERIFIER, CERT, None]
+                    description: Highest-priority configured method (auth_methods[0]), or None. Kept for backward compatibility.
+                  auth_methods:
+                    type: array
+                    items:
+                      type: string
+                      enum: [JWT, AUTH_VERIFIER, CERT]
+                    description: Configured UI login methods, ordered by priority (primary first).
                   oidc_issuer:
                     type: string
                     description: OIDC issuer URL (only when auth_method is JWT)

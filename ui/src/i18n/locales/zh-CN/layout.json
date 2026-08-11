@@ -33,6 +33,9 @@
         "passwordPlaceholder": "密码",
         "verifyCode": "验证代码",
         "login": "登录",
+        "oidc": "OIDC",
+        "certificate": "客户端证书",
+        "authVerifier": "用户名与密码",
         "accessKms": "访问 KMS",
         "certErrorDescription": "未提供客户端证书或证书无效。如果问题持续存在，请关闭浏览器的所有实例，并使用之前加载的正确客户端证书重新启动。"
     }
