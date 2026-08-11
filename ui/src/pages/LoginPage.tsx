@@ -7,17 +7,6 @@ import { useAuth } from "../contexts/useAuth";
 import { useBranding } from "../contexts/useBranding";
 import { AuthMethod, getNoTTLVRequest, loginAuthVerifier } from "../utils/utils";
 
-/** The browser-login methods the login page can render. */
-type LoginMethod = "JWT" | "AUTH_VERIFIER" | "CERT";
-
-/** Human-readable labels shown on the primary button and the secondary
- *  button/dropdown entries. */
-const METHOD_LABELS: Record<LoginMethod, string> = {
-    JWT: "OIDC",
-    AUTH_VERIFIER: "Username & password",
-    CERT: "Client certificate",
-};
-
 interface LoginProps {
     auth: boolean;
     error?: undefined | string;
@@ -29,8 +18,8 @@ interface LoginProps {
 
 const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthenticated }) => {
     // Keep only browser-login methods, preserving the server's priority order.
-    const methods = (authMethods ?? []).filter((m): m is LoginMethod => m === "JWT" || m === "AUTH_VERIFIER" || m === "CERT");
-    const [selectedMethod, setSelectedMethod] = useState<LoginMethod | undefined>(methods[0]);
+    const methods = (authMethods ?? []).filter((m): m is AuthMethod => m === "JWT" || m === "AUTH_VERIFIER" || m === "CERT");
+    const [selectedMethod, setSelectedMethod] = useState<AuthMethod | undefined>(methods[0]);
     const [isLoading, setIsLoading] = useState(false);
     const [certError, setCertError] = useState<string | null>(null);
     const [authVerifierUsername, setAuthVerifierUsername] = useState("");
@@ -42,6 +31,19 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
     const navigate = useNavigate();
     const branding = useBranding();
     const { t } = useTranslation("layout");
+
+    const methodLabel = (method: AuthMethod) => {
+        switch (method) {
+            case "JWT":
+                return t("login.oidc");
+            case "CERT":
+                return t("login.certificate");
+            case "AUTH_VERIFIER":
+                return t("login.authVerifier");
+            default:
+                return method ?? "";
+        }
+    };
 
     const handleLogin = async () => {
         try {
@@ -80,7 +82,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
      * One-click methods (JWT redirect, CERT probe) execute immediately; the
      * form-based method (AUTH_VERIFIER) is selected so its form is revealed.
      */
-    const selectMethod = (method: LoginMethod) => {
+    const selectMethod = (method: AuthMethod) => {
         if (method === "JWT") {
             void handleLogin();
         } else if (method === "CERT") {
@@ -192,7 +194,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
                         </div>
                     ) : selectedMethod === "JWT" ? (
                         <Button type="primary" block onClick={handleLogin} loading={isLoading} data-testid="oidc-login-btn">
-                            {METHOD_LABELS.JWT}
+                            {t("login.oidc")}
                         </Button>
                     ) : selectedMethod === "CERT" ? (
                         <Button type="primary" block onClick={handleAccessKms} loading={isLoading} data-testid="cert-login-btn">
@@ -211,8 +213,8 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
                         <Dropdown
                             trigger={["click"]}
                             menu={{
-                                items: otherMethods.map((m) => ({ key: m, label: METHOD_LABELS[m] })),
-                                onClick: ({ key }) => selectMethod(key as LoginMethod),
+                                items: otherMethods.map((m) => ({ key: String(m), label: methodLabel(m) })),
+                                onClick: ({ key }) => selectMethod(key as AuthMethod),
                             }}
                         >
                             <Button block disabled={isLoading} data-testid="login-secondary-dropdown">
