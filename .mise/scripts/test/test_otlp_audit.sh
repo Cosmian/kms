@@ -64,6 +64,7 @@ fi
 
 OTLP_HTTP_PORT=${KMS_SLOT_OTEL_HTTP_PORT:-4318}
 COLLECTOR_LOG_DIR="$(mktemp -d /tmp/kms-otlp-audit-XXXXXX)"
+chmod 777 "${COLLECTOR_LOG_DIR}"
 COLLECTOR_LOG_FILE="${COLLECTOR_LOG_DIR}/otel-audit-logs.jsonl"
 touch "${COLLECTOR_LOG_FILE}"
 chmod 777 "${COLLECTOR_LOG_FILE}"
