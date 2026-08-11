@@ -576,6 +576,33 @@ fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key
     Ok(Key::from(derived_key.as_ref()))
 }
 
+/// Derive the 32-byte HMAC-SHA256 key used to sign the OIDC `state` parameter JWT.
+///
+/// Extracted as a sync helper to keep the size of the `prepare_kms_server` async
+/// future small (avoids a `clippy::large_futures` warning).
+fn derive_oidc_state_hmac_key(url: &str, salt: &str) -> KResult<[u8; 32]> {
+    let mut h = Hasher::new(MessageDigest::sha256())
+        .map_err(|e| KmsError::CryptographicError(format!("OIDC state key — SHA-256 init: {e}")))?;
+    h.update(b"oidc-state-v1|")
+        .map_err(|e| KmsError::CryptographicError(format!("OIDC state key — hash prefix: {e}")))?;
+    h.update(url.as_bytes())
+        .map_err(|e| KmsError::CryptographicError(format!("OIDC state key — hash URL: {e}")))?;
+    h.update(b"|")
+        .map_err(|e| KmsError::CryptographicError(format!("OIDC state key — hash sep: {e}")))?;
+    h.update(salt.as_bytes())
+        .map_err(|e| KmsError::CryptographicError(format!("OIDC state key — hash salt: {e}")))?;
+    let digest = h
+        .finish()
+        .map_err(|e| KmsError::CryptographicError(format!("OIDC state key — hash finish: {e}")))?;
+    let mut key = [0_u8; 32];
+    key.copy_from_slice(digest.get(..32).ok_or_else(|| {
+        KmsError::CryptographicError(
+            "OIDC state key: SHA-256 digest shorter than 32 bytes".to_owned(),
+        )
+    })?);
+    Ok(key)
+}
+
 /// Fetch the OIDC discovery document and build an `OidcRuntimeConfig`.
 ///
 /// Called once at server startup. The discovered `authorization_endpoint` and
@@ -591,6 +618,8 @@ fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key
 async fn build_oidc_runtime_config(
     oidc_config: crate::config::OidcConfig,
     proxy_params: Option<&ProxyParams>,
+    accept_invalid_certs: bool,
+    state_hmac_key: [u8; 32],
 ) -> OidcRuntimeConfig {
     use crate::config::OidcDiscoveredEndpoints;
 
@@ -605,6 +634,7 @@ async fn build_oidc_runtime_config(
     let discovery_url = format!("{base}/.well-known/openid-configuration");
 
     let client = match reqwest::Client::builder()
+        .danger_accept_invalid_certs(accept_invalid_certs)
         .redirect(reqwest::redirect::Policy::none())
         .build()
     {
@@ -662,16 +692,19 @@ async fn build_oidc_runtime_config(
     debug!("OIDC: token_endpoint={token_endpoint}");
     debug!("OIDC: jwks_uri={jwks_uri}");
 
-    let jwks_manager = match JwksManager::new(vec![jwks_uri], proxy_params).await {
-        Ok(mgr) => Arc::new(mgr),
-        Err(e) => {
-            warn!("OIDC: failed to build JwksManager for UI OIDC: {e}");
-            return OidcRuntimeConfig {
-                config: oidc_config,
-                discovered: None,
-            };
-        }
-    };
+    let jwks_manager =
+        match JwksManager::new_with_options(vec![jwks_uri], proxy_params, accept_invalid_certs)
+            .await
+        {
+            Ok(mgr) => Arc::new(mgr),
+            Err(e) => {
+                warn!("OIDC: failed to build JwksManager for UI OIDC: {e}");
+                return OidcRuntimeConfig {
+                    config: oidc_config,
+                    discovered: None,
+                };
+            }
+        };
 
     OidcRuntimeConfig {
         config: oidc_config,
@@ -679,6 +712,8 @@ async fn build_oidc_runtime_config(
             authorization_endpoint,
             token_endpoint,
             jwks_manager,
+            accept_invalid_certs,
+            state_hmac_key,
         }),
     }
 }
@@ -831,11 +866,29 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         // MITM attacks on the public-key material used to verify bearer tokens.
         // In `insecure` builds (dev / integration tests with a local HTTP JWKS mock) this
         // check is compiled out to allow http:// URIs.
+        // When `idp_auth_accept_invalid_certs` is set the operator explicitly acknowledges
+        // insecure transport, so the scheme check is also skipped.
         #[cfg(not(feature = "insecure"))]
-        validate_jwks_uris_are_https(&all_jwks_uris)?;
+        if !kms_server.params.idp_auth_accept_invalid_certs {
+            validate_jwks_uris_are_https(&all_jwks_uris)?;
+        }
 
+        if kms_server.params.idp_auth_accept_invalid_certs {
+            warn!(
+                "SECURITY: idp_auth_accept_invalid_certs is TRUE — TLS certificate verification \
+                 is disabled for JWT identity provider JWKS fetches. \
+                 This is ONLY acceptable in development/test environments."
+            );
+        }
+
+        let proxy_params = kms_server.params.proxy_params.clone();
         let jwks_manager = Arc::new(
-            JwksManager::new(all_jwks_uris, kms_server.params.proxy_params.as_ref()).await?,
+            JwksManager::new_with_options(
+                all_jwks_uris,
+                proxy_params.as_ref(),
+                kms_server.params.idp_auth_accept_invalid_certs,
+            )
+            .await?,
         );
 
         let mut built_jwt_configurations = identity_provider_configurations
@@ -1088,8 +1141,30 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         if ui_enable && ui_index_folder.join("index.html").exists() {
             let oidc_config = kms_server.params.ui_oidc_auth.clone();
             let proxy_params = kms_server.params.proxy_params.clone();
+            // When OIDC was auto-populated from [auth_verifier], inherit its
+            // accept_invalid_certs flag so the discovery fetch works with self-signed certs.
+            let oidc_accept_invalid_certs = kms_server
+                .params
+                .auth_verifier_config
+                .as_ref()
+                .is_some_and(|c| c.auth_verifier_accept_invalid_certs);
+
+            // Derive a 32-byte HMAC-SHA256 key for signing the OIDC `state` JWT.
+            // The state carries the PKCE verifier and nonce so they survive the
+            // cross-site redirect without relying on SameSite=Lax session cookies.
+            let state_hmac_key: [u8; 32] = derive_oidc_state_hmac_key(
+                kms_server.params.kms_public_url.as_deref().unwrap_or(""),
+                kms_server.params.ui_session_salt.as_deref().unwrap_or(""),
+            )?;
+
             Some(Arc::new(
-                build_oidc_runtime_config(oidc_config, proxy_params.as_ref()).await,
+                build_oidc_runtime_config(
+                    oidc_config,
+                    proxy_params.as_ref(),
+                    oidc_accept_invalid_certs,
+                    state_hmac_key,
+                )
+                .await,
             ))
         } else {
             None
@@ -1427,7 +1502,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             // enabled. The singular `auth_method` served by `get_auth_method` is
             // derived as the first entry for backward compatibility.
             let mut auth_methods: Vec<String> = Vec::new();
-            if use_jwt_auth {
+            if use_jwt_auth || oidc_runtime_config.discovered.is_some() {
                 auth_methods.push("JWT".to_owned());
             }
             if use_auth_verifier

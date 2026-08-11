@@ -80,7 +80,7 @@ mod tests {
 
         let message = b"test message for ML-DSA-44";
         let signature = ml_dsa_sign(&priv_key, message).expect("sign");
-        assert!(!signature.is_empty());
+        assert_ne!(signature, <[u8; 0]>::default());
 
         let valid = ml_dsa_verify(&pub_key, message, &signature).expect("verify");
         assert!(valid);

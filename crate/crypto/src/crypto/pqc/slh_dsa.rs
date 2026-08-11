@@ -59,7 +59,7 @@ mod tests {
 
         let message = format!("test message for {algorithm_name}");
         let signature = ml_dsa_sign(&priv_key, message.as_bytes()).expect("sign");
-        assert!(!signature.is_empty());
+        assert_ne!(signature, <[u8; 0]>::default());
 
         let valid = ml_dsa_verify(&pub_key, message.as_bytes(), &signature).expect("verify");
         assert!(valid);

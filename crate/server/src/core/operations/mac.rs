@@ -323,7 +323,7 @@ mod tests {
         let key = vec![1, 2, 3, 4];
         let data = vec![];
         let hmac = compute_hmac(&key, &data, HashingAlgorithm::SHA256)?;
-        assert!(!hmac.is_empty());
+        assert_ne!(hmac, <[u8; 0]>::default());
 
         // Empty key
         let key = vec![];
@@ -350,7 +350,7 @@ mod tests {
 
         for algo in algorithms {
             let hmac = compute_hmac(&key, &data, algo)?;
-            assert!(!hmac.is_empty());
+            assert_ne!(hmac, <[u8; 0]>::default());
         }
 
         // Test unsupported algorithm

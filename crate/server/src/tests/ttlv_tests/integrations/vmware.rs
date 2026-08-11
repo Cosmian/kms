@@ -201,7 +201,7 @@ fn create_symmetric_key(client: &SocketClient) -> String {
         panic!("Expected Create");
     };
 
-    assert!(!create_response.unique_identifier.is_empty());
+    assert_ne!(create_response.unique_identifier, "");
     create_response.unique_identifier.clone()
 }
 

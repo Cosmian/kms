@@ -98,7 +98,14 @@ pub(super) async fn owner<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbRes
     let objects = db
         .find(None, None, &user_id_2, true, VENDOR_ID_COSMIAN)
         .await?;
-    assert!(objects.is_empty());
+    assert_eq!(
+        objects,
+        <[(
+            std::string::String,
+            cosmian_kmip::kmip_0::kmip_types::State,
+            cosmian_kmip::kmip_2_1::kmip_attributes::Attributes
+        ); 0]>::default()
+    );
 
     let objects = db.list_user_operations_granted(&user_id_2).await?;
     assert_eq!(

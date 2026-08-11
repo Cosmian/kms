@@ -105,7 +105,7 @@ fn register_symmetric_key(client: &SocketClient) -> String {
 
     info!("Register response: {register_response:#?}");
 
-    assert!(!register_response.unique_identifier.is_empty());
+    assert_ne!(register_response.unique_identifier, "");
     assert!(register_response.template_attribute.is_none());
     register_response.unique_identifier.clone()
 }

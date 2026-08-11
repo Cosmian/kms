@@ -1044,7 +1044,7 @@ fn find_private_key_by_unknown_id_returns_empty() {
     let session = open_test_session();
 
     let handles = find_by_class_and_id(session, CKO_PRIVATE_KEY, b"does_not_exist");
-    assert!(handles.is_empty());
+    assert_eq!(handles, [] as [u64; 0]);
 
     assert_eq!(C_CloseSession(session), CKR_OK);
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);

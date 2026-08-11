@@ -257,7 +257,7 @@ fn test_config_toml_round_trip_preserves_values() {
         toml::to_string_pretty(&original).expect("ClapConfig must serialise to TOML without error");
 
     // Must be non-empty and contain expected keys.
-    assert!(!toml_str.is_empty());
+    assert_ne!(toml_str, "");
     assert!(toml_str.contains("force_default_username"));
 
     let restored: ClapConfig =

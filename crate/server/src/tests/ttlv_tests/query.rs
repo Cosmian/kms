@@ -110,15 +110,15 @@ fn test_query_(major: i32, minor: i32) {
         let Some(operations) = &query_response.operation else {
             panic!("Expected operations");
         };
-        assert!(!operations.is_empty());
+        assert_ne!(operations.as_slice(), []);
         let Some(object_types) = &query_response.object_type else {
             panic!("Expected object types");
         };
-        assert!(!object_types.is_empty());
+        assert_ne!(object_types.as_slice(), []);
         let Some(vendor_identification) = &query_response.vendor_identification else {
             panic!("Expected vendor identification");
         };
-        assert!(!vendor_identification.is_empty());
+        assert_ne!(vendor_identification, "");
     } else {
         let ResponseMessageBatchItemVersioned::V21(batch_item) = response_batch_item else {
             panic!("Expected V14 request message");
@@ -131,14 +131,14 @@ fn test_query_(major: i32, minor: i32) {
         let Some(operations) = &query_response.operation else {
             panic!("Expected operations");
         };
-        assert!(!operations.is_empty());
+        assert_ne!(operations.as_slice(), []);
         let Some(object_types) = &query_response.object_type else {
             panic!("Expected object types");
         };
-        assert!(!object_types.is_empty());
+        assert_ne!(object_types.as_slice(), []);
         let Some(vendor_identification) = &query_response.vendor_identification else {
             panic!("Expected vendor identification");
         };
-        assert!(!vendor_identification.is_empty());
+        assert_ne!(vendor_identification, "");
     }
 }

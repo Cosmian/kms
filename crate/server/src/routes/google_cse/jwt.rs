@@ -946,6 +946,7 @@ mod tests {
                 "{},{},{}",
                 JWT_ISSUER_URI, JWKS_URI, client_id
             )]),
+            idp_auth_accept_invalid_certs: false,
         };
         let idp_configs = jwt_authentication_config
             .extract_idp_configs()

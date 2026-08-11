@@ -233,7 +233,7 @@ mod tests {
         let (ss1, ct) = hybrid_kem_encapsulate(algorithm, &pub_raw).expect("encapsulate");
         let ss2 = hybrid_kem_decapsulate(algorithm, &priv_raw, &ct).expect("decapsulate");
         assert_eq!(ss1, ss2);
-        assert!(!ss1.is_empty());
+        assert_ne!(ss1, <[u8; 0]>::default());
     }
 
     #[test]

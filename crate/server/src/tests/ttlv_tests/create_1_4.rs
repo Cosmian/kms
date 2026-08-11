@@ -101,7 +101,7 @@ pub(super) fn create_symmetric_key(client: &SocketClient, name: &str) -> String 
     };
 
     assert_eq!(create_response.object_type, ObjectType::SymmetricKey);
-    assert!(!create_response.unique_identifier.is_empty());
+    assert_ne!(create_response.unique_identifier, "");
     assert!(create_response.template_attribute.is_none());
     create_response.unique_identifier.clone()
 }

@@ -198,7 +198,7 @@ fn test_create_ec_key_pair_p384() {
         RecommendedCurve::P384,
     )
     .expect("create_ec_key_pair P-384 failed");
-    assert!(!priv_id.is_empty());
+    assert_ne!(priv_id, "");
 
     // Sign with ECDSA + SHA-384
     let hash: [u8; 48] = [0xAB; 48];
@@ -229,7 +229,7 @@ fn test_create_ec_key_pair_p521() {
         RecommendedCurve::P521,
     )
     .expect("create_ec_key_pair P-521 failed");
-    assert!(!priv_id.is_empty());
+    assert_ne!(priv_id, "");
 
     // Export public key
     let spki = backend::export_public_key_spki(&client, &pub_id).expect("export P-521 SPKI failed");
@@ -391,7 +391,7 @@ fn test_rsa_encrypt_decrypt_oaep() {
         Some(HashingAlgorithm::SHA256),
     )
     .expect("encrypt_data OAEP failed");
-    assert!(!ct.is_empty());
+    assert_ne!(ct, [] as [u8; 0]);
 
     let pt = backend::decrypt_data(
         &client,

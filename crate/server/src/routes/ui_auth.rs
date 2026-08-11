@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use actix_session::Session;
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
+use jsonwebtoken::{
+    Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, decode_header, encode,
+};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,9 +24,57 @@ fn pkce_challenge_from_verifier(verifier: &str) -> String {
     URL_SAFE_NO_PAD.encode(digest)
 }
 
+/// Claims encoded in the OIDC `state` parameter.
+///
+/// Per RFC 7636 §4.3, the `code_verifier` must survive the round-trip to the
+/// `IdP` and back. Encoding it in `state` as a signed JWT avoids relying on the
+/// KMS session cookie being returned on the cross-site POST→redirect chain
+/// from the `IdP` (SameSite=Lax cookies are withheld by browsers in that context
+/// per RFC 6265bis §5.2.2).
+///
+/// RFC 6749 §4.1.1 guarantees the authorization server returns `state`
+/// unchanged, so this JWT is the right carrier.
+#[derive(Debug, Serialize, Deserialize)]
+struct OidcStateClaims {
+    /// PKCE code verifier (RFC 7636 §4.1).
+    pkce_verifier: String,
+    /// Nonce for ID-token replay prevention (`OpenID` Connect Core §3.1.2.1).
+    nonce: String,
+    /// Expiry — 10 minutes from issuance (generous to handle slow logins).
+    exp: usize,
+}
+
+impl OidcStateClaims {
+    fn encode(pkce_verifier: String, nonce: String, key: &[u8; 32]) -> Result<String, String> {
+        let exp = usize::try_from((chrono::Utc::now() + chrono::Duration::minutes(10)).timestamp())
+            .map_err(|e| format!("Failed to compute OIDC state JWT expiry: {e}"))?;
+        let claims = Self {
+            pkce_verifier,
+            nonce,
+            exp,
+        };
+        encode(
+            &Header::new(Algorithm::HS256),
+            &claims,
+            &EncodingKey::from_secret(key),
+        )
+        .map_err(|e| format!("Failed to encode OIDC state JWT: {e}"))
+    }
+
+    fn decode(state: &str, key: &[u8; 32]) -> Result<Self, String> {
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.validate_exp = true;
+        validation.validate_aud = false;
+        validation.required_spec_claims.clear();
+        decode::<Self>(state, &DecodingKey::from_secret(key), &validation)
+            .map(|t| t.claims)
+            .map_err(|e| format!("Invalid OIDC state JWT: {e}"))
+    }
+}
+
 #[get("/login_flow")]
 pub(crate) async fn login(
-    session: Session,
+    _session: Session,
     oidc_runtime: web::Data<OidcRuntimeConfig>,
     kms_url: web::Data<String>,
 ) -> HttpResponse {
@@ -44,12 +94,19 @@ pub(crate) async fn login(
         return HttpResponse::InternalServerError().body("Failed to create PKCE verifier");
     };
     let pkce_challenge = pkce_challenge_from_verifier(&pkce_verifier);
-    let Ok(csrf_token) = random_b64url(16) else {
-        return HttpResponse::InternalServerError().body("Failed to create CSRF token");
-    };
     let Ok(nonce) = random_b64url(16) else {
         return HttpResponse::InternalServerError().body("Failed to create nonce");
     };
+
+    // Encode {pkce_verifier, nonce} in the `state` parameter as a signed HS256 JWT.
+    // This avoids storing them in the session cookie, which browsers withhold on
+    // the cross-site POST→redirect chain from the IdP (SameSite=Lax, RFC 6265bis §5.2.2).
+    // RFC 6749 §4.1.1 guarantees the AS returns `state` unchanged.
+    let state =
+        match OidcStateClaims::encode(pkce_verifier, nonce.clone(), &discovered.state_hmac_key) {
+            Ok(s) => s,
+            Err(e) => return HttpResponse::InternalServerError().body(e),
+        };
 
     let mut auth_url = match Url::parse(&discovered.authorization_endpoint) {
         Ok(u) => u,
@@ -65,22 +122,10 @@ pub(crate) async fn login(
         .append_pair("client_id", &client_id)
         .append_pair("redirect_uri", &redirect_url)
         .append_pair("scope", "openid email")
-        .append_pair("state", &csrf_token)
+        .append_pair("state", &state)
         .append_pair("code_challenge_method", "S256")
         .append_pair("code_challenge", &pkce_challenge)
-        .append_pair("nonce", &nonce);
-
-    if let Err(e) = session.insert("pkce_verifier", &pkce_verifier) {
-        return HttpResponse::InternalServerError()
-            .body(format!("Failed to insert pkce_verifier: {e:?}"));
-    }
-    if let Err(e) = session.insert("csrf_token", &csrf_token) {
-        return HttpResponse::InternalServerError()
-            .body(format!("Failed to insert csrf_token: {e:?}"));
-    }
-    if let Err(e) = session.insert("nonce", &nonce) {
-        return HttpResponse::InternalServerError().body(format!("Failed to insert nonce: {e:?}"));
-    }
+        .append_pair("nonce", &nonce); // echoed in ID token; verified in callback via state JWT
 
     HttpResponse::Found()
         .append_header(("Location", auth_url.to_string()))
@@ -103,49 +148,32 @@ pub(crate) async fn callback(
         return HttpResponse::BadRequest().body("Invalid query parameters");
     };
 
-    // Retrieve stored values.
-    // PKCE is mandatory for the UI login flow: the login_flow handler always generates
-    // and stores a verifier, so Ok(None) here means the session was lost or tampered.
-    let pkce_verifier = match session.get::<String>("pkce_verifier") {
-        Ok(Some(v)) => v,
-        Ok(None) => return HttpResponse::BadRequest().body("Missing PKCE verifier"),
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Failed to retrieve PKCE verifier: {e}"));
-        }
-    };
-
-    let stored_csrf_token = match session.get::<String>("csrf_token") {
-        Ok(Some(csrf_token)) => Some(csrf_token),
-        Ok(None) => return HttpResponse::BadRequest().body("Missing CSRF token"),
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Failed to retrieve CSRF token: {e}"));
-        }
-    };
-
-    let stored_nonce = match session.get::<String>("nonce") {
-        Ok(Some(nonce)) => nonce,
-        Ok(None) => return HttpResponse::BadRequest().body("Missing nonce"),
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Failed to retrieve nonce: {e}"));
-        }
-    };
-
-    // Validate CSRF token
-    let Some(received_csrf_token) = query.get("state") else {
-        return HttpResponse::BadRequest().body("Missing state parameter");
-    };
-    if Some(received_csrf_token) != stored_csrf_token.as_ref() {
-        return HttpResponse::BadRequest().body("CSRF token mismatch");
+    // Extract the authorization code (or OAuth error).
+    if let Some(err) = query.get("error") {
+        let desc = query.get("error_description").map_or("", String::as_str);
+        return HttpResponse::BadRequest()
+            .body(format!("Authorization error from IdP: {err} — {desc}"));
     }
-
-    // Extract authorization code
     let auth_code = match query.get("code") {
         Some(code) => code.to_owned(),
         None => return HttpResponse::BadRequest().body("Missing authorization code"),
     };
+
+    // Decode the `state` JWT to recover the PKCE verifier and nonce.
+    // This avoids the SameSite=Lax session-cookie issue (RFC 6265bis §5.2.2):
+    // browsers withhold Lax cookies on the cross-site POST→redirect chain that
+    // brings us back from the IdP. The state JWT is returned unchanged by the
+    // AS per RFC 6749 §4.1.2 and is HMAC-signed so it cannot be forged.
+    let received_state = match query.get("state") {
+        Some(s) => s.as_str(),
+        None => return HttpResponse::BadRequest().body("Missing state parameter"),
+    };
+    let state_claims = match OidcStateClaims::decode(received_state, &discovered.state_hmac_key) {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::BadRequest().body(e),
+    };
+    let pkce_verifier = state_claims.pkce_verifier;
+    let stored_nonce = state_claims.nonce;
 
     let client_id = match &oidc_runtime.config.ui_oidc_client_id {
         Some(id) => id.clone(),
@@ -160,8 +188,10 @@ pub(crate) async fn callback(
     let redirect_url = format!("{}/ui/callback", kms_url.as_str());
 
     // Disable redirect following to prevent SSRF via crafted 3xx responses (A10-3).
+    // Accept invalid TLS certs when the IdP uses a self-signed certificate (dev/test only).
     let Ok(client) = Client::builder()
         .redirect(reqwest::redirect::Policy::none())
+        .danger_accept_invalid_certs(discovered.accept_invalid_certs)
         .build()
     else {
         return HttpResponse::InternalServerError().body("Failed to build HTTP client");
@@ -303,16 +333,24 @@ pub(crate) async fn callback(
         return HttpResponse::BadRequest().json(serde_json::json!({ "error": "Nonce mismatch" }));
     }
 
-    // Extract the user identity (email claim). The id_token is intentionally not
-    // stored in the session — the BFF pattern requires only the user_id to be kept.
-    // All subsequent API requests from the UI are authenticated via the session cookie.
-    let Some(user_id) = claims
-        .get("email")
+    // Extract the user identity from the id_token.
+    // Prefer `sub` (used by auth-verifier OIDC OP, where sub = username), then fall
+    // back to `email` (used by cloud IdPs such as Auth0 / Azure AD / Google).
+    // The id_token is intentionally NOT stored in the session — the BFF pattern keeps
+    // only the user_id; all subsequent UI requests are authenticated via the session cookie.
+    let user_id = claims
+        .get("sub")
         .and_then(|v| v.as_str())
         .map(str::to_owned)
-    else {
+        .or_else(|| {
+            claims
+                .get("email")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned)
+        });
+    let Some(user_id) = user_id else {
         return HttpResponse::InternalServerError()
-            .json(serde_json::json!({ "error": "Missing email claim in id_token" }));
+            .json(serde_json::json!({ "error": "Missing sub and email claims in id_token" }));
     };
 
     if session.insert("user_id", &user_id).is_err() {

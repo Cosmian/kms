@@ -38,11 +38,11 @@ async fn test_create_fpe_key() -> CosmianResult<()> {
     let owner_client_conf_path = owner_config(ctx);
 
     let uid = create_fpe_key(&owner_client_conf_path, &[])?;
-    assert!(!uid.is_empty());
+    assert_ne!(uid, "");
 
     // Create with a custom tag
     let uid_tagged = create_fpe_key(&owner_client_conf_path, &["my-fpe-key"])?;
-    assert!(!uid_tagged.is_empty());
+    assert_ne!(uid_tagged, "");
     assert_ne!(uid, uid_tagged);
 
     Ok(())

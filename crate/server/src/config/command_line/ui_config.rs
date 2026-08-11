@@ -127,6 +127,23 @@ pub struct OidcDiscoveredEndpoints {
     /// on demand (refresh-on-miss) when the UI OIDC callback encounters an
     /// unknown `kid`; see `crate::routes::ui_auth::callback`.
     pub jwks_manager: Arc<crate::middlewares::JwksManager>,
+    /// When `true`, TLS certificate verification is skipped when contacting the
+    /// `IdP`'s token endpoint during the authorization-code exchange.
+    ///
+    /// **Development and testing only.** Propagated from
+    /// `auth_verifier_accept_invalid_certs` (or the IdP-specific TLS config)
+    /// so that self-signed certificates in dev environments are accepted without
+    /// extra configuration.
+    pub accept_invalid_certs: bool,
+    /// 32-byte HMAC-SHA256 signing key used to authenticate the `state`
+    /// parameter that carries the PKCE verifier and nonce across the
+    /// authorization redirect.
+    ///
+    /// Encoding `{pkce_verifier, nonce}` in `state` avoids relying on the
+    /// KMS session cookie being sent on the cross-site POST→redirect chain
+    /// from the `IdP` back to the callback URL (SameSite=Lax cookies are
+    /// withheld by browsers in that context per RFC 6265bis).
+    pub state_hmac_key: [u8; 32],
 }
 
 /// Runtime OIDC configuration combining the static `OidcConfig` with endpoints

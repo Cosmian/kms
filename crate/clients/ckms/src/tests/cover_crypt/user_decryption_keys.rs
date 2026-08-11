@@ -71,7 +71,7 @@ pub(crate) async fn test_user_decryption_key() -> CosmianResult<()> {
         &[],
         false,
     )?;
-    assert!(!user_key_id.is_empty());
+    assert_ne!(user_key_id, "");
 
     Ok(())
 }

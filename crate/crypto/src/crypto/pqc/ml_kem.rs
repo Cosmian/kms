@@ -274,7 +274,7 @@ mod tests {
         let shared_secret2 = ml_kem_decapsulate(&priv_der, &ciphertext).unwrap();
 
         assert_eq!(shared_secret1, shared_secret2);
-        assert!(!shared_secret1.is_empty());
+        assert_ne!(shared_secret1, <[u8; 0]>::default());
     }
 
     #[test]

@@ -698,6 +698,7 @@ Crate path: `crate/server`
 | `error` | `JoinSplitKey: CRITICAL — reconstructed key rollback failed;                          orphaned key remains in DB, manual cleanup required` | `src/core/operations/join_split_key.rs` | `uid` (orphaned key UID), `user`, `session_id`, `rollback_error` (delete error) | CRITICAL audit — DB is in inconsistent state; manual deletion of the `uid` object is required; alert SIEM |
 | `warn` | `` `force_default_username = true` combined with `privileged_users` is                      deprecated and will become an error in a future release. All requests run                      under the same identity, making Crypto Officer dual-control meaningless.                      Please migrate to `[roles] crypto_officer_users` and remove                      `force_default_username`. `` | `src/config/params/server_params.rs` | - | - |
 | `info` | `ceremony sealing key loaded from object store` | `src/core/kms/mod.rs` | - | - |
+| `info` | `auth_verifier: auto-populating ui_oidc_auth from auth_verifier_url={}` | `src/config/params/server_params.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 

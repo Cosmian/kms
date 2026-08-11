@@ -69,9 +69,9 @@ pub(crate) async fn generate_google_jwt() -> KmsCliResult<String> {
         ))
     })?;
 
-    assert!(!client_id.is_empty());
-    assert!(!client_secret.is_empty());
-    assert!(!refresh_token.is_empty());
+    assert_ne!(client_id, "");
+    assert_ne!(client_secret, "");
+    assert_ne!(refresh_token, "");
 
     let res = reqwest::Client::new()
         .post("https://oauth2.googleapis.com/token")
@@ -137,7 +137,7 @@ async fn hsm_google_cse_status() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
     let status = ctx.get_owner_client().google_cse_status().await?;
     // In the client API, StatusResponse only exposes `kacls_url`
-    assert!(!status.kacls_url.is_empty());
+    assert_ne!(status.kacls_url, "");
     assert!(status.kacls_url.contains("http"));
     Ok(())
 }

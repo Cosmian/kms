@@ -4,7 +4,7 @@ use cosmian_kms_access::access::CryptoOfficerConfig;
 use cosmian_kms_server_database::{
     CeremonyKeys, MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
 };
-use cosmian_logger::{debug, warn};
+use cosmian_logger::{debug, info, warn};
 
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
@@ -44,6 +44,10 @@ pub struct HsmInstanceParams {
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
     pub identity_provider_configurations: Option<Vec<IdpConfig>>,
+
+    /// Whether to accept invalid/self-signed TLS certificates when fetching
+    /// JWKS from the configured JWT identity providers. Dev/test only.
+    pub idp_auth_accept_invalid_certs: bool,
 
     /// The UI distribution folder
     pub ui_index_html_folder: PathBuf,
@@ -324,6 +328,33 @@ impl ServerParams {
             "http"
         };
 
+        // Auto-populate ui_oidc_auth from auth_verifier when the OIDC client is
+        // configured and the operator has not explicitly set ui_oidc_auth.
+        // This allows a single [auth_verifier] section to configure everything.
+        let ui_oidc_auth = {
+            let mut oidc = conf.ui_config.ui_oidc_auth.clone();
+            if conf.auth_verifier.is_enabled()
+                && conf.auth_verifier.auth_verifier_oidc_client_id.is_some()
+                && oidc.ui_oidc_issuer_url.is_none()
+                && oidc.ui_oidc_client_id.is_none()
+            {
+                info!(
+                    "auth_verifier: auto-populating ui_oidc_auth from auth_verifier_url={}",
+                    conf.auth_verifier
+                        .auth_verifier_url
+                        .as_deref()
+                        .unwrap_or("")
+                );
+                oidc.ui_oidc_issuer_url
+                    .clone_from(&conf.auth_verifier.auth_verifier_url);
+                oidc.ui_oidc_client_id
+                    .clone_from(&conf.auth_verifier.auth_verifier_oidc_client_id);
+                oidc.ui_oidc_client_secret
+                    .clone_from(&conf.auth_verifier.auth_verifier_oidc_client_secret);
+            }
+            oidc
+        };
+
         // Determine whether CO users will come from the deprecated `privileged_users` path.
         // Used after `res` is built to preserve v5.26.0 behaviour: if the operator had
         // `force_default_username = true` AND `privileged_users = [...]` (nonsensical but
@@ -331,16 +362,18 @@ impl ServerParams {
         let co_from_deprecated_path =
             conf.roles.crypto_officer_users.is_none() && conf.privileged_users.is_some();
 
+        let idp_auth_accept_invalid_certs = conf.idp_auth.idp_auth_accept_invalid_certs;
+        let identity_provider_configurations = conf
+            .idp_auth
+            .extract_idp_configs()
+            .context("failed initializing IdPs from idp_auth")?;
+
         let res = Self {
-            identity_provider_configurations: {
-                // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
-                conf.idp_auth
-                    .extract_idp_configs()
-                    .context("failed initializing IdPs from idp_auth")?
-            },
+            identity_provider_configurations,
+            idp_auth_accept_invalid_certs,
             ui_index_html_folder,
             ui_enable: conf.ui_config.enable,
-            ui_oidc_auth: conf.ui_config.ui_oidc_auth,
+            ui_oidc_auth,
             main_db_params: Some(
                 conf.db
                     .init(&conf.workspace.init().context("failed to init workspace")?)
@@ -716,6 +749,9 @@ impl fmt::Debug for ServerParams {
         // Add optional fields only if they are Some
         if let Some(ref idp_configs) = self.identity_provider_configurations {
             debug_struct.field("identity_provider_configurations", idp_configs);
+        }
+        if self.idp_auth_accept_invalid_certs {
+            debug_struct.field("idp_auth_accept_invalid_certs", &true);
         }
 
         // Always show these non-optional fields

@@ -294,6 +294,7 @@ mod tests {
                     "jwt issuer uri 1,jwks uri 1,jwt audience 1".to_owned(),
                     "jwt issuer uri 2,jwks uri 2,jwt audience 2".to_owned(),
                 ]),
+                idp_auth_accept_invalid_certs: false,
             },
             auth_verifier: AuthVerifierConfig::default(),
             ui_config: UiConfig {

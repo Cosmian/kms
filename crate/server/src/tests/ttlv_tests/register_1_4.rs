@@ -105,7 +105,7 @@ pub(super) fn register_symmetric_key(client: &SocketClient) -> String {
         panic!("Expected Register");
     };
 
-    assert!(!register_response.unique_identifier.is_empty());
+    assert_ne!(register_response.unique_identifier, "");
     assert!(register_response.template_attribute.is_none());
     register_response.unique_identifier.clone()
 }

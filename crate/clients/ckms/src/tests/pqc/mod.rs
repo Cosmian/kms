@@ -181,7 +181,7 @@ fn test_kem(cli_conf_path: &str, name: &str, algorithm: &str) -> CosmianResult<(
     assert!(session_key_file.exists());
 
     let session_key = std::fs::read(&session_key_file)?;
-    assert!(!session_key.is_empty());
+    assert_ne!(session_key, <[u8; 0]>::default());
     Ok(())
 }
 

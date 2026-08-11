@@ -168,7 +168,7 @@ pub(crate) async fn test_derive_symmetric_key_pbkdf2() -> CosmianResult<()> {
 
     // Note: The KMS server currently generates its own ID regardless of the provided derived_key_id
     // So we just check that we got a valid ID back
-    assert!(!derived_key_id.is_empty());
+    assert_ne!(derived_key_id, "");
     assert!(derived_key_id.starts_with("derived-"));
     Ok(())
 }
@@ -206,7 +206,7 @@ pub(crate) async fn test_derive_symmetric_key_hkdf() -> CosmianResult<()> {
     )?;
 
     // Check that we got a valid derived key ID
-    assert!(!derived_key_id.is_empty());
+    assert_ne!(derived_key_id, "");
     assert!(derived_key_id.starts_with("derived-"));
     Ok(())
 }
@@ -247,7 +247,7 @@ pub(crate) async fn test_derive_symmetric_key_different_lengths() -> CosmianResu
         )?;
 
         // Check that we got a valid derived key ID
-        assert!(!derived_key_id.is_empty());
+        assert_ne!(derived_key_id, "");
         assert!(derived_key_id.starts_with("derived-"));
     }
 
@@ -288,7 +288,7 @@ pub(crate) async fn test_derive_from_secret_data() -> CosmianResult<()> {
     )?;
 
     // Check that we got a valid derived key ID
-    assert!(!derived_key_id.is_empty());
+    assert_ne!(derived_key_id, "");
     assert!(derived_key_id.starts_with("derived-"));
 
     Ok(())
@@ -334,7 +334,7 @@ pub(crate) async fn test_derive_key_different_algorithms() -> CosmianResult<()> 
         )?;
 
         // Check that we got a valid derived key ID
-        assert!(!derived_key_id.is_empty());
+        assert_ne!(derived_key_id, "");
         assert!(derived_key_id.starts_with("derived-"));
     }
 
@@ -366,7 +366,7 @@ pub(crate) async fn test_derive_key_from_password() -> CosmianResult<()> {
     )?;
 
     // Check that we got a valid derived key ID
-    assert!(!derived_key_id.is_empty());
+    assert_ne!(derived_key_id, "");
     assert!(derived_key_id.starts_with("derived-"));
 
     Ok(())
@@ -397,7 +397,7 @@ pub(crate) async fn test_derive_key_from_unicode_password() -> CosmianResult<()>
     )?;
 
     // Check that we got a valid derived key ID
-    assert!(!derived_key_id.is_empty());
+    assert_ne!(derived_key_id, "");
     assert!(derived_key_id.starts_with("derived-"));
 
     Ok(())

@@ -166,7 +166,31 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
             },
             auth_verifier_realm: realm,
             auth_verifier_accept_invalid_certs: accept_invalid_certs,
+            ..AuthVerifierConfig::default()
         };
+
+        // Optional: OIDC client for CLI --use-oidc and Web UI OIDC flow.
+        println!(
+            "  If you want to use the OIDC Authorization Code flow (CLI `ckms login cosmian \
+             --use-oidc` or the Web UI OIDC button), register a client on the auth-verifier and \
+             enter its credentials below.  Leave blank to skip."
+        );
+        let oidc_client_id: String = Input::with_theme(&theme)
+            .with_prompt("OIDC client ID (optional — needed for --use-oidc / Web UI OIDC flow)")
+            .allow_empty(true)
+            .interact_text()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        if !oidc_client_id.trim().is_empty() {
+            auth_verifier.auth_verifier_oidc_client_id = Some(oidc_client_id.trim().to_owned());
+            let oidc_client_secret: String = dialoguer::Password::with_theme(&theme)
+                .with_prompt("OIDC client secret (leave blank for public/PKCE-only clients)")
+                .allow_empty_password(true)
+                .interact()
+                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            if !oidc_client_secret.is_empty() {
+                auth_verifier.auth_verifier_oidc_client_secret = Some(oidc_client_secret);
+            }
+        }
     }
 
     if selected.contains(&3) {
@@ -198,6 +222,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
             } else {
                 Some(jwt_providers)
             },
+            idp_auth_accept_invalid_certs: false,
         },
         auth_verifier,
         default_username,

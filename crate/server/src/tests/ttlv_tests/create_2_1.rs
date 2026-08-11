@@ -86,5 +86,5 @@ fn test_create_2_1() {
     };
 
     assert_eq!(create_response.object_type, ObjectType::SymmetricKey);
-    assert!(!create_response.unique_identifier.to_string().is_empty());
+    assert_ne!(create_response.unique_identifier.to_string(), "");
 }

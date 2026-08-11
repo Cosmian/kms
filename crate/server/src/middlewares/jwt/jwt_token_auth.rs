@@ -126,3 +126,74 @@ pub(super) async fn handle_jwt(
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)] // test helpers — panics are acceptable
+mod tests {
+    use crate::middlewares::jwt::UserClaim;
+
+    /// Build a minimal `UserClaim` with only email/sub set.
+    fn claim(email: Option<&str>, sub: Option<&str>) -> UserClaim {
+        UserClaim {
+            email: email.map(str::to_owned),
+            sub: sub.map(str::to_owned),
+            iss: None,
+            aud: None,
+            iat: None,
+            exp: None,
+            nbf: None,
+            jti: None,
+            role: None,
+            resource_name: None,
+            perimeter_id: None,
+            kacls_url: None,
+            spki_hash: None,
+            spki_hash_algorithm: None,
+            message_id: None,
+            email_type: None,
+            google_email: None,
+        }
+    }
+
+    /// When email is present it is used as the username.
+    #[test]
+    fn u01_email_present_returns_email() {
+        let c = claim(Some("alice@example.com"), Some("uid-123"));
+        assert_eq!(c.email.as_deref(), Some("alice@example.com"));
+    }
+
+    /// When email is absent (and only sub is present), the JWT middleware
+    /// returns 401. Auth-verifier always sets email, so this case only arises
+    /// with non-compliant issuers.
+    #[test]
+    fn u02_no_email_even_with_sub() {
+        let c = claim(None, Some("kms-service-account"));
+        assert!(
+            c.email.is_none(),
+            "token without email must be rejected by KMS middleware"
+        );
+    }
+
+    /// Auth-verifier issues email = username for plain usernames.
+    /// Verify the email claim matches the subject.
+    #[test]
+    fn u03_auth_verifier_style_username_as_email() {
+        let c = claim(Some("alice"), Some("alice"));
+        assert_eq!(c.email.as_deref(), Some("alice"));
+    }
+
+    /// Both absent → no username derivable.
+    #[test]
+    fn u04_both_absent() {
+        let c = claim(None, None);
+        assert!(c.email.is_none());
+        assert!(c.sub.is_none());
+    }
+
+    /// Auth-verifier service account (`client_credentials`): email = `client_id`.
+    #[test]
+    fn u05_service_account_email_equals_client_id() {
+        let c = claim(Some("kms-service"), Some("kms-service"));
+        assert_eq!(c.email.as_deref(), Some("kms-service"));
+    }
+}

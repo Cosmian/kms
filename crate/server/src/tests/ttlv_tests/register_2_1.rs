@@ -99,5 +99,5 @@ fn test_register_2_1() {
         panic!("Expected RegisterResponse");
     };
 
-    assert!(!register_response.unique_identifier.to_string().is_empty());
+    assert_ne!(register_response.unique_identifier.to_string(), "");
 }

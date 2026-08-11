@@ -187,7 +187,14 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         )
         .await
         .context("find (bad cryptographic_algorithm)")?;
-    assert!(found.is_empty());
+    assert_eq!(
+        found,
+        <[(
+            std::string::String,
+            cosmian_kmip::kmip_0::kmip_types::State,
+            cosmian_kmip::kmip_2_1::kmip_attributes::Attributes
+        ); 0]>::default()
+    );
 
     // Find bad key format type
 
@@ -206,7 +213,14 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         )
         .await
         .context("find (bad key_format_type)")?;
-    assert!(found.is_empty());
+    assert_eq!(
+        found,
+        <[(
+            std::string::String,
+            cosmian_kmip::kmip_0::kmip_types::State,
+            cosmian_kmip::kmip_2_1::kmip_attributes::Attributes
+        ); 0]>::default()
+    );
 
     Ok(())
 }

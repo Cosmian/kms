@@ -169,6 +169,9 @@ fn path_to_string(p: &Path) -> Result<String, KmsClientError> {
 /// No TLS, no certificate authentication
 /// # Panics
 /// - if the server fails to start
+// The server-initialization future inherits the size of `prepare_kms_server`,
+// which is large by design — it wires up all middleware, OIDC config, etc.
+#[allow(clippy::large_futures)]
 pub async fn start_test_kms_server_with_config(mut config: ClapConfig) -> &'static TestsContext {
     trace!("Starting test server with config : {:#?}", config);
     ONCE.get_or_try_init(|| {

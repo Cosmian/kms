@@ -29,8 +29,23 @@ pub struct IdpAuthConfig {
     /// --jwt-auth-provider="https://<your-tenant>.<region>.auth0.com/""
     //
     /// This argument can be repeated to configure multiple identity providers.
-    #[clap(verbatim_doc_comment, long, env = "KMS_JWT_AUTH_PROVIDER", action = clap::ArgAction::Append)]
+    #[clap(long, env = "KMS_JWT_AUTH_PROVIDER", action = clap::ArgAction::Append)]
     pub jwt_auth_provider: Option<Vec<String>>,
+
+    /// Accept invalid or self-signed TLS certificates when fetching JWKS from
+    /// the configured JWT identity providers.
+    ///
+    /// **Development and testing only.** This flag is intended for deployments
+    /// where the `IdP` (e.g. an on-premise auth-verifier) uses a self-signed or
+    /// internally-signed certificate that would otherwise fail TLS verification.
+    /// Never set this to `true` in production.
+    #[clap(
+        long,
+        env = "KMS_IDP_AUTH_ACCEPT_INVALID_CERTS",
+        default_value = "false",
+        verbatim_doc_comment
+    )]
+    pub idp_auth_accept_invalid_certs: bool,
 }
 
 impl IdpAuthConfig {
@@ -128,9 +143,51 @@ mod tests {
                 "https://issuer1.com,https://jwks1.com,key1,key2".to_owned(), // Duplicate
                 "https://issuer3.com,,".to_owned(),
             ]),
+            idp_auth_accept_invalid_certs: false,
         };
         let extracted = idp_list.extract_idp_configs().unwrap().unwrap();
         assert_eq!(extracted.len(), 3); // One duplicate should be removed
         info!("Extracted IDP Configs: {:#?}", extracted);
+    }
+
+    /// `accept_invalid_certs` defaults to false.
+    #[test]
+    fn accept_invalid_certs_default_is_false() {
+        let cfg = IdpAuthConfig::default();
+        assert!(!cfg.idp_auth_accept_invalid_certs);
+    }
+
+    /// `accept_invalid_certs` round-trips through TOML.
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn accept_invalid_certs_roundtrip_toml() {
+        let toml = r#"
+            idp_auth_accept_invalid_certs = true
+            jwt_auth_provider = ["https://auth.example.com,https://auth.example.com/oidc/jwks"]
+        "#;
+        let cfg: IdpAuthConfig = toml::from_str(toml).unwrap();
+        assert!(cfg.idp_auth_accept_invalid_certs);
+        assert_eq!(cfg.jwt_auth_provider.unwrap().len(), 1);
+    }
+
+    /// Single auth-verifier entry parses cleanly.
+    #[test]
+    #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::expect_used)]
+    fn auth_verifier_style_entry_parses() {
+        let cfg = IdpAuthConfig {
+            jwt_auth_provider: Some(vec![
+                "https://127.0.0.1:8443,https://127.0.0.1:8443/oidc/jwks".to_owned(),
+            ]),
+            idp_auth_accept_invalid_certs: true,
+        };
+        let configs = cfg.extract_idp_configs().unwrap().unwrap();
+        assert_eq!(configs.len(), 1);
+        let first = configs.first().expect("one entry");
+        assert_eq!(first.jwt_issuer_uri, "https://127.0.0.1:8443");
+        assert_eq!(
+            first.jwks_uri.as_deref(),
+            Some("https://127.0.0.1:8443/oidc/jwks")
+        );
+        assert!(first.jwt_audience.is_none());
     }
 }
