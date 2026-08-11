@@ -195,7 +195,7 @@ lazy_static = "1.5"
 leb128 = "0.2"
 libloading = "0.8"
 log = { version = "0.4", default-features = false }
-lru = "0.16"
+lru = "0.18"
 moka = { version = "0.12", default-features = false, features = ["future"] }
 native-tls = { version = "0.2", default-features = false }
 num-format = "0.4"
