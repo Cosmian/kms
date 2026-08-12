@@ -11,17 +11,20 @@ specification reference — see [CEF export format](./cef-export.md).
 
 ## Integration models
 
-The KMS supports three integration models:
+The KMS supports two integration models:
 
 | Model | How it works | Format | Continuous? |
 | ----- | ------------ | ------ | ----------- |
 | **File tailing** | SIEM agent tails the JSONL audit file directly | JSON | Yes |
 | **CEF export** | `ckms audit export` converts JSONL → CEF on stdout | CEF v27 | Manual / scripted |
-| **OTLP audit push** | Server-side pipeline pushes events as OTLP log records | OTLP+CEF | Yes |
 
 > The JSONL file is the **authoritative audit store** (see [Audit logs](./audit-logs.md)).
 > CEF is a serialisation *view* — it does not replace the JSONL file and does not include
 > hash-chain fields (`prev_hash`, `row_hash`).
+>
+> For SIEM ingestion, prefer **file tailing**: a dedicated agent reads the JSONL file from
+> its last committed offset and forwards events with guaranteed delivery, surviving restarts
+> without event loss.
 
 ### Model 1 — File tailing
 
@@ -59,25 +62,6 @@ sequenceDiagram
 ```
 
 Supported targets: rsyslog, ArcSight, Splunk, nc listener.
-
-### Model 3 — OTLP audit push (server-side, continuous)
-
-```mermaid
-sequenceDiagram
-    participant KMS as KMS Server
-    participant OTel as OTel Collector
-    participant SIEM as SIEM / Log backend
-
-    KMS->>OTel: HTTP OTLP/JSON logs on port 4318
-    Note over KMS,OTel: body = audit JSON
-    Note over KMS,OTel: attributes include cef_line
-    Note over KMS,OTel: Batched: flush every 64 events or on shutdown
-    OTel->>SIEM: export via splunk_hec / elasticsearch / loki exporter
-    Note over OTel,SIEM: Collector decouples KMS from SIEM endpoint details
-```
-
-Supported SIEM targets via OTel exporter: Splunk HEC, Elasticsearch, Loki, and any
-OpenTelemetry-compatible log backend.
 
 ---
 
@@ -297,7 +281,7 @@ All tests use the product's official Docker image and fail if no evidence is fou
 
 ### SIEM and log pipeline integrations
 
-These products ingest KMS **audit events** (JSONL file, CEF syslog, or OTLP logs).
+These products ingest KMS **audit events** (JSONL file or CEF syslog).
 
 #### Tested against a live instance
 
@@ -307,7 +291,6 @@ These products ingest KMS **audit events** (JSONL file, CEF syslog, or OTLP logs
 | **Fluent Bit 4.0** | Log shipper | JSONL audit file tailed continuously; all events forwarded; required fields present |
 | **Filebeat 8.17** | Log shipper | Audit JSONL shipped to Elasticsearch; ingest pipeline normalises `result`; all events indexed |
 | **Elasticsearch 8.17** | Log store / SIEM backend | Events indexed with correct field mapping for both Success and Failure outcomes |
-| **OpenTelemetry Collector** | Audit log pipeline | KMS OTLP HTTP push received; 64 audit log records with `cef_line` attribute confirmed |
 
 #### Documented but not live-tested
 
@@ -317,7 +300,6 @@ exercised with a live container.
 | Product | Integration model | Basis for confidence |
 |---|---|---|
 | **Splunk** (Universal Forwarder) | File tailing (`inputs.conf`) | Same JSONL format proven by Fluent Bit and Filebeat tests |
-| **Splunk HEC** | OTel `splunk_hec` exporter | OTel Collector audit pipeline proven; `splunk_hec` exporter config in [Model 3](#model-3--otlp-audit-push-server-side-continuous) |
 | **Datadog** | File tailing (`datadog.yaml`) | Same JSONL format; config example in this page |
 | **ArcSight / QRadar** | CEF over TCP syslog | CEF format + TCP transport proven by rsyslog test; only destination endpoint differs |
 | **OpenSearch** | File tailing or Filebeat | Elasticsearch-compatible API; Filebeat test uses the same ingest pipeline |
@@ -329,7 +311,7 @@ These products consume KMS **metrics** (not audit events). See
 
 | Product | Role | What is proven |
 |---|---|---|
-| **OpenTelemetry Collector** | Metrics pipeline | KMS gRPC OTLP push received; 162+ KMS metric lines confirmed on Prometheus endpoint |
+| **OpenTelemetry Collector** | Metrics pipeline | KMS gRPC OTLP push received; KMS metric lines confirmed on Prometheus endpoint (count varies by version) |
 | **VictoriaMetrics** | Metrics backend | Receives KMS metrics from OTel Collector via remote_write |
 | **Grafana** | Dashboarding | Full monitoring stack operational; `/api/health` returns `database=ok` |
 

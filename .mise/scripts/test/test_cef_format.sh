@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CEF format validation test.
 #
-# Proves ADR-005 (CEF v27 as SIEM export format):
+# Proves ADR-2026-07-09-cef-siem-export-format (CEF v27 as SIEM export format):
 #
 #   ckms audit export --format cef → N CEF lines with all required extension keys
 #
@@ -40,7 +40,7 @@ trap cleanup EXIT
 
 echo "==========================================="
 echo "CEF format validation test"
-echo "Proves: ADR-005 (CEF v27 format compliance)"
+echo "Proves: ADR-2026-07-09-cef-siem-export-format (CEF v27 format compliance)"
 echo "==========================================="
 
 # ── Build ─────────────────────────────────────────────────────────────────────
@@ -173,7 +173,7 @@ if [ "${bad_header}" -gt 0 ]; then
 fi
 echo "GUARD OK: all ${cef_lines} lines have CEF:0|Cosmian|KMS| header."
 
-# ── GUARD 4: required extension keys (ADR-005 + CEF v27) ─────────────────────
+# ── GUARD 4: required extension keys (ADR-2026-07-09-cef-siem-export-format + CEF v27) ─────────────────────
 
 # CEF v27 required extension keys for KMS audit:
 #   rt=         — receive time (epoch ms)
@@ -203,7 +203,7 @@ done <"${CEF_EXPORT}"
 
 if [ "${fail_count}" -gt 0 ]; then
   echo "ERROR: ${fail_count} extension key check(s) failed." >&2
-  echo "       CEF v27 compliance (ADR-005) not satisfied." >&2
+  echo "       CEF v27 compliance (ADR-2026-07-09-cef-siem-export-format) not satisfied." >&2
   exit 1
 fi
 echo "GUARD OK: all ${cef_lines} lines have required extension keys: ${REQUIRED_KEYS[*]}"
@@ -244,4 +244,4 @@ echo ""
 echo "CEF format validation test PASSED."
 echo "Evidence: ${cef_lines} CEF lines (${success_cef} Success + ${failure_cef} Failure),"
 echo "  all with CEF:0|Cosmian|KMS| header and required extension keys."
-echo "Proves ADR-005 (CEF v27 format compliance)."
+echo "Proves ADR-2026-07-09-cef-siem-export-format (CEF v27 format compliance)."
