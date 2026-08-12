@@ -69,31 +69,58 @@ EOF
   fi
 }
 
-revoke_xks_op() {
+grant_xks_access() {
   local key_id="$1"
-  local op="$2"
 
-  local response
-  response="$(
+  # Re-grant unconditionally so runs against a persistent server are idempotent.
+  # Needed because the old server code skips grant_access when the key already exists.
+  # Grant to BOTH Alice (old server, <=5.26.0) and [aws-xks-service] (Manu's fix)
+  # so that CI works regardless of which server version is currently deployed.
+  for user in "${aws_principal_arn}" "${xks_service_user}"; do
     curl -sS \
       -H "Content-Type:application/json" \
-      -X POST "${KMS_ADMIN_URL}/access/revoke" \
+      -X POST "${KMS_ADMIN_URL}/access/grant" \
       --data-binary "$(
         cat <<EOF
 {
   "unique_identifier": "${key_id}",
-  "user_id": "${xks_service_user}",
+  "user_id": "${user}",
+  "operation_types": ["get_attributes", "encrypt", "decrypt"]
+}
+EOF
+      )" >/dev/null
+  done
+}
+
+revoke_xks_op() {
+  local key_id="$1"
+  local op="$2"
+
+  # Revoke for BOTH Alice (old server, <=5.26.0) and [aws-xks-service] (Manu's fix)
+  # so that encrypt-only / decrypt-only tests pass regardless of server version.
+  for user in "${aws_principal_arn}" "${xks_service_user}"; do
+    local response
+    response="$(
+      curl -sS \
+        -H "Content-Type:application/json" \
+        -X POST "${KMS_ADMIN_URL}/access/revoke" \
+        --data-binary "$(
+          cat <<EOF
+{
+  "unique_identifier": "${key_id}",
+  "user_id": "${user}",
   "operation_types": ["${op}"]
 }
 EOF
-      )"
-  )"
+        )"
+    )"
 
-  # Revoking an already-revoked permission is not fatal on a persistent server.
-  if ! grep -q '"success"' <<<"${response}"; then
-    echo "Warning: revoke ${op} for ${xks_service_user} on ${key_id} — may already be applied. Response:" >&2
-    echo "${response}" >&2
-  fi
+    # Revoking an already-revoked permission is not fatal on a persistent server.
+    if ! grep -q '"success"' <<<"${response}"; then
+      echo "Warning: revoke ${op} for ${user} on ${key_id} — may already be applied. Response:" >&2
+      echo "${response}" >&2
+    fi
+  done
 }
 
 # ── Provision test keys ───────────────────────────────────────────────────────
@@ -106,8 +133,11 @@ echo "========================================="
 
 echo "Provisioning XKS test keys on remote server..."
 xks_create_key "aws_xks_kek"
+grant_xks_access "aws_xks_kek"
 xks_create_key "encrypt_only_key"
+grant_xks_access "encrypt_only_key"
 xks_create_key "decrypt_only_key"
+grant_xks_access "decrypt_only_key"
 
 echo "Enforcing usage restrictions..."
 revoke_xks_op "encrypt_only_key" "decrypt"
