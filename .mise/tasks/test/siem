@@ -4,10 +4,10 @@
 #USAGE   choices "fips" "non-fips"
 #USAGE }
 #USAGE flag "--suite <suite>" env="SUITE" help="Which sub-tests to run" default="all" {
-#USAGE   choices "all" "fluent-bit" "filebeat" "otlp"
+#USAGE   choices "all" "fluent-bit" "filebeat"
 #USAGE }
 # SIEM tests require non-fips: audit middleware uses non-fips features.
-# Uses Docker containers (Fluent Bit, Filebeat, Elasticsearch, OTel) + KMS binary.
+# Uses Docker containers (Fluent Bit, Filebeat, Elasticsearch) + KMS binary.
 # No Nix shell needed. For --suite filebeat or --suite all:
 #   docker compose up -d elasticsearch
 # CEF tests (format, UDP syslog, TCP syslog) are in mise test:cef
@@ -38,14 +38,13 @@ run_sub() {
 }
 
 print_header "Running SIEM integration tests — suite='${SUITE}' (${VARIANT_NAME})"
-echo "Purpose: prove Fluent Bit / Filebeat / OTLP sections of siems.md"
+echo "Purpose: prove Fluent Bit / Filebeat sections of siems.md"
 echo ""
 
 case "${SUITE}" in
   all)
     run_sub "Fluent Bit JSONL file-tailing" "test_siem_fluent_bit.sh"
     run_sub "Filebeat → Elasticsearch" "test_siem_filebeat.sh"
-    run_sub "OTLP audit log export" "test_otlp_audit.sh"
     ;;
   fluent-bit)
     run_sub "Fluent Bit JSONL file-tailing" "test_siem_fluent_bit.sh"
@@ -53,11 +52,8 @@ case "${SUITE}" in
   filebeat)
     run_sub "Filebeat → Elasticsearch" "test_siem_filebeat.sh"
     ;;
-  otlp)
-    run_sub "OTLP audit log export" "test_otlp_audit.sh"
-    ;;
   *)
-    print_error "Unknown suite '${SUITE}'. Valid: all, fluent-bit, filebeat, otlp"
+    print_error "Unknown suite '${SUITE}'. Valid: all, fluent-bit, filebeat"
     print_error "  CEF tests → mise test:cef --suite [all|format|syslog|tcp-syslog]"
     print_error "  Audit log → mise test:audit"
     print_error "  Monitoring → mise test:monitoring"

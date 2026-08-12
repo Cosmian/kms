@@ -6,8 +6,9 @@ The KMS server can export traces and metering events to any
 > **Deploying the monitoring stack**: for a turnkey Docker Compose setup with Grafana,
 > VictoriaMetrics, and a pre-configured OTel Collector, see [Monitoring stack setup](./monitoring-setup.md).
 >
-> **Audit log records via OTLP**: for exporting compliance audit events as OTLP log records
-> (separate from the metrics/traces path), see [Audit logging — OTLP export](./audit-logs.md#otlp-log-record-export).
+> **Audit log SIEM integration**: for forwarding compliance audit events to a SIEM,
+> use a file-tailing agent (Vector, Filebeat, Fluent Bit) reading `audit.jsonl`.
+> See [SIEM integration](./siems.md).
 
 ---
 

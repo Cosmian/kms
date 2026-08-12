@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Monitoring stack integration test.
 #
-# Proves ADR-006 (metrics side) + monitoring stack (VictoriaMetrics + Grafana):
+# Proves metrics OTLP export + monitoring stack (VictoriaMetrics + Grafana):
 #
 #   KMS --otlp → OTel collector → Prometheus endpoint → VictoriaMetrics
 #   Grafana → VictoriaMetrics (health check)
@@ -365,4 +365,4 @@ echo "  Grafana health: database=${grafana_db}"
 echo ""
 echo "Monitoring stack integration test PASSED."
 echo "Evidence: KMS metrics flowing to OTel collector (${metric_count} lines), Grafana healthy."
-echo "Proves ADR-006 metrics export + monitoring stack (OTel collector + VictoriaMetrics + Grafana)."
+echo "Proves metrics OTLP export + monitoring stack (OTel collector + VictoriaMetrics + Grafana)."

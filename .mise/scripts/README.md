@@ -101,7 +101,6 @@ The most common flags (accepted by most tasks):
 | `test:siem-cef-tcp-syslog` | non-fips | CEF-over-TCP-syslog SIEM (rsyslog) |
 | `test:siem-filebeat` | non-fips | Filebeat → Elasticsearch SIEM |
 | `test:siem-fluent-bit` | non-fips | Fluent Bit JSONL file-tailing SIEM |
-| `test:siem-otlp` | non-fips | OTLP audit log export |
 | `test:monitoring` | non-fips | Monitoring stack (VictoriaMetrics + Grafana) |
 | `test:otel` | fips | OTLP/OpenTelemetry export integration |
 
@@ -127,7 +126,6 @@ mise test:cef  --suite syslog        # CEF → UDP syslog
 mise test:cef  --suite tcp-syslog    # CEF → TCP rsyslog (RFC 6587)
 mise test:siem --suite fluent-bit    # Fluent Bit JSONL file tailing
 mise test:siem --suite filebeat      # Filebeat → Elasticsearch
-mise test:siem --suite otlp          # OTLP audit log export to OTel collector
 ```
 
 #### Guard summary
@@ -140,8 +138,7 @@ mise test:siem --suite otlp          # OTLP audit log export to OTel collector
 | `mise test:cef --suite tcp-syslog` | `rsyslog/syslog_appliance_alpine:latest` | All 4 CEF lines received via TCP; field integrity preserved |
 | `mise test:siem --suite fluent-bit` | `fluent/fluent-bit:4.0` | All events forwarded; required fields present |
 | `mise test:siem --suite filebeat` | `docker.elastic.co/beats/filebeat:8.17.0` + `elasticsearch:8.17.0` | All events indexed; ingest pipeline normalises Success/Failure |
-| `mise test:siem --suite otlp` | `otel/opentelemetry-collector-contrib:latest` | ≥ 64 OTLP log records; `cef_line` attribute present; `severityText` valid |
-| `mise test:monitoring` | `otel/opentelemetry-collector-contrib:latest` + `victoriametrics/victoria-metrics:latest` + `grafana/grafana:latest` | ≥ 100 KMS metric lines on Prometheus endpoint; required metric families present; Grafana `database=ok` |
+| `mise test:monitoring` | `otel/opentelemetry-collector-contrib:latest` + `victoriametrics/victoria-metrics:latest` + `grafana/grafana:latest` | KMS metric lines confirmed on Prometheus endpoint (guard: > 0); required metric families present; Grafana `database=ok` |
 
 ### Protocol & interoperability
 

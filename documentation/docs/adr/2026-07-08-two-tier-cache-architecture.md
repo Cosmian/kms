@@ -1,5 +1,5 @@
 ---
-title: "ADR-0003: Two-Tier Cache Architecture for KMS Object Retrieval"
+title: "ADR-2026-07-08-two-tier-cache-architecture: Two-Tier Cache Architecture for KMS Object Retrieval"
 status: "Accepted"
 date: "2026-07-08"
 authors: "contributors, security architects, operators"
@@ -8,7 +8,7 @@ supersedes: "0001-unwrapped-cache-configurable-max-size.md"
 superseded_by: ""
 ---
 
-# ADR-0003: Two-Tier Cache Architecture for KMS Object Retrieval
+# ADR-2026-07-08-two-tier-cache-architecture: Two-Tier Cache Architecture for KMS Object Retrieval
 
 ## Status
 

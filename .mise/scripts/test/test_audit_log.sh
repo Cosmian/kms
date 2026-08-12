@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Audit log integration test.
 #
-# Proves ADR-003 (tamper-evident JSONL single-writer) and ADR-004 (HTTP middleware):
+# Proves ADR-2026-07-09-audit-log-single-writer-design (tamper-evident JSONL single-writer) and ADR-2026-07-09-audit-middleware-extension-injection (HTTP middleware):
 #
 #   KMS audit middleware → JSONL file (ckms audit verify validates hash chain)
 #
@@ -37,7 +37,7 @@ trap cleanup EXIT
 
 echo "==========================================="
 echo "Audit log integration test"
-echo "Proves: ADR-003 (tamper-evident JSONL) + ADR-004 (HTTP middleware)"
+echo "Proves: ADR-2026-07-09-audit-log-single-writer-design (tamper-evident JSONL) + ADR-2026-07-09-audit-middleware-extension-injection (HTTP middleware)"
 echo "==========================================="
 
 # ── Build ─────────────────────────────────────────────────────────────────────
@@ -132,7 +132,7 @@ echo "GUARD OK: ${audit_lines} audit events written (>= 4 required)."
 echo "==> Running ckms audit verify --path ${AUDIT_JSONL}..."
 if ! "${ckms_bin}" audit verify --path "${AUDIT_JSONL}" 2>&1; then
   echo "ERROR: ckms audit verify failed — tamper-evident hash chain is broken." >&2
-  echo "       This proves ADR-003 hash chain is NOT working correctly." >&2
+  echo "       This proves ADR-2026-07-09-audit-log-single-writer-design hash chain is NOT working correctly." >&2
   exit 1
 fi
 echo "GUARD OK: hash chain verified (${audit_lines} rows, SHA-256 chain intact)."
@@ -208,4 +208,4 @@ with open('${AUDIT_JSONL}') as f:
 echo ""
 echo "Audit log integration test PASSED."
 echo "Evidence: ${audit_lines} events written, hash chain verified (${audit_lines} rows)."
-echo "Proves ADR-003 (tamper-evident JSONL) + ADR-004 (HTTP middleware)."
+echo "Proves ADR-2026-07-09-audit-log-single-writer-design (tamper-evident JSONL) + ADR-2026-07-09-audit-middleware-extension-injection (HTTP middleware)."
