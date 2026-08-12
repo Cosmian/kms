@@ -77,18 +77,24 @@ grant_xks_access() {
   # Grant to BOTH Alice (old server, <=5.26.0) and [aws-xks-service] (Manu's fix)
   # so that CI works regardless of which server version is currently deployed.
   for user in "${aws_principal_arn}" "${xks_service_user}"; do
-    curl -sS \
-      -H "Content-Type:application/json" \
-      -X POST "${KMS_ADMIN_URL}/access/grant" \
-      --data-binary "$(
-        cat <<EOF
+    local grant_resp
+    grant_resp="$(
+      curl -sS \
+        -H "Content-Type:application/json" \
+        -X POST "${KMS_ADMIN_URL}/access/grant" \
+        --data-binary "$(
+          cat <<EOF
 {
   "unique_identifier": "${key_id}",
   "user_id": "${user}",
-  "operation_types": ["get_attributes", "encrypt", "decrypt"]
+  "operation_types": ["getattributes", "encrypt", "decrypt"]
 }
 EOF
-      )" >/dev/null
+        )"
+    )"
+    if ! grep -q '"success"' <<<"${grant_resp}"; then
+      echo "Warning: grant for ${user} on ${key_id} may have failed. Response: ${grant_resp}" >&2
+    fi
   done
 }
 
