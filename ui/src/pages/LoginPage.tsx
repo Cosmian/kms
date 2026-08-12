@@ -198,7 +198,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
                         </Button>
                     ) : selectedMethod === "CERT" ? (
                         <Button type="primary" block onClick={handleAccessKms} loading={isLoading} data-testid="cert-login-btn">
-                            {t("login.login")}
+                            {t("login.certificate")}
                         </Button>
                     ) : null}
 
@@ -206,7 +206,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
                         one alternative, a dropdown for several. */}
                     {otherMethods.length === 1 && (
                         <Button block disabled={isLoading} onClick={() => selectMethod(otherMethods[0])} data-testid="login-secondary-btn">
-                            {t("login.accessKms")}
+                            {methodLabel(otherMethods[0])}
                         </Button>
                     )}
                     {otherMethods.length >= 2 && (
