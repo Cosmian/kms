@@ -1,11 +1,8 @@
 //! The `AuditSink` trait: a durable destination for finalised audit events.
 //!
-//! Implemented by the file backend (`crate/server`) and the `PostgreSQL` backend
-//! (`crate/server_database`). Both are driven exclusively by the single writer task in
-//! `crate/server`, which owns the id counter and the rolling `prev_hash` — a sink never assigns
-//! ids and never computes hashes, it persists what it is given, in the order it is given. That is
-//! what makes the backends interchangeable, and what lets a chain started on one backend be
-//! verified after export from another.
+//! Should be implemented by each backend that wants to serve as an audit sink.
+//! A sink never assigns ids and never computes hashes, it persists what it is given, in the order it is given. The backends are interchangeable. **A chain started on one backend can be
+//! verified after export from another**.
 
 use async_trait::async_trait;
 use cosmian_kms_access::audit::AuditEvent;

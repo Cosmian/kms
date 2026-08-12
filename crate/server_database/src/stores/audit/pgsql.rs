@@ -10,7 +10,7 @@ use super::{AUDIT_QUERIES, row::event_from_row};
 use crate::{
     db_error,
     error::{DbError, DbResult},
-    stores::sql::{pg_pool::build_pool, pg_retry::retry_transient},
+    stores::sql::{build_pool, retry_transient},
 };
 
 macro_rules! get_audit_query {

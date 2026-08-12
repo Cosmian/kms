@@ -10,10 +10,15 @@ use cosmian_kms_interfaces::{
     PermissionsStore,
 };
 use cosmian_logger::reexport::tracing;
-use deadpool_postgres::{GenericClient, Pool, RecyclingMethod};
+use deadpool_postgres::{Config as PgConfig, GenericClient, ManagerConfig, Pool, RecyclingMethod};
+use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
+use postgres_openssl::MakeTlsConnector;
 use rawsql::Loader;
 use serde_json::Value;
-use tokio_postgres::types::{Json, ToSql};
+use tokio_postgres::{
+    NoTls,
+    types::{Json, ToSql},
+};
 use uuid::Uuid;
 
 use crate::{
@@ -23,13 +28,93 @@ use crate::{
     stores::{
         PGSQL_QUERIES,
         migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
-        sql::{
-            database::SqlDatabase,
-            pg_pool::build_pool,
-            pg_retry::{PG_MAX_RETRIES, is_pg_retryable_error, pg_retry_backoff_ms},
-        },
+        sql::database::SqlDatabase,
     },
 };
+
+// Retry parameters for transient PostgreSQL errors (deadlocks, serialization,
+// and connection failures during failover).
+const PG_MAX_RETRIES: u32 = 6;
+
+fn is_pg_retryable_error(msg: &str) -> bool {
+    let lower = msg.to_ascii_lowercase();
+    // Deadlock / serialization (SQLSTATE 40P01, 40001)
+    lower.contains("deadlock detected")
+        || lower.contains("40p01")
+        || lower.contains("serialization failure")
+        || lower.contains("40001")
+        // Connection errors (failover / network)
+        || lower.contains("connection refused")
+        || lower.contains("connection reset")
+        || lower.contains("connection closed")
+        || lower.contains("broken pipe")
+        || lower.contains("server closed the connection unexpectedly")
+        || lower.contains("terminating connection")
+        || lower.contains("could not connect to server")
+        || lower.contains("08003") // SQLSTATE connection_does_not_exist
+        || lower.contains("08006") // SQLSTATE connection_failure
+        || lower.contains("57p01") // SQLSTATE admin_shutdown
+        || lower.contains("08001") // SQLSTATE connection_exception
+        || lower.contains("08004") // SQLSTATE connection_rejected
+        || lower.contains("57p02") // SQLSTATE crash_shutdown
+        || lower.contains("57p03") // SQLSTATE cannot_connect_now
+}
+
+fn pg_retry_backoff_ms(attempt: u32) -> u64 {
+    let cap = attempt.min(PG_MAX_RETRIES);
+    50_u64 * (1_u64 << cap)
+}
+
+/// Runs `op` until it succeeds, hits a non-retryable error, or exhausts `PG_MAX_RETRIES`,
+/// sleeping [`pg_retry_backoff_ms`] between attempts.
+///
+/// Shares its retry classification with the `pg_retry!`/`pg_retry_tx!` macros above so a
+/// failover looks the same to the audit log (`PgAuditSink`, `crate::stores::audit`) as it does
+/// to the object store. Unlike those macros, this takes a plain closure instead of a fresh
+/// pooled client per attempt, which is what the audit sink's single-connection retry needs.
+pub(crate) async fn retry_transient<T, E, F, Fut>(mut op: F) -> Result<T, E>
+where
+    F: FnMut(u32) -> Fut,
+    Fut: std::future::Future<Output = Result<T, E>>,
+    E: std::fmt::Display,
+{
+    let mut attempt = 0_u32;
+    loop {
+        match op(attempt).await {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
+                    let delay_ms = pg_retry_backoff_ms(attempt);
+                    tracing::warn!(
+                        attempt,
+                        delay_ms,
+                        error = %e,
+                        "PostgreSQL retryable error — retrying"
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    attempt += 1;
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    }
+}
+
+fn decode_pg_ssl_file_query_value(value: &str) -> String {
+    // Keep the common fast path allocation-free.
+    if !value.as_bytes().iter().any(|b| *b == b'%' || *b == b'+') {
+        return value.to_owned();
+    }
+
+    // Decode query value semantics (`%xx` and `+`) without reparsing the full URL.
+    // This is required when PostgreSQL URLs are split manually (multi-host support),
+    // otherwise OpenSSL receives encoded file paths like `%2Fhome%2F...`.
+    let encoded = format!("v={value}");
+    url::form_urlencoded::parse(encoded.as_bytes())
+        .find_map(|(k, v)| (k == "v").then(|| v.into_owned()))
+        .unwrap_or_else(|| value.to_owned())
+}
 
 /// Get a client from the pool, retrying on transient connection errors.
 /// Used by Migrate trait methods for startup resilience.
@@ -205,6 +290,116 @@ macro_rules! get_pgsql_query {
     };
 }
 
+/// Builds a `deadpool-postgres` pool for `connection_url`, handling `sslmode`, multi-host URLs,
+/// and mutual-TLS client certificates.
+///
+/// `recycling` is a parameter (rather than hardcoded) so `PgAuditSink`
+/// (`crate::stores::audit::pgsql`) can reuse this exact TLS/multi-host logic instead of
+/// duplicating it: the object store pool passes `RecyclingMethod::Verified` (shared by every
+/// Actix worker, worth the extra round trip); the single-writer audit sink passes
+/// `RecyclingMethod::Fast` (its `write_event` retry loop already covers a dead connection, so a
+/// liveness probe before every insert buys nothing the retry does not already cover).
+pub(crate) fn build_pool(
+    connection_url: &str,
+    max_connections: Option<u32>,
+    recycling: RecyclingMethod,
+) -> DbResult<Pool> {
+    // Extract query parameters manually instead of using Url::parse(),
+    // which cannot handle multi-host PostgreSQL connection strings
+    // (e.g. "postgresql://user:pass@host1:5432,host2:5432/db?target_session_attrs=read-write").
+    let query_params = extract_query_params(connection_url);
+
+    // Build a URL that strips only SSL-related params (handled via MakeTlsConnector)
+    // but preserves other params like target_session_attrs for tokio-postgres.
+    let clean_url_str = rebuild_url_without_ssl_params(connection_url, &query_params);
+
+    let mut cfg = PgConfig::new();
+    cfg.url = Some(clean_url_str);
+    cfg.manager = Some(ManagerConfig {
+        // Verified runs `simple_query("")` on every recycled connection.
+        // This fails immediately at the OS level (ECONNRESET) for any dead
+        // connection, even in the race window where `is_closed()` still
+        // returns `false`. Without this, a dropped dead connection is pushed
+        // back to the idle pool without any check, and the next `pool.get()`
+        // re-validates only via `is_closed()`—which races against the
+        // tokio-postgres background task that sets the flag. Verified
+        // eliminates that race and ensures failover to a live host.
+        recycling_method: recycling,
+    });
+
+    // Pool sizing defaults: conservative pool tuned to CPU.
+    // Keep behavior consistent with the MySQL backend.
+    let default_conns: usize = std::thread::available_parallelism()
+        .map_or(1, usize::from)
+        .saturating_mul(2)
+        .min(10);
+    let max_conns: usize = max_connections
+        .and_then(|v| usize::try_from(v).ok())
+        .unwrap_or(default_conns);
+    cfg.pool = Some(deadpool_postgres::PoolConfig {
+        max_size: max_conns,
+        ..Default::default()
+    });
+
+    // Check sslmode parameter (disable, allow, prefer, require, verify-ca, verify-full)
+    let sslmode = query_params.get("sslmode").map_or("prefer", String::as_str);
+
+    if sslmode == "disable" {
+        // Explicitly no TLS
+        return cfg
+            .create_pool(None, NoTls)
+            .map_err(|e| DbError::DatabaseError(e.to_string()));
+    }
+
+    // Build TLS connector for require, verify-ca, verify-full, prefer, allow
+    let mut builder = SslConnector::builder(SslMethod::tls())
+        .map_err(|e| DbError::DatabaseError(format!("TLS setup failed: {e}")))?;
+
+    // Set verification mode based on sslmode
+    match sslmode {
+        "verify-full" => {
+            // verify-full: verify certificate AND hostname
+            builder.set_verify(SslVerifyMode::PEER);
+        }
+        "verify-ca" => {
+            // verify-ca: verify certificate but NOT hostname
+            builder.set_verify(SslVerifyMode::PEER);
+            // For verify-ca, we don't want hostname verification
+            // This is handled by not setting any hostname verification parameters
+        }
+        _ => {
+            // require, prefer, allow: connect with TLS but don't verify cert
+            builder.set_verify(SslVerifyMode::NONE);
+        }
+    }
+
+    // Load CA cert if provided (sslrootcert)
+    if let Some(ca_file) = query_params.get("sslrootcert") {
+        let ca_file = decode_pg_ssl_file_query_value(ca_file.as_ref());
+        builder
+            .set_ca_file(ca_file.as_str())
+            .map_err(|e| DbError::DatabaseError(format!("Failed to load CA: {e}")))?;
+    }
+
+    // Load client cert/key for mutual TLS (sslcert, sslkey)
+    if let Some(cert_file) = query_params.get("sslcert") {
+        let cert_file = decode_pg_ssl_file_query_value(cert_file.as_ref());
+        builder
+            .set_certificate_file(cert_file.as_str(), SslFiletype::PEM)
+            .map_err(|e| DbError::DatabaseError(format!("Failed to load client cert: {e}")))?;
+    }
+    if let Some(key_file) = query_params.get("sslkey") {
+        let key_file = decode_pg_ssl_file_query_value(key_file.as_ref());
+        builder
+            .set_private_key_file(key_file.as_str(), SslFiletype::PEM)
+            .map_err(|e| DbError::DatabaseError(format!("Failed to load client key: {e}")))?;
+    }
+
+    let connector = MakeTlsConnector::new(builder.build());
+    cfg.create_pool(None, connector)
+        .map_err(|e| DbError::DatabaseError(e.to_string()))
+}
+
 #[derive(Clone)]
 pub(crate) struct PgPool {
     pool: Pool,
@@ -216,14 +411,8 @@ impl PgPool {
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
-        // Verified runs `simple_query("")` on every recycled connection. This fails
-        // immediately at the OS level (ECONNRESET) for any dead connection, even in the race
-        // window where `is_closed()` still returns `false`. Without this, a dropped dead
-        // connection is pushed back to the idle pool without any check, and the next
-        // `pool.get()` re-validates only via `is_closed()` — which races against the
-        // tokio-postgres background task that sets the flag. Verified eliminates that race
-        // and ensures failover to a live host. The object store pool is shared by every Actix
-        // worker, so the extra round trip is worth it (unlike the single-writer audit sink).
+        // The object store pool is shared by every Actix worker, so the extra round trip from
+        // `RecyclingMethod::Verified` (see `build_pool`'s doc comment) is worth it.
         let pool = build_pool(connection_url, max_connections, RecyclingMethod::Verified)?;
 
         let mut client = pool.get().await.map_err(DbError::from)?;
@@ -1136,5 +1325,189 @@ impl PermissionsStore for PgPool {
             }
             Ok(perms)
         })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Multi-host URL helpers
+// ---------------------------------------------------------------------------
+
+/// SSL-related query parameters that are handled via `MakeTlsConnector`
+/// and must be stripped from the URL before passing to `deadpool-postgres`.
+const SSL_PARAMS: &[&str] = &["sslmode", "sslrootcert", "sslcert", "sslkey"];
+
+/// Extract query parameters from a `PostgreSQL` connection URL by splitting on `?`/`&`.
+/// This avoids `Url::parse()` which cannot handle multi-host connection strings.
+fn extract_query_params(url: &str) -> HashMap<String, String> {
+    let mut params = HashMap::new();
+    if let Some(query_start) = url.find('?') {
+        let query = &url[query_start + 1..];
+        for pair in query.split('&') {
+            if let Some((key, value)) = pair.split_once('=') {
+                params.insert(key.to_owned(), value.to_owned());
+            }
+        }
+    }
+    params
+}
+
+/// Rebuild the connection URL, removing only SSL-related query parameters.
+/// Other parameters like `target_session_attrs` are preserved for `tokio-postgres`.
+fn rebuild_url_without_ssl_params(url: &str, params: &HashMap<String, String>) -> String {
+    let base = url.split('?').next().unwrap_or(url);
+    let non_ssl_params: Vec<String> = params
+        .iter()
+        .filter(|(k, _)| !SSL_PARAMS.contains(&k.as_str()))
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect();
+    if non_ssl_params.is_empty() {
+        base.to_owned()
+    } else {
+        format!("{}?{}", base, non_ssl_params.join("&"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_query_params_single_host() {
+        let url = "postgresql://kms:kms@localhost:5432/kms?sslmode=require";
+        let params = extract_query_params(url);
+        assert_eq!(params.get("sslmode"), Some(&"require".to_owned()));
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_query_params_multi_host() {
+        let url = "postgresql://kms:kms@host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require";
+        let params = extract_query_params(url);
+        assert_eq!(
+            params.get("target_session_attrs"),
+            Some(&"read-write".to_owned())
+        );
+        assert_eq!(params.get("sslmode"), Some(&"require".to_owned()));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_extract_query_params_no_params() {
+        let url = "postgresql://kms:kms@localhost:5432/kms";
+        let params = extract_query_params(url);
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_rebuild_url_strips_only_ssl_params() {
+        let url = "postgresql://kms:kms@host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require&sslrootcert=/path/ca.pem";
+        let params = extract_query_params(url);
+        let clean = rebuild_url_without_ssl_params(url, &params);
+        assert_eq!(
+            clean,
+            "postgresql://kms:kms@host1:5432,host2:5432/kms?target_session_attrs=read-write"
+        );
+    }
+
+    #[test]
+    fn test_rebuild_url_all_ssl_params_stripped() {
+        let url = "postgresql://kms:kms@localhost:5432/kms?sslmode=require&sslcert=/c.pem&sslkey=/k.pem&sslrootcert=/ca.pem";
+        let params = extract_query_params(url);
+        let clean = rebuild_url_without_ssl_params(url, &params);
+        assert_eq!(clean, "postgresql://kms:kms@localhost:5432/kms");
+    }
+
+    #[test]
+    fn test_rebuild_url_preserves_non_ssl_params() {
+        let url = "postgresql://kms:kms@localhost:5432/kms?target_session_attrs=read-write&application_name=cosmian_kms";
+        let params = extract_query_params(url);
+        let clean = rebuild_url_without_ssl_params(url, &params);
+        // Both non-SSL params should be preserved (order may vary)
+        assert!(clean.contains("target_session_attrs=read-write"));
+        assert!(clean.contains("application_name=cosmian_kms"));
+        assert!(clean.starts_with("postgresql://kms:kms@localhost:5432/kms?"));
+    }
+
+    #[test]
+    fn test_rebuild_url_no_params() {
+        let url = "postgresql://kms:kms@localhost:5432/kms";
+        let params = extract_query_params(url);
+        let clean = rebuild_url_without_ssl_params(url, &params);
+        assert_eq!(clean, url);
+    }
+
+    #[test]
+    fn test_multi_host_url_preserved_in_rebuild() {
+        let url = "postgresql://kms:kms@host1:5432,host2:5433,host3:5434/kms?target_session_attrs=read-write";
+        let params = extract_query_params(url);
+        let clean = rebuild_url_without_ssl_params(url, &params);
+        assert_eq!(clean, url);
+    }
+
+    #[test]
+    fn test_pg_retry_backoff_ms() {
+        assert_eq!(pg_retry_backoff_ms(0), 50); // 50 * 2^0
+        assert_eq!(pg_retry_backoff_ms(1), 100); // 50 * 2^1
+        assert_eq!(pg_retry_backoff_ms(5), 1600); // 50 * 2^5
+        assert_eq!(pg_retry_backoff_ms(6), 3200); // 50 * 2^6 (capped at PG_MAX_RETRIES)
+        assert_eq!(pg_retry_backoff_ms(100), 3200); // capped
+    }
+
+    #[test]
+    fn test_is_pg_retryable_error_deadlock_serialization() {
+        assert!(is_pg_retryable_error("ERROR: deadlock detected"));
+        assert!(is_pg_retryable_error("SQLSTATE 40P01"));
+        assert!(is_pg_retryable_error("serialization failure"));
+        assert!(is_pg_retryable_error("SQLSTATE 40001"));
+    }
+
+    #[test]
+    fn test_is_pg_retryable_error_connection() {
+        assert!(is_pg_retryable_error("connection refused"));
+        assert!(is_pg_retryable_error("connection reset by peer"));
+        assert!(is_pg_retryable_error("connection closed"));
+        assert!(is_pg_retryable_error("broken pipe"));
+        assert!(is_pg_retryable_error(
+            "server closed the connection unexpectedly"
+        ));
+        assert!(is_pg_retryable_error(
+            "terminating connection due to administrator command"
+        ));
+        assert!(is_pg_retryable_error("could not connect to server"));
+    }
+
+    #[test]
+    fn test_is_pg_retryable_error_sqlstate_codes() {
+        assert!(is_pg_retryable_error("SQLSTATE 08001"));
+        assert!(is_pg_retryable_error("SQLSTATE 08003"));
+        assert!(is_pg_retryable_error("SQLSTATE 08004"));
+        assert!(is_pg_retryable_error("SQLSTATE 08006"));
+        assert!(is_pg_retryable_error("SQLSTATE 57P01"));
+        assert!(is_pg_retryable_error("SQLSTATE 57P02"));
+        assert!(is_pg_retryable_error("SQLSTATE 57P03"));
+    }
+
+    #[test]
+    fn test_is_pg_retryable_error_case_insensitive() {
+        assert!(is_pg_retryable_error("DEADLOCK DETECTED"));
+        assert!(is_pg_retryable_error("Connection Refused"));
+    }
+
+    #[test]
+    fn test_is_pg_retryable_error_substring_match() {
+        assert!(is_pg_retryable_error(
+            "error connecting: SQLSTATE 08001 connection exception"
+        ));
+        assert!(is_pg_retryable_error(
+            "db error: ERROR: deadlock detected while waiting for lock"
+        ));
+    }
+
+    #[test]
+    fn test_is_pg_retryable_error_non_retryable() {
+        assert!(!is_pg_retryable_error("unique constraint violation"));
+        assert!(!is_pg_retryable_error("syntax error"));
+        assert!(!is_pg_retryable_error("permission denied"));
+        assert!(!is_pg_retryable_error(""));
     }
 }
