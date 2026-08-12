@@ -1,5 +1,5 @@
 ---
-title: "ADR-0007: TCP Syslog with RFC 6587 Octet-Counting for CEF Transport"
+title: "ADR-2026-08-10-tcp-syslog-cef-transport: TCP Syslog with RFC 6587 Octet-Counting for CEF Transport"
 status: "Accepted"
 date: "2026-08-10"
 authors: "contributors, security operations engineers"
@@ -8,7 +8,7 @@ supersedes: ""
 superseded_by: ""
 ---
 
-# ADR-0007: TCP Syslog with RFC 6587 Octet-Counting for CEF Transport
+# ADR-2026-08-10-tcp-syslog-cef-transport: TCP Syslog with RFC 6587 Octet-Counting for CEF Transport
 
 ## Status
 
@@ -16,7 +16,7 @@ Accepted
 
 ## Context
 
-CEF audit lines (ADR-0005) must be delivered to SIEM receivers. The initial CEF
+CEF audit lines (ADR-2026-07-09-cef-siem-export-format) must be delivered to SIEM receivers. The initial CEF
 export pipeline (`ckms audit export --format cef | nc -u`) used **UDP syslog**, which
 is fine for ad hoc verification but unsuitable for production:
 
@@ -155,11 +155,12 @@ field). Both modes are supported by `rsyslog`, `syslog-ng`, and Splunk TCP input
 
 ### OTLP log records as primary CEF transport
 
-- **ALT-007 Description**: Rely on the OTLP audit log export (ADR-0006) to carry
-  the CEF attribute to the collector, then route to the SIEM from the collector.
-- **ALT-008 Rejection Reason**: OTLP audit export is a complementary path, not a
-  replacement. CEF-over-syslog is for operators whose SIEM accepts syslog but does
-  not have an OTLP collector. The two paths coexist.
+- **ALT-007 Description**: Use an OTLP collector to carry CEF attributes to the SIEM,
+  routing the audit events from the collector.
+- **ALT-008 Rejection Reason**: The OTLP audit push pattern was removed (an in-process
+  channel cannot provide the exhaustive delivery guarantee required for compliance audit
+  trails). CEF-over-syslog is the recommended path for operators whose SIEM accepts
+  syslog; file tailing is the recommended continuous ingestion path.
 
 ## Implementation Notes
 
@@ -174,9 +175,8 @@ field). Both modes are supported by `rsyslog`, `syslog-ng`, and Splunk TCP input
 
 ## References
 
-- **REF-001**: ADR-0005 — CEF v27 as SIEM Export Format (CEF format definition)
-- **REF-002**: ADR-0006 — OTLP Log Record Export (complementary native push path)
-- **REF-003**: RFC 6587 — Transmission of Syslog Messages over TCP
+- **REF-001**: ADR-2026-07-09-cef-siem-export-format — CEF v27 as SIEM Export Format (CEF format definition)
+- **REF-002**: RFC 6587 — Transmission of Syslog Messages over TCP
 - **REF-004**: `documentation/docs/configuration/siems.md` — SIEM integration guide
 - **REF-005**: `rsyslog/syslog_appliance_alpine` — Docker image (ASL 2.0)
 - **REF-006**: `CHANGELOG/feat_audit_integration.md` — branch change log

@@ -504,9 +504,6 @@ failure_mode = "continue"
 
 [audit.file]
 
-[audit.otlp]
-allow_insecure = false
-
 [crl]
 crl_default_validity_days = 7
 crl_refresh_check_hours = 1
