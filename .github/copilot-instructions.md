@@ -7,6 +7,28 @@ supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
 For autonomous agent work, full instructions are in `AGENTS.md`.
 For the skills index, see `.github/skills/README.md`. Skills live in `.github/skills/`.
 
+Per-file coding rules are in `.github/instructions/` and are applied automatically by
+agents when editing matching file types (`applyTo` in each file's YAML frontmatter):
+
+| Instruction file | Applies to |
+|-----------------|------------|
+| `rust.instructions.md` | All `*.rs` files |
+| `rust-server.instructions.md` | `crate/server/**/*.rs` |
+| `rust-crypto.instructions.md` | `crate/crypto/**/*.rs` |
+| `rust-kmip.instructions.md` | `crate/kmip/**/*.rs` |
+| `rust-database.instructions.md` | `crate/server_database/**/*.rs` |
+| `rust-cli.instructions.md` | `crate/clients/**/*.rs` |
+| `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` |
+| `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` |
+| `bash.instructions.md` | `**/*.sh` |
+| `mise.instructions.md` | `.mise/**, scripts/**, .github/reusable_scripts/**` |
+| `github-actions.instructions.md` | `.github/workflows/**, .github/actions/**` |
+| `toml.instructions.md` | `**/*.toml` |
+| `python.instructions.md` | `**/*.py` |
+| `markdown.instructions.md` | `**/*.md` |
+| `docs.instructions.md` | `documentation/**/*.md` |
+| `nix.instructions.md` | `nix/**/*.nix` |
+
 ---
 
 ## Key directories
@@ -58,6 +80,8 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 | Command | When to use |
 |---------|-------------|
 | `/kms-sync-rules` | After every code change — auto-detects changed files |
+| `/rust-review-all` | **Full Rust quality gate** — all review skills + reports in `./review/` |
+| `/rust-panic-audit` | Scan for panics, `.unwrap()`, `process::exit`, brutal exits |
 | `/meta-security` | **Comprehensive security audit** — orchestrates all 4 security skills |
 | `/security-review` | Before any PR |
 | `/cryptography-review` | When touching `crate/crypto/` or algorithm selection |
@@ -65,6 +89,7 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 | `/kmip-compliance` | When adding/modifying a KMIP operation |
 | `/rust-patterns` | Rust design patterns for this codebase |
 | `/rust-simplify` | Find simplification opportunities in Rust code |
+| `/rust-error-propagation` | Audit `Result` propagation chains |
 | `/react-ant-patterns` | UI coding conventions |
 | `/kms-changelog` | Writing the branch CHANGELOG entry |
 | `/threat-model` | STRIDE-A threat model |

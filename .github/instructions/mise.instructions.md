@@ -1,7 +1,7 @@
 ---
 name: 'MISE Task Conventions'
 description: 'Best practices for writing MISE task scripts and shell libraries in the Eviden KMS project'
-applyTo: '.mise/**'
+applyTo: '.mise/**, scripts/**, .github/reusable_scripts/**'
 ---
 
 # MISE task and library conventions

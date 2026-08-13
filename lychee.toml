@@ -80,6 +80,8 @@ exclude = [
   'dev\.mysql\.com',
   'techdocs\.broadcom\.com',
   'swagger\.io',
+  # IBM docs — returns 503 Service Unavailable (Guardium CM TDE guide)
+  'www\.ibm\.com',
 
   # Kubernetes SIG documentation site — resets connections from automated crawlers
   'secrets-store-csi-driver\.sigs\.k8s\.io',

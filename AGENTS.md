@@ -4,10 +4,34 @@
 
 > **Instruction files** ([official docs](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions)):
 >
-> - `AGENTS.md` / `CLAUDE.md` — **agent instructions**: read by GitHub Copilot agent, Claude, and generic agents when performing autonomous tasks. Contains the full project reference.
+> - `AGENTS.md` / `CLAUDE.md` — **agent instructions**: read by GitHub Copilot agent, Claude, Deepseek, Qwen, and generic agents when performing autonomous tasks. Contains the full project reference.
 > - `.github/copilot-instructions.md` — **repository-wide instructions**: a concise summary injected into every GitHub Copilot Chat request. Keep it short (≤2 pages).
+> - `.github/instructions/*.instructions.md` — **per-file coding rules**: automatically applied by agents when editing matching files (see `applyTo` in each file's YAML frontmatter).
 >
-> These are separate files. When changing project-wide rules, update both.
+> These are separate files. When changing project-wide rules, update both `AGENTS.md` and `.github/copilot-instructions.md`.
+
+### Per-file instruction files index
+
+The following files in `.github/instructions/` are automatically applied by agents when editing matching file types:
+
+| File | `applyTo` | Covers |
+|------|-----------|--------|
+| `rust.instructions.md` | `**/*.rs` | Core Rust rules (errors, unsafe, Clippy, tests, docs) |
+| `rust-server.instructions.md` | `crate/server/**/*.rs` | KMIP operations, routes, middleware |
+| `rust-crypto.instructions.md` | `crate/crypto/**/*.rs` | FIPS-approved algorithms, OpenSSL provider |
+| `rust-kmip.instructions.md` | `crate/kmip/**/*.rs` | KMIP 2.1 protocol types and serialisation |
+| `rust-database.instructions.md` | `crate/server_database/**/*.rs` | SQLite, PostgreSQL, Redis-findex backends |
+| `rust-cli.instructions.md` | `crate/clients/**/*.rs` | CLI actions, WASM bindings, PKCS#11 |
+| `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` | React 19, Ant Design 5, Tailwind 4, WASM |
+| `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` | Playwright E2E test conventions |
+| `bash.instructions.md` | `**/*.sh` | Shell scripts, MISE tasks, reusable scripts |
+| `mise.instructions.md` | `.mise/**, scripts/**, .github/reusable_scripts/**` | MISE task headers, lib usage, variant flags |
+| `github-actions.instructions.md` | `.github/workflows/**, .github/actions/**` | CI/CD YAML conventions |
+| `toml.instructions.md` | `**/*.toml` | Cargo.toml, workspace, config TOML |
+| `python.instructions.md` | `**/*.py` | Documentation scripts, test helpers |
+| `markdown.instructions.md` | `**/*.md` | README, CHANGELOG, skill/instruction docs |
+| `docs.instructions.md` | `documentation/**/*.md` | MkDocs site (Diátaxis framework) |
+| `nix.instructions.md` | `nix/**/*.nix` | Nix build expressions, vendor hashes |
 
 Cosmian KMS is a high-performance, source available **FIPS 140-3** compliant Key
 Management System written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS
@@ -341,9 +365,13 @@ All team-wide skills are in `.github/skills/`. See `.github/prompts/README.md` f
 | `/openapi-endpoint` | When adding a new REST endpoint (full rule 4.2 flow) |
 | `/threat-model` | Full STRIDE-A threat model or incremental update |
 | `/code-quality [path]` | Full code quality audit — duplication, patterns, Clippy, CI |
+| `/rust-review-all [path]` | **Hardcore Rust gate** — runs all 10 review phases, reports in `./review/`, go/no-go verdict |
+| `/rust-panic-audit [path]` | Scan for panics, `.unwrap()`, `.expect()`, `process::exit`, unchecked indexing |
 | `/refactor-plan` | Before any multi-file refactor |
 | `/rust-refactor` | To find and consolidate Rust code duplication |
 | `/rust-simplify [path]` | Find simplification opportunities: nesting, long functions, dead code, bool traps, iterator anti-patterns |
+| `/rust-error-propagation [path]` | Analyze `Result` chains: missed `?`, lost context, `.to_string()` anti-patterns |
+| `/rust-async-refactor [path]` | Detect sequential `.await` chains, blocking calls on async paths |
 | `/rust-patterns` | KMS-specific Rust design patterns reference |
 | `/docs-writer` | For documentation pages (Diátaxis framework) |
 | `/adr` | For architectural decisions |
@@ -474,3 +502,47 @@ Deb and RPM packages are built via Nix. Vendor hash files live in `nix/expected-
 > that `Cargo.lock` or `ui/pnpm-lock.yaml` actually changed intentionally in this PR.
 > If not, revert the lock file. If the dependency change is intentional, retrieve the
 > correct hash from the CI log (`got: sha256-...`) and update `nix/expected-hashes/`.
+
+---
+
+## 9. AI model compatibility notes
+
+This file is read by all AI coding agents. The rules in sections 4–8 are **non-negotiable**
+regardless of which model processes them.
+
+### GitHub Copilot (GPT-based)
+
+- Receives `.github/copilot-instructions.md` automatically in every chat request.
+- Receives per-file `*.instructions.md` files automatically when editing matching files.
+- Run skills with `/skill-name` in Copilot Chat.
+
+### Claude (Anthropic)
+
+- Reads this file (`AGENTS.md`) and `CLAUDE.md` (symlink to this file) automatically.
+- Applies per-file instructions from `.github/instructions/` when instructed.
+
+### Deepseek (DeepSeek-Coder / DeepSeek-V3 / R1)
+
+- Reads `AGENTS.md` as the primary instruction source.
+- **Must apply** all rules in section 4 (Cardinal coding rules) unconditionally.
+- **Must apply** the per-file instruction file that matches the file being edited (see the index in section 1).
+- Do not generate code that uses `.unwrap()`, inline `#[cfg]` in function bodies, or skips Clippy lints.
+- Execute the post-change workflow in section 5 after every code change.
+
+### Qwen (Alibaba Cloud)
+
+- Reads `AGENTS.md` as the primary instruction source.
+- **Must apply** all rules in section 4 (Cardinal coding rules) unconditionally.
+- **Must apply** the per-file instruction file that matches the file being edited (see the index in section 1).
+- Do not generate code that uses `.unwrap()`, inline `#[cfg]` in function bodies, or skips Clippy lints.
+- Execute the post-change workflow in section 5 after every code change.
+- FIPS 140-3 compliance is mandatory: only generate cryptographic code using FIPS-approved algorithms and the patterns in `rust-crypto.instructions.md`.
+
+### Gemini (Google)
+
+- Reads `AGENTS.md` as the primary instruction source.
+- Apply all rules in section 4 and the per-file instruction index in section 1.
+
+### All models
+
+If any instruction in this file conflicts with a model's default behaviour or training, **this file takes precedence**. When in doubt, ask for clarification rather than generating code that violates the cardinal rules.
