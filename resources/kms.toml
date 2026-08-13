@@ -82,6 +82,17 @@ hostname = "0.0.0.0"
 # load balancer. Leave it unset otherwise (client_ip then always reflects the
 # real TCP peer address).
 # trusted_proxy_cidrs = ["10.0.0.0/8"]
+#
+# Alternative backend: PostgreSQL instead of a local JSONL file. Only one of
+# [audit.file] / [audit.postgres] is active — a PostgreSQL url, when set, takes
+# precedence over the file path above. This database MUST be different from
+# the main object-storage database configured under [db] below.
+# [audit.postgres]
+# url = "postgresql://kms_audit:secret@db:5432/kms_audit?sslmode=verify-full"
+# # Identifies this KMS instance's hash chain. Must be STABLE across restarts
+# # and UNIQUE per instance sharing this database. Defaults to the machine
+# # hostname; set this explicitly in Kubernetes deployments.
+# instance_id = "kms-eu-west-1a"
 
 [db]
 database_type = "redis-findex"

@@ -238,19 +238,43 @@ pub struct ServerParams {
     /// The `sub` claim is used as the user identity.
     pub auth_verifier_config: Option<AuthVerifierConfig>,
 
-    /// When `Some`, tamper-evident JSONL audit logging is enabled and events
-    /// are appended to the file at this path.  `None` means audit logging is
-    /// disabled (the default).
-    pub audit_file_path: Option<std::path::PathBuf>,
+    /// Resolved audit pipeline parameters. `None` when audit logging is disabled.
+    pub audit: Option<AuditParams>,
+}
 
-    /// Capacity of the bounded in-memory channel between request threads and the
-    /// audit writer task.  Propagated from `--audit-channel-capacity` /
-    /// `KMS_AUDIT_CHANNEL_CAPACITY`.  Must be ≥ 1.
-    pub audit_channel_capacity: usize,
+/// Resolved audit pipeline parameters, produced by `AuditConfig::init()`.
+#[derive(Clone)]
+pub struct AuditParams {
+    pub backend: AuditBackendParams,
+    /// Capacity of the bounded in-memory channel between request threads and the audit writer
+    /// task. Propagated from `--audit-channel-capacity` / `KMS_AUDIT_CHANNEL_CAPACITY`. Must be
+    /// ≥ 1.
+    pub channel_capacity: usize,
+    /// Trusted reverse-proxy CIDR blocks. `X-Forwarded-For` is only used when the direct TCP
+    /// peer address falls within one of these ranges.
+    pub trusted_proxy_cidrs: Vec<IpNet>,
+}
 
-    /// Trusted reverse-proxy CIDR blocks.  `X-Forwarded-For` is only used when
-    /// the direct TCP peer address falls within one of these ranges.
-    pub audit_trusted_proxy_cidrs: Vec<IpNet>,
+/// Resolved audit storage backend — one variant per backend, all values already validated by
+/// `AuditConfig::init()`, so nothing downstream re-checks the config. Mirrors `MainDbParams` in
+/// `cosmian_kms_server_database`.
+#[derive(Clone)]
+pub enum AuditBackendParams {
+    File { path: std::path::PathBuf },
+    Postgres { url: String, instance_id: String },
+}
+
+impl fmt::Debug for AuditBackendParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::File { path } => write!(f, "file: {}", path.display()),
+            Self::Postgres { url, instance_id } => write!(
+                f,
+                "postgres: {}, instance_id: {instance_id}",
+                cosmian_kms_server_database::redact_connection_string(url)
+            ),
+        }
+    }
 }
 
 /// Represents the server parameters.
@@ -325,6 +349,19 @@ impl ServerParams {
             "http"
         };
 
+        let workspace = conf.workspace.init().context("failed to init workspace")?;
+        let main_db_params = conf.db.init(&workspace).context("failed to init DB")?;
+        // Only a PostgreSQL main database can collide with a PostgreSQL audit database; other
+        // backends can never be "the same database" as the audit one.
+        let main_db_url = match &main_db_params {
+            MainDbParams::Postgres(url, _) => Some(url.clone()),
+            _ => None,
+        };
+        let audit = conf
+            .audit
+            .init(&workspace, main_db_url.as_deref())
+            .context("failed to init audit")?;
+
         let res = Self {
             identity_provider_configurations: {
                 // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
@@ -335,11 +372,7 @@ impl ServerParams {
             ui_index_html_folder,
             ui_enable: conf.ui_config.enable,
             ui_oidc_auth: conf.ui_config.ui_oidc_auth,
-            main_db_params: Some(
-                conf.db
-                    .init(&conf.workspace.init().context("failed to init workspace")?)
-                    .context("failed to init DB")?,
-            ),
+            main_db_params: Some(main_db_params),
             clear_db_on_start: conf.db.clear_database,
             unwrapped_cache_max_age: if conf.db.unwrapped_cache_max_age == 0 {
                 return Err(KmsError::NotSupported(
@@ -479,18 +512,7 @@ impl ServerParams {
             } else {
                 None
             },
-            audit_file_path: if conf.audit.audit_enable {
-                let path = conf
-                    .audit
-                    .file
-                    .audit_file_path
-                    .unwrap_or_else(|| conf.workspace.root_data_path.join("audit.jsonl"));
-                Some(path)
-            } else {
-                None
-            },
-            audit_channel_capacity: conf.audit.audit_channel_capacity,
-            audit_trusted_proxy_cidrs: conf.audit.audit_trusted_proxy_cidrs,
+            audit,
         };
 
         debug!("{res:#?}");
@@ -851,9 +873,14 @@ impl fmt::Debug for ServerParams {
                 &self.jwks_endpoint.jwks_endpoint_enabled,
             );
         }
-        debug_struct.field("audit_file_path", &self.audit_file_path);
-        debug_struct.field("audit_channel_capacity", &self.audit_channel_capacity);
-        debug_struct.field("audit_trusted_proxy_cidrs", &self.audit_trusted_proxy_cidrs);
+        if let Some(ref audit) = self.audit {
+            debug_struct
+                .field("audit_backend", &audit.backend)
+                .field("audit_channel_capacity", &audit.channel_capacity)
+                .field("audit_trusted_proxy_cidrs", &audit.trusted_proxy_cidrs);
+        } else {
+            debug_struct.field("audit", &"disabled");
+        }
 
         // Vault API fields
         debug_struct.field("vault_api_enabled", &self.vault_api_enabled);

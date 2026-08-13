@@ -11,7 +11,9 @@ pub use hsm::{
     HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, HsmStore, KeyMaterial,
     RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
-pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore};
+pub use stores::{
+    AtomicOperation, AuditSink, ChainHead, ObjectWithMetadata, ObjectsStore, PermissionsStore,
+};
 
 /// Number of seconds in one day — the finest granularity PKCS#11 `CK_DATE` can represent.
 pub const SECS_PER_DAY: i64 = 24 * 3600;

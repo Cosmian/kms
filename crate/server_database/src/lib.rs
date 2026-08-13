@@ -37,13 +37,14 @@
 mod core;
 pub use core::{
     AdditionalObjectStoresParams, CachedObject, Database, DbMetricsRecorder, MainDbKind,
-    MainDbParams, ObjectCache, UnwrappedCache,
+    MainDbParams, ObjectCache, UnwrappedCache, redact_connection_string,
 };
 mod error;
 pub use error::DbError;
 mod stores;
 #[cfg(feature = "non-fips")]
 pub use stores::redis_master_key_from_password;
+pub use stores::{PgAuditReader, PgAuditSink};
 #[cfg(test)]
 mod tests;
 

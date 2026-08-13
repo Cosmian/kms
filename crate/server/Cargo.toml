@@ -58,6 +58,7 @@ actix-session = { workspace = true, features = ["cookie-session"] }
 actix-tls = { workspace = true }
 actix-web = { workspace = true, features = ["macros", "openssl"] }
 async-recursion = { workspace = true }
+async-trait = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = [
@@ -72,6 +73,7 @@ clap = { workspace = true, features = [
 clap-config-fallback = { workspace = true }
 cosmian_kms_access = { path = "../access", version = "5.26.0" }
 cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.26.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.26.0" }
 cosmian_kms_server_database = { path = "../server_database", version = "5.26.0" }
 cosmian_logger = { workspace = true }
 crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.26.0" }
@@ -81,6 +83,7 @@ dotenvy = { workspace = true }
 futures = { workspace = true }
 governor = { version = "0.10", features = ["std"] }
 hex = { workspace = true, features = ["serde"] }
+hostname = "0.4"
 http = { workspace = true }
 ipnet = { version = "2", features = ["serde"] }
 jsonwebtoken = { workspace = true }
@@ -128,7 +131,6 @@ windows-service = "0.8"
 [dev-dependencies]
 actix-http = { workspace = true }
 cosmian_kms_client_utils = { path = "../clients/client_utils", version = "5.26.0" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.26.0" }
 native-tls = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 pem = { workspace = true }

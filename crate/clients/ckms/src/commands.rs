@@ -172,7 +172,7 @@ pub async fn ckms_main() -> CosmianResult<()> {
     // Short-circuit: audit commands read the file directly — no server connection
     // or ckms.toml needed.
     if let CliCommands::Kms(KmsActions::Audit(audit_action)) = &cli.command {
-        return audit_action.process().map_err(Into::into);
+        return audit_action.process().await.map_err(Into::into);
     }
 
     let mut config = ClientConfig::load(cli.conf_path.clone())?;

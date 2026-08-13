@@ -1,8 +1,9 @@
 # Audit logging
 
 The Eviden KMS server can write a cryptographically-chained, tamper-evident audit trail of every
-KMIP operation to a local JSONL file. Each line is a JSON object; the file is human-readable and
-can be parsed by any standard tooling.
+KMIP operation. Two storage backends are available: a local JSONL file (the default), or a
+`PostgreSQL` database for centrally-managed, queryable deployments — see
+[Storage backends](#storage-backends).
 
 Audit logging is **disabled by default**. No file is created and no background writer thread is
 spawned until the feature is explicitly enabled.
@@ -39,6 +40,50 @@ When `audit.file.path` is omitted the file defaults to `<root-data-path>/audit.j
 
 ---
 
+## Storage backends
+
+### File (default)
+
+Each line is a JSON object; the file is human-readable and can be parsed by any standard
+tooling. See the configuration reference above.
+
+### PostgreSQL
+
+When `[audit.postgres].url` is set, audit events are written to `PostgreSQL` instead of the
+file. This database **must be different** from the main object-storage database
+(`--database-url`) — the server refuses to start otherwise.
+
+```toml
+[audit]
+enabled = true
+
+[audit.postgres]
+url = "postgresql://kms_audit:secret@db:5432/kms_audit?sslmode=verify-full"
+instance_id = "kms-eu-west-1a"
+```
+
+Each KMS instance owns an independent hash chain, keyed by `instance_id` (defaults to the
+machine hostname). `instance_id` must be **stable across restarts** and **unique per
+instance** sharing the database — set it explicitly in Kubernetes deployments rather than
+relying on an ephemeral pod hostname. Two instances sharing an `instance_id` are rejected at
+the database level (`SQLSTATE 23505`) rather than silently forking the chain.
+
+The schema (`kms_audit_events`) is created automatically on first connection if it does not
+already exist. For a hardened production deployment, provision it out-of-band with a
+restricted role — see `documentation/docs/configuration/audit-postgres-setup.sql` — so the
+KMS's own connection only has `INSERT`/`SELECT`, never table-ownership rights that could
+bypass the append-only triggers.
+
+A `PostgreSQL` audit database that is unreachable at startup, or that fails a write at
+runtime after exhausting its retry budget, stops the server rather than silently falling back
+to no audit logging — see ADR-0006.
+
+Use `ckms audit export --postgres-url ...` / `ckms audit verify --postgres-url ...` in place
+of `--path` to read from `PostgreSQL`; add `--instance-id` to restrict to one chain. See
+[Audit log management](../kms_clients/audit.md).
+
+---
+
 ## Configuration reference
 
 | CLI flag                   | Environment variable         | Default                        | Description                                                                                                                              |
@@ -47,6 +92,8 @@ When `audit.file.path` is omitted the file defaults to `<root-data-path>/audit.j
 | `--audit-file-path`        | `KMS_AUDIT_FILE_PATH`        | `<root-data-path>/audit.jsonl` | Absolute path to the JSONL audit log file. Parent directories are created automatically on first write.                                  |
 | `--audit-channel-capacity` | `KMS_AUDIT_CHANNEL_CAPACITY` | `4096`                         | Capacity of the bounded in-memory channel between request threads and the writer task. Each event is ≈ 500 B (≈ 2 MiB total at default). |
 | `--audit-trusted-proxy-cidrs` | `KMS_AUDIT_TRUSTED_PROXY_CIDRS` | _(empty)_                    | Comma-separated CIDR blocks (e.g. `10.0.0.0/8,172.16.0.0/12`) of reverse proxies/load balancers allowed to set `client_ip` via `X-Forwarded-For`. See [Client IP and reverse proxies](#client-ip-and-reverse-proxies). |
+| `--audit-postgres-url`     | `KMS_AUDIT_POSTGRES_URL`     | _(unset)_                      | `PostgreSQL` URL for the audit database. When set, takes precedence over the file backend. Must differ from `--database-url`. |
+| `--audit-instance-id`      | `KMS_AUDIT_INSTANCE_ID`      | machine hostname               | Identifies this instance's hash chain when using the `PostgreSQL` backend. Must be stable and unique per instance. |
 
 > **Tip**: if you see `AuditFileStore: channel full` in the server log under sustained high load, raise
 > `--audit-channel-capacity`. When the channel is full the event is dropped (non-blocking) and an

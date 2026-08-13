@@ -23,7 +23,7 @@
 #   KMS_SLOT_DATA_DIR             — "/tmp/kms-slot-<N>"
 #
 #   Database host ports:
-#     KMS_SLOT_POSTGRES_PORT, KMS_SLOT_POSTGRES_MTLS_PORT
+#     KMS_SLOT_POSTGRES_PORT, KMS_SLOT_POSTGRES_MTLS_PORT, KMS_SLOT_POSTGRES_AUDIT_PORT
 #     KMS_SLOT_MYSQL_PORT, KMS_SLOT_PERCONA_PORT, KMS_SLOT_MARIADB_PORT
 #     KMS_SLOT_MYSQL_MTLS_PORT, KMS_SLOT_REDIS_PORT
 #
@@ -62,6 +62,7 @@ readonly _SLOT_STRIDE=1000
 # Database services (host-side ports; container-internal ports stay fixed)
 readonly _BASE_POSTGRES_PORT=5432
 readonly _BASE_POSTGRES_MTLS_PORT=5433
+readonly _BASE_POSTGRES_AUDIT_PORT=5436
 readonly _BASE_MYSQL_PORT=3306
 readonly _BASE_PERCONA_PORT=3307
 readonly _BASE_MARIADB_PORT=3308
@@ -123,6 +124,7 @@ slot_init() {
   # ── Database host ports ───────────────────────────────────────────────────
   export KMS_SLOT_POSTGRES_PORT=$((_BASE_POSTGRES_PORT + offset))
   export KMS_SLOT_POSTGRES_MTLS_PORT=$((_BASE_POSTGRES_MTLS_PORT + offset))
+  export KMS_SLOT_POSTGRES_AUDIT_PORT=$((_BASE_POSTGRES_AUDIT_PORT + offset))
   export KMS_SLOT_MYSQL_PORT=$((_BASE_MYSQL_PORT + offset))
   export KMS_SLOT_PERCONA_PORT=$((_BASE_PERCONA_PORT + offset))
   export KMS_SLOT_MARIADB_PORT=$((_BASE_MARIADB_PORT + offset))
@@ -154,6 +156,7 @@ slot_init() {
 
   # ── Computed database URLs (consumed by Rust tests and MISE tasks) ────────
   export KMS_POSTGRES_URL="postgresql://kms:kms@127.0.0.1:${KMS_SLOT_POSTGRES_PORT}/kms"
+  export KMS_AUDIT_POSTGRES_URL="postgresql://kms_audit:kms_audit@127.0.0.1:${KMS_SLOT_POSTGRES_AUDIT_PORT}/kms_audit"
   export KMS_MYSQL_URL="mysql://kms:kms@127.0.0.1:${KMS_SLOT_MYSQL_PORT}/kms"
   export KMS_MARIADB_URL="mysql://kms:kms@127.0.0.1:${KMS_SLOT_MARIADB_PORT}/kms"
   export KMS_PERCONA_URL="mysql://kms:kms@127.0.0.1:${KMS_SLOT_PERCONA_PORT}/kms"
@@ -219,6 +222,7 @@ KMS Test Slot: ${KMS_TEST_SLOT}
   Database ports:
     PostgreSQL:     ${KMS_SLOT_POSTGRES_PORT}
     PostgreSQL TLS: ${KMS_SLOT_POSTGRES_MTLS_PORT}
+    PostgreSQL audit: ${KMS_SLOT_POSTGRES_AUDIT_PORT}
     MySQL:          ${KMS_SLOT_MYSQL_PORT}
     Percona:        ${KMS_SLOT_PERCONA_PORT}
     MariaDB:        ${KMS_SLOT_MARIADB_PORT}

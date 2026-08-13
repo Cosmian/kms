@@ -1,8 +1,7 @@
 # ckms audit
 
-Manage the KMS audit log file offline.
-
-All `ckms audit` commands work **directly on a JSONL file** — no running KMS server is required.
+Manage the KMS audit log offline, reading either a local JSONL file or a `PostgreSQL` audit
+database directly — no running KMS server is required.
 The subcommands are suitable for scripts, cron jobs, and SIEM export pipelines.
 
 ## Usage
@@ -28,7 +27,16 @@ Export events from the audit log to stdout. Supports JSON (default) and CEF outp
 ### Arguments
 
 `--path [-p] <FILE>` Path to the JSONL audit log file.
-_Required._ Can also be set via `KMS_AUDIT_FILE_PATH`.
+Can also be set via `KMS_AUDIT_FILE_PATH`. Mutually exclusive with `--postgres-url`; exactly
+one of the two is required.
+
+`--postgres-url <URL>` `PostgreSQL` URL of the audit database, as an alternative to `--path`.
+Can also be set via `KMS_AUDIT_POSTGRES_URL`. Use a read-only role — these commands only ever
+`SELECT`.
+
+`--instance-id <ID>` Restrict to one instance's chain. Only meaningful with `--postgres-url`;
+when omitted, every chain (`instance_id`) in the database is processed in turn and reported
+separately, since each is an independently verifiable chain.
 
 `--since <RFC3339>` Export only events whose `timestamp` is greater than or equal to this value.
 The value must be an RFC 3339 timestamp, e.g. `2026-05-01T00:00:00Z`.
@@ -108,7 +116,14 @@ Exits with code **0** when the chain is intact, or **1** when a broken link is d
 #### Arguments
 
 `--path [-p] <FILE>` Path to the JSONL audit log file.
-_Required._ Can also be set via `KMS_AUDIT_FILE_PATH`.
+Can also be set via `KMS_AUDIT_FILE_PATH`. Mutually exclusive with `--postgres-url`; exactly
+one of the two is required.
+
+`--postgres-url <URL>` `PostgreSQL` URL of the audit database, as an alternative to `--path`.
+Can also be set via `KMS_AUDIT_POSTGRES_URL`.
+
+`--instance-id <ID>` Restrict to one instance's chain. Only meaningful with `--postgres-url`;
+when omitted, every chain in the database is verified in turn and reported separately.
 
 `--verbose` Print a summary line for every event even when the chain is valid.
 _Default: false._

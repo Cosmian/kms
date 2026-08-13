@@ -65,6 +65,42 @@ fn pg_retry_backoff_ms(attempt: u32) -> u64 {
     50_u64 * (1_u64 << cap)
 }
 
+/// Runs `op` until it succeeds, hits a non-retryable error, or exhausts `PG_MAX_RETRIES`,
+/// sleeping [`pg_retry_backoff_ms`] between attempts.
+///
+/// Shares its retry classification with the `pg_retry!`/`pg_retry_tx!` macros above so a
+/// failover looks the same to the audit log (`PgAuditSink`, `crate::stores::audit`) as it does
+/// to the object store. Unlike those macros, this takes a plain closure instead of a fresh
+/// pooled client per attempt, which is what the audit sink's single-connection retry needs.
+pub(crate) async fn retry_transient<T, E, F, Fut>(mut op: F) -> Result<T, E>
+where
+    F: FnMut(u32) -> Fut,
+    Fut: std::future::Future<Output = Result<T, E>>,
+    E: std::fmt::Display,
+{
+    let mut attempt = 0_u32;
+    loop {
+        match op(attempt).await {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
+                    let delay_ms = pg_retry_backoff_ms(attempt);
+                    tracing::warn!(
+                        attempt,
+                        delay_ms,
+                        error = %e,
+                        "PostgreSQL retryable error — retrying"
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    attempt += 1;
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    }
+}
+
 fn decode_pg_ssl_file_query_value(value: &str) -> String {
     // Keep the common fast path allocation-free.
     if !value.as_bytes().iter().any(|b| *b == b'%' || *b == b'+') {
@@ -254,6 +290,109 @@ macro_rules! get_pgsql_query {
     };
 }
 
+/// Builds a `deadpool-postgres` pool for `connection_url`, handling `sslmode`, multi-host URLs,
+/// and mutual-TLS client certificates.
+pub(crate) fn build_pool(
+    connection_url: &str,
+    max_connections: Option<u32>,
+    recycling: RecyclingMethod,
+) -> DbResult<Pool> {
+    // Extract query parameters manually instead of using Url::parse(),
+    // which cannot handle multi-host PostgreSQL connection strings
+    // (e.g. "postgresql://user:pass@host1:5432,host2:5432/db?target_session_attrs=read-write").
+    let query_params = extract_query_params(connection_url);
+
+    // Build a URL that strips only SSL-related params (handled via MakeTlsConnector)
+    // but preserves other params like target_session_attrs for tokio-postgres.
+    let clean_url_str = rebuild_url_without_ssl_params(connection_url, &query_params);
+
+    let mut cfg = PgConfig::new();
+    cfg.url = Some(clean_url_str);
+    cfg.manager = Some(ManagerConfig {
+        // Verified runs `simple_query("")` on every recycled connection.
+        // This fails immediately at the OS level (ECONNRESET) for any dead
+        // connection, even in the race window where `is_closed()` still
+        // returns `false`. Without this, a dropped dead connection is pushed
+        // back to the idle pool without any check, and the next `pool.get()`
+        // re-validates only via `is_closed()`—which races against the
+        // tokio-postgres background task that sets the flag. Verified
+        // eliminates that race and ensures failover to a live host.
+        recycling_method: recycling,
+    });
+
+    // Pool sizing defaults: conservative pool tuned to CPU.
+    // Keep behavior consistent with the MySQL backend.
+    let default_conns: usize = std::thread::available_parallelism()
+        .map_or(1, usize::from)
+        .saturating_mul(2)
+        .min(10);
+    let max_conns: usize = max_connections
+        .and_then(|v| usize::try_from(v).ok())
+        .unwrap_or(default_conns);
+    cfg.pool = Some(deadpool_postgres::PoolConfig {
+        max_size: max_conns,
+        ..Default::default()
+    });
+
+    // Check sslmode parameter (disable, allow, prefer, require, verify-ca, verify-full)
+    let sslmode = query_params.get("sslmode").map_or("prefer", String::as_str);
+
+    if sslmode == "disable" {
+        // Explicitly no TLS
+        return cfg
+            .create_pool(None, NoTls)
+            .map_err(|e| DbError::DatabaseError(e.to_string()));
+    }
+
+    // Build TLS connector for require, verify-ca, verify-full, prefer, allow
+    let mut builder = SslConnector::builder(SslMethod::tls())
+        .map_err(|e| DbError::DatabaseError(format!("TLS setup failed: {e}")))?;
+
+    // Set verification mode based on sslmode
+    match sslmode {
+        "verify-full" => {
+            // verify-full: verify certificate AND hostname
+            builder.set_verify(SslVerifyMode::PEER);
+        }
+        "verify-ca" => {
+            // verify-ca: verify certificate but NOT hostname
+            builder.set_verify(SslVerifyMode::PEER);
+            // For verify-ca, we don't want hostname verification
+            // This is handled by not setting any hostname verification parameters
+        }
+        _ => {
+            // require, prefer, allow: connect with TLS but don't verify cert
+            builder.set_verify(SslVerifyMode::NONE);
+        }
+    }
+
+    // Load CA cert if provided (sslrootcert)
+    if let Some(ca_file) = query_params.get("sslrootcert") {
+        let ca_file = decode_pg_ssl_file_query_value(ca_file.as_ref());
+        builder
+            .set_ca_file(ca_file.as_str())
+            .map_err(|e| DbError::DatabaseError(format!("Failed to load CA: {e}")))?;
+    }
+
+    // Load client cert/key for mutual TLS (sslcert, sslkey)
+    if let Some(cert_file) = query_params.get("sslcert") {
+        let cert_file = decode_pg_ssl_file_query_value(cert_file.as_ref());
+        builder
+            .set_certificate_file(cert_file.as_str(), SslFiletype::PEM)
+            .map_err(|e| DbError::DatabaseError(format!("Failed to load client cert: {e}")))?;
+    }
+    if let Some(key_file) = query_params.get("sslkey") {
+        let key_file = decode_pg_ssl_file_query_value(key_file.as_ref());
+        builder
+            .set_private_key_file(key_file.as_str(), SslFiletype::PEM)
+            .map_err(|e| DbError::DatabaseError(format!("Failed to load client key: {e}")))?;
+    }
+
+    let connector = MakeTlsConnector::new(builder.build());
+    cfg.create_pool(None, connector)
+        .map_err(|e| DbError::DatabaseError(e.to_string()))
+}
+
 #[derive(Clone)]
 pub(crate) struct PgPool {
     pool: Pool,
@@ -265,103 +404,9 @@ impl PgPool {
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
-        // Extract query parameters manually instead of using Url::parse(),
-        // which cannot handle multi-host PostgreSQL connection strings
-        // (e.g. "postgresql://user:pass@host1:5432,host2:5432/db?target_session_attrs=read-write").
-        let query_params = extract_query_params(connection_url);
-
-        // Build a URL that strips only SSL-related params (handled via MakeTlsConnector)
-        // but preserves other params like target_session_attrs for tokio-postgres.
-        let clean_url_str = rebuild_url_without_ssl_params(connection_url, &query_params);
-
-        let mut cfg = PgConfig::new();
-        cfg.url = Some(clean_url_str);
-        cfg.manager = Some(ManagerConfig {
-            // Verified runs `simple_query("")` on every recycled connection.
-            // This fails immediately at the OS level (ECONNRESET) for any dead
-            // connection, even in the race window where `is_closed()` still
-            // returns `false`. Without this, a dropped dead connection is pushed
-            // back to the idle pool without any check, and the next `pool.get()`
-            // re-validates only via `is_closed()`—which races against the
-            // tokio-postgres background task that sets the flag. Verified
-            // eliminates that race and ensures failover to a live host.
-            recycling_method: RecyclingMethod::Verified,
-        });
-
-        // Pool sizing defaults: conservative pool tuned to CPU.
-        // Keep behavior consistent with the MySQL backend.
-        let default_conns: usize = std::thread::available_parallelism()
-            .map_or(1, usize::from)
-            .saturating_mul(2)
-            .min(10);
-        let max_conns: usize = max_connections
-            .and_then(|v| usize::try_from(v).ok())
-            .unwrap_or(default_conns);
-        cfg.pool = Some(deadpool_postgres::PoolConfig {
-            max_size: max_conns,
-            ..Default::default()
-        });
-
-        // Check sslmode parameter (disable, allow, prefer, require, verify-ca, verify-full)
-        let sslmode = query_params.get("sslmode").map_or("prefer", String::as_str);
-
-        let pool = if sslmode == "disable" {
-            // Explicitly no TLS
-            cfg.create_pool(None, NoTls)
-                .map_err(|e| DbError::DatabaseError(e.to_string()))?
-        } else {
-            // Build TLS connector for require, verify-ca, verify-full, prefer, allow
-            let mut builder = SslConnector::builder(SslMethod::tls())
-                .map_err(|e| DbError::DatabaseError(format!("TLS setup failed: {e}")))?;
-
-            // Set verification mode based on sslmode
-            match sslmode {
-                "verify-full" => {
-                    // verify-full: verify certificate AND hostname
-                    builder.set_verify(SslVerifyMode::PEER);
-                }
-                "verify-ca" => {
-                    // verify-ca: verify certificate but NOT hostname
-                    builder.set_verify(SslVerifyMode::PEER);
-                    // For verify-ca, we don't want hostname verification
-                    // This is handled by not setting any hostname verification parameters
-                }
-                _ => {
-                    // require, prefer, allow: connect with TLS but don't verify cert
-                    builder.set_verify(SslVerifyMode::NONE);
-                }
-            }
-
-            // Load CA cert if provided (sslrootcert)
-            if let Some(ca_file) = query_params.get("sslrootcert") {
-                let ca_file = decode_pg_ssl_file_query_value(ca_file.as_ref());
-                builder
-                    .set_ca_file(ca_file.as_str())
-                    .map_err(|e| DbError::DatabaseError(format!("Failed to load CA: {e}")))?;
-            }
-
-            // Load client cert/key for mutual TLS (sslcert, sslkey)
-            if let Some(cert_file) = query_params.get("sslcert") {
-                let cert_file = decode_pg_ssl_file_query_value(cert_file.as_ref());
-                builder
-                    .set_certificate_file(cert_file.as_str(), SslFiletype::PEM)
-                    .map_err(|e| {
-                        DbError::DatabaseError(format!("Failed to load client cert: {e}"))
-                    })?;
-            }
-            if let Some(key_file) = query_params.get("sslkey") {
-                let key_file = decode_pg_ssl_file_query_value(key_file.as_ref());
-                builder
-                    .set_private_key_file(key_file.as_str(), SslFiletype::PEM)
-                    .map_err(|e| {
-                        DbError::DatabaseError(format!("Failed to load client key: {e}"))
-                    })?;
-            }
-
-            let connector = MakeTlsConnector::new(builder.build());
-            cfg.create_pool(None, connector)
-                .map_err(|e| DbError::DatabaseError(e.to_string()))?
-        };
+        // The object store pool is shared by every Actix worker, so the extra round trip from
+        // `RecyclingMethod::Verified` (see `build_pool`'s doc comment) is worth it.
+        let pool = build_pool(connection_url, max_connections, RecyclingMethod::Verified)?;
 
         let mut client = pool.get().await.map_err(DbError::from)?;
         // Bootstrap schema if needed: create tables if they don't exist
