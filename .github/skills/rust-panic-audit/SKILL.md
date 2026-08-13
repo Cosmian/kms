@@ -122,27 +122,37 @@ The following are **allowed** and should be marked `[OK]`:
 
 ---
 
-## Step 5b — Scan for Clippy suppressions on added code
+## Step 5b — Scan for all lint suppressions added in this diff
+
+Covers `#[allow(...)]` and `#[expect(...)]` for **every lint**, not just Clippy.
 
 ```bash
+# Single pass: catches all new #[allow(...)] and #[expect(...)] on any lint
 git diff origin/develop...HEAD -- '*.rs' \
   | grep '^+' \
-  | grep -E '#\[allow\(clippy::' \
   | grep -v '^+++' \
-  | grep -v '//.*tracked\|//.*issue\|//.*#[0-9]\|//.*false.positive'
+  | grep -E '#\[(allow|expect)\(' \
+  | grep -v '//.*tracked\|//.*issue\|//.*#[0-9]\|//.*false.positive' \
+  | tee /tmp/lint-suppressions.txt
+
+cat /tmp/lint-suppressions.txt
 ```
 
-Any hit is a **CRITICAL blocker**: the lint must be fixed, not suppressed.
-Also scan for blanket suppressions (always CRITICAL):
+Classify each hit by severity:
 
-```bash
-git diff origin/develop...HEAD -- '*.rs' \
-  | grep '^+' \
-  | grep -E '#\[allow\(warnings\)\]' \
-  | grep -v '^+++ '
-```
+| Pattern found | Severity |
+|---------------|----------|
+| `#[allow(warnings)]` | **CRITICAL** — unconditionally forbidden, no exception |
+| `#[allow(unused_imports)]` | **CRITICAL** — remove the import |
+| `#[allow(dead_code)]` / `#[expect(dead_code)]` | **CRITICAL** — remove the dead item |
+| `#[allow(unused_*)]` / `#[expect(unused_*)]` | **HIGH** — remove or rename to `_` |
+| `#[allow(deprecated)]` / `#[expect(deprecated)]` | **HIGH** — migrate off the deprecated API |
+| `#[allow(clippy::*)]` / `#[expect(clippy::*)]` without justification | **HIGH** — fix the lint |
+| `#[allow(clippy::*)]` / `#[expect(clippy::*)]` with `// tracked in #N` | **LOW** (pre-existing, logged only) |
 
-Append findings to `./review/rust-panic-audit.md` under a `## Clippy Suppressions` section.
+Any CRITICAL or HIGH match without a `// tracked in #<N>` or `// false positive:` justification comment on the same line is a **blocker** — reject and fix.
+
+Append all findings to `./review/rust-panic-audit.md` under a `## Lint Suppressions` heading.
 
 ---
 

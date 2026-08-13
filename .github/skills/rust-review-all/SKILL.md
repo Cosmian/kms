@@ -129,29 +129,32 @@ cargo fmt --all -- --check 2>&1 | tee ./review/fmt.txt
 - **BLOCKER** if Clippy emits any warnings.
 - **BLOCKER** if `cargo fmt --check` exits non-zero.
 
-### 10b — Scan for illegitimate `#[allow(clippy::...)]` additions
+### 10b — Scan for all new lint suppressions (`#[allow]` / `#[expect]`)
+
+Covers every lint — not just Clippy. Uses a single diff-based pass:
 
 ```bash
+# Detect all newly added #[allow(...)] and #[expect(...)] on any lint
 git diff origin/develop...HEAD -- '*.rs' \
   | grep '^+' \
-  | grep -E '#\[allow\(clippy::' \
   | grep -v '^+++' \
+  | grep -E '#\[(allow|expect)\(' \
   | grep -v '//.*tracked\|//.*issue\|//.*#[0-9]\|//.*false.positive' \
   | tee -a ./review/clippy.txt
 ```
 
-Any added `#[allow(clippy::...)]` line that is **not** accompanied by a `// tracked in #<N>` or `// false positive:` comment is a **BLOCKER**. Fix the lint; do not suppress it.
+Severity classification:
 
-```bash
-# Also catch blanket #[allow(warnings)] — unconditionally forbidden
-git diff origin/develop...HEAD -- '*.rs' \
-  | grep '^+' \
-  | grep -E '#\[allow\(warnings\)\]' \
-  | grep -v '^+++' \
-  | tee -a ./review/clippy.txt
-```
+| Pattern | Verdict |
+|---------|---------|
+| `#[allow(warnings)]` | **BLOCKER** — unconditionally forbidden |
+| `#[allow(unused_imports)]`, `#[allow(dead_code)]`, `#[expect(dead_code)]` | **BLOCKER** — remove the dead/unused item |
+| `#[allow(unused_*)]`, `#[expect(unused_*)]` | **BLOCKER** — rename to `_` or remove |
+| `#[allow(deprecated)]`, `#[expect(deprecated)]` | **BLOCKER** — migrate off the deprecated API |
+| `#[allow(clippy::*)]`, `#[expect(clippy::*)]` without justification | **BLOCKER** — fix the lint |
+| `#[allow(clippy::*)]` with `// tracked in #N` on pre-existing code | Logged, non-blocking |
 
-Any match here is always a **BLOCKER** — no exception.
+Any BLOCKER that cannot be fixed immediately must be reported to the reviewer with a `// tracked in #<N>` reference before merge.
 
 ---
 

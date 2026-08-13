@@ -70,18 +70,30 @@ grep -rn "\.unwrap()\|\.expect(\|panic!\|todo!\|unimplemented!\|process::exit\|p
 
 - All public items (`pub fn`, `pub struct`, `pub enum`, `pub trait`) require `///` doc comments.
 
-## Clippy — zero `#[allow]` policy
+## Clippy and lint suppression — zero new `#[allow]` / `#[expect]` policy
 
 - Zero Clippy warnings required (`cargo clippy-all`).
 - **`#[allow(clippy::...)]` is FORBIDDEN on newly written or AI-generated code.** Fix the lint instead.
-- `#[allow(warnings)]` is **unconditionally forbidden** — never add it under any circumstances.
-- **Do not silence Clippy to make code compile faster.** Every lint exists for a reason.
+- **`#[allow(warnings)]` and `#[allow(unused_imports)]` / `#[allow(dead_code)]` and similar** are forbidden on new code. Unused items must be removed, not silenced.
+- **`#[expect(clippy::...)]` / `#[expect(dead_code)]`** (Rust 1.81+) is subject to the same rule as `#[allow]` — forbidden on new code.
+- **Do not silence any lint to make code compile faster.** Every lint exists for a reason.
 
-### Decision tree for a Clippy warning
+### Fully forbidden lint suppressions (no exception, ever)
+
+```rust
+#[allow(warnings)]         // forbidden — unconditionally
+#[allow(unused_imports)]   // remove the import instead
+#[allow(dead_code)]        // remove the dead code instead
+#[expect(unused_variables)] // rename to _ or remove instead
+```
+
+Any of the above added to **new code** is a blocker that must be fixed before review.
+
+### Decision tree for any lint warning
 
 1. **Fix it** — this is always the correct first option.
 2. **Refactor** — if the lint points to genuine complexity, simplify the code.
-3. **Narrow exception** — if the lint is a false positive on pre-existing code (not code you wrote), document with a precise inline comment:
+3. **Narrow exception** — only for a lint that is a confirmed false positive on **pre-existing code** (not code you wrote in this diff). Requires an inline comment with an issue reference:
 
    ```rust
    #[allow(clippy::too_many_arguments)] // legacy API surface — tracked in #1234
@@ -90,20 +102,20 @@ grep -rn "\.unwrap()\|\.expect(\|panic!\|todo!\|unimplemented!\|process::exit\|p
 
 4. **Report** — if none of the above apply, report the exact warning to the reviewer before suppressing.
 
-### Scanning for illegitimate `#[allow(clippy::...)]` additions
+### Scanning for illegitimate suppressions in the diff
 
-Agents must scan the diff for newly added `#[allow(clippy::...)]` lines:
+Agents must run the following scan before every commit and after every AI code-generation step:
 
 ```bash
-# Show only added lines (not pre-existing) that suppress Clippy
+# All newly added #[allow(...)] and #[expect(...)] on any lint — not just clippy
 git diff origin/develop...HEAD -- '*.rs' \
   | grep '^+' \
-  | grep -E '#\[allow\(clippy::' \
   | grep -v '^+++' \
-  | grep -v '//.*tracked\|//.*issue\|//.*#[0-9]'
+  | grep -E '#\[(allow|expect)\(' \
+  | grep -v '//.*tracked\|//.*issue\|//.*#[0-9]\|//.*false.positive\|//.*SAFETY'
 ```
 
-Any match that lacks a `// tracked in #<issue>` or `// false positive:` inline comment is a **blocker** — reject the change and fix the lint.
+Any match is a **blocker**: fix the lint or add a `// tracked in #<N>` justification. Report every match to the reviewer.
 
 ## Style
 
