@@ -76,7 +76,7 @@ import { useBranding } from "./contexts/useBranding";
 import { useAppLocale } from "./i18n/useAppLocale";
 import LoginPage from "./pages/LoginPage";
 import NotFoundPage from "./pages/NotFoundPage";
-import { AuthMethod, fetchAuthMethod, fetchWhoAmI, getNoTTLVRequest } from "./utils/utils";
+import { AuthMethod, fetchAuthMethods, fetchWhoAmI, getNoTTLVRequest, shouldAutoLoginWithCert } from "./utils/utils";
 import init, * as wasmModule from "./wasm/pkg";
 
 type AppContentProps = {
@@ -121,6 +121,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isAuthLoading, setIsAuthLoading] = useState(true);
     const [authMethod, setAuthMethod] = useState<AuthMethod>(undefined);
+    const [configuredMethods, setConfiguredMethods] = useState<AuthMethod[]>([]);
     const [loginError, setLoginError] = useState<string | undefined>(undefined);
 
     useEffect(() => {
@@ -160,50 +161,71 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
         void syncVendorId();
 
         const fetchUser = async () => {
-            const authMethod = await fetchAuthMethod(location);
-            setAuthMethod(authMethod);
-            if (authMethod == "JWT" || authMethod === "AUTH_VERIFIER") {
+            const methods = await fetchAuthMethods(location);
+            // `undefined` means the server was unreachable or the response could not
+            // be parsed: leave `authMethod` undefined so the error UI is shown.
+            if (methods === undefined) {
+                setIsAuthLoading(false);
+                return;
+            }
+            setConfiguredMethods(methods);
+
+            // No authentication configured: render the app directly (MainLayout shows
+            // the "authentication disabled" banner).
+            if (methods.length === 0) {
+                setAuthMethod("None");
+                setIsAuthLoading(false);
+                return;
+            }
+
+            const primary = methods[0];
+
+            // Resolve the active method for an already-authenticated returning user.
+            // Session first: a plain cookie check that never triggers a client
+            // certificate prompt. Only if there is no session do we probe the cert.
+            const sessionMethod: AuthMethod = methods.includes("JWT")
+                ? "JWT"
+                : methods.includes("AUTH_VERIFIER")
+                  ? "AUTH_VERIFIER"
+                  : undefined;
+
+            if (sessionMethod) {
                 const data = await fetchWhoAmI(location);
                 if (data) {
                     try {
                         const version = await getNoTTLVRequest("/version", location);
                         if (version) {
                             setUserId(data.user_id);
+                            setAuthMethod(sessionMethod);
                             setIsAuthenticated(true);
                             setLoginError(undefined);
+                            setIsAuthLoading(false);
+                            return;
                         }
                     } catch (error) {
                         setLoginError(`An error occurred while fetching server information: ${String(error)}`);
                     }
                 }
-            } else if (authMethod === "CERT") {
+            }
+
+            // Auto-probe only when CERT is the sole method; with multiple methods the
+            // user must choose explicitly so the cert cannot preempt OIDC or auth-verifier.
+            if (shouldAutoLoginWithCert(methods)) {
                 try {
                     // /version succeeds without a cert; /access/create returns 401 without one
                     await getNoTTLVRequest("/access/create", location);
+                    setAuthMethod("CERT");
                     setIsAuthenticated(true);
+                    setIsAuthLoading(false);
+                    return;
                 } catch {
-                    // Cert failed — try session fallback (both may be configured)
-                    const data = await fetchWhoAmI(location);
-                    if (data) {
-                        try {
-                            const version = await getNoTTLVRequest("/version", location);
-                            if (version) {
-                                // Valid session found — switch to JWT mode
-                                setAuthMethod("JWT");
-                                setUserId(data.user_id);
-                                setIsAuthenticated(true);
-                                setLoginError(undefined);
-                            }
-                        } catch (error) {
-                            console.error("Session fallback failed:", error);
-                            setIsAuthenticated(false);
-                        }
-                    } else {
-                        // No cert, no session — block access
-                        setIsAuthenticated(false);
-                    }
+                    // No valid cert — fall through to the login page.
                 }
             }
+
+            // Not authenticated: show the login page with the configured methods.
+            setAuthMethod(primary);
+            setIsAuthenticated(false);
             setIsAuthLoading(false);
         };
         setIsAuthLoading(true);
@@ -211,6 +233,14 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
         // Intentionally run once on mount - dependencies stable
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    const handleCertLogout =
+        authMethod === "CERT" && configuredMethods.length > 1
+            ? () => {
+                  setAuthMethod(configuredMethods[0]);
+                  setIsAuthenticated(false);
+              }
+            : undefined;
 
     if (isAuthLoading) {
         return <></>;
@@ -239,9 +269,22 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
 
     return (
         <Routes>
-            {!isAuthenticated && (authMethod === "JWT" || authMethod === "CERT" || authMethod === "AUTH_VERIFIER") ? (
+            {!isAuthenticated && configuredMethods.length > 0 ? (
                 <>
-                    <Route path="/login" element={<LoginPage auth={authMethod === "JWT"} authMethod={authMethod} error={loginError} />} />
+                    <Route
+                        path="/login"
+                        element={
+                            <LoginPage
+                                auth={configuredMethods[0] === "JWT"}
+                                authMethods={configuredMethods}
+                                error={loginError}
+                                onCertAuthenticated={() => {
+                                    setAuthMethod("CERT");
+                                    setIsAuthenticated(true);
+                                }}
+                            />
+                        }
+                    />
                     <Route path="*" element={<Navigate to="/login" replace />} />
                 </>
             ) : (
@@ -256,6 +299,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                                 setIsDarkMode={setIsDarkMode}
                                 authMethod={authMethod}
                                 wasmError={wasmError}
+                                onCertLogout={handleCertLogout}
                             />
                         }
                     >

@@ -1400,21 +1400,30 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     |arc| arc.as_ref().clone(),
                 );
 
-            let auth_type: Option<String> = if use_jwt_auth {
-                Some("JWT".to_owned())
-            } else if use_cert_auth {
-                Some("CERT".to_owned())
-            } else if use_auth_verifier
+            // Ordered list of UI login methods, highest priority first. The Web UI
+            // renders the first entry as the primary login action and the rest as
+            // secondary actions (a button when a single alternative exists, a
+            // dropdown when several do). Priority is JWT > AUTH_VERIFIER > CERT:
+            // the interactive, per-user methods come before the ambient client
+            // certificate probe. AUTH_VERIFIER is only offered when its UI login is
+            // enabled. The singular `auth_method` served by `get_auth_method` is
+            // derived as the first entry for backward compatibility.
+            let mut auth_methods: Vec<String> = Vec::new();
+            if use_jwt_auth {
+                auth_methods.push("JWT".to_owned());
+            }
+            if use_auth_verifier
                 && kms_server_for_http
                     .params
                     .auth_verifier_config
                     .as_ref()
                     .is_some_and(AuthVerifierConfig::ui_login_enabled)
             {
-                Some("AUTH_VERIFIER".to_owned())
-            } else {
-                None
-            };
+                auth_methods.push("AUTH_VERIFIER".to_owned());
+            }
+            if use_cert_auth {
+                auth_methods.push("CERT".to_owned());
+            }
 
             // BFF runtime config for the Auth Verifier server Web UI login
             // (`/ui/login_as`). Reuses the JWKS manager already built above for the
@@ -1460,7 +1469,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .app_data(Data::new(auth_verifier_runtime_config))
                 .app_data(Data::new(kms_public_url.clone()))
                 .app_data(Data::new(ui_index_folder.clone()))
-                .app_data(Data::new(auth_type))
+                .app_data(Data::new(auth_methods))
                 .wrap(Cors::permissive())
                 .configure(configure_auth_routes);
             // Add all SPA routes

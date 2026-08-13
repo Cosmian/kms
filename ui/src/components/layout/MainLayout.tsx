@@ -15,9 +15,11 @@ type MainLayoutProps = {
     setIsDarkMode: (value: boolean) => void;
     authMethod: AuthMethod;
     wasmError: boolean;
+    /** Defined only when CERT is active and other methods are also configured. */
+    onCertLogout?: () => void;
 };
 
-const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, authMethod, wasmError }) => {
+const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, authMethod, wasmError, onCertLogout }) => {
     const [serverVersion, setServerVersion] = useState("");
     const [serverHealth, setServerHealth] = useState<string>("");
     const [serverHealthLatencyMs, setServerHealthLatencyMs] = useState<number | null>(null);
@@ -143,11 +145,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                 </Button>
                             </div>
                         ) : (
-                            currentUser && (
-                                <Tag className="truncate text-sm leading-tight ml-4" color="green">
-                                    {currentUser}
-                                </Tag>
-                            )
+                            <div className="flex justify-center items-center h-full overflow-hidden ml-4">
+                                {currentUser && (
+                                    <Tag className="truncate text-sm leading-tight" color="green">
+                                        {currentUser}
+                                    </Tag>
+                                )}
+                                {onCertLogout && (
+                                    <Button onClick={onCertLogout} className="w-18 ml-4" data-testid="logout-btn">
+                                        Logout
+                                    </Button>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>
