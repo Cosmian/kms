@@ -43,12 +43,16 @@ echo "Uploading binary to ${REMOTE}:${KMS_XKS_REMOTE_BIN} ..."
 scp "${SSH_OPTS[@]}" "${KMS_BIN}" "${REMOTE}:/tmp/cosmian_kms_deploy"
 
 echo "Replacing binary and restarting service ..."
-ssh "${SSH_OPTS[@]}" "${REMOTE}" \
-  env REMOTE_BIN="${KMS_XKS_REMOTE_BIN}" \
-  bash -c 'sudo systemctl stop cosmian_kms \
-              && sudo mv /tmp/cosmian_kms_deploy "$REMOTE_BIN" \
-              && sudo chmod 755 "$REMOTE_BIN" \
-              && sudo systemctl start cosmian_kms'
+# Pass script via stdin so SSH argument-joining doesn't break quoting.
+# Single-quoted heredoc delimiter prevents client-side expansion; REMOTE_BIN
+# is set by `env` on the remote side.
+# shellcheck disable=SC2087
+ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_BIN="${KMS_XKS_REMOTE_BIN}" bash <<'REMOTE_SCRIPT'
+sudo systemctl stop cosmian_kms
+sudo mv /tmp/cosmian_kms_deploy "$REMOTE_BIN"
+sudo chmod 755 "$REMOTE_BIN"
+sudo systemctl start cosmian_kms
+REMOTE_SCRIPT
 
 # Wait for HTTPS endpoint to respond.
 echo "Waiting for server at https://${KMS_XKS_HOST} ..."
