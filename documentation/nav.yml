@@ -116,6 +116,7 @@ nav:
           - KMIP compliance tests (ovh/kmip-go): integrations/kmip_go.md
           - S/MIME Email encryption: integrations/smime.md
           - SPIRE / SPIFFE (Zero-Trust M2M): integrations/spire_spiffe.md
+          - Terraform / OpenTofu Provider: integrations/terraform.md
   - Installation:
       - Getting started: installation/installation_getting_started.md
       - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md
