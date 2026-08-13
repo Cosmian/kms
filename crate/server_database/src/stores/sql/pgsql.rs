@@ -292,13 +292,6 @@ macro_rules! get_pgsql_query {
 
 /// Builds a `deadpool-postgres` pool for `connection_url`, handling `sslmode`, multi-host URLs,
 /// and mutual-TLS client certificates.
-///
-/// `recycling` is a parameter (rather than hardcoded) so `PgAuditSink`
-/// (`crate::stores::audit::pgsql`) can reuse this exact TLS/multi-host logic instead of
-/// duplicating it: the object store pool passes `RecyclingMethod::Verified` (shared by every
-/// Actix worker, worth the extra round trip); the single-writer audit sink passes
-/// `RecyclingMethod::Fast` (its `write_event` retry loop already covers a dead connection, so a
-/// liveness probe before every insert buys nothing the retry does not already cover).
 pub(crate) fn build_pool(
     connection_url: &str,
     max_connections: Option<u32>,

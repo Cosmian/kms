@@ -22,8 +22,9 @@ macro_rules! get_audit_query {
 }
 
 /// The audit writer is a single task awaiting one `write_event` at a time, so it can never use a
-/// second connection. The pool exists only so a connection killed by a failover is replaced
-/// without hand-written reconnect logic — a bare `tokio_postgres::Client` would need that.
+/// second connection. The pool exists so `write_event`'s retry loop can ask for a fresh
+/// connection after a failover kills the current one — a bare `tokio_postgres::Client` would
+/// need hand-written reconnect logic to get that replacement; a size-1 pool gives it for free.
 const AUDIT_POOL_SIZE: u32 = 1;
 
 /// Write path for the `PostgreSQL` audit backend, driven exclusively by the server's single
