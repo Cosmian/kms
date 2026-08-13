@@ -93,6 +93,10 @@ exclude = [
   'workspaceupdates\.googleblog\.com',
   # OVHcloud — blocks automated requests from CI runners
   'ovhcloud\.com',
+  # IBM Docs — returns 503 to automated crawlers
+  'ibm\.com',
+  # sekretz.com — SSL hostname mismatch (appears in commented-out deny.toml entry)
+  'sekretz\.com',
 
   # Fragment/anchor patterns that are not real URLs
   'get--export',

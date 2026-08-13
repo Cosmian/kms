@@ -55,7 +55,6 @@ Crate path: `crate/server`
 | `warn` | `Could not insert: certificate: AKI: {}, SKI: {}` | `src/core/operations/validate.rs` | - | - |
 | `warn` | `Failed to persist auto-activation of object {}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
 | `warn` | `Fetch JWKS: {e}` | `src/middlewares/jwt/jwks.rs` | `e`: caught error | - |
-| `warn` | `SigV4 failure: {signature_error}` | `src/routes/aws_xks/sigv4_middleware.rs` | `signature_error`: SigV4 signature validation error | - |
 | `warn` | `Socket server: connection failed: {e}` | `src/socket_server.rs` | `e`: caught error | - |
 | `warn` | `UI folder invalid or Linux default detected, falling back to: {fallback:#?}` | `src/config/params/server_params.rs` | `fallback`: fallback UI folder path | - |
 | `warn` | `{:?} {} 401 unauthorized, no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
@@ -672,6 +671,7 @@ Crate path: `crate/server`
 | `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
 | `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
+| `warn` | `SigV4 failure: {sigv4_err}` | `src/routes/aws_xks/sigv4_middleware.rs` | `sigv4_err`: SigV4 validation error detail (signature mismatch, expired timestamp, bad credentials, etc.) | Authentication failure — check client SigV4 credentials, clock skew (±5 min), and signed headers. |
 
 ### `cosmian_kms_server_database`
 

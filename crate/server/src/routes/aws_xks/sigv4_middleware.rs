@@ -22,7 +22,6 @@ use actix_web::{
     error::InternalError,
     http::StatusCode,
 };
-use chrono::Duration;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::Get,
     kmip_types::{KeyFormatType, UniqueIdentifier},
@@ -33,7 +32,8 @@ use futures::{
     future::{Ready, err, ok},
 };
 use scratchstack_aws_signature::{
-    Request as Sigv4Request, SigningKey, SigningKeyKind::KSecret, sigv4_verify,
+    GetSigningKeyRequest, GetSigningKeyResponse, KSecretKey, NO_ADDITIONAL_SIGNED_HEADERS,
+    SignatureOptions, sigv4_validate_request,
 };
 use zeroize::Zeroizing;
 
@@ -160,66 +160,29 @@ where
                 .await;
 
             let http_request = to_http_request(&actix_web_http_request, &body_as_bytes)?;
-            let (parts, body) = http_request.into_parts();
-            // let body_as_bytes: Option<Bytes> = hyper::body::to_bytes(body).await.ok();
-            // let body_as_vec_u8: Option<Vec<u8>> =
-            //     body_as_bytes.as_ref().map(|bytes| bytes.to_vec());
-            let sigv4_req = Sigv4Request::from_http_request_parts(&parts, Some(body));
-            let gsk_req = sigv4_req
-                .to_get_signing_key_request(
-                    KSecret,
-                    params.region.as_str(),
-                    params.service.as_str(),
-                )
-                .map_err(|signature_err| {
-                    actix_web::error::ErrorUnauthorized(signature_err.to_string())
-                })?;
 
-            if access_key_id != gsk_req.access_key {
-                let err: Self::Error = XksErrorReply {
-                    errorName: XksErrorName::AuthenticationFailedException,
-                    errorMessage: Some(format!("Access key id {} not found", gsk_req.access_key)),
-                }
-                .into();
-                return Err(err);
-            }
-
-            let signing_key = SigningKey {
-                kind: KSecret,
-                key: access_key.as_bytes().to_vec(),
+            let access_key_id_for_svc = access_key_id.clone();
+            let access_key_for_svc = access_key.clone();
+            let mut get_signing_key_svc = SigningKeyService {
+                access_key_id: access_key_id_for_svc,
+                access_key: access_key_for_svc,
             };
-            let allowed_mismatch = Some(Duration::minutes(5));
-            // SigV4 verification computes HMAC-SHA256 over the entire request body.
-            // For large XKS payloads (e.g. 64 KB plaintext → ~85 KB JSON body), this is
-            // a non-trivial CPU-bound operation. Running it directly on the tokio worker
-            // thread blocks the executor and prevents it from accepting new TCP connections
-            // or processing other concurrent requests, causing connection-queue saturation
-            // under high concurrency. Offload to the blocking thread pool so the tokio
-            // runtime stays free to multiplex I/O across all pending requests.
-            let region_for_verify = params.region.clone();
-            let service_for_verify = params.service.clone();
-            let sigv4_result = tokio::task::spawn_blocking(move || {
-                sigv4_verify(
-                    &sigv4_req,
-                    &signing_key,
-                    allowed_mismatch,
-                    region_for_verify.as_str(),
-                    service_for_verify.as_str(),
-                )
-            })
+
+            if let Err(sigv4_err) = sigv4_validate_request(
+                http_request,
+                params.region.as_str(),
+                params.service.as_str(),
+                &mut get_signing_key_svc,
+                chrono::Utc::now(),
+                &NO_ADDITIONAL_SIGNED_HEADERS,
+                SignatureOptions::default(),
+            )
             .await
-            .map_err(|join_err| {
-                actix_web::error::ErrorInternalServerError(format!(
-                    "SigV4 verification task panicked: {join_err}"
-                ))
-            })?;
-            if let Err(signature_error) = sigv4_result {
-                tracing::warn!("SigV4 failure: {signature_error}");
+            {
+                tracing::warn!("SigV4 failure: {sigv4_err}");
                 let err: Self::Error = XksErrorReply {
                     errorName: XksErrorName::AuthenticationFailedException,
-                    errorMessage: Some(format!(
-                        "Signature v4 verification failed: {signature_error}",
-                    )),
+                    errorMessage: Some(format!("Signature v4 verification failed: {sigv4_err}")),
                 }
                 .into();
                 return Err(err);
@@ -230,6 +193,52 @@ where
                 ServiceRequest::from_parts(actix_web_http_request, Payload::from(body_as_bytes));
             let res = service.call(req).await?;
             Ok(res.map_into_left_body())
+        })
+    }
+}
+
+/// A Tower `Service` that retrieves the `SigV4` signing key for a given access key ID.
+///
+/// XKS uses a single static key pair; this service validates the access key ID
+/// and derives the HMAC signing key from the pre-configured secret.
+struct SigningKeyService {
+    access_key_id: String,
+    access_key: String,
+}
+
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
+impl tower_service::Service<GetSigningKeyRequest> for SigningKeyService {
+    type Error = BoxError;
+    type Future = Pin<Box<dyn Future<Output = Result<GetSigningKeyResponse, BoxError>> + Send>>;
+    type Response = GetSigningKeyResponse;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: GetSigningKeyRequest) -> Self::Future {
+        let access_key_id = self.access_key_id.clone();
+        let access_key = self.access_key.clone();
+        Box::pin(async move {
+            if access_key_id != req.access_key() {
+                return Err(Box::<dyn std::error::Error + Send + Sync>::from(
+                    std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        format!("Access key id {} not found", req.access_key()),
+                    ),
+                ));
+            }
+            let secret_key: KSecretKey = access_key
+                .parse()
+                .map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
+            let signing_key =
+                secret_key.to_ksigning(req.request_date(), req.region(), req.service());
+            // XKS does not use IAM principals — build response with signing key only
+            GetSigningKeyResponse::builder()
+                .signing_key(signing_key)
+                .build()
+                .map_err(Box::<dyn std::error::Error + Send + Sync>::from)
         })
     }
 }

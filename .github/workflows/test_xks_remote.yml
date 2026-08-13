@@ -7,8 +7,6 @@ on:
       - '**'
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: 0 6 * * * # Daily at 06:00 UTC
 
 # Prevent parallel runs against the same remote server.
 concurrency:
@@ -26,9 +24,26 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository)
 
     steps:
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.0
+
       - uses: actions/checkout@v7
         with:
           submodules: recursive
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build KMS binary (non-fips, release)
+        run: cargo build --bin cosmian_kms --features non-fips --release
+
+      - name: Deploy binary to XKS test server
+        env:
+          KMS_XKS_SSH_PRIVATE_KEY: ${{ secrets.KMS_XKS_SSH_PRIVATE_KEY }}
+          KMS_XKS_SSH_KNOWN_HOSTS: ${{ secrets.KMS_XKS_SSH_KNOWN_HOSTS }}
+          KMS_XKS_SSH_USER: ${{ secrets.KMS_XKS_SSH_USER }}
+          KMS_BIN: target/release/cosmian_kms
+        run: bash .mise/scripts/test/deploy_xks_remote.sh
 
       - name: Run XKS tests against remote server
         env:
