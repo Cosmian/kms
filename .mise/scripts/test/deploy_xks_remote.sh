@@ -45,10 +45,10 @@ scp "${SSH_OPTS[@]}" "${KMS_BIN}" "${REMOTE}:/tmp/cosmian_kms_deploy"
 echo "Replacing binary and restarting service ..."
 ssh "${SSH_OPTS[@]}" "${REMOTE}" \
   env REMOTE_BIN="${KMS_XKS_REMOTE_BIN}" \
-  bash -c 'systemctl stop cosmian_kms \
-              && mv /tmp/cosmian_kms_deploy "$REMOTE_BIN" \
-              && chmod 755 "$REMOTE_BIN" \
-              && systemctl start cosmian_kms'
+  bash -c 'sudo systemctl stop cosmian_kms \
+              && sudo mv /tmp/cosmian_kms_deploy "$REMOTE_BIN" \
+              && sudo chmod 755 "$REMOTE_BIN" \
+              && sudo systemctl start cosmian_kms'
 
 # Wait for HTTPS endpoint to respond.
 echo "Waiting for server at https://${KMS_XKS_HOST} ..."
