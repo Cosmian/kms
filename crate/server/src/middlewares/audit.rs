@@ -65,11 +65,12 @@ use std::{
 };
 
 use actix_web::{
-    Error, HttpMessage,
+    Error, HttpMessage, HttpResponse,
     body::{BoxBody, EitherBody},
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
 };
 use cosmian_kms_access::audit::{AuditEventDraft, AuditResult};
+use cosmian_logger::error;
 use futures::{
     Future,
     future::{Ready, ok},
@@ -79,6 +80,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
+    config::AuditFailureMode,
     core::audit::{AuditFileStore, make_failure_draft, make_success_draft},
     middlewares::AuthenticatedUser,
 };
@@ -88,6 +90,7 @@ const UNAUTHENTICATED: &str = "unauthenticated";
 #[derive(Clone)]
 pub(crate) struct AuditMiddleware {
     store: Option<AuditFileStore>,
+    failure_mode: AuditFailureMode,
     /// Only used when parsing `X-Forwarded-For`. Empty means always use peer address.
     trusted_proxies: Vec<IpNet>,
 }
@@ -99,9 +102,14 @@ impl AuditMiddleware {
     /// `trusted_proxies` is the list of CIDR ranges whose `X-Forwarded-For` headers
     /// are trusted; an empty list disables XFF processing entirely.
     #[must_use]
-    pub(crate) const fn new(store: Option<AuditFileStore>, trusted_proxies: Vec<IpNet>) -> Self {
+    pub(crate) const fn new(
+        store: Option<AuditFileStore>,
+        trusted_proxies: Vec<IpNet>,
+        failure_mode: AuditFailureMode,
+    ) -> Self {
         Self {
             store,
+            failure_mode,
             trusted_proxies,
         }
     }
@@ -124,6 +132,7 @@ where
             service: Rc::new(service),
             store: self.store.clone(),
             trusted_proxies: self.trusted_proxies.clone(),
+            failure_mode: self.failure_mode.clone(),
         })
     }
 }
@@ -132,6 +141,7 @@ pub(crate) struct AuditService<S> {
     service: Rc<S>,
     store: Option<AuditFileStore>,
     trusted_proxies: Vec<IpNet>,
+    failure_mode: AuditFailureMode,
 }
 
 impl<S, B> Service<ServiceRequest> for AuditService<S>
@@ -162,6 +172,7 @@ where
 
         let operation = extract_operation(req.path());
         let client_ip = extract_client_ip(&req, &self.trusted_proxies);
+        let failure_mode = self.failure_mode.clone();
 
         let start = Instant::now();
         let timestamp = OffsetDateTime::now_utc();
@@ -219,7 +230,16 @@ where
                 });
 
             if let Some(drafts) = batch_drafts {
-                store.enqueue(drafts);
+                let all_queued = store.enqueue(drafts);
+                if !all_queued && failure_mode == AuditFailureMode::Reject {
+                    error!("audit: event(s) not queued — rejecting response (reject mode)");
+                    let req = res.request().clone();
+                    return Ok(ServiceResponse::new(
+                        req,
+                        HttpResponse::ServiceUnavailable().body("Service unavailable"),
+                    )
+                    .map_into_right_body());
+                }
                 return Ok(res.map_into_left_body());
             }
 
@@ -271,7 +291,16 @@ where
             };
             draft.request_id = Some(request_id);
 
-            store.enqueue(std::iter::once(draft));
+            let all_queued = store.enqueue(std::iter::once(draft));
+            if !all_queued && failure_mode == AuditFailureMode::Reject {
+                error!("audit: event not queued — rejecting response (reject mode)");
+                let req = res.request().clone();
+                return Ok(ServiceResponse::new(
+                    req,
+                    HttpResponse::ServiceUnavailable().body("Service unavailable"),
+                )
+                .map_into_right_body());
+            }
 
             Ok(res.map_into_left_body())
         })

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::Args;
+use clap::{Args, ValueEnum};
 use ipnet::IpNet;
 use serde::{Deserialize, Serialize};
 
@@ -96,6 +96,30 @@ pub struct AuditConfig {
     )]
     #[serde(rename = "trusted_proxy_cidrs", default)]
     pub audit_trusted_proxy_cidrs: Vec<IpNet>,
+
+    /// What to do when an audit event cannot be queued (channel full or writer dead).
+    ///
+    /// `continue` (default): log the error, keep serving normally.
+    /// `reject`: return HTTP 503 to the client — guarantees no unlogged operations.
+    #[clap(
+        long = "audit-failure-mode",
+        env = "KMS_AUDIT_FAILURE_MODE",
+        default_value = "continue",
+        verbatim_doc_comment
+    )]
+    #[serde(rename = "failure_mode", default)]
+    pub audit_failure_mode: AuditFailureMode,
+}
+
+/// Controls what the KMS does when an audit event cannot be queued.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum AuditFailureMode {
+    /// Log the error and keep serving — no service disruption (default).
+    #[default]
+    Continue,
+    /// Return 503 to the client when the event could not be queued.
+    Reject,
 }
 
 /// Serde default helper for `AuditConfig::audit_channel_capacity`.

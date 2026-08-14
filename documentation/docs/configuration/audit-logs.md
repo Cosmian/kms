@@ -41,12 +41,13 @@ When `audit.file.path` is omitted the file defaults to `<root-data-path>/audit.j
 
 ## Configuration reference
 
-| CLI flag                   | Environment variable         | Default                        | Description                                                                                                                              |
-| -------------------------- | ---------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `--audit-enable`           | `KMS_AUDIT_ENABLE`           | `false`                        | Enable the audit pipeline. When `false` no file is created and no writer thread is spawned.                                              |
-| `--audit-file-path`        | `KMS_AUDIT_FILE_PATH`        | `<root-data-path>/audit.jsonl` | Absolute path to the JSONL audit log file. Parent directories are created automatically on first write.                                  |
-| `--audit-channel-capacity` | `KMS_AUDIT_CHANNEL_CAPACITY` | `4096`                         | Capacity of the bounded in-memory channel between request threads and the writer task. Each event is ≈ 500 B (≈ 2 MiB total at default). |
-| `--audit-trusted-proxy-cidrs` | `KMS_AUDIT_TRUSTED_PROXY_CIDRS` | _(empty)_                    | Comma-separated CIDR blocks (e.g. `10.0.0.0/8,172.16.0.0/12`) of reverse proxies/load balancers allowed to set `client_ip` via `X-Forwarded-For`. See [Client IP and reverse proxies](#client-ip-and-reverse-proxies). |
+| CLI flag                      | Environment variable            | Default                        | Description                                                                                                                                                                                                            |
+| ----------------------------- | ------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--audit-enable`              | `KMS_AUDIT_ENABLE`              | `false`                        | Enable the audit pipeline. When `false` no file is created and no writer thread is spawned.                                                                                                                            |
+| `--audit-file-path`           | `KMS_AUDIT_FILE_PATH`           | `<root-data-path>/audit.jsonl` | Absolute path to the JSONL audit log file. Parent directories are created automatically on first write.                                                                                                                |
+| `--audit-channel-capacity`    | `KMS_AUDIT_CHANNEL_CAPACITY`    | `4096`                         | Capacity of the bounded in-memory channel between request threads and the writer task. Each event is ≈ 500 B (≈ 2 MiB total at default).                                                                               |
+| `--audit-trusted-proxy-cidrs` | `KMS_AUDIT_TRUSTED_PROXY_CIDRS` | _(empty)_                      | Comma-separated CIDR blocks (e.g. `10.0.0.0/8,172.16.0.0/12`) of reverse proxies/load balancers allowed to set `client_ip` via `X-Forwarded-For`. See [Client IP and reverse proxies](#client-ip-and-reverse-proxies). |
+| `--audit-failure-mode`        | `KMS_AUDIT_FAILURE_MODE`        | `continue`                     | What to do when an event cannot be queued. `continue` — log the error, keep serving. `reject` — return HTTP 503. See [Audit failure mode](#audit-failure-mode).                                                        |
 
 > **Tip**: if you see `AuditFileStore: channel full` in the server log under sustained high load, raise
 > `--audit-channel-capacity`. When the channel is full the event is dropped (non-blocking) and an
@@ -69,6 +70,24 @@ event will record the proxy's IP instead of the real client's.
 arbitrary value, corrupting the forensic trail (e.g. framing another IP, or hiding its own).
 Restricting trust to known proxy CIDRs prevents this while still letting a legitimate reverse
 proxy forward the real client IP.
+
+---
+
+### Audit failure mode
+
+By default (`continue`) the KMS keeps serving even when an audit event cannot be queued — the
+event is dropped, an `error!` is logged, and the request succeeds normally.
+
+Set `--audit-failure-mode reject` to enforce strict auditability: if an event cannot be placed in
+the writer channel (channel full or writer task dead), the KMS returns **HTTP 503** to the client
+instead of the normal KMIP response. The KMIP operation has already executed at this point; the
+503 signals that its outcome was not recorded.
+
+!!! warning "`reject` mode can cause service disruption"
+When `failure_mode = reject`, a saturated audit channel or a dead writer task will
+make every subsequent KMIP request fail with 503 until the condition is resolved.
+Only use this mode when unlogged operations are strictly unacceptable (e.g.
+regulated environments requiring a complete audit trail).
 
 ---
 

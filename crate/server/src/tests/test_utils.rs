@@ -403,7 +403,7 @@ pub(crate) async fn test_app_with_audit(
 
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
-        .wrap(AuditMiddleware::new(Some(store.clone()), vec![]))
+        .wrap(AuditMiddleware::new(Some(store.clone()), vec![], Default::default()))
         .service(routes::root_redirect::root_redirect_to_ui)
         .service(routes::health::get_health)
         .service(web::scope("/.well-known").service(routes::jwks::get_jwks))
@@ -485,7 +485,7 @@ pub(crate) async fn test_app_with_audit_and_auth(
         .service(routes::kmip::kmip_2_1_json)
         .service(routes::kmip::kmip)
         .wrap(ensure_auth_middleware(kms_server.clone(), true))
-        .wrap(AuditMiddleware::new(Some(store.clone()), vec![]));
+        .wrap(AuditMiddleware::new(Some(store.clone()), vec![], Default::default()));
 
     (test::init_service(app).await, store)
 }
