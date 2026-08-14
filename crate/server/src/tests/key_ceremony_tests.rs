@@ -9,7 +9,7 @@
 //! 6. Non-candidate rejection — a user not in `crypto_officer.users` cannot trigger activation.
 //!
 //! Security-fix regression tests (threat model PR #991):
-//! TM-F001 — no eprintln!/debug leakage of CO identity in create_split_key.
+//! TM-F001 — no eprintln!/debug leakage of CO identity in `create_split_key`.
 //! TM-F002 — CO cannot Get/Export a `sensitive=true` key without wrapping.
 //! TM-F003 — startup emits WARN when config-only CO mode is active.
 //! TM-F006 — multi-CO deployment blocks single-user ceremony disable.

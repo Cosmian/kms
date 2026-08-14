@@ -421,6 +421,11 @@ fn extract_key_bytes(object: &Object) -> KResult<Zeroizing<Vec<u8>>> {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::assertions_on_result_states
+)]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::SecretDataType,
@@ -450,7 +455,7 @@ mod tests {
 
     #[test]
     fn test_extract_key_bytes_symmetric_key() {
-        let raw = vec![0xABu8; 32];
+        let raw = vec![0xAB_u8; 32];
         let obj = Object::SymmetricKey(SymmetricKey {
             key_block: make_raw_key_block(raw.clone()),
         });
@@ -460,7 +465,7 @@ mod tests {
 
     #[test]
     fn test_extract_key_bytes_secret_data() {
-        let raw = vec![0xCDu8; 16];
+        let raw = vec![0xCD_u8; 16];
         let obj = Object::SecretData(SecretData {
             secret_data_type: SecretDataType::Password,
             key_block: make_raw_key_block(raw.clone()),
@@ -471,7 +476,7 @@ mod tests {
 
     #[test]
     fn test_extract_key_bytes_opaque_object() {
-        let raw = vec![0x01u8, 0x02, 0x03];
+        let raw = vec![0x01_u8, 0x02, 0x03];
         let obj = Object::OpaqueObject(OpaqueObject {
             opaque_data_type: OpaqueDataType::Unknown,
             opaque_data_value: raw.clone(),
@@ -484,7 +489,7 @@ mod tests {
     fn test_extract_key_bytes_unsupported_type_returns_error() {
         use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::PrivateKey;
         let obj = Object::PrivateKey(PrivateKey {
-            key_block: make_raw_key_block(vec![0u8; 32]),
+            key_block: make_raw_key_block(vec![0_u8; 32]),
         });
         let result = extract_key_bytes(&obj);
         assert!(
@@ -503,6 +508,6 @@ mod tests {
         assert!(u32::try_from(negative).is_err());
         // Positive values in the valid range succeed.
         let valid: i32 = 5;
-        assert_eq!(u32::try_from(valid).unwrap(), 5u32);
+        assert_eq!(u32::try_from(valid).unwrap(), 5_u32);
     }
 }
