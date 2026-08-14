@@ -100,17 +100,21 @@ pub(crate) async fn create_split_key(
     // exactly the number of ceremony candidates, preventing misconfiguration.
     // Only override when there are at least 2 CO users (split requires n >= 2).
     let co_users = &kms.params.crypto_officer.users;
-    eprintln!(
-        "DEBUG create_split_key: co_users={:?} len={} require_ceremony={} total_parts={total_parts} threshold={threshold}",
-        co_users,
-        co_users.len(),
-        kms.params.crypto_officer.require_ceremony,
+    tracing::debug!(
+        n_co = co_users.len(),
+        require_ceremony = kms.params.crypto_officer.require_ceremony,
+        total_parts,
+        threshold,
+        "CreateSplitKey: resolved ceremony parameters",
     );
     if kms.params.crypto_officer.require_ceremony && co_users.len() >= 2 {
         let n_co = co_users.len();
-        let n_co_i32 = i32::try_from(n_co).unwrap_or(2);
+        let n_co_i32 = i32::try_from(n_co).map_err(|_e| {
+            KmsError::InvalidRequest(
+                "crypto_officer_users count exceeds valid range — configuration error".to_owned(),
+            )
+        })?;
         if n_co_i32 != total_parts {
-            eprintln!("DEBUG: overriding total_parts {total_parts} -> {n_co_i32}");
             trace!(
                 "CreateSplitKey: overriding total_parts from {total_parts} to {n_co_i32} \
                  (matches crypto_officer_users count)"
@@ -119,9 +123,12 @@ pub(crate) async fn create_split_key(
             threshold = n_co_i32; // n-of-n
         }
     }
-    // Safe: both values are i32 validated above to be 2..=255; cast to u32 is lossless.
-    #[allow(clippy::cast_sign_loss, clippy::as_conversions)]
-    let total_parts_u32 = total_parts as u32;
+    // Safe: total_parts is validated to 2..=255 above; u32 conversion is lossless.
+    let total_parts_u32 = u32::try_from(total_parts).map_err(|e| {
+        KmsError::InvalidRequest(format!(
+            "CreateSplitKey: total_parts out of valid range — internal error: {e}"
+        ))
+    })?;
     // XOR n-of-n requires threshold == total_parts (all shares needed).
     if threshold != total_parts {
         kms_bail!(KmsError::InvalidRequest(format!(
@@ -156,7 +163,11 @@ pub(crate) async fn create_split_key(
 
     // Build and store each share as a SplitKey KMIP object
     // total_parts is validated to 2..=255; usize conversion cannot overflow.
-    let total_parts_usize = usize::try_from(total_parts).unwrap_or(0);
+    let total_parts_usize = usize::try_from(total_parts).map_err(|e| {
+        KmsError::InvalidRequest(format!(
+            "CreateSplitKey: total_parts out of valid range — internal error: {e}"
+        ))
+    })?;
     let mut share_uids: Vec<UniqueIdentifier> = Vec::with_capacity(total_parts_usize);
 
     let now = time::OffsetDateTime::now_utc();
@@ -406,5 +417,92 @@ fn extract_key_bytes(object: &Object) -> KResult<Zeroizing<Vec<u8>>> {
             "CreateSplitKey: unsupported object type {:?}",
             other.object_type()
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::SecretDataType,
+        kmip_2_1::{
+            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+            kmip_objects::{OpaqueObject, SecretData, SymmetricKey},
+            kmip_types::{CryptographicAlgorithm, KeyFormatType, OpaqueDataType},
+        },
+    };
+    use zeroize::Zeroizing;
+
+    use super::*;
+
+    fn make_raw_key_block(raw: Vec<u8>) -> KeyBlock {
+        KeyBlock {
+            key_format_type: KeyFormatType::TransparentSymmetricKey,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(Zeroizing::new(raw)),
+                attributes: None,
+            }),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            key_wrapping_data: None,
+        }
+    }
+
+    #[test]
+    fn test_extract_key_bytes_symmetric_key() {
+        let raw = vec![0xABu8; 32];
+        let obj = Object::SymmetricKey(SymmetricKey {
+            key_block: make_raw_key_block(raw.clone()),
+        });
+        let result = extract_key_bytes(&obj).expect("should extract bytes from SymmetricKey");
+        assert_eq!(result.as_slice(), raw.as_slice());
+    }
+
+    #[test]
+    fn test_extract_key_bytes_secret_data() {
+        let raw = vec![0xCDu8; 16];
+        let obj = Object::SecretData(SecretData {
+            secret_data_type: SecretDataType::Password,
+            key_block: make_raw_key_block(raw.clone()),
+        });
+        let result = extract_key_bytes(&obj).expect("should extract bytes from SecretData");
+        assert_eq!(result.as_slice(), raw.as_slice());
+    }
+
+    #[test]
+    fn test_extract_key_bytes_opaque_object() {
+        let raw = vec![0x01u8, 0x02, 0x03];
+        let obj = Object::OpaqueObject(OpaqueObject {
+            opaque_data_type: OpaqueDataType::Unknown,
+            opaque_data_value: raw.clone(),
+        });
+        let result = extract_key_bytes(&obj).expect("should extract bytes from OpaqueObject");
+        assert_eq!(result.as_slice(), raw.as_slice());
+    }
+
+    #[test]
+    fn test_extract_key_bytes_unsupported_type_returns_error() {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::PrivateKey;
+        let obj = Object::PrivateKey(PrivateKey {
+            key_block: make_raw_key_block(vec![0u8; 32]),
+        });
+        let result = extract_key_bytes(&obj);
+        assert!(
+            result.is_err(),
+            "PrivateKey should not be supported by extract_key_bytes"
+        );
+        assert!(matches!(result.unwrap_err(), KmsError::NotSupported(_)));
+    }
+
+    #[test]
+    fn test_total_parts_u32_conversion_is_fallible_not_silent() {
+        // Verify that u32::try_from returns Err for negative i32 values.
+        // This confirms the fix: the old `as u32` cast or `unwrap_or(0)` would silently
+        // produce 0 or a large value; now we get a proper error.
+        let negative: i32 = -1;
+        assert!(u32::try_from(negative).is_err());
+        // Positive values in the valid range succeed.
+        let valid: i32 = 5;
+        assert_eq!(u32::try_from(valid).unwrap(), 5u32);
     }
 }

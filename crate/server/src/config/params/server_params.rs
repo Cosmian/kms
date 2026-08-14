@@ -417,6 +417,18 @@ impl ServerParams {
                 };
                 co.validate()
                     .map_err(|e| KmsError::ServerError(format!("Role configuration error: {e}")))?;
+                // Warn operators that config-only CO mode is permanent super-admin —
+                // there is no runtime gate, so a config compromise equals privilege escalation.
+                if !co.users.is_empty() && !co.require_ceremony {
+                    tracing::warn!(
+                        "SECURITY: Crypto Officer is active in config-only mode \
+                         (require_ceremony = false). Any user listed in \
+                         `crypto_officer_users` is a permanent super-admin with no \
+                         runtime activation gate. Consider enabling \
+                         `crypto_officer_require_ceremony = true` in production \
+                         deployments."
+                    );
+                }
                 co
             },
             ceremony_keys: {
@@ -531,6 +543,19 @@ impl ServerParams {
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
             auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
         };
+
+        // Cross-field validation: force_default_username=true collapses all identities to a
+        // single user, defeating the Crypto Officer dual-control guarantee. Reject this
+        // combination at startup rather than silently allowing it.
+        if res.force_default_username && !res.crypto_officer.users.is_empty() {
+            return Err(KmsError::ServerError(
+                "`force_default_username = true` is incompatible with `crypto_officer_users`. \
+                 All requests would run under the same identity, making Crypto Officer \
+                 dual-control and ceremony audit logs meaningless. \
+                 Disable `force_default_username` or remove `crypto_officer_users`."
+                    .to_owned(),
+            ));
+        }
 
         debug!("{res:#?}");
 

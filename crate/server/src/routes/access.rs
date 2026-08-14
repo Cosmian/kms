@@ -11,7 +11,7 @@ use cosmian_kms_access::access::{
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     self, kmip_2_1::kmip_types::UniqueIdentifier,
 };
-use cosmian_logger::{debug, info, warn};
+use cosmian_logger::{debug, info};
 use serde::{Deserialize, Serialize};
 use tracing::info as trace_info;
 
@@ -291,30 +291,7 @@ pub(crate) async fn disable_crypto_officer(
     let user = kms.get_user(&req);
     info!(user = %user, "POST /access/crypto_officer/disable {user}");
 
-    let cfg = &kms.params.crypto_officer;
-    if cfg.users.is_empty() {
-        return Err(crate::error::KmsError::Unauthorized(
-            "Crypto Officer role is not configured on this server".to_owned(),
-        ));
-    }
-
-    if !cfg.require_ceremony {
-        return Err(crate::error::KmsError::InvalidRequest(
-            "Config-only Crypto Officer cannot be disabled at runtime. Remove the user from \
-             `crypto_officer_users` in kms.toml and restart the server."
-                .to_owned(),
-        ));
-    }
-
-    // The caller must be an active Crypto Officer to disable the ceremony.
-    if !kms.is_crypto_officer(&user).await? {
-        return Err(crate::error::KmsError::Unauthorized(
-            "Only an active Crypto Officer can disable the Crypto Officer ceremony".to_owned(),
-        ));
-    }
-
-    kms.database.revoke_crypto_officer_activation(&user).await?;
-    warn!("CRYPTO_OFFICER_DISABLED: Crypto Officer ceremony activation revoked by {user}");
+    kms.disable_crypto_officer_ceremony(&user).await?;
 
     Ok(Json(SuccessResponse {
         success: "Crypto Officer ceremony activation revoked successfully".to_owned(),

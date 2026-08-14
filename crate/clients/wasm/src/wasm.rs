@@ -38,14 +38,15 @@ use cosmian_kms_client_utils::{
                 OpaqueObject as KmipOpaqueObject, PrivateKey,
             },
             kmip_operations::{
-                CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
-                DecryptResponse, DeleteAttribute, DeleteAttributeResponse, DeriveKey,
-                DeriveKeyResponse, Destroy, DestroyResponse, EncryptResponse, ExportResponse,
-                GetAttributes, GetAttributesResponse, Hash, HashResponse, ImportResponse,
-                LocateResponse, ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse,
-                ReCertifyResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse,
-                RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse,
-                SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
+                CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
+                CreateSplitKeyResponse, Decrypt, DecryptResponse, DeleteAttribute,
+                DeleteAttributeResponse, DeriveKey, DeriveKeyResponse, Destroy, DestroyResponse,
+                EncryptResponse, ExportResponse, GetAttributes, GetAttributesResponse, Hash,
+                HashResponse, ImportResponse, JoinSplitKeyResponse, LocateResponse,
+                ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse, ReCertifyResponse,
+                ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, RevokeResponse,
+                SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
+                SignatureVerifyResponse, Validate, ValidateResponse,
             },
             kmip_types::{
                 AttributeReference, CryptographicAlgorithm, CryptographicParameters,
@@ -1132,6 +1133,10 @@ pub fn create_secret_data_ttlv_request(
 }
 
 wasm_response_parser!(parse_create_ttlv_response, CreateResponse);
+
+wasm_response_parser!(parse_create_split_key_ttlv_response, CreateSplitKeyResponse);
+
+wasm_response_parser!(parse_join_split_key_ttlv_response, JoinSplitKeyResponse);
 
 /// Create an Opaque Object (via Import) TTLV request.
 /// If `object_value` is provided, builds an `OpaqueObject` and forges an `Import` request.
