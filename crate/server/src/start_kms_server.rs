@@ -748,6 +748,20 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
+    // Warn when Crypto Officer is configured but the global rate limiter is disabled.
+    // The ceremony activation and disable endpoints perform crypto operations and DB writes
+    // on every call; without rate limiting they can be used for DoS or DB flooding.
+    if !kms_server.params.crypto_officer.users.is_empty()
+        && kms_server.params.rate_limit_per_second.is_none()
+    {
+        cosmian_logger::warn!(
+            "SECURITY: Crypto Officer is configured but rate_limit_per_second is not set. \
+             The ceremony activation endpoint performs crypto operations on every request. \
+             Set rate_limit_per_second in the server config to protect against abuse in \
+             production deployments."
+        );
+    }
+
     // F-008: Validate session salt entropy when UI is enabled.
     if kms_server.params.ui_enable {
         if let Some(ref salt) = kms_server.params.ui_session_salt {

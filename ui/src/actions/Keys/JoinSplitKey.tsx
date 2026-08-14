@@ -1,6 +1,7 @@
-import { Button, Card, Form, Input, InputNumber, Space } from "antd";
+import { Button, Card, Form, Input, InputNumber, Select, Space } from "antd";
 import React, { useCallback, useState } from "react";
 import { sendKmipRequest } from "../../utils/utils";
+import * as wasm from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
 import LocateButton from "../../components/common/LocateButton";
@@ -31,15 +32,15 @@ const buildJoinSplitKeyRequest = (shareIds: string[], objectType: string) => ({
 });
 
 type JoinSplitKeyResponse = {
-    tag: string;
-    type: string;
-    value: { tag: string; type: string; value: string }[];
+    UniqueIdentifier: string;
 };
+
+const DEFAULT_SHARE_COUNT = 3;
 
 const JoinSplitKeyForm: React.FC = () => {
     const [form] = Form.useForm<JoinSplitKeyFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
-    const [shareCount, setShareCount] = useState<number>(3);
+    const [shareCount, setShareCount] = useState<number>(DEFAULT_SHARE_COUNT);
 
     const onLocateSelect = useCallback(
         (index: number, uid: string) => {
@@ -70,13 +71,13 @@ const JoinSplitKeyForm: React.FC = () => {
             if (shareIds.length < 2) {
                 throw new Error("At least 2 share UIDs are required to reconstruct a key.");
             }
-            const request = buildJoinSplitKeyRequest(shareIds, values.objectType);
+            const objectType = values.objectType ?? "SymmetricKey";
+            const request = buildJoinSplitKeyRequest(shareIds, objectType);
             const resultStr = await sendKmipRequest(request, serverUrl);
             if (resultStr) {
-                const parsed: JoinSplitKeyResponse = JSON.parse(resultStr);
-                const uid = parsed.value.find((item) => item.tag === "UniqueIdentifier");
-                if (uid) {
-                    return `Key successfully reconstructed from ${shareIds.length} shares.\nReconstructed key UID: ${uid.value}`;
+                const parsed: JoinSplitKeyResponse = await wasm.parse_join_split_key_ttlv_response(resultStr);
+                if (parsed.UniqueIdentifier) {
+                    return `Key successfully reconstructed from ${shareIds.length} shares.\nReconstructed key UID: ${parsed.UniqueIdentifier}`;
                 }
                 return `Join operation completed. Response: ${resultStr}`;
             }
@@ -84,8 +85,9 @@ const JoinSplitKeyForm: React.FC = () => {
     };
 
     const initialValues = {
+        shareCount: DEFAULT_SHARE_COUNT,
         objectType: "SymmetricKey" as const,
-        shareIds: Array.from({ length: shareCount }, () => ({ value: "" })),
+        shareIds: Array.from({ length: DEFAULT_SHARE_COUNT }, () => ({ value: "" })),
     };
 
     return (
@@ -149,14 +151,12 @@ const JoinSplitKeyForm: React.FC = () => {
                             )}
                         </Form.List>
 
-                        <Form.Item name="objectType" label="Reconstructed Object Type" rules={[{ required: true }]}>
-                            <select data-testid="join-object-type-select" className="ant-select-selector w-full border rounded p-2">
-                                {OBJECT_TYPES_OPTIONS.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>
-                                        {opt.label}
-                                    </option>
-                                ))}
-                            </select>
+                        <Form.Item
+                            name="objectType"
+                            label="Reconstructed Object Type"
+                            rules={[{ required: true, message: "Object type is required" }]}
+                        >
+                            <Select data-testid="join-object-type-select" options={OBJECT_TYPES_OPTIONS} />
                         </Form.Item>
                     </Card>
 
