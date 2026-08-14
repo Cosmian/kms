@@ -1,25 +1,31 @@
-import { Button, Card, Form, Input, Space } from "antd";
-import React from "react";
-import { sendKmipRequest } from "../../utils/utils";
+import { Badge, Button, Card, Form, Input, InputNumber, Space, Spin } from "antd";
+import React, { useCallback, useEffect, useState } from "react";
+import { getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import { useAuth } from "../../contexts/useAuth";
 
 interface SplitKeyFormData {
     keyId?: string;
+    shareCount: number;
 }
 
-/// Build a CreateSplitKey request. The server determines the number of shares
-/// (from `crypto_officer_users` count when ceremony mode is enabled, or a
-/// server-specified default otherwise). The client sends 2 as a placeholder —
-/// the server will override it as needed.
-const buildCreateSplitKeyRequest = (keyId: string) => ({
+interface CoStatus {
+    enabled: boolean;
+    require_ceremony: boolean;
+    custodians_count: number;
+}
+
+/// Build a CreateSplitKey TTLV request.  The caller supplies the resolved `n`
+/// (either from the server's CO configuration or from the user's input field).
+const buildCreateSplitKeyRequest = (keyId: string, n: number) => ({
     tag: "CreateSplitKey",
     type: "Structure",
     value: [
         { tag: "UniqueIdentifier", type: "TextString", value: keyId },
-        { tag: "SplitKeyParts", type: "Integer", value: 2 },
-        { tag: "SplitKeyThreshold", type: "Integer", value: 2 },
+        { tag: "SplitKeyParts", type: "Integer", value: n },
+        { tag: "SplitKeyThreshold", type: "Integer", value: n },
         { tag: "SplitKeyMethod", type: "Enumeration", value: "XOR" },
     ],
 });
@@ -29,11 +35,44 @@ type CreateSymKeyResponse = {
     UniqueIdentifier: string;
 };
 
+type CreateSplitKeyResponse = {
+    UniqueIdentifier: string;
+    PrivateKeyUniqueIdentifier: string[];
+};
+
 const SplitKeyForm: React.FC = () => {
     const [form] = Form.useForm<SplitKeyFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { serverUrl: authServerUrl } = useAuth();
+    const [coStatus, setCoStatus] = useState<CoStatus | undefined>(undefined);
+    const [statusLoading, setStatusLoading] = useState(false);
+
+    // Fetch CO status once on mount to discover custodians_count.
+    const fetchCoStatus = useCallback(async () => {
+        setStatusLoading(true);
+        try {
+            const s = (await getNoTTLVRequest("/access/crypto_officer/status", authServerUrl ?? serverUrl)) as CoStatus;
+            setCoStatus(s);
+            if (s.enabled && s.require_ceremony && s.custodians_count >= 2) {
+                form.setFieldsValue({ shareCount: s.custodians_count });
+            }
+        } catch {
+            // Status endpoint may be unavailable when CO is not configured — ignore.
+        } finally {
+            setStatusLoading(false);
+        }
+    }, [authServerUrl, serverUrl, form]);
+
+    useEffect(() => {
+        fetchCoStatus();
+    }, [fetchCoStatus]);
+
+    const ceremonyMode = coStatus?.enabled && coStatus.require_ceremony && (coStatus.custodians_count ?? 0) >= 2;
+    const resolvedShareCount = ceremonyMode ? coStatus!.custodians_count : undefined;
 
     const onFinish = async (values: SplitKeyFormData) => {
+        const n = resolvedShareCount ?? values.shareCount ?? 2;
+
         await execute(async () => {
             // ── Step 1: Transparently create an AES-256 symmetric key ──────────
             const symReq = wasm.create_sym_key_ttlv_request(
@@ -53,33 +92,19 @@ const SplitKeyForm: React.FC = () => {
             const createdKeyId = symResp.UniqueIdentifier;
 
             // ── Step 2: Split the newly created key ────────────────────────────
-            const splitReq = buildCreateSplitKeyRequest(createdKeyId);
+            const splitReq = buildCreateSplitKeyRequest(createdKeyId, n);
             const splitRespStr = await sendKmipRequest(splitReq, serverUrl);
             if (!splitRespStr) {
                 throw new Error("Split key operation returned an empty response");
             }
 
-            // Extract share UIDs from the TTLV response
-            const parsed: { value: { tag: string; type: string; value: unknown }[] } = JSON.parse(splitRespStr);
-            const shareUids = parsed.value
-                .filter(
-                    (item) =>
-                        item.tag === "PrivateKeyUniqueIdentifier" ||
-                        item.tag === "UniqueIdentifier" ||
-                        item.tag === "SplitKeyUniqueIdentifiers",
-                )
-                .flatMap((item) => {
-                    if (typeof item.value === "string") return [item.value];
-                    if (Array.isArray(item.value)) {
-                        return item.value
-                            .filter(
-                                (v: unknown) => typeof v === "object" && v != null && typeof (v as { value?: string }).value === "string",
-                            )
-                            .map((v: unknown) => (v as { value: string }).value);
-                    }
-                    return [];
-                })
-                .filter((v) => v.length > 0 && v !== createdKeyId);
+            // Use the WASM parser for type-safe CreateSplitKeyResponse parsing.
+            const splitResp: CreateSplitKeyResponse = await wasm.parse_create_split_key_ttlv_response(splitRespStr);
+            const shareUids: string[] = Array.isArray(splitResp.PrivateKeyUniqueIdentifier)
+                ? splitResp.PrivateKeyUniqueIdentifier
+                : splitResp.PrivateKeyUniqueIdentifier
+                  ? [splitResp.PrivateKeyUniqueIdentifier]
+                  : [];
 
             if (shareUids.length > 0) {
                 return (
@@ -105,19 +130,62 @@ const SplitKeyForm: React.FC = () => {
                     <li>
                         <strong>All shares are required</strong> to reconstruct the key (threshold equals total parts).
                     </li>
-                    <li>
-                        The number of shares is determined by the server from the Crypto Officer configuration (when ceremony mode is
-                        enabled) or a server default.
-                    </li>
+                    {ceremonyMode ? (
+                        <li>
+                            <strong>Ceremony mode:</strong> the server determines the number of shares from the Crypto Officer
+                            configuration ({resolvedShareCount} shares — one per CO candidate).
+                        </li>
+                    ) : (
+                        <li>The number of shares is set below.</li>
+                    )}
                     <li>Provides information-theoretic security for key ceremony workflows.</li>
                 </ul>
             </div>
 
-            <Form form={form} onFinish={onFinish} layout="vertical">
+            {statusLoading && (
+                <div className="mb-4 flex items-center gap-2 text-gray-500">
+                    <Spin size="small" /> Loading server configuration…
+                </div>
+            )}
+
+            {!statusLoading && coStatus && (
+                <div className="mb-4">
+                    <Badge
+                        status={ceremonyMode ? "warning" : "default"}
+                        text={
+                            ceremonyMode
+                                ? `Ceremony mode — ${resolvedShareCount} shares (from server CO config)`
+                                : "Standard split key mode"
+                        }
+                        data-testid="split-key-mode-badge"
+                    />
+                </div>
+            )}
+
+            <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ shareCount: 2 }}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <Form.Item name="keyId" label="Key Unique Identifier" help="Optional: leave empty to auto‑generate a UUID">
                             <Input placeholder="Enter key ID (optional)" data-testid="split-key-id-input" />
+                        </Form.Item>
+
+                        <Form.Item
+                            name="shareCount"
+                            label="Number of shares (n)"
+                            tooltip={
+                                ceremonyMode
+                                    ? `Fixed to ${resolvedShareCount} by the server's Crypto Officer configuration`
+                                    : "All n shares are required to reconstruct the key (n-of-n XOR)"
+                            }
+                            rules={[{ required: !ceremonyMode, message: "Share count is required" }]}
+                        >
+                            <InputNumber
+                                min={2}
+                                max={20}
+                                disabled={ceremonyMode}
+                                data-testid="split-key-share-count-input"
+                                style={{ width: 120 }}
+                            />
                         </Form.Item>
                     </Card>
 

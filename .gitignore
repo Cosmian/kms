@@ -71,3 +71,7 @@ perf.data.old
 target/flamegraphs/
 
 scripts/
+
+# Review
+/threat-model*
+/review*
