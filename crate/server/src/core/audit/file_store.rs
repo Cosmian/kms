@@ -127,19 +127,24 @@ impl AuditFileStore {
     /// **Note**: for batch requests, `try_send` is called per-draft sequentially.
     /// If the channel fills mid-batch, early drafts are persisted and later ones are
     /// dropped — the sentinel will account for them on the next successful enqueue.
-    pub(crate) fn enqueue(&self, drafts: impl IntoIterator<Item = AuditEventDraft>) {
+    /// Returns `true` if every draft was successfully queued, `false` if any was dropped.
+    pub(crate) fn enqueue(&self, drafts: impl IntoIterator<Item = AuditEventDraft>) -> bool {
+        let mut all_queued = true;
         for draft in drafts {
             match self.sender.try_send(WriterMsg::Event(draft)) {
                 Ok(()) => {}
                 Err(mpsc::error::TrySendError::Full(_)) => {
                     self.dropped_count.fetch_add(1, Ordering::Relaxed);
                     error!("AuditFileStore: channel full, dropping audit event");
+                    all_queued = false;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => {
                     error!("AuditFileStore: writer task has stopped, audit event dropped");
+                    all_queued = false;
                 }
             }
         }
+        all_queued
     }
 
     /// Awaits until every event enqueued before this call has been written by

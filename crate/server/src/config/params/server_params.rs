@@ -10,8 +10,8 @@ use ipnet::IpNet;
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig,
-        JwksEndpointConfig, OidcConfig,
+        AuditFailureMode, AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig,
+        IdpConfig, JwksEndpointConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -265,6 +265,9 @@ pub struct ServerParams {
     /// Trusted reverse-proxy CIDR blocks.  `X-Forwarded-For` is only used when
     /// the direct TCP peer address falls within one of these ranges.
     pub audit_trusted_proxy_cidrs: Vec<IpNet>,
+
+    /// What to do when an audit event cannot be queued.
+    pub audit_failure_mode: AuditFailureMode,
 }
 
 /// Represents the server parameters.
@@ -594,6 +597,7 @@ impl ServerParams {
             },
             audit_channel_capacity: conf.audit.audit_channel_capacity,
             audit_trusted_proxy_cidrs: conf.audit.audit_trusted_proxy_cidrs,
+            audit_failure_mode: conf.audit.audit_failure_mode,
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a
@@ -984,6 +988,7 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("audit_file_path", &self.audit_file_path);
         debug_struct.field("audit_channel_capacity", &self.audit_channel_capacity);
         debug_struct.field("audit_trusted_proxy_cidrs", &self.audit_trusted_proxy_cidrs);
+        debug_struct.field("audit_failure_mode", &self.audit_failure_mode);
 
         // Vault API fields
         debug_struct.field("vault_api_enabled", &self.vault_api_enabled);
