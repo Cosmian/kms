@@ -424,6 +424,18 @@ impl ServerParams {
                 };
                 co.validate()
                     .map_err(|e| KmsError::ServerError(format!("Role configuration error: {e}")))?;
+                // Warn operators that config-only CO mode is permanent super-admin —
+                // there is no runtime gate, so a config compromise equals privilege escalation.
+                if !co.users.is_empty() && !co.require_ceremony {
+                    tracing::warn!(
+                        "SECURITY: Crypto Officer is active in config-only mode \
+                         (require_ceremony = false). Any user listed in \
+                         `crypto_officer_users` is a permanent super-admin with no \
+                         runtime activation gate. Consider enabling \
+                         `crypto_officer_require_ceremony = true` in production \
+                         deployments."
+                    );
+                }
                 co
             },
             ceremony_keys: {
@@ -540,30 +552,16 @@ impl ServerParams {
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a
-        // single user, defeating the Crypto Officer dual-control guarantee.
-        //
-        // When CO users came from the new `[roles] crypto_officer_users` key, reject at startup.
-        // When they came only from the deprecated `privileged_users` key, preserve the v5.26.0
-        // behaviour (silently tolerated, though meaningless) and warn instead, so existing
-        // configurations upgrading from v5.26.0 are not broken.
+        // single user, defeating the Crypto Officer dual-control guarantee. Reject this
+        // combination at startup rather than silently allowing it.
         if res.force_default_username && !res.crypto_officer.users.is_empty() {
-            if co_from_deprecated_path {
-                tracing::warn!(
-                    "`force_default_username = true` combined with `privileged_users` is \
-                     deprecated and will become an error in a future release. All requests run \
-                     under the same identity, making Crypto Officer dual-control meaningless. \
-                     Please migrate to `[roles] crypto_officer_users` and remove \
-                     `force_default_username`."
-                );
-            } else {
-                return Err(KmsError::ServerError(
-                    "`force_default_username = true` is incompatible with `crypto_officer_users`. \
-                     All requests would run under the same identity, making Crypto Officer \
-                     dual-control and ceremony audit logs meaningless. \
-                     Disable `force_default_username` or remove `crypto_officer_users`."
-                        .to_owned(),
-                ));
-            }
+            return Err(KmsError::ServerError(
+                "`force_default_username = true` is incompatible with `crypto_officer_users`. \
+                 All requests would run under the same identity, making Crypto Officer \
+                 dual-control and ceremony audit logs meaningless. \
+                 Disable `force_default_username` or remove `crypto_officer_users`."
+                    .to_owned(),
+            ));
         }
 
         debug!("{res:#?}");

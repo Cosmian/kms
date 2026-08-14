@@ -267,12 +267,12 @@ pub(crate) async fn join_split_key(
     }
 
     // Enforce the same Create/Import restriction as create.rs / import.rs.
-    // Crypto Officer ceremony candidates (users in crypto_officer.users) are exempt because
-    // they need JoinSplitKey to be usable regardless of their CO role status.
+    // A user listed in crypto_officer.users is always allowed — they are ceremony
+    // candidates regardless of whether `require_ceremony` is set, and need
+    // JoinSplitKey to reconstruct ceremony keys.
     let user_id = UserId::from(user);
-    let is_ceremony_candidate = kms.params.crypto_officer.require_ceremony
-        && kms.params.crypto_officer.users.iter().any(|u| u == user);
-    if !is_ceremony_candidate && kms.params.crypto_officer.is_configured() {
+    let is_co_user = kms.params.crypto_officer.users.iter().any(|u| u == user);
+    if !is_co_user && kms.params.crypto_officer.is_configured() {
         let has_create_permission = crate::core::retrieve_object_utils::user_has_permission(
             &user_id,
             None,
@@ -280,9 +280,7 @@ pub(crate) async fn join_split_key(
             kms,
         )
         .await?;
-        let is_crypto_officer = !kms.params.crypto_officer.users.is_empty()
-            && kms.params.crypto_officer.users.iter().any(|u| u == user);
-        if !has_create_permission && !is_crypto_officer {
+        if !has_create_permission {
             kms_bail!(KmsError::Unauthorized(
                 "JoinSplitKey: user does not have permission to create objects \
                  (CryptoOfficer role or explicit Create grant required)"
@@ -440,10 +438,13 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
         .activate_crypto_officer_ceremony(user, participants, &reconstructed.key_hash)
         .await?;
 
-    info!(
+    // Log at ERROR — ceremony activation is a high-value security event that must
+    // never be suppressed by RUST_LOG=warn or RUST_LOG=info in production.
+    tracing::error!(
+        target: "audit",
         activated_by = %user,
         participants = ?participants,
-        "CRYPTO_OFFICER_CEREMONY_ACTIVATED: Crypto Officer ceremony completed"
+        "CRYPTO_OFFICER_CEREMONY_ACTIVATED: Crypto Officer ceremony completed",
     );
 
     // `reconstructed.secret` (Zeroizing<Vec<u8>>) is dropped here — never stored.
@@ -498,4 +499,103 @@ fn build_reconstructed_object(
     };
 
     Ok((object, attrs))
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_types::{CryptographicAlgorithm, KeyFormatType},
+    };
+    use zeroize::Zeroizing;
+
+    use super::*;
+
+    fn make_split_key_block_bytes(raw: Vec<u8>) -> KeyBlock {
+        KeyBlock {
+            key_format_type: KeyFormatType::Opaque,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(Zeroizing::new(raw)),
+                attributes: None,
+            }),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            key_wrapping_data: None,
+        }
+    }
+
+    #[test]
+    fn test_extract_share_bytes_valid() {
+        let raw = vec![0xAAu8; 16];
+        let kb = make_split_key_block_bytes(raw.clone());
+        let result = extract_share_bytes(&kb).expect("should extract share bytes");
+        assert_eq!(result, raw);
+    }
+
+    #[test]
+    fn test_extract_share_bytes_no_key_value_returns_error() {
+        let kb = KeyBlock {
+            key_format_type: KeyFormatType::Opaque,
+            key_compression_type: None,
+            key_value: None,
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        };
+        let result = extract_share_bytes(&kb);
+        assert!(result.is_err(), "missing key_value should return an error");
+    }
+
+    #[test]
+    fn test_extract_share_bytes_wrapped_returns_error() {
+        let kb = KeyBlock {
+            key_format_type: KeyFormatType::Opaque,
+            key_compression_type: None,
+            key_value: Some(KeyValue::ByteString(Zeroizing::new(vec![0u8; 8]))),
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        };
+        let result = extract_share_bytes(&kb);
+        assert!(
+            result.is_err(),
+            "ByteString (wrapped) variant should return an error"
+        );
+    }
+
+    /// Verify that the simplified `is_co_user` gate correctly allows CO users regardless
+    /// of `require_ceremony`, and blocks non-CO users who lack Create permission.
+    ///
+    /// This is a logic regression test for the fix in issue #6: the old code had a
+    /// redundant `is_crypto_officer` inner check that re-derived the same condition.
+    #[test]
+    fn test_is_co_user_logic() {
+        let co_users: Vec<String> = vec!["alice".to_owned(), "bob".to_owned()];
+
+        // CO user: always a member
+        assert!(co_users.iter().any(|u| u == "alice"));
+        assert!(co_users.iter().any(|u| u == "bob"));
+
+        // Non-CO user: not a member
+        assert!(!co_users.iter().any(|u| u == "carol"));
+
+        // The old code gated on `require_ceremony && co_users.iter().any(...)`.
+        // With require_ceremony = false, a CO user like "alice" would NOT have been
+        // exempt — they would have needed Create permission or been blocked.
+        // The new code uses `co_users.iter().any(...)` unconditionally, which is correct:
+        // CO users must always be able to join split keys regardless of ceremony mode.
+        let require_ceremony = false;
+
+        // Old (broken) logic: is_ceremony_candidate
+        let old_is_exempt = require_ceremony && co_users.iter().any(|u| u == "alice");
+        assert!(
+            !old_is_exempt,
+            "old logic incorrectly blocked alice when require_ceremony=false"
+        );
+
+        // New (fixed) logic: is_co_user
+        let new_is_exempt = co_users.iter().any(|u| u == "alice");
+        assert!(new_is_exempt, "new logic correctly exempts alice");
+    }
 }

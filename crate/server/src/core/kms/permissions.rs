@@ -318,9 +318,14 @@ impl KMS {
         // 800-57 Part 2 Rev 1 §4.3). HSM-backed keys are excluded — they are governed
         // by the HSM admin rules.
         if !ObjectHandle::from(owm.id()).is_hsm() && self.is_crypto_officer(user.as_str()).await? {
-            tracing::warn!(
-                "CRYPTO_OFFICER_ACCESS: crypto officer {user} bypassed ownership check on {} for {operation:?}",
-                owm.id()
+            // Log at ERROR so this event is never suppressed by RUST_LOG=warn or RUST_LOG=info
+            // in production. A CO bypassing ownership is a high-value audit event.
+            tracing::error!(
+                target: "audit",
+                user = %user,
+                object_id = %owm.id(),
+                operation = ?operation,
+                "CRYPTO_OFFICER_ACCESS: crypto officer bypassed ownership check",
             );
             return Ok(true);
         }
@@ -379,5 +384,63 @@ impl KMS {
         } else {
             Ok(true)
         }
+    }
+
+    /// Disable an active Crypto Officer ceremony (revoke the DB activation record).
+    ///
+    /// Enforces:
+    /// - CO role must be configured.
+    /// - `require_ceremony` must be `true` (config-only mode has no runtime gate to disable).
+    /// - Caller must be an active Crypto Officer.
+    /// - **Quorum guard**: when ≥ 2 COs are configured, a single user cannot unilaterally
+    ///   disable the ceremony. Disable must go through the server config + restart path.
+    pub(crate) async fn disable_crypto_officer_ceremony(&self, user: &UserId) -> KResult<()> {
+        let cfg = &self.params.crypto_officer;
+
+        if cfg.users.is_empty() {
+            kms_bail!(KmsError::Unauthorized(
+                "Crypto Officer role is not configured on this server".to_owned()
+            ));
+        }
+
+        if !cfg.require_ceremony {
+            kms_bail!(KmsError::InvalidRequest(
+                "Config-only Crypto Officer cannot be disabled at runtime. Remove the user \
+                 from `crypto_officer_users` in kms.toml and restart the server."
+                    .to_owned()
+            ));
+        }
+
+        if !self.is_crypto_officer(user.as_str()).await? {
+            kms_bail!(KmsError::Unauthorized(
+                "Only an active Crypto Officer can disable the Crypto Officer ceremony".to_owned()
+            ));
+        }
+
+        // Quorum guard: when two or more Crypto Officers are configured, a single user
+        // cannot unilaterally deactivate the ceremony — doing so would allow a rogue
+        // insider to deny service or force a full re-ceremony on everyone else.
+        // In multi-CO deployments, ceremony revocation must go through the server config
+        // (remove the user from `crypto_officer_users` and restart).
+        if cfg.users.len() >= 2 {
+            kms_bail!(KmsError::InvalidRequest(
+                "Ceremony deactivation requires consensus in a multi-CO deployment. \
+                 A single Crypto Officer cannot unilaterally disable the ceremony when \
+                 two or more COs are configured. \
+                 To revoke CO access, remove the user from `crypto_officer_users` in \
+                 kms.toml and restart the server."
+                    .to_owned()
+            ));
+        }
+
+        self.database.revoke_crypto_officer_activation(user).await?;
+
+        tracing::error!(
+            target: "audit",
+            revoked_by = %user,
+            "CRYPTO_OFFICER_DISABLED: Crypto Officer ceremony activation revoked",
+        );
+
+        Ok(())
     }
 }

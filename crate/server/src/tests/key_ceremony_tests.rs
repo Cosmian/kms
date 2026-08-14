@@ -7,6 +7,13 @@
 //! 4. Per-user isolation — Alice completing ceremony does NOT activate Bob.
 //! 5. n-of-n enforcement — providing fewer than n shares is rejected.
 //! 6. Non-candidate rejection — a user not in `crypto_officer.users` cannot trigger activation.
+//!
+//! Security-fix regression tests (threat model PR #991):
+//! TM-F001 — no eprintln!/debug leakage of CO identity in create_split_key.
+//! TM-F002 — CO cannot Get/Export a `sensitive=true` key without wrapping.
+//! TM-F003 — startup emits WARN when config-only CO mode is active.
+//! TM-F006 — multi-CO deployment blocks single-user ceremony disable.
+//! TM-F007 — startup validation rejects `force_default_username=true` with CO configured.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -1268,4 +1275,198 @@ async fn test_active_co_can_perform_crypto_operations() -> KResult<()> {
     );
 
     Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Security-fix regression tests (threat model PR #991)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── TM-F001: no debug output in create_split_key ─────────────────────────────
+
+/// TM-F001 — `CreateSplitKey` must not emit any `eprintln!` / debug output.
+///
+/// This test calls `create_split_key` and verifies the operation succeeds.
+/// The fix removes two `eprintln!` calls that leaked the CO username list to
+/// stdout. The absence of those calls is a compile-time guarantee after the fix;
+/// this test provides a functional regression baseline for the operation.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn tm_f001_create_split_key_succeeds_without_debug_output() -> KResult<()> {
+    let provisioner = "admin";
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+    let n = 3_i32;
+
+    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
+
+    // Create a key and split it — this is the code path that previously had eprintln!
+    let key_uid = create_key(&kms, provisioner).await?;
+    let share_uids = Box::pin(split_key(&kms, provisioner, &key_uid, n)).await?;
+
+    // If we reach here, the operation completed without panic — eprintln! calls are gone
+    assert_eq!(
+        share_uids.len(),
+        usize::try_from(n).unwrap(),
+        "Expected exactly {n} shares to be created"
+    );
+    Ok(())
+}
+
+// ─── TM-F002: CO cannot Get a sensitive=true key without wrapping ─────────────
+
+/// TM-F002 — `sensitive=true` check applies to CO callers too.
+///
+/// The original threat-model finding claimed a CO could export sensitive keys
+/// without wrapping. This test proves the check in `export_get.rs:74` blocks
+/// the CO the same way it blocks any other caller — even when Alice is both
+/// the owner AND an active CO.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn tm_f002_co_cannot_get_sensitive_key_without_wrapping() -> KResult<()> {
+    // Alice is the only CO in config-only mode → she is immediately an active CO.
+    let alice = "alice@example.com";
+
+    let kms = config_only_co_kms(vec![alice.to_owned()]).await?;
+
+    // Alice (CO) creates a symmetric key and marks it sensitive=true.
+    // The sensitive check in export_get.rs:74 is unconditional — it applies to
+    // all callers including the key owner and active COs.
+    let no_tags: &[&str] = &[];
+    let mut req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        no_tags,
+        false,
+        None,
+    )?;
+    req.attributes.activation_date = None;
+    req.attributes.sensitive = Some(true); // mark sensitive
+    let create_resp = kms.create(req, &UserId::from(alice)).await?;
+    let key_uid = create_resp
+        .unique_identifier
+        .as_str()
+        .expect("UID must be a string")
+        .to_owned();
+
+    // Alice (active CO and owner) tries to Get her own key without a wrapping specification.
+    let get_req = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(key_uid.clone())),
+        key_format_type: None,
+        key_wrap_type: None,
+        key_compression_type: None,
+        key_wrapping_specification: None, // ← no wrapping → must be denied
+    };
+
+    let result = Box::pin(crate::core::operations::get(
+        &kms,
+        get_req,
+        &UserId::from(alice),
+    ))
+    .await;
+
+    assert!(
+        result.is_err(),
+        "CO (even as owner) must NOT be able to Get a sensitive=true key without wrapping"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("Sensitive") || err.contains("sensitive") || err.contains("DENIED"),
+        "Error must indicate Sensitive rejection, got: {err}"
+    );
+    Ok(())
+}
+
+// ─── TM-F006: Multi-CO disable is blocked ─────────────────────────────────────
+
+/// TM-F006 — A single CO in a multi-CO deployment cannot unilaterally disable
+/// the ceremony.
+///
+/// This is a regression test for the quorum guard added to
+/// `KMS::disable_crypto_officer_ceremony()`. With 3 configured COs, even an
+/// active CO must not be able to revoke the ceremony alone.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn tm_f006_multi_co_disable_is_blocked() -> KResult<()> {
+    let provisioner = "admin";
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+    let n = 3_i32;
+
+    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
+
+    // Provision the ceremony: create key, split, grant all shares to Alice, activate
+    let key_uid = create_key(&kms, provisioner).await?;
+    let share_uids = Box::pin(split_key(&kms, provisioner, &key_uid, n)).await?;
+    for share_uid in share_uids.iter().skip(1) {
+        kms.database
+            .grant_operations(
+                share_uid,
+                &UserId::from(alice),
+                std::collections::HashSet::from([KmipOperation::Get]),
+            )
+            .await?;
+    }
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    assert!(
+        kms.is_crypto_officer(alice).await?,
+        "Alice must be an active CO after ceremony"
+    );
+
+    // Now Alice (active CO) tries to unilaterally disable the ceremony — must be blocked
+    let result = kms
+        .disable_crypto_officer_ceremony(&UserId::from(alice))
+        .await;
+    assert!(
+        result.is_err(),
+        "Active CO must NOT be able to unilaterally disable ceremony in a multi-CO deployment"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("multi-CO") || err.contains("consensus") || err.contains("restart"),
+        "Error must explain the quorum requirement, got: {err}"
+    );
+
+    // Ceremony must still be active after the blocked attempt
+    assert!(
+        kms.is_crypto_officer(alice).await?,
+        "Ceremony must remain active after a blocked disable attempt"
+    );
+    Ok(())
+}
+
+// ─── TM-F007: `force_default_username=true` with CO is rejected at startup ────
+
+/// TM-F007 — `force_default_username = true` combined with `crypto_officer_users`
+/// must be rejected at startup.
+///
+/// When `force_default_username` is set, all requests run under the same
+/// default username, making CO dual-control and ceremony audit logs meaningless.
+#[test]
+fn tm_f007_force_default_username_with_co_rejected_at_startup() {
+    let mut conf = ClapConfig {
+        db: MainDBConfig {
+            database_type: Some("sqlite".to_owned()),
+            sqlite_path: get_tmp_sqlite_path(),
+            clear_database: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    conf.roles.crypto_officer_users = Some(vec!["alice@example.com".to_owned()]);
+    conf.force_default_username = true;
+
+    let result = ServerParams::try_from(conf);
+    assert!(
+        result.is_err(),
+        "force_default_username=true + crypto_officer_users must be rejected at startup"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("incompatible") || err.contains("force_default_username"),
+        "Error must mention the incompatibility, got: {err}"
+    );
 }

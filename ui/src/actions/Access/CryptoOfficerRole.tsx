@@ -1,8 +1,9 @@
 import { Badge, Button, Card, Form, Input, Space, Tag, Tooltip } from "antd";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/useAuth";
-import { getNoTTLVRequest, postNoTTLVRequest } from "../../utils/utils";
+import { getNoTTLVRequest, postNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import LocateButton from "../../components/common/LocateButton";
+import * as wasm from "../../wasm/pkg";
 
 interface CryptoOfficerStatus {
     enabled: boolean;
@@ -17,12 +18,28 @@ interface CeremonyActivateFormData {
     shareIds: { value: string }[];
 }
 
+type CreateSymKeyResponse = { UniqueIdentifier: string };
+type CreateSplitKeyResponse = { UniqueIdentifier: string; PrivateKeyUniqueIdentifier: string[] };
+
+const buildCreateSplitKeyRequest = (keyId: string, n: number) => ({
+    tag: "CreateSplitKey",
+    type: "Structure",
+    value: [
+        { tag: "UniqueIdentifier", type: "TextString", value: keyId },
+        { tag: "SplitKeyParts", type: "Integer", value: n },
+        { tag: "SplitKeyThreshold", type: "Integer", value: n },
+        { tag: "SplitKeyMethod", type: "Enumeration", value: "XOR" },
+    ],
+});
+
 const CryptoOfficerRole: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [isDisabling, setIsDisabling] = useState(false);
     const [isActivating, setIsActivating] = useState(false);
+    const [isSplitting, setIsSplitting] = useState(false);
     const [status, setStatus] = useState<CryptoOfficerStatus | undefined>(undefined);
     const [res, setRes] = useState<string | undefined>(undefined);
+    const [splitRes, setSplitRes] = useState<string | undefined>(undefined);
     const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
     const [activateForm] = Form.useForm<CeremonyActivateFormData>();
@@ -67,6 +84,64 @@ const CryptoOfficerRole: React.FC = () => {
             setIsDisabling(false);
         }
     }, [serverUrl, fetchStatus]);
+
+    // ── Step 1: Create & Split Key ────────────────────────────────────────────
+    // Creates an AES-256 key and splits it into `custodians_count` shares, then
+    // auto-populates the "Activate Ceremony" share-ID inputs below.
+    const createAndSplitKey = useCallback(async () => {
+        if (!status) return;
+        const n = status.custodians_count;
+        setIsSplitting(true);
+        setSplitRes(undefined);
+        try {
+            // Create a new AES-256 symmetric key
+            const symReq = wasm.create_sym_key_ttlv_request(
+                undefined,
+                [],
+                256,
+                "Aes",
+                false,
+                undefined,
+                undefined,
+            );
+            const symRespStr = await sendKmipRequest(symReq, serverUrl);
+            if (!symRespStr) throw new Error("Symmetric key creation returned an empty response");
+
+            const symResp: CreateSymKeyResponse = await wasm.parse_create_ttlv_response(symRespStr);
+            const createdKeyId = symResp.UniqueIdentifier;
+
+            // Split the key into n shares (n = custodians_count)
+            const splitReq = buildCreateSplitKeyRequest(createdKeyId, n);
+            const splitRespStr = await sendKmipRequest(splitReq, serverUrl);
+            if (!splitRespStr) throw new Error("Split key operation returned an empty response");
+
+            const splitResp: CreateSplitKeyResponse = await wasm.parse_create_split_key_ttlv_response(splitRespStr);
+            const shareUids: string[] = Array.isArray(splitResp.PrivateKeyUniqueIdentifier)
+                ? splitResp.PrivateKeyUniqueIdentifier
+                : splitResp.PrivateKeyUniqueIdentifier
+                  ? [splitResp.PrivateKeyUniqueIdentifier]
+                  : [];
+
+            if (shareUids.length === 0) {
+                throw new Error(`No share UIDs returned from split operation. Raw response: ${splitRespStr}`);
+            }
+
+            // Auto-populate the activation form's share UID inputs
+            activateForm.setFieldsValue({
+                shareIds: shareUids.map((uid) => ({ value: uid })),
+            });
+
+            setSplitRes(
+                `AES-256 key created: ${createdKeyId}\n` +
+                    `Split into ${shareUids.length} share(s) — UIDs auto-filled below:\n` +
+                    shareUids.map((uid, i) => `  Share ${i + 1}: ${uid}`).join("\n"),
+            );
+        } catch (e) {
+            setSplitRes(`Error creating/splitting key: ${e}`);
+        } finally {
+            setIsSplitting(false);
+        }
+    }, [status, serverUrl, activateForm]);
 
     const activateCeremony = useCallback(
         async (values: CeremonyActivateFormData) => {
@@ -219,63 +294,91 @@ const CryptoOfficerRole: React.FC = () => {
                     </Card>
                 )}
 
-                {/* Ceremony activation — only shown when ceremony mode is active and role is dormant */}
+                {/* Ceremony workflow — only shown when ceremony mode is required and role is dormant */}
                 {status && status.enabled && status.require_ceremony && !status.ceremony_activated && (
-                    <Card title="Activate Ceremony" data-testid="activate-ceremony-card">
-                        <p className="mb-4 text-gray-600">
-                            Provide all {status.custodians_count} share UIDs from the ceremony split key. Each share must be owned by a
-                            different Crypto Officer — not by you (dual-control requirement). The server reconstructs the secret in RAM and
-                            zeroizes it immediately after activation; no key is stored.
-                        </p>
-                        <Form
-                            form={activateForm}
-                            onFinish={activateCeremony}
-                            layout="vertical"
-                            initialValues={{
-                                shareIds: Array.from({ length: status.custodians_count }, () => ({ value: "" })),
-                            }}
+                    <>
+                        {/* ── Step 1: Create & Split Key ────────────────────────────── */}
+                        <Card
+                            title={`Step 1 — Create & Split Key (${status.custodians_count} shares)`}
+                            data-testid="split-key-step-card"
                         >
-                            <Form.List name="shareIds">
-                                {(fields) => (
-                                    <>
-                                        {fields.map((field, index) => (
-                                            <Form.Item key={field.key} required>
-                                                <Space align="baseline" className="w-full">
-                                                    <Form.Item
-                                                        {...field}
-                                                        name={[field.name, "value"]}
-                                                        rules={[{ required: true, message: "Share UID is required" }]}
-                                                        noStyle
-                                                    >
-                                                        <Input
-                                                            placeholder={`Share ${index + 1} UID (from CO ${index + 1})`}
-                                                            style={{ width: 380 }}
-                                                            data-testid={`ceremony-share-id-${index}`}
+                            <p className="mb-4 text-gray-600">
+                                Creates a new AES-256 key and splits it into <strong>{status.custodians_count} shares</strong> — one per
+                                Crypto Officer candidate. The share UIDs are auto-filled into Step 2 below. You may also fill the UIDs
+                                manually if you already have them.
+                            </p>
+                            <Button
+                                type="default"
+                                onClick={createAndSplitKey}
+                                loading={isSplitting}
+                                data-testid="create-split-key-btn"
+                            >
+                                Create & Split Key ({status.custodians_count} shares)
+                            </Button>
+                            {splitRes && (
+                                <pre className="mt-3 p-3 bg-gray-50 border rounded text-xs overflow-auto whitespace-pre-wrap" data-testid="split-key-result">
+                                    {splitRes}
+                                </pre>
+                            )}
+                        </Card>
+
+                        {/* ── Step 2: Activate Ceremony ─────────────────────────────── */}
+                        <Card title="Step 2 — Activate Ceremony" data-testid="activate-ceremony-card">
+                            <p className="mb-4 text-gray-600">
+                                Provide all {status.custodians_count} share UIDs from the ceremony split key. Each share must be owned by a
+                                different Crypto Officer — not by you (dual-control requirement). The server reconstructs the secret in RAM
+                                and zeroizes it immediately after activation; no key is stored.
+                            </p>
+                            <Form
+                                form={activateForm}
+                                onFinish={activateCeremony}
+                                layout="vertical"
+                                initialValues={{
+                                    shareIds: Array.from({ length: status.custodians_count }, () => ({ value: "" })),
+                                }}
+                            >
+                                <Form.List name="shareIds">
+                                    {(fields) => (
+                                        <>
+                                            {fields.map((field, index) => (
+                                                <Form.Item key={field.key} required>
+                                                    <Space align="baseline" className="w-full">
+                                                        <Form.Item
+                                                            {...field}
+                                                            name={[field.name, "value"]}
+                                                            rules={[{ required: true, message: "Share UID is required" }]}
+                                                            noStyle
+                                                        >
+                                                            <Input
+                                                                placeholder={`Share ${index + 1} UID (from CO ${index + 1})`}
+                                                                style={{ width: 380 }}
+                                                                data-testid={`ceremony-share-id-${index}`}
+                                                            />
+                                                        </Form.Item>
+                                                        <LocateButton
+                                                            objectType="SplitKey"
+                                                            onSelect={(uid: string) => onLocateSelect(index, uid)}
                                                         />
-                                                    </Form.Item>
-                                                    <LocateButton
-                                                        objectType="SplitKey"
-                                                        onSelect={(uid: string) => onLocateSelect(index, uid)}
-                                                    />
-                                                </Space>
-                                            </Form.Item>
-                                        ))}
-                                    </>
-                                )}
-                            </Form.List>
-                            <Form.Item>
-                                <Button
-                                    type="primary"
-                                    htmlType="submit"
-                                    loading={isActivating}
-                                    data-testid="activate-ceremony-btn"
-                                    className="bg-green-600 hover:bg-green-700 border-0"
-                                >
-                                    Activate Crypto Officer Ceremony
-                                </Button>
-                            </Form.Item>
-                        </Form>
-                    </Card>
+                                                    </Space>
+                                                </Form.Item>
+                                            ))}
+                                        </>
+                                    )}
+                                </Form.List>
+                                <Form.Item>
+                                    <Button
+                                        type="primary"
+                                        htmlType="submit"
+                                        loading={isActivating}
+                                        data-testid="activate-ceremony-btn"
+                                        className="bg-green-600 hover:bg-green-700 border-0"
+                                    >
+                                        Activate Crypto Officer Ceremony
+                                    </Button>
+                                </Form.Item>
+                            </Form>
+                        </Card>
+                    </>
                 )}
             </Space>
 

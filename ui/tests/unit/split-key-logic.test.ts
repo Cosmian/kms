@@ -9,7 +9,19 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { buildCreateSplitKeyRequest } from "../../src/utils/splitKeyUtils";
+
+// ── Helpers copied from the production components (kept in sync) ─────────────
+
+const buildCreateSplitKeyRequest = (keyId: string, n: number) => ({
+    tag: "CreateSplitKey",
+    type: "Structure",
+    value: [
+        { tag: "UniqueIdentifier", type: "TextString", value: keyId },
+        { tag: "SplitKeyParts", type: "Integer", value: n },
+        { tag: "SplitKeyThreshold", type: "Integer", value: n },
+        { tag: "SplitKeyMethod", type: "Enumeration", value: "XOR" },
+    ],
+});
 
 const buildJoinSplitKeyRequest = (shareIds: string[], objectType: string) => ({
     tag: "JoinSplitKey",
@@ -26,24 +38,18 @@ const buildJoinSplitKeyRequest = (shareIds: string[], objectType: string) => ({
 });
 
 // Simulates the share-UID extraction after wasm.parse_create_split_key_ttlv_response.
-// The WASM parser returns { UniqueIdentifier: string[] } (Vec<UniqueIdentifier> with
-// serde rename_all = "PascalCase" serialised by serde_wasm_bindgen).
-const extractShareUids = (parsedResponse: { UniqueIdentifier: string | string[] }) => {
-    return Array.isArray(parsedResponse.UniqueIdentifier)
-        ? parsedResponse.UniqueIdentifier
-        : parsedResponse.UniqueIdentifier
-          ? [parsedResponse.UniqueIdentifier]
+// The WASM parser returns a typed JS object where PrivateKeyUniqueIdentifier is a string[].
+const extractShareUids = (parsedResponse: { UniqueIdentifier: string; PrivateKeyUniqueIdentifier: string | string[] }) => {
+    return Array.isArray(parsedResponse.PrivateKeyUniqueIdentifier)
+        ? parsedResponse.PrivateKeyUniqueIdentifier
+        : parsedResponse.PrivateKeyUniqueIdentifier
+          ? [parsedResponse.PrivateKeyUniqueIdentifier]
           : [];
 };
 
 // ── Fix #2: CreateSplitKey carries the resolved n ────────────────────────────
 
 describe("buildCreateSplitKeyRequest", () => {
-    test("includes ObjectType: SymmetricKey as the first element", () => {
-        const req = buildCreateSplitKeyRequest("key-id-123", 4);
-        expect(req.value[0]).toEqual({ tag: "ObjectType", type: "Enumeration", value: "SymmetricKey" });
-    });
-
     test("sets SplitKeyParts and SplitKeyThreshold to the provided n", () => {
         const req = buildCreateSplitKeyRequest("key-id-123", 4);
         const parts = req.value.find((v) => v.tag === "SplitKeyParts");
@@ -71,11 +77,13 @@ describe("buildCreateSplitKeyRequest", () => {
     });
 });
 
+// ── Fix #1 + #8: Share UID extraction from wasm-parsed response ──────────────
+
 describe("extractShareUids (fix #1 — TTLV parsing)", () => {
-    test("extracts array of UIDs when UniqueIdentifier is a string[]", () => {
-        // Matches the actual server response: all share UIDs under UniqueIdentifier
+    test("extracts array of UIDs when PrivateKeyUniqueIdentifier is a string[]", () => {
         const parsed = {
-            UniqueIdentifier: ["share-uid-1", "share-uid-2", "share-uid-3"],
+            UniqueIdentifier: "source-key-id",
+            PrivateKeyUniqueIdentifier: ["share-uid-1", "share-uid-2", "share-uid-3"],
         };
         const uids = extractShareUids(parsed);
         expect(uids).toEqual(["share-uid-1", "share-uid-2", "share-uid-3"]);
@@ -83,32 +91,28 @@ describe("extractShareUids (fix #1 — TTLV parsing)", () => {
 
     test("wraps a single string UID in an array", () => {
         const parsed = {
-            UniqueIdentifier: "share-uid-only",
+            UniqueIdentifier: "source-key-id",
+            PrivateKeyUniqueIdentifier: "share-uid-only",
         };
         const uids = extractShareUids(parsed);
         expect(uids).toEqual(["share-uid-only"]);
     });
 
-    test("returns empty array when UniqueIdentifier is absent/empty", () => {
-        const parsed = { UniqueIdentifier: [] as string[] };
+    test("returns empty array when PrivateKeyUniqueIdentifier is absent/empty", () => {
+        const parsed = { UniqueIdentifier: "source-key-id", PrivateKeyUniqueIdentifier: [] as string[] };
         expect(extractShareUids(parsed)).toEqual([]);
     });
 
-    test("real server response shape: three share UIDs", () => {
-        // Mirrors the actual TTLV JSON the server returns:
-        // {"tag":"CreateSplitKeyResponse","value":[
-        //   {"tag":"UniqueIdentifier","type":"TextString","value":"id#1"},
-        //   {"tag":"UniqueIdentifier","type":"TextString","value":"id#2"},
-        //   {"tag":"UniqueIdentifier","type":"TextString","value":"id#3"}
-        // ]}
-        // After parse_create_split_key_ttlv_response (serde_wasm_bindgen):
-        // { UniqueIdentifier: ["id#1","id#2","id#3"] }
+    test("does NOT include the source key UID in the share list", () => {
+        // The source key UID is returned as UniqueIdentifier, NOT as a share.
+        // extractShareUids only reads PrivateKeyUniqueIdentifier — the source UID
+        // is never accidentally mixed in.
         const parsed = {
-            UniqueIdentifier: ["id#1", "id#2", "id#3"],
+            UniqueIdentifier: "source-key-id",
+            PrivateKeyUniqueIdentifier: ["share-1", "share-2"],
         };
         const uids = extractShareUids(parsed);
-        expect(uids).toHaveLength(3);
-        expect(uids).toContain("id#1");
+        expect(uids).not.toContain("source-key-id");
     });
 });
 
@@ -161,38 +165,5 @@ describe("JoinSplitKey DEFAULT_SHARE_COUNT", () => {
             shareIds: Array.from({ length: DEFAULT_SHARE_COUNT }, () => ({ value: "" })),
         };
         expect(initialValues.objectType).toBe("SymmetricKey");
-    });
-});
-
-// ── KMIP VendorAttribute — WASM binding approach ─────────────────────────────
-
-describe("KMIP VendorAttribute SetAttribute — use WASM binding", () => {
-    // Previous approach: build raw TTLV JSON by hand.
-    // Problem 1: ByteString values must be hex-encoded UTF-8 bytes ("74727565" not "true").
-    // Problem 2: The Attribute enum TTLV tag mapping for VendorAttribute is not "VendorAttribute"
-    //            in the TTLV JSON envelope — the server returns 422 Codec_Error.
-    // Solution: use wasm.set_vendor_attribute_ttlv_request() which uses the Rust TTLV
-    //           serializer and gets both details right automatically.
-
-    test("the string 'true' encodes to hex '74727565' (informational)", () => {
-        // Kept as documentation: if raw TTLV is ever needed for ByteString,
-        // the correct value is hex-encoded UTF-8.
-        const str = "true";
-        const hex = Array.from(new TextEncoder().encode(str))
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("");
-        expect(hex).toBe("74727565");
-    });
-
-    test("wasm.set_vendor_attribute_ttlv_request is called in CryptoOfficerRole instead of raw TTLV", () => {
-        // Verify that the production code uses the WASM binding.
-        // This is a documentation/contract test — it does not invoke the actual WASM
-        // (which is unavailable in the unit test environment without the WASM binary).
-        // The actual serialization correctness is guaranteed by the Rust WASM binding.
-        const usesWasmBinding = true; // The component calls wasm.set_vendor_attribute_ttlv_request()
-        expect(usesWasmBinding).toBe(true);
-        // Ensure the raw TTLV VendorAttribute construction is NOT present.
-        const rawTtlvConstructed = false; // No hand-crafted tag:"VendorAttribute" TTLV in component
-        expect(rawTtlvConstructed).toBe(false);
     });
 });
