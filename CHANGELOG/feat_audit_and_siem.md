@@ -136,3 +136,16 @@ honoured when the direct TCP peer address falls within a trusted CIDR.
 
 Default is an empty list — no behaviour change unless opted in.
 Single IPs can be expressed as `/32` (IPv4) or `/128` (IPv6).
+
+### Audit failure mode
+
+Added `--audit-failure-mode` / `KMS_AUDIT_FAILURE_MODE` / `[audit] failure_mode`.
+
+| Value                | Behaviour                                                                         |
+| -------------------- | --------------------------------------------------------------------------------- |
+| `continue` (default) | Log the error, keep serving — no service disruption.                              |
+| `reject`             | Return HTTP 503 when the event could not be queued (channel full or writer dead). |
+
+`enqueue()` on `AuditFileStore` now returns `bool` (`true` = all events queued). The middleware
+checks this only when `failure_mode = reject`; in `continue` mode the return value is ignored and
+existing behaviour is preserved exactly.
