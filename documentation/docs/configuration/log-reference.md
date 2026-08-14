@@ -601,9 +601,7 @@ Crate path: `crate/server`
 | `trace` | `` JWKS key order is database insertion order — not stable across restarts or backends.          Returning {} eligible key(s); consumers must match by `kid`, not position. `` | `src/routes/jwks.rs` | - | - |
 | `trace` | `POST /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
 | `warn` | `CRYPTO_OFFICER_ACCESS: crypto officer {user} bypassed normal permission check on {id} for {operation_type:?}` | `src/core/retrieve_object_utils.rs` | `user`, `id`, `operation_type` | - |
-| `warn` | `CRYPTO_OFFICER_DISABLED: Crypto Officer ceremony activation revoked by {user}` | `src/routes/access.rs` | `user` | - |
 | `info` | `CreateSplitKey: stored share` | `src/core/operations/create_split_key.rs` | - | - |
-| `info` | `CRYPTO_OFFICER_CEREMONY_ACTIVATED: Crypto Officer ceremony completed` | `src/core/operations/join_split_key.rs` | - | - |
 | `info` | `GET /access/crypto_officer/status {user}` | `src/routes/access.rs` | `user` | - |
 | `info` | `JoinSplitKey: reconstructed key stored` | `src/core/operations/join_split_key.rs` | - | - |
 | `info` | `POST /access/crypto_officer/disable {user}` | `src/routes/access.rs` | `user` | - |
@@ -687,7 +685,12 @@ Crate path: `crate/server`
 | `trace` | `CreateSplitKey: overriding total_parts from {total_parts} to {n_co_i32}                  (matches crypto_officer_users count)` | `src/core/operations/create_split_key.rs` | `total_parts`, `n_co_i32` | - |
 | `warn` | `CreateSplitKey: ceremony source key could not be destroyed after split                      — key material may still be accessible. Manual destruction required.` | `src/core/operations/create_split_key.rs` | - | - |
 | `info` | `CreateSplitKey: ceremony source key destroyed after successful split` | `src/core/operations/create_split_key.rs` | - | - |
-| `warn` | `CRYPTO_OFFICER_ACCESS: crypto officer {user} bypassed ownership check on {} for {operation:?}` | `src/core/kms/permissions.rs` | `user`, `operation` | - |
+| `error` | `CRYPTO_OFFICER_ACCESS: crypto officer bypassed ownership check` | `src/core/kms/permissions.rs` | - | - |
+| `error` | `CRYPTO_OFFICER_CEREMONY_ACTIVATED: Crypto Officer ceremony completed` | `src/core/operations/join_split_key.rs` | - | - |
+| `error` | `CRYPTO_OFFICER_DISABLED: Crypto Officer ceremony activation revoked` | `src/core/kms/permissions.rs` | - | - |
+| `warn` | `` SECURITY: Crypto Officer is active in config-only mode                          (require_ceremony = false). Any user listed in                          `crypto_officer_users` is a permanent super-admin with no                          runtime activation gate. Consider enabling                          `crypto_officer_require_ceremony = true` in production                          deployments. `` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `SECURITY: Crypto Officer is configured but rate_limit_per_second is not set.              The ceremony activation endpoint performs crypto operations on every request.              Set rate_limit_per_second in the server config to protect against abuse in              production deployments.` | `src/start_kms_server.rs` | - | - |
+| `debug` | `CreateSplitKey: resolved ceremony parameters` | `src/core/operations/create_split_key.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
