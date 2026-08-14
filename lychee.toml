@@ -32,6 +32,8 @@ user_agent = "lychee/0.15 (Cosmian KMS docs; https://github.com/Cosmian/kms)"
 # Sites that block automated crawlers, rate-limit, or return 5xx to bots
 
 exclude = [
+  # Internal French social security intranet URLs — not reachable from internet
+  'pkipubpc\.cnp\.recouv',
   # Local / internal references
   'localhost',
   'host\.docker\.internal',
