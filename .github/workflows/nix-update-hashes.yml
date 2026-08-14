@@ -12,6 +12,9 @@
 #             cli.vendor.linux.sha256
 #             ui.vendor.{fips,non-fips}.sha256
 #             ui.pnpm.linux.sha256
+#             k8s-plugin.vendor.linux.sha256
+#             k8s-operator.vendor.linux.sha256
+#             k8s-csi-provider.vendor.linux.sha256
 #   macOS  : cli.vendor.{static,dynamic}.darwin.sha256
 #             ui.pnpm.darwin.sha256
 #
