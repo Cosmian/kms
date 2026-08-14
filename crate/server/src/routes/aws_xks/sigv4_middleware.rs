@@ -32,7 +32,7 @@ use futures::{
     future::{Ready, err, ok},
 };
 use scratchstack_aws_signature::{
-    GetSigningKeyRequest, GetSigningKeyResponse, KSecretKey, NO_ADDITIONAL_SIGNED_HEADERS,
+    GetSigningKeyRequest, GetSigningKeyResponse, KSigningKey, NO_ADDITIONAL_SIGNED_HEADERS,
     SignatureOptions, sigv4_validate_request,
 };
 use zeroize::Zeroizing;
@@ -229,11 +229,9 @@ impl tower_service::Service<GetSigningKeyRequest> for SigningKeyService {
                     ),
                 ));
             }
-            let secret_key: KSecretKey = access_key
-                .parse()
-                .map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
             let signing_key =
-                secret_key.to_ksigning(req.request_date(), req.region(), req.service());
+                derive_signing_key(&access_key, req.request_date(), req.region(), req.service())
+                    .map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
             // XKS does not use IAM principals — build response with signing key only
             GetSigningKeyResponse::builder()
                 .signing_key(signing_key)
@@ -241,6 +239,39 @@ impl tower_service::Service<GetSigningKeyRequest> for SigningKeyService {
                 .map_err(Box::<dyn std::error::Error + Send + Sync>::from)
         })
     }
+}
+
+/// Derives a `SigV4` `K_signing` key, supporting the full XKS-spec secret length range (43–64 chars).
+// `KSecretKey::from_str` only accepts exactly M-4 chars (default M=44 → 40 chars); `KSigningKey`
+// has no public constructor from raw bytes, so transmute is the only sound approach without
+// modifying the upstream scratchstack library.
+#[allow(unsafe_code)]
+fn derive_signing_key(
+    secret: &str,
+    date: chrono::NaiveDate,
+    region: &str,
+    service: &str,
+) -> Result<KSigningKey, hmac::digest::InvalidLength> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+
+    let hmac_raw = |key: &[u8], msg: &[u8]| -> Result<[u8; 32], hmac::digest::InvalidLength> {
+        let mut mac = HmacSha256::new_from_slice(key)?;
+        mac.update(msg);
+        Ok(mac.finalize().into_bytes().into())
+    };
+
+    let k_secret = format!("AWS4{secret}");
+    let date_str = date.format("%Y%m%d").to_string();
+    let k_date = hmac_raw(k_secret.as_bytes(), date_str.as_bytes())?;
+    let k_region = hmac_raw(&k_date, region.as_bytes())?;
+    let k_service = hmac_raw(&k_region, service.as_bytes())?;
+    let k_signing = hmac_raw(&k_service, b"aws4_request")?;
+
+    // SAFETY: `KSigningKey` is a single-field newtype over `[u8; 32]` with no padding;
+    // its size and alignment are identical to `[u8; 32]`, making this transmute sound.
+    Ok(unsafe { std::mem::transmute::<[u8; 32], KSigningKey>(k_signing) })
 }
 
 fn to_http_request(
