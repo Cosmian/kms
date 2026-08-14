@@ -54,3 +54,10 @@ jobs:
           KMS_XKS_SIGV4_SECRET_ACCESS_KEY: ${{ secrets.KMS_XKS_SIGV4_SECRET_ACCESS_KEY }}
         run: |
           bash .mise/scripts/test/test_xks_remote.sh
+
+      - name: Run AWS KMS XKS end-to-end test
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_XKS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_XKS_SECRET_ACCESS_KEY }}
+          AWS_XKS_KEY_ARN: ${{ secrets.AWS_XKS_KEY_ARN }}
+        run: bash .mise/scripts/test/test_xks_aws_e2e.sh
