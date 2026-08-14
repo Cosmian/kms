@@ -463,10 +463,8 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
 
     #[instrument(level = "trace", skip(self))]
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
-        trace!(
-            "serialize_tuple of len {len}. Current: {:?}",
-            &self.current_tag()
-        );
+        let current_tag = self.current_tag();
+        trace!("serialize_tuple of len {len}. Current: {:?}", &current_tag);
         self.serialize_seq(Some(len))
     }
 
@@ -476,9 +474,10 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleStruct> {
+        let current_tag = self.current_tag();
         trace!(
             "serialize_tuple_struct {name} of len {len}. Current: {:?}",
-            &self.current_tag()
+            &current_tag
         );
         self.serialize_seq(Some(len))
     }
@@ -491,10 +490,11 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleVariant> {
+        let current_tag = self.current_tag();
         trace!(
             "serialize_tuple_variant {name}::{variant} (variant index: {variant_index}) of len \
              {len}. Current: {:?}",
-            &self.current_tag()
+            &current_tag
         );
         Err(TtlvError::custom(
             "'tuple variant' is unsupported in TTLV".to_owned(),
@@ -503,10 +503,8 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
 
     #[instrument(level = "trace", skip(self))]
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap> {
-        trace!(
-            "serialize_map of len: {len:?}. Current: {:?}",
-            &self.current_tag()
-        );
+        let current_tag = self.current_tag();
+        trace!("serialize_map of len: {len:?}. Current: {:?}", &current_tag);
         Err(TtlvError::custom("'map' is unsupported in TTLV".to_owned()))
     }
 
@@ -541,10 +539,11 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant> {
+        let current_tag = self.current_tag();
         trace!(
             "serialize_struct_variant {name}::{variant} (variant index: {variant_index}) of len \
              {len}. Current: {:?}",
-            &self.current_tag()
+            &current_tag
         );
         self.serialize_struct(name, len)
     }

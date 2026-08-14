@@ -10,7 +10,11 @@ use cosmian_kms_server_database::reexport::{
 };
 
 use crate::{
-    core::{KMS, retrieve_object_utils::user_has_permission, uid_utils::has_prefix},
+    core::{
+        KMS,
+        retrieve_object_utils::user_has_permission,
+        uid_utils::{ObjectHandle, from_request},
+    },
     error::KmsError,
     kms_bail,
     middlewares::AuthenticatedUser,
@@ -52,12 +56,8 @@ impl KMS {
         }
 
         if !updated_operations_types.is_empty() {
-            let uid = access
-                .unique_identifier
-                .as_ref()
-                .ok_or(KmsError::UnsupportedPlaceholder)?
-                .as_str()
-                .context("unique_identifier is not a string")?;
+            let handle = from_request(access.unique_identifier.as_ref(), "GrantAccess")?;
+            let uid = handle.as_str();
 
             // check the object identified by its `uid` is really owned by `owner`
             if !self.database.is_object_owned_by(uid, owner).await? {
@@ -75,7 +75,7 @@ impl KMS {
             }
 
             // HSM keys: block granting Destroy and Revoke — these are admin-only operations
-            if has_prefix(uid).is_some() {
+            if handle.is_hsm() {
                 let forbidden: Vec<&KmipOperation> = updated_operations_types
                     .iter()
                     .filter(|op| matches!(op, KmipOperation::Destroy | KmipOperation::Revoke))
@@ -135,12 +135,7 @@ impl KMS {
         }
 
         if !updated_operations_types.is_empty() {
-            let uid = access
-                .unique_identifier
-                .as_ref()
-                .ok_or(KmsError::UnsupportedPlaceholder)?
-                .as_str()
-                .context("unique_identifier is not a string")?;
+            let uid = from_request(access.unique_identifier.as_ref(), "RevokeAccess")?.as_str();
 
             // check the object identified by its `uid` is really owned by `owner`
             if !self.database.is_object_owned_by(uid, owner).await? {
@@ -228,7 +223,7 @@ impl KMS {
                 // routing prefix as owner — avoids leaking admin identities.
                 if resp.owner_id.is_empty() {
                     let uid_str = resp.object_id.as_str().unwrap_or_default();
-                    if let Some(prefix) = has_prefix(uid_str) {
+                    if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(uid_str) {
                         resp.owner_id = prefix.to_owned();
                     }
                 }

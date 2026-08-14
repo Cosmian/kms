@@ -17,7 +17,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix, wrapping::unwrap_object},
+    core::{KMS, uid_utils::ObjectHandle, wrapping::unwrap_object},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -54,7 +54,7 @@ pub(crate) async fn wrap_and_cache(
         };
         // HSM-resident keys are hardware-protected: skip the server-wide KEK wrapping
         // to avoid creating a circular dependency where the KEK would wrap itself.
-        if has_prefix(&uid_str).is_some() {
+        if ObjectHandle::from(&uid_str).is_hsm() {
             return Ok(());
         }
         kek
@@ -151,7 +151,7 @@ pub(crate) async fn wrap_object(
             .context("unable to wrap key: wrapping key uid is not a string")?,
         None => kms_bail!("unable to wrap key: wrapping key uid is missing"),
     };
-    if let Some(prefix) = has_prefix(wrapping_key_uid) {
+    if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(wrapping_key_uid) {
         debug!(
             "...wrapping the key block with key uid: {wrapping_key_uid} using an encryption \
              oracle, user: {user}"
@@ -161,7 +161,7 @@ pub(crate) async fn wrap_object(
             key_wrapping_specification,
             kms,
             user,
-            wrapping_key_uid,
+            ObjectHandle::from(wrapping_key_uid),
             prefix,
         )
         .await?;
@@ -175,7 +175,7 @@ pub(crate) async fn wrap_object(
             key_wrapping_specification,
             kms,
             user,
-            wrapping_key_uid,
+            ObjectHandle::from(wrapping_key_uid),
         ))
         .await?;
     }
@@ -189,8 +189,9 @@ async fn wrap_using_kms(
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
-    wrapping_key_uid: &str,
+    handle: ObjectHandle<'_>,
 ) -> KResult<()> {
+    let wrapping_key_uid = handle.as_str();
     trace!("Checking permissions to wrap with key {wrapping_key_uid}");
     // fetch the wrapping key
     let wrapping_key = kms
@@ -318,9 +319,10 @@ async fn wrap_using_crypto_oracle(
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
-    wrapping_key_uid: &str,
+    handle: ObjectHandle<'_>,
     prefix: &str,
 ) -> KResult<()> {
+    let wrapping_key_uid = handle.as_str();
     // The server-configured key_encryption_key is a shared server resource accessible
     // to all users, so skip the ownership check for it (issue #761).
     let is_server_kek = kms

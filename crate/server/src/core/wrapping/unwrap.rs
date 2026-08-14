@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::debug;
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{KMS, uid_utils::ObjectHandle},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -56,13 +56,18 @@ pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &str) ->
         .unique_identifier
         .to_string();
 
-    if let Some(prefix) = has_prefix(&unwrapping_key_uid) {
+    if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(&unwrapping_key_uid) {
         debug!(
             "...unwrapping the key block with key uid: {unwrapping_key_uid} using an encryption \
              oracle, user: {user}"
         );
-        unwrapping_key_uid =
-            unwrap_using_crypto_oracle(object_key_block, kms, &unwrapping_key_uid, prefix).await?;
+        unwrapping_key_uid = unwrap_using_crypto_oracle(
+            object_key_block,
+            kms,
+            ObjectHandle::from(&unwrapping_key_uid),
+            prefix,
+        )
+        .await?;
     } else {
         debug!(
             "...unwrapping the key block with key uid: {unwrapping_key_uid} using the KMS, user: \
@@ -72,7 +77,7 @@ pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &str) ->
             object_key_block,
             kms,
             user,
-            &unwrapping_key_uid,
+            ObjectHandle::from(&unwrapping_key_uid),
         ))
         .await?;
     }
@@ -88,8 +93,9 @@ async fn unwrap_using_kms(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
     user: &str,
-    unwrapping_key_uid: &String,
+    handle: ObjectHandle<'_>,
 ) -> KResult<()> {
+    let unwrapping_key_uid = handle.as_str();
     // fetch the wrapping key
     let unwrapping_key = kms
         .database
@@ -180,9 +186,10 @@ async fn unwrap_using_kms(
 async fn unwrap_using_crypto_oracle(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
-    unwrapping_key_uid: &str,
+    handle: ObjectHandle<'_>,
     prefix: &str,
 ) -> KResult<String> {
+    let unwrapping_key_uid = handle.as_str();
     // Determine the private key if a public key is passed
     let unwrapping_key_uid = unwrapping_key_uid
         .strip_suffix(SYSTEM_TAG_PUBLIC_KEY)

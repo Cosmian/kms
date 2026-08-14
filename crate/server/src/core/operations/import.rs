@@ -37,6 +37,7 @@ use crate::{
     core::{
         KMS,
         operations::validate::verify_crls,
+        uid_utils::ObjectHandle,
         wrapping::{unwrap_object, wrap_and_cache},
     },
     error::KmsError,
@@ -54,12 +55,10 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &str) -> KResult<Im
     // see tagging
     // For instance, a request for a unique identifier `[tag1]` will
     // attempt to find a valid single object tagged with `tag1`
-    if request
-        .unique_identifier
-        .as_str()
-        .unwrap_or_default()
-        .starts_with('[')
-    {
+    if matches!(
+        ObjectHandle::from(request.unique_identifier.as_str().unwrap_or_default()),
+        ObjectHandle::Tags(_)
+    ) {
         kms_bail!("Importing objects with unique identifiers starting with `[` is not supported");
     }
 
@@ -74,7 +73,7 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &str) -> KResult<Im
         if let Some(uid_str) = request.unique_identifier.as_str().filter(|s| !s.is_empty()) {
             if let Some(existing) = kms
                 .database
-                .retrieve_objects(uid_str)
+                .retrieve_objects(ObjectHandle::from(uid_str))
                 .await?
                 .values()
                 .next()

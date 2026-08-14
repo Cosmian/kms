@@ -34,6 +34,7 @@ use crate::{
         KMS,
         certificate::{retrieve_certificate_for_private_key, retrieve_private_key_for_certificate},
         retrieve_object_utils::retrieve_object_for_operation,
+        uid_utils::{ObjectHandle, from_request},
         wrapping::wrap_object,
     },
     error::KmsError,
@@ -53,14 +54,9 @@ pub(crate) async fn export_get(
     let request: Export = request.into();
     trace!(target: "kmip", "enter export_get op={:?} req={}", operation_type, request);
 
-    let uid_or_tags = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?
-        .as_str()
-        .context("Export: unique_identifier or tags must be a string")?;
+    let object_handle = from_request(request.unique_identifier.as_ref(), "Export")?;
     let mut owm = Box::pin(retrieve_object_for_operation(
-        uid_or_tags,
+        object_handle,
         operation_type,
         kms,
         user,
@@ -289,7 +285,7 @@ pub(crate) async fn export_get(
                 if is_pkcs12 {
                     // retrieve the private key
                     owm = retrieve_private_key_for_certificate(
-                        uid_or_tags,
+                        object_handle,
                         operation_type,
                         kms,
                         user,
@@ -1300,7 +1296,7 @@ async fn build_pkcs12_for_private_key(
         trace!("certificate parent id is:  {}", parent_id);
         // retrieve the parent certificate
         cert_owm = Box::pin(retrieve_object_for_operation(
-            &parent_id.to_string(),
+            ObjectHandle::from(&parent_id.to_string()),
             operation_type,
             kms,
             user,
@@ -1386,7 +1382,7 @@ async fn post_process_pkcs7(
             KmipError::Default("No Public Key found in the leaf certificate".to_owned())
         })?;
     let public_key_owm = Box::pin(retrieve_object_for_operation(
-        &public_key_id.to_string(),
+        ObjectHandle::from(&public_key_id.to_string()),
         operation_type,
         kms,
         user,
@@ -1397,7 +1393,7 @@ async fn post_process_pkcs7(
         .get_link(LinkType::PrivateKeyLink);
     if let Some(private_key_id) = private_key_id {
         let private_key_owm = Box::pin(retrieve_object_for_operation(
-            &private_key_id.to_string(),
+            ObjectHandle::from(&private_key_id.to_string()),
             operation_type,
             kms,
             user,
@@ -1424,7 +1420,7 @@ async fn post_process_pkcs7(
             }
             // Retrieve the parent certificate
             cert_owm = Box::pin(retrieve_object_for_operation(
-                &parent_id.to_string(),
+                ObjectHandle::from(&parent_id.to_string()),
                 operation_type,
                 kms,
                 user,

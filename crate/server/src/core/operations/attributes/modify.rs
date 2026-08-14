@@ -15,9 +15,9 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
-    result::{KResult, KResultHelper},
+    result::KResult,
 };
 
 /// KMIP 2.1 `ModifyAttribute` operation.
@@ -40,12 +40,7 @@ pub(crate) async fn modify_attribute(
 ) -> KResult<ModifyAttributeResponse> {
     debug!("{request}");
 
-    let uid_or_tags = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?
-        .as_str()
-        .context("ModifyAttribute: the unique identifier must be a string")?;
+    let object_handle = from_request(request.unique_identifier.as_ref(), "ModifyAttribute")?;
 
     // Read-only guard — must be checked before the DB round-trip.
     //
@@ -99,7 +94,7 @@ pub(crate) async fn modify_attribute(
     }
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
-        uid_or_tags,
+        object_handle,
         KmipOperation::ModifyAttribute,
         kms,
         user,

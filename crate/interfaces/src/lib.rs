@@ -1,6 +1,7 @@
 mod crypto_oracle;
 mod error;
 mod hsm;
+mod object_handle;
 mod stores;
 
 pub use crypto_oracle::{
@@ -11,6 +12,7 @@ pub use hsm::{
     HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, HsmStore, KeyMaterial,
     RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
+pub use object_handle::{HsmUidParts, ObjectHandle};
 pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore};
 
 /// Number of seconds in one day — the finest granularity PKCS#11 `CK_DATE` can represent.

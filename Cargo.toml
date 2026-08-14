@@ -40,14 +40,43 @@ members = [
 resolver = "2"
 
 [workspace.lints.rust]
+# ── Core lint groups ──────────────────────────────────────────────────
 nonstandard_style = "deny"
-refining_impl_trait = "deny"
 future_incompatible = "deny"
 keyword_idents = "deny"
 let_underscore = "deny"
 unreachable_pub = "deny"
 unused = "deny"
 unsafe_code = "deny"
+
+# ── Safety & security (new in 1.92–1.97) ─────────────────────────────
+# All unsafe operations inside unsafe fns must be in explicit unsafe { } blocks.
+unsafe-op-in-unsafe-fn = "deny"
+# Unsafe attributes (e.g. unsafe(no_mangle)) must be inside unsafe { }.
+unsafe-attr-outside-unsafe = "deny"
+# All extern declarations must be marked `unsafe extern`.
+missing-unsafe-on-extern = "deny"
+# Non-binding `let _ = expr` on types with Drop (lock guards, etc.) — forces `let _guard =`.
+let-underscore-drop = "deny"
+
+# ── Edition 2024 migration hardening ─────────────────────────────────
+# Items that became unsafe in edition 2024 must not be used as safe.
+deprecated-safe-2024 = "deny"
+# `if let` temporary lifetime rescoping in edition 2024.
+if-let-rescope = "deny"
+# `impl Trait` captures more lifetimes in edition 2024; flag potential changes now.
+impl-trait-overcaptures = "deny"
+# Emit a warning when `expr` fragment specifier semantics change in 2024.
+edition-2024-expr-fragment-specifier = "deny"
+# Keywords reserved in edition 2024 must not be used as identifiers.
+keyword-idents-2024 = "deny"
+# Tail-expression drop order changes in edition 2024.
+tail-expr-drop-order = "deny"
+# Prelude trait method collisions in edition 2024.
+rust-2024-prelude-collisions = "deny"
+
+# ── API correctness ───────────────────────────────────────────────────
+refining_impl_trait = "deny"
 
 [workspace.lints.clippy]
 # Main clippy categories

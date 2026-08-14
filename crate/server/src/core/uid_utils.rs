@@ -1,37 +1,40 @@
 use std::collections::HashSet;
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
+pub(crate) use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::ObjectHandle;
 use cosmian_logger::trace;
 
-use crate::{
-    config::HsmInstanceParams,
-    core::KMS,
-    error::KmsError,
-    result::{KResult, KResultHelper},
-};
+use crate::{config::HsmInstanceParams, core::KMS, error::KmsError, result::KResult};
 
-/// Determine whether the unique identifier has a crypto-oracle prefix.
+/// Build an [`ObjectHandle`] from an optional `UniqueIdentifier` request field.
 ///
-/// Supports two HSM UID formats:
-/// - Old: `hsm::<slot_id>::<key_id>` → prefix = `"hsm"`
-/// - New: `hsm::<model>::<slot_id>::<key_id>` → prefix = `"hsm::<model>"`
+/// Extracts and validates the unique identifier from a KMIP request, eliminating the
+/// 5-line boilerplate that was repeated at every operation entry-point.
 ///
-/// The disambiguation is based on the first segment after `"hsm::"`: if it
-/// parses as a `usize` it is the old (slot-first) format; otherwise it is
-/// the model name.
-pub(crate) fn has_prefix(uid: &str) -> Option<&str> {
-    if let Some(rest) = uid.strip_prefix("hsm::") {
-        if let Some(pos) = rest.find("::") {
-            let first_segment = &rest[..pos];
-            // Old format: hsm::<slot_id>::<key_id> (slot_id is a number)
-            if first_segment.parse::<usize>().is_ok() {
-                return Some("hsm");
-            }
-            // New format: hsm::<model>::<slot>::<key> → prefix = "hsm::<model>"
-            return Some(&uid[..5 + pos]);
-        }
-    }
-    None
+/// # Errors
+/// - [`KmsError::InvalidRequest`] — if `uid` is `None` or the identifier is not a `TextString`
+pub(crate) fn from_request<'a>(
+    uid: Option<&'a UniqueIdentifier>,
+    op_name: &str,
+) -> KResult<ObjectHandle<'a>> {
+    let s = uid
+        .ok_or_else(|| {
+            KmsError::InvalidRequest(format!("{op_name}: the unique identifier is required"))
+        })?
+        .as_str()
+        .ok_or_else(|| {
+            KmsError::InvalidRequest(format!("{op_name}: the unique identifier must be a string"))
+        })?;
+    Ok(ObjectHandle::from(s))
+}
+
+/// Interpret an [`ObjectHandle`] as a keyset reference (`name`, `name@latest`, `name@N`, …).
+///
+/// Returns `None` when the identifier is not keyset syntax (tag JSON, UUID, or an explicit
+/// `@N` HSM generation handle). Concentrates keyset classification so callers don't re-parse
+/// the raw string.
+pub(crate) fn as_keyset_ref(handle: ObjectHandle<'_>) -> Option<KeysetRef> {
+    parse_keyset_identifier(handle.as_str())
 }
 
 /// Resolve a human-readable HSM model label from a routing prefix.
@@ -43,7 +46,7 @@ pub(crate) fn has_prefix(uid: &str) -> Option<&str> {
 ///
 /// # Arguments
 /// * `hsm_instances` — the slice from `ServerParams::hsm_instances`
-/// * `prefix` — a routing prefix as returned by [`has_prefix`]
+/// * `prefix` — a routing prefix as returned by [`ObjectHandle::hsm_prefix`]
 pub(crate) fn hsm_model_from_prefix<'a>(
     hsm_instances: &'a [HsmInstanceParams],
     prefix: &'a str,
@@ -54,26 +57,23 @@ pub(crate) fn hsm_model_from_prefix<'a>(
         .map_or(prefix, |i| i.model.as_str())
 }
 
-/// Determine the list of possible UIDs from a Unique Identifier,
-/// that may contain tags.
+/// Resolve an [`ObjectHandle`] to the set of concrete object UIDs it addresses.
+///
+/// A `Tags` handle expands to every UID carrying all of the requested tags; any other
+/// handle resolves to the single UID it wraps.
 /// # Arguments
-/// * `unique_identifier` - A `UniqueIdentifier` object
+/// * `handle` - the classified request identifier
 /// * `kms` - A reference to the KMS object
 /// # Returns
 /// * `KResult` - A `HashSet` of strings representing the possible UIDs
-pub(super) async fn uids_from_unique_identifier(
-    unique_identifier: &UniqueIdentifier,
-    kms: &KMS,
-) -> KResult<HashSet<String>> {
-    let uid_or_tags = unique_identifier
-        .as_str()
-        .context("The unique identifier or tags must be a string")?;
-    if uid_or_tags.starts_with('[') {
-        // tags
-        let tags: HashSet<String> = serde_json::from_str(uid_or_tags)?;
-        return Ok(kms.database.list_uids_for_tags(&tags).await?);
+pub(super) async fn resolve_uids(handle: ObjectHandle<'_>, kms: &KMS) -> KResult<HashSet<String>> {
+    match handle {
+        ObjectHandle::Tags(json) => {
+            let tags: HashSet<String> = serde_json::from_str(json)?;
+            Ok(kms.database.list_uids_for_tags(&tags).await?)
+        }
+        handle => Ok(HashSet::from([handle.as_str().to_owned()])),
     }
-    Ok(HashSet::from([uid_or_tags.to_owned()]))
 }
 
 // ─── Keyset Resolution ───────────────────────────────────────────────────────
@@ -237,7 +237,7 @@ pub(crate) async fn resolve_keyset_to_single_uid(
 
 /// Resolve a keyset reference in a rekey operation to a concrete UID.
 ///
-/// This combines [`parse_keyset_identifier`] + [`resolve_keyset_to_single_uid`] into a
+/// This combines [`ObjectHandle::as_keyset_ref`] + [`resolve_keyset_to_single_uid`] into a
 /// single call with uniform error handling, suitable for use in rekey dispatchers.
 ///
 /// # Return value
@@ -248,12 +248,12 @@ pub(crate) async fn resolve_keyset_to_single_uid(
 /// - `Err(...)` — `uid` used an explicit versioned keyset syntax (`@latest`, `@N`, `@first`)
 ///   but the keyset could not be found; this is always a user error.
 pub(crate) async fn resolve_uid_or_keyset(
-    uid: &str,
+    handle: ObjectHandle<'_>,
     op_name: &str,
     kms: &KMS,
     user: &str,
 ) -> KResult<Option<String>> {
-    let Some(keyset_ref) = parse_keyset_identifier(uid) else {
+    let Some(keyset_ref) = as_keyset_ref(handle) else {
         return Ok(None);
     };
     let resolved = resolve_keyset_to_single_uid(&keyset_ref, kms, user).await?;
@@ -266,7 +266,7 @@ pub(crate) async fn resolve_uid_or_keyset(
             // Explicit versioned ref (`@latest`, `@N`, `@first`): not finding the keyset
             // is always a user error.
             _ => Err(KmsError::InvalidRequest(format!(
-                "{op_name}: keyset '{uid}' not found or has no resolvable latest key"
+                "{op_name}: keyset '{handle}' not found or has no resolvable latest key"
             ))),
         },
     }

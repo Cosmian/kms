@@ -15,9 +15,13 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::has_prefix},
+    core::{
+        KMS,
+        retrieve_object_utils::retrieve_object_for_operation,
+        uid_utils::{ObjectHandle, from_request},
+    },
     error::KmsError,
-    result::{KResult, KResultHelper},
+    result::KResult,
 };
 
 pub(crate) async fn add_attribute(
@@ -28,10 +32,7 @@ pub(crate) async fn add_attribute(
     trace!("{}", serde_json::to_string(&request)?);
 
     // there must be an identifier
-    let uid_or_tags = request
-        .unique_identifier
-        .as_str()
-        .context("Add Attribute: the unique identifier must be a string")?;
+    let object_handle = from_request(Some(&request.unique_identifier), "Add Attribute")?;
 
     // Read-only guard — these attributes are server-managed.
     match &request.new_attribute {
@@ -56,7 +57,7 @@ pub(crate) async fn add_attribute(
     }
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
-        uid_or_tags,
+        object_handle,
         KmipOperation::AddAttribute,
         kms,
         user,
@@ -66,7 +67,7 @@ pub(crate) async fn add_attribute(
 
     // For SQL keys (non-HSM): rotate_name must equal the key's UID.
     // This enforces the gen-0 UID = keyset name invariant for deterministic @N addressing.
-    if has_prefix(owm.id()).is_none() {
+    if !ObjectHandle::from(owm.id()).is_hsm() {
         if let Attribute::RotateName(name) = &request.new_attribute {
             let key_uid = owm.id();
             if name.as_str() != key_uid {
@@ -82,7 +83,7 @@ pub(crate) async fn add_attribute(
 
     // Capture before the macro runs (which may partially move request.new_attribute).
     let is_adding_rotate_name_on_sql = matches!(&request.new_attribute, Attribute::RotateName(_))
-        && has_prefix(owm.id()).is_none();
+        && !ObjectHandle::from(owm.id()).is_hsm();
 
     // Check if the attribute is allowed to be set
     match_add_attribute! {
