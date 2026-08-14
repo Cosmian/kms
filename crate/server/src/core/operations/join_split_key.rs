@@ -502,6 +502,11 @@ fn build_reconstructed_object(
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::assertions_on_result_states
+)]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -527,7 +532,7 @@ mod tests {
 
     #[test]
     fn test_extract_share_bytes_valid() {
-        let raw = vec![0xAAu8; 16];
+        let raw = vec![0xAA_u8; 16];
         let kb = make_split_key_block_bytes(raw.clone());
         let result = extract_share_bytes(&kb).expect("should extract share bytes");
         assert_eq!(result, raw);
@@ -552,7 +557,7 @@ mod tests {
         let kb = KeyBlock {
             key_format_type: KeyFormatType::Opaque,
             key_compression_type: None,
-            key_value: Some(KeyValue::ByteString(Zeroizing::new(vec![0u8; 8]))),
+            key_value: Some(KeyValue::ByteString(Zeroizing::new(vec![0_u8; 8]))),
             cryptographic_algorithm: None,
             cryptographic_length: None,
             key_wrapping_data: None,

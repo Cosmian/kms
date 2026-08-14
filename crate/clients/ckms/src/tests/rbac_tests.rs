@@ -890,112 +890,25 @@ async fn test_ceremony_full_lifecycle_cli() -> CosmianResult<()> {
         "Operator must NOT export another user's key without grant"
     );
 
-    // ── Phase 4 (T_C3): Disable ceremony ──────────────────────────────────────
+    // ── Phase 4 (T_C3): Disable ceremony — blocked in multi-CO deployment ─────
+    // TM-F006: With 3 COs configured, a single CO cannot unilaterally disable
+    // the ceremony at runtime. The quorum guard in the server requires removing
+    // the user from `crypto_officer_users` in kms.toml and restarting.
+    // The single-CO disable lifecycle is covered by the server-level unit tests
+    // in `crate/server/src/tests/key_ceremony_tests.rs`.
     let disabled = run_ckms(&co1_conf, &["access-rights", "crypto-officer", "disable"]);
-    assert!(disabled, "Active CO must be able to disable the ceremony");
-
-    // Status must now show ceremony inactive.
     assert!(
-        !co_status_is_active(&co1_conf),
-        "Ceremony must be inactive after disable"
+        !disabled,
+        "Single CO must NOT be able to unilaterally disable the ceremony in a multi-CO deployment"
     );
 
-    // After disable, co1 can no longer export co2's key (no longer CO).
-    let export_tmp3 = std::env::temp_dir().join(format!(
-        "ceremony_co_after_disable_{}.key",
-        std::process::id()
-    ));
-    let co1_cannot_export_after_disable = !run_ckms(
-        &co1_conf,
-        &[
-            "sym",
-            "keys",
-            "export",
-            "--key-id",
-            co2_key_uid,
-            export_tmp3.to_str().unwrap(),
-        ],
-    );
-    assert!(
-        co1_cannot_export_after_disable,
-        "co1 must NOT export co2's key after ceremony is disabled"
-    );
-
-    // ── Phase 6 (T_C6): Re-activate ───────────────────────────────────────────
-    // Run a second ceremony to re-activate co1.
-    let create2_out = run_ckms_output(
-        &co1_conf,
-        &["sym", "keys", "create", "--number-of-bits", "256"],
-    )
-    .expect("CO candidate must still be able to create (exemption)");
-    let key2_uids = extract_all_uids(&create2_out);
-    let key2_uid = key2_uids.first().expect("second create must return a UID");
-
-    let split2_out = run_ckms_output(
-        &co1_conf,
-        &["sym", "keys", "create-split-key", "--key-id", key2_uid],
-    )
-    .expect("CO candidate must be able to split again");
-    // NOTE: key2_uid is also destroyed automatically after this split.
-    let share2_uids = extract_all_uids(&split2_out);
-    assert_eq!(share2_uids.len(), 3, "Second split must produce 3 shares");
-    let share2_0 = share2_uids
-        .first()
-        .expect("second split must produce share 0");
-    let share2_1 = share2_uids
-        .get(1)
-        .expect("second split must produce share 1");
-    let share2_2 = share2_uids
-        .get(2)
-        .expect("second split must produce share 2");
-
-    // co2 grants co1 access to new share0 (co2 owns share0 — round-robin idx 0).
-    let granted2 = run_ckms(
-        &co2_conf,
-        &[
-            "access-rights",
-            "grant",
-            "owner.client@acme.com",
-            "--object-uid",
-            share2_0,
-            "get",
-        ],
-    );
-    assert!(granted2, "co2 must grant access for re-activation");
-
-    // co3 grants co1 access to new share2.
-    let granted2_2 = run_ckms(
-        &co3_conf,
-        &[
-            "access-rights",
-            "grant",
-            "owner.client@acme.com",
-            "--object-uid",
-            share2_2,
-            "get",
-        ],
-    );
-    assert!(granted2_2, "co3 must grant access for re-activation");
-
-    let reactivated = run_ckms_output(
-        &co1_conf,
-        &[
-            "access-rights",
-            "crypto-officer",
-            "activate",
-            share2_0,
-            share2_1,
-            share2_2,
-        ],
-    )
-    .expect("Re-activation must succeed");
-    assert!(!reactivated.is_empty(), "Re-activation must produce output");
+    // Ceremony must still be active since disable was correctly rejected.
     assert!(
         co_status_is_active(&co1_conf),
-        "Ceremony must be active after re-activation"
+        "Ceremony must remain active after a rejected single-CO disable attempt"
     );
 
-    // Cleanup — ceremony source keys (key_uid, key2_uid) are auto-destroyed after split;
+    // Cleanup — the ceremony source key (key_uid) is auto-destroyed after split;
     // only co2's key (co2_key_uid) needs explicit cleanup.
     co_destroy_key(&co1_conf, co2_key_uid);
     Ok(())
