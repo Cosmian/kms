@@ -99,6 +99,8 @@ exclude = [
   'ibm\.com',
   # sekretz.com — SSL hostname mismatch (appears in commented-out deny.toml entry)
   'sekretz\.com',
+  # percona.github.io — returns 503 Service Unavailable to automated crawlers
+  'percona\.github\.io',
 
   # Fragment/anchor patterns that are not real URLs
   'get--export',
