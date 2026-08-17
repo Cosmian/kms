@@ -201,8 +201,8 @@ impl KMS {
             crypto_oracles: RwLock::new(crypto_oracles),
             // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
             hsm: hsm_instances.into_iter().next(),
-            metrics,
             audit_store: Self::create_audit_store(&server_params)?,
+            metrics,
         })
     }
 

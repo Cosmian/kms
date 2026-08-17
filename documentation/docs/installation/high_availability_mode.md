@@ -151,11 +151,11 @@ On systemd-based distributions, after updating the configuration you can restart
 sudo systemctl restart keepalived
 ```
 
-| Load balancer node | `state`  | `priority`                        |
-|--------------|----------|-----------------------------------|
-| Primary      | `MASTER` | highest value (e.g. `101`)        |
-| Secondary    | `BACKUP` | lower value (e.g. `100`)          |
-| Additional   | `BACKUP` | lower still (e.g. `99`, `98`, …)  |
+| Load balancer node | `state`  | `priority`                       |
+| ------------------ | -------- | -------------------------------- |
+| Primary            | `MASTER` | highest value (e.g. `101`)       |
+| Secondary          | `BACKUP` | lower value (e.g. `100`)         |
+| Additional         | `BACKUP` | lower still (e.g. `99`, `98`, …) |
 
 ```keepalived
 vrrp_script chk_haproxy {
@@ -188,12 +188,12 @@ vrrp_instance VI_1 {
 
 ## Failover behavior
 
-| Event | Result |
-|---|---|
-| Active HAProxy node goes down | Keepalived promotes the next highest-priority HAProxy; VIP moves within ~2s |
-| A KMS node goes down | HAProxy detects failure via `/health` within `inter × fall` ≈ 9s and stops routing to it; remaining nodes absorb the traffic |
-| A KMS node recovers | HAProxy re-adds it after 2 successful checks (~6s) |
-| A new KMS node is added | Add a `server` line to the HAProxy backend and reload HAProxy; no client reconfiguration needed |
+| Event                         | Result                                                                                                                       |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Active HAProxy node goes down | Keepalived promotes the next highest-priority HAProxy; VIP moves within ~2s                                                  |
+| A KMS node goes down          | HAProxy detects failure via `/health` within `inter × fall` ≈ 9s and stops routing to it; remaining nodes absorb the traffic |
+| A KMS node recovers           | HAProxy re-adds it after 2 successful checks (~6s)                                                                           |
+| A new KMS node is added       | Add a `server` line to the HAProxy backend and reload HAProxy; no client reconfiguration needed                              |
 
 ## Deployment options
 
@@ -202,3 +202,12 @@ nodes. This provides load balancing but introduces a **single point of failure (
 down, clients cannot reach the KMS.
 
 Using Keepalived (with at least two HAProxy instances) avoids the SPOF by providing a floating VIP.
+
+!!! warning "File-based audit logging is not multi-instance safe"
+If audit logging is enabled (`--audit-enable`), each KMS node must write to its **own**
+audit file, not a shared/network volume. The file backend uses a local lock to serialize
+writes; it only prevents corruption on a single node (e.g. during a rolling restart), not
+across nodes. Pointing several replicas at the same audit file means only one of them will
+ever actually write to it — the others sit idle, so you silently lose their events.
+A centrally consolidated, multi-writer-safe audit trail requires the PostgreSQL audit
+backend.
