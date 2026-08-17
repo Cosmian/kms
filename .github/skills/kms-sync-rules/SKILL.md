@@ -36,6 +36,7 @@ Apply this path → rule mapping to the detected file list:
 | `ui/src/**` (new UI feature path) | **4.1**, 4.4 |
 | `crate/clients/wasm/src/**` | **4.5** |
 | `crate/server/src/config/**` | **4.6**, 4.7 |
+| `crate/server_database/**` | **4.18** |
 | `crate/server/src/middlewares/**` or `crate/server/src/config/wizard/auth_wizard.rs` | **4.9** |
 | `test_data/vectors/**` or `crate/test_kms_server/**` | verify 4.10 completeness |
 | `Cargo.lock` or `ui/pnpm-lock.yaml` | **4.11** |
@@ -44,6 +45,11 @@ Apply this path → rule mapping to the detected file list:
 | `documentation/**` or `README.md` | **4.14** |
 | `ui/tests/e2e/**` | **4.16** |
 | `crate/crypto/build.rs` | **4.17** |
+
+> **Automatic application via `applyTo`.** Most sub-rules below are also encoded as
+> `.github/instructions/*.instructions.md` files with an `applyTo` frontmatter, so agents editing a
+> matching file receive the checklist automatically without running this skill. This skill remains
+> the authoritative on-demand reference and the single source of truth for the rule numbers.
 
 Additional heuristic checks:
 
@@ -218,3 +224,12 @@ Output **only** the sub-rules that were triggered. For each, print the full chec
 - [ ] `crate/server/src/openssl_providers.rs` — provider init verified compatible
 - [ ] `cbom/cbom.cdx.json` — Cryptographic Bill of Materials updated
 - [ ] `sbom/` — Software Bill of Materials updated
+
+### Rule 4.18 — Database schema/backend ⇔ docs
+
+*(triggered by: `crate/server_database/**`)*
+
+- [ ] `documentation/docs/configuration/database/configuration.md` — Databases overview updated if selection/configuration/TLS/migration behaviour changed
+- [ ] `documentation/docs/configuration/database/tables.md` — tables and links updated if a table, column, or index was added/removed/renamed
+- [ ] `documentation/docs/configuration/database/redis.md` — Redis-with-Findex page updated if the encryption model, key derivation, or data layout changed
+- [ ] `documentation/docs/SUMMARY.md` and `documentation/nav.yml` — navigation updated if a page was added or removed

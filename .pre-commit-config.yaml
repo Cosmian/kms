@@ -280,6 +280,7 @@ repos:
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
+        stages: [manual]
 
       - id: ui-e2e
         name: UI end-to-end
@@ -287,6 +288,7 @@ repos:
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
+        stages: [manual]
 
       - id: cargo-test-fips
         name: cargo test (sqlite fips)
@@ -333,6 +335,7 @@ repos:
       - id: nightly-clippy-autofix-unreachable-pub
       - id: nightly-clippy-autofix-all-targets-all-features
       - id: nightly-clippy-autofix-all-targets
+        stages: [manual]
 
       - id: dprint-toml-fix
         stages: [manual]

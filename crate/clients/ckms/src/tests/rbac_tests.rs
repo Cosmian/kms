@@ -663,18 +663,22 @@ fn extract_all_uids(text: &str) -> Vec<String> {
     let uuid_re =
         regex::Regex::new(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
             .expect("valid UUID regex");
+    // Match share UIDs with optional `#<n>` suffix (e.g. "abc-123-...#1")
+    let share_uid_re =
+        regex::Regex::new(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#\d+)?$")
+            .expect("valid share UID regex");
     text.lines()
         .filter_map(|line| {
             let trimmed = line.trim();
-            // "Unique identifier: <uuid>" — single-key output
+            // "Unique identifier: <uid>" — single-key output
             if let Some(rest) = trimmed.strip_prefix("Unique identifier:") {
                 let uid = rest.trim().to_owned();
                 if !uid.is_empty() {
                     return Some(uid);
                 }
             }
-            // Bare UUID line — split-key multi-identifier output
-            if uuid_re.is_match(trimmed) && trimmed.len() == 36 {
+            // Bare UID line — plain UUID or UUID#N (split-key multi-identifier output)
+            if uuid_re.is_match(trimmed) && share_uid_re.is_match(trimmed) {
                 return Some(trimmed.to_owned());
             }
             None
@@ -766,7 +770,14 @@ async fn test_ceremony_full_lifecycle_cli() -> CosmianResult<()> {
     // Round-robin: share0 → user.client (co2), share1 → owner.client (co1), share2 → co3.client (co3).
     let split_out = run_ckms_output(
         &co1_conf,
-        &["sym", "keys", "create-split-key", "--key-id", key_uid],
+        &[
+            "sym",
+            "keys",
+            "create-split-key",
+            "--key-id",
+            key_uid,
+            "--ceremony",
+        ],
     )
     .expect("CO candidate must be able to split a key before ceremony (exemption)");
     // NOTE: the ceremony source key is now DESTROYED automatically after successful split.
@@ -890,22 +901,19 @@ async fn test_ceremony_full_lifecycle_cli() -> CosmianResult<()> {
         "Operator must NOT export another user's key without grant"
     );
 
-    // ── Phase 4 (T_C3): Disable ceremony — blocked in multi-CO deployment ─────
-    // TM-F006: With 3 COs configured, a single CO cannot unilaterally disable
-    // the ceremony at runtime. The quorum guard in the server requires removing
-    // the user from `crypto_officer_users` in kms.toml and restarting.
-    // The single-CO disable lifecycle is covered by the server-level unit tests
-    // in `crate/server/src/tests/key_ceremony_tests.rs`.
+    // ── Phase 4 (T_C3): Active CO self-revokes immediately ────────────────────
+    // co1 is the active CO. They call disable once → 200 OK, ceremony revoked.
+    // No second CO needed (active CO voluntarily surrenders the role).
     let disabled = run_ckms(&co1_conf, &["access-rights", "crypto-officer", "disable"]);
     assert!(
-        !disabled,
-        "Single CO must NOT be able to unilaterally disable the ceremony in a multi-CO deployment"
+        disabled,
+        "Active CO must be able to self-revoke immediately (200 OK in one call)"
     );
 
-    // Ceremony must still be active since disable was correctly rejected.
+    // Ceremony must now be dormant.
     assert!(
-        co_status_is_active(&co1_conf),
-        "Ceremony must remain active after a rejected single-CO disable attempt"
+        !co_status_is_active(&co1_conf),
+        "Ceremony must be dormant after active CO self-revocation"
     );
 
     // Cleanup — the ceremony source key (key_uid) is auto-destroyed after split;
@@ -964,7 +972,14 @@ async fn test_ceremony_join_with_only_own_share_fails() -> CosmianResult<()> {
 
     let split_out = run_ckms_output(
         &co1_conf,
-        &["sym", "keys", "create-split-key", "--key-id", key_uid],
+        &[
+            "sym",
+            "keys",
+            "create-split-key",
+            "--key-id",
+            key_uid,
+            "--ceremony",
+        ],
     )
     .expect("CO candidate must split key");
     let share_uids = extract_all_uids(&split_out);
@@ -1011,7 +1026,14 @@ async fn test_operator_cannot_activate_ceremony() -> CosmianResult<()> {
 
     let split_out = run_ckms_output(
         &co1_conf,
-        &["sym", "keys", "create-split-key", "--key-id", key_uid],
+        &[
+            "sym",
+            "keys",
+            "create-split-key",
+            "--key-id",
+            key_uid,
+            "--ceremony",
+        ],
     )
     .expect("CO candidate must split key");
     let share_uids = extract_all_uids(&split_out);

@@ -132,8 +132,8 @@ const SplitKeyForm: React.FC = () => {
                     </li>
                     {ceremonyMode ? (
                         <li>
-                            <strong>Ceremony mode:</strong> the server determines the number of shares from the Crypto Officer
-                            configuration ({resolvedShareCount} shares — one per CO candidate).
+                            <strong>Ceremony mode:</strong> the server determines the number of shares from the Crypto Officer configuration
+                            ({resolvedShareCount} shares — one per CO candidate).
                         </li>
                     ) : (
                         <li>The number of shares is set below.</li>

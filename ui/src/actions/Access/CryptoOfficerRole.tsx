@@ -1,9 +1,11 @@
-import { Badge, Button, Card, Form, Input, Space, Tag, Tooltip } from "antd";
+import { Badge, Button, Card, Form, Input, Select, Space, Tag, Tooltip, Typography } from "antd";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/useAuth";
 import { getNoTTLVRequest, postNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import LocateButton from "../../components/common/LocateButton";
 import * as wasm from "../../wasm/pkg";
+
+const { Text } = Typography;
 
 interface CryptoOfficerStatus {
     enabled: boolean;
@@ -40,6 +42,10 @@ const CryptoOfficerRole: React.FC = () => {
     const [status, setStatus] = useState<CryptoOfficerStatus | undefined>(undefined);
     const [res, setRes] = useState<string | undefined>(undefined);
     const [splitRes, setSplitRes] = useState<string | undefined>(undefined);
+    /** Custom base UID for the ceremony key — shares will be named `<id>#1`, `<id>#2`, … */
+    const [splitKeyId, setSplitKeyId] = useState<string>("");
+    /** Target user for peer revocation (empty = self-revoke) */
+    const [revokeTarget, setRevokeTarget] = useState<string>("");
     const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
     const [activateForm] = Form.useForm<CeremonyActivateFormData>();
@@ -73,37 +79,34 @@ const CryptoOfficerRole: React.FC = () => {
         setIsDisabling(true);
         setRes(undefined);
         try {
-            const response = (await postNoTTLVRequest("/access/crypto_officer/disable", {}, serverUrl)) as {
+            const body: { target_user?: string } = {};
+            if (revokeTarget.trim()) body.target_user = revokeTarget.trim();
+            const response = (await postNoTTLVRequest("/access/crypto_officer/disable", body, serverUrl)) as {
                 success: string;
             };
             setRes(response.success);
+            setRevokeTarget("");
             await fetchStatus();
         } catch (e) {
             setRes(`Error disabling Crypto Officer ceremony: ${e}`);
         } finally {
             setIsDisabling(false);
         }
-    }, [serverUrl, fetchStatus]);
+    }, [serverUrl, fetchStatus, revokeTarget]);
 
     // ── Step 1: Create & Split Key ────────────────────────────────────────────
-    // Creates an AES-256 key and splits it into `custodians_count` shares, then
-    // auto-populates the "Activate Ceremony" share-ID inputs below.
+    // Creates an AES-256 key (optionally with a custom UID) and splits it into
+    // `custodians_count` shares — one per CO candidate.  When a custom UID is
+    // provided, shares are named `<id>#1`, `<id>#2`, … for human-friendly lookup.
     const createAndSplitKey = useCallback(async () => {
         if (!status) return;
         const n = status.custodians_count;
+        const customId = splitKeyId.trim() || undefined;
         setIsSplitting(true);
         setSplitRes(undefined);
         try {
-            // Create a new AES-256 symmetric key
-            const symReq = wasm.create_sym_key_ttlv_request(
-                undefined,
-                [],
-                256,
-                "Aes",
-                false,
-                undefined,
-                undefined,
-            );
+            // Create a new AES-256 symmetric key, optionally with a custom UID
+            const symReq = wasm.create_sym_key_ttlv_request(customId ?? null, [], 256, "Aes", false, undefined, undefined);
             const symRespStr = await sendKmipRequest(symReq, serverUrl);
             if (!symRespStr) throw new Error("Symmetric key creation returned an empty response");
 
@@ -141,7 +144,7 @@ const CryptoOfficerRole: React.FC = () => {
         } finally {
             setIsSplitting(false);
         }
-    }, [status, serverUrl, activateForm]);
+    }, [status, serverUrl, activateForm, splitKeyId]);
 
     const activateCeremony = useCallback(
         async (values: CeremonyActivateFormData) => {
@@ -270,24 +273,42 @@ const CryptoOfficerRole: React.FC = () => {
                             </div>
 
                             {status.ceremony_activated && (
-                                <div className="pt-2 border-t">
-                                    <Tooltip
-                                        title={
-                                            !status.is_crypto_officer
-                                                ? "Only an active Crypto Officer can disable the ceremony"
-                                                : "Revokes the active ceremony. The role becomes dormant until a new ceremony completes."
-                                        }
-                                    >
-                                        <Button
-                                            danger
-                                            onClick={disableCeremony}
-                                            loading={isDisabling}
-                                            disabled={!status.is_crypto_officer}
-                                            data-testid="disable-btn"
+                                <div className="pt-2 border-t space-y-3">
+                                    <p className="text-sm font-medium">Revoke Crypto Officer Role</p>
+                                    <Space direction="vertical" style={{ display: "flex" }}>
+                                        {/* Populated from CO users list returned by the server */}
+                                        <Select
+                                            placeholder="Select CO to revoke (or leave empty to self-revoke)"
+                                            value={revokeTarget || undefined}
+                                            onChange={(val: string | undefined) => setRevokeTarget(val ?? "")}
+                                            allowClear
+                                            style={{ width: 380 }}
+                                            options={status.users.map((u) => ({
+                                                value: u,
+                                                label: u === status.users[0] ? `${u} (you, if active)` : u,
+                                            }))}
+                                            data-testid="revoke-target-select"
+                                        />
+                                        <p className="text-xs text-gray-400">
+                                            Any Crypto Officer candidate can revoke another active CO. Leave empty to self-revoke (you must
+                                            be the active CO).
+                                        </p>
+                                        <Tooltip
+                                            title={
+                                                !status.is_crypto_officer && !revokeTarget.trim()
+                                                    ? "You are not the active CO. Select a target user to peer-revoke."
+                                                    : revokeTarget.trim()
+                                                      ? `Revoke CO role for: ${revokeTarget.trim()}`
+                                                      : "Revokes your active ceremony. The role becomes dormant until a new ceremony completes."
+                                            }
                                         >
-                                            Revoke Crypto Officer Ceremony
-                                        </Button>
-                                    </Tooltip>
+                                            <Button danger onClick={disableCeremony} loading={isDisabling} data-testid="disable-btn">
+                                                {revokeTarget.trim()
+                                                    ? `Revoke CO for ${revokeTarget.trim()}`
+                                                    : "Revoke My Crypto Officer Ceremony"}
+                                            </Button>
+                                        </Tooltip>
+                                    </Space>
                                 </div>
                             )}
                         </div>
@@ -298,25 +319,47 @@ const CryptoOfficerRole: React.FC = () => {
                 {status && status.enabled && status.require_ceremony && !status.ceremony_activated && (
                     <>
                         {/* ── Step 1: Create & Split Key ────────────────────────────── */}
-                        <Card
-                            title={`Step 1 — Create & Split Key (${status.custodians_count} shares)`}
-                            data-testid="split-key-step-card"
-                        >
+                        <Card title={`Step 1 — Create & Split Key (${status.custodians_count} shares)`} data-testid="split-key-step-card">
                             <p className="mb-4 text-gray-600">
                                 Creates a new AES-256 key and splits it into <strong>{status.custodians_count} shares</strong> — one per
                                 Crypto Officer candidate. The share UIDs are auto-filled into Step 2 below. You may also fill the UIDs
                                 manually if you already have them.
                             </p>
-                            <Button
-                                type="default"
-                                onClick={createAndSplitKey}
-                                loading={isSplitting}
-                                data-testid="create-split-key-btn"
-                            >
-                                Create & Split Key ({status.custodians_count} shares)
-                            </Button>
+                            <Space direction="vertical" style={{ display: "flex", marginBottom: 16 }}>
+                                <Space align="baseline" wrap>
+                                    <Input
+                                        placeholder="Ceremony key ID (optional — e.g. ceremony-2026)"
+                                        value={splitKeyId}
+                                        onChange={(e) => setSplitKeyId(e.target.value)}
+                                        style={{ width: 320 }}
+                                        allowClear
+                                        data-testid="split-key-id-input"
+                                    />
+                                    <Button
+                                        type="default"
+                                        onClick={createAndSplitKey}
+                                        loading={isSplitting}
+                                        data-testid="create-split-key-btn"
+                                    >
+                                        Create & Split Key ({status.custodians_count} shares)
+                                    </Button>
+                                </Space>
+                                {splitKeyId.trim() && (
+                                    <Text type="secondary" style={{ fontSize: 12 }}>
+                                        Share IDs will be:{" "}
+                                        {Array.from({ length: status.custodians_count }, (_, i) => (
+                                            <Text key={i} code style={{ marginRight: 4 }}>
+                                                {splitKeyId.trim()}#{i + 1}
+                                            </Text>
+                                        ))}
+                                    </Text>
+                                )}
+                            </Space>
                             {splitRes && (
-                                <pre className="mt-3 p-3 bg-gray-50 border rounded text-xs overflow-auto whitespace-pre-wrap" data-testid="split-key-result">
+                                <pre
+                                    className="mt-3 p-3 bg-gray-50 border rounded text-xs overflow-auto whitespace-pre-wrap"
+                                    data-testid="split-key-result"
+                                >
                                     {splitRes}
                                 </pre>
                             )}

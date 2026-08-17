@@ -165,7 +165,6 @@ impl RedisWithFindex {
         // by inspecting Redis key names.
         let ceremony_key_crypto_officer =
             Self::derive_ceremony_key_name(&master_key, b"crypto_officer");
-
         let redis_with_findex = Self {
             mgr,
             objects_db,
