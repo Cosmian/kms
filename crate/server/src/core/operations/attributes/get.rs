@@ -161,10 +161,12 @@ pub(crate) async fn get_attributes(
                 a
             }
         }
-        // SplitKey objects carry crypto metadata in the key_block (algorithm,
-        // length, format) that is NOT duplicated into the stored Attributes.
-        // Synthesise a merged view: start from stored attrs then overlay the
-        // key_block fields so the UI GetAttributes call returns useful data.
+        // Defensive overlay: SplitKey crypto metadata (algorithm, length, format type) IS stored
+        // in the Attributes table at creation time (see create_split_key.rs). However, as a
+        // fallback for imported SplitKey objects or attributes cleared by DeleteAttribute, we
+        // read the values from the key_block when the stored Attributes are missing them.
+        // This ensures the KMIP contract — Managed Objects SHALL have CryptographicAlgorithm and
+        // CryptographicLength as server-set attributes — is always fulfilled.
         Object::SplitKey(SplitKey { key_block, .. }) => {
             let mut a = owm.attributes().to_owned();
             // Overlay key_block crypto metadata if not already in stored attrs.
