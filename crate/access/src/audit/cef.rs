@@ -163,6 +163,7 @@ mod tests {
             result,
             duration_ms: 12,
             request_id: None,
+            details: None,
             prev_hash: [0u8; 32],
             row_hash: [0u8; 32],
         };

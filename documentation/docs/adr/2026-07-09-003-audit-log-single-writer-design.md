@@ -1,18 +1,24 @@
 ---
 title: "ADR-0003: Tamper-Evident JSONL Audit Log — Single-Writer Architecture"
-status: "Accepted"
+status: "Superseded"
 date: "2026-07-09"
 authors: "contributors, security architects, compliance engineers"
 tags: ["architecture", "decision", "audit", "compliance", "security"]
 supersedes: ""
-superseded_by: ""
+superseded_by: "ADR-0006"
 ---
 
 # ADR-0003: Tamper-Evident JSONL Audit Log — Single-Writer Architecture
 
 ## Status
 
-Accepted
+**Superseded by [ADR-0006](2026-08-14-006-audit-log-always-start-recovery.md)** for the startup
+fail-fast behavior described below ("a mismatch aborts startup with a clear error" /
+"fail-fast: an unwritable path aborts server startup"). The KMS now always starts and routes
+audit-log tail recovery by cause instead. The channel architecture, hash-chain design, and
+overflow policy described in this document remain accurate and in effect.
+
+Originally: Accepted
 
 ## Context
 
