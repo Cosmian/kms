@@ -440,7 +440,10 @@ fn test_create_split_key_1_4_serialization_and_conversion() {
         from_ttlv(ttlv).expect("CreateSplitKey: TTLV deserialization failed");
     assert_eq!(roundtrip.split_key_parts, 3);
     assert_eq!(roundtrip.split_key_threshold, 2);
-    assert_eq!(roundtrip.unique_identifier, Some("my-secret-key".to_owned()));
+    assert_eq!(
+        roundtrip.unique_identifier,
+        Some("my-secret-key".to_owned())
+    );
 
     // 1.4 → 2.1 conversion.
     let req_2_1: crate::kmip_2_1::kmip_operations::CreateSplitKey = req.into();

@@ -186,7 +186,7 @@ impl CreateKeyPairsAction {
         let email = &self.user_id;
 
         let (_private_key_id, public_key_id, wrapped_key_bytes) =
-            self.resolve_key_pair(&kms_rest_client, email).await?;
+            Box::pin(self.resolve_key_pair(&kms_rest_client, email)).await?;
 
         let certificate_unique_identifier = self
             .resolve_certificate(&kms_rest_client, email, &public_key_id)
