@@ -328,11 +328,34 @@ export async function createSymKeyWithId(page: Page, id: string): Promise<string
 }
 
 /**
- * Create a fresh 4096-bit RSA key pair and return both key IDs.
+ * Navigate to `path`, run optional `setup`, submit the form, and wait for the
+ * response panel.  Retries once (with a fresh navigate + setup) on a transient
+ * "Failed to fetch" error, which can occur when many workers share a single KMS
+ * server instance.
  */
+async function submitWithFetchRetry(
+    page: Page,
+    path: string,
+    setup?: (page: Page) => Promise<void>,
+): Promise<string> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0) {
+            // Back off briefly, reload, and re-apply any form setup.
+            await page.waitForTimeout(1_000);
+            await gotoAndWait(page, path);
+            if (setup) await setup(page);
+        }
+        const text = await submitAndWaitForResponse(page);
+        if (!text.includes("Failed to fetch")) return text;
+    }
+    // Surface the error on the third attempt so assertions fail with a clear message.
+    return submitAndWaitForResponse(page);
+}
+
+
 export async function createRsaKeyPair(page: Page): Promise<{ privKeyId: string; pubKeyId: string }> {
     await gotoAndWait(page, "/ui/rsa/keys/create");
-    const text = await submitAndWaitForResponse(page);
+    const text = await submitWithFetchRetry(page, "/ui/rsa/keys/create");
     expect(text).toMatch(/Key pair has been created/i);
     const privKeyId = extractUuidAfterLabel(text, "Private key Id");
     const pubKeyId = extractUuidAfterLabel(text, "Public key Id");
@@ -345,9 +368,10 @@ export async function createRsaKeyPair(page: Page): Promise<{ privKeyId: string;
  * Create a fresh EC key pair (NIST P-256) and return both key IDs.
  */
 export async function createEcKeyPair(page: Page): Promise<{ privKeyId: string; pubKeyId: string }> {
+    const setup = async (p: Page) => selectOption(p, "ec-curve-select", "NIST P-256");
     await gotoAndWait(page, "/ui/ec/keys/create");
-    await selectOption(page, "ec-curve-select", "NIST P-256");
-    const text = await submitAndWaitForResponse(page);
+    await setup(page);
+    const text = await submitWithFetchRetry(page, "/ui/ec/keys/create", setup);
     expect(text).toMatch(/Key pair has been created/i);
     const privKeyId = extractUuidAfterLabel(text, "Private key Id");
     const pubKeyId = extractUuidAfterLabel(text, "Public key Id");
@@ -362,9 +386,10 @@ export async function createEcKeyPair(page: Page): Promise<{ privKeyId: string; 
  * @param algorithm Visible label in the algorithm dropdown, e.g. "ML-KEM-512".
  */
 export async function createPqcKeyPair(page: Page, algorithm: string): Promise<{ privKeyId: string; pubKeyId: string }> {
+    const setup = async (p: Page) => selectOption(p, "pqc-algorithm-select", algorithm);
     await gotoAndWait(page, "/ui/pqc/keys/create");
-    await selectOption(page, "pqc-algorithm-select", algorithm);
-    const text = await submitAndWaitForResponse(page);
+    await setup(page);
+    const text = await submitWithFetchRetry(page, "/ui/pqc/keys/create", setup);
     expect(text).toMatch(/Key pair has been created/i);
     const privKeyId = extractUuidAfterLabel(text, "Private key Id");
     const pubKeyId = extractUuidAfterLabel(text, "Public key Id");

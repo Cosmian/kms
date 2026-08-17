@@ -38,7 +38,9 @@ const kmsUrl = env.PLAYWRIGHT_KMS_URL ?? "https://127.0.0.1:9998";
 export default defineConfig({
     testDir: "./tests/e2e",
     timeout: 90_000,
-    retries: env.CI ? 1 : 0,
+    // Retry once on both CI and local: transient "Failed to fetch" flakiness is
+    // rare but real when 10 workers share a single KMS server.
+    retries: 1,
     // Number of concurrent Playwright workers.  Set PLAYWRIGHT_WORKERS to an
     // integer to run tests in parallel (the KMS server handles concurrent load
     // well – see https://github.com/Cosmian/kms/issues/749).  Defaults to 10
