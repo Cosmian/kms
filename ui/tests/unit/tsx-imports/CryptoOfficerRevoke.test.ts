@@ -63,16 +63,12 @@ describe("CO revocation (Scenario 1): active CO can self-revoke", () => {
         expect(screen.getByTestId("disable-btn")).toBeInTheDocument();
     });
 
-    test("renders Create & Split Key card even when ceremony is active", async () => {
+    test("does not render the split-key workflow when ceremony is active", async () => {
         smokeRender(React.createElement(CryptoOfficerRole));
-        // Create & Split Key is always available regardless of ceremony state.
-        await screen.findByTestId("split-key-step-card");
-        expect(screen.getByTestId("create-split-key-btn")).toBeInTheDocument();
-    });
-
-    test("renders Reconstruct Key card even when ceremony is active", async () => {
-        smokeRender(React.createElement(CryptoOfficerRole));
-        await screen.findByTestId("join-split-key-card");
+        // The Create & Split Key / Activate workflow is only shown while the ceremony is dormant.
+        await screen.findByTestId("role-status-card");
+        expect(screen.queryByTestId("split-key-step-card")).toBeNull();
+        expect(screen.queryByTestId("activate-ceremony-card")).toBeNull();
     });
 
     test("does not render any pending/confirm/waiting elements", async () => {
