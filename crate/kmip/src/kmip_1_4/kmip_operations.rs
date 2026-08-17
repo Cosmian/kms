@@ -2405,7 +2405,9 @@ impl From<CreateSplitKey> for kmip_2_1::kmip_operations::CreateSplitKey {
 impl TryFrom<kmip_2_1::kmip_operations::CreateSplitKeyResponse> for CreateSplitKeyResponse {
     type Error = KmipError;
 
-    fn try_from(resp: kmip_2_1::kmip_operations::CreateSplitKeyResponse) -> Result<Self, Self::Error> {
+    fn try_from(
+        resp: kmip_2_1::kmip_operations::CreateSplitKeyResponse,
+    ) -> Result<Self, Self::Error> {
         Ok(Self {
             unique_identifier: resp.unique_identifier.to_string(),
             split_key_unique_identifiers: resp
@@ -2444,7 +2446,9 @@ impl From<JoinSplitKey> for kmip_2_1::kmip_operations::JoinSplitKey {
 impl TryFrom<kmip_2_1::kmip_operations::JoinSplitKeyResponse> for JoinSplitKeyResponse {
     type Error = KmipError;
 
-    fn try_from(resp: kmip_2_1::kmip_operations::JoinSplitKeyResponse) -> Result<Self, Self::Error> {
+    fn try_from(
+        resp: kmip_2_1::kmip_operations::JoinSplitKeyResponse,
+    ) -> Result<Self, Self::Error> {
         Ok(Self {
             unique_identifier: resp.unique_identifier.to_string(),
         })
@@ -2823,9 +2827,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //     Self::GetUsageAllocation(get_usage_allocation.into())
             // }
             Operation::Import(import) => Self::Import(Box::new((*import).into())),
-            Operation::JoinSplitKey(join_split_key) => {
-                Self::JoinSplitKey(join_split_key.into())
-            }
+            Operation::JoinSplitKey(join_split_key) => Self::JoinSplitKey(join_split_key.into()),
             Operation::Locate(locate) => Self::Locate(Box::new(locate.into())),
             Operation::MAC(mac) => Self::MAC(mac.into()),
             Operation::MACVerify(mac_verify) => Self::MACVerify(mac_verify.into()),
@@ -2961,13 +2963,13 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::ImportResponse(import_response) => {
                 Self::ImportResponse(import_response.try_into().context("ImportResponse")?)
             }
-            kmip_2_1::kmip_operations::Operation::JoinSplitKeyResponse(
-                join_split_key_response,
-            ) => Self::JoinSplitKeyResponse(
-                join_split_key_response
-                    .try_into()
-                    .context("JoinSplitKeyResponse")?,
-            ),
+            kmip_2_1::kmip_operations::Operation::JoinSplitKeyResponse(join_split_key_response) => {
+                Self::JoinSplitKeyResponse(
+                    join_split_key_response
+                        .try_into()
+                        .context("JoinSplitKeyResponse")?,
+                )
+            }
             kmip_2_1::kmip_operations::Operation::LocateResponse(locate_response) => {
                 Self::LocateResponse(locate_response.try_into().context("LocateResponse")?)
             }
