@@ -333,11 +333,7 @@ export async function createSymKeyWithId(page: Page, id: string): Promise<string
  * "Failed to fetch" error, which can occur when many workers share a single KMS
  * server instance.
  */
-async function submitWithFetchRetry(
-    page: Page,
-    path: string,
-    setup?: (page: Page) => Promise<void>,
-): Promise<string> {
+async function submitWithFetchRetry(page: Page, path: string, setup?: (page: Page) => Promise<void>): Promise<string> {
     for (let attempt = 0; attempt < 2; attempt++) {
         if (attempt > 0) {
             // Back off briefly, reload, and re-apply any form setup.
@@ -351,7 +347,6 @@ async function submitWithFetchRetry(
     // Surface the error on the third attempt so assertions fail with a clear message.
     return submitAndWaitForResponse(page);
 }
-
 
 export async function createRsaKeyPair(page: Page): Promise<{ privKeyId: string; pubKeyId: string }> {
     await gotoAndWait(page, "/ui/rsa/keys/create");
