@@ -146,7 +146,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                     <>
                         <p>{t("keysExport.introKeyPair")}</p>
                         <p>{t("keysExport.introUnwrap")}</p>
-                        <p className="text-sm text-yellow-600">{t("keysExport.introNote")}</p>
+                        <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("keysExport.introNote")}</p>
                     </>
                 )}
             </div>

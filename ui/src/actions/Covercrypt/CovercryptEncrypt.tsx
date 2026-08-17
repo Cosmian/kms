@@ -49,7 +49,7 @@ const CCEncryptForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("covercryptEncrypt.intro")}</p>
                 <p>{t("covercryptEncrypt.introKey")}</p>
-                <p className="text-sm text-yellow-600">{t("covercryptEncrypt.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("covercryptEncrypt.note")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">

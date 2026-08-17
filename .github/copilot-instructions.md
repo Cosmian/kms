@@ -32,6 +32,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `openssl-build.instructions.md` | `crate/crypto/build.rs` |
 | `rust-cli.instructions.md` | `crate/clients/**/*.rs` |
 | `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` |
+| `i18n.instructions.md` | `ui/src/i18n/**/*.{ts,json}` |
 | `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` |
 | `bash.instructions.md` | `**/*.sh` |
 | `mise.instructions.md` | `.mise/**, scripts/**, .github/reusable_scripts/**` |

@@ -62,7 +62,7 @@ const SymmetricDecryptForm: React.FC = () => {
                     <li>{t("symmetricDecrypt.serverSide")}</li>
                     <li>{t("symmetricDecrypt.clientSide")}</li>
                 </ul>
-                <p className="text-sm text-yellow-600">{t("symmetricDecrypt.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("symmetricDecrypt.note")}</p>
             </div>
 
             <Form

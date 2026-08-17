@@ -49,9 +49,7 @@ function mockStatus(status: object) {
 // ── Scenario 1: Active CO sees the self-revoke button ───────────────────────
 
 describe("CO revocation (Scenario 1): active CO can self-revoke", () => {
-    beforeEach(() =>
-        mockStatus({ ...baseActiveStatus, is_crypto_officer: true }),
-    );
+    beforeEach(() => mockStatus({ ...baseActiveStatus, is_crypto_officer: true }));
 
     test("renders the revoke ceremony card", async () => {
         smokeRender(React.createElement(CryptoOfficerRole));
@@ -91,9 +89,7 @@ describe("CO revocation (Scenario 1): active CO can self-revoke", () => {
 // ── Non-CO user: no revoke button ───────────────────────────────────────────
 
 describe("CO revocation (Scenario 1): non-CO user sees no revoke button", () => {
-    beforeEach(() =>
-        mockStatus({ ...baseActiveStatus, is_crypto_officer: false }),
-    );
+    beforeEach(() => mockStatus({ ...baseActiveStatus, is_crypto_officer: false }));
 
     test("does not render the self-revoke button for a non-active CO", async () => {
         smokeRender(React.createElement(CryptoOfficerRole));

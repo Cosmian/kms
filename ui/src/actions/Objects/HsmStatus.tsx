@@ -108,7 +108,7 @@ const HsmStatus: React.FC = () => {
 
             {instances.length === 0 && !isLoading && !error && (
                 <Card data-testid="response-output">
-                    <p className="text-gray-500">{t("hsmStatus.noInstances")}</p>
+                    <p className="text-gray-500 dark:text-gray-400">{t("hsmStatus.noInstances")}</p>
                 </Card>
             )}
 
@@ -138,7 +138,7 @@ const HsmStatus: React.FC = () => {
 
             {error && (
                 <Card title={t("hsmStatus.errorCard")} className="mt-4">
-                    <p className="text-red-500" data-testid="response-output">
+                    <p className="text-red-500 dark:text-red-400" data-testid="response-output">
                         {error}
                     </p>
                 </Card>

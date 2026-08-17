@@ -136,7 +136,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
                 {branding.loginSubtitle && <div className="text-center text-xl text-white/90 mb-10 z-10">{branding.loginSubtitle}</div>}
                 <div className="space-y-6 text-center w-1/2">
                     {auth && <p className="text-white">{t("login.signUp")}</p>}
-                    {error && <p className="text-purple-700">{error}</p>}
+                    {error && <p className="text-purple-300">{error}</p>}
                     {certError && (
                         <Alert type="error" showIcon message={t("login.certFailed")} description={certError} className="text-left mb-8" />
                     )}

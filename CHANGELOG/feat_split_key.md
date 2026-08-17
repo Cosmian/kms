@@ -57,6 +57,14 @@
 - **Crypto Officer page** (`/ui/access-rights/crypto-officer`): status page showing role config,
   ceremony activation state, CO user list, and Disable button (visible only when active ceremony exists;
   requires active CO privileges). Menu label shortened from "Crypto Officer Role" to "Crypto Officer".
+- **Crypto Officer page fully localized**: all labels, descriptions, badges, tooltips, and ceremony
+  workflow steps are now translated via i18n, including Chinese (`zh-CN`). The menu entry
+  "Crypto Officer" is also localized.
+- **Split Key and Join Split Key pages localized and kept generic**: both dialogs
+  (`/ui/sym/keys/split` and `/ui/sym/keys/join`) render their headings, descriptions, labels,
+  placeholders, validation messages, and result text via i18n (English and Chinese). They no longer
+  reference the key ceremony or Crypto Officer role — the share count is always user-editable. The
+  corresponding "Split"/"Join" menu entries are also localized.
 - **Search Objects locate buttons across action forms**: key/object/certificate identifier inputs in
   symmetric, RSA, EC, Covercrypt, MAC, PQC, FPE, certificate, attribute, object, and rotation-policy
   dialogs now use the reusable `KeyIdInput` component so users can search and select existing objects
