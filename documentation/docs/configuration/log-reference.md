@@ -691,6 +691,19 @@ Crate path: `crate/server`
 | `error` | `JoinSplitKey: CO ceremony activation failed — rolling back                      reconstructed key from DB` | `src/core/operations/join_split_key.rs` | `uid` (reconstructed key UID), `user`, `session_id`, `error` (activation error) | Audit — compensating delete triggered; activation failure made the ceremony invalid; key is being removed |
 | `error` | `JoinSplitKey: CRITICAL — reconstructed key rollback failed;                          orphaned key remains in DB, manual cleanup required` | `src/core/operations/join_split_key.rs` | `uid` (orphaned key UID), `user`, `session_id`, `rollback_error` (delete error) | CRITICAL audit — DB is in inconsistent state; manual deletion of the `uid` object is required; alert SIEM |
 | `warn` | `` `force_default_username = true` combined with `privileged_users` is                      deprecated and will become an error in a future release. All requests run                      under the same identity, making Crypto Officer dual-control meaningless.                      Please migrate to `[roles] crypto_officer_users` and remove                      `force_default_username`. `` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `[{idx}] CRL distribution point unreachable for '{:?}', skipping                          revocation check: {e}` | `src/core/operations/validate.rs` | `idx`, `e` | - |
+| `warn` | `CRL signature could not be verified against chain issuers;                          issuer: {crl_issuer:?}, path: {crl_path}.                          Continuing (trusted local delivery).` | `src/core/operations/validate.rs` | `crl_issuer`, `crl_path` | - |
+| `warn` | `CRL validation failed: {crl_err}` | `src/core/operations/validate.rs` | `crl_err` | - |
+| `info` | `GET /certificates/{}/crl` | `src/routes/crl.rs` | - | - |
+| `info` | `GET /public/certificates/{}/crl (unauthenticated)` | `src/routes/crl.rs` | - | - |
+| `debug` | `Auto-injecting CRL Distribution Point: {crl_url}` | `src/core/operations/certify/build_certificate.rs` | `crl_url` | - |
+| `debug` | `CRL cache hit: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
+| `debug` | `CRL fetched: uri={uri} size={}` | `src/core/operations/validate.rs` | `uri` | - |
+| `debug` | `CRL generated successfully for issuer '{}': {} entries, validity {} days` | `src/core/operations/generate_crl.rs` | - | - |
+| `debug` | `CRL response received: uri={uri} status={}` | `src/core/operations/validate.rs` | `uri` | - |
+| `debug` | `Generating CRL for issuer certificate: {}` | `src/core/operations/generate_crl.rs` | - | - |
+| `trace` | `Found {} revoked certificate(s) for issuer '{}'` | `src/core/operations/generate_crl.rs` | - | - |
+| `trace` | `Skipping certificate '{}': cannot parse DER: {e}` | `src/core/operations/generate_crl.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`
 
