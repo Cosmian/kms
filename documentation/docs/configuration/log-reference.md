@@ -691,6 +691,8 @@ Crate path: `crate/server`
 | `warn` | `SECURITY: Crypto Officer is configured but rate_limit_per_second is not set.              The ceremony activation endpoint performs crypto operations on every request.              Set rate_limit_per_second in the server config to protect against abuse in              production deployments.` | `src/start_kms_server.rs` | - | - |
 | `debug` | `CreateSplitKey: resolved ceremony parameters` | `src/core/operations/create_split_key.rs` | - | - |
 | `info` | `POST /access/crypto_officer/disable` | `src/routes/access.rs` | - | - |
+| `warn` | `JoinSplitKey: key stored but CO ceremony auto-activation failed —                      use POST /access/crypto_officer/ceremony/activate to activate manually` | `src/core/operations/join_split_key.rs` | - | - |
+| `info` | `JoinSplitKey: CO ceremony auto-activated via reconstructed key` | `src/core/operations/join_split_key.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 

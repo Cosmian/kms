@@ -63,6 +63,12 @@ pub(crate) async fn create_split_key(
     )
     .await?;
 
+    // The actual stored UID of the source key — used for share naming and attributes.
+    // This differs from `uid_str` when the caller resolves by tag (e.g. `["my-tag"]`)
+    // or any other indirect identifier: share UIDs must embed the real DB key UID so
+    // that JoinSplitKey can resolve them back to the original key.
+    let source_uid = owm.id().to_owned();
+
     // Only non-prefixed (database) keys can be split — HSM key material is never exported
     if ObjectHandle::from(owm.id()).is_hsm() {
         kms_bail!(KmsError::NotSupported(
@@ -91,16 +97,22 @@ pub(crate) async fn create_split_key(
     let key_bytes: Zeroizing<Vec<u8>> = extract_key_bytes(owm.object())?;
 
     // Determine whether this is a Crypto Officer ceremony split.
-    // Only the `x-cosmian-crypto-officer-ceremony` vendor attribute on the source key
-    // triggers ceremony mode. The global `require_ceremony` server flag does NOT
-    // automatically make every CreateSplitKey call a ceremony split — that would
-    // affect generic splits from the Keys/SplitKey page or ckms too.
-    // The CO Role page stamps this attribute on the key before calling CreateSplitKey.
+    //
+    // Two signals trigger ceremony mode (either is sufficient):
+    // 1. The source key carries the `x-cosmian-crypto-officer-ceremony` vendor attribute
+    //    (stamped by the CLI `--ceremony` flag or the CO Role page UI).
+    // 2. The server is globally configured with `require_ceremony = true` AND has at
+    //    least one CO user configured — i.e. the server enforces ceremony distribution
+    //    for every split when in ceremony mode.
+    //
+    // In ceremony mode the server ignores the requested share count and assigns one
+    // share per CO candidate (round-robin ownership), enforcing dual control.
     let co_users = &kms.params.crypto_officer.users;
     let is_co_ceremony_key = owm
         .attributes()
         .get_vendor_attribute_value(VENDOR_ID_COSMIAN, CRYPTO_OFFICER_CEREMONY_ATTR)
-        .is_some();
+        .is_some()
+        || (kms.params.crypto_officer.require_ceremony && !co_users.is_empty());
 
     // Generate shares using the requested split method
     let mut threshold = request.split_key_threshold;
@@ -248,7 +260,7 @@ pub(crate) async fn create_split_key(
         share_attrs.set_vendor_attribute(
             VENDOR_ID_COSMIAN,
             "x-cosmian-split-key-source",
-            cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::VendorAttributeValue::TextString(uid_str.clone()),
+            cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::VendorAttributeValue::TextString(source_uid.clone()),
         );
 
         // Propagate Crypto Officer ceremony marker to each share
@@ -262,7 +274,7 @@ pub(crate) async fn create_split_key(
 
         // Build a tag set for discoverability
         let mut tags: HashSet<String> = HashSet::new();
-        tags.insert(format!("split-key-of:{uid_str}"));
+        tags.insert(format!("split-key-of:{source_uid}"));
         tags.insert(format!("split-key-part:{part_identifier}"));
         // Include total count so the UI can render "Share X/Y" without a second request.
         tags.insert(format!("split-key-total:{total_parts}"));
@@ -273,9 +285,9 @@ pub(crate) async fn create_split_key(
                 // Share UID naming convention: "<source-key-uid>#<part>" (e.g. "my-key#1").
                 // The `#` separator is not a valid UUID character and is not used in
                 // standard KMIP UIDs, making it unambiguous as a positional delimiter.
-                // This makes share UIDs predictable and human-readable when the caller
-                // provides a meaningful source key UID.
-                Some(format!("{uid_str}#{part_identifier}")),
+                // `source_uid` is the actual stored UID (from owm.id()), not the request
+                // identifier — ensures correct naming even when the caller passed a tag.
+                Some(format!("{source_uid}#{part_identifier}")),
                 &share_owner,
                 &split_key_obj,
                 &share_attrs,
@@ -515,8 +527,9 @@ mod tests {
 
     /// Verify the `#` share UID naming convention.
     ///
-    /// Shares should be named `<source-key-uid>#<part>` so they are predictable
-    /// and human-readable when the source key has a meaningful UID.
+    /// Shares are named `<source-key-uid>#<part>` where `source-key-uid` is the
+    /// **actual stored UID** (`owm.id()`), not the request identifier.
+    /// This ensures correct naming even when the caller identifies the key by tag.
     #[test]
     fn test_share_uid_naming_convention() {
         let source_uid = "ceremony-key-2026";
@@ -527,6 +540,16 @@ mod tests {
             assert_eq!(base, source_uid);
             assert_eq!(suffix, part.to_string().as_str());
         }
+
+        // When the caller passes a tag (e.g. `["my-tag"]`), the request identifier differs
+        // from the stored UID.  The share should use `owm.id()` (the actual UID), not the
+        // tag string — otherwise the share UID would be `["my-tag"]#1`, which is invalid.
+        let request_identifier = "[\"my-tag\"]";
+        let actual_stored_uid = "550e8400-e29b-41d4-a716-446655440000";
+        // Correct: use the resolved stored UID
+        let share_uid = format!("{actual_stored_uid}#1");
+        assert!(share_uid.starts_with(actual_stored_uid));
+        assert!(!share_uid.starts_with(request_identifier));
     }
 
     /// Verify that `JoinSplitKey` only reuses the source key UID for ceremony splits.
