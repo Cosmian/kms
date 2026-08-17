@@ -20,6 +20,7 @@ use crate::{
         KMS, operations::perform_crypto_officer_ceremony_activation,
         retrieve_object_utils::user_has_permission,
     },
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -273,6 +274,17 @@ pub(crate) async fn get_crypto_officer_status(
     }))
 }
 
+/// Request body for `POST /access/crypto_officer/disable`.
+///
+/// When `target_user` is `None`, the caller self-revokes their own active CO ceremony.
+/// When `target_user` is `Some(user_id)`, any configured CO candidate can peer-revoke
+/// the specified active CO.
+#[derive(Deserialize, Default)]
+pub(crate) struct DisableCryptoOfficerRequest {
+    /// The user ID of the active CO to revoke. If omitted, the caller self-revokes.
+    pub(crate) target_user: Option<String>,
+}
+
 /// Disable an active Crypto Officer ceremony.
 ///
 /// **Ceremony mode only**: sets `revoked_at` on the active ceremony record.
@@ -282,16 +294,22 @@ pub(crate) async fn get_crypto_officer_status(
 /// In config-only mode, Crypto Officer privileges must be removed by editing
 /// the server configuration and restarting.
 ///
-/// **Authorization**: the caller must currently be an active Crypto Officer.
+/// **Authorization**:
+/// - Self-revoke (no `target_user`): caller must be an active CO.
+/// - Peer revocation (`target_user` provided): caller must be a configured CO candidate;
+///   target must be an active CO.
 #[post("/access/crypto_officer/disable")]
 pub(crate) async fn disable_crypto_officer(
     req: HttpRequest,
+    body: Json<DisableCryptoOfficerRequest>,
     kms: Data<Arc<KMS>>,
 ) -> KResult<Json<SuccessResponse>> {
     let user = kms.get_user(&req);
-    info!(user = %user, "POST /access/crypto_officer/disable {user}");
+    let target = body.0.target_user.as_deref().map(UserId::from);
+    info!(user = %user, target = ?body.0.target_user, "POST /access/crypto_officer/disable");
 
-    kms.disable_crypto_officer_ceremony(&user).await?;
+    kms.disable_crypto_officer_ceremony(&user, target.as_ref())
+        .await?;
 
     Ok(Json(SuccessResponse {
         success: "Crypto Officer ceremony activation revoked successfully".to_owned(),

@@ -62,13 +62,35 @@ in any role default to `Operator` (fail-secure per NIST SP 800-57 Part 2 Rev 1 �
 ### Split-key ceremony activation (optional)
 
 `CryptoOfficerConfig.require_ceremony = true` defers activation of the ownership bypass
-until a KMIP `JoinSplitKey` operation with at least `threshold` shares tagged
-`x-cosmian-crypto-officer-ceremony` completes. This implements NIST SP 800-57 Part 2
-Rev 1 §4.6 (dual control / split knowledge) directly within the module boundary without
-requiring external tooling.
+until a KMIP `JoinSplitKey` operation completes with all n shares tagged
+`x-cosmian-crypto-officer-ceremony`. This implements NIST SP 800-57 Part 2
+Rev 1 §4.6 (dual control / split knowledge) at the module boundary.
+
+**`JoinSplitKey` IS the activation**: when all shares carry
+`x-cosmian-crypto-officer-ceremony`, the server writes the `crypto_officer_activations`
+record as a side-effect. The dedicated `POST /access/crypto_officer/ceremony/activate`
+endpoint is kept for CLI backward compatibility only; the Web UI uses `JoinSplitKey` as
+the single activation action.
+
+Share UIDs follow the convention `<base-key-uid>#<part>` (e.g. `ceremony-key-2026#1`).
+On `JoinSplitKey` the reconstructed key UID is derived by stripping the `#N` suffix
+(ceremony path only; generic splits use a fresh UUID to avoid collisions).
 
 Ceremony activation records are AES-256-GCM encrypted with keys derived from
 `KMS_CEREMONY_SECRET`, preventing forgery via direct database writes.
+`crypto_officer_activations` is the **sole source of truth** for CO role status — the
+`x-cosmian-crypto-officer-ceremony` tag on KMS objects is used only as validation input,
+never for privilege checks (prevents privilege escalation via arbitrary tag-setting).
+
+### Revocation
+
+Any configured CO candidate may revoke the active CO's ceremony:
+
+- **Self-revoke**: active CO calls `POST /access/crypto_officer/disable` → 200 OK.
+- **Peer revocation**: any CO candidate (in `crypto_officer_users`) calls
+  `POST /access/crypto_officer/disable` → revokes the active CO's role immediately.
+  The demoted CO's reconstructed key is NOT revoked (they retain it as an Operator).
+- **Emergency**: remove user from `crypto_officer_users` in `kms.toml` and restart.
 
 ### Audit and advanced RBAC
 
@@ -134,32 +156,39 @@ reference policy fully implements those roles with documented normative referenc
   or air-gapped scenarios — to run an OPA sidecar. The two mandatory FIPS roles must be
   enforceable at the module boundary without external dependencies.
 
-## Implementation Notes
+## Implementation Notes (as of `feat/split_key`)
 
 - **IMP-001**: `crate/access/src/access.rs` — new `Role` enum with two variants:
   `Operator` and `CryptoOfficer`. New `CryptoOfficerConfig` and `RolesConfig` structs
   replace the former flat `privileged_users` field in `ServerParams`.
-- **IMP-002**: `crate/server/src/config/command_line/roles_config.rs` — new CLI flags:
+- **IMP-002**: `crate/server/src/config/command_line/roles_config.rs` — CLI flags:
   `--crypto-officer-users`, `--crypto-officer-require-ceremony`,
-  `--crypto-officer-total-parts`, `--ceremony-secret` (env `KMS_CEREMONY_SECRET`).
+  `--ceremony-secret` (env `KMS_CEREMONY_SECRET`),
+  `--ceremony-key-id` (env `KMS_CEREMONY_KEY_ID`, ADP-26 scaffold).
   The former `--privileged-users` flag is removed.
-- **IMP-003**: `kms.toml` gains a new `[roles]` section accepting `crypto_officer_users`
-  and related ceremony fields. The top-level `privileged_users` key is removed; servers
-  with configs containing `privileged_users` will emit a parse error on startup.
-  *Note: the planned multi-domain evolution (ADP-16, see Future Evolution below) will
-  remove the `[roles]` TOML section entirely; `KMS_CEREMONY_SECRET` will be the only
-  ceremony-related configuration.*
-- **IMP-004**: Migration path: in every `kms.toml`, move `privileged_users = [...]` into
-  a `[roles]` section and rename the key to `crypto_officer_users`.
+- **IMP-003**: `kms.toml` `[roles]` section with `crypto_officer_users`,
+  `crypto_officer_require_ceremony`, `ceremony_secret`.
+- **IMP-004**: Migration: move `privileged_users = [...]` into `[roles]`, rename to
+  `crypto_officer_users`.
 - **IMP-005**: New FIPS test vectors in `test_data/vectors/access_control/` cover the
   role model: `crypto_officer_role_allowed_ops`, `operator_role_blocked_lifecycle`,
-  and related privilege-escalation vectors. These are registered in
-  `crate/test_kms_server/src/vector_runner.rs`.
-- **IMP-006**: Security property — during `JoinSplitKey` the server holds the
-  reconstructed ceremony secret momentarily in process RAM. The reconstructed key is
-  stored as a managed object; the activation record carries its SHA-256 fingerprint.
-  The planned multi-domain evolution (ADP-20) will zeroize the secret after
-  verification, so it is **never stored**.
+  and related privilege-escalation vectors.
+- **IMP-006**: `crypto_officer_activations` table is the sole role store.
+  The `x-cosmian-crypto-officer-ceremony` tag on KMS objects is validation input only —
+  never consulted for privilege decisions — preventing privilege escalation via
+  arbitrary tag-setting on objects the attacker controls.
+- **IMP-007**: `CreateSplitKey` server-side auto-determines share count from
+  `crypto_officer_users.len()` when the source key carries the ceremony tag.
+  Each share owned by a different CO candidate (round-robin). UIDs: `<base>#<n>`.
+- **IMP-008**: `JoinSplitKey` with all ceremony-tagged shares auto-activates the CO role.
+  No separate activation call needed from the Web UI. The dedicated REST endpoint
+  `POST /access/crypto_officer/ceremony/activate` is kept for CLI backward compatibility.
+- **IMP-009**: Revocation supports self-revoke (active CO) and peer revocation (any other
+  CO candidate). The demoted CO's reconstructed key is NOT revoked — only the
+  `crypto_officer_activations` row is updated. Peer revocation enables compromise
+  recovery without server restart (NIST SP 800-152 FR:6.119).
+- **IMP-010**: Share UID naming: `<base-uid>#<part-index>` (e.g. `my-ceremony-key#1`).
+  On `JoinSplitKey`, reconstructed key UID = base UID (ceremony path only).
 
 ## Future Evolution
 
@@ -167,12 +196,13 @@ A second ADR (`documentation/docs/adr/2026-07-24-multi-domain-split-key-ceremony
 in review as of 2026-07-24) extends this decision into a full multi-domain
 architecture. Key changes that directly affect the artefacts introduced here:
 
-| ADP | Impact on this ADR |
-|-----|-------------------|
-| **ADP-16** | `[roles]` TOML section removed; CO candidates assigned per-domain in a DB table. Only `KMS_CEREMONY_SECRET` env var survives. IMP-003/IMP-004 migration instructions become a transitional step only. |
-| **ADP-20** | Reconstructed ceremony secret hash-verified then zeroized in RAM — never stored. Improves on the current model where the reconstructed key becomes a managed object. |
-| **ADP-25** | Server generates the 256-bit ceremony secret internally (random); the operator-supplied `ceremony_secret` TOML field is removed. |
-| **ADP-3/15** | CO candidates assigned per-domain; ceremony activates all CO candidates for that domain simultaneously (vs current per-user activation). |
+| ADP | Status | Impact on this ADR |
+|-----|--------|-------------------|
+| **ADP-16** | Planned | `[roles]` TOML section removed; CO candidates assigned per-domain in a DB table. Only `KMS_CEREMONY_SECRET` env var survives. IMP-003/IMP-004 migration instructions become a transitional step only. |
+| **ADP-20** | **Implemented** | Reconstructed ceremony secret XOR-joined in RAM; reconstructed key stored as KMS object. Secret never stored in cleartext. |
+| **ADP-25** | Planned | Server generates the 256-bit ceremony secret internally (random); the operator-supplied `ceremony_secret` TOML field is removed. |
+| **ADP-26** | **Scaffolded** | `ceremony_key_id` config field: references a KMS symmetric key as the ceremony sealing key instead of a static hex secret. Enables key rotation and HSM backing. Accepted by the config parser but not yet functional; `ceremony_secret` is required in the meantime. |
+| **ADP-3/15** | Planned | CO candidates assigned per-domain; ceremony activates all CO candidates for that domain simultaneously (vs current per-user activation). |
 
 Until that ADR is merged, the `[roles]` TOML section and the `--crypto-officer-users`
 CLI flag described in IMP-002/IMP-003 remain the authoritative configuration surface.
