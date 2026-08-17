@@ -506,7 +506,7 @@ function App() {
     const lightTheme: ThemeConfig = {
         algorithm: theme.defaultAlgorithm,
         token: {
-            colorPrimary: "#f14611" /* Cosmian brand orange — matches eviden.css #f14611 */,
+            colorPrimary: "#c73f1b" /* Cosmian brand orange — eviden.css --cosmian-accent-dark (>= 4.5:1 on white) */,
             colorText: "#1a1a1a" /* Eviden brand ink — matches eviden.css --cosmian-dark */,
             fontFamily: "'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         },
@@ -530,8 +530,8 @@ function App() {
                 handleSize: 28,
             },
             Button: {
-                defaultHoverBorderColor: "#82c0c7" /* Cosmian teal accent */,
-                defaultHoverColor: "#82c0c7",
+                defaultHoverBorderColor: "#50767a" /* darkened teal (>= 4.5:1 on white) */,
+                defaultHoverColor: "#50767a",
             },
         },
     };
@@ -539,14 +539,16 @@ function App() {
     const darkTheme: ThemeConfig = {
         algorithm: theme.darkAlgorithm,
         token: {
-            colorPrimary: "#f97850" /* Lighter orange for dark bg — matches eviden.css hover/gradient */,
-            colorText: "#e4dddd",
-            colorBgBase: "#2a2d30",
-            colorTextPlaceholder: "#b9b9b9",
-            colorError: "#e23030",
-            colorBorder: "#4d4b4b",
-            colorSplit: "#4d4b4b",
-            colorBorderSecondary: "#4d4b4b",
+            colorPrimary: "#f14611" /* Cosmian primary orange — eviden.css --cosmian-accent (bright accent on dark) */,
+            colorInfo: "#2b79a2" /* mdBook dark-theme link blue */,
+            colorTextBase: "#bcbdd0" /* mdBook navy --fg */,
+            colorBgBase: "#161923" /* mdBook navy --bg hsl(226,23%,11%) — black background */,
+            colorBgLayout: "#161923",
+            colorBgContainer: "#1f2432" /* elevated card surface */,
+            colorBgElevated: "#282d3f" /* mdBook navy --sidebar-bg */,
+            colorBorder: "#5a6278",
+            colorSplit: "#3a4155",
+            colorError: "#ff6b6b" /* light red (>= 4.5:1 on #161923) */,
             fontFamily: "'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         },
         components: {
@@ -558,11 +560,13 @@ function App() {
                 triggerColor: "#c8c9db",
             },
             Menu: {
-                itemSelectedBg: "#393E46",
-                itemSelectedColor: "#f97850" /* brand orange on dark */,
-                itemHoverBg: "#2e3238",
-                itemActiveBg: "#393E46",
-                itemActiveColor: "#f97850",
+                darkItemBg: "#282d3f" /* mdBook navy --sidebar-bg */,
+                darkItemColor: "#c8c9db" /* mdBook navy --sidebar-fg */,
+                darkItemHoverBg: "#2d334f",
+                darkItemHoverColor: "#f14611",
+                darkItemSelectedBg: "#3a4155",
+                darkItemSelectedColor: "#f97850" /* lighter orange for contrast on selected bg */,
+                darkSubMenuItemBg: "#1f2432",
             },
             Form: {
                 itemMarginBottom: 40,
@@ -572,21 +576,9 @@ function App() {
                 dangerShadow: "none",
             },
             Select: {
-                selectorBg: "#2f3239",
-                colorBorder: "#34383f",
-                optionActiveBg: "#f97850",
-                optionActiveColor: "#1a1a1a",
-                optionSelectedBg: "#f97850",
-                optionSelectedColor: "#1a1a1a",
-                colorIcon: "#f97850",
-            },
-            Input: {
-                selectorBg: "#2f3239",
-                colorBorder: "#34383f",
-            },
-            InputNumber: {
-                colorIcon: "#f97850",
-                colorBorder: "#f97850",
+                optionSelectedBg: "#f14611",
+                optionSelectedColor: "#161923" /* dark ink on bright orange (>= 4.5:1) */,
+                colorIcon: "#f14611",
             },
             Card: {
                 colorBgContainer: "#1f2432",

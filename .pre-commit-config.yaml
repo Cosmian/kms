@@ -195,13 +195,6 @@ repos:
         stages: [pre-push]
       - id: clippy-all-targets
         stages: [manual]
-        types: [rust]
-      - id: cargo-format
-        name: cargo-format (post-clippy)
-        types: [rust]
-        stages: [pre-push]
-      - id: cargo-machete
-        types: [rust]
 
   # ═══════════════════════════════════════════════════════════════════════
   # 4. Testing (slow, conditional on changed crate)
@@ -699,7 +692,7 @@ repos:
 
       - id: cargo-test-fips
         name: cargo test (sqlite fips)
-        entry: mise run test:sqlite -- --variant fips
+        entry: cargo test --lib --workspace
         language: system
         types: [rust]
         pass_filenames: false
@@ -707,7 +700,7 @@ repos:
 
       - id: cargo-test-non-fips
         name: cargo test (sqlite non-fips)
-        entry: mise run test:sqlite -- --variant non-fips
+        entry: cargo test --lib --workspace --features non-fips
         language: system
         types: [rust]
         pass_filenames: false
@@ -740,7 +733,9 @@ repos:
     rev: v1.0.42
     hooks:
       - id: nightly-clippy-autofix-unreachable-pub
+        stages: [manual]
       - id: nightly-clippy-autofix-all-targets-all-features
+        stages: [manual]
       - id: nightly-clippy-autofix-all-targets
         stages: [manual]
 

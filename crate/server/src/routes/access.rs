@@ -210,8 +210,12 @@ pub(crate) struct CryptoOfficerStatusResponse {
     /// Whether a Crypto Officer role configuration exists on the server.
     pub enabled: bool,
     /// List of usernames with Crypto Officer privileges (from server config).
-    /// Only populated for active Crypto Officers; other users see an empty list.
+    /// Only populated for CO candidates; regular operators see an empty list.
     pub users: Vec<String>,
+    /// Subset of `users` that currently hold an **active** ceremony activation.
+    /// Only populated for CO candidates. Used by the UI to filter the peer-revocation
+    /// target list to active COs only.
+    pub active_co_users: Vec<String>,
     /// Total number of Crypto Officer custodians configured on the server.
     /// Always set (unlike `users` which is hidden for non-CO users) so that
     /// ceremony candidates know how many share inputs to show in the UI.
@@ -241,6 +245,7 @@ pub(crate) async fn get_crypto_officer_status(
         return Ok(Json(CryptoOfficerStatusResponse {
             enabled: false,
             users: vec![],
+            active_co_users: vec![],
             custodians_count: 0,
             require_ceremony: false,
             ceremony_activated: false,
@@ -267,9 +272,25 @@ pub(crate) async fn get_crypto_officer_status(
         Vec::new()
     };
 
+    // Compute the subset of configured CO users that have an active ceremony activation.
+    // Only populated for CO candidates (same visibility rule as `users`).
+    // This lets the UI filter the peer-revocation target list to active COs only.
+    let active_co_users = if is_co_candidate && ceremony_activated {
+        let mut active = Vec::new();
+        for co_user in &cfg.users {
+            if kms.database.is_crypto_officer_activated_by(co_user).await? {
+                active.push(co_user.clone());
+            }
+        }
+        active
+    } else {
+        Vec::new()
+    };
+
     Ok(Json(CryptoOfficerStatusResponse {
         enabled: true,
         users,
+        active_co_users,
         custodians_count: cfg.users.len(),
         require_ceremony: cfg.require_ceremony,
         ceremony_activated,

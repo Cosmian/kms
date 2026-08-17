@@ -693,6 +693,7 @@ Crate path: `crate/server`
 | `info` | `POST /access/crypto_officer/disable` | `src/routes/access.rs` | - | - |
 | `warn` | `JoinSplitKey: key stored but CO ceremony auto-activation failed —                      use POST /access/crypto_officer/ceremony/activate to activate manually` | `src/core/operations/join_split_key.rs` | - | - |
 | `info` | `JoinSplitKey: CO ceremony auto-activated via reconstructed key` | `src/core/operations/join_split_key.rs` | - | - |
+| `info` | `PEER_REVOCATION_CLEANUP: revoked victim GET access on caller's share` | `src/core/kms/permissions.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 

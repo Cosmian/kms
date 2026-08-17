@@ -1828,7 +1828,6 @@
         "revokeRole": "撤销加密官角色",
         "selectRevokePlaceholder": "选择要撤销的活动加密官（或留空以自我撤销）",
         "revokeHint": "任何加密官候选人都可以撤销另一位活动加密官。留空以自我撤销（您必须是活动加密官）。",
-        "revokeHintDormant": "选择一位活动加密官以撤销其角色。您无法自我撤销，因为您没有活动仪式。",
         "tooltipNotActive": "您不是活动加密官。请选择目标用户进行对等撤销。",
         "tooltipRevokeFor": "撤销用户 {{user}} 的加密官角色",
         "tooltipSelfRevoke": "撤销您的活动仪式。该角色将变为休眠状态，直到新的仪式完成。",

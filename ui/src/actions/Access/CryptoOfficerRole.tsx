@@ -1,5 +1,6 @@
 import { Badge, Button, Card, Form, Input, Select, Space, Tag, Tooltip, Typography } from "antd";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import { getNoTTLVRequest, postNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import LocateButton from "../../components/common/LocateButton";
@@ -10,6 +11,8 @@ const { Text } = Typography;
 interface CryptoOfficerStatus {
     enabled: boolean;
     users: string[];
+    /** Subset of `users` that currently hold an active ceremony activation. */
+    active_co_users: string[];
     custodians_count: number;
     require_ceremony: boolean;
     ceremony_activated: boolean;
@@ -35,6 +38,7 @@ const buildCreateSplitKeyRequest = (keyId: string, n: number) => ({
 });
 
 const CryptoOfficerRole: React.FC = () => {
+    const { t } = useTranslation("actions");
     const [isLoading, setIsLoading] = useState(false);
     const [isDisabling, setIsDisabling] = useState(false);
     const [isActivating, setIsActivating] = useState(false);
@@ -69,11 +73,11 @@ const CryptoOfficerRole: React.FC = () => {
                 });
             }
         } catch (e) {
-            setRes(`Error fetching Crypto Officer status: ${e}`);
+            setRes(t("cryptoOfficer.errorFetching", { error: String(e) }));
         } finally {
             setIsLoading(false);
         }
-    }, [serverUrl, activateForm]);
+    }, [serverUrl, activateForm, t]);
 
     const disableCeremony = useCallback(async () => {
         setIsDisabling(true);
@@ -88,11 +92,11 @@ const CryptoOfficerRole: React.FC = () => {
             setRevokeTarget("");
             await fetchStatus();
         } catch (e) {
-            setRes(`Error disabling Crypto Officer ceremony: ${e}`);
+            setRes(t("cryptoOfficer.errorDisabling", { error: String(e) }));
         } finally {
             setIsDisabling(false);
         }
-    }, [serverUrl, fetchStatus, revokeTarget]);
+    }, [serverUrl, fetchStatus, revokeTarget, t]);
 
     // ── Step 1: Create & Split Key ────────────────────────────────────────────
     // Creates an AES-256 key (optionally with a custom UID) and splits it into
@@ -135,16 +139,15 @@ const CryptoOfficerRole: React.FC = () => {
             });
 
             setSplitRes(
-                `AES-256 key created: ${createdKeyId}\n` +
-                    `Split into ${shareUids.length} share(s) — UIDs auto-filled below:\n` +
-                    shareUids.map((uid, i) => `  Share ${i + 1}: ${uid}`).join("\n"),
+                `${t("cryptoOfficer.splitResult", { keyId: createdKeyId, count: shareUids.length })}\n` +
+                    shareUids.map((uid, i) => `  ${t("cryptoOfficer.shareLine", { n: i + 1 })}: ${uid}`).join("\n"),
             );
         } catch (e) {
-            setSplitRes(`Error creating/splitting key: ${e}`);
+            setSplitRes(t("cryptoOfficer.errorSplitting", { error: String(e) }));
         } finally {
             setIsSplitting(false);
         }
-    }, [status, serverUrl, activateForm, splitKeyId]);
+    }, [status, serverUrl, activateForm, splitKeyId, t]);
 
     const activateCeremony = useCallback(
         async (values: CeremonyActivateFormData) => {
@@ -153,7 +156,7 @@ const CryptoOfficerRole: React.FC = () => {
             try {
                 const shareIds = values.shareIds.map((item) => item.value).filter((v) => v && v.trim().length > 0);
                 if (shareIds.length < 2) {
-                    setRes("Error: at least 2 share UIDs are required.");
+                    setRes(t("cryptoOfficer.errorAtLeastTwoShares"));
                     return;
                 }
                 const response = (await postNoTTLVRequest(
@@ -164,12 +167,12 @@ const CryptoOfficerRole: React.FC = () => {
                 setRes(response.success);
                 await fetchStatus();
             } catch (e) {
-                setRes(`Error activating Crypto Officer ceremony: ${e}`);
+                setRes(t("cryptoOfficer.errorActivating", { error: String(e) }));
             } finally {
                 setIsActivating(false);
             }
         },
-        [serverUrl, fetchStatus],
+        [serverUrl, fetchStatus, t],
     );
 
     const onLocateSelect = useCallback(
@@ -189,7 +192,7 @@ const CryptoOfficerRole: React.FC = () => {
     return (
         <div className="p-6">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold">Crypto Officer Role</h1>
+                <h1 className="text-2xl font-bold">{t("cryptoOfficer.title")}</h1>
                 <Button
                     type="primary"
                     onClick={fetchStatus}
@@ -197,72 +200,79 @@ const CryptoOfficerRole: React.FC = () => {
                     data-testid="refresh-btn"
                     className="bg-black-500 hover:bg-blue-700 border-0"
                 >
-                    Refresh
+                    {t("cryptoOfficer.refresh")}
                 </Button>
             </div>
 
             <div className="mb-8 space-y-2">
                 <p>
-                    The <strong>Crypto Officer</strong> role grants key lifecycle management (create, import, certify, rekey, activate,
-                    revoke, destroy), raw key material access (get, export), and an ownership bypass — allowing retrieval and management of
-                    any object regardless of who created it.
+                    <Trans ns="actions" i18nKey="cryptoOfficer.intro" components={{ strong: <strong /> }} />
                 </p>
                 <p>
-                    This role can operate in <em>config-only</em> mode (immediately active) or <em>ceremony mode</em> (dormant until a
-                    split-key ceremony completes). See{" "}
-                    <a href="https://docs.cosmian.com/key_ceremony" target="_blank" rel="noreferrer" className="text-blue-600 underline">
-                        Key ceremony documentation
-                    </a>{" "}
-                    for details.
+                    <Trans
+                        ns="actions"
+                        i18nKey="cryptoOfficer.introModes"
+                        components={{
+                            em: <em />,
+                            a: (
+                                <a
+                                    href="https://docs.cosmian.com/key_ceremony"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-blue-600 dark:text-blue-400 underline"
+                                />
+                            ),
+                        }}
+                    />
                 </p>
             </div>
 
             <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                 {status && !status.enabled && (
                     <Card data-testid="response-output">
-                        <p className="text-gray-500">Crypto Officer role is not configured on this server.</p>
+                        <p className="text-gray-500 dark:text-gray-400">{t("cryptoOfficer.notConfigured")}</p>
                     </Card>
                 )}
 
                 {status && status.enabled && (
-                    <Card title="Crypto Officer Role Status" data-testid="role-status-card">
+                    <Card title={t("cryptoOfficer.statusTitle")} data-testid="role-status-card">
                         <div className="space-y-4">
                             <div className="flex items-center gap-3">
-                                <span className="font-medium w-40">Role enabled:</span>
-                                <Badge status="success" text="Yes" />
+                                <span className="font-medium w-40">{t("cryptoOfficer.roleEnabled")}</span>
+                                <Badge status="success" text={t("cryptoOfficer.yes")} />
                             </div>
 
                             <div className="flex items-center gap-3">
-                                <span className="font-medium w-40">Ceremony required:</span>
+                                <span className="font-medium w-40">{t("cryptoOfficer.ceremonyRequired")}</span>
                                 {status.require_ceremony ? (
-                                    <Badge status="warning" text="Yes — split-key ceremony" />
+                                    <Badge status="warning" text={t("cryptoOfficer.yesSplitKeyCeremony")} />
                                 ) : (
-                                    <Badge status="default" text="No — config-only" />
+                                    <Badge status="default" text={t("cryptoOfficer.noConfigOnly")} />
                                 )}
                             </div>
 
                             <div className="flex items-center gap-3">
-                                <span className="font-medium w-40">Ceremony active:</span>
+                                <span className="font-medium w-40">{t("cryptoOfficer.ceremonyActive")}</span>
                                 {status.ceremony_activated ? (
-                                    <Badge status="success" text="Active" />
+                                    <Badge status="success" text={t("cryptoOfficer.active")} />
                                 ) : status.require_ceremony ? (
-                                    <Badge status="error" text="Dormant (ceremony not completed)" />
+                                    <Badge status="error" text={t("cryptoOfficer.dormant")} />
                                 ) : (
-                                    <Badge status="default" text="N/A (config-only mode)" />
+                                    <Badge status="default" text={t("cryptoOfficer.naConfigOnly")} />
                                 )}
                             </div>
 
                             <div className="flex items-center gap-3">
-                                <span className="font-medium w-40">You are CO:</span>
+                                <span className="font-medium w-40">{t("cryptoOfficer.youAreCo")}</span>
                                 {status.is_crypto_officer ? (
-                                    <Badge status="success" text="Yes — your requests have ownership bypass" />
+                                    <Badge status="success" text={t("cryptoOfficer.yesOwnershipBypass")} />
                                 ) : (
-                                    <Badge status="default" text="No" />
+                                    <Badge status="default" text={t("cryptoOfficer.no")} />
                                 )}
                             </div>
 
                             <div className="flex items-start gap-3">
-                                <span className="font-medium w-40">CO users:</span>
+                                <span className="font-medium w-40">{t("cryptoOfficer.coUsers")}</span>
                                 <div className="flex flex-wrap gap-1">
                                     {status.users.map((u) => (
                                         <Tag key={u} color="blue">
@@ -272,40 +282,38 @@ const CryptoOfficerRole: React.FC = () => {
                                 </div>
                             </div>
 
-                            {status.ceremony_activated && (
+                            {/* Only CO candidates (status.users non-empty) may revoke. Operators never see this. */}
+                            {status.ceremony_activated && status.users.length > 0 && (
                                 <div className="pt-2 border-t space-y-3">
-                                    <p className="text-sm font-medium">Revoke Crypto Officer Role</p>
+                                    <p className="text-sm font-medium">{t("cryptoOfficer.revokeRole")}</p>
                                     <Space direction="vertical" style={{ display: "flex" }}>
-                                        {/* Populated from CO users list returned by the server */}
+                                        {/* Only list users that are currently active COs */}
                                         <Select
-                                            placeholder="Select CO to revoke (or leave empty to self-revoke)"
+                                            placeholder={t("cryptoOfficer.selectRevokePlaceholder")}
                                             value={revokeTarget || undefined}
                                             onChange={(val: string | undefined) => setRevokeTarget(val ?? "")}
                                             allowClear
                                             style={{ width: 380 }}
-                                            options={status.users.map((u) => ({
+                                            options={(status.active_co_users ?? status.users).map((u) => ({
                                                 value: u,
-                                                label: u === status.users[0] ? `${u} (you, if active)` : u,
+                                                label: u,
                                             }))}
                                             data-testid="revoke-target-select"
                                         />
-                                        <p className="text-xs text-gray-400">
-                                            Any Crypto Officer candidate can revoke another active CO. Leave empty to self-revoke (you must
-                                            be the active CO).
-                                        </p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">{t("cryptoOfficer.revokeHint")}</p>
                                         <Tooltip
                                             title={
                                                 !status.is_crypto_officer && !revokeTarget.trim()
-                                                    ? "You are not the active CO. Select a target user to peer-revoke."
+                                                    ? t("cryptoOfficer.tooltipNotActive")
                                                     : revokeTarget.trim()
-                                                      ? `Revoke CO role for: ${revokeTarget.trim()}`
-                                                      : "Revokes your active ceremony. The role becomes dormant until a new ceremony completes."
+                                                      ? t("cryptoOfficer.tooltipRevokeFor", { user: revokeTarget.trim() })
+                                                      : t("cryptoOfficer.tooltipSelfRevoke")
                                             }
                                         >
                                             <Button danger onClick={disableCeremony} loading={isDisabling} data-testid="disable-btn">
                                                 {revokeTarget.trim()
-                                                    ? `Revoke CO for ${revokeTarget.trim()}`
-                                                    : "Revoke My Crypto Officer Ceremony"}
+                                                    ? t("cryptoOfficer.revokeFor", { user: revokeTarget.trim() })
+                                                    : t("cryptoOfficer.revokeMyCeremony")}
                                             </Button>
                                         </Tooltip>
                                     </Space>
@@ -319,16 +327,19 @@ const CryptoOfficerRole: React.FC = () => {
                 {status && status.enabled && status.require_ceremony && !status.ceremony_activated && (
                     <>
                         {/* ── Step 1: Create & Split Key ────────────────────────────── */}
-                        <Card title={`Step 1 — Create & Split Key (${status.custodians_count} shares)`} data-testid="split-key-step-card">
-                            <p className="mb-4 text-gray-600">
-                                Creates a new AES-256 key and splits it into <strong>{status.custodians_count} shares</strong> — one per
-                                Crypto Officer candidate. The share UIDs are auto-filled into Step 2 below. You may also fill the UIDs
-                                manually if you already have them.
+                        <Card title={t("cryptoOfficer.step1Title", { count: status.custodians_count })} data-testid="split-key-step-card">
+                            <p className="mb-4 text-gray-600 dark:text-gray-300">
+                                <Trans
+                                    ns="actions"
+                                    i18nKey="cryptoOfficer.step1Description"
+                                    values={{ count: status.custodians_count }}
+                                    components={{ strong: <strong /> }}
+                                />
                             </p>
                             <Space direction="vertical" style={{ display: "flex", marginBottom: 16 }}>
                                 <Space align="baseline" wrap>
                                     <Input
-                                        placeholder="Ceremony key ID (optional — e.g. ceremony-2026)"
+                                        placeholder={t("cryptoOfficer.ceremonyKeyPlaceholder")}
                                         value={splitKeyId}
                                         onChange={(e) => setSplitKeyId(e.target.value)}
                                         style={{ width: 320 }}
@@ -341,12 +352,12 @@ const CryptoOfficerRole: React.FC = () => {
                                         loading={isSplitting}
                                         data-testid="create-split-key-btn"
                                     >
-                                        Create & Split Key ({status.custodians_count} shares)
+                                        {t("cryptoOfficer.createSplitKey", { count: status.custodians_count })}
                                     </Button>
                                 </Space>
                                 {splitKeyId.trim() && (
                                     <Text type="secondary" style={{ fontSize: 12 }}>
-                                        Share IDs will be:{" "}
+                                        {t("cryptoOfficer.shareIdsWillBe")}{" "}
                                         {Array.from({ length: status.custodians_count }, (_, i) => (
                                             <Text key={i} code style={{ marginRight: 4 }}>
                                                 {splitKeyId.trim()}#{i + 1}
@@ -357,7 +368,7 @@ const CryptoOfficerRole: React.FC = () => {
                             </Space>
                             {splitRes && (
                                 <pre
-                                    className="mt-3 p-3 bg-gray-50 border rounded text-xs overflow-auto whitespace-pre-wrap"
+                                    className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 border rounded text-xs overflow-auto whitespace-pre-wrap"
                                     data-testid="split-key-result"
                                 >
                                     {splitRes}
@@ -366,11 +377,9 @@ const CryptoOfficerRole: React.FC = () => {
                         </Card>
 
                         {/* ── Step 2: Activate Ceremony ─────────────────────────────── */}
-                        <Card title="Step 2 — Activate Ceremony" data-testid="activate-ceremony-card">
-                            <p className="mb-4 text-gray-600">
-                                Provide all {status.custodians_count} share UIDs from the ceremony split key. Each share must be owned by a
-                                different Crypto Officer — not by you (dual-control requirement). The server reconstructs the secret in RAM
-                                and zeroizes it immediately after activation; no key is stored.
+                        <Card title={t("cryptoOfficer.step2Title")} data-testid="activate-ceremony-card">
+                            <p className="mb-4 text-gray-600 dark:text-gray-300">
+                                {t("cryptoOfficer.step2Description", { count: status.custodians_count })}
                             </p>
                             <Form
                                 form={activateForm}
@@ -389,11 +398,11 @@ const CryptoOfficerRole: React.FC = () => {
                                                         <Form.Item
                                                             {...field}
                                                             name={[field.name, "value"]}
-                                                            rules={[{ required: true, message: "Share UID is required" }]}
+                                                            rules={[{ required: true, message: t("cryptoOfficer.shareUidRequired") }]}
                                                             noStyle
                                                         >
                                                             <Input
-                                                                placeholder={`Share ${index + 1} UID (from CO ${index + 1})`}
+                                                                placeholder={t("cryptoOfficer.sharePlaceholder", { n: index + 1 })}
                                                                 style={{ width: 380 }}
                                                                 data-testid={`ceremony-share-id-${index}`}
                                                             />
@@ -416,7 +425,7 @@ const CryptoOfficerRole: React.FC = () => {
                                         data-testid="activate-ceremony-btn"
                                         className="bg-green-600 hover:bg-green-700 border-0"
                                     >
-                                        Activate Crypto Officer Ceremony
+                                        {t("cryptoOfficer.activateCeremony")}
                                     </Button>
                                 </Form.Item>
                             </Form>
@@ -427,7 +436,7 @@ const CryptoOfficerRole: React.FC = () => {
 
             {res && (
                 <div ref={responseRef} className="mt-4">
-                    <Card title="Response" data-testid="activate-ceremony-response">
+                    <Card title={t("cryptoOfficer.response")} data-testid="activate-ceremony-response">
                         <p>{res}</p>
                     </Card>
                 </div>
