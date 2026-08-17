@@ -3,8 +3,7 @@ use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attribute,
-        kmip_objects::ObjectType,
-        kmip_operations::{CreateSplitKey, Destroy, SetAttribute},
+        kmip_operations::{CreateSplitKey, SetAttribute},
         kmip_types::{
             CryptographicAlgorithm, SplitKeyMethod, UniqueIdentifier, VendorAttribute,
             VendorAttributeValue,
@@ -332,6 +331,14 @@ impl ListAccessRightsObtained {
 pub enum CryptoOfficerAction {
     /// Print the current Crypto Officer role configuration and ceremony activation status.
     Status(CryptoOfficerStatus),
+    /// Create a ceremony split key (one share per configured CO) and distribute shares.
+    ///
+    /// The number of shares is automatically determined by the server from the
+    /// `crypto_officer_users` list in `kms.toml`. Each share is owned by a different
+    /// CO candidate (round-robin), enforcing the dual-control constraint required for
+    /// ceremony activation.
+    #[clap(name = "create-split-key")]
+    CreateSplitKey(CryptoOfficerCreateSplitKey),
     /// Activate the Crypto Officer role via a split-key ceremony.
     ///
     /// Provides all n share UIDs to the server. The server reconstructs the ceremony
@@ -351,9 +358,129 @@ impl CryptoOfficerAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
             Self::Status(action) => action.run(kms_rest_client).await,
+            Self::CreateSplitKey(action) => action.run(kms_rest_client).await,
             Self::Activate(action) => action.run(kms_rest_client).await,
             Self::Disable(action) => action.run(kms_rest_client).await,
         }
+    }
+}
+
+/// Create a ceremony split key distributed across all configured Crypto Officer candidates.
+///
+/// The number of shares is automatically determined by the server from the
+/// `crypto_officer_users` list in `kms.toml`. Each share is owned by a different
+/// CO candidate (round-robin), enforcing the dual-control constraint required for
+/// ceremony activation.
+///
+/// Steps performed:
+///   1. Fetches CO status to verify the server has ≥ 2 CO candidates configured.
+///   2. Creates a fresh AES-256 symmetric key (optionally with a custom UID).
+///   3. Stamps the `x-cosmian-crypto-officer-ceremony` vendor attribute on the key.
+///   4. Calls `CreateSplitKey` — the server auto-assigns n = `custodians_count` shares,
+///      each owned by a different CO candidate.
+///   5. Prints the share UIDs (one per CO candidate), suitable for use with `activate`.
+///
+/// Example:
+///   `ckms access-rights crypto-officer create-split-key`
+///   `ckms access-rights crypto-officer create-split-key --key-id my-ceremony-key`
+///
+/// **Requires**: the caller must be listed in `crypto_officer_users` in `kms.toml`.
+#[derive(Parser, Debug, Default)]
+pub struct CryptoOfficerCreateSplitKey {
+    /// Optional custom base UID for the ceremony key.
+    /// Shares will be named `<uid>#1`, `<uid>#2`, … for human-friendly lookup.
+    /// If omitted, the server assigns a UUID automatically.
+    #[clap(long = "key-id", short = 'k')]
+    pub key_id: Option<String>,
+}
+
+/// Constant: the vendor attribute name for the CO ceremony flag.
+const VENDOR_ATTR_CO_CEREMONY: &str = "x-cosmian-crypto-officer-ceremony";
+
+impl CryptoOfficerCreateSplitKey {
+    /// Runs the `CryptoOfficerCreateSplitKey` action.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server is not CO-configured, key creation fails, or
+    /// the split request is rejected by the server.
+    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
+        // 1. Fetch CO status — verify ≥ 2 custodians are configured.
+        let status = kms_rest_client
+            .crypto_officer_status()
+            .await
+            .with_context(|| "Failed to fetch Crypto Officer status from KMS server")?;
+        let custodians_count = status
+            .get("custodians_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        if custodians_count < 2 {
+            return Err(crate::error::KmsCliError::Default(format!(
+                "Crypto Officer ceremony requires at least 2 configured CO candidates; \
+                     server reports {custodians_count}. Check `crypto_officer_users` in kms.toml."
+            )));
+        }
+        let n = i32::try_from(custodians_count)
+            .with_context(|| "custodians_count overflows i32 — server configuration is invalid")?;
+
+        // 2. Create a fresh AES-256 symmetric key (optionally with the caller's UID).
+        let vendor_id = kms_rest_client.config.vendor_id.as_str();
+        let key_id = self
+            .key_id
+            .as_ref()
+            .map(|id| UniqueIdentifier::TextString(id.clone()));
+        let create_req = symmetric_key_create_request(
+            vendor_id,
+            key_id,
+            256,
+            CryptographicAlgorithm::AES,
+            std::iter::empty::<&str>(),
+            false,
+            None,
+        )
+        .with_context(|| "Failed to build symmetric key creation request")?;
+        let created_uid = kms_rest_client
+            .create(create_req)
+            .await
+            .with_context(|| "Failed to create ceremony key on KMS server")?
+            .unique_identifier;
+
+        // 3. Stamp the x-cosmian-crypto-officer-ceremony vendor attribute.
+        let ceremony_attr = Attribute::VendorAttribute(VendorAttribute {
+            vendor_identification: vendor_id.to_owned(),
+            attribute_name: VENDOR_ATTR_CO_CEREMONY.to_owned(),
+            attribute_value: VendorAttributeValue::TextString("true".to_owned()),
+        });
+        kms_rest_client
+            .set_attribute(SetAttribute {
+                unique_identifier: Some(created_uid.clone()),
+                new_attribute: ceremony_attr,
+            })
+            .await
+            .with_context(|| "Failed to stamp ceremony attribute on key before splitting")?;
+
+        // 4. Call CreateSplitKey — server auto-assigns n = custodians_count shares,
+        //    each owned by a different CO candidate.
+        let split_req = CreateSplitKey {
+            unique_identifier: created_uid.clone(),
+            split_key_parts: n,
+            split_key_threshold: n,
+            split_key_method: SplitKeyMethod::XOR,
+        };
+        let split_resp = kms_rest_client
+            .create_split_key(split_req)
+            .await
+            .with_context(|| "Failed to split ceremony key on KMS server")?;
+
+        // 5. Print results.
+        let share_count = split_resp.split_key_unique_identifiers.len();
+        let mut stdout = console::Stdout::new(&format!(
+            "Ceremony key {created_uid} split into {share_count} share(s) \
+             (one per CO candidate). Provide all share UIDs to `activate`."
+        ));
+        stdout.set_unique_identifiers(&split_resp.split_key_unique_identifiers);
+        stdout.write()?;
+        Ok(())
     }
 }
 
@@ -426,9 +553,16 @@ impl CryptoOfficerActivate {
 /// is completed. In config-only mode, this command returns an error — remove the user
 /// from `crypto_officer_users` in `kms.toml` and restart the server instead.
 ///
-/// **Requires**: the caller must be an active Crypto Officer.
+/// **Self-revoke** (default): the caller must be an active Crypto Officer.
+///
+/// **Peer revocation** (`--target-user <EMAIL>`): the caller must be a configured CO candidate;
+/// the target must be an active Crypto Officer.
 #[derive(Parser, Debug, Default)]
-pub struct CryptoOfficerDisable;
+pub struct CryptoOfficerDisable {
+    /// The email of the active CO to revoke. If omitted, the caller self-revokes.
+    #[clap(long, value_name = "EMAIL")]
+    pub target_user: Option<String>,
+}
 
 impl CryptoOfficerDisable {
     /// Runs the `CryptoOfficerDisable` action.
@@ -438,7 +572,7 @@ impl CryptoOfficerDisable {
     /// Returns an error if the server request fails or the caller is not an active Crypto Officer.
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let response = kms_rest_client
-            .crypto_officer_disable()
+            .crypto_officer_disable(self.target_user.as_deref())
             .await
             .with_context(|| "Failed to disable Crypto Officer ceremony on KMS server")?;
         console::Stdout::new(&response.success).write()?;

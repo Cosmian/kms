@@ -70,8 +70,6 @@ exclude = [
   'github\.com/sfackler',
   'jwt\.io',
   'webstore\.ansi\.org',
-  # ETSI — returns 503 to automated crawlers
-  'www\.etsi\.org',
 
   # Placeholder/example URLs used in documentation
   'vault\.azure\.net',
