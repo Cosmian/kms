@@ -17,12 +17,16 @@ use crate::{
 /// The key is split into `--total-parts` shares using XOR (n-of-n). All shares are
 /// required to reconstruct the original key — there is no configurable threshold.
 ///
-/// When the key (or the server configuration) is marked for a `CryptoOfficer`
-/// ceremony, the server automatically propagates the ceremony vendor attributes to each
-/// share — no manual tagging is needed.
+/// By default this is a **generic split**: all shares are owned by the calling user.
+///
+/// When `--ceremony` is set, the key is stamped with the `x-cosmian-crypto-officer-ceremony`
+/// vendor attribute before splitting. The server then distributes each share to a
+/// different Crypto Officer candidate (round-robin), enforcing dual control:
+/// the future active CO must obtain GET grants from every other CO before activating.
 ///
 /// Example:
 ///   `ckms sym keys create-split-key --key-id <KEY_UID> --total-parts 3`
+///   `ckms sym keys create-split-key --key-id <KEY_UID> --ceremony`
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateSplitKeyAction {
@@ -32,12 +36,19 @@ pub struct CreateSplitKeyAction {
 
     /// Total number of share objects to create (n >= 2). All shares are required to
     /// reconstruct the key (XOR n-of-n, no configurable threshold).
+    /// Ignored when `--ceremony` is set (share count is auto-determined by the server).
     #[clap(long, short = 'p', default_value = "2")]
     pub total_parts: i32,
 
     /// The splitting method. Accepted value: `xor` (XOR n-of-n, all shares required).
     #[clap(long, short = 'm', default_value = "xor")]
     pub method: SplitKeyMethodArg,
+
+    /// Stamp the `x-cosmian-crypto-officer-ceremony` vendor attribute on the key
+    /// before splitting. The server will distribute shares to different Crypto Officer
+    /// candidates instead of assigning them all to the caller.
+    #[clap(long, default_value = "false")]
+    pub ceremony: bool,
 }
 
 /// CLI-friendly enum for split key methods.
@@ -68,10 +79,37 @@ impl From<&SplitKeyMethodArg> for SplitKeyMethod {
 impl CreateSplitKeyAction {
     /// Run the create-split-key command.
     ///
+    /// When `--ceremony` is set, the key is first stamped with the
+    /// `x-cosmian-crypto-officer-ceremony` vendor attribute so the server
+    /// distributes shares to different CO candidates instead of assigning
+    /// them all to the caller.
+    ///
     /// # Errors
     ///
     /// Returns an error if the server request fails.
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
+        // If --ceremony, stamp the vendor attribute on the source key first.
+        if self.ceremony {
+            use cosmian_kms_client::kmip_2_1::{
+                kmip_attributes::Attribute,
+                kmip_operations::SetAttribute,
+                kmip_types::{VendorAttribute, VendorAttributeValue},
+            };
+            const VENDOR_ID_COSMIAN: &str = "cosmian";
+            let attr = Attribute::VendorAttribute(VendorAttribute {
+                vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+                attribute_name: "x-cosmian-crypto-officer-ceremony".to_owned(),
+                attribute_value: VendorAttributeValue::TextString("true".to_owned()),
+            });
+            kms_rest_client
+                .set_attribute(SetAttribute {
+                    unique_identifier: Some(UniqueIdentifier::TextString(self.key_id.clone())),
+                    new_attribute: attr,
+                })
+                .await
+                .with_context(|| "failed to set ceremony attribute on key before splitting")?;
+        }
+
         let request = CreateSplitKey {
             unique_identifier: UniqueIdentifier::TextString(self.key_id.clone()),
             split_key_parts: self.total_parts,
@@ -84,9 +122,16 @@ impl CreateSplitKeyAction {
             .await
             .with_context(|| "failed to create split key shares")?;
 
+        let share_count = response.split_key_unique_identifiers.len();
         let mut stdout = console::Stdout::new(&format!(
-            "Key {} successfully split into {} shares (XOR n-of-n).",
-            self.key_id, self.total_parts
+            "Key {} successfully split into {} share(s) (XOR n-of-n){}.",
+            self.key_id,
+            share_count,
+            if self.ceremony {
+                " — ceremony mode: shares distributed to CO candidates"
+            } else {
+                ""
+            },
         ));
         stdout.set_unique_identifiers(&response.split_key_unique_identifiers);
         stdout.write()?;

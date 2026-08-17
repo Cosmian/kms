@@ -289,8 +289,20 @@ pub(crate) async fn join_split_key(
         }
     }
 
-    // Build the reconstructed key object
-    let reconstructed_uid = Uuid::new_v4().to_string();
+    // Build the reconstructed key object.
+    // For ceremony splits, the source key was destroyed after splitting — so we can
+    // safely reuse its UID by stripping the `#<part>` suffix from the first share UID
+    // (e.g. "ceremony-key#1" → "ceremony-key").
+    // For generic splits the source key is still alive; using the same UID would cause
+    // a "key already exists" error. In that case a fresh UUID is generated.
+    let reconstructed_uid = if reconstructed.all_ceremony_tagged {
+        share_uids
+            .first()
+            .and_then(|first| first.rfind('#').map(|pos| first[..pos].to_owned()))
+            .unwrap_or_else(|| Uuid::new_v4().to_string())
+    } else {
+        Uuid::new_v4().to_string()
+    };
     let now = time::OffsetDateTime::now_utc();
 
     let (reconstructed_object, mut reconstructed_attrs) = build_reconstructed_object(
@@ -331,6 +343,39 @@ pub(crate) async fn join_split_key(
         user = %user,
         "JoinSplitKey: reconstructed key stored",
     );
+
+    // ── Auto-activate CO ceremony when all shares are ceremony-tagged ────────────
+    // When every share carries the `x-cosmian-crypto-officer-ceremony` vendor
+    // attribute, `JoinSplitKey` IS the ceremony activation: it validates all the
+    // same constraints (n-of-n, dual-control, all CO candidates) and writes the
+    // `crypto_officer_activations` record as a side-effect.
+    //
+    // This eliminates the need for a separate
+    // `POST /access/crypto_officer/ceremony/activate` call from the UI.
+    // The dedicated REST endpoint is kept for CLI backward compatibility only.
+    if reconstructed.all_ceremony_tagged && kms.params.crypto_officer.require_ceremony {
+        match perform_crypto_officer_ceremony_activation(kms, &share_uids, user).await {
+            Ok(()) => {
+                info!(
+                    uid = %reconstructed_uid,
+                    user = %user,
+                    "JoinSplitKey: CO ceremony auto-activated via reconstructed key",
+                );
+            }
+            Err(e) => {
+                // Activation failure is non-fatal for the key reconstruction itself —
+                // the reconstructed key is already stored. Log the error and continue.
+                // The user can activate manually via the dedicated endpoint if needed.
+                tracing::warn!(
+                    uid = %reconstructed_uid,
+                    user = %user,
+                    error = %e,
+                    "JoinSplitKey: key stored but CO ceremony auto-activation failed — \
+                     use POST /access/crypto_officer/ceremony/activate to activate manually",
+                );
+            }
+        }
+    }
 
     Ok(JoinSplitKeyResponse {
         unique_identifier: UniqueIdentifier::TextString(reconstructed_uid),

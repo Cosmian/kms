@@ -28,14 +28,14 @@ with Findex offers post-quantum resistance on encrypted data and encrypted index
 - KMS servers are run by a trusted party but the Redis backend is managed by an untrusted third party.
 
 Redis-with-Findex is the database selected
-to [run the Eviden KMS in the cloud or any other zero-trust environment](../installation/marketplace_guide.md).
+to [run the Eviden KMS in the cloud or any other zero-trust environment](../../installation/marketplace_guide.md).
 
 ## Configuring the database
 
 The database parameters may be configured either:
 
-- the [TOML configuration file](./server_configuration_file.md)
-- or the [arguments passed to the server](./server_cli.md) on the command line.
+- the [TOML configuration file](../server_configuration_file.md)
+- or the [arguments passed to the server](../server_cli.md) on the command line.
 
 ### SQLite
 
@@ -497,7 +497,7 @@ Notes:
 ## The Unwrapped Objects Cache
 
 !!! info "Detailed reference"
-    For the full technical reference on the KMS in-memory caches — architecture, public API, configuration options, and security trade-offs — see [Object Cache and Unwrapped Cache](./object-cache.md).
+    For the full technical reference on the KMS in-memory caches — architecture, public API, configuration options, and security trade-offs — see [Object Cache and Unwrapped Cache](../object-cache.md).
 
 The unwrapped cache is a memory cache, and it is not persistent. The unwrapped cache is used to store unwrapped objects
 that are fetched from the database.

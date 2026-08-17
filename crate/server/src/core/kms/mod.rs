@@ -2,7 +2,7 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{Resource, metrics::PeriodicReader};
 mod kmip;
 mod other_kms_methods;
-mod permissions;
+pub(crate) mod permissions;
 
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 

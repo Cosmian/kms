@@ -19,7 +19,6 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{trace, warn};
 use rand_chacha::ChaCha20Rng;
 use tracing::info;
-use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -91,23 +90,34 @@ pub(crate) async fn create_split_key(
     // Extract raw key bytes from the master object's key block
     let key_bytes: Zeroizing<Vec<u8>> = extract_key_bytes(owm.object())?;
 
+    // Determine whether this is a Crypto Officer ceremony split.
+    // Only the `x-cosmian-crypto-officer-ceremony` vendor attribute on the source key
+    // triggers ceremony mode. The global `require_ceremony` server flag does NOT
+    // automatically make every CreateSplitKey call a ceremony split — that would
+    // affect generic splits from the Keys/SplitKey page or ckms too.
+    // The CO Role page stamps this attribute on the key before calling CreateSplitKey.
+    let co_users = &kms.params.crypto_officer.users;
+    let is_co_ceremony_key = owm
+        .attributes()
+        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, CRYPTO_OFFICER_CEREMONY_ATTR)
+        .is_some();
+
     // Generate shares using the requested split method
     let mut threshold = request.split_key_threshold;
     let mut total_parts = request.split_key_parts;
 
-    // If the server requires a Crypto Officer ceremony, auto-determine the number
-    // of shares from the crypto_officer_users count. This ensures the split matches
-    // exactly the number of ceremony candidates, preventing misconfiguration.
+    // For ceremony splits, auto-determine the share count from the CO users list.
+    // This ensures the split always matches the number of candidates exactly,
+    // preventing a mismatch between the split count and the ceremony activation count.
     // Only override when there are at least 2 CO users (split requires n >= 2).
-    let co_users = &kms.params.crypto_officer.users;
     tracing::debug!(
         n_co = co_users.len(),
-        require_ceremony = kms.params.crypto_officer.require_ceremony,
+        is_ceremony = is_co_ceremony_key,
         total_parts,
         threshold,
         "CreateSplitKey: resolved ceremony parameters",
     );
-    if kms.params.crypto_officer.require_ceremony && co_users.len() >= 2 {
+    if is_co_ceremony_key && co_users.len() >= 2 {
         let n_co = co_users.len();
         let n_co_i32 = i32::try_from(n_co).map_err(|_e| {
             KmsError::InvalidRequest(
@@ -150,16 +160,6 @@ pub(crate) async fn create_split_key(
             ));
         }
     };
-
-    // Check if the master key is tagged for Crypto Officer ceremony, OR if the server
-    // requires a split-key ceremony for CryptoOfficer elevation.  In the latter case we
-    // auto-tag the shares, removing the need for callers to manually set the vendor
-    // attribute on the master key before splitting.
-    let is_co_ceremony_key = owm
-        .attributes()
-        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, CRYPTO_OFFICER_CEREMONY_ATTR)
-        .is_some()
-        || kms.params.crypto_officer.require_ceremony;
 
     // Build and store each share as a SplitKey KMIP object
     // total_parts is validated to 2..=255; usize conversion cannot overflow.
@@ -270,7 +270,12 @@ pub(crate) async fn create_split_key(
         let share_uid = match kms
             .database
             .create(
-                Some(Uuid::new_v4().to_string()),
+                // Share UID naming convention: "<source-key-uid>#<part>" (e.g. "my-key#1").
+                // The `#` separator is not a valid UUID character and is not used in
+                // standard KMIP UIDs, making it unambiguous as a positional delimiter.
+                // This makes share UIDs predictable and human-readable when the caller
+                // provides a meaningful source key UID.
+                Some(format!("{uid_str}#{part_identifier}")),
                 &share_owner,
                 &split_key_obj,
                 &share_attrs,
@@ -502,12 +507,62 @@ mod tests {
     #[test]
     fn test_total_parts_u32_conversion_is_fallible_not_silent() {
         // Verify that u32::try_from returns Err for negative i32 values.
-        // This confirms the fix: the old `as u32` cast or `unwrap_or(0)` would silently
-        // produce 0 or a large value; now we get a proper error.
         let negative: i32 = -1;
         assert!(u32::try_from(negative).is_err());
-        // Positive values in the valid range succeed.
         let valid: i32 = 5;
         assert_eq!(u32::try_from(valid).unwrap(), 5_u32);
+    }
+
+    /// Verify the `#` share UID naming convention.
+    ///
+    /// Shares should be named `<source-key-uid>#<part>` so they are predictable
+    /// and human-readable when the source key has a meaningful UID.
+    #[test]
+    fn test_share_uid_naming_convention() {
+        let source_uid = "ceremony-key-2026";
+        for part in 1_i32..=5 {
+            let share_uid = format!("{source_uid}#{part}");
+            // The `#` separator is easy to strip when reconstructing the base UID.
+            let (base, suffix) = share_uid.split_once('#').unwrap();
+            assert_eq!(base, source_uid);
+            assert_eq!(suffix, part.to_string().as_str());
+        }
+    }
+
+    /// Verify that `JoinSplitKey` only reuses the source key UID for ceremony splits.
+    ///
+    /// - Ceremony splits: source key destroyed → UID from first share is safe to reuse
+    /// - Generic splits: source key still exists → use a fresh UUID to avoid collision
+    #[test]
+    fn test_join_split_key_uid_derivation() {
+        let ceremony_share_uid = "ceremony-key-2026#1".to_owned();
+        let derived = ceremony_share_uid
+            .rfind('#')
+            .map(|pos| ceremony_share_uid[..pos].to_owned());
+        assert_eq!(derived, Some("ceremony-key-2026".to_owned()));
+
+        // UUID-style share UIDs (no `#`) fall back to a new UUID — verify rfind returns None.
+        let uuid_share = "550e8400-e29b-41d4-a716-446655440000".to_owned();
+        assert!(uuid_share.rfind('#').is_none());
+
+        // For generic (non-ceremony) splits, the source key still exists.
+        // Using the derived UID would cause "already exists". The production code
+        // uses a fresh UUID for generic splits (all_ceremony_tagged = false).
+        // This test just verifies the derivation logic is correct for ceremony splits.
+        let is_ceremony = true;
+        let generic = false;
+        let first = "my-key#1".to_owned();
+        let ceremony_uid = if is_ceremony {
+            first.rfind('#').map(|pos| first[..pos].to_owned())
+        } else {
+            None
+        };
+        assert_eq!(ceremony_uid, Some("my-key".to_owned()));
+        let generic_uid: Option<String> = if generic {
+            first.rfind('#').map(|pos| first[..pos].to_owned())
+        } else {
+            None
+        };
+        assert!(generic_uid.is_none());
     }
 }

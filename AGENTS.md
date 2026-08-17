@@ -21,6 +21,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `rust-crypto.instructions.md` | `crate/crypto/**/*.rs` | FIPS-approved algorithms, OpenSSL provider |
 | `rust-kmip.instructions.md` | `crate/kmip/**/*.rs` | KMIP 2.1 protocol types and serialisation |
 | `rust-database.instructions.md` | `crate/server_database/**/*.rs` | SQLite, PostgreSQL, Redis-findex backends |
+| `database-tables.instructions.md` | `crate/server_database/src/stores/sql/*.sql` | Keep `documentation/docs/configuration/database/tables.md` in sync with SQL schema changes |
 | `rust-cli.instructions.md` | `crate/clients/**/*.rs` | CLI actions, WASM bindings, PKCS#11 |
 | `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` | React 19, Ant Design 5, Tailwind 4, WASM |
 | `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` | Playwright E2E test conventions |
@@ -285,6 +286,7 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 | Non-FIPS-only feature | 4.8 |
 | Auth method change | 4.9 |
 | Server config/wizard change | 4.6, 4.7 |
+| Database backend change | 4.18 |
 | Cloud provider integration | 4.12 |
 | HSM backend | 4.13 |
 | Documentation/behavior change | 4.14 |
@@ -292,7 +294,7 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 | OpenSSL upgrade | 4.17 |
 | `Cargo.lock` or `pnpm-lock.yaml` change | 4.11 |
 
-> **Full sub-rule checklists** (4.1–4.17) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
+> **Full sub-rule checklists** (4.1–4.18) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
 
 ### 5. Update SECURITY.md on security-related changes (when applicable)
 
