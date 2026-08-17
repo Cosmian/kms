@@ -90,10 +90,7 @@ impl AuditFileStore {
     /// Returns an error only if `channel_capacity` is 0 — a pure configuration mistake,
     /// not a runtime condition. Every other fault (I/O, lock contention, log corruption)
     /// is handled inside the writer task without aborting startup; see `writer_supervisor`.
-    pub(crate) fn start(
-        path: &Path,
-        channel_capacity: usize,
-    ) -> KResult<Self> {
+    pub(crate) fn start(path: &Path, channel_capacity: usize) -> KResult<Self> {
         if channel_capacity == 0 {
             return Err(KmsError::ServerError(
                 "audit: channel_capacity must be at least 1".to_owned(),
@@ -234,20 +231,19 @@ enum TailOutcome {
     },
 }
 
+/// Metadata for the first invalid interior row.
+struct InteriorChainFailure {
+    reason: SealReason,
+    claimed_last_id: Option<i64>,
+    failure_offset: u64,
+}
+
 /// Result of verifying every audit row except the physical tail row.
 ///
 /// `previous_event` is the row the tail must link to when the tail is complete.
-enum InteriorChainOutcome {
-    /// Every interior row is valid and linked; the physical tail remains for `classify_tail`.
-    Valid {
-        previous_event: Option<AuditEvent>,
-    },
-    /// An interior row failed verification or chain-link validation.
-    Broken {
-        reason: SealReason,
-        claimed_last_id: Option<i64>,
-        failure_offset: u64,
-    },
+struct InteriorChainVerification {
+    previous_event: Option<AuditEvent>,
+    failure: Option<InteriorChainFailure>,
 }
 
 /// Classifies the tail of `path` to decide how startup should recover.
@@ -378,12 +374,7 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
                     needs_leading_nl: false,
                 }
             }
-            RowCheck::Verified(event) => TailOutcome::SealAndRoll {
-                reason: SealReason::HashMismatch,
-                claimed_last_id: Some(event.id),
-                failure_offset: last_start,
-            },
-            RowCheck::HashMismatch(event) => TailOutcome::SealAndRoll {
+            RowCheck::Verified(event) | RowCheck::HashMismatch(event) => TailOutcome::SealAndRoll {
                 reason: SealReason::HashMismatch,
                 claimed_last_id: Some(event.id),
                 failure_offset: last_start,
@@ -718,10 +709,11 @@ fn try_acquire_lock(lock_path: &Path) -> std::io::Result<std::fs::File> {
 ///
 /// # Errors
 /// Returns an error only if the file cannot be opened or read.
-fn verify_interior_chain(path: &Path) -> KResult<InteriorChainOutcome> {
+fn verify_interior_chain(path: &Path) -> KResult<InteriorChainVerification> {
     if !path.exists() {
-        return Ok(InteriorChainOutcome::Valid {
+        return Ok(InteriorChainVerification {
             previous_event: None,
+            failure: None,
         });
     }
 
@@ -756,25 +748,34 @@ fn verify_interior_chain(path: &Path) -> KResult<InteriorChainOutcome> {
                         if verify_chain_link(&event, prev.as_ref()) {
                             prev = Some(event);
                         } else {
-                            return Ok(InteriorChainOutcome::Broken {
-                                reason: SealReason::HashMismatch,
-                                claimed_last_id: Some(event.id),
-                                failure_offset: pending_offset,
+                            return Ok(InteriorChainVerification {
+                                previous_event: None,
+                                failure: Some(InteriorChainFailure {
+                                    reason: SealReason::HashMismatch,
+                                    claimed_last_id: Some(event.id),
+                                    failure_offset: pending_offset,
+                                }),
                             });
                         }
                     }
                     RowCheck::HashMismatch(event) => {
-                        return Ok(InteriorChainOutcome::Broken {
-                            reason: SealReason::HashMismatch,
-                            claimed_last_id: Some(event.id),
-                            failure_offset: pending_offset,
+                        return Ok(InteriorChainVerification {
+                            previous_event: None,
+                            failure: Some(InteriorChainFailure {
+                                reason: SealReason::HashMismatch,
+                                claimed_last_id: Some(event.id),
+                                failure_offset: pending_offset,
+                            }),
                         });
                     }
                     RowCheck::Unparseable => {
-                        return Ok(InteriorChainOutcome::Broken {
-                            reason: SealReason::Unparseable,
-                            claimed_last_id: prev.as_ref().map(|p| p.id),
-                            failure_offset: pending_offset,
+                        return Ok(InteriorChainVerification {
+                            previous_event: None,
+                            failure: Some(InteriorChainFailure {
+                                reason: SealReason::Unparseable,
+                                claimed_last_id: prev.as_ref().map(|p| p.id),
+                                failure_offset: pending_offset,
+                            }),
                         });
                     }
                 }
@@ -783,8 +784,9 @@ fn verify_interior_chain(path: &Path) -> KResult<InteriorChainOutcome> {
         pending = Some((line, line_offset));
     }
 
-    Ok(InteriorChainOutcome::Valid {
+    Ok(InteriorChainVerification {
         previous_event: prev,
+        failure: None,
     })
 }
 
@@ -802,75 +804,73 @@ fn verify_interior_chain(path: &Path) -> KResult<InteriorChainOutcome> {
 /// Returns an error only for content-independent I/O faults (cannot read/truncate/rename/
 /// open); a data-corruption condition is always routed to a `TailOutcome` variant instead
 /// and handled without error (see `classify_tail`).
-fn recover_and_open(
-    path: &Path,
-) -> KResult<(std::fs::File, i64, [u8; 32])> {
-    let (next_id, prev_hash) = match verify_interior_chain(path)? {
-        InteriorChainOutcome::Broken {
-            reason,
-            claimed_last_id,
-            failure_offset,
-        } => {
-            seal_and_roll(path, reason, claimed_last_id, failure_offset)?
-        }
-        InteriorChainOutcome::Valid { previous_event } => {
-            match classify_tail(path, previous_event.as_ref())? {
-                TailOutcome::Genesis => (0, [0_u8; 32]),
-                TailOutcome::Resume {
-                    next_id,
-                    prev_hash,
-                    needs_leading_nl,
-                } => {
-                    if needs_leading_nl {
-                        // The prior process wrote the JSON row but crashed before its trailing
-                        // '\n' hit disk. The row itself is valid — just fix the line boundary
-                        // before the writer task appends anything new.
-                        let mut f = open_append(path).map_err(|e| {
-                            KmsError::ServerError(format!(
-                                "audit: cannot repair missing line terminator in {}: {e}",
-                                path.display()
-                            ))
-                        })?;
-                        f.write_all(b"\n").map_err(|e| {
-                            KmsError::ServerError(format!(
-                                "audit: cannot repair missing line terminator in {}: {e}",
-                                path.display()
-                            ))
-                        })?;
-                        f.sync_data().map_err(|e| {
-                            KmsError::ServerError(format!(
-                                "audit: cannot sync line-terminator repair in {}: {e}",
-                                path.display()
-                            ))
-                        })?;
-                    } else {
-                        debug!(
-                            "AuditFileStore: resuming at id={next_id}, prev_hash={}",
-                            hex::encode(&prev_hash[..8]) // first 8 bytes (16 hex chars) sufficient for diagnostics
-                        );
-                    }
-                    (next_id, prev_hash)
+fn recover_and_open(path: &Path) -> KResult<(std::fs::File, i64, [u8; 32])> {
+    let verification = verify_interior_chain(path)?;
+    let (next_id, prev_hash) = if let Some(failure) = verification.failure {
+        seal_and_roll(
+            path,
+            failure.reason,
+            failure.claimed_last_id,
+            failure.failure_offset,
+        )?
+    } else {
+        let previous_event = verification.previous_event;
+        match classify_tail(path, previous_event.as_ref())? {
+            TailOutcome::Genesis => (0, [0_u8; 32]),
+            TailOutcome::Resume {
+                next_id,
+                prev_hash,
+                needs_leading_nl,
+            } => {
+                if needs_leading_nl {
+                    // The prior process wrote the JSON row but crashed before its trailing
+                    // '\n' hit disk. The row itself is valid — just fix the line boundary
+                    // before the writer task appends anything new.
+                    let mut f = open_append(path).map_err(|e| {
+                        KmsError::ServerError(format!(
+                            "audit: cannot repair missing line terminator in {}: {e}",
+                            path.display()
+                        ))
+                    })?;
+                    f.write_all(b"\n").map_err(|e| {
+                        KmsError::ServerError(format!(
+                            "audit: cannot repair missing line terminator in {}: {e}",
+                            path.display()
+                        ))
+                    })?;
+                    f.sync_data().map_err(|e| {
+                        KmsError::ServerError(format!(
+                            "audit: cannot sync line-terminator repair in {}: {e}",
+                            path.display()
+                        ))
+                    })?;
+                } else {
+                    debug!(
+                        "AuditFileStore: resuming at id={next_id}, prev_hash={}",
+                        hex::encode(&prev_hash[..8]) // first 8 bytes (16 hex chars) sufficient for diagnostics
+                    );
                 }
-                TailOutcome::TruncateContinue {
-                    keep_len,
-                    next_id,
-                    prev_hash,
-                    bytes_discarded,
-                    discard_offset,
-                } => truncate_and_continue(
-                    path,
-                    keep_len,
-                    next_id,
-                    prev_hash,
-                    bytes_discarded,
-                    discard_offset,
-                )?,
-                TailOutcome::SealAndRoll {
-                    reason,
-                    claimed_last_id,
-                    failure_offset,
-                } => seal_and_roll(path, reason, claimed_last_id, failure_offset)?,
+                (next_id, prev_hash)
             }
+            TailOutcome::TruncateContinue {
+                keep_len,
+                next_id,
+                prev_hash,
+                bytes_discarded,
+                discard_offset,
+            } => truncate_and_continue(
+                path,
+                keep_len,
+                next_id,
+                prev_hash,
+                bytes_discarded,
+                discard_offset,
+            )?,
+            TailOutcome::SealAndRoll {
+                reason,
+                claimed_last_id,
+                failure_offset,
+            } => seal_and_roll(path, reason, claimed_last_id, failure_offset)?,
         }
     };
 
@@ -1125,9 +1125,7 @@ mod tests {
         sync::{Arc, atomic::AtomicU64},
     };
 
-    use cosmian_kms_access::audit::{
-        AuditEvent, AuditEventDraft, compute_row_hash, verify_event,
-    };
+    use cosmian_kms_access::audit::{AuditEvent, AuditEventDraft, compute_row_hash, verify_event};
     use time::OffsetDateTime;
     use tokio::sync::mpsc;
 

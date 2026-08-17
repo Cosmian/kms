@@ -592,7 +592,10 @@ mod tests {
             .run_with_writer(&mut out)
             .unwrap();
         let msg = String::from_utf8(out).unwrap();
-        assert!(msg.contains("audit.jsonl: chain OK: 1 event verified"), "{msg}");
+        assert!(
+            msg.contains("audit.jsonl: chain OK: 1 event verified"),
+            "{msg}"
+        );
         assert!(
             !msg.contains(&sealed_path.display().to_string()),
             "sealed evidence must be digest-checked via its reanchor, not verified as a chain: {msg}"
