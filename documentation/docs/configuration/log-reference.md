@@ -707,6 +707,11 @@ Crate path: `crate/server`
 | `debug` | `AuditFileStore: writer loop exited (channel closed)` | `src/core/audit/file_store.rs` | - | Graceful shutdown complete |
 | `error` | `audit: event not queued — rejecting response (reject mode)` | `src/middlewares/audit.rs` | - | - |
 | `error` | `audit: event(s) not queued — rejecting response (reject mode)` | `src/middlewares/audit.rs` | - | - |
+| `error` | `AuditFileStore: audit log lock {} held by another instance ({e}) —                          buffering events until it is released` | `src/core/audit/file_store.rs` | `e`: lock acquisition error | Normal in HA deployments: another KMS instance holds the audit log lock. Events buffered (up to channel capacity) and file open will retry periodically. |
+| `error` | `AuditFileStore: cannot open audit log {} ({e}) — retrying` | `src/core/audit/file_store.rs` | `e`: file I/O error | File not readable (permissions, missing, corrupted header). Events buffered; retrying periodically. |
+| `error` | `AuditFileStore: sealed corrupted audit log as {} (reason={}, sha256={sha256_hex},          size={size}, claimed_last_id={claimed_last_id:?}, failure_offset={failure_offset}) —          starting a fresh chain` | `src/core/audit/file_store.rs` | `sha256_hex`: SHA256 of sealed file<br>`size`: file size in bytes<br>`claimed_last_id`: last event ID if readable<br>`failure_offset`: byte offset where corruption detected | **Security:** Corrupted log sealed as forensic evidence with RFC3339 timestamp. New chain started at id=1. Offline verification: `ckms audit verify --path <sealed_file>` |
+| `error` | `AuditFileStore: torn write recovered — discarded {bytes_discarded} byte(s) at offset          {discard_offset} (process likely killed mid-write); resuming chain at id={next_id}` | `src/core/audit/file_store.rs` | `bytes_discarded`: incomplete bytes dropped<br>`discard_offset`: offset in file<br>`next_id`: resuming event ID | Process killed mid-write (crash/SIGKILL). Incomplete event discarded; hash chain preserved. |
+| `debug` | `AuditFileStore: still waiting on audit log lock {} ({e})` | `src/core/audit/file_store.rs` | `e`: lock acquisition error | Debug: subsequent retry attempt (not the first). Implies a preceding "audit log lock held by another instance" error. |
 
 ### `cosmian_kms_server_database`
 
