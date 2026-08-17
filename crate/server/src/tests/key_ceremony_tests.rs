@@ -12,8 +12,11 @@
 //! TM-F001 — no eprintln!/debug leakage of CO identity in `create_split_key`.
 //! TM-F002 — CO cannot Get/Export a `sensitive=true` key without wrapping.
 //! TM-F003 — startup emits WARN when config-only CO mode is active.
-//! TM-F006 — multi-CO deployment blocks single-user ceremony disable.
+//! TM-F006 — active CO self-revokes (quorum guard removed; peer revocation enabled).
 //! TM-F007 — startup validation rejects `force_default_username=true` with CO configured.
+//! TM-F008 — dormant CO candidate can peer-revoke an active CO.
+//! TM-F009 — reconstructed key object intact after peer revocation.
+//! TM-F010 — Operator (non-candidate) cannot peer-revoke a CO.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -1379,17 +1382,16 @@ async fn tm_f002_co_cannot_get_sensitive_key_without_wrapping() -> KResult<()> {
     Ok(())
 }
 
-// ─── TM-F006: Multi-CO disable is blocked ─────────────────────────────────────
+// ─── TM-F006: Active CO self-revokes ──────────────────────────────────────────
 
-/// TM-F006 — A single CO in a multi-CO deployment cannot unilaterally disable
-/// the ceremony.
+/// TM-F006 — An active CO can self-revoke in a multi-CO deployment.
 ///
-/// This is a regression test for the quorum guard added to
-/// `KMS::disable_crypto_officer_ceremony()`. With 3 configured COs, even an
-/// active CO must not be able to revoke the ceremony alone.
+/// Regression test for the peer-revocation architecture (PR #991):
+/// the quorum guard was removed; any CO candidate can now revoke an active CO,
+/// including self-revocation.
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn tm_f006_multi_co_disable_is_blocked() -> KResult<()> {
+async fn tm_f006_active_co_can_self_revoke() -> KResult<()> {
     let provisioner = "admin";
     let alice = "alice@example.com";
     let bob = "bob@example.com";
@@ -1398,7 +1400,7 @@ async fn tm_f006_multi_co_disable_is_blocked() -> KResult<()> {
 
     let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
 
-    // Provision the ceremony: create key, split, grant all shares to Alice, activate
+    // Provision: create key, split, grant all shares to Alice, activate
     let key_uid = create_key(&kms, provisioner).await?;
     let share_uids = Box::pin(split_key(&kms, provisioner, &key_uid, n)).await?;
     for share_uid in share_uids.iter().skip(1) {
@@ -1413,27 +1415,180 @@ async fn tm_f006_multi_co_disable_is_blocked() -> KResult<()> {
     perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
     assert!(
         kms.is_crypto_officer(alice).await?,
-        "Alice must be an active CO after ceremony"
+        "Alice must be active CO"
     );
 
-    // Now Alice (active CO) tries to unilaterally disable the ceremony — must be blocked
+    // Alice self-revokes (no target_user)
+    kms.disable_crypto_officer_ceremony(&UserId::from(alice), None)
+        .await?;
+
+    assert!(
+        !kms.is_crypto_officer(alice).await?,
+        "Alice must no longer be CO after self-revoke"
+    );
+    Ok(())
+}
+
+// ─── TM-F008: Peer CO revokes active CO ───────────────────────────────────────
+
+/// TM-F008 — A dormant CO candidate (Bob) can peer-revoke an active CO (Alice).
+///
+/// Any configured CO candidate can call `disable_crypto_officer_ceremony` with
+/// a `target_user` to revoke another CO's ceremony activation.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn tm_f008_peer_co_revokes_active_co() -> KResult<()> {
+    let provisioner = "admin";
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+    let n = 3_i32;
+
+    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
+
+    // Provision: Alice activates as CO (she gets all 3 shares)
+    let key_uid = create_key(&kms, provisioner).await?;
+    let share_uids = Box::pin(split_key(&kms, provisioner, &key_uid, n)).await?;
+    for share_uid in share_uids.iter().skip(1) {
+        kms.database
+            .grant_operations(
+                share_uid,
+                &UserId::from(alice),
+                std::collections::HashSet::from([KmipOperation::Get]),
+            )
+            .await?;
+    }
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    assert!(
+        kms.is_crypto_officer(alice).await?,
+        "Alice must be active CO"
+    );
+    assert!(!kms.is_crypto_officer(bob).await?, "Bob must be dormant");
+
+    // Bob (dormant CO candidate) peer-revokes Alice
+    kms.disable_crypto_officer_ceremony(&UserId::from(bob), Some(&UserId::from(alice)))
+        .await?;
+
+    assert!(
+        !kms.is_crypto_officer(alice).await?,
+        "Alice must no longer be CO after peer revocation by Bob"
+    );
+    Ok(())
+}
+
+// ─── TM-F009: Reconstructed key intact after peer revocation ──────────────────
+
+/// TM-F009 — After peer revocation, the reconstructed key stored via `JoinSplitKey`
+/// still exists and is accessible (peer revocation only revokes the activation record,
+/// never the key object).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn tm_f009_reconstructed_key_intact_after_peer_revocation() -> KResult<()> {
+    let provisioner = "admin";
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+    let n = 3_i32;
+
+    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
+
+    // Split source key; grant all shares to Alice
+    let key_uid = create_key(&kms, provisioner).await?;
+    let share_uids = Box::pin(split_key(&kms, provisioner, &key_uid, n)).await?;
+    for share_uid in share_uids.iter().skip(1) {
+        kms.database
+            .grant_operations(
+                share_uid,
+                &UserId::from(alice),
+                std::collections::HashSet::from([KmipOperation::Get]),
+            )
+            .await?;
+    }
+
+    // Activate Alice as CO (writes activation record; does NOT store a key)
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    assert!(
+        kms.is_crypto_officer(alice).await?,
+        "Alice must be active CO"
+    );
+
+    // Alice also reconstructs the key via JoinSplitKey (stores a key object she owns)
+    let reconstructed_uid = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
+
+    // Bob peer-revokes Alice — only the activation record is revoked, key is untouched
+    kms.disable_crypto_officer_ceremony(&UserId::from(bob), Some(&UserId::from(alice)))
+        .await?;
+    assert!(
+        !kms.is_crypto_officer(alice).await?,
+        "Alice must be revoked"
+    );
+
+    // Alice's reconstructed key must still be accessible (peer revocation does NOT
+    // destroy or revoke key objects — only the crypto_officer_activations row is updated)
+    let get_req = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(reconstructed_uid.clone())),
+        ..Default::default()
+    };
+    let result = kms.get(get_req, &UserId::from(alice)).await;
+    assert!(
+        result.is_ok(),
+        "Reconstructed key must still exist after peer revocation, got: {result:?}"
+    );
+    Ok(())
+}
+
+// ─── TM-F010: Operator (non-candidate) cannot peer-revoke ─────────────────────
+
+/// TM-F010 — A plain Operator (not in `crypto_officer_users`) cannot peer-revoke
+/// an active CO via `disable_crypto_officer_ceremony`.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn tm_f010_operator_cannot_peer_revoke() -> KResult<()> {
+    let provisioner = "admin";
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+    let eve = "eve@example.com"; // pure Operator — not in crypto_officer_users
+    let n = 3_i32;
+
+    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
+
+    // Alice activates as CO
+    let key_uid = create_key(&kms, provisioner).await?;
+    let share_uids = Box::pin(split_key(&kms, provisioner, &key_uid, n)).await?;
+    for share_uid in share_uids.iter().skip(1) {
+        kms.database
+            .grant_operations(
+                share_uid,
+                &UserId::from(alice),
+                std::collections::HashSet::from([KmipOperation::Get]),
+            )
+            .await?;
+    }
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    assert!(
+        kms.is_crypto_officer(alice).await?,
+        "Alice must be active CO"
+    );
+
+    // Eve (Operator) tries to peer-revoke Alice — must be unauthorized
     let result = kms
-        .disable_crypto_officer_ceremony(&UserId::from(alice))
+        .disable_crypto_officer_ceremony(&UserId::from(eve), Some(&UserId::from(alice)))
         .await;
     assert!(
         result.is_err(),
-        "Active CO must NOT be able to unilaterally disable ceremony in a multi-CO deployment"
+        "Operator must not be able to peer-revoke CO"
     );
     let err = result.unwrap_err().to_string();
     assert!(
-        err.contains("multi-CO") || err.contains("consensus") || err.contains("restart"),
-        "Error must explain the quorum requirement, got: {err}"
+        err.contains("Unauthorized") || err.contains("candidate"),
+        "Error must indicate authorization failure, got: {err}"
     );
 
-    // Ceremony must still be active after the blocked attempt
+    // Alice must still be active CO
     assert!(
         kms.is_crypto_officer(alice).await?,
-        "Ceremony must remain active after a blocked disable attempt"
+        "Alice must remain active CO after unauthorized peer-revoke attempt"
     );
     Ok(())
 }
