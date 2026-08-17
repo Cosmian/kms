@@ -68,6 +68,7 @@ exclude = [
   'admin\.google\.com',
   'github\.com/sfackler',
   'jwt\.io',
+  'webstore\.ansi\.org',
 
   # Placeholder/example URLs used in documentation
   'vault\.azure\.net',

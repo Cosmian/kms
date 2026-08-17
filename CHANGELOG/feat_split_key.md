@@ -67,6 +67,15 @@
   to clarify all shares are required.
 - **JoinSplitKey dialog**: method selector removed (XOR is the only option). Description updated
   to clarify all shares are required for n-of-n reconstruction.
+- **Dark theme aligned with the documentation site**: the Web UI dark theme now reuses the same
+  mdBook "navy" palette as `docs.cosmian.com` (near-black `#161923` background, `#bcbdd0` text,
+  `#282d3f` sidebar) instead of the previous gray surfaces. The light theme uses the darker brand
+  orange `#c73f1b` for the primary accent. The sidebar menu and all surfaces now switch together
+  with the light/dark toggle.
+- **Contrast fixes (WCAG AA)**: resolved unreadable colour combinations in dark mode — dark text on
+  the black background (`text-gray-800`, `text-blue-800`, `text-red-800`), light-gray helper text on
+  white, near-invisible borders, and the low-contrast orange/teal accents — now meet AA contrast in
+  both themes.
 
 ## Bug Fixes
 
