@@ -61,7 +61,7 @@ const RsaEncryptForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("rsaEncrypt.intro")}</p>
                 <p>{t("rsaEncrypt.introKey")}</p>
-                <p className="text-sm text-yellow-600">{t("rsaEncrypt.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("rsaEncrypt.note")}</p>
             </div>
 
             <Form

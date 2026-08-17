@@ -149,7 +149,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("awsExportKeyMaterial.intro")}</p>
                 <p>{t("awsExportKeyMaterial.introKek")}</p>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
                     {t("awsExportKeyMaterial.see")}:{" "}
                     <ExternalLink href="https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-import-key-material.html">
                         AWS KMS Import Key Material

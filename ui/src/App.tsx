@@ -1,4 +1,5 @@
 import { ConfigProvider, Result, theme } from "antd";
+import type { ThemeConfig } from "antd";
 import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AccessGrantForm from "./actions/Access/AccessGrant";
@@ -251,7 +252,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
     // Error: couldn't reach server or determine auth method
     if (authMethod === undefined) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-800">
                 <Result
                     status="error"
                     title={
@@ -491,13 +492,21 @@ function App() {
         loadWasm();
     }, []);
 
+    // Keep the <html> element's `.dark` class (drives Tailwind `dark:` variants)
+    // and the CSS `color-scheme` in sync with the app's theme switch, so dark mode
+    // is consistent across AntD components and raw utility classes.
+    useEffect(() => {
+        document.documentElement.classList.toggle("dark", isDarkMode);
+    }, [isDarkMode]);
+
     if (!isWasmReady) {
         return null;
     }
 
-    const lightTheme = {
+    const lightTheme: ThemeConfig = {
+        algorithm: theme.defaultAlgorithm,
         token: {
-            colorPrimary: "#f14611" /* Cosmian brand orange — matches eviden.css #f14611 */,
+            colorPrimary: "#c73f1b" /* Cosmian brand orange — eviden.css --cosmian-accent-dark (>= 4.5:1 on white) */,
             colorText: "#1a1a1a" /* Eviden brand ink — matches eviden.css --cosmian-dark */,
             fontFamily: "'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         },
@@ -518,65 +527,55 @@ function App() {
                 handleSize: 28,
             },
             Button: {
-                defaultHoverBorderColor: "#82c0c7" /* Cosmian teal accent */,
-                defaultHoverColor: "#82c0c7",
+                defaultHoverBorderColor: "#50767a" /* darkened teal (>= 4.5:1 on white) */,
+                defaultHoverColor: "#50767a",
             },
         },
     };
 
-    const darkTheme = {
+    const darkTheme: ThemeConfig = {
+        algorithm: theme.darkAlgorithm,
         token: {
-            colorPrimary: "#f97850" /* Lighter orange for dark bg — matches eviden.css hover/gradient */,
-            colorText: "#e4dddd",
-            colorBgBase: "#2a2d30",
-            colorTextPlaceholder: "#b9b9b9",
-            colorError: "#e23030",
-            colorBorder: "#4d4b4b",
-            colorSplit: "#4d4b4b",
-            colorBorderSecondary: "#4d4b4b",
+            colorPrimary: "#f14611" /* Cosmian primary orange — eviden.css --cosmian-accent (bright accent on dark) */,
+            colorInfo: "#2b79a2" /* mdBook dark-theme link blue */,
+            colorTextBase: "#bcbdd0" /* mdBook navy --fg */,
+            colorBgBase: "#161923" /* mdBook navy --bg hsl(226,23%,11%) — black background */,
+            colorBgLayout: "#161923",
+            colorBgContainer: "#1f2432" /* elevated card surface */,
+            colorBgElevated: "#282d3f" /* mdBook navy --sidebar-bg */,
+            colorBorder: "#5a6278",
+            colorSplit: "#3a4155",
+            colorError: "#ff6b6b" /* light red (>= 4.5:1 on #161923) */,
             fontFamily: "'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         },
         components: {
             Layout: {
-                headerBg: "#272d33",
+                headerBg: "#161923",
                 footerPadding: "5px 50px",
             },
             Menu: {
-                itemSelectedBg: "#393E46",
-                itemSelectedColor: "#f97850" /* brand orange on dark */,
-                itemHoverBg: "#2e3238",
-                itemActiveBg: "#393E46",
-                itemActiveColor: "#f97850",
+                darkItemBg: "#282d3f" /* mdBook navy --sidebar-bg */,
+                darkItemColor: "#c8c9db" /* mdBook navy --sidebar-fg */,
+                darkItemHoverBg: "#2d334f",
+                darkItemHoverColor: "#f14611",
+                darkItemSelectedBg: "#3a4155",
+                darkItemSelectedColor: "#f97850" /* lighter orange for contrast on selected bg */,
+                darkSubMenuItemBg: "#1f2432",
             },
             Form: {
-                colorError: "#FD7014",
-                colorTextDescription: "#b9b9b9",
                 itemMarginBottom: 40,
             },
             Button: {
-                primaryShadow: "None",
-                dangerShadow: "None,",
-                defaultBorderColor: "#e4dddd",
+                primaryShadow: "none",
+                dangerShadow: "none",
             },
             Select: {
-                selectorBg: "#2f3239",
-                colorBorder: "#34383f",
-                optionActiveBg: "#f97850",
-                optionActiveColor: "#1a1a1a",
-                optionSelectedBg: "#f97850",
-                optionSelectedColor: "#1a1a1a",
-                colorIcon: "#f97850",
-            },
-            Input: {
-                selectorBg: "#2f3239",
-                colorBorder: "#34383f",
-            },
-            InputNumber: {
-                colorIcon: "#f97850",
-                colorBorder: "#f97850",
+                optionSelectedBg: "#f14611",
+                optionSelectedColor: "#161923" /* dark ink on bright orange (>= 4.5:1) */,
+                colorIcon: "#f14611",
             },
             Card: {
-                colorBgContainer: "#393E46",
+                colorBgContainer: "#1f2432",
                 borderRadiusLG: 8,
             },
             Switch: {
@@ -591,7 +590,6 @@ function App() {
             <ConfigProvider
                 locale={antdLocale}
                 theme={{
-                    ...theme.defaultConfig,
                     ...(isDarkMode ? darkTheme : lightTheme),
                     token: {
                         ...((isDarkMode ? darkTheme : lightTheme).token ?? {}),

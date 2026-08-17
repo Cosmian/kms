@@ -24,6 +24,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `database-tables.instructions.md` | `crate/server_database/src/stores/sql/*.sql` | Keep `documentation/docs/configuration/database/tables.md` in sync with SQL schema changes |
 | `rust-cli.instructions.md` | `crate/clients/**/*.rs` | CLI actions, WASM bindings, PKCS#11 |
 | `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` | React 19, Ant Design 5, Tailwind 4, WASM |
+| `i18n.instructions.md` | `ui/src/i18n/**/*.{ts,json}` | Locale bundles, en/zh-CN parity, useTranslation/Trans |
 | `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` | Playwright E2E test conventions |
 | `bash.instructions.md` | `**/*.sh` | Shell scripts, MISE tasks, reusable scripts |
 | `mise.instructions.md` | `.mise/**, scripts/**, .github/reusable_scripts/**` | MISE task headers, lib usage, variant flags |

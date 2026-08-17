@@ -1593,6 +1593,79 @@ async fn tm_f010_operator_cannot_peer_revoke() -> KResult<()> {
     Ok(())
 }
 
+// ─── TM-F011: Peer revocation revokes victim's GET on revoker's share ─────────
+
+/// TM-F011 — When a dormant CO (Bob) peer-revokes an active CO (Alice), Alice's
+/// GET access on Bob's split-key share is automatically revoked.
+///
+/// This prevents the revoked CO from re-assembling the ceremony key using the
+/// share grants obtained during the previous activation ceremony.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn tm_f011_peer_revocation_revokes_share_access() -> KResult<()> {
+    let provisioner = "admin";
+    let alice = "alice@example.com"; // active CO
+    let bob = "bob@example.com"; // dormant CO — performs revocation
+    let carol = "carol@example.com";
+    let n = 3_i32;
+
+    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
+
+    // Provision: split key — shares are round-robin: alice→0, bob→1, carol→2
+    let key_uid = create_key(&kms, provisioner).await?;
+    let share_uids = Box::pin(split_key(&kms, provisioner, &key_uid, n)).await?;
+
+    // Grant Alice GET access on Bob's share (share_uids[1]) and Carol's (share_uids[2])
+    // so she can activate the ceremony.
+    for share_uid in share_uids.iter().skip(1) {
+        kms.database
+            .grant_operations(
+                share_uid,
+                &UserId::from(alice),
+                std::collections::HashSet::from([KmipOperation::Get]),
+            )
+            .await?;
+    }
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    assert!(
+        kms.is_crypto_officer(alice).await?,
+        "Alice must be active CO"
+    );
+
+    // Bob's share is share_uids[1] (round-robin index 1 → bob)
+    let bob_share_uid = &share_uids[1];
+
+    // Verify Alice currently has GET access on Bob's share
+    let alice_ops_before = kms
+        .database
+        .list_user_operations_on_object(bob_share_uid, &UserId::from(alice), true)
+        .await?;
+    assert!(
+        alice_ops_before.contains(&KmipOperation::Get),
+        "Alice must have GET access on Bob's share before revocation"
+    );
+
+    // Bob peer-revokes Alice
+    kms.disable_crypto_officer_ceremony(&UserId::from(bob), Some(&UserId::from(alice)))
+        .await?;
+    assert!(
+        !kms.is_crypto_officer(alice).await?,
+        "Alice must be revoked"
+    );
+
+    // Alice's GET access on Bob's share must now be gone
+    let alice_ops_after = kms
+        .database
+        .list_user_operations_on_object(bob_share_uid, &UserId::from(alice), true)
+        .await?;
+    assert!(
+        !alice_ops_after.contains(&KmipOperation::Get),
+        "Alice must NO LONGER have GET access on Bob's share after peer revocation"
+    );
+
+    Ok(())
+}
+
 // ─── TM-F007: `force_default_username=true` with CO is rejected at startup ────
 
 /// TM-F007 — `force_default_username = true` combined with `crypto_officer_users`

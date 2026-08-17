@@ -59,7 +59,7 @@ const AttributeGetForm: React.FC = () => {
             <Title level={2}>{t("attributeGet.title")}</Title>
             <div className="mb-8 space-y-2">
                 <div>{t("attributeGet.intro")}</div>
-                <div className="text-sm text-yellow-600">{t("attributeGet.introWarning")}</div>
+                <div className="text-sm text-yellow-600 dark:text-yellow-400">{t("attributeGet.introWarning")}</div>
             </div>
 
             <Form

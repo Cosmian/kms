@@ -6,7 +6,7 @@ interface ExternalLinkProps {
     className?: string;
 }
 
-const ExternalLink: React.FC<ExternalLinkProps> = ({ href, children, className = "text-blue-600 hover:underline" }) => {
+const ExternalLink: React.FC<ExternalLinkProps> = ({ href, children, className = "text-blue-600 dark:text-blue-400 hover:underline" }) => {
     return (
         <a href={href} target="_blank" rel="noopener noreferrer" className={className}>
             {children}

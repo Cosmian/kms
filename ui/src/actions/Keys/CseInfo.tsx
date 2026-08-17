@@ -98,7 +98,10 @@ const CseInfo: React.FC = () => {
                                 </p>
                                 <p>
                                     <strong>{t("cseInfo.kaclsUrl")}</strong>{" "}
-                                    <ExternalLink href={cseStatus.kacls_url} className="text-blue-600 hover:text-blue-800">
+                                    <ExternalLink
+                                        href={cseStatus.kacls_url}
+                                        className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                                    >
                                         {cseStatus.kacls_url}
                                     </ExternalLink>
                                 </p>

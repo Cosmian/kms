@@ -68,13 +68,13 @@ const RevokeForm: React.FC<RevokeFormProps> = ({ objectType }) => {
     return (
         <div className="p-6">
             <div className="flex items-center gap-3 mb-6">
-                <WarningFilled className="text-2xl text-red-500" />
+                <WarningFilled className="text-2xl text-red-500 dark:text-red-400" />
                 <h1 className="text-2xl font-bold">{t("objectsRevoke.title", { typeString, label })}</h1>
             </div>
 
             <div className="mb-8 space-y-2">
-                <div className="bg-red-200 border-l-4 border-red-600 rounded-md p-4">
-                    <div className="text-red-800 text-sm space-y-2">
+                <div className="bg-red-200 dark:bg-red-900/40 border-l-4 border-red-600 dark:border-red-500 rounded-md p-4">
+                    <div className="text-red-800 dark:text-red-300 text-sm space-y-2">
                         <p>
                             <strong>{t("objectsRevoke.warningTitle")}</strong> {t("objectsRevoke.warningCannotUndo")}
                         </p>
