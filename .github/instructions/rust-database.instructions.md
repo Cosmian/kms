@@ -41,3 +41,15 @@ Environment variables for test backends:
 | `KMS_POSTGRES_URL` | `postgresql://kms:kms@127.0.0.1:5432/kms` |
 | `KMS_MYSQL_URL` | `mysql://kms:kms@localhost:3306/kms` |
 | `KMS_SQLITE_PATH` | `data/shared` |
+
+## Documentation
+
+Keep the database documentation under `documentation/docs/configuration/` in sync whenever the
+schema or backend behaviour changes:
+
+- `documentation/docs/configuration/database/configuration.md` — the Databases overview (selection, configuration, TLS, migration).
+- `documentation/docs/configuration/database/tables.md` — the tables and the links between them (update when adding/altering/removing a table, column, or index).
+- `documentation/docs/configuration/database/redis.md` — the Redis-with-Findex backend (update when changing the encryption model, key derivation, or data layout).
+
+When adding or removing a page, also update the navigation in `documentation/docs/SUMMARY.md` and
+`documentation/nav.yml`.

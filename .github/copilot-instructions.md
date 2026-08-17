@@ -17,6 +17,19 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `rust-crypto.instructions.md` | `crate/crypto/**/*.rs` |
 | `rust-kmip.instructions.md` | `crate/kmip/**/*.rs` |
 | `rust-database.instructions.md` | `crate/server_database/**/*.rs` |
+| `database-tables.instructions.md` | `crate/server_database/src/stores/sql/*.sql` |
+| `ui-routes.instructions.md` | `ui/src/App.tsx`, `ui/src/menuItems.tsx` |
+| `routes.instructions.md` | `crate/server/src/routes/**/*.rs` |
+| `kmip-operations.instructions.md` | `crate/server/src/core/operations/**/*.rs` |
+| `cli-ui-sync.instructions.md` | `crate/clients/clap/**/*.rs`, `crate/clients/ckms/**/*.rs`, `ui/src/actions/**/*.{ts,tsx}` |
+| `wasm.instructions.md` | `crate/clients/wasm/**/*.rs` |
+| `server-config.instructions.md` | `crate/server/src/config/**/*.rs` |
+| `middlewares.instructions.md` | `crate/server/src/middlewares/**/*.rs` |
+| `test-vectors.instructions.md` | `test_data/vectors/**`, `crate/test_kms_server/**/*.rs` |
+| `lockfile-hashes.instructions.md` | `Cargo.lock`, `ui/pnpm-lock.yaml` |
+| `cloud-providers.instructions.md` | `crate/server/src/routes/{aws_xks,azure_ekm,google_cse,ms_dke}/**` |
+| `hsm.instructions.md` | `crate/hsm/**/*.rs` |
+| `openssl-build.instructions.md` | `crate/crypto/build.rs` |
 | `rust-cli.instructions.md` | `crate/clients/**/*.rs` |
 | `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` |
 | `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` |

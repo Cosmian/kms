@@ -262,10 +262,10 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
     trace!("Starting test server with cert auth");
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| async move {
-            start_test_server_from_toml(
-                &root_dir().join("../../test_data/configs/server/auth/cert.toml"),
-            )
-            .await
+            let config_path = root_dir().join("../../test_data/configs/server/auth/cert.toml");
+            let mut config = load_test_config_from_toml(&config_path)?;
+            apply_test_db_override(&mut config);
+            start_server_from_config(config, &config_path).await
         })
         .await
         .unwrap_or_else(|e| {
@@ -282,10 +282,10 @@ pub async fn start_default_test_kms_server_with_jwt_auth() -> &'static TestsCont
     trace!("Starting test server with JWT auth");
     ONCE_SERVER_WITH_JWT_AUTH
         .get_or_try_init(|| async move {
-            start_test_server_from_toml(
-                &root_dir().join("../../test_data/configs/server/auth/plain_jwt.toml"),
-            )
-            .await
+            let config_path = root_dir().join("../../test_data/configs/server/auth/plain_jwt.toml");
+            let mut config = load_test_config_from_toml(&config_path)?;
+            apply_test_db_override(&mut config);
+            start_server_from_config(config, &config_path).await
         })
         .await
         .unwrap_or_else(|e| {
@@ -307,6 +307,7 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
             let config_path = root_dir().join("../../test_data/configs/server/non_revocable.toml");
             let mut config = load_test_config_from_toml(&config_path)?;
             config.non_revocable_key_id = non_revocable_key_id;
+            apply_test_db_override(&mut config);
             start_server_from_config(config, &config_path).await
         })
         .await
@@ -321,8 +322,10 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
     trace!("Starting test server with Utimaco HSM");
     ONCE_SERVER_WITH_HSM
         .get_or_try_init(|| async move {
-            start_test_server_from_toml(&root_dir().join("../../test_data/configs/server/hsm.toml"))
-                .await
+            let config_path = root_dir().join("../../test_data/configs/server/hsm.toml");
+            let mut config = load_test_config_from_toml(&config_path)?;
+            apply_test_db_override(&mut config);
+            start_server_from_config(config, &config_path).await
         })
         .await
         .unwrap_or_else(|e| {
@@ -419,6 +422,7 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
         config.workspace.root_data_path = workspace_dir.join("workspace");
         config.workspace.tmp_path = workspace_dir.join("tmp");
         config.key_encryption_key = Some(kek_id);
+        apply_test_db_override(&mut config);
         start_server_from_config(config, &config_path).await
     }))
     .await
@@ -804,6 +808,7 @@ pub async fn start_default_test_kms_server_with_three_softhsm2() -> &'static Tes
                 config.hsm_instances[1].hsm_password = vec![password];
             }
 
+            apply_test_db_override(&mut config);
             start_server_from_config(config, &config_path).await
         })
         .await
@@ -833,6 +838,7 @@ pub async fn start_default_test_kms_server_with_multi_crypto_officer_users() -> 
                 "owner.client@acme.com".to_owned(),
                 "user.privileged@acme.com".to_owned(),
             ]);
+            apply_test_db_override(&mut config);
             start_server_from_config(config, &config_path).await
         })
         .await
@@ -856,6 +862,7 @@ pub async fn start_default_test_kms_server_with_crypto_officer_users(
                 root_dir().join("../../test_data/configs/server/crypto_officer_users.toml");
             let mut config = load_test_config_from_toml(&config_path)?;
             config.roles.crypto_officer_users = Some(crypto_officer_users);
+            apply_test_db_override(&mut config);
             start_server_from_config(config, &config_path).await
         })
         .await
@@ -878,7 +885,8 @@ pub async fn start_ceremony_test_kms_server() -> &'static TestsContext {
         .get_or_try_init(|| async move {
             let config_path =
                 root_dir().join("../../test_data/configs/server/rbac/crypto_officers.toml");
-            let config = load_test_config_from_toml(&config_path)?;
+            let mut config = load_test_config_from_toml(&config_path)?;
+            apply_test_db_override(&mut config);
             start_server_from_config(config, &config_path).await
         })
         .await
@@ -903,10 +911,10 @@ pub async fn start_test_kms_server_with_pqc_tls() -> &'static TestsContext {
     trace!("Starting test server with PQC (ML-DSA-44) TLS certificate");
     ONCE_PQC_TLS
         .get_or_try_init(|| async move {
-            start_test_server_from_toml(
-                &root_dir().join("../../test_data/configs/server/pqc_tls.toml"),
-            )
-            .await
+            let config_path = root_dir().join("../../test_data/configs/server/pqc_tls.toml");
+            let mut config = load_test_config_from_toml(&config_path)?;
+            apply_test_db_override(&mut config);
+            start_server_from_config(config, &config_path).await
         })
         .await
         .unwrap_or_else(|e| {

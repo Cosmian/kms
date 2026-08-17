@@ -256,9 +256,12 @@ pub(crate) async fn get_crypto_officer_status(
 
     let is_crypto_officer = kms.is_crypto_officer(&user).await?;
 
-    // Only reveal the CryptoOfficer user list to active CryptoOfficers.
-    // This prevents privileged-user enumeration by regular Operators.
-    let users = if is_crypto_officer {
+    // Reveal the CryptoOfficer user list to all configured CO candidates
+    // (anyone in cfg.users), not only to the active CO.
+    // CO candidates need to know their peers to perform peer revocation.
+    // Regular Operators (not in cfg.users) still get an empty list.
+    let is_co_candidate = cfg.users.iter().any(|u| u == user.as_str());
+    let users = if is_co_candidate {
         cfg.users.clone()
     } else {
         Vec::new()

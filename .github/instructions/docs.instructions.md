@@ -19,9 +19,9 @@ Organize content into four types:
 
 ## Navigation
 
-- `documentation/mkdocs.yml` is the **source of truth** for page navigation.
-- When adding a new page, update `mkdocs.yml` nav — do not rely on auto-discovery.
-- Integrations require: doc file in `documentation/docs/integrations/`, nav entry in `mkdocs.yml`, row in `README.md`.
+- `documentation/docs/SUMMARY.md` (mdBook) and `documentation/nav.yml` are the **two navigation sources** — keep both in sync.
+- When adding or removing a page, update **both** `SUMMARY.md` and `nav.yml` — do not rely on auto-discovery.
+- Integrations require: doc file in `documentation/docs/integrations/`, nav entry in `SUMMARY.md` + `nav.yml`, row in `README.md`.
 
 ## Examples
 

@@ -44,7 +44,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | Skill | Command | Description |
 |-------|---------|-------------|
 | **CI Fix Loop** | `/ci-fix` | **Monitor CI, fix all failures, push, repeat until green.** Polls GitHub workflow runs, fetches logs, categorizes failures (fmt / clippy / compile / test / Nix hash / deps), applies fixes, and loops. Aborts after 3 identical failures. |
-| **KMS Sync Rules** | `/kms-sync-rules` | **Run after every code change.** Auto-detects changed files via `git diff` and emits only the applicable sync sub-rules checklist (rule 4.1–4.17). |
+| **KMS Sync Rules** | `/kms-sync-rules` | **Run after every code change.** Auto-detects changed files via `git diff` and emits only the applicable sync sub-rules checklist (rule 4.1–4.18). Most sub-rules are also encoded as `applyTo` instruction files in `.github/instructions/` and are applied automatically. |
 | KMS Test Vector | `/kms-test-vector` | Walk through the full test vector workflow: directory, `manifest.toml`, TTLV steps, `vector_runner.rs` registration, README count update. |
 | KMS Changelog | `/kms-changelog` | Create or update `CHANGELOG/<branch>.md` with correct sections, component grouping, and PR/issue links. |
 | OpenAPI Endpoint | `/openapi-endpoint` | Implement a new REST endpoint: handler → `routes/mod.rs` → `start_kms_server.rs` (LIFO middleware) → `openapi.yaml` → validation tests. |

@@ -497,8 +497,9 @@ function App() {
 
     const lightTheme = {
         token: {
-            colorPrimary: "#e34319",
-            colorText: "#292f52",
+            colorPrimary: "#f14611" /* Cosmian brand orange — matches eviden.css #f14611 */,
+            colorText: "#1a1a1a" /* Eviden brand ink — matches eviden.css --cosmian-dark */,
+            fontFamily: "'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         },
         components: {
             Layout: {
@@ -517,15 +518,15 @@ function App() {
                 handleSize: 28,
             },
             Button: {
-                defaultHoverBorderColor: "#6e31e8",
-                defaultHoverColor: "#6e31e8",
+                defaultHoverBorderColor: "#82c0c7" /* Cosmian teal accent */,
+                defaultHoverColor: "#82c0c7",
             },
         },
     };
 
     const darkTheme = {
         token: {
-            colorPrimary: "#9e6eff",
+            colorPrimary: "#f97850" /* Lighter orange for dark bg — matches eviden.css hover/gradient */,
             colorText: "#e4dddd",
             colorBgBase: "#2a2d30",
             colorTextPlaceholder: "#b9b9b9",
@@ -533,6 +534,7 @@ function App() {
             colorBorder: "#4d4b4b",
             colorSplit: "#4d4b4b",
             colorBorderSecondary: "#4d4b4b",
+            fontFamily: "'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         },
         components: {
             Layout: {
@@ -541,10 +543,10 @@ function App() {
             },
             Menu: {
                 itemSelectedBg: "#393E46",
-                itemSelectedColor: "#9e6eff",
+                itemSelectedColor: "#f97850" /* brand orange on dark */,
                 itemHoverBg: "#2e3238",
                 itemActiveBg: "#393E46",
-                itemActiveColor: "#9e6eff",
+                itemActiveColor: "#f97850",
             },
             Form: {
                 colorError: "#FD7014",
@@ -559,19 +561,19 @@ function App() {
             Select: {
                 selectorBg: "#2f3239",
                 colorBorder: "#34383f",
-                optionActiveBg: "#9e6eff",
-                optionActiveColor: "#2a2d30",
-                optionSelectedBg: "#9e6eff",
-                optionSelectedColor: "#2a2d30",
-                colorIcon: "#9e6eff",
+                optionActiveBg: "#f97850",
+                optionActiveColor: "#1a1a1a",
+                optionSelectedBg: "#f97850",
+                optionSelectedColor: "#1a1a1a",
+                colorIcon: "#f97850",
             },
             Input: {
                 selectorBg: "#2f3239",
                 colorBorder: "#34383f",
             },
             InputNumber: {
-                colorIcon: "#9e6eff",
-                colorBorder: "#9e6eff",
+                colorIcon: "#f97850",
+                colorBorder: "#f97850",
             },
             Card: {
                 colorBgContainer: "#393E46",
