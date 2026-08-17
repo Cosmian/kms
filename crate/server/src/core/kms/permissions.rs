@@ -367,13 +367,23 @@ impl KMS {
 
     /// Disable an active Crypto Officer ceremony (revoke the DB activation record).
     ///
+    /// Two revocation paths:
+    /// - **Self-revoke** (`target_user = None`): the caller must be an active CO.
+    /// - **Peer revocation** (`target_user = Some(victim)`): the caller must be a configured
+    ///   CO candidate (in `crypto_officer_users`) and the target must be an active CO.
+    ///
+    /// In both cases the `crypto_officer_activations` row for the target is revoked.
+    /// The target's reconstructed key is **not** revoked — they retain it as an Operator.
+    ///
     /// Enforces:
-    /// - CO role must be configured.
-    /// - `require_ceremony` must be `true` (config-only mode has no runtime gate to disable).
-    /// - Caller must be an active Crypto Officer.
-    /// - **Quorum guard**: when ≥ 2 COs are configured, a single user cannot unilaterally
-    ///   disable the ceremony. Disable must go through the server config + restart path.
-    pub(crate) async fn disable_crypto_officer_ceremony(&self, user: &UserId) -> KResult<()> {
+    /// - CO role must be configured with `require_ceremony = true`.
+    /// - Caller must be a configured CO candidate (in `crypto_officer_users`).
+    /// - Target user (caller for self-revoke, explicit for peer) must be an active CO.
+    pub(crate) async fn disable_crypto_officer_ceremony(
+        &self,
+        caller: &UserId,
+        target_user: Option<&UserId>,
+    ) -> KResult<()> {
         let cfg = &self.params.crypto_officer;
 
         if cfg.users.is_empty() {
@@ -390,33 +400,32 @@ impl KMS {
             ));
         }
 
-        if !self.is_crypto_officer(user.as_str()).await? {
+        // Caller must be a configured CO candidate to issue any revocation.
+        if !cfg.users.iter().any(|u| u == caller.as_str()) {
             kms_bail!(KmsError::Unauthorized(
-                "Only an active Crypto Officer can disable the Crypto Officer ceremony".to_owned()
+                "Only a configured Crypto Officer candidate can revoke a CO ceremony".to_owned()
             ));
         }
 
-        // Quorum guard: when two or more Crypto Officers are configured, a single user
-        // cannot unilaterally deactivate the ceremony — doing so would allow a rogue
-        // insider to deny service or force a full re-ceremony on everyone else.
-        // In multi-CO deployments, ceremony revocation must go through the server config
-        // (remove the user from `crypto_officer_users` and restart).
-        if cfg.users.len() >= 2 {
-            kms_bail!(KmsError::InvalidRequest(
-                "Ceremony deactivation requires consensus in a multi-CO deployment. \
-                 A single Crypto Officer cannot unilaterally disable the ceremony when \
-                 two or more COs are configured. \
-                 To revoke CO access, remove the user from `crypto_officer_users` in \
-                 kms.toml and restart the server."
-                    .to_owned()
-            ));
+        // Resolve the user whose activation record will be revoked.
+        let victim: &UserId = target_user.unwrap_or(caller);
+
+        // For self-revoke: caller must be the active CO.
+        // For peer revocation: target must be an active CO.
+        if !self.is_crypto_officer(victim.as_str()).await? {
+            kms_bail!(KmsError::Unauthorized(format!(
+                "User '{victim}' is not an active Crypto Officer"
+            )));
         }
 
-        self.database.revoke_crypto_officer_activation(user).await?;
+        self.database
+            .revoke_crypto_officer_activation(victim)
+            .await?;
 
         tracing::error!(
             target: "audit",
-            revoked_by = %user,
+            revoked_by = %caller,
+            revoked_user = %victim,
             "CRYPTO_OFFICER_DISABLED: Crypto Officer ceremony activation revoked",
         );
 

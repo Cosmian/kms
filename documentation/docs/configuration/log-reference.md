@@ -604,7 +604,6 @@ Crate path: `crate/server`
 | `info` | `CreateSplitKey: stored share` | `src/core/operations/create_split_key.rs` | - | - |
 | `info` | `GET /access/crypto_officer/status {user}` | `src/routes/access.rs` | `user` | - |
 | `info` | `JoinSplitKey: reconstructed key stored` | `src/core/operations/join_split_key.rs` | - | - |
-| `info` | `POST /access/crypto_officer/disable {user}` | `src/routes/access.rs` | `user` | - |
 | `trace` | `{request}` | `src/core/operations/create_split_key.rs` | `request` | - |
 | `error` | `Failed to serialize response to JSON: {e}` | `src/routes/kmip.rs` | `e` | - |
 | `warn` | `JOSE CEK cache insert error for {uid}: {e}` | `src/routes/jose/cek_cache.rs` | `uid`, `e` | - |
@@ -691,6 +690,7 @@ Crate path: `crate/server`
 | `warn` | `` SECURITY: Crypto Officer is active in config-only mode                          (require_ceremony = false). Any user listed in                          `crypto_officer_users` is a permanent super-admin with no                          runtime activation gate. Consider enabling                          `crypto_officer_require_ceremony = true` in production                          deployments. `` | `src/config/params/server_params.rs` | - | - |
 | `warn` | `SECURITY: Crypto Officer is configured but rate_limit_per_second is not set.              The ceremony activation endpoint performs crypto operations on every request.              Set rate_limit_per_second in the server config to protect against abuse in              production deployments.` | `src/start_kms_server.rs` | - | - |
 | `debug` | `CreateSplitKey: resolved ceremony parameters` | `src/core/operations/create_split_key.rs` | - | - |
+| `info` | `POST /access/crypto_officer/disable` | `src/routes/access.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
