@@ -142,7 +142,6 @@ Crate path: `crate/server`
 | `debug` | `Activate: object {} current state = {:?}` | `src/core/operations/activate.rs` | - | - |
 | `debug` | `Add Attribute: {}` | `src/core/operations/attributes/add.rs` | - | - |
 | `debug` | `AES-GCM decryption failed (expected for implicit rejection): {e}` | `src/routes/jose/aes_gcm.rs` | `e`: caught error | - |
-| `debug` | `after getting CRL: url: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `algorithm: {ca:?}, ciphertext length: {}` | `src/core/operations/encrypt.rs` | `ca`: cryptographic algorithm | - |
 | `debug` | `allocation_size: {allocation_size}` | `src/routes/google_cse/operations.rs` | `allocation_size`: allocated buffer size | ×2 in this file |
 | `debug` | `API token authentication failed: {e:?}` | `src/middlewares/api_token/api_token_middleware.rs` | `e`: caught error | - |
@@ -157,7 +156,6 @@ Crate path: `crate/server`
 | `debug` | `Created secret data with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
 | `debug` | `Created symmetric key with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
 | `debug` | `Creating SecretData object` | `src/core/operations/derive_key.rs` | - | - |
-| `debug` | `CRL list already contains key: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `CSE Error: {:?}` | `src/routes/google_cse/mod.rs` | - | - |
 | `debug` | `decode encrypted_dek` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `decrypt private key` | `src/routes/google_cse/operations.rs` | - | - |
@@ -217,7 +215,6 @@ Crate path: `crate/server`
 | `debug` | `Parent CRL verification: revocation status: {res:?}` | `src/core/operations/validate.rs` | `res`: result (debug display) | - |
 | `debug` | `proxy_config: {config:#?}` | `src/config/params/proxy_params.rs` | `config`: configuration (debug display) | - |
 | `debug` | `re-wrapping key with current KMS` | `src/routes/google_cse/operations.rs` | - | - |
-| `debug` | `reading full bytes of CRL: url: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `Register: activation_date={:?} <= now, setting state to Active` | `src/core/operations/register.rs` | - | - |
 | `debug` | `Register: no activation_date or future date, setting state to PreActive` | `src/core/operations/register.rs` | - | - |
 | `debug` | `Registered object with uid: {}` | `src/core/operations/register.rs` | - | - |
@@ -236,7 +233,6 @@ Crate path: `crate/server`
 | `debug` | `Signature verification result: {validity_indicator:?}` | `src/core/operations/signature_verify.rs` | `validity_indicator`: signature validity result | - |
 | `debug` | `signature_verify: effective CP => alg={:?} pad={:?} hash={:?} dsa={:?} mgf1_hash={:?}` | `src/core/operations/signature_verify.rs` | - | - |
 | `debug` | `Sigv4 Middleware - Adding missing HOST header: {}` | `src/routes/aws_xks/sigv4_middleware.rs` | - | - |
-| `debug` | `Skipping non-HTTP CRL URI: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `Socket server received stop signal: {result:?}` | `src/socket_server.rs` | `result`: operation result | - |
 | `debug` | `socket server: client connected from {}` | `src/socket_server.rs` | - | - |
 | `debug` | `socket server: client {} disconnected` | `src/socket_server.rs` | - | - |
