@@ -55,7 +55,7 @@ const CertificateDecryptForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("certificateDecrypt.intro")}</p>
                 <p>{t("certificateDecrypt.introKey")}</p>
-                <p className="text-sm text-yellow-600">{t("certificateDecrypt.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("certificateDecrypt.note")}</p>
             </div>
 
             <Form

@@ -14,7 +14,7 @@ interface LevelKeysProps {
     children?: LevelKeysProps[];
 }
 
-const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
+const Sidebar: React.FC<{ isFips?: boolean; isDarkMode?: boolean }> = ({ isFips = false, isDarkMode = false }) => {
     const [collapsed, setCollapsed] = useState(false);
     const navigate = useNavigate();
     const [stateOpenKeys, setStateOpenKeys] = useState<string[]>([]);
@@ -151,11 +151,11 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
             collapsed={collapsed}
             onCollapse={setCollapsed}
             className="h-full"
-            theme={branding.menuTheme ?? "light"}
             style={{ position: "sticky", top: 0, overflow: "auto" }}
         >
             <Menu
                 mode="inline"
+                theme={isDarkMode ? "dark" : (branding.menuTheme ?? "light")}
                 defaultSelectedKeys={["1"]}
                 defaultOpenKeys={["access-rights"]}
                 openKeys={stateOpenKeys}

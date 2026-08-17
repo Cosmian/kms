@@ -15,7 +15,7 @@ use cosmian_kms_client::{
         extra::{BulkData, tagging::VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_operations::{Create, Decrypt, Encrypt},
+        kmip_operations::{Activate, Create, Decrypt, Encrypt},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
@@ -177,14 +177,17 @@ pub(crate) fn bench_encrypt(
 
     let (kms_rest_client, key_id) = runtime.block_on(async {
         let ctx = start_default_test_kms_server().await;
-        let key_id = create_symmetric_key(
-            &ctx.get_owner_client(),
-            num_bits,
-            cryptographic_parameters.clone(),
-        )
-        .await
-        .unwrap();
-        (ctx.get_owner_client(), key_id)
+        let client = ctx.get_owner_client();
+        let key_id = create_symmetric_key(&client, num_bits, cryptographic_parameters.clone())
+            .await
+            .unwrap();
+        client
+            .activate(Activate {
+                unique_identifier: key_id.clone(),
+            })
+            .await
+            .unwrap();
+        (client, key_id)
     });
 
     let plaintext = if num_plaintexts == 1 {
@@ -303,22 +306,25 @@ pub(crate) fn bench_decrypt(
     };
     let (kms_rest_client, key_id, (nonce, ciphertext, mac)) = runtime.block_on(async {
         let ctx = start_default_test_kms_server().await;
-        let key_id = create_symmetric_key(
-            &ctx.get_owner_client(),
-            num_bits,
-            cryptographic_parameters.clone(),
-        )
-        .await
-        .unwrap();
+        let client = ctx.get_owner_client();
+        let key_id = create_symmetric_key(&client, num_bits, cryptographic_parameters.clone())
+            .await
+            .unwrap();
+        client
+            .activate(Activate {
+                unique_identifier: key_id.clone(),
+            })
+            .await
+            .unwrap();
         let (nonce, ciphertext, mac) = encrypt(
-            &ctx.get_owner_client(),
+            &client,
             key_id.clone(),
             cryptographic_parameters.clone(),
             plaintext.clone(),
         )
         .await
         .unwrap();
-        (ctx.get_owner_client(), key_id, (nonce, ciphertext, mac))
+        (client, key_id, (nonce, ciphertext, mac))
     });
 
     let mut group = c.benchmark_group("Symmetric encryption");
@@ -410,22 +416,26 @@ pub(crate) fn bench_encrypt_parametrized(
 
             let (kms_rest_client, key_id, (nonce, ciphertext, mac)) = runtime.block_on(async {
                 let ctx = start_default_test_kms_server().await;
-                let key_id = create_symmetric_key(
-                    &ctx.get_owner_client(),
-                    num_bits,
-                    cryptographic_parameters.clone(),
-                )
-                .await
-                .unwrap();
+                let client = ctx.get_owner_client();
+                let key_id =
+                    create_symmetric_key(&client, num_bits, cryptographic_parameters.clone())
+                        .await
+                        .unwrap();
+                client
+                    .activate(Activate {
+                        unique_identifier: key_id.clone(),
+                    })
+                    .await
+                    .unwrap();
                 let (nonce, ciphertext, mac) = encrypt(
-                    &ctx.get_owner_client(),
+                    &client,
                     key_id.clone(),
                     cryptographic_parameters.clone(),
                     plaintext.clone(),
                 )
                 .await
                 .unwrap();
-                (ctx.get_owner_client(), key_id, (nonce, ciphertext, mac))
+                (client, key_id, (nonce, ciphertext, mac))
             });
 
             let parameter_name = if num_plaintexts == 1 {

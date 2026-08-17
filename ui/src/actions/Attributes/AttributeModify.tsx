@@ -84,7 +84,7 @@ const AttributeModifyForm: React.FC = () => {
             <Title level={2}>{t("attributeModify.title")}</Title>
             <div className="mb-8 space-y-2">
                 <div>{t("attributeModify.intro")}</div>
-                <div className="text-sm text-yellow-600">{t("attributeSet.introWarning")}</div>
+                <div className="text-sm text-yellow-600 dark:text-yellow-400">{t("attributeSet.introWarning")}</div>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{}}>

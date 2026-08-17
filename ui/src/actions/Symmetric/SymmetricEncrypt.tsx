@@ -65,7 +65,7 @@ const SymmetricEncryptForm: React.FC = () => {
                     <li>{t("symmetricEncrypt.serverSide")}</li>
                     <li>{t("symmetricEncrypt.clientSide")}</li>
                 </ul>
-                <p className="text-sm text-yellow-600">{t("symmetricEncrypt.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("symmetricEncrypt.note")}</p>
             </div>
 
             <Form

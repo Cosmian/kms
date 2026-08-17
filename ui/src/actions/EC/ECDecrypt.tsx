@@ -48,7 +48,7 @@ const ECDecryptForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("ecDecrypt.intro")}</p>
                 <p>{t("ecDecrypt.introKey")}</p>
-                <p className="text-sm text-yellow-600">{t("ecDecrypt.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("ecDecrypt.note")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">

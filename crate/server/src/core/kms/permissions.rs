@@ -429,6 +429,26 @@ impl KMS {
             "CRYPTO_OFFICER_DISABLED: Crypto Officer ceremony activation revoked",
         );
 
+        // For peer revocation: automatically revoke the victim's access to the caller's
+        // split-key shares so they cannot re-use previously-granted GET grants to
+        // re-assemble the ceremony key without a new ceremony.
+        if target_user.is_some() {
+            let victim_grants = self.database.list_user_operations_granted(victim).await?;
+            for (uid, (owner, _state, ops)) in &victim_grants {
+                if owner == caller.as_str() && ops.contains(&KmipOperation::Get) {
+                    self.database
+                        .remove_operations(uid, victim, HashSet::from([KmipOperation::Get]))
+                        .await?;
+                    tracing::info!(
+                        caller = %caller,
+                        victim = %victim,
+                        uid = %uid,
+                        "PEER_REVOCATION_CLEANUP: revoked victim GET access on caller's share",
+                    );
+                }
+            }
+        }
+
         Ok(())
     }
 }

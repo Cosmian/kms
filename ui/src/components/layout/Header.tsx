@@ -84,7 +84,9 @@ const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
                 </div>
             ) : (
                 serverInfo !== null &&
-                serverInfo !== undefined && <span className="ml-6 text-gray-400 text-sm">{t("header.noHsmConfigured")}</span>
+                serverInfo !== undefined && (
+                    <span className="ml-6 text-gray-500 dark:text-gray-400 text-sm">{t("header.noHsmConfigured")}</span>
+                )
             )}
         </div>
     );

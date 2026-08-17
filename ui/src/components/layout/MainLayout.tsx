@@ -104,7 +104,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
 
     return (
         <Layout>
-            <Layout.Header className="fixed w-full z-10 p-0 h-16 border-b flex items-center justify-between border-gray-300">
+            <Layout.Header className="fixed w-full z-10 p-0 h-16 border-b flex items-center justify-between border-gray-300 dark:border-gray-700">
                 <div className="flex items-center w-full h-full">
                     <Header isDarkMode={isDarkMode} serverInfo={serverInfo} />
                     {import.meta.env.VITE_DEV_MODE === "true" && (
@@ -163,7 +163,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
             </Layout.Header>
 
             <Layout id="main-page" className="overflow-hidden" style={{ marginTop: 64, height: "calc(100vh - 64px)" }}>
-                <Sidebar isFips={serverInfo?.fips_mode ?? false} />
+                <Sidebar isFips={serverInfo?.fips_mode ?? false} isDarkMode={isDarkMode} />
                 <Layout id="main-center" className="flex flex-col overflow-hidden">
                     <Layout.Content id="main-content" className="flex-grow overflow-auto p-4">
                         {authMethod === "None" && (
@@ -172,17 +172,23 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                 showIcon
                                 banner
                                 className="mb-4"
-                                message={<span className="text-yellow-900 font-bold">{t("main.authDisabledTitle")}</span>}
-                                description={<span className="text-yellow-900">{t("main.authDisabledDescription")}</span>}
+                                message={
+                                    <span className="text-yellow-900 dark:text-yellow-200 font-bold">{t("main.authDisabledTitle")}</span>
+                                }
+                                description={
+                                    <span className="text-yellow-900 dark:text-yellow-200">{t("main.authDisabledDescription")}</span>
+                                }
                             />
                         )}
                         {wasmError && (
                             <Alert
                                 type="warning"
                                 showIcon
-                                message={<span className="text-yellow-900 font-bold">{t("main.wasmUnavailableTitle")}</span>}
+                                message={
+                                    <span className="text-yellow-900 dark:text-yellow-200 font-bold">{t("main.wasmUnavailableTitle")}</span>
+                                }
                                 description={
-                                    <span className="text-yellow-900">
+                                    <span className="text-yellow-900 dark:text-yellow-200">
                                         <Trans i18nKey="main.wasmUnavailableDescription" ns="layout" components={{ code: <code /> }} />
                                     </span>
                                 }

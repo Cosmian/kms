@@ -84,7 +84,7 @@ const CertificateExportForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("certificateExport.intro")}</p>
                 <p>{t("certificateExport.introPkcs12")}</p>
-                <p className="text-sm text-yellow-600">{t("certificateExport.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("certificateExport.note")}</p>
             </div>
 
             <Form
