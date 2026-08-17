@@ -282,8 +282,8 @@ const CryptoOfficerRole: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Only CO candidates (status.users non-empty) may revoke. Operators never see this. */}
-                            {status.ceremony_activated && status.users.length > 0 && (
+                            {/* Only the active CO can revoke (self-revoke or peer-revoke via the target selector). */}
+                            {status.ceremony_activated && status.is_crypto_officer && (
                                 <div className="pt-2 border-t space-y-3">
                                     <p className="text-sm font-medium">{t("cryptoOfficer.revokeRole")}</p>
                                     <Space direction="vertical" style={{ display: "flex" }}>
