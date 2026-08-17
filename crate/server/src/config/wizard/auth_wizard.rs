@@ -14,13 +14,9 @@ use crate::{
 };
 
 pub struct AuthWizardResult {
-    #[allow(dead_code)]
-    pub http_api_token: Option<String>,
     pub idp_auth: IdpAuthConfig,
-    #[allow(dead_code)]
+    /// Auth Verifier server configuration to wire into `ClapConfig.auth_verifier`.
     pub auth_verifier: AuthVerifierConfig,
-    #[allow(dead_code)]
-    pub ui_config_oidc: OidcConfig,
     pub default_username: String,
     pub force_default_username: bool,
 }
@@ -193,10 +189,9 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
         .interact()
         .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
 
-    ui.ui_oidc_auth = ui_oidc.clone();
+    ui.ui_oidc_auth = ui_oidc;
 
     Ok(AuthWizardResult {
-        http_api_token: None, // already set in http above
         idp_auth: IdpAuthConfig {
             jwt_auth_provider: if jwt_providers.is_empty() {
                 None
@@ -205,7 +200,6 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
             },
         },
         auth_verifier,
-        ui_config_oidc: ui_oidc,
         default_username,
         force_default_username,
     })
