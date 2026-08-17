@@ -414,3 +414,127 @@ fn test_locate_template_attribute_fortigate() {
         "KMIP 2.1 Attributes.name should contain '{key_name}'; got: {names:?}"
     );
 }
+
+/// Test that KMIP 1.4 `CreateSplitKey` round-trips through TTLV serialization and that
+/// the 1.4→2.1 `From` conversion preserves all mandatory fields.
+#[test]
+fn test_create_split_key_1_4_serialization_and_conversion() {
+    use crate::kmip_1_4::{
+        kmip_operations::CreateSplitKey,
+        kmip_types::{ObjectType, SplitKeyMethod},
+    };
+
+    let req = CreateSplitKey {
+        object_type: ObjectType::SymmetricKey,
+        unique_identifier: Some("my-secret-key".to_owned()),
+        split_key_parts: 3,
+        split_key_threshold: 2,
+        split_key_method: SplitKeyMethod::XOR,
+        prime_field_size: None,
+        template_attribute: None,
+    };
+
+    // Serialise to TTLV and back.
+    let ttlv = to_ttlv(&req).expect("CreateSplitKey: TTLV serialization failed");
+    let roundtrip: CreateSplitKey =
+        from_ttlv(ttlv).expect("CreateSplitKey: TTLV deserialization failed");
+    assert_eq!(roundtrip.split_key_parts, 3);
+    assert_eq!(roundtrip.split_key_threshold, 2);
+    assert_eq!(roundtrip.unique_identifier, Some("my-secret-key".to_owned()));
+
+    // 1.4 → 2.1 conversion.
+    let req_2_1: crate::kmip_2_1::kmip_operations::CreateSplitKey = req.into();
+    assert_eq!(req_2_1.split_key_parts, 3);
+    assert_eq!(req_2_1.split_key_threshold, 2);
+    assert_eq!(
+        req_2_1.unique_identifier,
+        crate::kmip_2_1::kmip_types::UniqueIdentifier::TextString("my-secret-key".to_owned())
+    );
+}
+
+/// Test that a missing `unique_identifier` in KMIP 1.4 `CreateSplitKey` is mapped to
+/// an empty `TextString` in the 2.1 conversion (server will create a new key).
+#[test]
+fn test_create_split_key_1_4_no_uid_conversion() {
+    use crate::kmip_1_4::{
+        kmip_operations::CreateSplitKey,
+        kmip_types::{ObjectType, SplitKeyMethod},
+    };
+
+    let req = CreateSplitKey {
+        object_type: ObjectType::SymmetricKey,
+        unique_identifier: None,
+        split_key_parts: 5,
+        split_key_threshold: 3,
+        split_key_method: SplitKeyMethod::PolynomialSharingGf28,
+        prime_field_size: None,
+        template_attribute: None,
+    };
+
+    let req_2_1: crate::kmip_2_1::kmip_operations::CreateSplitKey = req.into();
+    assert_eq!(
+        req_2_1.unique_identifier,
+        crate::kmip_2_1::kmip_types::UniqueIdentifier::TextString(String::new()),
+        "missing UID should map to empty TextString"
+    );
+}
+
+/// Test that KMIP 1.4 `JoinSplitKey` round-trips through TTLV and that the 1.4→2.1
+/// `From` conversion preserves all UIDs and the object type.
+#[test]
+fn test_join_split_key_1_4_serialization_and_conversion() {
+    use crate::kmip_1_4::{kmip_operations::JoinSplitKey, kmip_types::ObjectType};
+
+    let req = JoinSplitKey {
+        object_type: ObjectType::SymmetricKey,
+        split_key_unique_identifiers: vec!["share-1".to_owned(), "share-2".to_owned()],
+        secret_data_type: None,
+        template_attribute: None,
+    };
+
+    // Serialise to TTLV and back.
+    let ttlv = to_ttlv(&req).expect("JoinSplitKey: TTLV serialization failed");
+    let roundtrip: JoinSplitKey =
+        from_ttlv(ttlv).expect("JoinSplitKey: TTLV deserialization failed");
+    assert_eq!(roundtrip.split_key_unique_identifiers.len(), 2);
+    assert_eq!(roundtrip.split_key_unique_identifiers[0], "share-1");
+    assert_eq!(roundtrip.split_key_unique_identifiers[1], "share-2");
+
+    // 1.4 → 2.1 conversion.
+    let req_2_1: crate::kmip_2_1::kmip_operations::JoinSplitKey = req.into();
+    assert_eq!(
+        req_2_1.object_type,
+        crate::kmip_2_1::kmip_objects::ObjectType::SymmetricKey
+    );
+    assert_eq!(req_2_1.split_key_unique_identifiers.len(), 2);
+    assert_eq!(
+        req_2_1.split_key_unique_identifiers[0],
+        crate::kmip_2_1::kmip_types::UniqueIdentifier::TextString("share-1".to_owned())
+    );
+}
+
+/// Test that `CreateSplitKeyResponse` 2.1→1.4 `TryFrom` preserves both the original
+/// UID and the list of share UIDs.
+#[test]
+fn test_create_split_key_response_conversion_2_1_to_1_4() {
+    use crate::{
+        kmip_1_4::kmip_operations::CreateSplitKeyResponse,
+        kmip_2_1::{
+            kmip_operations::CreateSplitKeyResponse as Resp21, kmip_types::UniqueIdentifier,
+        },
+    };
+
+    let resp_2_1 = Resp21 {
+        unique_identifier: UniqueIdentifier::TextString("orig-key".to_owned()),
+        split_key_unique_identifiers: vec![
+            UniqueIdentifier::TextString("share-a".to_owned()),
+            UniqueIdentifier::TextString("share-b".to_owned()),
+            UniqueIdentifier::TextString("share-c".to_owned()),
+        ],
+    };
+
+    let resp_1_4: CreateSplitKeyResponse = resp_2_1.try_into().expect("conversion failed");
+    assert_eq!(resp_1_4.unique_identifier, "orig-key");
+    assert_eq!(resp_1_4.split_key_unique_identifiers.len(), 3);
+    assert_eq!(resp_1_4.split_key_unique_identifiers[2], "share-c");
+}
