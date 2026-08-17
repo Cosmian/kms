@@ -27,3 +27,6 @@ serde = { workspace = true }
 sha2 = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 time = { workspace = true, features = ["serde-human-readable"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
