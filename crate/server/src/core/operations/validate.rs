@@ -1136,24 +1136,38 @@ mod tests {
         );
     }
 
-    /// SR-CRL-10: file:// URIs are permitted in test builds and resolve to disk.
+    /// SR-CRL-10: `file://` URIs are permitted in test builds and resolve to disk.
     ///
-    /// Uses an existing CRL fixture from `test_data/` to verify the happy path.
+    /// Creates a self-contained temp file so this test works in all CI
+    /// environments regardless of whether the `test_data` submodule is present.
     #[actix_web::test]
     async fn sr_crl_10_file_uri_allowed_in_tests() {
-        // Use the CRL fixture checked into the repository.
-        let crl_path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../../test_data/certificates/openssl/prime256v1.crl"
-        );
-        let uri = format!("file://{crl_path}");
+        use std::io::Write as _;
+
+        // Write sentinel bytes to a temp file — content does not need to be a
+        // valid CRL; `get_crl_bytes` only performs I/O, not parsing.
+        let mut tmp =
+            tempfile::NamedTempFile::new().expect("failed to create temp file for SR-CRL-10");
+        let sentinel: &[u8] = b"SR-CRL-10-sentinel";
+        tmp.write_all(sentinel)
+            .expect("failed to write sentinel bytes");
+        tmp.flush().expect("failed to flush temp file");
+
+        let path = tmp.path().to_str().expect("temp path is not valid UTF-8");
+        // Build the canonical file URI (three slashes: scheme + empty authority + absolute path).
+        let uri = format!("file://{path}");
+
         let result = get_crl_bytes(vec![uri.clone()], None, None)
             .await
             .expect("file:// CRL should succeed in test builds");
+
         assert!(
             result.contains_key(&uri),
             "Result map must contain the file:// URI as key"
         );
-        assert!(!result[&uri].is_empty(), "CRL bytes must not be empty");
+        assert_eq!(
+            result[&uri], sentinel,
+            "Returned bytes must match the sentinel written to the temp file"
+        );
     }
 }
