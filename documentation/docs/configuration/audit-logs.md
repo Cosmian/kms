@@ -37,6 +37,13 @@ spawned until the feature is explicitly enabled.
 
 When `audit.file.path` is omitted the file defaults to `<root-data-path>/audit.jsonl`.
 
+!!! warning "Not safe for multiple KMS instances sharing one file"
+    The audit file backend is designed for **one writer per file**. If you run multiple KMS
+    instances (horizontal scaling, Kubernetes replicas), each one needs its **own** audit file —
+    never point several instances at the same path on a shared volume. Only one instance will ever hold the
+    lock and write, so the others' events are effectively never recorded. A centralized,
+    multi-writer-safe audit trail is planned via a PostgreSQL backend.
+
 ---
 
 ## Configuration reference
@@ -106,6 +113,7 @@ Each line in the JSONL file is a complete JSON object with the following fields:
 | `client_ip`   | `string` or `null`                       | Yes      | Source IP from `X-Forwarded-For` (if present) or the TCP peer address.                                                               |
 | `result`      | `"Success"` or `{"Failure": "<reason>"}` | No       | Outcome of the operation.                                                                                                            |
 | `duration_ms` | `integer`                                | No       | Wall-clock duration of the operation in milliseconds.                                                                                |
+| `details`     | `string` or `null`                       | Yes      | Structured JSON payload attached to synthetic recovery events (`audit:torn-write-recovered`, `audit:reanchor`). `null` for ordinary KMIP events.                                                                                     |
 | `prev_hash`   | `string` (64 hex chars)                  | No       | SHA-256 of the previous row's canonical bytes. All-zeros for the first row (`id = 0`).                                               |
 | `row_hash`    | `string` (64 hex chars)                  | No       | SHA-256 of this row's canonical bytes (including `prev_hash`).                                                                       |
 
@@ -146,7 +154,43 @@ forged rows — breaks at least one `prev_hash → row_hash` link and is detecte
 Each write is followed by [`fsync()`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/fsync.html) to ensure data is physically written to disk. Events survive
 an OS crash or power failure as long as the storage medium has confirmed the write.
 
-On restart the server reads only the last 64 KiB of an existing log file to resume the chain. **If the last event's `row_hash` does not verify, the server refuses to start and reports the corrupted line.**
+On restart, the KMS always verifies the entire chain — every row's hash and its link to the
+previous row — before serving traffic, then reads the last 64 KiB of the file to decide how to
+resume. **The KMS always starts**, regardless of what it finds — see
+[Startup recovery](#startup-recovery) below.
+
+---
+
+## Startup recovery
+
+No condition found in the audit log — whether at the tail or anywhere in the middle of the
+file — ever prevents the KMS from starting. Recovery is routed by cause:
+
+| Condition                                              | What happens                                                                                                                                                         |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No file, or empty file                                   | Fresh chain starts at `id = 0`.                                                                                                                                       |
+| **Mid-chain tamper** — any row other than the last fails its own hash check or its link to the previous row | **Seal-and-roll** (below) — caught by the unconditional whole-chain scan that runs on every boot, not just a tail check.                                             |
+| Last row is valid but missing its trailing newline        | Resumes in place; the missing newline is repaired before the next event is appended.                                                                                  |
+| **Torn write** — an incomplete trailing row, but the row before it (or genesis) is valid | The incomplete fragment is truncated away; an `audit:torn-write-recovered` event is appended recording the bytes discarded. The chain continues in place — no data loss beyond the incomplete row, which was never durably committed. |
+| **Tampered last row**, or structural garbage with no trustworthy fallback row | **Seal-and-roll**: the corrupted file is renamed aside as `<name>.<UTC-timestamp>.<8-hex>.corrupt.<ext>` — kept as forensic evidence, never modified or deleted by the KMS. A fresh chain starts at the original path with an `audit:reanchor` event as row 0, recording the sealed file's name, size, and SHA-256 in its `details` field. |
+
+A torn write is the common case after an ungraceful restart (OOM kill, pod eviction, power
+loss) and is expected to happen periodically at fleet scale — it does not indicate tampering.
+
+### Concurrent instances (rolling updates)
+
+The KMS takes a best-effort, non-blocking exclusive lock (`<audit-file-path>.lock`) before
+recovering or writing to the audit file, preventing two live instances — e.g. old and new pods
+overlapping during a rolling update on a shared volume — from corrupting the same log. If the
+lock is held by another instance, the KMS still starts and serves immediately; audit events are
+buffered (up to `--audit-channel-capacity`) and flushed in order once the lock becomes available.
+
+### Unwritable path (permissions, read-only mount, disk fault)
+
+A path that cannot be opened for a reason unrelated to log content is treated as a deployment
+fault, not corruption. The KMS starts and serves traffic; each audit event is dropped with an
+`error!` log line, and the writer periodically retries opening the path — audit logging resumes
+automatically once the fault is fixed, with no restart required.
 
 ---
 
@@ -158,19 +202,37 @@ You can run the following command:
 ckms audit verify --path /var/log/cosmian-kms/audit.jsonl
 ```
 
+`--path` also accepts a **directory**, verifying every non-sealed `*.jsonl` file in it as its
+own independent chain. Sealed `*.corrupt.jsonl` evidence files from past recoveries are not
+independent chains; they are checked through the SHA-256 recorded in their live log's reanchor:
+
+```bash
+ckms audit verify --path /var/log/cosmian-kms/
+```
+
 **Sample output: intact chain**:
 
 ```
-Verified 42 events. Chain is intact.
+/var/log/cosmian-kms/audit.jsonl: chain OK: 42 events verified
 ```
 
 **Sample output: tampered file**:
 
 ```
-TAMPERED: event id=17 row_hash mismatch
+TAMPERED: /var/log/cosmian-kms/audit.jsonl event id=17 (line 18) has an invalid row_hash
 ```
 
-**Exit codes**: `0` = intact, `1` = broken or tampered.
+For every `audit:reanchor` event encountered, `verify` also confirms the sealed evidence file it
+references still exists next to the log and its SHA-256 still matches the digest recorded in the
+event — this is what makes deleting or altering sealed evidence after the fact detectable:
+
+```
+MISSING EVIDENCE: /var/log/cosmian-kms/audit.jsonl: reanchor event id=0 references sealed file
+audit.20260814T140233Z.9f3ac1b2.corrupt.jsonl which no longer exists
+```
+
+**Exit codes**: `0` = intact (and all sealed evidence present and unaltered), `1` = broken,
+tampered, or missing/altered sealed evidence.
 
 With `--verbose`, a summary line is printed for every event:
 
@@ -189,8 +251,10 @@ id=1  2026-05-06T20:31:15Z  Encrypt  chain=ok
 - Restrict read access to the audit file to the KMS process user and auditors only; the file
   contains usernames and operation details.
 - Retain audit files for the compliance window required by your framework
-  (PCI-DSS Req. 10.7: 12 months; HIPAA §164.312(b): 6 years).
-- If the server refuses to start because the last event's `row_hash` does not verify
-  (corrupted write), move the file aside and restart — the server will create a fresh log.
-  Keep the corrupted file for forensic review.
+  (PCI-DSS Req. 10.7: 12 months; HIPAA §164.312(b): 6 years). This includes sealed
+  `*.corrupt.jsonl` files left behind by a seal-and-roll recovery — they are forensic evidence
+  and are never deleted automatically; clean them up as part of your retention/rotation process.
+- Monitor the recovery audit events and server logs when a torn-write or seal-and-roll recovery
+  happens — the KMS no longer refuses to start on audit-log corruption, so these are the primary
+  operator signals for noticing and triaging it.
 - For SIEM ingestion and CEF export, see [SIEMs](./siems.md).
