@@ -21,7 +21,6 @@ const baseActiveStatus = {
     ceremony_activated: true,
     custodians_count: 3,
     users: ["alice@example.com", "bob@example.com", "carol@example.com"],
-    active_co_users: ["alice@example.com"],
     co_candidates: ["alice@example.com", "bob@example.com", "carol@example.com"],
 };
 
@@ -50,7 +49,9 @@ function mockStatus(status: object) {
 // ── Scenario 1: Active CO sees the self-revoke button ───────────────────────
 
 describe("CO revocation (Scenario 1): active CO can self-revoke", () => {
-    beforeEach(() => mockStatus({ ...baseActiveStatus, is_crypto_officer: true }));
+    beforeEach(() =>
+        mockStatus({ ...baseActiveStatus, is_crypto_officer: true }),
+    );
 
     test("renders the revoke ceremony card", async () => {
         smokeRender(React.createElement(CryptoOfficerRole));
@@ -64,12 +65,16 @@ describe("CO revocation (Scenario 1): active CO can self-revoke", () => {
         expect(screen.getByTestId("disable-btn")).toBeInTheDocument();
     });
 
-    test("does not render the split-key workflow when ceremony is active", async () => {
+    test("renders Create & Split Key card even when ceremony is active", async () => {
         smokeRender(React.createElement(CryptoOfficerRole));
-        // The Create & Split Key / Activate workflow is only shown while the ceremony is dormant.
-        await screen.findByTestId("role-status-card");
-        expect(screen.queryByTestId("split-key-step-card")).toBeNull();
-        expect(screen.queryByTestId("activate-ceremony-card")).toBeNull();
+        // Create & Split Key is always available regardless of ceremony state.
+        await screen.findByTestId("split-key-step-card");
+        expect(screen.getByTestId("create-split-key-btn")).toBeInTheDocument();
+    });
+
+    test("renders Reconstruct Key card even when ceremony is active", async () => {
+        smokeRender(React.createElement(CryptoOfficerRole));
+        await screen.findByTestId("join-split-key-card");
     });
 
     test("does not render any pending/confirm/waiting elements", async () => {
@@ -83,31 +88,17 @@ describe("CO revocation (Scenario 1): active CO can self-revoke", () => {
     });
 });
 
-// ── Dormant CO candidate: peer-revoke button shown but disabled without target ──
+// ── Non-CO user: no revoke button ───────────────────────────────────────────
 
-describe("CO revocation: dormant CO candidate can peer-revoke", () => {
+describe("CO revocation (Scenario 1): non-CO user sees no revoke button", () => {
     beforeEach(() =>
-        mockStatus({
-            ...baseActiveStatus,
-            is_crypto_officer: false,
-            // active_co_users contains alice; current user (bob) is a dormant CO candidate
-        }),
+        mockStatus({ ...baseActiveStatus, is_crypto_officer: false }),
     );
 
-    // smokeRender is called with initialUserId so that status.users.includes(userId) is true.
-    // Without it, userId is null (AuthContext default) and the revoke controls are hidden —
-    // intentionally: users who are not yet identified should not see CO revoke controls.
-
-    test("renders the peer-revoke button for a dormant CO candidate", async () => {
-        smokeRender(React.createElement(CryptoOfficerRole), { initialUserId: "bob@example.com" });
-        await screen.findByTestId("disable-btn");
-        expect(screen.getByTestId("disable-btn")).toBeInTheDocument();
-    });
-
-    test("peer-revoke button is disabled when no target is selected", async () => {
-        smokeRender(React.createElement(CryptoOfficerRole), { initialUserId: "bob@example.com" });
-        const btn = await screen.findByTestId("disable-btn");
-        expect(btn).toBeDisabled();
+    test("does not render the self-revoke button for a non-active CO", async () => {
+        smokeRender(React.createElement(CryptoOfficerRole));
+        await screen.findByTestId("role-status-card");
+        expect(screen.queryByTestId("disable-btn")).toBeNull();
     });
 });
 

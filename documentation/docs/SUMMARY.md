@@ -88,7 +88,7 @@
     - [Command line arguments](configuration/server_cli.md)
     - [Databases]()
         - [Configuration](configuration/database/configuration.md)
-        - [Internals: Database Tables](configuration/database/tables.md)
+        - [Tables](configuration/database/tables.md)
         - [Redis with Findex](configuration/database/redis.md)
     - [Object & Unwrapped Caches](configuration/object-cache.md)
     - [PKCE Authentication](configuration/pkce_authentication.md)

@@ -6,36 +6,6 @@ Redis-with-Findex combines application-level encryption with encrypted, searchab
 !!! warning "Non-FIPS only"
     Redis-with-Findex is gated behind the `non-fips` feature and is **not available in FIPS mode**.
 
-## Configuration
-
-Redis-with-Findex requires the database URL and a master password:
-
-=== "kms.toml"
-
-    ```toml
-    [db]
-    database_type = "redis-findex"
-    database_url = "redis://localhost:6379"
-    redis_master_password = "password"
-    redis_findex_label = "label"
-    ```
-
-=== "Command line arguments"
-
-    ```sh
-    --database-type=redis-findex \
-    --database-url=redis://localhost:6379 \
-    --redis-master-password=password \
-    --redis-findex-label=label
-    ```
-
-The corresponding environment variables are `KMS_DATABASE_TYPE`, `KMS_DATABASE_URL` (also `KMS_REDIS_URL`), `KMS_REDIS_MASTER_PASSWORD`, and `KMS_REDIS_FINDEX_LABEL`.
-
-For the full database configuration reference, including TLS, clearing, and migration, see [Databases](./configuration.md).
-
-!!! note "Clearing the database"
-    When `clear_database` is set, the KMS issues a `FLUSHDB` to Redis on startup, deleting all keys in the selected Redis database.
-
 ## What it is
 
 With Redis-with-Findex, the KMS server encrypts all data before sending it to Redis:
@@ -78,15 +48,35 @@ Instead it stores:
 | Database metadata | Internal keys holding the database state (`ready`/`upgrading`) and version |
 | Ceremony records | Encrypted records under key names obfuscated with the master key |
 
+## Configuration
+
+Redis-with-Findex requires the database URL and a master password:
+
+=== "kms.toml"
+
+    ```toml
+    [db]
+    database_type = "redis-findex"
+    database_url = "redis://localhost:6379"
+    redis_master_password = "password"
+    ```
+
+=== "Command line arguments"
+
+    ```sh
+    --database-type=redis-findex \
+    --database-url=redis://localhost:6379 \
+    --redis-master-password=password
+    ```
+
+The corresponding environment variables are `KMS_DATABASE_TYPE`, `KMS_DATABASE_URL` (also `KMS_REDIS_URL`), and `KMS_REDIS_MASTER_PASSWORD`.
+
+For the full database configuration reference, including TLS, clearing, and migration, see [Databases](./configuration.md).
+
+!!! note "Clearing the database"
+    When `clear_database` is set, the KMS issues a `FLUSHDB` to Redis on startup, deleting all keys in the selected Redis database.
+
 ## Migration
 
-**Version boundary**: Redis-with-Findex databases created with KMS **5.12.0 or later** carry a `ready` state marker and a version key in Redis, and start cleanly with the current KMS (5.26).
-Databases created with KMS **earlier than 5.12.0** do not have these markers.
-The KMS refuses to start against a marker-less database and prints an error asking you to export and re-import; there is no in-place upgrade path for those databases.
-
-**Supported upgrade paths**:
-
-| Source version | Path to 5.26 |
-| -------------- | ------------ |
-| ≥ 5.12 | Upgrade directly; no data migration needed. |
-| < 5.12 | Export all objects from the old KMS, start a fresh 5.26 instance, re-import. |
+Redis-with-Findex databases created by older KMS versions carry their version and state markers in Redis.
+Support for migrating **legacy** Redis/Findex databases has been removed: if a database is detected without a `ready` state and a version marker, the KMS refuses to start and asks you to export the data from the legacy KMS and re-import it into the current version.

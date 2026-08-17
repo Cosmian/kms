@@ -22,18 +22,6 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `rust-kmip.instructions.md` | `crate/kmip/**/*.rs` | KMIP 2.1 protocol types and serialisation |
 | `rust-database.instructions.md` | `crate/server_database/**/*.rs` | SQLite, PostgreSQL, Redis-findex backends |
 | `database-tables.instructions.md` | `crate/server_database/src/stores/sql/*.sql` | Keep `documentation/docs/configuration/database/tables.md` in sync with SQL schema changes |
-| `ui-routes.instructions.md` | `ui/src/App.tsx`, `ui/src/menuItems.tsx`, `ui/src/actions/**/*.tsx`, `ui/src/pages/**/*.tsx` | Sync rule 4.1 — server SPA routes ⇔ React Router ⇔ menu items |
-| `routes.instructions.md` | `crate/server/src/routes/**/*.rs`, `crate/server/documentation/openapi.yaml` | Sync rule 4.2 — REST endpoint handlers ⇔ OpenAPI ⇔ route registration |
-| `kmip-operations.instructions.md` | `crate/kmip/src/**/*.rs`, `crate/server/src/core/operations/**/*.rs` | Sync rule 4.3 — KMIP operation types ⇔ dispatcher ⇔ handler |
-| `cli-ui-sync.instructions.md` | `crate/clients/clap/**/*.rs`, `crate/clients/ckms/**/*.rs`, `ui/src/actions/**/*.ts`, `ui/src/actions/**/*.tsx` | Sync rules 4.4 + 4.15 — CLI ⇔ Web UI parity, CLI doc regeneration |
-| `wasm.instructions.md` | `crate/clients/wasm/**/*.rs` | Sync rule 4.5 — WASM exports ⇔ regenerated TS types ⇔ UI consumers |
-| `server-config.instructions.md` | `crate/server/src/config/**/*.rs` | Sync rules 4.6 + 4.7 — clap flags ⇔ wizard ⇔ TOML templates ⇔ client wizard |
-| `middlewares.instructions.md` | `crate/server/src/middlewares/**/*.rs`, `crate/server/src/config/wizard/auth_wizard.rs` | Sync rule 4.9 — auth config ⇔ wizard ⇔ middleware ⇔ scope wiring |
-| `test-vectors.instructions.md` | `test_data/vectors/**`, `crate/test_kms_server/**/*.rs` | Sync rule 4.10 — test vector directory ⇔ runner ⇔ README |
-| `lockfile-hashes.instructions.md` | `Cargo.lock`, `ui/pnpm-lock.yaml` | Sync rule 4.11 — Nix vendor hashes ⇔ lock files |
-| `cloud-providers.instructions.md` | `crate/server/src/routes/aws_xks/**`, `azure_ekm/**`, `google_cse/**`, `ms_dke/**` | Sync rule 4.12 — cloud provider routes ⇔ config ⇔ wizard ⇔ CLI ⇔ UI |
-| `hsm.instructions.md` | `crate/hsm/**/*.rs` | Sync rule 4.13 — PKCS#11 loader ⇔ HSM model enum ⇔ wizard ⇔ test vectors ⇔ CI matrix |
-| `openssl-build.instructions.md` | `crate/crypto/build.rs` | Sync rule 4.17 — OpenSSL build script ⇔ provider init ⇔ CBOM/SBOM |
 | `rust-cli.instructions.md` | `crate/clients/**/*.rs` | CLI actions, WASM bindings, PKCS#11 |
 | `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` | React 19, Ant Design 5, Tailwind 4, WASM |
 | `i18n.instructions.md` | `ui/src/i18n/**/*.{ts,json}` | Locale bundles, en/zh-CN parity, useTranslation/Trans |
