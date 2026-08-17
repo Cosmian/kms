@@ -168,6 +168,7 @@ pub fn run_configure_wizard() -> KResult<()> {
         tls,
         socket_server,
         idp_auth: auth_result.idp_auth,
+        auth_verifier: auth_result.auth_verifier,
         ui_config: advanced.ui_config,
         hsm,
         logging,
