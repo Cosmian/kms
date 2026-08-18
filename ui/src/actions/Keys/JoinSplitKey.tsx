@@ -102,7 +102,7 @@ const JoinSplitKeyForm: React.FC = () => {
                 initialValues={{
                     method: "XOR",
                     objectType: "SymmetricKey",
-                    shareIds: [{ value: "" }, { value: "" }],
+                    shareIds: Array.from({ length: DEFAULT_SHARE_COUNT }, () => ({ value: "" })),
                 }}
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
