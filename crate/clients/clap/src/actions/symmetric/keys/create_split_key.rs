@@ -2,6 +2,7 @@ use clap::Parser;
 use cosmian_kms_client::{
     KmsClient,
     kmip_2_1::{
+        kmip_objects,
         kmip_operations::CreateSplitKey,
         kmip_types::{SplitKeyMethod, UniqueIdentifier},
     },
@@ -111,10 +112,13 @@ impl CreateSplitKeyAction {
         }
 
         let request = CreateSplitKey {
-            unique_identifier: UniqueIdentifier::TextString(self.key_id.clone()),
+            object_type: kmip_objects::ObjectType::SymmetricKey,
+            unique_identifier: Some(UniqueIdentifier::TextString(self.key_id.clone())),
             split_key_parts: self.total_parts,
             split_key_threshold: self.total_parts, /* XOR n-of-n: threshold always equals total parts */
             split_key_method: SplitKeyMethod::from(&self.method),
+            attributes: None,
+            protection_storage_masks: None,
         };
 
         let response = kms_rest_client
@@ -122,7 +126,7 @@ impl CreateSplitKeyAction {
             .await
             .with_context(|| "failed to create split key shares")?;
 
-        let share_count = response.split_key_unique_identifiers.len();
+        let share_count = response.unique_identifier.len();
         let mut stdout = console::Stdout::new(&format!(
             "Key {} successfully split into {} share(s) (XOR n-of-n){}.",
             self.key_id,
@@ -133,7 +137,7 @@ impl CreateSplitKeyAction {
                 ""
             },
         ));
-        stdout.set_unique_identifiers(&response.split_key_unique_identifiers);
+        stdout.set_unique_identifiers(&response.unique_identifier);
         stdout.write()?;
 
         Ok(())

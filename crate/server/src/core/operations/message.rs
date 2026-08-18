@@ -778,6 +778,12 @@ fn update_id_placeholder_from_response(
         Some(Operation::CreateKeyPairResponse(ckpr)) => {
             *id_placeholder = Some(ckpr.private_key_unique_identifier.clone());
         }
+        // CreateSplitKey returns a list of split key part UIDs; per KMIP spec the ID
+        // Placeholder SHALL be set to the Unique Identifier of the split whose Key Part
+        // Identifier is 1 (i.e., the first entry in the list).
+        Some(Operation::CreateSplitKeyResponse(cskr)) => {
+            *id_placeholder = cskr.unique_identifier.first().cloned();
+        }
         // Locate may return a list of UIDs; per KMIP ID Placeholder semantics we only
         // set the placeholder when exactly one UID is located. Otherwise, clear it.
         Some(Operation::LocateResponse(lr)) => {

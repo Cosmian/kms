@@ -110,14 +110,17 @@ async fn split_key(
     total_parts: i32,
 ) -> KResult<Vec<String>> {
     let req = CreateSplitKey {
-        unique_identifier: UniqueIdentifier::TextString(key_uid.to_owned()),
+        object_type: ObjectType::SymmetricKey,
+        unique_identifier: Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         split_key_parts: total_parts,
         split_key_threshold: total_parts, // XOR n-of-n
         split_key_method: SplitKeyMethod::XOR,
+        attributes: None,
+        protection_storage_masks: None,
     };
     let resp = Box::pin(kms.create_split_key(req, &UserId::from(owner))).await?;
     Ok(resp
-        .split_key_unique_identifiers
+        .unique_identifier
         .iter()
         .map(|u| u.as_str().expect("UID must be a string").to_owned())
         .collect())
@@ -131,13 +134,14 @@ async fn join_shares(
     expected_type: ObjectType,
 ) -> KResult<String> {
     let req = JoinSplitKey {
-        split_key_unique_identifiers: share_uids
+        unique_identifier: share_uids
             .iter()
             .map(|u| UniqueIdentifier::TextString(u.clone()))
             .collect(),
         object_type: expected_type,
-        split_key_method: SplitKeyMethod::XOR,
+        secret_data_type: None,
         attributes: None,
+        protection_storage_masks: None,
     };
     let resp = kms.join_split_key(req, &UserId::from(user)).await?;
     Ok(resp
@@ -1170,13 +1174,14 @@ async fn test_cross_key_share_mixing_rejected() -> KResult<()> {
     // Mixing A-1 (part 1) and B-2 (part 2): different part IDs so duplicate check
     // does not fire first; the cross-key source check must catch this.
     let mixed_req = JoinSplitKey {
-        split_key_unique_identifiers: vec![
+        unique_identifier: vec![
             UniqueIdentifier::TextString(shares_a[0].clone()),
             UniqueIdentifier::TextString(shares_b[1].clone()),
         ],
-        split_key_method: SplitKeyMethod::XOR,
         object_type: ObjectType::SymmetricKey,
+        secret_data_type: None,
         attributes: None,
+        protection_storage_masks: None,
     };
 
     let result = kms.join_split_key(mixed_req, &UserId::from(alice)).await;

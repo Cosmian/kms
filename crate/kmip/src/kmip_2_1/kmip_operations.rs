@@ -32,6 +32,7 @@ use crate::{
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
         kmip_types::{
             AttestationType, CryptographicUsageMask, Direction, KeyWrapType, RevocationReason,
+            SecretDataType,
         },
     },
     kmip_2_1::kmip_data_structures::{ProfileInformation, RNGParameters},
@@ -2014,27 +2015,38 @@ impl_display!(HashResponse, "HashResponse", {
 
 /// `CreateSplitKey`
 ///
-/// This operation requests the server to split an existing Managed Cryptographic Object
-/// into a number of parts, each of which MAY be stored as a managed Split Key object.
-/// The Split Key object SHALL contain the key value for one part of the split key.
+/// This operation requests the server to generate a new split key and register all the
+/// splits as individual new Managed Cryptographic Objects.  The request MAY contain the
+/// Unique Identifier of an existing key to split; if absent the server generates a new key.
 ///
-/// KMIP 2.1 specification §4.28
+/// KMIP 2.1 specification §6.1.10, Table 193
 /// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html`
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateSplitKey {
-    /// Unique identifier of the Managed Cryptographic Object to be split.
-    pub unique_identifier: UniqueIdentifier,
-    /// The number of parts the key is to be split into.
+    /// Determines the type of object to be created (the split key parts).
+    pub object_type: ObjectType,
+    /// The Unique Identifier of the key to be split.
+    /// Optional — if absent the server generates a new key and splits it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// The total number of parts the key is to be split into.
     pub split_key_parts: i32,
-    /// The minimum number of parts needed to reconstruct the key.
+    /// The minimum number of parts needed to reconstruct the entire key.
     pub split_key_threshold: i32,
     /// The method to be used to split the key.
     pub split_key_method: SplitKeyMethod,
+    /// Specifies desired object attributes for the newly created split key parts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<Attributes>,
+    /// Specifies all permissible Protection Storage Mask selections for the new objects.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
 impl_display!(CreateSplitKey, "CreateSplitKey", {
-    req unique_identifier,
+    req object_type,
+    opt unique_identifier,
     req split_key_parts,
     req split_key_threshold,
     req split_key_method,
@@ -2043,27 +2055,20 @@ impl_display!(CreateSplitKey, "CreateSplitKey", {
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateSplitKeyResponse {
-    /// The Unique Identifier of the original key being split.
-    pub unique_identifier: UniqueIdentifier,
-    /// The Unique Identifiers of the split key share objects created.
-    #[serde(
-        rename = "PrivateKeyUniqueIdentifier",
-        skip_serializing_if = "Vec::is_empty",
-        default
-    )]
-    pub split_key_unique_identifiers: Vec<UniqueIdentifier>,
+    /// The Unique Identifiers of all newly created split key share objects.
+    /// Per KMIP 2.1 §6.1.10, Table 194: Unique Identifier, Yes, MAY be repeated.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub unique_identifier: Vec<UniqueIdentifier>,
 }
 
-impl_display!(CreateSplitKeyResponse, "CreateSplitKeyResponse", {
-    req unique_identifier,
-});
+impl_display!(CreateSplitKeyResponse, "CreateSplitKeyResponse", {});
 
 /// `JoinSplitKey`
 ///
 /// This operation requests the server to join a number of Managed Split Key objects to
 /// reconstruct the original Managed Cryptographic Object.
 ///
-/// KMIP 2.1 specification §4.29
+/// KMIP 2.1 specification §6.1.27, Table 244
 /// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html`
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
@@ -2071,22 +2076,22 @@ pub struct JoinSplitKey {
     /// The type of object to construct from the parts.
     pub object_type: ObjectType,
     /// Unique identifiers of the split key share objects to join.
-    #[serde(
-        rename = "PrivateKeyUniqueIdentifier",
-        skip_serializing_if = "Vec::is_empty",
-        default
-    )]
-    pub split_key_unique_identifiers: Vec<UniqueIdentifier>,
-    /// The split key method that was used when the key was split.
-    pub split_key_method: SplitKeyMethod,
+    /// Per spec: Unique Identifier, Yes, MAY be repeated.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub unique_identifier: Vec<UniqueIdentifier>,
+    /// Determines which Secret Data type the Split Keys form (only when `object_type` is Secret Data).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secret_data_type: Option<SecretDataType>,
     /// Optional attributes for the reconstructed key object.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attributes: Option<Attributes>,
+    /// Specifies all permissible Protection Storage Mask selections for the new object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
 impl_display!(JoinSplitKey, "JoinSplitKey", {
     req object_type,
-    req split_key_method,
 });
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
