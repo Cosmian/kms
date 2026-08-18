@@ -38,11 +38,11 @@ spawned until the feature is explicitly enabled.
 When `audit.file.path` is omitted the file defaults to `<root-data-path>/audit.jsonl`.
 
 !!! warning "Not safe for multiple KMS instances sharing one file"
-    The audit file backend is designed for **one writer per file**. If you run multiple KMS
-    instances (horizontal scaling, Kubernetes replicas), each one needs its **own** audit file —
-    never point several instances at the same path on a shared volume. Only one instance will ever hold the
-    lock and write, so the others' events are effectively never recorded. A centralized,
-    multi-writer-safe audit trail is planned via a PostgreSQL backend.
+The audit file backend is designed for **one writer per file**. If you run multiple KMS
+instances (horizontal scaling, Kubernetes replicas), each one needs its **own** audit file —
+never point several instances at the same path on a shared volume. Only one instance will ever hold the
+lock and write, so the others' events are effectively never recorded. A centralized,
+multi-writer-safe audit trail is planned via a PostgreSQL backend.
 
 ---
 
@@ -52,6 +52,7 @@ When `audit.file.path` is omitted the file defaults to `<root-data-path>/audit.j
 | ----------------------------- | ------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--audit-enable`              | `KMS_AUDIT_ENABLE`              | `false`                        | Enable the audit pipeline. When `false` no file is created and no writer thread is spawned.                                                                                                                            |
 | `--audit-file-path`           | `KMS_AUDIT_FILE_PATH`           | `<root-data-path>/audit.jsonl` | Absolute path to the JSONL audit log file. Parent directories are created automatically on first write.                                                                                                                |
+| `--audit-file-max-size-bytes` | `KMS_AUDIT_FILE_MAX_SIZE_BYTES` | _(unlimited)_                  | Stops all further writes once the file reaches this many bytes. Omitted means unlimited. Must be > 0 when set. See [Audit file size cap](#audit-file-size-cap).                                                        |
 | `--audit-channel-capacity`    | `KMS_AUDIT_CHANNEL_CAPACITY`    | `4096`                         | Capacity of the bounded in-memory channel between request threads and the writer task. Each event is ≈ 500 B (≈ 2 MiB total at default).                                                                               |
 | `--audit-trusted-proxy-cidrs` | `KMS_AUDIT_TRUSTED_PROXY_CIDRS` | _(empty)_                      | Comma-separated CIDR blocks (e.g. `10.0.0.0/8,172.16.0.0/12`) of reverse proxies/load balancers allowed to set `client_ip` via `X-Forwarded-For`. See [Client IP and reverse proxies](#client-ip-and-reverse-proxies). |
 | `--audit-failure-mode`        | `KMS_AUDIT_FAILURE_MODE`        | `continue`                     | What to do when an event cannot be queued. `continue` — log the error, keep serving. `reject` — return HTTP 503. See [Audit failure mode](#audit-failure-mode).                                                        |
@@ -98,24 +99,48 @@ regulated environments requiring a complete audit trail).
 
 ---
 
+### Audit file size cap
+
+`--audit-file-max-size-bytes` (or `[audit.file] max_size_bytes` in TOML) stops the writer from
+appending to the audit file once it reaches the configured size. This is a **write-stop cap, not
+rotation or retention** — the writer never deletes, truncates, or rolls the file on its own.
+
+```toml
+[audit.file]
+max_size_bytes = 1073741824 # 1 GiB
+```
+
+Behavior:
+
+- Omitted (the default): unlimited, today's behavior.
+- The event that pushes the file to or past the cap is still persisted — only events **after**
+  that one are dropped (subject to `--audit-failure-mode`, exactly like a full channel or a dead
+  writer).
+- Once capped, the condition does **not** clear itself: an external process truncating or
+  rotating the file does not resume writing. The KMS must be restarted after the log is safely
+  remediated. KMS-aware rotation/reopen is a possible future improvement.
+- A `0` value is rejected at startup as a configuration error.
+
+---
+
 ## Event schema
 
 Each line in the JSONL file is a complete JSON object with the following fields:
 
-| Field         | Type                                     | Nullable | Description                                                                                                                          |
-| ------------- | ---------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `id`          | `integer`                                | No       | Monotonically increasing row counter, starting at 0.                                                                                 |
-| `timestamp`   | `string` (RFC 3339 / UTC)                | No       | Wall-clock time of the KMIP operation.                                                                                               |
-| `operation`   | `string`                                 | No       | KMIP operation name, e.g. `"Create"`, `"Encrypt"`, `"Destroy"`. Batch requests produce a `+`-joined name such as `"Create+Encrypt"`. |
-| `user`        | `string`                                 | No       | Authenticated username. `"unauthenticated"` when no identity was presented (e.g. 401 paths).                                         |
-| `object_uid`  | `string` or `null`                       | Yes      | KMIP `UniqueIdentifier` of the object involved. `null` when unavailable (e.g. failed auth, batch).                                   |
-| `algorithm`   | `string` or `null`                       | Yes      | Cryptographic algorithm, e.g. `"AES"`, `"RSA"`. `null` when the operation carries no algorithm.                                      |
-| `client_ip`   | `string` or `null`                       | Yes      | Source IP from `X-Forwarded-For` (if present) or the TCP peer address.                                                               |
-| `result`      | `"Success"` or `{"Failure": "<reason>"}` | No       | Outcome of the operation.                                                                                                            |
-| `duration_ms` | `integer`                                | No       | Wall-clock duration of the operation in milliseconds.                                                                                |
-| `details`     | `string` or `null`                       | Yes      | Structured JSON payload attached to synthetic recovery events (`audit:torn-write-recovered`, `audit:reanchor`). `null` for ordinary KMIP events.                                                                                     |
-| `prev_hash`   | `string` (64 hex chars)                  | No       | SHA-256 of the previous row's canonical bytes. All-zeros for the first row (`id = 0`).                                               |
-| `row_hash`    | `string` (64 hex chars)                  | No       | SHA-256 of this row's canonical bytes (including `prev_hash`).                                                                       |
+| Field         | Type                                     | Nullable | Description                                                                                                                                      |
+| ------------- | ---------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`          | `integer`                                | No       | Monotonically increasing row counter, starting at 0.                                                                                             |
+| `timestamp`   | `string` (RFC 3339 / UTC)                | No       | Wall-clock time of the KMIP operation.                                                                                                           |
+| `operation`   | `string`                                 | No       | KMIP operation name, e.g. `"Create"`, `"Encrypt"`, `"Destroy"`. Batch requests produce a `+`-joined name such as `"Create+Encrypt"`.             |
+| `user`        | `string`                                 | No       | Authenticated username. `"unauthenticated"` when no identity was presented (e.g. 401 paths).                                                     |
+| `object_uid`  | `string` or `null`                       | Yes      | KMIP `UniqueIdentifier` of the object involved. `null` when unavailable (e.g. failed auth, batch).                                               |
+| `algorithm`   | `string` or `null`                       | Yes      | Cryptographic algorithm, e.g. `"AES"`, `"RSA"`. `null` when the operation carries no algorithm.                                                  |
+| `client_ip`   | `string` or `null`                       | Yes      | Source IP from `X-Forwarded-For` (if present) or the TCP peer address.                                                                           |
+| `result`      | `"Success"` or `{"Failure": "<reason>"}` | No       | Outcome of the operation.                                                                                                                        |
+| `duration_ms` | `integer`                                | No       | Wall-clock duration of the operation in milliseconds.                                                                                            |
+| `details`     | `string` or `null`                       | Yes      | Structured JSON payload attached to synthetic recovery events (`audit:torn-write-recovered`, `audit:reanchor`). `null` for ordinary KMIP events. |
+| `prev_hash`   | `string` (64 hex chars)                  | No       | SHA-256 of the previous row's canonical bytes. All-zeros for the first row (`id = 0`).                                                           |
+| `row_hash`    | `string` (64 hex chars)                  | No       | SHA-256 of this row's canonical bytes (including `prev_hash`).                                                                                   |
 
 **Example event**:
 
@@ -166,13 +191,13 @@ resume. **The KMS always starts**, regardless of what it finds — see
 No condition found in the audit log — whether at the tail or anywhere in the middle of the
 file — ever prevents the KMS from starting. Recovery is routed by cause:
 
-| Condition                                              | What happens                                                                                                                                                         |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No file, or empty file                                   | Fresh chain starts at `id = 0`.                                                                                                                                       |
-| **Mid-chain tamper** — any row other than the last fails its own hash check or its link to the previous row | **Seal-and-roll** (below) — caught by the unconditional whole-chain scan that runs on every boot, not just a tail check.                                             |
-| Last row is valid but missing its trailing newline        | Resumes in place; the missing newline is repaired before the next event is appended.                                                                                  |
-| **Torn write** — an incomplete trailing row, but the row before it (or genesis) is valid | The incomplete fragment is truncated away; an `audit:torn-write-recovered` event is appended recording the bytes discarded. The chain continues in place — no data loss beyond the incomplete row, which was never durably committed. |
-| **Tampered last row**, or structural garbage with no trustworthy fallback row | **Seal-and-roll**: the corrupted file is renamed aside as `<name>.<UTC-timestamp>.<8-hex>.corrupt.<ext>` — kept as forensic evidence, never modified or deleted by the KMS. A fresh chain starts at the original path with an `audit:reanchor` event as row 0, recording the sealed file's name, size, and SHA-256 in its `details` field. |
+| Condition                                                                                                   | What happens                                                                                                                                                                                                                                                                                                                               |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| No file, or empty file                                                                                      | Fresh chain starts at `id = 0`.                                                                                                                                                                                                                                                                                                            |
+| **Mid-chain tamper** — any row other than the last fails its own hash check or its link to the previous row | **Seal-and-roll** (below) — caught by the unconditional whole-chain scan that runs on every boot, not just a tail check.                                                                                                                                                                                                                   |
+| Last row is valid but missing its trailing newline                                                          | Resumes in place; the missing newline is repaired before the next event is appended.                                                                                                                                                                                                                                                       |
+| **Torn write** — an incomplete trailing row, but the row before it (or genesis) is valid                    | The incomplete fragment is truncated away; an `audit:torn-write-recovered` event is appended recording the bytes discarded. The chain continues in place — no data loss beyond the incomplete row, which was never durably committed.                                                                                                      |
+| **Tampered last row**, or structural garbage with no trustworthy fallback row                               | **Seal-and-roll**: the corrupted file is renamed aside as `<name>.<UTC-timestamp>.<8-hex>.corrupt.<ext>` — kept as forensic evidence, never modified or deleted by the KMS. A fresh chain starts at the original path with an `audit:reanchor` event as row 0, recording the sealed file's name, size, and SHA-256 in its `details` field. |
 
 A torn write is the common case after an ungraceful restart (OOM kill, pod eviction, power
 loss) and is expected to happen periodically at fleet scale — it does not indicate tampering.
