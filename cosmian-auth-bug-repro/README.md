@@ -49,9 +49,9 @@ Standalone, self-contained reproduction of two bugs found in
 
 ```bash
 cd cosmian-auth-bug-repro
-./scripts/setup.sh        # generates TLS/JWT keys, starts the stack
-./scripts/reproduce.sh    # runs the full repro, prints PASS/FAIL per step
-./scripts/teardown.sh     # stops everything, removes generated keys
+./test-scripts/setup.sh        # generates TLS/JWT keys, starts the stack
+./test-scripts/reproduce.sh    # runs the full repro, prints PASS/FAIL per step
+./test-scripts/teardown.sh     # stops everything, removes generated keys
 ```
 
 Expected output of `reproduce.sh` (abridged):
@@ -143,5 +143,5 @@ verbatim, with no transformation.
 ## Cleaning up
 
 ```bash
-./scripts/teardown.sh
+./test-scripts/teardown.sh
 ```

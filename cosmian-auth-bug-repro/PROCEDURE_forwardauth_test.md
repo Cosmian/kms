@@ -107,7 +107,7 @@ Runs the full flow (route setup, admin login, realm + non-admin user creation,
 non-admin login, and the forward-auth-protected request) and prints PASS/FAIL:
 
 ```bash
-bash scripts/verify_fixed.sh
+bash test-scripts/verify_fixed.sh
 ```
 
 Expected final line:
