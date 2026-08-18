@@ -78,6 +78,10 @@ hostname = "0.0.0.0"
 # path = "/var/lib/cosmian/kms/audit.jsonl"
 # channel_capacity = 4096
 #
+# Stops all further writes once the file reaches this many bytes. Omitted means
+# unlimited. Write-stop cap only — never rotates or deletes the file.
+# max_size_bytes = 1073741824
+#
 # Only uncomment trusted_proxy_cidrs if the KMS sits behind a reverse proxy or
 # load balancer. Leave it unset otherwise (client_ip then always reflects the
 # real TCP peer address).
