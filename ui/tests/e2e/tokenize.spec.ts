@@ -116,7 +116,7 @@ test.describe("Tokenize — Word Mask", () => {
             "Confidential: contains -secret- documents",
         );
         // Add words using tags Select
-        const tagsInput = page.getByTestId("tags-select").locator("input");
+        const tagsInput = page.locator("#words");
         await tagsInput.click();
         await tagsInput.fill("confidential");
         await tagsInput.press("Enter");
@@ -137,7 +137,7 @@ test.describe("Tokenize — Word Tokenize", () => {
 
         await gotoAndWait(page, "/ui/tokenize/word-tokenize");
         await page.fill('textarea[placeholder="e.g. Alice sent the report to Alice and Bob"]', "Alice sent the report to Alice");
-        const tagsInput = page.getByTestId("tags-select").locator("input");
+        const tagsInput = page.locator("#words");
         await tagsInput.click();
         await tagsInput.fill("Alice");
         await tagsInput.press("Enter");

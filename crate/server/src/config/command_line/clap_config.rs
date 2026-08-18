@@ -9,9 +9,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::taggin
 use serde::{Deserialize, Serialize};
 
 use super::{
-    GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig,
-    MainDBConfig, WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
-    ui_config::UiConfig, vault_config::VaultConfig,
+    AuditConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, JwksEndpointConfig,
+    KmipPolicyConfig, MainDBConfig, WorkspaceConfig, logging::LoggingConfig,
+    secret_backends::SecretBackendConfig, ui_config::UiConfig, vault_config::VaultConfig,
 };
 use crate::{
     config::{AuthVerifierConfig, AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -77,6 +77,7 @@ impl Default for ClapConfig {
             jwks_endpoint: JwksEndpointConfig::default(),
             secret_backends: SecretBackendConfig::default(),
             vault: VaultConfig::default(),
+            audit: AuditConfig::default(),
         }
     }
 }
@@ -252,6 +253,10 @@ pub struct ClapConfig {
     #[command(flatten)]
     #[serde(default)]
     pub vault: VaultConfig,
+
+    #[clap(flatten)]
+    #[serde(rename = "audit")]
+    pub audit: AuditConfig,
 }
 
 impl ClapConfig {
@@ -738,6 +743,7 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
+        let x = x.field("audit", &self.audit);
 
         x.finish()
     }

@@ -83,12 +83,13 @@ const AttributeGetForm: React.FC = () => {
                     </Card>
 
                     <Card title={t("attributeGet.cardSelection")}>
-                        <Form.Item
-                            name="selected_attributes"
-                            label={t("form.attributeNames")}
-                            help={t("form.attributeNamesHelp")}
-                        >
-                            <Select mode="multiple" data-testid="attribute-name-select" style={{ width: "100%" }} placeholder={t("form.selectAttribute")}>
+                        <Form.Item name="selected_attributes" label={t("form.attributeNames")} help={t("form.attributeNamesHelp")}>
+                            <Select
+                                mode="multiple"
+                                data-testid="attribute-name-select"
+                                style={{ width: "100%" }}
+                                placeholder={t("form.selectAttribute")}
+                            >
                                 {ATTRIBUTE_REGISTRY.map((attribute) => (
                                     <Option key={attribute.value} value={attribute.value}>
                                         {attrLabel(attribute.value, attribute.label)}

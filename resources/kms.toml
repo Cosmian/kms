@@ -60,15 +60,28 @@ hostname = "0.0.0.0"
 # WARNING: this endpoint is intentionally unauthenticated — any client can read
 # the listed public keys.  Enable only when you want third parties to verify
 # JWT signatures or discover your public keys.
-[jwks_endpoint]
-# Enable the /.well-known/jwks.json endpoint (default: false).
+
+#[jwks_endpoint]
 # jwks_endpoint_enabled = false
-# Maximum number of public keys returned per response (default: 50).
+
 # Responses exceeding this limit include X-JWKS-Truncated: true.
 # jwks_endpoint_max_keys = 50
+
 # Automatically tag key pairs created via POST /v1/crypto/keys with "jwks"
-# so they appear in the endpoint immediately (default: true).
 # jwks_endpoint_auto_tag = true
+
+# ── Audit logging ────────────────────────────────────────────────────────────
+# [audit]
+# enabled = true
+#
+# [audit.file]
+# path = "/var/lib/cosmian/kms/audit.jsonl"
+# channel_capacity = 4096
+#
+# Only uncomment trusted_proxy_cidrs if the KMS sits behind a reverse proxy or
+# load balancer. Leave it unset otherwise (client_ip then always reflects the
+# real TCP peer address).
+# trusted_proxy_cidrs = ["10.0.0.0/8"]
 
 [db]
 database_type = "redis-findex"

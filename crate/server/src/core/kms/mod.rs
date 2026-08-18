@@ -42,7 +42,7 @@ static GLOBAL_HSMS: OnceCell<Vec<Arc<dyn HSM + Send + Sync>>> = OnceCell::const_
 
 use crate::{
     config::{OpenTelemetryConfig, ServerParams},
-    core::OtelMetrics,
+    core::{OtelMetrics, audit::AuditFileStore},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -90,6 +90,9 @@ pub struct KMS {
 
     /// OTLP metrics collector (if enabled)
     pub(crate) metrics: Option<Arc<OtelMetrics>>,
+
+    /// Audit file store (if audit logging is enabled)
+    pub(crate) audit_store: Option<AuditFileStore>,
 
     /// Optional HSM instance for PKCS#11 operations.
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
@@ -199,6 +202,7 @@ impl KMS {
             // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
             hsm: hsm_instances.into_iter().next(),
             metrics,
+            audit_store: Self::create_audit_store(&server_params)?,
         })
     }
 
@@ -276,6 +280,16 @@ impl KMS {
                 .build();
 
             Ok(Some(Arc::new(OtelMetrics::new(meter_provider)?)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Starts the audit file store if audit logging is configured.
+    fn create_audit_store(server_params: &ServerParams) -> KResult<Option<AuditFileStore>> {
+        if let Some(ref path) = server_params.audit_file_path {
+            let store = AuditFileStore::start(path, server_params.audit_channel_capacity)?;
+            Ok(Some(store))
         } else {
             Ok(None)
         }
