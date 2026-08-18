@@ -221,11 +221,17 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
 
 /// `JoinSplitKey` operation handler.
 ///
-/// Reconstructs a key from all n split-key share objects (XOR n-of-n) and stores the
-/// result as a new Managed Cryptographic Object owned by the requesting user.
+/// Reconstructs a key from all n split-key share objects (XOR n-of-n) and **always**
+/// stores the result as a new Managed Cryptographic Object owned by the requesting user.
 ///
-/// This operation is purely for key reconstruction. To activate the Crypto Officer
-/// role via a split-key ceremony, use `POST /access/crypto_officer/ceremony/activate`.
+/// When all shares carry the `x-cosmian-crypto-officer-ceremony` vendor attribute
+/// **and** `crypto_officer_require_ceremony = true`, the operation additionally
+/// auto-triggers ceremony activation (writing to `crypto_officer_activations`).
+/// The reconstructed key is stored unconditionally before the activation side-effect —
+/// activation failure is non-fatal and leaves the stored key intact.
+///
+/// The `POST /access/crypto_officer/ceremony/activate` REST endpoint performs
+/// activation-only (no key storage) and is kept for CLI backward compatibility.
 pub(crate) async fn join_split_key(
     kms: &KMS,
     request: JoinSplitKey,
@@ -404,9 +410,11 @@ fn extract_share_bytes(key_block: &KeyBlock) -> KResult<Vec<u8>> {
 /// - Retrieves and validates all shares.
 /// - Verifies all shares carry `x-cosmian-crypto-officer-ceremony`.
 /// - Verifies dual-control constraints (unique owners, assembler ≠ share owner, all CO candidates).
-/// - Reconstructs the ceremony secret via XOR **in RAM only**.
+/// - Reconstructs the ceremony secret via XOR **in RAM only** (for key-hash verification).
 /// - Persists the `crypto_officer_activations` record.
-/// - The secret is zeroized when the function returns (ADP-20 — never stored).
+/// - The secret reconstructed *within this function* is zeroized before returning —
+///   this function does **not** store a key object. When called from [`join_split_key`],
+///   the key is already stored by the caller before this function runs.
 ///
 /// Returns `Ok(())` on successful activation.
 pub(crate) async fn perform_crypto_officer_ceremony_activation(
