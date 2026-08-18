@@ -26,6 +26,21 @@ pub struct AuditFileConfig {
     )]
     #[serde(rename = "path")]
     pub audit_file_path: Option<PathBuf>,
+
+    /// Stops all further writes once the audit file reaches this many bytes.
+    ///
+    /// The event that pushes the file to or past this size is still persisted; every event
+    /// after that is dropped (subject to `--audit-failure-mode`) until the log is remediated
+    /// and the KMS is restarted.
+    ///
+    /// Omitted (the default) means unlimited. Must be > 0 when set.
+    #[clap(
+        long = "audit-file-max-size-bytes",
+        env = "KMS_AUDIT_FILE_MAX_SIZE_BYTES",
+        verbatim_doc_comment
+    )]
+    #[serde(rename = "max_size_bytes")]
+    pub audit_file_max_size_bytes: Option<u64>,
 }
 
 /// Configuration for the structured audit event pipeline.
@@ -125,4 +140,36 @@ pub enum AuditFailureMode {
 /// Serde default helper for `AuditConfig::audit_channel_capacity`.
 const fn default_channel_capacity() -> usize {
     DEFAULT_AUDIT_CHANNEL_CAPACITY
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::AuditFileConfig;
+
+    /// `max_size_bytes` must round-trip through TOML and only appear when set —
+    /// `None` (the default, unlimited) is omitted like every other `Option` field
+    /// in this config (see `ClapConfig`'s own serialization test for the pattern).
+    #[test]
+    fn max_size_bytes_appears_in_toml_only_when_set() {
+        let unset = AuditFileConfig::default();
+        let unset_toml = toml::to_string_pretty(&unset).expect("must serialize");
+        assert!(
+            !unset_toml.contains("max_size_bytes"),
+            "unset max_size_bytes must be omitted, got:\n{unset_toml}"
+        );
+
+        let set = AuditFileConfig {
+            audit_file_max_size_bytes: Some(1_073_741_824),
+            ..AuditFileConfig::default()
+        };
+        let set_toml = toml::to_string_pretty(&set).expect("must serialize");
+        assert!(
+            set_toml.contains("max_size_bytes = 1073741824"),
+            "set max_size_bytes must appear in TOML, got:\n{set_toml}"
+        );
+
+        let parsed: AuditFileConfig = toml::from_str(&set_toml).expect("must round-trip");
+        assert_eq!(parsed.audit_file_max_size_bytes, Some(1_073_741_824));
+    }
 }

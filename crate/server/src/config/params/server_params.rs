@@ -248,6 +248,11 @@ pub struct ServerParams {
     /// `KMS_AUDIT_CHANNEL_CAPACITY`.  Must be ≥ 1.
     pub audit_channel_capacity: usize,
 
+    /// When `Some`, the audit writer stops writing once the file reaches this many
+    /// bytes (see `AuditFileConfig::audit_file_max_size_bytes`). `None` (the default)
+    /// is unlimited. Must be > 0 when set.
+    pub audit_file_max_size_bytes: Option<u64>,
+
     /// Trusted reverse-proxy CIDR blocks.  `X-Forwarded-For` is only used when
     /// the direct TCP peer address falls within one of these ranges.
     pub audit_trusted_proxy_cidrs: Vec<IpNet>,
@@ -493,6 +498,14 @@ impl ServerParams {
                 None
             },
             audit_channel_capacity: conf.audit.audit_channel_capacity,
+            audit_file_max_size_bytes: match conf.audit.file.audit_file_max_size_bytes {
+                Some(0) => {
+                    return Err(KmsError::NotSupported(
+                        "audit_file_max_size_bytes must be greater than 0 when set".to_owned(),
+                    ));
+                }
+                other => other,
+            },
             audit_trusted_proxy_cidrs: conf.audit.audit_trusted_proxy_cidrs,
             audit_failure_mode: conf.audit.audit_failure_mode,
         };
@@ -857,6 +870,7 @@ impl fmt::Debug for ServerParams {
         }
         debug_struct.field("audit_file_path", &self.audit_file_path);
         debug_struct.field("audit_channel_capacity", &self.audit_channel_capacity);
+        debug_struct.field("audit_file_max_size_bytes", &self.audit_file_max_size_bytes);
         debug_struct.field("audit_trusted_proxy_cidrs", &self.audit_trusted_proxy_cidrs);
         debug_struct.field("audit_failure_mode", &self.audit_failure_mode);
 
@@ -889,5 +903,42 @@ impl fmt::Debug for ServerParams {
         }
 
         debug_struct.finish()
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::ServerParams;
+    use crate::tests::test_utils::https_clap_config;
+
+    /// `max_size_bytes = 0` is a configuration mistake (it would mean either
+    /// "unlimited" or "block everything", ambiguously), so it must be rejected
+    /// at config/parameter construction time rather than silently accepted.
+    #[test]
+    fn audit_file_max_size_bytes_zero_is_rejected() {
+        let mut conf = https_clap_config();
+        conf.audit.file.audit_file_max_size_bytes = Some(0);
+
+        let err = ServerParams::try_from(conf).expect_err("max_size_bytes = 0 must be rejected");
+        assert!(
+            err.to_string()
+                .contains("audit_file_max_size_bytes must be greater than 0"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    /// `None` (unset) and any positive value must both build successfully.
+    #[test]
+    fn audit_file_max_size_bytes_none_or_positive_is_accepted() {
+        let mut conf = https_clap_config();
+        conf.audit.file.audit_file_max_size_bytes = None;
+        let params = ServerParams::try_from(conf).expect("None must be accepted");
+        assert_eq!(params.audit_file_max_size_bytes, None);
+
+        let mut conf = https_clap_config();
+        conf.audit.file.audit_file_max_size_bytes = Some(1_073_741_824);
+        let params = ServerParams::try_from(conf).expect("a positive value must be accepted");
+        assert_eq!(params.audit_file_max_size_bytes, Some(1_073_741_824));
     }
 }

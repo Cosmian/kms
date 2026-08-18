@@ -62,10 +62,32 @@ enum WriterMsg {
     Flush(oneshot::Sender<()>),
 }
 
+/// Cross-task state for the optional `max_size_bytes` write-stop cap.
+///
+/// `enqueue()` reads `size_limit_reached` as a fast, non-blocking pre-check so a
+/// caller doesn't bother queueing an event the writer will only ever discard; the
+/// writer task is the sole owner of the file and the only one that ever sets it.
+/// `max_size_bytes` is immutable for the store's lifetime, carried alongside so
+/// the writer doesn't need it threaded through as a separate argument everywhere.
+#[derive(Default)]
+struct AuditWriteState {
+    max_size_bytes: Option<u64>,
+    size_limit_reached: std::sync::atomic::AtomicBool,
+}
+
+impl AuditWriteState {
+    const fn new(max_size_bytes: Option<u64>) -> Self {
+        Self {
+            max_size_bytes,
+            size_limit_reached: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+}
+
 /// A cheaply cloneable handle to the audit writer task.
 ///
 /// Cloning this value is O(1) — `tokio::sync::mpsc::Sender` is already backed
-/// by an internal `Arc`, and `dropped_count` is an `Arc<AtomicU64>`.
+/// by an internal `Arc`, and `dropped_count`/`write_state` are themselves `Arc`s.
 /// All clones share the same underlying channel and writer task.
 #[derive(Clone)]
 pub(crate) struct AuditFileStore {
@@ -73,6 +95,8 @@ pub(crate) struct AuditFileStore {
     /// Counts events dropped because the channel was full.
     /// Checked by the writer loop to emit a sentinel event before the next real event.
     dropped_count: Arc<AtomicU64>,
+    /// Set by the writer once the configured `max_size_bytes` cap is reached.
+    write_state: Arc<AuditWriteState>,
 }
 
 impl AuditFileStore {
@@ -83,6 +107,9 @@ impl AuditFileStore {
     /// acquired the lock or opened the file. `channel_capacity` is the number of events
     /// that can be buffered before new events are dropped. Must be ≥ 1.
     ///
+    /// `max_size_bytes`, when `Some`, stops all writes once the file reaches that many
+    /// bytes — see `AuditFileConfig::audit_file_max_size_bytes`. `None` is unlimited.
+    ///
     /// Recovery, locking, and opening all happen inside the spawned writer task — see
     /// `writer_supervisor`. This call never blocks on file I/O or lock contention.
     ///
@@ -90,7 +117,11 @@ impl AuditFileStore {
     /// Returns an error only if `channel_capacity` is 0 — a pure configuration mistake,
     /// not a runtime condition. Every other fault (I/O, lock contention, log corruption)
     /// is handled inside the writer task without aborting startup; see `writer_supervisor`.
-    pub(crate) fn start(path: &Path, channel_capacity: usize) -> KResult<Self> {
+    pub(crate) fn start_with_max_size(
+        path: &Path,
+        channel_capacity: usize,
+        max_size_bytes: Option<u64>,
+    ) -> KResult<Self> {
         if channel_capacity == 0 {
             return Err(KmsError::ServerError(
                 "audit: channel_capacity must be at least 1".to_owned(),
@@ -100,15 +131,18 @@ impl AuditFileStore {
         let (tx, rx) = mpsc::channel::<WriterMsg>(channel_capacity);
         let dropped_count = Arc::new(AtomicU64::new(0));
         let dropped_count_for_writer = Arc::clone(&dropped_count);
+        let write_state = Arc::new(AuditWriteState::new(max_size_bytes));
+        let write_state_for_writer = Arc::clone(&write_state);
         let path = path.to_path_buf();
 
         tokio::spawn(async move {
-            writer_supervisor(path, rx, dropped_count_for_writer).await;
+            writer_supervisor(path, rx, dropped_count_for_writer, write_state_for_writer).await;
         });
 
         Ok(Self {
             sender: tx,
             dropped_count,
+            write_state,
         })
     }
 
@@ -118,11 +152,19 @@ impl AuditFileStore {
     /// `operation = "audit:eviction"` sentinel that joins the hash chain — making drops
     /// detectable by `ckms audit verify` and compliance tools.
     ///
+    /// If the writer has reported that the configured `max_size_bytes` cap was reached,
+    /// every draft is rejected immediately (same observable effect as a full channel) —
+    /// the writer will never write them anyway.
+    ///
     /// **Note**: for batch requests, `try_send` is called per-draft sequentially.
     /// If the channel fills mid-batch, early drafts are persisted and later ones are
     /// dropped — the sentinel will account for them on the next successful enqueue.
     /// Returns `true` if every draft was successfully queued, `false` if any was dropped.
     pub(crate) fn enqueue(&self, drafts: impl IntoIterator<Item = AuditEventDraft>) -> bool {
+        if self.write_state.size_limit_reached.load(Ordering::Relaxed) {
+            return false;
+        }
+
         let mut all_queued = true;
         for draft in drafts {
             match self.sender.try_send(WriterMsg::Event(Box::new(draft))) {
@@ -628,6 +670,15 @@ trait AuditSink {
     fn final_sync(&mut self) -> std::io::Result<()> {
         Ok(())
     }
+
+    /// Current on-disk length in bytes, used to enforce `max_size_bytes`.
+    ///
+    /// Only the real `std::fs::File` sink can answer this meaningfully; mock sinks
+    /// used for fault-injection tests never configure a size cap, so the default
+    /// (`Ok(0)`) is never exercised by them.
+    fn current_len(&self) -> std::io::Result<u64> {
+        Ok(0)
+    }
 }
 
 impl AuditSink for std::fs::File {
@@ -646,6 +697,10 @@ impl AuditSink for std::fs::File {
 
     fn final_sync(&mut self) -> std::io::Result<()> {
         self.sync_data()
+    }
+
+    fn current_len(&self) -> std::io::Result<u64> {
+        Ok(self.metadata()?.len())
     }
 }
 
@@ -847,7 +902,7 @@ fn recover_and_open(path: &Path) -> KResult<(std::fs::File, i64, [u8; 32])> {
                 } else {
                     debug!(
                         "AuditFileStore: resuming at id={next_id}, prev_hash={}",
-                        hex::encode(&prev_hash[..8]) // first 8 bytes (16 hex chars) sufficient for diagnostics
+                        hex::encode(&prev_hash[..8]) /* first 8 bytes (16 hex chars) sufficient for diagnostics */
                     );
                 }
                 (next_id, prev_hash)
@@ -898,6 +953,7 @@ async fn writer_supervisor(
     path: PathBuf,
     rx: mpsc::Receiver<WriterMsg>,
     dropped_count: Arc<AtomicU64>,
+    write_state: Arc<AuditWriteState>,
 ) {
     let lock_path = lock_file_path(&path);
     let mut lock_contended_logged = false;
@@ -936,7 +992,54 @@ async fn writer_supervisor(
         }
     };
 
-    writer_loop(sink, next_id, prev_hash, rx, dropped_count).await;
+    writer_loop(
+        sink,
+        next_id,
+        prev_hash,
+        rx,
+        dropped_count,
+        write_state,
+        &path,
+    )
+    .await;
+}
+
+/// Minimum interval between "still capped" debug log lines while blocked events
+/// keep arriving — avoids flooding the log once `max_size_bytes` is reached.
+const CAPPED_DEBUG_LOG_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Checks `sink`'s current on-disk length against `write_state.max_size_bytes` and
+/// updates `write_state` on the first transition into the capped state (logging
+/// once). Called right after the writer opens/recovers the file (an already-
+/// oversized log must block immediately) and again after every successful write
+/// (a write that crosses the cap is allowed to land, then blocks everything after
+/// it).
+fn enforce_size_cap<S: AuditSink>(sink: &S, write_state: &AuditWriteState, path: &Path) {
+    let Some(cap) = write_state.max_size_bytes else {
+        return;
+    };
+    let len = match sink.current_len() {
+        Ok(len) => len,
+        Err(e) => {
+            error!(
+                "AuditFileStore: cannot stat audit log {} ({e})",
+                path.display()
+            );
+            return;
+        }
+    };
+    if len < cap {
+        return;
+    }
+    let was_already_capped = write_state.size_limit_reached.swap(true, Ordering::Relaxed);
+    if !was_already_capped {
+        error!(
+            "AuditFileStore: audit log {} reached its configured max_size_bytes cap \
+             ({len} bytes >= {cap}) — audit writing is blocked until the log is safely \
+             remediated and the KMS is restarted",
+            path.display()
+        );
+    }
 }
 
 /// The background writer task.  Sole owner of the sink, the id counter, and
@@ -950,7 +1053,12 @@ async fn writer_loop<S: AuditSink>(
     mut prev_hash: [u8; 32],
     mut rx: mpsc::Receiver<WriterMsg>,
     dropped_count: Arc<AtomicU64>,
+    write_state: Arc<AuditWriteState>,
+    path: &Path,
 ) -> S {
+    enforce_size_cap(&sink, &write_state, path);
+    let mut last_capped_log: Option<std::time::Instant> = None;
+
     while let Some(msg) = rx.recv().await {
         let draft = match msg {
             WriterMsg::Event(draft) => *draft,
@@ -961,6 +1069,21 @@ async fn writer_loop<S: AuditSink>(
                 continue;
             }
         };
+
+        if write_state.size_limit_reached.load(Ordering::Relaxed) {
+            let now = std::time::Instant::now();
+            let should_log = last_capped_log
+                .is_none_or(|logged_at| now.duration_since(logged_at) >= CAPPED_DEBUG_LOG_INTERVAL);
+            if should_log {
+                debug!(
+                    "AuditFileStore: audit log {} is at its max_size_bytes cap — event dropped",
+                    path.display()
+                );
+                last_capped_log = Some(now);
+            }
+            continue;
+        }
+
         // Emit a sentinel before the real event if any drops occurred since the last write.
         let n_dropped = dropped_count.swap(0, Ordering::Relaxed);
         if n_dropped > 0 {
@@ -968,6 +1091,7 @@ async fn writer_loop<S: AuditSink>(
             next_id = write_draft_to_chain(&mut sink, sentinel, next_id, &mut prev_hash);
         }
         next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut prev_hash);
+        enforce_size_cap(&sink, &write_state, path);
     }
 
     // Channel closed (sender dropped on graceful shutdown): ensure all written
@@ -1111,6 +1235,31 @@ pub(crate) fn make_failure_draft(
     }
 }
 
+/// Test-only constructors on `AuditFileStore`.
+#[cfg(test)]
+impl AuditFileStore {
+    /// Same as [`Self::start_with_max_size`] with no file-size cap (unlimited, the
+    /// current/default behavior). Only production code goes through
+    /// `start_with_max_size` directly (it always has an `Option<u64>` cap to pass,
+    /// even when it's `None`); this convenience wrapper is kept for the many tests
+    /// that don't care about the cap at all.
+    pub(crate) fn start(path: &Path, channel_capacity: usize) -> KResult<Self> {
+        Self::start_with_max_size(path, channel_capacity, None)
+    }
+
+    /// Creates a store whose channel receiver is immediately dropped.
+    /// Every `try_send` returns `TrySendError::Closed` so `enqueue()` always
+    /// returns `false` — no race with a live writer draining the channel.
+    pub(crate) fn new_disconnected() -> Self {
+        let (sender, _rx) = mpsc::channel::<WriterMsg>(1);
+        Self {
+            sender,
+            dropped_count: Arc::new(AtomicU64::new(0)),
+            write_state: Arc::new(AuditWriteState::default()),
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
@@ -1130,7 +1279,8 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::{
-        AuditFileStore, AuditSink, WriterMsg, lock_file_path, make_success_draft, writer_loop,
+        AuditFileStore, AuditSink, AuditWriteState, WriterMsg, lock_file_path, make_success_draft,
+        writer_loop,
     };
 
     /// Small channel capacity used in all tests.  Large enough for the ≤5-event
@@ -1716,6 +1866,126 @@ mod tests {
         std::fs::remove_file(&path).ok();
     }
 
+    // ── max_size_bytes write-stop cap ─────────────────────────────────────
+
+    /// `None` (the default) stays unlimited: many events past what would be a tiny
+    /// cap are all written, proving the cap machinery is fully opt-in.
+    #[tokio::test]
+    async fn size_cap_none_is_unlimited() {
+        let path = temp_path("size_cap_none");
+        std::fs::remove_file(&path).ok();
+
+        let store = AuditFileStore::start_with_max_size(&path, TEST_CAPACITY, None).unwrap();
+        for _ in 0..5 {
+            store.enqueue(std::iter::once(make_draft()));
+        }
+        store.flush().await;
+        drop(store);
+
+        let events = read_events(&path);
+        assert_eq!(events.len(), 5);
+        assert_valid_chain(&events);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// A file already at (or past) the configured cap when the writer starts must
+    /// accept no new event at all — the cap is enforced before any queued event is
+    /// processed, not just after a write.
+    #[tokio::test]
+    async fn size_cap_already_reached_blocks_all_writes() {
+        let path = temp_path("size_cap_already_reached");
+        std::fs::remove_file(&path).ok();
+
+        // Baseline: 2 valid events, unbounded.
+        {
+            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            store.enqueue(std::iter::once(make_draft()));
+            store.enqueue(std::iter::once(make_draft()));
+            store.flush().await;
+        }
+        let baseline = read_events(&path);
+        assert_eq!(baseline.len(), 2);
+        let cap = std::fs::metadata(&path).unwrap().len();
+
+        // Cap set to exactly the current file length: already at (>=) the cap.
+        let store = AuditFileStore::start_with_max_size(&path, TEST_CAPACITY, Some(cap)).unwrap();
+        // Synchronize on the writer having performed its startup cap check.
+        store.flush().await;
+
+        let queued = store.enqueue(std::iter::once(make_draft()));
+        assert!(
+            !queued,
+            "enqueue() must report false once the file is already at its size cap"
+        );
+        store.flush().await;
+        drop(store);
+
+        let events = read_events(&path);
+        assert_eq!(
+            events.len(),
+            2,
+            "no new event may be written when the file starts already at the cap"
+        );
+        assert_valid_chain(&events);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// The event that pushes the file to/past the cap is still persisted (the "one
+    /// final event may cross" rule); every event enqueued afterward is rejected and
+    /// never written. The chain stays valid through the crossing event.
+    #[tokio::test]
+    async fn size_cap_allows_crossing_event_then_blocks_further_writes() {
+        let path = temp_path("size_cap_crossing");
+        std::fs::remove_file(&path).ok();
+
+        // Baseline: 3 valid events, unbounded.
+        {
+            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            for _ in 0..3 {
+                store.enqueue(std::iter::once(make_draft()));
+            }
+            store.flush().await;
+        }
+        let len_before = std::fs::metadata(&path).unwrap().len();
+        // A single event is always far more than 1 byte, so the very next write is
+        // guaranteed to cross this cap — regardless of the exact per-event
+        // serialized length, which can vary slightly (e.g. timestamp width).
+        let cap = len_before + 1;
+
+        // `len_before < cap`: the writer must not be capped on startup.
+        let store = AuditFileStore::start_with_max_size(&path, TEST_CAPACITY, Some(cap)).unwrap();
+        store.enqueue(std::iter::once(make_draft()));
+        store.flush().await;
+
+        let events_after_crossing = read_events(&path);
+        assert_eq!(
+            events_after_crossing.len(),
+            4,
+            "the event that crosses the cap must still be persisted"
+        );
+        assert_valid_chain(&events_after_crossing);
+
+        let queued = store.enqueue(std::iter::once(make_draft()));
+        assert!(
+            !queued,
+            "enqueue() must report false once the cap has been crossed"
+        );
+        store.flush().await;
+        drop(store);
+
+        let events_final = read_events(&path);
+        assert_eq!(
+            events_final.len(),
+            4,
+            "no event may be written once the cap has been crossed"
+        );
+        assert_valid_chain(&events_final);
+
+        std::fs::remove_file(&path).ok();
+    }
+
     // ── Fault injection on the write path ────────────────────────────────
 
     /// A mock `AuditSink` that fails `write_event` for calls whose 0-based
@@ -1760,7 +2030,18 @@ mod tests {
         // Fail exactly the 3rd write call (0-based index 2).
         let sink = FaultySink::new(|idx| idx == 2);
 
-        let handle = tokio::spawn(writer_loop(sink, 0, [0_u8; 32], rx, dropped_count));
+        let handle = tokio::spawn(async move {
+            writer_loop(
+                sink,
+                0,
+                [0_u8; 32],
+                rx,
+                dropped_count,
+                Arc::new(AuditWriteState::default()),
+                Path::new("faulty_sink_test"),
+            )
+            .await
+        });
 
         for _ in 0..5 {
             tx.send(WriterMsg::Event(Box::new(make_draft())))
@@ -1793,7 +2074,18 @@ mod tests {
         let dropped_count = Arc::new(AtomicU64::new(0));
         let sink = FaultySink::new(|_| true);
 
-        let handle = tokio::spawn(writer_loop(sink, 0, [0_u8; 32], rx, dropped_count));
+        let handle = tokio::spawn(async move {
+            writer_loop(
+                sink,
+                0,
+                [0_u8; 32],
+                rx,
+                dropped_count,
+                Arc::new(AuditWriteState::default()),
+                Path::new("faulty_sink_test"),
+            )
+            .await
+        });
 
         for _ in 0..3 {
             tx.send(WriterMsg::Event(Box::new(make_draft())))
@@ -1807,20 +2099,5 @@ mod tests {
             sink.events.is_empty(),
             "no event should be persisted when every write fails"
         );
-    }
-}
-
-/// Test-only constructors on `AuditFileStore`.
-#[cfg(test)]
-impl AuditFileStore {
-    /// Creates a store whose channel receiver is immediately dropped.
-    /// Every `try_send` returns `TrySendError::Closed` so `enqueue()` always
-    /// returns `false` — no race with a live writer draining the channel.
-    pub(crate) fn new_disconnected() -> Self {
-        let (sender, _rx) = mpsc::channel::<WriterMsg>(1);
-        Self {
-            sender,
-            dropped_count: Arc::new(AtomicU64::new(0)),
-        }
     }
 }
