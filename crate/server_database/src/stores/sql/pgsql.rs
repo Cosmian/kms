@@ -1090,10 +1090,7 @@ impl ObjectsStore for PgPool {
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
         pg_retry!(self.pool, |client| {
             let row = client
-                .query_one(
-                    "SELECT COUNT(*) FROM objects WHERE state != 'Destroyed'",
-                    &[],
-                )
+                .query_one(get_pgsql_query!("count-all-non-destroyed"), &[])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let count: i64 = row.get(0);
@@ -1106,15 +1103,7 @@ impl ObjectsStore for PgPool {
             // Object JSON is stored as {"SymmetricKey": {...}} — use the JSONB ?
             // operator to check for key presence.
             let row = client
-                .query_one(
-                    "SELECT COUNT(*) FROM objects \
-                     WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised') \
-                     AND (object ? 'SymmetricKey' OR \
-                          object ? 'PrivateKey'   OR \
-                          object ? 'PublicKey'    OR \
-                          object ? 'SplitKey')",
-                    &[],
-                )
+                .query_one(get_pgsql_query!("count-non-destroyed-keys"), &[])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let count: i64 = row.get(0);
