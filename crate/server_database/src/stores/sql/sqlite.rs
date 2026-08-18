@@ -33,7 +33,7 @@ use crate::{
     error::{DbError, DbResult},
     migrate_block_cipher_mode_if_needed,
     stores::{
-        PGSQL_QUERIES,
+        PGSQL_QUERIES, SQLITE_QUERIES,
         migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
         sql::database::SqlDatabase,
     },
@@ -41,8 +41,9 @@ use crate::{
 
 macro_rules! get_sqlite_query {
     ($name:literal) => {
-        PGSQL_QUERIES
+        SQLITE_QUERIES
             .get($name)
+            .or_else(|| PGSQL_QUERIES.get($name))
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
     };
 }
@@ -860,15 +861,12 @@ impl ObjectsStore for SqlitePool {
     }
 
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
+        let sql = get_sqlite_query!("count-all-non-destroyed");
         let count = self
             .reader()
             .call(
                 |c: &mut rusqlite::Connection| -> Result<u64, rusqlite::Error> {
-                    c.query_row(
-                        "SELECT COUNT(*) FROM objects WHERE state != 'Destroyed'",
-                        [],
-                        |row| row.get(0),
-                    )
+                    c.query_row(sql, [], |row| row.get(0))
                 },
             )
             .await
@@ -877,24 +875,14 @@ impl ObjectsStore for SqlitePool {
     }
 
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
+        // Object JSON is stored as {"SymmetricKey": {...}} — the variant
+        // name is the top-level key.  Use json_type() to check presence.
+        let sql = get_sqlite_query!("count-non-destroyed-keys");
         let count = self
             .reader()
             .call(
                 |c: &mut rusqlite::Connection| -> Result<u64, rusqlite::Error> {
-                    // Object JSON is stored as {"SymmetricKey": {...}} — the variant
-                    // name is the top-level key.  Use json_type() to check presence.
-                    c.query_row(
-                        "SELECT COUNT(*) FROM objects \
-                         WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised') \
-                         AND ( \
-                             json_type(object, '$.SymmetricKey') IS NOT NULL OR \
-                             json_type(object, '$.PrivateKey')   IS NOT NULL OR \
-                             json_type(object, '$.PublicKey')    IS NOT NULL OR \
-                             json_type(object, '$.SplitKey')     IS NOT NULL \
-                         )",
-                        [],
-                        |row| row.get(0),
-                    )
+                    c.query_row(sql, [], |row| row.get(0))
                 },
             )
             .await

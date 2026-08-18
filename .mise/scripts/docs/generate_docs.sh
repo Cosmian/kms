@@ -18,7 +18,16 @@
 #                        with actual log call-sites in source (Python, no build needed)
 #
 # Usage:
-#   bash .mise/scripts/docs/generate_docs.sh [OPTIONS]
+#   bash .mise/scripts/docs/generate_docs.sh [TASK] [OPTIONS]
+#
+# Tasks:
+#   all               Run every documentation step (default)
+#   server-docs       Generate server help and configuration documentation
+#   ckms-docs         Generate ckms CLI documentation
+#   kmip-tables       Update the KMIP operations table
+#   crypto-inventory  Generate the cryptographic inventory
+#   cbom              Generate the CycloneDX CBOM
+#   log-index         Update the log-reference.md index
 #
 # Options:
 #   --skip-server       Skip step 1 (server docs — requires cargo build)
@@ -60,6 +69,63 @@ SKIP_KMIP=false
 SKIP_CRYPTO=false
 SKIP_CBOM=false
 SKIP_LOG_INDEX=false
+TASK=all
+
+if [[ $# -gt 0 && "$1" != --* ]]; then
+  TASK="$1"
+  shift
+fi
+
+case "$TASK" in
+  all)
+    ;;
+  server-docs)
+    SKIP_CKMS=true
+    SKIP_KMIP=true
+    SKIP_CRYPTO=true
+    SKIP_CBOM=true
+    SKIP_LOG_INDEX=true
+    ;;
+  ckms-docs)
+    SKIP_SERVER=true
+    SKIP_KMIP=true
+    SKIP_CRYPTO=true
+    SKIP_CBOM=true
+    SKIP_LOG_INDEX=true
+    ;;
+  kmip-tables)
+    SKIP_SERVER=true
+    SKIP_CKMS=true
+    SKIP_CRYPTO=true
+    SKIP_CBOM=true
+    SKIP_LOG_INDEX=true
+    ;;
+  crypto-inventory)
+    SKIP_SERVER=true
+    SKIP_CKMS=true
+    SKIP_KMIP=true
+    SKIP_CBOM=true
+    SKIP_LOG_INDEX=true
+    ;;
+  cbom)
+    SKIP_SERVER=true
+    SKIP_CKMS=true
+    SKIP_KMIP=true
+    SKIP_CRYPTO=true
+    SKIP_LOG_INDEX=true
+    ;;
+  log-index)
+    SKIP_SERVER=true
+    SKIP_CKMS=true
+    SKIP_KMIP=true
+    SKIP_CRYPTO=true
+    SKIP_CBOM=true
+    ;;
+  *)
+    fail "Unknown task: $TASK"
+    exit 1
+    ;;
+esac
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
