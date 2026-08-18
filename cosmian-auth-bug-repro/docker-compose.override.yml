@@ -1,0 +1,11 @@
+# Override: run the locally-built FIXED image (cosmian-auth-verifier:0.2.1)
+# instead of the pre-fix ghcr image. Uses the image's native entrypoint and
+# points it at the mounted config via AUTH_SERVER_CONF (no ELF-symlink hack).
+services:
+  auth-server:
+    image: cosmian-auth-verifier:0.2.1
+    user: "0:0"
+    environment:
+      AUTH_SERVER_CONF: /config/auth_server.toml
+    entrypoint: ["/bin/docker-entrypoint.sh"]
+    command: []

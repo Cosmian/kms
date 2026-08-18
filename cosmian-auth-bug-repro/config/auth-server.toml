@@ -1,0 +1,22 @@
+host_name = "0.0.0.0"
+host_port = 8443
+
+[tls_params]
+server_private_key = "/tls/tls.key"
+server_certificate = "/tls/tls.crt"
+server_ca_chain    = "/tls/tls.crt"
+
+[session_jwt_params]
+jwt_ec_private_key = "/jwt/jwt_ec_private_pkcs8.pem"
+jwt_ec_public_key  = "/jwt/jwt_ec_public.pem"
+
+[database_params]
+backend             = "postgresql"
+connection_url      = "postgresql://postgres:postgres@postgres:5432/postgres"
+max_connections     = 10
+auto_init_schema    = true
+
+[sessions_store_params]
+backend         = "redis"
+connection_url  = "redis://:password@redis:6379/1"
+max_connections = 50

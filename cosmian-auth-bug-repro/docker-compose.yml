@@ -1,0 +1,59 @@
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.11
+    command:
+      - etcd
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+    networks: [repro]
+
+  apisix:
+    image: apache/apisix:3.17.0-debian
+    depends_on: [etcd]
+    volumes:
+      - ./config/apisix-config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    ports:
+      - "9080:9080"   # gateway
+      - "9180:9180"   # admin API
+    networks: [repro]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+    networks: [repro]
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass password
+    networks: [repro]
+
+  protected-app:
+    image: nginx:alpine
+    networks: [repro]
+
+  auth-server:
+    image: ${AUTH_SERVER_IMAGE:-ghcr.io/cosmian/auth-server:add_role_to_user-arm64}
+    depends_on: [postgres, redis]
+    user: "0:0"
+    environment:
+      APP_REALM_ADMIN_USERNAME: admin
+      APP_REALM_ADMIN_INITIAL_PASSWORD: change_me
+    ports:
+      - "18443:8443"
+    volumes:
+      - ./config/auth-server.toml:/config/auth_server.toml:ro
+      - ./tls:/tls:ro
+      - ./jwt:/jwt:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /lib
+        for f in /nix/store/*/lib/libc.so* /nix/store/*/lib/ld-linux-aarch64.so.1 /nix/store/*/lib/ld-linux-x86-64.so.2 /nix/store/*/lib/libm.so* /nix/store/*/lib/libpthread.so*; do
+          [ -f "$$f" ] && ln -sf "$$f" "/lib/$$(basename "$$f")" 2>/dev/null
+        done
+        exec /bin/auth_server /config/auth_server.toml
+    networks: [repro]
+
+networks:
+  repro:

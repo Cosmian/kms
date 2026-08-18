@@ -1,0 +1,30 @@
+apisix:
+  node_listen: 9080
+  enable_admin_cors: true
+
+deployment:
+  admin:
+    allow_admin:
+      - 0.0.0.0/0
+    admin_key:
+      - name: admin
+        key: repro-admin-key-12345
+        role: admin
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  etcd:
+    host:
+      - "http://etcd:2379"
+    prefix: "/apisix"
+    timeout: 30
+
+nginx_config:
+  http:
+    access_log_format: '$remote_addr - $remote_user [$time_local] $http_host "$request" $status $body_bytes_sent $request_time "$http_referer" "$http_user_agent" $upstream_addr $upstream_status $upstream_response_time "$upstream_scheme://$upstream_host$upstream_uri"'
+
+plugins:
+  - forward-auth
+  - proxy-rewrite
+  - cors
+  - response-rewrite
