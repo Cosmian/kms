@@ -21,7 +21,6 @@ use crate::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_operation,
             attributes::get_attribute_list, check, mac::mac_verify, query::query as query_op,
         },
-        retrieve_object_utils::user_has_permission,
     },
     error::KmsError,
     kms_bail,
@@ -227,50 +226,23 @@ pub(crate) async fn check_role_permission(
             if let Some(kmip_op) = operation_tag_to_kmip_operation(operation_tag) {
                 let allowed = Role::Operator.allowed_operations();
                 if !allowed.contains(&kmip_op) {
-                    // Lifecycle operations (Create, Import) may be permitted if the user
-                    // holds an explicit Create grant in the database (granted by a
-                    // CryptoOfficer via /access/grant).
+                    // Lifecycle operations (Create, Import): delegate to enforce_create_permission
+                    // which correctly handles default_username, CO-user membership, and explicit grants.
                     if matches!(kmip_op, KmipOperation::Create | KmipOperation::Import) {
-                        let has_create = user_has_permission(
-                            &UserId::from(user),
-                            None,
-                            &KmipOperation::Create,
-                            kms,
-                        )
-                        .await?;
-                        if has_create {
-                            return Ok(());
-                        }
+                        return kms.enforce_create_permission(&UserId::from(user)).await;
                     }
                     // Per-object operations (Get, Export, Activate, Revoke, Destroy, etc.)
-                    // are not blocked at dispatch because they rely on handler-level
-                    // ownership/grant checks. A CryptoOfficer can grant any per-object
-                    // operation to an Operator via /access/grant.
-                    if !matches!(kmip_op, KmipOperation::Create | KmipOperation::Import) {
-                        return Ok(());
-                    }
-                    kms_bail!(KmsError::Unauthorized(format!(
-                        "User `{user}` (role: Operator) is not authorized to perform \
-                         operation `{operation_tag}` (not in Operator allowed operations)"
-                    )))
+                    // are not blocked at dispatch — they rely on handler-level ownership/grant checks.
+                    return Ok(());
                 }
                 return Ok(());
             }
 
             // Lifecycle operations without KmipOperation mapping (CreateKeyPair, Register,
-            // ReKeyKeyPair, CreateSplitKey): block Operators unless they hold an explicit
-            // Create permission grant.
+            // ReKeyKeyPair, CreateSplitKey): delegate to enforce_create_permission which
+            // handles default_username, CO-user membership, and explicit grants.
             if LIFECYCLE_OPERATION_TAGS.contains(&operation_tag) {
-                let has_create =
-                    user_has_permission(&UserId::from(user), None, &KmipOperation::Create, kms)
-                        .await?;
-                if !has_create {
-                    kms_bail!(KmsError::Unauthorized(format!(
-                        "User `{user}` (role: Operator) is not authorized to perform \
-                         operation `{operation_tag}` (lifecycle operation requires CryptoOfficer \
-                         role or explicit Create grant)"
-                    )))
-                }
+                return kms.enforce_create_permission(&UserId::from(user)).await;
             }
             Ok(())
         }
