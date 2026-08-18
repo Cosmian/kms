@@ -17,6 +17,43 @@ opa_mode = "enforcing"
 | `KMS_OPA_URL`        | `http://localhost:8181` |
 | `KMS_OPA_MODE`       | `enforcing` |
 
+→ **[Full setup guide: OPA + Authentication Verifier](opa-authverifier-setup.md)**
+
+---
+
+## Architecture overview
+
+```mermaid
+flowchart LR
+    subgraph Client
+        U["User / Application"]
+    end
+
+    subgraph AuthServer["Authentication Verifier"]
+        IDP["Cosmian Auth Verifier\n(JWT issuer — roles, as_rid)"]
+    end
+
+    subgraph PolicyServer["Policy Plane"]
+        OPA["OPA Server\nPOST /v1/data/kms/allow"]
+        Rego["kms.rego\n(role definitions)"]
+        OPA -.- Rego
+    end
+
+    subgraph KMSServer["KMS Server"]
+        KMS["Cosmian KMS\n:9998"]
+        DB[("SQLite / PostgreSQL\n/ Redis-Findex")]
+        KMS -.- DB
+    end
+
+    U -->|"1 — login"| IDP
+    IDP -->|"2 — JWT (sub, roles, as_rid)"| U
+    U -->|"3 — KMIP request + ******"| KMS
+    KMS -->|"4 — verify JWT (JWKS)"| IDP
+    KMS -->|"5 — POST /v1/data/kms/allow"| OPA
+    OPA -->|"6 — allow / deny"| KMS
+    KMS -->|"7 — KMIP response"| U
+```
+
 ---
 
 ## When to use Mode 3

@@ -743,3 +743,28 @@ Key facts verified by these tests:
 - The server accepts **all** KMIP protocol versions (1.0, 1.3, 1.4, 2.1) for backward compatibility.
 - The Swagger UI JS/CSS are served locally from the KMS server (no external CDN dependency).
 - The CSP enforces `default-src 'none'` with `'self'` allowed and `frame-ancestors 'none'` for clickjacking protection.
+
+## Authentication Login Page
+
+### login-page-auth-method-matrix
+
+10 tests verifying that `LoginPage` renders the correct UI for every combination of
+authentication methods that `GET /ui/auth_method` can return. All tests mock the API
+responses via `page.route()` and require no live KMS server — they run against the
+Vite preview server only.
+
+| Test | `auth_methods`                                | Expected primary                       | Expected secondary               |
+| ---- | --------------------------------------------- | -------------------------------------- | -------------------------------- |
+| 1    | `["AUTH_VERIFIER"]`                           | username/password form                 | none                             |
+| 2    | `["JWT"]`                                     | OIDC redirect button                   | none                             |
+| 3    | `["CERT"]`                                    | certificate button                     | none                             |
+| 4    | `["JWT", "AUTH_VERIFIER"]`                    | OIDC button                            | AUTH_VERIFIER button             |
+| 5    | `["JWT", "CERT"]`                             | OIDC button                            | CERT button                      |
+| 6    | `["AUTH_VERIFIER", "CERT"]`                   | form                                   | CERT button                      |
+| 7    | `["JWT", "AUTH_VERIFIER", "CERT"]`            | OIDC button                            | secondary dropdown               |
+| 8    | `[]`                                          | (no login form; redirect to `/locate`) | "authentication disabled" banner |
+| 9    | `["AUTH_VERIFIER", "CERT"]` (secondary click) | probe fires immediately                | navigates to `/locate`           |
+| 10   | live `GET /ui/auth_method`                    | `auth_method` equals `auth_methods[0]` | JSON shape validated             |
+
+Key behaviour verified: clicking a "one-click" method (CERT or JWT) in a secondary
+control fires the action immediately without first revealing the button as primary.

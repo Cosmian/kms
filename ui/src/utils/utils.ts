@@ -59,14 +59,22 @@ export const fetchAuthMethod = async (serverUrl: string): Promise<AuthMethod> =>
     }
 };
 
+/** Result of `GET /ui/auth_method` — ordered method list plus optional realm list. */
+type AuthConfig = {
+    methods: AuthMethod[];
+    /** Realm list for the Auth Verifier UI login form. Empty when not configured. */
+    authVerifierRealms: string[];
+};
+
 /**
- * Fetch the ordered list of configured UI login methods (primary first).
+ * Fetch the ordered list of configured UI login methods (primary first) together
+ * with any configured Auth Verifier realms.
  *
  * Reads the `auth_methods` array from `GET /ui/auth_method`. Falls back to the
  * singular `auth_method` field for older servers that don't yet return the array.
- * Returns an empty array when authentication is disabled ("None") and `undefined`
- * on network/parse failure (so callers can distinguish "no methods" from
- * "server unreachable").
+ * Returns an empty `methods` array when authentication is disabled ("None") and
+ * `undefined` on network/parse failure (so callers can distinguish "no methods"
+ * from "server unreachable").
  */
 /**
  * True only when CERT is the sole configured method, so auto-login via the
@@ -75,10 +83,10 @@ export const fetchAuthMethod = async (serverUrl: string): Promise<AuthMethod> =>
  */
 export const shouldAutoLoginWithCert = (methods: AuthMethod[]): boolean => methods.length === 1 && methods[0] === "CERT";
 
-export const fetchAuthMethods = async (serverUrl: string): Promise<AuthMethod[] | undefined> => {
+export const fetchAuthMethods = async (serverUrl: string): Promise<AuthConfig | undefined> => {
     // Skip the fetch in dev mode to avoid unnecessary friction (no auth enforced).
     if (import.meta.env.VITE_DEV_MODE === "true") {
-        return [];
+        return { methods: [], authVerifierRealms: [] };
     }
     try {
         const kmsUrl = serverUrl + "/ui/auth_method";
@@ -88,16 +96,25 @@ export const fetchAuthMethods = async (serverUrl: string): Promise<AuthMethod[] 
         });
         if (!response.ok) throw new Error("Failed to fetch auth methods");
 
-        const data: { auth_method?: AuthMethod; auth_methods?: AuthMethod[] } = await response.json();
+        const data: {
+            auth_method?: AuthMethod;
+            auth_methods?: AuthMethod[];
+            auth_verifier_realms?: string[];
+        } = await response.json();
+
+        const authVerifierRealms: string[] = Array.isArray(data.auth_verifier_realms) ? data.auth_verifier_realms : [];
+
+        let methods: AuthMethod[];
         if (Array.isArray(data.auth_methods)) {
             // Filter out the "None" sentinel: an empty array means no auth configured.
-            return data.auth_methods.filter((m): m is AuthMethod => m !== undefined && m !== "None");
+            methods = data.auth_methods.filter((m): m is AuthMethod => m !== undefined && m !== "None");
+        } else if (data.auth_method && data.auth_method !== "None") {
+            // Backward-compatibility: older servers only return the singular field.
+            methods = [data.auth_method];
+        } else {
+            methods = [];
         }
-        // Backward-compatibility: older servers only return the singular field.
-        if (data.auth_method && data.auth_method !== "None") {
-            return [data.auth_method];
-        }
-        return [];
+        return { methods, authVerifierRealms };
     } catch (error) {
         console.error(error);
         return undefined;
@@ -113,12 +130,15 @@ type AuthVerifierLoginNextStep = "Authenticated" | "TotpRequired";
  * session cookie; the AS's JWT never reaches the browser.
  *
  * Pass `totpCode` once the caller has already received a `"TotpRequired"` response.
+ * Pass `realm` when the server is configured with multiple realms; omit to use the
+ * server-side default (first configured realm).
  */
 export const loginAuthVerifier = async (
     serverUrl: string,
     username: string,
     password: string,
     totpCode?: string,
+    realm?: string,
 ): Promise<AuthVerifierLoginNextStep> => {
     const kmsUrl = serverUrl + "/ui/login_as";
     const response = await fetch(kmsUrl, {
@@ -127,7 +147,7 @@ export const loginAuthVerifier = async (
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username, password, totp_code: totpCode }),
+        body: JSON.stringify({ username, password, totp_code: totpCode, realm }),
     });
 
     const data: unknown = await response.json().catch(() => null);

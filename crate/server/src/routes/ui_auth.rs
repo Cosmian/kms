@@ -337,6 +337,10 @@ pub(crate) struct AuthVerifierLoginRequest {
     password: String,
     #[serde(default)]
     totp_code: Option<String>,
+    /// Realm to authenticate against. Required when multiple realms are configured;
+    /// when omitted the first configured realm is used.
+    #[serde(default)]
+    realm: Option<String>,
 }
 
 /// Mirrors the Auth Verifier server's `AuthenticationResult` shape
@@ -390,13 +394,29 @@ pub(crate) async fn login_as(
         );
     };
     // Guaranteed non-empty by `ui_login_enabled()`.
-    let (Some(server_url), Some(realm)) = (
-        config.auth_verifier_url.as_deref(),
-        config.auth_verifier_realm.as_deref(),
-    ) else {
+    let Some(server_url) = config.auth_verifier_url.as_deref() else {
         return HttpResponse::InternalServerError().json(
             serde_json::json!({ "error": "The Auth Verifier server is not configured for the Web UI" }),
         );
+    };
+
+    // Resolve the realm: use the one from the request body (if provided and allowed),
+    // otherwise fall back to the first configured realm.
+    let configured_realms = config.realms();
+    let realm = match body.realm.as_deref() {
+        Some(r) if configured_realms.contains(&r.to_owned()) => r,
+        Some(r) => {
+            return HttpResponse::BadRequest().json(
+                serde_json::json!({ "error": format!("Realm '{r}' is not configured on this server") }),
+            );
+        }
+        None => match config.primary_realm() {
+            Some(r) => r,
+            None => {
+                return HttpResponse::InternalServerError()
+                    .json(serde_json::json!({ "error": "No realm configured for the Web UI" }));
+            }
+        },
     };
 
     let Ok(mut url) = Url::parse(server_url.trim_end_matches('/')) else {
@@ -569,7 +589,10 @@ pub(crate) async fn logout(
 }
 
 #[get("/auth_method")]
-pub(crate) async fn get_auth_method(auth_methods: web::Data<Vec<String>>) -> HttpResponse {
+pub(crate) async fn get_auth_method(
+    auth_methods: web::Data<Vec<String>>,
+    auth_verifier_runtime: web::Data<AuthVerifierRuntimeConfig>,
+) -> HttpResponse {
     let methods = auth_methods.get_ref();
     // The singular `auth_method` is kept for backward compatibility: it is the
     // highest-priority configured method (`auth_methods[0]`), or `"None"` when no
@@ -580,9 +603,15 @@ pub(crate) async fn get_auth_method(auth_methods: web::Data<Vec<String>>) -> Htt
         .cloned()
         .unwrap_or_else(|| "None".to_owned());
 
+    // When multiple realms are configured the UI shows a realm selector before
+    // the username/password form. Always include the list so the UI can avoid a
+    // second round-trip.
+    let realms: &[String] = auth_verifier_runtime.config.realms();
+
     HttpResponse::Ok().json(serde_json::json!({
         "auth_method": primary,
         "auth_methods": methods,
+        "auth_verifier_realms": realms,
     }))
 }
 
@@ -601,6 +630,11 @@ mod tests {
     use actix_web::{App, test, web};
 
     use super::get_auth_method;
+    use crate::config::AuthVerifierRuntimeConfig;
+
+    fn no_auth_verifier() -> web::Data<AuthVerifierRuntimeConfig> {
+        web::Data::new(AuthVerifierRuntimeConfig::default())
+    }
 
     #[actix_web::test]
     async fn test_auth_method_returns_cosmian_when_configured() {
@@ -608,6 +642,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(auth_methods))
+                .app_data(no_auth_verifier())
                 .service(get_auth_method),
         )
         .await;
@@ -627,6 +662,11 @@ mod tests {
                 .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>()),
             Some(vec!["AUTH_VERIFIER"])
         );
+        // No realms when auth_verifier not fully configured.
+        assert_eq!(
+            body.get("auth_verifier_realms").and_then(|v| v.as_array()),
+            Some(&vec![])
+        );
     }
 
     #[actix_web::test]
@@ -635,6 +675,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(auth_methods))
+                .app_data(no_auth_verifier())
                 .service(get_auth_method),
         )
         .await;
@@ -666,6 +707,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(auth_methods))
+                .app_data(no_auth_verifier())
                 .service(get_auth_method),
         )
         .await;
@@ -685,5 +727,39 @@ mod tests {
                 .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>()),
             Some(vec!["JWT", "AUTH_VERIFIER", "CERT"])
         );
+    }
+
+    #[actix_web::test]
+    async fn test_auth_method_returns_realms_for_multi_realm_config() {
+        use crate::config::AuthVerifierConfig;
+
+        let auth_methods: Vec<String> = vec!["AUTH_VERIFIER".to_owned()];
+        let av_config = AuthVerifierRuntimeConfig {
+            config: AuthVerifierConfig {
+                auth_verifier_url: Some("https://auth.example.com".to_owned()),
+                auth_verifier_realm: Some(vec!["acme.com".to_owned(), "partner.com".to_owned()]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(auth_methods))
+                .app_data(web::Data::new(av_config))
+                .service(get_auth_method),
+        )
+        .await;
+
+        let req = test::TestRequest::get().uri("/auth_method").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        let realms: Vec<&str> = body
+            .get("auth_verifier_realms")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+            .unwrap_or_default();
+        assert_eq!(realms, vec!["acme.com", "partner.com"]);
     }
 }
