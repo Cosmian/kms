@@ -1809,18 +1809,3 @@ mod tests {
         );
     }
 }
-
-/// Test-only constructors on `AuditFileStore`.
-#[cfg(test)]
-impl AuditFileStore {
-    /// Creates a store whose channel receiver is immediately dropped.
-    /// Every `try_send` returns `TrySendError::Closed` so `enqueue()` always
-    /// returns `false` — no race with a live writer draining the channel.
-    pub(crate) fn new_disconnected() -> Self {
-        let (sender, _rx) = mpsc::channel::<WriterMsg>(1);
-        Self {
-            sender,
-            dropped_count: Arc::new(AtomicU64::new(0)),
-        }
-    }
-}
