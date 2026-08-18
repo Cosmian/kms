@@ -20,7 +20,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use openssl::hash::{MessageDigest, hash};
-use tracing::info;
+use tracing::{debug, info};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -61,7 +61,6 @@ pub(crate) struct ReconstructedShares {
 /// - All objects must be `SplitKey` objects.
 /// - All shares must declare the same `split_key_method`.
 /// - All shares must come from the same source key (cross-key mixing rejected).
-/// - The declared split method must match the request.
 /// - Exactly `total_parts` shares must be provided (n-of-n).
 /// - `key_part_identifiers` must be the complete set `{1, …, n}`.
 pub(crate) async fn retrieve_and_reconstruct_shares(
@@ -235,8 +234,8 @@ pub(crate) async fn join_split_key(
 ) -> KResult<JoinSplitKeyResponse> {
     // Resolve share UIDs from the request
     let mut share_uids: Vec<String> =
-        Vec::with_capacity(request.split_key_unique_identifiers.len());
-    for uid_ref in &request.split_key_unique_identifiers {
+        Vec::with_capacity(request.unique_identifier.len());
+    for uid_ref in &request.unique_identifier {
         match uid_ref {
             UniqueIdentifier::TextString(s) => share_uids.push(s.clone()),
             other => {
@@ -253,18 +252,14 @@ pub(crate) async fn join_split_key(
         ));
     }
 
-    // Validate that the declared split method in the request matches the shares.
-    // (retrieve_and_reconstruct_shares enforces consistency across all shares;
-    //  here we just need the method from the request to compare after retrieval.)
+    // Reconstruct the shares — the split key method is read from the stored share objects,
+    // not from the request (the spec does not include split_key_method in the request payload).
     let reconstructed = retrieve_and_reconstruct_shares(kms, &share_uids, user).await?;
-
-    if request.split_key_method != reconstructed.split_key_method {
-        kms_bail!(KmsError::InvalidRequest(format!(
-            "JoinSplitKey: request declares split key method {:?} \
-             but shares use {:?}",
-            request.split_key_method, reconstructed.split_key_method
-        )));
-    }
+    debug!(
+        method = ?reconstructed.split_key_method,
+        n_shares = share_uids.len(),
+        "JoinSplitKey: shares reconstructed",
+    );
 
     // Enforce the same Create/Import restriction as create.rs / import.rs.
     // A user listed in crypto_officer.users is always allowed — they are ceremony

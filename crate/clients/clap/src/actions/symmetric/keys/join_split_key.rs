@@ -4,11 +4,9 @@ use cosmian_kms_client::{
     kmip_2_1::{
         kmip_objects::ObjectType,
         kmip_operations::JoinSplitKey,
-        kmip_types::{SplitKeyMethod, UniqueIdentifier},
+        kmip_types::UniqueIdentifier,
     },
 };
-
-use super::create_split_key::SplitKeyMethodArg;
 use crate::{
     actions::console,
     error::result::{KmsCliResult, KmsCliResultHelper},
@@ -32,11 +30,6 @@ pub struct JoinSplitKeyAction {
     /// At least `threshold` shares must be specified.
     #[clap(required = true, num_args = 2..)]
     pub share_ids: Vec<String>,
-
-    /// The splitting method that was used when the key was originally split.
-    /// Must match the method used during `create-split-key`.
-    #[clap(long, short = 'm', default_value = "xor")]
-    pub method: SplitKeyMethodArg,
 
     /// The type of object to reconstruct.
     #[clap(long, short = 'o', default_value = "symmetric-key")]
@@ -82,13 +75,14 @@ impl JoinSplitKeyAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let request = JoinSplitKey {
             object_type: ObjectType::from(&self.object_type),
-            split_key_unique_identifiers: self
+            unique_identifier: self
                 .share_ids
                 .iter()
                 .map(|id| UniqueIdentifier::TextString(id.clone()))
                 .collect(),
-            split_key_method: SplitKeyMethod::from(&self.method),
+            secret_data_type: None,
             attributes: None,
+            protection_storage_masks: None,
         };
 
         let response = kms_rest_client

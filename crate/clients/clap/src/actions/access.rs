@@ -3,6 +3,7 @@ use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attribute,
+        kmip_objects::ObjectType,
         kmip_operations::{CreateSplitKey, SetAttribute},
         kmip_types::{
             CryptographicAlgorithm, SplitKeyMethod, UniqueIdentifier, VendorAttribute,
@@ -462,10 +463,13 @@ impl CryptoOfficerCreateSplitKey {
         // 4. Call CreateSplitKey — server auto-assigns n = custodians_count shares,
         //    each owned by a different CO candidate.
         let split_req = CreateSplitKey {
-            unique_identifier: created_uid.clone(),
+            object_type: ObjectType::SymmetricKey,
+            unique_identifier: Some(created_uid.clone()),
             split_key_parts: n,
             split_key_threshold: n,
             split_key_method: SplitKeyMethod::XOR,
+            attributes: None,
+            protection_storage_masks: None,
         };
         let split_resp = kms_rest_client
             .create_split_key(split_req)
@@ -473,12 +477,12 @@ impl CryptoOfficerCreateSplitKey {
             .with_context(|| "Failed to split ceremony key on KMS server")?;
 
         // 5. Print results.
-        let share_count = split_resp.split_key_unique_identifiers.len();
+        let share_count = split_resp.unique_identifier.len();
         let mut stdout = console::Stdout::new(&format!(
             "Ceremony key {created_uid} split into {share_count} share(s) \
              (one per CO candidate). Provide all share UIDs to `activate`."
         ));
-        stdout.set_unique_identifiers(&split_resp.split_key_unique_identifiers);
+        stdout.set_unique_identifiers(&split_resp.unique_identifier);
         stdout.write()?;
         Ok(())
     }
