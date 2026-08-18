@@ -2403,7 +2403,11 @@ impl TryFrom<kmip_2_1::kmip_operations::CreateSplitKeyResponse> for CreateSplitK
         resp: kmip_2_1::kmip_operations::CreateSplitKeyResponse,
     ) -> Result<Self, Self::Error> {
         Ok(Self {
-            unique_identifier: resp.unique_identifier.into_iter().map(|u| u.to_string()).collect(),
+            unique_identifier: resp
+                .unique_identifier
+                .into_iter()
+                .map(|u| u.to_string())
+                .collect(),
             template_attribute: None,
         })
     }

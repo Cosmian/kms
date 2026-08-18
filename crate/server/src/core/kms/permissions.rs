@@ -317,7 +317,7 @@ impl KMS {
         // non-HSM object regardless of ownership (ISO/IEC 19790:2012 §7.4 / NIST SP
         // 800-57 Part 2 Rev 1 §4.3). HSM-backed keys are excluded — they are governed
         // by the HSM admin rules.
-        if !ObjectHandle::from(owm.id()).is_hsm() && self.is_crypto_officer(user.as_str()).await? {
+        if !ObjectHandle::from(owm.id()).is_hsm() && self.is_crypto_officer(user).await? {
             // Log at ERROR so this event is never suppressed by RUST_LOG=warn or RUST_LOG=info
             // in production. A CO bypassing ownership is a high-value audit event.
             tracing::error!(
@@ -371,16 +371,19 @@ impl KMS {
     /// - If `user` is not in `crypto_officer.users` → `false`.
     /// - If `crypto_officer.require_ceremony = true` → checks DB for an active activation record.
     /// - Otherwise → `true` (config-only mode).
-    pub(crate) async fn is_crypto_officer(&self, user: &str) -> KResult<bool> {
+    pub(crate) async fn is_crypto_officer(&self, user: &UserId) -> KResult<bool> {
         let cfg = &self.params.crypto_officer;
         if cfg.users.is_empty() {
             return Ok(false);
         }
-        if !cfg.users.iter().any(|u| u == user) {
+        if !cfg.users.iter().any(|u| u == user.as_str()) {
             return Ok(false);
         }
         if cfg.require_ceremony {
-            Ok(self.database.is_crypto_officer_activated_by(user).await?)
+            Ok(self
+                .database
+                .is_crypto_officer_activated_by(user.as_str())
+                .await?)
         } else {
             Ok(true)
         }
@@ -433,7 +436,7 @@ impl KMS {
 
         // For self-revoke: caller must be the active CO.
         // For peer revocation: target must be an active CO.
-        if !self.is_crypto_officer(victim.as_str()).await? {
+        if !self.is_crypto_officer(victim).await? {
             kms_bail!(KmsError::Unauthorized(format!(
                 "User '{victim}' is not an active Crypto Officer"
             )));

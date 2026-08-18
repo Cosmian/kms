@@ -44,7 +44,7 @@ pub(crate) const CRYPTO_OFFICER_CEREMONY_ATTR: &str = "x-cosmian-crypto-officer-
 pub(crate) async fn create_split_key(
     kms: &KMS,
     request: CreateSplitKey,
-    user: &str,
+    user: &UserId,
 ) -> KResult<CreateSplitKeyResponse> {
     trace!("{request}");
 
@@ -59,14 +59,9 @@ pub(crate) async fn create_split_key(
     };
 
     // Retrieve the master key — user must have Get permission
-    let user_id = UserId::from(user);
-    let owm: ObjectWithMetadata = retrieve_object_for_operation(
-        ObjectHandle::from(&uid_str),
-        KmipOperation::Get,
-        kms,
-        &user_id,
-    )
-    .await?;
+    let owm: ObjectWithMetadata =
+        retrieve_object_for_operation(ObjectHandle::from(&uid_str), KmipOperation::Get, kms, user)
+            .await?;
 
     // The actual stored UID of the source key — used for share naming and attributes.
     // This differs from `uid_str` when the caller resolves by tag (e.g. `["my-tag"]`)
@@ -201,7 +196,7 @@ pub(crate) async fn create_split_key(
             let co_idx = idx % co_users.len();
             UserId::from(co_users.get(co_idx).map_or("unknown", |s| s.as_str()))
         } else {
-            user_id.clone()
+            (*user).clone()
         };
 
         // Build the SplitKey KMIP object — raw share bytes stored as ByteString key material.
@@ -363,11 +358,11 @@ pub(crate) async fn create_split_key(
             compromise_occurrence_date: None,
             cascade: false,
         };
-        let destroy_user = UserId::from(user);
+        let destroy_user = user;
         if let Err(e) = Box::pin(super::revoke::revoke_operation(
             kms,
             revoke_req,
-            &destroy_user,
+            destroy_user,
         ))
         .await
         {
@@ -386,7 +381,7 @@ pub(crate) async fn create_split_key(
         match Box::pin(super::destroy::destroy_operation(
             kms,
             destroy_req,
-            &destroy_user,
+            destroy_user,
         ))
         .await
         {
