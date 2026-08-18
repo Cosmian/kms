@@ -489,22 +489,177 @@ else
     "$JWT_OTHER_DOMAIN" "$DESTROY_REQUEST"
 fi
 
-# ── Step 8: Results ───────────────────────────────────────────────────────────
+# ── Phase 2 intermediate results (Phase 3 adds its own summary below) ─────────
 echo ""
 echo "Phase 2 results: ${PASS} passed, ${FAIL} failed"
 
-TOTAL_FAIL=$((PHASE1_FAIL + FAIL))
+echo "OPA RBAC tests completed successfully."
+
+# ── Phase 3: Rust integration tests (vector_runner.rs `test_vec_opa_*`) ───────
+#
+# Requires the Cosmian Authentication Verifier binary to be built.
+# Build with: cargo build -p auth_verifier --manifest-path authentication/Cargo.toml
+#
+# If the binary is not available, Phase 3 is skipped (with a prominent warning).
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Phase 3: Rust vector_runner.rs integration tests (real auth server)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+AUTH_SERVER_PORT=8444 # Use 8444 to avoid conflict with any running 8443
+AUTH_SERVER_URL="https://127.0.0.1:${AUTH_SERVER_PORT}"
+AUTH_SERVER_PID=""
+AUTH_VERIFIER_BIN=""
+
+# Locate auth_verifier binary (prefer release, fall back to debug).
+for candidate in \
+  "${REPO_ROOT}/authentication/target/release/auth_verifier" \
+  "${REPO_ROOT}/authentication/target/debug/auth_verifier"; do
+  if [[ -x "${candidate}" ]]; then
+    AUTH_VERIFIER_BIN="${candidate}"
+    break
+  fi
+done
+
+if [[ -z "${AUTH_VERIFIER_BIN}" ]]; then
+  echo "WARNING: auth_verifier binary not found. Attempting to build..."
+  if cargo build -p auth_verifier \
+    --manifest-path "${REPO_ROOT}/authentication/Cargo.toml" 2>&1; then
+    AUTH_VERIFIER_BIN="${REPO_ROOT}/authentication/target/debug/auth_verifier"
+  else
+    echo "WARNING: Could not build auth_verifier. Phase 3 SKIPPED."
+    echo "         To enable: cargo build -p auth_verifier --manifest-path authentication/Cargo.toml"
+    PHASE3_SKIPPED=true
+  fi
+fi
+
+if [[ "${PHASE3_SKIPPED:-false}" != "true" ]]; then
+  # ── Create a dedicated auth verifier config for integration tests ─────────
+  AUTH_VERIFIER_CONF=$(mktemp -t kms-opa-auth-XXXXXX.toml)
+  CA_CERT="${REPO_ROOT}/authentication/server/src/tests/certificates/ec/auth.ca.pem"
+  # Update cleanup to also stop the auth server
+  cleanup_phase3() {
+    [ -n "${AUTH_SERVER_PID:-}" ] && {
+      kill "${AUTH_SERVER_PID}" 2>/dev/null || true
+      wait "${AUTH_SERVER_PID}" 2>/dev/null || true
+    }
+    [ -n "${AUTH_VERIFIER_CONF:-}" ] && rm -f "${AUTH_VERIFIER_CONF}" || true
+    # Remove ephemeral auth DB
+    rm -f /tmp/kms_opa_integration_auth.db 2>/dev/null || true
+  }
+  trap cleanup_phase3 EXIT
+
+  # Write a minimal auth verifier config (dev mode, ephemeral SQLite).
+  cat >"${AUTH_VERIFIER_CONF}" <<EOF
+host_name = "127.0.0.1"
+host_port = ${AUTH_SERVER_PORT}
+roles = ["SuperAdmin","DomainAdmin","CryptoOfficer","Auditor","User"]
+admin_ui_path = "admin-ui/dist"
+
+[log]
+level = "error"
+
+[tls_params]
+server_private_key = "server/src/tests/certificates/ec/auth.server.key.pem"
+server_certificate = "server/src/tests/certificates/ec/auth.server.cert.pem"
+server_ca_chain    = "server/src/tests/certificates/ec/auth.ca.pem"
+
+[session_jwt_params]
+jwt_ec_private_key = "server/src/tests/certificates/ec/auth.server.key.pem"
+jwt_ec_public_key  = "server/src/tests/certificates/ec/auth.server.cert.pem"
+
+[database_params]
+auto_init_schema = true
+backend = "sqlite"
+connection_url = "sqlite:///tmp/kms_opa_integration_auth.db"
+
+allowed_origins = ["http://127.0.0.1:9991"]
+EOF
+
+  # ── Start auth verifier ───────────────────────────────────────────────────
+  echo "==> Starting auth verifier on port ${AUTH_SERVER_PORT}..."
+  # Must run from authentication/ so relative cert paths resolve correctly.
+  (cd "${REPO_ROOT}/authentication" &&
+    "${AUTH_VERIFIER_BIN}" "${AUTH_VERIFIER_CONF}") \
+    >"${REPO_ROOT}/target/auth_verifier_integration.log" 2>&1 &
+  AUTH_SERVER_PID=$!
+
+  # Wait for auth verifier to be ready (HTTPS health check).
+  echo "==> Waiting for auth verifier to be ready..."
+  ready=false
+  for i in $(seq 1 30); do
+    if env -u LD_LIBRARY_PATH -u LD_PRELOAD \
+      curl -sk --cacert "${CA_CERT}" \
+      "${AUTH_SERVER_URL}/health" >/dev/null 2>&1; then
+      ready=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "${ready}" != "true" ]]; then
+    echo "ERROR: auth verifier failed to start after 30s" >&2
+    cat "${REPO_ROOT}/target/auth_verifier_integration.log" >&2
+    exit 1
+  fi
+  echo "Auth verifier ready (PID=${AUTH_SERVER_PID})."
+
+  # ── Provision users ───────────────────────────────────────────────────────
+  echo "==> Provisioning auth verifier test users..."
+  PROVISION_SCRIPT="${REPO_ROOT}/test_data/configs/auth_verifier/provision_opa_integration_users.sh"
+  eval "$(AUTH_URL="${AUTH_SERVER_URL}" CA_CERT="${CA_CERT}" \
+    REPO_ROOT="${REPO_ROOT}" bash "${PROVISION_SCRIPT}")"
+  echo "Provisioning complete."
+  echo "  KMS_TEST_OPA_OFFICER_JWT         set (length ${#KMS_TEST_OPA_OFFICER_JWT})"
+  echo "  KMS_TEST_OPA_USER_ROLE_JWT       set (length ${#KMS_TEST_OPA_USER_ROLE_JWT})"
+  echo "  KMS_TEST_OPA_AUDITOR_JWT         set (length ${#KMS_TEST_OPA_AUDITOR_JWT})"
+  echo "  KMS_TEST_OPA_DOMAIN_ADMIN_OTHER_JWT set (length ${#KMS_TEST_OPA_DOMAIN_ADMIN_OTHER_JWT})"
+  echo "  KMS_TEST_OPA_OTHER_DOMAIN_JWT    set (length ${#KMS_TEST_OPA_OTHER_DOMAIN_JWT})"
+
+  # ── Export required env vars for the Rust tests ───────────────────────────
+  export KMS_OPA_URL="${OPA_URL}"
+  export KMS_AUTH_SERVER_URL="${AUTH_SERVER_URL}"
+  # JWT vars already exported by provision script eval above.
+
+  # ── Run Rust vector_runner.rs OPA tests ───────────────────────────────────
+  echo ""
+  echo "==> Running Rust OPA vector tests (--include-ignored -- test_vec_opa_)..."
+  PHASE3_FAIL=0
+
+  # shellcheck disable=SC2068
+  if CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=cc \
+    RUSTC_WRAPPER="" \
+    CARGO_NET_OFFLINE=true \
+    cargo test \
+    ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} \
+    --features non-fips \
+    -p test_kms_server \
+    --lib \
+    -- \
+    --include-ignored \
+    test_vec_opa_ \
+    2>&1 | tee /tmp/kms_opa_rust_tests.log; then
+    echo "Phase 3: Rust OPA tests PASSED."
+  else
+    PHASE3_FAIL=1
+    echo "Phase 3: Rust OPA tests FAILED." >&2
+  fi
+fi
+
+# ── Final summary ─────────────────────────────────────────────────────────────
 echo ""
 echo "========================================="
 echo "OPA RBAC test summary:"
 echo "  Phase 1 (policy tests): ${PHASE1_PASS} pass / ${PHASE1_FAIL} fail"
 echo "  Phase 2 (integration) : ${PASS} pass / ${FAIL} fail"
-echo "  Total failures: ${TOTAL_FAIL}"
+if [[ "${PHASE3_SKIPPED:-false}" == "true" ]]; then
+  echo "  Phase 3 (Rust tests)  : SKIPPED (auth_verifier binary not available)"
+else
+  echo "  Phase 3 (Rust tests)  : $([ "${PHASE3_FAIL}" -eq 0 ] && echo PASSED || echo FAILED)"
+fi
 echo "========================================="
 
+TOTAL_FAIL=$((PHASE1_FAIL + FAIL + ${PHASE3_FAIL:-0}))
 if [ "${TOTAL_FAIL}" -gt 0 ]; then
   echo "ERROR: ${TOTAL_FAIL} OPA RBAC test(s) failed." >&2
   exit 1
 fi
-
-echo "OPA RBAC tests completed successfully."

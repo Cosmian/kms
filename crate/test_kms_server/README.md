@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**638 vectors** across 16 categories (including KAT):
+**639 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -354,6 +354,7 @@ replays the steps sequentially.
 | OPA | `opa/mode_exclusive_auditor_get_attributes_allowed` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
 | OPA | `opa/mode_exclusive_denied` | OPA exclusive mode; owner (mTLS cert) creates AES key; ungranted user (different cert, no roles) is denied Get. | 3 |
 | OPA | `opa/mode_exclusive_domain_admin_wrong_domain` | OPA exclusive mode. The CryptoOfficer from realm `kms-opa-test` (default JWT client, | 3 |
+| OPA | `opa/mode_exclusive_other_domain_allowed` | OPA exclusive mode. A CryptoOfficer from realm `kms-opa-other` (domain=kms-opa-other) | 3 |
 | OPA | `opa/mode_exclusive_user_role_denied` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
 | OPA | `opa/mode_exclusive_wrong_domain` | OPA exclusive mode. The CryptoOfficer from realm `kms-opa-test` (default JWT client, | 3 |
 | **Negative** | | | |
