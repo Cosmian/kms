@@ -252,19 +252,23 @@ mod tests {
         Ok(())
     }
 
-    /// Verify that the `auth_verifier.toml` test config parses correctly and
+    /// Verify that the canonical `[auth_verifier]` section parses correctly and
     /// enables both bearer-token validation and the Web UI login form.
+    ///
+    /// The TOML is inlined here to keep the test self-contained; it mirrors
+    /// `test_data/configs/server/auth/auth_verifier.toml` which is in a submodule
+    /// not checked out during unit-test CI runs.
     #[test]
     #[allow(clippy::panic_in_result_fn)]
     fn test_auth_verifier_toml_config_parses() -> Result<(), Box<dyn std::error::Error>> {
-        let config_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../test_data/configs/server/auth/auth_verifier.toml");
-        let toml_content = std::fs::read_to_string(&config_path)
-            .map_err(|e| format!("failed to read {}: {e}", config_path.display()))?;
+        let toml_content = r#"
+[auth_verifier]
+auth_verifier_url = "https://localhost:8443"
+auth_verifier_accept_invalid_certs = true
+auth_verifier_realm = "_"
+"#;
 
-        // Extract just the [auth_verifier] section and parse it.
-        let parsed: toml::Value = toml::from_str(&toml_content)?;
-
+        let parsed: toml::Value = toml::from_str(toml_content)?;
         let auth_section = parsed
             .get("auth_verifier")
             .ok_or("missing [auth_verifier] section")?;
