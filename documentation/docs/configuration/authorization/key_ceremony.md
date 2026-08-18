@@ -57,10 +57,14 @@ The constraint: $n \ge 3$ (threshold equals total parts, minimum 3 custodians re
 
 **Important security boundary:**
 
-| Store | Purpose |
-|---|---|
-| `crypto_officer_activations` DB table | **Sole source of truth** for CO role status. Sealed with AES-256-GCM under `ceremony_secret`. |
-| `objects` DB table | Stores the reconstructed ceremony key as a KMS object. |
+| Store | Written by | Purpose |
+|---|---|---|
+| `crypto_officer_activations` DB table | `JoinSplitKey` on ceremony shares, or `POST /access/crypto_officer/ceremony/activate` | **Sole source of truth** for CO role status. Sealed with AES-256-GCM under `ceremony_secret`. |
+| `objects` DB table | Every `JoinSplitKey` call (ceremony and non-ceremony) | Stores the reconstructed key as a managed KMS object owned by the caller. For ceremony shares the key is stored **unconditionally** before the activation side-effect runs. |
+
+!!! info "Two ceremony completion paths"
+    - **`JoinSplitKey` KMIP operation** (primary path): stores the reconstructed key in `objects` **and** writes the CO activation record. Suitable for clients that need the reconstructed key as a usable KMS object.
+    - **`POST /access/crypto_officer/ceremony/activate`** (CLI legacy path): reconstructs the secret in RAM only (for hash verification), writes the CO activation record, and **does not store a key object**.
 
 The `x-cosmian-crypto-officer-ceremony` tag on shares identifies which shares belong to
 a ceremony split. **It does NOT grant any privilege.** The server checks this tag only
