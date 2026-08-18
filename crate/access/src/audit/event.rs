@@ -21,6 +21,11 @@ pub struct AuditEvent {
     /// `None` only for synthetic events or test fixtures that predate this field.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub request_id: Option<Uuid>,
+    /// Structured JSON payload for synthetic recovery rows (torn-write / reanchor sentinels).
+    /// `None` for ordinary KMIP audit events. Always a JSON-object string when `Some` — see
+    /// `canonical_bytes` for why this shape must never collide with `request_id`'s UUID shape.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub details: Option<String>,
     /// SHA-256 of the previous row (all-zeros for the first row).
     #[serde(with = "hex::serde")]
     pub prev_hash: [u8; 32],
@@ -69,6 +74,8 @@ pub struct AuditEventDraft {
     pub duration_ms: u64,
     /// Shared across all `BatchItem` drafts from the same HTTP request.
     pub request_id: Option<Uuid>,
+    /// Structured JSON payload for synthetic recovery rows. `None` for ordinary events.
+    pub details: Option<String>,
 }
 
 #[cfg(test)]
@@ -102,6 +109,7 @@ mod tests {
             result: AuditResult::Success,
             duration_ms: 5,
             request_id: None,
+            details: None,
         };
         assert_eq!(draft.operation, "Encrypt");
     }

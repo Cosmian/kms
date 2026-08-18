@@ -488,6 +488,7 @@ vault_token_cache_ttl_secs = 0
 enabled = false
 channel_capacity = 0
 trusted_proxy_cidrs = []
+failure_mode = "continue"
 
 [audit.file]
 "#;

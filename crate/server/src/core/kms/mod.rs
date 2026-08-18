@@ -201,8 +201,8 @@ impl KMS {
             crypto_oracles: RwLock::new(crypto_oracles),
             // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
             hsm: hsm_instances.into_iter().next(),
-            metrics,
             audit_store: Self::create_audit_store(&server_params)?,
+            metrics,
         })
     }
 
@@ -288,7 +288,11 @@ impl KMS {
     /// Starts the audit file store if audit logging is configured.
     fn create_audit_store(server_params: &ServerParams) -> KResult<Option<AuditFileStore>> {
         if let Some(ref path) = server_params.audit_file_path {
-            let store = AuditFileStore::start(path, server_params.audit_channel_capacity)?;
+            let store = AuditFileStore::start_with_max_size(
+                path,
+                server_params.audit_channel_capacity,
+                server_params.audit_file_max_size_bytes,
+            )?;
             Ok(Some(store))
         } else {
             Ok(None)

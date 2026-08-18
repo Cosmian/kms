@@ -26,8 +26,8 @@ use time::{OffsetDateTime, format_description::well_known::Iso8601};
 use super::google_cse::utils::google_cse_auth;
 use crate::{
     config::{
-        ClapConfig, GoogleCseConfig, HttpConfig, MainDBConfig, ServerParams, SocketServerConfig,
-        TlsConfig,
+        AuditFailureMode, ClapConfig, GoogleCseConfig, HttpConfig, MainDBConfig, ServerParams,
+        SocketServerConfig, TlsConfig,
     },
     core::{KMS, audit::AuditFileStore},
     kms_bail,
@@ -372,17 +372,16 @@ pub(crate) async fn test_app_with_clap_config(
 }
 
 /// Creates a test application that records every KMIP request to an audit file.
+/// Creates a test application that records every KMIP request to an audit file.
 ///
-/// Returns the initialised Actix service **and** the `AuditFileStore` handle.
-/// After the test sends its requests, drop the service then
-/// `tokio::time::sleep(Duration::from_millis(200)).await` to let the background
-/// writer flush — the same pattern used in `core::audit::file_store` tests.
+/// Pass `AuditFileStore::start(path, 128)` for normal operation or
+/// `AuditFileStore::new_disconnected()` to exercise failure paths without a
+/// file on disk. `failure_mode` controls the middleware's response when
+/// `enqueue` fails; existing tests pass `Default::default()` for `Continue`.
 pub(crate) async fn test_app_with_audit(
-    audit_path: &std::path::Path,
-) -> (
-    impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
-    AuditFileStore,
-) {
+    store: AuditFileStore,
+    failure_mode: AuditFailureMode,
+) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let clap_config = https_clap_config();
     let server_params =
         Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
@@ -399,11 +398,9 @@ pub(crate) async fn test_app_with_audit(
             .expect("start KMS server: failed managing Google CSE RSA Keypair");
     }
 
-    let store = AuditFileStore::start(audit_path, 128).expect("cannot start audit store");
-
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
-        .wrap(AuditMiddleware::new(Some(store.clone()), vec![], Default::default()))
+        .wrap(AuditMiddleware::new(Some(store), vec![], failure_mode))
         .service(routes::root_redirect::root_redirect_to_ui)
         .service(routes::health::get_health)
         .service(web::scope("/.well-known").service(routes::jwks::get_jwks))
@@ -453,7 +450,7 @@ pub(crate) async fn test_app_with_audit(
         .service(routes::jose::list_tags_handler);
     app = app.service(crypto_scope);
 
-    (test::init_service(app).await, store)
+    test::init_service(app).await
 }
 
 /// Creates a test application that records every KMIP request to an audit file,
@@ -485,7 +482,11 @@ pub(crate) async fn test_app_with_audit_and_auth(
         .service(routes::kmip::kmip_2_1_json)
         .service(routes::kmip::kmip)
         .wrap(ensure_auth_middleware(kms_server.clone(), true))
-        .wrap(AuditMiddleware::new(Some(store.clone()), vec![], Default::default()));
+        .wrap(AuditMiddleware::new(
+            Some(store.clone()),
+            vec![],
+            AuditFailureMode::default(),
+        ));
 
     (test::init_service(app).await, store)
 }
