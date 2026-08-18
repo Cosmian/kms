@@ -61,7 +61,7 @@ async fn audit_records_create_encrypt_failure_and_batch() -> KResult<()> {
 
     let path = temp_path("e2e_chain");
     let store = AuditFileStore::start(&path, 128).expect("cannot start audit store");
-    let app = test_utils::test_app_with_audit(store.clone(), Default::default()).await;
+    let app = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::default()).await;
     let fut = async {
         // 1. Create AES-256-GCM key (FIPS-approved)
         let create_request = symmetric_key_create_request(
@@ -372,7 +372,7 @@ async fn audit_records_binary_create_encrypt_failure_and_batch() -> KResult<()> 
 
     let path = temp_path("e2e_chain_binary");
     let store = AuditFileStore::start(&path, 128).expect("cannot start audit store");
-    let app = test_utils::test_app_with_audit(store.clone(), Default::default()).await;
+    let app = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::default()).await;
     let fut = async {
         // 1. Create AES-256-GCM key (FIPS-approved), sent as binary TTLV.
         let create_request = symmetric_key_create_request(
@@ -754,6 +754,146 @@ async fn reject_mode_passes_through_when_audit_works() -> KResult<()> {
     assert_eq!(events.len(), 1, "exactly one event must be written");
     assert_eq!(events[0].result, AuditResult::Success);
     assert_eq!(events[0].operation, "Create");
+
+    std::fs::remove_file(&path).ok();
+    Ok(())
+}
+
+// ── max_size_bytes write-stop cap ──────────────────────────────────────────
+
+/// In `reject` mode, once the writer has observed that the configured
+/// `max_size_bytes` cap is reached, the next audited request must return HTTP
+/// 503 — exactly like a full/closed channel. The request that crosses the cap
+/// is itself allowed through and persisted (documented "one final event" rule).
+#[tokio::test]
+async fn reject_mode_returns_503_after_size_cap_reached() -> KResult<()> {
+    log_init(option_env!("RUST_LOG"));
+
+    let path = temp_path("reject_size_cap");
+    // A 1-byte cap: the very first audit event already exceeds it once written.
+    let store =
+        AuditFileStore::start_with_max_size(&path, 128, Some(1)).expect("cannot start audit store");
+    let app = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::Reject).await;
+
+    let create_req = || {
+        symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )
+    };
+
+    // First request: crosses the cap but is itself allowed through and persisted.
+    let req1 = actix_test::TestRequest::post()
+        .uri("/kmip/2_1")
+        .set_json(to_ttlv(&create_req()?)?)
+        .to_request();
+    let res1 = call_service(&app, req1).await;
+    assert_eq!(
+        res1.status(),
+        StatusCode::OK,
+        "the event that crosses the cap must still be allowed through"
+    );
+
+    // Synchronize on the writer having processed that event (and observed the cap)
+    // before sending the second request.
+    store.flush().await;
+
+    // Second request: the writer is now capped, so its event cannot be enqueued.
+    let req2 = actix_test::TestRequest::post()
+        .uri("/kmip/2_1")
+        .set_json(to_ttlv(&create_req()?)?)
+        .to_request();
+    let res2 = call_service(&app, req2).await;
+    assert_eq!(
+        res2.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "reject mode must return 503 once the audit file size cap is reached"
+    );
+
+    let file = std::fs::File::open(&path).expect("audit file must exist");
+    let event_count = std::io::BufRead::lines(std::io::BufReader::new(file))
+        .filter_map(|l| {
+            let l = l.unwrap();
+            if l.trim().is_empty() {
+                None
+            } else {
+                Some(serde_json::from_str::<cosmian_kms_access::audit::AuditEvent>(&l).unwrap())
+            }
+        })
+        .count();
+    assert_eq!(
+        event_count, 1,
+        "only the crossing event may be persisted, the rejected request adds none"
+    );
+
+    std::fs::remove_file(&path).ok();
+    Ok(())
+}
+
+/// In `continue` mode, once the size cap is reached, the request still succeeds
+/// (200) — audit failures never block traffic in this mode — but no new audit
+/// row is added for it.
+#[tokio::test]
+async fn continue_mode_succeeds_after_size_cap_reached_without_new_audit_row() -> KResult<()> {
+    log_init(option_env!("RUST_LOG"));
+
+    let path = temp_path("continue_size_cap");
+    let store =
+        AuditFileStore::start_with_max_size(&path, 128, Some(1)).expect("cannot start audit store");
+    let app = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::Continue).await;
+
+    let create_req = || {
+        symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )
+    };
+
+    let req1 = actix_test::TestRequest::post()
+        .uri("/kmip/2_1")
+        .set_json(to_ttlv(&create_req()?)?)
+        .to_request();
+    let res1 = call_service(&app, req1).await;
+    assert_eq!(res1.status(), StatusCode::OK);
+
+    store.flush().await;
+
+    let req2 = actix_test::TestRequest::post()
+        .uri("/kmip/2_1")
+        .set_json(to_ttlv(&create_req()?)?)
+        .to_request();
+    let res2 = call_service(&app, req2).await;
+    assert_eq!(
+        res2.status(),
+        StatusCode::OK,
+        "continue mode must not block the request even once the size cap is reached"
+    );
+
+    let file = std::fs::File::open(&path).expect("audit file must exist");
+    let event_count = std::io::BufRead::lines(std::io::BufReader::new(file))
+        .filter_map(|l| {
+            let l = l.unwrap();
+            if l.trim().is_empty() {
+                None
+            } else {
+                Some(serde_json::from_str::<cosmian_kms_access::audit::AuditEvent>(&l).unwrap())
+            }
+        })
+        .count();
+    assert_eq!(
+        event_count, 1,
+        "the second request must not add a new audit row once the cap is reached"
+    );
 
     std::fs::remove_file(&path).ok();
     Ok(())

@@ -30,15 +30,22 @@
   SHA-256 still matches the digest recorded in the event — exiting non-zero
   (`MISSING EVIDENCE` / `TAMPERED EVIDENCE`) if the sealed file was deleted or altered after the
   fact.
+- New optional `--audit-file-max-size-bytes` / `KMS_AUDIT_FILE_MAX_SIZE_BYTES` /
+  `[audit.file] max_size_bytes` caps the audit file at a configured byte size. Omitted (the
+  default) means unlimited — today's behavior is unchanged. This is a **write-stop cap, not
+  rotation or retention**: the writer never deletes, truncates, or rolls the file. The event
+  that pushes the file to or past the cap is still persisted; every event after it is dropped
+  (subject to `--audit-failure-mode`, exactly like a full channel or a dead writer) until the
+  log is remediated and the KMS is restarted. A `0` value is rejected as invalid configuration.
 
 ## Breaking Changes
 
 - `AuditFileStore::resume_chain`'s previous behaviour of aborting server startup on a tampered
   or unparseable last audit event has been removed. Deployments that relied on the KMS refusing
-  to start on audit-log corruption (as an operator acknowledgement gate) must now monitor the
-  new `kms.audit.startup_recovery.total` metric and/or server logs (`AuditFileStore: sealed
-  corrupted audit log as ...`) instead — there is no configuration option to restore the old
-  abort-on-corruption behaviour.
+  to start on audit-log corruption (as an operator acknowledgement gate) must now monitor server
+  logs instead — look for `AuditFileStore: sealed corrupted audit log as ...` or
+  `AuditFileStore: torn write recovered` errors. There is no configuration option to restore the
+  old abort-on-corruption behaviour.
 
 ---
 
