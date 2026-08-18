@@ -48,9 +48,14 @@ pub(crate) async fn create_split_key(
 ) -> KResult<CreateSplitKeyResponse> {
     trace!("{request}");
 
-    let uid_str = match &request.unique_identifier {
-        UniqueIdentifier::TextString(s) => s.clone(),
-        other => other.to_string(),
+    let uid_str = match request.unique_identifier.as_ref() {
+        Some(UniqueIdentifier::TextString(s)) => s.clone(),
+        Some(other) => other.to_string(),
+        None => {
+            return Err(KmsError::InvalidRequest(
+                "CreateSplitKey: unique_identifier is required (server-side key generation is not yet supported)".to_owned(),
+            ));
+        }
     };
 
     // Retrieve the master key — user must have Get permission
@@ -348,7 +353,7 @@ pub(crate) async fn create_split_key(
         // Revoke the source key before destroying — the destroy operation requires
         // prior revocation for keys with an explicit activation_date.
         let revoke_req = Revoke {
-            unique_identifier: Some(request.unique_identifier.clone()),
+            unique_identifier: request.unique_identifier.clone(),
             revocation_reason: RevocationReason {
                 revocation_reason_code: RevocationReasonCode::KeyCompromise,
                 revocation_message: Some(
@@ -373,7 +378,7 @@ pub(crate) async fn create_split_key(
         }
 
         let destroy_req = Destroy {
-            unique_identifier: Some(request.unique_identifier.clone()),
+            unique_identifier: request.unique_identifier.clone(),
             remove: true, // physically remove — the key is superseded by its shares
             cascade: false,
             expected_object_type: None,
@@ -411,8 +416,7 @@ pub(crate) async fn create_split_key(
     }
 
     Ok(CreateSplitKeyResponse {
-        unique_identifier: request.unique_identifier,
-        split_key_unique_identifiers: share_uids,
+        unique_identifier: share_uids,
     })
 }
 
