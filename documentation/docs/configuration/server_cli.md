@@ -579,15 +579,13 @@ Options:
           [env: KMS_CEREMONY_SECRET=]
 
       --ceremony-key-id <CEREMONY_KEY_ID>
-          UID of a KMS symmetric key to use as the ceremony record sealing key.
+          UID of a KMS symmetric key to use as the ceremony record sealing key (ADP-26).
 
-          When set, key material is fetched from the KMS object store after database
-          initialization and used in place of `ceremony_secret`. This enables:
+          When set, key material is fetched from the KMS object store via a direct DB read
+          (bypassing KMIP auth) and used in place of `ceremony_secret`. This enables:
             - Key rotation via standard KMIP `ReKey` / `Rotate` operations.
             - HSM-backed sealing when the referenced key is HSM-resident.
-            - Audit trail: each retrieval of the ceremony key is logged.
-
-          If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+            - Audit trail: each `Get` of the ceremony key is logged.
 
           **Bootstrap constraint**: the ceremony sealing key must be created before
           enabling `crypto_officer_require_ceremony = true`. Create it while the server
@@ -601,29 +599,12 @@ Options:
           # 4. Enable require_ceremony = true and restart
           ```
 
+          If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+
+          **Status**: ADP-26 (planned). This field is accepted by the config parser but is not yet
+          functional. Set `ceremony_secret` in the meantime.
+
           [env: KMS_CEREMONY_KEY_ID=]
-
-      --ceremony-wrapping-key-id <CEREMONY_WRAPPING_KEY_ID>
-          UID of a KMS symmetric key to use for AES-KW (RFC 5649) wrapping of split-key shares.
-
-          When set, `CreateSplitKey` encrypts each share's raw bytes with this key (AES-128/192/256-KWP)
-          before storing in the database.  `JoinSplitKey` automatically detects the
-          `x-cosmian-share-wrapping-key` vendor attribute on each share and unwraps the bytes before
-          XOR reconstruction.
-
-          The wrapping key must already exist in the KMS object store and must be an AES symmetric key.
-          When the KMS is HSM-backed, this key can be HSM-resident, providing hardware boundary
-          protection equivalent to purpose-built HSM split-key solutions.
-
-          Generate a suitable key before enabling ceremony mode:
-          ```bash
-          ckms sym keys create --id ceremony-wrap-2026 --number-of-bits 256
-          ```
-
-          Rotate by creating a new key, updating this value, and re-running the ceremony
-          (existing wrapped shares require the original key; re-ceremony is mandatory on rotation).
-
-          [env: KMS_CEREMONY_WRAP_KEY_ID=]
 
       --aws-xks-enable
           This setting turns on endpoints handling the AWS XKS feature
