@@ -28,6 +28,8 @@ use cosmian_logger::log_init;
 use zeroize::Zeroizing;
 
 use crate::{
+    config::AuditFailureMode,
+    core::audit::AuditFileStore,
     result::KResult,
     tests::test_utils::{self, post_2_1, post_kmip_binary, post_kmip_json},
 };
@@ -58,7 +60,8 @@ async fn audit_records_create_encrypt_failure_and_batch() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
     let path = temp_path("e2e_chain");
-    let (app, store) = test_utils::test_app_with_audit(&path).await;
+    let store = AuditFileStore::start(&path, 128).expect("cannot start audit store");
+    let app = test_utils::test_app_with_audit(store.clone(), Default::default()).await;
     let fut = async {
         // 1. Create AES-256-GCM key (FIPS-approved)
         let create_request = symmetric_key_create_request(
@@ -368,7 +371,8 @@ async fn audit_records_binary_create_encrypt_failure_and_batch() -> KResult<()> 
     log_init(option_env!("RUST_LOG"));
 
     let path = temp_path("e2e_chain_binary");
-    let (app, store) = test_utils::test_app_with_audit(&path).await;
+    let store = AuditFileStore::start(&path, 128).expect("cannot start audit store");
+    let app = test_utils::test_app_with_audit(store.clone(), Default::default()).await;
     let fut = async {
         // 1. Create AES-256-GCM key (FIPS-approved), sent as binary TTLV.
         let create_request = symmetric_key_create_request(
@@ -626,5 +630,131 @@ async fn audit_records_401_unauthenticated() -> KResult<()> {
         "unauthenticated request must be attributed to the unauthenticated user"
     );
 
+    Ok(())
+}
+
+// ── Reject mode tests ─────────────────────────────────────────────────────────
+
+/// In `reject` mode, when `enqueue()` fails (dead writer), the middleware must
+/// return HTTP 503 instead of the normal KMIP response.
+///
+/// Uses `AuditFileStore::new_disconnected()` so `try_send` always returns
+/// `TrySendError::Closed` — no race with a live writer draining the channel.
+#[tokio::test]
+async fn reject_mode_returns_503_when_audit_unavailable() -> KResult<()> {
+    log_init(option_env!("RUST_LOG"));
+
+    let store = AuditFileStore::new_disconnected();
+    let app = test_utils::test_app_with_audit(store, AuditFailureMode::Reject).await;
+
+    let create_req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    let req = actix_test::TestRequest::post()
+        .uri("/kmip/2_1")
+        .set_json(to_ttlv(&create_req)?)
+        .to_request();
+    let res = call_service(&app, req).await;
+
+    assert_eq!(
+        res.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "reject mode must return 503 when audit event cannot be queued"
+    );
+    let body = actix_web::test::read_body(res).await;
+    assert_eq!(body.as_ref(), b"Service unavailable");
+
+    Ok(())
+}
+
+/// In `continue` mode, the same dead-writer condition must NOT cause 503.
+/// The KMIP operation completes normally (200) and the dropped event is logged.
+#[tokio::test]
+async fn continue_mode_succeeds_when_audit_unavailable() -> KResult<()> {
+    log_init(option_env!("RUST_LOG"));
+
+    let store = AuditFileStore::new_disconnected();
+    let app = test_utils::test_app_with_audit(store, AuditFailureMode::Continue).await;
+
+    let create_req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    let req = actix_test::TestRequest::post()
+        .uri("/kmip/2_1")
+        .set_json(to_ttlv(&create_req)?)
+        .to_request();
+    let res = call_service(&app, req).await;
+
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "continue mode must not block the request even when audit event is dropped"
+    );
+
+    Ok(())
+}
+
+/// In `reject` mode with a working audit store, requests must succeed normally (200)
+/// and the event must be written to the audit file.
+#[tokio::test]
+async fn reject_mode_passes_through_when_audit_works() -> KResult<()> {
+    log_init(option_env!("RUST_LOG"));
+
+    let path = temp_path("reject_passthrough");
+    let store = AuditFileStore::start(&path, 128).expect("cannot start audit store");
+    let app = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::Reject).await;
+
+    let create_req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    let req = actix_test::TestRequest::post()
+        .uri("/kmip/2_1")
+        .set_json(to_ttlv(&create_req)?)
+        .to_request();
+    let res = call_service(&app, req).await;
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "reject mode must not interfere when audit event is queued successfully"
+    );
+
+    store.flush().await;
+
+    let file = std::fs::File::open(&path).expect("audit file must exist");
+    let events: Vec<cosmian_kms_access::audit::AuditEvent> =
+        std::io::BufRead::lines(std::io::BufReader::new(file))
+            .filter_map(|l| {
+                let l = l.unwrap();
+                if l.trim().is_empty() {
+                    None
+                } else {
+                    Some(serde_json::from_str(&l).unwrap())
+                }
+            })
+            .collect();
+
+    assert_eq!(events.len(), 1, "exactly one event must be written");
+    assert_eq!(events[0].result, AuditResult::Success);
+    assert_eq!(events[0].operation, "Create");
+
+    std::fs::remove_file(&path).ok();
     Ok(())
 }
