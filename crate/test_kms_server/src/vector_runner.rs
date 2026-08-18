@@ -173,12 +173,12 @@ pub struct IdentityConfig {
 /// Captures the Nth occurrence of a repeated TTLV tag from a response.
 ///
 /// Used with `capture_nth` in a manifest step to capture individual share UIDs from
-/// `CreateSplitKeyResponse`, which returns N `PrivateKeyUniqueIdentifier` tags.
+/// `CreateSplitKeyResponse`, which returns N `UniqueIdentifier` tags (one per share).
 ///
 /// Example:
 /// ```toml
 /// [steps.capture_nth.share2_id]
-/// tag   = "PrivateKeyUniqueIdentifier"
+/// tag   = "UniqueIdentifier"
 /// index = 1
 /// ```
 #[derive(Debug, Deserialize)]
@@ -276,12 +276,12 @@ pub struct TestStep {
     ///
     /// Complements `capture` (which always takes the first occurrence) for responses
     /// that emit multiple values under the same tag, e.g. `CreateSplitKeyResponse`
-    /// which returns one `PrivateKeyUniqueIdentifier` per share.
+    /// which returns one `UniqueIdentifier` per share.
     ///
     /// Example:
     /// ```toml
     /// [steps.capture_nth.share2_id]
-    /// tag   = "PrivateKeyUniqueIdentifier"
+    /// tag   = "UniqueIdentifier"
     /// index = 1
     /// ```
     #[serde(default)]

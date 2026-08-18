@@ -2220,7 +2220,7 @@ impl TryFrom<kmip_2_1::kmip_operations::HashResponse> for HashResponse {
 /// Requests the server to generate a new split key and register all the splits as individual
 /// new Managed Cryptographic Objects.
 ///
-/// KMIP 1.4 specification §4.38
+/// KMIP 1.4 specification §4.38, Table 247
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateSplitKey {
@@ -2236,37 +2236,32 @@ pub struct CreateSplitKey {
     pub split_key_threshold: i32,
     /// The method to be used to split the key.
     pub split_key_method: SplitKeyMethod,
-    /// Required for the Polynomial Sharing Prime Field method.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub prime_field_size: Option<Vec<u8>>,
     /// Specifies desired object attributes using templates and/or individual attributes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
-/// Response to a Create Split Key request (§4.38).
+/// Response to a Create Split Key request (§4.38, Table 248).
 ///
 /// Contains the Unique Identifiers of all created split key share objects.
 /// The ID Placeholder is set to the UID of the share whose Key Part Identifier is 1.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateSplitKeyResponse {
-    /// The Unique Identifier of the original key that was split (or the first share if new).
-    pub unique_identifier: String,
-    /// The Unique Identifiers of all created split key share objects.
-    #[serde(
-        rename = "PrivateKeyUniqueIdentifier",
-        skip_serializing_if = "Vec::is_empty",
-        default
-    )]
-    pub split_key_unique_identifiers: Vec<String>,
+    /// The Unique Identifiers of all newly created split key share objects.
+    /// Per spec: Unique Identifier, Yes, MAY be repeated.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub unique_identifier: Vec<String>,
+    /// An OPTIONAL list of object attributes implicitly set by the key management system.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_attribute: Option<TemplateAttribute>,
 }
 
 /// 4.39 Join Split Key
 ///
 /// Requests the server to combine a list of Split Keys into a single Managed Cryptographic Object.
 ///
-/// KMIP 1.4 specification §4.39
+/// KMIP 1.4 specification §4.39, Table 249
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct JoinSplitKey {
@@ -2274,21 +2269,18 @@ pub struct JoinSplitKey {
     pub object_type: ObjectType,
     /// Unique Identifiers of the Split Key objects to combine.
     /// The minimum count is specified by the Split Key Threshold field in each Split Key object.
-    #[serde(
-        rename = "PrivateKeyUniqueIdentifier",
-        skip_serializing_if = "Vec::is_empty",
-        default
-    )]
-    pub split_key_unique_identifiers: Vec<String>,
-    /// Optionally specifies the Secret Data type when the resulting object is Secret Data.
+    /// Per spec: Unique Identifier, Yes, MAY be repeated.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub unique_identifier: Vec<String>,
+    /// Determines which Secret Data type the Split Keys form (only when the resulting object is Secret Data).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub secret_data_type: Option<i32>,
+    pub secret_data_type: Option<SecretDataType>,
     /// Specifies desired object attributes using templates and/or individual attributes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
-/// Response to a Join Split Key request (§4.39).
+/// Response to a Join Split Key request (§4.39, Table 250).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct JoinSplitKeyResponse {
@@ -2387,20 +2379,18 @@ impl TryFrom<kmip_2_1::kmip_operations::ImportResponse> for ImportResponse {
 // ──────────────────────────────────────────────────────────────────────────
 
 /// Converts a KMIP 1.4 [`CreateSplitKey`] into the equivalent KMIP 2.1 operation.
-///
-/// The 1.4 spec allows the key-to-split's `UniqueIdentifier` to be optional
-/// (the server would create a fresh key).  The 2.1 struct requires it; a
-/// missing `unique_identifier` is mapped to an empty `TextString` so the
-/// `create_split_key` handler can generate a new key transparently.
 impl From<CreateSplitKey> for kmip_2_1::kmip_operations::CreateSplitKey {
     fn from(req: CreateSplitKey) -> Self {
         Self {
-            unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                req.unique_identifier.unwrap_or_default(),
-            ),
+            object_type: req.object_type.into(),
+            unique_identifier: req
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             split_key_parts: req.split_key_parts,
             split_key_threshold: req.split_key_threshold,
             split_key_method: req.split_key_method.into(),
+            attributes: req.template_attribute.map(Into::into),
+            protection_storage_masks: None,
         }
     }
 }
@@ -2413,35 +2403,25 @@ impl TryFrom<kmip_2_1::kmip_operations::CreateSplitKeyResponse> for CreateSplitK
         resp: kmip_2_1::kmip_operations::CreateSplitKeyResponse,
     ) -> Result<Self, Self::Error> {
         Ok(Self {
-            unique_identifier: resp.unique_identifier.to_string(),
-            split_key_unique_identifiers: resp
-                .split_key_unique_identifiers
-                .into_iter()
-                .map(|u| u.to_string())
-                .collect(),
+            unique_identifier: resp.unique_identifier.into_iter().map(|u| u.to_string()).collect(),
+            template_attribute: None,
         })
     }
 }
 
 /// Converts a KMIP 1.4 [`JoinSplitKey`] into the equivalent KMIP 2.1 operation.
-///
-/// The 1.4 request payload does not include `split_key_method` (the server reads it
-/// from the stored Split Key objects).  The 2.1 struct carries it explicitly — we
-/// default to `XOR`; the `join_split_key` handler reads the real method from the
-/// first stored share and overrides it.
 impl From<JoinSplitKey> for kmip_2_1::kmip_operations::JoinSplitKey {
     fn from(req: JoinSplitKey) -> Self {
         Self {
             object_type: req.object_type.into(),
-            split_key_unique_identifiers: req
-                .split_key_unique_identifiers
+            unique_identifier: req
+                .unique_identifier
                 .into_iter()
                 .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString)
                 .collect(),
-            // The actual split key method is embedded in each stored Share object; this
-            // placeholder is overridden by the handler after reading the first share.
-            split_key_method: kmip_2_1::kmip_types::SplitKeyMethod::XOR,
+            secret_data_type: None,
             attributes: req.template_attribute.map(Into::into),
+            protection_storage_masks: None,
         }
     }
 }
@@ -2455,6 +2435,7 @@ impl TryFrom<kmip_2_1::kmip_operations::JoinSplitKeyResponse> for JoinSplitKeyRe
     ) -> Result<Self, Self::Error> {
         Ok(Self {
             unique_identifier: resp.unique_identifier.to_string(),
+            template_attribute: None,
         })
     }
 }
