@@ -2,11 +2,10 @@ use clap::Parser;
 use cosmian_kms_client::{
     KmsClient,
     kmip_2_1::{
-        kmip_objects::ObjectType,
-        kmip_operations::JoinSplitKey,
-        kmip_types::UniqueIdentifier,
+        kmip_objects::ObjectType, kmip_operations::JoinSplitKey, kmip_types::UniqueIdentifier,
     },
 };
+
 use crate::{
     actions::console,
     error::result::{KmsCliResult, KmsCliResultHelper},

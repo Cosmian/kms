@@ -368,7 +368,7 @@ pub(crate) async fn activate_crypto_officer_ceremony(
     let user = kms.get_user(&req);
     trace_info!(user = %user, "POST /access/crypto_officer/ceremony/activate {user}");
 
-    perform_crypto_officer_ceremony_activation(&kms, &body.share_ids, user.as_str()).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &body.share_ids, &user).await?;
 
     Ok(Json(SuccessResponse {
         success: format!("Crypto Officer ceremony activated for user '{user}'."),
