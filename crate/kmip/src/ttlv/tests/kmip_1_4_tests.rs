@@ -450,7 +450,9 @@ fn test_create_split_key_1_4_serialization_and_conversion() {
     assert_eq!(req_2_1.split_key_threshold, 2);
     assert_eq!(
         req_2_1.unique_identifier,
-        Some(crate::kmip_2_1::kmip_types::UniqueIdentifier::TextString("my-secret-key".to_owned()))
+        Some(crate::kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+            "my-secret-key".to_owned()
+        ))
     );
 }
 
@@ -474,8 +476,7 @@ fn test_create_split_key_1_4_no_uid_conversion() {
 
     let req_2_1: crate::kmip_2_1::kmip_operations::CreateSplitKey = req.into();
     assert_eq!(
-        req_2_1.unique_identifier,
-        None,
+        req_2_1.unique_identifier, None,
         "missing UID should map to None"
     );
 }

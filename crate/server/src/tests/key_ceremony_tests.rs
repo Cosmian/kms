@@ -162,7 +162,7 @@ async fn test_config_only_co_is_immediately_active() -> KResult<()> {
     let kms = config_only_co_kms(vec![alice.to_owned()]).await?;
 
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Config-only CO: alice should be an active Crypto Officer"
     );
     Ok(())
@@ -177,7 +177,7 @@ async fn test_config_only_non_co_user_is_operator() -> KResult<()> {
     let kms = config_only_co_kms(vec![alice.to_owned()]).await?;
 
     assert!(
-        !kms.is_crypto_officer(bob).await?,
+        !kms.is_crypto_officer(&UserId::from(bob)).await?,
         "Config-only CO: bob is not in the list and should not be CO"
     );
     Ok(())
@@ -196,7 +196,7 @@ async fn test_ceremony_candidate_is_operator_before_ceremony() -> KResult<()> {
     let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
 
     assert!(
-        !kms.is_crypto_officer(alice).await?,
+        !kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Ceremony mode: alice should NOT be CO before ceremony completes"
     );
     Ok(())
@@ -241,10 +241,10 @@ async fn test_ceremony_activation_makes_user_co() -> KResult<()> {
         .await?;
 
     // Alice assembles all shares — this activates the CO ceremony (not stored).
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
 
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "After ceremony completion alice should be CO"
     );
     Ok(())
@@ -284,14 +284,14 @@ async fn test_ceremony_activates_only_assembling_user() -> KResult<()> {
         .await?;
 
     // Alice completes the ceremony via the dedicated endpoint.
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
 
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice should be CO after her ceremony"
     );
     assert!(
-        !kms.is_crypto_officer(bob).await?,
+        !kms.is_crypto_officer(&UserId::from(bob)).await?,
         "Bob should NOT be CO — he never assembled shares"
     );
     Ok(())
@@ -372,7 +372,8 @@ async fn test_non_candidate_cannot_activate_ceremony() -> KResult<()> {
     }
 
     // Eve tries to activate the ceremony — must be rejected (she is not in CO candidates).
-    let result = perform_crypto_officer_ceremony_activation(&kms, &share_uids, eve).await;
+    let result =
+        perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(eve)).await;
     assert!(
         result.is_err(),
         "Eve is not a CO candidate — ceremony activation must be rejected"
@@ -601,9 +602,9 @@ async fn test_ceremony_shares_always_assigned_to_co_candidates() -> KResult<()> 
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be CO after valid ceremony"
     );
     Ok(())
@@ -756,9 +757,9 @@ async fn test_self_participation_analysis_creating_user_owns_share_zero() -> KRe
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "After assembling all three shares alice must be CO"
     );
     Ok(())
@@ -795,15 +796,15 @@ async fn test_full_four_phase_ceremony_with_production_users() -> KResult<()> {
 
     // ── Pre-ceremony: all CO candidates are Operators ─────────────────────────
     assert!(
-        !kms.is_crypto_officer(user_co).await?,
+        !kms.is_crypto_officer(&UserId::from(user_co)).await?,
         "user_co must be Operator before ceremony"
     );
     assert!(
-        !kms.is_crypto_officer(owner_co).await?,
+        !kms.is_crypto_officer(&UserId::from(owner_co)).await?,
         "owner_co must be Operator before ceremony"
     );
     assert!(
-        !kms.is_crypto_officer(operator).await?,
+        !kms.is_crypto_officer(&UserId::from(operator)).await?,
         "kmserver is always Operator"
     );
 
@@ -830,14 +831,14 @@ async fn test_full_four_phase_ceremony_with_production_users() -> KResult<()> {
         )
         .await?;
 
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, user_co).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(user_co)).await?;
     assert!(
-        kms.is_crypto_officer(user_co).await?,
+        kms.is_crypto_officer(&UserId::from(user_co)).await?,
         "user.client must be active CO after ceremony"
     );
     // owner.client has not run their own ceremony — still Operator.
     assert!(
-        !kms.is_crypto_officer(owner_co).await?,
+        !kms.is_crypto_officer(&UserId::from(owner_co)).await?,
         "owner.client not yet CO"
     );
 
@@ -874,7 +875,7 @@ async fn test_full_four_phase_ceremony_with_production_users() -> KResult<()> {
         .await?;
 
     assert!(
-        !kms.is_crypto_officer(user_co).await?,
+        !kms.is_crypto_officer(&UserId::from(user_co)).await?,
         "CO must be Operator after ceremony disable"
     );
     Ok(())
@@ -913,16 +914,16 @@ async fn test_revoke_and_reactivate_ceremony() -> KResult<()> {
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be CO after first ceremony"
     );
 
     // ── Revoke ────────────────────────────────────────────────────────────────
     kms.database.revoke_crypto_officer_activation(alice).await?;
     assert!(
-        !kms.is_crypto_officer(alice).await?,
+        !kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be Operator after revoke"
     );
 
@@ -944,9 +945,9 @@ async fn test_revoke_and_reactivate_ceremony() -> KResult<()> {
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids2, alice).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids2, &UserId::from(alice)).await?;
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be CO again after re-activation"
     );
     Ok(())
@@ -984,15 +985,15 @@ async fn test_post_revocation_co_is_demoted_to_operator() -> KResult<()> {
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
-    assert!(kms.is_crypto_officer(alice).await?);
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
+    assert!(kms.is_crypto_officer(&UserId::from(alice)).await?);
 
     // Revoke.
     kms.database.revoke_crypto_officer_activation(alice).await?;
 
     // Alice is now Operator — must not be CO.
     assert!(
-        !kms.is_crypto_officer(alice).await?,
+        !kms.is_crypto_officer(&UserId::from(alice)).await?,
         "After revocation alice must be Operator"
     );
     Ok(())
@@ -1035,13 +1036,13 @@ async fn test_three_co_sequential_activation_single_record_design() -> KResult<(
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &shares_a, alice).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &shares_a, &UserId::from(alice)).await?;
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be CO after first activation"
     );
     assert!(
-        !kms.is_crypto_officer(carol).await?,
+        !kms.is_crypto_officer(&UserId::from(carol)).await?,
         "Carol must still be Operator"
     );
 
@@ -1064,20 +1065,20 @@ async fn test_three_co_sequential_activation_single_record_design() -> KResult<(
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &shares_c, carol).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &shares_c, &UserId::from(carol)).await?;
     // Single-record design: only carol is now CO.
     assert!(
-        kms.is_crypto_officer(carol).await?,
+        kms.is_crypto_officer(&UserId::from(carol)).await?,
         "Carol must be CO after her activation"
     );
     assert!(
-        !kms.is_crypto_officer(alice).await?,
+        !kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice is NOT CO — single-record design: only the last activator is CO"
     );
 
     // ── Verify bob (in the CO list, but never activated) is still not CO ─────
     assert!(
-        !kms.is_crypto_officer(bob).await?,
+        !kms.is_crypto_officer(&UserId::from(bob)).await?,
         "Bob must remain Operator until he runs his own ceremony"
     );
     Ok(())
@@ -1417,9 +1418,9 @@ async fn tm_f006_active_co_can_self_revoke() -> KResult<()> {
             )
             .await?;
     }
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be active CO"
     );
 
@@ -1428,7 +1429,7 @@ async fn tm_f006_active_co_can_self_revoke() -> KResult<()> {
         .await?;
 
     assert!(
-        !kms.is_crypto_officer(alice).await?,
+        !kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must no longer be CO after self-revoke"
     );
     Ok(())
@@ -1463,19 +1464,22 @@ async fn tm_f008_peer_co_revokes_active_co() -> KResult<()> {
             )
             .await?;
     }
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be active CO"
     );
-    assert!(!kms.is_crypto_officer(bob).await?, "Bob must be dormant");
+    assert!(
+        !kms.is_crypto_officer(&UserId::from(bob)).await?,
+        "Bob must be dormant"
+    );
 
     // Bob (dormant CO candidate) peer-revokes Alice
     kms.disable_crypto_officer_ceremony(&UserId::from(bob), Some(&UserId::from(alice)))
         .await?;
 
     assert!(
-        !kms.is_crypto_officer(alice).await?,
+        !kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must no longer be CO after peer revocation by Bob"
     );
     Ok(())
@@ -1511,9 +1515,9 @@ async fn tm_f009_reconstructed_key_intact_after_peer_revocation() -> KResult<()>
     }
 
     // Activate Alice as CO (writes activation record; does NOT store a key)
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be active CO"
     );
 
@@ -1524,7 +1528,7 @@ async fn tm_f009_reconstructed_key_intact_after_peer_revocation() -> KResult<()>
     kms.disable_crypto_officer_ceremony(&UserId::from(bob), Some(&UserId::from(alice)))
         .await?;
     assert!(
-        !kms.is_crypto_officer(alice).await?,
+        !kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be revoked"
     );
 
@@ -1570,9 +1574,9 @@ async fn tm_f010_operator_cannot_peer_revoke() -> KResult<()> {
             )
             .await?;
     }
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be active CO"
     );
 
@@ -1592,7 +1596,7 @@ async fn tm_f010_operator_cannot_peer_revoke() -> KResult<()> {
 
     // Alice must still be active CO
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must remain active CO after unauthorized peer-revoke attempt"
     );
     Ok(())
@@ -1631,9 +1635,9 @@ async fn tm_f011_peer_revocation_revokes_share_access() -> KResult<()> {
             )
             .await?;
     }
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
     assert!(
-        kms.is_crypto_officer(alice).await?,
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be active CO"
     );
 
@@ -1654,7 +1658,7 @@ async fn tm_f011_peer_revocation_revokes_share_access() -> KResult<()> {
     kms.disable_crypto_officer_ceremony(&UserId::from(bob), Some(&UserId::from(alice)))
         .await?;
     assert!(
-        !kms.is_crypto_officer(alice).await?,
+        !kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be revoked"
     );
 

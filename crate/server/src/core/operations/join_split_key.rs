@@ -66,7 +66,7 @@ pub(crate) struct ReconstructedShares {
 pub(crate) async fn retrieve_and_reconstruct_shares(
     kms: &KMS,
     share_uid_strings: &[String],
-    user: &str,
+    user: &UserId,
 ) -> KResult<ReconstructedShares> {
     if share_uid_strings.is_empty() {
         kms_bail!(KmsError::InvalidRequest(
@@ -74,14 +74,13 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
         ));
     }
 
-    let user_id = UserId::from(user);
     let mut owms: Vec<ObjectWithMetadata> = Vec::with_capacity(share_uid_strings.len());
     for uid_str in share_uid_strings {
         let owm = retrieve_object_for_operation(
             ObjectHandle::from(uid_str.as_str()),
             KmipOperation::Get,
             kms,
-            &user_id,
+            user,
         )
         .await?;
         owms.push(owm);
@@ -230,11 +229,10 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
 pub(crate) async fn join_split_key(
     kms: &KMS,
     request: JoinSplitKey,
-    user: &str,
+    user: &UserId,
 ) -> KResult<JoinSplitKeyResponse> {
     // Resolve share UIDs from the request
-    let mut share_uids: Vec<String> =
-        Vec::with_capacity(request.unique_identifier.len());
+    let mut share_uids: Vec<String> = Vec::with_capacity(request.unique_identifier.len());
     for uid_ref in &request.unique_identifier {
         match uid_ref {
             UniqueIdentifier::TextString(s) => share_uids.push(s.clone()),
@@ -265,11 +263,15 @@ pub(crate) async fn join_split_key(
     // A user listed in crypto_officer.users is always allowed — they are ceremony
     // candidates regardless of whether `require_ceremony` is set, and need
     // JoinSplitKey to reconstruct ceremony keys.
-    let user_id = UserId::from(user);
-    let is_co_user = kms.params.crypto_officer.users.iter().any(|u| u == user);
+    let is_co_user = kms
+        .params
+        .crypto_officer
+        .users
+        .iter()
+        .any(|u| u == user.as_str());
     if !is_co_user && kms.params.crypto_officer.is_configured() {
         let has_create_permission = crate::core::retrieve_object_utils::user_has_permission(
-            &user_id,
+            user,
             None,
             &KmipOperation::Create,
             kms,
@@ -325,7 +327,7 @@ pub(crate) async fn join_split_key(
     kms.database
         .create(
             Some(reconstructed_uid.clone()),
-            &user_id,
+            user,
             &reconstructed_object,
             &reconstructed_attrs,
             &tags,
@@ -410,7 +412,7 @@ fn extract_share_bytes(key_block: &KeyBlock) -> KResult<Vec<u8>> {
 pub(crate) async fn perform_crypto_officer_ceremony_activation(
     kms: &KMS,
     share_ids: &[String],
-    user: &str,
+    user: &UserId,
 ) -> KResult<()> {
     let co_cfg = &kms.params.crypto_officer;
 
@@ -427,7 +429,7 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
         ));
     }
 
-    if !co_cfg.users.iter().any(|u| u == user) {
+    if !co_cfg.users.iter().any(|u| u == user.as_str()) {
         kms_bail!(KmsError::Unauthorized(
             "Ceremony activation rejected — the requesting user is not listed in \
              `crypto_officer_users`"
@@ -457,7 +459,7 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
 
     // Verify that at least one share comes from a DIFFERENT CO (dual-control).
     // This prevents the assembling user from self-activating by creating all shares alone.
-    if !participants.iter().any(|p| p.as_str() != user) {
+    if !participants.iter().any(|p| p.as_str() != user.as_str()) {
         kms_bail!(KmsError::Unauthorized(
             "Ceremony activation rejected — at least one share must come from a different \
              Crypto Officer (NIST SP 800-57 Part 2 Rev 1 §4.6 dual control)."
@@ -475,7 +477,7 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
     }
 
     kms.database
-        .activate_crypto_officer_ceremony(user, participants, &reconstructed.key_hash)
+        .activate_crypto_officer_ceremony(user.as_str(), participants, &reconstructed.key_hash)
         .await?;
 
     // Log at ERROR — ceremony activation is a high-value security event that must
