@@ -81,6 +81,9 @@ pub(crate) async fn query(request: Query, vendor_identification: &str) -> KResul
                         OperationEnumeration::Interop,
                         OperationEnumeration::Log,
                         OperationEnumeration::Check,
+                        // Split key ops (KMIP 1.4 §4.38–§4.39)
+                        OperationEnumeration::CreateSplitKey,
+                        OperationEnumeration::JoinSplitKey,
                     ]);
                 }
                 QueryFunction::QueryObjects => {
