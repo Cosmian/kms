@@ -494,6 +494,8 @@ GH_PAGER=cat gh pr checks <number> --repo Cosmian/kms
 GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --log-failed
 ```
 
+For chained/stacked branches, the `gh stack` extension (`github/gh-stack`) manages the stack — `gh stack view`, `gh stack checkout`, `gh stack submit`, `gh stack sync`.
+
 ### 8.6 Nix packaging
 
 Deb and RPM packages are built via Nix. Vendor hash files live in `nix/expected-hashes/`.
