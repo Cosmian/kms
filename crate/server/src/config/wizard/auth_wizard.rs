@@ -148,12 +148,24 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
             .default(false)
             .interact()
             .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
-        let realm: Option<String> = if enable_ui_login {
+        let realm: Option<Vec<String>> = if enable_ui_login {
             let realm: String = Input::with_theme(&theme)
-                .with_prompt("Realm to authenticate the Web UI against")
+                .with_prompt(
+                    "Realm(s) to authenticate the Web UI against (comma-separated for multiple)",
+                )
                 .interact_text()
                 .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
-            Some(realm)
+            let realms: Vec<String> = realm
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+                .collect();
+            if realms.is_empty() {
+                None
+            } else {
+                Some(realms)
+            }
         } else {
             None
         };
