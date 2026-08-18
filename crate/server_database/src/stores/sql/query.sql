@@ -190,3 +190,14 @@ SELECT sealed_record FROM crypto_officer_activations WHERE revoked_at IS NULL
 -- name: revoke-crypto-officer-activation
 UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP, revoked_by = $1
         WHERE revoked_at IS NULL;
+
+-- name: count-all-non-destroyed
+SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';
+
+-- name: count-non-destroyed-keys
+SELECT COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
+AND (object ? 'SymmetricKey' OR
+     object ? 'PrivateKey'   OR
+     object ? 'PublicKey'    OR
+     object ? 'SplitKey');

@@ -842,7 +842,7 @@ impl ObjectsStore for MySqlPool {
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
         let count: Option<u64> = conn
-            .query_first("SELECT COUNT(*) FROM objects WHERE state != 'Destroyed'")
+            .query_first(get_mysql_query!("count-all-non-destroyed"))
             .await
             .map_err(DbError::from)?;
         Ok(count.unwrap_or(0))
@@ -853,16 +853,7 @@ impl ObjectsStore for MySqlPool {
         // Object JSON is stored as {"SymmetricKey": {...}} — use JSON_TYPE to
         // check for key presence.
         let count: Option<u64> = conn
-            .query_first(
-                "SELECT COUNT(*) FROM objects \
-                 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised') \
-                 AND ( \
-                     JSON_TYPE(JSON_EXTRACT(object, '$.SymmetricKey')) IS NOT NULL OR \
-                     JSON_TYPE(JSON_EXTRACT(object, '$.PrivateKey'))   IS NOT NULL OR \
-                     JSON_TYPE(JSON_EXTRACT(object, '$.PublicKey'))    IS NOT NULL OR \
-                     JSON_TYPE(JSON_EXTRACT(object, '$.SplitKey'))     IS NOT NULL \
-                 )",
-            )
+            .query_first(get_mysql_query!("count-non-destroyed-keys"))
             .await
             .map_err(DbError::from)?;
         Ok(count.unwrap_or(0))

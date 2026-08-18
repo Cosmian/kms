@@ -20,18 +20,10 @@ impl Database {
         &self,
         user: &UserId,
     ) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
-        let start = std::time::Instant::now();
-        let result = self.permissions.list_user_operations_granted(user).await;
-        if let Some(ref rec) = self.recorder {
-            let outcome = if result.is_ok() { "success" } else { "error" };
-            rec.record_operation(
-                "list_access",
-                self.kind,
-                outcome,
-                start.elapsed().as_secs_f64(),
-            );
-        }
-        Ok(result?)
+        self.record("list_user_ops_granted", async move {
+            Ok(self.permissions.list_user_operations_granted(user).await?)
+        })
+        .await
     }
 
     /// List all the KMIP operations granted per `user` on the given object
@@ -40,7 +32,10 @@ impl Database {
         &self,
         uid: &str,
     ) -> DbResult<HashMap<String, HashSet<KmipOperation>>> {
-        Ok(self.permissions.list_object_operations_granted(uid).await?)
+        self.record("list_object_ops_granted", async move {
+            Ok(self.permissions.list_object_operations_granted(uid).await?)
+        })
+        .await
     }
 
     /// Grant the ability to `user` to perform the KMIP `operations`
@@ -51,10 +46,13 @@ impl Database {
         user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> DbResult<()> {
-        Ok(self
-            .permissions
-            .grant_operations(uid, user, operations)
-            .await?)
+        self.record("grant_ops", async move {
+            Ok(self
+                .permissions
+                .grant_operations(uid, user, operations)
+                .await?)
+        })
+        .await
     }
 
     /// Remove the ability to `user` to perform the `operations`
@@ -65,10 +63,13 @@ impl Database {
         user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> DbResult<()> {
-        Ok(self
-            .permissions
-            .remove_operations(uid, user, operations)
-            .await?)
+        self.record("remove_ops", async move {
+            Ok(self
+                .permissions
+                .remove_operations(uid, user, operations)
+                .await?)
+        })
+        .await
     }
 
     /// List all the operations that have been granted to a user on an object
@@ -81,10 +82,13 @@ impl Database {
         user: &UserId,
         no_inherited_access: bool,
     ) -> DbResult<HashSet<KmipOperation>> {
-        Ok(self
-            .permissions
-            .list_user_operations_on_object(uid, user, no_inherited_access)
-            .await?)
+        self.record("list_user_ops_on_object", async move {
+            Ok(self
+                .permissions
+                .list_user_operations_on_object(uid, user, no_inherited_access)
+                .await?)
+        })
+        .await
     }
 
     /// Record that the Crypto Officer split-key ceremony has been completed.

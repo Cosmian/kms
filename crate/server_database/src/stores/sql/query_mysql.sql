@@ -250,3 +250,16 @@ SELECT sealed_record FROM crypto_officer_activations WHERE revoked_at IS NULL
 -- name: revoke-crypto-officer-activation
 UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP, revoked_by = ?
         WHERE revoked_at IS NULL;
+
+-- name: count-all-non-destroyed
+SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';
+
+-- name: count-non-destroyed-keys
+SELECT COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
+AND (
+    JSON_TYPE(JSON_EXTRACT(object, '$.SymmetricKey')) IS NOT NULL OR
+    JSON_TYPE(JSON_EXTRACT(object, '$.PrivateKey'))   IS NOT NULL OR
+    JSON_TYPE(JSON_EXTRACT(object, '$.PublicKey'))    IS NOT NULL OR
+    JSON_TYPE(JSON_EXTRACT(object, '$.SplitKey'))     IS NOT NULL
+);
