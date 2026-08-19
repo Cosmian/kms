@@ -218,7 +218,17 @@ pub(crate) async fn check_role_permission(
                 }
                 return Ok(());
             }
-            // Lifecycle operations without KmipOperation mapping are always allowed for CO
+            // Lifecycle operations without a KmipOperation mapping
+            // (CreateKeyPair, Register, ReKeyKeyPair, CreateSplitKey, JoinSplitKey):
+            // route through enforce_create_permission, which handles default_username,
+            // CO-user membership, ceremony-candidate exemption, and explicit Create grants.
+            // COs always satisfy this gate (they are listed in crypto_officer.users),
+            // making this equivalent to an unconditional allow — but the explicit call
+            // ensures consistent audit and error paths instead of a silent fall-through.
+            if LIFECYCLE_OPERATION_TAGS.contains(&operation_tag) || operation_tag == "JoinSplitKey"
+            {
+                return kms.enforce_create_permission(&UserId::from(user)).await;
+            }
             Ok(())
         }
         Role::Operator => {
