@@ -29,7 +29,13 @@ test.describe("Auth Verifier server — Web UI login", () => {
         expect(response.ok()).toBeTruthy();
         // `auth_method` is the primary (backward-compatible); `auth_methods` is the
         // ordered array of all configured methods (primary first).
-        await expect(response.json()).resolves.toEqual({ auth_method: "AUTH_VERIFIER", auth_methods: ["AUTH_VERIFIER"] });
+        // `auth_verifier_realms` lists the realm(s) configured in the KMS server —
+        // use toMatchObject so the test is resilient to the actual realm name(s).
+        await expect(response.json()).resolves.toMatchObject({
+            auth_method: "AUTH_VERIFIER",
+            auth_methods: ["AUTH_VERIFIER"],
+            auth_verifier_realms: expect.any(Array),
+        });
     });
 
     test("TC1 — happy path login", async ({ page }) => {

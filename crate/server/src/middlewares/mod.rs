@@ -6,7 +6,7 @@ mod api_token;
 pub(crate) use api_token::api_token_middleware;
 
 mod auth_verifier;
-pub(crate) use auth_verifier::{AuthVerifier, verify_auth_verifier_jwt_subject};
+pub(crate) use auth_verifier::{AuthVerifier, verify_auth_verifier_jwt};
 
 mod ensure_auth;
 pub(crate) use ensure_auth::ensure_auth_middleware;

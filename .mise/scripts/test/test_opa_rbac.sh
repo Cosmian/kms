@@ -605,13 +605,16 @@ EOF
 
   # ── Provision users ───────────────────────────────────────────────────────
   echo "==> Provisioning auth verifier test users..."
-  PROVISION_SCRIPT="${REPO_ROOT}/test_data/configs/auth_verifier/provision_opa_integration_users.sh"
+  PROVISION_SCRIPT="${REPO_ROOT}/test_data/configs/auth_verifier/provision_opa_users.sh"
   eval "$(AUTH_URL="${AUTH_SERVER_URL}" CA_CERT="${CA_CERT}" \
     REPO_ROOT="${REPO_ROOT}" bash "${PROVISION_SCRIPT}")"
   echo "Provisioning complete."
+  echo "  KMS_TEST_OPA_SUPER_ADMIN_JWT     set (length ${#KMS_TEST_OPA_SUPER_ADMIN_JWT})"
   echo "  KMS_TEST_OPA_OFFICER_JWT         set (length ${#KMS_TEST_OPA_OFFICER_JWT})"
   echo "  KMS_TEST_OPA_USER_ROLE_JWT       set (length ${#KMS_TEST_OPA_USER_ROLE_JWT})"
   echo "  KMS_TEST_OPA_AUDITOR_JWT         set (length ${#KMS_TEST_OPA_AUDITOR_JWT})"
+  echo "  KMS_TEST_OPA_NO_ROLES_JWT        set (length ${#KMS_TEST_OPA_NO_ROLES_JWT})"
+  echo "  KMS_TEST_OPA_UNKNOWN_ROLE_JWT    set (length ${#KMS_TEST_OPA_UNKNOWN_ROLE_JWT})"
   echo "  KMS_TEST_OPA_DOMAIN_ADMIN_OTHER_JWT set (length ${#KMS_TEST_OPA_DOMAIN_ADMIN_OTHER_JWT})"
   echo "  KMS_TEST_OPA_OTHER_DOMAIN_JWT    set (length ${#KMS_TEST_OPA_OTHER_DOMAIN_JWT})"
 

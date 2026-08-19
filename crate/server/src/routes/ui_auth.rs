@@ -373,9 +373,9 @@ struct AuthVerifierLoginResponse {
 /// mirroring `auth_verifier_login()` in `kms/crate/clients/client/src/http_client/login.rs` —
 /// then validates the JWT the AS returns via `Set-Cookie: _ea_=<jwt>` using the same
 /// JWKS-backed trust logic as the bearer-token `AuthVerifier` middleware
-/// (`verify_auth_verifier_jwt_subject`). Only the resulting `sub` (username) is stored in the
-/// session; the JWT itself never reaches the browser, keeping the same BFF guarantee
-/// as the OIDC flow (`callback`, above).
+/// (`verify_auth_verifier_jwt`). The resulting `sub` (username), `roles`, and `domain`
+/// are stored in the server-side session so subsequent browser requests carry the full
+/// OPA context via `SessionAuth`; the JWT itself never reaches the browser.
 #[post("/login_as")]
 pub(crate) async fn login_as(
     session: Session,
@@ -514,19 +514,30 @@ pub(crate) async fn login_as(
                 );
             };
 
-            let user_id = match crate::middlewares::verify_auth_verifier_jwt_subject(jwks_manager, &token).await
+            let claims =
+                match crate::middlewares::verify_auth_verifier_jwt(jwks_manager, &token).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        return HttpResponse::Unauthorized().json(
+                            serde_json::json!({ "error": format!("Failed to validate the Auth Verifier server token: {e}") }),
+                        );
+                    }
+                };
+
+            // Store username, roles, and domain in the server-side session so that
+            // subsequent browser requests (via SessionAuth) carry the full OPA context.
+            if session.insert("user_id", &claims.sub).is_err()
+                || session.insert("roles", &claims.roles).is_err()
             {
-                Ok(sub) => sub,
-                Err(e) => {
-                    return HttpResponse::Unauthorized().json(
-                        serde_json::json!({ "error": format!("Failed to validate the Auth Verifier server token: {e}") }),
+                return HttpResponse::InternalServerError()
+                    .json(serde_json::json!({ "error": "Failed to store session data" }));
+            }
+            if let Some(ref domain) = claims.domain {
+                if session.insert("domain", domain).is_err() {
+                    return HttpResponse::InternalServerError().json(
+                        serde_json::json!({ "error": "Failed to store domain in session" }),
                     );
                 }
-            };
-
-            if session.insert("user_id", &user_id).is_err() {
-                return HttpResponse::InternalServerError()
-                    .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
             }
 
             HttpResponse::Ok().json(AuthVerifierLoginResponse {
