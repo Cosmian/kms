@@ -50,42 +50,48 @@ async function mockAuthMethods(page: import("@playwright/test").Page, methods: A
         route.fulfill({
             status: 200,
             contentType: "application/json",
-            body: JSON.stringify({ auth_method: primary, auth_methods: methods }),
+            body: JSON.stringify({ auth_method: primary, auth_methods: methods, auth_verifier_realms: [] }),
         }),
     );
     // 401 so the bootstrap code doesn't consider the user already logged in.
     await page.route("**/ui/whoami", (route) => route.fulfill({ status: 401, body: "Unauthorized" }));
-    // Silence the KMIP vendor-id query; it's a fire-and-forget call.
+    // Silence fire-and-forget bootstrap calls.
     await page.route("**/kmip/2_1", (route) => route.fulfill({ status: 401, body: "" }));
+    await page.route("**/version", (route) => route.fulfill({ status: 200, body: '"5.x.0"' }));
+    // 401 on cert probe so auto-cert-login doesn't fire.
+    await page.route("**/access/create", (route) => route.fulfill({ status: 401, body: "Unauthorized" }));
+    await page.route("**/access/privileged", (route) => route.fulfill({ status: 401, body: "Unauthorized" }));
 }
 
 /** Navigate to /ui/login and wait until the login card is visible. */
 async function gotoLogin(page: import("@playwright/test").Page) {
     await page.goto("/ui/login");
-    await page.waitForLoadState("networkidle");
+    // Wait for React to mount and for the auth-method fetch to complete.
+    // We wait for any of the login-form elements to appear (mocked auth method
+    // determines which one) rather than a generic selector.
+    await page.waitForFunction(
+        () => {
+            const sel =
+                "[data-testid='auth-verifier-login-form'],[data-testid='oidc-login-btn'],[data-testid='cert-login-btn'],[data-testid='no-browser-auth-notice']";
+            return document.querySelector(sel) !== null;
+        },
+        { timeout: 15_000 },
+    );
 }
 
 // ── Matrix tests ──────────────────────────────────────────────────────────────
 
-// These tests mock GET /ui/auth_method and GET /ui/whoami at the browser
-// level. They are purely UI-rendering tests and do NOT require a live KMS.
+// These tests mock GET /ui/auth_method, GET /ui/whoami, GET /access/create
+// and GET /version at the browser level. They are purely UI-rendering tests
+// that work both locally (against Vite preview without a real KMS) and in CI
+// (against a Vite preview backed by a real KMS), because all KMS API calls are
+// intercepted before reaching the real server.
 //
-// Skip when a Playwright client certificate directory is configured
-// (PLAYWRIGHT_CERT_DIR is set). In mTLS CI runs, the browser TLS handshake
-// authenticates the user before our route mocks can intercept the
-// /ui/auth_method call, causing the app to redirect to /locate instead of
-// rendering the login page.
-//
-// These tests run correctly in standalone mode (against Vite preview without KMS):
-//   CI=true pnpm run test:e2e --grep "Login page auth-method matrix"
-const hasMtlsCert = typeof process !== "undefined" && Boolean(process.env?.PLAYWRIGHT_CERT_DIR);
+// The key insight: /access/create is mocked to return 401, so the mTLS cert
+// auto-login path in App.tsx is neutralised — the app never considers the user
+// already authenticated, and the login page always renders.
 
 test.describe("Login page auth-method matrix", () => {
-    test.skip(
-        hasMtlsCert,
-        "Skipped when mTLS client cert is configured (PLAYWRIGHT_CERT_DIR is set); cert auto-auth intercepts before route mocks take effect",
-    );
-
     // ── 1. AUTH_VERIFIER only ─────────────────────────────────────────────────
     test('["AUTH_VERIFIER"] — shows username/password form, no secondary', async ({ page }) => {
         await mockAuthMethods(page, ["AUTH_VERIFIER"]);
