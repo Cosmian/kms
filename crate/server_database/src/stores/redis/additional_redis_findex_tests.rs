@@ -29,7 +29,7 @@ use crate::{
         redis::{
             init_findex_redis,
             objects_db::{ACTIVE_KEY_COUNT_KEY, LIVE_COUNT_KEY, ObjectsDB, RedisDbObject},
-            permissions::{FIndexUserId, ObjectUid, PermissionDB},
+            permissions::{FindexUserId, ObjectUid, PermissionDB},
         },
     },
     tests::get_redis_url,
@@ -115,7 +115,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
     let permissions_db = PermissionDB::new(findex_arc);
 
     let object1 = ObjectUid("O1".to_owned());
-    let user1 = FIndexUserId("U1".to_owned());
+    let user1 = FindexUserId("U1".to_owned());
 
     // let us add the permission Encrypt on object O1 for user U1
     permissions_db
@@ -176,7 +176,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
 
     // let's add another user and object
     let object2 = ObjectUid("O2".to_owned());
-    let user2 = FIndexUserId("U2".to_owned());
+    let user2 = FindexUserId("U2".to_owned());
 
     // let us add the permission Encrypt on object O1 for user U2
     permissions_db
@@ -330,7 +330,7 @@ pub(crate) async fn test_corner_case() -> DbResult<()> {
     let permissions_db = PermissionDB::new(findex_arc);
 
     let object1 = ObjectUid("O1".to_owned());
-    let user1 = FIndexUserId("U1".to_owned());
+    let user1 = FindexUserId("U1".to_owned());
 
     // test that it does not exist
     let permissions = permissions_db.get(&object1, &user1, false).await?;

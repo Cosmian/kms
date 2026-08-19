@@ -43,7 +43,7 @@ use crate::{
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
             objects_db::RedisOperation,
-            permissions::{FIndexUserId, ObjectUid},
+            permissions::{FindexUserId, ObjectUid},
         },
     },
 };
@@ -789,7 +789,7 @@ impl ObjectsStore for RedisWithFindex {
             HashMap::new()
         } else {
             self.permission_db
-                .list_user_permissions(&FIndexUserId(user.as_str().to_owned()))
+                .list_user_permissions(&FindexUserId(user.as_str().to_owned()))
                 .await?
                 .into_iter()
                 .map(|(k, v)| (k.0, v))
@@ -895,7 +895,7 @@ impl ObjectsStore for RedisWithFindex {
         // Filter by access: user must own the object or have permissions on it
         let permissions = self
             .permission_db
-            .list_user_permissions(&FIndexUserId(user.as_str().to_owned()))
+            .list_user_permissions(&FindexUserId(user.as_str().to_owned()))
             .await?;
 
         let mut out = Vec::new();
@@ -1010,7 +1010,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         let permissions = self
             .permission_db
-            .list_user_permissions(&FIndexUserId(user.as_str().to_owned()))
+            .list_user_permissions(&FindexUserId(user.as_str().to_owned()))
             .await?;
         let redis_db_objects = self
             .objects_db
@@ -1064,7 +1064,7 @@ impl PermissionsStore for RedisWithFindex {
             self.permission_db
                 .add(
                     &ObjectUid(uid.to_owned()),
-                    &FIndexUserId(user.as_str().to_owned()),
+                    &FindexUserId(user.as_str().to_owned()),
                     *operation,
                 )
                 .await?;
@@ -1084,7 +1084,7 @@ impl PermissionsStore for RedisWithFindex {
             self.permission_db
                 .remove(
                     &ObjectUid(uid.to_owned()),
-                    &FIndexUserId(user.as_str().to_owned()),
+                    &FindexUserId(user.as_str().to_owned()),
                     *operation,
                 )
                 .await?;
@@ -1102,7 +1102,7 @@ impl PermissionsStore for RedisWithFindex {
             .permission_db
             .get(
                 &ObjectUid(uid.to_owned()),
-                &FIndexUserId(user.as_str().to_owned()),
+                &FindexUserId(user.as_str().to_owned()),
                 no_inherited_access,
             )
             .await

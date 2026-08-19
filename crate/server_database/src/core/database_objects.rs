@@ -182,7 +182,7 @@ impl Database {
     /// # Arguments
     ///
     /// * `uid` - An optional string representing the unique identifier of the object.
-    /// * `owner` - A string slice representing the owner of the object.
+    /// * `owner` - A `UserId` representing the owner of the object.
     /// * `object` - A reference to the `Object` to be created.
     /// * `attributes` - A reference to the `Attributes` of the object.
     /// * `tags` - A reference to a `HashSet` of tags associated with the object.
@@ -535,7 +535,7 @@ impl Database {
     ///
     /// # Arguments
     ///
-    /// * `user` - A string slice representing the user performing the operations.
+    /// * `user` - A `UserId` representing the user performing the operations.
     /// * `operations` - A slice of `AtomicOperation` representing the operations to be performed.
     /// * `params` - An optional reference to `ExtraStoreParams` for additional parameters.
     ///
