@@ -1282,6 +1282,59 @@ impl PermissionsStore for RedisWithFindex {
         self.revoke_ceremony_record(&self.ceremony_key_crypto_officer, revoked_by)
             .await
     }
+
+    async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> InterfaceResult<()> {
+        // Store as a JSON blob keyed by "crl:<issuer_id>".
+        let key = format!("crl:{issuer_id}");
+        let json = serde_json::json!({
+            "crl_der": crl_der,
+            "crl_number": crl_number,
+            "generated_at": generated_at,
+            "next_update": next_update,
+        });
+        let value = serde_json::to_string(&json).map_err(|e| {
+            InterfaceError::Default(format!("Failed to serialize CRL for Redis: {e}"))
+        })?;
+        redis::cmd("SET")
+            .arg(&key)
+            .arg(value)
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to store CRL in Redis: {e}")))?;
+        Ok(())
+    }
+
+    async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>> {
+        let key = format!("crl:{issuer_id}");
+        let raw: Option<String> = redis::cmd("GET")
+            .arg(&key)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to read CRL from Redis: {e}")))?;
+        let Some(json_str) = raw else {
+            return Ok(None);
+        };
+        let v: serde_json::Value = serde_json::from_str(&json_str)
+            .map_err(|e| InterfaceError::Default(format!("Failed to parse CRL from Redis: {e}")))?;
+        let der = v
+            .get("crl_der")
+            .and_then(|v| serde_json::from_value::<Vec<u8>>(v.clone()).ok());
+        let generated_at = v
+            .get("generated_at")
+            .and_then(|s| s.as_str())
+            .map(String::from);
+        match (der, generated_at) {
+            (Some(der), Some(generated_at)) => Ok(Some((der, generated_at))),
+            _ => Ok(None),
+        }
+    }
 }
 
 #[cfg(test)]

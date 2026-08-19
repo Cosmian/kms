@@ -264,3 +264,27 @@ AND (
     JSON_TYPE(JSON_EXTRACT(object, '$.PublicKey'))    IS NOT NULL OR
     JSON_TYPE(JSON_EXTRACT(object, '$.SplitKey'))     IS NOT NULL
 );
+
+-- ── CRL persistence (MySQL-specific) ─────────────────────────────────────────
+-- MySQL uses LONGBLOB for binary data and REPLACE INTO for upsert.
+
+-- name: create-table-crls
+CREATE TABLE IF NOT EXISTS crls (
+    issuer_id    VARCHAR(128) NOT NULL PRIMARY KEY,
+    crl_der      LONGBLOB     NOT NULL,
+    crl_number   BIGINT       NOT NULL,
+    generated_at VARCHAR(32)  NOT NULL,
+    next_update  VARCHAR(32)  NOT NULL
+);
+
+-- name: upsert-crl
+INSERT INTO crls (issuer_id, crl_der, crl_number, generated_at, next_update)
+    VALUES (?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+        crl_der      = VALUES(crl_der),
+        crl_number   = VALUES(crl_number),
+        generated_at = VALUES(generated_at),
+        next_update  = VALUES(next_update);
+
+-- name: select-crl
+SELECT crl_der, generated_at FROM crls WHERE issuer_id = ?;
