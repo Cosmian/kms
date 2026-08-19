@@ -57,7 +57,13 @@ in any role default to `Operator` (fail-secure per NIST SP 800-57 Part 2 Rev 1 �
 | Role | Allowed operations | Ownership bypass | Key material access |
 |---|---|---|---|
 | `Operator` | Encrypt, Decrypt, Sign, SignatureVerify, MAC, Hash, Locate, GetAttributes, Query | ✗ | ✗ |
-| `CryptoOfficer` | Create, CreateKeyPair, Import, Certify, Rekey, RekeyKeyPair, Activate, Revoke, Destroy, Get, Export, SetAttribute, ModifyAttribute, AddAttribute, DeleteAttribute, GrantAccess, RevokeAccess, Locate, GetAttributes | ✓ | ✓ |
+| `CryptoOfficer` | Create, CreateKeyPair, Import, Certify, Rekey, RekeyKeyPair, Activate, Revoke, Destroy, Get, Export, SetAttribute, ModifyAttribute, AddAttribute, DeleteAttribute, Locate, GetAttributes | ✓ | ✓ |
+
+> **Note — ACL management (`GrantAccess`/`RevokeAccess`/`ListAccesses`)**: these are
+> custom server routes, not KMIP operations, and are **owner-scoped**. A CO may
+> grant/revoke access on objects they own (like any user), but the CO ownership bypass
+> does **not** extend to ACL management on foreign objects. Only the object owner can
+> grant or revoke rights on their own objects.
 
 ### Split-key ceremony activation (optional)
 
