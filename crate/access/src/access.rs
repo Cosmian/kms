@@ -150,9 +150,13 @@ impl fmt::Display for Access {
 /// - **Attribute management**: Set/Modify/Add/Delete Attribute
 /// - **Ownership bypass**: can access any Managed Object regardless of ownership (non-HSM)
 /// - **Cryptographic use**: Encrypt, Decrypt, Sign, `SignatureVerify`, MAC, Hash — a CO
-///   candidate is already an Operator with full crypto-use rights, and promotion to active CO
-///   should not _reduce_ that capability. Combined with ownership bypass this makes an active
-///   CO a global encrypt/sign/decrypt oracle; access is audit-logged at `ERROR target="audit"`.
+///   candidate is already an Operator with full crypto-use rights on their own objects, and
+///   promotion to active CO does not reduce those rights. Note: the ownership bypass
+///   (`user_can_perform_operation`) applies to **KMIP key-lifecycle operations** only.
+///   Crypto operations (Encrypt/Decrypt/Sign/…) use a separate authorization path
+///   (`is_owm_authorized_with_get_wildcard`) that checks ownership or explicit per-object
+///   grants and does **not** include a CO bypass — an active CO can only encrypt/sign with
+///   keys they own or have been explicitly granted access to.
 ///
 /// When `require_ceremony` is `true`, Crypto Officer privileges are inactive until a quorum
 /// of custodians completes a `JoinSplitKey` ceremony with CO-tagged shares.
