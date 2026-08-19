@@ -36,17 +36,17 @@ impl From<ObjectUid> for String {
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
-pub(crate) struct FIndexUserId(pub(crate) String);
+pub(crate) struct FindexUserId(pub(crate) String);
 
-impl From<&FIndexUserId> for Keyword {
-    fn from(uid: &FIndexUserId) -> Self {
+impl From<&FindexUserId> for Keyword {
+    fn from(uid: &FindexUserId) -> Self {
         // Prefix with "u:" to avoid collisions with objects ids
         Self::from([b"u".as_slice(), uid.0.as_bytes()].concat())
     }
 }
 
-impl From<FIndexUserId> for String {
-    fn from(s: FIndexUserId) -> Self {
+impl From<FindexUserId> for String {
+    fn from(s: FindexUserId) -> Self {
         s.0
     }
 }
@@ -54,14 +54,14 @@ impl From<FIndexUserId> for String {
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
 pub(crate) struct PermTriple {
     obj_uid: ObjectUid,
-    user_id: FIndexUserId,
+    user_id: FindexUserId,
     permission: KmipOperation,
 }
 
 impl PermTriple {
     pub(crate) const fn new(
         obj_uid: ObjectUid,
-        user_id: FIndexUserId,
+        user_id: FindexUserId,
         permission: KmipOperation,
     ) -> Self {
         Self {
@@ -73,7 +73,7 @@ impl PermTriple {
 
     pub(crate) fn permissions_per_user(
         permissions_per_user: HashSet<Self>,
-    ) -> HashMap<FIndexUserId, HashSet<KmipOperation>> {
+    ) -> HashMap<FindexUserId, HashSet<KmipOperation>> {
         let mut map = HashMap::with_capacity(permissions_per_user.len());
         for triple in permissions_per_user {
             let entry = map.entry(triple.user_id).or_insert_with(HashSet::new);
@@ -111,7 +111,7 @@ impl Serializable for PermTriple {
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let obj_uid = ObjectUid(de.read()?);
-        let user_id = FIndexUserId(de.read()?);
+        let user_id = FindexUserId(de.read()?);
         let perm_byte = de.read_array::<1>()?;
         let permission = KmipOperation::from_repr(perm_byte[0]).ok_or_else(|| {
             DbError::ConversionError(
@@ -183,7 +183,7 @@ impl PermissionDB {
     /// per object uid
     pub(crate) async fn list_user_permissions(
         &self,
-        user_id: &FIndexUserId,
+        user_id: &FindexUserId,
     ) -> DbResult<HashMap<ObjectUid, HashSet<KmipOperation>>> {
         let all_user_permissions = self.search_one_keyword(Keyword::from(user_id)).await?;
         Ok(PermTriple::permissions_per_object(all_user_permissions))
@@ -194,7 +194,7 @@ impl PermissionDB {
     pub(crate) async fn list_object_permissions(
         &self,
         obj_uid: &ObjectUid,
-    ) -> DbResult<HashMap<FIndexUserId, HashSet<KmipOperation>>> {
+    ) -> DbResult<HashMap<FindexUserId, HashSet<KmipOperation>>> {
         let all_object_permissions = self.search_one_keyword(Keyword::from(obj_uid)).await?;
         Ok(PermTriple::permissions_per_user(all_object_permissions))
     }
@@ -203,7 +203,7 @@ impl PermissionDB {
     pub(crate) async fn get(
         &self,
         obj_uid: &ObjectUid,
-        user_id: &FIndexUserId,
+        user_id: &FindexUserId,
         no_inherited_access: bool,
     ) -> DbResult<HashSet<KmipOperation>> {
         let user_perms = self
@@ -213,7 +213,7 @@ impl PermissionDB {
             .filter(|triple| {
                 // Optionally include wildcard permissions (user="*") if inherited access is allowed
                 &triple.user_id == user_id
-                    || (!no_inherited_access && triple.user_id == FIndexUserId("*".to_owned()))
+                    || (!no_inherited_access && triple.user_id == FindexUserId("*".to_owned()))
             })
             .map(|triple| triple.permission)
             .collect::<HashSet<KmipOperation>>();
@@ -224,7 +224,7 @@ impl PermissionDB {
     pub(crate) async fn add(
         &self,
         obj_uid: &ObjectUid,
-        user_id: &FIndexUserId,
+        user_id: &FindexUserId,
         permission: KmipOperation,
     ) -> DbResult<()> {
         let triple = PermTriple::new(obj_uid.clone(), user_id.clone(), permission);
@@ -246,7 +246,7 @@ impl PermissionDB {
     pub(crate) async fn remove(
         &self,
         obj_uid: &ObjectUid,
-        user_id: &FIndexUserId,
+        user_id: &FindexUserId,
         permission: KmipOperation,
     ) -> DbResult<()> {
         let triple = PermTriple::new(obj_uid.clone(), user_id.clone(), permission);
@@ -293,7 +293,7 @@ mod tests {
 
         for _ in 0..10 {
             let obj_uid = ObjectUid(Uuid::new_v4().to_string());
-            let user_id = FIndexUserId(Uuid::new_v4().to_string());
+            let user_id = FindexUserId(Uuid::new_v4().to_string());
             let permission = all_operations[rng.next_u32() as usize % all_operations.len()];
 
             let perm = PermTriple {

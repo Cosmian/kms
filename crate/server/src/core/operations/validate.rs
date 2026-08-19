@@ -55,7 +55,7 @@ static CRL_CACHE_MAP: LazyLock<tokio::sync::RwLock<HashMap<String, Vec<u8>>>> =
 ///
 /// * `kms` - A reference to the KMS (Key Management Service) instance.
 /// * `request` - The `Validate` request containing the unique identifier and/or certificates to be validated.
-/// * `user` - A string slice representing the user requesting the validation.
+/// * `user` - A `UserId` representing the user requesting the validation.
 /// * `params` - An optional reference to additional database parameters.
 ///
 /// # Returns
