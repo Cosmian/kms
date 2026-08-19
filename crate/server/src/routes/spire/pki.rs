@@ -23,6 +23,7 @@ use actix_web::{
     HttpRequest, route,
     web::{Bytes, Data, Json},
 };
+use cosmian_kms_interfaces::UserId;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attributes,
@@ -167,7 +168,7 @@ fn cert_to_pem(cert: &X509) -> Result<String, SpireApiError> {
 async fn find_ca_private_key_uid(
     kms: &KMS,
     label: &str,
-    user: &str,
+    user: &UserId,
 ) -> Result<String, SpireApiError> {
     let mut filter = Attributes {
         object_type: Some(ObjectType::PrivateKey),
@@ -219,7 +220,7 @@ pub(crate) async fn sign_intermediate(
     let body: SignIntermediateRequest = serde_json::from_slice(&body)
         .map_err(|e| SpireApiError::BadRequest(format!("invalid sign-intermediate body: {e}")))?;
 
-    trace!(user = user, "POST/PUT vault pki root/sign-intermediate");
+    trace!(user = %user, "POST/PUT vault pki root/sign-intermediate");
 
     // Reject if uri_sans is empty — SPIFFE identity is mandatory.
     if body.uri_sans.is_empty() {
@@ -240,7 +241,7 @@ pub(crate) async fn sign_intermediate(
     // is; all CA key operations must be performed as the server admin so that any
     // authenticated SPIRE client can trigger certificate signing regardless of which
     // user identity their token maps to.
-    let ca_user = kms.params.default_username.clone();
+    let ca_user: UserId = kms.params.default_username.clone().into();
 
     // Find the CA private key
     let ca_private_key_uid = find_ca_private_key_uid(&kms, ca_label, &ca_user).await?;

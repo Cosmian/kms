@@ -11,7 +11,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    PermissionsStore, UserId,
 };
 use cosmian_logger::{debug, trace, warn};
 #[cfg(feature = "non-fips")]
@@ -414,7 +414,7 @@ impl ObjectsStore for MySqlPool {
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
@@ -639,7 +639,7 @@ impl ObjectsStore for MySqlPool {
 
     async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
         async fn transact(
@@ -693,7 +693,7 @@ impl ObjectsStore for MySqlPool {
         )))
     }
 
-    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {
+    async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> InterfaceResult<bool> {
         Ok(is_object_owned_by_(uid, owner, &self.pool).await?)
     }
 
@@ -705,7 +705,7 @@ impl ObjectsStore for MySqlPool {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
@@ -723,8 +723,9 @@ impl ObjectsStore for MySqlPool {
     async fn find_wrapped_by(
         &self,
         wrapping_key_uid: &str,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let user_s: &str = user;
         let sql = get_mysql_query!("find-wrapped-by");
         let mut conn = self
             .pool
@@ -732,7 +733,7 @@ impl ObjectsStore for MySqlPool {
             .await
             .map_err(|e| InterfaceError::Db(format!("MySQL connection error: {e}")))?;
         let rows: Vec<(String, String, Value)> = conn
-            .exec(sql, (user, user, user, wrapping_key_uid))
+            .exec(sql, (user_s, user_s, user_s, wrapping_key_uid))
             .await
             .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
         let mut out = Vec::new();
@@ -774,7 +775,7 @@ impl ObjectsStore for MySqlPool {
         &self,
         name: &str,
         generation: Option<i32>,
-        owner: &str,
+        owner: &UserId,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         let mut conn = self
             .pool
@@ -893,7 +894,7 @@ impl Migrate for MySqlPool {
 impl PermissionsStore for MySqlPool {
     async fn list_user_operations_granted(
         &self,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         Ok(list_user_granted_access_rights_(user, &self.pool).await?)
     }
@@ -908,7 +909,7 @@ impl PermissionsStore for MySqlPool {
     async fn grant_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
         Ok(insert_access_(uid, user, operations, &self.pool).await?)
@@ -917,7 +918,7 @@ impl PermissionsStore for MySqlPool {
     async fn remove_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
         Ok(remove_access_(uid, user, operations, &self.pool).await?)
@@ -926,7 +927,7 @@ impl PermissionsStore for MySqlPool {
     async fn list_user_operations_on_object(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         no_inherited_access: bool,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await?)
@@ -1364,7 +1365,7 @@ pub(super) async fn atomic_(
     let mut uids = Vec::with_capacity(operations.len());
     for operation in operations {
         match operation {
-            AtomicOperation::Create((uid, object, attributes, tags)) => {
+            AtomicOperation::Create((uid, _owner_field, object, attributes, tags)) => {
                 if let Err(e) =
                     create_(Some(uid.clone()), owner, object, attributes, tags, tx).await
                 {

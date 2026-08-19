@@ -13,13 +13,14 @@ use cosmian_logger::trace;
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
 pub(crate) async fn delete_attribute(
     kms: &KMS,
     request: DeleteAttribute,
-    user: &str,
+    user: &UserId,
 ) -> KResult<DeleteAttributeResponse> {
     trace!("{}", serde_json::to_string(&request)?);
 

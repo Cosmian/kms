@@ -9,13 +9,13 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::trace;
 
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
 /// Extract RSA public key metadata (modulus and exponent)
 pub(crate) async fn get_rsa_key_metadata_from_public_key(
     kms: &KMS,
     key_name: &str,
-    user: &str,
+    user: &UserId,
 ) -> KResult<(Box<num_bigint_dig::BigInt>, Box<num_bigint_dig::BigInt>)> {
     let public_key_name = format!("{key_name}_pk");
     trace!(

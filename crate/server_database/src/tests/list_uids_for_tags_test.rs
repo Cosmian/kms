@@ -8,7 +8,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
+use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, UserId};
 use uuid::Uuid;
 
 use crate::error::DbResult;
@@ -40,7 +40,7 @@ pub(super) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>
 
     db.create(
         Some(uid1.clone()),
-        owner.as_str(),
+        &UserId::from(owner.as_str()),
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::from([tag1.clone()]),
@@ -63,7 +63,7 @@ pub(super) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>
 
     db.create(
         Some(uid2.clone()),
-        owner.as_str(),
+        &UserId::from(owner.as_str()),
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::from([tag1.clone(), tag2.clone()]),

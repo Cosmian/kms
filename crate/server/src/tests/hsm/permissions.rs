@@ -31,6 +31,7 @@ use crate::{
     config::ServerParams,
     core::KMS,
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
     tests::{
         hsm::{
@@ -68,7 +69,7 @@ async fn grant_ops(
         user_id: user_id.to_owned(),
         operation_types: ops,
     };
-    kms.grant_access(&access, owner).await
+    kms.grant_access(&access, &UserId::from(owner)).await
 }
 
 /// Helper: revoke operations on an HSM key
@@ -84,7 +85,7 @@ async fn revoke_ops(
         user_id: user_id.to_owned(),
         operation_types: ops,
     };
-    kms.revoke_access(&access, owner).await
+    kms.revoke_access(&access, &UserId::from(owner)).await
 }
 
 /// Helper: encrypt data using a key.
@@ -105,7 +106,7 @@ async fn encrypt_data(kms: &Arc<KMS>, user: &str, uid: &str, data: &[u8]) -> KRe
         final_indicator: None,
         authenticated_encryption_additional_data: None,
     };
-    let response = kms.encrypt(request, user).await?;
+    let response = kms.encrypt(request, &UserId::from(user)).await?;
     // Assemble iv || ciphertext || tag so that the decrypt oracle can split them
     // back out. The session_impl::decrypt expects the data in exactly this layout.
     let mut full = Vec::new();
@@ -132,7 +133,7 @@ async fn decrypt_data(kms: &Arc<KMS>, user: &str, uid: &str, ciphertext: &[u8]) 
         authenticated_encryption_additional_data: None,
         authenticated_encryption_tag: None,
     };
-    kms.decrypt(request, user).await?;
+    kms.decrypt(request, &UserId::from(user)).await?;
     Ok(())
 }
 
@@ -147,7 +148,7 @@ async fn sign_data(kms: &Arc<KMS>, user: &str, uid: &str, data: &[u8]) -> KResul
         init_indicator: None,
         final_indicator: None,
     };
-    kms.sign(request, user).await?;
+    kms.sign(request, &UserId::from(user)).await?;
     Ok(())
 }
 

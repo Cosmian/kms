@@ -10,6 +10,7 @@ use cosmian_logger::trace;
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -52,7 +53,7 @@ const TL_PROFILE_ATTRIBUTES: [(Tag, i32); 20] = [
 pub(crate) async fn get_attribute_list(
     kms: &KMS,
     request: GetAttributeList,
-    user: &str,
+    user: &UserId,
 ) -> KResult<GetAttributeListResponse> {
     get_attribute_list_with_protocol_version(kms, request, user, None).await
 }
@@ -60,7 +61,7 @@ pub(crate) async fn get_attribute_list(
 pub(crate) async fn get_attribute_list_with_protocol_version(
     kms: &KMS,
     request: GetAttributeList,
-    user: &str,
+    user: &UserId,
     protocol_version: Option<ProtocolVersion>,
 ) -> KResult<GetAttributeListResponse> {
     // KMIP 1.x clients MUST NOT be told about attributes their protocol version does not

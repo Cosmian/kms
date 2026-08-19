@@ -39,6 +39,7 @@ use crate::{
         wrapping::{unwrap_object, wrap_and_cache, wrap_object},
     },
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -90,7 +91,7 @@ impl KMS {
         &self,
         uid: &str,
         attrs: &Attributes,
-        user: &str,
+        user: &UserId,
     ) -> KResult<bool> {
         let Some(name) = attrs.rotate_name.as_deref() else {
             return Ok(true);
@@ -110,7 +111,7 @@ impl KMS {
         &self,
         uid: &str,
         attrs: &Attributes,
-        user: &str,
+        user: &UserId,
         op_name: &str,
     ) -> KResult<()> {
         if !self.is_keyset_latest(uid, attrs, user).await? {
@@ -125,7 +126,7 @@ impl KMS {
     /// Default implementation for [`RekeyOperation::finalize_dependants`].
     pub(crate) async fn default_finalize_dependants(
         &self,
-        user: &str,
+        user: &UserId,
         candidates: &[RotationCandidate],
         replacements: &[ReplacementObject],
     ) -> KResult<()> {
@@ -169,7 +170,7 @@ impl KMS {
     /// Default implementation for [`RekeyOperation::rewrap_new_objects`].
     pub(crate) async fn default_rewrap_new_objects(
         &self,
-        user: &str,
+        user: &UserId,
         replacements: &mut [ReplacementObject],
         wrap_specs: &[Option<KeyWrappingSpecification>],
     ) -> KResult<()> {
@@ -219,7 +220,7 @@ impl KMS {
     /// Re-wrap all keys that were wrapped by the old wrapping key.
     pub(crate) async fn rewrap_dependants(
         &self,
-        owner: &str,
+        owner: &UserId,
         old_handle: ObjectHandle<'_>,
         new_handle: ObjectHandle<'_>,
         operations: &mut Vec<AtomicOperation>,
@@ -262,7 +263,7 @@ impl KMS {
     /// Unwrap and re-wrap a single dependant object with the new wrapping key.
     async fn rewrap_single_dependant(
         &self,
-        owner: &str,
+        owner: &UserId,
         dep_uid: &str,
         dep_object: &mut Object,
         mut dep_attrs: Attributes,
@@ -430,7 +431,7 @@ pub(crate) trait RekeyOperation {
         &self,
         kms: &KMS,
         request: &Self::Request,
-        user: &str,
+        user: &UserId,
     ) -> impl std::future::Future<Output = KResult<Self::Candidates>>;
 
     /// Step 3: Generate replacement material (new key/cert + fresh UIDs).
@@ -460,7 +461,7 @@ pub(crate) trait RekeyOperation {
     fn rewrap_new_objects(
         &self,
         kms: &KMS,
-        user: &str,
+        user: &UserId,
         replacements: &mut Self::Replacements,
         wrap_specs: &[Option<KeyWrappingSpecification>],
     ) -> impl std::future::Future<Output = KResult<()>> {
@@ -477,7 +478,7 @@ pub(crate) trait RekeyOperation {
     fn finalize_dependants(
         &self,
         kms: &KMS,
-        user: &str,
+        user: &UserId,
         candidates: &Self::Candidates,
         replacements: &Self::Replacements,
     ) -> impl std::future::Future<Output = KResult<()>> {
@@ -496,7 +497,7 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
     op: &T,
     kms: &KMS,
     request: &T::Request,
-    user: &str,
+    user: &UserId,
 ) -> KResult<T::Response> {
     let candidates = op.validate(kms, request, user).await?;
     let wrap_specs: Vec<_> = candidates
@@ -514,6 +515,7 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
         .map(|r| {
             AtomicOperation::Create((
                 r.new_uid.clone(),
+                user.to_owned(),
                 r.object.clone(),
                 r.attributes.clone(),
                 r.tags.clone(),

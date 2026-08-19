@@ -27,13 +27,14 @@ use crate::{
         uid_utils::{ObjectHandle, from_request},
     },
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
 pub(crate) async fn get_attributes(
     kms: &KMS,
     request: GetAttributes,
-    user: &str,
+    user: &UserId,
 ) -> KResult<GetAttributesResponse> {
     trace!("{request}");
 

@@ -33,7 +33,10 @@ pub(crate) async fn sign(
     let user = kms.get_user(&req);
     let body = body.into_inner();
 
-    trace!(user = user, "POST /v1/crypto/sign kid={}", body.kid);
+    trace!(
+        user = user.as_str(),
+        "POST /v1/crypto/sign kid={}", body.kid
+    );
 
     // JWS convention (RFC 7515 §4.1.4): `kid` in the protected header identifies
     // the public key that can verify the signature, not the signing private key.

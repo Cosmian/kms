@@ -56,9 +56,9 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache, api_token_middleware,
-        ensure_auth_middleware, extract_peer_certificate, jwt_auth_middleware,
-        otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
+        AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache, UserId,
+        api_token_middleware, ensure_auth_middleware, extract_peer_certificate,
+        jwt_auth_middleware, otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
         vault_token_optional_middleware,
     },
     result::{KResult, KResultHelper},
@@ -130,7 +130,7 @@ pub async fn handle_google_cse_rsa_keypair(
                 unique_identifier: Some(UniqueIdentifier::TextString(uid_sk.clone())),
                 attribute_reference: None,
             },
-            &server_params.default_username,
+            &UserId::from(server_params.default_username.as_str()),
         )
         .await
     {
@@ -162,7 +162,10 @@ pub async fn handle_google_cse_rsa_keypair(
                 None,
             )?;
             kms_server
-                .create_key_pair(create_request, &server_params.default_username)
+                .create_key_pair(
+                    create_request,
+                    &UserId::from(server_params.default_username.as_str()),
+                )
                 .await
                 .map(|cr| {
                     (
@@ -188,7 +191,7 @@ pub async fn handle_google_cse_rsa_keypair(
                     unique_identifier: Some(UniqueIdentifier::TextString(uid_sk)),
                     attribute_reference: None,
                 },
-                &server_params.default_username,
+                &UserId::from(server_params.default_username.as_str()),
             )
             .await
         {
@@ -305,6 +308,7 @@ async fn import_cse_migration_key(
     );
 
     // Import PrivateKey
+    let default_user = UserId::from(server_params.default_username.as_str());
     let import_sk_fut = {
         let import_request_sk = import_object_request::<Vec<String>>(
             server_params.vendor_identification.as_str(),
@@ -315,7 +319,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(import_request_sk, &server_params.default_username)
+        kms_server.import(import_request_sk, &default_user)
     };
     let import_pk_fut = {
         // Import PublicKey
@@ -328,7 +332,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(import_request_pk, &server_params.default_username)
+        kms_server.import(import_request_pk, &default_user)
     };
 
     try_join!(import_sk_fut, import_pk_fut)
@@ -450,7 +454,7 @@ fn start_socket_server(
             // tokio: run async code in the current thread
             tokio_handle.block_on(async {
                 // Handle the TTLV bytes
-                handle_ttlv_bytes(username, request, &kms_server).await
+                handle_ttlv_bytes(&UserId::from(username), request, &kms_server).await
             })
         },
         command_receiver,

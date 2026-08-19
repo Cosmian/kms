@@ -19,6 +19,7 @@ use cosmian_kms_server_database::reexport::{
 use crate::{
     core::{KMS, cover_crypt::rekey_keypair_cover_crypt, uid_utils::from_request},
     error::KmsError,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
@@ -26,7 +27,7 @@ use crate::{
 pub(super) async fn try_covercrypt_rekey(
     kms: &KMS,
     request: &ReKeyKeyPair,
-    user: &str,
+    user: &UserId,
 ) -> KResult<Option<ReKeyKeyPairResponse>> {
     let object_handle = from_request(
         request.private_key_unique_identifier.as_ref(),

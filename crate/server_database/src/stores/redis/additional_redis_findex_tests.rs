@@ -18,7 +18,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng, RandomFixedSizeCBytes, Secret, SymmetricKey,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kms_interfaces::ObjectsStore as _;
+use cosmian_kms_interfaces::{ObjectsStore as _, UserId};
 use cosmian_logger::trace;
 use redis::{AsyncCommands, aio::ConnectionManager};
 
@@ -29,7 +29,7 @@ use crate::{
         redis::{
             init_findex_redis,
             objects_db::{ACTIVE_KEY_COUNT_KEY, LIVE_COUNT_KEY, ObjectsDB, RedisDbObject},
-            permissions::{ObjectUid, PermissionDB, UserId},
+            permissions::{FindexUserId, ObjectUid, PermissionDB},
         },
     },
     tests::get_redis_url,
@@ -115,7 +115,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
     let permissions_db = PermissionDB::new(findex_arc);
 
     let object1 = ObjectUid("O1".to_owned());
-    let user1 = UserId("U1".to_owned());
+    let user1 = FindexUserId("U1".to_owned());
 
     // let us add the permission Encrypt on object O1 for user U1
     permissions_db
@@ -176,7 +176,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
 
     // let's add another user and object
     let object2 = ObjectUid("O2".to_owned());
-    let user2 = UserId("U2".to_owned());
+    let user2 = FindexUserId("U2".to_owned());
 
     // let us add the permission Encrypt on object O1 for user U2
     permissions_db
@@ -330,7 +330,7 @@ pub(crate) async fn test_corner_case() -> DbResult<()> {
     let permissions_db = PermissionDB::new(findex_arc);
 
     let object1 = ObjectUid("O1".to_owned());
-    let user1 = UserId("U1".to_owned());
+    let user1 = FindexUserId("U1".to_owned());
 
     // test that it does not exist
     let permissions = permissions_db.get(&object1, &user1, false).await?;
@@ -426,13 +426,31 @@ pub(crate) async fn test_live_count_counter() -> DbResult<()> {
     )?;
 
     let uid1 = db
-        .create(None, "owner", &key1, key1.attributes()?, &HashSet::new())
+        .create(
+            None,
+            &UserId::from("owner"),
+            &key1,
+            key1.attributes()?,
+            &HashSet::new(),
+        )
         .await?;
     let uid2 = db
-        .create(None, "owner", &key2, key2.attributes()?, &HashSet::new())
+        .create(
+            None,
+            &UserId::from("owner"),
+            &key2,
+            key2.attributes()?,
+            &HashSet::new(),
+        )
         .await?;
     let uid3 = db
-        .create(None, "owner", &key3, key3.attributes()?, &HashSet::new())
+        .create(
+            None,
+            &UserId::from("owner"),
+            &key3,
+            key3.attributes()?,
+            &HashSet::new(),
+        )
         .await?;
 
     let raw: Option<i64> = db.mgr.clone().get(LIVE_COUNT_KEY).await?;
@@ -528,10 +546,22 @@ pub(crate) async fn test_active_key_count_counter() -> DbResult<()> {
     )?;
 
     let uid_key1 = db
-        .create(None, "owner", &key1, key1.attributes()?, &HashSet::new())
+        .create(
+            None,
+            &UserId::from("owner"),
+            &key1,
+            key1.attributes()?,
+            &HashSet::new(),
+        )
         .await?;
     let uid_key2 = db
-        .create(None, "owner", &key2, key2.attributes()?, &HashSet::new())
+        .create(
+            None,
+            &UserId::from("owner"),
+            &key2,
+            key2.attributes()?,
+            &HashSet::new(),
+        )
         .await?;
 
     let raw: Option<i64> = db.mgr.clone().get(ACTIVE_KEY_COUNT_KEY).await?;
@@ -545,7 +575,7 @@ pub(crate) async fn test_active_key_count_counter() -> DbResult<()> {
     let _uid_opaque = db
         .create(
             None,
-            "owner",
+            &UserId::from("owner"),
             &opaque,
             &Attributes::default(),
             &HashSet::new(),
@@ -655,7 +685,9 @@ pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
         .await?;
 
     // Before backfill: the legacy object is invisible to find_wrapped_by (no keyword).
-    let before = db.find_wrapped_by(wrapping_key_uid, owner).await?;
+    let before = db
+        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
+        .await?;
     assert!(
         before.iter().all(|(found, _, _)| found.as_str() != uid),
         "legacy wrapped object must NOT be found before backfill"
@@ -665,7 +697,9 @@ pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
     db.backfill_wrapped_by_index().await?;
 
     // After backfill: the object is discoverable by its wrapping key.
-    let after = db.find_wrapped_by(wrapping_key_uid, owner).await?;
+    let after = db
+        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
+        .await?;
     assert!(
         after.iter().any(|(found, _, _)| found.as_str() == uid),
         "wrapped object must be discoverable after backfill, got: {after:?}"
@@ -673,7 +707,9 @@ pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
 
     // Idempotency: re-running is a no-op (marker set) and keeps it discoverable.
     db.backfill_wrapped_by_index().await?;
-    let again = db.find_wrapped_by(wrapping_key_uid, owner).await?;
+    let again = db
+        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
+        .await?;
     assert!(
         again.iter().any(|(found, _, _)| found.as_str() == uid),
         "wrapped object must remain discoverable after an idempotent re-run"

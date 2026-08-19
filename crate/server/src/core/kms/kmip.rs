@@ -18,6 +18,7 @@ use tracing::Instrument;
 
 use crate::{
     core::{KMS, operations},
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -25,7 +26,7 @@ impl KMS {
     pub(crate) async fn activate(
         &self,
         request: Activate,
-        user: &str,
+        user: &UserId,
     ) -> KResult<ActivateResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "activate");
 
@@ -44,7 +45,7 @@ impl KMS {
     pub(crate) async fn add_attribute(
         &self,
         request: AddAttribute,
-        user: &str,
+        user: &UserId,
     ) -> KResult<AddAttributeResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "add_attribute");
 
@@ -76,7 +77,11 @@ impl KMS {
     /// If the information in the Certificate Request conflicts with the
     /// attributes specified in the Attributes, then the information in the
     /// Certificate Request takes precedence.
-    pub(crate) async fn certify(&self, request: Certify, user: &str) -> KResult<CertifyResponse> {
+    pub(crate) async fn certify(
+        &self,
+        request: Certify,
+        user: &UserId,
+    ) -> KResult<CertifyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "certify");
 
         Box::pin(operations::certify(self, request, user))
@@ -92,7 +97,7 @@ impl KMS {
     /// contains the Unique Identifier of the created object. The server SHALL
     /// copy the Unique Identifier returned by this operation into the ID
     /// Placeholder variable.
-    pub(crate) async fn create(&self, request: Create, user: &str) -> KResult<CreateResponse> {
+    pub(crate) async fn create(&self, request: Create, user: &UserId) -> KResult<CreateResponse> {
         Box::pin(operations::create(self, request, user)).await
     }
 
@@ -114,7 +119,7 @@ impl KMS {
     pub(crate) async fn create_key_pair(
         &self,
         request: CreateKeyPair,
-        user: &str,
+        user: &UserId,
     ) -> KResult<CreateKeyPairResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "create_key_pair");
 
@@ -169,7 +174,11 @@ impl KMS {
     ///
     /// The success or failure of the operation is indicated by the Result
     /// Status (and if failure the Result Reason) in the response header.
-    pub(crate) async fn decrypt(&self, request: Decrypt, user: &str) -> KResult<DecryptResponse> {
+    pub(crate) async fn decrypt(
+        &self,
+        request: Decrypt,
+        user: &UserId,
+    ) -> KResult<DecryptResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "decrypt");
 
         Box::pin(operations::decrypt(self, request, user))
@@ -181,7 +190,7 @@ impl KMS {
     pub(crate) async fn delete_attribute(
         &self,
         request: DeleteAttribute,
-        user: &str,
+        user: &UserId,
     ) -> KResult<DeleteAttributeResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "delete_attribute");
 
@@ -200,7 +209,7 @@ impl KMS {
     pub(crate) async fn derive_key(
         &self,
         request: DeriveKey,
-        user: &str,
+        user: &UserId,
     ) -> KResult<DeriveKeyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "derive_key");
 
@@ -214,7 +223,11 @@ impl KMS {
     /// inaccessible. The meta-data for the key material SHALL be retained by
     /// the server.  Objects SHALL only be destroyed if they are in either
     /// Pre-Active or Deactivated state.
-    pub(crate) async fn destroy(&self, request: Destroy, user: &str) -> KResult<DestroyResponse> {
+    pub(crate) async fn destroy(
+        &self,
+        request: Destroy,
+        user: &UserId,
+    ) -> KResult<DestroyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "destroy");
 
         operations::destroy_operation(self, request, user)
@@ -250,7 +263,11 @@ impl KMS {
     ///
     /// The success or failure of the operation is indicated by the Result
     /// Status (and if failure is the Result Reason) in the response header.
-    pub(crate) async fn encrypt(&self, request: Encrypt, user: &str) -> KResult<EncryptResponse> {
+    pub(crate) async fn encrypt(
+        &self,
+        request: Encrypt,
+        user: &UserId,
+    ) -> KResult<EncryptResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "encrypt");
 
         Box::pin(operations::encrypt(self, request, user))
@@ -266,7 +283,7 @@ impl KMS {
     /// SHALL not be returned in the response.
     /// The server SHALL copy the Unique Identifier returned by this operation
     /// into the ID Placeholder variable.
-    pub(crate) async fn export(&self, request: Export, user: &str) -> KResult<ExportResponse> {
+    pub(crate) async fn export(&self, request: Export, user: &UserId) -> KResult<ExportResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "export");
 
         operations::export(self, request, user)
@@ -295,7 +312,7 @@ impl KMS {
     /// corresponding public key (where relevant), and then using that
     /// public key's PKCS#12 Certificate Link to get the base certificate, and
     /// then using each certificate's Certificate Link to get the next.
-    pub(crate) async fn get(&self, request: Get, user: &str) -> KResult<GetResponse> {
+    pub(crate) async fn get(&self, request: Get, user: &UserId) -> KResult<GetResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "get");
 
         operations::get(self, request, user).instrument(span).await
@@ -314,7 +331,7 @@ impl KMS {
     pub(crate) async fn get_attributes(
         &self,
         request: GetAttributes,
-        user: &str,
+        user: &UserId,
     ) -> KResult<GetAttributesResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "get_attributes");
 
@@ -329,7 +346,7 @@ impl KMS {
     /// The response contains the result of the hash operation.
     ///
     /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
-    pub(crate) async fn hash(&self, request: Hash, user: &str) -> KResult<HashResponse> {
+    pub(crate) async fn hash(&self, request: Hash, user: &UserId) -> KResult<HashResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "hash");
 
         operations::hash_operation(self, request, user)
@@ -341,7 +358,7 @@ impl KMS {
     pub(crate) async fn rng_retrieve(
         &self,
         request: RNGRetrieve,
-        user: &str,
+        user: &UserId,
     ) -> KResult<RNGRetrieveResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "rng_retrieve");
 
@@ -351,7 +368,11 @@ impl KMS {
     }
 
     /// This operation requests the server to seed an RNG instance with provided data.
-    pub(crate) async fn rng_seed(&self, request: RNGSeed, user: &str) -> KResult<RNGSeedResponse> {
+    pub(crate) async fn rng_seed(
+        &self,
+        request: RNGSeed,
+        user: &UserId,
+    ) -> KResult<RNGSeedResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "rng_seed");
 
         operations::rng_seed(self, request, user)
@@ -371,7 +392,7 @@ impl KMS {
     /// - PKCS#11 Return Code: REQUIRED - The PKCS#11 return code
     /// - Correlation Value: Optional - Server-defined value for client to return next
     /// - PKCS#11 Output Parameters: Optional - Parameters output from the function
-    pub(crate) async fn pkcs11(&self, request: PKCS11, user: &str) -> KResult<PKCS11Response> {
+    pub(crate) async fn pkcs11(&self, request: PKCS11, user: &UserId) -> KResult<PKCS11Response> {
         let span = tracing::span!(tracing::Level::ERROR, "pkcs11");
 
         operations::pkcs11(self, request, user)
@@ -393,7 +414,7 @@ impl KMS {
     /// for queries on tags. See tagging.
     /// For instance, a request for a unique identifier `[tag1]` will
     /// attempt to find a valid single object tagged with `tag1`
-    pub(crate) async fn import(&self, request: Import, user: &str) -> KResult<ImportResponse> {
+    pub(crate) async fn import(&self, request: Import, user: &UserId) -> KResult<ImportResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "import");
 
         // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
@@ -492,7 +513,7 @@ impl KMS {
     /// server SHALL NOT return unique identifiers for objects that are archived
     /// unless the Storage Status Mask field includes the Archived Storage
     /// indicator.
-    pub(crate) async fn locate(&self, request: Locate, user: &str) -> KResult<LocateResponse> {
+    pub(crate) async fn locate(&self, request: Locate, user: &UserId) -> KResult<LocateResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "locate");
 
         // Do not over-constrain Locate by state here; filtering is handled in the
@@ -534,7 +555,7 @@ impl KMS {
     /// The response contains the Unique Identifier of the Managed Cryptographic Object used as the key and the result of the MAC operation.
     ///
     /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
-    pub(crate) async fn mac(&self, request: MAC, user: &str) -> KResult<MACResponse> {
+    pub(crate) async fn mac(&self, request: MAC, user: &UserId) -> KResult<MACResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "mac");
 
         Box::pin(operations::mac(self, request, user))
@@ -545,7 +566,7 @@ impl KMS {
     pub(crate) async fn mac_verify(
         &self,
         request: MACVerify,
-        user: &str,
+        user: &UserId,
     ) -> KResult<MACVerifyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "mac_verify");
 
@@ -558,7 +579,7 @@ impl KMS {
     pub(crate) async fn message(
         &self,
         request: cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::RequestMessage,
-        user: &str,
+        user: &UserId,
     ) -> KResult<
         cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::ResponseMessage,
     > {
@@ -573,7 +594,7 @@ impl KMS {
     pub(crate) async fn register(
         &self,
         request: Register,
-        user: &str,
+        user: &UserId,
     ) -> KResult<RegisterResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "register");
 
@@ -610,7 +631,7 @@ impl KMS {
     pub(crate) async fn rekey_keypair(
         &self,
         request: ReKeyKeyPair,
-        user: &str,
+        user: &UserId,
     ) -> KResult<ReKeyKeyPairResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "rekey_keypair");
 
@@ -628,7 +649,7 @@ impl KMS {
     /// For the existing key, the server SHALL create a Link attribute of Link Type Replacement Object pointing to the replacement key. For the replacement key, the server SHALL create a Link attribute of Link Type Replaced Key pointing to the existing key.
     ///
     /// An Offset MAY be used to indicate the difference between the Initial Date and the Activation Date of the replacement key. If no Offset is specified, the Activation Date, Process Start Date, Protect Stop Date and Deactivation Date values are copied from the existing key.
-    pub(crate) async fn rekey(&self, request: ReKey, user: &str) -> KResult<ReKeyResponse> {
+    pub(crate) async fn rekey(&self, request: ReKey, user: &UserId) -> KResult<ReKeyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "rekey");
 
         Box::pin(operations::rekey(self, request, user))
@@ -644,7 +665,7 @@ impl KMS {
     pub(crate) async fn recertify(
         &self,
         request: ReCertify,
-        user: &str,
+        user: &UserId,
     ) -> KResult<ReCertifyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "recertify");
 
@@ -659,7 +680,7 @@ impl KMS {
     pub(crate) async fn modify_attribute(
         &self,
         request: ModifyAttribute,
-        user: &str,
+        user: &UserId,
     ) -> KResult<ModifyAttributeResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "modify_attribute");
 
@@ -672,7 +693,7 @@ impl KMS {
     pub(crate) async fn set_attribute(
         &self,
         request: SetAttribute,
-        user: &str,
+        user: &UserId,
     ) -> KResult<SetAttributeResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "set_attribute");
 
@@ -683,7 +704,7 @@ impl KMS {
 
     /// This operation requests the server to perform a signature operation on the provided data
     /// using a Managed Object specified by its Unique Identifier. The signature is returned to the client.
-    pub(crate) async fn sign(&self, request: Sign, user: &str) -> KResult<SignResponse> {
+    pub(crate) async fn sign(&self, request: Sign, user: &UserId) -> KResult<SignResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "sign");
 
         Box::pin(operations::sign(self, request, user))
@@ -705,7 +726,7 @@ impl KMS {
     pub(crate) async fn signature_verify(
         &self,
         request: SignatureVerify,
-        user: &str,
+        user: &UserId,
     ) -> KResult<SignatureVerifyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "signature_verify");
 
@@ -722,7 +743,7 @@ impl KMS {
     pub(crate) async fn validate(
         &self,
         request: Validate,
-        user: &str,
+        user: &UserId,
     ) -> KResult<ValidateResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "validate");
 
@@ -743,7 +764,7 @@ impl KMS {
     /// object. If the revocation reason is neither "key compromise" nor "CA
     /// compromise", the object is placed into the "deactivated" state, and the
     /// Deactivation Date is set to the current date and time.
-    pub(crate) async fn revoke(&self, request: Revoke, user: &str) -> KResult<RevokeResponse> {
+    pub(crate) async fn revoke(&self, request: Revoke, user: &UserId) -> KResult<RevokeResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "revoke");
 
         Box::pin(operations::revoke_operation(self, request, user))

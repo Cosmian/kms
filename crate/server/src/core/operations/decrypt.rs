@@ -48,6 +48,7 @@ use crate::{
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -117,7 +118,7 @@ impl CryptoOpSpec for DecryptOp {
     fn map_selection_error(
         e: KmsError,
         unique_identifier: &UniqueIdentifier,
-        user: &str,
+        user: &UserId,
     ) -> KmsError {
         match e {
             KmsError::ItemNotFound(_) => KmsError::ItemNotFound(format!(
@@ -135,7 +136,7 @@ impl CryptoOpSpec for DecryptOp {
         kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
-        _user: &str,
+        _user: &UserId,
     ) -> KResult<Self::Response> {
         let data = request.data.as_ref().ok_or_else(|| {
             KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
@@ -201,7 +202,11 @@ impl CryptoOpSpec for DecryptOp {
     }
 }
 
-pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<DecryptResponse> {
+pub(crate) async fn decrypt(
+    kms: &KMS,
+    request: Decrypt,
+    user: &UserId,
+) -> KResult<DecryptResponse> {
     trace!(
         "Decrypt: uid={:?}, data_len={}",
         request.unique_identifier,

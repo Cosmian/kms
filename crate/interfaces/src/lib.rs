@@ -3,6 +3,7 @@ mod error;
 mod hsm;
 mod object_handle;
 mod stores;
+mod user_id;
 
 pub use crypto_oracle::{
     CryptoAlgorithm, CryptoOracle, EncryptedContent, KeyMetadata, SigningAlgorithm,
@@ -14,6 +15,7 @@ pub use hsm::{
 };
 pub use object_handle::{HsmUidParts, ObjectHandle};
 pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore};
+pub use user_id::UserId;
 
 /// Number of seconds in one day — the finest granularity PKCS#11 `CK_DATE` can represent.
 pub const SECS_PER_DAY: i64 = 24 * 3600;

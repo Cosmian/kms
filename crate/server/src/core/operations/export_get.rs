@@ -39,6 +39,7 @@ use crate::{
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
@@ -49,7 +50,7 @@ pub(crate) async fn export_get(
     kms: &KMS,
     request: impl Into<Export>,
     operation_type: KmipOperation,
-    user: &str,
+    user: &UserId,
 ) -> KResult<ExportResponse> {
     let request: Export = request.into();
     trace!(target: "kmip", "enter export_get op={:?} req={}", operation_type, request);
@@ -377,7 +378,7 @@ pub(crate) async fn export_get(
 
     info!(
         uid = owm.id(),
-        user = user,
+        user = user.as_str(),
         "Exported object of type: {}",
         owm.object().object_type()
     );
@@ -397,7 +398,7 @@ pub(crate) async fn export_get(
 async fn post_process_private_key(
     kms: &KMS,
     operation_type: KmipOperation,
-    user: &str,
+    user: &UserId,
 
     request: &Export,
     owm: &mut ObjectWithMetadata,
@@ -475,7 +476,7 @@ async fn post_process_active_private_key(
     key_wrap_type: &Option<KeyWrapType>,
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<()> {
     trace!("key_format_type: {key_format_type:?}",);
     // First perform any necessary unwrapping to the expected type
@@ -787,7 +788,7 @@ async fn process_public_key(
     key_wrap_type: &Option<KeyWrapType>,
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<()> {
     // perform any necessary unwrapping
     Box::pin(unwrap_if_requested(
@@ -958,7 +959,7 @@ async fn unwrap_if_requested(
     object_with_metadata: &mut ObjectWithMetadata,
     key_wrap_type: &Option<KeyWrapType>,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 
     object_type: ObjectType,
 ) -> Result<(), KmsError> {
@@ -1002,7 +1003,7 @@ async fn process_covercrypt_key(
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     key_format_type: &Option<KeyFormatType>,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<()> {
     // Wrapping is only available for KeyFormatType being the default (i.e. None)
     if let Some(key_wrapping_specification) = key_wrapping_specification {
@@ -1106,7 +1107,7 @@ async fn process_symmetric_key(
     key_wrap_type: &Option<KeyWrapType>,
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<()> {
     trace!(
         "process_symmetric_key: object_with_metadata: {}",
@@ -1269,7 +1270,7 @@ async fn process_symmetric_key(
 async fn build_pkcs12_for_private_key(
     kms: &KMS,
     operation_type: KmipOperation,
-    user: &str,
+    user: &UserId,
 
     request: &Export,
     private_key_owm: &mut ObjectWithMetadata,
@@ -1365,7 +1366,7 @@ async fn build_pkcs12_for_private_key(
 async fn post_process_pkcs7(
     kms: &KMS,
     operation_type: KmipOperation,
-    user: &str,
+    user: &UserId,
     owm: ObjectWithMetadata,
 ) -> KResult<ObjectWithMetadata> {
     // convert the cert to openssl
@@ -1457,7 +1458,7 @@ async fn process_secret_data(
     key_wrap_type: &Option<KeyWrapType>,
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<()> {
     trace!(
         "process_secret_data: object_with_metadata: {}",

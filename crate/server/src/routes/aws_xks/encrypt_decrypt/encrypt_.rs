@@ -26,6 +26,7 @@ use zeroize::Zeroizing;
 use crate::{
     core::KMS,
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
     routes::aws_xks::{
         encrypt_decrypt::{CdivAlgorithm, EncryptionAlgorithm, RequestMetadata},
@@ -293,7 +294,7 @@ async fn encrypt_inner(
                 final_indicator: None,
                 authenticated_encryption_additional_data: aead.clone(),
             },
-            &user,
+            &UserId::from(user.as_str()),
         )
         .await?;
     let ciphertext = response

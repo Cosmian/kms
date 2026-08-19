@@ -26,7 +26,9 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::trace;
 
 use super::KMS;
-use crate::{core::cover_crypt::locate_usk, error::KmsError, kms_bail, result::KResult};
+use crate::{
+    core::cover_crypt::locate_usk, error::KmsError, kms_bail, middlewares::UserId, result::KResult,
+};
 
 /// KMIP `ReKey` for `CoverCrypt` master keys can be one of these actions:
 ///
@@ -41,7 +43,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
     msk_uid: String,
-    owner: &str,
+    owner: &UserId,
     action: RekeyEditAction,
     _sensitive: bool,
 ) -> KResult<ReKeyKeyPairResponse> {
@@ -125,7 +127,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 /// one. Returns the associated MPK UID.
 pub(super) async fn update_master_keys(
     server: &KMS,
-    owner: &str,
+    owner: &UserId,
     msk_uid: &String,
     mutator: impl AsyncFn(&mut MasterSecretKey, &mut MasterPublicKey) -> KResult<()>,
 ) -> KResult<String> {
@@ -151,7 +153,7 @@ pub(super) async fn update_master_keys(
 async fn get_master_keys(
     kmip_server: &KMS,
     msk_uid: &String,
-    owner: &str,
+    owner: &UserId,
 ) -> KResult<(Object, KmipKeyUidObject)> {
     let msk_obj = kmip_server.get(Get::from(msk_uid), owner).await?.object;
 
@@ -179,7 +181,7 @@ async fn get_master_keys(
 /// Import the updated master keys in place of the old ones in the KMS
 async fn import_rekeyed_master_keys(
     kmip_server: &KMS,
-    owner: &str,
+    owner: &UserId,
     msk: KmipKeyUidObject,
     mpk: KmipKeyUidObject,
 ) -> KResult<()> {
@@ -214,7 +216,7 @@ async fn update_all_active_usk(
     cover_crypt: &Covercrypt,
     msk_uid: &str,
     msk: &mut MasterSecretKey,
-    owner: &str,
+    owner: &UserId,
 ) -> KResult<()> {
     let res = locate_usk(kmip_server, msk_uid, None, Some(State::Active), owner).await?;
 
@@ -233,7 +235,7 @@ async fn update_usk(
     handler: &mut UserDecryptionKeysHandler<'_>,
     usk_uid: &str,
     kmip_server: &KMS,
-    owner: &str,
+    owner: &UserId,
 ) -> KResult<()> {
     let res = kmip_server.get(Get::from(usk_uid), owner).await?;
 

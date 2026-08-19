@@ -36,7 +36,7 @@ use super::{
     },
     b64_decode,
 };
-use crate::{core::KMS, routes::jwks::JWKS_TAG};
+use crate::{core::KMS, middlewares::UserId, routes::jwks::JWKS_TAG};
 
 /// `POST /v1/crypto/keys` — generate or import a JWK-style key.
 ///
@@ -52,7 +52,10 @@ pub(crate) async fn create_key(
     let user = kms.get_user(&req);
     let body = body.into_inner();
 
-    trace!(user = user, "POST /v1/crypto/keys kty={}", body.kty);
+    trace!(
+        user = user.as_str(),
+        "POST /v1/crypto/keys kty={}", body.kty
+    );
 
     // Validate algorithm ↔ key type consistency to prevent key confusion attacks.
     if let Some(alg) = body.alg.as_deref() {
@@ -97,7 +100,7 @@ pub(crate) async fn delete_key(
     let user = kms.get_user(&req);
     let kid = kid.into_inner();
 
-    trace!(user = user, "DELETE /v1/crypto/keys/{kid}");
+    trace!(user = user.as_str(), "DELETE /v1/crypto/keys/{kid}");
 
     // Revoke the key first (KMIP lifecycle requires Deactivated state before Destroy)
     let revoke_req = Revoke {
@@ -130,7 +133,7 @@ pub(crate) async fn delete_key(
 
 async fn generate_symmetric_key(
     kms: &Arc<KMS>,
-    user: &str,
+    user: &UserId,
     body: &KeyCreateRequest,
 ) -> Result<KeyCreateResponse, CryptoApiError> {
     let alg = body.alg.as_deref().ok_or_else(|| {
@@ -187,7 +190,7 @@ async fn generate_symmetric_key(
 
 async fn generate_ec_key_pair(
     kms: &Arc<KMS>,
-    user: &str,
+    user: &UserId,
     body: &KeyCreateRequest,
 ) -> Result<KeyCreateResponse, CryptoApiError> {
     let crv = body.crv.as_deref().ok_or_else(|| {
@@ -245,7 +248,7 @@ async fn generate_ec_key_pair(
 
 async fn generate_rsa_key_pair(
     kms: &Arc<KMS>,
-    user: &str,
+    user: &UserId,
     body: &KeyCreateRequest,
 ) -> Result<KeyCreateResponse, CryptoApiError> {
     let bits = body.bits.unwrap_or(2048);
@@ -303,7 +306,7 @@ async fn generate_rsa_key_pair(
 #[cfg(feature = "non-fips")]
 async fn generate_okp_key_pair(
     kms: &Arc<KMS>,
-    user: &str,
+    user: &UserId,
     body: &KeyCreateRequest,
 ) -> Result<KeyCreateResponse, CryptoApiError> {
     let crv = body.crv.as_deref().unwrap_or("Ed25519");
@@ -351,7 +354,7 @@ async fn generate_okp_key_pair(
 
 async fn import_symmetric_key(
     kms: &Arc<KMS>,
-    user: &str,
+    user: &UserId,
     body: &KeyCreateRequest,
 ) -> Result<KeyCreateResponse, CryptoApiError> {
     let k_str = body.k.as_deref().ok_or_else(|| {
@@ -474,7 +477,7 @@ async fn import_symmetric_key(
 /// the public key).
 async fn import_public_key_for_private(
     kms: &Arc<KMS>,
-    user: &str,
+    user: &UserId,
     pkey: &PKey<openssl::pkey::Private>,
     private_key_uid: &str,
     usage_mask: CryptographicUsageMask,
@@ -547,7 +550,7 @@ async fn import_public_key_for_private(
 
 async fn import_ec_key(
     kms: &Arc<KMS>,
-    user: &str,
+    user: &UserId,
     body: &KeyCreateRequest,
 ) -> Result<KeyCreateResponse, CryptoApiError> {
     let d_str = body.d.as_deref().ok_or_else(|| {
@@ -718,7 +721,7 @@ async fn import_ec_key(
 
 async fn import_rsa_key(
     kms: &Arc<KMS>,
-    user: &str,
+    user: &UserId,
     body: &KeyCreateRequest,
 ) -> Result<KeyCreateResponse, CryptoApiError> {
     // All RSA CRT components are required by OpenSSL
@@ -882,7 +885,7 @@ async fn import_rsa_key(
 #[cfg(feature = "non-fips")]
 async fn import_okp_key(
     kms: &Arc<KMS>,
-    user: &str,
+    user: &UserId,
     body: &KeyCreateRequest,
 ) -> Result<KeyCreateResponse, CryptoApiError> {
     let d_str = body.d.as_deref().ok_or_else(|| {

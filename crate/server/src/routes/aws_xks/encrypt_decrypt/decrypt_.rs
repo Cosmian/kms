@@ -22,6 +22,7 @@ use tracing::{debug, info};
 use crate::{
     core::KMS,
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
     routes::aws_xks::{
         encrypt_decrypt::{EncryptionAlgorithm, RequestMetadata},
@@ -248,7 +249,7 @@ async fn decrypt_inner(
                 authenticated_encryption_additional_data: aead.clone(),
                 authenticated_encryption_tag: Some(tag),
             },
-            &user,
+            &UserId::from(user.as_str()),
         )
         .await?;
     let plaintext = response

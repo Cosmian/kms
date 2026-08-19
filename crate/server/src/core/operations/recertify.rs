@@ -37,6 +37,7 @@ use crate::{
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -61,7 +62,7 @@ pub(crate) struct CertificateRekey {
 pub(crate) async fn recertify(
     kms: &KMS,
     request: ReCertify,
-    owner: &str,
+    owner: &UserId,
 ) -> KResult<ReCertifyResponse> {
     trace!("ReCertify: {}", serde_json::to_string(&request)?);
     let (issuer_cert_id, issuer_private_key_id) =
@@ -97,7 +98,7 @@ impl RekeyOperation for CertificateRekey {
         &self,
         kms: &KMS,
         request: &ReCertify,
-        user: &str,
+        user: &UserId,
     ) -> KResult<[RotationCandidate; 1]> {
         KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 
@@ -188,7 +189,7 @@ impl RekeyOperation for CertificateRekey {
         };
 
         // Resolve subject (will produce Subject::Certificate from existing cert)
-        let owner = candidate.owm.owner();
+        let owner = candidate.owm.owner_id();
         let subject = Box::pin(get_subject(kms, &certify_request, owner)).await?;
         // Resolve issuer from the old certificate's attributes
         let issuer = Box::pin(get_issuer(&subject, kms, &certify_request, owner)).await?;
@@ -262,7 +263,7 @@ impl RekeyOperation for CertificateRekey {
     async fn rewrap_new_objects(
         &self,
         _kms: &KMS,
-        _user: &str,
+        _user: &UserId,
         _replacements: &mut [ReplacementObject; 1],
         _wrap_specs: &[Option<KeyWrappingSpecification>],
     ) -> KResult<()> {
@@ -273,7 +274,7 @@ impl RekeyOperation for CertificateRekey {
     async fn finalize_dependants(
         &self,
         kms: &KMS,
-        user: &str,
+        user: &UserId,
         candidates: &[RotationCandidate; 1],
         replacements: &[ReplacementObject; 1],
     ) -> KResult<()> {
