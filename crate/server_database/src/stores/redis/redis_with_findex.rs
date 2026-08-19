@@ -945,19 +945,51 @@ impl ObjectsStore for RedisWithFindex {
                 if state.is_some_and(|s| obj.state != s) {
                     return false;
                 }
-                if let Some(attrs) = researched_attributes {
-                    let tags = attrs.get_tags(vendor_id);
-                    if !tags.is_empty() {
-                        let obj_tags = obj
-                            .object
-                            .attributes()
-                            .map(|a| a.get_tags(vendor_id))
-                            .unwrap_or_default();
-                        if !tags.iter().all(|t| obj_tags.contains(t)) {
+                let Some(attrs) = researched_attributes else {
+                    return true;
+                };
+
+                // Filter by object_type when specified.
+                if let Some(req_type) = attrs.object_type {
+                    if obj.object_type != req_type {
+                        return false;
+                    }
+                }
+
+                // Filter by link attributes when specified.
+                // Certificates store their issuer link inside the object attributes;
+                // we must check both the stored `attributes` field and the object's
+                // embedded attributes to find a matching link.
+                if let Some(req_links) = &attrs.link {
+                    let obj_stored_attrs = obj.attributes.as_ref();
+                    let obj_embedded_attrs = obj.object.attributes().ok();
+                    let obj_links: &[cosmian_kmip::kmip_2_1::kmip_types::Link] = obj_stored_attrs
+                        .and_then(|a| a.link.as_deref())
+                        .or_else(|| obj_embedded_attrs.as_ref().and_then(|a| a.link.as_deref()))
+                        .unwrap_or(&[]);
+                    for req_link in req_links {
+                        if !obj_links.iter().any(|l| {
+                            l.link_type == req_link.link_type
+                                && l.linked_object_identifier == req_link.linked_object_identifier
+                        }) {
                             return false;
                         }
                     }
                 }
+
+                // Filter by vendor tags when specified.
+                let tags = attrs.get_tags(vendor_id);
+                if !tags.is_empty() {
+                    let obj_tags = obj
+                        .object
+                        .attributes()
+                        .map(|a| a.get_tags(vendor_id))
+                        .unwrap_or_default();
+                    if !tags.iter().all(|t| obj_tags.contains(t)) {
+                        return false;
+                    }
+                }
+
                 true
             })
             .map(|(uid, obj)| {
