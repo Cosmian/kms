@@ -734,6 +734,13 @@ Crate path: `crate/server`
 | `debug` | `Generating CRL for issuer certificate: {}` | `src/core/operations/generate_crl.rs` | - | - |
 | `trace` | `Found {} revoked certificate(s) for issuer '{}'` | `src/core/operations/generate_crl.rs` | - | - |
 | `trace` | `Skipping certificate '{}': cannot parse DER: {e}` | `src/core/operations/generate_crl.rs` | `e` | - |
+| `warn` | `OPA request failed (fail-closed deny): {e}` | `src/core/opa/client.rs` | `e` | - |
+| `warn` | `OPA response parse failed (fail-closed deny): {e}` | `src/core/opa/client.rs` | `e` | - |
+| `warn` | `OPA returned non-2xx (fail-closed deny): {status} — {body_text}` | `src/core/opa/client.rs` | `status`, `body_text` | - |
+| `warn` | `{:?} {} 401 unauthorized, no email or sub in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
+| `debug` | `JWT Access granted to {username}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `username` | - |
+| `trace` | `OPA enforcing decision for user={} op={} obj={}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
+| `trace` | `OPA exclusive decision for user={} op={} obj={}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
