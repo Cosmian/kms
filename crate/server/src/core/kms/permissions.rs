@@ -373,7 +373,13 @@ impl KMS {
     /// Two revocation paths:
     /// - **Self-revoke** (`target_user = None`): the caller must be an active CO.
     /// - **Peer revocation** (`target_user = Some(victim)`): the caller must be a configured
-    ///   CO candidate (in `crypto_officer_users`) and the target must be an active CO.
+    ///   CO candidate (in `crypto_officer_users`) — active or dormant — and the target must be
+    ///   an active CO.
+    ///
+    /// Allowing dormant candidates to peer-revoke is intentional: it provides a break-glass
+    /// revocation path when all active COs are compromised. The trust model is that every
+    /// configured candidate is a pre-vetted operator; a compromised candidate credential is an
+    /// acceptable cost compared to being unable to revoke a compromised active CO.
     ///
     /// In both cases the `crypto_officer_activations` row for the target is revoked.
     /// The target's reconstructed key is **not** revoked — they retain it as an Operator.
@@ -404,6 +410,8 @@ impl KMS {
         }
 
         // Caller must be a configured CO candidate to issue any revocation.
+        // Dormant candidates are permitted deliberately: they provide a break-glass path
+        // to revoke a compromised active CO even when no other active CO is available.
         if !cfg.users.iter().any(|u| u == caller.as_str()) {
             kms_bail!(KmsError::Unauthorized(
                 "Only a configured Crypto Officer candidate can revoke a CO ceremony".to_owned()
