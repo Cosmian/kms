@@ -346,32 +346,52 @@ pub(crate) async fn user_has_permission(
                 return Ok(allowed);
             }
             OpaMode::Enforcing => {
-                let opa_ctx = get_opa_user_context();
-                let input = build_opa_input(
-                    user,
-                    &opa_ctx.roles,
-                    opa_ctx.domain.as_deref(),
-                    owm,
-                    *operation_type,
-                );
-                let allowed = opa_client.query(&input).await.unwrap_or(false);
-                trace!(
-                    "OPA enforcing decision for user={} op={} obj={}: {}",
-                    user, operation_type, input.object_uid, allowed
-                );
-                if !allowed {
-                    return Ok(false);
+                // ── Native KMS CO bypass ────────────────────────────────────────────
+                // Native COs (listed in `crypto_officer_users`) bypass OPA Gate 1 in
+                // enforcing mode, consistent with `locate.rs` (which calls
+                // `is_crypto_officer()` before any OPA check) and
+                // `enforce_create_permission` (which applies the same pattern for
+                // Create).  Their access is validated by the `is_crypto_officer()`
+                // check in the legacy KMS gate below.
+                // HSM keys are excluded: their access model is separate and requires
+                // explicit HSM-admin grants.
+                let object_id = owm.map_or("*", ObjectWithMetadata::id);
+                let is_native_co =
+                    !ObjectHandle::from(object_id).is_hsm() && kms.is_crypto_officer(user).await?;
+                if !is_native_co {
+                    // ── OPA Gate 1 ────────────────────────────────────────────────────
+                    let opa_ctx = get_opa_user_context();
+                    let input = build_opa_input(
+                        user,
+                        &opa_ctx.roles,
+                        opa_ctx.domain.as_deref(),
+                        owm,
+                        *operation_type,
+                    );
+                    let allowed = opa_client.query(&input).await.unwrap_or(false);
+                    trace!(
+                        "OPA enforcing decision for user={} op={} obj={}: {}",
+                        user, operation_type, input.object_uid, allowed
+                    );
+                    if !allowed {
+                        return Ok(false);
+                    }
+                    // OPA approved. In enforcing mode OPA is the authoritative
+                    // role/domain policy engine: it already evaluated `is_owner`,
+                    // `same_domain`, and the role hierarchy against the operation.
+                    // Trust this decision and return immediately for non-HSM objects
+                    // rather than re-evaluating ownership/grants in the KMS legacy gate,
+                    // which would deny valid role-based access that OPA explicitly allowed
+                    // (e.g. CryptoOfficer reading GetAttributes on a peer's key).
+                    // HSM-backed keys still fall through to the HSM-admin / per-HSM-grant
+                    // check because their access model is independent of the KMIP
+                    // object-grant model and OPA does not evaluate HSM admin status.
+                    let is_hsm = owm.is_some_and(|o| ObjectHandle::from(o.id()).is_hsm());
+                    if !is_hsm {
+                        return Ok(true);
+                    }
                 }
-                // OPA allowed.
-                // For object-less operations (owm=None, e.g. Create / CreateKeyPair /
-                // Import / Register) there are no pre-existing DB grants to check —
-                // no object exists yet. OPA's decision is therefore authoritative.
-                // For operations on *existing* objects (owm=Some), fall through to
-                // the legacy DB-grant check (belt-and-suspenders: both OPA and a DB
-                // grant must allow).
-                if owm.is_none() {
-                    return Ok(true);
-                }
+                // Native CO: fall through to the legacy KMS gate below.
             }
         }
     }

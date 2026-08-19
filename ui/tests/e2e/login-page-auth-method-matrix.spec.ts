@@ -6,15 +6,17 @@
  * They work by intercepting `GET /ui/auth_method` (and `GET /ui/whoami`)
  * so they run against the Vite dev/preview server with NO live KMS required.
  *
- * Combinations tested (8 total):
+ * Combinations tested (8 standard + 1 OPA-config scenario):
  *   1. ["AUTH_VERIFIER"]               — username/password form, no secondary
  *   2. ["JWT"]                         — OIDC button, no secondary
  *   3. ["CERT"]                        — certificate button, no secondary
  *   4. ["JWT", "AUTH_VERIFIER"]        — OIDC primary, AUTH_VERIFIER secondary button
  *   5. ["JWT", "CERT"]                 — OIDC primary, CERT secondary button
- *   6. ["AUTH_VERIFIER", "CERT"]       — form primary, CERT secondary button
+ *   6. ["AUTH_VERIFIER", "CERT"]       — form primary, CERT secondary button (no realms)
  *   7. ["JWT", "AUTH_VERIFIER", "CERT"]— OIDC primary, secondary dropdown (2 entries)
  *   8. []  (no auth)                   — no login form shown; no-auth banner in app
+ *   11. OPA RBAC (opa.toml)            — ["AUTH_VERIFIER","CERT"] + 2 realms → form +
+ *                                        realm selector + CERT secondary button
  *
  * Each test mocks:
  *   GET /ui/auth_method  → { auth_method: <primary>, auth_methods: [...] }
@@ -256,5 +258,52 @@ test.describe("Login page auth-method matrix", () => {
         // The singular field must equal the first element of the array (or "None")
         const expectedPrimary = (body.auth_methods as string[])[0] ?? "None";
         expect(body.auth_method).toBe(expectedPrimary);
+    });
+
+    // ── 11. OPA RBAC config scenario (opa.toml) ───────────────────────────────
+    // Mirrors the exact server response produced by opa.toml:
+    //   - auth_verifier configured  → AUTH_VERIFIER in auth_methods
+    //   - clients_ca_cert_file set  → CERT in auth_methods
+    //   - auth_verifier_realm = ["acme.com","partner.acme.com"] → realm selector
+    // Priority order: AUTH_VERIFIER (primary) → CERT (secondary single button)
+    test('OPA RBAC config ["AUTH_VERIFIER","CERT"] + 2 realms — form + realm selector + CERT secondary', async ({ page }) => {
+        // Mock the exact response shape that opa.toml produces at runtime.
+        await page.route("**/ui/auth_method", (route) =>
+            route.fulfill({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({
+                    auth_method: "AUTH_VERIFIER",
+                    auth_methods: ["AUTH_VERIFIER", "CERT"],
+                    auth_verifier_realms: ["acme.com", "partner.acme.com"],
+                }),
+            }),
+        );
+        await page.route("**/ui/whoami", (route) => route.fulfill({ status: 401, body: "Unauthorized" }));
+        await page.route("**/kmip/2_1", (route) => route.fulfill({ status: 401, body: "" }));
+        await page.route("**/version", (route) => route.fulfill({ status: 200, body: '"5.x.0"' }));
+        await page.route("**/access/create", (route) => route.fulfill({ status: 401, body: "Unauthorized" }));
+        await page.route("**/access/privileged", (route) => route.fulfill({ status: 401, body: "Unauthorized" }));
+
+        await gotoLogin(page);
+
+        // Primary: AUTH_VERIFIER form is rendered.
+        await expect(page.getByTestId("auth-verifier-login-form")).toBeVisible({ timeout: UI_READY_TIMEOUT });
+        await expect(page.getByTestId("auth-verifier-username-input")).toBeVisible();
+        await expect(page.getByTestId("auth-verifier-password-input")).toBeVisible();
+
+        // Realm selector appears because 2 realms are configured (> 1 → dropdown).
+        await expect(page.getByTestId("auth-verifier-realm-select")).toBeVisible();
+
+        // No OIDC button (JWT not in auth_methods).
+        await expect(page.getByTestId("oidc-login-btn")).not.toBeVisible();
+        // CERT button is NOT shown as primary (it is the secondary method).
+        await expect(page.getByTestId("cert-login-btn")).not.toBeVisible();
+
+        // Secondary: single alternative → plain button (not a dropdown).
+        const secondary = page.getByTestId("login-secondary-btn");
+        await expect(secondary).toBeVisible();
+        await expect(secondary).toContainText(/certificate|cert/i);
+        await expect(page.getByTestId("login-secondary-dropdown")).not.toBeVisible();
     });
 });

@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**639 vectors** across 16 categories (including KAT):
+**645 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -348,12 +348,18 @@ replays the steps sequentially.
 | **OPA Policy Engine** | | | |
 | OPA | `opa/mode_disabled` | OPA not configured; KMS legacy permission logic applies. Creates an AES key, retrieves it, and destroys it. | 3 |
 | OPA | `opa/mode_enforcing_allowed` | OPA enforcing mode; JWT with CryptoOfficer role from auth server; Create then Get allowed by is_owner=true (OPA + KMS both pass). | 3 |
+| OPA | `opa/mode_enforcing_auditor_create_denied` | OPA enforcing mode. A user holding the `Auditor` role attempts to create a | 1 |
+| OPA | `opa/mode_enforcing_co_get_attributes_allowed` | OPA enforcing mode. A `CryptoOfficer` in realm `kms-opa-test` (the default owner / JWT | 3 |
 | OPA | `opa/mode_enforcing_denied` | OPA enforcing mode; owner (mTLS cert) creates AES key; ungranted user (different cert, no roles) is denied Get. | 3 |
+| OPA | `opa/mode_enforcing_empty_roles_denied` | OPA enforcing mode. A bearer token with an empty `roles` claim (and no domain) | 1 |
+| OPA | `opa/mode_enforcing_native_co_cert_allowed` | OPA enforcing mode. A client authenticated via mTLS (cert CN = <owner.client@acme.com>) | 2 |
+| OPA | `opa/mode_enforcing_unknown_role_denied` | OPA enforcing mode. A bearer token carrying an unrecognised role `Hacker` | 1 |
 | OPA | `opa/mode_exclusive_allowed` | OPA exclusive mode; JWT with CryptoOfficer role from auth server; Create then Get allowed by is_owner=true. | 3 |
 | OPA | `opa/mode_exclusive_auditor_destroy_denied` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
 | OPA | `opa/mode_exclusive_auditor_get_attributes_allowed` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
 | OPA | `opa/mode_exclusive_denied` | OPA exclusive mode; owner (mTLS cert) creates AES key; ungranted user (different cert, no roles) is denied Get. | 3 |
 | OPA | `opa/mode_exclusive_domain_admin_wrong_domain` | OPA exclusive mode. The CryptoOfficer from realm `kms-opa-test` (default JWT client, | 3 |
+| OPA | `opa/mode_exclusive_native_co_cert_denied` | OPA exclusive mode. A client authenticated via mTLS (cert CN = <owner.client@acme.com>) | 1 |
 | OPA | `opa/mode_exclusive_other_domain_allowed` | OPA exclusive mode. A CryptoOfficer from realm `kms-opa-other` (domain=kms-opa-other) | 3 |
 | OPA | `opa/mode_exclusive_user_role_denied` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
 | OPA | `opa/mode_exclusive_wrong_domain` | OPA exclusive mode. The CryptoOfficer from realm `kms-opa-test` (default JWT client, | 3 |
