@@ -251,20 +251,20 @@ impl KMS {
     ///
     /// When `crypto_officer.users` is configured, the user must either:
     /// - have been explicitly granted the `Create` operation on any object,
-    /// - be listed in `crypto_officer.users`, or
+    /// - be listed in `crypto_officer.users` (active **or** dormant candidate), or
     /// - be the `default_username` (unauthenticated / local access).
     ///
     /// **Applies to**: `Create`, `CreateKeyPair`, `Import`, `Register`, and `Rekey`/`RekeyKeyPair`.
     ///
     /// ## Design notes
     ///
-    /// **Dormant candidates pass this gate**: listing a user in `crypto_officer.users`
+    /// **PM-2 — Dormant candidates pass this gate**: listing a user in `crypto_officer.users`
     /// with `require_ceremony = true` grants them `Create`/`Import`/`Rekey` access even before
     /// the ceremony completes. This is intentional: candidates must create and split a ceremony
     /// key *before* they can activate, so they need `Create` as a ceremony prerequisite. Full
     /// ownership bypass (all other CO privileges) still requires ceremony completion.
     ///
-    /// **Rekey is treated as a creation operation**: `Rekey` replaces an existing key with
+    /// **PM-3 — Rekey is treated as a creation operation**: `Rekey` replaces an existing key with
     /// a newly generated one, which creates a new Managed Object. When `crypto_officer.users` is
     /// configured, object ownership alone does not grant `Rekey` — the caller must also satisfy
     /// this gate (be CO-listed or hold an explicit `Create` grant). This is asymmetric from
