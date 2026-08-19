@@ -23,12 +23,15 @@ cleanup() {
 trap cleanup EXIT
 
 print_status "Starting ephemeral OpenSearch container (no volume, --rm)"
+# Pinned to the current stable release (not :latest) so this test stays reproducible;
+# bump deliberately when a new OpenSearch major/minor ships, see release notes:
+# https://github.com/opensearch-project/OpenSearch/releases
 docker run -d --rm --name "${CONTAINER_NAME}" \
   -p "${OPENSEARCH_PORT}:9200" \
   -e "discovery.type=single-node" \
   -e "DISABLE_SECURITY_PLUGIN=true" \
   -e "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" \
-  opensearchproject/opensearch:2.17.1 >/dev/null
+  opensearchproject/opensearch:3.8.0 >/dev/null
 
 print_status "Waiting for OpenSearch to accept connections"
 if ! wait_for_port "${OPENSEARCH_HOST}" "${OPENSEARCH_PORT}" 90; then
