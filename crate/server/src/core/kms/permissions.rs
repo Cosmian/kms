@@ -481,4 +481,27 @@ impl KMS {
 
         Ok(())
     }
+
+    /// Return the `UserId` of the first active Crypto Officer, or `None`.
+    ///
+    /// Iterates `crypto_officer.users` in declaration order and returns the first
+    /// candidate for which [`KMS::is_crypto_officer`] returns `true`.
+    ///
+    /// Falls back to `None` when:
+    /// - `crypto_officer.users` is empty (no CO is configured), **or**
+    /// - CO users are configured but none has completed the required ceremony.
+    ///
+    /// Callers that need to operate on behalf of a CO (e.g. fire-and-forget CRL
+    /// regeneration after a `Revoke`) should use this helper to obtain an identity
+    /// that is guaranteed to pass the `is_crypto_officer` check inside
+    /// `generate_crl`.
+    pub(crate) async fn find_active_co(&self) -> KResult<Option<UserId>> {
+        for candidate in &self.params.crypto_officer.users {
+            let uid = UserId::from(candidate.as_str());
+            if self.is_crypto_officer(&uid).await? {
+                return Ok(Some(uid));
+            }
+        }
+        Ok(None)
+    }
 }

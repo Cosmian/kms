@@ -28,11 +28,13 @@ use cosmian_kms_server_database::reexport::{
         kmip_private_key_to_openssl,
     },
 };
-use cosmian_logger::{debug, trace};
+use cosmian_logger::{debug, error, trace, warn};
 use openssl::x509::{X509, X509Crl};
 use time::OffsetDateTime;
 
 /// In-memory cache of the most recently generated CRL per issuer.
+///
+/// The public CRL endpoint (`GET /public/certificates/{id}/crl`) reads from
 ///
 /// The public CRL endpoint (`GET /public/certificates/{id}/crl`) reads from
 /// this cache so it can serve pre-signed bytes without requiring any
@@ -59,12 +61,48 @@ static CRL_SEQUENCE_COUNTER: LazyLock<AtomicU64> = LazyLock::new(|| {
     AtomicU64::new(base)
 });
 
-/// Retrieve the most recently cached CRL DER bytes for an issuer, if any.
+/// Retrieve the most recently cached CRL DER bytes for an issuer.
 ///
 /// Called by the public CRL endpoint (`GET /public/certificates/{issuer_id}/crl`).
-/// Returns `None` if the CRL has never been generated since the last server start.
-pub(crate) async fn get_cached_crl(issuer_id: &str) -> Option<(Vec<u8>, Instant)> {
-    GENERATED_CRL_CACHE.read().await.get(issuer_id).cloned()
+///
+/// **Cache strategy** (two-level):
+/// 1. In-memory `GENERATED_CRL_CACHE` — fast path, populated on every `generate_crl` call.
+/// 2. Database `crls` table — warm the cache on cold start (server restart) so the CDP
+///    endpoint can immediately serve the last signed CRL without requiring a manual
+///    `generate-crl` call.
+///
+/// Returns `None` only when no CRL has ever been generated for this issuer (neither
+/// in the current process nor persisted to the DB).
+pub(crate) async fn get_cached_crl(issuer_id: &str, kms: &KMS) -> Option<(Vec<u8>, Instant)> {
+    // 1. Fast path: in-memory cache hit.
+    let cached = GENERATED_CRL_CACHE.read().await.get(issuer_id).cloned();
+    if let Some(entry) = cached {
+        return Some(entry);
+    }
+
+    // 2. Cold-start: try loading from the DB `crls` table.
+    let db_result = kms.database.get_crl(issuer_id).await;
+    match db_result {
+        Ok(Some((der, _generated_at))) => {
+            // Warm the in-memory cache with an Instant approximating "now minus zero"
+            // so the Last-Modified header is accurate enough for HTTP caching.
+            let entry = (der.clone(), Instant::now());
+            GENERATED_CRL_CACHE
+                .write()
+                .await
+                .insert(issuer_id.to_owned(), entry.clone());
+            Some(entry)
+        }
+        Ok(None) => None,
+        Err(e) => {
+            // DB error: log and return None so the endpoint returns 404 rather than 500.
+            cosmian_logger::warn!(
+                issuer_id = issuer_id,
+                "Failed to load CRL from database for issuer '{issuer_id}': {e}"
+            );
+            None
+        }
+    }
 }
 
 use crate::{
@@ -87,6 +125,13 @@ const DEFAULT_CRL_VALIDITY_DAYS: u32 = 7;
 ///
 /// # Returns
 /// The signed `X509Crl` (can be serialized to DER or PEM by the caller).
+///
+/// # Authorization
+///
+/// When `crypto_officer_users` is configured, only an active Crypto Officer may
+/// generate a CRL.  This is required because CRL generation must enumerate **all**
+/// revoked certificates regardless of ownership (`find_all` bypasses user filters).
+/// The CO access is logged at ERROR level for the audit trail.
 pub(crate) async fn generate_crl(
     kms: &KMS,
     issuer_certificate_id: &str,
@@ -97,6 +142,25 @@ pub(crate) async fn generate_crl(
         "Generating CRL for issuer certificate: {}",
         issuer_certificate_id
     );
+
+    // Guard: when CO users are configured, only an active CO may call this.
+    // CRL generation uses find_all (no user filter) — the CO role is the
+    // documented gating condition for that bypass (same as Locate with CO).
+    if !kms.params.crypto_officer.users.is_empty() && !kms.is_crypto_officer(user).await? {
+        return Err(KmsError::Unauthorized(format!(
+            "Generating a CRL requires the Crypto Officer role. \
+             User '{user}' is not an active Crypto Officer."
+        )));
+    }
+    if !kms.params.crypto_officer.users.is_empty() {
+        // Audit log — CO bypass is a high-value security event.
+        error!(
+            target: "audit",
+            user = %user,
+            issuer_id = issuer_certificate_id,
+            "CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)",
+        );
+    }
 
     // 1. Retrieve the issuer certificate
     let issuer_owm = retrieve_object_for_operation(
@@ -150,8 +214,7 @@ pub(crate) async fn generate_crl(
     })?;
 
     // 3. Find all certificates signed by this issuer that are revoked
-    let revoked_entries =
-        Box::pin(find_revoked_certificates(kms, issuer_certificate_id, user)).await?;
+    let revoked_entries = Box::pin(find_revoked_certificates(kms, issuer_certificate_id)).await?;
 
     trace!(
         "Found {} revoked certificate(s) for issuer '{}'",
@@ -186,6 +249,36 @@ pub(crate) async fn generate_crl(
     let crl_der = crl
         .to_der()
         .map_err(|e| KmsError::ServerError(format!("Failed to DER-encode CRL for cache: {e}")))?;
+
+    // Compute next_update timestamp for DB storage (validity_days from now).
+    let generated_at = OffsetDateTime::now_utc();
+    let next_update = generated_at + time::Duration::days(i64::from(validity));
+    let generated_at_str = generated_at
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default();
+    let next_update_str = next_update
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default();
+
+    // Persist to DB so the public CDP endpoint survives server restarts.
+    if let Err(e) = kms
+        .database
+        .upsert_crl(
+            issuer_certificate_id,
+            &crl_der,
+            crl_number,
+            &generated_at_str,
+            &next_update_str,
+        )
+        .await
+    {
+        // DB errors must not fail CRL generation — the in-memory cache still works.
+        warn!(
+            issuer_id = issuer_certificate_id,
+            "Failed to persist CRL to database for issuer '{issuer_certificate_id}': {e}"
+        );
+    }
+
     {
         let mut cache = GENERATED_CRL_CACHE.write().await;
         cache.insert(issuer_certificate_id.to_owned(), (crl_der, Instant::now()));
@@ -196,11 +289,15 @@ pub(crate) async fn generate_crl(
 
 /// Find all certificates issued by `issuer_certificate_id` that are in a revoked state.
 ///
+/// Uses `find_all` (bypasses user ownership filters) so that the CRL contains every
+/// revoked certificate regardless of which user owns it in the KMS database.  The
+/// caller is responsible for ensuring the requesting user holds the Crypto Officer role
+/// before invoking this function (enforced by `generate_crl`).
+///
 /// Returns a list of `RevokedEntry` structs ready for CRL generation.
 async fn find_revoked_certificates(
     kms: &KMS,
     issuer_certificate_id: &str,
-    user: &UserId,
 ) -> KResult<Vec<RevokedEntry>> {
     let mut entries = Vec::new();
 
@@ -218,15 +315,11 @@ async fn find_revoked_certificates(
             ..Attributes::default()
         };
 
+        // Use find_all to bypass user ownership filters — the CRL must include
+        // every revoked certificate issued by this CA, regardless of who owns it.
         let results = kms
             .database
-            .find(
-                Some(&search_attrs),
-                Some(state),
-                user,
-                false, // user does not need to be the owner
-                kms.vendor_id(),
-            )
+            .find_all(Some(&search_attrs), Some(state), kms.vendor_id())
             .await
             .context("CRL generation: searching for revoked certificates")?;
 

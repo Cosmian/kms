@@ -84,7 +84,7 @@ pub(crate) async fn get_crl(
     }
 }
 
-/// Serve a pre-signed CRL from the in-memory cache (no authentication required).
+/// Serve a pre-signed CRL from the in-memory cache or database (no authentication required).
 ///
 /// `GET /public/certificates/{issuer_id}/crl`
 ///
@@ -94,11 +94,14 @@ pub(crate) async fn get_crl(
 ///
 /// The CRL bytes are populated by the authenticated `GET /certificates/{id}/crl`
 /// endpoint and by automatic CRL regeneration triggered on certificate revocation.
-/// If the CRL has never been generated since the last server start, this endpoint
-/// returns **404** with a message asking the CA owner to call the authenticated
-/// endpoint once to prime the cache.
+/// On cold start (server restart), the last signed CRL is loaded from the `crls`
+/// database table, so the endpoint is immediately available without a manual
+/// `generate-crl` call.
 #[get("/public/certificates/{issuer_id}/crl")]
-pub(crate) async fn get_crl_public(path: Path<String>) -> KResult<HttpResponse> {
+pub(crate) async fn get_crl_public(
+    kms: Data<Arc<KMS>>,
+    path: Path<String>,
+) -> KResult<HttpResponse> {
     let issuer_id = path.into_inner();
 
     info!(
@@ -107,7 +110,7 @@ pub(crate) async fn get_crl_public(path: Path<String>) -> KResult<HttpResponse> 
     );
 
     let Some((crl_der, generated_at)) =
-        crate::core::operations::generate_crl::get_cached_crl(&issuer_id).await
+        crate::core::operations::generate_crl::get_cached_crl(&issuer_id, &kms).await
     else {
         return Ok(HttpResponse::NotFound()
             .content_type("text/plain; charset=utf-8")
