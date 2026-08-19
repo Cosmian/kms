@@ -373,7 +373,6 @@ const fn revocation_target_state(reason: &RevocationReason) -> State {
 }
 
 /// Trigger CRL regeneration for `issuer_id` after a certificate revocation.
-/// Trigger CRL regeneration for `issuer_id` after a certificate revocation.
 ///
 /// CRL content is public information (RFC 5280 §3) so no special role is required.
 /// Uses `default_username` as the signer identity so the function can always run,

@@ -1121,3 +1121,90 @@ async fn test_crl_invalid_format_returns_400() {
 
     resources.cleanup(&client).await;
 }
+
+/// Retrieve the `PrivateKeyLink` attribute from a certificate to get the CA signing key ID.
+async fn get_linked_private_key_id(client: &KmsClient, cert_id: &str) -> String {
+    client
+        .get_attributes(GetAttributes::from(cert_id))
+        .await
+        .expect("GetAttributes should succeed")
+        .attributes
+        .get_link(LinkType::PrivateKeyLink)
+        .expect("certificate must have a PrivateKeyLink attribute")
+        .to_string()
+}
+
+/// Test: CRL must include revoked certificates regardless of which user owns them.
+///
+/// RFC 5280 §5.1 requires a CRL to list every certificate issued by the CA that
+/// has been revoked, irrespective of who owns the certificate in the KMS database.
+///
+/// **Regression guard** for the `find_all` fix: prior to the fix, `find_revoked_certificates`
+/// used a user-scoped `find()` call.  Because `find()` only returns objects accessible to
+/// the requesting user, certificates owned by other users were silently omitted.
+/// If the fix is reverted, this test fails with `"expected 3, got 1"`.
+///
+/// Setup (cert-auth server — owner and user are distinct DB identities):
+///   - `owner.client@acme.com` creates CA, issues leaf-1 → DB owner = owner
+///   - `user.client@acme.com`  issues leaf-2, leaf-3  → DB owner = user
+///   - All 3 revoked
+///   - Owner generates CRL → must contain all 3 serial numbers
+#[tokio::test]
+async fn test_crl_contains_certs_from_all_users() {
+    init_test_logging();
+    // Use mTLS cert-auth server: owner and user are distinct DB identities.
+    // The cert-auth server has no CO configured, so generate_crl is accessible
+    // to the object owner (owner.client@acme.com owns the CA).
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
+    let owner = ctx.get_owner_client();
+    let user = ctx.get_user_client();
+    let mut resources = TestResources::new();
+
+    // 1. Owner creates CA (owner.client@acme.com owns the CA cert and CA private key)
+    let ca_id = create_named_ca(&owner, "MultiOwner-CRL-CA", &mut resources).await;
+    let ca_sk_id = get_linked_private_key_id(&owner, &ca_id).await;
+    resources.track(ca_sk_id.clone());
+
+    // 2. Grant user.client@acme.com the Certify permission on both the CA cert and CA
+    //    private key so they can issue leaf certificates without being the owner.
+    //    The server resolves the issuer private key via PrivateKeyLink and calls
+    //    retrieve_object_for_operation(KmipOperation::Certify) on each.
+    for uid in [&ca_id, &ca_sk_id] {
+        owner
+            .grant_access(Access {
+                unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                user_id: "user.client@acme.com".to_owned(),
+                operation_types: vec![KmipOperation::Certify],
+            })
+            .await
+            .expect("grant Certify access should succeed");
+    }
+
+    // 3. Owner issues leaf-1 (DB owner = owner.client@acme.com)
+    let leaf1 = issue_cert(&owner, &ca_id, "leaf1.multi-owner-crl", &mut resources).await;
+
+    // 4. User issues leaf-2 and leaf-3 (DB owner = user.client@acme.com)
+    let leaf2 = issue_cert(&user, &ca_id, "leaf2.multi-owner-crl", &mut resources).await;
+    let leaf3 = issue_cert(&user, &ca_id, "leaf3.multi-owner-crl", &mut resources).await;
+
+    // 5. Revoke all three certificates
+    revoke_cert(&owner, &leaf1, RevocationReasonCode::Superseded).await;
+    revoke_cert(&user, &leaf2, RevocationReasonCode::Superseded).await;
+    revoke_cert(&user, &leaf3, RevocationReasonCode::KeyCompromise).await;
+
+    // 6. Owner generates CRL for the CA.
+    //    With find_all: sees all 3 revoked certs regardless of DB ownership → len == 3.
+    //    Without fix (find scoped to owner): only sees leaf-1 → len == 1, assertion fails.
+    let crl = fetch_crl_der(&owner, &ca_id, 7).await;
+    let revoked = crl.get_revoked().expect("CRL must contain revoked entries");
+
+    assert_eq!(
+        revoked.len(),
+        3,
+        "CRL must contain all 3 revoked certificates regardless of DB owner: \
+         leaf-1 (owned by owner.client@acme.com) + \
+         leaf-2 + leaf-3 (both owned by user.client@acme.com)"
+    );
+
+    resources.cleanup(&owner).await;
+}
