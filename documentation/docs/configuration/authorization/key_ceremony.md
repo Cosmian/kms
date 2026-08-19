@@ -194,7 +194,9 @@ their share), then calls `JoinSplitKey`. The server:
 3. Verifies all shares originate from the same source key.
 4. Verifies the share count equals the threshold.
 5. Verifies the candidate is in `crypto_officer_users`.
-6. Verifies the candidate does **not** own any of the shares (strict dual-control).
+6. Verifies that at least one share is owned by a **different** CO (dual-control — prevents
+   solo self-activation). The activating candidate may own one or more shares; what is
+   forbidden is that *all* shares belong to the activating candidate alone.
 7. Reconstructs the secret via XOR, stores it as a managed object.
 8. Persists a `crypto_officer_activations` record (activated-by, participants, SHA-256 hash).
 9. The candidate is now an **active CryptoOfficer**.
