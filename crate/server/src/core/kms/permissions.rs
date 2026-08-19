@@ -251,7 +251,7 @@ impl KMS {
     ///
     /// When `crypto_officer.users` is configured, the user must either:
     /// - have been explicitly granted the `Create` operation on any object,
-    /// - be listed in `crypto_officer.users` (active **or** dormant candidate), or
+    /// - be listed in `crypto_officer.users`, or
     /// - be the `default_username` (unauthenticated / local access).
     ///
     /// **Applies to**: `Create`, `CreateKeyPair`, `Import`, `Register`, and `Rekey`/`RekeyKeyPair`.
