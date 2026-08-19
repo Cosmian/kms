@@ -75,6 +75,7 @@ ignore = [
   { id = "RUSTSEC-2025-0012", reason = "backoff is unmaintained but pulled transitively by kube-runtime; no safe upgrade available" },
   { id = "RUSTSEC-2024-0384", reason = "instant is unmaintained but pulled transitively by backoff -> kube-runtime; no safe upgrade available" },
   { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is unmaintained but pulled transitively by axum-server and kube-client; no safe upgrade available" },
+  { id = "RUSTSEC-2026-0258", reason = "h2 unbounded empty DATA frames, low severity, patched in 0.4.16; pulled transitively via actix-http (0.3.27) and hyper (0.4.15) — upgrade tracked separately, out of scope for this change" },
 ] # The path where the advisory databases are cloned/fetched into
 # db-path = "$CARGO_HOME/advisory-dbs"
 # The url(s) of the advisory databases to use

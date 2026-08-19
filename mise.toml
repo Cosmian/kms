@@ -7,6 +7,7 @@ RUST_BACKTRACE = "1"
 [tools]
 node = "22"
 "npm:pnpm" = "10.17.1"
+rust = "1.97.0"
 usage = "latest"
 # Rust is managed by rust-toolchain.toml (mise auto-detects)
 

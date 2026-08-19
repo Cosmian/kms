@@ -1,0 +1,32 @@
+---
+name: Audit JSONL compatibility — Splunk
+
+on:
+  pull_request:
+    paths:
+      - .mise/scripts/test/validate_audit_compat.py
+      - .mise/scripts/test/requirements-audit-compat.txt
+      - .mise/scripts/test/fixtures/**
+      - schemas/kms-audit-*.json
+      - .mise/tasks/test/audit-compat-splunk
+      - .github/workflows/audit-compat-splunk.yml
+  workflow_dispatch:
+
+jobs:
+  splunk-compat:
+    name: Splunk HEC ingestion compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      SPLUNK_PASSWORD: ${{ secrets.AUDIT_COMPAT_SPLUNK_PASSWORD }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: Run Splunk audit JSONL compatibility test
+        run: mise run test:audit-compat-splunk
