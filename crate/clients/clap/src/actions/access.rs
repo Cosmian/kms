@@ -519,8 +519,10 @@ impl CryptoOfficerStatus {
 ///   1. Retrieves each share (caller must have `Get` permission on all shares).
 ///   2. Verifies all shares carry `x-cosmian-crypto-officer-ceremony`.
 ///   3. Verifies all shares originate from the same source key.
-///   4. Verifies dual control — each share is owned by a different CO, and the
-///      activating user does not own any share (NIST SP 800-57 Part 2 Rev 1 §4.6).
+///   4. Verifies dual control — at least one share is owned by a different CO
+///      (NIST SP 800-57 Part 2 Rev 1 §4.6). The activating candidate may own one or
+///      more shares; what is forbidden is that *all* shares belong to the activating
+///      candidate (solo self-activation).
 ///   5. Reconstructs the ceremony secret via XOR in RAM.
 ///   6. Persists the activation record.
 ///   7. Zeroizes the secret — **never stored as a KMS object** (ADP-20).
