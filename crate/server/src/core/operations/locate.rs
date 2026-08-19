@@ -28,7 +28,13 @@ pub(crate) async fn locate(
     trace!("{}", request);
     // Determine the effective state filter: prefer explicit parameter, else Attributes.state
     let effective_state = state.or(request.attributes.state);
-    // Find all the objects that match the attributes
+    // Find all the objects that match the attributes.
+    // CryptoOfficer ownership bypass: active COs call find_all (no user filter) and
+    // receive *all* matching objects in the database, while non-COs call find which
+    // restricts to objects they own or hold explicit grants on.
+    // NOTE (PM-6): the bypass only manifests as a difference in the *returned UID list*,
+    // not in the exit code. Observing the bypass requires diffing the result set across
+    // CO vs non-CO callers against the same seeded objects, not just checking success/error.
     let uids_attrs = if kms.is_crypto_officer(user).await? {
         // CryptoOfficer: bypass user filtering and return all matching objects
         kms.database
