@@ -34,15 +34,16 @@ impl KMS {
             if !co_users.is_empty() {
                 if !co_users.iter().any(|u| u.as_str() == owner.as_str()) {
                     kms_bail!(KmsError::Unauthorized(
-                        "Only privileged users can grant/revoke create access right to a user."
+                        "Only Crypto Officer users can grant/revoke create access right to a \
+                         user."
                             .to_owned()
                     ))
                 }
                 let user_id = &access.user_id;
                 if co_users.contains(user_id) {
                     kms_bail!(KmsError::Unauthorized(format!(
-                        "User `{user_id}` is a privileged user - create access right can't be \
-                         granted or revoked."
+                        "User `{user_id}` is a Crypto Officer — create access right can't be \
+                         granted or revoked on their behalf."
                     )))
                 }
                 let user_id_typed = UserId::from(user_id.as_str());
@@ -121,15 +122,16 @@ impl KMS {
             if !co_users.is_empty() {
                 if !co_users.iter().any(|u| u.as_str() == owner.as_str()) {
                     kms_bail!(KmsError::Unauthorized(
-                        "Only privileged users can grant/revoke create access right to a user."
+                        "Only Crypto Officer users can grant/revoke create access right to a \
+                         user."
                             .to_owned()
                     ))
                 }
                 let user_id = &access.user_id;
                 if co_users.contains(user_id) {
                     kms_bail!(KmsError::Unauthorized(format!(
-                        "User `{user_id}` is a privileged user - create access right can't be \
-                         granted or revoked."
+                        "User `{user_id}` is a Crypto Officer — create access right can't be \
+                         granted or revoked on their behalf."
                     )))
                 }
                 let user_id_typed = UserId::from(user_id.as_str());
@@ -243,9 +245,9 @@ impl KMS {
 
     /// Enforce that the caller has `Create` access-right.
     ///
-    /// When `privileged_users` is configured, the user must either:
+    /// When `crypto_officer.users` is configured, the user must either:
     /// - have been explicitly granted the `Create` operation on any object,
-    /// - be listed in `privileged_users`, or
+    /// - be listed in `crypto_officer.users`, or
     /// - be the `default_username` (unauthenticated / local access).
     ///
     /// This check applies uniformly to `Create`, `CreateKeyPair`, `Import`, and `Register`.
@@ -262,7 +264,7 @@ impl KMS {
                 "User does not have create access-right.".to_owned()
             ))
         }
-        // If no privileged user was set, all users have the `Create` right.
+        // If no Crypto Officer users are configured, all users have the `Create` right.
         Ok(())
     }
 
