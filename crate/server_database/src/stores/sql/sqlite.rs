@@ -157,6 +157,7 @@ impl SqlitePool {
                         &replace_dollars_with_qn(&create_crypto_officer_activations),
                         [],
                     )?;
+                    tx.execute(&create_crls, [])?;
                     // Migration: add domain column if missing (existing databases)
                     let has_domain: bool = tx.prepare("SELECT domain FROM objects LIMIT 0").is_ok();
                     if !has_domain {
