@@ -21,9 +21,12 @@
   zeroized copy. Derived `CeremonyKeys.obfuscation_key` zeroed on drop via explicit `Drop` impl.
 - **`ceremony_secret` never logged**: custom `Debug` impl for `RolesConfig` masks `ceremony_secret`
   as `"<redacted>"`; prevents secret exposure when `RUST_LOG=debug`.
-- **Strict permission enforcement on JoinSplitKey**: ceremony activation error now propagated with `?`
-  (previously swallowed with `warn!`), preventing silent failures where the reconstructed key is stored
-  but the role never activates.
+- **Strict permission enforcement on JoinSplitKey**: ceremony activation is attempted as an
+  auto-activation side-effect of `JoinSplitKey`. Activation failure is **intentionally non-fatal**:
+  the reconstructed key is stored unconditionally so it is not lost on transient DB errors, and
+  the failure is logged at `WARN` level with a pointer to the manual activation endpoint
+  (`POST /access/crypto_officer/ceremony/activate`). This is fail-secure: no CO role is granted
+  on failure.
 - **Fail-secure unenrolled users**: when roles are configured, unknown users default to Operator
   (minimum privilege) instead of unrestricted access (NIST SP 800-57 Part 2 Rev 1 §4.8).
 - **Prevent duplicate active ceremony records**: `activate_crypto_officer_ceremony` revokes prior active
