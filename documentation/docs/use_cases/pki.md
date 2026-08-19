@@ -250,14 +250,15 @@ Examples of supported combinations:
 
 All standard KMIP certificate lifecycle operations work with certificates:
 
-| Operation | Description                                             |
-| --------- | ------------------------------------------------------- |
-| `Certify` | Generate a new certificate (self-signed or CA-issued)   |
-| `Export`  | Export in PEM, DER, or PKCS#12 format                   |
-| `Import`  | Import an externally generated certificate              |
-| `Validate`| Validate a certificate chain                            |
-| `Revoke`  | Revoke a certificate                                    |
-| `Destroy` | Permanently delete a certificate and its keys           |
+| Operation       | Description                                                   |
+| --------------- | ------------------------------------------------------------- |
+| `Certify`       | Generate a new certificate (self-signed or CA-issued)         |
+| `Export`        | Export in PEM, DER, or PKCS#12 format                         |
+| `Import`        | Import an externally generated certificate                    |
+| `Validate`      | Validate a certificate chain                                  |
+| `Revoke`        | Revoke a certificate                                          |
+| `Generate-CRL`  | Generate a signed CRL for an issuer CA                        |
+| `Destroy`       | Permanently delete a certificate and its keys                 |
 
 ## Revocation handling
 
@@ -267,9 +268,10 @@ The KMS can generate X.509 v2 Certificate Revocation Lists (CRLs) per
 [RFC 5280 §5](https://www.rfc-editor.org/rfc/rfc5280#section-5).
 
 A CRL lists all certificates issued by a CA that have been revoked. The KMS
-automatically collects revoked certificates (those in `Deactivated` or
-`Compromised` state with a `CertificateLink` pointing to the issuer) and
-signs the CRL with the CA private key.
+automatically collects **all** revoked certificates (those in `Deactivated` or
+`Compromised` state with a `CertificateLink` pointing to the issuer) regardless
+of which user owns each certificate in the KMS database, then signs the CRL with
+the CA private key.
 
 **CLI usage:**
 
@@ -281,7 +283,7 @@ ckms certificates generate-crl \
   --output-file /tmp/crl.pem
 ```
 
-**REST endpoint:**
+**REST endpoint (authenticated):**
 
 ```http
 GET /certificates/{issuer_id}/crl?format=pem&validity_days=7
@@ -289,16 +291,57 @@ GET /certificates/{issuer_id}/crl?format=pem&validity_days=7
 
 Returns `application/pkix-crl` (DER, default) or `application/x-pem-file` (PEM).
 
+!!! note "Crypto Officer required when CO is configured"
+    When `crypto_officer_users` is set in `kms.toml`, only an active Crypto Officer
+    may call this endpoint.  CRL generation uses a database-wide scan (`find_all`)
+    to return certificates from all users — the CO role is the gating condition for
+    that bypass, consistent with the CO-scoped `Locate` operation.
+    When no CO is configured (single-admin deployment), any user who owns the CA
+    certificate may generate its CRL.
+
 The generated CRL includes:
 
 - **Authority Key Identifier** (AKI) extension
-- **CRL Number** extension (monotonically increasing)
-- Per-entry **CRL Reason Code** (mapped from the KMIP revocation reason)
+- **CRL Number** extension (monotonically increasing, seeded from unix timestamp to survive restarts)
+- Per-entry **CRL Reason Code** (mapped from the KMIP revocation reason stored at revocation time)
 - Per-entry **Invalidity Date** (when available in object attributes)
+
+### Automatic CRL regeneration on revocation
+
+When `kms_public_url` is set in `kms.toml`, the server **automatically regenerates**
+the issuer's CRL whenever a certificate is revoked via the `Revoke` operation.
+
+```toml
+# kms.toml — enables CDP auto-injection and auto-CRL regeneration
+kms_public_url = "https://kms.example.com"
+```
+
+The regeneration runs inline before the `Revoke` response is returned, using the
+first active Crypto Officer identity (or `default_username` in no-CO deployments).
+The updated CRL is immediately available at the public CDP endpoint:
+
+```http
+GET /public/certificates/{issuer_id}/crl    # no authentication required
+```
+
+If no active CO is found when one is required, the regeneration is skipped and a
+`warn`-level log is emitted — the CRL will be refreshed on the next manual
+`generate-crl` call or after a CO ceremony completes.
 
 ### CRL distribution points
 
-To include a CRL distribution point in a certificate, add a
+When `kms_public_url` is configured, the KMS **automatically injects** a
+`crlDistributionPoints` (CDP) extension into every CA-issued certificate, pointing
+to the server's own public CRL endpoint:
+
+```text
+https://<kms_public_url>/public/certificates/<issuer_id>/crl
+```
+
+You do **not** need to supply a CDP extension manually for KMS-issued certificates
+when `kms_public_url` is set.
+
+To override or set a custom CDP manually (e.g. for an external CA), add a
 `crlDistributionPoints` entry in the extension config file passed via
 `--certificate-extensions`:
 
@@ -306,6 +349,22 @@ To include a CRL distribution point in a certificate, add a
 [ v3_ext ]
 crlDistributionPoints=URI:http://ca.example.com/crl.pem
 ```
+
+### Public (unauthenticated) CRL endpoint
+
+The endpoint `GET /public/certificates/{issuer_id}/crl` is intended for CRL
+Distribution Point (CDP) URIs embedded in certificates. Any relying party —
+browser, TLS stack, OCSP client — can fetch the current CRL without credentials,
+as required by [RFC 5280 §3](https://www.rfc-editor.org/rfc/rfc5280#section-3).
+
+The response includes a `Last-Modified` header for HTTP caching (RFC 7232).
+The endpoint returns **404** only if the CRL has never been generated since the
+last server start **and** no CRL is stored in the database.
+
+!!! note "Cold-start behavior"
+    Generated CRLs are persisted in the KMS database (`crls` table) and reloaded
+    on server restart, so the public endpoint continues to serve the last signed CRL
+    without requiring a manual `generate-crl` call after each restart.
 
 ### Authority Information Access (AIA)
 

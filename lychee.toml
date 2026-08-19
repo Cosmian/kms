@@ -8,7 +8,10 @@ accept = [200, 204, 301, 302]
 root_dir = "documentation/docs"
 
 # Exclude SUMMARY.md — it uses mdBook's [Title]() syntax for section headers
-exclude_path = ["documentation/docs/SUMMARY.md"]
+# Exclude Rust source files — lychee is only meant to check documentation;
+# code comments may contain URL-like strings (e.g. multi-host connection strings)
+# that are not real hyperlinks and would produce false-positive parse errors.
+exclude_path = ["documentation/docs/SUMMARY.md", "crate"]
 
 # Check links to files on disk
 include_verbatim = false

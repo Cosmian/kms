@@ -7,7 +7,7 @@ The Redis-with-Findex backend does not use relational tables; see [Redis with Fi
 
 ## Overview
 
-The KMS schema is small and consists of five tables:
+The KMS schema is small and consists of six tables:
 
 | Table | Purpose |
 | ----- | ------- |
@@ -16,6 +16,7 @@ The KMS schema is small and consists of five tables:
 | `read_access` | Per-user read permissions granted on objects |
 | `tags` | Tags attached to objects, used by `Locate` |
 | `crypto_officer_activations` | Records of the Crypto Officer activation ceremony |
+| `crls` | Most recently signed CRL per issuer CA (RFC 5280 §5), for CDP serving after restart |
 
 The links between tables are **logical** relationships (enforced by the application, not by SQL foreign-key constraints).
 
@@ -24,6 +25,7 @@ erDiagram
     OBJECTS ||--o{ READ_ACCESS : "grants (read_access.id = objects.id)"
     OBJECTS ||--o{ TAGS : "tagged (tags.id = objects.id)"
     OBJECTS ||--o{ OBJECTS : "wraps (objects.wrapping_key_id = objects.id)"
+    OBJECTS ||--o| CRLS : "signs (crls.issuer_id = objects.id)"
     PARAMETERS {
         string name PK
         string value
@@ -44,6 +46,13 @@ erDiagram
     TAGS {
         string id FK
         string tag
+    }
+    CRLS {
+        string issuer_id PK
+        bytes  crl_der
+        int    crl_number
+        string generated_at
+        string next_update
     }
 ```
 
@@ -127,10 +136,32 @@ One row is added each time the Crypto Officer role is activated via a split-key 
 In MySQL, an additional `id INTEGER PRIMARY KEY AUTO_INCREMENT` column is added.
 In PostgreSQL and SQLite there is no explicit `id` column; the active activation is the latest row where `revoked_at IS NULL`.
 
+## `crls`
+
+Stores the most recently generated CRL for each issuer CA, persisted so that the
+public CDP endpoint (`GET /public/certificates/{issuer_id}/crl`) can serve the
+last signed CRL immediately after a server restart without requiring a manual
+`generate-crl` call.
+
+One row per CA certificate. The row is replaced atomically on every CRL regeneration
+(upsert on `issuer_id`).
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `issuer_id` | `VARCHAR(128)` | Primary key. The UID of the issuer CA certificate in the `objects` table. |
+| `crl_der` | `BYTEA` (PG) / `BLOB` (SQLite) / `LONGBLOB` (MySQL) | DER-encoded signed CRL bytes. |
+| `crl_number` | `BIGINT` | Monotonically increasing CRL sequence number (RFC 5280 §5.2.3). |
+| `generated_at` | `VARCHAR(32)` | ISO-8601 UTC timestamp of when this CRL was signed. |
+| `next_update` | `VARCHAR(32)` | ISO-8601 UTC timestamp of CRL expiry (= `generated_at` + validity days). |
+
+The Redis-with-Findex backend stores each CRL as a JSON value under the key
+`crl:<issuer_id>`.
+
 ## Links between tables
 
 - `objects.id` is referenced by `read_access.id` and `tags.id`: one object can have many access rows and many tags.
 - `objects.wrapping_key_id` points to `objects.id`: a wrapping key is itself an object, and many objects can be wrapped by the same key.
+- `crls.issuer_id` logically references `objects.id` (the CA certificate): one CA has at most one current CRL row.
 - `objects.owner` and `read_access.userid` hold user identifiers.
   Users are authenticated identities and are **not** stored in a dedicated table.
 - `parameters` and `crypto_officer_activations` are standalone and do not reference `objects`.
