@@ -705,6 +705,10 @@ Crate path: `crate/server`
 | `error` (audit) | `CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)` | `src/core/operations/generate_crl.rs` | `user`, `issuer_id` | Emitted every time a CO generates a CRL; always visible regardless of `RUST_LOG`. |
 | `info` | `Auto-CRL: triggered CRL regeneration for issuer '{issuer_id}' after certificate revocation` | `src/core/operations/revoke.rs` | `issuer_id`, `user` | Emitted on every successful auto-regen trigger. |
 | `warn` | `Auto-CRL: CRL regeneration failed for issuer '{issuer_id}': {e}` | `src/core/operations/revoke.rs` | `issuer_id`, `e` | Signing or DB error during auto-regen; Revoke still succeeds. |
+| `error` (audit) | `CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)` | `src/core/operations/generate_crl.rs` | `user`, `issuer_id` | Emitted every time a CO generates a CRL; always visible regardless of `RUST_LOG`. |
+| `info` | `Auto-CRL: triggered CRL regeneration for issuer '{issuer_id}' after certificate revocation` | `src/core/operations/revoke.rs` | `issuer_id`, `user` | Emitted on every successful auto-regen trigger. |
+| `warn` | `Auto-CRL: failed to resolve Crypto Officer for issuer '{issuer_id}': {e}` | `src/core/operations/revoke.rs` | `issuer_id`, `e` | DB error while looking up CO activation; CRL not updated. |
+| `warn` | `Auto-CRL: CRL regeneration failed for issuer '{issuer_id}': {e}` | `src/core/operations/revoke.rs` | `issuer_id`, `e` | Signing or DB error during auto-regen; Revoke still succeeds. |
 | `trace` | `Found {} revoked certificate(s) for issuer '{}'` | `src/core/operations/generate_crl.rs` | - | - |
 | `trace` | `Skipping certificate '{}': cannot parse DER: {e}` | `src/core/operations/generate_crl.rs` | `e` | - |
 | `warn` | `Failed to load CRL from database for issuer '{issuer_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_id`, `e` | - |
@@ -715,6 +719,10 @@ Crate path: `crate/server`
 | `info` | `[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}'              (expires within {overlap_hours}h)` | `src/cron.rs` | `issuer_id`, `overlap_hours` | - |
 | `debug` | `[crl-refresh-cron] Running scheduled CRL refresh check` | `src/cron.rs` | - | - |
 | `debug` | `[crl-refresh-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
+| `error` | `CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)` | `src/core/operations/generate_crl.rs` | - | - |
+| `warn` | `Auto-CRL: no active Crypto Officer found for issuer '{issuer_id}';                  skipping CRL regeneration after certificate revocation.                  Complete a CO ceremony or call GET /certificates/{issuer_id}/crl manually.` | `src/core/operations/revoke.rs` | `issuer_id` | - |
+| `warn` | `Failed to load CRL from database for issuer '{issuer_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_id`, `e` | - |
+| `warn` | `Failed to persist CRL to database for issuer '{issuer_certificate_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_certificate_id`, `e` | - |
 
 ### `cosmian_kms_server_database`
 
