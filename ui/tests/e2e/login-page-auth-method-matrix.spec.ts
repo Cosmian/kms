@@ -81,17 +81,23 @@ async function gotoLogin(page: import("@playwright/test").Page) {
 
 // ── Matrix tests ──────────────────────────────────────────────────────────────
 
-// These tests mock GET /ui/auth_method, GET /ui/whoami, GET /access/create
-// and GET /version at the browser level. They are purely UI-rendering tests
-// that work both locally (against Vite preview without a real KMS) and in CI
-// (against a Vite preview backed by a real KMS), because all KMS API calls are
-// intercepted before reaching the real server.
+// These tests mock GET /ui/auth_method and related auth bootstrap endpoints at
+// the browser level. They are login-page rendering tests that require the UI to
+// be built WITHOUT VITE_DEV_MODE=true.
 //
-// The key insight: /access/create is mocked to return 401, so the mTLS cert
-// auto-login path in App.tsx is neutralised — the app never considers the user
-// already authenticated, and the login page always renders.
+// In CI the UI is always built with VITE_DEV_MODE=true, which makes
+// fetchAuthMethods() return [] immediately without making a network call.
+// In that mode the login page is never rendered, so these mocks are ineffective.
+//
+// The tests are skipped by default (not enabled via PLAYWRIGHT_AUTH_MATRIX_TESTS).
+// To run them locally:
+//   CI=true pnpm run test:e2e --grep "Login page auth-method matrix"
+// against a Vite preview built WITHOUT VITE_DEV_MODE=true.
+
+const authMatrixEnabled = typeof process !== "undefined" && process.env?.PLAYWRIGHT_AUTH_MATRIX_TESTS === "true";
 
 test.describe("Login page auth-method matrix", () => {
+    test.skip(!authMatrixEnabled, "Opt-in tests: set PLAYWRIGHT_AUTH_MATRIX_TESTS=true when running against a non-dev-mode Vite preview");
     // ── 1. AUTH_VERIFIER only ─────────────────────────────────────────────────
     test('["AUTH_VERIFIER"] — shows username/password form, no secondary', async ({ page }) => {
         await mockAuthMethods(page, ["AUTH_VERIFIER"]);
