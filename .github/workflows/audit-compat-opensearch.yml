@@ -1,0 +1,30 @@
+---
+name: Audit JSONL compatibility — OpenSearch
+
+on:
+  pull_request:
+    paths:
+      - .mise/scripts/test/validate_audit_compat.py
+      - .mise/scripts/test/requirements-audit-compat.txt
+      - .mise/scripts/test/fixtures/**
+      - schemas/kms-audit-*.json
+      - .mise/tasks/test/audit-compat-opensearch
+      - .github/workflows/audit-compat-opensearch.yml
+  workflow_dispatch:
+
+jobs:
+  opensearch-compat:
+    name: OpenSearch ingestion compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: Run OpenSearch audit JSONL compatibility test
+        run: mise run test:audit-compat-opensearch

@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+#MISE description="Ingest a KMS JSONL audit file into an ephemeral OpenSearch container and verify compatibility"
+#USAGE flag "-f --file <file>" env="AUDIT_FILE" help="Path to the KMS JSONL audit file" default=".mise/scripts/test/fixtures/sample-audit.jsonl"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "OpenSearch audit JSONL compatibility test"
+
+require_cmd docker "Docker is required to run the ephemeral OpenSearch container."
+require_cmd python3
+require_cmd curl
+
+REPO_ROOT="$(get_repo_root)"
+AUDIT_FILE="${usage_file:-${REPO_ROOT}/.mise/scripts/test/fixtures/sample-audit.jsonl}"
+OPENSEARCH_HOST=127.0.0.1
+OPENSEARCH_PORT=9200
+CONTAINER_NAME="kms-audit-compat-opensearch-$$"
+
+cleanup() {
+  print_status "Removing container ${CONTAINER_NAME}"
+  docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+print_status "Starting ephemeral OpenSearch container (no volume, --rm)"
+docker run -d --rm --name "${CONTAINER_NAME}" \
+  -p "${OPENSEARCH_PORT}:9200" \
+  -e "discovery.type=single-node" \
+  -e "DISABLE_SECURITY_PLUGIN=true" \
+  -e "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" \
+  opensearchproject/opensearch:2.17.1 >/dev/null
+
+print_status "Waiting for OpenSearch to accept connections"
+if ! wait_for_port "${OPENSEARCH_HOST}" "${OPENSEARCH_PORT}" 90; then
+  print_error "OpenSearch did not open port ${OPENSEARCH_PORT} in time"
+fi
+
+print_status "Waiting for cluster health (green/yellow)"
+for _ in $(seq 1 60); do
+  status=$(curl -fsS "http://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}/_cluster/health" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' 2>/dev/null || true)
+  [ "${status}" = "green" ] || [ "${status}" = "yellow" ] && break
+  sleep 1
+done
+if [ "${status:-}" != "green" ] && [ "${status:-}" != "yellow" ]; then
+  print_error "OpenSearch cluster never reached a usable health status"
+fi
+
+python3 -m pip install --quiet -r "${REPO_ROOT}/.mise/scripts/test/requirements-audit-compat.txt"
+
+python3 "${REPO_ROOT}/.mise/scripts/test/validate_audit_compat.py" \
+  --backend opensearch \
+  --file "${AUDIT_FILE}" \
+  --fields-file "${REPO_ROOT}/schemas/kms-audit-fields.json" \
+  --mapping-file "${REPO_ROOT}/schemas/kms-audit-mapping.json" \
+  --host "${OPENSEARCH_HOST}" \
+  --port "${OPENSEARCH_PORT}"
+
+print_success "OpenSearch audit JSONL compatibility test passed"
