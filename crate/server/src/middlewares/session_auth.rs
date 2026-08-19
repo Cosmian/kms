@@ -86,11 +86,17 @@ where
         match session.get::<String>("user_id") {
             Ok(Some(user_id)) => {
                 debug!("Session: authenticated user '{user_id}'");
+                let roles = session
+                    .get::<Vec<String>>("roles")
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default();
+                let domain = session.get::<String>("domain").ok().flatten();
                 req.extensions_mut().insert(AuthenticatedUser {
                     username: user_id.into(),
                     auth_method: AuthMethod::Session,
-                    domain: None,
-                    roles: vec![],
+                    domain,
+                    roles,
                 });
             }
             Ok(None) => {
