@@ -62,13 +62,30 @@ async function mockAuthMethods(page: import("@playwright/test").Page, methods: A
 /** Navigate to /ui/login and wait until the login card is visible. */
 async function gotoLogin(page: import("@playwright/test").Page) {
     await page.goto("/ui/login");
-    // The login card is always rendered; wait for any heading inside it.
-    await page.waitForSelector('div[class*="space-y-6"]', { timeout: UI_READY_TIMEOUT });
+    await page.waitForLoadState("networkidle");
 }
 
 // ── Matrix tests ──────────────────────────────────────────────────────────────
 
+// These tests mock GET /ui/auth_method and GET /ui/whoami at the browser
+// level. They are purely UI-rendering tests and do NOT require a live KMS.
+//
+// Skip when a Playwright client certificate directory is configured
+// (PLAYWRIGHT_CERT_DIR is set). In mTLS CI runs, the browser TLS handshake
+// authenticates the user before our route mocks can intercept the
+// /ui/auth_method call, causing the app to redirect to /locate instead of
+// rendering the login page.
+//
+// These tests run correctly in standalone mode (against Vite preview without KMS):
+//   CI=true pnpm run test:e2e --grep "Login page auth-method matrix"
+const hasMtlsCert = typeof process !== "undefined" && Boolean(process.env?.PLAYWRIGHT_CERT_DIR);
+
 test.describe("Login page auth-method matrix", () => {
+    test.skip(
+        hasMtlsCert,
+        "Skipped when mTLS client cert is configured (PLAYWRIGHT_CERT_DIR is set); cert auto-auth intercepts before route mocks take effect",
+    );
+
     // ── 1. AUTH_VERIFIER only ─────────────────────────────────────────────────
     test('["AUTH_VERIFIER"] — shows username/password form, no secondary', async ({ page }) => {
         await mockAuthMethods(page, ["AUTH_VERIFIER"]);
