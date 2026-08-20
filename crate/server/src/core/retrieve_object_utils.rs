@@ -347,17 +347,36 @@ pub(crate) async fn user_has_permission(
             }
             OpaMode::Enforcing => {
                 // ── Native KMS CO bypass ────────────────────────────────────────────
-                // Native COs (listed in `crypto_officer_users`) bypass OPA Gate 1 in
-                // enforcing mode, consistent with `locate.rs` (which calls
-                // `is_crypto_officer()` before any OPA check) and
-                // `enforce_create_permission` (which applies the same pattern for
-                // Create).  Their access is validated by the `is_crypto_officer()`
-                // check in the legacy KMS gate below.
+                // Users listed in `crypto_officer_users` bypass OPA Gate 1 in
+                // enforcing mode regardless of whether they have completed the ceremony.
+                //
+                // Rationale: OPA Gate 1 enforces JWT role/domain policy for external
+                // users.  CO candidates are KMS-native — enrolled via server TOML config,
+                // not via JWT — and therefore operate outside OPA's role model.
+                // Requiring them to pass OPA Gate 1 creates a chicken-and-egg deadlock
+                // during the ceremony: candidates must Get peer shares to call
+                // JoinSplitKey, but `is_crypto_officer()` returns `false` until
+                // the ceremony completes.
+                //
+                // The bypass applies to BOTH:
+                //   a) activated COs   (`is_crypto_officer()` = true)
+                //   b) ceremony candidates listed in `co_users` (not yet activated)
+                //
+                // Both groups fall through to the legacy KMS gate, which enforces
+                // ownership and explicit DB grant checks — so bypassing OPA Gate 1
+                // does NOT grant unconditional access.
+                //
                 // HSM keys are excluded: their access model is separate and requires
                 // explicit HSM-admin grants.
                 let object_id = owm.map_or("*", ObjectWithMetadata::id);
-                let is_native_co =
-                    !ObjectHandle::from(object_id).is_hsm() && kms.is_crypto_officer(user).await?;
+                let is_native_co = !ObjectHandle::from(object_id).is_hsm()
+                    && (kms.is_crypto_officer(user).await?
+                        || kms
+                            .params
+                            .crypto_officer
+                            .users
+                            .iter()
+                            .any(|u| u == user.as_str()));
                 if !is_native_co {
                     // ── OPA Gate 1 ────────────────────────────────────────────────────
                     let opa_ctx = get_opa_user_context();
