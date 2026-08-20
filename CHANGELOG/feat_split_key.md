@@ -21,12 +21,35 @@
   zeroized copy. Derived `CeremonyKeys.obfuscation_key` zeroed on drop via explicit `Drop` impl.
 - **`ceremony_secret` never logged**: custom `Debug` impl for `RolesConfig` masks `ceremony_secret`
   as `"<redacted>"`; prevents secret exposure when `RUST_LOG=debug`.
+- **F-2 — Compensating delete on activation failure**: `JoinSplitKey` now deletes the reconstructed
+  key from the DB when ceremony auto-activation fails, then returns the error.  Previously the failure
+  was non-fatal and the key persisted without an activation record — any user holding a Grant on the
+  resulting UID could access it, bypassing ceremony dual-control.  A second CRITICAL audit entry is
+  emitted if the compensating delete itself fails, enabling SIEM alerting.
+- **F-3 — Optional AES-KW share wrapping at rest**: new config field `ceremony_wrapping_key_id`
+  (CLI `--ceremony-wrapping-key-id` / env `KMS_CEREMONY_WRAP_KEY_ID`).  When set, `CreateSplitKey`
+  wraps each share's bytes with the referenced AES key using RFC 5649 (NIST SP 800-38F) before writing
+  to the DB.  `JoinSplitKey` detects the `x-cosmian-share-wrapping-key` vendor attribute and unwraps
+  transparently.  When the KMS is HSM-backed, the wrapping key can be HSM-resident, providing
+  hardware-boundary protection equivalent to purpose-built HSM split-key solutions.
+- **F-6 — Split-key audit logs elevated to ERROR**: `CreateSplitKey` share-stored and source-key
+  destroyed events, and the `JoinSplitKey` reconstructed-key-stored event, now emit at
+  `error!(target="audit")`.  This ensures they are captured by SIEM/audit sinks regardless of the
+  runtime `RUST_LOG` filter (CWE-778 mitigation).
+- **F-7 — Corrected doc comment on `CryptoOfficerConfig::validate()`**: the method previously said
+  "currently a no-op" but the n≥3 guard was already implemented.  Doc updated to reflect the actual
+  enforced invariant.
+- **F-8 — Ceremony session ID stamped on audit logs**: a `Uuid::new_v4()` ceremony session ID is
+  generated once per `CreateSplitKey` call and stamped on every audit log entry for that call.
+  Similarly, `JoinSplitKey` generates a join session ID.  This enables SIEM correlation of all shares
+  from a single ceremony split (NIST SP 800-57 Part 2 Rev 1 §4.6 audit requirements).
+- **F-9 — DB-level uniqueness on `activated_by`**: `crypto_officer_activations` gains an
+  `activated_by VARCHAR(255)` column.  PostgreSQL/SQLite add a partial unique index
+  `WHERE revoked_at IS NULL` (at most one active record per user at DB level).  MySQL enforces at
+  application layer (no partial-index support).  Idempotent startup migrations handle upgrades of
+  existing databases.
 - **Strict permission enforcement on JoinSplitKey**: ceremony activation is attempted as an
-  auto-activation side-effect of `JoinSplitKey`. Activation failure is **intentionally non-fatal**:
-  the reconstructed key is stored unconditionally so it is not lost on transient DB errors, and
-  the failure is logged at `WARN` level with a pointer to the manual activation endpoint
-  (`POST /access/crypto_officer/ceremony/activate`). This is fail-secure: no CO role is granted
-  on failure.
+  auto-activation side-effect of `JoinSplitKey`. Activation failure is now **fatal** (see F-2 above).
 - **Fail-secure unenrolled users**: when roles are configured, unknown users default to Operator
   (minimum privilege) instead of unrestricted access (NIST SP 800-57 Part 2 Rev 1 §4.8).
 - **Prevent duplicate active ceremony records**: `activate_crypto_officer_ceremony` revokes prior active
