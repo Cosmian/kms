@@ -1007,7 +1007,86 @@ async fn test_crl_public_endpoint_lifecycle() {
     resources.cleanup(&client).await;
 }
 
-/// Test: `GET /certificates/{id}/crl?format=invalid` returns HTTP 400.
+/// Test: CRL generation works in single-admin mode (no `crypto_officer_users` configured).
+///
+/// This is the "CO role disabled" scenario: the KMS is running with no Crypto Officer
+/// configured, so `crypto_officer.users` is empty.  In this mode `generate_crl` must
+/// fall back to allowing any user who owns the issuer certificate.
+///
+/// Scenario:
+///   - No CO configured (plain `start_default_test_kms_server()`)
+///   - Owner creates CA, issues 3 leaf certificates, revokes all 3
+///   - Auto-regen on revoke fires (falls back to `default_username` because no CO)
+///   - Authenticated `GET /certificates/{id}/crl` → 200, 3 entries
+///   - Unauthenticated `GET /public/certificates/{id}/crl` → 200, 3 entries
+///     (public cache was primed by the auto-regen on the last revoke)
+#[tokio::test]
+async fn test_crl_without_co_full_lifecycle() {
+    init_test_logging();
+    // Use the plain default server — no crypto_officer_users configured.
+    let ctx = start_default_test_kms_server().await;
+    let client = ctx.get_owner_client();
+    let mut resources = TestResources::new();
+    let server_url = &ctx.owner_client_config.http_config.server_url;
+
+    // ── 1. Owner creates CA and 3 leaf certs ─────────────────────────────────
+    let ca_id = create_named_ca(&client, "NoCO-CRL-CA", &mut resources).await;
+    let leaf1 = issue_cert(&client, &ca_id, "leaf1.noco", &mut resources).await;
+    let leaf2 = issue_cert(&client, &ca_id, "leaf2.noco", &mut resources).await;
+    let leaf3 = issue_cert(&client, &ca_id, "leaf3.noco", &mut resources).await;
+
+    // ── 2. Revoke all 3 — auto-regen fires after each one ────────────────────
+    // Because kms_public_url is set in plain.toml and no CO is configured,
+    // trigger_crl_regeneration uses default_username as the signer.
+    revoke_cert(&client, &leaf1, RevocationReasonCode::KeyCompromise).await;
+    revoke_cert(&client, &leaf2, RevocationReasonCode::Superseded).await;
+    revoke_cert(&client, &leaf3, RevocationReasonCode::CessationOfOperation).await;
+
+    // ── 3. Authenticated endpoint — owner can generate CRL without CO ─────────
+    let crl = fetch_crl_der(&client, &ca_id, 7).await;
+    let revoked = crl.get_revoked().expect("CRL must contain revoked entries");
+    assert_eq!(
+        revoked.len(),
+        3,
+        "Authenticated CRL must list all 3 revoked certificates when no CO is configured"
+    );
+
+    // ── 4. Public (unauthenticated) CDP endpoint — primed by auto-regen ───────
+    // The last call to `trigger_crl_regeneration` (on leaf3's revoke) stored the
+    // CRL in DB and warmed the public cache.  The public endpoint must serve it.
+    let http = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .expect("build reqwest client");
+
+    let public_url = format!("{server_url}/public/certificates/{ca_id}/crl");
+    let resp = http
+        .get(&public_url)
+        .send()
+        .await
+        .expect("GET public CRL must not fail at network level");
+    assert_eq!(
+        resp.status(),
+        200,
+        "public CDP endpoint must return 200 after auto-regen primed the cache"
+    );
+    assert!(
+        resp.headers().contains_key("cache-control"),
+        "Cache-Control header must be present on the public CRL endpoint"
+    );
+    let crl_bytes = resp.bytes().await.expect("read public CRL body");
+    let public_crl = X509Crl::from_der(&crl_bytes).expect("public CRL must be valid DER");
+    let public_revoked = public_crl
+        .get_revoked()
+        .expect("public CRL must contain revoked entries");
+    assert_eq!(
+        public_revoked.len(),
+        3,
+        "Public CDP endpoint must serve a CRL with all 3 revoked certificates"
+    );
+
+    resources.cleanup(&client).await;
+}
 #[tokio::test]
 async fn test_crl_invalid_format_returns_400() {
     init_test_logging();
