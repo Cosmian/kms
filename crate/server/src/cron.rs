@@ -106,29 +106,10 @@ pub fn spawn_crl_refresh_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
 
 /// Scan all stored CRLs and regenerate those expiring within `overlap_hours`.
 async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
-    // Resolve the CO identity to use as the CRL signer.
-    // Falls back to `default_username` when no CO is configured (single-admin mode).
-    let co_user = match kms.find_active_co().await {
-        Ok(Some(co)) => co,
-        Ok(None) if kms.params.crypto_officer.users.is_empty() => {
-            crate::middlewares::UserId::from(kms.params.default_username.as_str())
-        }
-        Ok(None) => {
-            warn!(
-                "[crl-refresh-cron] No active Crypto Officer found; \
-                 skipping scheduled CRL refresh. Complete a CO ceremony first."
-            );
-            return;
-        }
-        Err(e) => {
-            warn!("[crl-refresh-cron] Failed to resolve CO identity: {e}");
-            return;
-        }
-    };
+    // CRL content is public information (RFC 5280 §3) — no special role required.
+    let signer = crate::middlewares::UserId::from(kms.params.default_username.as_str());
 
     // Enumerate all issuer IDs stored in the `crls` table.
-    // We rely on the DB to supply `next_update` so we can decide which CRLs
-    // need regeneration without fetching full DER bytes for every issuer.
     let issuers = match kms.database.list_crl_issuers().await {
         Ok(ids) => ids,
         Err(e) => {
@@ -158,7 +139,7 @@ async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
         );
 
         if let Err(e) =
-            crate::core::operations::generate_crl::generate_crl(kms, &issuer_id, None, &co_user)
+            crate::core::operations::generate_crl::generate_crl(kms, &issuer_id, None, &signer)
                 .await
         {
             warn!(
