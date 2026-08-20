@@ -4,7 +4,7 @@ use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attribute,
         kmip_objects::ObjectType,
-        kmip_operations::{CreateSplitKey, SetAttribute},
+        kmip_operations::{CreateSplitKey, Destroy, SetAttribute},
         kmip_types::{
             CryptographicAlgorithm, SplitKeyMethod, UniqueIdentifier, VendorAttribute,
             VendorAttributeValue,
@@ -452,29 +452,62 @@ impl CryptoOfficerCreateSplitKey {
             attribute_name: VENDOR_ATTR_CO_CEREMONY.to_owned(),
             attribute_value: VendorAttributeValue::TextString("true".to_owned()),
         });
-        kms_rest_client
-            .set_attribute(SetAttribute {
-                unique_identifier: Some(created_uid.clone()),
-                new_attribute: ceremony_attr,
-            })
-            .await
-            .with_context(|| "Failed to stamp ceremony attribute on key before splitting")?;
 
-        // 4. Call CreateSplitKey — server auto-assigns n = custodians_count shares,
-        //    each owned by a different CO candidate.
-        let split_req = CreateSplitKey {
-            object_type: ObjectType::SymmetricKey,
-            unique_identifier: Some(created_uid.clone()),
-            split_key_parts: n,
-            split_key_threshold: n,
-            split_key_method: SplitKeyMethod::XOR,
-            attributes: None,
-            protection_storage_masks: None,
+        // Steps 3 and 4 are wrapped so we can destroy the source key if either fails.
+        // Without cleanup, a failure here (e.g. misconfigured ceremony_wrapping_key_id)
+        // leaves an Active, ceremony-tagged, exportable key in the DB — exactly the
+        // single-point-of-knowledge state the ceremony exists to prevent.
+        let split_result = async {
+            // 3. Stamp the x-cosmian-crypto-officer-ceremony vendor attribute.
+            kms_rest_client
+                .set_attribute(SetAttribute {
+                    unique_identifier: Some(created_uid.clone()),
+                    new_attribute: ceremony_attr,
+                })
+                .await
+                .with_context(|| "Failed to stamp ceremony attribute on key before splitting")?;
+
+            // 4. Call CreateSplitKey — server auto-assigns n = custodians_count shares,
+            //    each owned by a different CO candidate.
+            let split_req = CreateSplitKey {
+                object_type: ObjectType::SymmetricKey,
+                unique_identifier: Some(created_uid.clone()),
+                split_key_parts: n,
+                split_key_threshold: n,
+                split_key_method: SplitKeyMethod::XOR,
+                attributes: None,
+                protection_storage_masks: None,
+            };
+            kms_rest_client
+                .create_split_key(split_req)
+                .await
+                .with_context(|| "Failed to split ceremony key on KMS server")
+        }
+        .await;
+
+        let split_resp = match split_result {
+            Ok(resp) => resp,
+            Err(e) => {
+                // Compensating delete: destroy the already-committed source key so it
+                // doesn't linger as an exportable, unsplit object in the key store.
+                if let Err(destroy_err) = kms_rest_client
+                    .destroy(Destroy {
+                        unique_identifier: Some(created_uid.clone()),
+                        remove: true,
+                        cascade: false,
+                        expected_object_type: None,
+                    })
+                    .await
+                {
+                    eprintln!(
+                        "WARNING: CreateSplitKey failed and the compensating delete of source \
+                         key '{created_uid}' also failed ({destroy_err}). The key may remain in \
+                         the database as an unsplit, exportable object — manual cleanup required."
+                    );
+                }
+                return Err(e);
+            }
         };
-        let split_resp = kms_rest_client
-            .create_split_key(split_req)
-            .await
-            .with_context(|| "Failed to split ceremony key on KMS server")?;
 
         // 5. Print results.
         let share_count = split_resp.unique_identifier.len();
