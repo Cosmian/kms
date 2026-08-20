@@ -177,7 +177,7 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
     }
 
     // Extract raw share bytes and XOR-reconstruct the secret.
-    // If a share carries the `x-cosmian-share-wrapping-key` vendor attribute (F-3),
+    // If a share carries the `x-cosmian-share-wrapping-key` vendor attribute,
     // the stored bytes are AES-KW (RFC 5649) wrapped — retrieve the wrapping key from
     // the DB and unwrap before feeding the plaintext bytes into the XOR reconstruction.
     let mut raw_shares: Vec<Zeroizing<Vec<u8>>> = Vec::with_capacity(owms.len());
@@ -185,7 +185,7 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
         if let Object::SplitKey(sk) = owm.object() {
             let stored_bytes = extract_share_bytes(&sk.key_block)?;
 
-            // Check for an AES-KW wrapping key UID stamped by CreateSplitKey (F-3).
+            // Check for an AES-KW wrapping key UID stamped by CreateSplitKey.
             let share_bytes: Zeroizing<Vec<u8>> = match owm
                 .attributes()
                 .get_vendor_attribute_value(VENDOR_ID_COSMIAN, "x-cosmian-share-wrapping-key")
@@ -417,9 +417,9 @@ pub(crate) async fn join_split_key(
             }
             Err(e) => {
                 // Activation failure → compensating delete: the reconstructed key must
-                // not persist without a valid ceremony activation record (F-2 security
-                // fix). An orphaned key in the DB would be accessible to anyone holding
-                // a Grant on the resulting UID, bypassing the ceremony dual-control.
+                // not persist without a valid ceremony activation record. An orphaned
+                // key in the DB would be accessible to anyone holding a Grant on the
+                // resulting UID, bypassing the ceremony dual-control.
                 tracing::error!(
                     target: "audit",
                     uid = %reconstructed_uid,
