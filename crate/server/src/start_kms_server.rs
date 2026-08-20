@@ -762,7 +762,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
-    // F-008: Validate session salt entropy when UI is enabled.
+    // Validate session salt entropy when UI is enabled.
     if kms_server.params.ui_enable {
         if let Some(ref salt) = kms_server.params.ui_session_salt {
             if salt.len() < 32 {
