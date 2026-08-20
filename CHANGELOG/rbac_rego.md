@@ -2,6 +2,8 @@
 
 - Add OPA (Open Policy Agent) RBAC middleware integration with three modes: disabled, exclusive, enforcing
 - Add `--opa-url` and `--opa-mode` CLI flags (env vars `KMS_OPA_URL`, `KMS_OPA_MODE`) to configure the OPA sidecar
+- Add startup validation: `--opa-mode exclusive` or `--opa-mode enforcing` now fails with a clear error when `--opa-url` is not set (the server previously silently ignored the mode setting)
+- Add KMIP-GO compliance tests for `CreateSplitKey` (§4.38) and `JoinSplitKey` (§4.39): share metadata assertions, full split-then-join roundtrip, threshold enforcement, and Query operation advertisement (`split_key_test.go`)
 - Add `domain` column to the objects table across all database backends (SQLite, PostgreSQL, MySQL, Redis-findex) for domain-scoped access control
 - Add `OpaClient` HTTP client with fail-closed design (deny on any transport/parse error)
 - Wire OPA authorization into `user_has_permission()` with mode-dependent behavior:
