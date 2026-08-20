@@ -33,6 +33,9 @@ print_status "Starting ephemeral Splunk container (no volume, --rm)"
 # on Apple Silicon, native on GitHub Actions ubuntu-latest runners).
 # SPLUNK_GENERAL_TERMS is required in addition to SPLUNK_START_ARGS since the image
 # started enforcing acceptance of the current Splunk General Terms separately.
+# Pinned to the current stable release (not :latest) so this test stays reproducible;
+# bump deliberately when a new Splunk version ships, see:
+# https://hub.docker.com/r/splunk/splunk/tags
 docker run -d --rm --name "${CONTAINER_NAME}" \
   --platform linux/amd64 \
   -p "${SPLUNK_MGMT_PORT}:8089" \
@@ -40,7 +43,7 @@ docker run -d --rm --name "${CONTAINER_NAME}" \
   -e "SPLUNK_START_ARGS=--accept-license" \
   -e "SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com" \
   -e "SPLUNK_PASSWORD=${SPLUNK_PASSWORD}" \
-  splunk/splunk:latest >/dev/null
+  splunk/splunk:10.4.2 >/dev/null
 
 print_status "Waiting for Splunk management API to become ready (this can take a few minutes)"
 mgmt_ready=false
