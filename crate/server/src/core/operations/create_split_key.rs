@@ -210,7 +210,7 @@ pub(crate) async fn create_split_key(
                     ))
                 })?
                 .ok_or_else(|| {
-                    KmsError::ServerError(format!(
+                    KmsError::ItemNotFound(format!(
                         "CreateSplitKey: ceremony wrapping key '{wrap_key_id}' not found in DB. \
                          Create it with: ckms sym keys create --id {wrap_key_id} \
                          --number-of-bits 256"
