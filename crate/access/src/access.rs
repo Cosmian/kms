@@ -175,6 +175,25 @@ pub struct CryptoOfficerConfig {
     /// `x-cosmian-crypto-officer-ceremony`, created via `CreateSplitKey`.
     #[serde(default)]
     pub require_ceremony: bool,
+
+    /// UID of a KMS symmetric key used to AES-KW (RFC 5649) wrap each split-key share
+    /// before it is written to the database.
+    ///
+    /// When set, `CreateSplitKey` wraps every share's raw bytes with this key, and
+    /// `JoinSplitKey` unwraps them before XOR reconstruction.  The wrapping key must be
+    /// an AES-128, AES-192, or AES-256 symmetric key already present in the KMS object
+    /// store.  The UID is stamped as the `x-cosmian-share-wrapping-key` vendor attribute
+    /// on every share object so `JoinSplitKey` can locate the correct key on reassembly.
+    ///
+    /// When the KMS itself is HSM-backed, this key can be an HSM-resident object, giving
+    /// the same hardware boundary protection as purpose-built HSM split-key solutions.
+    ///
+    /// Security note: the wrapping key must be created and made available **before**
+    /// the first `CreateSplitKey` call.  Rotate it by creating a new key, updating this
+    /// field, and re-running the ceremony (existing wrapped shares cannot be unwrapped
+    /// with a new key; re-ceremony is required on rotation).
+    #[serde(default)]
+    pub ceremony_wrapping_key_id: Option<String>,
 }
 
 impl CryptoOfficerConfig {

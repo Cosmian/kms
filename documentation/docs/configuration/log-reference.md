@@ -688,13 +688,14 @@ Crate path: `crate/server`
 | `warn` | `SECURITY: Crypto Officer is configured but rate_limit_per_second is not set.              The ceremony activation endpoint performs crypto operations on every request.              Set rate_limit_per_second in the server config to protect against abuse in              production deployments.` | `src/start_kms_server.rs` | - | - |
 | `debug` | `CreateSplitKey: resolved ceremony parameters` | `src/core/operations/create_split_key.rs` | - | - |
 | `info` | `POST /access/crypto_officer/disable` | `src/routes/access.rs` | - | - |
-| `warn` | `JoinSplitKey: key stored but CO ceremony auto-activation failed —                      use POST /access/crypto_officer/ceremony/activate to activate manually` | `src/core/operations/join_split_key.rs` | - | - |
 | `info` | `JoinSplitKey: CO ceremony auto-activated via reconstructed key` | `src/core/operations/join_split_key.rs` | - | - |
 | `info` | `PEER_REVOCATION_CLEANUP: revoked victim GET access on caller's share` | `src/core/kms/permissions.rs` | - | - |
 | `debug` | `JoinSplitKey: shares reconstructed` | `src/core/operations/join_split_key.rs` | - | - |
 | `error` | `CreateSplitKey: ceremony source key destroyed after successful split` | `src/core/operations/create_split_key.rs` | `uid` (source key UID), `user`, `session_id` | Audit — ceremony source key destroyed; split shares are now the only copies |
 | `error` | `CreateSplitKey: split-key share stored` | `src/core/operations/create_split_key.rs` | `uid` (share UID), `part`, `total`, `source` (source key UID), `owner`, `user`, `session_id` | Audit — ceremony share created; `session_id` correlates all shares from one CreateSplitKey call |
 | `error` | `JoinSplitKey: reconstructed key stored` | `src/core/operations/join_split_key.rs` | `uid` (reconstructed key UID), `shares` (count), `user`, `session_id` | Audit — key reconstructed from split-key shares |
+| `error` | `JoinSplitKey: CO ceremony activation failed — rolling back                      reconstructed key from DB` | `src/core/operations/join_split_key.rs` | `uid` (reconstructed key UID), `user`, `session_id`, `error` (activation error) | Audit — F-2 compensating delete triggered; activation failure made the ceremony invalid; key is being removed |
+| `error` | `JoinSplitKey: CRITICAL — reconstructed key rollback failed;                          orphaned key remains in DB, manual cleanup required` | `src/core/operations/join_split_key.rs` | `uid` (orphaned key UID), `user`, `session_id`, `rollback_error` (delete error) | CRITICAL audit — DB is in inconsistent state; manual deletion of the `uid` object is required; alert SIEM |
 
 ### `cosmian_kms_server_database`
 

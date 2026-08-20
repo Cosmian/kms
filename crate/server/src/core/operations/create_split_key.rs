@@ -10,7 +10,7 @@ use cosmian_kms_server_database::reexport::{
             kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
             kmip_objects::{Object, ObjectType, SplitKey},
             kmip_operations::{CreateSplitKey, CreateSplitKeyResponse, Revoke},
-            kmip_types::{KeyFormatType, SplitKeyMethod, UniqueIdentifier},
+            kmip_types::{KeyFormatType, SplitKeyMethod, UniqueIdentifier, VendorAttributeValue},
         },
     },
     cosmian_kms_crypto,
@@ -193,6 +193,34 @@ pub(crate) async fn create_split_key(
         None
     };
 
+    // Retrieve the AES-KW ceremony wrapping key once, before the share loop (F-3).
+    // Each share's raw bytes are wrapped with this key before being stored in the DB,
+    // so that a DB-level attacker cannot read share plaintext without also accessing
+    // the wrapping key (which may itself be HSM-resident when the KMS is HSM-backed).
+    let wrapping_key_bytes: Option<Zeroizing<Vec<u8>>> =
+        if let Some(ref wrap_key_id) = kms.params.crypto_officer.ceremony_wrapping_key_id {
+            let wrap_owm = kms
+                .database
+                .retrieve_object(wrap_key_id)
+                .await
+                .map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "CreateSplitKey: failed to retrieve ceremony wrapping key \
+                         '{wrap_key_id}': {e}"
+                    ))
+                })?
+                .ok_or_else(|| {
+                    KmsError::ServerError(format!(
+                        "CreateSplitKey: ceremony wrapping key '{wrap_key_id}' not found in DB. \
+                         Create it with: ckms sym keys create --id {wrap_key_id} \
+                         --number-of-bits 256"
+                    ))
+                })?;
+            Some(extract_key_bytes(wrap_owm.object())?)
+        } else {
+            None
+        };
+
     for (idx, share_bytes) in raw_shares.into_iter().enumerate() {
         // 1-indexed share number; idx fits in i32 since total_parts <= 255.
         let part_identifier = i32::try_from(idx + 1).unwrap_or(1);
@@ -208,13 +236,30 @@ pub(crate) async fn create_split_key(
             (*user).clone()
         };
 
+        // If a ceremony wrapping key is configured, AES-KW wrap the share bytes (F-3).
+        // The plaintext share is consumed here; only the wrapped ciphertext is stored.
+        let stored_share_bytes: Zeroizing<Vec<u8>> = match &wrapping_key_bytes {
+            Some(wkb) => {
+                let wrapped =
+                    cosmian_kms_crypto::crypto::symmetric::rfc5649::rfc5649_wrap(&share_bytes, wkb)
+                        .map_err(|e| {
+                            KmsError::CryptographicError(format!(
+                                "CreateSplitKey: AES-KW wrapping of share {part_identifier} \
+                                 failed: {e}"
+                            ))
+                        })?;
+                Zeroizing::new(wrapped)
+            }
+            None => share_bytes,
+        };
+
         // Build the SplitKey KMIP object — raw share bytes stored as ByteString key material.
-        // share_bytes is moved (no clone) so the only copy lives inside Zeroizing.
+        // stored_share_bytes is moved (no clone) so the only copy lives inside Zeroizing.
         let key_block = KeyBlock {
             key_format_type: KeyFormatType::Opaque,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(share_bytes),
+                key_material: KeyMaterial::ByteString(stored_share_bytes),
                 attributes: None,
             }),
             cryptographic_algorithm: owm
@@ -269,7 +314,7 @@ pub(crate) async fn create_split_key(
         share_attrs.set_vendor_attribute(
             VENDOR_ID_COSMIAN,
             "x-cosmian-split-key-source",
-            cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::VendorAttributeValue::TextString(source_uid.clone()),
+            VendorAttributeValue::TextString(source_uid.clone()),
         );
 
         // Propagate Crypto Officer ceremony marker to each share
@@ -277,7 +322,16 @@ pub(crate) async fn create_split_key(
             share_attrs.set_vendor_attribute(
                 VENDOR_ID_COSMIAN,
                 CRYPTO_OFFICER_CEREMONY_ATTR,
-                cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::VendorAttributeValue::TextString("true".to_owned()),
+                VendorAttributeValue::TextString("true".to_owned()),
+            );
+        }
+
+        // Stamp the wrapping key UID on the share so JoinSplitKey can locate it (F-3).
+        if let Some(ref wrap_key_id) = kms.params.crypto_officer.ceremony_wrapping_key_id {
+            share_attrs.set_vendor_attribute(
+                VENDOR_ID_COSMIAN,
+                "x-cosmian-share-wrapping-key",
+                VendorAttributeValue::TextString(wrap_key_id.clone()),
             );
         }
 
@@ -429,7 +483,10 @@ pub(crate) async fn create_split_key(
 }
 
 /// Extract raw key bytes from any supported KMIP object type.
-fn extract_key_bytes(object: &Object) -> KResult<Zeroizing<Vec<u8>>> {
+///
+/// Used both by `CreateSplitKey` (to extract the source key's bytes) and by
+/// `JoinSplitKey` when it needs to retrieve a ceremony wrapping key from the DB.
+pub(crate) fn extract_key_bytes(object: &Object) -> KResult<Zeroizing<Vec<u8>>> {
     match object {
         Object::SymmetricKey(sk) => Ok(sk.key_block.key_bytes().map_err(|e| {
             KmsError::InvalidRequest(format!(

@@ -285,6 +285,30 @@ impl MySqlPool {
             conn.query_drop(add_col).await.map_err(DbError::from)?;
         }
 
+        // Add activated_by column to crypto_officer_activations if not present.
+        // MySQL 8.0 does not support ADD COLUMN IF NOT EXISTS.
+        let has_co_col_sql = MYSQL_QUERIES
+            .get("has-column-co-activated-by")
+            .ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: has-column-co-activated-by".to_owned())
+            })?;
+        let co_col_rows: Vec<mysql_async::Row> =
+            conn.query(has_co_col_sql).await.map_err(DbError::from)?;
+        if co_col_rows.is_empty() {
+            let add_co_col = MYSQL_QUERIES
+                .get("add-column-co-activated-by")
+                .ok_or_else(|| {
+                    DbError::DatabaseError(
+                        "Missing SQL query: add-column-co-activated-by".to_owned(),
+                    )
+                })?;
+            conn.query_drop(add_co_col).await.map_err(DbError::from)?;
+        }
+        // Note: MySQL does not support partial (filtered) unique indexes.
+        // Uniqueness of active activations per user is enforced at the application
+        // layer in database_permissions.rs::activate_crypto_officer_ceremony, which
+        // revokes any existing active record for the same user before inserting.
+
         // Ensure the read-path indexes exist. MySQL 8.0 has no
         // `CREATE INDEX IF NOT EXISTS`, so check information_schema first.
         let has_index_sql = MYSQL_QUERIES
@@ -924,14 +948,18 @@ impl PermissionsStore for MySqlPool {
         Ok(list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await?)
     }
 
-    async fn activate_crypto_officer_ceremony(&self, sealed_record: &str) -> InterfaceResult<()> {
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
         let sql = get_mysql_query!("insert-crypto-officer-activation");
         let mut conn = self
             .pool
             .get_conn()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        conn.exec_drop(sql, (sealed_record,))
+        conn.exec_drop(sql, (sealed_record, activated_by))
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(())
