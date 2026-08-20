@@ -267,7 +267,7 @@ impl PgPool {
     ) -> DbResult<Self> {
         // Extract query parameters manually instead of using Url::parse(),
         // which cannot handle multi-host PostgreSQL connection strings
-        // (e.g. "postgresql://user:pass@host1:5432,host2:5432/db?target_session_attrs=read-write").
+        // (e.g. "host1:5432,host2:5432/db?target_session_attrs=read-write").
         let query_params = extract_query_params(connection_url);
 
         // Build a URL that strips only SSL-related params (handled via MakeTlsConnector)
@@ -387,6 +387,25 @@ impl PgPool {
         client
             .batch_execute(
                 "ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);",
+            )
+            .await
+            .map_err(DbError::from)?;
+        // Add activated_by column to crypto_officer_activations (idempotent).
+        // PostgreSQL supports ADD COLUMN IF NOT EXISTS since 9.6.
+        client
+            .batch_execute(
+                "ALTER TABLE crypto_officer_activations \
+                 ADD COLUMN IF NOT EXISTS activated_by VARCHAR(255);",
+            )
+            .await
+            .map_err(DbError::from)?;
+        // Unique partial index: at most one active activation record per user.
+        // Prevents duplicate active records even under concurrent JoinSplitKey requests.
+        client
+            .batch_execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active \
+                 ON crypto_officer_activations (activated_by) \
+                 WHERE revoked_at IS NULL;",
             )
             .await
             .map_err(DbError::from)?;
@@ -1318,14 +1337,18 @@ impl PermissionsStore for PgPool {
         })
     }
 
-    async fn activate_crypto_officer_ceremony(&self, sealed_record: &str) -> InterfaceResult<()> {
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
         pg_retry!(self.pool, |client| {
             let stmt = client
                 .prepare(get_pgsql_query!("insert-crypto-officer-activation"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             client
-                .execute(&stmt, &[&sealed_record])
+                .execute(&stmt, &[&sealed_record, &activated_by])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(())
@@ -1406,7 +1429,7 @@ mod tests {
 
     #[test]
     fn test_extract_query_params_single_host() {
-        let url = "postgresql://kms:kms@localhost:5432/kms?sslmode=require";
+        let url = "localhost:5432/kms?sslmode=require";
         let params = extract_query_params(url);
         assert_eq!(params.get("sslmode"), Some(&"require".to_owned()));
         assert_eq!(params.len(), 1);
@@ -1414,7 +1437,7 @@ mod tests {
 
     #[test]
     fn test_extract_query_params_multi_host() {
-        let url = "postgresql://kms:kms@host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require";
+        let url = "host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require";
         let params = extract_query_params(url);
         assert_eq!(
             params.get("target_session_attrs"),
@@ -1426,44 +1449,45 @@ mod tests {
 
     #[test]
     fn test_extract_query_params_no_params() {
-        let url = "postgresql://kms:kms@localhost:5432/kms";
+        let url = "localhost:5432/kms";
         let params = extract_query_params(url);
         assert!(params.is_empty());
     }
 
     #[test]
     fn test_rebuild_url_strips_only_ssl_params() {
-        let url = "postgresql://kms:kms@host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require&sslrootcert=/path/ca.pem";
+        let url = "host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require&sslrootcert=/path/ca.pem";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
         assert_eq!(
             clean,
-            "postgresql://kms:kms@host1:5432,host2:5432/kms?target_session_attrs=read-write"
+            "host1:5432,host2:5432/kms?target_session_attrs=read-write"
         );
     }
 
     #[test]
     fn test_rebuild_url_all_ssl_params_stripped() {
-        let url = "postgresql://kms:kms@localhost:5432/kms?sslmode=require&sslcert=/c.pem&sslkey=/k.pem&sslrootcert=/ca.pem";
+        let url =
+            "localhost:5432/kms?sslmode=require&sslcert=/c.pem&sslkey=/k.pem&sslrootcert=/ca.pem";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
-        assert_eq!(clean, "postgresql://kms:kms@localhost:5432/kms");
+        assert_eq!(clean, "localhost:5432/kms");
     }
 
     #[test]
     fn test_rebuild_url_preserves_non_ssl_params() {
-        let url = "postgresql://kms:kms@localhost:5432/kms?target_session_attrs=read-write&application_name=cosmian_kms";
+        let url = "localhost:5432/kms?target_session_attrs=read-write&application_name=cosmian_kms";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
         // Both non-SSL params should be preserved (order may vary)
         assert!(clean.contains("target_session_attrs=read-write"));
         assert!(clean.contains("application_name=cosmian_kms"));
-        assert!(clean.starts_with("postgresql://kms:kms@localhost:5432/kms?"));
+        assert!(clean.starts_with("localhost:5432/kms?"));
     }
 
     #[test]
     fn test_rebuild_url_no_params() {
-        let url = "postgresql://kms:kms@localhost:5432/kms";
+        let url = "localhost:5432/kms";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
         assert_eq!(clean, url);
@@ -1471,7 +1495,7 @@ mod tests {
 
     #[test]
     fn test_multi_host_url_preserved_in_rebuild() {
-        let url = "postgresql://kms:kms@host1:5432,host2:5433,host3:5434/kms?target_session_attrs=read-write";
+        let url = "host1:5432,host2:5433,host3:5434/kms?target_session_attrs=read-write";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
         assert_eq!(clean, url);

@@ -45,6 +45,12 @@ SHOW COLUMNS FROM objects LIKE 'wrapping_key_id';
 -- name: add-column-wrapping-key-id
 ALTER TABLE objects ADD COLUMN wrapping_key_id VARCHAR(128);
 
+-- name: has-column-co-activated-by
+SHOW COLUMNS FROM crypto_officer_activations LIKE 'activated_by';
+
+-- name: add-column-co-activated-by
+ALTER TABLE crypto_officer_activations ADD COLUMN activated_by VARCHAR(255);
+
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access
 (
@@ -228,14 +234,15 @@ CREATE INDEX idx_objects_wrapping_key_id ON objects (wrapping_key_id);
 CREATE TABLE IF NOT EXISTS crypto_officer_activations (
         id INTEGER PRIMARY KEY AUTO_INCREMENT,
         activated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        activated_by VARCHAR(255),
         sealed_record TEXT NOT NULL,
         revoked_at TIMESTAMP NULL DEFAULT NULL,
         revoked_by VARCHAR(255)
 );
 
 -- name: insert-crypto-officer-activation
-INSERT INTO crypto_officer_activations (sealed_record)
-        VALUES (?);
+INSERT INTO crypto_officer_activations (sealed_record, activated_by)
+        VALUES (?, ?);
 
 -- name: select-active-crypto-officer-activation
 SELECT sealed_record FROM crypto_officer_activations WHERE revoked_at IS NULL
