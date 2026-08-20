@@ -1261,7 +1261,14 @@ impl PermissionsStore for RedisWithFindex {
             .collect())
     }
 
-    async fn activate_crypto_officer_ceremony(&self, sealed_record: &str) -> InterfaceResult<()> {
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        _activated_by: &str,
+    ) -> InterfaceResult<()> {
+        // Redis stores ceremony records by an obfuscated role key.
+        // `_activated_by` is captured inside the AES-GCM sealed payload
+        // and is verified on unseal; no separate plaintext column exists in Redis.
         self.store_ceremony_record(&self.ceremony_key_crypto_officer, sealed_record)
             .await
     }

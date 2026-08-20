@@ -414,6 +414,7 @@ impl ServerParams {
                 let co = CryptoOfficerConfig {
                     users: co_users,
                     require_ceremony: conf.roles.crypto_officer_require_ceremony,
+                    ceremony_wrapping_key_id: conf.roles.ceremony_wrapping_key_id,
                 };
                 co.validate()
                     .map_err(|e| KmsError::ServerError(format!("Role configuration error: {e}")))?;

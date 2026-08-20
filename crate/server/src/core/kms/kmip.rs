@@ -137,7 +137,7 @@ impl KMS {
         request: CreateSplitKey,
         user: &UserId,
     ) -> KResult<CreateSplitKeyResponse> {
-        operations::create_split_key(self, request, user).await
+        Box::pin(operations::create_split_key(self, request, user)).await
     }
 
     /// This operation reconstructs a Managed Cryptographic Object from split-key shares.

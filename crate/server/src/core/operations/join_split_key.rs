@@ -24,7 +24,7 @@ use tracing::debug;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-use super::create_split_key::CRYPTO_OFFICER_CEREMONY_ATTR;
+use super::create_split_key::{CRYPTO_OFFICER_CEREMONY_ATTR, extract_key_bytes};
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle},
     error::KmsError,
@@ -176,12 +176,56 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
         }
     }
 
-    // Extract raw share bytes and XOR-reconstruct the secret
+    // Extract raw share bytes and XOR-reconstruct the secret.
+    // If a share carries the `x-cosmian-share-wrapping-key` vendor attribute (F-3),
+    // the stored bytes are AES-KW (RFC 5649) wrapped — retrieve the wrapping key from
+    // the DB and unwrap before feeding the plaintext bytes into the XOR reconstruction.
     let mut raw_shares: Vec<Zeroizing<Vec<u8>>> = Vec::with_capacity(owms.len());
     for owm in &owms {
         if let Object::SplitKey(sk) = owm.object() {
-            let share_bytes = extract_share_bytes(&sk.key_block)?;
-            raw_shares.push(Zeroizing::new(share_bytes));
+            let stored_bytes = extract_share_bytes(&sk.key_block)?;
+
+            // Check for an AES-KW wrapping key UID stamped by CreateSplitKey (F-3).
+            let share_bytes: Zeroizing<Vec<u8>> = match owm
+                .attributes()
+                .get_vendor_attribute_value(VENDOR_ID_COSMIAN, "x-cosmian-share-wrapping-key")
+            {
+                Some(VendorAttributeValue::TextString(wrap_key_id)) => {
+                    // Retrieve the wrapping key directly from the DB (server-side, no user check).
+                    let wrap_owm = kms
+                        .database
+                        .retrieve_object(wrap_key_id)
+                        .await
+                        .map_err(|e| {
+                            KmsError::ServerError(format!(
+                                "JoinSplitKey: failed to retrieve ceremony wrapping key \
+                                 '{wrap_key_id}': {e}"
+                            ))
+                        })?
+                        .ok_or_else(|| {
+                            KmsError::ServerError(format!(
+                                "JoinSplitKey: ceremony wrapping key '{wrap_key_id}' not found. \
+                                 The key must exist in the KMS object store to reconstruct \
+                                 wrapped shares."
+                            ))
+                        })?;
+                    let wkb = extract_key_bytes(wrap_owm.object())?;
+                    let unwrapped = cosmian_kms_crypto::crypto::symmetric::rfc5649::rfc5649_unwrap(
+                        &stored_bytes,
+                        &wkb,
+                    )
+                    .map_err(|e| {
+                        KmsError::CryptographicError(format!(
+                            "JoinSplitKey: AES-KW unwrap of share failed (wrapping key \
+                                 '{wrap_key_id}'): {e}"
+                        ))
+                    })?;
+                    Zeroizing::new(unwrapped.to_vec())
+                }
+                _ => Zeroizing::new(stored_bytes),
+            };
+
+            raw_shares.push(share_bytes);
         }
     }
 
@@ -372,16 +416,33 @@ pub(crate) async fn join_split_key(
                 );
             }
             Err(e) => {
-                // Activation failure is non-fatal for the key reconstruction itself —
-                // the reconstructed key is already stored. Log the error and continue.
-                // The user can activate manually via the dedicated endpoint if needed.
-                tracing::warn!(
+                // Activation failure → compensating delete: the reconstructed key must
+                // not persist without a valid ceremony activation record (F-2 security
+                // fix). An orphaned key in the DB would be accessible to anyone holding
+                // a Grant on the resulting UID, bypassing the ceremony dual-control.
+                tracing::error!(
+                    target: "audit",
                     uid = %reconstructed_uid,
                     user = %user,
+                    session_id = %join_session_id,
                     error = %e,
-                    "JoinSplitKey: key stored but CO ceremony auto-activation failed — \
-                     use POST /access/crypto_officer/ceremony/activate to activate manually",
+                    "JoinSplitKey: CO ceremony activation failed — rolling back \
+                     reconstructed key from DB",
                 );
+                if let Err(del_err) = kms.database.delete(&reconstructed_uid).await {
+                    // The rollback itself failed: log explicitly so SIEM can alert on
+                    // the orphaned object and trigger manual cleanup.
+                    tracing::error!(
+                        target: "audit",
+                        uid = %reconstructed_uid,
+                        user = %user,
+                        session_id = %join_session_id,
+                        rollback_error = %del_err,
+                        "JoinSplitKey: CRITICAL — reconstructed key rollback failed; \
+                         orphaned key remains in DB, manual cleanup required",
+                    );
+                }
+                return Err(e);
             }
         }
     }

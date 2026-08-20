@@ -249,6 +249,46 @@ impl SqlitePool {
                 .await?;
         }
 
+        // Migration: add activated_by column to crypto_officer_activations (idempotent).
+        // SQLite does not support ADD COLUMN IF NOT EXISTS — check PRAGMA first.
+        // Also create the unique partial index that prevents duplicate active records
+        // per user (enforces n-of-n dual-control at the DB layer).
+        pool.writer
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let has_activated_by: bool = {
+                        let mut stmt =
+                            c.prepare("PRAGMA table_info(crypto_officer_activations)")?;
+                        let mut rows = stmt.query([])?;
+                        let mut found = false;
+                        while let Some(row) = rows.next()? {
+                            let col_name: String = row.get(1)?;
+                            if col_name == "activated_by" {
+                                found = true;
+                                break;
+                            }
+                        }
+                        found
+                    };
+                    if !has_activated_by {
+                        c.execute_batch(
+                            "ALTER TABLE crypto_officer_activations \
+                             ADD COLUMN activated_by VARCHAR(255);",
+                        )?;
+                    }
+                    // Unique partial index: at most one active record per user.
+                    // SQLite supports partial indexes since 3.8.9 (2014-08-15).
+                    c.execute_batch(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active \
+                         ON crypto_officer_activations (activated_by) \
+                         WHERE revoked_at IS NULL;",
+                    )?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+
         if clear_database {
             pool.set_current_db_version(env!("CARGO_PKG_VERSION"))
                 .await?;
@@ -1150,14 +1190,19 @@ impl PermissionsStore for SqlitePool {
         Ok(user_perms)
     }
 
-    async fn activate_crypto_officer_ceremony(&self, sealed_record: &str) -> InterfaceResult<()> {
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
         let sql = replace_dollars_with_qn(get_sqlite_query!("insert-crypto-officer-activation"));
         let sealed = sealed_record.to_owned();
+        let activated_by_s = activated_by.to_owned();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
-                    tx.execute(&sql, params_from_iter([&sealed]))?;
+                    tx.execute(&sql, params_from_iter([&sealed, &activated_by_s]))?;
                     tx.commit()?;
                     Ok(())
                 },
