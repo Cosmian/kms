@@ -24,9 +24,23 @@ pub(crate) struct CrlQueryParams {
     pub validity_days: Option<u32>,
 }
 
-/// Generate a CRL for the specified issuer certificate.
+/// Generate and sign a fresh CRL for the specified issuer certificate.
 ///
 /// `GET /certificates/{issuer_id}/crl`
+///
+/// # Why authentication is required
+///
+/// Generating a CRL uses the **CA private key** to produce a cryptographic signature.
+/// Authentication ensures the caller has object-level read access to the CA key.
+/// No special role (Crypto Officer or otherwise) is required — any authenticated
+/// user with access to the CA certificate may request its CRL.
+///
+/// CRL _content_ is public information (RFC 5280 §3) — it lists revoked serial numbers
+/// and contains no private key material.  Authentication here protects the CA private
+/// key from being used as a signing oracle by unauthenticated callers.
+///
+/// The generated CRL is persisted to the database and immediately served by the
+/// public distribution endpoint (`GET /public/certificates/{id}/crl`).
 ///
 /// Returns the signed CRL in DER (default) or PEM format.
 #[get("/certificates/{issuer_id}/crl")]
@@ -84,19 +98,23 @@ pub(crate) async fn get_crl(
     }
 }
 
-/// Serve a pre-signed CRL from the in-memory cache or database (no authentication required).
+/// Serve the pre-computed CRL from the public distribution point (no authentication).
 ///
 /// `GET /public/certificates/{issuer_id}/crl`
 ///
-/// This endpoint is intended for CRL Distribution Point (CDP) URIs embedded in
-/// certificates. Any relying party (browser, TLS stack, etc.) must be able to
-/// fetch the CRL without credentials, as required by RFC 5280 §3.
+/// This endpoint is for **CRL Distribution Point (CDP) URIs** embedded in certificates.
+/// Any relying party — browser, TLS stack, OCSP client — can fetch it without credentials,
+/// as required by RFC 5280 §3.
 ///
-/// The CRL bytes are populated by the authenticated `GET /certificates/{id}/crl`
-/// endpoint and by automatic CRL regeneration triggered on certificate revocation.
-/// On cold start (server restart), the last signed CRL is loaded from the `crls`
-/// database table, so the endpoint is immediately available without a manual
-/// `generate-crl` call.
+/// The CRL is served from cache (no CA private key access at serve time) and contains
+/// **all** revoked certificates issued by this CA regardless of DB ownership (`find_all`).
+///
+/// **Automatic refresh**: the CRL is regenerated after every certificate revocation
+/// and by the background scheduler before expiry.  On server restart the last signed
+/// CRL is loaded from the database, so the endpoint is immediately available.
+///
+/// **HTTP caching**: responses include `Cache-Control: public, max-age=N` (derived from
+/// `nextUpdate − 60s`) and `Last-Modified` headers so relying parties can cache the CRL.
 #[get("/public/certificates/{issuer_id}/crl")]
 pub(crate) async fn get_crl_public(
     kms: Data<Arc<KMS>>,

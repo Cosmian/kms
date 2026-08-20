@@ -2260,12 +2260,23 @@ paths:
   /certificates/{issuer_id}/crl:
     get:
       tags: [Certificates]
-      summary: Generate a CRL for the specified issuer certificate
+      summary: Generate a fresh CRL (signs with CA private key)
       description: |
-        Returns a signed X.509 Certificate Revocation List (CRL v2) for the issuer
-        identified by `issuer_id`. The CRL is generated on-the-fly by collecting
-        all revoked certificates issued by that CA and signing them with the issuer
-        private key.
+        Signs a fresh X.509 v2 Certificate Revocation List (CRL) for the CA identified
+        by `issuer_id` and returns it immediately.
+
+        **Why authentication is required**: generating a CRL uses the CA private key to
+        produce a cryptographic signature.  The caller must be authenticated so the server
+        can verify they have read access to the CA key via the normal object-level ACL.
+        No special role (Crypto Officer or otherwise) is required — any authenticated user
+        with access to the CA certificate may request its CRL.
+
+        The generated CRL is also persisted to the database and served by the public
+        distribution endpoint `GET /public/certificates/{issuer_id}/crl`.
+
+        **CRL content is public information** (RFC 5280 §3): it lists revoked certificate
+        serial numbers and contains no private key material.  Authentication here protects
+        the CA private key from being used as a signing oracle by unauthenticated callers.
 
         Supported output formats:
         - **DER** (default, `application/pkix-crl`, RFC 2585 §3)
@@ -2292,7 +2303,7 @@ paths:
         - name: validity_days
           in: query
           required: false
-          description: 'CRL validity period in days (default: 7)'
+          description: 'CRL validity period in days (default: server-configured value, typically 7)'
           schema:
             type: integer
             minimum: 1
@@ -2300,7 +2311,7 @@ paths:
       responses:
         '200':
           description: |
-            Signed CRL in the requested format.
+            Fresh signed CRL in the requested format.
             Content-Type is `application/pkix-crl` for DER or `application/x-pem-file` for PEM.
           content:
             application/pkix-crl:
@@ -2318,7 +2329,7 @@ paths:
         '401':
           description: Unauthorized — missing or invalid credentials
         '404':
-          description: Issuer certificate not found
+          description: Issuer certificate not found or caller lacks read access to the CA key
         '422':
           description: Invalid request — e.g. unsupported `format` value
         '500':
@@ -2329,20 +2340,29 @@ paths:
   /public/certificates/{issuer_id}/crl:
     get:
       tags: [Certificates]
-      summary: Retrieve a pre-signed CRL (public, no authentication required)
+      summary: Download CRL from the public distribution point (no authentication)
       description: |
-        Returns the most recently generated CRL DER bytes for the specified issuer
-        from the server's in-memory cache.
+        Returns the most recently generated CRL for the specified issuer.
 
         This endpoint is intended for **CRL Distribution Point (CDP) URIs** embedded
-        in certificates. Standard PKI relying parties (browsers, TLS stacks, OCSP
-        clients) fetch CDP URIs without credentials, as intended by RFC 5280 §3.
+        in certificates. Standard PKI relying parties — browsers, TLS stacks, OCSP
+        clients — fetch CDP URIs without credentials, as required by RFC 5280 §3.
 
-        The CRL is pre-signed; no key material is accessed at serve time.
+        The CRL is served from the server's cache (no CA private key access at serve
+        time) and includes **all** revoked certificates issued by this CA regardless
+        of which user owns the corresponding DB record.
 
-        **Important**: this endpoint returns HTTP 404 if the CA owner has not yet
-        called the authenticated `GET /certificates/{issuer_id}/crl` endpoint since
-        the last server start.
+        **Automatic refresh**: the CRL is regenerated automatically after every
+        certificate revocation and by a background scheduler before expiry.  The
+        server also loads the last signed CRL from the database on startup, so the
+        endpoint is immediately available without any manual call.
+
+        **Format**: always DER (`application/pkix-crl`).  Use the authenticated
+        `GET /certificates/{issuer_id}/crl?format=pem` endpoint for PEM output.
+
+        **HTTP caching**: responses include `Cache-Control: public, max-age=N` and
+        `Last-Modified` headers so that relying parties can cache the CRL and avoid
+        unnecessary round-trips.
       operationId: getCrlPublic
       security: []
       parameters:
@@ -2354,10 +2374,21 @@ paths:
             type: string
       responses:
         '200':
-          description: Pre-signed DER-encoded CRL (RFC 2585 §3, `application/pkix-crl`)
+          description: DER-encoded CRL (`application/pkix-crl`, RFC 2585 §3)
           headers:
             Last-Modified:
               description: HTTP-date when the CRL was last generated
+              schema:
+                type: string
+            Cache-Control:
+              description: >-
+                HTTP caching directive, e.g. `public, max-age=86340, no-transform`.
+                The `max-age` is derived from the CRL's `nextUpdate` timestamp minus
+                a 60-second safety buffer.
+              schema:
+                type: string
+            Expires:
+              description: RFC 7231 date of the CRL's effective expiry (for HTTP/1.0 compatibility)
               schema:
                 type: string
           content:
@@ -2367,8 +2398,10 @@ paths:
                 format: binary
         '404':
           description: |
-            No CRL found in cache for this issuer. The CA owner must call
-            `GET /certificates/{issuer_id}/crl` (authenticated) at least once.
+            No CRL available for this issuer yet.
+            The CRL is generated automatically when a certificate is revoked.
+            If no certificate has been revoked yet, call `GET /certificates/{issuer_id}/crl`
+            (authenticated) to generate an initial CRL.
 
   /v1/crypto/encrypt:
     post:
