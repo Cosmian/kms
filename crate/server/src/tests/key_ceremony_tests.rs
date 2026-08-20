@@ -1970,3 +1970,170 @@ async fn test_join_wrapped_shares_fails_after_wrapping_key_deleted() -> KResult<
 
     Ok(())
 }
+
+// ─── Regression — OPA enforcing mode does not deadlock CO ceremony ────────────
+
+/// **BUG REGRESSION**: CO ceremony was impossible in OPA enforcing mode.
+///
+/// ## Root cause
+///
+/// In `user_has_permission()`, the OPA Gate 1 bypass for "native COs" used
+/// `kms.is_crypto_officer(user)`, which returns **false** for ceremony candidates
+/// who have not yet activated.  This created a chicken-and-egg deadlock:
+///
+/// - Ceremony candidates need to `Get` peer shares (held by other COs) in order to
+///   call `JoinSplitKey` and complete the ceremony.
+/// - Before ceremony completion, `is_crypto_officer()` → false → OPA Gate 1 runs.
+/// - OPA sees `roles = []` (mTLS auth, no JWT) and `is_owner = false` (peer share)
+///   → **deny** → ceremony blocked.
+///
+/// ## Fix
+///
+/// Extend `is_native_co` in `user_has_permission` to also include users listed in
+/// `crypto_officer.users`, regardless of ceremony completion.  These users bypass
+/// OPA Gate 1 (which is designed for JWT-role enforcement) but still go through the
+/// legacy gate (DB ownership + grant checks).
+///
+/// ## Feedback loop
+///
+/// We call `user_has_permission` directly with:
+/// - OPA enforcing + unreachable URL (any OPA call → fail-closed deny)
+/// - alice is a CO candidate (in `co_users`) but ceremony not yet complete
+/// - alice has an explicit DB `Get` grant on bob's key
+///
+/// BEFORE fix: `is_native_co = is_crypto_officer(alice) = false`
+///   → OPA Gate 1 runs → unreachable → `false` → alice cannot access bob's key.
+///
+/// AFTER fix: `is_native_co = alice in co_users → true`
+///   → OPA Gate 1 bypassed → legacy gate: alice has DB grant → `true`.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_ceremony_not_blocked_by_opa_enforcing_mode() -> KResult<()> {
+    use std::collections::HashSet;
+
+    use crate::core::retrieve_object_utils::user_has_permission;
+
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+
+    // ── 1. Build a ceremony KMS with OPA enforcing + unreachable URL ─────────
+    //
+    // Any operation that reaches OPA Gate 1 will fail-close (deny), because
+    // the reqwest client gets ECONNREFUSED on 127.0.0.1:1 and `unwrap_or(false)`
+    // translates the error into a deny.
+    let mut conf = ClapConfig {
+        db: MainDBConfig {
+            database_type: Some("sqlite".to_owned()),
+            sqlite_path: get_tmp_sqlite_path(),
+            clear_database: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    conf.roles.crypto_officer_users =
+        Some(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]);
+    conf.roles.crypto_officer_require_ceremony = true;
+    conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
+    // OPA enforcing mode, port 1 is always refused — OPA Gate 1 calls always deny.
+    conf.opa.opa_url = Some("http://127.0.0.1:1".to_owned());
+    conf.opa.opa_mode = "enforcing".to_owned();
+
+    let params = ServerParams::try_from(conf)?;
+    let kms = Arc::new(KMS::instantiate(Arc::new(params)).await?);
+
+    // ── 2. Set up state via server API ────────────────────────────────────────
+    //
+    // `kms.create()` calls `enforce_create_permission()` which checks
+    // `is_privileged = user in co_users` — alice and bob are in co_users, so the
+    // OPA Create check is bypassed.  The keys are stored in the DB with the
+    // respective users as owners.
+    let alice_key_uid = create_key(&kms, alice).await?;
+    let bob_key_uid = create_key(&kms, bob).await?;
+
+    // Grant alice explicit GET access on bob's key (direct DB — no OPA path).
+    kms.database
+        .grant_operations(
+            &bob_key_uid,
+            &UserId::from(alice),
+            HashSet::from([KmipOperation::Get]),
+        )
+        .await?;
+
+    // ── 3. Retrieve ObjectWithMetadata directly (no OPA) ─────────────────────
+    let alice_objects = kms
+        .database
+        .retrieve_objects(crate::core::ObjectHandle::from(alice_key_uid.as_str()))
+        .await?;
+    let alice_owm = alice_objects
+        .into_values()
+        .next()
+        .expect("alice's key must be in DB");
+
+    let bob_objects = kms
+        .database
+        .retrieve_objects(crate::core::ObjectHandle::from(bob_key_uid.as_str()))
+        .await?;
+    let bob_owm = bob_objects
+        .into_values()
+        .next()
+        .expect("bob's key must be in DB");
+
+    // ── 4. Verify alice can access her OWN key ────────────────────────────────
+    //
+    // Before fix: fails (alice not is_native_co, OPA unreachable → deny even for owner).
+    // After fix:  passes (alice in co_users → bypass OPA Gate 1 → legacy gate: owner → allow).
+    let alice_can_get_own = user_has_permission(
+        &UserId::from(alice),
+        Some(&alice_owm),
+        &KmipOperation::Get,
+        &kms,
+    )
+    .await?;
+    assert!(
+        alice_can_get_own,
+        "CO candidate alice must be able to GET her own key in OPA enforcing mode \
+         (CO candidates bypass OPA Gate 1 — is_owner path in legacy gate must apply)"
+    );
+
+    // ── 5. Verify alice can access BOB's key via explicit grant ──────────────
+    //
+    // This is the direct ceremony deadlock scenario: alice needs to Get a peer's
+    // share before she can call JoinSplitKey.
+    //
+    // Before fix: fails (alice not is_native_co, OPA Gate 1: is_owner=false,
+    //             roles=[] → unreachable → deny).
+    // After fix:  passes (alice in co_users → bypass OPA Gate 1 → legacy gate:
+    //             alice has explicit Get grant → allow).
+    let alice_can_get_bobs = user_has_permission(
+        &UserId::from(alice),
+        Some(&bob_owm),
+        &KmipOperation::Get,
+        &kms,
+    )
+    .await?;
+    assert!(
+        alice_can_get_bobs,
+        "CO candidate alice must be able to GET bob's key via explicit DB grant \
+         when OPA is enforcing with unreachable URL (CO candidates bypass Gate 1)"
+    );
+
+    // ── 6. Verify bob CANNOT access alice's key without a grant ─────────────
+    //
+    // After fix, CO candidates still go through the legacy gate for peer objects.
+    // Bob has no grant on alice's key — the legacy gate must deny.
+    let bob_can_get_alice = user_has_permission(
+        &UserId::from(bob),
+        Some(&alice_owm),
+        &KmipOperation::Get,
+        &kms,
+    )
+    .await?;
+    assert!(
+        !bob_can_get_alice,
+        "CO candidate bob must NOT be able to GET alice's key without an explicit grant \
+         (legacy gate must still apply for CO candidates)"
+    );
+
+    Ok(())
+}
