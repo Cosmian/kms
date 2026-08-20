@@ -708,7 +708,7 @@ async fn build_oidc_runtime_config(
 pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev::Server> {
     // ── Startup security guards ──────────────────────────────────────────────
 
-    // F-001: Warn loudly if the `insecure` feature flag is compiled in.
+    // Warn loudly if the `insecure` feature flag is compiled in.
     #[cfg(feature = "insecure")]
     {
         cosmian_logger::error!(
@@ -718,7 +718,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
-    // F-002: Warn if accept_invalid_certs is enabled for auth-verifier or vault connections.
+    // Warn if accept_invalid_certs is enabled for auth-verifier or vault connections.
     if kms_server
         .params
         .auth_verifier_config
@@ -737,7 +737,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
-    // F-003: Warn when Vault API is enabled but rate limiting is disabled.
+    // Warn when Vault API is enabled but rate limiting is disabled.
     // The auth proxy at /v1/auth/* is unauthenticated and can be used to flood
     // the auth-verifier. The global rate limiter (if configured) mitigates this.
     if kms_server.params.vault_api_enabled && kms_server.params.rate_limit_per_second.is_none() {
@@ -762,7 +762,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
-    // F-008: Validate session salt entropy when UI is enabled.
+    // Validate session salt entropy when UI is enabled.
     if kms_server.params.ui_enable {
         if let Some(ref salt) = kms_server.params.ui_session_salt {
             if salt.len() < 32 {
