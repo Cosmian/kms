@@ -1367,6 +1367,46 @@ impl PermissionsStore for RedisWithFindex {
             _ => Ok(None),
         }
     }
+
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
+        // Scan for all keys matching the `crl:*` pattern.
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg("crl:*")
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to list CRL keys from Redis: {e}"))
+            })?;
+
+        let mut result = Vec::with_capacity(keys.len());
+        for key in keys {
+            let raw: Option<String> = redis::cmd("GET")
+                .arg(&key)
+                .query_async(&mut self.mgr.clone())
+                .await
+                .map_err(|e| {
+                    InterfaceError::Default(format!("Failed to read CRL key '{key}': {e}"))
+                })?;
+            let Some(json_str) = raw else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_str) else {
+                continue;
+            };
+            let Some(next_update) = v
+                .get("next_update")
+                .and_then(|s| s.as_str())
+                .map(String::from)
+            else {
+                continue;
+            };
+            // Strip the "crl:" prefix to get the issuer_id.
+            let issuer_id = key.strip_prefix("crl:").unwrap_or(&key).to_owned();
+            result.push((issuer_id, next_update));
+        }
+        result.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(result)
+    }
 }
 
 #[cfg(test)]

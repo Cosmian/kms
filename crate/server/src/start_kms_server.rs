@@ -389,6 +389,17 @@ pub async fn start_kms_server(
         None
     };
 
+    // Spawn background CRL refresh cron thread and retain shutdown signal.
+    // Only spawned when kms_public_url is set (CDP endpoint is active) and
+    // crl_refresh_check_hours > 0.
+    let crl_refresh_shutdown_tx = if kms_server.params.kms_public_url.is_some()
+        && kms_server.params.crl_refresh_check_hours > 0
+    {
+        Some(cron::spawn_crl_refresh_cron(kms_server.clone()))
+    } else {
+        None
+    };
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.google_cse_enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
@@ -415,6 +426,10 @@ pub async fn start_kms_server(
     }
     // Signal the auto-rotation cron thread to stop
     if let Some(tx) = auto_rotation_shutdown_tx {
+        let _ = tx.send(());
+    }
+    // Signal the CRL refresh cron thread to stop
+    if let Some(tx) = crl_refresh_shutdown_tx {
         let _ = tx.send(());
     }
     if let Some(ss_command_tx) = ss_command_tx {
