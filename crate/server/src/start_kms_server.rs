@@ -350,7 +350,12 @@ async fn import_cse_migration_key(
 /// # Arguments
 ///
 /// * `server_params` - An instance of `ServerParams` containing the server's settings.
-/// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
+/// * `kms_server_handle_tx` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
+/// * `pre_bound_http_listener` - An optional pre-bound TCP listener for the HTTP port.
+///   When provided, the server uses [`HttpServer::listen()`] / [`HttpServer::listen_openssl()`]
+///   instead of [`HttpServer::bind()`], which eliminates the TOCTOU race that occurs between
+///   probing a free port and re-binding it later. Tests pass a listener from
+///   `allocate_dynamic_port`; production callers pass `None`.
 ///
 /// # Errors
 ///
@@ -358,6 +363,7 @@ async fn import_cse_migration_key(
 pub async fn start_kms_server(
     server_params: Arc<ServerParams>,
     kms_server_handle_tx: Option<mpsc::Sender<ServerHandle>>,
+    pre_bound_http_listener: Option<std::net::TcpListener>,
 ) -> KResult<()> {
     // OpenSSL is loaded now, so that tests can use the correct provider(s)
 
@@ -419,7 +425,12 @@ pub async fn start_kms_server(
 
     // Log the server configuration
     info!("KMS Server configuration: {server_params:#?}");
-    let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
+    let res = start_http_kms_server(
+        kms_server.clone(),
+        kms_server_handle_tx,
+        pre_bound_http_listener,
+    )
+    .await;
     // Signal the metrics cron thread to stop
     if let Some(tx) = metrics_shutdown_tx {
         let _ = tx.send(());
@@ -491,9 +502,10 @@ fn start_socket_server(
 async fn start_http_kms_server(
     kms_server: Arc<KMS>,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
+    pre_bound_http_listener: Option<std::net::TcpListener>,
 ) -> KResult<()> {
     // Instantiate and prepare the KMS server
-    let server = prepare_kms_server(kms_server).await?;
+    let server = prepare_kms_server(kms_server, pre_bound_http_listener).await?;
 
     // send the server handle to the caller
     if let Some(tx) = &server_handle_transmitter {
@@ -720,7 +732,10 @@ async fn build_oidc_runtime_config(
 /// cannot occur in practice since the URL is syntactically valid. This URL is only
 /// constructed when `vault_api_enabled = false` or `vault_auth_verifier_url` is
 /// absent, and is never invoked (guarded by `Condition::new(false, …)`).
-pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev::Server> {
+pub async fn prepare_kms_server(
+    kms_server: Arc<KMS>,
+    pre_bound_http_listener: Option<std::net::TcpListener>,
+) -> KResult<actix_web::dev::Server> {
     // ── Startup security guards ──────────────────────────────────────────────
 
     // Warn loudly if the `insecure` feature flag is compiled in.
@@ -1733,18 +1748,29 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         Some(ssl_acceptor) => {
             if use_cert_auth {
                 trace!("Using Client Certificate Authentication with OpenSSL");
-                // Start an HTTPS server with PKCS#12 with client cert auth
-                server
-                    .on_connect(extract_peer_certificate)
-                    .bind_openssl(address, ssl_acceptor)?
-                    .run()
+                let s = server.on_connect(extract_peer_certificate);
+                if let Some(lst) = pre_bound_http_listener {
+                    s.listen_openssl(lst, ssl_acceptor)?
+                } else {
+                    s.bind_openssl(address, ssl_acceptor)?
+                }
+                .run()
             } else {
                 trace!("Not using Client Certificate Authentication with OpenSSL");
-                // Start an HTTPS server with PKCS#12 but not client cert auth
-                server.bind_openssl(address, ssl_acceptor)?.run()
+                if let Some(lst) = pre_bound_http_listener {
+                    server.listen_openssl(lst, ssl_acceptor)?
+                } else {
+                    server.bind_openssl(address, ssl_acceptor)?
+                }
+                .run()
             }
         }
-        _ => server.bind(address)?.run(),
+        _ => if let Some(lst) = pre_bound_http_listener {
+            server.listen(lst)?
+        } else {
+            server.bind(address)?
+        }
+        .run(),
     })
 }
 
