@@ -721,19 +721,6 @@ Crate path: `crate/server`
 | `warn` | `Auto-CRL: no active Crypto Officer found for issuer '{issuer_id}';                  skipping CRL regeneration after certificate revocation.                  Complete a CO ceremony or call GET /certificates/{issuer_id}/crl manually.` | `src/core/operations/revoke.rs` | `issuer_id` | - |
 | `warn` | `Failed to load CRL from database for issuer '{issuer_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_id`, `e` | - |
 | `warn` | `Failed to persist CRL to database for issuer '{issuer_certificate_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_certificate_id`, `e` | - |
-| `warn` | `[{idx}] CRL distribution point unreachable for '{:?}', skipping                          revocation check: {e}` | `src/core/operations/validate.rs` | `idx`, `e` | - |
-| `warn` | `CRL signature could not be verified against chain issuers;                          issuer: {crl_issuer:?}, path: {crl_path}.                          Continuing (trusted local delivery).` | `src/core/operations/validate.rs` | `crl_issuer`, `crl_path` | - |
-| `warn` | `CRL validation failed: {crl_err}` | `src/core/operations/validate.rs` | `crl_err` | - |
-| `info` | `GET /certificates/{}/crl` | `src/routes/crl.rs` | - | - |
-| `info` | `GET /public/certificates/{}/crl (unauthenticated)` | `src/routes/crl.rs` | - | - |
-| `debug` | `Auto-injecting CRL Distribution Point: {crl_url}` | `src/core/operations/certify/build_certificate.rs` | `crl_url` | - |
-| `debug` | `CRL cache hit: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
-| `debug` | `CRL fetched: uri={uri} size={}` | `src/core/operations/validate.rs` | `uri` | - |
-| `debug` | `CRL generated successfully for issuer '{}': {} entries, validity {} days` | `src/core/operations/generate_crl.rs` | - | - |
-| `debug` | `CRL response received: uri={uri} status={}` | `src/core/operations/validate.rs` | `uri` | - |
-| `debug` | `Generating CRL for issuer certificate: {}` | `src/core/operations/generate_crl.rs` | - | - |
-| `trace` | `Found {} revoked certificate(s) for issuer '{}'` | `src/core/operations/generate_crl.rs` | - | - |
-| `trace` | `Skipping certificate '{}': cannot parse DER: {e}` | `src/core/operations/generate_crl.rs` | `e` | - |
 | `warn` | `OPA request failed (fail-closed deny): {e}` | `src/core/opa/client.rs` | `e` | - |
 | `warn` | `OPA response parse failed (fail-closed deny): {e}` | `src/core/opa/client.rs` | `e` | - |
 | `warn` | `OPA returned non-2xx (fail-closed deny): {status} — {body_text}` | `src/core/opa/client.rs` | `status`, `body_text` | - |
