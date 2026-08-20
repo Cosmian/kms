@@ -193,7 +193,7 @@ pub(crate) async fn create_split_key(
         None
     };
 
-    // Retrieve the AES-KW ceremony wrapping key once, before the share loop (F-3).
+    // Retrieve the AES-KW ceremony wrapping key once, before the share loop.
     // Each share's raw bytes are wrapped with this key before being stored in the DB,
     // so that a DB-level attacker cannot read share plaintext without also accessing
     // the wrapping key (which may itself be HSM-resident when the KMS is HSM-backed).
@@ -236,7 +236,7 @@ pub(crate) async fn create_split_key(
             (*user).clone()
         };
 
-        // If a ceremony wrapping key is configured, AES-KW wrap the share bytes (F-3).
+        // If a ceremony wrapping key is configured, AES-KW wrap the share bytes.
         // The plaintext share is consumed here; only the wrapped ciphertext is stored.
         let stored_share_bytes: Zeroizing<Vec<u8>> = match &wrapping_key_bytes {
             Some(wkb) => {
@@ -326,7 +326,7 @@ pub(crate) async fn create_split_key(
             );
         }
 
-        // Stamp the wrapping key UID on the share so JoinSplitKey can locate it (F-3).
+        // Stamp the wrapping key UID on the share so JoinSplitKey can locate it.
         if let Some(ref wrap_key_id) = kms.params.crypto_officer.ceremony_wrapping_key_id {
             share_attrs.set_vendor_attribute(
                 VENDOR_ID_COSMIAN,

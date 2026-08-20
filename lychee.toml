@@ -38,6 +38,7 @@ exclude = [
   'localhost',
   '127\.0\.0\.1',
   'host\.docker\.internal',
+  'kms\.different\.com',
   '@',
   'eviden_vm',
   'cbom',
