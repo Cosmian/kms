@@ -18,7 +18,7 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::{trace, warn};
 use rand_chacha::ChaCha20Rng;
-use tracing::info;
+use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -184,6 +184,15 @@ pub(crate) async fn create_split_key(
 
     let now = time::OffsetDateTime::now_utc();
 
+    // Generate a session ID that appears in every audit log entry for this CreateSplitKey
+    // invocation, enabling correlation of all shares produced in a single ceremony split
+    // (NIST SP 800-57 Part 2 Rev 1 §4.6 audit requirements).
+    let ceremony_session_id = if is_co_ceremony_key {
+        Some(Uuid::new_v4().to_string())
+    } else {
+        None
+    };
+
     for (idx, share_bytes) in raw_shares.into_iter().enumerate() {
         // 1-indexed share number; idx fits in i32 since total_parts <= 255.
         let part_identifier = i32::try_from(idx + 1).unwrap_or(1);
@@ -323,14 +332,16 @@ pub(crate) async fn create_split_key(
             }
         };
 
-        info!(
+        tracing::error!(
+            target: "audit",
             uid = %share_uid,
             part = part_identifier,
             total = total_parts,
             source = %uid_str,
             owner = %share_owner,
             user = %user,
-            "CreateSplitKey: stored share",
+            session_id = ?ceremony_session_id,
+            "CreateSplitKey: split-key share stored",
         );
 
         share_uids.push(UniqueIdentifier::TextString(share_uid));
@@ -386,9 +397,11 @@ pub(crate) async fn create_split_key(
         .await
         {
             Ok(_) => {
-                info!(
+                tracing::error!(
+                    target: "audit",
                     uid = %uid_str,
                     user = %user,
+                    session_id = ?ceremony_session_id,
                     "CreateSplitKey: ceremony source key destroyed after successful split",
                 );
             }

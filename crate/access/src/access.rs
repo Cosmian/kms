@@ -203,10 +203,13 @@ impl CryptoOfficerConfig {
 
     /// Validate role configuration.
     ///
-    /// Currently a no-op, kept for forward compatibility.
+    /// Enforces NIST SP 800-57 Part 2 Rev 1 §4.6 split-knowledge minimum:
+    /// `require_ceremony = true` requires at least 3 CO users. With XOR n-of-n
+    /// and only n = 2, the key creator can derive S2 = K ⊕ S1 trivially, so
+    /// genuine dual-control requires n ≥ 3.
     ///
     /// # Errors
-    /// Returns an error if the configuration is invalid.
+    /// Returns an error string when `require_ceremony = true` and `users.len() < 3`.
     pub fn validate(&self) -> Result<(), String> {
         if self.require_ceremony && self.users.len() < 3 {
             return Err(format!(

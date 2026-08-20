@@ -20,7 +20,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use openssl::hash::{MessageDigest, hash};
-use tracing::{debug, info};
+use tracing::debug;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -330,6 +330,9 @@ pub(crate) async fn join_split_key(
     let mut tags: HashSet<String> = HashSet::new();
     tags.insert("reconstructed-split-key".to_owned());
 
+    // Session ID for audit-log correlation of this JoinSplitKey invocation.
+    let join_session_id = Uuid::new_v4();
+
     kms.database
         .create(
             Some(reconstructed_uid.clone()),
@@ -340,10 +343,12 @@ pub(crate) async fn join_split_key(
         )
         .await?;
 
-    info!(
+    tracing::error!(
+        target: "audit",
         uid = %reconstructed_uid,
         shares = share_uids.len(),
         user = %user,
+        session_id = %join_session_id,
         "JoinSplitKey: reconstructed key stored",
     );
 
@@ -359,9 +364,10 @@ pub(crate) async fn join_split_key(
     if reconstructed.all_ceremony_tagged && kms.params.crypto_officer.require_ceremony {
         match perform_crypto_officer_ceremony_activation(kms, &share_uids, user).await {
             Ok(()) => {
-                info!(
+                tracing::info!(
                     uid = %reconstructed_uid,
                     user = %user,
+                    session_id = %join_session_id,
                     "JoinSplitKey: CO ceremony auto-activated via reconstructed key",
                 );
             }
