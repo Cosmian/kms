@@ -480,7 +480,7 @@ aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
 aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 
 [opa]
-opa_mode = ""
+opa_mode = "disabled"
 
 [kmip.allowlists]
 
