@@ -373,52 +373,24 @@ const fn revocation_target_state(reason: &RevocationReason) -> State {
 }
 
 /// Trigger CRL regeneration for `issuer_id` after a certificate revocation.
+/// Trigger CRL regeneration for `issuer_id` after a certificate revocation.
 ///
-/// Resolves the CO identity to use (first active CO, or `default_username` when
-/// no CO is configured), then calls `generate_crl`. Errors are logged at `warn`
-/// level but are never propagated — this must not fail the parent `Revoke`
-/// operation.
+/// CRL content is public information (RFC 5280 §3) so no special role is required.
+/// Uses `default_username` as the signer identity so the function can always run,
+/// regardless of CO configuration.
 ///
-/// This function awaits inline; the revoke response is returned only after the
-/// CRL has been refreshed. This is acceptable since CRL signing is fast (~ms)
-/// and guarantees the CDP endpoint immediately serves an up-to-date CRL.
+/// Errors are logged at `warn` level and never propagated — this must not fail
+/// the parent `Revoke` operation.
 async fn trigger_crl_regeneration(kms: &KMS, issuer_id: &str) {
-    // Resolve the user identity that has permission to call generate_crl.
-    // generate_crl requires the CO role (when configured) because it uses find_all.
-    let co_user = match kms.find_active_co().await {
-        Ok(Some(co)) => co,
-        Ok(None) if kms.params.crypto_officer.users.is_empty() => {
-            // No CO configured — single-admin mode; default user owns all objects.
-            UserId::from(kms.params.default_username.as_str())
-        }
-        Ok(None) => {
-            // CO users are configured but none is active (ceremony not completed).
-            // Skip regeneration rather than publish an incomplete CRL.
-            warn!(
-                issuer_id = issuer_id,
-                "Auto-CRL: no active Crypto Officer found for issuer '{issuer_id}'; \
-                 skipping CRL regeneration after certificate revocation. \
-                 Complete a CO ceremony or call GET /certificates/{issuer_id}/crl manually."
-            );
-            return;
-        }
-        Err(e) => {
-            warn!(
-                issuer_id = issuer_id,
-                "Auto-CRL: failed to resolve Crypto Officer for issuer '{issuer_id}': {e}"
-            );
-            return;
-        }
-    };
+    let signer = UserId::from(kms.params.default_username.as_str());
 
     info!(
         issuer_id = issuer_id,
-        user = co_user.as_str(),
         "Auto-CRL: triggered CRL regeneration for issuer '{issuer_id}' after certificate revocation"
     );
 
     if let Err(e) =
-        crate::core::operations::generate_crl::generate_crl(kms, issuer_id, None, &co_user).await
+        crate::core::operations::generate_crl::generate_crl(kms, issuer_id, None, &signer).await
     {
         warn!(
             issuer_id = issuer_id,
