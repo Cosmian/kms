@@ -7,6 +7,25 @@ can be parsed by any standard tooling.
 Audit logging is **disabled by default**. No file is created and no background writer thread is
 spawned until the feature is explicitly enabled.
 
+```mermaid
+sequenceDiagram
+    participant Client as KMIP Client
+    participant MW as Audit Middleware
+    participant File as audit.jsonl
+    participant Agent as File-tailing agent
+    participant SIEM as SIEM
+
+    Client->>MW: KMIP request (Create / Encrypt / Destroy)
+    Note over MW: Extracts user, IP, request_id from request
+    MW->>MW: execute KMIP operation
+    MW->>File: append JSON event with row_hash
+    Note over File: row_hash = SHA-256(prev_hash + event fields)
+    MW-->>Client: KMIP response
+    Note over File: Hash chain verified offline with ckms audit verify
+    Agent->>File: tail from last offset
+    Agent->>SIEM: forward events (guaranteed, resumable)
+```
+
 ---
 
 ## Enable audit logging
@@ -56,6 +75,34 @@ multi-writer-safe audit trail is planned via a PostgreSQL backend.
 | `--audit-channel-capacity`    | `KMS_AUDIT_CHANNEL_CAPACITY`    | `4096`                         | Capacity of the bounded in-memory channel between request threads and the writer task. Each event is ≈ 500 B (≈ 2 MiB total at default).                                                                               |
 | `--audit-trusted-proxy-cidrs` | `KMS_AUDIT_TRUSTED_PROXY_CIDRS` | _(empty)_                      | Comma-separated CIDR blocks (e.g. `10.0.0.0/8,172.16.0.0/12`) of reverse proxies/load balancers allowed to set `client_ip` via `X-Forwarded-For`. See [Client IP and reverse proxies](#client-ip-and-reverse-proxies). |
 | `--audit-failure-mode`        | `KMS_AUDIT_FAILURE_MODE`        | `continue`                     | What to do when an event cannot be queued. `continue` — log the error, keep serving. `reject` — return HTTP 503. See [Audit failure mode](#audit-failure-mode).                                                        |
+
+## SIEM integration
+
+Audit events are forwarded to a SIEM (Splunk, Elastic, Loki, OpenSearch, …) by a
+**dedicated file-tailing agent** running alongside the KMS.  This is the architecturally
+correct pattern for audit data, which by definition must be **exhaustive** — a property
+that cannot be guaranteed by an in-process forwarding channel.
+
+```text
+audit.jsonl ──► Vector / Filebeat / Fluent Bit ──► SIEM
+                          │
+                          └── optional: ckms audit verify (detect tampering before ingest)
+```
+
+**Why file-tailing and not an in-process OTLP channel?**
+
+The hash-chained JSONL file is the sole authoritative source of truth.  An in-process
+channel is best-effort: if the process crashes, the channel buffer is lost; if the
+receiver is down, events are silently dropped with no way to detect the gap.  A
+file-tailing agent reading from its last committed offset survives restarts and recovers
+automatically — delivering every event exactly once.
+
+Per **PCI-DSS Req. 10**, access to the audit trail must be restricted to personnel with a
+documented business need (the SOC).  Route the agent's output to a dedicated, access-controlled
+SIEM pipeline, separate from the application metrics/traces pipeline (operated by SRE).
+
+See [SIEMs](./siems.md) for end-to-end configuration examples with Vector, Filebeat, and
+Fluent Bit.
 
 > **Tip**: if you see `AuditFileStore: channel full` in the server log under sustained high load, raise
 > `--audit-channel-capacity`. When the channel is full the event is dropped (non-blocking) and an
@@ -174,7 +221,7 @@ The hash is computed over a canonical byte sequence of the event's fields:
 Any modification to a field in any row — including reordering rows, deleting rows, or appending
 forged rows — breaks at least one `prev_hash → row_hash` link and is detected by `ckms audit verify`.
 
-#### Durability
+### Durability
 
 Each write is followed by [`fsync()`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/fsync.html) to ensure data is physically written to disk. Events survive
 an OS crash or power failure as long as the storage medium has confirmed the write.
@@ -237,13 +284,13 @@ ckms audit verify --path /var/log/cosmian-kms/
 
 **Sample output: intact chain**:
 
-```
+```text
 /var/log/cosmian-kms/audit.jsonl: chain OK: 42 events verified
 ```
 
 **Sample output: tampered file**:
 
-```
+```text
 TAMPERED: /var/log/cosmian-kms/audit.jsonl event id=17 (line 18) has an invalid row_hash
 ```
 
@@ -261,7 +308,7 @@ tampered, or missing/altered sealed evidence.
 
 With `--verbose`, a summary line is printed for every event:
 
-```
+```text
 id=0  2026-05-06T20:31:15Z  Create   chain=ok
 id=1  2026-05-06T20:31:15Z  Encrypt  chain=ok
 ...

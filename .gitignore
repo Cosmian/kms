@@ -70,4 +70,12 @@ perf.data
 perf.data.old
 target/flamegraphs/
 
+# Reviews
+REVIEW_REPORT*.md
+/threat_model*
+
+# Reviews
+REVIEW_REPORT*.md
+/threat-model*
+
 scripts/

@@ -53,6 +53,15 @@ pub struct AuditFileConfig {
 /// carries a SHA-256 hash chain so the log can be verified offline with
 /// `ckms audit verify --path <file>`.
 ///
+/// ## SIEM integration
+///
+/// For forwarding audit events to a SIEM (Splunk, Elastic, Loki, `OpenSearch`, …),
+/// use a dedicated file-tailing agent (Vector, Filebeat, Fluent Bit) that reads
+/// `audit.jsonl` from its last offset.  This guarantees exhaustive delivery with
+/// no event loss — a property that cannot be ensured by an in-process forwarding
+/// channel.  The agent can optionally run `ckms audit verify` before forwarding
+/// to detect tampering before events reach the SIEM.
+///
 /// Compliance: PCI-DSS Req. 10, HIPAA §164.312(b), NIST SP 800-66r2.
 #[derive(Debug, Default, Args, Deserialize, Serialize, Clone)]
 #[serde(default)]
