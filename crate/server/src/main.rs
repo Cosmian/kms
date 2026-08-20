@@ -396,6 +396,9 @@ key_encryption_key = "key wrapping key"
 kms_public_url = "[kms_public_url]"
 auto_rotation_check_interval_secs = 0
 keyset_warn_depth = 5
+crl_default_validity_days = 7
+crl_refresh_check_hours = 1
+crl_refresh_overlap_hours = 24
 
 [db]
 database_type = "[redis-findex, postgresql,...]"

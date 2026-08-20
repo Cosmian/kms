@@ -283,7 +283,6 @@ pub struct ClapConfig {
     /// When a CRL is generated without an explicit validity override (e.g., via
     /// `GET /certificates/{id}/crl?validity_days=N`), this value is used.
     ///
-    /// Competitors: Vault PKI defaults to 7 days; AWS PCA allows 1 h–7 days;
     /// Production CAs often use 1–24 h for short-lived CRLs (code-signing,
     /// high-security); enterprise PKIs commonly use 7–28 days.
     ///
