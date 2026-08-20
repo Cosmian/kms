@@ -1110,7 +1110,13 @@ fn set_access_token(
 /// `drop` and `bind`, causing a spurious `EADDRINUSE` failure on a loaded CI
 /// runner (e.g., macOS with many parallel test binaries).
 fn allocate_dynamic_port(config: &mut ClapConfig) -> Result<std::net::TcpListener, KmsClientError> {
-    let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| {
+    // Bind to the configured hostname so that the pre-bound listener covers
+    // the same interface(s) as the actual server.  Using "0.0.0.0" (the
+    // common default) means the server accepts connections on every
+    // interface, which is required for forward-proxy tests that reach the
+    // KMS via the runner's LAN IP rather than loopback.
+    let hostname = config.http.hostname.as_str();
+    let listener = TcpListener::bind((hostname, 0)).map_err(|e| {
         KmsClientError::UnexpectedError(format!("Failed to allocate port for test server: {e}"))
     })?;
     let port = listener
