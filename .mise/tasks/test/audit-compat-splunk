@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+#MISE description="Ingest a KMS JSONL audit file into an ephemeral Splunk container and verify compatibility"
+#USAGE flag "-f --file <file>" env="AUDIT_FILE" help="Path to the KMS JSONL audit file" default=".mise/scripts/test/fixtures/sample-audit.jsonl"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Splunk audit JSONL compatibility test"
+
+require_cmd docker "Docker is required to run the ephemeral Splunk container."
+require_cmd python3
+require_cmd curl
+
+if [ -z "${SPLUNK_PASSWORD:-}" ]; then
+  print_error "SPLUNK_PASSWORD env var must be set (CI secret, 8+ chars, one number/uppercase)"
+fi
+
+REPO_ROOT="$(get_repo_root)"
+AUDIT_FILE="${usage_file:-${REPO_ROOT}/.mise/scripts/test/fixtures/sample-audit.jsonl}"
+SPLUNK_HOST=127.0.0.1
+SPLUNK_MGMT_PORT=8089
+SPLUNK_HEC_PORT=8088
+CONTAINER_NAME="kms-audit-compat-splunk-$$"
+HEC_TOKEN="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+
+cleanup() {
+  print_status "Removing container ${CONTAINER_NAME}"
+  docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+print_status "Starting ephemeral Splunk container (no volume, --rm)"
+# splunk/splunk has no native arm64 manifest; force amd64 (emulated via Rosetta/QEMU
+# on Apple Silicon, native on GitHub Actions ubuntu-latest runners).
+# SPLUNK_GENERAL_TERMS is required in addition to SPLUNK_START_ARGS since the image
+# started enforcing acceptance of the current Splunk General Terms separately.
+# Pinned to the current stable release (not :latest) so this test stays reproducible;
+# bump deliberately when a new Splunk version ships, see:
+# https://hub.docker.com/r/splunk/splunk/tags
+docker run -d --rm --name "${CONTAINER_NAME}" \
+  --platform linux/amd64 \
+  -p "${SPLUNK_MGMT_PORT}:8089" \
+  -p "${SPLUNK_HEC_PORT}:8088" \
+  -e "SPLUNK_START_ARGS=--accept-license" \
+  -e "SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com" \
+  -e "SPLUNK_PASSWORD=${SPLUNK_PASSWORD}" \
+  splunk/splunk:10.4.2 >/dev/null
+
+print_status "Waiting for Splunk management API to become ready (this can take a few minutes)"
+mgmt_ready=false
+for _ in $(seq 1 120); do
+  if curl -fsSk -u "admin:${SPLUNK_PASSWORD}" \
+    "https://${SPLUNK_HOST}:${SPLUNK_MGMT_PORT}/services/server/info?output_mode=json" >/dev/null 2>&1; then
+    mgmt_ready=true
+    break
+  fi
+  sleep 5
+done
+if [ "${mgmt_ready}" != "true" ]; then
+  print_error "Splunk management API never became ready"
+fi
+
+print_status "Enabling HTTP Event Collector and registering a token (sourcetype=_json)"
+curl -fsSk -u "admin:${SPLUNK_PASSWORD}" \
+  -d "disabled=0" \
+  "https://${SPLUNK_HOST}:${SPLUNK_MGMT_PORT}/servicesNS/nobody/splunk_httpinput/data/inputs/http/http" >/dev/null
+
+curl -fsSk -u "admin:${SPLUNK_PASSWORD}" \
+  -d "name=kms-audit-compat" \
+  -d "token=${HEC_TOKEN}" \
+  -d "index=main" \
+  -d "sourcetype=_json" \
+  -d "disabled=0" \
+  "https://${SPLUNK_HOST}:${SPLUNK_MGMT_PORT}/servicesNS/nobody/splunk_httpinput/data/inputs/http" >/dev/null
+
+python3 -m pip install --quiet -r "${REPO_ROOT}/.mise/scripts/test/requirements-audit-compat.txt"
+
+python3 "${REPO_ROOT}/.mise/scripts/test/validate_audit_compat.py" \
+  --backend splunk \
+  --file "${AUDIT_FILE}" \
+  --fields-file "${REPO_ROOT}/schemas/kms-audit-fields.json" \
+  --scheme https \
+  --insecure \
+  --host "${SPLUNK_HOST}" \
+  --port "${SPLUNK_HEC_PORT}" \
+  --mgmt-port "${SPLUNK_MGMT_PORT}" \
+  --index main \
+  --username admin \
+  --password "${SPLUNK_PASSWORD}" \
+  --hec-token "${HEC_TOKEN}"
+
+print_success "Splunk audit JSONL compatibility test passed"
