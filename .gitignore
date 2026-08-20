@@ -72,6 +72,6 @@ target/flamegraphs/
 
 # Reviews
 REVIEW_REPORT*.md
-/threat_model*
+/threat-model*
 
 scripts/
