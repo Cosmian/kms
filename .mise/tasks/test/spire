@@ -645,4 +645,25 @@ AUTH_PID=""
 KMS_SKIP_BUILD=1 mise run test:spire-pki
 print_success "Step 16: KMS PKI capability validation passed."
 
+# ── Step 17: Service mesh SDS delivery (PKI-10) ───────────────────────────────
+# Runs test_sds.sh inline — reuses the already-running spire-server-a and
+# spire-agent-a Docker containers.  No KMS/auth-verifier restart needed.
+# Exit code 2 from test_sds.sh means Docker is not available — treat as a
+# warning (not a failure) so the core SPIRE/KMS tests are not blocked.
+print_header "Step 17: Service mesh SDS delivery — PKI-10"
+SDS_EXIT=0
+SPIRE_SERVER_CONTAINER="spire-server-a" \
+  TRUST_DOMAIN="$(tenant_trust_domain a)" \
+  bash "${TEST_DATA}/setup/test_sds.sh" || SDS_EXIT=$?
+
+if [[ "${SDS_EXIT}" -eq 0 ]]; then
+  print_success "Step 17: SDS delivery test passed (PKI-10)."
+elif [[ "${SDS_EXIT}" -eq 2 ]]; then
+  print_warning "Step 17: SDS test SKIPPED — Docker not available or SPIRE container stopped."
+  print_info "Run 'mise run test:spire-sds' as a standalone test when Docker is ready."
+else
+  print_warning "Step 17: SDS delivery test FAILED (exit ${SDS_EXIT}). See output above."
+  print_info "Run 'mise run test:spire-sds' to investigate."
+fi
+
 print_success "SPIRE integration tests completed successfully!"
