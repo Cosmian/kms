@@ -28,7 +28,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_private_key_to_openssl,
     },
 };
-use cosmian_logger::{debug, error, trace, warn};
+use cosmian_logger::{debug, trace, warn};
 use openssl::x509::{X509, X509Crl};
 use time::OffsetDateTime;
 
@@ -128,10 +128,15 @@ use crate::{
 ///
 /// # Authorization
 ///
-/// When `crypto_officer_users` is configured, only an active Crypto Officer may
-/// generate a CRL.  This is required because CRL generation must enumerate **all**
-/// revoked certificates regardless of ownership (`find_all` bypasses user filters).
-/// The CO access is logged at ERROR level for the audit trail.
+/// CRL content is **public information** by definition (RFC 5280 §3): any relying
+/// party must be able to verify whether a certificate has been revoked.  There is no
+/// private data in a CRL.  Accordingly, no special role (Crypto Officer or otherwise)
+/// is required to generate one — any authenticated user who can read the CA
+/// certificate may request its CRL.
+///
+/// `find_all` is used internally to collect revoked certificates across all owners.
+/// This is correct and intentional: a CA's CRL must list *every* revoked certificate
+/// it issued, regardless of who owns the DB record.
 pub(crate) async fn generate_crl(
     kms: &KMS,
     issuer_certificate_id: &str,
@@ -142,25 +147,6 @@ pub(crate) async fn generate_crl(
         "Generating CRL for issuer certificate: {}",
         issuer_certificate_id
     );
-
-    // Guard: when CO users are configured, only an active CO may call this.
-    // CRL generation uses find_all (no user filter) — the CO role is the
-    // documented gating condition for that bypass (same as Locate with CO).
-    if !kms.params.crypto_officer.users.is_empty() && !kms.is_crypto_officer(user).await? {
-        return Err(KmsError::Unauthorized(format!(
-            "Generating a CRL requires the Crypto Officer role. \
-             User '{user}' is not an active Crypto Officer."
-        )));
-    }
-    if !kms.params.crypto_officer.users.is_empty() {
-        // Audit log — CO bypass is a high-value security event.
-        error!(
-            target: "audit",
-            user = %user,
-            issuer_id = issuer_certificate_id,
-            "CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)",
-        );
-    }
 
     // 1. Retrieve the issuer certificate
     let issuer_owm = retrieve_object_for_operation(
