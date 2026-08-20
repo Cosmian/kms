@@ -868,3 +868,120 @@ async fn test_crl_contains_certs_from_all_users() {
 
     resources.cleanup(&owner).await;
 }
+
+// ── Rule 4.2 — endpoint contract tests ───────────────────────────────────────
+
+/// Test: public CDP endpoint returns 404 before the cache is primed, then 200
+/// with the correct content-type after the authenticated endpoint is called.
+///
+/// This validates the two-level cache design described in the CRL ADR:
+/// - Cold state → HTTP 404 with a diagnostic message
+/// - Warm state → HTTP 200, `application/pkix-crl`, valid DER
+#[tokio::test]
+async fn test_crl_public_endpoint_lifecycle() {
+    init_test_logging();
+    let ctx = start_default_test_kms_server().await;
+    let client = ctx.get_owner_client();
+    let mut resources = TestResources::new();
+
+    let ca_cert_id = create_ca(&client, &mut resources).await;
+    let server_url = &ctx.owner_client_config.http_config.server_url;
+
+    let http = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .expect("build reqwest client");
+
+    // ── 1. Cold state: cache not primed → 404 ────────────────────────────────
+    let public_url = format!("{server_url}/public/certificates/{ca_cert_id}/crl");
+    let resp = http
+        .get(&public_url)
+        .send()
+        .await
+        .expect("GET public CRL should not fail at network level");
+    assert_eq!(
+        resp.status(),
+        404,
+        "public CRL endpoint must return 404 before cache is primed"
+    );
+    let body = resp.text().await.expect("read body");
+    assert!(
+        body.contains(ca_cert_id.as_str()),
+        "404 body should reference the issuer id"
+    );
+
+    // ── 2. Prime the cache via the authenticated endpoint ─────────────────────
+    let _crl_der: Vec<u8> = client
+        .get_bytes(
+            &format!("/certificates/{ca_cert_id}/crl"),
+            Some(&[("format", "der"), ("validity_days", "7")]),
+        )
+        .await
+        .expect("authenticated CRL generation should succeed");
+
+    // ── 3. Warm state: cache primed → 200, correct content-type, valid DER ───
+    let resp = http
+        .get(&public_url)
+        .send()
+        .await
+        .expect("GET public CRL should succeed after priming");
+    assert_eq!(
+        resp.status(),
+        200,
+        "public CRL endpoint must return 200 after cache is primed"
+    );
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .expect("content-type header must be present")
+        .to_str()
+        .expect("content-type must be valid ASCII");
+    assert!(
+        content_type.contains("application/pkix-crl"),
+        "content-type must be application/pkix-crl, got: {content_type}"
+    );
+    assert!(
+        resp.headers().contains_key("last-modified"),
+        "Last-Modified header must be present"
+    );
+    let crl_der = resp.bytes().await.expect("read body bytes");
+    X509Crl::from_der(&crl_der).expect("public CRL response must be valid DER");
+
+    resources.cleanup(&client).await;
+}
+
+/// Test: `GET /certificates/{id}/crl?format=invalid` returns HTTP 400.
+#[tokio::test]
+async fn test_crl_invalid_format_returns_400() {
+    init_test_logging();
+    let ctx = start_default_test_kms_server().await;
+    let client = ctx.get_owner_client();
+    let mut resources = TestResources::new();
+
+    let ca_cert_id = create_ca(&client, &mut resources).await;
+    let server_url = &ctx.owner_client_config.http_config.server_url;
+
+    let http = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .expect("build reqwest client");
+
+    let url = format!("{server_url}/certificates/{ca_cert_id}/crl?format=notaformat");
+    let resp = http
+        .get(&url)
+        .send()
+        .await
+        .expect("GET CRL should not fail at network level");
+    assert_eq!(
+        resp.status(),
+        422,
+        "invalid format parameter must return HTTP 422 (InvalidRequest)"
+    );
+    let body = resp.text().await.expect("read body");
+    assert!(
+        body.contains("notaformat") || body.contains("format") || body.contains("Invalid"),
+        "422 body should mention the invalid format; got: {body}"
+    );
+
+    resources.cleanup(&client).await;
+}

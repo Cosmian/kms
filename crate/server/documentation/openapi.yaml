@@ -2319,6 +2319,8 @@ paths:
           description: Unauthorized — missing or invalid credentials
         '404':
           description: Issuer certificate not found
+        '422':
+          description: Invalid request — e.g. unsupported `format` value
         '500':
           description: Internal server error — CRL generation failed
 

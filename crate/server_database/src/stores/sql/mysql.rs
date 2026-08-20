@@ -1035,6 +1035,27 @@ impl PermissionsStore for MySqlPool {
             Some((der, generated_at))
         }))
     }
+
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
+        let sql = get_mysql_query!("list-crl-issuers");
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(sql, ())
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|mut row| {
+                let issuer_id: String = row.take(0)?;
+                let next_update: String = row.take(1)?;
+                Some((issuer_id, next_update))
+            })
+            .collect())
+    }
 }
 
 pub(super) async fn create_(

@@ -1432,6 +1432,27 @@ impl PermissionsStore for PgPool {
             }))
         })
     }
+
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("list-crl-issuers"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows
+                .iter()
+                .map(|row| {
+                    let issuer_id: String = row.get(0);
+                    let next_update: String = row.get(1);
+                    (issuer_id, next_update)
+                })
+                .collect())
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------

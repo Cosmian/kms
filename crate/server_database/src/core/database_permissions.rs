@@ -173,6 +173,11 @@ impl Database {
     pub async fn get_crl(&self, issuer_id: &str) -> DbResult<Option<(Vec<u8>, String)>> {
         Ok(self.permissions.get_crl(issuer_id).await?)
     }
+
+    /// List all issuer IDs with their stored `next_update` timestamps.
+    pub async fn list_crl_issuers(&self) -> DbResult<Vec<(String, String)>> {
+        Ok(self.permissions.list_crl_issuers().await?)
+    }
 }
 
 /// Private helpers for ceremony record encryption.

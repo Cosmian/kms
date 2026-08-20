@@ -101,4 +101,10 @@ pub trait PermissionsStore {
     ///
     /// Returns `None` when no CRL has ever been generated for this issuer.
     async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>>;
+
+    /// List all issuer IDs with their stored `next_update` timestamps.
+    ///
+    /// Used by the background CRL refresh scheduler to identify CRLs that are
+    /// expiring soon without fetching the full DER bytes for every CA.
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>>;
 }
