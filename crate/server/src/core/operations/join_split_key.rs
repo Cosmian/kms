@@ -476,7 +476,7 @@ fn extract_share_bytes(key_block: &KeyBlock) -> KResult<Vec<u8>> {
 /// Validates and processes the ceremony activation:
 /// - Retrieves and validates all shares.
 /// - Verifies all shares carry `x-cosmian-crypto-officer-ceremony`.
-/// - Verifies dual-control constraints (unique owners, assembler ≠ share owner, all CO candidates).
+/// - Verifies dual-control constraints (unique owners, at least one share from a different CO candidate, all CO candidates).
 /// - Reconstructs the ceremony secret via XOR **in RAM only** (for key-hash verification).
 /// - Persists the `crypto_officer_activations` record.
 /// - The secret reconstructed *within this function* is zeroized before returning —

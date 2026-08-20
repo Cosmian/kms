@@ -214,7 +214,7 @@ sequenceDiagram
     CO3->>KMS: GrantAccess(share_3_id → Alice, Get)
 
     CO->>KMS: JoinSplitKey([share_1_id, share_2_id, share_3_id])
-    Note right of KMS: • Verify x-cosmian-crypto-officer-ceremony on all shares<br/>• Verify all shares from same source key<br/>• Verify count = n<br/>• Verify Alice ∈ crypto_officer_users<br/>• Verify Alice does NOT own any share<br/>• XOR reconstruction → store reconstructed key<br/>• Persist crypto_officer_activations row
+    Note right of KMS: • Verify x-cosmian-crypto-officer-ceremony on all shares<br/>• Verify all shares from same source key<br/>• Verify count = n<br/>• Verify Alice ∈ crypto_officer_users<br/>• Verify at least one share owned by a different CO<br/>• XOR reconstruction → store reconstructed key<br/>• Persist crypto_officer_activations row
     KMS-->>CO: JoinSplitKeyResponse{uid: "key_id"}
 
     Note over CO,KMS: CryptoOfficer role is now ACTIVE
