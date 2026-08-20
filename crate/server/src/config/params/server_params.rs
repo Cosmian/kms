@@ -243,6 +243,26 @@ pub struct ServerParams {
     /// When set, the KMS validates bearer tokens issued by the Auth Verifier server.
     /// The `sub` claim is used as the user identity.
     pub auth_verifier_config: Option<AuthVerifierConfig>,
+
+    // ── CRL lifecycle ─────────────────────────────────────────────────────────
+    /// Default CRL validity period in days.
+    ///
+    /// Applied when a CRL is generated without an explicit `validity_days` override.
+    /// Valid range: 1–365. Default: 7.
+    pub crl_default_validity_days: u32,
+
+    /// Background CRL refresh check interval in hours. 0 = disabled.
+    ///
+    /// When non-zero, the CRL scheduler wakes up every N hours and regenerates any
+    /// stored CRL whose `nextUpdate` is within `crl_refresh_overlap_hours` of the
+    /// current time.
+    pub crl_refresh_check_hours: u32,
+
+    /// CRL overlap window in hours.
+    ///
+    /// The scheduler pre-generates a new CRL this many hours before the current one
+    /// expires, preventing relying parties from seeing a stale CRL.
+    pub crl_refresh_overlap_hours: u32,
 }
 
 /// Represents the server parameters.
@@ -564,6 +584,9 @@ impl ServerParams {
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
             auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
+            crl_default_validity_days: conf.crl_default_validity_days,
+            crl_refresh_check_hours: conf.crl_refresh_check_hours,
+            crl_refresh_overlap_hours: conf.crl_refresh_overlap_hours,
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a
@@ -984,6 +1007,12 @@ impl fmt::Debug for ServerParams {
             "ceremony_keys",
             &self.ceremony_keys.as_ref().map(|_| "<configured>"),
         );
+
+        debug_struct.field("crl_default_validity_days", &self.crl_default_validity_days);
+        if self.crl_refresh_check_hours > 0 {
+            debug_struct.field("crl_refresh_check_hours", &self.crl_refresh_check_hours);
+            debug_struct.field("crl_refresh_overlap_hours", &self.crl_refresh_overlap_hours);
+        }
 
         debug_struct.finish()
     }

@@ -712,6 +712,14 @@ Crate path: `crate/server`
 | `warn` | `Auto-CRL: no active Crypto Officer found for issuer '{issuer_id}';                  skipping CRL regeneration after certificate revocation.                  Complete a CO ceremony or call GET /certificates/{issuer_id}/crl manually.` | `src/core/operations/revoke.rs` | `issuer_id` | - |
 | `warn` | `Failed to load CRL from database for issuer '{issuer_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_id`, `e` | - |
 | `warn` | `Failed to persist CRL to database for issuer '{issuer_certificate_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_certificate_id`, `e` | - |
+| `warn` | `[crl-refresh-cron] CRL refresh failed for '{issuer_id}': {e}` | `src/cron.rs` | `issuer_id`, `e` | - |
+| `warn` | `[crl-refresh-cron] Failed to build runtime: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[crl-refresh-cron] Failed to list CRL issuers from DB: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[crl-refresh-cron] Failed to resolve CO identity: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[crl-refresh-cron] No active Crypto Officer found;                  skipping scheduled CRL refresh. Complete a CO ceremony first.` | `src/cron.rs` | - | - |
+| `info` | `[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}'              (expires within {overlap_hours}h)` | `src/cron.rs` | `issuer_id`, `overlap_hours` | - |
+| `debug` | `[crl-refresh-cron] Running scheduled CRL refresh check` | `src/cron.rs` | - | - |
+| `debug` | `[crl-refresh-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 

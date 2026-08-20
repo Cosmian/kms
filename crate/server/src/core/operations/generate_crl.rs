@@ -35,8 +35,6 @@ use time::OffsetDateTime;
 /// In-memory cache of the most recently generated CRL per issuer.
 ///
 /// The public CRL endpoint (`GET /public/certificates/{id}/crl`) reads from
-///
-/// The public CRL endpoint (`GET /public/certificates/{id}/crl`) reads from
 /// this cache so it can serve pre-signed bytes without requiring any
 /// authentication or access to key material.
 ///
@@ -45,8 +43,8 @@ use time::OffsetDateTime;
 /// re-generates a CRL (or the first post-startup `Revoke` triggers
 /// auto-regeneration) the public endpoint becomes available again.
 ///
-/// Map: `issuer_certificate_id` → `(der_bytes, generated_at)`
-type CrlCacheInner = HashMap<String, (Vec<u8>, Instant)>;
+/// Map: `issuer_certificate_id` → `(der_bytes, generated_at, next_update_iso8601)`
+type CrlCacheInner = HashMap<String, (Vec<u8>, Instant, String)>;
 static GENERATED_CRL_CACHE: LazyLock<tokio::sync::RwLock<CrlCacheInner>> =
     LazyLock::new(|| tokio::sync::RwLock::new(HashMap::new()));
 
@@ -73,7 +71,12 @@ static CRL_SEQUENCE_COUNTER: LazyLock<AtomicU64> = LazyLock::new(|| {
 ///
 /// Returns `None` only when no CRL has ever been generated for this issuer (neither
 /// in the current process nor persisted to the DB).
-pub(crate) async fn get_cached_crl(issuer_id: &str, kms: &KMS) -> Option<(Vec<u8>, Instant)> {
+///
+/// Returns `Some((der_bytes, generated_at_instant, next_update_iso8601))`.
+pub(crate) async fn get_cached_crl(
+    issuer_id: &str,
+    kms: &KMS,
+) -> Option<(Vec<u8>, Instant, String)> {
     // 1. Fast path: in-memory cache hit.
     let cached = GENERATED_CRL_CACHE.read().await.get(issuer_id).cloned();
     if let Some(entry) = cached {
@@ -83,10 +86,10 @@ pub(crate) async fn get_cached_crl(issuer_id: &str, kms: &KMS) -> Option<(Vec<u8
     // 2. Cold-start: try loading from the DB `crls` table.
     let db_result = kms.database.get_crl(issuer_id).await;
     match db_result {
-        Ok(Some((der, _generated_at))) => {
-            // Warm the in-memory cache with an Instant approximating "now minus zero"
-            // so the Last-Modified header is accurate enough for HTTP caching.
-            let entry = (der.clone(), Instant::now());
+        Ok(Some((der, next_update))) => {
+            // Warm the in-memory cache; use Instant::now() as a conservative
+            // `generated_at` approximation for the Last-Modified header.
+            let entry = (der.clone(), Instant::now(), next_update);
             GENERATED_CRL_CACHE
                 .write()
                 .await
@@ -112,9 +115,6 @@ use crate::{
     middlewares::UserId,
     result::{KResult, KResultHelper},
 };
-/// Default CRL validity in days when not specified by the caller.
-const DEFAULT_CRL_VALIDITY_DAYS: u32 = 7;
-
 /// Generate a CRL for the given issuer certificate.
 ///
 /// # Arguments
@@ -228,7 +228,10 @@ pub(crate) async fn generate_crl(
     let crl_number = CRL_SEQUENCE_COUNTER.fetch_add(1, Ordering::Relaxed);
 
     // 5. Build and sign the CRL
-    let validity = validity_days.unwrap_or(DEFAULT_CRL_VALIDITY_DAYS);
+    // Priority: explicit caller override → server-configured default (`crl_default_validity_days`).
+    let validity = validity_days
+        .unwrap_or(kms.params.crl_default_validity_days)
+        .max(1); // guard against misconfiguration producing a 0-day CRL
     let crl = build_crl(
         &issuer_x509,
         &issuer_pkey,
@@ -281,7 +284,10 @@ pub(crate) async fn generate_crl(
 
     {
         let mut cache = GENERATED_CRL_CACHE.write().await;
-        cache.insert(issuer_certificate_id.to_owned(), (crl_der, Instant::now()));
+        cache.insert(
+            issuer_certificate_id.to_owned(),
+            (crl_der, Instant::now(), next_update_str),
+        );
     }
 
     Ok(crl)

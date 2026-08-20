@@ -1304,6 +1304,26 @@ impl PermissionsStore for SqlitePool {
             .map_err(DbError::from)?;
         Ok(result)
     }
+
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("list-crl-issuers"));
+        let result: Vec<(String, String)> = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Vec<(String, String)>, rusqlite::Error> {
+                    let mut stmt = c.prepare_cached(&sql)?;
+                    let mut q = stmt.query([])?;
+                    let mut out = Vec::new();
+                    while let Some(r) = q.next()? {
+                        out.push((r.get::<_, String>(0)?, r.get::<_, String>(1)?));
+                    }
+                    Ok(out)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(result)
+    }
 }
 
 impl SqlitePool {

@@ -376,6 +376,9 @@ mod tests {
             auto_rotation_check_interval_secs: 0,
             keyset_warn_depth: 5,
             vault: cosmian_kms_server::config::VaultConfig::default(),
+            crl_default_validity_days: 7,
+            crl_refresh_check_hours: 1,
+            crl_refresh_overlap_hours: 24,
         };
 
         let toml_string = r#"
