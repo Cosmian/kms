@@ -616,6 +616,7 @@ fn test_validate_rejects_single_co_with_ceremony() {
     let co = CryptoOfficerConfig {
         users: vec!["single@example.com".to_owned()],
         require_ceremony: true,
+        ceremony_wrapping_key_id: None,
     };
     let result = co.validate();
     assert!(result.is_err(), "Single CO + ceremony should be rejected");
@@ -633,6 +634,7 @@ fn test_validate_rejects_two_co_with_ceremony() {
     let co = CryptoOfficerConfig {
         users: vec!["alice@example.com".to_owned(), "bob@example.com".to_owned()],
         require_ceremony: true,
+        ceremony_wrapping_key_id: None,
     };
     let result = co.validate();
     assert!(
@@ -653,6 +655,7 @@ fn test_validate_accepts_three_cos_with_ceremony() {
             "carol@example.com".to_owned(),
         ],
         require_ceremony: true,
+        ceremony_wrapping_key_id: None,
     };
     assert!(
         co.validate().is_ok(),
@@ -666,6 +669,7 @@ fn test_validate_accepts_single_co_without_ceremony() {
     let co = CryptoOfficerConfig {
         users: vec!["single@example.com".to_owned()],
         require_ceremony: false,
+        ceremony_wrapping_key_id: None,
     };
     assert!(
         co.validate().is_ok(),

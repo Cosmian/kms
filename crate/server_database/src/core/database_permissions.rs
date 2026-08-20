@@ -112,7 +112,7 @@ impl Database {
             self.seal_ceremony_record(activated_by, participants, key_hash, "crypto_officer")?;
         Ok(self
             .permissions
-            .activate_crypto_officer_ceremony(&sealed)
+            .activate_crypto_officer_ceremony(&sealed, activated_by)
             .await?)
     }
 

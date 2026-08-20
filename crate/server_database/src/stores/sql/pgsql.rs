@@ -1337,14 +1337,18 @@ impl PermissionsStore for PgPool {
         })
     }
 
-    async fn activate_crypto_officer_ceremony(&self, sealed_record: &str) -> InterfaceResult<()> {
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
         pg_retry!(self.pool, |client| {
             let stmt = client
                 .prepare(get_pgsql_query!("insert-crypto-officer-activation"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             client
-                .execute(&stmt, &[&sealed_record])
+                .execute(&stmt, &[&sealed_record, &activated_by])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(())

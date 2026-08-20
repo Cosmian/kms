@@ -1190,14 +1190,19 @@ impl PermissionsStore for SqlitePool {
         Ok(user_perms)
     }
 
-    async fn activate_crypto_officer_ceremony(&self, sealed_record: &str) -> InterfaceResult<()> {
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
         let sql = replace_dollars_with_qn(get_sqlite_query!("insert-crypto-officer-activation"));
         let sealed = sealed_record.to_owned();
+        let activated_by_s = activated_by.to_owned();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
-                    tx.execute(&sql, params_from_iter([&sealed]))?;
+                    tx.execute(&sql, params_from_iter([&sealed, &activated_by_s]))?;
                     tx.commit()?;
                     Ok(())
                 },

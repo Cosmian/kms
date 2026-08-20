@@ -74,6 +74,27 @@ pub struct RolesConfig {
     /// functional. Set `ceremony_secret` in the meantime.
     #[clap(long, env = "KMS_CEREMONY_KEY_ID", verbatim_doc_comment)]
     pub ceremony_key_id: Option<String>,
+
+    /// UID of a KMS symmetric key to use for AES-KW (RFC 5649) wrapping of split-key shares.
+    ///
+    /// When set, `CreateSplitKey` encrypts each share's raw bytes with this key (AES-128/192/256-KWP)
+    /// before storing in the database.  `JoinSplitKey` automatically detects the
+    /// `x-cosmian-share-wrapping-key` vendor attribute on each share and unwraps the bytes before
+    /// XOR reconstruction.
+    ///
+    /// The wrapping key must already exist in the KMS object store and must be an AES symmetric key.
+    /// When the KMS is HSM-backed, this key can be HSM-resident, providing hardware boundary
+    /// protection equivalent to purpose-built HSM split-key solutions.
+    ///
+    /// Generate a suitable key before enabling ceremony mode:
+    /// ```bash
+    /// ckms sym keys create --id ceremony-wrap-2026 --number-of-bits 256
+    /// ```
+    ///
+    /// Rotate by creating a new key, updating this value, and re-running the ceremony
+    /// (existing wrapped shares require the original key; re-ceremony is mandatory on rotation).
+    #[clap(long, env = "KMS_CEREMONY_WRAP_KEY_ID", verbatim_doc_comment)]
+    pub ceremony_wrapping_key_id: Option<String>,
 }
 
 impl fmt::Debug for RolesConfig {
@@ -89,6 +110,7 @@ impl fmt::Debug for RolesConfig {
                 &self.ceremony_secret.as_ref().map(|_| "<redacted>"),
             )
             .field("ceremony_key_id", &self.ceremony_key_id)
+            .field("ceremony_wrapping_key_id", &self.ceremony_wrapping_key_id)
             .finish()
     }
 }

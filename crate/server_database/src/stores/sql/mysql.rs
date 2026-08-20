@@ -948,14 +948,18 @@ impl PermissionsStore for MySqlPool {
         Ok(list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await?)
     }
 
-    async fn activate_crypto_officer_ceremony(&self, sealed_record: &str) -> InterfaceResult<()> {
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
         let sql = get_mysql_query!("insert-crypto-officer-activation");
         let mut conn = self
             .pool
             .get_conn()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        conn.exec_drop(sql, (sealed_record,))
+        conn.exec_drop(sql, (sealed_record, activated_by))
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(())
