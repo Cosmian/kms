@@ -219,6 +219,7 @@ async fn run() -> KResult<()> {
     Box::pin(cosmian_kms_server::start_kms_server::start_kms_server(
         server_params,
         None,
+        None,
     ))
     .await?;
 
