@@ -431,7 +431,7 @@ impl ServerParams {
                 None
             },
             non_revocable_key_id: conf.non_revocable_key_id,
-            opa_params: conf.opa.opa_url.map(|url| -> KResult<_> {
+            opa_params: {
                 let mode = conf
                     .opa
                     .opa_mode
@@ -439,8 +439,17 @@ impl ServerParams {
                     .map_err(|_e| KmsError::InvalidRequest(
                         "invalid `opa_mode` value; expected one of: disabled, exclusive, enforcing".to_owned()
                     ))?;
-                Ok(crate::core::opa::OpaParams { url, mode })
-            }).transpose()?,
+                match (conf.opa.opa_url, mode) {
+                    (None, crate::core::opa::OpaMode::Disabled) => None,
+                    (None, active_mode) => {
+                        return Err(KmsError::InvalidRequest(format!(
+                            "`--opa-mode {active_mode}` requires `--opa-url` to be set; \
+                             OPA cannot be active without a server URL"
+                        )));
+                    }
+                    (Some(url), mode) => Some(crate::core::opa::OpaParams { url, mode }),
+                }
+            },
             crypto_officer: {
                 // Backward compat: if the deprecated `privileged_users` field is set and
                 // `[roles] crypto_officer_users` is not configured, promote those users to
