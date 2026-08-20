@@ -678,6 +678,16 @@ Crate path: `crate/server`
 | `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
+| `error` | `audit: event not queued — rejecting response (reject mode)` | `src/middlewares/audit.rs` | - | - |
+| `error` | `audit: event(s) not queued — rejecting response (reject mode)` | `src/middlewares/audit.rs` | - | - |
+| `error` | `AuditFileStore: audit log lock {} held by another instance ({e}) —                          buffering events until it is released` | `src/core/audit/file_store.rs` | `e` | - |
+| `error` | `AuditFileStore: audit log {} reached its configured max_size_bytes cap              ({len} bytes >= {cap}) — audit writing is blocked until the log is safely              remediated and the KMS is restarted` | `src/core/audit/file_store.rs` | `len`, `cap` | - |
+| `error` | `AuditFileStore: cannot open audit log {} ({e}) — retrying` | `src/core/audit/file_store.rs` | `e` | - |
+| `error` | `AuditFileStore: cannot stat audit log {} ({e})` | `src/core/audit/file_store.rs` | `e` | - |
+| `error` | `AuditFileStore: sealed corrupted audit log as {} (reason={}, sha256={sha256_hex},          size={size}, claimed_last_id={claimed_last_id:?}, failure_offset={failure_offset}) —          starting a fresh chain` | `src/core/audit/file_store.rs` | `sha256_hex`, `size`, `claimed_last_id`, `failure_offset` | - |
+| `error` | `AuditFileStore: torn write recovered — discarded {bytes_discarded} byte(s) at offset          {discard_offset} (process likely killed mid-write); resuming chain at id={next_id}` | `src/core/audit/file_store.rs` | `bytes_discarded`, `discard_offset`, `next_id` | - |
+| `debug` | `AuditFileStore: audit log {} is at its max_size_bytes cap — event dropped` | `src/core/audit/file_store.rs` | - | - |
+| `debug` | `AuditFileStore: still waiting on audit log lock {} ({e})` | `src/core/audit/file_store.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`
 
