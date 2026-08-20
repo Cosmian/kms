@@ -391,11 +391,25 @@ async fn find_revoked_certificates(
 /// Map a KMIP `RevocationReasonCode` to the corresponding RFC 5280 CRL reason code.
 ///
 /// The three extension codes (`CertificateHold`, `RemoveFromCRL`, `AaCompromise`) are
-/// KMIP vendor extensions (values in the `8XXXXXXX` range) that map to the RFC 5280
+/// KMIP vendor extensions (values in the `8XXXXXXX` range) that correspond to the RFC 5280
 /// §5.3.1 reason values 6, 8, and 10 respectively.
+///
+/// **`RemoveFromCRL` (8) is intentionally mapped to `Unspecified`.**
+/// RFC 5280 §5.3.1 requires that `removeFromCRL` "may only appear in delta CRLs".
+/// The KMS generates only complete (non-delta) CRLs; including reason code 8 in a
+/// complete CRL would violate that requirement.  `RemoveFromCRL` indicates a
+/// "remove from hold" event which has no meaningful representation in a complete CRL
+/// (hold state is not tracked between complete CRL issuances). Using `Unspecified`
+/// causes the `reasonCode` extension to be omitted entirely per §5.3.1 ("SHOULD be
+/// absent instead of using the unspecified (0) reasonCode value").
 const fn kmip_reason_to_crl_reason(reason: RevocationReasonCode) -> CrlReasonCode {
     match reason {
-        RevocationReasonCode::Unspecified => CrlReasonCode::Unspecified,
+        // RFC 5280 §5.3.1: removeFromCRL (8) MUST only appear in delta CRLs.
+        // The KMS generates only complete CRLs; map to Unspecified so the reasonCode
+        // extension is omitted rather than emitting a standard-violating value.
+        RevocationReasonCode::Unspecified | RevocationReasonCode::RemoveFromCRL => {
+            CrlReasonCode::Unspecified
+        }
         RevocationReasonCode::KeyCompromise => CrlReasonCode::KeyCompromise,
         RevocationReasonCode::CACompromise => CrlReasonCode::CaCompromise,
         RevocationReasonCode::AffiliationChanged => CrlReasonCode::AffiliationChanged,
@@ -404,7 +418,6 @@ const fn kmip_reason_to_crl_reason(reason: RevocationReasonCode) -> CrlReasonCod
         RevocationReasonCode::PrivilegeWithdrawn => CrlReasonCode::PrivilegeWithdrawn,
         // RFC 5280 §5.3.1 codes absent from the KMIP standard set, mapped via extensions.
         RevocationReasonCode::CertificateHold => CrlReasonCode::CertificateHold,
-        RevocationReasonCode::RemoveFromCRL => CrlReasonCode::RemoveFromCRL,
         RevocationReasonCode::AaCompromise => CrlReasonCode::AaCompromise,
     }
 }

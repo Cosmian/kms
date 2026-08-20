@@ -601,6 +601,63 @@ async fn test_crl_all_revocation_reason_codes() {
     resources.cleanup(&client).await;
 }
 
+/// Regression test: `RemoveFromCRL` reason code MUST NOT appear in a complete CRL.
+///
+/// RFC 5280 §5.3.1: "The removeFromCRL (8) reasonCode value may only appear in delta CRLs."
+/// The KMS generates only complete CRLs. When a KMIP client uses the vendor-extension
+/// `RemoveFromCRL` reason, `kmip_reason_to_crl_reason` must map it to `Unspecified` so the
+/// `reasonCode` extension (OID 2.5.29.21) is omitted entirely from the CRL entry.
+///
+/// This test fails if `RemoveFromCRL` is mapped to `CrlReasonCode::RemoveFromCRL` directly.
+#[tokio::test]
+async fn test_crl_remove_from_crl_reason_omitted_in_complete_crl() {
+    init_test_logging();
+    let ctx = start_default_test_kms_server().await;
+    let client = ctx.get_owner_client();
+    let mut resources = TestResources::new();
+
+    let ca_id = create_named_ca(&client, "RemoveFromCRL-Test-CA", &mut resources).await;
+    let cert_id = issue_cert(&client, &ca_id, "leaf.remove-from-crl-test", &mut resources).await;
+
+    // Revoke with the vendor-extension RemoveFromCRL reason code.
+    revoke_cert(&client, &cert_id, RevocationReasonCode::RemoveFromCRL).await;
+
+    let crl_bytes = client
+        .get_bytes(
+            &format!("/certificates/{ca_id}/crl"),
+            Some(&[("format", "der"), ("validity_days", "7")]),
+        )
+        .await
+        .expect("CRL generation should succeed");
+
+    // Parse with x509_parser to inspect per-entry extensions.
+    let (_, parsed) = x509_parser::revocation_list::CertificateRevocationList::from_der(&crl_bytes)
+        .expect("CRL DER must be parseable");
+
+    let revoked_certs = parsed.iter_revoked_certificates().collect::<Vec<_>>();
+    assert_eq!(
+        revoked_certs.len(),
+        1,
+        "CRL must list the one revoked certificate"
+    );
+
+    // OID 2.5.29.21 = id-ce-reasonCode (RFC 5280 §5.3.1)
+    let reason_code_oid = "2.5.29.21";
+    let has_reason_code_ext = revoked_certs
+        .first()
+        .expect("revoked_certs.len() == 1 asserted above")
+        .extensions()
+        .iter()
+        .any(|ext| ext.oid.to_string() == reason_code_oid);
+    assert!(
+        !has_reason_code_ext,
+        "CRL entry for a RemoveFromCRL-revoked certificate MUST NOT contain a reasonCode \
+         extension (RFC 5280 §5.3.1: removeFromCRL may only appear in delta CRLs)"
+    );
+
+    resources.cleanup(&client).await;
+}
+
 /// Test: certificates in both the Deactivated and Compromised KMIP states appear in the CRL.
 ///
 /// RFC 5280 §5.1: the CRL must include all revoked certificates.  KMIP places a certificate in
