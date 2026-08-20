@@ -288,3 +288,6 @@ INSERT INTO crls (issuer_id, crl_der, crl_number, generated_at, next_update)
 
 -- name: select-crl
 SELECT crl_der, generated_at FROM crls WHERE issuer_id = ?;
+
+-- name: list-crl-issuers
+SELECT issuer_id, next_update FROM crls ORDER BY issuer_id;

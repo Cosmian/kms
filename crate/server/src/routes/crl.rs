@@ -109,7 +109,7 @@ pub(crate) async fn get_crl_public(
         "GET /public/certificates/{}/crl (unauthenticated)", issuer_id
     );
 
-    let Some((crl_der, generated_at)) =
+    let Some((crl_der, generated_at, next_update_str)) =
         crate::core::operations::generate_crl::get_cached_crl(&issuer_id, &kms).await
     else {
         return Ok(HttpResponse::NotFound()
@@ -162,9 +162,53 @@ pub(crate) async fn get_crl_public(
         )
     };
 
+    // RFC 7234 / HTTP caching: Cache-Control + Expires so relying parties
+    // (browsers, TLS stacks, CDNs) can cache the CRL up to its nextUpdate.
+    //
+    // We apply a 60-second safety buffer so clients always refresh slightly before
+    // the CRL actually expires, preventing windows where cached copies are stale.
+    // This matches DigiCert's production practice.
+    //
+    // `max_age_secs` is 0 when the CRL has already expired or nextUpdate is within
+    // the buffer — clients will then fetch immediately on the next check.
+    let (cache_control, expires_str) = {
+        let now = time::OffsetDateTime::now_utc();
+        let next_update = time::OffsetDateTime::parse(
+            &next_update_str,
+            &time::format_description::well_known::Rfc3339,
+        )
+        .unwrap_or(now);
+        let secs_until_expiry = (next_update - now).whole_seconds().max(0);
+        let max_age = (secs_until_expiry - 60).max(0);
+        let expires_dt = now + time::Duration::seconds(max_age);
+        let weekday_idx = usize::from(expires_dt.weekday().number_days_from_sunday());
+        let month_idx = usize::from(u8::from(expires_dt.month())).saturating_sub(1);
+        let day_name = HTTP_DATE_DAY_NAMES
+            .get(weekday_idx)
+            .copied()
+            .unwrap_or("Thu");
+        let month_name = HTTP_DATE_MONTH_NAMES
+            .get(month_idx)
+            .copied()
+            .unwrap_or("Jan");
+        let expires = format!(
+            "{}, {:02} {} {:04} {:02}:{:02}:{:02} GMT",
+            day_name,
+            expires_dt.day(),
+            month_name,
+            expires_dt.year(),
+            expires_dt.hour(),
+            expires_dt.minute(),
+            expires_dt.second()
+        );
+        (format!("public, max-age={max_age}, no-transform"), expires)
+    };
+
     Ok(HttpResponse::Ok()
         .content_type("application/pkix-crl")
         .append_header(("Last-Modified", last_modified_str))
+        .append_header(("Cache-Control", cache_control))
+        .append_header(("Expires", expires_str))
         .append_header(("Content-Disposition", "inline; filename=\"crl.der\""))
         .body(crl_der))
 }
