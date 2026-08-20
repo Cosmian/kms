@@ -267,7 +267,7 @@ const baseMenu: MenuItem[] = [
                     { key: "certificates/certs/revoke", label: "Revoke" },
                     { key: "certificates/certs/destroy", label: "Destroy" },
                     { key: "certificates/certs/validate", label: "Validate" },
-                    { key: "certificates/certs/generate-crl", label: "Generate CRL" },
+                    { key: "certificates/certs/generate-crl", label: "Download CRL" },
                 ],
             },
             { key: "certificates/encrypt", label: "Encrypt" },

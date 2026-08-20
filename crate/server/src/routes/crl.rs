@@ -116,8 +116,10 @@ pub(crate) async fn get_crl_public(
             .content_type("text/plain; charset=utf-8")
             .body(format!(
                 "No CRL found for issuer '{issuer_id}'. \
-                 The CA owner must call GET /certificates/{issuer_id}/crl \
-                 (authenticated) at least once to prime the cache."
+                 The CRL is generated automatically when a certificate issued by this CA \
+                 is revoked.  If no certificate has been revoked yet, revoke one to \
+                 prime the distribution point, or call GET /certificates/{issuer_id}/crl \
+                 (authenticated, Crypto Officer role required when configured)."
             )));
     };
 
