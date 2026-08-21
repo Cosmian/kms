@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+#MISE description="Test the KMS server Docker image as a Kubernetes pod — validates /etc, Helm deploy, and HTTP health (regression for issue #1132)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+# shellcheck source=.mise/lib/k8s.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
+
+k8s_require_tools
+
+# DOCKER_IMAGE_NAME is the locally-tagged image that was already loaded into
+# the host Docker daemon. The task loads it into Minikube before testing.
+: "${DOCKER_IMAGE_NAME:?DOCKER_IMAGE_NAME must be set — e.g. ghcr.io/cosmian/kms:branch-amd64}"
+
+NS="kms-image-test"
+RELEASE="kms-image-test"
+CHECK_POD="kms-etc-check"
+PF_PID=""
+
+print_header "Testing KMS Docker image in Kubernetes pod (${DOCKER_IMAGE_NAME})"
+
+cleanup() {
+  [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null || true
+  kubectl delete pod "$CHECK_POD" --ignore-not-found=true 2>/dev/null || true
+  k8s_teardown "$NS" "$RELEASE" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# ── 1. Load image into Minikube ───────────────────────────────────────────────
+# Save to a temporary tarball and load it; this is the most reliable method
+# regardless of how minikube's internal registry is configured.
+print_status "Loading image into Minikube: ${DOCKER_IMAGE_NAME}"
+TMP_TAR=$(mktemp /tmp/kms-image-XXXXXX.tar)
+docker save "${DOCKER_IMAGE_NAME}" >"$TMP_TAR"
+minikube image load "$TMP_TAR"
+rm -f "$TMP_TAR"
+print_success "Image loaded into Minikube"
+
+# ── 2. /etc validation pod ────────────────────────────────────────────────────
+# Checks that all files required for correct pod operation are present in the
+# image.  Absence of any of these caused issue #1132 in the 5.26 release:
+#   /etc/passwd, /etc/group       — UID/GID resolution (runAsNonRoot, getpwuid)
+#   /etc/nsswitch.conf            — DNS / hosts resolution
+#   /etc/ssl/certs/ca-bundle.crt  — outbound TLS certificate verification
+#   /etc/cosmian                  — bind-mount target for KMS config files
+print_status "Running /etc validation pod..."
+kubectl delete pod "$CHECK_POD" --ignore-not-found=true 2>/dev/null || true
+
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${CHECK_POD}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: check
+      image: ${DOCKER_IMAGE_NAME}
+      imagePullPolicy: Never
+      # Run as root so the check is not affected by permission issues
+      securityContext:
+        runAsUser: 0
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          fail=0
+          check() {
+            if [ -e "\$1" ]; then echo "OK:      \$1"
+            else               echo "MISSING: \$1"; fail=1
+            fi
+          }
+          echo "=== /etc structure ==="
+          ls -lah /etc/ || true
+          echo ""
+          echo "=== Required files ==="
+          check /etc/passwd
+          check /etc/group
+          check /etc/nsswitch.conf
+          check /etc/ssl/certs/ca-bundle.crt
+          check /etc/cosmian
+          echo ""
+          if [ \$fail -ne 0 ]; then
+            echo "FAIL: one or more required /etc entries are missing (see issue #1132)"
+          else
+            echo "PASS: all required /etc entries are present"
+          fi
+          exit \$fail
+EOF
+
+print_status "Waiting for /etc check pod to complete (max 90s)..."
+timeout 90 bash -c \
+  "until kubectl get pod '${CHECK_POD}' -o jsonpath='{.status.phase}' 2>/dev/null \
+     | grep -qE 'Succeeded|Failed'; do sleep 2; done" ||
+  {
+    kubectl logs "$CHECK_POD" 2>/dev/null || true
+    print_error "Check pod did not complete within 90s"
+  }
+
+echo ""
+print_status "Check pod logs:"
+kubectl logs "$CHECK_POD" || true
+echo ""
+
+EXIT_CODE=$(kubectl get pod "$CHECK_POD" \
+  -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}' 2>/dev/null || echo "1")
+[ "$EXIT_CODE" = "0" ] ||
+  print_error "/etc validation FAILED (exit code: ${EXIT_CODE}) — required files missing from Docker image (regression: issue #1132)"
+
+kubectl delete pod "$CHECK_POD" --ignore-not-found=true
+
+# ── 3. Full KMS deployment via Helm (runAsNonRoot: true, readOnlyRootFilesystem) ─
+# This is the same security context that a real deployment uses.  The pod will
+# only start if /etc/passwd contains UID 1000 — catching the issue #1132 class
+# of regression at the Kubernetes layer.
+print_status "Deploying KMS via Helm chart (${DOCKER_IMAGE_NAME})..."
+IMAGE_REPO="${DOCKER_IMAGE_NAME%%:*}"
+IMAGE_TAG="${DOCKER_IMAGE_NAME##*:}"
+
+k8s_deploy_kms "$NS" "$RELEASE" \
+  --set image.repository="${IMAGE_REPO}" \
+  --set image.tag="${IMAGE_TAG}" \
+  --set image.pullPolicy=Never
+
+# ── 4. Verify the pod is running as UID 1000 (not root) ──────────────────────
+print_status "Verifying pod runs as non-root UID 1000..."
+POD_NAME=$(kubectl get pods -n "$NS" -l "app.kubernetes.io/instance=${RELEASE}" \
+  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+[ -n "$POD_NAME" ] || print_error "Could not find KMS pod in namespace $NS"
+
+RUNNING_UID=$(kubectl exec -n "$NS" "$POD_NAME" -- id -u 2>/dev/null || echo "unknown")
+[ "$RUNNING_UID" = "1000" ] ||
+  print_error "Pod is running as UID ${RUNNING_UID}, expected 1000 — /etc/passwd may be missing (issue #1132)"
+print_success "Pod is running as UID ${RUNNING_UID} (non-root) ✓"
+
+# ── 5. HTTP health check via port-forward ────────────────────────────────────
+print_status "Opening port-forward to KMS service..."
+kubectl port-forward -n "$NS" "svc/${RELEASE}-cosmian-kms" 19998:9998 &
+PF_PID=$!
+
+k8s_wait_kms_http "http://127.0.0.1:19998/version" 30
+
+VERSION=$(curl -sf "http://127.0.0.1:19998/version")
+print_success "KMS is responding: ${VERSION}"
+
+kill "$PF_PID" 2>/dev/null || true
+PF_PID=""
+
+print_success "KMS Docker image Kubernetes pod test PASSED"
