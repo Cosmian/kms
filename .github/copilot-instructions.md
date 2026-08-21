@@ -18,13 +18,13 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `rust-kmip.instructions.md` | `crate/kmip/**/*.rs` |
 | `rust-database.instructions.md` | `crate/server_database/**/*.rs` |
 | `database-tables.instructions.md` | `crate/server_database/src/stores/sql/*.sql` |
-| `ui-routes.instructions.md` | `ui/src/App.tsx`, `ui/src/menuItems.tsx` |
+| `ui-routes.instructions.md` | `ui/src/App.tsx`, `ui/src/menuItems.tsx`, `ui/src/actions/**/*.tsx`, `ui/src/pages/**/*.tsx` |
 | `routes.instructions.md` | `crate/server/src/routes/**/*.rs` |
-| `kmip-operations.instructions.md` | `crate/server/src/core/operations/**/*.rs` |
-| `cli-ui-sync.instructions.md` | `crate/clients/clap/**/*.rs`, `crate/clients/ckms/**/*.rs`, `ui/src/actions/**/*.{ts,tsx}` |
+| `kmip-operations.instructions.md` | `crate/kmip/src/**/*.rs`, `crate/server/src/core/operations/**/*.rs` |
+| `cli-ui-sync.instructions.md` | `crate/clients/clap/**/*.rs`, `crate/clients/ckms/**/*.rs`, `ui/src/actions/**/*.ts`, `ui/src/actions/**/*.tsx` |
 | `wasm.instructions.md` | `crate/clients/wasm/**/*.rs` |
 | `server-config.instructions.md` | `crate/server/src/config/**/*.rs` |
-| `middlewares.instructions.md` | `crate/server/src/middlewares/**/*.rs` |
+| `middlewares.instructions.md` | `crate/server/src/middlewares/**/*.rs`, `crate/server/src/config/wizard/auth_wizard.rs` |
 | `test-vectors.instructions.md` | `test_data/vectors/**`, `crate/test_kms_server/**/*.rs` |
 | `lockfile-hashes.instructions.md` | `Cargo.lock`, `ui/pnpm-lock.yaml` |
 | `cloud-providers.instructions.md` | `crate/server/src/routes/{aws_xks,azure_ekm,google_cse,ms_dke}/**` |
@@ -40,7 +40,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `toml.instructions.md` | `**/*.toml` |
 | `python.instructions.md` | `**/*.py` |
 | `markdown.instructions.md` | `**/*.md` |
-| `docs.instructions.md` | `documentation/**/*.md` |
+| `docs.instructions.md` | `documentation/**/*.md`, `README.md` |
 | `nix.instructions.md` | `nix/**/*.nix` |
 | `docker.instructions.md` | `nix/docker.nix, nix/k8s-images.nix, .mise/scripts/docker-compose.yml, charts/cosmian-kms/**/*` |
 

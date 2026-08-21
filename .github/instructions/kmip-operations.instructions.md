@@ -1,7 +1,7 @@
 ---
 name: 'KMIP Operations'
 description: 'Keep KMIP request/response types, the dispatcher, and the handler implementation in sync when adding a KMIP operation'
-applyTo: 'crate/server/src/core/operations/**/*.rs'
+applyTo: 'crate/kmip/src/**/*.rs, crate/server/src/core/operations/**/*.rs'
 ---
 
 # KMIP operation sync

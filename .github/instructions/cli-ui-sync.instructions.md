@@ -1,7 +1,7 @@
 ---
 name: 'CLI ⇔ Web UI Parity'
 description: 'Mirror every CLI command/flag to the Web UI and regenerate the CLI documentation'
-applyTo: 'crate/clients/clap/**/*.rs, crate/clients/ckms/**/*.rs, ui/src/actions/**/*.{ts,tsx}'
+applyTo: 'crate/clients/clap/**/*.rs, crate/clients/ckms/**/*.rs, ui/src/actions/**/*.ts, ui/src/actions/**/*.tsx'
 ---
 
 # CLI ⇔ Web UI parity
