@@ -317,6 +317,13 @@ impl ServerParams {
             "http"
         };
 
+        // Determine whether CO users will come from the deprecated `privileged_users` path.
+        // Used after `res` is built to preserve v5.26.0 behaviour: if the operator had
+        // `force_default_username = true` AND `privileged_users = [...]` (nonsensical but
+        // tolerated before), only warn instead of hard-erroring.
+        let co_from_deprecated_path =
+            conf.roles.crypto_officer_users.is_none() && conf.privileged_users.is_some();
+
         let res = Self {
             identity_provider_configurations: {
                 // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
@@ -546,16 +553,30 @@ impl ServerParams {
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a
-        // single user, defeating the Crypto Officer dual-control guarantee. Reject this
-        // combination at startup rather than silently allowing it.
+        // single user, defeating the Crypto Officer dual-control guarantee.
+        //
+        // When CO users came from the new `[roles] crypto_officer_users` key, reject at startup.
+        // When they came only from the deprecated `privileged_users` key, preserve the v5.26.0
+        // behaviour (silently tolerated, though meaningless) and warn instead, so existing
+        // configurations upgrading from v5.26.0 are not broken.
         if res.force_default_username && !res.crypto_officer.users.is_empty() {
-            return Err(KmsError::ServerError(
-                "`force_default_username = true` is incompatible with `crypto_officer_users`. \
-                 All requests would run under the same identity, making Crypto Officer \
-                 dual-control and ceremony audit logs meaningless. \
-                 Disable `force_default_username` or remove `crypto_officer_users`."
-                    .to_owned(),
-            ));
+            if co_from_deprecated_path {
+                tracing::warn!(
+                    "`force_default_username = true` combined with `privileged_users` is \
+                     deprecated and will become an error in a future release. All requests run \
+                     under the same identity, making Crypto Officer dual-control meaningless. \
+                     Please migrate to `[roles] crypto_officer_users` and remove \
+                     `force_default_username`."
+                );
+            } else {
+                return Err(KmsError::ServerError(
+                    "`force_default_username = true` is incompatible with `crypto_officer_users`. \
+                     All requests would run under the same identity, making Crypto Officer \
+                     dual-control and ceremony audit logs meaningless. \
+                     Disable `force_default_username` or remove `crypto_officer_users`."
+                        .to_owned(),
+                ));
+            }
         }
 
         debug!("{res:#?}");
