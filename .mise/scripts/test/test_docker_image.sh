@@ -143,6 +143,29 @@ curl -I "http://127.0.0.1:${HOST_HTTP_PORT}/ui/index.html"
 curl --insecure -I "https://127.0.0.1:${HOST_TLS_PORT}/ui/index.html"
 curl --insecure -I "https://127.0.0.1:${HOST_TLS13_PORT}/ui/index.html"
 
+# === No-config smoke test ===
+# Verify the KMS image works out of the box with no conf file, no env vars.
+# Also tests that the UI is served from the default endpoint.
+HOST_NO_CONF_PORT="${KMS_SLOT_KMS_NO_CONF_PORT:-13098}"
+KMS_NO_CONF_URL="http://127.0.0.1:${HOST_NO_CONF_PORT}"
+echo "=== No-config smoke test: ${KMS_NO_CONF_URL} ==="
+
+version_response=$(curl -sf "${KMS_NO_CONF_URL}/version")
+echo "  /version → ${version_response}"
+echo "${version_response}" | grep -q '"' || {
+  echo "ERROR: /version did not return expected JSON"
+  exit 1
+}
+
+# UI must be served at /ui/index.html
+curl -sf "${KMS_NO_CONF_URL}/ui/index.html" >/dev/null || {
+  echo "ERROR: UI not served at ${KMS_NO_CONF_URL}/ui/index.html"
+  exit 1
+}
+echo "  UI served at /ui/index.html ✓"
+
+echo "=== No-config smoke test passed ==="
+
 # === Config-file based compose test ===
 echo "Running config-based compose test ($COMPOSE_FILE:kms-with-conf)"
 docker compose -f "$COMPOSE_FILE" logs --tail=120 kms-with-conf || true
