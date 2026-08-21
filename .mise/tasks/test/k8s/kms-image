@@ -113,8 +113,10 @@ EXIT_CODE=$(kubectl get pod "$CHECK_POD" \
 
 kubectl delete pod "$CHECK_POD" --ignore-not-found=true
 
-# ── 3. Full KMS deployment via Helm ──────────────────────────────────────────
-# Splits the image reference into repository + tag as required by the chart.
+# ── 3. Full KMS deployment via Helm (runAsNonRoot: true, readOnlyRootFilesystem) ─
+# This is the same security context that a real deployment uses.  The pod will
+# only start if /etc/passwd contains UID 1000 — catching the issue #1132 class
+# of regression at the Kubernetes layer.
 print_status "Deploying KMS via Helm chart (${DOCKER_IMAGE_NAME})..."
 IMAGE_REPO="${DOCKER_IMAGE_NAME%%:*}"
 IMAGE_TAG="${DOCKER_IMAGE_NAME##*:}"
@@ -124,7 +126,18 @@ k8s_deploy_kms "$NS" "$RELEASE" \
   --set image.tag="${IMAGE_TAG}" \
   --set image.pullPolicy=Never
 
-# ── 4. HTTP health check via port-forward ────────────────────────────────────
+# ── 4. Verify the pod is running as UID 1000 (not root) ──────────────────────
+print_status "Verifying pod runs as non-root UID 1000..."
+POD_NAME=$(kubectl get pods -n "$NS" -l "app.kubernetes.io/instance=${RELEASE}" \
+  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+[ -n "$POD_NAME" ] || print_error "Could not find KMS pod in namespace $NS"
+
+RUNNING_UID=$(kubectl exec -n "$NS" "$POD_NAME" -- id -u 2>/dev/null || echo "unknown")
+[ "$RUNNING_UID" = "1000" ] ||
+  print_error "Pod is running as UID ${RUNNING_UID}, expected 1000 — /etc/passwd may be missing (issue #1132)"
+print_success "Pod is running as UID ${RUNNING_UID} (non-root) ✓"
+
+# ── 5. HTTP health check via port-forward ────────────────────────────────────
 print_status "Opening port-forward to KMS service..."
 kubectl port-forward -n "$NS" "svc/${RELEASE}-cosmian-kms" 19998:9998 &
 PF_PID=$!
