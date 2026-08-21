@@ -81,24 +81,8 @@ let
     ++ pkcs11Contents;
   };
 
-  # Create the complete /etc structure required for correct pod and container
-  # operation (regression fix for issue #1132).
-  #
-  # Using a single pkgs.runCommand derivation (rather than separate writeTextFile
-  # entries or fakeRootCommands) is the most reliable approach: it creates a real
-  # directory tree in the Nix store that buildLayeredImage places verbatim into
-  # the image layer, with no proot / fakechroot involvement, no symlink aliasing
-  # by buildEnv, and no opaque-whiteout risk from fakeRootCommands.
-  etcLayer = pkgs.runCommand "kms-etc" { } ''
-    mkdir -p $out/etc/ssl/certs
-    mkdir -p $out/etc/cosmian
-    printf 'root:x:0:0:root:/root:/bin/sh\nkms:x:1000:1000:KMS User:/home/kms:/bin/sh\n' \
-      > $out/etc/passwd
-    printf 'root:x:0:\nkms:x:1000:\n' > $out/etc/group
-    printf 'hosts: files dns\nnetworks: files\npasswd: files\ngroup: files\nshadow: files\n' \
-      > $out/etc/nsswitch.conf
-    cp ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt $out/etc/ssl/certs/ca-bundle.crt
-  '';
+  # CA bundle derivation used in fakeRootCommands to copy into /etc/ssl/certs/
+  caBundle = pkgs.cacert;
 
   # Create home and data directories
   kmsDirectories = pkgs.runCommand "kms-directories" { } ''
@@ -235,14 +219,12 @@ pkgs.dockerTools.buildLayeredImage {
   # containerd versions (< 1.6.8). coreutils and bash (already in runtimeEnv)
   # cover all basic utilities needed at runtime.
   #
-  # Note: All /etc content (/etc/passwd, /etc/group, /etc/nsswitch.conf,
-  # /etc/ssl/certs/ca-bundle.crt, /etc/cosmian/) is provided by etcLayer (a
-  # pkgs.runCommand derivation) rather than fakeRootCommands. Using a proper
-  # Nix derivation avoids proot/fakechroot file-creation issues and symlink-
-  # aliasing by buildEnv, ensuring the files are reliably present in the image.
+  # Note: /etc content (/etc/passwd, /etc/group, /etc/nsswitch.conf,
+  # /etc/ssl/certs/ca-bundle.crt, /etc/cosmian/) is created in fakeRootCommands
+  # below. The etc/ directory inherited from runtimeEnv is read-only
+  # (dr-xr-xr-x), so fakeRootCommands first chmod 755 it before writing.
   contents = [
     runtimeEnv
-    etcLayer
     kmsDirectories
     startupScript
   ];
@@ -253,6 +235,26 @@ pkgs.dockerTools.buildLayeredImage {
     mkdir -p bin
     mkdir -p usr/local/bin
     mkdir -p usr/local/cosmian/ui
+
+    echo "=== fakeRootCommands: Creating /etc files ==="
+    # etc/ is inherited from runtimeEnv's buildEnv output with dr-xr-xr-x
+    # (read-only).  chmod it writable first so file creation can succeed.
+    chmod 755 etc/
+    mkdir -p etc/ssl/certs
+    mkdir -p etc/cosmian
+    printf 'root:x:0:0:root:/root:/bin/sh\nkms:x:1000:1000:KMS User:/home/kms:/bin/sh\n' \
+      | tee etc/passwd > /dev/null
+    printf 'root:x:0:\nkms:x:1000:\n' | tee etc/group > /dev/null
+    printf 'hosts: files dns\nnetworks: files\npasswd: files\ngroup: files\nshadow: files\n' \
+      | tee etc/nsswitch.conf > /dev/null
+    cp ${caBundle}/etc/ssl/certs/ca-bundle.crt etc/ssl/certs/ca-bundle.crt
+    # Verify /etc files were created
+    test -f etc/passwd         || { echo "FATAL: etc/passwd not created"; exit 1; }
+    test -f etc/group          || { echo "FATAL: etc/group not created"; exit 1; }
+    test -f etc/nsswitch.conf  || { echo "FATAL: etc/nsswitch.conf not created"; exit 1; }
+    test -f etc/ssl/certs/ca-bundle.crt || { echo "FATAL: etc/ssl/certs/ca-bundle.crt not created"; exit 1; }
+    test -d etc/cosmian        || { echo "FATAL: etc/cosmian not created"; exit 1; }
+    echo "All /etc files verified."
 
     echo "=== fakeRootCommands: Installing binaries (no symlinks) ==="
     cp -L ${actualKmsServer}/bin/cosmian_kms bin/cosmian_kms || echo "Failed to copy cosmian_kms to /bin"
@@ -300,10 +302,9 @@ pkgs.dockerTools.buildLayeredImage {
     ls -la bin/ || echo "ERROR: bin not found"
     ls -la usr/local/bin/ || echo "ERROR: usr/local/bin not found"
     ls -la usr/local/cosmian/ui/ || echo "ERROR: usr/local/cosmian/ui not found"
-    # /etc is populated by etcLayer in contents (not fakeRootCommands)
-    ls -la etc/ || echo "WARNING: etc not found"
-    ls -la etc/cosmian/ || echo "WARNING: etc/cosmian not found"
-    ls -la etc/ssl/certs/ || echo "WARNING: etc/ssl/certs not found"
+    ls -la etc/ || echo "ERROR: etc not found"
+    ls -la etc/cosmian/ || echo "ERROR: etc/cosmian not found"
+    ls -la etc/ssl/certs/ || echo "ERROR: etc/ssl/certs not found"
 
     # Provide system dynamic linker and glibc locations expected by the binary
     # Copy all files from glibc/lib to all possible locations
