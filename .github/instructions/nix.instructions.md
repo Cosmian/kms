@@ -30,7 +30,7 @@ mise run [--variant fips|non-fips] [--link static|dynamic] <task>
 
 ## OpenSSL bootstrap
 
-- `nix/openssl.nix` handles the OpenSSL 3.6.0 build for Nix environments.
+- `nix/openssl.nix` handles the OpenSSL 3.6.2 build for Nix environments.
 - `nix/openssl-fips-bootstrap.c` + `nix/openssl-fips-bootstrap.nix` handle FIPS module initialization.
 
 ## Best practices
