@@ -246,7 +246,8 @@ files were missing from the 5.26 image after busybox was removed.
 3. **HTTP health check** — verifies `/version` responds over a `kubectl port-forward`.
 
 **In CI:** triggered by `packaging-docker.yml` (`test-k8s-kms-pod` job) on every build,
-for both `fips` and `non-fips` variants, after the image is pushed to GHCR.
+for all four combinations of `{fips, non-fips} × {ubuntu-24.04 (amd64), ubuntu-24.04-arm (arm64)}`,
+after the arch-specific images are pushed to GHCR.
 
 ```bash
 # Run locally (requires minikube + helm):
