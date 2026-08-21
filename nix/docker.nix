@@ -231,25 +231,40 @@ pkgs.dockerTools.buildLayeredImage {
 
   # For this nixpkgs version, use fakeRootCommands to create root files
   fakeRootCommands = ''
+    # buildLayeredImage's `contents` merge (via buildEnv/lndir) keeps a
+    # directory as a symlink into the read-only Nix store whenever only a
+    # single input derivation contributes that subtree (e.g. usr/local/bin
+    # when only the pkcs11 ckms-bin derivation provides it, or etc/ when
+    # only runtimeEnv provides it). Any mkdir/cp/tee performed on such a
+    # path inside fakeRootCommands then silently fails with "Permission
+    # denied", because the symlink target is not writable even under
+    # fakeroot/proot. ensure_writable_dir replaces the symlink (if any)
+    # with a real, writable directory that preserves the original content,
+    # so every directory this script writes into is guaranteed writable
+    # regardless of how many contents derivations contributed to it.
+    ensure_writable_dir() {
+      _dir="$1"
+      if [ -L "$_dir" ]; then
+        _target=$(readlink "$_dir")
+        rm "$_dir"
+        mkdir -p "$_dir"
+        cp -r "$_target/." "$_dir/" 2>/dev/null || true
+      else
+        mkdir -p "$_dir"
+        chmod u+w "$_dir" 2>/dev/null || true
+      fi
+    }
+
     echo "=== fakeRootCommands: Creating directory structure ==="
-    mkdir -p bin
-    mkdir -p usr/local/bin
-    mkdir -p usr/local/cosmian/ui
+    ensure_writable_dir bin
+    ensure_writable_dir usr
+    ensure_writable_dir usr/local
+    ensure_writable_dir usr/local/bin
+    ensure_writable_dir usr/local/cosmian
+    ensure_writable_dir usr/local/cosmian/ui
 
     echo "=== fakeRootCommands: Creating /etc files ==="
-    # When contents has only runtimeEnv, buildLayeredImage creates
-    # etc -> /nix/store/xxx-runtimeEnv/etc (a symlink into the read-only
-    # Nix store).  chmod / tee / mkdir all fail silently on it.
-    # Replace the symlink with a real writable directory, preserving any
-    # existing content (e.g. wgetrc from curl).
-    if [ -L etc ]; then
-      _etc_target=$(readlink etc)
-      rm etc
-      mkdir -p etc
-      cp -r "$_etc_target/." etc/ 2>/dev/null || true
-    else
-      chmod 755 etc/ 2>/dev/null || true
-    fi
+    ensure_writable_dir etc
     mkdir -p etc/ssl/certs
     mkdir -p etc/cosmian
     printf 'root:x:0:0:root:/root:/bin/sh\nkms:x:1000:1000:KMS User:/home/kms:/bin/sh\n' \
@@ -278,8 +293,9 @@ pkgs.dockerTools.buildLayeredImage {
     # Prefer copying OpenSSL provider modules and configs from the provided OpenSSL derivation
     # (opensslDrv) to strictly reuse the derivation-generated configuration. Fall back to
     # the server output if opensslDrv is not provided.
-    mkdir -p usr/local/cosmian/lib/ossl-modules
-    mkdir -p usr/local/cosmian/lib/ssl
+    ensure_writable_dir usr/local/cosmian/lib
+    ensure_writable_dir usr/local/cosmian/lib/ossl-modules
+    ensure_writable_dir usr/local/cosmian/lib/ssl
     if [ -n "${opensslDrvPath}" ] && [ -d ${opensslDrvPath}/usr/local/cosmian/lib/ossl-modules ]; then
       cp -L ${opensslDrvPath}/usr/local/cosmian/lib/ossl-modules/* usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
     elif [ -d ${actualKmsServer}/usr/local/cosmian/lib/ossl-modules ]; then
