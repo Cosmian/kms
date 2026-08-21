@@ -94,6 +94,7 @@
     - [Authenticating users to the server](configuration/authentication.md)
     - [PKCE Authentication](configuration/pkce_authentication.md)
     - [Authorizing users with access rights](configuration/authorization.md)
+        - [Role Management and Key Ceremony](configuration/authorization/key_ceremony.md)
     - [Enabling TLS](configuration/tls.md)
     - [Obtaining TLS Certificates](configuration/certificates.md)
     - [Logging and telemetry]()
