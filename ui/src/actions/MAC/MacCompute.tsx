@@ -77,7 +77,7 @@ const MacComputeForm: React.FC = () => {
             <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ algorithm: "SHA256" }}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
+                        <h3 className="text-m font-bold mb-4">{t("macCompute.keyIdentification")}</h3>
                         <KeyIdInput
                             form={form}
                             fieldName="keyId"
@@ -86,8 +86,8 @@ const MacComputeForm: React.FC = () => {
                             placeholder={t("common:enterKeyId")}
                             objectType="SymmetricKey"
                         />
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("macCompute.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
 

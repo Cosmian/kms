@@ -99,7 +99,7 @@ const CertificateEncryptForm: React.FC = () => {
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Certificate Identification (required)</h3>
+                        <h3 className="text-m font-bold mb-4">{t("certificateEncrypt.certificateIdentification")}</h3>
                         <KeyIdInput
                             form={form}
                             fieldName="certificateId"
