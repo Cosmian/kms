@@ -51,7 +51,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 |------|----------|
 | `crate/server/` | Server binary and library (main codebase) |
 | `crate/kmip/` | KMIP 2.1 protocol types |
-| `crate/crypto/` | Crypto primitives; `build.rs` builds OpenSSL 3.6.0 |
+| `crate/crypto/` | Crypto primitives; `build.rs` builds OpenSSL 3.6.2 |
 | `crate/clients/clap/` | CLI actions (clap commands) |
 | `crate/clients/ckms/` | CLI binary entry point |
 | `crate/server_database/` | DB backends (SQLite, PostgreSQL, Redis-findex) |
@@ -73,7 +73,7 @@ cargo test-fips                      # full FIPS workspace test suite
 cargo test-non-fips                  # full non-FIPS workspace test suite
 ```
 
-No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds OpenSSL 3.6.0.
+No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds OpenSSL 3.6.2.
 
 ---
 
