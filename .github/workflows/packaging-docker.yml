@@ -276,6 +276,87 @@ jobs:
           done
           cosign sign --yes ${images}
 
+  # ── Kubernetes pod smoke-test for the KMS server image ───────────────────
+  # Runs on amd64 only.  Tests both fips and non-fips variants.
+  # Catches regressions where required /etc files (passwd, group,
+  # nsswitch.conf, ssl/certs/ca-bundle.crt, cosmian/) are missing from the
+  # image (issue #1132) and verifies the KMS pod starts via the Helm chart.
+
+  test-k8s-kms-pod:
+    name: k8s-kms-pod-${{ matrix.features }}
+    needs: nix-docker-image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [fips, non-fips]
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute amd64 image tag
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ matrix.features == 'fips' && 'ghcr.io/cosmian/kms-fips' || 'ghcr.io/cosmian/kms' }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Pull amd64 image and tag for local use
+        run: |
+          set -euo pipefail
+          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          AMD64_TAG="${FIRST_TAG}-amd64"
+          echo "Pulling: ${AMD64_TAG}"
+          docker pull "${AMD64_TAG}"
+          docker tag "${AMD64_TAG}" kms-test:current
+          echo "DOCKER_IMAGE_NAME=kms-test:current" >> "$GITHUB_ENV"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v5
+
+      - name: Start Minikube
+        uses: medyagh/setup-minikube@v0.0.21
+        with:
+          driver: docker
+          kubernetes-version: v1.32.0
+
+      - name: Test KMS image in Kubernetes pod
+        run: mise run test:k8s:kms-image --variant ${{ matrix.features }}
+
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          echo "=== pods ==="
+          kubectl get pods -A || true
+          echo "=== kms-etc-check describe ==="
+          kubectl describe pod kms-etc-check 2>/dev/null || true
+          echo "=== kms-etc-check logs ==="
+          kubectl logs kms-etc-check 2>/dev/null || true
+          echo "=== kms-image-test pods ==="
+          kubectl get pods -n kms-image-test 2>/dev/null || true
+          echo "=== kms-image-test logs ==="
+          kubectl logs -n kms-image-test -l "app.kubernetes.io/instance=kms-image-test" --tail=80 2>/dev/null || true
+
   # ── Kubernetes Operator Docker image ──────────────────────────────────────
 
   k8s-operator-image:
