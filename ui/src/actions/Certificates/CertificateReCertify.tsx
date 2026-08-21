@@ -57,7 +57,7 @@ const CertificateReCertifyForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Certificate to Re-certify</h3>
+                        <h3 className="text-m font-bold mb-4">{t("certificateReCertify.certificateToReCertify")}</h3>
                         <KeyIdInput
                             form={form}
                             fieldName="certificateIdToReCertify"

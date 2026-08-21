@@ -168,7 +168,7 @@ const FpeDecryptForm: React.FC = () => {
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
+                        <h3 className="text-m font-bold mb-4">{t("fpeDecrypt.keyIdentification")}</h3>
                         <KeyIdInput
                             form={form}
                             fieldName="keyId"

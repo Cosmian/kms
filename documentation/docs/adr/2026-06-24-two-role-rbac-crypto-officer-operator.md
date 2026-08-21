@@ -170,10 +170,12 @@ reference policy fully implements those roles with documented normative referenc
 - **IMP-002**: `crate/server/src/config/command_line/roles_config.rs` — CLI flags:
   `--crypto-officer-users`, `--crypto-officer-require-ceremony`,
   `--ceremony-secret` (env `KMS_CEREMONY_SECRET`),
-  `--ceremony-key-id` (env `KMS_CEREMONY_KEY_ID`, ADP-26 scaffold).
+  `--ceremony-key-id` (env `KMS_CEREMONY_KEY_ID`, ADP-26 — accepted by parser, not yet functional),
+  `--ceremony-wrapping-key-id` (env `KMS_CEREMONY_WRAP_KEY_ID`, **implemented**).
   The former `--privileged-users` flag is removed.
-- **IMP-003**: `kms.toml` `[roles]` section with `crypto_officer_users`,
-  `crypto_officer_require_ceremony`, `ceremony_secret`.
+- **IMP-003**: `kms.toml` `[roles]` section fields: `crypto_officer_users`,
+  `crypto_officer_require_ceremony`, `ceremony_secret`, `ceremony_key_id` (ADP-26 scaffold),
+  `ceremony_wrapping_key_id`.
 - **IMP-004**: Migration: move `privileged_users = [...]` into `[roles]`, rename to
   `crypto_officer_users`.
 - **IMP-005**: New FIPS test vectors in `test_data/vectors/access_control/` cover the
@@ -189,12 +191,19 @@ reference policy fully implements those roles with documented normative referenc
 - **IMP-008**: `JoinSplitKey` with all ceremony-tagged shares auto-activates the CO role.
   No separate activation call needed from the Web UI. The dedicated REST endpoint
   `POST /access/crypto_officer/ceremony/activate` is kept for CLI backward compatibility.
-- **IMP-009**: Revocation supports self-revoke (active CO) and peer revocation (any other
-  CO candidate). The demoted CO's reconstructed key is NOT revoked — only the
-  `crypto_officer_activations` row is updated. Peer revocation enables compromise
-  recovery without server restart (NIST SP 800-152 FR:6.119).
+- **IMP-009**: Revocation via `POST /access/crypto_officer/disable` with optional JSON body
+  `{ "target_user": "<uid>" }`. Omitting `target_user` is self-revoke (active CO only);
+  supplying it is peer revocation (any CO candidate). The demoted CO's reconstructed key
+  is NOT revoked — only the `crypto_officer_activations` row is updated (NIST SP 800-152 FR:6.119).
 - **IMP-010**: Share UID naming: `<base-uid>#<part-index>` (e.g. `my-ceremony-key#1`).
   On `JoinSplitKey`, reconstructed key UID = base UID (ceremony path only).
+- **IMP-011**: Optional AES-KW share wrapping (`ceremony_wrapping_key_id`). When set,
+  `CreateSplitKey` encrypts each share with RFC 5649 before DB write; `JoinSplitKey`
+  detects `x-cosmian-share-wrapping-key` vendor attribute and unwraps transparently.
+  The wrapping key can be HSM-resident when the KMS is HSM-backed.
+- **IMP-012**: `GET /access/crypto_officer/status` response includes `active_co_users: Vec<String>`
+  (populated only for CO candidates when ceremony is activated), in addition to `users`,
+  `custodians_count`, `require_ceremony`, `ceremony_activated`, `is_crypto_officer`.
 
 ## Future Evolution
 
