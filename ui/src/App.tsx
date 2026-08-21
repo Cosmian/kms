@@ -514,6 +514,9 @@ function App() {
             Layout: {
                 headerBg: "#ffffff",
                 footerPadding: "5px 50px",
+                /* Sider collapse trigger: light gray bg + accessible dark icon (≥4.5:1) */
+                triggerBg: "#e8eaed",
+                triggerColor: "#595959",
             },
             Card: {
                 colorBgContainer: "#ffffff",
@@ -552,6 +555,9 @@ function App() {
             Layout: {
                 headerBg: "#161923",
                 footerPadding: "5px 50px",
+                /* Sider collapse trigger: matches sidebar surface with readable icon (≥4.5:1 on #282d3f) */
+                triggerBg: "#282d3f",
+                triggerColor: "#c8c9db",
             },
             Menu: {
                 darkItemBg: "#282d3f" /* mdBook navy --sidebar-bg */,
