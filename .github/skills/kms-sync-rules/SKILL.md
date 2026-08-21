@@ -46,10 +46,11 @@ Apply this path → rule mapping to the detected file list:
 | `ui/tests/e2e/**` | **4.16** |
 | `crate/crypto/build.rs` | **4.17** |
 
-> **Automatic application via `applyTo`.** Most sub-rules below are also encoded as
-> `.github/instructions/*.instructions.md` files with an `applyTo` frontmatter, so agents editing a
-> matching file receive the checklist automatically without running this skill. This skill remains
-> the authoritative on-demand reference and the single source of truth for the rule numbers.
+> **Instruction files are normative.** Every rule below except **4.8** has a corresponding
+> `.github/instructions/*.instructions.md` file with an `applyTo` frontmatter — that file is the
+> single source of truth for its checklist and auto-attaches when the agent edits a matching path.
+> This skill is the source of truth for the git-diff detection flow, the path→rule map, and the
+> heuristics no glob can express (like 4.8); it intentionally does not restate the checklists.
 
 Additional heuristic checks:
 
@@ -103,92 +104,3 @@ agent edits a matching path. This table is a rule-number → instruction-file in
 - [ ] UI — menu items/routes hidden when FIPS mode active (`FIPS_MODE` env var)
 - [ ] E2E tests — `test.skip(FIPS_MODE, "non-fips only")` in Playwright specs
 - [ ] Test vectors — placed in `test_data/vectors/non-fips/` or runner gated with `#[cfg(feature = "non-fips")]`
-
-### Rule 4.9 — Auth middleware consistency
-
-*(triggered by: `crate/server/src/middlewares/**`, `crate/server/src/config/wizard/auth_wizard.rs`)*
-
-- [ ] Config struct updated in `crate/server/src/config/`
-- [ ] Wizard step added/updated in `crate/server/src/config/wizard/auth_wizard.rs`
-- [ ] Middleware implemented in `crate/server/src/middlewares/`
-- [ ] Every authenticated scope in `start_kms_server.rs` wraps the middleware with `Condition::new(use_<auth>, <Middleware>)`
-- [ ] `EnsureAuth::new` boolean: `use_jwt_auth || use_cert_auth || use_api_token_auth` (every scope except mTLS-only)
-
-### Rule 4.10 — Test vectors: directory → runner → README
-
-> Triggered by: most code changes
-
-- [ ] Directory created: `test_data/vectors/<category>/<name>/`
-- [ ] `manifest.toml` and TTLV-JSON step files written
-- [ ] Test function added to `crate/test_kms_server/src/vector_runner.rs`
-- [ ] `crate/test_kms_server/README.md` row added + total count updated
-- [ ] Run `/kms-test-vector` for guided workflow
-
-### Rule 4.11 — Nix vendor hashes ⇔ lock files
-
-*(triggered by: `Cargo.lock`, `ui/pnpm-lock.yaml`)*
-
-- [ ] Update `nix/expected-hashes/` files with correct `sha256-...` hash from CI output
-- Hash files: `server.vendor.{static,dynamic}.sha256`, `cli.vendor.{static,dynamic}.{darwin,linux}.sha256`, `ui.vendor.{fips,non-fips}.sha256`, `ui.pnpm.{darwin,linux}.sha256`
-
-### Rule 4.12 — Cloud provider integrations
-
-*(triggered by: `crate/server/src/routes/aws_xks/**`, `azure_ekm/**`, `google_cse/**`, `ms_dke/**`)*
-
-- [ ] Config struct in `crate/server/src/config/`
-- [ ] Wizard step in `crate/server/src/config/wizard/advanced_wizard.rs`
-- [ ] Routes module in `crate/server/src/routes/<provider>/`, declared in `routes/mod.rs`
-- [ ] Scope registered in `start_kms_server.rs` with correct auth middleware
-- [ ] `crate/server/documentation/openapi.yaml` updated
-- [ ] CLI actions in `crate/clients/clap/src/actions/<provider>/`
-- [ ] UI actions in `ui/src/actions/CloudProviders/`
-
-### Rule 4.13 — HSM backend support
-
-*(triggered by: `crate/hsm/**`)*
-
-- [ ] PKCS#11 loader crate in `crate/hsm/<model>/`
-- [ ] HSM model enum updated in `crate/server/src/config/` or `crate/hsm/base_hsm/`
-- [ ] Wizard step in `crate/server/src/config/wizard/hsm_wizard.rs`
-- [ ] Test vectors in `test_data/vectors/hsm/<model>/`
-- [ ] CI matrix entry added in `.github/workflows/test_all.yml`
-
-### Rule 4.14 — Documentation ⇔ mkdocs ⇔ README
-
-*(triggered by: `documentation/**`, `README.md`)*
-
-- [ ] `documentation/docs/` — relevant `.md` page added/updated (run `/docs-writer`)
-- [ ] `documentation/mkdocs.yml` — nav entry added under correct section
-- [ ] `README.md` — brief summary + link added (no full duplication)
-- [ ] `documentation/docs/kms_clients/` — CLI docs regenerated if CLI-visible (see Rule 4.15)
-
-### Rule 4.15 — CLI documentation auto-generation
-
-*(triggered by: `crate/clients/ckms/src/**`, `crate/clients/clap/src/**`)*
-
-- [ ] Run: `cargo run --bin ckms -- markdown documentation/docs/kms_clients/cli/main_commands.md`
-- [ ] Commit the regenerated file (manual edits will be overwritten next time)
-
-### Rule 4.16 — E2E test documentation
-
-*(triggered by: `ui/tests/e2e/**`)*
-
-- [ ] Update `ui/tests/e2e/README.md` to reflect current spec files, FIPS-skip table, and test coverage
-
-### Rule 4.17 — OpenSSL version updates
-
-*(triggered by: `crate/crypto/build.rs`)*
-
-- [ ] `crate/crypto/build.rs` — version, download URL, SHA-256 hash updated
-- [ ] `crate/server/src/openssl_providers.rs` — provider init verified compatible
-- [ ] `cbom/cbom.cdx.json` — Cryptographic Bill of Materials updated
-- [ ] `sbom/` — Software Bill of Materials updated
-
-### Rule 4.18 — Database schema/backend ⇔ docs
-
-*(triggered by: `crate/server_database/**`)*
-
-- [ ] `documentation/docs/configuration/database/configuration.md` — Databases overview updated if selection/configuration/TLS/migration behaviour changed
-- [ ] `documentation/docs/configuration/database/tables.md` — tables and links updated if a table, column, or index was added/removed/renamed
-- [ ] `documentation/docs/configuration/database/redis.md` — Redis-with-Findex page updated if the encryption model, key derivation, or data layout changed
-- [ ] `documentation/docs/SUMMARY.md` and `documentation/nav.yml` — navigation updated if a page was added or removed

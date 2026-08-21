@@ -22,6 +22,10 @@ Organize content into four types:
 - `documentation/docs/SUMMARY.md` (mdBook) and `documentation/nav.yml` are the **two navigation sources** — keep both in sync.
 - When adding or removing a page, update **both** `SUMMARY.md` and `nav.yml` — do not rely on auto-discovery.
 - Integrations require: doc file in `documentation/docs/integrations/`, nav entry in `SUMMARY.md` + `nav.yml`, row in `README.md`.
+- Root `README.md` — brief summary + link added when a new doc page is added; never duplicate full content.
+- CLI-visible changes also require regenerating `documentation/docs/kms_clients/`  — see `cli-ui-sync.instructions.md` (Rule 4.15).
+
+> Rule 4.14 of `/kms-sync-rules`.
 
 ## Examples
 
