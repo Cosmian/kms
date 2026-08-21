@@ -28,6 +28,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `markdown.instructions.md` | `**/*.md` |
 | `docs.instructions.md` | `documentation/**/*.md` |
 | `nix.instructions.md` | `nix/**/*.nix` |
+| `docker.instructions.md` | `nix/docker.nix, nix/k8s-images.nix, .mise/scripts/docker-compose.yml, charts/cosmian-kms/**/*` |
 
 ---
 

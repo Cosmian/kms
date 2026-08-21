@@ -277,16 +277,16 @@ jobs:
           cosign sign --yes ${images}
 
   # ── Kubernetes pod smoke-test for the KMS server image ───────────────────
-  # Runs on amd64 only.  Tests both fips and non-fips variants.
+  # Runs on both amd64 and arm64.  Tests both fips and non-fips variants.
   # Catches regressions where required /etc files (passwd, group,
   # nsswitch.conf, ssl/certs/ca-bundle.crt, cosmian/) are missing from the
   # image (issue #1132) and verifies the KMS pod starts via the Helm chart.
 
   test-k8s-kms-pod:
-    name: k8s-kms-pod-${{ matrix.features }}
+    name: k8s-kms-pod-${{ matrix.features }}-${{ matrix.runner }}
     needs: nix-docker-image
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: read
@@ -294,6 +294,7 @@ jobs:
       fail-fast: false
       matrix:
         features: [fips, non-fips]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
 
     steps:
       - uses: actions/checkout@v7
@@ -302,6 +303,16 @@ jobs:
 
       - uses: ./.github/actions/install-mise
 
+      - name: Derive architecture from runner
+        id: arch
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.runner }}" == *arm* ]]; then
+            echo "suffix=-arm64" >> "$GITHUB_OUTPUT"
+          else
+            echo "suffix=-amd64" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Login to GHCR
         uses: docker/login-action@v4.6.0
         with:
@@ -309,7 +320,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute amd64 image tag
+      - name: Compute image tag
         id: meta
         uses: docker/metadata-action@v6
         with:
@@ -321,14 +332,14 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      - name: Pull amd64 image and tag for local use
+      - name: Pull arch-specific image and tag for local use
         run: |
           set -euo pipefail
           FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
-          AMD64_TAG="${FIRST_TAG}-amd64"
-          echo "Pulling: ${AMD64_TAG}"
-          docker pull "${AMD64_TAG}"
-          docker tag "${AMD64_TAG}" kms-test:current
+          ARCH_TAG="${FIRST_TAG}${{ steps.arch.outputs.suffix }}"
+          echo "Pulling: ${ARCH_TAG}"
+          docker pull "${ARCH_TAG}"
+          docker tag "${ARCH_TAG}" kms-test:current
           echo "DOCKER_IMAGE_NAME=kms-test:current" >> "$GITHUB_ENV"
 
       - name: Install Helm
