@@ -89,7 +89,7 @@ const PqcSignForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
+                        <h3 className="text-m font-bold mb-4">{t("pqcSign.keyIdentification")}</h3>
                         <KeyIdInput
                             form={form}
                             fieldName="keyId"
@@ -98,8 +98,8 @@ const PqcSignForm: React.FC = () => {
                             placeholder={t("pqcSign.enterPrivateKeyId")}
                             objectType="PrivateKey"
                         />
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("pqcSign.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Form.Item>

@@ -64,7 +64,7 @@ const PqcEncapsulateForm: React.FC = () => {
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
+                        <h3 className="text-m font-bold mb-4">{t("pqcEncapsulate.keyIdentification")}</h3>
                         <KeyIdInput
                             form={form}
                             fieldName="keyId"
