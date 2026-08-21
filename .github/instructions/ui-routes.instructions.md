@@ -1,7 +1,7 @@
 ---
 name: 'UI Routes & Navigation'
 description: 'Keep server SPA routes, React Router, and the UI menu in sync when adding a new UI page'
-applyTo: 'ui/src/App.tsx, ui/src/menuItems.tsx'
+applyTo: 'ui/src/App.tsx, ui/src/menuItems.tsx, ui/src/actions/**/*.tsx, ui/src/pages/**/*.tsx'
 ---
 
 # UI route & navigation sync
