@@ -514,8 +514,8 @@ function App() {
             Layout: {
                 headerBg: "#ffffff",
                 footerPadding: "5px 50px",
-                /* Sider collapse trigger: transparent (matches sidebar bg) + accessible dark icon (≥4.5:1) */
-                triggerBg: "#fafafa",
+                /* Sider collapse trigger: light gray bg + accessible dark icon (≥4.5:1) */
+                triggerBg: "#e8eaed",
                 triggerColor: "#595959",
             },
             Card: {
