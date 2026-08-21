@@ -166,6 +166,45 @@ echo "  UI served at /ui/index.html ✓"
 
 echo "=== No-config smoke test passed ==="
 
+# === Non-root user smoke test (regression: issue #1132) ===
+# The KMS must start and serve requests when running as UID 1000 (the user
+# configured in the Helm chart's podSecurityContext). This requires:
+#   - /etc/passwd    (UID/GID resolution — getpwuid must succeed)
+#   - writable data directory (provided by the tmpfs in docker-compose)
+HOST_NONROOT_PORT="${KMS_SLOT_KMS_NONROOT_PORT:-14098}"
+KMS_NONROOT_URL="http://127.0.0.1:${HOST_NONROOT_PORT}"
+echo "=== Non-root user smoke test: ${KMS_NONROOT_URL} (user=1000) ==="
+
+version_response=$(curl -sf "${KMS_NONROOT_URL}/version")
+echo "  /version → ${version_response}"
+echo "${version_response}" | grep -q '"' || {
+  echo "ERROR: KMS did not respond as non-root user — missing /etc/passwd or permission issue"
+  docker compose -f "$COMPOSE_FILE" logs --tail=40 kms-nonroot || true
+  exit 1
+}
+echo "  KMS running as non-root UID 1000 ✓"
+echo "=== Non-root user smoke test passed ==="
+
+# === CA bundle / OIDC outbound TLS prerequisite test (regression: issue #1132) ===
+# /etc/ssl/certs/ca-bundle.crt (pointed to by SSL_CERT_FILE) must be present
+# and contain valid certificate data. This is a prerequisite for OIDC token
+# validation, which makes outbound HTTPS calls to the identity provider.
+echo "=== CA bundle test (SSL_CERT_FILE / OIDC prerequisite) ==="
+docker run --rm --entrypoint '' "${DOCKER_IMAGE_NAME}" sh -c '
+  set -e
+  ssl_cert_file="${SSL_CERT_FILE:-/etc/ssl/certs/ca-bundle.crt}"
+  echo "SSL_CERT_FILE=${ssl_cert_file}"
+  [ -f "${ssl_cert_file}" ] || { echo "ERROR: CA bundle missing: ${ssl_cert_file}"; exit 1; }
+  cert_count=$(grep -c "BEGIN CERTIFICATE" "${ssl_cert_file}" 2>/dev/null || echo 0)
+  echo "  CA bundle found: ${cert_count} certificates"
+  [ "${cert_count}" -ge 50 ] || { echo "ERROR: CA bundle has only ${cert_count} certs (expected ≥50)"; exit 1; }
+  echo "  CA bundle OK ✓"
+' || {
+  echo "ERROR: CA bundle check failed — OIDC outbound TLS will not work"
+  exit 1
+}
+echo "=== CA bundle test passed ==="
+
 # === Config-file based compose test ===
 echo "Running config-based compose test ($COMPOSE_FILE:kms-with-conf)"
 docker compose -f "$COMPOSE_FILE" logs --tail=120 kms-with-conf || true
