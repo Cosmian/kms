@@ -68,6 +68,8 @@ let
       pkgs.tzdata # Timezone data
       pkgs.coreutils # Basic utilities
       pkgs.bash # Shell for scripts
+      pkgs.gnugrep # grep (not provided by coreutils) — required by the CA
+      # bundle smoke test and any script relying on grep at runtime.
       # wget, curl, and netcat are required for Docker/Kubernetes health checks.
       # wget: CMD-SHELL health checks (HTTP /health endpoint)
       # curl: Kubernetes liveness/readiness probes and docker-compose wait scripts
