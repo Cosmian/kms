@@ -80,6 +80,7 @@ readonly _BASE_KMIP_TLS13_PORT=5697
 # Docker image test KMS instances
 readonly _BASE_KMS_CONF_PORT=11098
 readonly _BASE_KMS_EXAMPLE_PORT=12098
+readonly _BASE_KMS_NO_CONF_PORT=13098
 
 # Load balancer
 readonly _BASE_LB_PORT=18080
@@ -137,6 +138,7 @@ slot_init() {
   export KMS_SLOT_KMIP_TLS13_PORT=$((_BASE_KMIP_TLS13_PORT + offset))
   export KMS_SLOT_KMS_CONF_PORT=$((_BASE_KMS_CONF_PORT + offset))
   export KMS_SLOT_KMS_EXAMPLE_PORT=$((_BASE_KMS_EXAMPLE_PORT + offset))
+  export KMS_SLOT_KMS_NO_CONF_PORT=$((_BASE_KMS_NO_CONF_PORT + offset))
   export KMS_SLOT_LB_PORT=$((_BASE_LB_PORT + offset))
   export KMS_SLOT_KMS_ORACLE_PORT=$((_BASE_KMS_ORACLE_PORT + offset))
 

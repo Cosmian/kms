@@ -68,45 +68,20 @@ let
       pkgs.tzdata # Timezone data
       pkgs.coreutils # Basic utilities
       pkgs.bash # Shell for scripts
-      # wget and netcat are required for Docker health checks (wget for HTTP, nc for TLS port checks).
+      # wget, curl, and netcat are required for Docker/Kubernetes health checks.
+      # wget: CMD-SHELL health checks (HTTP /health endpoint)
+      # curl: Kubernetes liveness/readiness probes and docker-compose wait scripts
+      # netcat-openbsd: nc -z TLS port probes (-z flag requires BSD/OpenBSD semantics)
       # These replace the previous busybox dependency which caused
       # "failed to register layer: openat dev/pts/ptmx" errors on older containerd versions.
       pkgs.wget
+      pkgs.curl
       pkgs.netcat-openbsd
     ]
     ++ pkcs11Contents;
   };
 
   # Create a minimal /etc structure that will be added to the image
-  etcPasswd = pkgs.writeTextFile {
-    name = "passwd";
-    text = ''
-      root:x:0:0:root:/root:/bin/sh
-      kms:x:1000:1000:KMS User:/home/kms:/bin/sh
-    '';
-    destination = "/etc/passwd";
-  };
-
-  etcGroup = pkgs.writeTextFile {
-    name = "group";
-    text = ''
-      root:x:0:
-      kms:x:1000:
-    '';
-    destination = "/etc/group";
-  };
-
-  etcNsswitch = pkgs.writeTextFile {
-    name = "nsswitch.conf";
-    text = ''
-      hosts: files dns
-      networks: files
-      passwd: files
-      group: files
-      shadow: files
-    '';
-    destination = "/etc/nsswitch.conf";
-  };
 
   # Create home and data directories
   kmsDirectories = pkgs.runCommand "kms-directories" { } ''
@@ -242,11 +217,13 @@ pkgs.dockerTools.buildLayeredImage {
   # character device node that causes `failed to register layer` errors on older
   # containerd versions (< 1.6.8). coreutils and bash (already in runtimeEnv)
   # cover all basic utilities needed at runtime.
+  #
+  # Note: /etc/passwd, /etc/group, /etc/nsswitch.conf are NOT placed via Nix
+  # derivations in contents — those would be shadowed by the `mkdir -p etc` in
+  # fakeRootCommands (the fakeRoot layer wins over the contents layer).
+  # Instead those files are written directly in fakeRootCommands below.
   contents = [
     runtimeEnv
-    etcPasswd
-    etcGroup
-    etcNsswitch
     kmsDirectories
     startupScript
   ];
@@ -259,6 +236,16 @@ pkgs.dockerTools.buildLayeredImage {
     mkdir -p usr/local/cosmian/ui
     mkdir -p etc
     mkdir -p etc/ssl/certs
+    mkdir -p etc/cosmian
+
+    echo "=== fakeRootCommands: Writing /etc files ==="
+    # Write directly here — NOT via contents: the fakeRootCommands layer is
+    # applied last and any plain `mkdir -p etc` in this block would shadow
+    # symlinks placed by Nix derivations in the contents list.
+    # By writing the files here, they coexist with the fakeRoot-created dirs.
+    printf 'root:x:0:0:root:/root:/bin/sh\nkms:x:1000:1000:KMS User:/home/kms:/bin/sh\n' >etc/passwd
+    printf 'root:x:0:\nkms:x:1000:\n' >etc/group
+    printf 'hosts: files dns\nnetworks: files\npasswd: files\ngroup: files\nshadow: files\n' >etc/nsswitch.conf
 
     echo "=== fakeRootCommands: Installing binaries (no symlinks) ==="
     cp -L ${actualKmsServer}/bin/cosmian_kms bin/cosmian_kms || echo "Failed to copy cosmian_kms to /bin"
@@ -304,13 +291,6 @@ pkgs.dockerTools.buildLayeredImage {
 
     # ckms and libcosmian_pkcs11.so are now added via pkcs11Contents in the
     # contents list, so no fakeRootCommands step is needed for them.
-
-    # Pre-create /etc/cosmian so Docker bind-mounts of config files (e.g.
-    # /etc/cosmian/kms.toml) land as regular files rather than directories.
-    # Without this, Docker creates the mount-point path as a directory when
-    # the parent does not exist in the image, causing the KMS server to fail
-    # with "Is a directory" when reading COSMIAN_KMS_CONF.
-    mkdir -p etc/cosmian
 
     echo "=== fakeRootCommands: Verifying installed files ==="
     ls -la bin/ || echo "ERROR: bin not found"
