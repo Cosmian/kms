@@ -1,4 +1,4 @@
-# Cosmian KMS — AI Agent Instructions
+# Eviden KMS — AI Agent Instructions
 
 ## 1. Repository high level view
 
@@ -36,7 +36,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `nix.instructions.md` | `nix/**/*.nix` | Nix build expressions, vendor hashes |
 | `docker.instructions.md` | `nix/docker.nix, nix/k8s-images.nix, .mise/scripts/docker-compose.yml, .mise/scripts/test/test_docker_image.sh, .mise/lib/k8s.sh, .mise/tasks/build/docker, .mise/tasks/test/docker, .mise/tasks/test/k8s/**, charts/cosmian-kms/**/*` | Docker image build/test (Nix), docker-compose, Helm chart, Kubernetes helpers |
 
-Cosmian KMS is a high-performance, source available **FIPS 140-3** compliant Key
+Eviden KMS is a high-performance, source available **FIPS 140-3** compliant Key
 Management System written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS
 and supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
 
@@ -123,7 +123,7 @@ crate/
       module/       cosmian_pkcs11_module      — PKCS#11 module implementation
       provider/     cosmian_pkcs11             — PKCS#11 provider binary
     wasm/           cosmian_kms_client_wasm    — WASM client for the web UI
-  crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.0
+  crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.2
   hsm/
     base_hsm/       cosmian_kms_base_hsm       — base HSM traits and common code
     softhsm2/       softhsm2_pkcs11_loader     — SoftHSM2
@@ -458,7 +458,7 @@ mise run [task] --variant [fips|non-fips] [args]
 
 ### 8.3 OpenSSL handling
 
-**No external OpenSSL needed.** OpenSSL 3.6.0 is downloaded, SHA-256-verified,
+**No external OpenSSL needed.** OpenSSL 3.6.2 is downloaded, SHA-256-verified,
 and built from source by `crate/crypto/build.rs` into `target/` on first build.
 
 At runtime, `crate/server/src/openssl_providers.rs` initialises the correct provider:
