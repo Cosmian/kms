@@ -237,9 +237,19 @@ pkgs.dockerTools.buildLayeredImage {
     mkdir -p usr/local/cosmian/ui
 
     echo "=== fakeRootCommands: Creating /etc files ==="
-    # etc/ is inherited from runtimeEnv's buildEnv output with dr-xr-xr-x
-    # (read-only).  chmod it writable first so file creation can succeed.
-    chmod 755 etc/
+    # When contents has only runtimeEnv, buildLayeredImage creates
+    # etc -> /nix/store/xxx-runtimeEnv/etc (a symlink into the read-only
+    # Nix store).  chmod / tee / mkdir all fail silently on it.
+    # Replace the symlink with a real writable directory, preserving any
+    # existing content (e.g. wgetrc from curl).
+    if [ -L etc ]; then
+      _etc_target=$(readlink etc)
+      rm etc
+      mkdir -p etc
+      cp -r "$_etc_target/." etc/ 2>/dev/null || true
+    else
+      chmod 755 etc/ 2>/dev/null || true
+    fi
     mkdir -p etc/ssl/certs
     mkdir -p etc/cosmian
     printf 'root:x:0:0:root:/root:/bin/sh\nkms:x:1000:1000:KMS User:/home/kms:/bin/sh\n' \
