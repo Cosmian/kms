@@ -1,7 +1,7 @@
 ---
 name: 'Auth Middleware'
 description: 'Keep auth config, the wizard, the middleware, and scope wiring in sync'
-applyTo: 'crate/server/src/middlewares/**/*.rs'
+applyTo: 'crate/server/src/middlewares/**/*.rs, crate/server/src/config/wizard/auth_wizard.rs'
 ---
 
 # Auth middleware sync

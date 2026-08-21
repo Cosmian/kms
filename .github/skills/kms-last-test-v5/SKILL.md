@@ -73,7 +73,7 @@ Full UI route map, action module list, MCP tool reference → **`reference/ui-ro
 | **HSM integrations**  | Changes to `crate/hsm/`                        | Requires HSM hardware or SoftHSM2 (`test_data/configs/server/hsm/softhsm2_config.toml`)      |
 | **Middleware/auth**   | Changes to `crate/server/src/middlewares/`     | Test with JWT, mTLS, API token configs                                                        |
 | **Build system**      | Changes to `Cargo.toml`, `build.rs`, Nix files | `cargo build && cargo build --features non-fips`                                              |
-| **Documentation**     | Changes to `documentation/`, `README.md`       | `cd documentation && mkdocs build`                                                            |
+| **Documentation**     | Changes to `documentation/`, `README.md`       | `cd documentation && mdbook build`                                                            |
 
 ---
 
