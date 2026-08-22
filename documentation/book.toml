@@ -14,6 +14,7 @@ preferred-dark-theme = "navy"
 site-url = "https://docs.cosmian.com/"
 additional-css = ["theme/css/eviden.css", "theme/css/mdbook-admonish.css", "theme/css/tabs.css"]
 additional-js = ["theme/mermaid.min.js", "theme/js/mermaid-init.js", "theme/js/tabs.js", "theme/js/theme-invert.js", "theme/js/old-versions-link.js"]
+mathjax-support = true
 
 [output.html.search]
 enable = true
