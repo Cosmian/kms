@@ -6,6 +6,7 @@ import { sendKmipRequest } from "../../utils/utils";
 import * as wasmClient from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface PqcVerifyFormData {
     dataFile: Uint8Array;
@@ -115,9 +116,14 @@ const PqcVerifyForm: React.FC = () => {
                     </Card>
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("pqcVerify.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("pqcVerify.publicKeyId")} help={t("pqcVerify.publicKeyIdHelp")}>
-                            <Input placeholder={t("pqcVerify.enterPublicKeyId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("pqcVerify.publicKeyId")}
+                            help={t("pqcVerify.publicKeyIdHelp")}
+                            placeholder={t("pqcVerify.enterPublicKeyId")}
+                            objectType="PublicKey"
+                        />
                         <Form.Item name="tags" label={t("common:tags")} help={t("pqcVerify.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>

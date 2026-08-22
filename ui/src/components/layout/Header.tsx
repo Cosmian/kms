@@ -63,7 +63,11 @@ const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
 
     return (
         <div className="flex items-center h-full">
-            {logoUrl && <img src={logoUrl} alt={branding.logoAlt} className="h-16 mr-4 transition-opacity duration-300" />}
+            {logoUrl && (
+                <a href="https://docs.cosmian.com" target="_blank" rel="noreferrer">
+                    <img src={logoUrl} alt={branding.logoAlt} className="h-16 mr-4 transition-opacity duration-300 hover:opacity-80" />
+                </a>
+            )}
             <h1 className="text-xl font-bold pl-10">{branding.logoAlt}</h1>
             {instances.length > 0 ? (
                 <div className="ml-6 flex items-center gap-2">
@@ -80,7 +84,9 @@ const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
                 </div>
             ) : (
                 serverInfo !== null &&
-                serverInfo !== undefined && <span className="ml-6 text-gray-400 text-sm">{t("header.noHsmConfigured")}</span>
+                serverInfo !== undefined && (
+                    <span className="ml-6 text-gray-500 dark:text-gray-400 text-sm">{t("header.noHsmConfigured")}</span>
+                )
             )}
         </div>
     );

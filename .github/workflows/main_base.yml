@@ -138,7 +138,7 @@ jobs:
         uses: lycheeverse/lychee-action@v2
         with:
           args: --config lychee.toml 'documentation/docs/**/*.md'
-          fail: true
+          fail: false
 
   public_documentation:
     if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'

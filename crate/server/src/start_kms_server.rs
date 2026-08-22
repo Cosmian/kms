@@ -708,7 +708,7 @@ async fn build_oidc_runtime_config(
 pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev::Server> {
     // ── Startup security guards ──────────────────────────────────────────────
 
-    // F-001: Warn loudly if the `insecure` feature flag is compiled in.
+    // Warn loudly if the `insecure` feature flag is compiled in.
     #[cfg(feature = "insecure")]
     {
         cosmian_logger::error!(
@@ -718,7 +718,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
-    // F-002: Warn if accept_invalid_certs is enabled for auth-verifier or vault connections.
+    // Warn if accept_invalid_certs is enabled for auth-verifier or vault connections.
     if kms_server
         .params
         .auth_verifier_config
@@ -737,7 +737,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
-    // F-003: Warn when Vault API is enabled but rate limiting is disabled.
+    // Warn when Vault API is enabled but rate limiting is disabled.
     // The auth proxy at /v1/auth/* is unauthenticated and can be used to flood
     // the auth-verifier. The global rate limiter (if configured) mitigates this.
     if kms_server.params.vault_api_enabled && kms_server.params.rate_limit_per_second.is_none() {
@@ -748,7 +748,21 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
-    // F-008: Validate session salt entropy when UI is enabled.
+    // Warn when Crypto Officer is configured but the global rate limiter is disabled.
+    // The ceremony activation and disable endpoints perform crypto operations and DB writes
+    // on every call; without rate limiting they can be used for DoS or DB flooding.
+    if !kms_server.params.crypto_officer.users.is_empty()
+        && kms_server.params.rate_limit_per_second.is_none()
+    {
+        cosmian_logger::warn!(
+            "SECURITY: Crypto Officer is configured but rate_limit_per_second is not set. \
+             The ceremony activation endpoint performs crypto operations on every request. \
+             Set rate_limit_per_second in the server config to protect against abuse in \
+             production deployments."
+        );
+    }
+
+    // Validate session salt entropy when UI is enabled.
     if kms_server.params.ui_enable {
         if let Some(ref salt) = kms_server.params.ui_session_salt {
             if salt.len() < 32 {
@@ -1650,6 +1664,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
+            .service(access::get_crypto_officer_status)
+            .service(access::disable_crypto_officer)
+            .service(access::activate_crypto_officer_ceremony)
             .service(
                 web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))

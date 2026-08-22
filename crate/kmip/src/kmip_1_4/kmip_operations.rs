@@ -29,6 +29,7 @@ use crate::{
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
         kmip_types::{
             AttestationType, CryptographicUsageMask, Direction, KeyWrapType, RevocationReason,
+            SecretDataType,
         },
     },
     kmip_1_4::kmip_attributes::Attribute,
@@ -2215,41 +2216,79 @@ impl TryFrom<kmip_2_1::kmip_operations::HashResponse> for HashResponse {
 }
 
 /// 4.38 Create Split Key
+///
+/// Requests the server to generate a new split key and register all the splits as individual
+/// new Managed Cryptographic Objects.
+///
+/// KMIP 1.4 specification §4.38, Table 247
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateSplitKey {
-    pub split_key_parts: i32,
-    pub split_key_threshold: i32,
-    pub split_key_method: SplitKeyMethod,
+    /// Determines the type of object to be created.
+    pub object_type: ObjectType,
+    /// The Unique Identifier of the key to be split (if the key already exists).
+    /// If absent, the server generates a new key and splits it.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub parameter: Option<Vec<u8>>,
+    pub unique_identifier: Option<String>,
+    /// The total number of parts the key is to be split into.
+    pub split_key_parts: i32,
+    /// The minimum number of parts needed to reconstruct the entire key.
+    pub split_key_threshold: i32,
+    /// The method to be used to split the key.
+    pub split_key_method: SplitKeyMethod,
+    /// Specifies desired object attributes using templates and/or individual attributes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
-/// Response to a Create Split Key request
+/// Response to a Create Split Key request (§4.38, Table 248).
+///
+/// Contains the Unique Identifiers of all created split key share objects.
+/// The ID Placeholder is set to the UID of the share whose Key Part Identifier is 1.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateSplitKeyResponse {
-    pub unique_identifier: String,
-    pub split_key_parts: Vec<String>,
+    /// The Unique Identifiers of all newly created split key share objects.
+    /// Per spec: Unique Identifier, Yes, MAY be repeated.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub unique_identifier: Vec<String>,
+    /// An OPTIONAL list of object attributes implicitly set by the key management system.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_attribute: Option<TemplateAttribute>,
 }
 
 /// 4.39 Join Split Key
+///
+/// Requests the server to combine a list of Split Keys into a single Managed Cryptographic Object.
+///
+/// KMIP 1.4 specification §4.39, Table 249
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct JoinSplitKey {
-    pub split_key_parts: Vec<Vec<u8>>,
-    pub split_key_method: SplitKeyMethod,
+    /// Determines the type of object to construct from the split key parts.
+    pub object_type: ObjectType,
+    /// Unique Identifiers of the Split Key objects to combine.
+    /// The minimum count is specified by the Split Key Threshold field in each Split Key object.
+    /// Per spec: Unique Identifier, Yes, MAY be repeated.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub unique_identifier: Vec<String>,
+    /// Determines which Secret Data type the Split Keys form (only when the resulting object is Secret Data).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub parameter: Option<Vec<u8>>,
+    pub secret_data_type: Option<SecretDataType>,
+    /// Specifies desired object attributes using templates and/or individual attributes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_attribute: Option<TemplateAttribute>,
 }
 
-/// Response to a Join Split Key request
+/// Response to a Join Split Key request (§4.39, Table 250).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct JoinSplitKeyResponse {
+    /// The Unique Identifier of the object obtained by combining the Split Keys.
     pub unique_identifier: String,
+    /// An OPTIONAL list of object attributes implicitly set by the key management system.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_attribute: Option<TemplateAttribute>,
 }
 
 /// 4.40 Export
@@ -2331,6 +2370,76 @@ impl TryFrom<kmip_2_1::kmip_operations::ImportResponse> for ImportResponse {
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
+        })
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// KMIP 1.4 ↔ 2.1 conversions for CreateSplitKey and JoinSplitKey
+// ──────────────────────────────────────────────────────────────────────────
+
+/// Converts a KMIP 1.4 [`CreateSplitKey`] into the equivalent KMIP 2.1 operation.
+impl From<CreateSplitKey> for kmip_2_1::kmip_operations::CreateSplitKey {
+    fn from(req: CreateSplitKey) -> Self {
+        Self {
+            object_type: req.object_type.into(),
+            unique_identifier: req
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
+            split_key_parts: req.split_key_parts,
+            split_key_threshold: req.split_key_threshold,
+            split_key_method: req.split_key_method.into(),
+            attributes: req.template_attribute.map(Into::into),
+            protection_storage_masks: None,
+        }
+    }
+}
+
+/// Converts a KMIP 2.1 [`CreateSplitKeyResponse`] into the equivalent KMIP 1.4 response.
+impl TryFrom<kmip_2_1::kmip_operations::CreateSplitKeyResponse> for CreateSplitKeyResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        resp: kmip_2_1::kmip_operations::CreateSplitKeyResponse,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: resp
+                .unique_identifier
+                .into_iter()
+                .map(|u| u.to_string())
+                .collect(),
+            template_attribute: None,
+        })
+    }
+}
+
+/// Converts a KMIP 1.4 [`JoinSplitKey`] into the equivalent KMIP 2.1 operation.
+impl From<JoinSplitKey> for kmip_2_1::kmip_operations::JoinSplitKey {
+    fn from(req: JoinSplitKey) -> Self {
+        Self {
+            object_type: req.object_type.into(),
+            unique_identifier: req
+                .unique_identifier
+                .into_iter()
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString)
+                .collect(),
+            secret_data_type: None,
+            attributes: req.template_attribute.map(Into::into),
+            protection_storage_masks: None,
+        }
+    }
+}
+
+/// Converts a KMIP 2.1 [`JoinSplitKeyResponse`] into the equivalent KMIP 1.4 response.
+impl TryFrom<kmip_2_1::kmip_operations::JoinSplitKeyResponse> for JoinSplitKeyResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        resp: kmip_2_1::kmip_operations::JoinSplitKeyResponse,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: resp.unique_identifier.to_string(),
+            template_attribute: None,
         })
     }
 }
@@ -2682,6 +2791,9 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
                 Self::CreateKeyPair(Box::new(create_key_pair.into()))
             }
             Operation::Check(check) => Self::Check(check.into()),
+            Operation::CreateSplitKey(create_split_key) => {
+                Self::CreateSplitKey(create_split_key.into())
+            }
             Operation::Decrypt(decrypt) => Self::Decrypt(Box::new((*decrypt).into())),
             Operation::DeleteAttribute(delete_attribute) => {
                 Self::DeleteAttribute(delete_attribute.into())
@@ -2704,9 +2816,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //     Self::GetUsageAllocation(get_usage_allocation.into())
             // }
             Operation::Import(import) => Self::Import(Box::new((*import).into())),
-            // Operation::JoinSplitKey(join_split_key) => {
-            //     Self::JoinSplitKey(join_split_key.into())
-            // }
+            Operation::JoinSplitKey(join_split_key) => Self::JoinSplitKey(join_split_key.into()),
             Operation::Locate(locate) => Self::Locate(Box::new(locate.into())),
             Operation::MAC(mac) => Self::MAC(mac.into()),
             Operation::MACVerify(mac_verify) => Self::MACVerify(mac_verify.into()),
@@ -2778,6 +2888,13 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::CreateResponse(create_response) => {
                 Self::CreateResponse(create_response.try_into().context("CreateResponse")?)
             }
+            kmip_2_1::kmip_operations::Operation::CreateSplitKeyResponse(
+                create_split_key_response,
+            ) => Self::CreateSplitKeyResponse(
+                create_split_key_response
+                    .try_into()
+                    .context("CreateSplitKeyResponse")?,
+            ),
             kmip_2_1::kmip_operations::Operation::DecryptResponse(decrypt_response) => {
                 Self::DecryptResponse(decrypt_response.try_into().context("DecryptResponse")?)
             }
@@ -2835,11 +2952,13 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::ImportResponse(import_response) => {
                 Self::ImportResponse(import_response.try_into().context("ImportResponse")?)
             }
-            // Operation::JoinSplitKeyResponse(join_split_key_response) => {
-            //     Self::JoinSplitKeyResponse(
-            //         join_split_key_response.into(),
-            //     )
-            // }
+            kmip_2_1::kmip_operations::Operation::JoinSplitKeyResponse(join_split_key_response) => {
+                Self::JoinSplitKeyResponse(
+                    join_split_key_response
+                        .try_into()
+                        .context("JoinSplitKeyResponse")?,
+                )
+            }
             kmip_2_1::kmip_operations::Operation::LocateResponse(locate_response) => {
                 Self::LocateResponse(locate_response.try_into().context("LocateResponse")?)
             }

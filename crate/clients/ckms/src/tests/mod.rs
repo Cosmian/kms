@@ -37,6 +37,8 @@ mod pkcs11;
 #[cfg(feature = "non-fips")]
 mod pqc;
 mod query;
+#[cfg(feature = "non-fips")]
+mod rbac_tests;
 mod rng;
 mod rsa;
 mod secret_data;

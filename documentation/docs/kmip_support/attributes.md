@@ -56,7 +56,3 @@ The attributes names and corresponding values used for a given `KeyFormatType` a
 - `VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY = "cover_crypt_access_policy"`: the JSONified boolean Access Policy found in a user key
 
 In addition, the `VENDOR_ATTR_COVER_CRYPT_ATTR = "cover_crypt_attributes"` name is used in Locate requests to identify User Decryption Keys holding certain Policy Attributes.
-
-[SP800-38A]: https://csrc.nist.gov/publications/detail/sp/800-38a/final
-[SP800-38D]: https://csrc.nist.gov/publications/detail/sp/800-38d/final
-[RFC3686]: https://datatracker.ietf.org/doc/html/rfc3686

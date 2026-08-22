@@ -85,8 +85,12 @@ info = false
 # ```
 # default_unwrap_type = ["SecretData", "SymmetricKey"]
 
-# List of users who have the right to create and import Objects
-# and grant access rights for Create Kmip Operation.
+# **Deprecated** — use `--crypto-officer-users` (under `[roles]`) instead.
+#
+# List of users who have the right to create and import objects and grant
+# the `Create` access right to other users. Kept for backward compatibility;
+# if set and `[roles] crypto_officer_users` is not configured, these users
+# are promoted to the `CryptoOfficer` role automatically on startup.
 # privileged_users = ["<user_id_1>", "<user_id_2>"]
 
 # Check the database configuration documentation pages for more information
@@ -401,3 +405,12 @@ vault_pki_ca_key_label = ""
 # for this duration to reduce round-trips on every transit/PKI request.
 # Set to `0` to disable caching. Defaults to `30`.
 vault_token_cache_ttl_secs = 0
+
+[roles]
+# Require a split-key ceremony to activate the Crypto Officer role.
+#
+# When `true`, users listed in `crypto_officer_users` are candidates only —
+# the role is inactive until a KMIP `JoinSplitKey` with all shares tagged
+# `x-cosmian-crypto-officer-ceremony` completes
+# (NIST SP 800-57 Part 2 Rev 1 §4.6 split knowledge, XOR n-of-n).
+crypto_officer_require_ceremony = false

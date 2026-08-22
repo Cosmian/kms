@@ -9,14 +9,14 @@ package kmip_go_tests
 // Spec references: OASIS KMIP 1.4 specification (kmip/v1.4/ in this repo).
 
 import (
-	"crypto/sha256"
-	"fmt"
-	"testing"
+    "crypto/sha256"
+    "fmt"
+    "testing"
 
-	"github.com/ovh/kmip-go"
-	"github.com/ovh/kmip-go/payloads"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+    "github.com/ovh/kmip-go"
+    "github.com/ovh/kmip-go/payloads"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
 )
 
 // ─── 1. ReKey (KMIP 1.4 §4.11) ──────────────────────────────────────────────
@@ -26,29 +26,29 @@ import (
 //
 // Spec: KMIP 1.4 §4.11.
 func TestReKey_SymmetricKey(t *testing.T) {
-	client := newClient(t, kmip.V1_4)
-	id := createAES256(t, client, "rekey")
-	activateKey(t, client, id)
+    client := newClient(t, kmip.V1_4)
+    id := createAES256(t, client, "rekey")
+    activateKey(t, client, id)
 
-	// ReKey the symmetric key
-	rekeyResp, err := client.Rekey(id).ExecContext(tctx(t))
-	require.NoError(t, err, "ReKey must succeed on an Active symmetric key")
-	newID := rekeyResp.UniqueIdentifier
-	require.NotEmpty(t, newID, "ReKey must return a new Unique Identifier")
-	require.NotEqual(t, id, newID, "ReKey must return a DIFFERENT Unique Identifier")
-	t.Cleanup(func() { cleanupKey(t, client, newID) })
+    // ReKey the symmetric key
+    rekeyResp, err := client.Rekey(id).ExecContext(tctx(t))
+    require.NoError(t, err, "ReKey must succeed on an Active symmetric key")
+    newID := rekeyResp.UniqueIdentifier
+    require.NotEmpty(t, newID, "ReKey must return a new Unique Identifier")
+    require.NotEqual(t, id, newID, "ReKey must return a DIFFERENT Unique Identifier")
+    t.Cleanup(func() { cleanupKey(t, client, newID) })
 
-	// The new key must be retrievable
-	getResp, err := client.Get(newID).ExecContext(tctx(t))
-	require.NoError(t, err, "Get(new key) must succeed")
-	assert.Equal(t, kmip.ObjectTypeSymmetricKey, getResp.ObjectType,
-		"ReKey result must be a Symmetric Key")
+    // The new key must be retrievable
+    getResp, err := client.Get(newID).ExecContext(tctx(t))
+    require.NoError(t, err, "Get(new key) must succeed")
+    assert.Equal(t, kmip.ObjectTypeSymmetricKey, getResp.ObjectType,
+        "ReKey result must be a Symmetric Key")
 
-	// Per KMIP 1.4 §4.11, the old key is revoked after ReKey.
-	// Verify the old key is no longer Active.
-	stateVal := singleAttributeValue(t, client, id, kmip.AttributeNameState)
-	assert.NotEqual(t, fmt.Sprint(kmip.StateActive), fmt.Sprint(stateVal),
-		"Old key must no longer be Active after ReKey (KMIP 1.4 §4.11)")
+    // Per KMIP 1.4 §4.11, the old key is revoked after ReKey.
+    // Verify the old key is no longer Active.
+    stateVal := singleAttributeValue(t, client, id, kmip.AttributeNameState)
+    assert.NotEqual(t, fmt.Sprint(kmip.StateActive), fmt.Sprint(stateVal),
+        "Old key must no longer be Active after ReKey (KMIP 1.4 §4.11)")
 }
 
 // ─── 2. Import (KMIP 1.4 §4.19) ─────────────────────────────────────────────
@@ -62,41 +62,41 @@ func TestReKey_SymmetricKey(t *testing.T) {
 //
 // Spec: KMIP 1.4 §4.19.
 func TestImport_SymmetricKey(t *testing.T) {
-	t.Skip("kmip-go v0.9.2 Import builder does not include ObjectType in TTLV encoding")
-	client := newClient(t, kmip.V1_4)
+    t.Skip("kmip-go v0.9.2 Import builder does not include ObjectType in TTLV encoding")
+    client := newClient(t, kmip.V1_4)
 
-	importID := fmt.Sprintf("import-test-%d", testCounter())
-	keyValue := make([]byte, 32) // 256-bit key
-	for i := range keyValue {
-		keyValue[i] = byte(i)
-	}
+    importID := fmt.Sprintf("import-test-%d", testCounter())
+    keyValue := make([]byte, 32) // 256-bit key
+    for i := range keyValue {
+        keyValue[i] = byte(i)
+    }
 
-	obj := kmip.SymmetricKey{KeyBlock: kmip.KeyBlock{
-		KeyFormatType: kmip.KeyFormatTypeRaw,
-		KeyValue: &kmip.KeyValue{
-			Plain: &kmip.PlainKeyValue{
-				KeyMaterial: kmip.KeyMaterial{
-					Bytes: &keyValue,
-				},
-			},
-		},
-		CryptographicAlgorithm: kmip.CryptographicAlgorithmAES,
-		CryptographicLength:    256,
-	}}
+    obj := kmip.SymmetricKey{KeyBlock: kmip.KeyBlock{
+        KeyFormatType: kmip.KeyFormatTypeRaw,
+        KeyValue: &kmip.KeyValue{
+            Plain: &kmip.PlainKeyValue{
+                KeyMaterial: kmip.KeyMaterial{
+                    Bytes: &keyValue,
+                },
+            },
+        },
+        CryptographicAlgorithm: kmip.CryptographicAlgorithmAES,
+        CryptographicLength:    256,
+    }}
 
-	importResp, err := client.Import(importID, &obj).
-		WithAttribute(kmip.AttributeNameCryptographicUsageMask,
-			kmip.CryptographicUsageEncrypt|kmip.CryptographicUsageDecrypt).
-		ExecContext(tctx(t))
-	require.NoError(t, err, "Import must succeed")
-	assert.Equal(t, importID, importResp.UniqueIdentifier,
-		"Import must return the client-chosen Unique Identifier")
-	t.Cleanup(func() { cleanupKey(t, client, importID) })
+    importResp, err := client.Import(importID, &obj).
+        WithAttribute(kmip.AttributeNameCryptographicUsageMask,
+            kmip.CryptographicUsageEncrypt|kmip.CryptographicUsageDecrypt).
+        ExecContext(tctx(t))
+    require.NoError(t, err, "Import must succeed")
+    assert.Equal(t, importID, importResp.UniqueIdentifier,
+        "Import must return the client-chosen Unique Identifier")
+    t.Cleanup(func() { cleanupKey(t, client, importID) })
 
-	// Retrieve the imported key
-	getResp, err := client.Get(importID).ExecContext(tctx(t))
-	require.NoError(t, err, "Get(imported key) must succeed")
-	assert.Equal(t, kmip.ObjectTypeSymmetricKey, getResp.ObjectType)
+    // Retrieve the imported key
+    getResp, err := client.Get(importID).ExecContext(tctx(t))
+    require.NoError(t, err, "Get(imported key) must succeed")
+    assert.Equal(t, kmip.ObjectTypeSymmetricKey, getResp.ObjectType)
 }
 
 // ─── 3. Register (KMIP 1.4 §4.5) ────────────────────────────────────────────
@@ -106,28 +106,28 @@ func TestImport_SymmetricKey(t *testing.T) {
 //
 // Spec: KMIP 1.4 §4.5.
 func TestRegister_SymmetricKey(t *testing.T) {
-	client := newClient(t, kmip.V1_4)
+    client := newClient(t, kmip.V1_4)
 
-	keyValue := make([]byte, 32) // 256-bit key
-	for i := range keyValue {
-		keyValue[i] = byte(i + 100)
-	}
+    keyValue := make([]byte, 32) // 256-bit key
+    for i := range keyValue {
+        keyValue[i] = byte(i + 100)
+    }
 
-	regResp, err := client.Register().
-		SymmetricKey(kmip.CryptographicAlgorithmAES,
-			kmip.CryptographicUsageEncrypt|kmip.CryptographicUsageDecrypt,
-			keyValue).
-		WithName("registered-key").
-		ExecContext(tctx(t))
-	require.NoError(t, err, "Register must succeed")
-	regID := regResp.UniqueIdentifier
-	require.NotEmpty(t, regID, "Register must return a Unique Identifier")
-	t.Cleanup(func() { cleanupKey(t, client, regID) })
+    regResp, err := client.Register().
+        SymmetricKey(kmip.CryptographicAlgorithmAES,
+            kmip.CryptographicUsageEncrypt|kmip.CryptographicUsageDecrypt,
+            keyValue).
+        WithName("registered-key").
+        ExecContext(tctx(t))
+    require.NoError(t, err, "Register must succeed")
+    regID := regResp.UniqueIdentifier
+    require.NotEmpty(t, regID, "Register must return a Unique Identifier")
+    t.Cleanup(func() { cleanupKey(t, client, regID) })
 
-	// Retrieve the registered key
-	getResp, err := client.Get(regID).ExecContext(tctx(t))
-	require.NoError(t, err, "Get(registered key) must succeed")
-	assert.Equal(t, kmip.ObjectTypeSymmetricKey, getResp.ObjectType)
+    // Retrieve the registered key
+    getResp, err := client.Get(regID).ExecContext(tctx(t))
+    require.NoError(t, err, "Get(registered key) must succeed")
+    assert.Equal(t, kmip.ObjectTypeSymmetricKey, getResp.ObjectType)
 }
 
 // ─── 4. Hash (KMIP 1.4 §4.13) ───────────────────────────────────────────────
@@ -137,23 +137,23 @@ func TestRegister_SymmetricKey(t *testing.T) {
 //
 // Spec: KMIP 1.4 §4.13.
 func TestHash_SHA256(t *testing.T) {
-	client := newClient(t, kmip.V1_4)
+    client := newClient(t, kmip.V1_4)
 
-	data := []byte("Hello, KMIP Hash operation!")
-	expectedHash := sha256.Sum256(data)
+    data := []byte("Hello, KMIP Hash operation!")
+    expectedHash := sha256.Sum256(data)
 
-	resp, err := client.Request(tctx(t), &payloads.HashRequestPayload{
-		CryptographicParameters: kmip.CryptographicParameters{
-			HashingAlgorithm: kmip.HashingAlgorithmSHA_256,
-		},
-		Data: data,
-	})
-	require.NoError(t, err, "Hash(SHA-256) must succeed")
+    resp, err := client.Request(tctx(t), &payloads.HashRequestPayload{
+        CryptographicParameters: kmip.CryptographicParameters{
+            HashingAlgorithm: kmip.HashingAlgorithmSHA_256,
+        },
+        Data: data,
+    })
+    require.NoError(t, err, "Hash(SHA-256) must succeed")
 
-	hashResp, ok := resp.(*payloads.HashResponsePayload)
-	require.True(t, ok, "response must be HashResponsePayload")
-	assert.Equal(t, expectedHash[:], hashResp.Data,
-		"Hash(SHA-256) must match the expected SHA-256 digest")
+    hashResp, ok := resp.(*payloads.HashResponsePayload)
+    require.True(t, ok, "response must be HashResponsePayload")
+    assert.Equal(t, expectedHash[:], hashResp.Data,
+        "Hash(SHA-256) must match the expected SHA-256 digest")
 }
 
 // ─── 5. Export (KMIP 1.4 §4.8) ──────────────────────────────────────────────
@@ -167,19 +167,19 @@ func TestHash_SHA256(t *testing.T) {
 //
 // Spec: KMIP 1.4 §4.8.
 func TestExport_Unwrapped(t *testing.T) {
-	t.Skip("kmip-go v0.9.2 Export builder does not include ObjectType in TTLV encoding")
-	client := newClient(t, kmip.V1_4)
-	id := createAES256(t, client, "export")
-	activateKey(t, client, id)
+    t.Skip("kmip-go v0.9.2 Export builder does not include ObjectType in TTLV encoding")
+    client := newClient(t, kmip.V1_4)
+    id := createAES256(t, client, "export")
+    activateKey(t, client, id)
 
-	exportResp, err := client.Export(id).ExecContext(tctx(t))
-	require.NoError(t, err, "Export (unwrapped) must succeed")
-	assert.Equal(t, kmip.ObjectTypeSymmetricKey, exportResp.ObjectType,
-		"Export must return the correct object type")
-	assert.Equal(t, id, exportResp.UniqueIdentifier,
-		"Export must return the correct Unique Identifier")
-	assert.NotEmpty(t, exportResp.Attribute,
-		"Export must return attributes")
+    exportResp, err := client.Export(id).ExecContext(tctx(t))
+    require.NoError(t, err, "Export (unwrapped) must succeed")
+    assert.Equal(t, kmip.ObjectTypeSymmetricKey, exportResp.ObjectType,
+        "Export must return the correct object type")
+    assert.Equal(t, id, exportResp.UniqueIdentifier,
+        "Export must return the correct Unique Identifier")
+    assert.NotEmpty(t, exportResp.Attribute,
+        "Export must return attributes")
 }
 
 // ─── 6. Batch: Create + Activate + Get ───────────────────────────────────────
@@ -189,35 +189,35 @@ func TestExport_Unwrapped(t *testing.T) {
 //
 // Spec: KMIP 1.4 §4.15.
 func TestBatch_CreateActivateGet(t *testing.T) {
-	client := newClient(t, kmip.V1_4)
+    client := newClient(t, kmip.V1_4)
 
-	// Step 1: Create
-	createResp, err := client.Create().
-		AES(256, kmip.CryptographicUsageEncrypt|kmip.CryptographicUsageDecrypt).
-		WithName("batch-create").
-		ExecContext(tctx(t))
-	require.NoError(t, err, "Create must succeed")
-	id := createResp.UniqueIdentifier
-	t.Cleanup(func() { cleanupKey(t, client, id) })
+    // Step 1: Create
+    createResp, err := client.Create().
+        AES(256, kmip.CryptographicUsageEncrypt|kmip.CryptographicUsageDecrypt).
+        WithName("batch-create").
+        ExecContext(tctx(t))
+    require.NoError(t, err, "Create must succeed")
+    id := createResp.UniqueIdentifier
+    t.Cleanup(func() { cleanupKey(t, client, id) })
 
-	// Step 2: Activate
-	_, err = client.Activate(id).ExecContext(tctx(t))
-	require.NoError(t, err, "Activate must succeed")
+    // Step 2: Activate
+    _, err = client.Activate(id).ExecContext(tctx(t))
+    require.NoError(t, err, "Activate must succeed")
 
-	// Step 3: Get
-	getResp, err := client.Get(id).ExecContext(tctx(t))
-	require.NoError(t, err, "Get must succeed")
-	assert.Equal(t, kmip.ObjectTypeSymmetricKey, getResp.ObjectType)
+    // Step 3: Get
+    getResp, err := client.Get(id).ExecContext(tctx(t))
+    require.NoError(t, err, "Get must succeed")
+    assert.Equal(t, kmip.ObjectTypeSymmetricKey, getResp.ObjectType)
 
-	// Verify the key is Active
-	attrs, err := client.GetAttributes(id, kmip.AttributeNameState).ExecContext(tctx(t))
-	require.NoError(t, err, "GetAttributes(State) must succeed")
-	for _, a := range attrs.Attribute {
-		if a.AttributeName == kmip.AttributeNameState {
-			assert.Equal(t, kmip.StateActive, a.AttributeValue,
-				"Key must be in Active state after batch Create+Activate")
-		}
-	}
+    // Verify the key is Active
+    attrs, err := client.GetAttributes(id, kmip.AttributeNameState).ExecContext(tctx(t))
+    require.NoError(t, err, "GetAttributes(State) must succeed")
+    for _, a := range attrs.Attribute {
+        if a.AttributeName == kmip.AttributeNameState {
+            assert.Equal(t, kmip.StateActive, a.AttributeValue,
+                "Key must be in Active state after batch Create+Activate")
+        }
+    }
 }
 
 // TestBatch_MixedSuccessFailure verifies that a batch with one successful and
@@ -225,26 +225,26 @@ func TestBatch_CreateActivateGet(t *testing.T) {
 //
 // Spec: KMIP 1.4 §4.15.
 func TestBatch_MixedSuccessFailure(t *testing.T) {
-	client := newClient(t, kmip.V1_4)
+    client := newClient(t, kmip.V1_4)
 
-	// Create a key for the successful Get
-	id := createAES256(t, client, "batch-mixed")
-	activateKey(t, client, id)
+    // Create a key for the successful Get
+    id := createAES256(t, client, "batch-mixed")
+    activateKey(t, client, id)
 
-	// Batch: Get(existing key) + Get(non-existent key)
-	batchResp, err := client.Batch(tctx(t),
-		&payloads.GetRequestPayload{UniqueIdentifier: id},
-		&payloads.GetRequestPayload{UniqueIdentifier: "non-existent-key-uid-12345"},
-	)
-	require.NoError(t, err, "Batch itself must not fail")
+    // Batch: Get(existing key) + Get(non-existent key)
+    batchResp, err := client.Batch(tctx(t),
+        &payloads.GetRequestPayload{UniqueIdentifier: id},
+        &payloads.GetRequestPayload{UniqueIdentifier: "non-existent-key-uid-12345"},
+    )
+    require.NoError(t, err, "Batch itself must not fail")
 
-	require.Len(t, batchResp, 2, "Batch must return 2 results")
+    require.Len(t, batchResp, 2, "Batch must return 2 results")
 
-	// First result: success
-	assert.NoError(t, batchResp[0].Err(), "Get(existing) must succeed")
+    // First result: success
+    assert.NoError(t, batchResp[0].Err(), "Get(existing) must succeed")
 
-	// Second result: failure
-	assert.Error(t, batchResp[1].Err(), "Get(non-existent) must fail")
+    // Second result: failure
+    assert.Error(t, batchResp[1].Err(), "Get(non-existent) must fail")
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -252,6 +252,6 @@ func TestBatch_MixedSuccessFailure(t *testing.T) {
 var _testCounter int64
 
 func testCounter() int64 {
-	_testCounter++
-	return _testCounter
+    _testCounter++
+    return _testCounter
 }

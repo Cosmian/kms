@@ -8,7 +8,7 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 
 REPO_ROOT="$(get_repo_root)"
-ensure_nix_shell
+ensure_nix_shell "$@"
 
 print_header "Building Kubernetes binaries via Nix"
 

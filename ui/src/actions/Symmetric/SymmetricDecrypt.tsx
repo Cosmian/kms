@@ -1,6 +1,7 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
 import { useTranslation } from "react-i18next";
+import KeyIdInput from "../../components/common/KeyIdInput";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { getMimeType, saveDecryptedFile, sendKmipRequest } from "../../utils/utils";
 import { decrypt_sym_ttlv_request, parse_decrypt_ttlv_response } from "../../wasm/pkg";
@@ -61,7 +62,7 @@ const SymmetricDecryptForm: React.FC = () => {
                     <li>{t("symmetricDecrypt.serverSide")}</li>
                     <li>{t("symmetricDecrypt.clientSide")}</li>
                 </ul>
-                <p className="text-sm text-yellow-600">{t("symmetricDecrypt.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("symmetricDecrypt.note")}</p>
             </div>
 
             <Form
@@ -103,9 +104,14 @@ const SymmetricDecryptForm: React.FC = () => {
                     </Card>
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("symmetricDecrypt.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("common:keyId")} help={t("symmetricDecrypt.keyIdHelp")}>
-                            <Input placeholder={t("common:enterKeyId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("symmetricDecrypt.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                            objectType="SymmetricKey"
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("symmetricDecrypt.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

@@ -126,11 +126,15 @@ nav:
       - Configuration file: configuration/server_configuration_file.md
       - Configuration examples: configuration/configurations.md
       - Command line arguments: configuration/server_cli.md
-      - Databases: configuration/database.md
+      - Databases:
+          - Configuration: configuration/database/configuration.md
+          - Tables: configuration/database/tables.md
+          - Redis with Findex: configuration/database/redis.md
       - Object & Unwrapped Caches: configuration/object-cache.md
       - Authenticating users to the server: configuration/authentication.md
       - PKCE Authentication: configuration/pkce_authentication.md
       - Authorizing users with access rights: configuration/authorization.md
+      - Administrator key ceremony: configuration/authorization/key_ceremony.md
       - Enabling TLS: configuration/tls.md
       - Obtaining TLS Certificates: configuration/certificates.md
       - Logging and telemetry: configuration/logging.md
@@ -151,10 +155,8 @@ nav:
       - Audit:
           - SBOM: certifications_and_compliance/audit/sbom.md
           - CBOM: certifications_and_compliance/audit/cbom.md
-          - Cryptographic Inventory (CBOM sensor): certifications_and_compliance/audit/crypto_inventory.md
           - Security Audit (OWASP): certifications_and_compliance/audit/owasp_security_audit.md
           - Multi-Framework Security Audit: certifications_and_compliance/audit/multi_framework_security_audit.md
-          - Runtime Security Audit: certifications_and_compliance/audit/runtime_security_audit.md
   - Benchmarks:
       - Reports: benchmarks/ckms_bench/report.md
       - CPU Scaling & Flamegraphs: benchmarks/cpu_scaling.md

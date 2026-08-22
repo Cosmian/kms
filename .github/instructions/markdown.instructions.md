@@ -6,7 +6,7 @@ applyTo: '**/*.md'
 
 # General Markdown conventions
 
-> **Note**: `documentation/**/*.md` (the MkDocs site) follows additional rules defined in
+> **Note**: `documentation/**/*.md` (the mdBook site) follows additional rules defined in
 > `docs.instructions.md`. The rules below apply to all other Markdown files.
 
 ## README.md (root and crate-level)

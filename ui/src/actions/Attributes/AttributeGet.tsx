@@ -1,4 +1,4 @@
-import { Button, Card, Form, Input, Select, Space, Typography } from "antd";
+import { Button, Card, Form, Select, Space, Typography } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
@@ -6,6 +6,7 @@ import HashMapDisplay from "../../components/common/HashMapDisplay";
 import { sendKmipRequest } from "../../utils/utils";
 import { get_attributes_ttlv_request, parse_get_attributes_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { ATTRIBUTE_REGISTRY } from "./attributeRegistry";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -58,7 +59,7 @@ const AttributeGetForm: React.FC = () => {
             <Title level={2}>{t("attributeGet.title")}</Title>
             <div className="mb-8 space-y-2">
                 <div>{t("attributeGet.intro")}</div>
-                <div className="text-sm text-yellow-600">{t("attributeGet.introWarning")}</div>
+                <div className="text-sm text-yellow-600 dark:text-yellow-400">{t("attributeGet.introWarning")}</div>
             </div>
 
             <Form
@@ -73,9 +74,13 @@ const AttributeGetForm: React.FC = () => {
                     <Card title={t("form.objectIdentification")}>
                         <div className="mb-5">{t("form.identifyHint")}</div>
 
-                        <Form.Item name="id" label={t("common:objectId")} help={t("common:objectIdHelp")}>
-                            <Input placeholder={t("common:enterObjectId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="id"
+                            label={t("common:objectId")}
+                            help={t("common:objectIdHelp")}
+                            placeholder={t("common:enterObjectId")}
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("common:tagsHelp")}>
                             <Select mode="tags" style={{ width: "100%" }} placeholder={t("common:enterTags")} tokenSeparators={[","]} />
@@ -83,12 +88,13 @@ const AttributeGetForm: React.FC = () => {
                     </Card>
 
                     <Card title={t("attributeGet.cardSelection")}>
-                        <Form.Item
-                            name="selected_attributes"
-                            label={t("form.attributeNames")}
-                            help={t("form.attributeNamesHelp")}
-                        >
-                            <Select mode="multiple" data-testid="attribute-name-select" style={{ width: "100%" }} placeholder={t("form.selectAttribute")}>
+                        <Form.Item name="selected_attributes" label={t("form.attributeNames")} help={t("form.attributeNamesHelp")}>
+                            <Select
+                                mode="multiple"
+                                data-testid="attribute-name-select"
+                                style={{ width: "100%" }}
+                                placeholder={t("form.selectAttribute")}
+                            >
                                 {ATTRIBUTE_REGISTRY.map((attribute) => (
                                     <Option key={attribute.value} value={attribute.value}>
                                         {attrLabel(attribute.value, attribute.label)}

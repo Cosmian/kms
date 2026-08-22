@@ -1,10 +1,11 @@
-import { Button, Card, Form, Input, Select, Space } from "antd";
-import type { TFunction } from "i18next";
+import { Button, Card, Form, Select, Space } from "antd";
 import React from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { ActionResponse } from "../../components/common/ActionResponse";
 import { useActionState } from "../../hooks/useActionState";
 import { sendKmipRequest } from "../../utils/utils";
+import KeyIdInput from "../../components/common/KeyIdInput";
 import {
     parse_rekey_keypair_ttlv_response,
     parse_rekey_ttlv_response,
@@ -143,11 +144,21 @@ const ObjectsReKeyForm: React.FC<ObjectsReKeyProps> = ({ keyType }) => {
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item name="keyId" label={keyLabel} help={t("objectsReKey.keyIdHelp", { keyLabel })}>
-                            <Input placeholder={t("objectsReKey.enterKeyId", { keyLabel })} data-testid="rekey-key-id" />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={keyLabel}
+                            help={t("objectsReKey.keyIdHelp", { keyLabel })}
+                            placeholder={t("objectsReKey.keyIdPlaceholder", { keyLabel })}
+                            data-testid="rekey-key-id"
+                        />
                         <Form.Item name="tags" label={t("common:tags")} help={t("objectsReKey.tagsHelp", { keyLabel })}>
-                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} data-testid="rekey-tags" />
+                            <Select
+                                mode="tags"
+                                placeholder={t("objectsReKey.enterKeyId", { keyLabel })}
+                                open={false}
+                                data-testid="rekey-tags"
+                            />
                         </Form.Item>
                     </Card>
 

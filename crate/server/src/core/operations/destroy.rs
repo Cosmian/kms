@@ -118,8 +118,12 @@ pub(crate) async fn recursively_destroy_object(
             continue;
         };
 
-        // Check if the object is owned by the user
-        // If the object is not owned by the user, check if the user has destroy permissions
+        // Check ownership/grants, including the CryptoOfficer ownership bypass.
+        // `user_can_perform_operation` returns `true` for active COs on non-HSM objects.
+        // On failure we `continue` (skip silently) rather than returning `Unauthorized`,
+        // which means Destroy returns 200 with the object absent from the result — as
+        // opposed to Revoke which returns an error. This is intentional KMIP batch
+        // semantics: Destroy is best-effort on a set of UIDs.
         if !kms
             .user_can_perform_operation(&owm, user, &KmipOperation::Destroy)
             .await?
@@ -157,7 +161,8 @@ pub(crate) async fn recursively_destroy_object(
                 && object_type != ObjectType::Certificate
                 && object_type != ObjectType::SecretData
                 && object_type != ObjectType::PublicKey
-                && object_type != ObjectType::OpaqueObject)
+                && object_type != ObjectType::OpaqueObject
+                && object_type != ObjectType::SplitKey)
         {
             continue;
         }
@@ -188,6 +193,7 @@ pub(crate) async fn recursively_destroy_object(
                     | ObjectType::Certificate
                     | ObjectType::PrivateKey
                     | ObjectType::PublicKey
+                    | ObjectType::SplitKey
             )
             // Only objects that were explicitly activated (Create -> Activate flow) require revocation
             // Objects that were registered (Register -> already Active) can be destroyed directly
@@ -220,7 +226,8 @@ pub(crate) async fn recursively_destroy_object(
             ObjectType::SymmetricKey
             | ObjectType::Certificate
             | ObjectType::SecretData
-            | ObjectType::OpaqueObject => {
+            | ObjectType::OpaqueObject
+            | ObjectType::SplitKey => {
                 // destroy the key
                 let id = owm.id().to_owned();
                 let state = effective_state;

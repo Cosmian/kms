@@ -53,4 +53,24 @@ pub trait PermissionsStore {
         user: &UserId,
         no_inherited_access: bool,
     ) -> InterfaceResult<HashSet<KmipOperation>>;
+
+    // ── Crypto Officer ceremony ─────────────────────────────────────────────
+
+    /// Store a sealed (AES-256-GCM encrypted) crypto officer ceremony activation record.
+    ///
+    /// `activated_by` is stored as a plaintext column to support unique-per-user
+    /// partial indexing (`WHERE revoked_at IS NULL`), preventing duplicate active
+    /// records for the same user at the database level.
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()>;
+
+    /// Retrieve the active (non-revoked) sealed crypto officer ceremony record, if any.
+    async fn get_crypto_officer_activation(&self) -> InterfaceResult<Option<String>>;
+
+    /// Revoke the active crypto officer ceremony record (set `revoked_at` to now).
+    /// No-op if no active record exists.
+    async fn revoke_crypto_officer_activation(&self, revoked_by: &str) -> InterfaceResult<()>;
 }

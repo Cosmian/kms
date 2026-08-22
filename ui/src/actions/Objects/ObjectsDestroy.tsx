@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { getObjectLabel, ObjectType, sendKmipRequest } from "../../utils/utils";
 import { destroy_ttlv_request, parse_destroy_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { useActionState } from "../../hooks/useActionState";
+import LocateButton from "../../components/common/LocateButton";
 
 interface DestroyFormData {
     objectId?: string;
@@ -68,13 +69,13 @@ const DestroyForm: React.FC<DestroyFormProps> = ({ objectType }) => {
     return (
         <div className="p-6">
             <div className="flex items-center gap-3 mb-6">
-                <WarningFilled className="text-2xl text-red-600" />
+                <WarningFilled className="text-2xl text-red-600 dark:text-red-400" />
                 <h1 className="text-2xl font-bold">{t("objectsDestroy.title", { typeString, label })}</h1>
             </div>
 
             <div className="mb-8 space-y-2">
-                <div className="bg-red-200 border-l-4 border-red-600 rounded-md p-4">
-                    <div className="text-red-800 text-sm space-y-2">
+                <div className="bg-red-200 dark:bg-red-900/40 border-l-4 border-red-600 dark:border-red-500 rounded-md p-4">
+                    <div className="text-red-800 dark:text-red-300 text-sm space-y-2">
                         <p className="font-bold">{t("objectsDestroy.warningTitle")}</p>
                         <ul className="list-disc pl-5 space-y-1">
                             <li>{t("objectsDestroy.mustRevoked", { label })}</li>
@@ -105,11 +106,19 @@ const DestroyForm: React.FC<DestroyFormProps> = ({ objectType }) => {
                         <h3 className="text-m font-bold mb-4">{t("objectsDestroy.identification", { labelCap })}</h3>
 
                         <Form.Item
-                            name="objectId"
                             label={t("objectsDestroy.objectIdLabel", { labelCap })}
                             help={t("objectsDestroy.objectIdHelp", { label })}
                         >
-                            <Input placeholder={t("objectsDestroy.enterObjectId", { label })} />
+                            <div className="flex items-center gap-2">
+                                <Form.Item
+                                    noStyle
+                                    name="objectId"
+                                    rules={[{ required: true, message: t("objectsDestroy.pleaseEnterObjectId", { label }) }]}
+                                >
+                                    <Input placeholder={t("objectsDestroy.enterObjectId", { label })} style={{ flex: 1 }} />
+                                </Form.Item>
+                                <LocateButton onSelect={(uid: string) => form.setFieldValue("objectId", uid)} />
+                            </div>
                         </Form.Item>
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("objectsDestroy.tagsHelp", { labelCap, label })}>

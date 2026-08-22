@@ -1,6 +1,7 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
 import { useTranslation } from "react-i18next";
+import KeyIdInput from "../../components/common/KeyIdInput";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { getMimeType, saveDecryptedFile, sendKmipRequest } from "../../utils/utils";
 import { decrypt_rsa_ttlv_request, parse_decrypt_ttlv_response } from "../../wasm/pkg";
@@ -62,7 +63,7 @@ const RsaDecryptForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("rsaDecrypt.intro")}</p>
                 <p>{t("rsaDecrypt.introKey")}</p>
-                <p className="text-sm text-yellow-600">{t("rsaDecrypt.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("rsaDecrypt.note")}</p>
             </div>
 
             <Form
@@ -104,9 +105,14 @@ const RsaDecryptForm: React.FC = () => {
                     </Card>
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("rsaDecrypt.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("common:keyId")} help={t("rsaDecrypt.keyIdHelp")}>
-                            <Input placeholder={t("common:enterKeyId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("rsaDecrypt.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                            objectType="PrivateKey"
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("rsaDecrypt.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

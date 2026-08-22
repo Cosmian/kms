@@ -26,7 +26,7 @@ Only these algorithms are allowed without the `non-fips` feature flag:
 - `apply_openssl_dir_env_if_needed()` **must** be called before any `Provider::try_load()`.
 - FIPS provider is loaded once via `OnceLock` in `crate/server/src/openssl_providers.rs`.
 - Non-FIPS mode loads the legacy provider on top of the default provider.
-- No external OpenSSL dependency — `build.rs` downloads and builds OpenSSL 3.6.0.
+- No external OpenSSL dependency — `build.rs` downloads and builds OpenSSL 3.6.2.
 
 ## Key size enforcement
 

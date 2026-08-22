@@ -1,4 +1,4 @@
-# Cosmian KMS — AI Agent Instructions
+# Eviden KMS — AI Agent Instructions
 
 ## 1. Repository high level view
 
@@ -21,19 +21,33 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `rust-crypto.instructions.md` | `crate/crypto/**/*.rs` | FIPS-approved algorithms, OpenSSL provider |
 | `rust-kmip.instructions.md` | `crate/kmip/**/*.rs` | KMIP 2.1 protocol types and serialisation |
 | `rust-database.instructions.md` | `crate/server_database/**/*.rs` | SQLite, PostgreSQL, Redis-findex backends |
+| `database-tables.instructions.md` | `crate/server_database/src/stores/sql/*.sql` | Keep `documentation/docs/configuration/database/tables.md` in sync with SQL schema changes |
+| `ui-routes.instructions.md` | `ui/src/App.tsx`, `ui/src/menuItems.tsx`, `ui/src/actions/**/*.tsx`, `ui/src/pages/**/*.tsx` | Sync rule 4.1 — server SPA routes ⇔ React Router ⇔ menu items |
+| `routes.instructions.md` | `crate/server/src/routes/**/*.rs` | Sync rule 4.2 — REST endpoint handlers ⇔ OpenAPI ⇔ route registration |
+| `kmip-operations.instructions.md` | `crate/kmip/src/**/*.rs`, `crate/server/src/core/operations/**/*.rs` | Sync rule 4.3 — KMIP operation types ⇔ dispatcher ⇔ handler |
+| `cli-ui-sync.instructions.md` | `crate/clients/clap/**/*.rs`, `crate/clients/ckms/**/*.rs`, `ui/src/actions/**/*.ts`, `ui/src/actions/**/*.tsx` | Sync rules 4.4 + 4.15 — CLI ⇔ Web UI parity, CLI doc regeneration |
+| `wasm.instructions.md` | `crate/clients/wasm/**/*.rs` | Sync rule 4.5 — WASM exports ⇔ regenerated TS types ⇔ UI consumers |
+| `server-config.instructions.md` | `crate/server/src/config/**/*.rs` | Sync rules 4.6 + 4.7 — clap flags ⇔ wizard ⇔ TOML templates ⇔ client wizard |
+| `middlewares.instructions.md` | `crate/server/src/middlewares/**/*.rs`, `crate/server/src/config/wizard/auth_wizard.rs` | Sync rule 4.9 — auth config ⇔ wizard ⇔ middleware ⇔ scope wiring |
+| `test-vectors.instructions.md` | `test_data/vectors/**`, `crate/test_kms_server/**/*.rs` | Sync rule 4.10 — test vector directory ⇔ runner ⇔ README |
+| `lockfile-hashes.instructions.md` | `Cargo.lock`, `ui/pnpm-lock.yaml` | Sync rule 4.11 — Nix vendor hashes ⇔ lock files |
+| `cloud-providers.instructions.md` | `crate/server/src/routes/aws_xks/**`, `azure_ekm/**`, `google_cse/**`, `ms_dke/**` | Sync rule 4.12 — cloud provider routes ⇔ config ⇔ wizard ⇔ CLI ⇔ UI |
+| `hsm.instructions.md` | `crate/hsm/**/*.rs` | Sync rule 4.13 — PKCS#11 loader ⇔ HSM model enum ⇔ wizard ⇔ test vectors ⇔ CI matrix |
+| `openssl-build.instructions.md` | `crate/crypto/build.rs` | Sync rule 4.17 — OpenSSL build script ⇔ provider init ⇔ CBOM/SBOM |
 | `rust-cli.instructions.md` | `crate/clients/**/*.rs` | CLI actions, WASM bindings, PKCS#11 |
 | `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` | React 19, Ant Design 5, Tailwind 4, WASM |
-| `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` | Playwright E2E test conventions |
+| `i18n.instructions.md` | `ui/src/i18n/**/*.{ts,json}` | Locale bundles, en/zh-CN parity, useTranslation/Trans |
+| `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` | Playwright E2E test conventions; sync rule 4.16 — E2E test documentation |
 | `bash.instructions.md` | `**/*.sh` | Shell scripts, MISE tasks, reusable scripts |
 | `mise.instructions.md` | `.mise/**, scripts/**, .github/reusable_scripts/**` | MISE task headers, lib usage, variant flags |
 | `github-actions.instructions.md` | `.github/workflows/**, .github/actions/**` | CI/CD YAML conventions |
 | `toml.instructions.md` | `**/*.toml` | Cargo.toml, workspace, config TOML |
 | `python.instructions.md` | `**/*.py` | Documentation scripts, test helpers |
 | `markdown.instructions.md` | `**/*.md` | README, CHANGELOG, skill/instruction docs |
-| `docs.instructions.md` | `documentation/**/*.md` | MkDocs site (Diátaxis framework) |
+| `docs.instructions.md` | `documentation/**/*.md`, `README.md` | mdBook site (Diátaxis framework); sync rule 4.14 — documentation ⇔ mdBook ⇔ README |
 | `nix.instructions.md` | `nix/**/*.nix` | Nix build expressions, vendor hashes |
 
-Cosmian KMS is a high-performance, source available **FIPS 140-3** compliant Key
+Eviden KMS is a high-performance, source available **FIPS 140-3** compliant Key
 Management System written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS
 and supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
 
@@ -120,7 +134,7 @@ crate/
       module/       cosmian_pkcs11_module      — PKCS#11 module implementation
       provider/     cosmian_pkcs11             — PKCS#11 provider binary
     wasm/           cosmian_kms_client_wasm    — WASM client for the web UI
-  crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.0
+  crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.2
   hsm/
     base_hsm/       cosmian_kms_base_hsm       — base HSM traits and common code
     softhsm2/       softhsm2_pkcs11_loader     — SoftHSM2
@@ -285,6 +299,7 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 | Non-FIPS-only feature | 4.8 |
 | Auth method change | 4.9 |
 | Server config/wizard change | 4.6, 4.7 |
+| Database backend change | 4.18 |
 | Cloud provider integration | 4.12 |
 | HSM backend | 4.13 |
 | Documentation/behavior change | 4.14 |
@@ -292,7 +307,7 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 | OpenSSL upgrade | 4.17 |
 | `Cargo.lock` or `pnpm-lock.yaml` change | 4.11 |
 
-> **Full sub-rule checklists** (4.1–4.17) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
+> **Full sub-rule checklists** (4.1–4.18) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
 
 ### 5. Update SECURITY.md on security-related changes (when applicable)
 
@@ -454,7 +469,7 @@ mise run [task] --variant [fips|non-fips] [args]
 
 ### 8.3 OpenSSL handling
 
-**No external OpenSSL needed.** OpenSSL 3.6.0 is downloaded, SHA-256-verified,
+**No external OpenSSL needed.** OpenSSL 3.6.2 is downloaded, SHA-256-verified,
 and built from source by `crate/crypto/build.rs` into `target/` on first build.
 
 At runtime, `crate/server/src/openssl_providers.rs` initialises the correct provider:

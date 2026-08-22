@@ -119,6 +119,8 @@ Manage the users' access rights to the cryptographic objects
 
 **`obtained`** [[1.5]](#15-ckms-access-rights-obtained)  List the access rights obtained by the calling user
 
+**`crypto-officer`** [[1.6]](#16-ckms-access-rights-crypto-officer)  Query or manage the Crypto Officer role
+
 ---
 
 ## 1.1 ckms access-rights grant
@@ -189,6 +191,42 @@ List the access rights obtained by the calling user
 
 ### Usage
 `ckms access-rights obtained`
+
+
+---
+
+## 1.6 ckms access-rights crypto-officer
+
+Query or manage the Crypto Officer role
+
+### Usage
+`ckms access-rights crypto-officer <subcommand>`
+
+### Subcommands
+
+**`status`** [[1.6.1]](#161-ckms-access-rights-crypto-officer-status)  Print the current Crypto Officer role configuration and ceremony activation status
+
+**`disable`** [[1.6.2]](#162-ckms-access-rights-crypto-officer-disable)  Disable an active Crypto Officer ceremony (requires active Crypto Officer privileges)
+
+---
+
+## 1.6.1 ckms access-rights crypto-officer status
+
+Print the current Crypto Officer role configuration and ceremony activation status
+
+### Usage
+`ckms access-rights crypto-officer status`
+
+
+---
+
+## 1.6.2 ckms access-rights crypto-officer disable
+
+Disable an active Crypto Officer ceremony (requires active Crypto Officer privileges)
+
+### Usage
+`ckms access-rights crypto-officer disable`
+
 
 
 
@@ -1163,7 +1201,7 @@ Create, destroy, import, and export FPE keys
 
 ### Subcommands
 
-**`create`** [[7.1.1]](#711-ckms-fpe-keys-create) 
+**`create`** [[7.1.1]](#711-ckms-fpe-keys-create)
 **`export`** [[7.1.2]](#712-ckms-fpe-keys-export)  Export a key or secret data from the KMS
 
 **`import`** [[7.1.3]](#713-ckms-fpe-keys-import)  Import a secret data or a key in the KMS.
@@ -4489,7 +4527,7 @@ Manage symmetric keys. Encrypt and decrypt data
 
 ### Subcommands
 
-**`keys`** [[26.1]](#261-ckms-sym-keys)  Create, destroy, import, and export symmetric keys
+**`keys`** [[26.1]](#261-ckms-sym-keys)  Create, destroy, import, export, split and join symmetric keys
 
 **`encrypt`** [[26.2]](#262-ckms-sym-encrypt)  Encrypt a file using a symmetric cipher
 
@@ -4499,7 +4537,7 @@ Manage symmetric keys. Encrypt and decrypt data
 
 ## 26.1 ckms sym keys
 
-Create, destroy, import, and export symmetric keys
+Create, destroy, import, export, split and join symmetric keys
 
 ### Usage
 `ckms sym keys <subcommand>`
@@ -4510,23 +4548,27 @@ Create, destroy, import, and export symmetric keys
 
 **`create`** [[26.1.2]](#2612-ckms-sym-keys-create)  Create a new symmetric key
 
-**`re-key`** [[26.1.3]](#2613-ckms-sym-keys-re-key)  Refresh an existing symmetric key
+**`create-split-key`** [[26.1.3]](#2613-ckms-sym-keys-create-split-key)  Split an existing symmetric key into multiple shares using XOR-based split knowledge.
 
-**`export`** [[26.1.4]](#2614-ckms-sym-keys-export)  Export a key or secret data from the KMS
+**`join-split-key`** [[26.1.4]](#2614-ckms-sym-keys-join-split-key)  Reconstruct a key from split-key shares using XOR-based split knowledge.
 
-**`import`** [[26.1.5]](#2615-ckms-sym-keys-import)  Import a secret data or a key in the KMS.
+**`re-key`** [[26.1.5]](#2615-ckms-sym-keys-re-key)  Refresh an existing symmetric key
 
-**`wrap`** [[26.1.6]](#2616-ckms-sym-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
+**`export`** [[26.1.6]](#2616-ckms-sym-keys-export)  Export a key or secret data from the KMS
 
-**`unwrap`** [[26.1.7]](#2617-ckms-sym-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
+**`import`** [[26.1.7]](#2617-ckms-sym-keys-import)  Import a secret data or a key in the KMS.
 
-**`revoke`** [[26.1.8]](#2618-ckms-sym-keys-revoke)  Revoke a symmetric key
+**`wrap`** [[26.1.8]](#2618-ckms-sym-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
 
-**`destroy`** [[26.1.9]](#2619-ckms-sym-keys-destroy)  Destroy a symmetric key
+**`unwrap`** [[26.1.9]](#2619-ckms-sym-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
-**`set-rotation-policy`** [[26.1.10]](#26110-ckms-sym-keys-set-rotation-policy)  Set the automatic rotation policy on a key or key pair.
+**`revoke`** [[26.1.10]](#26110-ckms-sym-keys-revoke)  Revoke a symmetric key
 
-**`get-rotation-policy`** [[26.1.11]](#26111-ckms-sym-keys-get-rotation-policy)  Get the automatic rotation policy for a key or key pair.
+**`destroy`** [[26.1.11]](#26111-ckms-sym-keys-destroy)  Destroy a symmetric key
+
+**`set-rotation-policy`** [[26.1.12]](#26112-ckms-sym-keys-set-rotation-policy)  Set the automatic rotation policy on a key or key pair.
+
+**`get-rotation-policy`** [[26.1.13]](#26113-ckms-sym-keys-get-rotation-policy)  Get the automatic rotation policy for a key or key pair.
 
 ---
 
@@ -4590,7 +4632,42 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 26.1.3 ckms sym keys re-key
+## 26.1.3 ckms sym keys create-split-key
+
+Split an existing symmetric key into multiple shares using XOR-based split knowledge.
+
+### Usage
+`ckms sym keys create-split-key [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to split
+
+`--total-parts [-p] <TOTAL_PARTS>` Total number of share objects to create (n >= 2). All shares are required to reconstruct the key (XOR n-of-n, no configurable threshold)
+
+`--method [-m] <METHOD>` The splitting method. Accepted value: `xor` (XOR n-of-n, all shares required)
+
+
+
+---
+
+## 26.1.4 ckms sym keys join-split-key
+
+Reconstruct a key from split-key shares using XOR-based split knowledge.
+
+### Usage
+`ckms sym keys join-split-key [options] <SHARE_IDS> <SHARE_IDS>...
+`
+### Arguments
+` <SHARE_IDS>` The unique identifiers of the split key shares to join. At least `threshold` shares must be specified
+
+`--method [-m] <METHOD>` The splitting method that was used when the key was originally split. Must match the method used during `create-split-key`
+
+`--object-type [-o] <OBJECT_TYPE>` The type of object to reconstruct
+
+
+
+---
+
+## 26.1.5 ckms sym keys re-key
 
 Refresh an existing symmetric key
 
@@ -4603,7 +4680,7 @@ Refresh an existing symmetric key
 
 ---
 
-## 26.1.4 ckms sym keys export
+## 26.1.6 ckms sym keys export
 
 Export a key or secret data from the KMS
 
@@ -4662,7 +4739,7 @@ Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs
 
 ---
 
-## 26.1.5 ckms sym keys import
+## 26.1.7 ckms sym keys import
 
 Import a secret data or a key in the KMS.
 
@@ -4710,7 +4787,7 @@ If the wrapping key is:
 
 ---
 
-## 26.1.6 ckms sym keys wrap
+## 26.1.8 ckms sym keys wrap
 
 Locally wrap a secret data or key in KMIP JSON TTLV format.
 
@@ -4735,7 +4812,7 @@ Locally wrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 26.1.7 ckms sym keys unwrap
+## 26.1.9 ckms sym keys unwrap
 
 Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
@@ -4758,7 +4835,7 @@ Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 26.1.8 ckms sym keys revoke
+## 26.1.10 ckms sym keys revoke
 
 Revoke a symmetric key
 
@@ -4778,7 +4855,7 @@ Revoke a symmetric key
 
 ---
 
-## 26.1.9 ckms sym keys destroy
+## 26.1.11 ckms sym keys destroy
 
 Destroy a symmetric key
 
@@ -4800,7 +4877,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 26.1.10 ckms sym keys set-rotation-policy
+## 26.1.12 ckms sym keys set-rotation-policy
 
 Set the automatic rotation policy on a key or key pair.
 
@@ -4819,7 +4896,7 @@ Set the automatic rotation policy on a key or key pair.
 
 ---
 
-## 26.1.11 ckms sym keys get-rotation-policy
+## 26.1.13 ckms sym keys get-rotation-policy
 
 Get the automatic rotation policy for a key or key pair.
 
@@ -5124,6 +5201,3 @@ Configure the KMS CLI (create ckms.toml)
 
 ### Usage
 `ckms configure`
-
-
-

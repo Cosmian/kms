@@ -6,6 +6,7 @@ import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { encrypt_cc_ttlv_request, parse_encrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface CCEncryptFormData {
     inputFile: Uint8Array;
@@ -48,7 +49,7 @@ const CCEncryptForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("covercryptEncrypt.intro")}</p>
                 <p>{t("covercryptEncrypt.introKey")}</p>
-                <p className="text-sm text-yellow-600">{t("covercryptEncrypt.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("covercryptEncrypt.note")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
@@ -95,9 +96,13 @@ const CCEncryptForm: React.FC = () => {
 
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("covercryptEncrypt.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("common:keyId")} help={t("covercryptEncrypt.keyIdHelp")}>
-                            <Input placeholder={t("common:enterKeyId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("covercryptEncrypt.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("covercryptEncrypt.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

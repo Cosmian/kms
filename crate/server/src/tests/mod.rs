@@ -10,6 +10,8 @@ mod health_endpoint;
 mod hsm;
 mod jose;
 mod jwks_endpoint;
+#[cfg(feature = "non-fips")]
+mod key_ceremony_tests;
 mod kmip_endpoints;
 #[cfg(feature = "non-fips")]
 mod kmip_messages;

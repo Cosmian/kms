@@ -5,6 +5,7 @@ import { sendKmipRequest } from "../../utils/utils";
 import { create_opaque_object_ttlv_request, parse_import_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface OpaqueObjectFormData {
     objectId?: string;
@@ -96,9 +97,14 @@ const OpaqueObjectForm: React.FC = () => {
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
-                        <Form.Item name="wrappingKeyId" label={t("opaqueObject.wrappingKeyId")} help={t("opaqueObject.wrappingKeyIdHelp")}>
-                            <Input placeholder={t("opaqueObject.enterWrappingKeyId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="wrappingKeyId"
+                            label={t("opaqueObject.wrappingKeyId")}
+                            help={t("opaqueObject.wrappingKeyIdHelp")}
+                            placeholder={t("opaqueObject.enterWrappingKeyId")}
+                            objectType="SymmetricKey"
+                        />
 
                         <Form.Item name="sensitive" valuePropName="checked" help={t("opaqueObject.sensitiveHelp")}>
                             <Checkbox>{t("opaqueObject.sensitive")}</Checkbox>

@@ -6,6 +6,7 @@ import { getMimeType, saveDecryptedFile, sendKmipRequest } from "../../utils/uti
 import { decrypt_ec_ttlv_request, parse_decrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface ECDecryptFormData {
     inputFile: Uint8Array;
@@ -47,7 +48,7 @@ const ECDecryptForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("ecDecrypt.intro")}</p>
                 <p>{t("ecDecrypt.introKey")}</p>
-                <p className="text-sm text-yellow-600">{t("ecDecrypt.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("ecDecrypt.note")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
@@ -81,9 +82,14 @@ const ECDecryptForm: React.FC = () => {
                     </Card>
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("ecDecrypt.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("common:keyId")} help={t("ecDecrypt.keyIdHelp")}>
-                            <Input placeholder={t("common:enterKeyId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("ecDecrypt.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                            objectType="PrivateKey"
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("ecDecrypt.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

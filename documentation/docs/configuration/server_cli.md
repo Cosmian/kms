@@ -1,3 +1,5 @@
+# Server CLI
+
 ```text
 
 Usage: cosmian_kms [OPTIONS] [KEY_ENCRYPTION_KEY]
@@ -370,38 +372,6 @@ Options:
 
           [env: KMS_JWT_AUTH_PROVIDER=]
 
-      --auth-verifier-url <AUTH_VERIFIER_URL>
-          Base URL of the Auth Verifier server (e.g. `https://auth.example.com`).
-
-          When set, the KMS validates bearer tokens against the JWKS published by this
-          server.  The `sub` claim is used as the user identity.
-
-          [env: KMS_AUTH_VERIFIER_URL=]
-
-      --auth-verifier-jwks-uri <AUTH_VERIFIER_JWKS_URI>
-          JWKS URI of the Auth Verifier server.
-
-          Defaults to `{auth_verifier_url}/.well-known/jwks.json` when not set.
-
-          [env: KMS_AUTH_VERIFIER_JWKS_URI=]
-
-      --auth-verifier-realm <AUTH_VERIFIER_REALM>
-          Realm to authenticate the Web UI against on the Auth Verifier server.
-
-          Required only to enable the Web UI login form for the Auth Verifier
-          server (`POST /ui/login_as`); bearer-token validation of already-issued tokens
-          does not need a realm. When unset, the UI falls back to any other configured
-          authentication method (OIDC/JWT or client certificate).
-
-          [env: KMS_AUTH_VERIFIER_REALM=]
-
-      --auth-verifier-accept-invalid-certs
-          Accept invalid or self-signed TLS certificates when fetching the JWKS.
-
-          **Development and testing only.** Never set this in production.
-
-          [env: KMS_AUTH_VERIFIER_ACCEPT_INVALID_CERTS=]
-
       --enable
           Disable the embedded web UI. When set to false, the UI HTML assets are not served and all `/ui/` routes return 404
 
@@ -579,9 +549,62 @@ Options:
 
           [env: KMS_ANSI_COLORS=]
 
-      --privileged-users <PRIVILEGED_USERS>
-          List of users who have the right to create and import Objects
-          and grant access rights for Create Kmip Operation.
+      --crypto-officer-users <CRYPTO_OFFICER_USERS>
+          Users with the Crypto Officer role (ISO/IEC 19790 "Crypto Officer" / PKCS#11 `CKU_SO`).
+
+          May manage key lifecycle (create, import, certify, rekey, activate, revoke, destroy)
+          and access raw key material (get, export — "key output" per ISO/IEC 19790 §7.4.3).
+          When active, gains ownership bypass on all Managed Objects.
+          When set, only listed users (plus those explicitly granted the `Create` right) can
+          create and import objects.
+
+      --crypto-officer-require-ceremony
+          Require a split-key ceremony to activate the Crypto Officer role.
+
+          When `true`, users listed in `crypto_officer_users` are candidates only —
+          the role is inactive until a KMIP `JoinSplitKey` with all shares tagged
+          `x-cosmian-crypto-officer-ceremony` completes
+          (NIST SP 800-57 Part 2 Rev 1 §4.6 split knowledge, XOR n-of-n).
+
+      --ceremony-secret <CEREMONY_SECRET>
+          Hex-encoded 32-byte secret for ceremony record encryption.
+
+          Required when any role has `require_ceremony = true`.
+          All ceremony activation records are AES-256-GCM encrypted with keys
+          derived from this secret, preventing forgery via direct database writes
+          and protecting participant identities at rest.
+
+          Generate with: `openssl rand -hex 32`
+
+          [env: KMS_CEREMONY_SECRET=]
+
+      --ceremony-key-id <CEREMONY_KEY_ID>
+          UID of a KMS symmetric key to use as the ceremony record sealing key (ADP-26).
+
+          When set, key material is fetched from the KMS object store via a direct DB read
+          (bypassing KMIP auth) and used in place of `ceremony_secret`. This enables:
+            - Key rotation via standard KMIP `ReKey` / `Rotate` operations.
+            - HSM-backed sealing when the referenced key is HSM-resident.
+            - Audit trail: each `Get` of the ceremony key is logged.
+
+          **Bootstrap constraint**: the ceremony sealing key must be created before
+          enabling `crypto_officer_require_ceremony = true`. Create it while the server
+          is in config-only CO mode (no ceremony required), then enable ceremony mode:
+
+          ```bash
+          # 1. Start server with require_ceremony = false
+          # 2. Create the sealing key:
+          ckms sym keys create --id ceremony-seal-2026 --number-of-bits 256
+          # 3. Set ceremony_key_id = "ceremony-seal-2026" in kms.toml
+          # 4. Enable require_ceremony = true and restart
+          ```
+
+          If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+
+          **Status**: ADP-26 (planned). This field is accepted by the config parser but is not yet
+          functional. Set `ceremony_secret` in the meantime.
+
+          [env: KMS_CEREMONY_KEY_ID=]
 
       --aws-xks-enable
           This setting turns on endpoints handling the AWS XKS feature

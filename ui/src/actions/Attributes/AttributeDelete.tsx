@@ -1,10 +1,11 @@
-import { Button, Card, Form, Input, Select, Space, Typography } from "antd";
+import { Button, Card, Form, Select, Space, Typography } from "antd";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import { delete_attribute_ttlv_request, parse_delete_attribute_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { useActionState } from "../../hooks/useActionState";
 import { DELETE_ATTRIBUTES } from "./attributeRegistry";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -47,7 +48,7 @@ const DeleteAttribute: React.FC = () => {
             <Title level={2}>{t("attributeDelete.title")}</Title>
             <div className="mb-8 space-y-2">
                 <div>{t("attributeDelete.intro")}</div>
-                <div className="text-sm text-yellow-600">{t("attributeSet.introWarning")}</div>
+                <div className="text-sm text-yellow-600 dark:text-yellow-400">{t("attributeSet.introWarning")}</div>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{}}>
@@ -55,9 +56,13 @@ const DeleteAttribute: React.FC = () => {
                     <Card title={t("form.objectIdentification")}>
                         <div className="mb-5">{t("form.identifyHint")}</div>
 
-                        <Form.Item name="id" label={t("common:objectId")} help={t("common:objectIdHelp")}>
-                            <Input placeholder={t("common:enterObjectId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="id"
+                            label={t("common:objectId")}
+                            help={t("common:objectIdHelp")}
+                            placeholder={t("common:enterObjectId")}
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("common:tagsHelp")}>
                             <Select mode="tags" style={{ width: "100%" }} placeholder={t("common:enterTags")} tokenSeparators={[","]} />

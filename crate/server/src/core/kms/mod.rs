@@ -2,7 +2,7 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{Resource, metrics::PeriodicReader};
 mod kmip;
 mod other_kms_methods;
-mod permissions;
+pub(crate) mod permissions;
 
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 
@@ -161,6 +161,7 @@ impl KMS {
             server_params.unwrapped_cache_max_ttl,
             server_params.disable_unwrapped_cache,
             db_otel_recorder,
+            server_params.ceremony_keys.clone(),
         )
         .await?;
 

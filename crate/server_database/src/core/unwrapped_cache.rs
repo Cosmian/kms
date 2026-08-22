@@ -233,9 +233,10 @@ mod tests {
             HashMap::new(),
             Duration::from_millis(100),
             NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
-            None,
+            None,  // cache_max_ttl
+            false, // disable_unwrapped_cache
+            None,  // recorder
+            None,  // ceremony_keys
         )
         .await?;
 

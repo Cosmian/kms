@@ -13,7 +13,7 @@ Save ADRs at: `documentation/docs/adr/adr-YYYY-MM-DD-[title-slug].md`
 
 Where `YYYY-MM-DD` is the current date.
 
-If the `documentation/docs/adr/` directory doesn't exist yet, create it and add a nav entry in `documentation/mkdocs.yml`.
+If the `documentation/docs/adr/` directory doesn't exist yet, create it and add nav entries in `documentation/docs/SUMMARY.md` and `documentation/nav.yml`.
 
 ## Required Inputs
 

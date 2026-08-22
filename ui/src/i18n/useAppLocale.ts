@@ -13,7 +13,9 @@ import { LOCALE_REGISTRY, SUPPORTED_LOCALES, SupportedLocale } from "./localeReg
  */
 export function useAppLocale() {
     const { i18n } = useTranslation();
-    const current: SupportedLocale = SUPPORTED_LOCALES.includes(i18n.language as SupportedLocale) ? (i18n.language as SupportedLocale) : "en";
+    const current: SupportedLocale = SUPPORTED_LOCALES.includes(i18n.language as SupportedLocale)
+        ? (i18n.language as SupportedLocale)
+        : "en";
     const { antdLocale, dayjsLocale } = LOCALE_REGISTRY[current];
 
     useEffect(() => {

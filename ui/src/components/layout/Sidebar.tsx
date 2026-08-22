@@ -1,4 +1,4 @@
-import { Layout, Menu, MenuProps, Tooltip } from "antd";
+import { Layout, Menu, MenuProps } from "antd";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -14,7 +14,7 @@ interface LevelKeysProps {
     children?: LevelKeysProps[];
 }
 
-const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
+const Sidebar: React.FC<{ isFips?: boolean; isDarkMode?: boolean }> = ({ isFips = false, isDarkMode = false }) => {
     const [collapsed, setCollapsed] = useState(false);
     const navigate = useNavigate();
     const [stateOpenKeys, setStateOpenKeys] = useState<string[]>([]);
@@ -131,15 +131,13 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
     const displayLabel = (item: MenuItem) => (item.rawLabel ? item.label : t(item.key, { defaultValue: item.label }));
 
     // Recursively decorate every menu level so that sub-menu labels are
-    // translated too, not just the top level.
+    // translated too, not just the top level. Ant Design handles hiding text
+    // when collapsed (showing only the icon) and uses the label as the popup
+    // sub-menu title — no custom tooltip wrapping needed.
     const decorateMenuItems = (items: MenuItem[]): NonNullable<MenuProps["items"]> =>
         items.map((item) => ({
             ...item,
-            label: collapsed ? (
-                <Tooltip title={displayLabel(item)}>{item.icon ? item.icon : item.collapsedlabel}</Tooltip>
-            ) : (
-                displayLabel(item)
-            ),
+            label: displayLabel(item),
             ...(item.children ? { children: decorateMenuItems(item.children) } : {}),
         }));
 
@@ -151,11 +149,11 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
             collapsed={collapsed}
             onCollapse={setCollapsed}
             className="h-full"
-            theme={branding.menuTheme ?? "light"}
-            style={{ position: "sticky", top: 0, overflow: "auto" }}
+            style={{ position: "sticky", top: 0, overflow: "auto", background: "var(--cosmian-sidebar-bg)" }}
         >
             <Menu
                 mode="inline"
+                theme={isDarkMode ? "dark" : (branding.menuTheme ?? "light")}
                 defaultSelectedKeys={["1"]}
                 defaultOpenKeys={["access-rights"]}
                 openKeys={stateOpenKeys}
@@ -163,7 +161,7 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
                 items={modifiedMenuItems}
                 onClick={({ key }: { key: string }) => navigate(key)}
                 className="h-full border-r-0"
-                style={{ fontWeight: "500", overflow: "auto" }}
+                style={{ fontWeight: "500", overflow: "auto", background: "var(--cosmian-sidebar-bg)" }}
             />
         </Sider>
     );

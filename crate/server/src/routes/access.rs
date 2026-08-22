@@ -12,10 +12,15 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     self, kmip_2_1::kmip_types::UniqueIdentifier,
 };
 use cosmian_logger::{debug, info};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use tracing::info as trace_info;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::user_has_permission},
+    core::{
+        KMS, operations::perform_crypto_officer_ceremony_activation,
+        retrieve_object_utils::user_has_permission,
+    },
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -157,9 +162,11 @@ pub(crate) async fn get_create_access(
 
     let user = kms.get_user(&req);
 
-    let has_create_permission = match kms.params.privileged_users.as_ref() {
-        Some(users) if users.iter().any(|u| u == user.as_str()) => true,
-        Some(_) => {
+    let has_create_permission = {
+        let co_users = &kms.params.crypto_officer.users;
+        if co_users.is_empty() || co_users.iter().any(|u| u == user.as_str()) {
+            true
+        } else {
             user_has_permission(
                 &user,
                 None,
@@ -168,7 +175,6 @@ pub(crate) async fn get_create_access(
             )
             .await?
         }
-        None => true, // Default permission when no privileged users are defined
     };
     Ok(Json(CreatePermissionResponse {
         has_create_permission,
@@ -181,17 +187,190 @@ pub(crate) async fn get_privileged_access(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,
 ) -> KResult<Json<PrivilegedAccessResponse>> {
-    let span = tracing::span!(tracing::Level::INFO, "get_create_access");
+    let span = tracing::span!(tracing::Level::INFO, "get_privileged_access");
     let _enter = span.enter();
 
     let user = kms.get_user(&req);
 
-    let has_privileged_access = kms
-        .params
-        .privileged_users
-        .as_ref()
-        .is_some_and(|users| users.iter().any(|u| u == user.as_str()));
+    let has_privileged_access = {
+        let co_users = &kms.params.crypto_officer.users;
+        !co_users.is_empty() && co_users.iter().any(|u| u == user.as_str())
+    };
     Ok(Json(PrivilegedAccessResponse {
         has_privileged_access,
+    }))
+}
+
+// ── Crypto Officer status & disable ───────────────────────────────────────────
+
+/// Response body for `GET /access/crypto_officer/status`
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Serialize)]
+pub(crate) struct CryptoOfficerStatusResponse {
+    /// Whether a Crypto Officer role configuration exists on the server.
+    pub enabled: bool,
+    /// List of usernames with Crypto Officer privileges (from server config).
+    /// Only populated for CO candidates; regular operators see an empty list.
+    pub users: Vec<String>,
+    /// Subset of `users` that currently hold an **active** ceremony activation.
+    /// Only populated for CO candidates. Used by the UI to filter the peer-revocation
+    /// target list to active COs only.
+    pub active_co_users: Vec<String>,
+    /// Total number of Crypto Officer custodians configured on the server.
+    /// Always set (unlike `users` which is hidden for non-CO users) so that
+    /// ceremony candidates know how many share inputs to show in the UI.
+    pub custodians_count: usize,
+    /// Whether a split-key ceremony is required to activate the role.
+    pub require_ceremony: bool,
+    /// Whether the ceremony has been completed and the role is currently active.
+    pub ceremony_activated: bool,
+    /// Whether the current user is an active Crypto Officer.
+    pub is_crypto_officer: bool,
+}
+
+/// Return the current Crypto Officer configuration and activation status.
+///
+/// **Authorization**: any authenticated user may call this endpoint (the
+/// response is purely informational — it does not reveal key material).
+#[get("/access/crypto_officer/status")]
+pub(crate) async fn get_crypto_officer_status(
+    req: HttpRequest,
+    kms: Data<Arc<KMS>>,
+) -> KResult<Json<CryptoOfficerStatusResponse>> {
+    let user = kms.get_user(&req);
+    info!(user = %user, "GET /access/crypto_officer/status {user}");
+
+    let cfg = &kms.params.crypto_officer;
+    if cfg.users.is_empty() {
+        return Ok(Json(CryptoOfficerStatusResponse {
+            enabled: false,
+            users: vec![],
+            active_co_users: vec![],
+            custodians_count: 0,
+            require_ceremony: false,
+            ceremony_activated: false,
+            is_crypto_officer: false,
+        }));
+    }
+
+    let ceremony_activated = if cfg.require_ceremony {
+        kms.database.is_crypto_officer_activated().await?
+    } else {
+        false
+    };
+
+    let is_crypto_officer = kms.is_crypto_officer(&user).await?;
+
+    // Reveal the CryptoOfficer user list to all configured CO candidates
+    // (anyone in cfg.users), not only to the active CO.
+    // CO candidates need to know their peers to perform peer revocation.
+    // Regular Operators (not in cfg.users) still get an empty list.
+    let is_co_candidate = cfg.users.iter().any(|u| u == user.as_str());
+    let users = if is_co_candidate {
+        cfg.users.clone()
+    } else {
+        Vec::new()
+    };
+
+    // Compute the subset of configured CO users that have an active ceremony activation.
+    // Only populated for CO candidates (same visibility rule as `users`).
+    // This lets the UI filter the peer-revocation target list to active COs only.
+    let active_co_users = if is_co_candidate && ceremony_activated {
+        let mut active = Vec::new();
+        for co_user in &cfg.users {
+            if kms.database.is_crypto_officer_activated_by(co_user).await? {
+                active.push(co_user.clone());
+            }
+        }
+        active
+    } else {
+        Vec::new()
+    };
+
+    Ok(Json(CryptoOfficerStatusResponse {
+        enabled: true,
+        users,
+        active_co_users,
+        custodians_count: cfg.users.len(),
+        require_ceremony: cfg.require_ceremony,
+        ceremony_activated,
+        is_crypto_officer,
+    }))
+}
+
+/// Request body for `POST /access/crypto_officer/disable`.
+///
+/// When `target_user` is `None`, the caller self-revokes their own active CO ceremony.
+/// When `target_user` is `Some(user_id)`, any configured CO candidate can peer-revoke
+/// the specified active CO.
+#[derive(Deserialize, Default)]
+pub(crate) struct DisableCryptoOfficerRequest {
+    /// The user ID of the active CO to revoke. If omitted, the caller self-revokes.
+    pub(crate) target_user: Option<String>,
+}
+
+/// Disable an active Crypto Officer ceremony.
+///
+/// **Ceremony mode only**: sets `revoked_at` on the active ceremony record.
+/// Subsequent Crypto Officer lifecycle operations will be denied until a
+/// new ceremony completes.
+///
+/// In config-only mode, Crypto Officer privileges must be removed by editing
+/// the server configuration and restarting.
+///
+/// **Authorization**:
+/// - Self-revoke (no `target_user`): caller must be an active CO.
+/// - Peer revocation (`target_user` provided): caller must be a configured CO candidate;
+///   target must be an active CO.
+#[post("/access/crypto_officer/disable")]
+pub(crate) async fn disable_crypto_officer(
+    req: HttpRequest,
+    body: Json<DisableCryptoOfficerRequest>,
+    kms: Data<Arc<KMS>>,
+) -> KResult<Json<SuccessResponse>> {
+    let user = kms.get_user(&req);
+    let target = body.0.target_user.as_deref().map(UserId::from);
+    info!(user = %user, target = ?body.0.target_user, "POST /access/crypto_officer/disable");
+
+    kms.disable_crypto_officer_ceremony(&user, target.as_ref())
+        .await?;
+
+    Ok(Json(SuccessResponse {
+        success: "Crypto Officer ceremony activation revoked successfully".to_owned(),
+    }))
+}
+
+// ── Crypto Officer ceremony activation ────────────────────────────────────────
+
+/// Request body for `POST /access/crypto_officer/ceremony/activate`.
+#[derive(Deserialize)]
+pub(crate) struct CeremonyActivateRequest {
+    /// UIDs of the split-key shares to reconstruct from (all n shares required).
+    pub share_ids: Vec<String>,
+}
+
+/// Activate the Crypto Officer role via an XOR split-key ceremony.
+///
+/// Reconstructs the ceremony secret from the provided shares **in RAM only** —
+/// the secret is never stored as a KMS managed object (ADP-20 / NIST SP 800-57
+/// Part 2 Rev 1 §4.6). After verifying dual-control and ceremony-attribute
+/// constraints, the activation record is persisted and the secret is zeroized.
+///
+/// **Authorization**: caller must be listed in `crypto_officer_users`.
+///
+/// **Ceremony mode only**: returns an error when `require_ceremony = false`.
+#[post("/access/crypto_officer/ceremony/activate")]
+pub(crate) async fn activate_crypto_officer_ceremony(
+    req: HttpRequest,
+    body: Json<CeremonyActivateRequest>,
+    kms: Data<Arc<KMS>>,
+) -> KResult<Json<SuccessResponse>> {
+    let user = kms.get_user(&req);
+    trace_info!(user = %user, "POST /access/crypto_officer/ceremony/activate {user}");
+
+    perform_crypto_officer_ceremony_activation(&kms, &body.share_ids, &user).await?;
+
+    Ok(Json(SuccessResponse {
+        success: format!("Crypto Officer ceremony activated for user '{user}'."),
     }))
 }
