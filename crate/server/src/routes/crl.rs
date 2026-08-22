@@ -128,7 +128,7 @@ pub(crate) async fn get_crl_public(
     );
 
     let Some((crl_der, generated_at, next_update_str)) =
-        crate::core::operations::generate_crl::get_cached_crl(&issuer_id, &kms, &kms).await
+        crate::core::operations::generate_crl::get_cached_crl(&issuer_id, &kms).await
     else {
         return Ok(HttpResponse::NotFound()
             .content_type("text/plain; charset=utf-8")
