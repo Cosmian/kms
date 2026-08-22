@@ -508,7 +508,7 @@ function App() {
         token: {
             colorPrimary: "#c73f1b" /* Cosmian brand orange — eviden.css --cosmian-accent-dark (>= 4.5:1 on white) */,
             colorText: "#1a1a1a" /* Eviden brand ink — matches eviden.css --cosmian-dark */,
-            fontFamily: "'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         },
         components: {
             Layout: {
@@ -540,8 +540,9 @@ function App() {
         algorithm: theme.darkAlgorithm,
         token: {
             colorPrimary: "#f14611" /* Cosmian primary orange — eviden.css --cosmian-accent (bright accent on dark) */,
-            colorInfo: "#2b79a2" /* mdBook dark-theme link blue */,
+            colorInfo: "#4fa8d8" /* mdBook dark-theme link blue — ≥ 4.5:1 on #161923 (WCAG AA) */,
             colorTextBase: "#bcbdd0" /* mdBook navy --fg */,
+            colorTextSecondary: "#9fa0b8" /* explicit — prevents algorithm deriving ~#666979 (only 2.84:1 on card bg) */,
             colorBgBase: "#161923" /* mdBook navy --bg hsl(226,23%,11%) — black background */,
             colorBgLayout: "#161923",
             colorBgContainer: "#1f2432" /* elevated card surface */,
@@ -549,7 +550,7 @@ function App() {
             colorBorder: "#5a6278",
             colorSplit: "#3a4155",
             colorError: "#ff6b6b" /* light red (>= 4.5:1 on #161923) */,
-            fontFamily: "'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         },
         components: {
             Layout: {
