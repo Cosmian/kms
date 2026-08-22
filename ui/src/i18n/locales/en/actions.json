@@ -208,7 +208,7 @@
         "rotateOffsetHelp": "Delay before the first rotation occurs.",
         "rotateOffsetPlaceholder": "e.g. 3600",
         "submit": "Create RSA Keypair",
-        "success": "Key pair has been created. Private key Id: {{privateKeyId}} - Public key Id: {{publicKeyId}}",
+        "success": "Key pair has been created. Private key ID: {{privateKeyId}} — Public key ID: {{publicKeyId}}",
         "responseTitle": "RSA keys creation response"
     },
     "rsaEncrypt": {
@@ -321,7 +321,7 @@
         "rotateOffsetHelp": "Delay before the first rotation occurs.",
         "rotateOffsetPlaceholder": "e.g. 3600",
         "submit": "Create EC Keypair",
-        "success": "Key pair has been created. Private key Id: {{privateKeyId}} - Public key Id: {{publicKeyId}}",
+        "success": "Key pair has been created. Private key ID: {{privateKeyId}} — Public key ID: {{publicKeyId}}",
         "responseTitle": "EC key pair creation response"
     },
     "ecEncrypt": {
@@ -571,7 +571,7 @@
         "enterAuthenticatedData": "Enter authenticated data",
         "submitKey": "Import Key",
         "submitData": "Import Data",
-        "success": "File has been imported - imported object id: {{objectId}}",
+        "success": "File has been imported — imported object ID: {{objectId}}",
         "responseTitle": "Import Response",
         "formatJsonTtlv": "JSON TTLV (default)",
         "formatPem": "PEM (auto-detect format)",
@@ -594,7 +594,7 @@
         "title": "Derive Key",
         "intro": "Derive a new symmetric key from an existing key or a password using PBKDF2 or HKDF.",
         "introKeyId": "<strong>Key ID</strong>: derive from an existing managed key or secret data object. The object must have the <em>Derive Key</em> usage mask.",
-        "introPassword": "<strong>Password</strong>: the password is temporarily stored as a secret data object, used for derivation, and can be revoked afterwards.",
+        "introPassword": "<strong>Password</strong>: the password is temporarily stored as a secret data object, used for derivation, and can be revoked afterward.",
         "introSalt": "Salt must be provided as a hexadecimal string.",
         "sourceCard": "Key Material Source",
         "sourceType": "Source Type",
@@ -668,7 +668,7 @@
         "colUid": "Object UID",
         "colType": "Type",
         "colState": "State",
-        "emptyResult": "Empty result - no object owned.",
+        "emptyResult": "Empty result — no object owned.",
         "errorListing": "Error listing objects: {{error}}",
         "responseTitle": "Owned objects response"
     },
@@ -1101,7 +1101,7 @@
         "replaceExisting": "Replace existing certificate",
         "replaceExistingHelp": "Replace an existing certificate with the same ID",
         "certificateFileRequired": "Certificate file is required for the selected format",
-        "success": "Certificate has been imported - imported object id: {{objectId}}",
+        "success": "Certificate has been imported — imported object ID: {{objectId}}",
         "submit": "Import Certificate",
         "responseTitle": "Certificate import response"
     },
@@ -1170,7 +1170,7 @@
         "enterObjectUid": "Enter object UID",
         "colUser": "User",
         "colOperations": "Granted Operations",
-        "emptyResult": "Empty result - no access granted.",
+        "emptyResult": "Empty result — no access granted.",
         "submit": "List Access Rights",
         "responseTitle": "List access response",
         "accessRightsTitle": "Access Rights"
@@ -1188,7 +1188,7 @@
         "colState": "State",
         "colOwner": "Owner",
         "colOperations": "Granted Operations",
-        "emptyResult": "Empty result - no access obtained.",
+        "emptyResult": "Empty result — no access obtained.",
         "errorListing": "Error listing objects: {{error}}",
         "responseTitle": "Obtained access response"
     },
@@ -1202,7 +1202,7 @@
         "datePlaceholder": "e.g. 2023-04-07T12:34:56+02:00",
         "truncateTo": "Truncate to",
         "pleaseSelectTimeUnit": "Please select a time unit",
-        "truncateHelp": "All sub-units below this level are set to zero",
+        "truncateHelp": "All subunits below this level are set to zero",
         "timeUnitSecond": "Second",
         "timeUnitMinute": "Minute",
         "timeUnitHour": "Hour",
@@ -1423,7 +1423,7 @@
         "alphabetHelpText": "Characters that can appear in the plaintext (non-alphabet chars are preserved)",
         "radixAlphabet": "Radix Alphabet",
         "radixAlphabetHelpInteger": "Radix alphabet for integer encryption (default: numeric / base-10)",
-        "alphabetAlphaNumeric": "Alpha-numeric (a-z A-Z 0-9)",
+        "alphabetAlphaNumeric": "Alphanumeric (a-z A-Z 0-9)",
         "alphabetNumeric": "Numeric (0-9)",
         "alphabetAlphaLower": "Alpha lower (a-z)",
         "alphabetAlphaUpper": "Alpha upper (A-Z)",
@@ -1467,7 +1467,7 @@
         "alphabetHelpText": "Must match the alphabet used during encryption",
         "radixAlphabet": "Radix Alphabet",
         "radixAlphabetHelpInteger": "Must match the radix alphabet used during encryption",
-        "alphabetAlphaNumeric": "Alpha-numeric (a-z A-Z 0-9)",
+        "alphabetAlphaNumeric": "Alphanumeric (a-z A-Z 0-9)",
         "alphabetNumeric": "Numeric (0-9)",
         "alphabetAlphaLower": "Alpha lower (a-z)",
         "alphabetAlphaUpper": "Alpha upper (A-Z)",
@@ -1514,7 +1514,7 @@
         "rotateOffsetHelp": "Delay before the first rotation occurs.",
         "rotateOffsetPlaceholder": "e.g. 3600",
         "submit": "Create PQC Keypair",
-        "success": "Key pair has been created. Private key Id: {{privateKeyId}} - Public key Id: {{publicKeyId}}",
+        "success": "Key pair has been created. Private key ID: {{privateKeyId}} — Public key ID: {{publicKeyId}}",
         "responseTitle": "PQC key pair creation response"
     },
     "pqcEncapsulate": {
@@ -1616,7 +1616,7 @@
         "sensitive": "Sensitive Key",
         "sensitiveHelp": "If enabled, the private key will not be exportable",
         "submit": "Create Master Key pair",
-        "success": "Key pair has been created. Private key Id: {{privateKeyId}} - Public key Id: {{publicKeyId}}",
+        "success": "Key pair has been created. Private key ID: {{privateKeyId}} — Public key ID: {{publicKeyId}}",
         "responseTitle": "Covercrypt Master keys creation response"
     },
     "covercryptUserKey": {
