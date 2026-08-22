@@ -151,6 +151,33 @@ impl Database {
             .revoke_crypto_officer_activation(revoked_by)
             .await?)
     }
+
+    // ── CRL persistence ─────────────────────────────────────────────────────
+
+    /// Persist (or replace) the most recently generated CRL for `issuer_id`.
+    pub async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> DbResult<()> {
+        Ok(self
+            .permissions
+            .upsert_crl(issuer_id, crl_der, crl_number, generated_at, next_update)
+            .await?)
+    }
+
+    /// Retrieve the persisted CRL DER bytes and generation timestamp for `issuer_id`.
+    pub async fn get_crl(&self, issuer_id: &str) -> DbResult<Option<(Vec<u8>, String)>> {
+        Ok(self.permissions.get_crl(issuer_id).await?)
+    }
+
+    /// List all issuer IDs with their stored `next_update` timestamps.
+    pub async fn list_crl_issuers(&self) -> DbResult<Vec<(String, String)>> {
+        Ok(self.permissions.list_crl_issuers().await?)
+    }
 }
 
 /// Private helpers for ceremony record encryption.

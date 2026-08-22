@@ -1,3 +1,7 @@
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::{
+    pqc_private_key_pkcs8_to_raw, pqc_public_key_spki_to_raw,
+};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         KmipError,
@@ -528,7 +532,8 @@ async fn post_process_active_private_key(
 
     // PQC keys are stored as PKCS#8 (ML-KEM, ML-DSA, SLH-DSA) or Raw
     // (hybrid KEMs) and do not support an OpenSSL round-trip.
-    // Return as-is, honouring wrapping when requested.
+    // PKCS#8 → Raw conversion is supported; return as-is otherwise.
+    #[cfg(feature = "non-fips")]
     if is_pqc_algorithm(key_block.cryptographic_algorithm) {
         let stored_fmt = key_block.key_format_type;
         if key_format_type.is_some()
@@ -539,11 +544,27 @@ async fn post_process_active_private_key(
         {
             kms_bail!("export: PQC keys only support PKCS#8 or Raw format")
         }
-        // If a specific format is requested that differs from the stored format, reject
+        // Convert PKCS#8 → Raw when requested
         if let Some(requested) = key_format_type {
-            if *requested != stored_fmt {
+            if *requested == KeyFormatType::Raw && stored_fmt == KeyFormatType::PKCS8 {
+                let key_bytes = key_block.key_bytes()?;
+                let raw_bytes = pqc_private_key_pkcs8_to_raw(&key_bytes).map_err(|e| {
+                    KmsError::CryptographicError(format!(
+                        "export: failed to convert PQC private key from PKCS#8 to Raw: {e}"
+                    ))
+                })?;
+                key_block.key_format_type = KeyFormatType::Raw;
+                if let Some(KeyValue::Structure {
+                    ref mut key_material,
+                    ..
+                }) = key_block.key_value
+                {
+                    *key_material = KeyMaterial::ByteString(Zeroizing::from(raw_bytes));
+                }
+            } else if *requested != stored_fmt {
                 kms_bail!(
-                    "export: PQC key stored as {stored_fmt:?} cannot be converted to {requested:?}"
+                    "export: PQC key stored as {stored_fmt:?} cannot be converted to \
+                     {requested:?}"
                 )
             }
         }
@@ -828,6 +849,7 @@ async fn process_public_key(
         }
 
         // PQC public keys: skip the OpenSSL round-trip, same rationale as private keys.
+        #[cfg(feature = "non-fips")]
         if is_pqc_algorithm(key_block.cryptographic_algorithm) {
             let stored_fmt = key_block.key_format_type;
             if key_format_type.is_some()
@@ -838,10 +860,29 @@ async fn process_public_key(
             {
                 kms_bail!("export: PQC keys only support PKCS#8 or Raw format")
             }
+            // Convert SPKI (stored as PKCS8 format type) → Raw when requested
             if let Some(requested) = key_format_type {
-                if *requested != stored_fmt {
+                if *requested == KeyFormatType::Raw && stored_fmt == KeyFormatType::PKCS8 {
+                    let key_bytes = key_block.key_bytes()?;
+                    let raw_bytes = pqc_public_key_spki_to_raw(&key_bytes).map_err(|e| {
+                        KmsError::CryptographicError(format!(
+                            "export: failed to convert PQC public key from SPKI to Raw: {e}"
+                        ))
+                    })?;
+                    // Drop immutable borrow, re-acquire mutably
+                    let key_block_mut = object_with_metadata.object_mut().key_block_mut()?;
+                    key_block_mut.key_format_type = KeyFormatType::Raw;
+                    if let Some(KeyValue::Structure {
+                        ref mut key_material,
+                        ..
+                    }) = key_block_mut.key_value
+                    {
+                        *key_material = KeyMaterial::ByteString(Zeroizing::from(raw_bytes));
+                    }
+                } else if *requested != stored_fmt {
                     kms_bail!(
-                        "export: PQC key stored as {stored_fmt:?} cannot be converted to {requested:?}"
+                        "export: PQC key stored as {stored_fmt:?} cannot be converted to \
+                         {requested:?}"
                     )
                 }
             }
@@ -1023,6 +1064,7 @@ async fn process_covercrypt_key(
 }
 
 /// Returns `true` for PQC algorithm variants (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA).
+#[cfg(feature = "non-fips")]
 const fn is_pqc_algorithm(algo: Option<CryptographicAlgorithm>) -> bool {
     matches!(
         algo,

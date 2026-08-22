@@ -215,6 +215,14 @@ at least one TLS 1.2 cipher suite:
 The KMS server supports custom TLS cipher suite configuration to meet specific security requirements.
 You can specify which cipher suites to enable using a colon-separated list.
 
+!!! info "ANSSI TLS recommendations"
+    For French regulatory compliance, follow
+    [ANSSI-NT-35 — Recommendations de sécurité relatives à TLS (v1.2, 2020)](https://cyber.gouv.fr/publications/recommandations-de-securite-relatives-a-tls/):
+    §2.1 forbids TLS 1.0 and TLS 1.1; §2.2 requires AEAD cipher suites with ECDHE key exchange —
+    AES-GCM / AES-CCM preferred, ChaCha20-Poly1305 acceptable. TLS 1.3 satisfies these requirements
+    natively. The English edition is also available:
+    [Security Recommendations for TLS (EN, v1.1, 2017)](https://cyber.gouv.fr/publications/security-recommendations-for-tls/).
+
 The cipher suites are automatically categorized into TLS 1.3 and TLS 1.2 suites:
 
 - **TLS 1.3 cipher suites** (preferred): `TLS_AES_256_GCM_SHA384`, `TLS_AES_128_GCM_SHA256`, `TLS_CHACHA20_POLY1305_SHA256`, `TLS_AES_128_CCM_SHA256`, `TLS_AES_128_CCM_8_SHA256`

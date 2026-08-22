@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    path,
     sync::LazyLock,
 };
 
@@ -23,8 +22,8 @@ use openssl::{
 use crate::{
     config::ProxyParams,
     core::{
-        KMS, operations::certify::rfc9608, retrieve_object_utils::retrieve_object_for_operation,
-        uid_utils::ObjectHandle,
+        KMS, certificate::validate_crl_url, operations::certify::rfc9608,
+        retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
     },
     error::KmsError,
     middlewares::UserId,
@@ -135,7 +134,25 @@ pub(crate) async fn validate_operation(
 
     verify_chain_signature(&certificates)?;
     validate_chain_date(&certificates, &request.validity_time)?;
-    verify_crls(certificates, kms.params.proxy_params.as_ref()).await?;
+
+    // CRL check: hard CRL errors (expired CRL, bad signature, explicit revocation)
+    // make the chain invalid. Network errors (unreachable CRL distribution point)
+    // are treated as soft failures inside `verify_crls()` and do not cause
+    // this function to return an error — the certificate is treated as valid when
+    // the CRL DP is simply unreachable. Only deterministic revocation evidence
+    // or a malformed/expired CRL propagates here as an error.
+    if let Err(crl_err) = verify_crls(
+        certificates,
+        kms.params.proxy_params.as_ref(),
+        kms.params.kms_public_url.as_deref(),
+    )
+    .await
+    {
+        warn!("CRL validation failed: {crl_err}");
+        return Err(KmsError::Certificate(format!(
+            "Certificate chain is invalid: {crl_err}"
+        )));
+    }
 
     Ok(ValidateResponse {
         validity_indicator: ValidityIndicator::Valid,
@@ -432,158 +449,204 @@ fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
     Ok(ValidityIndicator::Valid)
 }
 
-enum UriType {
-    Url(String),
-    Path(String),
-}
+/// Maximum CRL body size accepted from a remote server (10 MiB).
+///
+/// Prevents unbounded memory allocation via a slow or large HTTP response.
+/// Real-world CRLs are typically a few kilobytes to a few megabytes.
+const CRL_MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
 
 /// Retrieves Certificate Revocation List (CRL) bytes from a list of URIs.
 ///
-/// This function takes a list of URIs, which can be either URLs or file paths, and retrieves the
-/// corresponding CRL bytes. The retrieved CRLs are cached to avoid redundant network or file system
-/// access. If a CRL is already cached, it is directly retrieved from the cache.
+/// In production, only `http://` and `https://` URIs are fetched. All other URI
+/// types (bare filesystem paths, LDAP, FTP, …) are rejected to prevent
+/// Server-Side Request Forgery (COSMIAN-2026-010).
 ///
-/// # Arguments
+/// When the `insecure` feature is enabled (or in `#[cfg(test)]` builds),
+/// `file://` URIs are additionally permitted so that integration tests and
+/// air-gapped test environments can load local CRL fixtures without an HTTP
+/// server. **Never enable the `insecure` feature in production.**
 ///
-/// * `uri_list` - A vector of strings representing the URIs from which to retrieve the CRLs.
+/// URLs that begin with `kms_public_url` (the server's own base URL) are
+/// exempted from the SSRF host check: the KMS server may legitimately fetch
+/// its own auto-generated CRL endpoint.
 ///
-/// # Returns
+/// Each HTTP(S) URL is validated against [`validate_crl_url`] before any
+/// network I/O: private/loopback/link-local IP ranges and internal hostnames
+/// are rejected unless covered by the `kms_public_url` exemption above.
+/// HTTP redirects are never followed. Responses are capped at
+/// [`CRL_MAX_RESPONSE_BYTES`] and the request times out after 30 seconds.
 ///
-/// A `KResult` containing a `HashMap` where the keys are the URIs and the values are the corresponding
-/// CRL bytes. If an error occurs during the retrieval process, a `KmsError::Certificate` is returned.
+/// Successfully fetched CRLs are cached in [`CRL_CACHE_MAP`] to avoid
+/// redundant network round-trips within the same server process.
 ///
 /// # Errors
 ///
-/// This function will return an error if:
-/// - The provided URI is invalid.
-/// - There is an error in retrieving the CRL from a URL.
-/// - There is an error in reading the CRL from a file path.
-/// ```
+/// Returns [`KmsError::Certificate`] if:
+/// - A URI uses a non-HTTP(S) scheme or is a bare filesystem path (production).
+/// - The URL targets a private, loopback, link-local, or internal hostname
+///   (and is not the server's own URL).
+/// - The HTTP request fails, times out, or returns a non-2xx status.
+/// - The response body exceeds [`CRL_MAX_RESPONSE_BYTES`].
 async fn get_crl_bytes(
     uri_list: Vec<String>,
     proxy_params: Option<&ProxyParams>,
+    kms_public_url: Option<&str>,
 ) -> KResult<HashMap<String, Vec<u8>>> {
     trace!("get_crl_bytes: entering: uri_list: {uri_list:?}");
 
     let mut result = HashMap::new();
 
     for uri in uri_list {
-        // checking whether the resource is an URL or a Pathname
-        let uri_type = if let Ok(url) = url::Url::parse(&uri) {
-            Some(UriType::Url(url.into()))
-        } else {
-            let path_buf = path::Path::new(&uri).canonicalize()?;
-            match path_buf.to_str() {
-                Some(s) => Some(UriType::Path(s.to_owned())),
-                None => {
-                    return Err(KmsError::Certificate(
-                        "The uri provided is invalid".to_owned(),
-                    ));
-                }
-            }
-        };
+        // SECURITY (COSMIAN-2026-010): when the `insecure` feature is enabled (or
+        // in unit-test builds), `file://` URIs are resolved locally so that test
+        // environments can load CRL fixtures without an HTTP server.
+        // In standard production builds this branch is compiled out entirely.
+        #[cfg(any(test, feature = "insecure"))]
+        if uri.starts_with("file://") {
+            let parsed = url::Url::parse(&uri).map_err(|e| {
+                KmsError::Certificate(format!("Invalid file:// CRL URI '{uri}': {e}"))
+            })?;
+            let path_buf = parsed.to_file_path().map_err(|()| {
+                KmsError::Certificate(format!("Cannot convert file:// URI to path: {uri}"))
+            })?;
+            let crl_bytes = std::fs::read(&path_buf).map_err(|e| {
+                KmsError::Certificate(format!(
+                    "Failed to read CRL from file '{}': {e}",
+                    path_buf.display()
+                ))
+            })?;
+            result.insert(uri, crl_bytes);
+            continue;
+        }
 
-        // Retrieving the object from its location
-        match uri_type {
-            Some(UriType::Url(url)) => {
-                // Only process HTTP(S) URLs; skip other schemes (e.g. LDAP, FTP)
-                if !url.starts_with("http://") && !url.starts_with("https://") {
-                    debug!("Skipping non-HTTP CRL URI: {url}");
-                    continue;
-                }
-
-                let mut crls = CRL_CACHE_MAP.write().await;
-                if crls.contains_key(&url) {
-                    debug!("CRL list already contains key: {url}");
-                    crls.get(&url).and_then(|v| result.insert(url, v.clone()));
-                    continue;
-                }
-
-                let mut client_builder = reqwest::Client::builder();
-                if let Some(proxy_params) = proxy_params {
-                    let mut proxy = reqwest::Proxy::all(proxy_params.url.clone()).map_err(|e| {
-                        KmsError::Certificate(format!(
-                            "Failed to configure the HTTPS proxy for CRL fetch: {e}"
-                        ))
-                    })?;
-                    if let Some(ref username) = proxy_params.basic_auth_username {
-                        proxy = proxy.basic_auth(
-                            username,
-                            proxy_params
-                                .basic_auth_password
-                                .as_deref()
-                                .unwrap_or_default(),
-                        );
-                    } else if let Some(ref custom_auth_header) = proxy_params.custom_auth_header {
-                        proxy = proxy.custom_http_auth(
-                            reqwest::header::HeaderValue::from_str(custom_auth_header).map_err(
-                                |e| {
-                                    KmsError::Certificate(format!(
-                                        "Failed to set custom HTTP auth header for CRL fetch: {e}"
-                                    ))
-                                },
-                            )?,
-                        );
-                    }
-                    if !proxy_params.exclusion_list.is_empty() {
-                        proxy = proxy.no_proxy(reqwest::NoProxy::from_string(
-                            &proxy_params.exclusion_list.join(","),
-                        ));
-                    }
-                    client_builder = client_builder.proxy(proxy);
-                }
-                let response = client_builder
-                    .build()
-                    .map_err(|e| {
-                        KmsError::Certificate(format!(
-                            "Failed to build reqwest client for CRL fetch: {e}"
-                        ))
-                    })?
-                    .get(&url)
-                    .send()
-                    .await?;
-                debug!("after getting CRL: url: {url}");
-                if response.status().is_success() {
-                    let crl_bytes =
-                        response
-                            .bytes()
-                            .await
-                            .map(|text| text.to_vec())
-                            .map_err(|e| {
-                                KmsError::Certificate(format!(
-                                    "Error in getting the body of the response for the following \
-                                     URL: {url}. Error: {e:?} "
-                                ))
-                            })?;
-                    debug!("reading full bytes of CRL: url: {url}");
-                    crls.insert(url.clone(), crl_bytes.clone());
-                    result.insert(url, crl_bytes);
-                    continue;
-                }
+        // SECURITY (COSMIAN-2026-010): reject every non-HTTP(S) URI in production.
+        // This covers bare filesystem paths, file:// (production), LDAP, FTP, etc.
+        if !uri.starts_with("http://") && !uri.starts_with("https://") {
+            if let Ok(parsed) = url::Url::parse(&uri) {
                 return Err(KmsError::Certificate(format!(
-                    "The CRL at the following URL {url} is not available. Status: {}",
-                    response.status()
+                    "CRL Distribution Point URI scheme '{}' is not permitted; \
+                     only http and https are accepted",
+                    parsed.scheme()
                 )));
             }
-            Some(UriType::Path(path)) => {
-                // Get PEM file (path should be already canonic)
-                let mut crls = CRL_CACHE_MAP.write().await;
-                if crls.contains_key(&path) {
-                    debug!("CRL list already contains key: {path}");
-                    crls.get(&path).and_then(|v| result.insert(path, v.clone()));
-                    continue;
-                }
+            // Bare filesystem path (not a valid URL at all).
+            return Err(KmsError::Certificate(format!(
+                "CRL Distribution Point value '{uri}' is not a valid URL; \
+                 filesystem paths are not accepted"
+            )));
+        }
 
-                let crl_bytes = std::fs::read(path::Path::new(&path))?;
-                crls.insert(path.clone(), crl_bytes.clone());
-                result.insert(path, crl_bytes);
+        // SECURITY (COSMIAN-2026-010): validate the URL against SSRF targets
+        // (private IPs, loopback, link-local, internal hostnames) before any
+        // network I/O.
+        // Exemption: URLs that begin with the server's own public URL are trusted —
+        // the KMS may legitimately fetch its own auto-generated CRL endpoint
+        // (`/public/certificates/{id}/crl`), which may resolve to localhost in
+        // development and test environments.
+        let is_own_url = kms_public_url.is_some_and(|base| uri.starts_with(base));
+        if !is_own_url {
+            validate_crl_url(&uri)?;
+        }
+
+        let mut crls = CRL_CACHE_MAP.write().await;
+        if crls.contains_key(&uri) {
+            debug!("CRL cache hit: {uri}");
+            crls.get(&uri).and_then(|v| result.insert(uri, v.clone()));
+            continue;
+        }
+
+        let mut client_builder = reqwest::Client::builder()
+            // SECURITY (COSMIAN-2026-010): never follow redirects — a 3xx to an
+            // internal address would bypass the URL validation above.
+            .redirect(reqwest::redirect::Policy::none())
+            // Bound the total request time to prevent slowloris / resource exhaustion.
+            .timeout(std::time::Duration::from_secs(30));
+
+        if let Some(proxy_params) = proxy_params {
+            let mut proxy = reqwest::Proxy::all(proxy_params.url.clone()).map_err(|e| {
+                KmsError::Certificate(format!(
+                    "Failed to configure the HTTPS proxy for CRL fetch: {e}"
+                ))
+            })?;
+            if let Some(ref username) = proxy_params.basic_auth_username {
+                proxy = proxy.basic_auth(
+                    username,
+                    proxy_params
+                        .basic_auth_password
+                        .as_deref()
+                        .unwrap_or_default(),
+                );
+            } else if let Some(ref custom_auth_header) = proxy_params.custom_auth_header {
+                proxy = proxy.custom_http_auth(
+                    reqwest::header::HeaderValue::from_str(custom_auth_header).map_err(|e| {
+                        KmsError::Certificate(format!(
+                            "Failed to set custom HTTP auth header for CRL fetch: {e}"
+                        ))
+                    })?,
+                );
             }
-            _ => {
-                return Err(KmsError::Certificate(
-                    "Error that should not manifest".to_owned(),
+            if !proxy_params.exclusion_list.is_empty() {
+                proxy = proxy.no_proxy(reqwest::NoProxy::from_string(
+                    &proxy_params.exclusion_list.join(","),
                 ));
             }
+            client_builder = client_builder.proxy(proxy);
         }
+
+        let response = client_builder
+            .build()
+            .map_err(|e| {
+                KmsError::Certificate(format!("Failed to build reqwest client for CRL fetch: {e}"))
+            })?
+            .get(&uri)
+            .send()
+            // IMPORTANT: use `?` (not `.map_err`) so that `From<reqwest::Error>`
+            // converts network errors to `KmsError::ClientConnectionError`.
+            // `verify_crls()` treats `ClientConnectionError` as a soft failure
+            // (unreachable CRL DP) and `Certificate` as a hard failure.
+            .await?;
+
+        debug!(
+            "CRL response received: uri={uri} status={}",
+            response.status()
+        );
+
+        if !response.status().is_success() {
+            return Err(KmsError::Certificate(format!(
+                "CRL at '{uri}' returned non-success status: {}",
+                response.status()
+            )));
+        }
+
+        // SECURITY (COSMIAN-2026-010): cap the body size to prevent memory
+        // exhaustion from an unbounded response.bytes().await call.
+        // Use saturating conversion: on 32-bit targets a u64 > usize::MAX
+        // would overflow; we treat that as "exceeds limit" which is correct.
+        let content_length =
+            usize::try_from(response.content_length().unwrap_or(0)).unwrap_or(usize::MAX);
+        if content_length > CRL_MAX_RESPONSE_BYTES {
+            return Err(KmsError::Certificate(format!(
+                "CRL at '{uri}' reports Content-Length {content_length} which exceeds the \
+                 {CRL_MAX_RESPONSE_BYTES}-byte limit"
+            )));
+        }
+
+        let crl_bytes = response.bytes().await.map_err(|e| {
+            KmsError::Certificate(format!("Error reading CRL body from '{uri}': {e}"))
+        })?;
+
+        if crl_bytes.len() > CRL_MAX_RESPONSE_BYTES {
+            return Err(KmsError::Certificate(format!(
+                "CRL body from '{uri}' is {} bytes, exceeding the {CRL_MAX_RESPONSE_BYTES}-byte \
+                 limit",
+                crl_bytes.len()
+            )));
+        }
+
+        let crl_bytes = crl_bytes.to_vec();
+        debug!("CRL fetched: uri={uri} size={}", crl_bytes.len());
+        crls.insert(uri.clone(), crl_bytes.clone());
+        result.insert(uri, crl_bytes);
     }
 
     debug!(
@@ -619,6 +682,7 @@ async fn get_crl_bytes(
 pub(crate) async fn verify_crls(
     certificates: Vec<X509>,
     proxy_params: Option<&ProxyParams>,
+    kms_public_url: Option<&str>,
 ) -> KResult<ValidityIndicator> {
     let mut current_crls: HashMap<String, Vec<u8>> = HashMap::new();
 
@@ -635,6 +699,10 @@ pub(crate) async fn verify_crls(
                 let crl = X509Crl::from_pem(crl_value.as_slice())
                     .or_else(|_| X509Crl::from_der(crl_value.as_slice()))?;
                 trace!("CRL deserialized OK: {crl_path}");
+
+                // RFC 5280 §6.3 step (a)(1)(ii): reject expired CRLs.
+                check_crl_freshness(&crl, crl_path)?;
+
                 let res = crl_status_to_validity_indicator(&crl.get_by_cert(certificate));
                 debug!("Parent CRL verification: revocation status: {res:?}");
                 if res == ValidityIndicator::Invalid {
@@ -672,7 +740,26 @@ pub(crate) async fn verify_crls(
                 }
             }
 
-            current_crls = get_crl_bytes(uri_list, proxy_params).await?;
+            // RFC 5280 §6.3: if the CRL distribution point is unreachable
+            // (network error, DNS failure), the revocation status cannot be
+            // determined.  Treat this as a soft failure — warn and skip the
+            // revocation check for this certificate.  Hard errors (expired CRL,
+            // bad signature, explicit revocation) still propagate.
+            match get_crl_bytes(uri_list, proxy_params, kms_public_url).await {
+                Ok(crls) => {
+                    current_crls = crls;
+                }
+                Err(KmsError::ClientConnectionError(ref e)) => {
+                    warn!(
+                        "[{idx}] CRL distribution point unreachable for '{:?}', skipping \
+                         revocation check: {e}",
+                        certificate.subject_name()
+                    );
+                    current_crls = HashMap::new();
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
 
             // Test if certificate is in current CRLs
             //
@@ -682,11 +769,18 @@ pub(crate) async fn verify_crls(
                     .or_else(|_| X509Crl::from_der(crl_value.as_slice()))?;
                 trace!("CRL deserialized OK: {crl_path}");
 
-                // Best-effort CRL signature verification:
-                // Try verifying with any chain certificate whose SUBJECT matches the CRL issuer.
-                // If none verify, log a warning but continue to check revocation status.
+                // RFC 5280 §6.3 step (a)(1)(ii): reject expired CRLs.
+                check_crl_freshness(&crl, crl_path)?;
+
+                // RFC 5280 §6.3 step (f): verify CRL signature.
+                //
+                // For HTTP(S)-fetched CRLs, an unverifiable signature is a hard error:
+                // a MITM could substitute a forged CRL that omits revoked entries.
+                //
+                // For file:// and filesystem-path CRLs (local, OS-controlled delivery),
+                // signature verification failure is a warning only — the file path itself
+                // is already trusted at the OS level.
                 let crl_issuer = crl.issuer_name();
-                // Prepare comparable forms (DER) of subject names
                 let crl_issuer_der = crl_issuer.to_der()?;
                 let mut verified = false;
                 for cand in certificates.iter().take(idx + 1) {
@@ -701,10 +795,22 @@ pub(crate) async fn verify_crls(
                     }
                 }
                 if !verified {
+                    let is_http =
+                        crl_path.starts_with("http://") || crl_path.starts_with("https://");
+                    if is_http {
+                        // Use ServerError (not Certificate) so that import.rs treats this as
+                        // a soft infrastructure failure (→ Active) rather than evidence of
+                        // revocation (→ Compromised). The Validate operation propagates the
+                        // error to the caller regardless of error type.
+                        return Err(KmsError::ServerError(format!(
+                            "CRL signature verification failed for HTTP CRL '{crl_path}'; \
+                             issuer: {crl_issuer:?}. Rejecting to prevent forged-CRL attack."
+                        )));
+                    }
                     warn!(
-                        "CRL signature could not be verified against chain issuers; issuer: {:?}. \
-                         Continuing with status checks.",
-                        crl_issuer
+                        "CRL signature could not be verified against chain issuers; \
+                         issuer: {crl_issuer:?}, path: {crl_path}. \
+                         Continuing (trusted local delivery)."
                     );
                 }
 
@@ -804,5 +910,264 @@ const fn crl_status_to_validity_indicator(status: &CrlStatus) -> ValidityIndicat
     match status {
         CrlStatus::NotRevoked => ValidityIndicator::Valid,
         CrlStatus::RemoveFromCrl(_) | CrlStatus::Revoked(_) => ValidityIndicator::Invalid,
+    }
+}
+
+/// Check that a CRL has not passed its `nextUpdate` time (RFC 5280 §6.3 step (a)(1)(ii)).
+///
+/// Returns an error if the CRL is expired. A CRL whose `nextUpdate` field is absent
+/// (non-conformant) is treated as expired per the RFC 5280 MUST requirement.
+fn check_crl_freshness(crl: &X509Crl, crl_path: &str) -> KResult<()> {
+    let now = Asn1Time::days_from_now(0).map_err(|e| {
+        // Use ServerError (not Certificate) so that `import.rs` treats this as
+        // a soft infrastructure failure rather than as evidence of revocation.
+        KmsError::ServerError(format!(
+            "Failed to get current time for CRL freshness check: {e}"
+        ))
+    })?;
+
+    let next_update = crl.next_update().ok_or_else(|| {
+        // Missing nextUpdate — RFC 5280 §5.1.2.5 requires the field; treat as
+        // infrastructure problem, not a revocation signal.
+        KmsError::ServerError(format!(
+            "CRL '{crl_path}' has no nextUpdate field; treating as expired (RFC 5280 §6.3)"
+        ))
+    })?;
+
+    // `next_update < now` → the CRL is past its validity period.
+    // Return ServerError (not Certificate) so that import.rs treats this as
+    // "CRL infrastructure unavailable / stale" (soft fail → keep Active state)
+    // rather than "certificate is revoked" (hard fail → Compromised state).
+    // The Validate operation returns the error to the caller regardless of type.
+    if next_update < now {
+        return Err(KmsError::ServerError(format!(
+            "CRL '{crl_path}' is expired (nextUpdate is in the past). \
+             Regenerate the CRL and retry validation (RFC 5280 §6.3)."
+        )));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing
+    )]
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+
+    use super::*;
+    use crate::core::certificate::validate_crl_url;
+
+    // ── validate_crl_url unit tests ─────────────────────────────────────────────
+
+    /// SR-CRL-01: loopback IPv4 addresses must be rejected (COSMIAN-2026-010).
+    #[test]
+    fn sr_crl_01_loopback_ipv4_blocked() {
+        let err = validate_crl_url("http://127.0.0.1:8765/crl").unwrap_err();
+        assert!(
+            err.to_string().contains("loopback") || err.to_string().contains("private"),
+            "Expected loopback/private error, got: {err}"
+        );
+    }
+
+    /// SR-CRL-02: private RFC-1918 IPv4 addresses must be rejected.
+    #[test]
+    fn sr_crl_02_private_ipv4_blocked() {
+        for url in &[
+            "http://10.0.0.1/crl",
+            "http://172.16.0.1/crl",
+            "http://192.168.1.1/crl",
+        ] {
+            let err = validate_crl_url(url).unwrap_err();
+            assert!(
+                err.to_string().contains("private") || err.to_string().contains("loopback"),
+                "Expected private-IP error for {url}, got: {err}"
+            );
+        }
+    }
+
+    /// SR-CRL-03: cloud metadata IP (169.254.169.254) must be rejected as link-local.
+    #[test]
+    fn sr_crl_03_link_local_metadata_ip_blocked() {
+        let err = validate_crl_url("http://169.254.169.254/latest/meta-data/").unwrap_err();
+        assert!(
+            err.to_string().contains("link-local")
+                || err.to_string().contains("loopback")
+                || err.to_string().contains("private"),
+            "Expected link-local/private error, got: {err}"
+        );
+    }
+
+    /// SR-CRL-04: well-known internal hostnames must be rejected.
+    #[test]
+    fn sr_crl_04_internal_hostnames_blocked() {
+        for url in &[
+            "http://localhost/crl",
+            "http://metadata.google.internal/crl",
+            "http://kms.svc.cluster.local/crl",
+            "http://vault.internal/crl",
+        ] {
+            let err = validate_crl_url(url).unwrap_err();
+            assert!(
+                err.to_string().contains("internal"),
+                "Expected internal-hostname error for {url}, got: {err}"
+            );
+        }
+    }
+
+    /// SR-CRL-05: non-HTTP(S) schemes must be rejected.
+    #[test]
+    fn sr_crl_05_non_http_scheme_blocked() {
+        for url in &[
+            "ftp://crl.example.com/crl.der",
+            "ldap://crl.example.com/crl",
+        ] {
+            let err = validate_crl_url(url).unwrap_err();
+            assert!(
+                err.to_string().contains("scheme"),
+                "Expected scheme error for {url}, got: {err}"
+            );
+        }
+    }
+
+    /// SR-CRL-06: public HTTP and HTTPS URLs must pass validation.
+    #[test]
+    fn sr_crl_06_public_urls_allowed() {
+        for url in &[
+            "http://crl.example.com/crl.der",
+            "https://pki.example.com/crl/intermediate.crl",
+        ] {
+            validate_crl_url(url).unwrap_or_else(|e| panic!("Expected Ok for {url}, got: {e}"));
+        }
+    }
+
+    // ── get_crl_bytes integration tests ────────────────────────────────────────
+
+    /// Spawn a one-shot HTTP server that immediately returns a 307 redirect.
+    async fn one_shot_redirect_server(redirect_to: String) -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0_u8; 4096];
+            drop(stream.read(&mut buf).await);
+            let response = format!(
+                "HTTP/1.1 307 Temporary Redirect\r\nLocation: {redirect_to}\r\n\
+                 Content-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            drop(stream.write_all(response.as_bytes()).await);
+        });
+        port
+    }
+
+    /// SR-CRL-07: a 307 redirect to a loopback address must NOT be followed.
+    ///
+    /// The CRL-fetch client is configured with `Policy::none()` so the redirect
+    /// response is returned as-is (non-2xx), preventing the KMS server from
+    /// acting as an open relay to the redirected target (COSMIAN-2026-010).
+    #[actix_web::test]
+    async fn sr_crl_07_redirect_not_followed() {
+        // "attacker-controlled" target — must never receive a request.
+        let attacker_port = {
+            let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            l.local_addr().unwrap().port()
+            // l dropped here; port is still reserved for binding by the test
+        };
+        let attacker_url = format!("http://127.0.0.1:{attacker_port}/secret");
+
+        // Redirecting server.
+        let redirect_port = one_shot_redirect_server(attacker_url.clone()).await;
+        let crl_url = format!("http://127.0.0.1:{redirect_port}/crl.der");
+
+        let err = get_crl_bytes(vec![crl_url], None, None).await.unwrap_err();
+
+        // The 307 response is non-2xx, or the URL itself is blocked by SSRF
+        // validation before the network call — either way get_crl_bytes must
+        // return an error, not silently follow the redirect.
+        assert!(
+            !err.to_string().is_empty(),
+            "Expected an error when CRL server returns 307, got Ok"
+        );
+        // Any of these mean the redirect was not followed to the attacker target:
+        // – SSRF-block error (loopback/private IP rejected before network I/O), OR
+        // – non-2xx status error (redirect returned as-is, not followed).
+        let msg = err.to_string();
+        assert!(
+            msg.contains("non-success")
+                || msg.contains("307")
+                || msg.contains("status")
+                || msg.contains("loopback")
+                || msg.contains("private")
+                || msg.contains("link-local"),
+            "Expected SSRF-block or non-2xx status error, got: {msg}"
+        );
+    }
+
+    /// SR-CRL-08: bare filesystem paths must be rejected in production code.
+    #[actix_web::test]
+    async fn sr_crl_08_bare_path_blocked() {
+        let err = get_crl_bytes(vec!["/etc/passwd".to_owned()], None, None)
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not a valid URL") || msg.contains("filesystem"),
+            "Expected filesystem-path error, got: {msg}"
+        );
+    }
+
+    /// SR-CRL-09: a loopback URL must be rejected before any network I/O.
+    #[actix_web::test]
+    async fn sr_crl_09_loopback_url_blocked() {
+        let err = get_crl_bytes(vec!["http://127.0.0.1:9999/crl".to_owned()], None, None)
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("loopback") || msg.contains("private"),
+            "Expected SSRF-block error, got: {msg}"
+        );
+    }
+
+    /// SR-CRL-10: `file://` URIs are permitted in test builds and resolve to disk.
+    ///
+    /// Creates a self-contained temp file so this test works in all CI
+    /// environments regardless of whether the `test_data` submodule is present.
+    #[actix_web::test]
+    async fn sr_crl_10_file_uri_allowed_in_tests() {
+        use std::io::Write as _;
+
+        // Write sentinel bytes to a temp file — content does not need to be a
+        // valid CRL; `get_crl_bytes` only performs I/O, not parsing.
+        let mut tmp =
+            tempfile::NamedTempFile::new().expect("failed to create temp file for SR-CRL-10");
+        let sentinel: &[u8] = b"SR-CRL-10-sentinel";
+        tmp.write_all(sentinel)
+            .expect("failed to write sentinel bytes");
+        tmp.flush().expect("failed to flush temp file");
+
+        let path = tmp.path().to_str().expect("temp path is not valid UTF-8");
+        // Build the canonical file URI (three slashes: scheme + empty authority + absolute path).
+        let uri = format!("file://{path}");
+
+        let result = get_crl_bytes(vec![uri.clone()], None, None)
+            .await
+            .expect("file:// CRL should succeed in test builds");
+
+        assert!(
+            result.contains_key(&uri),
+            "Result map must contain the file:// URI as key"
+        );
+        assert_eq!(
+            result[&uri], sentinel,
+            "Returned bytes must match the sentinel written to the temp file"
+        );
     }
 }

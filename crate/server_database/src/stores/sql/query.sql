@@ -202,3 +202,32 @@ AND (object ? 'SymmetricKey' OR
      object ? 'PrivateKey'   OR
      object ? 'PublicKey'    OR
      object ? 'SplitKey');
+
+-- ── CRL persistence (RFC 5280 §5) ─────────────────────────────────────────────
+-- One row per CA issuer. On regeneration the row is replaced in-place so that
+-- the public CDP endpoint can resume serving the last signed CRL after restart.
+
+-- name: create-table-crls
+CREATE TABLE IF NOT EXISTS crls (
+    issuer_id    VARCHAR(128) NOT NULL PRIMARY KEY,
+    crl_der      BYTEA        NOT NULL,
+    crl_number   BIGINT       NOT NULL,
+    generated_at VARCHAR(32)  NOT NULL,
+    next_update  VARCHAR(32)  NOT NULL
+);
+
+-- name: upsert-crl
+INSERT INTO crls (issuer_id, crl_der, crl_number, generated_at, next_update)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (issuer_id)
+    DO UPDATE SET
+        crl_der      = EXCLUDED.crl_der,
+        crl_number   = EXCLUDED.crl_number,
+        generated_at = EXCLUDED.generated_at,
+        next_update  = EXCLUDED.next_update;
+
+-- name: select-crl
+SELECT crl_der, generated_at FROM crls WHERE issuer_id = $1;
+
+-- name: list-crl-issuers
+SELECT issuer_id, next_update FROM crls ORDER BY issuer_id;

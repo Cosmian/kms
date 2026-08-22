@@ -372,6 +372,7 @@ impl PgPool {
             "create-table-read_access",
             "create-table-tags",
             "create-table-crypto_officer_activations",
+            "create-table-crls",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -1380,6 +1381,76 @@ impl PermissionsStore for PgPool {
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(())
+        })
+    }
+
+    async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> InterfaceResult<()> {
+        let crl_number_i = i64::try_from(crl_number).unwrap_or(i64::MAX);
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("upsert-crl"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(
+                    &stmt,
+                    &[
+                        &issuer_id,
+                        &crl_der,
+                        &crl_number_i,
+                        &generated_at,
+                        &next_update,
+                    ],
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-crl"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&issuer_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows.first().map(|row| {
+                let der: Vec<u8> = row.get(0);
+                let generated_at: String = row.get(1);
+                (der, generated_at)
+            }))
+        })
+    }
+
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("list-crl-issuers"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows
+                .iter()
+                .map(|row| {
+                    let issuer_id: String = row.get(0);
+                    let next_update: String = row.get(1);
+                    (issuer_id, next_update)
+                })
+                .collect())
         })
     }
 }

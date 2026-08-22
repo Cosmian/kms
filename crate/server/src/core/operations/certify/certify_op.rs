@@ -44,8 +44,13 @@ pub(crate) async fn certify(
     trace!("Subject name: {:?}", subject.subject_name());
     let issuer = Box::pin(get_issuer(&subject, kms, &request, user)).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());
-    let (certificate, tags, attributes) =
-        build_and_sign_certificate(kms.vendor_id(), &issuer, &subject, request)?;
+    let (certificate, tags, attributes) = build_and_sign_certificate(
+        kms.vendor_id(),
+        &issuer,
+        &subject,
+        request,
+        kms.params.kms_public_url.as_deref(),
+    )?;
 
     let (operations, unique_identifier) = match subject {
         Subject::X509Req(unique_identifier, _) | Subject::Certificate(unique_identifier, _, _) => {
