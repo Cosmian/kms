@@ -5,6 +5,7 @@ import { useAuth } from "../../contexts/useAuth";
 import { getNoTTLVRequest, postNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import LocateButton from "../../components/common/LocateButton";
 import * as wasm from "../../wasm/pkg";
+import { buildCreateSplitKeyRequest } from "../../utils/splitKeyUtils";
 
 const { Text } = Typography;
 
@@ -24,18 +25,7 @@ interface CeremonyActivateFormData {
 }
 
 type CreateSymKeyResponse = { UniqueIdentifier: string };
-type CreateSplitKeyResponse = { UniqueIdentifier: string; PrivateKeyUniqueIdentifier: string[] };
-
-const buildCreateSplitKeyRequest = (keyId: string, n: number) => ({
-    tag: "CreateSplitKey",
-    type: "Structure",
-    value: [
-        { tag: "UniqueIdentifier", type: "TextString", value: keyId },
-        { tag: "SplitKeyParts", type: "Integer", value: n },
-        { tag: "SplitKeyThreshold", type: "Integer", value: n },
-        { tag: "SplitKeyMethod", type: "Enumeration", value: "XOR" },
-    ],
-});
+type CreateSplitKeyResponse = { UniqueIdentifier: string | string[] };
 
 const CryptoOfficerRole: React.FC = () => {
     const { t } = useTranslation("actions");
@@ -50,7 +40,7 @@ const CryptoOfficerRole: React.FC = () => {
     const [splitKeyId, setSplitKeyId] = useState<string>("");
     /** Target user for peer revocation (empty = self-revoke) */
     const [revokeTarget, setRevokeTarget] = useState<string>("");
-    const { serverUrl } = useAuth();
+    const { serverUrl, userId } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
     const [activateForm] = Form.useForm<CeremonyActivateFormData>();
 
@@ -119,14 +109,26 @@ const CryptoOfficerRole: React.FC = () => {
 
             // Split the key into n shares (n = custodians_count)
             const splitReq = buildCreateSplitKeyRequest(createdKeyId, n);
-            const splitRespStr = await sendKmipRequest(splitReq, serverUrl);
+            let splitRespStr: string | null;
+            try {
+                splitRespStr = await sendKmipRequest(splitReq, serverUrl);
+            } catch (splitErr) {
+                // Compensating delete: destroy the orphaned AES key before re-throwing
+                try {
+                    const destroyReq = wasm.destroy_ttlv_request(createdKeyId, false);
+                    await sendKmipRequest(destroyReq, serverUrl);
+                } catch {
+                    /* best-effort; ignore cleanup errors */
+                }
+                throw splitErr;
+            }
             if (!splitRespStr) throw new Error("Split key operation returned an empty response");
 
             const splitResp: CreateSplitKeyResponse = await wasm.parse_create_split_key_ttlv_response(splitRespStr);
-            const shareUids: string[] = Array.isArray(splitResp.PrivateKeyUniqueIdentifier)
-                ? splitResp.PrivateKeyUniqueIdentifier
-                : splitResp.PrivateKeyUniqueIdentifier
-                  ? [splitResp.PrivateKeyUniqueIdentifier]
+            const shareUids: string[] = Array.isArray(splitResp.UniqueIdentifier)
+                ? splitResp.UniqueIdentifier
+                : splitResp.UniqueIdentifier
+                  ? [splitResp.UniqueIdentifier]
                   : [];
 
             if (shareUids.length === 0) {
@@ -282,25 +284,34 @@ const CryptoOfficerRole: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Only the active CO can revoke (self-revoke or peer-revoke via the target selector). */}
-                            {status.ceremony_activated && status.is_crypto_officer && (
+                            {/* Any CO candidate (active or dormant) can revoke an active CO.
+                                Active COs can also self-revoke by leaving the target empty.
+                                Dormant candidates (in users list but no active activation) can
+                                only peer-revoke — the button is disabled if no target is set. */}
+                            {status.ceremony_activated && status.users.length > 0 && (
                                 <div className="pt-2 border-t space-y-3">
                                     <p className="text-sm font-medium">{t("cryptoOfficer.revokeRole")}</p>
                                     <Space direction="vertical" style={{ display: "flex" }}>
-                                        {/* Only list users that are currently active COs */}
+                                        {/* List active COs only; current user is filtered out (self-revoke uses empty selection) */}
                                         <Select
                                             placeholder={t("cryptoOfficer.selectRevokePlaceholder")}
                                             value={revokeTarget || undefined}
                                             onChange={(val: string | undefined) => setRevokeTarget(val ?? "")}
                                             allowClear
                                             style={{ width: 380 }}
-                                            options={(status.active_co_users ?? status.users).map((u) => ({
-                                                value: u,
-                                                label: u,
-                                            }))}
+                                            options={(status.active_co_users ?? status.users)
+                                                .filter((u) => u !== userId)
+                                                .map((u) => ({
+                                                    value: u,
+                                                    label: u,
+                                                }))}
                                             data-testid="revoke-target-select"
                                         />
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">{t("cryptoOfficer.revokeHint")}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                                            {status.is_crypto_officer
+                                                ? t("cryptoOfficer.revokeHint")
+                                                : t("cryptoOfficer.revokeHintDormant")}
+                                        </p>
                                         <Tooltip
                                             title={
                                                 !status.is_crypto_officer && !revokeTarget.trim()
@@ -310,7 +321,13 @@ const CryptoOfficerRole: React.FC = () => {
                                                       : t("cryptoOfficer.tooltipSelfRevoke")
                                             }
                                         >
-                                            <Button danger onClick={disableCeremony} loading={isDisabling} data-testid="disable-btn">
+                                            <Button
+                                                danger
+                                                onClick={disableCeremony}
+                                                loading={isDisabling}
+                                                disabled={!status.is_crypto_officer && !revokeTarget.trim()}
+                                                data-testid="disable-btn"
+                                            >
                                                 {revokeTarget.trim()
                                                     ? t("cryptoOfficer.revokeFor", { user: revokeTarget.trim() })
                                                     : t("cryptoOfficer.revokeMyCeremony")}

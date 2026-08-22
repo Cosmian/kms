@@ -21,6 +21,7 @@ const baseActiveStatus = {
     ceremony_activated: true,
     custodians_count: 3,
     users: ["alice@example.com", "bob@example.com", "carol@example.com"],
+    active_co_users: ["alice@example.com"],
     co_candidates: ["alice@example.com", "bob@example.com", "carol@example.com"],
 };
 
@@ -82,15 +83,27 @@ describe("CO revocation (Scenario 1): active CO can self-revoke", () => {
     });
 });
 
-// ── Non-CO user: no revoke button ───────────────────────────────────────────
+// ── Dormant CO candidate: peer-revoke button shown but disabled without target ──
 
-describe("CO revocation (Scenario 1): non-CO user sees no revoke button", () => {
-    beforeEach(() => mockStatus({ ...baseActiveStatus, is_crypto_officer: false }));
+describe("CO revocation: dormant CO candidate can peer-revoke", () => {
+    beforeEach(() =>
+        mockStatus({
+            ...baseActiveStatus,
+            is_crypto_officer: false,
+            // active_co_users contains alice; current user (bob/carol) is dormant
+        }),
+    );
 
-    test("does not render the self-revoke button for a non-active CO", async () => {
+    test("renders the peer-revoke button for a dormant CO candidate", async () => {
         smokeRender(React.createElement(CryptoOfficerRole));
-        await screen.findByTestId("role-status-card");
-        expect(screen.queryByTestId("disable-btn")).toBeNull();
+        await screen.findByTestId("disable-btn");
+        expect(screen.getByTestId("disable-btn")).toBeInTheDocument();
+    });
+
+    test("peer-revoke button is disabled when no target is selected", async () => {
+        smokeRender(React.createElement(CryptoOfficerRole));
+        const btn = await screen.findByTestId("disable-btn");
+        expect(btn).toBeDisabled();
     });
 });
 
