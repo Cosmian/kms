@@ -14,21 +14,9 @@ for scenarios that do not demand high availability.
 
 ### Redis with Findex
 
-**Redis with Findex** offers the ability to use Redis as a database with application-level encryption: all data is
-encrypted (using AES 256 GCM) by the KMS servers before being sent to
-Redis. [Findex](https://github.com/Cosmian/findex/) is an Eviden cryptographic algorithm used to build encrypted indexes
-on encrypted data, also stored in Redis. This allows the KMS to perform fast encrypted queries on encrypted data. Redis
-with Findex offers post-quantum resistance on encrypted data and encrypted indexes.
-
-**Redis-with-Findex** is most useful when:
-
-- KMS servers are run inside a confidential VM or an enclave. In this case, the secret used to encrypt the Redis data
-  and indexes, is protected by the VM or enclave and cannot be recovered at runtime by inspecting the KMS servers'
-  memory.
-- KMS servers are run by a trusted party but the Redis backend is managed by an untrusted third party.
-
-Redis-with-Findex is the database selected
-to [run the Eviden KMS in the cloud or any other zero-trust environment](../../installation/marketplace_guide.md).
+Redis-with-Findex provides application-level encryption over Redis, combining AES-256-GCM encrypted objects with
+encrypted Findex indexes. See the dedicated [Redis with Findex](./redis.md) page for a full description,
+encryption details, and configuration reference.
 
 ## Configuring the database
 
