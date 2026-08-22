@@ -9,7 +9,11 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{trace, warn};
 
 use crate::{
-    core::{KMS, uid_utils::ObjectHandle},
+    core::{
+        KMS,
+        opa::{OpaInput, OpaMode, get_opa_user_context},
+        uid_utils::ObjectHandle,
+    },
     error::KmsError,
     middlewares::UserId,
     result::KResult,
@@ -256,6 +260,47 @@ pub(crate) async fn retrieve_object_for_operation(
     ))
 }
 
+/// Build the OPA input document from the current request context.
+///
+/// Fields that require the authentication server integration (roles, `user_domain`)
+/// are populated from the JWT claims extracted by the middleware.
+fn build_opa_input(
+    user: &str,
+    roles: &[String],
+    user_domain: Option<&str>,
+    owm: Option<&ObjectWithMetadata>,
+    operation_type: KmipOperation,
+) -> OpaInput {
+    let (object_uid, object_domain, is_owner) = owm.map_or_else(
+        || {
+            (
+                // Object-less operations (Create, Locate, …): use wildcard UID and derive the
+                // object domain from the caller's domain so that same_domain rules pass.
+                "*".to_owned(),
+                user_domain.unwrap_or_default().to_owned(),
+                false,
+            )
+        },
+        |obj| {
+            (
+                obj.id().to_owned(),
+                obj.domain().to_owned(),
+                user == obj.owner(),
+            )
+        },
+    );
+
+    OpaInput {
+        user: user.to_owned(),
+        user_domain: user_domain.unwrap_or_default().to_owned(),
+        roles: roles.to_vec(),
+        operation: operation_type.to_string(),
+        object_uid,
+        object_domain,
+        is_owner,
+    }
+}
+
 /// Check if a user has permission to perform an operation on an object.
 ///  If the user is the owner of the object, it will always return true.
 ///  For non-HSM objects, having the `Get` permission implies all other operations.
@@ -274,6 +319,103 @@ pub(crate) async fn user_has_permission(
     operation_type: &KmipOperation,
     kms: &KMS,
 ) -> KResult<bool> {
+    // ── OPA evaluation (Phase 8, Step 20) ───────────────────────────────────
+    if let Some(ref opa_client) = kms.opa_client {
+        let mode = kms
+            .params
+            .opa_params
+            .as_ref()
+            .map_or(OpaMode::Disabled, |p| p.mode);
+
+        match mode {
+            OpaMode::Disabled => { /* fall through to legacy logic */ }
+            OpaMode::Exclusive => {
+                let opa_ctx = get_opa_user_context();
+                let input = build_opa_input(
+                    user,
+                    &opa_ctx.roles,
+                    opa_ctx.domain.as_deref(),
+                    owm,
+                    *operation_type,
+                );
+                let allowed = opa_client.query(&input).await.unwrap_or(false);
+                trace!(
+                    "OPA exclusive decision for user={} op={} obj={}: {}",
+                    user, operation_type, input.object_uid, allowed
+                );
+                return Ok(allowed);
+            }
+            OpaMode::Enforcing => {
+                // ── Native KMS CO bypass ────────────────────────────────────────────
+                // Users listed in `crypto_officer_users` bypass OPA Gate 1 in
+                // enforcing mode regardless of whether they have completed the ceremony.
+                //
+                // Rationale: OPA Gate 1 enforces JWT role/domain policy for external
+                // users.  CO candidates are KMS-native — enrolled via server TOML config,
+                // not via JWT — and therefore operate outside OPA's role model.
+                // Requiring them to pass OPA Gate 1 creates a chicken-and-egg deadlock
+                // during the ceremony: candidates must Get peer shares to call
+                // JoinSplitKey, but `is_crypto_officer()` returns `false` until
+                // the ceremony completes.
+                //
+                // The bypass applies to BOTH:
+                //   a) activated COs   (`is_crypto_officer()` = true)
+                //   b) ceremony candidates listed in `co_users` (not yet activated)
+                //
+                // Both groups fall through to the legacy KMS gate, which enforces
+                // ownership and explicit DB grant checks — so bypassing OPA Gate 1
+                // does NOT grant unconditional access.
+                //
+                // HSM keys are excluded: their access model is separate and requires
+                // explicit HSM-admin grants.
+                let object_id = owm.map_or("*", ObjectWithMetadata::id);
+                let is_native_co = !ObjectHandle::from(object_id).is_hsm()
+                    && (kms.is_crypto_officer(user).await?
+                        || kms
+                            .params
+                            .crypto_officer
+                            .users
+                            .iter()
+                            .any(|u| u == user.as_str()));
+                if !is_native_co {
+                    // ── OPA Gate 1 ────────────────────────────────────────────────────
+                    let opa_ctx = get_opa_user_context();
+                    let input = build_opa_input(
+                        user,
+                        &opa_ctx.roles,
+                        opa_ctx.domain.as_deref(),
+                        owm,
+                        *operation_type,
+                    );
+                    let allowed = opa_client.query(&input).await.unwrap_or(false);
+                    trace!(
+                        "OPA enforcing decision for user={} op={} obj={}: {}",
+                        user, operation_type, input.object_uid, allowed
+                    );
+                    if !allowed {
+                        return Ok(false);
+                    }
+                    // OPA approved. In enforcing mode OPA is the authoritative
+                    // role/domain policy engine: it already evaluated `is_owner`,
+                    // `same_domain`, and the role hierarchy against the operation.
+                    // Trust this decision and return immediately for non-HSM objects
+                    // rather than re-evaluating ownership/grants in the KMS legacy gate,
+                    // which would deny valid role-based access that OPA explicitly allowed
+                    // (e.g. CryptoOfficer reading GetAttributes on a peer's key).
+                    // HSM-backed keys still fall through to the HSM-admin / per-HSM-grant
+                    // check because their access model is independent of the KMIP
+                    // object-grant model and OPA does not evaluate HSM admin status.
+                    let is_hsm = owm.is_some_and(|o| ObjectHandle::from(o.id()).is_hsm());
+                    if !is_hsm {
+                        return Ok(true);
+                    }
+                }
+                // Native CO: fall through to the legacy KMS gate below.
+            }
+        }
+    }
+
+    // ── Legacy KMS permission logic ─────────────────────────────────────────
     let id = match owm {
         Some(object) if user == object.owner() => return Ok(true),
         Some(object) => object.id(),

@@ -123,9 +123,10 @@ nav:
       - Kubernetes (Helm): installation/kubernetes_helm.md
       - High-availability: installation/high_availability_mode.md
   - Configuration:
-      - Configuration file: configuration/server_configuration_file.md
-      - Configuration examples: configuration/configurations.md
-      - Command line arguments: configuration/server_cli.md
+      - Server reference:
+          - Configuration file: configuration/server_configuration_file.md
+          - Configuration examples: configuration/configurations.md
+          - Command line arguments: configuration/server_cli.md
       - Databases:
           - Configuration: configuration/database/configuration.md
           - Tables: configuration/database/tables.md
@@ -133,12 +134,20 @@ nav:
       - Object & Unwrapped Caches: configuration/object-cache.md
       - Authenticating users to the server: configuration/authentication.md
       - PKCE Authentication: configuration/pkce_authentication.md
-      - Authorizing users with access rights: configuration/authorization.md
-      - Administrator key ceremony: configuration/authorization/key_ceremony.md
+      - Authorization:
+          - Overview: configuration/authorization/index.md
+          - Mode 1 — Native KMS permissions:
+              - Native KMS permissions: configuration/authorization/mode1.md
+              - Role management and key ceremony: configuration/authorization/key_ceremony.md
+          - Mode 2 — Exclusive OPA (RBAC): configuration/authorization/mode2.md
+          - Mode 3 — Enforcing (OPA + KMS):
+              - Architecture and use cases: configuration/authorization/mode3.md
+              - OPA + Authentication Verifier setup: configuration/authorization/opa-authverifier-setup.md
       - Enabling TLS: configuration/tls.md
       - Obtaining TLS Certificates: configuration/certificates.md
-      - Logging and telemetry: configuration/logging.md
-      - Log reference: configuration/log-reference.md
+      - Logging and telemetry:
+          - Logging: configuration/logging.md
+          - Log reference: configuration/log-reference.md
       - Monitoring:
           - Setup: configuration/monitoring-setup.md
           - Metrics reference: configuration/otlp-metrics.md

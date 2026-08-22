@@ -373,7 +373,6 @@ const fn revocation_target_state(reason: &RevocationReason) -> State {
 }
 
 /// Trigger CRL regeneration for `issuer_id` after a certificate revocation.
-/// Trigger CRL regeneration for `issuer_id` after a certificate revocation.
 ///
 /// CRL content is public information (RFC 5280 §3) so no special role is required.
 /// Uses `default_username` as the signer identity so the function can always run,
@@ -382,7 +381,12 @@ const fn revocation_target_state(reason: &RevocationReason) -> State {
 /// Errors are logged at `warn` level and never propagated — this must not fail
 /// the parent `Revoke` operation.
 async fn trigger_crl_regeneration(kms: &KMS, issuer_id: &str) {
-    let signer = UserId::from(kms.params.default_username.as_str());
+    // Prefer the first active Crypto Officer as signer; fall back to the server
+    // default user when no CO is configured or none has completed the ceremony.
+    let signer = match kms.find_active_co().await {
+        Ok(Some(co)) => co,
+        _ => UserId::from(kms.params.default_username.as_str()),
+    };
 
     info!(
         issuer_id = issuer_id,

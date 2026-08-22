@@ -48,19 +48,34 @@ const ALLOWED_ALGORITHMS: &[Algorithm] = &[
     Algorithm::PS512,
 ];
 
-/// Claims extracted from a Auth Verifier server JWT.
+/// Claims extracted from a Cosmian Auth Verifier JWT.
+///
+/// The auth server includes the RBAC `roles` (RFC 9068 private claim) and
+/// the realm identifier in `as_rid` so that OPA can enforce domain-scoped
+/// policies without an additional lookup.
 #[derive(Debug, Deserialize)]
-struct AuthVerifierClaims {
-    /// Subject — used as the KMS user identity.
+pub(crate) struct AuthVerifierClaims {
+    /// Subject — used as the KMS user identity (username / email).
     pub sub: String,
+    /// RBAC roles emitted by the auth server (RFC 9068 `roles` private claim).
+    /// Defaults to an empty list for tokens that predate role support.
+    #[serde(default)]
+    pub roles: Vec<String>,
+    /// Realm / domain the authenticated user belongs to.
+    ///
+    /// The auth server sets this as `as_rid` (realm ID). The legacy alias
+    /// `as_domain` is also accepted for tokens issued before the field was
+    /// renamed, matching the same alias on [`UserClaim`].
+    #[serde(alias = "as_domain", alias = "as_rid")]
+    pub domain: Option<String>,
 }
 
 /// Core authentication handler for Auth Verifier server tokens.
 ///
-/// Extracts the bearer token from the `Authorization` header and validates it
-/// against every key in the JWKS (since these tokens carry no `kid`).
-///
-/// Returns the authenticated username (`sub`) on success, or an error.
+/// Extracts the bearer token from the `Authorization` header, validates it
+/// against every key in the JWKS (Cosmian tokens carry no `kid`), and
+/// populates [`AuthenticatedUser`] with the full claims — including `roles`
+/// and `domain` — so OPA can evaluate role-based and domain-scoped policies.
 pub(super) async fn handle_auth_verifier(
     jwks_manager: &Arc<JwksManager>,
     req: &ServiceRequest,
@@ -68,38 +83,37 @@ pub(super) async fn handle_auth_verifier(
     let token = extract_bearer_token(req)
         .map_err(|e| KmsError::Unauthorized(format!("Auth Verifier: {e}")))?;
 
-    let username = verify_auth_verifier_jwt_subject(jwks_manager, token).await?;
+    let claims = verify_auth_verifier_jwt(jwks_manager, token).await?;
     Ok(AuthenticatedUser {
-        username: username.into(),
+        username: claims.sub.into(),
         auth_method: AuthMethod::AuthVerifierJwt,
+        domain: claims.domain,
+        roles: claims.roles,
     })
 }
 
-/// Validate a Auth Verifier server JWT and return its `sub` claim (the
-/// authenticated username).
+/// Validate a Cosmian Auth Verifier JWT and return its full claims.
 ///
-/// Shared between the bearer-token `AuthVerifier` middleware
-/// (`handle_auth_verifier`) and the UI's BFF login proxy
-/// (`crate::routes::ui_auth::login_as`), which validates the JWT the Cosmian
-/// authentication server returns via `Set-Cookie: _ea_=<jwt>` before storing
-/// the resulting username in the actix session. Keeping a single
-/// implementation avoids the two call sites drifting apart on trust logic.
+/// Validates the signature against every public key in the JWKS (Cosmian
+/// tokens carry no `kid`). Returns all claims — `sub`, `roles`, and
+/// `domain` (`as_rid` / `as_domain`) — so callers can populate
+/// [`AuthenticatedUser`] or store them in a session without re-parsing.
 ///
-/// In test / insecure builds the signature check is skipped (same behaviour
-/// as the existing `JwtAuth` middleware).
+/// In test / insecure builds the signature check is skipped; only the
+/// claim structure is decoded (same behaviour as [`JwtAuth`]).
 #[cfg_attr(any(test, feature = "insecure"), allow(unused_variables))]
 #[cfg_attr(any(test, feature = "insecure"), allow(clippy::unused_async))]
-pub(crate) async fn verify_auth_verifier_jwt_subject(
+pub(crate) async fn verify_auth_verifier_jwt(
     jwks_manager: &Arc<JwksManager>,
     token: &str,
-) -> KResult<String> {
+) -> KResult<AuthVerifierClaims> {
     // In test/insecure builds skip signature validation — decode only.
     #[cfg(any(test, feature = "insecure"))]
     {
         let token_data = dangerous::insecure_decode::<AuthVerifierClaims>(token).map_err(|e| {
             KmsError::Unauthorized(format!("Auth Verifier: cannot decode token: {e}"))
         })?;
-        Ok(token_data.claims.sub)
+        Ok(token_data.claims)
     }
 
     // Production: full validation.
@@ -150,7 +164,7 @@ pub(crate) async fn verify_auth_verifier_jwt_subject(
 
             match decode::<AuthVerifierClaims>(token, &decoding_key, &validation) {
                 Ok(data) => {
-                    return Ok(data.claims.sub);
+                    return Ok(data.claims);
                 }
                 Err(e) => {
                     last_error = Some(format!("{e}"));
@@ -163,5 +177,133 @@ pub(crate) async fn verify_auth_verifier_jwt_subject(
             jwks.len(),
             last_error.unwrap_or_else(|| "no keys available".to_owned())
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, sync::RwLock};
+
+    use super::*;
+
+    /// Craft a minimal JWT with `HS256` header.
+    ///
+    /// In test/insecure builds `insecure_decode` is used, which skips signature
+    /// validation but still requires a known algorithm in the header. `HS256` is
+    /// the smallest valid choice. The signature segment is left as an empty dummy.
+    fn make_test_jwt(sub: &str, roles: &[&str], domain: Option<&str>) -> String {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
+
+        let roles_json: String = {
+            let parts: Vec<String> = roles.iter().map(|r| format!("\"{r}\"")).collect();
+            format!("[{}]", parts.join(","))
+        };
+        let domain_json = domain.map_or_else(|| "null".to_owned(), |d| format!("\"{d}\""));
+        let payload_str = format!(
+            r#"{{"sub":"{sub}","roles":{roles_json},"as_rid":{domain_json},"exp":9999999999}}"#
+        );
+        let payload = URL_SAFE_NO_PAD.encode(payload_str);
+        // Signature is ignored by `insecure_decode`; use a single underscore as placeholder.
+        format!("{header}.{payload}._")
+    }
+
+    /// Build a no-op JWKS manager directly (no async, no Result).
+    ///
+    /// In test builds `insecure_decode` is used so the JWKS is never consulted;
+    /// the empty struct is a valid stand-in.  Constructing it synchronously avoids
+    /// `expect_used` / `panic_in_result_fn` lints.
+    fn empty_jwks() -> Arc<JwksManager> {
+        Arc::new(JwksManager {
+            uris: vec![],
+            jwks: RwLock::new(HashMap::new()),
+            last_update: RwLock::new(None),
+            last_force_refresh: RwLock::new(None),
+            proxy_params: None,
+            accept_invalid_certs: false,
+        })
+    }
+
+    /// Roles and domain are extracted correctly for a `SuperAdmin` JWT.
+    #[tokio::test]
+    async fn test_verify_auth_verifier_jwt_extracts_sub_roles_domain() {
+        let token = make_test_jwt("super.admin@acme.com", &["SuperAdmin"], Some("acme.com"));
+        let result = verify_auth_verifier_jwt(&empty_jwks(), &token).await;
+        assert!(result.is_ok(), "JWT decode must succeed: {result:?}");
+        if let Ok(claims) = result {
+            assert_eq!(claims.sub, "super.admin@acme.com");
+            assert_eq!(claims.roles, vec!["SuperAdmin"]);
+            assert_eq!(claims.domain.as_deref(), Some("acme.com"));
+        }
+    }
+
+    /// A `CryptoOfficer` JWT carries the correct role and domain.
+    #[tokio::test]
+    async fn test_verify_auth_verifier_jwt_crypto_officer_role() {
+        let token = make_test_jwt("officer@acme.com", &["CryptoOfficer"], Some("acme.com"));
+        let result = verify_auth_verifier_jwt(&empty_jwks(), &token).await;
+        assert!(result.is_ok(), "JWT decode must succeed: {result:?}");
+        if let Ok(claims) = result {
+            assert_eq!(claims.roles, vec!["CryptoOfficer"]);
+            assert_eq!(claims.domain.as_deref(), Some("acme.com"));
+        }
+    }
+
+    /// Tokens without roles or domain must still parse (legacy format compatibility).
+    #[tokio::test]
+    async fn test_verify_auth_verifier_jwt_empty_roles_no_domain() {
+        let token = make_test_jwt("user@acme.com", &[], None);
+        let result = verify_auth_verifier_jwt(&empty_jwks(), &token).await;
+        assert!(result.is_ok(), "JWT decode must succeed: {result:?}");
+        if let Ok(claims) = result {
+            assert_eq!(claims.sub, "user@acme.com");
+            assert!(claims.roles.is_empty());
+            assert!(claims.domain.is_none());
+        }
+    }
+
+    /// The `as_domain` alias (pre-rename) is accepted for backward compatibility.
+    #[tokio::test]
+    async fn test_verify_auth_verifier_jwt_as_domain_alias() {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(
+            r#"{"sub":"officer@acme.com","roles":["CryptoOfficer"],"as_domain":"acme.com","exp":9999999999}"#,
+        );
+        let token = format!("{header}.{payload}._");
+        let result = verify_auth_verifier_jwt(&empty_jwks(), &token).await;
+        assert!(result.is_ok(), "JWT decode must succeed: {result:?}");
+        if let Ok(claims) = result {
+            assert_eq!(claims.domain.as_deref(), Some("acme.com"));
+            assert_eq!(claims.roles, vec!["CryptoOfficer"]);
+        }
+    }
+
+    /// `verify_auth_verifier_jwt` correctly propagates errors for a malformed token.
+    #[tokio::test]
+    async fn test_verify_auth_verifier_jwt_subject_wrapper() {
+        let token = make_test_jwt("admin@acme.com", &["SuperAdmin"], Some("acme.com"));
+        let result = verify_auth_verifier_jwt(&empty_jwks(), &token).await;
+        assert!(result.is_ok(), "JWT decode must succeed: {result:?}");
+        if let Ok(claims) = result {
+            assert_eq!(claims.sub, "admin@acme.com");
+        }
+    }
+
+    /// Multiple roles in the same JWT are all preserved.
+    #[tokio::test]
+    async fn test_verify_auth_verifier_jwt_multiple_roles() {
+        let token = make_test_jwt(
+            "multi@acme.com",
+            &["CryptoOfficer", "Auditor"],
+            Some("acme.com"),
+        );
+        let result = verify_auth_verifier_jwt(&empty_jwks(), &token).await;
+        assert!(result.is_ok(), "JWT decode must succeed: {result:?}");
+        if let Ok(claims) = result {
+            assert_eq!(claims.roles, vec!["CryptoOfficer", "Auditor"]);
+        }
     }
 }

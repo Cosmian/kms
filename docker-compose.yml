@@ -138,6 +138,70 @@ services:
   # Minimal OTEL stack for integration tests:
   # KMS -> otel-collector -> scrape collector Prometheus endpoint
 
+  opa:
+    image: openpolicyagent/opa:edge-static-debug
+    ports:
+      - 8181:8181
+    volumes:
+      # Policy file (package kms)
+      # Roles are carried in the JWT `roles` claim (RFC 9068) and domain in `as_domain`.
+      - ./test_data/opa/kms.rego:/policies/kms.rego:ro
+    command:
+      - run
+      - --server
+      - --log-level=info
+      - --addr=0.0.0.0:8181
+      - /policies/kms.rego
+
+  # Authentication Verifier — JWT issuer for KMS OPA RBAC testing.
+  #
+  # Prerequisites (run once from the authentication/ directory):
+  #   cargo build -p auth_verifier
+  #
+  # The binary is mounted from the local build output.
+  # The kms_opa_rbac.toml config declares the five roles that match kms.rego.
+  #
+  # Endpoints:
+  #   GET  https://localhost:8443/public/jwks        — JWKS (KMS validates JWTs here)
+  #   GET  https://localhost:8443/public/roles       — lists the five KMS RBAC roles
+  #   POST https://localhost:8443/login?realm=kms    — obtain a JWT for a realm user
+  #   POST https://localhost:8443/admins/realms      — create a realm  (admin session)
+  #   POST https://localhost:8443/realms/kms/userpass — create a user  (admin session)
+  auth-verifier:
+    profiles:
+      - auth-verifier
+    image: debian:bookworm-slim
+    ports:
+      - 8443:8443
+    volumes:
+      # Pre-built binary (build with: cd authentication && cargo build -p auth_verifier)
+      - ./authentication/target/debug/auth_verifier:/usr/local/bin/auth_verifier:ro
+      # KMS OPA RBAC configuration with roles matching test_data/opa/kms.rego
+      - ./test_data/configs/auth_verifier/kms_opa_rbac.toml:/config/kms_opa_rbac.toml:ro
+      # TLS certificates (shared with the authentication submodule test suite)
+      - ./authentication/server/src/tests/certificates/ec:/certs:ro
+      # Persistent SQLite database (survives container restarts)
+      - auth_verifier_data:/data
+    environment:
+      - RUST_LOG=auth_verifier=info
+    # Override cert paths to absolute paths as seen inside the container
+    command: >
+      /bin/sh -c "
+        sed
+          -e 's|server/src/tests/certificates/ec/|/certs/|g'
+          -e 's|connection_url = \"sqlite:///tmp/kms_opa_rbac_auth.db\"|connection_url = \"sqlite:///data/kms_opa_rbac_auth.db\"|'
+          /config/kms_opa_rbac.toml > /tmp/auth_verifier_runtime.toml &&
+        /usr/local/bin/auth_verifier /tmp/auth_verifier_runtime.toml
+      "
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sk https://localhost:8443/public/version | grep -q version || exit 1
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.144.0
     command: [--config=/etc/otel-collector-config.yaml]
@@ -451,6 +515,7 @@ services:
       - MAX_SVID_TTL_SECONDS=7200
 
 volumes:
+  auth_verifier_data:
   spire-data-a:
   spire-data-b:
   spire-agent-socket-a:

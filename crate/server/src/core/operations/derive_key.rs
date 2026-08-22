@@ -297,6 +297,7 @@ pub(crate) async fn derive_key(
             &derived_object,
             &attributes,
             &tags,
+            "",
         )
         .await
         .map_err(|e| {

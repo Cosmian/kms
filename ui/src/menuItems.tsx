@@ -53,8 +53,6 @@ const baseMenu: MenuItem[] = [
                     { key: "sym/keys/create", label: "Create" },
                     { key: "sym/keys/split", label: "Split" },
                     { key: "sym/keys/join", label: "Join" },
-                    { key: "sym/keys/split", label: "Split" },
-                    { key: "sym/keys/join", label: "Join" },
                     { key: "sym/keys/export", label: "Export" },
                     { key: "sym/keys/import", label: "Import" },
                     { key: "sym/keys/rekey", label: "Re-Key" },
