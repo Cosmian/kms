@@ -1828,6 +1828,7 @@
         "revokeRole": "Revoke Crypto Officer Role",
         "selectRevokePlaceholder": "Select active CO to revoke (or leave empty to self-revoke)",
         "revokeHint": "Any Crypto Officer candidate can revoke another active CO. Leave empty to self-revoke (you must be the active CO).",
+        "revokeHintDormant": "Select an active Crypto Officer to revoke their role. You cannot self-revoke because you have no active ceremony.",
         "tooltipNotActive": "You are not the active CO. Select a target user to peer-revoke.",
         "tooltipRevokeFor": "Revoke CO role for: {{user}}",
         "tooltipSelfRevoke": "Revokes your active ceremony. The role becomes dormant until a new ceremony completes.",

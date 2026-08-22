@@ -149,7 +149,7 @@ const Sidebar: React.FC<{ isFips?: boolean; isDarkMode?: boolean }> = ({ isFips 
             collapsed={collapsed}
             onCollapse={setCollapsed}
             className="h-full"
-            style={{ position: "sticky", top: 0, overflow: "auto" }}
+            style={{ position: "sticky", top: 0, overflow: "auto", background: "var(--cosmian-sidebar-bg)" }}
         >
             <Menu
                 mode="inline"
