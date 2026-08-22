@@ -45,9 +45,15 @@ erDiagram
         string id FK
         string tag
     }
+    CRYPTO_OFFICER_ACTIVATIONS {
+        timestamp activated_at
+        text sealed_record
+        timestamp revoked_at
+        varchar revoked_by
+    }
 ```
 
-## `objects`
+## objects
 
 The central table. One row per KMIP object.
 
@@ -68,7 +74,7 @@ The following secondary indexes are created on `objects`:
 | `idx_objects_state` | `state` |
 | `idx_objects_wrapping_key_id` | `wrapping_key_id` |
 
-## `read_access`
+## read_access
 
 Stores the operations that a given user is allowed to perform on a given object.
 
@@ -83,7 +89,7 @@ In PostgreSQL and SQLite it is declared `UNIQUE (id, userid)`; in MySQL (since 5
 
 A secondary index `idx_read_access_userid` is created on `userid`.
 
-## `tags`
+## tags
 
 Stores the tags attached to objects. Tags are used to locate objects by tag.
 
@@ -95,7 +101,7 @@ Stores the tags attached to objects. Tags are used to locate objects by tag.
 The pair (`id`, `tag`) is unique.
 In PostgreSQL and SQLite it is declared `UNIQUE (id, tag)`; in MySQL (since 5.13.0) it is the composite `PRIMARY KEY (id, tag)`.
 
-## `parameters`
+## parameters
 
 A generic key/value store used internally by the KMS for database metadata.
 
@@ -112,7 +118,7 @@ Known parameters:
 | `db_version` | The version of the KMS software that last ran against this database. |
 | `wrapping_key_id_backfilled` | A one-time marker recording that the `objects.wrapping_key_id` backfill has completed. |
 
-## `crypto_officer_activations`
+## crypto_officer_activations
 
 Records the Crypto Officer activation ceremony.
 One row is added each time the Crypto Officer role is activated via a split-key ceremony.

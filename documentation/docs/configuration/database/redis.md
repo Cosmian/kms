@@ -59,6 +59,7 @@ Redis-with-Findex requires the database URL and a master password:
     database_type = "redis-findex"
     database_url = "redis://localhost:6379"
     redis_master_password = "password"
+    redis_findex_label = "label"
     ```
 
 === "Command line arguments"
@@ -66,10 +67,11 @@ Redis-with-Findex requires the database URL and a master password:
     ```sh
     --database-type=redis-findex \
     --database-url=redis://localhost:6379 \
-    --redis-master-password=password
+    --redis-master-****** \
+    --redis-findex-label=label
     ```
 
-The corresponding environment variables are `KMS_DATABASE_TYPE`, `KMS_DATABASE_URL` (also `KMS_REDIS_URL`), and `KMS_REDIS_MASTER_PASSWORD`.
+The corresponding environment variables are `KMS_DATABASE_TYPE`, `KMS_DATABASE_URL` (also `KMS_REDIS_URL`), `KMS_REDIS_MASTER_PASSWORD`, and `KMS_REDIS_FINDEX_LABEL`.
 
 For the full database configuration reference, including TLS, clearing, and migration, see [Databases](./configuration.md).
 
