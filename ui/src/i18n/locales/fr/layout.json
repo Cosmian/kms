@@ -33,6 +33,9 @@
         "passwordPlaceholder": "Mot de passe",
         "verifyCode": "VÉRIFIER LE CODE",
         "login": "CONNEXION",
+        "oidc": "OIDC",
+        "certificate": "Certificat client",
+        "authVerifier": "Nom d'utilisateur et mot de passe",
         "accessKms": "ACCÉDER AU KMS",
         "certErrorDescription": "Aucun certificat client n'a été fourni ou il est invalide. Si le problème persiste, fermez toutes les instances de votre navigateur et relancez-le avec le certificat client correct préalablement chargé."
     }
