@@ -98,4 +98,7 @@ exclude = [
   'get--export',
   'not-possible',
   'wrapped-by-an-hsm-key',
+
+  # Example/template registries in deny.toml — commented-out placeholder URL
+  'sekretz\.com',
 ]
