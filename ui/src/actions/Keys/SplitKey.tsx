@@ -3,6 +3,7 @@ import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import { buildCreateSplitKeyRequest } from "../../utils/splitKeyUtils";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
 
@@ -11,26 +12,14 @@ interface SplitKeyFormData {
     shareCount: number;
 }
 
-/// Build a CreateSplitKey TTLV request. The caller supplies the resolved `n`.
-const buildCreateSplitKeyRequest = (keyId: string, n: number) => ({
-    tag: "CreateSplitKey",
-    type: "Structure",
-    value: [
-        { tag: "UniqueIdentifier", type: "TextString", value: keyId },
-        { tag: "SplitKeyParts", type: "Integer", value: n },
-        { tag: "SplitKeyThreshold", type: "Integer", value: n },
-        { tag: "SplitKeyMethod", type: "Enumeration", value: "XOR" },
-    ],
-});
-
 type CreateSymKeyResponse = {
     ObjectType: string;
     UniqueIdentifier: string;
 };
 
 type CreateSplitKeyResponse = {
-    UniqueIdentifier: string;
-    PrivateKeyUniqueIdentifier: string[];
+    // Vec<UniqueIdentifier> serialised by serde_wasm_bindgen as an array
+    UniqueIdentifier: string | string[];
 };
 
 const SplitKeyForm: React.FC = () => {
@@ -61,17 +50,28 @@ const SplitKeyForm: React.FC = () => {
 
             // ── Step 2: Split the newly created key ────────────────────────────
             const splitReq = buildCreateSplitKeyRequest(createdKeyId, n);
-            const splitRespStr = await sendKmipRequest(splitReq, serverUrl);
+            let splitRespStr: string | null;
+            try {
+                splitRespStr = await sendKmipRequest(splitReq, serverUrl);
+            } catch (splitErr) {
+                // Compensating delete: destroy the orphaned AES key before re-throwing
+                try {
+                    const destroyReq = wasm.destroy_ttlv_request(createdKeyId, false);
+                    await sendKmipRequest(destroyReq, serverUrl);
+                } catch {
+                    /* best-effort; ignore cleanup errors */
+                }
+                throw splitErr;
+            }
             if (!splitRespStr) {
                 throw new Error("Split key operation returned an empty response");
             }
 
-            // Use the WASM parser for type-safe CreateSplitKeyResponse parsing.
             const splitResp: CreateSplitKeyResponse = await wasm.parse_create_split_key_ttlv_response(splitRespStr);
-            const shareUids: string[] = Array.isArray(splitResp.PrivateKeyUniqueIdentifier)
-                ? splitResp.PrivateKeyUniqueIdentifier
-                : splitResp.PrivateKeyUniqueIdentifier
-                  ? [splitResp.PrivateKeyUniqueIdentifier]
+            const shareUids: string[] = Array.isArray(splitResp.UniqueIdentifier)
+                ? splitResp.UniqueIdentifier
+                : splitResp.UniqueIdentifier
+                  ? [splitResp.UniqueIdentifier]
                   : [];
 
             if (shareUids.length > 0) {

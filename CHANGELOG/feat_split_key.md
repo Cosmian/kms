@@ -26,6 +26,11 @@ Replaces the former `privileged_users` flat list with two FIPS 140-3 aligned rol
 - **Self-revoke**: active CO calls `POST /access/crypto_officer/disable`.
 - **Peer revocation**: any CO candidate calls the same endpoint with `{ "target_user": "<uid>" }` to demote another active CO without server restart (NIST SP 800-152 FR:6.119).
 
+- **`CreateSplitKey` fix**: `ObjectType: SymmetricKey` added as first field in the TTLV request (the field is required/non-`Option` in the server struct); both `SplitKey.tsx` and `CryptoOfficerRole.tsx` previously omitted it, causing a 422 on every submission. Both callers now share a single `buildCreateSplitKeyRequest` helper from `utils/splitKeyUtils.ts`.
+- **Compensating delete**: if step 2 (`CreateSplitKey`) fails after step 1 (AES key creation) succeeds, the newly-created key is destroyed before the error is surfaced; this prevents permanent "object already exists" retry failure.
+- **Peer-revocation selector**: the logged-in user is now filtered out of the peer-revocation `Select`; self-revoke remains available via the empty selection.
+- **External CDN fonts removed**: `@font-face` declarations referencing `fonts.gstatic.com` (Inter URL was 404; Montserrat URL was live but violates air-gapped deployment requirements); falls back to system font stack.
+
 ## Security
 
 - Zeroized key material throughout (`Zeroizing<Vec<u8>>`, `Drop` on `CeremonyKeys`).
@@ -46,8 +51,8 @@ Replaces the former `privileged_users` flat list with two FIPS 140-3 aligned rol
 
 - **Crypto Officer page**: status dashboard (ceremony state, active CO list, custodian count); configurable base key ID with live share-UID preview (`<id>#1`, `<id>#2`…); peer-revocation dropdown (visible to active CO only); ceremony activation form.
 - **SplitKey / JoinSplitKey dialogs**: Shamir option removed; only XOR n-of-n supported. "Total Parts" renamed to "Number of Shares". Threshold and method selectors removed.
-- **Dark theme**: aligned to mdBook Eviden palette (`#161923` bg, `#bcbdd0` text, `#282d3f` sidebar, orange `#f14611`). All contrast ratios WCAG AA.
-- **Sidebar fixes**: sub-menus visible when sidebar is collapsed; collapse trigger button color corrected in light theme.
+- **Dark theme**: aligned to mdBook Eviden palette (`#161923` bg, `#bcbdd0` text, `#282d3f` sidebar, orange `#f14611`). `colorPrimary` changed from `#9e6eff` (purple) to `#f14611` (Cosmian brand orange) for brand consistency. Light `colorPrimary` changed from `#e34319` to `#c73f1b` (≥4.5:1 on white, WCAG AA). `colorInfo` (links) raised to `#4fa8d8` (≥4.5:1 on `#161923`). `colorTextSecondary` pinned to `#9fa0b8` to prevent the dark algorithm deriving a low-contrast value (~2.84:1) on the elevated card surface.
+- **Sidebar background**: both light and dark modes now use the `--cosmian-sidebar-bg` CSS variable, eliminating the disparity between themes.
 
 ## Testing
 

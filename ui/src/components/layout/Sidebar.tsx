@@ -149,7 +149,7 @@ const Sidebar: React.FC<{ isFips?: boolean; isDarkMode?: boolean }> = ({ isFips 
             collapsed={collapsed}
             onCollapse={setCollapsed}
             className="h-full"
-            style={{ position: "sticky", top: 0, overflow: "auto" }}
+            style={{ position: "sticky", top: 0, overflow: "auto", background: "var(--cosmian-sidebar-bg)" }}
         >
             <Menu
                 mode="inline"
@@ -161,7 +161,7 @@ const Sidebar: React.FC<{ isFips?: boolean; isDarkMode?: boolean }> = ({ isFips 
                 items={modifiedMenuItems}
                 onClick={({ key }: { key: string }) => navigate(key)}
                 className="h-full border-r-0"
-                style={{ fontWeight: "500", overflow: "auto" }}
+                style={{ fontWeight: "500", overflow: "auto", background: "var(--cosmian-sidebar-bg)" }}
             />
         </Sider>
     );
