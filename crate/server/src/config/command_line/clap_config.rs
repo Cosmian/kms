@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     AuthVerifierConfig, CrlConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig,
-    JwksEndpointConfig,OpaConfig, KmipPolicyConfig, MainDBConfig, RolesConfig, WorkspaceConfig,
+    JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, OpaConfig, RolesConfig, WorkspaceConfig,
     logging::LoggingConfig, secret_backends::SecretBackendConfig, ui_config::UiConfig,
     vault_config::VaultConfig,
 };
@@ -81,7 +81,6 @@ impl Default for ClapConfig {
             secret_backends: SecretBackendConfig::default(),
             vault: VaultConfig::default(),
             crl: CrlConfig::default(),
-            auth_verifier: AuthVerifierConfig::default(),
         }
     }
 }
