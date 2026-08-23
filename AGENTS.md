@@ -377,6 +377,7 @@ All team-wide skills are in `.github/skills/`. See `.github/prompts/README.md` f
 | `/standards-review [path]` | Verify code against exact text of applicable standards (FIPS, RFC, KMIP, BSI) |
 | `/kmip-compliance [op]` | When adding or modifying a KMIP operation |
 | `/kms-test-vector` | When creating test vectors (guided workflow) |
+| `/ckms-subcommand-test` | **After adding any new `ckms` subcommand or flag** — generates test file, covers happy path + errors + CO-gating, registers module, runs `cargo test -p ckms` |
 | `/kms-changelog` | When writing the branch CHANGELOG entry |
 | `/openapi-endpoint` | When adding a new REST endpoint (full rule 4.2 flow) |
 | `/threat-model` | Full STRIDE-A threat model or incremental update |

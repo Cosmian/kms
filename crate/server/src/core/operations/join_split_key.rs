@@ -230,14 +230,15 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
     }
 
     let secret: Zeroizing<Vec<u8>> = match method {
+        SplitKeyMethod::XOR => cosmian_kms_crypto::crypto::split_key::xor_join(&raw_shares)
+            .map_err(|e| KmsError::InvalidRequest(format!("reconstruction error: {e}")))?,
         SplitKeyMethod::PolynomialSharingGf28
         | SplitKeyMethod::PolynomialSharingGf216
-        | SplitKeyMethod::XOR => cosmian_kms_crypto::crypto::split_key::xor_join(&raw_shares)
-            .map_err(|e| KmsError::InvalidRequest(format!("reconstruction error: {e}")))?,
-        SplitKeyMethod::PolynomialSharingPrimeField => {
-            kms_bail!(KmsError::NotSupported(
-                "PolynomialSharingPrime is not supported".to_owned()
-            ));
+        | SplitKeyMethod::PolynomialSharingPrimeField => {
+            kms_bail!(KmsError::NotSupported(format!(
+                "JoinSplitKey: split_key_method {method:?} (M-of-N polynomial sharing) is not \
+                 yet implemented; only XOR (n-of-n) is supported."
+            )));
         }
     };
 

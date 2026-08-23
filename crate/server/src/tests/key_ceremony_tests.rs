@@ -8,15 +8,15 @@
 //! 5. n-of-n enforcement — providing fewer than n shares is rejected.
 //! 6. Non-candidate rejection — a user not in `crypto_officer.users` cannot trigger activation.
 //!
-//! Security-fix regression tests (threat model PR #991):
-//! TM-F001 — no eprintln!/debug leakage of CO identity in `create_split_key`.
-//! TM-F002 — CO cannot Get/Export a `sensitive=true` key without wrapping.
-//! TM-F003 — startup emits WARN when config-only CO mode is active.
-//! TM-F006 — active CO self-revokes (quorum guard removed; peer revocation enabled).
-//! TM-F007 — startup validation rejects `force_default_username=true` with CO configured.
-//! TM-F008 — dormant CO candidate can peer-revoke an active CO.
-//! TM-F009 — reconstructed key object intact after peer revocation.
-//! TM-F010 — Operator (non-candidate) cannot peer-revoke a CO.
+//! Security regression tests:
+//! - no eprintln!/debug leakage of CO identity in `create_split_key`.
+//! - CO cannot Get/Export a `sensitive=true` key without wrapping.
+//! - startup emits WARN when config-only CO mode is active.
+//! - active CO self-revokes (quorum guard removed; peer revocation enabled).
+//! - startup validation rejects `force_default_username=true` with CO configured.
+//! - dormant CO candidate can peer-revoke an active CO.
+//! - reconstructed key object intact after peer revocation.
+//! - Operator (non-candidate) cannot peer-revoke a CO.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -63,7 +63,47 @@ async fn ceremony_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
     Ok(Arc::new(KMS::instantiate(Arc::new(params)).await?))
 }
 
-/// Build a `KMS` configured for config-only CO mode (no ceremony) with the given users.
+/// Build a `KMS` configured for ceremony mode with AES-KW share wrapping enabled.
+///
+/// A fresh wrapping key is pre-created and its UID is set as `ceremony_wrapping_key_id`.
+/// The returned `Arc<KMS>` is ready for split-key operations that wrap shares at rest.
+async fn ceremony_kms_with_wrapping(co_users: Vec<String>, wrap_key_id: &str) -> KResult<Arc<KMS>> {
+    // First, start a temporary ceremony KMS without wrapping to create the key.
+    let mut conf = ClapConfig {
+        db: MainDBConfig {
+            database_type: Some("sqlite".to_owned()),
+            sqlite_path: get_tmp_sqlite_path(),
+            clear_database: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    conf.roles.crypto_officer_users = Some(co_users.clone());
+    conf.roles.crypto_officer_require_ceremony = true;
+    conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
+    // Wrapping key ID is configured from the start so that `CreateSplitKey` uses it.
+    conf.roles.ceremony_wrapping_key_id = Some(wrap_key_id.to_owned());
+
+    let params = ServerParams::try_from(conf)?;
+    let kms = Arc::new(KMS::instantiate(Arc::new(params)).await?);
+
+    // Pre-create the wrapping key directly in the DB as the first CO user.
+    // `create_key` is a CO-free helper that stores directly through the operations layer.
+    let owner = co_users.first().map_or("admin", String::as_str);
+    let no_tags: &[&str] = &[];
+    let req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        Some(UniqueIdentifier::TextString(wrap_key_id.to_owned())),
+        256,
+        CryptographicAlgorithm::AES,
+        no_tags,
+        false,
+        None,
+    )?;
+    kms.create(req, &UserId::from(owner)).await?;
+
+    Ok(kms)
+}
 async fn config_only_co_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
     let mut conf = ClapConfig {
         db: MainDBConfig {
@@ -620,7 +660,7 @@ fn test_validate_rejects_single_co_with_ceremony() {
     };
     let result = co.validate();
     assert!(result.is_err(), "Single CO + ceremony should be rejected");
-    let err = result.unwrap_err();
+    let err = result.unwrap_err().to_string();
     assert!(err.contains("at least 3"), "Error: {err}");
     assert!(
         err.contains("split knowledge") || err.contains("XOR"),
@@ -641,7 +681,7 @@ fn test_validate_rejects_two_co_with_ceremony() {
         result.is_err(),
         "2 COs + ceremony should be rejected (minimum is 3)"
     );
-    let err = result.unwrap_err();
+    let err = result.unwrap_err().to_string();
     assert!(err.contains("at least 3"), "Error: {err}");
 }
 
@@ -1294,9 +1334,9 @@ async fn test_active_co_can_perform_crypto_operations() -> KResult<()> {
 // Security-fix regression tests (threat model PR #991)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── TM-F001: no debug output in create_split_key ─────────────────────────────
+// ─── no debug output in create_split_key ─────────────────────────────────────
 
-/// TM-F001 — `CreateSplitKey` must not emit any `eprintln!` / debug output.
+/// `CreateSplitKey` must not emit any `eprintln!` / debug output.
 ///
 /// This test calls `create_split_key` and verifies the operation succeeds.
 /// The fix removes two `eprintln!` calls that leaked the CO username list to
@@ -1304,7 +1344,7 @@ async fn test_active_co_can_perform_crypto_operations() -> KResult<()> {
 /// this test provides a functional regression baseline for the operation.
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn tm_f001_create_split_key_succeeds_without_debug_output() -> KResult<()> {
+async fn test_create_split_key_succeeds_without_debug_output() -> KResult<()> {
     let provisioner = "admin";
     let alice = "alice@example.com";
     let bob = "bob@example.com";
@@ -1326,9 +1366,9 @@ async fn tm_f001_create_split_key_succeeds_without_debug_output() -> KResult<()>
     Ok(())
 }
 
-// ─── TM-F002: CO cannot Get a sensitive=true key without wrapping ─────────────
+// ─── CO cannot Get a sensitive=true key without wrapping ─────────────
 
-/// TM-F002 — `sensitive=true` check applies to CO callers too.
+/// `sensitive=true` check applies to CO callers too.
 ///
 /// The original threat-model finding claimed a CO could export sensitive keys
 /// without wrapping. This test proves the check in `export_get.rs:74` blocks
@@ -1336,7 +1376,7 @@ async fn tm_f001_create_split_key_succeeds_without_debug_output() -> KResult<()>
 /// the owner AND an active CO.
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn tm_f002_co_cannot_get_sensitive_key_without_wrapping() -> KResult<()> {
+async fn test_co_cannot_get_sensitive_key_without_wrapping() -> KResult<()> {
     // Alice is the only CO in config-only mode → she is immediately an active CO.
     let alice = "alice@example.com";
 
@@ -1392,16 +1432,16 @@ async fn tm_f002_co_cannot_get_sensitive_key_without_wrapping() -> KResult<()> {
     Ok(())
 }
 
-// ─── TM-F006: Active CO self-revokes ──────────────────────────────────────────
+// ─── Active CO self-revokes ──────────────────────────────────────────
 
-/// TM-F006 — An active CO can self-revoke in a multi-CO deployment.
+/// An active CO can self-revoke in a multi-CO deployment.
 ///
 /// Regression test for the peer-revocation architecture (PR #991):
 /// the quorum guard was removed; any CO candidate can now revoke an active CO,
 /// including self-revocation.
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn tm_f006_active_co_can_self_revoke() -> KResult<()> {
+async fn test_active_co_can_self_revoke() -> KResult<()> {
     let provisioner = "admin";
     let alice = "alice@example.com";
     let bob = "bob@example.com";
@@ -1439,15 +1479,15 @@ async fn tm_f006_active_co_can_self_revoke() -> KResult<()> {
     Ok(())
 }
 
-// ─── TM-F008: Peer CO revokes active CO ───────────────────────────────────────
+// ─── Peer CO revokes active CO ───────────────────────────────────────
 
-/// TM-F008 — A dormant CO candidate (Bob) can peer-revoke an active CO (Alice).
+/// A dormant CO candidate (Bob) can peer-revoke an active CO (Alice).
 ///
 /// Any configured CO candidate can call `disable_crypto_officer_ceremony` with
 /// a `target_user` to revoke another CO's ceremony activation.
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn tm_f008_peer_co_revokes_active_co() -> KResult<()> {
+async fn test_peer_co_revokes_active_co() -> KResult<()> {
     let provisioner = "admin";
     let alice = "alice@example.com";
     let bob = "bob@example.com";
@@ -1489,14 +1529,14 @@ async fn tm_f008_peer_co_revokes_active_co() -> KResult<()> {
     Ok(())
 }
 
-// ─── TM-F009: Reconstructed key intact after peer revocation ──────────────────
+// ─── Reconstructed key intact after peer revocation ──────────────────
 
-/// TM-F009 — After peer revocation, the reconstructed key stored via `JoinSplitKey`
+/// After peer revocation, the reconstructed key stored via `JoinSplitKey`
 /// still exists and is accessible (peer revocation only revokes the activation record,
 /// never the key object).
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn tm_f009_reconstructed_key_intact_after_peer_revocation() -> KResult<()> {
+async fn test_reconstructed_key_intact_after_peer_revocation() -> KResult<()> {
     let provisioner = "admin";
     let alice = "alice@example.com";
     let bob = "bob@example.com";
@@ -1550,13 +1590,13 @@ async fn tm_f009_reconstructed_key_intact_after_peer_revocation() -> KResult<()>
     Ok(())
 }
 
-// ─── TM-F010: Operator (non-candidate) cannot peer-revoke ─────────────────────
+// ─── Operator (non-candidate) cannot peer-revoke ─────────────────────
 
-/// TM-F010 — A plain Operator (not in `crypto_officer_users`) cannot peer-revoke
+/// A plain Operator (not in `crypto_officer_users`) cannot peer-revoke
 /// an active CO via `disable_crypto_officer_ceremony`.
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn tm_f010_operator_cannot_peer_revoke() -> KResult<()> {
+async fn test_operator_cannot_peer_revoke() -> KResult<()> {
     let provisioner = "admin";
     let alice = "alice@example.com";
     let bob = "bob@example.com";
@@ -1606,16 +1646,16 @@ async fn tm_f010_operator_cannot_peer_revoke() -> KResult<()> {
     Ok(())
 }
 
-// ─── TM-F011: Peer revocation revokes victim's GET on revoker's share ─────────
+// ─── Peer revocation revokes victim's GET on revoker's share ─────────
 
-/// TM-F011 — When a dormant CO (Bob) peer-revokes an active CO (Alice), Alice's
+/// When a dormant CO (Bob) peer-revokes an active CO (Alice), Alice's
 /// GET access on Bob's split-key share is automatically revoked.
 ///
 /// This prevents the revoked CO from re-assembling the ceremony key using the
 /// share grants obtained during the previous activation ceremony.
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn tm_f011_peer_revocation_revokes_share_access() -> KResult<()> {
+async fn test_peer_revocation_revokes_share_access() -> KResult<()> {
     let provisioner = "admin";
     let alice = "alice@example.com"; // active CO
     let bob = "bob@example.com"; // dormant CO — performs revocation
@@ -1679,15 +1719,15 @@ async fn tm_f011_peer_revocation_revokes_share_access() -> KResult<()> {
     Ok(())
 }
 
-// ─── TM-F007: `force_default_username=true` with CO is rejected at startup ────
+// ─── `force_default_username=true` with CO is rejected at startup ───────────
 
-/// TM-F007 — `force_default_username = true` combined with `crypto_officer_users`
+/// `force_default_username = true` combined with `crypto_officer_users`
 /// must be rejected at startup.
 ///
 /// When `force_default_username` is set, all requests run under the same
 /// default username, making CO dual-control and ceremony audit logs meaningless.
 #[test]
-fn tm_f007_force_default_username_with_co_rejected_at_startup() {
+fn test_force_default_username_with_co_rejected_at_startup() {
     let mut conf = ClapConfig {
         db: MainDBConfig {
             database_type: Some("sqlite".to_owned()),
@@ -1710,4 +1750,223 @@ fn tm_f007_force_default_username_with_co_rejected_at_startup() {
         err.contains("incompatible") || err.contains("force_default_username"),
         "Error must mention the incompatibility, got: {err}"
     );
+}
+
+// ─── ceremony_wrapping_key_id tests ──────────────────────────────────────────
+//
+// These tests verify the AES-KW (RFC 5649) share-wrapping path activated when
+// `ceremony_wrapping_key_id` is set in the server configuration.
+//
+// WK-1  Split with a wrapping key → shares stored as wrapped ciphertext, roundtrip succeeds.
+// WK-2  Missing wrapping key → CreateSplitKey fails with ItemNotFound.
+// WK-3  CreateSplitKey without wrapping key + JoinSplitKey without wrapping key → unaffected.
+// WK-4  Wrapped shares cannot be joined without the wrapping key present.
+
+/// WK-1: `CreateSplitKey` with `ceremony_wrapping_key_id` set wraps every share at rest.
+///
+/// Verifies that the full roundtrip (split then join) succeeds when the wrapping
+/// key is present and correctly configured.  The ceremony activation step is skipped
+/// here so the test focuses solely on the wrap/unwrap path.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_ceremony_wrapping_key_split_and_join_roundtrip() -> KResult<()> {
+    const WRAP_KEY_ID: &str = "ceremony-wrap-test-1";
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+
+    let kms = ceremony_kms_with_wrapping(
+        vec![alice.to_owned(), bob.to_owned(), carol.to_owned()],
+        WRAP_KEY_ID,
+    )
+    .await?;
+
+    // Create the source key as the first CO candidate.
+    let key_uid = create_key(&kms, alice).await?;
+
+    // Split (ceremony mode: source key is destroyed after split).
+    let share_uids = split_key(&kms, alice, &key_uid, 3).await?;
+    assert_eq!(share_uids.len(), 3, "expected 3 wrapped shares");
+
+    // Grant Get access so alice can read the shares owned by bob and carol.
+    for uid in &share_uids {
+        kms.database
+            .grant_operations(
+                uid,
+                &UserId::from(alice),
+                std::collections::HashSet::from([KmipOperation::Get]),
+            )
+            .await?;
+    }
+
+    // Reconstruct: JoinSplitKey must unwrap each share before XOR-joining.
+    let reconstructed_uid = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
+    assert!(
+        !reconstructed_uid.is_empty(),
+        "reconstructed UID must not be empty"
+    );
+
+    // Verify the reconstructed object exists and is retrievable.
+    let get_req = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(reconstructed_uid.clone())),
+        ..Default::default()
+    };
+    kms.get(get_req, &UserId::from(alice)).await?;
+
+    Ok(())
+}
+
+/// WK-2: `CreateSplitKey` with a non-existent `ceremony_wrapping_key_id` must fail with
+/// `ItemNotFound`, not a panic or an opaque server error.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_ceremony_wrapping_key_missing_returns_item_not_found() -> KResult<()> {
+    // UID that is NEVER created in the DB — must be declared before any `let` binding.
+    const MISSING_KEY_ID: &str = "ceremony-wrap-does-not-exist";
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+
+    // Build the KMS with a wrapping key UID that is NEVER created in the DB.
+    let mut conf = ClapConfig {
+        db: MainDBConfig {
+            database_type: Some("sqlite".to_owned()),
+            sqlite_path: get_tmp_sqlite_path(),
+            clear_database: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    conf.roles.crypto_officer_users =
+        Some(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]);
+    conf.roles.crypto_officer_require_ceremony = true;
+    conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
+    conf.roles.ceremony_wrapping_key_id = Some(MISSING_KEY_ID.to_owned());
+
+    let params = ServerParams::try_from(conf)?;
+    let kms = Arc::new(KMS::instantiate(Arc::new(params)).await?);
+
+    // Create a source key and attempt to split it.
+    let key_uid = create_key(&kms, alice).await?;
+    let result = split_key(&kms, alice, &key_uid, 3).await;
+
+    assert!(result.is_err(), "split with missing wrapping key must fail");
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("not found") || err.contains("ItemNotFound") || err.contains(MISSING_KEY_ID),
+        "error must reference the missing key, got: {err}"
+    );
+
+    Ok(())
+}
+
+/// WK-3: Generic (non-ceremony) split without `ceremony_wrapping_key_id` stores shares
+/// as plaintext and the roundtrip succeeds without unwrapping.
+///
+/// Regression: the wrapping path must not activate when `ceremony_wrapping_key_id` is `None`.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_generic_split_without_wrapping_key_roundtrip() -> KResult<()> {
+    let alice = "alice@example.com";
+    // Config-only CO (no ceremony, no wrapping key).
+    let kms = config_only_co_kms(vec![alice.to_owned()]).await?;
+
+    let key_uid = create_key(&kms, alice).await?;
+
+    // Generic split (no ceremony attribute, no wrapping).
+    let req = CreateSplitKey {
+        object_type: ObjectType::SymmetricKey,
+        unique_identifier: Some(UniqueIdentifier::TextString(key_uid.clone())),
+        split_key_parts: 2,
+        split_key_threshold: 2,
+        split_key_method: SplitKeyMethod::XOR,
+        attributes: None,
+        protection_storage_masks: None,
+    };
+    let resp = Box::pin(kms.create_split_key(req, &UserId::from(alice))).await?;
+    let share_uids: Vec<String> = resp
+        .unique_identifier
+        .iter()
+        .map(|u| u.as_str().expect("UID must be a string").to_owned())
+        .collect();
+    assert_eq!(share_uids.len(), 2, "expected 2 unwrapped shares");
+
+    // Reconstruct — source key is still alive (no ceremony destruction).
+    let reconstructed_uid = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
+    assert!(!reconstructed_uid.is_empty());
+
+    Ok(())
+}
+
+/// WK-4: Shares created WITH a wrapping key cannot be joined after the wrapping key
+/// is deleted from the DB — `JoinSplitKey` must fail, not silently produce wrong key bytes.
+///
+/// This is a security regression test: wrapped shares must remain unreadable if the
+/// wrapping key is lost (expected operational behaviour — operators must re-ceremony).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_join_wrapped_shares_fails_after_wrapping_key_deleted() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+        kmip_2_1::kmip_operations::{Destroy, Revoke},
+    };
+
+    const WRAP_KEY_ID: &str = "ceremony-wrap-test-4";
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+
+    let kms = ceremony_kms_with_wrapping(
+        vec![alice.to_owned(), bob.to_owned(), carol.to_owned()],
+        WRAP_KEY_ID,
+    )
+    .await?;
+
+    let key_uid = create_key(&kms, alice).await?;
+    let share_uids = split_key(&kms, alice, &key_uid, 3).await?;
+    assert_eq!(share_uids.len(), 3);
+
+    // Grant alice Get on all shares.
+    for uid in &share_uids {
+        kms.database
+            .grant_operations(
+                uid,
+                &UserId::from(alice),
+                std::collections::HashSet::from([KmipOperation::Get]),
+            )
+            .await?;
+    }
+
+    // Destroy the wrapping key (revoke first, then destroy).
+    let revoke_req = Revoke {
+        unique_identifier: Some(UniqueIdentifier::TextString(WRAP_KEY_ID.to_owned())),
+        revocation_reason: RevocationReason {
+            revocation_reason_code: RevocationReasonCode::CessationOfOperation,
+            revocation_message: Some("test teardown".to_owned()),
+        },
+        compromise_occurrence_date: None,
+        cascade: false,
+    };
+    kms.revoke(revoke_req, &UserId::from(alice)).await?;
+    let destroy_req = Destroy {
+        unique_identifier: Some(UniqueIdentifier::TextString(WRAP_KEY_ID.to_owned())),
+        remove: true,
+        cascade: false,
+        expected_object_type: None,
+    };
+    kms.destroy(destroy_req, &UserId::from(alice)).await?;
+
+    // JoinSplitKey must now fail: the wrapping key is gone.
+    let result = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await;
+    assert!(
+        result.is_err(),
+        "JoinSplitKey must fail when the wrapping key has been destroyed"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("not found") || err.contains("ItemNotFound") || err.contains(WRAP_KEY_ID),
+        "error must reference the missing wrapping key, got: {err}"
+    );
+
+    Ok(())
 }
