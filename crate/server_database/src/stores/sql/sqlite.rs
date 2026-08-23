@@ -1331,12 +1331,15 @@ impl PermissionsStore for SqlitePool {
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<i64>, rusqlite::Error> {
-                    c.query_row(&sql, [], |row| row.get(0)).optional()
+                    // MAX() returns a single row with NULL when the table is empty.
+                    // Use Option<i64> to handle both NULL and actual values.
+                    c.query_row(&sql, [], |row| row.get::<_, Option<i64>>(0))
+                        .optional()
+                        .map(Option::flatten)
                 },
             )
             .await
             .map_err(DbError::from)?;
-        // The DB stores crl_number as i64; convert back to u64.
         Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
     }
 }

@@ -1460,7 +1460,8 @@ impl PermissionsStore for PgPool {
                 .query("SELECT MAX(crl_number) FROM crls", &[])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let max: Option<i64> = rows.first().and_then(|row| row.get(0));
+            // MAX() returns one row; the value is NULL when the table is empty.
+            let max: Option<i64> = rows.first().and_then(|row| row.get::<_, Option<i64>>(0));
             Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
         })
     }
