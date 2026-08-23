@@ -1067,7 +1067,13 @@ impl PermissionsStore for MySqlPool {
             .exec_first("SELECT MAX(crl_number) FROM crls", ())
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let max: Option<i64> = row_opt.and_then(|mut row| row.take(0));
+        // MAX() returns one row; the value is NULL when the table is empty.
+        // `take::<Option<i64>>` handles NULL gracefully: row.take returns
+        // Some(None) for NULL, Some(Some(v)) for an actual value, and None
+        // when the column index is out of bounds.
+        let max: Option<i64> = row_opt
+            .and_then(|mut row| row.take::<Option<i64>, _>(0))
+            .flatten();
         Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
     }
 }
