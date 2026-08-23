@@ -142,7 +142,8 @@ pub fn build_crl(
             add_revoked_entry(crl, entry)?;
         }
 
-        // Sort entries by serial number (RFC 5280 recommends, some impls require)
+        // Sort entries by serial number for deterministic output and improved interoperability.
+        // RFC 5280 §5.1.2.6 does not require ordering, but many implementations expect it.
         openssl_sys::X509_CRL_sort(crl);
 
         // Add Authority Key Identifier extension (RFC 5280 §5.2.1 — MUST, non-critical)
@@ -305,17 +306,43 @@ unsafe fn add_reason_code_extension(
 }
 
 /// Add invalidityDate extension to a revoked entry.
+///
+/// RFC 5280 §5.3.2 defines `InvalidityDate ::= GeneralizedTime` and requires the value
+/// to be expressed in Greenwich Mean Time (Zulu).  `ASN1_TIME_set()` automatically
+/// selects `UTCTime` for dates before 2050 — incorrect for this field which MUST always be
+/// `GeneralizedTime`.  We therefore build the time value via `ASN1_TIME_set_string` with
+/// an explicit `"YYYYMMDDHHmmssZ"` string (`GeneralizedTime` format), which causes OpenSSL
+/// to store the value with the `V_ASN1_GENERALIZEDTIME` tag regardless of the date.
 #[expect(unsafe_code)]
 unsafe fn add_invalidity_date_extension(
     revoked: *mut openssl_sys::X509_REVOKED,
     date: OffsetDateTime,
 ) -> Result<(), CryptoError> {
     unsafe {
-        let epoch = date.unix_timestamp();
-        let asn1_time = openssl_sys::ASN1_TIME_set(ptr::null_mut(), epoch);
+        // Format as GeneralizedTime "YYYYMMDDHHmmssZ" (RFC 5280 §5.3.2 / §4.1.2.5.2).
+        // All time component types fit the format specifiers directly:
+        // year() → i32, u8::from(month()) → u8, day/hour/minute/second → u8.
+        let formatted = format!(
+            "{:04}{:02}{:02}{:02}{:02}{:02}Z",
+            date.year(),
+            u8::from(date.month()),
+            date.day(),
+            date.hour(),
+            date.minute(),
+            date.second()
+        );
+        let c_str = std::ffi::CString::new(formatted)
+            .map_err(|e| CryptoError::Default(format!("invalidityDate CString: {e}")))?;
+        let asn1_time = openssl_sys::ASN1_TIME_new();
         if asn1_time.is_null() {
             return Err(CryptoError::Default(
-                "ASN1_TIME_set (invalidityDate) failed".to_owned(),
+                "ASN1_TIME_new (invalidityDate) failed".to_owned(),
+            ));
+        }
+        if openssl_sys::ASN1_TIME_set_string(asn1_time, c_str.as_ptr()) != 1 {
+            openssl_sys::ASN1_TIME_free(asn1_time);
+            return Err(CryptoError::Default(
+                "ASN1_TIME_set_string (invalidityDate) failed".to_owned(),
             ));
         }
         let rc = openssl_sys::X509_REVOKED_add1_ext_i2d(
@@ -411,7 +438,14 @@ fn add_aki_extension(
 ///
 /// Supports lengths up to 65 535.
 // SAFETY: casts are guarded by explicit range checks immediately above each cast.
-#[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+#[expect(
+    clippy::as_conversions,
+    reason = "casts are guarded by explicit range checks immediately above each `as` conversion"
+)]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "casts are guarded by explicit range checks immediately above each `as` conversion"
+)]
 fn aki_write_length(buf: &mut Vec<u8>, len: usize) -> Result<(), CryptoError> {
     if len < 0x80 {
         buf.push(len as u8);
@@ -670,6 +704,65 @@ mod tests {
             "CRLReason must be encoded as ASN.1 ENUMERATED (tag 0x0A), \
              got 0x{tag_byte:02X} instead. \
              An INTEGER (0x02) here means the ASN1_INTEGER→ASN1_ENUMERATED cast broke."
+        );
+    }
+
+    /// Verify that `invalidityDate` is always encoded as `GeneralizedTime` (tag `0x18`).
+    ///
+    /// RFC 5280 §5.3.2 defines `InvalidityDate ::= GeneralizedTime` and requires the
+    /// value to be expressed in Greenwich Mean Time (Zulu).  The encoding MUST be
+    /// `GeneralizedTime` (tag `0x18`) regardless of whether the date is before or after 2050.
+    ///
+    /// This test uses a pre-2050 date — the category that `ASN1_TIME_set()` would
+    /// previously encode as `UTCTime` (tag `0x17`), violating RFC 5280 §5.3.2.
+    #[test]
+    fn test_invalidity_date_encoded_as_generalized_time() {
+        use x509_parser::prelude::{CertificateRevocationList, FromDer};
+
+        // OID 2.5.29.24 — id-ce-invalidityDate (RFC 5280 §5.3.2).
+        const INVALIDITY_DATE_OID: &str = "2.5.29.24";
+
+        let (cert, key) = create_test_ca();
+
+        // Use a pre-2050 invalidity date — the case that previously produced UTCTime.
+        let invalidity =
+            OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("valid timestamp");
+
+        let entries = vec![RevokedEntry {
+            serial_number: vec![0x01],
+            revocation_date: OffsetDateTime::now_utc(),
+            reason_code: Some(CrlReasonCode::KeyCompromise),
+            invalidity_date: Some(invalidity),
+        }];
+
+        let crl = build_crl(&cert, &key, &entries, 1, 7).expect("build_crl");
+        let der = crl.to_der().expect("to_der");
+
+        let (_, parsed_crl) = CertificateRevocationList::from_der(&der).expect("parse CRL DER");
+        let revoked = parsed_crl
+            .iter_revoked_certificates()
+            .next()
+            .expect("at least one revoked entry");
+
+        let invalidity_ext = revoked
+            .extensions()
+            .iter()
+            .find(|ext| ext.oid.to_id_string() == INVALIDITY_DATE_OID)
+            .expect("invalidityDate extension must be present");
+
+        // The first byte of the extension value is the ASN.1 tag.
+        // 0x18 = GeneralizedTime, 0x17 = UTCTime.
+        let tag_byte = invalidity_ext
+            .value
+            .first()
+            .copied()
+            .expect("extension value is non-empty");
+
+        assert_eq!(
+            tag_byte, 0x18,
+            "invalidityDate must be encoded as GeneralizedTime (tag 0x18) per RFC 5280 §5.3.2, \
+             got 0x{tag_byte:02X} instead. \
+             UTCTime (0x17) here means ASN1_TIME_set is being used instead of ASN1_TIME_set_string."
         );
     }
 }
