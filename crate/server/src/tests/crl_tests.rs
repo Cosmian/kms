@@ -18,6 +18,10 @@
 //! | **Security** | All KMIP `RevocationReasonCode` values map to the correct RFC 5280 reason |
 //! | **Non-regression** | CRL Number monotonicity: simulated restart seed from DB max |
 //! | **Non-regression** | `removeFromCRL` reason code produces `Unspecified` (complete CRL only) |
+//! | **CO role** | No CO — each owner revokes their own cert; CRL contains all (`find_all` bypass) |
+//! | **CO role** | CO revokes cert owned by another user; appears in CRL |
+//! | **CO role** | Mixed: CO + non-CO revocations — all 3 entries in final CRL |
+//! | **CO role** | Non-CO without CA access cannot generate the CRL (permission denied) |
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -743,5 +747,443 @@ async fn test_all_reason_codes_produce_correct_crl_entries() -> KResult<()> {
             }
         }
     }
+    Ok(())
+}
+
+// ── CRL completeness: with and without Crypto Officer role ───────────────────
+//
+// These tests verify the critical invariant: `generate_crl` uses `find_all` to
+// collect revoked certificates ACROSS ALL OWNERS, regardless of who owns the
+// certificate object in the database or who performed the revocation.
+//
+// Three scenarios are tested:
+//  A. No CO configured  — each user revokes their own cert; CRL has all.
+//  B. CO configured     — CO revokes a cert it does NOT own; CRL has it.
+//  C. Mixed (CO + non-CO) — CO revokes some, regular user revokes own; CRL has all.
+
+/// Build a KMS with the CO role configured for `co_user` (config-only, no ceremony).
+///
+/// `require_ceremony = false` means `co_user` is an active CO from startup — no
+/// key-ceremony split required.
+async fn make_kms_with_co(co_user: &str) -> KResult<Arc<KMS>> {
+    use crate::config::{ClapConfig, MainDBConfig};
+    init_openssl_providers_for_tests();
+    let mut conf = ClapConfig {
+        db: MainDBConfig {
+            database_type: Some("sqlite".to_owned()),
+            sqlite_path: crate::tests::test_utils::get_tmp_sqlite_path(),
+            clear_database: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    conf.roles.crypto_officer_users = Some(vec![co_user.to_owned()]);
+    conf.roles.crypto_officer_require_ceremony = false;
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(conf)?)).await?);
+    Ok(kms)
+}
+
+/// Grant `user` `Get` + `Revoke` access to `object_id` via the DB permissions layer.
+///
+/// Used to simulate a scenario where the CA owner gives a second user the right
+/// to revoke (but not issue) certificates under that CA.
+async fn grant_revoke_access(kms: &Arc<KMS>, object_id: &str, user: &UserId) -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::KmipOperation;
+    kms.database
+        .grant_operations(
+            object_id,
+            user,
+            std::collections::HashSet::from([KmipOperation::Get, KmipOperation::Revoke]),
+        )
+        .await?;
+    Ok(())
+}
+
+/// Grant `user` `Get` + `Certify` on `cert_id` AND `Get` on `sk_id`.
+///
+/// This allows a non-owner to use the CA cert/key as an issuer in a `Certify`
+/// request, producing a new certificate object owned by `user`.
+///
+/// A global `Create` grant on `"*"` is also required: `enforce_create_permission`
+/// checks for it when the server is configured with a Crypto Officer role, to
+/// prevent non-CO users from creating objects without explicit authorization.
+async fn grant_certify_access(
+    kms: &Arc<KMS>,
+    ca_cert_id: &str,
+    ca_sk_id: &str,
+    user: &UserId,
+) -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::KmipOperation;
+    // Grant Get + Certify on the CA cert (needed to retrieve the cert as issuer).
+    kms.database
+        .grant_operations(
+            ca_cert_id,
+            user,
+            std::collections::HashSet::from([KmipOperation::Get, KmipOperation::Certify]),
+        )
+        .await?;
+    // Grant Get on the CA private key (needed to sign the new cert).
+    kms.database
+        .grant_operations(
+            ca_sk_id,
+            user,
+            std::collections::HashSet::from([KmipOperation::Get]),
+        )
+        .await?;
+    // Grant global Create on "*" so enforce_create_permission succeeds for this user
+    // when the server has a CO role configured.
+    kms.database
+        .grant_operations(
+            "*",
+            user,
+            std::collections::HashSet::from([KmipOperation::Create]),
+        )
+        .await?;
+    Ok(())
+}
+
+// ── Scenario A: No CO — every user revokes their own cert, CRL has all ───────
+
+/// **No-CO scenario**: alice owns the CA and her leaf; bob uses the same CA (via
+/// delegated access) and issues his own leaf (owned by bob). Each user revokes their
+/// own cert. `generate_crl` must list BOTH revoked certificates because it uses
+/// `find_all` to bypass DB ownership filters.
+///
+/// This is the RFC 5280 §3 requirement: the CRL must be a complete list of all
+/// revoked certificates issued by that CA, irrespective of object ownership in the KMS.
+#[tokio::test]
+async fn test_crl_no_co_all_revoked_certs_present() -> KResult<()> {
+    let kms = make_kms().await?;
+    let alice = UserId::new("alice");
+    let bob = UserId::new("bob");
+
+    // Alice creates the CA.
+    let (ca_id, ca_sk_id) = certify(&kms, &alice, "No-CO CA", None, None, CA_EXT).await?;
+
+    // Alice issues her own leaf (alice owns it).
+    let (leaf_alice, _) = certify(
+        &kms,
+        &alice,
+        "Alice Leaf",
+        Some(&ca_id),
+        Some(&ca_sk_id),
+        LEAF_EXT,
+    )
+    .await?;
+    let serial_alice = cert_serial(&get_cert_der(&kms, &alice, &leaf_alice).await);
+
+    // Alice delegates CA usage to bob so bob can certify his own leaf.
+    grant_certify_access(&kms, &ca_id, &ca_sk_id, &bob).await?;
+
+    // Bob certifies his own leaf using alice's CA — resulting cert is owned by bob.
+    let (leaf_bob, _) = certify(
+        &kms,
+        &bob,
+        "Bob Leaf",
+        Some(&ca_id),
+        Some(&ca_sk_id),
+        LEAF_EXT,
+    )
+    .await?;
+    let serial_bob = cert_serial(&get_cert_der(&kms, &bob, &leaf_bob).await);
+
+    // Before any revocations — CRL must be empty.
+    let crl_before = generate_crl_der(&kms, &alice, &ca_id).await;
+    assert!(
+        revoked_serials(&crl_before).is_empty(),
+        "CRL must be empty before any revocations"
+    );
+
+    // Alice revokes her own leaf (alice is owner → standard revocation path).
+    revoke_cert(
+        &kms,
+        &alice,
+        &leaf_alice,
+        RevocationReasonCode::CessationOfOperation,
+    )
+    .await?;
+
+    // CRL after alice's revocation: 1 entry.
+    let crl_after_alice = generate_crl_der(&kms, &alice, &ca_id).await;
+    let serials_after_alice = revoked_serials(&crl_after_alice);
+    assert!(
+        serials_after_alice.contains(&serial_alice),
+        "CRL must contain alice's leaf after her revocation"
+    );
+    assert!(
+        !serials_after_alice.contains(&serial_bob),
+        "Bob's leaf must NOT appear in the CRL before his revocation"
+    );
+
+    // Bob revokes his own leaf (bob is owner → standard revocation path).
+    revoke_cert(&kms, &bob, &leaf_bob, RevocationReasonCode::KeyCompromise).await?;
+
+    // CRL after bob's revocation: BOTH entries must appear.
+    let crl_final = generate_crl_der(&kms, &alice, &ca_id).await;
+    let serials_final = revoked_serials(&crl_final);
+    assert_eq!(
+        serials_final.len(),
+        2,
+        "CRL must contain exactly 2 entries: alice's and bob's leaves"
+    );
+    assert!(
+        serials_final.contains(&serial_alice),
+        "CRL must contain alice's revoked leaf (alice-owned)"
+    );
+    assert!(
+        serials_final.contains(&serial_bob),
+        "CRL must contain bob's revoked leaf (bob-owned) — find_all crosses ownership boundary"
+    );
+    Ok(())
+}
+
+// ── Scenario B: CO configured — CO revokes cert it does NOT own ──────────────
+
+/// **CO-bypass scenario**: the CA owner (alice) is configured as the Crypto Officer.
+/// Bob issues a leaf cert via the CA (bob owns the cert object in the DB). Alice,
+/// acting as CO, revokes bob's cert using the ownership-bypass mechanism.
+///
+/// The CRL generated by alice must include bob's cert even though alice is neither
+/// the DB owner nor the normal revocation user for that object.
+#[tokio::test]
+async fn test_crl_co_revokes_cert_owned_by_other_user() -> KResult<()> {
+    // CO=alice, no ceremony required.
+    let kms = make_kms_with_co("alice").await?;
+    let alice = UserId::new("alice");
+    let bob = UserId::new("bob");
+
+    // Alice creates the CA.
+    let (ca_id, ca_sk_id) = certify(&kms, &alice, "CO CA", None, None, CA_EXT).await?;
+
+    // Alice issues her own leaf.
+    let (leaf_alice, _) = certify(
+        &kms,
+        &alice,
+        "Alice Leaf",
+        Some(&ca_id),
+        Some(&ca_sk_id),
+        LEAF_EXT,
+    )
+    .await?;
+    let serial_alice = cert_serial(&get_cert_der(&kms, &alice, &leaf_alice).await);
+
+    // Bob certifies his own leaf (bob owns it in the DB).
+    grant_certify_access(&kms, &ca_id, &ca_sk_id, &bob).await?;
+    let (leaf_bob, _leaf_bob_sk) = certify(
+        &kms,
+        &bob,
+        "Bob Leaf",
+        Some(&ca_id),
+        Some(&ca_sk_id),
+        LEAF_EXT,
+    )
+    .await?;
+    let serial_bob = cert_serial(&get_cert_der(&kms, &bob, &leaf_bob).await);
+
+    // Confirm: bob is NOT a CO.
+    assert!(
+        !kms.is_crypto_officer(&bob).await?,
+        "Bob must not be a Crypto Officer in this scenario"
+    );
+
+    // Confirm: alice IS a CO (config-only, no ceremony).
+    assert!(
+        kms.is_crypto_officer(&alice).await?,
+        "Alice must be the Crypto Officer"
+    );
+
+    // Non-CO user (bob) cannot revoke alice's leaf (not owner, not CO) → must fail.
+    let non_co_revoke_result =
+        revoke_cert(&kms, &bob, &leaf_alice, RevocationReasonCode::Unspecified).await;
+    assert!(
+        non_co_revoke_result.is_err(),
+        "Non-CO user bob must NOT be able to revoke alice's cert (she doesn't own it)"
+    );
+
+    // Alice (as CO) revokes bob's leaf — CO bypass grants access even though alice
+    // does NOT own leaf_bob in the DB.
+    revoke_cert(&kms, &alice, &leaf_bob, RevocationReasonCode::KeyCompromise).await?;
+
+    // Alice also revokes her own leaf (normal path).
+    revoke_cert(
+        &kms,
+        &alice,
+        &leaf_alice,
+        RevocationReasonCode::CessationOfOperation,
+    )
+    .await?;
+
+    // generate_crl must contain BOTH: alice's leaf (alice-owned) + bob's leaf (bob-owned,
+    // revoked by alice via CO bypass). `find_all` crosses DB ownership boundaries.
+    let crl_der = generate_crl_der(&kms, &alice, &ca_id).await;
+    let serials = revoked_serials(&crl_der);
+    assert_eq!(
+        serials.len(),
+        2,
+        "CRL must contain 2 entries: alice's leaf + bob's leaf (CO-revoked)"
+    );
+    assert!(
+        serials.contains(&serial_alice),
+        "CRL must include alice's leaf (alice-owned, alice-revoked)"
+    );
+    assert!(
+        serials.contains(&serial_bob),
+        "CRL must include bob's leaf (bob-owned, CO-revoked by alice)"
+    );
+
+    // Guard against the private key leaking: leaf_bob_sk is still readable only by bob.
+    Ok(())
+}
+
+// ── Scenario C: Mixed CO + non-CO — all revocations appear in CRL ─────────────
+
+/// **Mixed scenario**: CO revokes some certs, regular users revoke their own.
+/// All revocations — regardless of who performed them or who owns the cert — must
+/// appear in the CRL because `generate_crl` always uses `find_all`.
+///
+/// Topology:
+/// - alice  = Crypto Officer + CA owner
+/// - bob    = regular user (not CO), owns `leaf_bob`
+/// - charlie = regular user (not CO), owns `leaf_charlie`
+///
+/// Revocation events:
+/// 1. alice (CO) revokes `leaf_alice`         → alice is owner + CO
+/// 2. alice (CO) revokes `leaf_bob`           → CO bypass; bob is DB owner
+/// 3. charlie revokes `leaf_charlie`          → charlie is owner; no CO needed
+///
+/// Expected CRL: 3 entries.
+#[tokio::test]
+async fn test_crl_mixed_co_and_non_co_revocations_all_present() -> KResult<()> {
+    let kms = make_kms_with_co("alice").await?;
+    let alice = UserId::new("alice");
+    let bob = UserId::new("bob");
+    let charlie = UserId::new("charlie");
+
+    // Alice creates the CA.
+    let (ca_id, ca_sk_id) = certify(&kms, &alice, "Mixed CA", None, None, CA_EXT).await?;
+
+    // Certify leaves for all three users.
+    let (leaf_alice, _) = certify(
+        &kms,
+        &alice,
+        "Alice Leaf",
+        Some(&ca_id),
+        Some(&ca_sk_id),
+        LEAF_EXT,
+    )
+    .await?;
+    let serial_alice = cert_serial(&get_cert_der(&kms, &alice, &leaf_alice).await);
+
+    grant_certify_access(&kms, &ca_id, &ca_sk_id, &bob).await?;
+    let (leaf_bob, _) = certify(
+        &kms,
+        &bob,
+        "Bob Leaf",
+        Some(&ca_id),
+        Some(&ca_sk_id),
+        LEAF_EXT,
+    )
+    .await?;
+    let serial_bob = cert_serial(&get_cert_der(&kms, &bob, &leaf_bob).await);
+
+    grant_certify_access(&kms, &ca_id, &ca_sk_id, &charlie).await?;
+    let (leaf_charlie, _) = certify(
+        &kms,
+        &charlie,
+        "Charlie Leaf",
+        Some(&ca_id),
+        Some(&ca_sk_id),
+        LEAF_EXT,
+    )
+    .await?;
+    let serial_charlie = cert_serial(&get_cert_der(&kms, &charlie, &leaf_charlie).await);
+
+    // Confirm roles.
+    assert!(kms.is_crypto_officer(&alice).await?, "alice must be CO");
+    assert!(!kms.is_crypto_officer(&bob).await?, "bob must NOT be CO");
+    assert!(
+        !kms.is_crypto_officer(&charlie).await?,
+        "charlie must NOT be CO"
+    );
+
+    // Initial CRL: empty.
+    let crl_initial = generate_crl_der(&kms, &alice, &ca_id).await;
+    assert!(
+        revoked_serials(&crl_initial).is_empty(),
+        "CRL must start empty"
+    );
+
+    // Event 1: alice (CO + owner) revokes her own leaf.
+    revoke_cert(&kms, &alice, &leaf_alice, RevocationReasonCode::Superseded).await?;
+    let serials_1 = revoked_serials(&generate_crl_der(&kms, &alice, &ca_id).await);
+    assert_eq!(serials_1.len(), 1, "CRL must have 1 entry after event 1");
+    assert!(
+        serials_1.contains(&serial_alice),
+        "alice's leaf must be in CRL"
+    );
+
+    // Event 2: alice (as CO) revokes bob's leaf — CO ownership bypass.
+    revoke_cert(&kms, &alice, &leaf_bob, RevocationReasonCode::KeyCompromise).await?;
+    let serials_2 = revoked_serials(&generate_crl_der(&kms, &alice, &ca_id).await);
+    assert_eq!(serials_2.len(), 2, "CRL must have 2 entries after event 2");
+    assert!(
+        serials_2.contains(&serial_bob),
+        "bob's leaf (CO-revoked by alice) must be in CRL"
+    );
+
+    // Event 3: charlie (regular user) revokes his own leaf.
+    revoke_cert(
+        &kms,
+        &charlie,
+        &leaf_charlie,
+        RevocationReasonCode::AffiliationChanged,
+    )
+    .await?;
+
+    // Final CRL: all 3 revocations must appear, regardless of who performed them
+    // or who owns the cert object in the DB.
+    let crl_final = generate_crl_der(&kms, &alice, &ca_id).await;
+    let serials_final = revoked_serials(&crl_final);
+    assert_eq!(
+        serials_final.len(),
+        3,
+        "Final CRL must contain all 3 revoked certs (alice-owned, bob-owned, charlie-owned)"
+    );
+    assert!(
+        serials_final.contains(&serial_alice),
+        "alice's leaf must be in final CRL (alice-owned, alice-revoked)"
+    );
+    assert!(
+        serials_final.contains(&serial_bob),
+        "bob's leaf must be in final CRL (bob-owned, CO-revoked)"
+    );
+    assert!(
+        serials_final.contains(&serial_charlie),
+        "charlie's leaf must be in final CRL (charlie-owned, self-revoked)"
+    );
+    Ok(())
+}
+
+/// **Non-CO cannot access CA to generate CRL if not granted access.**
+///
+/// Without CO and without explicit permission grant, a user who does not own the
+/// CA certificate must receive a permission-denied error when trying to generate
+/// the CRL — the CRL generation endpoint requires read access to the CA cert.
+#[tokio::test]
+async fn test_crl_non_co_cannot_generate_crl_without_ca_access() -> KResult<()> {
+    let kms = make_kms().await?; // no CO configured
+    let alice = UserId::new("alice");
+    let bob = UserId::new("bob");
+
+    // Alice creates the CA.
+    let (ca_id, _) = certify(&kms, &alice, "Access CA", None, None, CA_EXT).await?;
+
+    // Bob (not owner, not CO) tries to generate the CRL for alice's CA.
+    let result =
+        crate::core::operations::generate_crl::generate_crl(&kms, &ca_id, None, &bob).await;
+    assert!(
+        result.is_err(),
+        "Non-owner, non-CO user must NOT be able to generate a CRL for another user's CA"
+    );
     Ok(())
 }
