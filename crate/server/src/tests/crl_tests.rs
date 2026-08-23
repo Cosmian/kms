@@ -22,6 +22,8 @@
 //! | **CO role** | CO revokes cert owned by another user; appears in CRL |
 //! | **CO role** | Mixed: CO + non-CO revocations — all 3 entries in final CRL |
 //! | **CO role** | Non-CO without CA access cannot generate the CRL (permission denied) |
+//! | **Counting** | No-CO: N owners each self-revoke; CRL count == N after every step |
+//! | **Counting** | With CO: CO revokes K certs owned by others; CRL count == K after every step |
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -1185,5 +1187,258 @@ async fn test_crl_non_co_cannot_generate_crl_without_ca_access() -> KResult<()> 
         result.is_err(),
         "Non-owner, non-CO user must NOT be able to generate a CRL for another user's CA"
     );
+    Ok(())
+}
+
+// ── Counting-revoked-certificates tests ──────────────────────────────────────
+//
+// These tests are the primary count-correctness gate.  Unlike the scenario tests
+// above that mix serial-identity checks with counts, these tests are focused
+// exclusively on the count invariant:
+//
+//   After every individual revocation the CRL entry count must be exactly equal
+//   to the number of revocations performed so far — no more, no fewer.
+//
+// Two independent sub-suites:
+//  1. Without CO — every user self-revokes; find_all must collect all of them.
+//  2. With CO    — CO revokes certs it does NOT own; every CO-revoked cert must
+//                  appear, with the count matching the number of CO-revocations.
+//
+// Both suites use a fixed constant (COUNT_CERTS) so the reader can immediately
+// see the expected final count and trace each loop iteration.
+
+/// Number of leaf certificates issued in the counting tests.
+const COUNT_CERTS: usize = 5;
+
+// ── Sub-suite 1: No CO ────────────────────────────────────────────────────────
+
+/// **Counting / No-CO**: issue `COUNT_CERTS` leaves under the same CA, each owned
+/// by a distinct user (`user_0` … `user_N`).  Every user self-revokes their leaf.
+///
+/// After each revocation the CRL is regenerated and the entry count is asserted
+/// to be exactly `k` (k = revocations so far).  The final CRL must contain exactly
+/// `COUNT_CERTS` entries and every leaf serial must appear exactly once.
+///
+/// This test is the definitive proof that `find_all` collects revoked certificates
+/// across all DB owners with no duplicates and no missing entries.
+#[tokio::test]
+async fn test_crl_counting_revoked_certs_no_co() -> KResult<()> {
+    let kms = make_kms().await?; // no CO configured
+    let ca_owner = UserId::new("ca_owner");
+
+    // ── Setup: CA + N leaves, each owned by a distinct user ──────────────────
+    let (ca_id, ca_sk_id) =
+        certify(&kms, &ca_owner, "Counting-No-CO CA", None, None, CA_EXT).await?;
+
+    let mut leaf_users: Vec<UserId> = Vec::with_capacity(COUNT_CERTS);
+    let mut leaf_ids: Vec<String> = Vec::with_capacity(COUNT_CERTS);
+    let mut leaf_serials: Vec<Vec<u8>> = Vec::with_capacity(COUNT_CERTS);
+
+    for i in 0..COUNT_CERTS {
+        let user = UserId::new(format!("leaf_user_{i}"));
+        // Grant user_i certify access so the resulting cert is owned by user_i.
+        grant_certify_access(&kms, &ca_id, &ca_sk_id, &user).await?;
+        let (leaf_id, _) = certify(
+            &kms,
+            &user,
+            &format!("Leaf {i}"),
+            Some(&ca_id),
+            Some(&ca_sk_id),
+            LEAF_EXT,
+        )
+        .await?;
+        let serial = cert_serial(&get_cert_der(&kms, &user, &leaf_id).await);
+        leaf_users.push(user);
+        leaf_ids.push(leaf_id);
+        leaf_serials.push(serial);
+    }
+
+    // ── Baseline: CRL must be empty before any revocation ────────────────────
+    let crl_empty = generate_crl_der(&kms, &ca_owner, &ca_id).await;
+    assert_eq!(
+        revoked_serials(&crl_empty).len(),
+        0,
+        "Baseline: CRL must be empty before any revocation (no CO)"
+    );
+
+    // ── Incremental revocation loop ───────────────────────────────────────────
+    // Revoke one leaf at a time; after each step verify the CRL count == step.
+    for step in 1..=COUNT_CERTS {
+        let i = step - 1;
+        // Each user self-revokes their own leaf (no CO needed — they are the owner).
+        revoke_cert(
+            &kms,
+            &leaf_users[i],
+            &leaf_ids[i],
+            RevocationReasonCode::CessationOfOperation,
+        )
+        .await?;
+
+        let crl_der = generate_crl_der(&kms, &ca_owner, &ca_id).await;
+        let serials = revoked_serials(&crl_der);
+
+        // Count invariant: exactly `step` entries after `step` revocations.
+        assert_eq!(
+            serials.len(),
+            step,
+            "No-CO step {step}/{COUNT_CERTS}: CRL must contain exactly {step} entries"
+        );
+
+        // Serial presence: the just-revoked serial must be in the CRL.
+        assert!(
+            serials.contains(&leaf_serials[i]),
+            "No-CO step {step}: serial of leaf_{i} must be present in CRL"
+        );
+
+        // No duplicates: every serial in the CRL must be unique.
+        let unique: std::collections::HashSet<Vec<u8>> = serials.iter().cloned().collect();
+        assert_eq!(
+            unique.len(),
+            serials.len(),
+            "No-CO step {step}: CRL must not contain duplicate serials"
+        );
+    }
+
+    // ── Final check: all serials must be present ──────────────────────────────
+    let crl_final = generate_crl_der(&kms, &ca_owner, &ca_id).await;
+    let serials_final = revoked_serials(&crl_final);
+    assert_eq!(
+        serials_final.len(),
+        COUNT_CERTS,
+        "No-CO final: CRL must contain exactly {COUNT_CERTS} entries"
+    );
+    for (i, serial) in leaf_serials.iter().enumerate() {
+        assert!(
+            serials_final.contains(serial),
+            "No-CO final: serial of leaf_{i} must be present in the final CRL"
+        );
+    }
+    Ok(())
+}
+
+// ── Sub-suite 2: With CO ──────────────────────────────────────────────────────
+
+/// **Counting / With CO**: issue `COUNT_CERTS` leaves under the same CA, each
+/// owned by a distinct user (`user_0` … `user_N`).  The Crypto Officer (alice)
+/// revokes each leaf using the CO ownership-bypass mechanism.
+///
+/// After each CO-revocation the CRL is regenerated and the entry count must be
+/// exactly `k`.  The final CRL must contain exactly `COUNT_CERTS` entries, every
+/// leaf serial must appear exactly once, and no entry may appear more than once.
+///
+/// This test is the definitive proof that:
+/// - CO bypass correctly marks objects owned by other users as revoked.
+/// - `find_all` finds those DB-records regardless of which user owns them.
+/// - The CRL count matches the number of CO-initiated revocations precisely.
+#[tokio::test]
+async fn test_crl_counting_revoked_certs_with_co() -> KResult<()> {
+    let kms = make_kms_with_co("alice").await?; // CO = alice, config-only
+    let alice = UserId::new("alice");
+
+    // Confirm alice is the CO.
+    assert!(
+        kms.is_crypto_officer(&alice).await?,
+        "alice must be the Crypto Officer"
+    );
+
+    // ── Setup: CA owned by alice + N leaves, each owned by a distinct non-CO user ──
+    let (ca_id, ca_sk_id) = certify(&kms, &alice, "Counting-CO CA", None, None, CA_EXT).await?;
+
+    let mut leaf_users: Vec<UserId> = Vec::with_capacity(COUNT_CERTS);
+    let mut leaf_ids: Vec<String> = Vec::with_capacity(COUNT_CERTS);
+    let mut leaf_serials: Vec<Vec<u8>> = Vec::with_capacity(COUNT_CERTS);
+
+    for i in 0..COUNT_CERTS {
+        let user = UserId::new(format!("co_leaf_user_{i}"));
+        // Confirm none of the leaf users is a CO.
+        assert!(
+            !kms.is_crypto_officer(&user).await?,
+            "co_leaf_user_{i} must NOT be a CO"
+        );
+        grant_certify_access(&kms, &ca_id, &ca_sk_id, &user).await?;
+        let (leaf_id, _) = certify(
+            &kms,
+            &user,
+            &format!("CO Leaf {i}"),
+            Some(&ca_id),
+            Some(&ca_sk_id),
+            LEAF_EXT,
+        )
+        .await?;
+        let serial = cert_serial(&get_cert_der(&kms, &user, &leaf_id).await);
+        leaf_users.push(user);
+        leaf_ids.push(leaf_id);
+        leaf_serials.push(serial);
+    }
+
+    // ── Baseline: CRL must be empty before any CO-revocation ─────────────────
+    let crl_empty = generate_crl_der(&kms, &alice, &ca_id).await;
+    assert_eq!(
+        revoked_serials(&crl_empty).len(),
+        0,
+        "Baseline: CRL must be empty before any CO-revocation"
+    );
+
+    // ── Incremental CO-revocation loop ────────────────────────────────────────
+    // Alice (CO) revokes each leaf one at a time using the CO ownership bypass.
+    // After each step verify the CRL count == step.
+    for step in 1..=COUNT_CERTS {
+        let i = step - 1;
+
+        // Confirm: the leaf is currently owned by a non-CO user.
+        let leaf_owner = &leaf_users[i];
+        assert!(
+            !kms.is_crypto_officer(leaf_owner).await?,
+            "step {step}: co_leaf_user_{i} must still be a non-CO user (sanity check)"
+        );
+
+        // Alice (CO) revokes a leaf she does NOT own — CO bypass.
+        revoke_cert(
+            &kms,
+            &alice,
+            &leaf_ids[i],
+            RevocationReasonCode::KeyCompromise,
+        )
+        .await?;
+
+        let crl_der = generate_crl_der(&kms, &alice, &ca_id).await;
+        let serials = revoked_serials(&crl_der);
+
+        // Count invariant: exactly `step` entries after `step` CO-revocations.
+        assert_eq!(
+            serials.len(),
+            step,
+            "CO step {step}/{COUNT_CERTS}: CRL must contain exactly {step} entries"
+        );
+
+        // Serial presence: the just-revoked serial must be in the CRL.
+        assert!(
+            serials.contains(&leaf_serials[i]),
+            "CO step {step}: serial of co_leaf_{i} must be present in CRL after CO-revocation"
+        );
+
+        // No duplicates: every serial in the CRL must be unique.
+        let unique: std::collections::HashSet<Vec<u8>> = serials.iter().cloned().collect();
+        assert_eq!(
+            unique.len(),
+            serials.len(),
+            "CO step {step}: CRL must not contain duplicate serials"
+        );
+    }
+
+    // ── Final check: all serials must be present ──────────────────────────────
+    let crl_final = generate_crl_der(&kms, &alice, &ca_id).await;
+    let serials_final = revoked_serials(&crl_final);
+    assert_eq!(
+        serials_final.len(),
+        COUNT_CERTS,
+        "CO final: CRL must contain exactly {COUNT_CERTS} entries (all CO-revoked)"
+    );
+    for (i, serial) in leaf_serials.iter().enumerate() {
+        assert!(
+            serials_final.contains(serial),
+            "CO final: serial of co_leaf_{i} must be present in the final CRL"
+        );
+    }
     Ok(())
 }
