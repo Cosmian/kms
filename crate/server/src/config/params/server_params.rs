@@ -584,9 +584,9 @@ impl ServerParams {
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
             auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
-            crl_default_validity_days: conf.crl_default_validity_days,
-            crl_refresh_check_hours: conf.crl_refresh_check_hours,
-            crl_refresh_overlap_hours: conf.crl_refresh_overlap_hours,
+            crl_default_validity_days: conf.crl.crl_default_validity_days,
+            crl_refresh_check_hours: conf.crl.crl_refresh_check_hours,
+            crl_refresh_overlap_hours: conf.crl.crl_refresh_overlap_hours,
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a

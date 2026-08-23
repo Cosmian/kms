@@ -193,7 +193,87 @@
   truncated lengths > 65535 bytes. It now returns `KResult<()>` and propagates an
   `InvalidRequest` error for oversized CDP URIs. ([#987](https://github.com/Cosmian/kms/pull/987))
 
-- **generate_crl.rs: CRL Number uniqueness**: the CRL Number extension now uses a
-  process-global atomic monotonic counter seeded from the current UTC Unix timestamp,
-  guaranteeing a unique, monotonically increasing sequence number per RFC 5280 §5.2.3
-  without database persistence. ([#987](https://github.com/Cosmian/kms/pull/987))
+- **generate_crl.rs: CRL Number monotonicity across server restarts** (RFC 5280 §5.2.3): the
+  CRL sequence counter was previously seeded only from the UTC Unix timestamp on every startup.
+  After restart the new seed could be lower than previously issued CRL Numbers stored in the
+  database, violating RFC 5280 §5.2.3 ("subsequent CRLs MUST have a larger CRL number"). Fix:
+  - Added `get_max_crl_number()` to the `PermissionsStore` trait and all four backends
+    (SQLite, PostgreSQL, MySQL, Redis).
+  - `KMS::instantiate` now reads the highest stored CRL Number from the DB and seeds the
+    counter as `max(unix_timestamp, db_max + 1)`, guaranteeing strict monotonicity across
+    server restarts. ([#987](https://github.com/Cosmian/kms/pull/987))
+
+- **generate_crl.rs: cRLSign keyUsage not enforced** (RFC 5280 §4.2.1.3): OpenSSL's
+  `X509_CRL_sign()` does not check the issuer key's `keyUsage` extension. If a CA
+  certificate declared `keyUsage` without the `cRLSign` bit, the KMS would silently sign and
+  serve a CRL that RFC-conforming relying parties reject during path validation. Fix: added a
+  runtime check in `generate_crl()` using `x509_parser` that returns
+  `KmsError::InvalidRequest` with an RFC citation when `cRLSign` is absent.
+  Also regenerated `test_data/certificates/csr/intermediate.crt` (and `.p12`) to include
+  `cRLSign` in the `keyUsage` extension, as the previous fixture lacked it.
+  ([#987](https://github.com/Cosmian/kms/pull/987))
+
+- **MySQL: get_max_crl_number panics on empty crls table**: `SELECT MAX(crl_number) FROM crls`
+  returns a single row with a `NULL` value when the table is empty. The MySQL implementation
+  used `row.take::<i64>(0)` which panics in `mysql_common` on NULL conversion (line 123).
+  Fix: changed to `row.take::<Option<i64>, _>(0).flatten()` — returns `None` for NULL,
+  `Some(v)` for an actual value. Caught by `tests::test_db_mysql` on CI
+  (mariadb non-fips, run `32632202380`). ([#987](https://github.com/Cosmian/kms/pull/987))
+
+## Testing (RFC compliance and role-based CRL)
+
+- **Comprehensive CRL test suite** (`crate/server/src/tests/crl_tests.rs`, 20 tests):
+  new dedicated test module covering all four mandatory layers:
+  - *Unit*: `test_build_empty_crl`, `test_build_crl_with_entries`,
+    `test_crl_reason_asn1_tag_is_enumerated` (asserts the `CRLReason` extension is encoded
+    as ASN.1 `ENUMERATED` tag `0x0A`, not `INTEGER` `0x02` — guards against future OpenSSL
+    ABI regression).
+  - *DB persistence* (`crl_persistence()` helper in `permissions_test.rs`, called from
+    every backend test): empty table → `None`, upsert round-trip, `MAX` across multiple
+    issuers, upsert-replace, `list_crl_issuers`, counter seed invariant
+    (`seed > db_max` always holds).
+  - *Functional*: empty CRL; CRL includes cert after revocation; CRL Number increases;
+    CRL persisted to DB; DER and PEM both valid; cache consistent with DB; public CDP
+    endpoint 404 before generation, valid DER after generation.
+  - *Security / non-regression*: `cRLSign` keyUsage enforcement (RFC 5280 §4.2.1.3);
+    non-certificate issuer rejected; `removeFromCRL` absent in complete CRL
+    (RFC 5280 §5.3.1); CRL Number monotonicity restart invariant; all 8 KMIP
+    `RevocationReasonCode` values produce the correct RFC 5280 reason codes with
+    ENUMERATED tag verification.
+
+- **CRL completeness with and without Crypto Officer role** (4 tests):
+  - *No-CO scenario* (`test_crl_no_co_all_revoked_certs_present`): alice owns the CA;
+    alice certifies `leaf_alice` (alice-owned); bob certifies `leaf_bob` via delegated
+    access (bob-owned). Alice and bob each self-revoke their own leaf. Alice generates
+    the CRL — both serials must be present, proving `find_all` crosses DB ownership
+    boundaries.
+  - *CO bypass scenario* (`test_crl_co_revokes_cert_owned_by_other_user`): CO=alice;
+    bob owns `leaf_bob`. Assert: bob is NOT CO; alice IS CO; bob cannot revoke alice's
+    cert (permission denied). Alice (as CO) revokes bob's cert via ownership bypass.
+    CRL must contain both (alice's leaf + bob's leaf).
+  - *Mixed scenario* (`test_crl_mixed_co_and_non_co_revocations_all_present`): CO=alice,
+    regular users bob and charlie. Alice (CO) revokes her own leaf and bob's leaf; charlie
+    self-revokes. Incremental CRL check after each event (1 → 2 → 3 entries). Final CRL
+    must contain all three serials.
+  - *Access control* (`test_crl_non_co_cannot_generate_crl_without_ca_access`): non-owner
+    non-CO user cannot generate the CRL for another user's CA.
+
+- **Counting-revoked-certificates tests** (2 tests, `COUNT_CERTS = 5`):
+  These are the definitive count-correctness gate. Each test revokes one cert at a time and
+  asserts the CRL entry count equals the number of revocations performed so far, with every
+  revoked serial present exactly once (no duplicates, no missing entries).
+  - `test_crl_counting_revoked_certs_no_co`: `ca_owner` owns the CA; 5 distinct non-CO users
+    each certify and self-revoke their own leaf. After every step k: count == k.
+  - `test_crl_counting_revoked_certs_with_co`: CO=alice owns CA; 5 distinct non-CO users
+    own one leaf each. Alice (CO) revokes each leaf via ownership bypass. Per-step assertion:
+    count == k; no duplicate serials. Proves CO bypass produces correct DB state that
+    `find_all` collects precisely.
+
+## Process
+
+- **Mandatory test coverage rule** (`.github/instructions/rust.instructions.md`): updated
+  the Testing section with a bold mandatory rule requiring four test layers for every new
+  Rust feature: (1) unit tests in `#[cfg(test)]` submodule, (2) DB persistence helper
+  called from all backend tests, (3) functional tests in a dedicated `<feature>_tests.rs`,
+  (4) security/non-regression tests. Includes per-layer content checklists, the CRL test
+  suite as the canonical reference implementation, and a template for new test files.
