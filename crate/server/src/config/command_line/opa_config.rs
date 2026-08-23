@@ -33,3 +33,36 @@ impl Default for OpaConfig {
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use crate::core::opa::OpaMode;
+
+    // ── OpaConfig::default ──────────────────────────────────────────────────
+
+    /// Default config must have no OPA URL (OPA disabled) and mode string
+    /// `"disabled"` — guarantees backward compatibility for operators who
+    /// do not configure OPA.
+    #[test]
+    fn test_opa_config_default_has_no_url_and_disabled_mode() {
+        let cfg = OpaConfig::default();
+        assert!(
+            cfg.opa_url.is_none(),
+            "default OPA URL must be None (OPA disabled)"
+        );
+        assert_eq!(
+            cfg.opa_mode, "disabled",
+            "default OPA mode must be 'disabled'"
+        );
+    }
+
+    /// The default mode string must parse as `OpaMode::Disabled`.
+    #[test]
+    fn test_opa_config_default_mode_string_parses_as_disabled() {
+        let cfg = OpaConfig::default();
+        let mode: OpaMode = cfg.opa_mode.parse().expect("default mode must be valid");
+        assert_eq!(mode, OpaMode::Disabled);
+    }
+}

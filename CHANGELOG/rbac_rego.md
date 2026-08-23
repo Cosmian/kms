@@ -49,12 +49,18 @@
 - Extend `setup_auth_server_for_opa` to provision 3 users: `kms-opa-officer` (CryptoOfficer, kms-opa-test), `kms-opa-user` (User, kms-opa-test), `kms-opa-other-officer` (CryptoOfficer, kms-opa-other); store extra JWTs in `KMS_TEST_OPA_USER_ROLE_JWT` / `KMS_TEST_OPA_OTHER_DOMAIN_JWT`
 - Restructure `setup_auth_server_for_opa` to use separate admin (`cookie_store=true`) and login (cookieless) clients, preventing admin session cookie from being overwritten by user logins
 - Add 3 more OPA test vectors (`mode_exclusive_auditor_destroy_denied`, `mode_exclusive_auditor_get_attributes_allowed`, `mode_exclusive_domain_admin_wrong_domain`) with JWT-based Auditor and DomainAdmin identities; now 11 OPA vectors total, all passing
+- Add 4 multi-tenant isolation test vectors completing the cross-domain isolation matrix for all five RBAC roles:
+    - `mode_exclusive_auditor_wrong_domain`: Auditor (kms-opa-test) denied `GetAttributes` on a key owned by kms-opa-other — same_domain fails even for read-only metadata ops
+    - `mode_exclusive_user_wrong_domain`: User (kms-opa-test) denied `GetAttributes` on a key owned by kms-opa-other — domain boundary blocks even the least-privileged role
+    - `mode_enforcing_wrong_domain`: CryptoOfficer (kms-opa-other) denied `Get` on a kms-opa-test key in enforcing mode — domain isolation is not exclusive-mode-only
+    - `mode_exclusive_super_admin_cross_domain`: SuperAdmin allowed `Get` and `Destroy` across domain boundaries — proves only the designated top role bypasses `same_domain`; now 15 OPA vectors total
 - Extend `setup_auth_server_for_opa` to provision 5 users with per-user `domain` field: `kms-opa-officer` (CryptoOfficer, kms-opa-test), `kms-opa-user` (User, kms-opa-test), `kms-opa-auditor` (Auditor, kms-opa-test), `kms-opa-domain-admin-other` (DomainAdmin, kms-opa-other), `kms-opa-other-officer` (CryptoOfficer, kms-opa-other); store JWTs in `KMS_TEST_OPA_AUDITOR_JWT`, `KMS_TEST_OPA_DOMAIN_ADMIN_OTHER_JWT`
 
 ## Bug Fixes
 
 - `UserClaim` JWT deserialization: add `#[serde(default)]` to `aud` field so JWTs without an `aud` claim (e.g. from Cosmian auth server) are accepted instead of failing with "missing field `aud`"
 - JWT middleware: fall back to `sub` claim when `email` is absent, enabling compatibility with Cosmian auth server JWTs that use `sub` for the username
+- JWT middleware (`handle_jwt`): remove panicking `actix_identity::Identity::extract` call; the JWT bearer-token middleware reads directly from the `Authorization: Bearer` header — session cookie auth is handled by the dedicated `SessionAuth` middleware and must not be mixed into the OIDC JWT path
 - OPA denied test servers: merge `exclusive_denied` and `enforcing_denied` into a single shared `ONCE_VECTOR_OPA_DENIED` singleton to avoid concurrent macOS Keychain PKCS#12 loading failures (`OSStatus -26276`) when both servers start in parallel
 - OPA denied test servers: set opa-mode-specific `sqlite_path`, `root_data_path`, and `socket_server_start = false` to prevent port/file conflicts between concurrent cert-auth test servers
 - Auth server provisioning: use `drop()` instead of `let _ =` on HTTP responses to avoid `let_underscore_drop` Clippy lint
@@ -65,3 +71,4 @@
 - Fix auth server provisioning: set `domain` field on each userpass record to the realm ID so the JWT `as_domain` claim is emitted and OPA `same_domain` checks work correctly
 - Fix `enforce_create_permission`: honor `crypto_officer.users` and `default_username` for the `Create` right even when OPA is active, so KMS-native CryptoOfficers (e.g. split-key ceremony participants) can still create keys; OPA remains the authoritative gatekeeper for all other users
 - OPA test provisioning: send plaintext passwords to the auth server's `create_userpass` endpoint (the server now computes the Argon2id hash itself) and drop the obsolete `argon2`/`sha2` dev-dependencies
+- Add 5 unit tests for `handle_auth_verifier` (full pipeline: HTTP `Authorization` header → `AuthenticatedUser.domain` + `.roles`) and 5 unit tests for `handle_jwt` (full pipeline: Authorization header → `AuthenticatedUser.domain` + `.roles` + username resolution) in `crate/server/src/middlewares/`; these are the definitive proof that `domain` and `roles` survive the middleware pipeline without being dropped

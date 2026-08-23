@@ -5592,6 +5592,139 @@ ObjectType = "SymmetricKey"
         .await
     }
 
+    // ── Multi-tenant isolation matrix ────────────────────────────────────────
+    //
+    // The tests below complete the cross-domain isolation matrix.  Each one
+    // covers a different (role, mode) combination not yet represented above:
+    //
+    //   ┌──────────────────────────────────┬─────────┬──────────┬──────────────┐
+    //   │ Scenario                         │ Role    │ OPA mode │ Expected     │
+    //   ├──────────────────────────────────┼─────────┼──────────┼──────────────┤
+    //   │ auditor_wrong_domain (new)       │ Auditor │ excl.    │ denied       │
+    //   │ user_wrong_domain    (new)       │ User    │ excl.    │ denied       │
+    //   │ enforcing_wrong_domain (new)     │ CO      │ enforc.  │ denied       │
+    //   │ super_admin_cross_domain (new)   │ SA      │ excl.    │ allowed      │
+    //   │ wrong_domain       (existing)    │ CO      │ excl.    │ denied       │
+    //   │ domain_admin_wrong (existing)    │ DA      │ excl.    │ denied       │
+    //   │ other_domain_allowed (existing)  │ CO      │ excl.    │ allowed      │
+    //   └──────────────────────────────────┴─────────┴──────────┴──────────────┘
+
+    /// Multi-tenant isolation: `Auditor` in `kms-opa-test` denied `GetAttributes`
+    /// on a key that belongs to `kms-opa-other`.
+    ///
+    /// Even though `GetAttributes` is in `auditor_ops`, the `same_domain` helper
+    /// in `kms.rego` fails when `user_domain != object_domain` → OPA denies.
+    ///
+    /// Counterpart to `mode_exclusive_auditor_get_attributes_allowed`: proves that
+    /// auditor read access is correctly bounded by domain.
+    ///
+    /// Ref: kms.rego `auditor_ops` + `same_domain` (ANSI/INCITS 359 §4.2;
+    ///      NIST SP 800-53 Rev 5 AC-3, AC-4).
+    #[tokio::test]
+    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    async fn test_vec_opa_mode_exclusive_auditor_wrong_domain() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        let Some(ctx) =
+            get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
+        else {
+            return Err(KmsClientError::Default(
+                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                    .to_owned(),
+            ));
+        };
+        run_test_vector_with_context(
+            "test_data/vectors/opa/mode_exclusive_auditor_wrong_domain",
+            ctx,
+        )
+        .await
+    }
+
+    /// Multi-tenant isolation: `User` role in `kms-opa-test` denied `GetAttributes`
+    /// on a key that belongs to `kms-opa-other`.
+    ///
+    /// `GetAttributes` is in `user_ops`, but `same_domain` fails → OPA denies.
+    /// A compromised tenant's User credential must not be able to discover key
+    /// material from another domain.
+    ///
+    /// Ref: kms.rego `user_ops` + `same_domain` (ANSI/INCITS 359 §4.2;
+    ///      FIPS 140-3 §7.4; NIST SP 800-53 Rev 5 AC-3, AC-4).
+    #[tokio::test]
+    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    async fn test_vec_opa_mode_exclusive_user_wrong_domain() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        let Some(ctx) =
+            get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
+        else {
+            return Err(KmsClientError::Default(
+                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                    .to_owned(),
+            ));
+        };
+        run_test_vector_with_context(
+            "test_data/vectors/opa/mode_exclusive_user_wrong_domain",
+            ctx,
+        )
+        .await
+    }
+
+    /// Multi-tenant isolation in **enforcing** (dual-gate) mode: `CryptoOfficer`
+    /// from `kms-opa-other` must not access a key created in `kms-opa-test`.
+    ///
+    /// Proves that domain isolation is not an exclusive-mode artefact.  In
+    /// enforcing mode both OPA and the native KMS gate must allow.  OPA's
+    /// `same_domain` check fails first → access denied.
+    ///
+    /// Ref: kms.rego `same_domain` (ANSI/INCITS 359 §4.2;
+    ///      NIST SP 800-53 Rev 5 AC-3, AC-4, SC-28).
+    #[tokio::test]
+    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    async fn test_vec_opa_mode_enforcing_wrong_domain() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        let Some(ctx) =
+            get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_ENFORCING_ALLOWED, "enforcing").await?
+        else {
+            return Err(KmsClientError::Default(
+                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                    .to_owned(),
+            ));
+        };
+        run_test_vector_with_context("test_data/vectors/opa/mode_enforcing_wrong_domain", ctx).await
+    }
+
+    /// Multi-tenant isolation: `SuperAdmin` is allowed to `Get` and `Destroy` a
+    /// key across domain boundaries (positive isolation-bypass test).
+    ///
+    /// The `SuperAdmin` rule in `kms.rego` is unconditional — the `same_domain`
+    /// helper is not invoked.  This test proves that cross-domain access is
+    /// correctly granted to exactly the one role that requires it, while all
+    /// other roles (CO, DA, Auditor, User) remain domain-scoped.
+    ///
+    /// Counterpart to `mode_exclusive_wrong_domain`, `mode_exclusive_domain_admin_wrong_domain`,
+    /// `mode_exclusive_auditor_wrong_domain`, and `mode_exclusive_user_wrong_domain`:
+    /// together they form the complete isolation matrix.
+    ///
+    /// Ref: kms.rego `SuperAdmin` rule (ANSI/INCITS 359 §4.2 top of the role
+    ///      hierarchy; NIST SP 800-53 Rev 5 AC-6(1); NIST SP 800-57 Part 2 §4.3
+    ///      Key Management Authority role).
+    #[tokio::test]
+    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    async fn test_vec_opa_mode_exclusive_super_admin_cross_domain() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        let Some(ctx) =
+            get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
+        else {
+            return Err(KmsClientError::Default(
+                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                    .to_owned(),
+            ));
+        };
+        run_test_vector_with_context(
+            "test_data/vectors/opa/mode_exclusive_super_admin_cross_domain",
+            ctx,
+        )
+        .await
+    }
+
     // ── Auth Verifier bearer-token path (exercises `handle_auth_verifier`) ──────
     //
     // The tests above all use `jwt_auth_provider` → `handle_jwt` to extract roles

@@ -40,8 +40,6 @@ use crate::{
 /// In-memory cache of the most recently generated CRL per issuer.
 ///
 /// The public CRL endpoint (`GET /public/certificates/{id}/crl`) reads from
-///
-/// The public CRL endpoint (`GET /public/certificates/{id}/crl`) reads from
 /// this cache so it can serve pre-signed bytes without requiring any
 /// authentication or access to key material.
 ///

@@ -1,7 +1,6 @@
 //! Privileged-user bypass tests (CLI-level).
 //!
 //! Verifies that the `crypto_officer_users` server configuration correctly scopes
-//! Verifies that the `crypto_officer_users` server configuration correctly scopes
 //! privileges: only listed users can create keys; the privilege does NOT bleed
 //! into read or access-management operations on keys owned by other users.
 //!
@@ -46,7 +45,6 @@ async fn pb01_privileged_user_can_create_key() -> CosmianResult<()> {
 }
 
 // ---------------------------------------------------------------------------
-// PB2: Non-privileged user cannot create a key when crypto_officer_users is set.
 // PB2: Non-privileged user cannot create a key when crypto_officer_users is set.
 // ---------------------------------------------------------------------------
 #[tokio::test]

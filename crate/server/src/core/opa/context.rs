@@ -35,3 +35,95 @@ task_local! {
 pub(crate) fn get_opa_user_context() -> OpaUserContext {
     OPA_USER_CONTEXT.try_with(Clone::clone).unwrap_or_default()
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    // ── OpaUserContext::default ──────────────────────────────────────────────
+
+    /// Default context must be zero-privilege: empty roles and no domain.
+    /// This is the fail-closed starting state for any request that did not
+    /// set an explicit context.
+    #[test]
+    fn test_opa_user_context_default_zero_privilege() {
+        let ctx = OpaUserContext::default();
+        assert!(ctx.roles.is_empty(), "default roles must be empty");
+        assert!(ctx.domain.is_none(), "default domain must be None");
+    }
+
+    // ── get_opa_user_context outside scope ───────────────────────────────────
+
+    /// Calling `get_opa_user_context()` outside of an `OPA_USER_CONTEXT.scope()`
+    /// must return the default zero-privilege context instead of panicking.
+    /// This is critical for correctness: operations that don't set a context
+    /// must fail-closed (no roles → OPA denies).
+    #[tokio::test]
+    async fn test_get_opa_user_context_outside_scope_returns_default() {
+        let ctx = get_opa_user_context();
+        assert!(ctx.roles.is_empty());
+        assert!(ctx.domain.is_none());
+    }
+
+    // ── get_opa_user_context within scope ────────────────────────────────────
+
+    /// Inside `OPA_USER_CONTEXT.scope(ctx, fut)`, `get_opa_user_context()`
+    /// must return exactly the value that was placed in scope.
+    #[tokio::test]
+    async fn test_get_opa_user_context_within_scope_returns_value() {
+        let expected = OpaUserContext {
+            roles: vec!["CryptoOfficer".to_owned()],
+            domain: Some("acme.com".to_owned()),
+        };
+        let result = OPA_USER_CONTEXT
+            .scope(expected.clone(), async { get_opa_user_context() })
+            .await;
+        assert_eq!(result.roles, expected.roles);
+        assert_eq!(result.domain, expected.domain);
+    }
+
+    /// After the scope future completes, `get_opa_user_context()` reverts to
+    /// the default — the task-local is not leaked across scope boundaries.
+    #[tokio::test]
+    async fn test_get_opa_user_context_scope_does_not_leak() {
+        let ctx = OpaUserContext {
+            roles: vec!["SuperAdmin".to_owned()],
+            domain: Some("leak-test".to_owned()),
+        };
+        OPA_USER_CONTEXT.scope(ctx, async { /* nothing */ }).await;
+        // After the scope, the task-local is no longer set.
+        let after = get_opa_user_context();
+        assert!(
+            after.roles.is_empty(),
+            "roles must be empty after scope exits, got {:?}",
+            after.roles
+        );
+        assert!(after.domain.is_none());
+    }
+
+    /// Scopes with different contexts can be nested: the inner scope's value
+    /// is visible inside, and the outer scope's value is visible outside.
+    #[tokio::test]
+    async fn test_get_opa_user_context_nested_scopes() {
+        let outer = OpaUserContext {
+            roles: vec!["DomainAdmin".to_owned()],
+            domain: Some("outer.com".to_owned()),
+        };
+        let inner = OpaUserContext {
+            roles: vec!["Auditor".to_owned()],
+            domain: Some("inner.com".to_owned()),
+        };
+        let (outer_seen, inner_seen) = OPA_USER_CONTEXT
+            .scope(outer.clone(), async {
+                let outer_ctx = get_opa_user_context();
+                let inner_ctx = OPA_USER_CONTEXT
+                    .scope(inner.clone(), async { get_opa_user_context() })
+                    .await;
+                (outer_ctx, inner_ctx)
+            })
+            .await;
+        assert_eq!(outer_seen.roles, outer.roles);
+        assert_eq!(inner_seen.roles, inner.roles);
+    }
+}

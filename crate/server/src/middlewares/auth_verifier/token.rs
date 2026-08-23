@@ -181,8 +181,11 @@ pub(crate) async fn verify_auth_verifier_jwt(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {
     use std::{collections::HashMap, sync::RwLock};
+
+    use actix_web::dev::ServiceRequest;
 
     use super::*;
 
@@ -223,6 +226,16 @@ mod tests {
             proxy_params: None,
             accept_invalid_certs: false,
         })
+    }
+
+    /// Build a `ServiceRequest` that carries a bare JWT in the `Authorization: Bearer` header.
+    ///
+    /// `handle_auth_verifier` uses `extract_bearer_token` which reads this header directly,
+    /// so all full-pipeline tests below use this helper.
+    fn srv_req_with_bearer(token: &str) -> ServiceRequest {
+        actix_web::test::TestRequest::get()
+            .insert_header(("Authorization", format!("Bearer {token}")))
+            .to_srv_request()
     }
 
     /// Roles and domain are extracted correctly for a `SuperAdmin` JWT.
@@ -305,5 +318,97 @@ mod tests {
         if let Ok(claims) = result {
             assert_eq!(claims.roles, vec!["CryptoOfficer", "Auditor"]);
         }
+    }
+
+    // ── Full-pipeline tests for `handle_auth_verifier` ─────────────────────────
+    //
+    // The tests above verify only `verify_auth_verifier_jwt` (claim parsing).
+    // The tests below exercise the full middleware pipeline:
+    //
+    //   `handle_auth_verifier`
+    //     → `extract_bearer_token` (reads `Authorization: Bearer` header)
+    //     → `verify_auth_verifier_jwt` (decodes + validates claims)
+    //     → constructs `AuthenticatedUser{username, roles, domain}`
+    //
+    // They are the definitive proof that `domain` and `roles` survive all the
+    // way from the JWT claim through to the struct that OPA and the permission
+    // checks consume.
+
+    /// `handle_auth_verifier` propagates `domain` from `as_rid` through to
+    /// `AuthenticatedUser.domain` without dropping or mangling the value.
+    #[tokio::test]
+    async fn test_handle_auth_verifier_domain_propagated_to_authenticated_user() {
+        let token = make_test_jwt("officer@acme.com", &["CryptoOfficer"], Some("acme.com"));
+        let req = srv_req_with_bearer(&token);
+        let result = handle_auth_verifier(&empty_jwks(), &req).await;
+        assert!(
+            result.is_ok(),
+            "handle_auth_verifier must succeed: {result:?}"
+        );
+        let user = result.expect("already checked is_ok");
+        assert_eq!(user.domain.as_deref(), Some("acme.com"));
+    }
+
+    /// `handle_auth_verifier` propagates `roles` through to
+    /// `AuthenticatedUser.roles` without dropping any entry.
+    #[tokio::test]
+    async fn test_handle_auth_verifier_roles_propagated_to_authenticated_user() {
+        let token = make_test_jwt("officer@acme.com", &["CryptoOfficer"], Some("acme.com"));
+        let req = srv_req_with_bearer(&token);
+        let result = handle_auth_verifier(&empty_jwks(), &req).await;
+        assert!(
+            result.is_ok(),
+            "handle_auth_verifier must succeed: {result:?}"
+        );
+        let user = result.expect("already checked is_ok");
+        assert_eq!(user.roles, vec!["CryptoOfficer"]);
+    }
+
+    /// `handle_auth_verifier` uses the `sub` claim as `AuthenticatedUser.username`.
+    ///
+    /// The Cosmian auth server puts the username in `sub`, not `email`.
+    #[tokio::test]
+    async fn test_handle_auth_verifier_sub_becomes_username() {
+        let token = make_test_jwt("alice@acme.com", &["Auditor"], Some("acme.com"));
+        let req = srv_req_with_bearer(&token);
+        let result = handle_auth_verifier(&empty_jwks(), &req).await;
+        assert!(
+            result.is_ok(),
+            "handle_auth_verifier must succeed: {result:?}"
+        );
+        let user = result.expect("already checked is_ok");
+        assert_eq!(user.username.as_ref(), "alice@acme.com");
+    }
+
+    /// A missing `Authorization` header must cause `handle_auth_verifier` to
+    /// return an error rather than proceeding with an empty identity.
+    #[tokio::test]
+    async fn test_handle_auth_verifier_missing_bearer_returns_error() {
+        let req = actix_web::test::TestRequest::get().to_srv_request();
+        let result = handle_auth_verifier(&empty_jwks(), &req).await;
+        assert!(
+            result.is_err(),
+            "must fail when no Authorization header is present"
+        );
+    }
+
+    /// When the JWT carries no `as_rid` / `as_domain` claim, `domain` must be
+    /// `None` on the resulting `AuthenticatedUser` — not a spurious empty string
+    /// or an error.
+    #[tokio::test]
+    async fn test_handle_auth_verifier_domain_none_when_claim_absent() {
+        let token = make_test_jwt("user@acme.com", &["User"], None);
+        let req = srv_req_with_bearer(&token);
+        let result = handle_auth_verifier(&empty_jwks(), &req).await;
+        assert!(
+            result.is_ok(),
+            "handle_auth_verifier must succeed: {result:?}"
+        );
+        let user = result.expect("already checked is_ok");
+        assert!(
+            user.domain.is_none(),
+            "domain must be None when the claim is absent, got {:?}",
+            user.domain
+        );
     }
 }

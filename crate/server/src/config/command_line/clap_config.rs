@@ -53,6 +53,7 @@ impl Default for ClapConfig {
             proxy: ProxyConfig::default(),
             kms_public_url: None,
             idp_auth: IdpAuthConfig::default(),
+            auth_verifier: AuthVerifierConfig::default(),
             ui_config: UiConfig::default(),
             google_cse_config: GoogleCseConfig::default(),
             workspace: WorkspaceConfig::default(),
@@ -222,19 +223,12 @@ pub struct ClapConfig {
     /// if set and `[roles] crypto_officer_users` is not configured, these users
     /// are promoted to the `CryptoOfficer` role automatically on startup.
     #[clap(long, hide = true, verbatim_doc_comment)]
-    /// **Deprecated** — use `--crypto-officer-users` (under `[roles]`) instead.
-    ///
-    /// List of users who have the right to create and import objects and grant
-    /// the `Create` access right to other users. Kept for backward compatibility;
-    /// if set and `[roles] crypto_officer_users` is not configured, these users
-    /// are promoted to the `CryptoOfficer` role automatically on startup.
-    #[clap(long, hide = true, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
 
-    #[clap(flatten)]
     /// RBAC role assignments (`CryptoOfficer`).
     /// Users not listed in any role default to `Operator` (minimum privilege).
     /// In TOML these fields live under the `[roles]` section.
+    #[clap(flatten)]
     #[serde(default, rename = "roles")]
     pub roles: RolesConfig,
 
@@ -505,7 +499,6 @@ impl ClapConfig {
         //  4. Deserialize into `ClapConfig`, collecting any unknown fields as errors.
         //     `serde_ignored` wraps the deserializer and calls the callback for every
         //     field the target type does not recognize — including fields that bubble up
-        //     field the target type does not recognize — including fields that bubble up
         //     via `#[serde(flatten)]` (e.g. `HsmConfig`), where `deny_unknown_fields`
         //     would conflict with the flatten and cannot be used directly.
         let load_file = |p: &PathBuf| -> KResult<Self> {
@@ -748,8 +741,6 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("key wrapping key", &self.key_encryption_key);
         let x = x.field("default unwrap type", &self.default_unwrap_type);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
-        let x = x.field("privileged_users (deprecated)", &self.privileged_users);
-        let x = x.field("roles", &self.roles);
         let x = x.field("privileged_users (deprecated)", &self.privileged_users);
         let x = x.field("roles", &self.roles);
 

@@ -1026,11 +1026,13 @@ impl fmt::Debug for ServerParams {
             }
         }
 
-        debug_struct.field(
-            "ceremony_keys",
-            &self.ceremony_keys.as_ref().map(|_| "<configured>"),
-        );
-        debug_struct.field("opa_params", &self.opa_params);
+        if let Some(ref opa) = self.opa_params {
+            debug_struct
+                .field("opa_url", &opa.url)
+                .field("opa_mode", &opa.mode);
+        } else {
+            debug_struct.field("opa_mode", &"disabled");
+        }
 
         debug_struct.field(
             "ceremony_keys",

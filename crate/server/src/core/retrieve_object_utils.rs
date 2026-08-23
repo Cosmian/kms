@@ -473,3 +473,181 @@ pub(crate) async fn user_has_permission(
 
     Ok(permissions.contains(operation_type) || permissions.contains(&KmipOperation::Get))
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+mod tests {
+    use cosmian_kms_server_database::reexport::{
+        cosmian_kmip::{
+            kmip_0::kmip_types::State,
+            kmip_2_1::{
+                KmipOperation,
+                kmip_attributes::Attributes,
+                kmip_objects::{Object, OpaqueObject},
+                kmip_types::OpaqueDataType,
+            },
+        },
+        cosmian_kms_interfaces::ObjectWithMetadata,
+    };
+
+    use super::build_opa_input;
+
+    // ── Helper ──────────────────────────────────────────────────────────────
+
+    /// Build a minimal `ObjectWithMetadata` for testing.
+    ///
+    /// Uses `OpaqueObject` (the lightest available `Object` variant) to avoid
+    /// constructing crypto key material in unit tests.
+    fn make_owm(uid: &str, owner: &str, domain: &str) -> ObjectWithMetadata {
+        ObjectWithMetadata::new(
+            uid.to_owned(),
+            Object::OpaqueObject(OpaqueObject {
+                opaque_data_type: OpaqueDataType::Unknown,
+                opaque_data_value: uid.as_bytes().to_vec(),
+            }),
+            owner.to_owned(),
+            State::Active,
+            Attributes::default(),
+            domain.to_owned(),
+        )
+    }
+
+    // ── Object-less operations (owm = None) ──────────────────────────────────
+
+    /// When `owm` is `None` (object-less operation such as `Create`):
+    /// - `object_uid` must be `"*"` (wildcard UID)
+    /// - `object_domain` must equal `user_domain` so `same_domain` passes
+    /// - `is_owner` must be `false`
+    #[test]
+    fn test_build_opa_input_objectless_uses_wildcard_uid() {
+        let input = build_opa_input(
+            "alice@acme.com",
+            &["CryptoOfficer".to_owned()],
+            Some("acme.com"),
+            None,
+            KmipOperation::Create,
+        );
+        assert_eq!(input.object_uid, "*", "object-less op must use '*' UID");
+        assert_eq!(
+            input.object_domain, "acme.com",
+            "object_domain must equal user_domain for object-less ops"
+        );
+        assert!(
+            !input.is_owner,
+            "is_owner must be false for object-less ops"
+        );
+    }
+
+    /// When no user domain is supplied (`None`) for an object-less operation,
+    /// both `user_domain` and `object_domain` default to empty string so the
+    /// `same_domain` check in Rego still passes (both are `""`).
+    #[test]
+    fn test_build_opa_input_objectless_no_domain_defaults_to_empty_string() {
+        let input = build_opa_input("alice@acme.com", &[], None, None, KmipOperation::Create);
+        assert_eq!(input.user_domain, "");
+        assert_eq!(
+            input.object_domain, "",
+            "object_domain must be '' when user_domain is None"
+        );
+        assert_eq!(input.object_uid, "*");
+    }
+
+    // ── Operations on existing objects ──────────────────────────────────────
+
+    /// When `user == obj.owner()`, `is_owner` must be `true` and the object
+    /// UID and domain must be taken from the object (not the wildcard).
+    #[test]
+    fn test_build_opa_input_owner_sets_is_owner_true() {
+        let owm = make_owm("uid-001", "alice@acme.com", "acme.com");
+        let input = build_opa_input(
+            "alice@acme.com",
+            &["CryptoOfficer".to_owned()],
+            Some("acme.com"),
+            Some(&owm),
+            KmipOperation::Get,
+        );
+        assert!(input.is_owner, "caller must be recognised as owner");
+        assert_eq!(input.object_uid, "uid-001");
+        assert_eq!(input.object_domain, "acme.com");
+    }
+
+    /// When `user != obj.owner()`, `is_owner` must be `false`.
+    #[test]
+    fn test_build_opa_input_non_owner_sets_is_owner_false() {
+        let owm = make_owm("uid-002", "alice@acme.com", "acme.com");
+        let input = build_opa_input(
+            "bob@acme.com",
+            &["CryptoOfficer".to_owned()],
+            Some("acme.com"),
+            Some(&owm),
+            KmipOperation::Get,
+        );
+        assert!(!input.is_owner, "non-owner must have is_owner=false");
+        assert_eq!(input.object_uid, "uid-002");
+    }
+
+    /// Object domain is read from the stored object metadata, not from the
+    /// user domain.  This is the cross-domain isolation invariant.
+    #[test]
+    fn test_build_opa_input_object_domain_comes_from_owm() {
+        let owm = make_owm("uid-003", "alice@other.com", "other.com");
+        let input = build_opa_input(
+            "bob@acme.com",
+            &["CryptoOfficer".to_owned()],
+            Some("acme.com"),
+            Some(&owm),
+            KmipOperation::Get,
+        );
+        assert_eq!(input.user_domain, "acme.com");
+        assert_eq!(
+            input.object_domain, "other.com",
+            "object_domain must come from the stored object"
+        );
+    }
+
+    // ── Operation name format ────────────────────────────────────────────────
+
+    /// `KmipOperation::to_string()` must produce the lowercase `snake_case` names
+    /// that the `kms.rego` policy uses for operation set membership tests.
+    #[test]
+    fn test_build_opa_input_operation_is_lowercase_snake_case() {
+        let cases = [
+            (KmipOperation::Create, "create"),
+            (KmipOperation::Get, "get"),
+            (KmipOperation::GetAttributes, "get_attributes"),
+            (KmipOperation::Destroy, "destroy"),
+            (KmipOperation::Locate, "locate"),
+        ];
+        for (op, expected) in cases {
+            let input = build_opa_input("u", &[], None, None, op);
+            assert_eq!(
+                input.operation, expected,
+                "KmipOperation::{op:?} must serialize to '{expected}'"
+            );
+        }
+    }
+
+    // ── Roles and user identity passthrough ──────────────────────────────────
+
+    /// Roles are passed through unchanged; they are never modified by
+    /// `build_opa_input` (KMS is role-vocabulary-agnostic).
+    #[test]
+    fn test_build_opa_input_roles_passed_through_unchanged() {
+        let roles = vec!["CryptoOfficer".to_owned(), "Auditor".to_owned()];
+        let input = build_opa_input("u", &roles, None, None, KmipOperation::Create);
+        assert_eq!(input.roles, roles);
+    }
+
+    /// The user identity is copied verbatim to `input.user`.
+    #[test]
+    fn test_build_opa_input_user_identity_is_preserved() {
+        let input = build_opa_input(
+            "alice@tenant.example",
+            &[],
+            None,
+            None,
+            KmipOperation::Create,
+        );
+        assert_eq!(input.user, "alice@tenant.example");
+    }
+}

@@ -77,3 +77,82 @@ impl OpaClient {
         Ok(opa_resp.result.unwrap_or(false))
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    // ── OpaClient::new — URL construction ────────────────────────────────────
+    //
+    // These tests exercise `OpaClient::new` without making any network calls.
+    // They verify that the decision URL is assembled correctly so that
+    // `OpaClient::query` will hit the right OPA REST endpoint.
+
+    /// The decision URL is formed as `{base_url}/v1/data/kms/allow`.
+    #[test]
+    fn test_opa_client_new_constructs_correct_decision_url() {
+        let client = OpaClient::new("http://localhost:8181")
+            .expect("OpaClient::new must succeed with a valid URL");
+        assert_eq!(
+            client.decision_url,
+            "http://localhost:8181/v1/data/kms/allow"
+        );
+    }
+
+    /// A trailing `/` on the base URL is stripped before appending the path,
+    /// so `http://opa:8181/` and `http://opa:8181` produce identical URLs.
+    #[test]
+    fn test_opa_client_new_trims_trailing_slash() {
+        let client = OpaClient::new("http://opa:8181/").expect("OpaClient::new must succeed");
+        assert_eq!(
+            client.decision_url, "http://opa:8181/v1/data/kms/allow",
+            "trailing slash must be removed before appending path"
+        );
+    }
+
+    /// Base URL with a path prefix is handled correctly (custom OPA mount point).
+    #[test]
+    fn test_opa_client_new_preserves_path_prefix() {
+        let client =
+            OpaClient::new("http://opa:8181/kms-opa").expect("OpaClient::new must succeed");
+        assert_eq!(
+            client.decision_url,
+            "http://opa:8181/kms-opa/v1/data/kms/allow"
+        );
+    }
+
+    // ── OpaResponse deserialization ──────────────────────────────────────────
+
+    /// `{"result": true}` deserializes as `Some(true)`.
+    #[test]
+    fn test_opa_response_result_true() {
+        let r: OpaResponse = serde_json::from_str(r#"{"result":true}"#).unwrap();
+        assert_eq!(r.result, Some(true));
+    }
+
+    /// `{"result": false}` deserializes as `Some(false)`.
+    #[test]
+    fn test_opa_response_result_false() {
+        let r: OpaResponse = serde_json::from_str(r#"{"result":false}"#).unwrap();
+        assert_eq!(r.result, Some(false));
+    }
+
+    /// `{}` (missing `result` key — undefined Rego rule) deserializes as `None`,
+    /// which `query()` maps to `false` (fail-closed).
+    #[test]
+    fn test_opa_response_missing_result_is_none() {
+        let r: OpaResponse = serde_json::from_str("{}").unwrap();
+        assert!(
+            r.result.is_none(),
+            "missing result must deserialize as None"
+        );
+    }
+
+    /// `{"result": null}` (undefined OPA policy) deserializes as `None`.
+    #[test]
+    fn test_opa_response_null_result_is_none() {
+        let r: OpaResponse = serde_json::from_str(r#"{"result":null}"#).unwrap();
+        assert!(r.result.is_none());
+    }
+}
