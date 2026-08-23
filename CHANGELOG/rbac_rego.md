@@ -6,6 +6,7 @@
 - Add KMIP-GO compliance tests for `CreateSplitKey` (§4.38) and `JoinSplitKey` (§4.39): share metadata assertions, full split-then-join roundtrip, threshold enforcement, and Query operation advertisement (`split_key_test.go`)
 - Add `domain` column to the objects table across all database backends (SQLite, PostgreSQL, MySQL, Redis-findex) for domain-scoped access control
 - Add `OpaClient` HTTP client with fail-closed design (deny on any transport/parse error)
+- Add support for CSR-based Certify TTL: the `requested_validity_days` vendor attribute is now honoured on CSR-based `Certify` requests (the `build_and_sign_certificate` path already read it; this release adds regression tests and a matching `ttlDays int` parameter to `github.com/Cosmian/kmip-go`'s `Certify()` function, closing the SPIRE / kmip-go limitation documented at <https://github.com/spiffe/spire/pull/7235#discussion_r3829548963>)
 - Wire OPA authorization into `user_has_permission()` with mode-dependent behavior:
     - Exclusive: OPA is the sole decision maker
     - Enforcing: both OPA and legacy KMS permission logic must allow
