@@ -18,7 +18,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     reexport::rand_core::SeedableRng,
 };
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroize;
+use zeroize::Zeroizing;
 
 use crate::error::{DbError, DbResult};
 
@@ -38,11 +38,23 @@ pub struct CeremonyPayload {
 /// Derived from the `ceremony_secret` configuration value. Provides:
 /// - AES-256-GCM encryption of ceremony payloads
 /// - SHAKE-256-based key name obfuscation for Redis
+///
+/// # Zeroization
+///
+/// Both sensitive fields are automatically wiped on drop:
+/// - `aes_key` wraps `SymmetricKey<32>` → `Secret<32>: ZeroizeOnDrop`
+/// - `obfuscation_key` is wrapped in `Zeroizing<[u8; 32]>: ZeroizeOnDrop`
+///
+/// The `Aes256Gcm` cipher is **not** stored as a field because
+/// `aes_gcm::AesGcm` does not implement `ZeroizeOnDrop` (the round-key schedule
+/// would linger in heap memory after drop). Instead, the cipher is constructed
+/// locally inside each `seal`/`unseal` call from `aes_key` and dropped
+/// immediately after use.
 pub struct CeremonyKeys {
-    /// AES-256-GCM cipher instance for sealing/unsealing records.
-    dem: Aes256Gcm,
+    /// Raw AES-256 key bytes — auto-zeroized on drop via `Secret<32>: ZeroizeOnDrop`.
+    aes_key: SymmetricKey<32>,
     /// Key material for SHAKE-256 obfuscation of Redis key names.
-    obfuscation_key: [u8; 32],
+    obfuscation_key: Zeroizing<[u8; 32]>,
     /// Thread-safe RNG for nonce generation.
     rng: Mutex<CsRng>,
 }
@@ -58,15 +70,15 @@ impl CeremonyKeys {
         let mut aes_key = SymmetricKey::<32>::default();
         kdf256!(&mut *aes_key, ceremony_secret, b"ceremony_aes_key");
 
-        let mut obfuscation_key = [0_u8; 32];
+        let mut obfuscation_key = Zeroizing::new([0_u8; 32]);
         kdf256!(
-            &mut obfuscation_key,
+            &mut *obfuscation_key,
             ceremony_secret,
             b"ceremony_obfuscation"
         );
 
         Self {
-            dem: Aes256Gcm::new(&aes_key),
+            aes_key,
             obfuscation_key,
             rng: Mutex::new(CsRng::from_entropy()),
         }
@@ -88,8 +100,10 @@ impl CeremonyKeys {
         let plaintext = serde_json::to_vec(payload).map_err(|e| {
             DbError::DatabaseError(format!("failed to serialize ceremony payload: {e}"))
         })?;
-        let ct = self
-            .dem
+        // Construct the cipher locally so the round-key schedule is dropped
+        // immediately after use rather than persisting for the lifetime of CeremonyKeys.
+        let dem = Aes256Gcm::new(&self.aes_key);
+        let ct = dem
             .encrypt(&nonce, &plaintext, Some(role.as_bytes()))
             .map_err(|e| {
                 DbError::CryptographicError(format!("failed to encrypt ceremony record: {e}"))
@@ -117,8 +131,9 @@ impl CeremonyKeys {
             return Err(generic_err());
         }
         let nonce = Nonce::try_from(nonce_bytes).map_err(|_e| generic_err())?;
-        let plaintext = self
-            .dem
+        // Construct the cipher locally — same reasoning as in `seal`.
+        let dem = Aes256Gcm::new(&self.aes_key);
+        let plaintext = dem
             .decrypt(&nonce, ciphertext, Some(role.as_bytes()))
             .map_err(|_e| generic_err())?;
         serde_json::from_slice(&plaintext).map_err(|_e| generic_err())
@@ -133,14 +148,8 @@ impl CeremonyKeys {
     #[must_use]
     pub fn obfuscate_key(&self, role: &str) -> String {
         let mut hash = [0_u8; 8]; // 8 bytes = 16 hex chars
-        kdf256!(&mut hash, &self.obfuscation_key, role.as_bytes());
+        kdf256!(&mut hash, &*self.obfuscation_key, role.as_bytes());
         format!("c:{}", hex::encode(hash))
-    }
-}
-
-impl Drop for CeremonyKeys {
-    fn drop(&mut self) {
-        self.obfuscation_key.zeroize();
     }
 }
 

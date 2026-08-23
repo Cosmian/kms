@@ -98,20 +98,27 @@ pub(crate) async fn create_split_key(
 
     // Determine whether this is a Crypto Officer ceremony split.
     //
-    // Two signals trigger ceremony mode (either is sufficient):
+    // Two signals trigger ceremony mode, but BOTH require the caller to be a CO candidate:
+    //
     // 1. The source key carries the `x-cosmian-crypto-officer-ceremony` vendor attribute
-    //    (stamped by the CLI `--ceremony` flag or the CO Role page UI).
+    //    (stamped by the CLI `--ceremony` flag or the CO Role page UI) **and** the caller
+    //    is listed in `crypto_officer_users`. Without the CO-user check, any operator who
+    //    holds Set/AddAttribute + Get rights on a key could stamp the attribute and trigger
+    //    the ceremony destruction path — a privilege escalation (crypto review finding 3).
+    //
     // 2. The server is globally configured with `require_ceremony = true` AND has at
-    //    least one CO user configured — i.e. the server enforces ceremony distribution
-    //    for every split when in ceremony mode.
+    //    least one CO user configured — the server enforces ceremony distribution for
+    //    every split when in ceremony mode, regardless of the attribute.
     //
     // In ceremony mode the server ignores the requested share count and assigns one
     // share per CO candidate (round-robin ownership), enforcing dual control.
     let co_users = &kms.params.crypto_officer.users;
-    let is_co_ceremony_key = owm
+    let caller_is_co_candidate = co_users.iter().any(|u| u == user.as_str());
+    let is_co_ceremony_key = (owm
         .attributes()
         .get_vendor_attribute_value(VENDOR_ID_COSMIAN, CRYPTO_OFFICER_CEREMONY_ATTR)
         .is_some()
+        && caller_is_co_candidate)
         || (kms.params.crypto_officer.require_ceremony && !co_users.is_empty());
 
     // Generate shares using the requested split method
@@ -151,25 +158,32 @@ pub(crate) async fn create_split_key(
             "CreateSplitKey: total_parts out of valid range — internal error: {e}"
         ))
     })?;
-    // XOR n-of-n requires threshold == total_parts (all shares needed).
-    if threshold != total_parts {
+
+    // XOR is an n-of-n scheme: all shares are required for reconstruction.
+    // Reject threshold < total_parts early so the error message is precise.
+    if request.split_key_method == SplitKeyMethod::XOR && threshold != total_parts {
         kms_bail!(KmsError::InvalidRequest(format!(
-            "CreateSplitKey: XOR n-of-n requires threshold ({threshold}) == total_parts ({total_parts})"
+            "CreateSplitKey: XOR split_key_method requires threshold ({threshold}) == \
+             split_key_parts ({total_parts}); use PolynomialSharingGf28 for M-of-N threshold sharing"
         )));
     }
+
     let mut rng = rand::make_rng::<ChaCha20Rng>();
 
     let raw_shares: Vec<Zeroizing<Vec<u8>>> = match request.split_key_method {
-        SplitKeyMethod::PolynomialSharingGf28
-        | SplitKeyMethod::PolynomialSharingGf216
-        | SplitKeyMethod::XOR => {
+        SplitKeyMethod::XOR => {
             cosmian_kms_crypto::crypto::split_key::xor_split(&key_bytes, total_parts_u32, &mut rng)
                 .map_err(|e| KmsError::InvalidRequest(format!("CreateSplitKey error: {e}")))?
         }
-        SplitKeyMethod::PolynomialSharingPrimeField => {
-            kms_bail!(KmsError::NotSupported(
-                "CreateSplitKey: PolynomialSharingPrime is not supported".to_owned()
-            ));
+        SplitKeyMethod::PolynomialSharingGf28
+        | SplitKeyMethod::PolynomialSharingGf216
+        | SplitKeyMethod::PolynomialSharingPrimeField => {
+            kms_bail!(KmsError::NotSupported(format!(
+                "CreateSplitKey: split_key_method {:?} (M-of-N polynomial sharing) is not yet \
+                 implemented; only XOR (n-of-n) is supported. Use split_key_method=XOR with \
+                 split_key_threshold == split_key_parts.",
+                request.split_key_method
+            )));
         }
     };
 
@@ -412,10 +426,13 @@ pub(crate) async fn create_split_key(
 
         // Revoke the source key before destroying — the destroy operation requires
         // prior revocation for keys with an explicit activation_date.
+        // CessationOfOperation is the correct reason: the key is not compromised,
+        // it has been superseded by its split-key shares (KMIP §6.18 / SP 800-57 §4.2.3).
+        // Using KeyCompromise here would generate false-positive alerts in SIEM systems.
         let revoke_req = Revoke {
             unique_identifier: request.unique_identifier.clone(),
             revocation_reason: RevocationReason {
-                revocation_reason_code: RevocationReasonCode::KeyCompromise,
+                revocation_reason_code: RevocationReasonCode::CessationOfOperation,
                 revocation_message: Some(
                     "Ceremony source key superseded by split key shares".to_owned(),
                 ),

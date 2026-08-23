@@ -318,8 +318,10 @@ impl KMS {
         // 800-57 Part 2 Rev 1 §4.3). HSM-backed keys are excluded — they are governed
         // by the HSM admin rules.
         if !ObjectHandle::from(owm.id()).is_hsm() && self.is_crypto_officer(user).await? {
-            // Log at ERROR so this event is never suppressed by RUST_LOG=warn or RUST_LOG=info
-            // in production. A CO bypassing ownership is a high-value audit event.
+            // NOTE: error! level is intentional — do NOT downgrade to info! or debug!
+            // Audit events must survive any RUST_LOG setting (only RUST_LOG=off silences
+            // error!). A CO ownership bypass is a legitimate but high-value security event
+            // that must always appear in logs and SIEM exports regardless of verbosity config.
             tracing::error!(
                 target: "audit",
                 user = %user,

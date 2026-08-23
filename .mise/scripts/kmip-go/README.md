@@ -32,7 +32,6 @@ KMIP_GO_REPO_ROOT=$(git rev-parse --show-toplevel) go test -v -count=1 ./...
 | `crypto_test.go` | AES-GCM encrypt/decrypt, RSA-PSS sign/verify, EC key pair |
 | `locate_test.go` | Locate operation: empty-result, name-filter, pagination |
 | `operations_test.go` | ReKey, Import, Register, Hash, Export, multi-operation Batch |
-| `split_key_test.go` | CreateSplitKey (§4.38) + JoinSplitKey (§4.39): share metadata, full roundtrip, threshold enforcement, Query advertisement |
 
 ## Key assertion: version-gating of KMIP 1.4+ attributes
 
@@ -63,7 +62,7 @@ and `Cryptographic Length`. See the full documentation for the complete list.
 - New KMIP operation not yet in the `payloads` package → define local payload
   structs implementing `kmip.OperationPayload`, register them in `init()` with
   `kmip.RegisterOperationPayload`, then use `client.Request(ctx, &MyPayload{})`.
-  See `split_key_test.go` for a worked example (CreateSplitKey / JoinSplitKey).
+  See `operations_test.go` for a worked example of registering custom payloads.
 
 Always cite the specification section (e.g. `KMIP 1.4 §3.20`) in the test message;
 the spec HTML files live under `kmip/` in this repository.
