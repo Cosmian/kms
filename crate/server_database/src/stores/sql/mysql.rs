@@ -1056,6 +1056,20 @@ impl PermissionsStore for MySqlPool {
             })
             .collect())
     }
+
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let row_opt: Option<mysql_async::Row> = conn
+            .exec_first("SELECT MAX(crl_number) FROM crls", ())
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let max: Option<i64> = row_opt.and_then(|mut row| row.take(0));
+        Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
+    }
 }
 
 pub(super) async fn create_(

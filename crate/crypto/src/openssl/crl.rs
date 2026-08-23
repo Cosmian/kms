@@ -610,4 +610,66 @@ mod tests {
         let parsed_pem = X509Crl::from_pem(&pem).expect("from_pem");
         assert!(parsed_pem.verify(&key).expect("verify PEM signature"));
     }
+
+    /// Verify that the `CRLReason` extension is encoded with the correct ASN.1 tag.
+    ///
+    /// RFC 5280 §5.3.1 defines `CRLReason` as an `ENUMERATED` type (tag 0x0A).
+    /// The KMS implementation builds this using `ASN1_INTEGER` and casts it — an
+    /// internal OpenSSL trick that is valid because both types map to the same C struct.
+    /// This test guards against future OpenSSL ABI changes that could silently emit
+    /// `INTEGER` (tag 0x02) instead of `ENUMERATED` (tag 0x0A).
+    ///
+    /// We parse the raw DER of the first revoked entry's extensions and locate the
+    /// `id-ce-reasonCode` (OID 2.5.29.21) extension value, then assert its first
+    /// content byte is 0x0A.
+    #[test]
+    fn test_crl_reason_asn1_tag_is_enumerated() {
+        use x509_parser::prelude::{CertificateRevocationList, FromDer};
+
+        const REASON_CODE_OID: &str = "2.5.29.21";
+
+        let (cert, key) = create_test_ca();
+
+        let entries = vec![RevokedEntry {
+            serial_number: vec![0x01],
+            revocation_date: OffsetDateTime::now_utc(),
+            reason_code: Some(CrlReasonCode::KeyCompromise),
+            invalidity_date: None,
+        }];
+
+        let crl = build_crl(&cert, &key, &entries, 1, 7).expect("build_crl");
+        let der = crl.to_der().expect("to_der");
+
+        // Use x509-parser to read back the revoked entry's extensions and find
+        // the reasonCode OID (2.5.29.21).
+        let (_, parsed_crl) = CertificateRevocationList::from_der(&der).expect("parse CRL DER");
+
+        let revoked = parsed_crl
+            .iter_revoked_certificates()
+            .next()
+            .expect("at least one revoked entry");
+
+        // Locate the reasonCode extension by OID 2.5.29.21.
+        let reason_ext = revoked
+            .extensions()
+            .iter()
+            .find(|ext| ext.oid.to_id_string() == REASON_CODE_OID)
+            .expect("reasonCode extension must be present");
+
+        // The extension value is an OCTET STRING wrapping the encoded ENUMERATED.
+        // The wrapping octet string has been stripped by x509-parser; `reason_ext.value`
+        // is the raw DER of the inner content.  The first byte is the ASN.1 tag.
+        let tag_byte = reason_ext
+            .value
+            .first()
+            .copied()
+            .expect("extension value is non-empty");
+
+        assert_eq!(
+            tag_byte, 0x0A,
+            "CRLReason must be encoded as ASN.1 ENUMERATED (tag 0x0A), \
+             got 0x{tag_byte:02X} instead. \
+             An INTEGER (0x02) here means the ASN1_INTEGER→ASN1_ENUMERATED cast broke."
+        );
+    }
 }

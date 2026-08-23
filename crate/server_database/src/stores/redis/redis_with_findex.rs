@@ -1407,6 +1407,41 @@ impl PermissionsStore for RedisWithFindex {
         result.sort_by(|a, b| a.0.cmp(&b.0));
         Ok(result)
     }
+
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
+        // Scan all CRL keys and return the maximum stored crl_number.
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg("crl:*")
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!(
+                    "Failed to list CRL keys from Redis for max_crl_number: {e}"
+                ))
+            })?;
+
+        let mut max_number: Option<u64> = None;
+        for key in keys {
+            let raw: Option<String> = redis::cmd("GET")
+                .arg(&key)
+                .query_async(&mut self.mgr.clone())
+                .await
+                .map_err(|e| {
+                    InterfaceError::Default(format!("Failed to read CRL key '{key}': {e}"))
+                })?;
+            let Some(json_str) = raw else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_str) else {
+                continue;
+            };
+            let Some(n) = v.get("crl_number").and_then(serde_json::Value::as_u64) else {
+                continue;
+            };
+            max_number = Some(max_number.map_or(n, |prev| prev.max(n)));
+        }
+        Ok(max_number)
+    }
 }
 
 #[cfg(test)]

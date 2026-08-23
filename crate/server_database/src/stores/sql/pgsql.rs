@@ -1453,6 +1453,17 @@ impl PermissionsStore for PgPool {
                 .collect())
         })
     }
+
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
+        pg_retry!(self.pool, |client| {
+            let rows = client
+                .query("SELECT MAX(crl_number) FROM crls", &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let max: Option<i64> = rows.first().and_then(|row| row.get(0));
+            Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -178,6 +178,15 @@ impl Database {
     pub async fn list_crl_issuers(&self) -> DbResult<Vec<(String, String)>> {
         Ok(self.permissions.list_crl_issuers().await?)
     }
+
+    /// Return the highest `crl_number` across all stored CRLs, or `None` when none exist.
+    ///
+    /// Called once during [`KMS::instantiate`] to seed the CRL sequence counter so that
+    /// CRL Numbers are strictly monotonically increasing across server restarts
+    /// (RFC 5280 §5.2.3).
+    pub async fn get_max_crl_number(&self) -> DbResult<Option<u64>> {
+        Ok(self.permissions.get_max_crl_number().await?)
+    }
 }
 
 /// Private helpers for ceremony record encryption.
