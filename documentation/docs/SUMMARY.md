@@ -6,6 +6,7 @@
     - [Encrypting and decrypting at scale](use_cases/encrypting_and_decrypting_at_scale.md)
     - [Client-side and application-level encryption](use_cases/client_side_and_application_level_encryption.md)
     - [Public Key Infrastructure (PKI)](use_cases/pki.md)
+        - [Revocation & CRL Distribution](use_cases/pki-revocation.md)
     - [Anonymization](use_cases/anonymization.md)
 - [HSM support]()
     - [Introduction](hsm_support/introduction/index.md)
