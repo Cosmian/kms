@@ -29,6 +29,14 @@ use cosmian_logger::{debug, trace, warn};
 use openssl::x509::{X509, X509Crl};
 use time::OffsetDateTime;
 
+use crate::{
+    core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation},
+    error::KmsError,
+    kms_bail,
+    middlewares::UserId,
+    result::{KResult, KResultHelper},
+};
+
 /// In-memory cache of the most recently generated CRL per issuer.
 ///
 /// The public CRL endpoint (`GET /public/certificates/{id}/crl`) reads from
@@ -94,13 +102,6 @@ pub(crate) async fn get_cached_crl(
     }
 }
 
-use crate::{
-    core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation},
-    error::KmsError,
-    kms_bail,
-    middlewares::UserId,
-    result::{KResult, KResultHelper},
-};
 /// Generate a CRL for the given issuer certificate.
 ///
 /// # Arguments
@@ -259,10 +260,14 @@ pub(crate) async fn generate_crl(
     let next_update = generated_at + time::Duration::days(i64::from(validity));
     let generated_at_str = generated_at
         .format(&time::format_description::well_known::Rfc3339)
-        .unwrap_or_default();
+        .map_err(|e| {
+            KmsError::ServerError(format!("Failed to format CRL generated_at timestamp: {e}"))
+        })?;
     let next_update_str = next_update
         .format(&time::format_description::well_known::Rfc3339)
-        .unwrap_or_default();
+        .map_err(|e| {
+            KmsError::ServerError(format!("Failed to format CRL next_update timestamp: {e}"))
+        })?;
 
     // Persist to DB so the public CDP endpoint survives server restarts.
     if let Err(e) = kms
