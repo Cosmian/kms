@@ -52,7 +52,6 @@ Crate path: `crate/server`
 | `warn` | `Activate: object {} is already Active, rejecting` | `src/core/operations/activate.rs` | - | - |
 | `warn` | `AWS XKS create: key {uid} already exists (ignoring creation).` | `src/routes/aws_xks/key_metadata.rs` | `uid`: KMIP object UID | - |
 | `warn` | `Azure EKM client authentication is disabled, this should only be done in tests, and won't work for production environments.` | `src/start_kms_server.rs` | - | - |
-| `warn` | `Could not insert: certificate: AKI: {}, SKI: {}` | `src/core/operations/validate.rs` | - | - |
 | `warn` | `Failed to persist auto-activation of object {}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
 | `warn` | `Fetch JWKS: {e}` | `src/middlewares/jwt/jwks.rs` | `e`: caught error | - |
 | `warn` | `SigV4 failure: {signature_error}` | `src/routes/aws_xks/sigv4_middleware.rs` | `signature_error`: SigV4 signature validation error | - |
@@ -716,6 +715,7 @@ Crate path: `crate/server`
 | `debug` | `[crl-refresh-cron] Running scheduled CRL refresh check` | `src/cron.rs` | - | - |
 | `debug` | `[crl-refresh-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
 | `debug` | `[kms-init] Failed to read max CRL number from DB: {e};                          using unix timestamp as CRL counter seed` | `src/core/kms/mod.rs` | `e` | - |
+| `trace` | `Sorted candidate mismatch: cert AKI={}, SKI={}, sorted SKI={}, AKI={}` | `src/core/operations/validate.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 

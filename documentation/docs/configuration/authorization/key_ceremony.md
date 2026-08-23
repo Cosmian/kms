@@ -163,17 +163,11 @@ to custodians. The number of shares is auto-determined by the server from the
 `crypto_officer_users` count, and each share is auto-assigned to a different CO
 candidate (dual-control enforcement).
 
-No restart is required — the ceremony candidate exemption allows
-`Create`, `Import`, `CreateSplitKey`, and `JoinSplitKey` even before the ceremony
-completes, breaking the chicken-and-egg problem.
-
 ```mermaid
 sequenceDiagram
     actor Candidate as CO candidate<br/>(ceremony mode active)
-    actor Candidate as CO candidate<br/>(ceremony mode active)
     participant KMS
 
-    Note over Candidate,KMS: Phase 1 — Ceremony provisioning
     Note over Candidate,KMS: Phase 1 — Ceremony provisioning
 
     Candidate->>KMS: Create(AES-256) → key_id
@@ -182,9 +176,6 @@ sequenceDiagram
 
     Candidate->>KMS: CreateSplitKey(key_id)
     Note right of KMS: Auto-determines share count<br/>from crypto_officer_users.len()<br/>Assigns share i → co_users[i % n]<br/>Source key destroyed after split
-
-    Candidate->>KMS: CreateSplitKey(ceremony_key_id)
-    Note right of KMS: Server auto-determines share count<br/>from crypto_officer_users.len()<br/>Shares auto-assigned to different CO candidates
 
     KMS-->>Candidate: [share_1_id, share_2_id, ..., share_n_id]
 

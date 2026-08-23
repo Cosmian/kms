@@ -70,7 +70,6 @@ static CRL_CACHE_MAP: LazyLock<tokio::sync::RwLock<HashMap<String, Vec<u8>>>> =
 /// - There is an error verifying the chain signature.
 /// - There is an error validating the chain date.
 /// - There is an error verifying the CRLs (Certificate Revocation Lists).
-/// ```
 pub(crate) async fn validate_operation(
     kms: &KMS,
     request: Validate,
@@ -340,10 +339,14 @@ fn sort_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
                     break;
                 }
 
-                warn!(
-                    "Could not insert: certificate: AKI: {}, SKI: {}",
+                // Not yet placeable: this sorted_certificate is not the right neighbour.
+                // Try the next sorted candidate in the inner loop before giving up.
+                trace!(
+                    "Sorted candidate mismatch: cert AKI={}, SKI={}, sorted SKI={}, AKI={}",
                     hex::encode(aki),
-                    hex::encode(ski)
+                    hex::encode(ski),
+                    hex::encode(ski_2),
+                    hex::encode(aki_2)
                 );
             }
         }
@@ -380,7 +383,6 @@ fn sort_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
 /// * If there is an issue creating the store context for verification.
 /// * If the verification of the certificate chain fails.
 /// * If the verification of individual certificates in the chain fails.
-/// ```
 fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
     trace!(
         "verify_chain_signature: entering: number of certificates: {}",
@@ -678,7 +680,6 @@ async fn get_crl_bytes(
 /// * If there is an issue deserializing a CRL.
 /// * If the CRL signature is invalid.
 /// * If there is an issue fetching the CRL bytes from the URIs.
-/// ```
 pub(crate) async fn verify_crls(
     certificates: Vec<X509>,
     proxy_params: Option<&ProxyParams>,
@@ -784,9 +785,15 @@ pub(crate) async fn verify_crls(
                 let crl_issuer_der = crl_issuer.to_der()?;
                 let mut verified = false;
                 for cand in certificates.iter().take(idx + 1) {
-                    if cand.subject_name().to_der().as_deref().unwrap_or(&[])
-                        == crl_issuer_der.as_slice()
-                    {
+                    // Propagate DER encoding failures rather than silently skipping
+                    // the issuer match (which would leave `verified = false` and reject
+                    // a valid CRL as unverified).
+                    let cand_subject_der = cand.subject_name().to_der().map_err(|e| {
+                        KmsError::Certificate(format!(
+                            "Failed to DER-encode candidate subject name for CRL issuer match: {e}"
+                        ))
+                    })?;
+                    if cand_subject_der.as_slice() == crl_issuer_der.as_slice() {
                         let key = cand.public_key()?;
                         if crl.verify(&key)? {
                             verified = true;
