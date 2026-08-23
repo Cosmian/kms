@@ -1324,6 +1324,21 @@ impl PermissionsStore for SqlitePool {
             .map_err(DbError::from)?;
         Ok(result)
     }
+
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
+        let sql = "SELECT MAX(crl_number) FROM crls".to_owned();
+        let max: Option<i64> = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Option<i64>, rusqlite::Error> {
+                    c.query_row(&sql, [], |row| row.get(0)).optional()
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        // The DB stores crl_number as i64; convert back to u64.
+        Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
+    }
 }
 
 impl SqlitePool {

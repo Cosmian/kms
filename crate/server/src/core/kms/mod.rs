@@ -4,7 +4,11 @@ mod kmip;
 mod other_kms_methods;
 pub(crate) mod permissions;
 
-use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
+use std::{
+    collections::HashMap,
+    num::NonZeroUsize,
+    sync::{Arc, atomic::AtomicU64},
+};
 
 use cosmian_kms_server_database::{
     CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
@@ -97,6 +101,14 @@ pub struct KMS {
     /// Optional HSM instance for PKCS#11 operations.
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
     pub(crate) hsm: Option<Arc<dyn HSM + Send + Sync>>,
+
+    /// Monotonically increasing CRL sequence counter (RFC 5280 §5.2.3).
+    ///
+    /// Seeded on startup from `max(unix_timestamp, db_max_crl_number + 1)` so
+    /// that CRL Numbers are strictly greater than any previously issued number
+    /// across server restarts.  The `fetch_add` ensures uniqueness even when
+    /// two CRLs are generated within the same second.
+    pub(crate) crl_counter: Arc<AtomicU64>,
 }
 
 impl KMS {
@@ -250,6 +262,29 @@ impl KMS {
             }
         }
 
+        // Seed the CRL sequence counter (RFC 5280 §5.2.3 — monotonically increasing).
+        //
+        // The counter must be strictly greater than any CRL Number previously stored in the
+        // DB, so that relying-party caches never see a CRL with a lower sequence number
+        // after a server restart.  The seed is max(unix_timestamp, db_max + 1).
+        let crl_counter = {
+            let ts_seed =
+                u64::try_from(time::OffsetDateTime::now_utc().unix_timestamp()).unwrap_or(1);
+            let db_max = match database.get_max_crl_number().await {
+                Ok(Some(max)) => max,
+                Ok(None) => 0,
+                Err(e) => {
+                    // Non-fatal: fall back to timestamp seed only.
+                    cosmian_logger::debug!(
+                        "[kms-init] Failed to read max CRL number from DB: {e}; \
+                         using unix timestamp as CRL counter seed"
+                    );
+                    0
+                }
+            };
+            Arc::new(AtomicU64::new(ts_seed.max(db_max + 1)))
+        };
+
         Ok(Self {
             params: server_params.clone(),
             database,
@@ -257,6 +292,7 @@ impl KMS {
             // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
             hsm: hsm_instances.into_iter().next(),
             metrics,
+            crl_counter,
         })
     }
 

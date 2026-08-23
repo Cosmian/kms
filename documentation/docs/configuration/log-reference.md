@@ -715,6 +715,7 @@ Crate path: `crate/server`
 | `info` | `[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}'              (expires within {overlap_hours}h)` | `src/cron.rs` | `issuer_id`, `overlap_hours` | - |
 | `debug` | `[crl-refresh-cron] Running scheduled CRL refresh check` | `src/cron.rs` | - | - |
 | `debug` | `[crl-refresh-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
+| `debug` | `[kms-init] Failed to read max CRL number from DB: {e};                          using unix timestamp as CRL counter seed` | `src/core/kms/mod.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`
 

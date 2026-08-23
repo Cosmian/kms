@@ -107,4 +107,12 @@ pub trait PermissionsStore {
     /// Used by the background CRL refresh scheduler to identify CRLs that are
     /// expiring soon without fetching the full DER bytes for every CA.
     async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>>;
+
+    /// Return the highest `crl_number` stored across all issuers, or `None` when
+    /// no CRL has ever been persisted.
+    ///
+    /// Used on startup to seed the monotonically-increasing CRL sequence counter
+    /// so that CRL Numbers remain strictly greater than any previously issued
+    /// number across server restarts (RFC 5280 §5.2.3).
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>>;
 }

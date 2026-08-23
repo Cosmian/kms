@@ -6,10 +6,7 @@
 
 use std::{
     collections::HashMap,
-    sync::{
-        LazyLock,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::{LazyLock, atomic::Ordering},
     time::Instant,
 };
 
@@ -47,17 +44,6 @@ use time::OffsetDateTime;
 type CrlCacheInner = HashMap<String, (Vec<u8>, Instant, String)>;
 static GENERATED_CRL_CACHE: LazyLock<tokio::sync::RwLock<CrlCacheInner>> =
     LazyLock::new(|| tokio::sync::RwLock::new(HashMap::new()));
-
-/// Monotonically increasing CRL sequence counter.
-///
-/// Initialized to the current unix timestamp on first use so that CRL Numbers
-/// remain unique across server restarts (RFC 5280 §5.2.3 requires monotonic
-/// increase). The `fetch_add` guarantees uniqueness even when two CRLs are
-/// generated within the same second.
-static CRL_SEQUENCE_COUNTER: LazyLock<AtomicU64> = LazyLock::new(|| {
-    let base = u64::try_from(OffsetDateTime::now_utc().unix_timestamp()).unwrap_or(1);
-    AtomicU64::new(base)
-});
 
 /// Retrieve the most recently cached CRL DER bytes for an issuer.
 ///
@@ -173,6 +159,34 @@ pub(crate) async fn generate_crl(
         KmsError::InvalidRequest(format!("Failed to parse issuer certificate DER: {e}"))
     })?;
 
+    // Enforce RFC 5280 §4.2.1.3: if the issuer certificate carries a keyUsage extension,
+    // the cRLSign bit MUST be set.  OpenSSL's X509_CRL_sign() does not check this itself —
+    // it is the application's responsibility.  A CA without cRLSign produces a CRL that
+    // RFC-conforming relying parties will reject during path validation.
+    {
+        use x509_parser::prelude::{FromDer, ParsedExtension, X509Certificate};
+        let Ok((_, parsed)) = X509Certificate::from_der(&issuer_cert_der) else {
+            kms_bail!(KmsError::InvalidRequest(format!(
+                "Failed to parse issuer certificate '{issuer_certificate_id}' for keyUsage check"
+            )));
+        };
+        if let Some(ku) = parsed.iter_extensions().find_map(|ext| {
+            if let ParsedExtension::KeyUsage(ku) = ext.parsed_extension() {
+                Some(ku)
+            } else {
+                None
+            }
+        }) {
+            if !ku.crl_sign() {
+                kms_bail!(KmsError::InvalidRequest(format!(
+                    "Issuer certificate '{issuer_certificate_id}' does not have the \
+                     cRLSign bit set in its keyUsage extension (RFC 5280 §4.2.1.3). \
+                     CRL signing requires this bit."
+                )));
+            }
+        }
+    }
+
     // 2. Retrieve the issuer private key (via PrivateKeyLink on the certificate)
     let issuer_private_key_id = issuer_owm
         .attributes()
@@ -209,9 +223,10 @@ pub(crate) async fn generate_crl(
     );
 
     // 4. Assign a monotonically increasing CRL number (RFC 5280 §5.2.3).
-    // Using an atomic counter seeded from the unix timestamp avoids duplicate
-    // CRL Numbers when two CRLs are generated within the same second.
-    let crl_number = CRL_SEQUENCE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    // The counter is seeded at startup from max(unix_timestamp, db_max + 1) to
+    // ensure CRL Numbers are strictly greater than any previously issued number
+    // across server restarts.  fetch_add ensures uniqueness within a single run.
+    let crl_number = kms.crl_counter.fetch_add(1, Ordering::Relaxed);
 
     // 5. Build and sign the CRL
     // Priority: explicit caller override → server-configured default (`crl_default_validity_days`).
