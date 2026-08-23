@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { downloadFile } from "../../utils/utils";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
@@ -14,6 +15,7 @@ const CertificateGenerateCrlForm: React.FC = () => {
     const [form] = Form.useForm<GenerateCrlFormData>();
     const { res, isLoading, responseRef, execute } = useActionState();
     const { serverUrl } = useAuth();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: GenerateCrlFormData) => {
         await execute(async () => {
@@ -36,11 +38,7 @@ const CertificateGenerateCrlForm: React.FC = () => {
             if (!response.ok) {
                 const errorText = await response.text();
                 if (response.status === 404) {
-                    throw new Error(
-                        `No CRL found for issuer '${values.issuerCertificateId}'. ` +
-                            "The CRL is generated automatically when a certificate is revoked. " +
-                            "If no certificate has been revoked yet, the CRL may not exist.",
-                    );
+                    throw new Error(t("certificateGenerateCrl.error404", { issuerId: values.issuerCertificateId }));
                 }
                 throw new Error(`${response.status}: ${errorText}`);
             }
@@ -64,48 +62,47 @@ const CertificateGenerateCrlForm: React.FC = () => {
 
             downloadFile(output, `crl.${ext}`, mimeType);
 
-            return `CRL downloaded successfully (${output.length} bytes, ${values.outputFormat.toUpperCase()} format)`;
+            return t("certificateGenerateCrl.success", {
+                bytes: output.length,
+                format: values.outputFormat.toUpperCase(),
+            });
         });
     };
 
     return (
-        <Card title="Download CRL">
+        <Card title={t("certificateGenerateCrl.title")}>
             <Alert
                 type="info"
                 showIcon
                 className="mb-4"
-                message="The CRL is downloaded from the public distribution point."
-                description={
-                    "Revoked certificates are collected from all users automatically. " +
-                    "The CRL is refreshed on every revocation and by a background scheduler. " +
-                    "No Crypto Officer role is required to download it."
-                }
+                message={t("certificateGenerateCrl.alertMessage")}
+                description={t("certificateGenerateCrl.alertDescription")}
             />
             <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ outputFormat: "der" }}>
                 <Form.Item
-                    label="Issuer Certificate ID"
+                    label={t("certificateGenerateCrl.issuerCertificateId")}
                     name="issuerCertificateId"
-                    rules={[{ required: true, message: "Please enter the issuer (CA) certificate ID" }]}
+                    rules={[{ required: true, message: t("certificateGenerateCrl.issuerCertificateIdRequired") }]}
                 >
-                    <Input placeholder="Enter the CA certificate unique identifier" data-testid="issuer-certificate-id" />
+                    <Input placeholder={t("certificateGenerateCrl.issuerCertificateIdPlaceholder")} data-testid="issuer-certificate-id" />
                 </Form.Item>
 
-                <Form.Item label="Output Format" name="outputFormat">
+                <Form.Item label={t("certificateGenerateCrl.outputFormat")} name="outputFormat">
                     <Select data-testid="output-format">
-                        <Select.Option value="der">DER (binary)</Select.Option>
-                        <Select.Option value="pem">PEM (text)</Select.Option>
+                        <Select.Option value="der">{t("certificateGenerateCrl.formatDer")}</Select.Option>
+                        <Select.Option value="pem">{t("certificateGenerateCrl.formatPem")}</Select.Option>
                     </Select>
                 </Form.Item>
 
                 <Form.Item>
                     <Space>
                         <Button type="primary" htmlType="submit" loading={isLoading} data-testid="submit-generate-crl">
-                            Download CRL
+                            {t("certificateGenerateCrl.submit")}
                         </Button>
                     </Space>
                 </Form.Item>
             </Form>
-            <ActionResponse title="CRL Download Result" res={res} responseRef={responseRef} />
+            <ActionResponse title={t("certificateGenerateCrl.responseTitle")} res={res} responseRef={responseRef} />
         </Card>
     );
 };
