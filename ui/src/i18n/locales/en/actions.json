@@ -1890,5 +1890,20 @@
         "responseTitle": "Join Split Key Response",
         "result": "Key successfully reconstructed from {{count}} shares.\nReconstructed key UID: {{uid}}",
         "resultFallback": "Join operation completed. Response: {{response}}"
+    },
+    "certificateGenerateCrl": {
+        "title": "Download CRL",
+        "alertMessage": "The CRL is downloaded from the public distribution point.",
+        "alertDescription": "Revoked certificates are collected from all users automatically. The CRL is refreshed on every revocation and by a background scheduler. No Crypto Officer role is required to download it.",
+        "issuerCertificateId": "Issuer Certificate ID",
+        "issuerCertificateIdRequired": "Please enter the issuer (CA) certificate ID",
+        "issuerCertificateIdPlaceholder": "Enter the CA certificate unique identifier",
+        "outputFormat": "Output Format",
+        "formatDer": "DER (binary)",
+        "formatPem": "PEM (text)",
+        "submit": "Download CRL",
+        "responseTitle": "CRL Download Result",
+        "error404": "No CRL found for issuer '{{issuerId}}'. The CRL is generated automatically when a certificate is revoked. If no certificate has been revoked yet, the CRL may not exist.",
+        "success": "CRL downloaded successfully ({{bytes}} bytes, {{format}} format)"
     }
 }
