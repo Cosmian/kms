@@ -105,5 +105,6 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 | `/rust-simplify` | Find simplification opportunities in Rust code |
 | `/rust-error-propagation` | Audit `Result` propagation chains |
 | `/react-ant-patterns` | UI coding conventions |
+| `/ckms-subcommand-test` | **After adding a `ckms` subcommand or flag** — write + run integration tests |
 | `/kms-changelog` | Writing the branch CHANGELOG entry |
 | `/threat-model` | STRIDE-A threat model |
