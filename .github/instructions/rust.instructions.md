@@ -62,9 +62,103 @@ grep -rn "\.unwrap()\|\.expect(\|panic!\|todo!\|unimplemented!\|process::exit\|p
 
 ## Testing
 
+**AI agent mandatory rule: Every new Rust module or feature introduced in a PR MUST include all four test layers below before the PR is considered complete. This rule is non-negotiable and cannot be skipped or deferred.**
+
+### 4 mandatory test layers
+
+| Layer | Location | Runs with | Purpose |
+|-------|----------|-----------|---------|
+| **Unit** | `#[cfg(test)]` at bottom of same file | `cargo test -p <crate> <module>` | Isolate a single function / algorithm correctness |
+| **DB persistence** | `crate/server_database/src/tests/` shared helper called from each backend | `cargo test -p cosmian_kms_server_database` | Verify upsert/read/max/list round-trips for every new DB method |
+| **Functional** | `crate/server/src/tests/<feature>_tests.rs` | `cargo test -p cosmian_kms_server <feature>_tests` | End-to-end operation through `KMS::` API; covers happy paths, error cases, format variants |
+| **Security/non-regression** | Same file as functional or a dedicated `_security.rs` | Same runner | Replay of every security invariant: enforcement, boundary values, restart monotonicity, invalid inputs |
+
+### Mandatory content per layer
+
+**Unit tests** (file: same file as the code, `#[cfg(test)]` submodule):
+
+- Cover every public function's happy path.
+- Cover at least one error case per fallible function.
+- For any cryptographic primitive: verify round-trip (encode → decode → compare).
+- For any ASN.1 encoding: assert the DER tag byte explicitly (e.g., `0x0A` for ENUMERATED).
+
+**DB persistence tests** (shared helper, called from all backends):
+
+- Empty table → query returns `None` / `[]`.
+- Single insert → retrieve returns the exact bytes inserted.
+- Multiple inserts → aggregate query (`MAX`, `COUNT`, `LIST`) returns the correct result.
+- Upsert replaces previous value (not duplicates).
+- Unknown key → returns `None`, no panic.
+- Monotonicity invariant: `seed = max(ts, db_max + 1) > db_max` holds.
+
+**Functional tests** (new file `crate/server/src/tests/<feature>_tests.rs`):
+
+- Use `make_kms()` / `test_kms()` for in-process SQLite tests (no network).
+- Cover the full lifecycle: create → operate → verify state.
+- Test all output formats (DER, PEM, JSON) when applicable.
+- Test that the result is persisted and retrievable from cache/DB.
+- Test that auto-triggers work (e.g., revoke → CRL auto-refresh).
+- Test REST endpoint responses: 200 with correct MIME, 404 when not found.
+
+**Security/non-regression tests** (same file, clearly labeled):
+
+- Every cryptographic invariant the code comments claim must be asserted.
+- Every security check that was added (e.g., keyUsage enforcement) must have a test that fires the error path.
+- All enumeration values of any KMIP enum must be exercised (e.g., all `RevocationReasonCode` values).
+- Restart-invariant properties: simulate what happens after `KMS::instantiate()` is called a second time on the same DB.
+
+### Reference implementation: CRL feature
+
+`crate/server/src/tests/crl_tests.rs` is the canonical reference for this 4-layer pattern:
+
+```text
+crl.rs (unit)                  ← test_build_empty_crl, test_build_crl_with_entries,
+                                  test_crl_reason_asn1_tag_is_enumerated
+permissions_test.rs (DB)       ← crl_persistence() — empty, upsert, max, list, replace
+crl_tests.rs (functional)      ← 14 tests covering all paths, endpoints, formats
+crl_tests.rs (security)        ← cRLSign enforcement, reason code mapping, restart monotonicity
+```
+
+Study this file before implementing tests for any new cryptographic feature.
+
+### Template for new functional test file
+
+```rust
+//! Tests for the <FeatureName> feature.
+//!
+//! | Category | Tests |
+//! |----------|-------|
+//! | Unit | in `crate/crypto/src/openssl/<module>.rs` |
+//! | DB | in `crate/server_database/src/tests/permissions_test.rs` |
+//! | Functional | <list tests here> |
+//! | Security | <list security tests here> |
+
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+// ... imports ...
+
+async fn make_kms() -> KResult<Arc<KMS>> {
+    init_openssl_providers_for_tests();
+    Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?)
+        .map(Ok)  // adjust to project idiom
+}
+
+// ── Functional tests ──────────────────────────────────────────────────────────
+#[tokio::test]
+async fn test_<feature>_happy_path() -> KResult<()> { ... }
+
+// ── Security / non-regression tests ───────────────────────────────────────────
+#[tokio::test]
+async fn test_<feature>_rejects_invalid_input() -> KResult<()> { ... }
+```
+
+### Rules
+
 - Unit tests go in a `#[cfg(test)]` submodule at the bottom of the same file.
 - Use `use super::*;` in test modules.
 - Run targeted tests: `cargo test -p <crate> <test_name>` — not the full suite.
+- **Never mark a test `#[ignore]` to make the suite green.** If a test requires infrastructure (DB, network), annotate it with the reason: `#[ignore = "Requires running PostgreSQL"]`.
+- Register every new test module in `crate/server/src/tests/mod.rs`.
 
 ## Documentation
 
