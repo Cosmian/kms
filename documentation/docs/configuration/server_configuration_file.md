@@ -323,7 +323,7 @@ hostname = "0.0.0.0"
 # Examples:
 # --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs, kacls-migration, another-audience"
 # --jwt-auth-provider="https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/v2.0,https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/discovery/v2.0/keys"
-# --jwt-auth-provider="https://<your-tenant>.<region>.auth0.com/""
+# --jwt-auth-provider="https://<your-tenant>.<region>.auth0.com/"
 # This argument can be repeated to configure multiple identity providers.
 # jwt_auth_provider = [
 #   "https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience,another_client_id",
