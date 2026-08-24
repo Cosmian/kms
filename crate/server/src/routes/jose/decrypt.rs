@@ -25,7 +25,7 @@ use super::{
     JoseAlgorithm, JoseEncAlgorithm, aes_gcm::aes_gcm_decrypt, b64_decode, b64_encode, cek_cache,
     cek_size_bytes, encrypt::build_jwe_aad, jose_oaep_hashes, jose_to_kmip_params,
 };
-use crate::core::{KMS, retrieve_object_utils::retrieve_object_for_operation};
+use crate::core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation};
 
 /// `POST /v1/crypto/decrypt` — JOSE content decryption (JWE Flattened JSON).
 ///
@@ -187,7 +187,7 @@ async fn decrypt_rsa_oaep(
 
     // Resolve the private key — accept either private or public key UID
     let owm = Box::pin(retrieve_object_for_operation(
-        &kid,
+        ObjectHandle::from(&kid),
         KmipOperation::Decrypt,
         kms,
         user,
@@ -209,7 +209,7 @@ async fn decrypt_rsa_oaep(
                     )
                 })?;
             Box::pin(retrieve_object_for_operation(
-                &priv_key_uid.to_string(),
+                ObjectHandle::from(&priv_key_uid.to_string()),
                 KmipOperation::Decrypt,
                 kms,
                 user,

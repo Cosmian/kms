@@ -8,7 +8,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::trace;
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{KMS, uid_utils::ObjectHandle},
     result::KResult,
 };
 
@@ -113,7 +113,7 @@ pub(crate) async fn locate(
         let mut filtered = Vec::with_capacity(uids.len());
         for uid in uids {
             let uid_str = uid.as_str().unwrap_or_default();
-            if has_prefix(uid_str).is_some() {
+            if ObjectHandle::from(uid_str).is_hsm() {
                 // Check if user has any granted operation on this HSM key
                 let ops = kms
                     .database

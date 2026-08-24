@@ -35,6 +35,7 @@ use crate::{
     core::{
         KMS,
         operations::key_ops::ObjectLifecycleExt,
+        uid_utils::ObjectHandle,
         wrapping::{unwrap_object, wrap_and_cache, wrap_object},
     },
     error::KmsError,
@@ -53,11 +54,11 @@ impl KMS {
     /// skipping. For tag-based queries, ineligible keys are filtered out.
     pub(crate) async fn retrieve_eligible_keys(
         &self,
-        uid_or_tags: &str,
+        object_handle: ObjectHandle<'_>,
         object_type: ObjectType,
     ) -> KResult<Vec<ObjectWithMetadata>> {
-        let is_tag_query = uid_or_tags.starts_with('[');
-        let objects = self.database.retrieve_objects(uid_or_tags).await?;
+        let is_tag_query = matches!(object_handle, ObjectHandle::Tags(_));
+        let objects = self.database.retrieve_objects(object_handle).await?;
         let mut eligible = Vec::new();
 
         for owm in objects.into_values() {
@@ -146,8 +147,8 @@ impl KMS {
             if let Some(ref new_wrapping_uid) = r.rewrap_to {
                 Box::pin(self.rewrap_dependants(
                     user,
-                    c.owm.id(),
-                    new_wrapping_uid,
+                    ObjectHandle::from(c.owm.id()),
+                    ObjectHandle::from(new_wrapping_uid),
                     &mut operations,
                 ))
                 .await?;
@@ -219,10 +220,12 @@ impl KMS {
     pub(crate) async fn rewrap_dependants(
         &self,
         owner: &str,
-        old_uid: &str,
-        new_uid: &str,
+        old_handle: ObjectHandle<'_>,
+        new_handle: ObjectHandle<'_>,
         operations: &mut Vec<AtomicOperation>,
     ) -> KResult<()> {
+        let old_uid = old_handle.as_str();
+        let new_uid = new_handle.as_str();
         let wrapped_dependants = match self.database.find_wrapped_by(old_uid, owner).await {
             Ok(deps) => deps,
             Err(e) => {
@@ -561,8 +564,11 @@ pub(crate) fn setup_new_key(
 ///
 /// HSM-managed keys have no KMIP attribute storage and are often non-extractable
 /// (`CKA_EXTRACTABLE = false`) — they must be managed via the HSM's own tools.
-pub(in crate::core::operations::rekey) fn reject_hsm_uid(uid: &str, op_name: &str) -> KResult<()> {
-    if uid.starts_with("hsm::") {
+pub(in crate::core::operations::rekey) fn reject_hsm_uid(
+    uid: ObjectHandle<'_>,
+    op_name: &str,
+) -> KResult<()> {
+    if uid.is_hsm() {
         return Err(KmsError::NotSupported(format!(
             "{op_name} is not supported for HSM-managed keys. \
              Use PKCS#11 vendor tools or the HSM administration console \

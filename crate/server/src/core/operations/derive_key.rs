@@ -23,7 +23,7 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::user_has_permission},
+    core::{KMS, retrieve_object_utils::user_has_permission, uid_utils::ObjectHandle},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -79,13 +79,17 @@ pub(crate) async fn derive_key(
         );
     }
 
-    // Get the base key identifier from the correct field
-    let base_key_id = request.object_unique_identifier.to_string();
+    // Classify the base key identifier from the correct field as early as possible.
+    let base_key_handle = ObjectHandle::try_from(&request.object_unique_identifier)?;
 
     // Retrieve the base key from the database
-    let Some(mut base_key_owm) = kms.database.retrieve_object(&base_key_id).await? else {
+    let Some(mut base_key_owm) = kms
+        .database
+        .retrieve_object(base_key_handle.as_str())
+        .await?
+    else {
         kms_bail!(KmsError::InvalidRequest(format!(
-            "DeriveKey: failed to retrieve base object {base_key_id}"
+            "DeriveKey: failed to retrieve base object {base_key_handle}"
         )))
     };
 
@@ -95,7 +99,7 @@ pub(crate) async fn derive_key(
 
     if !has_permission {
         kms_bail!(KmsError::Unauthorized(format!(
-            "User {user} does not have DeriveKey permission on object {base_key_id}"
+            "User {user} does not have DeriveKey permission on object {base_key_handle}"
         )));
     }
 
@@ -304,7 +308,7 @@ pub(crate) async fn derive_key(
     // Add the link to the base object's attributes (need to retrieve and update)
     let mut base_object_owm = kms
         .database
-        .retrieve_object(&base_key_id)
+        .retrieve_object(base_key_handle.as_str())
         .await?
         .ok_or_else(|| KmsError::InvalidRequest("Failed to retrieve base object".to_owned()))?;
 
@@ -315,7 +319,7 @@ pub(crate) async fn derive_key(
 
     kms.database
         .update_object(
-            &base_key_id,
+            base_key_handle.as_str(),
             base_object_owm.object(),
             base_object_owm.attributes(),
             None, // tags

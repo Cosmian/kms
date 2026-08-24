@@ -32,7 +32,7 @@ use super::subject::{KeyPairData, Subject};
 use crate::{
     core::{
         KMS, operations::create_key_pair::generate_key_pair,
-        retrieve_object_utils::retrieve_object_for_operation,
+        retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
     },
     error::KmsError,
     kms_bail,
@@ -105,7 +105,7 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &str) -> KRe
     // no CSR provided. Was the reference to an existing certificate or public key provided?
     let public_key = if let Some(request_id) = &request.unique_identifier {
         if let Ok(owm) = Box::pin(retrieve_object_for_operation(
-            &request_id.to_string(),
+            ObjectHandle::from(&request_id.to_string()),
             KmipOperation::Certify,
             kms,
             user,

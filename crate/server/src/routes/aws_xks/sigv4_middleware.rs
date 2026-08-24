@@ -272,14 +272,9 @@ fn to_http_request(
             http_request_builder.header(header_name.as_str(), header_value.as_bytes());
     }
     if !host_header_available {
-        debug!(
-            "Sigv4 Middleware - Adding missing HOST header: {}",
-            actix_req.connection_info().host()
-        );
-        http_request_builder = http_request_builder.header(
-            http::header::HOST,
-            actix_req.connection_info().host().as_bytes(),
-        );
+        let host = actix_req.connection_info().host().to_owned();
+        debug!("Sigv4 Middleware - Adding missing HOST header: {}", host);
+        http_request_builder = http_request_builder.header(http::header::HOST, host.as_bytes());
     }
     // http_request_builder =
     //     http_request_builder.header(http::header::HOST, "localhost:9998".as_bytes());

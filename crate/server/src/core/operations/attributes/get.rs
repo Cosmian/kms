@@ -21,9 +21,13 @@ use strum::IntoEnumIterator;
 use time::OffsetDateTime;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{
+        KMS,
+        retrieve_object_utils::retrieve_object_for_operation,
+        uid_utils::{ObjectHandle, from_request},
+    },
     error::KmsError,
-    result::{KResult, KResultHelper},
+    result::KResult,
 };
 
 pub(crate) async fn get_attributes(
@@ -38,15 +42,18 @@ pub(crate) async fn get_attributes(
     // In that case, fallback to the most recently created accessible object for the user.
     let mut implicit_uid_buf: Option<String> = None; // preferred owned by user
     let implicit_uid_any_buf: Option<String> = None; // fallback if ownership not matched
-    let uid_or_tags: &str = if let Some(uid) = request.unique_identifier.as_ref() {
-        uid.as_str()
-            .context("Get Attributes: the unique identifier must be a string")?
+    let object_handle: ObjectHandle<'_> = if let Some(uid) = request.unique_identifier.as_ref() {
+        from_request(Some(uid), "Get Attributes")?
     } else {
         // Fallback: retrieve objects and deterministically pick the most recently touched object
         // (prefer owned by user). This aligns with vector semantics when UIDs are omitted.
         let mut best_user: Option<(String, Option<OffsetDateTime>)> = None;
         let mut best_any: Option<(String, Option<OffsetDateTime>)> = None;
-        for (id, owm) in kms.database.retrieve_objects("*").await? {
+        for (id, owm) in kms
+            .database
+            .retrieve_objects(ObjectHandle::from("*"))
+            .await?
+        {
             let attrs = owm.attributes();
             let ts = attrs
                 .last_change_date
@@ -87,7 +94,7 @@ pub(crate) async fn get_attributes(
         if let Some(id) = chosen {
             implicit_uid_buf = Some(id);
         }
-        implicit_uid_buf
+        let s = implicit_uid_buf
             .as_deref()
             .or(implicit_uid_any_buf.as_deref())
             .ok_or_else(|| {
@@ -95,11 +102,12 @@ pub(crate) async fn get_attributes(
                     ErrorReason::Item_Not_Found,
                     "Get Attributes: no objects available for implicit selection".to_owned(),
                 )
-            })?
+            })?;
+        ObjectHandle::from(s)
     };
 
     let owm = Box::pin(retrieve_object_for_operation(
-        uid_or_tags,
+        object_handle,
         KmipOperation::GetAttributes,
         kms,
         user,
@@ -154,7 +162,7 @@ pub(crate) async fn get_attributes(
         }
         Object::CertificateRequest { .. } | Object::PGPKey { .. } | Object::SplitKey { .. } => {
             return Err(KmsError::InvalidRequest(format!(
-                "get: unsupported object type for {uid_or_tags}",
+                "get: unsupported object type for {object_handle}"
             )));
         }
     };

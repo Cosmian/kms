@@ -14,9 +14,9 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::trace;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
-    result::{KResult, KResultHelper},
+    result::KResult,
 };
 
 /// KMIP 2.1 Activate Operation
@@ -57,13 +57,10 @@ pub(crate) async fn activate(
     trace!("{}", serde_json::to_string(&request)?);
 
     // there must be an identifier
-    let uid_or_tags = request
-        .unique_identifier
-        .as_str()
-        .context("Activate: the unique identifier must be a string")?;
+    let object_handle = from_request(Some(&request.unique_identifier), "Activate")?;
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
-        uid_or_tags,
+        object_handle,
         KmipOperation::Activate,
         kms,
         user,

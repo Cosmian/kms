@@ -27,7 +27,7 @@ use super::{
     aes_gcm::{aes_gcm_encrypt, generate_cek},
     b64_decode, b64_encode, cek_cache, jose_oaep_hashes, jose_to_kmip_params,
 };
-use crate::core::{KMS, retrieve_object_utils::retrieve_object_for_operation};
+use crate::core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation};
 
 /// `POST /v1/crypto/encrypt` — JOSE content encryption (JWE Flattened JSON).
 ///
@@ -144,7 +144,7 @@ async fn encrypt_rsa_oaep(
 ) -> CryptoResult<CryptoEncryptResponse> {
     // Resolve the key — accept either private or public key UID
     let owm = Box::pin(retrieve_object_for_operation(
-        &kid,
+        ObjectHandle::from(&kid),
         KmipOperation::Encrypt,
         kms,
         user,
@@ -159,7 +159,7 @@ async fn encrypt_rsa_oaep(
             let pkey = if let Some(pub_key_uid) = owm.attributes().get_link(LinkType::PublicKeyLink)
             {
                 let pub_owm = Box::pin(retrieve_object_for_operation(
-                    &pub_key_uid.to_string(),
+                    ObjectHandle::from(&pub_key_uid.to_string()),
                     KmipOperation::Encrypt,
                     kms,
                     user,

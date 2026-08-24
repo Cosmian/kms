@@ -284,10 +284,12 @@ pub(crate) async fn message(
 async fn revert_activation_to_preactive(kms: &KMS, uid: &str, user: &str) -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::KmipOperation;
 
-    use crate::core::retrieve_object_utils::retrieve_object_for_operation;
+    use crate::core::{
+        retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
+    };
 
     let mut owm = Box::pin(retrieve_object_for_operation(
-        uid,
+        ObjectHandle::from(uid),
         KmipOperation::GetAttributes,
         kms,
         user,

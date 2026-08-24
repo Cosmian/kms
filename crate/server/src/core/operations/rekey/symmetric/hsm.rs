@@ -16,58 +16,10 @@ use cosmian_logger::trace;
 use time::OffsetDateTime;
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{KMS, uid_utils::ObjectHandle},
     error::KmsError,
     result::KResult,
 };
-
-/// Components extracted from an HSM key UID (`{prefix}::{slot}::{base_id}[@N]`).
-struct ParsedHsmUid {
-    prefix: String,
-    slot_id: usize,
-    base_id: String,
-    old_gen: i32,
-    has_explicit_gen: bool,
-}
-
-impl ParsedHsmUid {
-    /// Returns the stable base UID (no generation suffix).
-    fn full_base_uid(&self) -> String {
-        format!("{}::{}::{}", self.prefix, self.slot_id, self.base_id)
-    }
-}
-
-/// Parse an HSM key UID into its components.
-///
-/// Expected format: `{prefix}::{slot}::{base_id}` or `{prefix}::{slot}::{base_id}@{gen}`.
-fn parse_hsm_uid(uid: &str) -> KResult<ParsedHsmUid> {
-    // TODO(ecse): Parse HSM property with regex
-    let prefix = has_prefix(uid)
-        .ok_or_else(|| KmsError::InvalidRequest(format!("UID '{uid}' is not an HSM UID")))?
-        .to_owned();
-    let rest = uid
-        .strip_prefix(&format!("{prefix}::"))
-        .ok_or_else(|| KmsError::InvalidRequest("HSM UID has unexpected format".to_owned()))?;
-    let (slot_str, key_id) = rest.split_once("::").ok_or_else(|| {
-        KmsError::InvalidRequest(format!(
-            "HSM UID '{uid}' must have format '{prefix}::<slot>::<key_id>'"
-        ))
-    })?;
-    let slot_id: usize = slot_str.parse().map_err(|e| {
-        KmsError::InvalidRequest(format!("HSM slot_id '{slot_str}' is not valid: {e}"))
-    })?;
-    let (base_id, old_gen, has_explicit_gen) = key_id
-        .rsplit_once('@')
-        .and_then(|(base, suffix)| suffix.parse::<i32>().ok().map(|n| (base, n, true)))
-        .unwrap_or((key_id, 0, false));
-    Ok(ParsedHsmUid {
-        prefix,
-        slot_id,
-        base_id: base_id.to_owned(),
-        old_gen,
-        has_explicit_gen,
-    })
-}
 
 impl KMS {
     /// Find the latest generation UID in a keyset identified by `rotate_name`.
@@ -138,13 +90,13 @@ impl KMS {
 
         // Parse the UID early — prefix, slot_id, and key_id are needed for the
         // keyset-name fallback resolution that follows.
-        let parsed = parse_hsm_uid(uid)?;
+        let parsed = ObjectHandle::from(uid).hsm_parts()?;
         let full_base_uid = parsed.full_base_uid();
         let (prefix, slot_id, base_id, old_gen, has_explicit_gen) = (
             &parsed.prefix,
             parsed.slot_id,
             &parsed.base_id,
-            parsed.old_gen,
+            parsed.generation,
             parsed.has_explicit_gen,
         );
 
@@ -322,7 +274,13 @@ impl KMS {
         // they remain accessible under the new generation without requiring
         // the caller to keep the old HSM key alive.
         let mut operations: Vec<AtomicOperation> = Vec::new();
-        Box::pin(self.rewrap_dependants(user, uid, &new_uid, &mut operations)).await?;
+        Box::pin(self.rewrap_dependants(
+            user,
+            ObjectHandle::from(uid),
+            ObjectHandle::from(&new_uid),
+            &mut operations,
+        ))
+        .await?;
         if !operations.is_empty() {
             self.database
                 .atomic(user, &operations)

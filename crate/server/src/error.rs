@@ -258,6 +258,10 @@ impl From<InterfaceError> for KmsError {
     fn from(value: InterfaceError) -> Self {
         match value {
             InterfaceError::NotSupported(msg) => Self::NotSupported(msg),
+            // Preserve the InvalidRequest variant (used by ObjectHandle::hsm_parts / TryFrom and
+            // the object stores) instead of collapsing it into `Default`, which would drop the
+            // variant and prefix the message with "Invalid Request: ".
+            InterfaceError::InvalidRequest(msg) => Self::InvalidRequest(msg),
             other => Self::Default(other.to_string()),
         }
     }

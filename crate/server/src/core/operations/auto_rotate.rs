@@ -20,7 +20,7 @@ use crate::{
             recertify::recertify,
             rekey::{rekey, rekey_keypair},
         },
-        uid_utils::has_prefix,
+        uid_utils::ObjectHandle,
     },
     result::KResult,
 };
@@ -65,7 +65,7 @@ pub(crate) async fn run_auto_rotation(kms: &KMS) {
     );
 
     for (uid, owner) in &due_keys {
-        if let Err(e) = Box::pin(rotate_one_key(kms, uid, owner)).await {
+        if let Err(e) = Box::pin(rotate_one_key(kms, ObjectHandle::from(uid), owner)).await {
             // Logged inside rotate_one_key; the outer loop continues.
             debug!("[auto-rotate] rotate_one_key returned: {e}");
         }
@@ -80,9 +80,10 @@ pub(crate) async fn run_auto_rotation(kms: &KMS) {
 /// AWS KMS, Azure Key Vault, and GCP Cloud KMS.
 ///
 /// Errors are also logged as `warn!` here so the caller loop can continue.
-async fn rotate_one_key(kms: &KMS, uid: &str, owner: &str) -> KResult<()> {
+async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &str) -> KResult<()> {
+    let uid = handle.as_str();
     // HSM keys: the KMS cannot generate new key material inside an HSM
-    if has_prefix(uid).is_some() {
+    if handle.is_hsm() {
         debug!("[auto-rotate] Skipping HSM key {uid}");
         return Ok(());
     }
@@ -174,7 +175,9 @@ async fn rotate_one_key(kms: &KMS, uid: &str, owner: &str) -> KResult<()> {
             // accidental double-rotation on manual rekeys; the scheduler is
             // responsible for re-arming its own replacements.
             if let Some(interval) = old_interval {
-                if let Err(e) = rearm_rotation_policy(kms, new_uid, interval).await {
+                if let Err(e) =
+                    rearm_rotation_policy(kms, ObjectHandle::from(new_uid), interval).await
+                {
                     warn!(
                         "[auto-rotate] Failed to re-arm rotation policy on replacement {new_uid}: {e}"
                     );
@@ -197,7 +200,8 @@ async fn rotate_one_key(kms: &KMS, uid: &str, owner: &str) -> KResult<()> {
 /// `set_rotation_metadata_from` intentionally zeroes `rotate_interval` on manual rekeys so
 /// the user must opt back in. For auto-rotation, the scheduler re-arms the replacement here,
 /// preserving perpetual rotation — matching AWS KMS, Azure Key Vault, and GCP Cloud KMS.
-async fn rearm_rotation_policy(kms: &KMS, new_uid: &str, interval: i64) -> KResult<()> {
+async fn rearm_rotation_policy(kms: &KMS, handle: ObjectHandle<'_>, interval: i64) -> KResult<()> {
+    let new_uid = handle.as_str();
     let owm = match kms.database.retrieve_object(new_uid).await {
         Ok(Some(owm)) => owm,
         Ok(None) => {
@@ -253,7 +257,7 @@ pub(crate) async fn dispatch_renewal_warnings(kms: &KMS, warned: &mut HashMap<St
 
     for (uid, owner) in &approaching {
         // HSM keys are excluded from auto-rotation, skip warnings too
-        if has_prefix(uid).is_some() {
+        if ObjectHandle::from(uid).is_hsm() {
             continue;
         }
 

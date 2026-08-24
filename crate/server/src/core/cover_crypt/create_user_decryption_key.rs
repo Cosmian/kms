@@ -23,7 +23,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 
 use super::KMS;
-use crate::{error::KmsError, kms_bail, result::KResult};
+use crate::{core::ObjectHandle, error::KmsError, kms_bail, result::KResult};
 
 /// Create a User Decryption Key in the KMS.
 ///
@@ -35,7 +35,7 @@ pub(crate) async fn create_user_decryption_key(
     owner: &str,
     sensitive: bool,
 ) -> KResult<Object> {
-    let msk_uid_or_tags = create_request
+    let msk_handle = create_request
         .attributes
         .get_parent_id()
         .ok_or_else(|| {
@@ -47,7 +47,7 @@ pub(crate) async fn create_user_decryption_key(
 
     for owm in kmip_server
         .database
-        .retrieve_objects(&msk_uid_or_tags)
+        .retrieve_objects(ObjectHandle::from(&msk_handle))
         .await?
         .into_values()
     {
@@ -99,7 +99,7 @@ pub(crate) async fn create_user_decryption_key(
     }
 
     Err(KmsError::InvalidRequest(format!(
-        "get: no Covercrypt master secret key found for: {msk_uid_or_tags}",
+        "get: no Covercrypt master secret key found for: {msk_handle}",
     )))
 }
 
