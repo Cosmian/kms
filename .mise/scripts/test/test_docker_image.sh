@@ -205,6 +205,43 @@ docker run --rm --entrypoint '' "${DOCKER_IMAGE_NAME}" sh -c '
 }
 echo "=== CA bundle test passed ==="
 
+# === TLS + non-root user test (regression: issue #1132) ===
+# Verifies that mTLS certificate authentication works when the KMS runs as
+# UID 1000 with a read-only root filesystem (the Helm chart security context).
+# This scenario was impossible to test in 5.26 because /etc/passwd was missing.
+HOST_TLS_NONROOT_PORT="${KMS_SLOT_KMS_TLS_NONROOT_PORT:-15099}"
+echo "=== TLS + non-root user test: 127.0.0.1:${HOST_TLS_NONROOT_PORT} ==="
+openssl_test "127.0.0.1:${HOST_TLS_NONROOT_PORT}" "tls1_2"
+openssl_test "127.0.0.1:${HOST_TLS_NONROOT_PORT}" "tls1_3"
+echo "=== TLS + non-root user test passed ==="
+
+# === FIPS / non-FIPS variant assertion ===
+# The /version endpoint embeds the OpenSSL build string, e.g.:
+#   "5.26.0 (OpenSSL 3.6.2 7 Apr 2026-FIPS)"       ← fips image
+#   "5.26.0 (OpenSSL 3.6.2 7 Apr 2026-non-FIPS)"   ← non-fips image
+# This catches accidentally shipping the wrong variant binary.
+echo "=== FIPS/non-FIPS variant check (KMS_TLS_CONFIG_FLAVOR=${KMS_TLS_CONFIG_FLAVOR}) ==="
+VERSION_STRING=$(curl -sf "http://127.0.0.1:${HOST_HTTP_PORT}/version")
+echo "  /version → ${VERSION_STRING}"
+if [[ "${KMS_TLS_CONFIG_FLAVOR}" == "fips" ]]; then
+  echo "${VERSION_STRING}" | grep -q "FIPS" || {
+    echo "ERROR: expected FIPS build but version string contains no 'FIPS': ${VERSION_STRING}"
+    exit 1
+  }
+  echo "${VERSION_STRING}" | grep -q "non-FIPS" && {
+    echo "ERROR: version string contains 'non-FIPS' but this is the FIPS image: ${VERSION_STRING}"
+    exit 1
+  } || true
+  echo "  Confirmed: FIPS build ✓"
+else
+  echo "${VERSION_STRING}" | grep -q "non-FIPS" || {
+    echo "ERROR: expected non-FIPS build but version string contains no 'non-FIPS': ${VERSION_STRING}"
+    exit 1
+  }
+  echo "  Confirmed: non-FIPS build ✓"
+fi
+echo "=== FIPS/non-FIPS variant check passed ==="
+
 # === Config-file based compose test ===
 echo "Running config-based compose test ($COMPOSE_FILE:kms-with-conf)"
 docker compose -f "$COMPOSE_FILE" logs --tail=120 kms-with-conf || true
