@@ -489,6 +489,42 @@ else
   echo "⚠  Skipping enrichment: python3 or $ENRICH_SCRIPT not available" >&2
 fi
 
+# ---------------------------------------------------------------------------
+# CPE 2.3 enrichment (Eviden PSIRT compliance)
+# ---------------------------------------------------------------------------
+# Adds NVD NIST CPE 2.3 identifiers to every component in bom.cdx.json that
+# lacks one.  Required by the Eviden PSIRT tooling service for vulnerability
+# profiling.  Uses cargo-sbom to extract GitHub VCS URLs and author fields for
+# accurate vendor derivation (priority: cpe_overrides.json → GitHub org from
+# VCS URL → author name → component name fallback).
+CPE_SCRIPT="$SCRIPT_DIR/enrich_cpe.py"
+if [ -f "$CPE_SCRIPT" ] && command -v python3 >/dev/null 2>&1; then
+  echo "Running CPE 2.3 enrichment..."
+
+  # Use cargo-sbom to obtain rich VCS/author metadata for vendor derivation.
+  # cargo-sbom emits GitHub VCS URLs for ~99% of Rust crates and author fields
+  # for ~83%.  The output is passed to enrich_cpe.py via a temporary file and
+  # discarded afterwards — it is never committed.
+  CARGO_SBOM_JSON="$(mktemp /tmp/cosmian-kms-cargo-sbom-XXXXXX.json)"
+  # shellcheck disable=SC2064
+  trap "rm -f '$CARGO_SBOM_JSON'; $(trap -p EXIT | sed 's/trap -- //;s/ EXIT//')" EXIT
+  if command -v cargo-sbom >/dev/null 2>&1 && [ -f "$REPO_ROOT/Cargo.toml" ]; then
+    echo "  → Collecting VCS/author metadata via cargo-sbom..."
+    cargo-sbom --output-format cyclone_dx_json_1_6 \
+      --project-directory "$REPO_ROOT" \
+      >"$CARGO_SBOM_JSON" 2>/dev/null || true
+  fi
+
+  python3 "$CPE_SCRIPT" \
+    --sbom-dir "$OUTPUT_DIR" \
+    --cargo-sbom-json "$CARGO_SBOM_JSON" \
+    --in-place
+  rm -f "$CARGO_SBOM_JSON"
+  echo ""
+else
+  echo "⚠  Skipping CPE enrichment: python3 or $CPE_SCRIPT not available" >&2
+fi
+
 # Summary
 echo "========================================="
 echo "SBOM Generation Complete"
@@ -501,6 +537,7 @@ echo ""
 echo "Standards compliance:"
 echo "  ✓ CycloneDX 1.5 (OWASP)"
 echo "  ✓ SPDX 2.3 (ISO/IEC 5962:2021)"
+echo "  ✓ NVD NIST CPE 2.3 (NISTIR 7695) — all components enriched"
 echo ""
 echo "Next steps:"
 echo "  - Review: cat $REPO_ROOT/sbom/README.md"

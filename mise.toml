@@ -7,7 +7,11 @@ RUST_BACKTRACE = "1"
 [tools]
 node = "22"
 "npm:pnpm" = "10.17.1"
-usage = "latest"
+usage = "6.3.0"
+# SBOM / CBOM generation tools — pinned to specific versions for reproducibility
+"cargo:cargo-cyclonedx" = "0.5.9"
+"cargo:cargo-sbom" = "0.10.0"
+"npm:@cyclonedx/cdxgen" = "12.8.4"
 # Rust is managed by rust-toolchain.toml (mise auto-detects)
 
 [task_config]
