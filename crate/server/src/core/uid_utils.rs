@@ -4,7 +4,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::U
 pub(crate) use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::ObjectHandle;
 use cosmian_logger::trace;
 
-use crate::{config::HsmInstanceParams, core::KMS, error::KmsError, result::KResult};
+use crate::{
+    config::HsmInstanceParams, core::KMS, error::KmsError, middlewares::UserId, result::KResult,
+};
 
 /// Build an [`ObjectHandle`] from an optional `UniqueIdentifier` request field.
 ///
@@ -203,7 +205,7 @@ pub(crate) fn parse_keyset_identifier(identifier: &str) -> Option<KeysetRef> {
 pub(crate) async fn resolve_keyset_to_single_uid(
     keyset_ref: &KeysetRef,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<Option<String>> {
     let generation = match &keyset_ref.version {
         KeysetVersion::Latest | KeysetVersion::Bare => None,
@@ -251,7 +253,7 @@ pub(crate) async fn resolve_uid_or_keyset(
     handle: ObjectHandle<'_>,
     op_name: &str,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<Option<String>> {
     let Some(keyset_ref) = as_keyset_ref(handle) else {
         return Ok(None);
@@ -290,7 +292,7 @@ pub(crate) async fn resolve_uid_or_keyset(
 pub(crate) async fn walk_keyset_chain(
     keyset_name: &str,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<Vec<String>> {
     let results = kms
         .database

@@ -17,7 +17,8 @@ use cosmian_logger::log_init;
 use zeroize::Zeroizing;
 
 use crate::{
-    config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
+    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
+    tests::test_utils::https_clap_config,
 };
 
 const TEST_DATA: &[u8] = b"Hello, world! This is a test message for signing.";
@@ -27,7 +28,7 @@ const TEST_DATA_DIGESTED: &[u8] =
 /// Test signing and verification (with and without digested data)
 async fn test_single_signature(
     kms: Arc<KMS>,
-    owner: &str,
+    owner: &UserId,
     private_key_id: &UniqueIdentifier,
     public_key_id: &UniqueIdentifier,
 ) -> KResult<()> {
@@ -91,7 +92,7 @@ async fn test_single_signature(
 /// Test streaming signature verification with multiple calls
 async fn test_streaming_signature_verification(
     kms: Arc<KMS>,
-    owner: &str,
+    owner: &UserId,
     private_key_id: &UniqueIdentifier,
     public_key_id: &UniqueIdentifier,
 ) -> KResult<()> {
@@ -173,7 +174,7 @@ async fn test_sign_rsa() -> KResult<()> {
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_user_rsa_sign";
+    let owner = UserId::new("test_user_rsa_sign");
 
     // Create RSA key pair
     let request = create_rsa_key_pair_request(
@@ -184,12 +185,12 @@ async fn test_sign_rsa() -> KResult<()> {
         false,      // sensitive
         None,       // wrapping_key_id
     )?;
-    let response = kms.create_key_pair(request, owner).await?;
+    let response = kms.create_key_pair(request, &owner).await?;
 
     // Test single-call signature
     test_single_signature(
         kms.clone(),
-        owner,
+        &owner,
         &response.private_key_unique_identifier,
         &response.public_key_unique_identifier,
     )
@@ -198,7 +199,7 @@ async fn test_sign_rsa() -> KResult<()> {
     // Test streaming signature verification
     test_streaming_signature_verification(
         kms.clone(),
-        owner,
+        &owner,
         &response.private_key_unique_identifier,
         &response.public_key_unique_identifier,
     )
@@ -211,7 +212,7 @@ async fn test_sign_ec_curve(curve: RecommendedCurve, test_name: &str) -> KResult
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = &format!("test_user_{test_name}_sign");
+    let owner = UserId::new(format!("test_user_{test_name}_sign"));
 
     // Create EC key pair with specified curve
     let request = create_ec_key_pair_request(
@@ -222,12 +223,12 @@ async fn test_sign_ec_curve(curve: RecommendedCurve, test_name: &str) -> KResult
         false,      // sensitive
         None,       // wrapping_key_id
     )?;
-    let response = kms.create_key_pair(request, owner).await?;
+    let response = kms.create_key_pair(request, &owner).await?;
 
     // Test single-call signature
     test_single_signature(
         kms.clone(),
-        owner,
+        &owner,
         &response.private_key_unique_identifier,
         &response.public_key_unique_identifier,
     )
@@ -236,7 +237,7 @@ async fn test_sign_ec_curve(curve: RecommendedCurve, test_name: &str) -> KResult
     // Test streaming signature verification
     test_streaming_signature_verification(
         kms.clone(),
-        owner,
+        &owner,
         &response.private_key_unique_identifier,
         &response.public_key_unique_identifier,
     )

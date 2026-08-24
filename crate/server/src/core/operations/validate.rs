@@ -27,6 +27,7 @@ use crate::{
         uid_utils::ObjectHandle,
     },
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -54,7 +55,7 @@ static CRL_CACHE_MAP: LazyLock<tokio::sync::RwLock<HashMap<String, Vec<u8>>>> =
 ///
 /// * `kms` - A reference to the KMS (Key Management Service) instance.
 /// * `request` - The `Validate` request containing the unique identifier and/or certificates to be validated.
-/// * `user` - A string slice representing the user requesting the validation.
+/// * `user` - A `UserId` representing the user requesting the validation.
 /// * `params` - An optional reference to additional database parameters.
 ///
 /// # Returns
@@ -74,7 +75,7 @@ static CRL_CACHE_MAP: LazyLock<tokio::sync::RwLock<HashMap<String, Vec<u8>>>> =
 pub(crate) async fn validate_operation(
     kms: &KMS,
     request: Validate,
-    user: &str,
+    user: &UserId,
 ) -> KResult<ValidateResponse> {
     trace!("Validate: {}", request);
 
@@ -726,7 +727,7 @@ pub(crate) async fn verify_crls(
 async fn certificates_by_uid(
     unique_identifiers: Vec<UniqueIdentifier>,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<Vec<Vec<u8>>> {
     for uid in &unique_identifiers {
         debug!("{} identifiers", uid);
@@ -741,7 +742,11 @@ async fn certificates_by_uid(
 }
 
 // Fetches a certificate. If it fails, returns the according error
-async fn certificate_by_uid(handle: ObjectHandle<'_>, kms: &KMS, user: &str) -> KResult<Vec<u8>> {
+async fn certificate_by_uid(
+    handle: ObjectHandle<'_>,
+    kms: &KMS,
+    user: &UserId,
+) -> KResult<Vec<u8>> {
     let uid_owm = Box::pin(retrieve_object_for_operation(
         handle,
         KmipOperation::Validate,

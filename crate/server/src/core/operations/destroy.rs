@@ -27,6 +27,7 @@ use crate::{
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
@@ -34,7 +35,7 @@ use crate::{
 pub(crate) async fn destroy_operation(
     kms: &KMS,
     request: Destroy,
-    user: &str,
+    user: &UserId,
 ) -> KResult<DestroyResponse> {
     trace!("{request}");
     // there must be an identifier
@@ -79,7 +80,7 @@ pub(crate) async fn recursively_destroy_object(
     remove: bool,
     cascade: bool,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
     // keys that should be skipped
     mut ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
@@ -108,7 +109,7 @@ pub(crate) async fn recursively_destroy_object(
             }
             kms.database.delete(&uid).await?;
             count += 1;
-            info!(uid = uid, user = user, "Destroyed object");
+            info!(uid = uid, user = user.as_str(), "Destroyed object");
             continue;
         }
 

@@ -16,6 +16,7 @@ use zeroize::Zeroizing;
 use crate::{
     core::KMS,
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
     routes::{
         azure_ekm::{
@@ -34,7 +35,7 @@ const AZURE_EKM_REQUIRED_AES_KEY_LENGTH: i32 = 256;
 
 pub(crate) async fn get_key_metadata_handler(
     key_name: String,
-    user: String,
+    user: UserId,
     kms: Data<Arc<KMS>>,
 ) -> KResult<HttpResponse> {
     let get_request = Get {
@@ -138,7 +139,7 @@ pub(crate) async fn get_key_metadata_handler(
 async fn get_and_validate_kek_algorithm(
     kms: &KMS,
     key_name: &str,
-    user: &str,
+    user: &UserId,
     request_alg: &WrapAlgorithm,
 ) -> Result<CryptographicAlgorithm, AzureEkmErrorReply> {
     let key_object = kms
@@ -201,7 +202,7 @@ async fn get_and_validate_kek_algorithm(
 pub(crate) async fn wrap_key_handler(
     kms: &KMS,
     key_name: &str,
-    user: &str,
+    user: &UserId,
     request: WrapKeyRequest,
 ) -> Result<WrapKeyResponse, AzureEkmErrorReply> {
     // Decode the input key from base64url
@@ -293,7 +294,7 @@ pub(crate) async fn wrap_key_handler(
 async fn kmip_encrypt_dek(
     kms: &KMS,
     key_uid: String,
-    user: &str,
+    user: &UserId,
     dek_bytes: Zeroizing<Vec<u8>>,
     crypto_params: CryptographicParameters,
     correlation_id: String,
@@ -314,7 +315,7 @@ async fn kmip_encrypt_dek(
 async fn wrap_with_aes(
     kms: &KMS,
     key_name: &str,
-    user: &str,
+    user: &UserId,
     dek_bytes: Zeroizing<Vec<u8>>,
     alg: &WrapAlgorithm,
     correlation_id: String,
@@ -348,7 +349,7 @@ async fn wrap_with_aes(
 async fn wrap_with_rsa(
     kms: &KMS,
     key_name: &str,
-    user: &str,
+    user: &UserId,
     dek_bytes: Zeroizing<Vec<u8>>,
     hashing_algorithm: HashingAlgorithm,
     correlation_id: String,
@@ -372,7 +373,7 @@ async fn wrap_with_rsa(
 pub(crate) async fn unwrap_key_handler(
     kms: &KMS,
     key_name: &str,
-    user: &str,
+    user: &UserId,
     request: UnwrapKeyRequest,
 ) -> Result<UnwrapKeyResponse, AzureEkmErrorReply> {
     let wrapped_dek_bytes = URL_SAFE_NO_PAD.decode(&request.value).map_err(|e| {
@@ -436,7 +437,7 @@ pub(crate) async fn unwrap_key_handler(
 async fn kmip_decrypt_dek(
     kms: &KMS,
     key_uid: String,
-    user: &str,
+    user: &UserId,
     data: Vec<u8>,
     crypto_params: CryptographicParameters,
     correlation_id: String,
@@ -457,7 +458,7 @@ async fn kmip_decrypt_dek(
 async fn unwrap_with_aes(
     kms: &KMS,
     key_name: &str,
-    user: &str,
+    user: &UserId,
     wrapped_dek_bytes: Vec<u8>,
     alg: &WrapAlgorithm,
     correlation_id: String,
@@ -491,7 +492,7 @@ async fn unwrap_with_aes(
 async fn unwrap_with_rsa(
     kms: &KMS,
     key_name: &str,
-    user: &str,
+    user: &UserId,
     wrapped_dek_bytes: Vec<u8>,
     hashing_algorithm: HashingAlgorithm,
     correlation_id: String,

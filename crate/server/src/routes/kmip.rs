@@ -31,6 +31,7 @@ use crate::{
         operations::{dispatch, message},
     },
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -157,7 +158,7 @@ pub(crate) async fn kmip_2_1_json(
 
     let user = kms.get_user(&req_http);
     let auth_method = kms.get_auth_method(&req_http);
-    debug!(target: "kmip", user=user, ?auth_method, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
+    debug!(target: "kmip", user = user.as_str(), ?auth_method, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1)).await?;
 
@@ -177,7 +178,13 @@ pub(crate) async fn kmip_2_1_json(
 ///
 /// The input request could be either a single KMIP `Operation` or
 /// multiple KMIP `Operation` serialized in a single KMIP `Message`
-async fn handle_ttlv(kms: &KMS, ttlv: TTLV, user: &str, major: i32, minor: i32) -> KResult<TTLV> {
+async fn handle_ttlv(
+    kms: &KMS,
+    ttlv: TTLV,
+    user: &UserId,
+    major: i32,
+    minor: i32,
+) -> KResult<TTLV> {
     if ttlv.tag.as_str() == "RequestMessage" {
         let req = match from_ttlv::<RequestMessage>(ttlv) {
             Ok(req) => req,
@@ -266,7 +273,7 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
 
     debug!(
         target: "kmip",
-        user=user,
+        user = user.as_str(),
         tag=ttlv.tag.as_str(),
         "POST /kmip {}.{} JSON. Request: {:?} {}", major ,minor, ttlv.tag.as_str(), user
     );
@@ -302,12 +309,12 @@ pub(crate) async fn kmip_binary(
 }
 
 /// Handle KMIP requests in TTLV binary format
-pub(crate) async fn handle_ttlv_bytes(user: &str, ttlv_bytes: &[u8], kms: &Arc<KMS>) -> Vec<u8> {
+pub(crate) async fn handle_ttlv_bytes(user: &UserId, ttlv_bytes: &[u8], kms: &Arc<KMS>) -> Vec<u8> {
     let Ok((major, minor)) = TTLV::find_version(ttlv_bytes) else {
         error!(target: "kmip", "Failed to find KMIP version");
         return vec![];
     };
-    let span = tracing::info_span!("kmip_binary", user = user);
+    let span = tracing::info_span!("kmip_binary", user = user.as_str());
     handle_ttlv_bytes_inner(user, ttlv_bytes, major, minor, kms)
         .instrument(span)
         .await
@@ -328,7 +335,7 @@ pub(crate) async fn handle_ttlv_bytes(user: &str, ttlv_bytes: &[u8], kms: &Arc<K
 }
 
 async fn handle_ttlv_bytes_inner(
-    user: &str,
+    user: &UserId,
     ttlv_bytes: &[u8],
     major: i32,
     minor: i32,
@@ -347,7 +354,7 @@ async fn handle_ttlv_bytes_inner(
     // log the request bytes
     debug!(
         target: "kmip",
-        user=user,
+        user = user.as_str(),
         "Request bytes: {}",
         hex::encode(ttlv_bytes)
     );
@@ -357,13 +364,13 @@ async fn handle_ttlv_bytes_inner(
     let tag = ttlv.tag.clone();
     debug!(
         target: "kmip",
-        user=user,
+        user = user.as_str(),
         tag=tag,
         "POST /kmip {}.{} Binary. Request: {:?} {}", major, minor, tag, user
     );
     debug!(
         target: "kmip",
-        user=user,
+        user = user.as_str(),
         tag=tag,
         "Request TTLV: {ttlv:#?}"
     );
@@ -377,7 +384,7 @@ async fn handle_ttlv_bytes_inner(
     // log the request
     trace!(
         target: "kmip",
-        user=user,
+        user = user.as_str(),
         tag=tag,
         "Request Message: {request_message}"
     );
@@ -390,7 +397,7 @@ async fn handle_ttlv_bytes_inner(
     // log the response
     trace!(
         target: "kmip",
-        user=user,
+        user = user.as_str(),
         tag=tag,
         "Response Message: {response_message}"
     );
@@ -401,7 +408,7 @@ async fn handle_ttlv_bytes_inner(
 
     debug!(
         target: "kmip",
-        user=user,
+        user = user.as_str(),
         tag=tag,
         "Response Message TTLV: {response_ttlv:#?}"
     );
@@ -412,7 +419,7 @@ async fn handle_ttlv_bytes_inner(
 
     debug!(
         target: "kmip",
-        user=user,
+        user = user.as_str(),
         tag=tag,
         "Response Message Bytes: {}", hex::encode(&response_bytes)
     );

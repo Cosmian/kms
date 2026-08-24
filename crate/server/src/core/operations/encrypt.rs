@@ -54,6 +54,7 @@ use crate::{
     core::{KMS, operations::CryptoOpSpec},
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -90,7 +91,7 @@ impl CryptoOpSpec for EncryptOp {
     fn map_selection_error(
         e: KmsError,
         unique_identifier: &UniqueIdentifier,
-        user: &str,
+        user: &UserId,
     ) -> KmsError {
         match e {
             KmsError::ItemNotFound(_) => {
@@ -108,7 +109,7 @@ impl CryptoOpSpec for EncryptOp {
         kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
-        _user: &str,
+        _user: &UserId,
     ) -> KResult<Self::Response> {
         let data = request.data.as_ref().ok_or_else(|| {
             KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
@@ -159,7 +160,11 @@ impl CryptoOpSpec for EncryptOp {
     }
 }
 
-pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<EncryptResponse> {
+pub(crate) async fn encrypt(
+    kms: &KMS,
+    request: Encrypt,
+    user: &UserId,
+) -> KResult<EncryptResponse> {
     trace!(
         "uid={:?}, data_len={}",
         request.unique_identifier,

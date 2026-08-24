@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use cosmian_kms_interfaces::UserId;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ErrorReason,
     kmip_2_1::{
@@ -48,7 +49,7 @@ async fn create_sym_key(kms: &Arc<KMS>, sensitive: bool) -> KResult<String> {
         None,
     )?;
     Ok(kms
-        .create(request, USER)
+        .create(request, &UserId::from(USER))
         .await?
         .unique_identifier
         .to_string())
@@ -60,7 +61,7 @@ async fn get_attributes(kms: &Arc<KMS>, uid: &str, tag: Tag) -> KResult<GetAttri
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
             attribute_reference: Some(vec![AttributeReference::Standard(tag)]),
         },
-        USER,
+        &UserId::from(USER),
     )
     .await
 }
@@ -104,7 +105,7 @@ async fn test_always_sensitive_is_read_only() -> KResult<()> {
                 unique_identifier: UniqueIdentifier::TextString(uid.clone()),
                 new_attribute: Attribute::AlwaysSensitive(false),
             },
-            USER,
+            &UserId::from(USER),
         )
         .await;
     assert_read_only(&add);
@@ -115,7 +116,7 @@ async fn test_always_sensitive_is_read_only() -> KResult<()> {
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
                 new_attribute: Attribute::AlwaysSensitive(false),
             },
-            USER,
+            &UserId::from(USER),
         )
         .await;
     assert_read_only(&set);
@@ -126,7 +127,7 @@ async fn test_always_sensitive_is_read_only() -> KResult<()> {
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
                 new_attribute: Attribute::AlwaysSensitive(false),
             },
-            USER,
+            &UserId::from(USER),
         )
         .await;
     assert_read_only(&modify);
@@ -138,7 +139,7 @@ async fn test_always_sensitive_is_read_only() -> KResult<()> {
                 current_attribute: Some(Attribute::AlwaysSensitive(true)),
                 attribute_references: None,
             },
-            USER,
+            &UserId::from(USER),
         )
         .await;
     assert_read_only(&delete_by_value);
@@ -152,7 +153,7 @@ async fn test_always_sensitive_is_read_only() -> KResult<()> {
                     Tag::AlwaysSensitive,
                 )]),
             },
-            USER,
+            &UserId::from(USER),
         )
         .await;
     assert_read_only(&delete_by_ref);
@@ -182,7 +183,7 @@ async fn test_always_sensitive_derived_from_sensitive_changes() -> KResult<()> {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
             new_attribute: Attribute::Sensitive(false),
         },
-        USER,
+        &UserId::from(USER),
     )
     .await?;
     let response = get_attributes(&kms, &uid, Tag::AlwaysSensitive).await?;
@@ -194,7 +195,7 @@ async fn test_always_sensitive_derived_from_sensitive_changes() -> KResult<()> {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
             new_attribute: Attribute::Sensitive(true),
         },
-        USER,
+        &UserId::from(USER),
     )
     .await?;
     let response = get_attributes(&kms, &uid, Tag::AlwaysSensitive).await?;

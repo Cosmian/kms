@@ -23,7 +23,7 @@ use cosmian_logger::{info, trace};
 use strum::IntoEnumIterator;
 
 use super::modify_attribute;
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
 /// Processing of an input KMIP Message
 ///
@@ -35,10 +35,10 @@ use crate::{core::KMS, error::KmsError, result::KResult};
 pub(crate) async fn message(
     kms: &KMS,
     request: RequestMessage,
-    user: &str,
+    user: &UserId,
 ) -> KResult<ResponseMessage> {
     info!(
-        user = user,
+        user = user.as_str(),
         "KMIP Request message with {} operation(s): {:?}",
         request.batch_item.len(),
         request
@@ -281,7 +281,7 @@ pub(crate) async fn message(
 
 /// Revert an Activate operation by setting the object's state back to `PreActive` and clearing
 /// the `activation_date`. This is a best-effort revert used when batch UNDO is triggered.
-async fn revert_activation_to_preactive(kms: &KMS, uid: &str, user: &str) -> KResult<()> {
+async fn revert_activation_to_preactive(kms: &KMS, uid: &str, user: &UserId) -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::KmipOperation;
 
     use crate::core::{
@@ -355,7 +355,7 @@ fn get_operation_name(operation: &Operation) -> &'static str {
 
 async fn process_operation(
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 
     request_operation: Operation,
     protocol_version: Option<ProtocolVersion>,

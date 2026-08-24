@@ -27,7 +27,10 @@ use super::{
     aes_gcm::{aes_gcm_encrypt, generate_cek},
     b64_decode, b64_encode, cek_cache, jose_oaep_hashes, jose_to_kmip_params,
 };
-use crate::core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation};
+use crate::{
+    core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation},
+    middlewares::UserId,
+};
 
 /// `POST /v1/crypto/encrypt` — JOSE content encryption (JWE Flattened JSON).
 ///
@@ -48,7 +51,7 @@ pub(crate) async fn encrypt(
     let body = body.into_inner();
 
     trace!(
-        user = user,
+        user = user.as_str(),
         "POST /v1/crypto/encrypt kid={} alg={}", body.kid, body.alg
     );
 
@@ -75,7 +78,7 @@ pub(crate) async fn encrypt(
 /// Direct AES-GCM encryption — delegates to the KMIP Encrypt pipeline.
 async fn encrypt_dir(
     kms: &KMS,
-    user: &str,
+    user: &UserId,
     kid: String,
     enc: super::JoseEncAlgorithm,
     plaintext: &[u8],
@@ -135,7 +138,7 @@ async fn encrypt_dir(
 #[allow(clippy::too_many_arguments)]
 async fn encrypt_rsa_oaep(
     kms: &KMS,
-    user: &str,
+    user: &UserId,
     kid: String,
     alg: JoseAlgorithm,
     enc: super::JoseEncAlgorithm,

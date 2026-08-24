@@ -19,7 +19,7 @@ use cosmian_kms_crypto::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    PermissionsStore, UserId,
 };
 use cosmian_logger::{debug, trace};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
@@ -43,7 +43,7 @@ use crate::{
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
             objects_db::RedisOperation,
-            permissions::{ObjectUid, UserId},
+            permissions::{FindexUserId, ObjectUid},
         },
     },
 };
@@ -402,13 +402,13 @@ impl ObjectsStore for RedisWithFindex {
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
     ) -> InterfaceResult<String> {
         let (uid, db_object) = self
-            .prepare_object_for_create(uid, owner, object, attributes, tags)
+            .prepare_object_for_create(uid, owner.as_str(), object, attributes, tags)
             .await?;
 
         self.objects_db.object_create(&uid, &db_object).await?;
@@ -522,7 +522,7 @@ impl ObjectsStore for RedisWithFindex {
 
     async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
         // Track pending objects so that multiple operations on the same UID
@@ -559,7 +559,7 @@ impl ObjectsStore for RedisWithFindex {
                     let db_object = self
                         .prepare_object_for_insert(
                             uid,
-                            user,
+                            user.as_str(),
                             object,
                             attributes,
                             tags.as_ref(),
@@ -582,14 +582,14 @@ impl ObjectsStore for RedisWithFindex {
                     pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
-                AtomicOperation::Create((uid, object, attributes, tags)) => {
+                AtomicOperation::Create((uid, _owner, object, attributes, tags)) => {
                     // New objects are always live.
                     live_delta += 1;
 
                     let (uid, db_object) = self
                         .prepare_object_for_create(
                             Some(uid.clone()),
-                            user,
+                            user.as_str(),
                             object,
                             attributes,
                             tags,
@@ -682,13 +682,13 @@ impl ObjectsStore for RedisWithFindex {
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
-    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {
+    async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> InterfaceResult<bool> {
         let object = self
             .objects_db
             .object_get(uid)
             .await?
             .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?;
-        Ok(object.owner == owner)
+        Ok(object.owner == *owner)
     }
 
     async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
@@ -731,7 +731,7 @@ impl ObjectsStore for RedisWithFindex {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
@@ -789,7 +789,7 @@ impl ObjectsStore for RedisWithFindex {
             HashMap::new()
         } else {
             self.permission_db
-                .list_user_permissions(&UserId(user.to_owned()))
+                .list_user_permissions(&FindexUserId(user.as_str().to_owned()))
                 .await?
                 .into_iter()
                 .map(|(k, v)| (k.0, v))
@@ -802,7 +802,7 @@ impl ObjectsStore for RedisWithFindex {
             .into_iter()
             .filter(|(uid, redis_db_object)| {
                 state.is_none_or(|state| redis_db_object.state == state)
-                    && (if redis_db_object.owner == user {
+                    && (if redis_db_object.owner == *user {
                         true
                     } else {
                         permissions.contains_key(uid)
@@ -829,7 +829,7 @@ impl ObjectsStore for RedisWithFindex {
         &self,
         name: &str,
         generation: Option<i32>,
-        owner: &str,
+        owner: &UserId,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         // Search Findex for objects indexed under this rotate_name keyword
         let keyword = Keyword::from(format!("rotate_name::{name}").as_bytes());
@@ -853,7 +853,7 @@ impl ObjectsStore for RedisWithFindex {
         // Filter by owner, generation, and latest flag
         let mut results = Vec::new();
         for (uid, dbo) in redis_db_objects {
-            if dbo.owner != owner {
+            if dbo.owner != *owner {
                 continue;
             }
             let attrs = dbo.attributes.unwrap_or_default();
@@ -871,7 +871,7 @@ impl ObjectsStore for RedisWithFindex {
     async fn find_wrapped_by(
         &self,
         wrapping_key_uid: &str,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         // Search Findex for objects indexed under this wrapping key
         let keyword = Keyword::from(format!("wrapped_by::{wrapping_key_uid}").as_bytes());
@@ -895,12 +895,13 @@ impl ObjectsStore for RedisWithFindex {
         // Filter by access: user must own the object or have permissions on it
         let permissions = self
             .permission_db
-            .list_user_permissions(&UserId(user.to_owned()))
+            .list_user_permissions(&FindexUserId(user.as_str().to_owned()))
             .await?;
 
         let mut out = Vec::new();
         for (uid, dbo) in redis_db_objects {
-            let has_access = dbo.owner == user || permissions.contains_key(&ObjectUid(uid.clone()));
+            let has_access =
+                dbo.owner == *user || permissions.contains_key(&ObjectUid(uid.clone()));
             if !has_access {
                 continue;
             }
@@ -1005,11 +1006,11 @@ impl ObjectsStore for RedisWithFindex {
 impl PermissionsStore for RedisWithFindex {
     async fn list_user_operations_granted(
         &self,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         let permissions = self
             .permission_db
-            .list_user_permissions(&UserId(user.to_owned()))
+            .list_user_permissions(&FindexUserId(user.as_str().to_owned()))
             .await?;
         let redis_db_objects = self
             .objects_db
@@ -1056,14 +1057,14 @@ impl PermissionsStore for RedisWithFindex {
     async fn grant_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
         for operation in &operations {
             self.permission_db
                 .add(
                     &ObjectUid(uid.to_owned()),
-                    &UserId(user.to_owned()),
+                    &FindexUserId(user.as_str().to_owned()),
                     *operation,
                 )
                 .await?;
@@ -1076,14 +1077,14 @@ impl PermissionsStore for RedisWithFindex {
     async fn remove_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
         for operation in &operations {
             self.permission_db
                 .remove(
                     &ObjectUid(uid.to_owned()),
-                    &UserId(user.to_owned()),
+                    &FindexUserId(user.as_str().to_owned()),
                     *operation,
                 )
                 .await?;
@@ -1094,14 +1095,14 @@ impl PermissionsStore for RedisWithFindex {
     async fn list_user_operations_on_object(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         no_inherited_access: bool,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(self
             .permission_db
             .get(
                 &ObjectUid(uid.to_owned()),
-                &UserId(user.to_owned()),
+                &FindexUserId(user.as_str().to_owned()),
                 no_inherited_access,
             )
             .await

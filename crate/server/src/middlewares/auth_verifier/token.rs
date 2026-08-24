@@ -70,7 +70,7 @@ pub(super) async fn handle_auth_verifier(
 
     let username = verify_auth_verifier_jwt_subject(jwks_manager, token).await?;
     Ok(AuthenticatedUser {
-        username,
+        username: username.into(),
         auth_method: AuthMethod::AuthVerifierJwt,
     })
 }

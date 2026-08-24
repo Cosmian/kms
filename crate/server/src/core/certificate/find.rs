@@ -11,6 +11,7 @@ use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle},
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
@@ -25,7 +26,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
     private_key_id: Option<ObjectHandle<'_>>,
     certificate_id: Option<ObjectHandle<'_>>,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<(ObjectWithMetadata, ObjectWithMetadata)> {
     trace!(
         "Retrieving issuer private key and certificate: private_key_id: {:?}, certificate_id: {:?}",
@@ -98,7 +99,7 @@ pub(crate) async fn retrieve_certificate_for_private_key(
     private_key: &ObjectWithMetadata,
     operation_type: KmipOperation,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> Result<ObjectWithMetadata, KmsError> {
     trace!(
         "Retrieving certificate for private key: {}",
@@ -159,7 +160,7 @@ pub(crate) async fn retrieve_private_key_for_certificate(
     certificate_handle: ObjectHandle<'_>,
     operation_type: KmipOperation,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> Result<ObjectWithMetadata, KmsError> {
     trace!(
         "Retrieving private key for certificate: certificate_handle: {:?}",
@@ -214,7 +215,7 @@ async fn find_link_in_public_key(
     public_key_id: &LinkedObjectIdentifier,
     operation_type: KmipOperation,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> Result<LinkedObjectIdentifier, KmsError> {
     // TODO: retrieve only the attributes when #88 is fixed
     let public_key_owm = Box::pin(retrieve_object_for_operation(

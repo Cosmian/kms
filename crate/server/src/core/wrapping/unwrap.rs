@@ -17,6 +17,7 @@ use crate::{
     core::{KMS, uid_utils::ObjectHandle},
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
@@ -31,7 +32,7 @@ use crate::{
 ///
 /// # Returns
 /// * `KResult<()>` - the result of the operation
-pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &str) -> KResult<()> {
+pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &UserId) -> KResult<()> {
     if !object.is_wrapped() {
         debug!("object is not wrapped, no need to unwrap");
         return Ok(());
@@ -92,7 +93,7 @@ pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &str) ->
 async fn unwrap_using_kms(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
     handle: ObjectHandle<'_>,
 ) -> KResult<()> {
     let unwrapping_key_uid = handle.as_str();
@@ -160,7 +161,7 @@ async fn unwrap_using_kms(
         )));
     }
     // check user permissions
-    if unwrapping_key.owner() != user && user != kms.params.default_username {
+    if unwrapping_key.owner() != user && user != kms.params.default_username.as_str() {
         let ops = kms
             .database
             .list_user_operations_on_object(unwrapping_key.id(), user, false)

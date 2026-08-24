@@ -15,7 +15,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
 use rawsql::Loader;
@@ -360,7 +360,7 @@ impl ObjectsStore for SqlitePool {
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
@@ -389,7 +389,7 @@ impl ObjectsStore for SqlitePool {
         let attributes_json = serde_json::to_string(attributes)
             .map_err(|e| InterfaceError::Db(format!("failed serializing attributes: {e}")))?;
         let state_s = attributes.state.unwrap_or(State::PreActive).to_string();
-        let owner_s = owner.to_owned();
+        let owner_s: String = owner.as_str().to_owned();
         let wrapping_key_id = object.wrapping_key_uid();
 
         let insert_object = replace_dollars_with_qn(get_sqlite_query!("insert-objects"));
@@ -548,10 +548,10 @@ impl ObjectsStore for SqlitePool {
 
     async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
-        let user_s = user.to_owned();
+        let user_s: String = user.as_str().to_owned();
         let ops_owned: Vec<OwnedOp> = operations.iter().map(OwnedOp::from).collect();
         let v = self
             .writer
@@ -569,10 +569,10 @@ impl ObjectsStore for SqlitePool {
         Ok(v)
     }
 
-    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {
+    async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> InterfaceResult<bool> {
         let sql = get_sqlite_query!("has-row-objects").to_string();
         let uid_s = uid.to_owned();
-        let owner_s = owner.to_owned();
+        let owner_s: String = owner.as_str().to_owned();
         let owned = self
             .reader()
             .call(
@@ -628,7 +628,7 @@ impl ObjectsStore for SqlitePool {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
@@ -681,11 +681,11 @@ impl ObjectsStore for SqlitePool {
     async fn find_wrapped_by(
         &self,
         wrapping_key_uid: &str,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let sql = replace_dollars_with_qn(get_sqlite_query!("find-wrapped-by"));
         let uid_s = wrapping_key_uid.to_owned();
-        let user_s = user.to_owned();
+        let user_s: String = user.as_str().to_owned();
         let rows = self
             .reader()
             .call(
@@ -760,7 +760,7 @@ impl ObjectsStore for SqlitePool {
         &self,
         name: &str,
         generation: Option<i32>,
-        owner: &str,
+        owner: &UserId,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         let locate = find_by_rotate_name_query::<SqlitePlaceholder>(name, generation, owner);
         let sql = replace_dollars_with_qn(&locate.sql);
@@ -948,10 +948,10 @@ impl Migrate for SqlitePool {
 impl PermissionsStore for SqlitePool {
     async fn list_user_operations_granted(
         &self,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         let sql = get_sqlite_query!("select-objects-access-obtained").to_string();
-        let user_s = user.to_owned();
+        let user_s: String = user.as_str().to_owned();
         let list = self
             .reader()
             .call(
@@ -1010,13 +1010,13 @@ impl PermissionsStore for SqlitePool {
     async fn grant_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
         let sql_select = get_sqlite_query!("select-user-accesses-for-object").to_string();
         let sql_upsert = replace_dollars_with_qn(get_sqlite_query!("upsert-row-read_access"));
         let uid_s = uid.to_owned();
-        let user_s = user.to_owned();
+        let user_s: String = user.as_str().to_owned();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
@@ -1048,7 +1048,7 @@ impl PermissionsStore for SqlitePool {
     async fn remove_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
         let sql_select = get_sqlite_query!("select-user-accesses-for-object").to_string();
@@ -1056,7 +1056,7 @@ impl PermissionsStore for SqlitePool {
         let sql_update =
             replace_dollars_with_qn(get_sqlite_query!("update-rows-read_access-with-permission"));
         let uid_s = uid.to_owned();
-        let user_s = user.to_owned();
+        let user_s: String = user.as_str().to_owned();
         let operations = operations.clone();
         self.writer
             .call(
@@ -1091,7 +1091,7 @@ impl PermissionsStore for SqlitePool {
     async fn list_user_operations_on_object(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         no_inherited_access: bool,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         let mut user_perms = self.perms(uid, user).await?;
@@ -1154,7 +1154,7 @@ fn create_sqlite(
 
     let sql = replace_dollars_with_qn(get_sqlite_query!("insert-objects"));
     let state_s = attributes.state.unwrap_or(State::PreActive).to_string();
-    let owner_s = owner.to_owned();
+    let owner_s: String = owner.to_owned();
     tx.execute(
         &sql,
         rusqlite::params![
@@ -1224,7 +1224,7 @@ fn upsert_sqlite(
     let sql = replace_dollars_with_qn(get_sqlite_query!("upsert-object"));
     let state_s = state.to_string();
     let uid_s = uid.to_owned();
-    let owner_s = owner.to_owned();
+    let owner_s: String = owner.to_owned();
     tx.execute(
         &sql,
         rusqlite::params![
@@ -1261,7 +1261,7 @@ enum OwnedOp {
 impl From<&AtomicOperation> for OwnedOp {
     fn from(op: &AtomicOperation) -> Self {
         match op {
-            AtomicOperation::Create((uid, obj, attrs, tags)) => {
+            AtomicOperation::Create((uid, _owner, obj, attrs, tags)) => {
                 Self::Create((uid.clone(), obj.clone(), attrs.clone(), tags.clone()))
             }
             AtomicOperation::Upsert((uid, obj, attrs, tags, state)) => Self::Upsert((

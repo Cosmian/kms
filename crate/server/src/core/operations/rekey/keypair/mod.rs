@@ -25,6 +25,7 @@ use crate::{
         uid_utils::{ObjectHandle, resolve_uid_or_keyset},
     },
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -44,7 +45,7 @@ use crate::{
 pub(crate) async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
-    user: &str,
+    user: &UserId,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("ReKeyKeyPair: {}", serde_json::to_string(&request)?);
 

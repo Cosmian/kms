@@ -35,6 +35,7 @@ use crate::{
     config::ServerParams,
     core::KMS,
     error::KmsError,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
     tests::test_utils::https_clap_config,
 };
@@ -44,7 +45,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     // request key pair creation
     let request = create_ec_key_pair_request(
@@ -55,7 +56,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         false,
         None,
     )?;
-    let response = kms.create_key_pair(request, owner).await?;
+    let response = kms.create_key_pair(request, &owner).await?;
     // check that the private and public keys exist
     // check secret key
     let sk_response = kms
@@ -66,7 +67,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
                     .as_str()
                     .context("no string for the private_key_unique_identifier")?,
             ),
-            owner,
+            &owner,
         )
         .await?;
     let sk_uid = sk_response
@@ -122,7 +123,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
                     .as_str()
                     .context("no string for the public_key_unique_identifier")?,
             ),
-            owner,
+            &owner,
         )
         .await?;
     let pk = &pk_response.object;
@@ -186,7 +187,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         },
         object: pk.clone(),
     };
-    let new_uid = kms.import(request, owner).await?.unique_identifier;
+    let new_uid = kms.import(request, &owner).await?.unique_identifier;
     // update
 
     let request = Import {
@@ -200,7 +201,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         },
         object: pk,
     };
-    let update_response = kms.import(request, owner).await?;
+    let update_response = kms.import(request, &owner).await?;
     assert_eq!(new_uid, update_response.unique_identifier);
     Ok(())
 }
@@ -212,7 +213,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let wrapped_symmetric_key = [0_u8; 32];
     let aesgcm_nonce = [0_u8; 12];
@@ -252,7 +253,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     };
 
     trace!("request: {}", request);
-    let response = kms.import(request, owner).await?;
+    let response = kms.import(request, &owner).await?;
     trace!("response: {}", response);
 
     Ok(())
@@ -265,7 +266,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let request = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
@@ -278,13 +279,13 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
     )?;
 
     trace!("request: {}", request);
-    let response = kms.create(request, owner).await?;
+    let response = kms.create(request, &owner).await?;
     trace!("response: {}", response);
 
     // Get symmetric key without specifying key format type
     //
     let request = Get::new(response.unique_identifier, false, None, None);
-    let response = kms.get(request, owner).await?;
+    let response = kms.get(request, &owner).await?;
     assert_eq!(
         KeyFormatType::Raw,
         response.object.key_block()?.key_format_type
@@ -306,7 +307,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
         None,
         Some(KeyFormatType::TransparentSymmetricKey),
     );
-    let response = kms.get(request, owner).await?;
+    let response = kms.get(request, &owner).await?;
     assert_eq!(
         KeyFormatType::TransparentSymmetricKey,
         response.object.key_block()?.key_format_type
@@ -322,7 +323,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     // request key pair creation
     let request = create_ec_key_pair_request(
@@ -333,7 +334,7 @@ async fn test_database_user_tenant() -> KResult<()> {
         false,
         None,
     )?;
-    let response = kms.create_key_pair(request, owner).await?;
+    let response = kms.create_key_pair(request, &owner).await?;
 
     // check that we can get the private and public key
     // check secret key
@@ -344,7 +345,7 @@ async fn test_database_user_tenant() -> KResult<()> {
                 .as_str()
                 .context("no string for the private_key_unique_identifier")?,
         ),
-        owner,
+        &owner,
     )
     .await?;
 
@@ -356,12 +357,12 @@ async fn test_database_user_tenant() -> KResult<()> {
                 .as_str()
                 .context("no string for the public_key_unique_identifier")?,
         ),
-        owner,
+        &owner,
     )
     .await?;
 
     // request with an invalid `owner` but with the same `uid` and assert we don't get any key
-    let owner = "invalid_owner";
+    let owner = UserId::from("invalid_owner");
     // check public key
     let sk_response = kms
         .get(
@@ -371,7 +372,7 @@ async fn test_database_user_tenant() -> KResult<()> {
                     .as_str()
                     .context("no string for the private_key_unique_identifier")?,
             ),
-            owner,
+            &owner,
         )
         .await;
     sk_response.unwrap_err();
@@ -384,7 +385,7 @@ async fn test_database_user_tenant() -> KResult<()> {
                     .as_str()
                     .context("no string for the public_key_unique_identifier")?,
             ),
-            owner,
+            &owner,
         )
         .await;
     pk_response.unwrap_err();
@@ -399,7 +400,7 @@ async fn test_register_operation() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let sym_key = create_symmetric_key_kmip_object(
         VENDOR_ID_COSMIAN,
@@ -435,7 +436,7 @@ async fn test_register_operation() -> KResult<()> {
     };
 
     trace!("request: {}", request);
-    let register_response = kms.register(request, owner).await?;
+    let register_response = kms.register(request, &owner).await?;
     trace!("response: {}", register_response);
 
     let uid = register_response.unique_identifier;
@@ -449,7 +450,7 @@ async fn test_register_operation() -> KResult<()> {
     }
 
     let get_request = Get::new(uid.clone(), false, None, None);
-    let get_response = kms.get(get_request, owner).await?;
+    let get_response = kms.get(get_request, &owner).await?;
     let key_block: &KeyBlock = get_response.object.key_block()?;
 
     assert_eq!(key_block.key_format_type, KeyFormatType::Raw);

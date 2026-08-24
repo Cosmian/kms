@@ -11,6 +11,7 @@ use cosmian_logger::trace;
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -18,7 +19,7 @@ use crate::{
 /// - Retrieves the target object
 /// - If a `cryptographic_usage_mask` is supplied, ensure all requested bits are permitted by object usage mask
 /// - Succeeds (returns unique identifier) if compatible; otherwise returns `IncompatibleCryptographicUsageMask`
-pub(crate) async fn check(kms: &KMS, request: Check, owner: &str) -> KResult<CheckResponse> {
+pub(crate) async fn check(kms: &KMS, request: Check, owner: &UserId) -> KResult<CheckResponse> {
     trace!("{request}");
     // Unique Identifier is optional per spec; use ID Placeholder if missing (not yet supported here).
     let object_handle = from_request(request.unique_identifier.as_ref(), "Check")?;

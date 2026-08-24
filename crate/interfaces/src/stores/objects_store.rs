@@ -8,12 +8,12 @@ use cosmian_kmip::{
 use cosmian_logger::warn;
 use time::OffsetDateTime;
 
-use crate::{InterfaceResult, ObjectWithMetadata};
+use crate::{InterfaceResult, ObjectWithMetadata, UserId};
 
 /// An atomic operation on the objects database
 pub enum AtomicOperation {
-    /// Create (uid, object, attributes, tags) - the state will be active
-    Create((String, Object, Attributes, HashSet<String>)),
+    /// Create (uid, owner, object, attributes, tags) - the state will be active
+    Create((String, UserId, Object, Attributes, HashSet<String>)),
     /// Upsert (uid, object, attributes, tags, state) - the state be updated
     Upsert((String, Object, Attributes, Option<HashSet<String>>, State)),
     /// Update the object (uid, object, attributes, tags) - the state will be not be updated
@@ -28,11 +28,21 @@ impl AtomicOperation {
     #[must_use]
     pub fn get_object_uid(&self) -> &str {
         match self {
-            Self::Create((uid, _, _, _))
+            Self::Create((uid, _, _, _, _))
             | Self::Upsert((uid, _, _, _, _))
             | Self::UpdateObject((uid, _, _, _))
             | Self::UpdateState((uid, _))
             | Self::Delete(uid) => uid,
+        }
+    }
+
+    /// Return the owner of a `Create` operation, or `None` for other variants.
+    #[must_use]
+    pub const fn get_owner(&self) -> Option<&UserId> {
+        if let Self::Create((_, owner, _, _, _)) = self {
+            Some(owner)
+        } else {
+            None
         }
     }
 }
@@ -48,7 +58,7 @@ pub trait ObjectsStore {
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
@@ -84,12 +94,12 @@ pub trait ObjectsStore {
     /// The list objects uid that operations were performed on
     async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>>;
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
-    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool>;
+    async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> InterfaceResult<bool>;
 
     /// List the `uid` of all the objects that have the given `tags`
     async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>>;
@@ -100,7 +110,7 @@ pub trait ObjectsStore {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
@@ -116,7 +126,7 @@ pub trait ObjectsStore {
     async fn find_wrapped_by(
         &self,
         _wrapping_key_uid: &str,
-        _user: &str,
+        _user: &UserId,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
 
     /// Return UIDs of all Active objects that have a `rotate_interval > 0` and whose
@@ -147,7 +157,7 @@ pub trait ObjectsStore {
         &self,
         _name: &str,
         _generation: Option<i32>,
-        _owner: &str,
+        _owner: &UserId,
     ) -> InterfaceResult<Vec<(String, Attributes)>>;
 
     /// Set the human-readable label on a key object.

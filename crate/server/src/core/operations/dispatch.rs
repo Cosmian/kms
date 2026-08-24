@@ -19,6 +19,7 @@ use crate::{
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -69,7 +70,7 @@ macro_rules! op {
 }
 
 /// Dispatch operation depending on the TTLV tag
-pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &str) -> KResult<Operation> {
+pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &UserId) -> KResult<Operation> {
     let operation_tag = ttlv.tag.clone();
 
     if let Some(ref metrics) = kms.metrics {
@@ -90,7 +91,7 @@ pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &str) -> KResult<Opera
 async fn dispatch_inner(
     kms: &KMS,
     ttlv: TTLV,
-    user: &str,
+    user: &UserId,
     operation_tag: &str,
 ) -> KResult<Operation> {
     // For operations where the request carries algorithm choices, validate them

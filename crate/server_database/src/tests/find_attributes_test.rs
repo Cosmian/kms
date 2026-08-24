@@ -16,7 +16,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kms_interfaces::ObjectsStore;
+use cosmian_kms_interfaces::{ObjectsStore, UserId};
 use uuid::Uuid;
 
 use crate::{db_error, error::DbResult};
@@ -25,7 +25,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     cosmian_logger::log_init(None);
 
     let mut rng = CsRng::from_entropy();
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = UserId::new("eyJhbGciOiJSUzI1Ni");
 
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
@@ -57,7 +57,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     let uid_ = db
         .create(
             Some(uid.clone()),
-            owner,
+            &owner,
             &symmetric_key,
             symmetric_key.attributes()?,
             &HashSet::new(),
@@ -90,7 +90,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
             VENDOR_ID_COSMIAN,
         )
@@ -108,7 +108,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
             VENDOR_ID_COSMIAN,
         )
@@ -127,7 +127,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
             VENDOR_ID_COSMIAN,
         )
@@ -150,7 +150,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
             VENDOR_ID_COSMIAN,
         )

@@ -87,7 +87,7 @@ where
             Ok(Some(user_id)) => {
                 debug!("Session: authenticated user '{user_id}'");
                 req.extensions_mut().insert(AuthenticatedUser {
-                    username: user_id,
+                    username: user_id.into(),
                     auth_method: AuthMethod::Session,
                 });
             }

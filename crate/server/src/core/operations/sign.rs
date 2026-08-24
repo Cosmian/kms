@@ -24,6 +24,7 @@ use crate::{
     core::{KMS, operations::CryptoOpSpec},
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -60,7 +61,7 @@ impl CryptoOpSpec for SignOp {
         _kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
-        _user: &str,
+        _user: &UserId,
     ) -> KResult<Self::Response> {
         match owm.object() {
             Object::PrivateKey { .. } => sign_with_private_key(request, owm),
@@ -104,7 +105,7 @@ impl CryptoOpSpec for SignOp {
     }
 }
 
-pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignResponse> {
+pub(crate) async fn sign(kms: &KMS, request: Sign, user: &UserId) -> KResult<SignResponse> {
     trace!("{request}");
 
     // KMIP 2.1 §6.30: data and digested_data are mutually exclusive
