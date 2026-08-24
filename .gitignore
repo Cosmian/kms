@@ -71,3 +71,6 @@ perf.data.old
 target/flamegraphs/
 
 scripts/
+get_helm.sh
+kubectl
+kubectl.sha256
