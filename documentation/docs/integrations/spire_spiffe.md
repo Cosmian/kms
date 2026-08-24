@@ -258,6 +258,11 @@ ckms vault approle generate-secret-id spire-prod
 
 > SPIRE performs the data-plane AppRole *login* itself against the KMS `vault_addr`
 > (`POST /v1/auth/approle/login`); there is no `login` sub-command in `ckms vault approle`.
+>
+> Keep the `secret_id_accessor` returned by `generate-secret-id` in a secure store —
+> it is the only handle available to revoke the `secret_id` without deleting the entire
+> role. See [Manage AppRole credentials](#4-manage-approle-credentials) for rotation and
+> automation guidance.
 
 Equivalent raw calls (used by the test harness `provision.sh`): `POST /login?realm=_`
 for the admin cookie, then `POST /auth/approle/role/{name}` and
@@ -714,7 +719,7 @@ ckms vault approle create-role spire-prod --token-ttl 3600
 export VAULT_APPROLE_ID=$(ckms vault approle get-role-id spire-prod)
 echo "role_id: $VAULT_APPROLE_ID"
 
-# Mint a secret_id — regenerate this each time SPIRE restarts
+# Mint a secret_id — see §"Manage AppRole credentials" for rotation and automation guidance
 export VAULT_APPROLE_SECRET_ID=$(
   ckms vault approle generate-secret-id spire-prod \
     | awk '/^secret_id:/{print $2}')
@@ -850,7 +855,41 @@ spire-server run -config /etc/spire/server/server.conf
 
 ### 4. Manage AppRole credentials
 
-#### Rotate secret_id (before each SPIRE restart)
+#### Why rotate `secret_id`
+
+There are three distinct reasons, each with different urgency:
+
+| Trigger | When it bites | Action |
+|---------|--------------|--------|
+| **`secret_id_ttl` expiry** | The `secret_id` becomes invalid after the configured TTL. A running SPIRE server is unaffected (its Vault token is independent), but the *next restart* silently fails to log in — a time-bomb that strikes at the worst moment. | Rotate before the TTL expires **or** set `secret_id_ttl = 0` (no expiry). |
+| **Security hygiene / rotation policy** | Even with `secret_id_ttl = 0`, a leaked `secret_id` lets an attacker obtain tokens. Rotating it periodically limits the window during which a compromised credential is usable. | Rotate before every deployment, or on a schedule (e.g., 30 days). |
+| **Incident response** | If a `secret_id` is suspected to have leaked, revoking it via its `secret_id_accessor` immediately prevents any future login. The running SPIRE server's current token remains valid until it expires. | Revoke via `secret_id_accessor`; see [Incident response](#incident-response). |
+
+> **Production recommendation** — set `secret_id_ttl = 0` (no expiry) to eliminate the
+> time-bomb scenario. Rotate `secret_id` only on deployment and on security incidents.
+> Never set `num_uses = 1` for a long-lived SPIRE server: if SPIRE restarts unexpectedly
+> before a new `secret_id` is provisioned, it will fail to come back.
+
+#### Who rotates `secret_id`
+
+Only a **platform operator** with **management-plane** admin access to the auth-verifier
+can mint a new `secret_id`. The SPIRE server itself holds only data-plane credentials:
+it can log in and obtain tokens, but it cannot create roles or generate new secret_ids.
+This separation is intentional — but it means credential renewal requires an
+out-of-band administrative step that must be integrated into your deployment process.
+
+```text
+Platform operator  →  auth-verifier management API  →  new secret_id
+                       (POST /auth/approle/role/{name}/secret-id)
+
+Operator  →  injects new secret_id into SPIRE env  →  SPIRE restarts
+```
+
+The `secret_id_accessor` returned when the `secret_id` was minted is the only handle
+available to revoke it. **Store the accessor securely** — it is required for the
+incident-response procedure and has no other purpose.
+
+#### Rotate `secret_id` (CLI)
 
 ```bash
 # Option A — ckms
@@ -866,24 +905,182 @@ export VAULT_APPROLE_SECRET_ID=$(echo "$SECRET_RESP" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['secret_id'])")
 ```
 
-#### List roles
+After generating the new `secret_id`, update SPIRE's configuration or environment
+variable and restart the SPIRE server. The old `secret_id` remains valid until
+explicitly revoked via its accessor.
 
-```bash
-# Option A — ckms
-ckms vault approle list-roles
+#### Automation patterns
 
-# Option B — curl
-curl -s -b "$COOKIE_JAR" --cacert "$AUTH_CA" \
-  "$AUTH_URL/auth/approle/role?list=true"
+Because the SPIRE server cannot mint its own `secret_id`, renewal requires operator
+tooling. Choose the pattern that fits your infrastructure:
+
+| Pattern | How | When to use |
+|---------|-----|------------|
+| **`secret_id_ttl = 0`, manual rotation** | Never expire the `secret_id`; rotate only on deployment or incident. | Simplest; acceptable when deploy frequency is high relative to any rotation policy. |
+| **Pre-deployment CI pipeline** | Pipeline step calls `generate-secret-id`, writes result to a Kubernetes Secret or encrypted store, then restarts SPIRE. | Best fit for GitOps-style deployments where SPIRE is redeployed on every release. |
+| **Kubernetes Operator (recommended)** | The [Cosmian KMS Kubernetes Operator](kubernetes/operator.md) calls `generate-secret-id`, materialises the result as a `Secret`, and triggers a rolling restart — all declaratively. | Best for Kubernetes-native teams; no imperative scripts. |
+| **External Secrets Operator (ESO)** | ESO `PushSecret` or a custom generator calls `POST /auth/approle/role/{name}/secret-id` on the auth-verifier and writes the result to a K8s Secret. | Kubernetes teams already running ESO; requires a custom generator since the auth-verifier is not a vanilla Vault. |
+| **PAM-orchestrated rotation (Segura, CyberArk, etc.)** | The PAM's rotation workflow calls `POST /auth/approle/role/{name}/secret-id` on the auth-verifier, vaults the result, then delivers the new `secret_id` to SPIRE and triggers a restart. | Enterprise environments where a PAM already owns credential lifecycle and audit trails. Full TISAX-compliant session recording. |
+| **`num_uses = 1` (one-shot)** | Mint a single-use `secret_id` immediately before each restart; SPIRE consumes it at login. | Strongest security posture; requires tight coupling between the operator and restart orchestration. Not suitable if SPIRE may restart unexpectedly. |
+
+---
+
+#### PAM integration (Segura, CyberArk, and equivalents)
+
+A Privileged Access Manager (PAM) such as Segura is a natural fit for AppRole credential
+lifecycle management: it already owns privileged account inventory, rotation schedules,
+and full audit recording (required for TISAX). The integration is **entirely on the PAM
+configuration side** — no KMS code changes are required.
+
+##### How it works
+
+The PAM takes on the role that the Kubernetes Operator plays in simpler deployments: it
+calls the auth-verifier management API on a schedule (or on demand), vaults the result,
+and delivers it to SPIRE.
+
+```mermaid
+sequenceDiagram
+    participant PAM as PAM (Segura / CyberArk)
+    participant AuthV as auth-verifier<br/>(management plane)
+    participant Vault as PAM Secret Store
+    participant SPIRE as SPIRE server
+
+    Note over PAM: Rotation trigger (schedule or incident)
+
+    PAM->>AuthV: POST /login?realm=_<br/>(HTTP Basic: admin credentials)
+    AuthV-->>PAM: session cookie
+
+    PAM->>AuthV: POST /auth/approle/role/{name}/secret-id<br/>(session cookie, {"ttl":0,"num_uses":0})
+    AuthV-->>PAM: {"data":{"secret_id":"<new>","secret_id_accessor":"<accessor>"}}
+
+    PAM->>Vault: Store secret_id + secret_id_accessor<br/>(tagged: role={name}, rotated_at=now)
+    Note over Vault: Previous secret_id_accessor archived<br/>(kept for emergency revocation)
+
+    PAM->>SPIRE: Deliver new secret_id<br/>(inject into SPIRE env/config)
+    PAM->>SPIRE: Trigger restart (kubectl rollout restart,<br/>systemd restart, or equivalent)
+
+    Note over SPIRE: Restarts, logs in with new secret_id<br/>POST /v1/auth/approle/login → new token
 ```
 
-#### Delete a role
+##### What the PAM must store
+
+| Item | Where in PAM | Purpose |
+|---|---|---|
+| `role_id` | PAM account record for `spire-{name}` | Stable — never changes; used at every login |
+| `secret_id` | PAM secret (rotated on schedule) | Delivered to SPIRE env before each restart |
+| `secret_id_accessor` | PAM secret, archived with timestamp | Emergency revocation handle — `POST /auth/approle/role/{name}/secret-id-accessor/destroy` |
+| auth-verifier admin credential | PAM account (privileged) | Required to call the management API; must be a strong credential, session-recorded |
+
+##### Required API calls (in order)
+
+The PAM needs to make exactly two HTTP calls to the **auth-verifier** (not the KMS):
+
+**Step 1 — Admin login** (once per rotation workflow execution):
+
+```http
+POST /login?realm=_
+Host: auth-verifier.internal:8443
+Authorization: Basic <base64(admin_user:admin_password)>
+Content-Type: application/json
+
+{}
+```
+
+Response: `Set-Cookie: session=<cookie>` — valid for the duration of the rotation session.
+
+**Step 2 — Generate new `secret_id`** (once per AppRole being rotated):
+
+```http
+POST /auth/approle/role/{name}/secret-id
+Host: auth-verifier.internal:8443
+Cookie: session=<cookie>
+Content-Type: application/json
+
+{"ttl": 0, "num_uses": 0}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "secret_id": "b4a3c2d1-...",
+    "secret_id_accessor": "f9e8d7c6-..."
+  }
+}
+```
+
+The **accessor** is the only handle available to revoke this specific `secret_id` without
+deleting the entire AppRole. Store it in the PAM alongside the `secret_id` it identifies.
+
+##### Delivering the `secret_id` to SPIRE
+
+After vaulting the new credentials, the PAM must update SPIRE's configuration.
+The exact mechanism depends on the deployment:
+
+| Deployment | Delivery method |
+|---|---|
+| Kubernetes | Patch the `Secret` that SPIRE reads via `secretKeyRef`, then `kubectl rollout restart deployment/spire-server` |
+| Systemd on VM | Write to the env file that `ExecStart` sources (e.g. `/etc/spire/approle.env`), then `systemctl restart spire-server` |
+| Docker Compose | Update the `.env` file, then `docker compose restart spire-server` |
+
+> **Important**: the SPIRE server **must be restarted** after the credential is updated.
+> A running SPIRE server holds a live Vault token — it does not re-read `secret_id` from
+> disk until the next login, which only happens on restart. The restart is therefore
+> **part of the rotation**, not optional cleanup.
+
+##### PAM session recording and TISAX audit
+
+Every rotation workflow execution runs as a PAM-brokered privileged session:
+
+- The admin credential used to call the auth-verifier is vaulted in the PAM — operators
+  never see it in plaintext.
+- The session is recorded end-to-end: which PAM user triggered the rotation, at what time,
+  what responses were received.
+- The `secret_id_accessor` provides a correlation handle: if a `secret_id` is later found
+  to have been misused, the accessor links the credential back to the rotation session that
+  created it.
+
+This satisfies TISAX's non-repudiation requirements for privileged access to identity
+infrastructure without requiring any custom audit hook in the KMS or auth-verifier.
+
+---
+
+**Kubernetes Operator (recommended):**
+
+The [Cosmian KMS Kubernetes Operator](kubernetes/operator.md) is the recommended approach
+for Kubernetes deployments. It handles the full lifecycle declaratively — no imperative
+scripts, no image pinning, no RBAC for `kubectl` inside a Job:
+
+1. The Operator's `KMSSecret` custom resource calls `POST /auth/approle/role/{name}/secret-id`
+   on the auth-verifier on the configured schedule and materialises the result as a
+   Kubernetes `Secret`.
+2. An `AppRoleRotation` annotation on the SPIRE `Deployment` tells the Operator to trigger
+   a rolling restart automatically once the `Secret` is updated.
+3. The previous `secret_id_accessor` is archived in the Operator's own state for emergency
+   revocation.
+
+See [Cosmian KMS Kubernetes Operator — AppRole rotation](kubernetes/operator.md#approle-rotation)
+for the full configuration reference.
+
+> **Non-Kubernetes environments** (VMs, bare-metal): use the PAM-orchestrated pattern
+> described above, or a CI/CD pipeline step that calls `ckms vault approle generate-secret-id`
+> and injects the result before restarting the workload identity server process.
+
+#### List and delete roles
 
 ```bash
-# Option A — ckms
+# List all AppRoles
+ckms vault approle list-roles
+
+# curl equivalent
+curl -s -b "$COOKIE_JAR" --cacert "$AUTH_CA" \
+  "$AUTH_URL/auth/approle/role?list=true"
+
+# Delete a role (destroys all its secret_ids and revokes any outstanding tokens)
 ckms vault approle delete-role spire-prod
 
-# Option B — curl
+# curl equivalent
 curl -s -b "$COOKIE_JAR" --cacert "$AUTH_CA" -X DELETE \
   "$AUTH_URL/auth/approle/role/spire-prod"
 ```

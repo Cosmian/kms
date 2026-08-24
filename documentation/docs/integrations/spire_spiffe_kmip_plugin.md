@@ -562,6 +562,137 @@ client certificate at the TLS layer, before any KMIP message is processed. Stati
 tokens are suitable for test environments or when mTLS key management adds operational
 complexity.
 
+| | mTLS (`cert_auth`) | Static token (`token_auth`) |
+|---|---|---|
+| **Credential type** | X.509 client certificate + private key | KMIP symmetric key UID string |
+| **Expiry** | Hard `NotAfter` date — **causes live failures when expired** | No expiry by default |
+| **Revocation** | Revoke via CRL/OCSP or delete from the KMS's trust CA; rotate cert | Destroy the symmetric key in the KMS |
+| **Who rotates** | PKI operator (same team who owns the server cert CA) | KMS admin |
+| **Rotation trigger** | Certificate expiry; security incident | Security incident; rotation policy |
+| **Automation** | cert-manager, ACME, cron + `openssl` | CI/CD pipeline; KMS API |
+
+### Managing authentication credentials
+
+#### mTLS client certificate lifecycle
+
+The SPIRE plugins authenticate to the KMS using a client certificate
+(`client_cert_path` / `client_key_path`). This certificate has a hard expiry date.
+When it expires, **every KMIP call fails immediately** — including the periodic
+`Sign` calls during normal operation, not only on restart. This is a harder failure
+mode than the AppRole `secret_id_ttl` time-bomb (which only strikes on restart).
+
+**Why rotate:**
+
+| Trigger | Impact | Action |
+|---------|--------|--------|
+| Certificate expiry (`NotAfter` reached) | All KMIP operations fail with a TLS handshake error. SPIRE cannot sign SVIDs or rotate its CA. | Renew certificate **before** expiry. Monitor `notAfter` proactively. |
+| Private key compromise | An attacker holding the key can authenticate as the SPIRE server to the KMS and access its signing keys. | Revoke the old certificate; issue a new one immediately. |
+
+**Who rotates:** The platform operator who owns the PKI (Certificate Authority) that
+issued the KMS mTLS client certificate. This is typically the same team that manages
+the KMS server certificate. The SPIRE server itself has no authority to renew its own
+credential.
+
+**Production recommendation:** Issue client certificates with a **1-year validity** and
+set up automated renewal at the 80 % mark (after ~10 months). The KMS trusts all
+certificates issued by its configured `clients_ca_cert_file` CA, so you only need
+to replace the leaf certificate — the trust anchor does not change.
+
+**Automation patterns:**
+
+| Pattern | How | When to use |
+|---------|-----|------------|
+| **cert-manager (Kubernetes)** | `Certificate` resource issues a client cert; cert-manager renews automatically before expiry. Mount as a K8s Secret; SPIRE reads it from disk. | Best for Kubernetes deployments. |
+| **ACME / Let's Encrypt** | Certbot or equivalent renews the cert, runs a post-renewal hook to restart SPIRE. | Suitable if your mTLS CA is ACME-compatible. |
+| **Cron + OpenSSL** | Weekly cron checks `openssl x509 -noout -checkend 2592000 -in /etc/spire/kms-client.crt` (30-day threshold); renews if close to expiry and restarts SPIRE. | Simple; no additional tooling. |
+| **SPIFFE-issued client cert (meta-SPIRE)** | A separate SPIRE instance issues the KMS client identity as a short-lived X.509-SVID. Requires the KMS to trust the meta-SPIRE CA. | Advanced; eliminates long-lived certs entirely. |
+
+**Minimal cron example:**
+
+```bash
+#!/usr/bin/env bash
+# /etc/cron.weekly/renew-kms-client-cert
+set -euo pipefail
+
+CERT=/etc/spire/kms-client.crt
+KEY=/etc/spire/kms-client.key
+CA_KEY=/etc/pki/kms-ca.key
+CA_CERT=/etc/pki/kms-ca.crt
+DAYS_BEFORE_EXPIRY=30
+
+if openssl x509 -noout -checkend $((DAYS_BEFORE_EXPIRY * 86400)) -in "$CERT" 2>/dev/null; then
+  echo "Client cert valid for more than ${DAYS_BEFORE_EXPIRY} days — no renewal needed."
+  exit 0
+fi
+
+echo "Renewing KMS mTLS client certificate..."
+openssl req -new -key "$KEY" -subj "/CN=spire-server" \
+  | openssl x509 -req -CA "$CA_CERT" -CAkey "$CA_KEY" \
+      -CAcreateserial -days 365 -out "$CERT"
+
+# Restart SPIRE to pick up the new certificate.
+systemctl restart spire-server
+echo "Certificate renewed and SPIRE restarted."
+```
+
+> If SPIRE is containerised, update the Secret holding the cert and roll the
+> Deployment: `kubectl rollout restart deployment/spire-server -n spire`.
+
+#### Static API token lifecycle
+
+The API token (`token_auth`) is the KMIP `UniqueIdentifier` of a symmetric key stored
+in the KMS. It has **no expiry** by default — the token remains valid until the
+symmetric key is explicitly destroyed. This eliminates the expiry time-bomb, but means
+a leaked token grants indefinite access to the SPIRE server's KMS namespace until
+rotated.
+
+**Why rotate:**
+
+| Trigger | Impact | Action |
+|---------|--------|--------|
+| Token suspected leaked | An attacker can authenticate as the SPIRE server, read its public keys, and potentially disrupt signing. | Rotate immediately (see below). |
+| Periodic rotation policy | Limits the window during which a leaked token is usable. | Rotate on schedule (e.g., every 90 days). |
+
+**Who rotates:** A KMS admin — anyone with access to create symmetric keys in the KMS
+and to update the SPIRE server's configuration.
+
+**Rotation procedure:**
+
+```bash
+# 1. Create a new symmetric key in the KMS — note its UID.
+NEW_TOKEN_UID=$(ckms sym keys create --algorithm aes --size-in-bits 256 \
+  | grep 'Unique Identifier' | awk '{print $NF}')
+echo "New token UID: $NEW_TOKEN_UID"
+
+# 2. Update the SPIRE config / environment variable with the new UID.
+#    Either edit server.conf: token = "<NEW_TOKEN_UID>"
+#    Or:
+export KMS_API_TOKEN="$NEW_TOKEN_UID"
+
+# 3. Restart SPIRE to pick up the new token.
+systemctl restart spire-server   # or: kubectl rollout restart deployment/spire-server
+
+# 4. Verify SPIRE started successfully, then destroy the old key.
+#    (Do not destroy before confirming the new token works.)
+ckms sym keys destroy --id "$OLD_TOKEN_UID"
+echo "Old token destroyed."
+```
+
+> **Step 4 ordering matters:** destroy the old token _after_ SPIRE has restarted
+> successfully on the new one. Destroying it first will cause a ~30-second outage
+> while SPIRE is restarting.
+
+#### Credential comparison summary
+
+| | mTLS cert | Static token |
+|---|---|---|
+| **Expires automatically?** | Yes — hard `NotAfter` | No |
+| **Live failure on expiry?** | Yes — all KMIP calls fail | N/A |
+| **Rotation complexity** | Medium (PKI, cert renewal) | Low (create key, update config) |
+| **Recommended for production?** | ✅ Yes | Test environments |
+| **Compromise impact** | Full access to SPIRE server's KMS namespace | Same |
+| **Automation** | cert-manager / cron | CI/CD pipeline |
+
 ### CA key custody
 
 The root CA private key (`ca_key_uid`) never leaves Eviden KMS. The `Certify` operation
