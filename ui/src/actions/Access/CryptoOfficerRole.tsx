@@ -115,7 +115,7 @@ const CryptoOfficerRole: React.FC = () => {
             } catch (splitErr) {
                 // Compensating delete: destroy the orphaned AES key before re-throwing
                 try {
-                    const destroyReq = wasm.destroy_ttlv_request(createdKeyId, false);
+                    const destroyReq = wasm.destroy_ttlv_request(createdKeyId, true);
                     await sendKmipRequest(destroyReq, serverUrl);
                 } catch {
                     /* best-effort; ignore cleanup errors */

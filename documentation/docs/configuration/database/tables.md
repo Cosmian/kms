@@ -24,6 +24,7 @@ erDiagram
     OBJECTS ||--o{ READ_ACCESS : "grants (read_access.id = objects.id)"
     OBJECTS ||--o{ TAGS : "tagged (tags.id = objects.id)"
     OBJECTS ||--o{ OBJECTS : "wraps (objects.wrapping_key_id = objects.id)"
+    OBJECTS }o--o{ CRYPTO_OFFICER_ACTIVATIONS : "sealed (logical, no FK)"
     PARAMETERS {
         string name PK
         string value
