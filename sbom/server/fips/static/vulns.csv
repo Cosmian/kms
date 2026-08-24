@@ -1,4 +1,5 @@
 "vuln_id","url","package","version_local","severity","grype","osv","vulnix","sum","sortcol"
+"CVE-2026-54876","https://nvd.nist.gov/vuln/detail/CVE-2026-54876","openssl","3.6.2","7.5","1","0","0","1","2026A0000054876"
 "CVE-2026-45447","https://nvd.nist.gov/vuln/detail/CVE-2026-45447","openssl","3.6.2","8.8","1","0","1","2","2026A0000045447"
 "CVE-2026-45446","https://nvd.nist.gov/vuln/detail/CVE-2026-45446","openssl","3.6.2","4.8","1","0","1","2","2026A0000045446"
 "CVE-2026-45445","https://nvd.nist.gov/vuln/detail/CVE-2026-45445","openssl","3.6.2","7.5","1","0","1","2","2026A0000045445"
@@ -14,6 +15,7 @@
 "CVE-2026-34182","https://nvd.nist.gov/vuln/detail/CVE-2026-34182","openssl","3.6.2","9.1","1","0","1","2","2026A0000034182"
 "CVE-2026-34181","https://nvd.nist.gov/vuln/detail/CVE-2026-34181","openssl","3.6.2","7.4","1","0","1","2","2026A0000034181"
 "CVE-2026-34180","https://nvd.nist.gov/vuln/detail/CVE-2026-34180","openssl","3.6.2","7.5","1","0","1","2","2026A0000034180"
+"CVE-2026-14456","https://nvd.nist.gov/vuln/detail/CVE-2026-14456","openssl","3.6.2","7.5","1","0","0","1","2026A0000014456"
 "CVE-2026-9076","https://nvd.nist.gov/vuln/detail/CVE-2026-9076","openssl","3.6.2","7.5","1","0","1","2","2026A0000009076"
 "CVE-2026-7383","https://nvd.nist.gov/vuln/detail/CVE-2026-7383","openssl","3.6.2","8.1","1","0","1","2","2026A0000007383"
 "CVE-2026-6238","https://nvd.nist.gov/vuln/detail/CVE-2026-6238","glibc","2.34-210","6.5","0","0","1","1","2026A0000006238"
