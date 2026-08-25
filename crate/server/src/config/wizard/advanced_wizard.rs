@@ -29,6 +29,7 @@ pub struct AdvancedConfig {
     pub key_encryption_key: Option<String>,
     pub default_unwrap_type: Option<Vec<String>>,
     pub crypto_officer_users: Option<Vec<String>>,
+    pub crypto_officer_require_ceremony: bool,
     pub ms_dke_service_url: Option<String>,
     pub kms_public_url: Option<String>,
     pub kmip_policy: KmipPolicyConfig,
@@ -152,6 +153,23 @@ pub fn configure_advanced(mut ui: UiConfig) -> KResult<AdvancedConfig> {
         )
     };
 
+    // ── Ceremony mode ─────────────────────────────────────────────────────────
+    // Prompt only when CO users were actually configured. Without ceremony mode
+    // every CO candidate is permanently active (security warning logged at startup).
+    let crypto_officer_require_ceremony = if crypto_officer_users.is_some() {
+        Confirm::with_theme(&theme)
+            .with_prompt(
+                "Require a split-key ceremony to activate the Crypto Officer role?\n  \
+                 (Recommended: yes — prevents permanent super-admin without runtime activation)\n  \
+                 Ceremony requires `ceremony_secret` or `ceremony_key_id` in kms.toml.",
+            )
+            .default(true)
+            .interact()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?
+    } else {
+        false
+    };
+
     // ── Microsoft DKE & Public URL ────────────────────────────────────────────
     let ms_dke: String = Input::with_theme(&theme)
         .with_prompt(
@@ -238,6 +256,7 @@ pub fn configure_advanced(mut ui: UiConfig) -> KResult<AdvancedConfig> {
         key_encryption_key,
         default_unwrap_type,
         crypto_officer_users,
+        crypto_officer_require_ceremony,
         ms_dke_service_url,
         kms_public_url,
         kmip_policy,
