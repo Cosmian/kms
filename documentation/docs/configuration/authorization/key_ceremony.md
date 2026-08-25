@@ -265,6 +265,32 @@ Any configured CO candidate may revoke the active CO's ceremony:
 The reconstructed key is **NOT revoked** — only the `crypto_officer_activations` row
 is updated. The demoted CO retains their reconstructed key as an Operator.
 
+!!! warning "What revocation does and does not do"
+    Revoking a CO ceremony removes the **role** (ownership bypass + lifecycle privileges)
+    but does **not** touch the reconstructed KMS key object. This is by design:
+    the reconstructed key may be actively wrapping other data keys, and destroying it
+    would orphan any dependent objects (NIST SP 800-152 FR:6.119 requires
+    key continuity on role revocation).
+
+    After revocation the former CO becomes an Operator and retains:
+
+    - **Ownership** of the reconstructed key — they can still Encrypt/Decrypt/Sign with
+      it (all Operator operations).
+    - **No ownership bypass** — they can only access objects they own or have been
+      explicitly granted.
+
+    If you want the former CO to lose access to the reconstructed key entirely,
+    you must explicitly take one of these additional steps:
+
+    1. **Revoke their key** (`ckms sym keys revoke <key-uid>`) — marks it as
+       `Compromised`/`Destroyed`; prevents further use.
+    2. **Transfer ownership** — re-key, or have another CO take over wrapping duties
+       using a different key, then destroy the original.
+    3. **Restrict permissions** — use `ckms access-rights revoke` to remove the former
+       CO's access grants on any objects you want protected.
+
+    These are manual administrative steps; the server does not take them automatically.
+
 ```mermaid
 sequenceDiagram
     actor Alice as Alice (active CO)
