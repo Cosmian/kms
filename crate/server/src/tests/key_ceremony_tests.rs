@@ -54,8 +54,15 @@ fn uid_string(uid: &UniqueIdentifier) -> KResult<String> {
         .ok_or_else(|| KmsError::InvalidRequest(format!("expected TextString UID, got {uid:?}")))
 }
 
-/// Build a `KMS` configured for ceremony mode with the given CO users.
-async fn ceremony_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
+/// Build a base `ClapConfig` for CO-related tests.
+///
+/// - `require_ceremony`: when `true`, also sets `ceremony_secret = TEST_CEREMONY_SECRET`
+/// - `wrap_key_id`: when `Some`, sets `ceremony_wrapping_key_id`
+fn base_ceremony_conf(
+    co_users: Vec<String>,
+    require_ceremony: bool,
+    wrap_key_id: Option<&str>,
+) -> ClapConfig {
     let mut conf = ClapConfig {
         db: MainDBConfig {
             database_type: Some("sqlite".to_owned()),
@@ -66,9 +73,19 @@ async fn ceremony_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
         ..Default::default()
     };
     conf.roles.crypto_officer_users = Some(co_users);
-    conf.roles.crypto_officer_require_ceremony = true;
-    conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
+    conf.roles.crypto_officer_require_ceremony = require_ceremony;
+    if require_ceremony {
+        conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
+    }
+    if let Some(id) = wrap_key_id {
+        conf.roles.ceremony_wrapping_key_id = Some(id.to_owned());
+    }
+    conf
+}
 
+/// Build a `KMS` configured for ceremony mode with the given CO users.
+async fn ceremony_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
+    let conf = base_ceremony_conf(co_users, true, None);
     let params = ServerParams::try_from(conf)?;
     Ok(Arc::new(KMS::instantiate(Arc::new(params)).await?))
 }
@@ -78,22 +95,7 @@ async fn ceremony_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
 /// A fresh wrapping key is pre-created and its UID is set as `ceremony_wrapping_key_id`.
 /// The returned `Arc<KMS>` is ready for split-key operations that wrap shares at rest.
 async fn ceremony_kms_with_wrapping(co_users: Vec<String>, wrap_key_id: &str) -> KResult<Arc<KMS>> {
-    // First, start a temporary ceremony KMS without wrapping to create the key.
-    let mut conf = ClapConfig {
-        db: MainDBConfig {
-            database_type: Some("sqlite".to_owned()),
-            sqlite_path: get_tmp_sqlite_path(),
-            clear_database: false,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    conf.roles.crypto_officer_users = Some(co_users.clone());
-    conf.roles.crypto_officer_require_ceremony = true;
-    conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
-    // Wrapping key ID is configured from the start so that `CreateSplitKey` uses it.
-    conf.roles.ceremony_wrapping_key_id = Some(wrap_key_id.to_owned());
-
+    let conf = base_ceremony_conf(co_users.clone(), true, Some(wrap_key_id));
     let params = ServerParams::try_from(conf)?;
     let kms = Arc::new(KMS::instantiate(Arc::new(params)).await?);
 
@@ -114,19 +116,9 @@ async fn ceremony_kms_with_wrapping(co_users: Vec<String>, wrap_key_id: &str) ->
 
     Ok(kms)
 }
-async fn config_only_co_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
-    let mut conf = ClapConfig {
-        db: MainDBConfig {
-            database_type: Some("sqlite".to_owned()),
-            sqlite_path: get_tmp_sqlite_path(),
-            clear_database: false,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    conf.roles.crypto_officer_users = Some(co_users);
-    conf.roles.crypto_officer_require_ceremony = false;
 
+async fn config_only_co_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
+    let conf = base_ceremony_conf(co_users, false, None);
     let params = ServerParams::try_from(conf)?;
     Ok(Arc::new(KMS::instantiate(Arc::new(params)).await?))
 }
