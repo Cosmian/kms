@@ -90,17 +90,44 @@ describe("CO revocation: dormant CO candidate can peer-revoke", () => {
         mockStatus({
             ...baseActiveStatus,
             is_crypto_officer: false,
-            // active_co_users contains alice; current user (bob/carol) is dormant
+            // active_co_users contains alice; current user (bob) is a dormant CO candidate
         }),
     );
 
+    // NOTE: the whoami mock in the dormant-candidate tests returns "bob@example.com" so
+    // that `status.users.includes(userId)` resolves to true and the revoke controls appear.
+    // "dummy" is not a CO candidate — the revoke section is intentionally hidden for non-candidates.
+    function mockWithBob() {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async (input: RequestInfo | URL) => {
+                const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+                if (url.includes("/access/crypto_officer/status")) {
+                    return new Response(JSON.stringify({ ...baseActiveStatus, is_crypto_officer: false }), {
+                        status: 200,
+                        headers: { "Content-Type": "application/json" },
+                    });
+                }
+                if (url.includes("/ui/whoami")) {
+                    return new Response(JSON.stringify({ user_id: "bob@example.com" }), {
+                        status: 200,
+                        headers: { "Content-Type": "application/json" },
+                    });
+                }
+                return new Response(JSON.stringify({}), { status: 200 });
+            }),
+        );
+    }
+
     test("renders the peer-revoke button for a dormant CO candidate", async () => {
+        mockWithBob();
         smokeRender(React.createElement(CryptoOfficerRole));
         await screen.findByTestId("disable-btn");
         expect(screen.getByTestId("disable-btn")).toBeInTheDocument();
     });
 
     test("peer-revoke button is disabled when no target is selected", async () => {
+        mockWithBob();
         smokeRender(React.createElement(CryptoOfficerRole));
         const btn = await screen.findByTestId("disable-btn");
         expect(btn).toBeDisabled();

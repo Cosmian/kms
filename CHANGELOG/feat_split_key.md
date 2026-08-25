@@ -64,3 +64,8 @@ Replaces the former `privileged_users` flat list with two FIPS 140-3 aligned rol
 
 - Key ceremony guide: two-role RBAC, XOR n-of-n, NIST references, Mermaid sequence diagrams, CLI quick reference.
 - Authorization reference: updated role matrix, operation tables, permission evaluation order.
+
+## CI / Tooling
+
+- **Windows CI** (`test_windows.yml`): added VS Ninja lookup step — resolves vcpkg build failures on Windows runners where Ninja is not on PATH by default. Fallback to Chocolatey if the VS installation does not include CMake/Ninja.
+- **Multi-framework audit** (`.mise/scripts/audit/multi_framework.sh`): the script now also writes a Markdown report to `documentation/docs/certifications_and_compliance/audit/multi_framework_security_audit.md` alongside its console output.
