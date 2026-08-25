@@ -18,10 +18,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Args, Clone, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct RolesConfig {
-    /// Users with the Crypto Officer role (ISO/IEC 19790 "Crypto Officer" / PKCS#11 `CKU_SO`).
+    /// Users with the Crypto Officer role.
     ///
     /// May manage key lifecycle (create, import, certify, rekey, activate, revoke, destroy)
-    /// and access raw key material (get, export — "key output" per ISO/IEC 19790 §7.4.3).
+    /// and access raw key material.
     /// When active, gains ownership bypass on all Managed Objects.
     /// When set, only listed users (plus those explicitly granted the `Create` right) can
     /// create and import objects.
@@ -32,8 +32,7 @@ pub struct RolesConfig {
     ///
     /// When `true`, users listed in `crypto_officer_users` are candidates only —
     /// the role is inactive until a KMIP `JoinSplitKey` with all shares tagged
-    /// `x-cosmian-crypto-officer-ceremony` completes
-    /// (NIST SP 800-57 Part 2 Rev 1 §4.6 split knowledge, XOR n-of-n).
+    /// `x-cosmian-crypto-officer-ceremony` completes.
     #[clap(long, verbatim_doc_comment, default_value = "false")]
     pub crypto_officer_require_ceremony: bool,
 

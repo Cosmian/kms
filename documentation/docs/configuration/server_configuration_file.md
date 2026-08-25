@@ -48,7 +48,7 @@ complete PKI under the chosen output directory (default `/etc/cosmian/`):
 | `client.key` | Client private key (PKCS#8 PEM)                                       |
 
 Distribute `client.crt` and `client.key` to any client that must authenticate
-with mutual TLS.  You can verify the chain at any time with:
+with mutual TLS. You can verify the chain at any time with:
 
 ```bash
 openssl verify -CAfile /etc/cosmian/ca.crt /etc/cosmian/server.crt
@@ -70,7 +70,7 @@ Configuration file loading precedence:
 > command-line arguments are also provided, the server exits with an error. This prevents silently
 > ignoring arguments the user intended to take effect. To use a different configuration, point
 > explicitly to it with `-c/--config <FILE>`.
-Examples:
+> Examples:
 
 ```bash
 # Explicit configuration file
@@ -83,7 +83,7 @@ export COSMIAN_KMS_CONF=./test_data/configs/server/auth/jwt.toml
 
 The file should be a TOML file with the following structure:
 
-```toml
+````toml
 # The default username to use when no authentication method is provided
 default_username = "admin"
 
@@ -498,7 +498,6 @@ vault_token_cache_ttl_secs = 0
 # When `true`, users listed in `crypto_officer_users` are candidates only —
 # the role is inactive until a KMIP `JoinSplitKey` with all shares tagged
 # `x-cosmian-crypto-officer-ceremony` completes
-# (NIST SP 800-57 Part 2 Rev 1 §4.6 split knowledge, XOR n-of-n).
 crypto_officer_require_ceremony = false
 
 # Users with the Crypto Officer role (ISO/IEC 19790 "Crypto Officer" / PKCS#11 `CKU_SO`).
@@ -582,9 +581,9 @@ without any explicit configuration.
 
 Although the KMS serves its own Web UI from the same host and port, the
 browser's Fetch API sends an `Origin` header on every non-GET/HEAD request
-(including `POST`) — even when the request originates from the same page.  The
+(including `POST`) — even when the request originates from the same page. The
 actix-cors middleware compares this header against the explicit allow-list and
-returns HTTP 400 if the value is not present.  There is no DNS resolution or
+returns HTTP 400 if the value is not present. There is no DNS resolution or
 network-interface expansion: the comparison is a byte-for-byte string match.
 
 This means `cors_allowed_origins` must contain the **exact URL** the user
@@ -595,7 +594,7 @@ versa.
 
 The binary automatically provides loopback addresses
 (`localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, `[::]` on the configured port) so that
-browser access from the same machine works out-of-the-box.  Any other hostname,
+browser access from the same machine works out-of-the-box. Any other hostname,
 IP address, or port must be added explicitly.
 
 CLI clients (`ckms`, scripts, curl) do not send an `Origin` header and are
@@ -612,9 +611,9 @@ The same list can be provided via the environment variable
 `--cors-allowed-origins`.
 
 !!! warning "Security implications"
-    Every origin in `cors_allowed_origins` can issue **authenticated**
-    cross-origin requests to the KMS — session cookies and credentials are
-    forwarded for each listed origin.
+Every origin in `cors_allowed_origins` can issue **authenticated**
+cross-origin requests to the KMS — session cookies and credentials are
+forwarded for each listed origin.
 
     - **Only add origins you fully control and trust.**  A compromised or
       malicious site listed here can read and manage all cryptographic objects

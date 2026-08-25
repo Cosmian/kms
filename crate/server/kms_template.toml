@@ -412,7 +412,6 @@ vault_token_cache_ttl_secs = 0
 # When `true`, users listed in `crypto_officer_users` are candidates only —
 # the role is inactive until a KMIP `JoinSplitKey` with all shares tagged
 # `x-cosmian-crypto-officer-ceremony` completes
-# (NIST SP 800-57 Part 2 Rev 1 §4.6 split knowledge, XOR n-of-n).
 crypto_officer_require_ceremony = false
 
 # Users with the Crypto Officer role (ISO/IEC 19790 "Crypto Officer" / PKCS#11 `CKU_SO`).
