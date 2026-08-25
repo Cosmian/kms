@@ -1,7 +1,7 @@
 ---
 name: 'REST Routes & OpenAPI'
 description: 'Keep handlers, route registration, middleware, and the OpenAPI spec in sync when adding a REST endpoint'
-applyTo: 'crate/server/src/routes/**/*.rs'
+applyTo: 'crate/server/src/routes/**/*.rs, crate/server/documentation/openapi.yaml'
 ---
 
 # REST endpoint sync

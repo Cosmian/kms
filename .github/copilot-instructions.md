@@ -19,7 +19,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `rust-database.instructions.md` | `crate/server_database/**/*.rs` |
 | `database-tables.instructions.md` | `crate/server_database/src/stores/sql/*.sql` |
 | `ui-routes.instructions.md` | `ui/src/App.tsx`, `ui/src/menuItems.tsx`, `ui/src/actions/**/*.tsx`, `ui/src/pages/**/*.tsx` |
-| `routes.instructions.md` | `crate/server/src/routes/**/*.rs` |
+| `routes.instructions.md` | `crate/server/src/routes/**/*.rs`, `crate/server/documentation/openapi.yaml` |
 | `kmip-operations.instructions.md` | `crate/kmip/src/**/*.rs`, `crate/server/src/core/operations/**/*.rs` |
 | `cli-ui-sync.instructions.md` | `crate/clients/clap/**/*.rs`, `crate/clients/ckms/**/*.rs`, `ui/src/actions/**/*.ts`, `ui/src/actions/**/*.tsx` |
 | `wasm.instructions.md` | `crate/clients/wasm/**/*.rs` |

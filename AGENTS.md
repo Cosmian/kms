@@ -23,7 +23,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `rust-database.instructions.md` | `crate/server_database/**/*.rs` | SQLite, PostgreSQL, Redis-findex backends |
 | `database-tables.instructions.md` | `crate/server_database/src/stores/sql/*.sql` | Keep `documentation/docs/configuration/database/tables.md` in sync with SQL schema changes |
 | `ui-routes.instructions.md` | `ui/src/App.tsx`, `ui/src/menuItems.tsx`, `ui/src/actions/**/*.tsx`, `ui/src/pages/**/*.tsx` | Sync rule 4.1 — server SPA routes ⇔ React Router ⇔ menu items |
-| `routes.instructions.md` | `crate/server/src/routes/**/*.rs` | Sync rule 4.2 — REST endpoint handlers ⇔ OpenAPI ⇔ route registration |
+| `routes.instructions.md` | `crate/server/src/routes/**/*.rs`, `crate/server/documentation/openapi.yaml` | Sync rule 4.2 — REST endpoint handlers ⇔ OpenAPI ⇔ route registration |
 | `kmip-operations.instructions.md` | `crate/kmip/src/**/*.rs`, `crate/server/src/core/operations/**/*.rs` | Sync rule 4.3 — KMIP operation types ⇔ dispatcher ⇔ handler |
 | `cli-ui-sync.instructions.md` | `crate/clients/clap/**/*.rs`, `crate/clients/ckms/**/*.rs`, `ui/src/actions/**/*.ts`, `ui/src/actions/**/*.tsx` | Sync rules 4.4 + 4.15 — CLI ⇔ Web UI parity, CLI doc regeneration |
 | `wasm.instructions.md` | `crate/clients/wasm/**/*.rs` | Sync rule 4.5 — WASM exports ⇔ regenerated TS types ⇔ UI consumers |

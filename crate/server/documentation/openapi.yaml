@@ -1640,6 +1640,83 @@ components:
         data:
           $ref: '#/components/schemas/SignIntermediateData'
 
+    CryptoOfficerStatusResponse:
+      type: object
+      required:
+        - enabled
+        - users
+        - active_co_users
+        - custodians_count
+        - require_ceremony
+        - ceremony_activated
+        - is_crypto_officer
+      properties:
+        enabled:
+          type: boolean
+          description: Whether a Crypto Officer role configuration exists on the server.
+        users:
+          type: array
+          items:
+            type: string
+          description: >
+            Configured CO candidate usernames. Only populated for callers who are
+            themselves CO candidates; regular Operators receive an empty list.
+        active_co_users:
+          type: array
+          items:
+            type: string
+          description: >
+            Subset of `users` that currently hold an active ceremony activation.
+            Only populated for CO candidates. Useful for peer-revocation target lists.
+        custodians_count:
+          type: integer
+          description: Total number of CO custodians configured on the server.
+        require_ceremony:
+          type: boolean
+          description: Whether a split-key ceremony is required before the role becomes active.
+        ceremony_activated:
+          type: boolean
+          description: Whether the ceremony has been completed and the role is currently active.
+        is_crypto_officer:
+          type: boolean
+          description: Whether the calling user is currently an active Crypto Officer.
+      example:
+        enabled: true
+        users: [alice@example.com, bob@example.com]
+        active_co_users: [alice@example.com]
+        custodians_count: 2
+        require_ceremony: true
+        ceremony_activated: true
+        is_crypto_officer: true
+
+    DisableCryptoOfficerRequest:
+      type: object
+      properties:
+        target_user:
+          type: string
+          nullable: true
+          description: >
+            The user ID of the active CO to revoke. If omitted, the caller self-revokes
+            their own active ceremony. If provided, any configured CO candidate may
+            peer-revoke the specified active CO.
+      example:
+        target_user: alice@example.com
+
+    CeremonyActivateRequest:
+      type: object
+      required: [share_ids]
+      properties:
+        share_ids:
+          type: array
+          items:
+            type: string
+          description: UIDs of all n split-key shares required for XOR reconstruction.
+          minItems: 2
+      example:
+        share_ids:
+          - ceremony-key-2026#1
+          - ceremony-key-2026#2
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 paths:
@@ -2037,6 +2114,95 @@ paths:
                     description: True if the user has privileged (admin-level) access
               example:
                 has_privileged_access: false
+
+  /access/crypto_officer/status:
+    get:
+      tags: [Access]
+      summary: Get Crypto Officer status
+      description: >
+        Returns the current Crypto Officer configuration and the calling user's activation status.
+        CO candidate users additionally receive the list of configured CO users and which of them
+        currently hold an active ceremony activation.
+        Any authenticated user may call this endpoint — no key material is revealed.
+      operationId: getCryptoOfficerStatus
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: Crypto Officer status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CryptoOfficerStatusResponse'
+
+  /access/crypto_officer/disable:
+    post:
+      tags: [Access]
+      summary: Revoke Crypto Officer ceremony
+      description: >
+        Revokes an active Crypto Officer ceremony activation.
+
+        - **Self-revoke** (omit `target_user`): the caller revokes their own active ceremony.
+        - **Peer revocation** (`target_user` provided): any configured CO candidate can revoke
+          another active CO — intended for compromise recovery when no active CO is available.
+
+        The reconstructed key is **not** destroyed — only the `crypto_officer_activations` row
+        is updated. The demoted CO drops back to Operator privileges.
+        Only valid when `require_ceremony = true`.
+      operationId: disableCryptoOfficer
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisableCryptoOfficerRequest'
+      responses:
+        '200':
+          description: Ceremony revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /access/crypto_officer/ceremony/activate:
+    post:
+      tags: [Access]
+      summary: Activate Crypto Officer via split-key ceremony
+      description: >
+        Activates the Crypto Officer role by reconstructing the ceremony secret in RAM from
+        all n XOR split-key shares, verifying dual-control and ceremony-attribute constraints,
+        and persisting the activation record.
+
+        The ceremony secret is **never stored** as a KMS managed object — it is zeroized
+        immediately after the activation record is written (NIST SP 800-57 Part 2 Rev 1 §4.6).
+
+        Callers must be listed in `crypto_officer_users`.
+        Only valid when `require_ceremony = true`.
+
+        **Note**: this endpoint is also the only activation path used by the Web UI
+        (`CryptoOfficerRole.tsx`). Any change to the request/response shape must be
+        verified against both the CLI (`ckms`) and the UI.
+      operationId: activateCryptoOfficerCeremony
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CeremonyActivateRequest'
+      responses:
+        '200':
+          description: Ceremony activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
 
   # ── Server ───────────────────────────────────────────────────────────────────
 
