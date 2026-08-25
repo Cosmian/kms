@@ -35,6 +35,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 use crate::{
     config::{ClapConfig, MainDBConfig, ServerParams},
     core::{KMS, operations::perform_crypto_officer_ceremony_activation},
+    error::KmsError,
     middlewares::UserId,
     result::KResult,
     tests::test_utils::get_tmp_sqlite_path,
@@ -43,6 +44,15 @@ use crate::{
 // A fixed 32-byte secret used for all ceremony tests.
 const TEST_CEREMONY_SECRET: &str =
     "deadbeefcafebabe0102030405060708090a0b0c0d0e0f10deadbeefcafebabe";
+
+/// Extract the text-string from a `UniqueIdentifier`, propagating as a `KResult`.
+/// Replaces `.as_str().expect("UID must be a string")` throughout this file so
+/// a malformed server response produces a descriptive error rather than a panic.
+fn uid_string(uid: &UniqueIdentifier) -> KResult<String> {
+    uid.as_str()
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| KmsError::InvalidRequest(format!("expected TextString UID, got {uid:?}")))
+}
 
 /// Build a `KMS` configured for ceremony mode with the given CO users.
 async fn ceremony_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
@@ -135,11 +145,7 @@ async fn create_key(kms: &KMS, owner: &str) -> KResult<String> {
     )?;
     req.attributes.activation_date = None;
     let resp = kms.create(req, &UserId::from(owner)).await?;
-    Ok(resp
-        .unique_identifier
-        .as_str()
-        .expect("UID must be a string")
-        .to_owned())
+    uid_string(&resp.unique_identifier)
 }
 
 /// Split `key_uid` into `total_parts` XOR shares; return share UIDs.
@@ -159,11 +165,10 @@ async fn split_key(
         protection_storage_masks: None,
     };
     let resp = Box::pin(kms.create_split_key(req, &UserId::from(owner))).await?;
-    Ok(resp
-        .unique_identifier
+    resp.unique_identifier
         .iter()
-        .map(|u| u.as_str().expect("UID must be a string").to_owned())
-        .collect())
+        .map(uid_string)
+        .collect::<KResult<Vec<_>>>()
 }
 
 /// Reconstruct from the given share UIDs; return the reconstructed key UID.
@@ -184,11 +189,7 @@ async fn join_shares(
         protection_storage_masks: None,
     };
     let resp = kms.join_split_key(req, &UserId::from(user)).await?;
-    Ok(resp
-        .unique_identifier
-        .as_str()
-        .expect("UID must be a string")
-        .to_owned())
+    uid_string(&resp.unique_identifier)
 }
 
 // ─── Test 1: config-only CO ──────────────────────────────────────────────────
@@ -1560,11 +1561,7 @@ async fn test_co_cannot_get_sensitive_key_without_wrapping() -> KResult<()> {
     req.attributes.activation_date = None;
     req.attributes.sensitive = Some(true); // mark sensitive
     let create_resp = kms.create(req, &UserId::from(alice)).await?;
-    let key_uid = create_resp
-        .unique_identifier
-        .as_str()
-        .expect("UID must be a string")
-        .to_owned();
+    let key_uid = uid_string(&create_resp.unique_identifier)?;
 
     // Alice (active CO and owner) tries to Get her own key without a wrapping specification.
     let get_req = Get {
@@ -2049,8 +2046,8 @@ async fn test_generic_split_without_wrapping_key_roundtrip() -> KResult<()> {
     let share_uids: Vec<String> = resp
         .unique_identifier
         .iter()
-        .map(|u| u.as_str().expect("UID must be a string").to_owned())
-        .collect();
+        .map(uid_string)
+        .collect::<KResult<Vec<_>>>()?;
     assert_eq!(share_uids.len(), 2, "expected 2 unwrapped shares");
 
     // Reconstruct — source key is still alive (no ceremony destruction).
