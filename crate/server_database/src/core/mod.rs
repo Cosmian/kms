@@ -288,6 +288,16 @@ impl Database {
         self.kind
     }
 
+    /// Replace the ceremony encryption keys after post-init resolution.
+    ///
+    /// Used when `ceremony_key_id` is set: the raw AES key is fetched from the
+    /// object store after the database is initialized, and the derived
+    /// `CeremonyKeys` are installed here before the server starts handling
+    /// requests.
+    pub fn set_ceremony_keys(&mut self, keys: Arc<CeremonyKeys>) {
+        self.ceremony_keys = Some(keys);
+    }
+
     pub async fn health_check(&self) -> Result<(), String> {
         self.health.check().await
     }

@@ -154,10 +154,17 @@ pub struct ServerParams {
 
     /// Ceremony record encryption keys.
     ///
-    /// Derived from `ceremony_secret` at startup. `None` when no role requires a ceremony.
+    /// Derived from `ceremony_secret` at startup, or resolved from the object
+    /// store when `ceremony_key_id` is set. `None` when no role requires a ceremony.
     /// When `Some`, all ceremony activation records are AES-256-GCM sealed before storage
     /// and verified on read — preventing forgery and protecting participant identities.
     pub ceremony_keys: Option<Arc<CeremonyKeys>>,
+
+    /// UID of the KMS symmetric key used as the ceremony record sealing key.
+    ///
+    /// When set, `ceremony_key_id` takes precedence over `ceremony_secret`.
+    /// The key is fetched from the object store after database initialization.
+    pub ceremony_key_id: Option<String>,
 
     /// AWS XKS parameters, if any
     pub aws_xks_params: Option<AwsXksParams>,
@@ -441,8 +448,16 @@ impl ServerParams {
             },
             ceremony_keys: {
                 let any_ceremony_required = conf.roles.crypto_officer_require_ceremony;
-                match (&conf.roles.ceremony_secret, any_ceremony_required) {
-                    (Some(hex_secret), _) => {
+                match (
+                    &conf.roles.ceremony_key_id,
+                    &conf.roles.ceremony_secret,
+                    any_ceremony_required,
+                ) {
+                    // ceremony_key_id takes precedence — keys resolved after DB init;
+                    // or neither provided and ceremony is not required.
+                    (Some(_), _, _) | (None, None, false) => None,
+                    // Only ceremony_secret provided — derive keys now
+                    (None, Some(hex_secret), _) => {
                         let bytes = hex::decode(hex_secret).map_err(|e| {
                             KmsError::ServerError(format!(
                                 "ceremony_secret: invalid hex encoding: {e}"
@@ -470,16 +485,18 @@ impl ServerParams {
                         );
                         Some(Arc::new(keys))
                     }
-                    (None, true) => {
+                    // Neither provided but ceremony required
+                    (None, None, true) => {
                         return Err(KmsError::ServerError(
-                            "ceremony_secret is required when any role has require_ceremony = true. \
-                             Generate one with: openssl rand -hex 32"
+                            "ceremony_secret or ceremony_key_id is required when any role has \
+                             require_ceremony = true. Set ceremony_key_id to an existing AES-256 \
+                             symmetric key UID, or generate a secret with: openssl rand -hex 32"
                                 .to_owned(),
                         ));
                     }
-                    (None, false) => None,
                 }
             },
+            ceremony_key_id: conf.roles.ceremony_key_id.clone(),
             ui_session_salt: conf.ui_config.ui_session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
@@ -970,6 +987,7 @@ impl fmt::Debug for ServerParams {
             "ceremony_keys",
             &self.ceremony_keys.as_ref().map(|_| "<configured>"),
         );
+        debug_struct.field("ceremony_key_id", &self.ceremony_key_id);
 
         debug_struct.finish()
     }

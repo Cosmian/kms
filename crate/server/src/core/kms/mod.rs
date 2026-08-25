@@ -7,8 +7,11 @@ pub(crate) mod permissions;
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 
 use cosmian_kms_server_database::{
-    Database, DbMetricsRecorder,
-    reexport::cosmian_kms_interfaces::{CryptoOracle, HSM, HsmStore, ObjectsStore},
+    CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
+    reexport::{
+        cosmian_kmip::kmip_2_1::kmip_objects::Object,
+        cosmian_kms_interfaces::{CryptoOracle, HSM, HsmStore, ObjectsStore},
+    },
 };
 use cosmian_logger::trace;
 // Proprietary HSMs (Proteccio, Utimaco, Crypt2pay) ship Linux x86_64-only PKCS#11 libs.
@@ -152,7 +155,7 @@ impl KMS {
                     "unwrapped_cache_max_size must be greater than 0".to_owned(),
                 )
             })?;
-        let database = Database::instantiate(
+        let mut database = Database::instantiate(
             main_db_params,
             server_params.clear_db_on_start,
             object_stores,
@@ -164,6 +167,60 @@ impl KMS {
             server_params.ceremony_keys.clone(),
         )
         .await?;
+
+        // Resolve ceremony_key_id: fetch the AES-256 key from the object store and derive
+        // CeremonyKeys from its raw bytes. This takes precedence over ceremony_secret when set.
+        if let Some(ref key_id) = server_params.ceremony_key_id {
+            let owm = database
+                .retrieve_object(key_id)
+                .await
+                .map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "ceremony_key_id '{key_id}': failed to retrieve from database: {e}"
+                    ))
+                })?
+                .ok_or_else(|| {
+                    KmsError::ServerError(format!(
+                        "ceremony_key_id '{key_id}' not found in the database. \
+                         Create the sealing key before enabling ceremony mode: \
+                         ckms sym keys create --id {key_id} --number-of-bits 256"
+                    ))
+                })?;
+
+            let raw_bytes = match owm.object() {
+                Object::SymmetricKey(sk) => sk.key_block.key_bytes().map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "ceremony_key_id '{key_id}': failed to extract key bytes: {e}"
+                    ))
+                })?,
+                other => {
+                    return Err(KmsError::ServerError(format!(
+                        "ceremony_key_id '{key_id}' must be a SymmetricKey (AES-256), \
+                         got {:?}",
+                        other.object_type()
+                    )));
+                }
+            };
+
+            if raw_bytes.len() != CEREMONY_SECRET_LENGTH {
+                return Err(KmsError::ServerError(format!(
+                    "ceremony_key_id '{key_id}' must be an AES-256 key ({} bytes), \
+                     got {} bytes",
+                    CEREMONY_SECRET_LENGTH,
+                    raw_bytes.len(),
+                )));
+            }
+
+            let mut secret = [0_u8; CEREMONY_SECRET_LENGTH];
+            secret.copy_from_slice(&raw_bytes);
+            let keys = Arc::new(CeremonyKeys::derive(&secret));
+            secret.fill(0);
+            database.set_ceremony_keys(keys);
+            tracing::info!(
+                ceremony_key_id = %key_id,
+                "ceremony sealing key loaded from object store"
+            );
+        }
 
         // Seed the kms.objects.total gauge from the real DB count on startup.
         //
