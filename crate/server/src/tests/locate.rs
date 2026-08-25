@@ -33,7 +33,7 @@ use crate::{
 async fn test_locate() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let owner = UserId::new("mt_owner");
+    let owner = UserId::from("mt_owner");
     let mut clap_config = https_clap_config();
     clap_config.db = MainDBConfig {
         database_type: Some("sqlite".to_owned()),

@@ -244,7 +244,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
     let clap_config = https_clap_config();
     let sqlite_path = clap_config.db.sqlite_path.clone();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::new("test_kek_wrapping_regression@example.com");
+    let owner = UserId::from("test_kek_wrapping_regression@example.com");
 
     let kek_request = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
@@ -390,7 +390,7 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
     let clap_config = https_clap_config();
     let sqlite_path = clap_config.db.sqlite_path.clone();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::new("test_kek_sign_regression@example.com");
+    let owner = UserId::from("test_kek_sign_regression@example.com");
 
     let kek_request = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,

@@ -23,19 +23,11 @@ use serde::{Deserialize, Serialize};
 pub struct UserId(String);
 
 impl UserId {
-    /// Wrap any `Into<String>` value as a `UserId`.
-    ///
-    /// # Panics
-    /// Panics in debug mode if the string is empty. Use [`try_new`](Self::try_new)
-    /// for validated construction.
-    #[must_use]
-    pub fn new(s: impl Into<String>) -> Self {
-        let s = s.into();
-        debug_assert!(!s.is_empty(), "UserId must not be empty");
-        Self(s)
-    }
-
     /// Try to wrap a string as a `UserId`, rejecting empty strings.
+    ///
+    /// Use this whenever the string originates from user input or any
+    /// untrusted source. For string literals in tests, `UserId::from("…")`
+    /// is sufficient — the `From` impl checks for emptiness in debug builds.
     ///
     /// # Errors
     /// Returns an error if the string is empty.
@@ -82,12 +74,14 @@ impl Display for UserId {
 
 impl From<String> for UserId {
     fn from(s: String) -> Self {
+        debug_assert!(!s.is_empty(), "UserId must not be empty");
         Self(s)
     }
 }
 
 impl From<&str> for UserId {
     fn from(s: &str) -> Self {
+        debug_assert!(!s.is_empty(), "UserId must not be empty");
         Self(s.to_owned())
     }
 }
@@ -133,7 +127,7 @@ mod tests {
 
     #[test]
     fn deref_coerces_to_str() {
-        let uid = UserId::new("alice@example.com");
+        let uid = UserId::from("alice@example.com");
         let s: &str = &uid;
         assert_eq!(s, "alice@example.com");
     }
@@ -148,8 +142,8 @@ mod tests {
     #[test]
     fn equality_and_hash() {
         use std::collections::HashSet;
-        let a = UserId::new("a@b.com");
-        let b = UserId::new("a@b.com");
+        let a = UserId::from("a@b.com");
+        let b = UserId::from("a@b.com");
         assert_eq!(a, b);
         let mut set = HashSet::new();
         set.insert(a);

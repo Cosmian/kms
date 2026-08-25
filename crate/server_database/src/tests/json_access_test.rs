@@ -26,7 +26,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
     cosmian_logger::log_init(None);
 
     let mut rng = CsRng::from_entropy();
-    let owner = UserId::new("eyJhbGciOiJSUzI1Ni");
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);

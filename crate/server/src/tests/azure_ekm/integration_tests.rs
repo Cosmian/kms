@@ -42,7 +42,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
     // INFO: I will take care of this one by adding the new code
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::new("ekm_owner");
+    let owner = UserId::from("ekm_owner");
 
     // Test 1: Invalid Base64 URL encoding
     let req = symmetric_key_create_request(
@@ -189,7 +189,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kw() -> KResult<()> {
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::new("ekm_owner");
+    let owner = UserId::from("ekm_owner");
 
     // RFC 3394 Section 4.6: Wrap 256 bits of Key Data with a 256-bit KEK
     let rfc_kek_bytes =
@@ -280,7 +280,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::new("ekm_owner");
+    let owner = UserId::from("ekm_owner");
 
     // For info, the rfc document has no test vector with a 256-bit KEK, so we generate our own
     for _ in 0..5 {
@@ -364,7 +364,7 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::new("ekm_owner");
+    let owner = UserId::from("ekm_owner");
 
     let create_keys = kms
         .create_key_pair(

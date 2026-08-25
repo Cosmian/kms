@@ -16,8 +16,8 @@ pub(super) async fn permissions<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
 async fn permissions_users<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbResult<()> {
     cosmian_logger::log_init(None);
 
-    let user_id_1 = UserId::new(Uuid::new_v4().to_string());
-    let user_id_2 = UserId::new(Uuid::new_v4().to_string());
+    let user_id_1 = UserId::from(Uuid::new_v4().to_string());
+    let user_id_2 = UserId::from(Uuid::new_v4().to_string());
     let uid = Uuid::new_v4().to_string();
 
     // simple insert
@@ -99,7 +99,7 @@ async fn permissions_users<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbRe
 }
 
 async fn permissions_wildcard<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbResult<()> {
-    let user_id = UserId::new(Uuid::new_v4().to_string());
+    let user_id = UserId::from(Uuid::new_v4().to_string());
     let uid = Uuid::new_v4().to_string();
 
     // simple insert

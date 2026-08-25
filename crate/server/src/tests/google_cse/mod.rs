@@ -367,7 +367,7 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::new("eyJhbGciOiJSUzI1Ni");
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     // Create google_cse key
     let google_cse_object =

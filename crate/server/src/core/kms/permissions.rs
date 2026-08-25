@@ -46,7 +46,8 @@ impl KMS {
                          granted or revoked on their behalf."
                     )))
                 }
-                let user_id_typed = UserId::from(user_id.as_str());
+                let user_id_typed =
+                    UserId::try_new(user_id.as_str()).map_err(KmsError::InvalidRequest)?;
                 self.database
                     .grant_operations("*", &user_id_typed, HashSet::from([KmipOperation::Create]))
                     .await?;
@@ -91,7 +92,8 @@ impl KMS {
                 }
             }
 
-            let grant_user_id = UserId::from(access.user_id.as_str());
+            let grant_user_id =
+                UserId::try_new(access.user_id.as_str()).map_err(KmsError::InvalidRequest)?;
             self.database
                 .grant_operations(
                     uid,
@@ -134,7 +136,8 @@ impl KMS {
                          granted or revoked on their behalf."
                     )))
                 }
-                let user_id_typed = UserId::from(user_id.as_str());
+                let user_id_typed =
+                    UserId::try_new(user_id.as_str()).map_err(KmsError::InvalidRequest)?;
                 self.database
                     .remove_operations("*", &user_id_typed, HashSet::from([KmipOperation::Create]))
                     .await?;
@@ -159,7 +162,8 @@ impl KMS {
                 ))
             }
 
-            let revoke_user_id = UserId::from(access.user_id.as_str());
+            let revoke_user_id =
+                UserId::try_new(access.user_id.as_str()).map_err(KmsError::InvalidRequest)?;
             self.database
                 .remove_operations(
                     uid,

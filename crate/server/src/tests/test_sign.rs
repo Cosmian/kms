@@ -174,7 +174,7 @@ async fn test_sign_rsa() -> KResult<()> {
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::new("test_user_rsa_sign");
+    let owner = UserId::from("test_user_rsa_sign");
 
     // Create RSA key pair
     let request = create_rsa_key_pair_request(
@@ -212,7 +212,7 @@ async fn test_sign_ec_curve(curve: RecommendedCurve, test_name: &str) -> KResult
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::new(format!("test_user_{test_name}_sign"));
+    let owner = UserId::from(format!("test_user_{test_name}_sign"));
 
     // Create EC key pair with specified curve
     let request = create_ec_key_pair_request(

@@ -20,9 +20,9 @@ pub(super) async fn owner<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbRes
     cosmian_logger::log_init(None);
 
     let mut rng = CsRng::from_entropy();
-    let owner = UserId::new("eyJhbGciOiJSUzI1Ni");
-    let user_id_1 = UserId::new("user_id_1@example.org");
-    let user_id_2 = UserId::new("user_id_2@example.org");
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
+    let user_id_1 = UserId::from("user_id_1@example.org");
+    let user_id_2 = UserId::from("user_id_2@example.org");
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
     let symmetric_key = create_symmetric_key_kmip_object(
