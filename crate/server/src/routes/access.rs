@@ -359,6 +359,11 @@ pub(crate) struct CeremonyActivateRequest {
 /// **Authorization**: caller must be listed in `crypto_officer_users`.
 ///
 /// **Ceremony mode only**: returns an error when `require_ceremony = false`.
+///
+/// **Shared by CLI and UI**: both `ckms access crypto-officer ceremony activate`
+/// and the Web UI (`ui/src/actions/Access/CryptoOfficerRole.tsx`) hit this
+/// endpoint exclusively. Any change to the request shape or response format must
+/// be verified against both callers.
 #[post("/access/crypto_officer/ceremony/activate")]
 pub(crate) async fn activate_crypto_officer_ceremony(
     req: HttpRequest,
