@@ -62,7 +62,7 @@ pub(crate) mod test_helpers;
 async fn test_hsm_all() {
     log_init(option_env!("RUST_LOG"));
     info!("HSM: find");
-    search::test_object_search().await.unwrap();
+    Box::pin(search::test_object_search()).await.unwrap();
 
     info!("HSM: wrapped_symmetric_dek");
     // Box::pin are needed to conform to clippy::large_futures lint

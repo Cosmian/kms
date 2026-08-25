@@ -915,7 +915,7 @@ async fn test_full_four_phase_ceremony_with_production_users() -> KResult<()> {
 
     // ── Phase 4: Disable ceremony ─────────────────────────────────────────────
     kms.database
-        .revoke_crypto_officer_activation(user_co)
+        .revoke_crypto_officer_activation(user_co, user_co)
         .await?;
 
     assert!(
@@ -965,7 +965,9 @@ async fn test_revoke_and_reactivate_ceremony() -> KResult<()> {
     );
 
     // ── Revoke ────────────────────────────────────────────────────────────────
-    kms.database.revoke_crypto_officer_activation(alice).await?;
+    kms.database
+        .revoke_crypto_officer_activation(alice, alice)
+        .await?;
     assert!(
         !kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be Operator after revoke"
@@ -1033,7 +1035,9 @@ async fn test_post_revocation_co_is_demoted_to_operator() -> KResult<()> {
     assert!(kms.is_crypto_officer(&UserId::from(alice)).await?);
 
     // Revoke.
-    kms.database.revoke_crypto_officer_activation(alice).await?;
+    kms.database
+        .revoke_crypto_officer_activation(alice, alice)
+        .await?;
 
     // Alice is now Operator — must not be CO.
     assert!(
@@ -1043,17 +1047,162 @@ async fn test_post_revocation_co_is_demoted_to_operator() -> KResult<()> {
     Ok(())
 }
 
-// ─── Test 17: 3-CO case — sequential activation (single-active-CO design) ────
+// ─── Test 19: reconstructed-key storage — per activation path ─────────────────
 
-/// The DB supports ONE global active CO at a time (the most recently activated user).
-/// With 3 CO candidates, each can activate in sequence. When B activates after A,
-/// only B is CO; A is no longer CO.  This reflects the current single-record design.
+/// **`POST /access/crypto_officer/ceremony/activate` (UI path)**:
+/// The reconstructed key is computed in RAM to derive its hash, then zeroized.
+/// It is **never stored** in the `objects` table.  After activation the base key
+/// UID (i.e., the share root without the `#N` suffix) must be absent from the DB.
 ///
-/// Sequence: alice activates → alice is CO; bob activates → bob is CO, alice is not;
-/// alice revokes bob's activation and re-activates → alice is CO again.
+/// **`JoinSplitKey` KMIP operation (CLI path)**:
+/// The reconstructed key IS stored as an Active managed object before the ceremony
+/// activation side-effect runs.  After `join_shares` the base UID must exist.
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn test_three_co_sequential_activation_single_record_design() -> KResult<()> {
+async fn test_activation_endpoint_does_not_store_reconstructed_key() -> KResult<()> {
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+    let provisioner = "admin";
+    let n = 3_i32;
+
+    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
+
+    // ── Create the ceremony key with a deterministic UID ──────────────────────
+    let key_uid = "ceremony-key-rest-path-test";
+    let no_tags: &[&str] = &[];
+    let mut req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        Some(UniqueIdentifier::TextString(key_uid.to_owned())),
+        256,
+        CryptographicAlgorithm::AES,
+        no_tags,
+        false,
+        None,
+    )?;
+    req.attributes.activation_date = None;
+    kms.create(req, &UserId::from(provisioner)).await?;
+
+    let shares = Box::pin(split_key(&kms, provisioner, key_uid, n)).await?;
+
+    // ── Source key is destroyed after the split ───────────────────────────────
+    assert!(
+        kms.database.retrieve_object(key_uid).await?.is_none(),
+        "Source key must be destroyed after CreateSplitKey"
+    );
+
+    // ── Grant alice access to bob and carol's shares ──────────────────────────
+    kms.database
+        .grant_operations(
+            &shares[1],
+            &UserId::from(alice),
+            std::collections::HashSet::from([KmipOperation::Get]),
+        )
+        .await?;
+    kms.database
+        .grant_operations(
+            &shares[2],
+            &UserId::from(alice),
+            std::collections::HashSet::from([KmipOperation::Get]),
+        )
+        .await?;
+
+    // ── Activate via the REST path (perform_crypto_officer_ceremony_activation) ─
+    // This is what the UI calls — it must NOT store the reconstructed key.
+    perform_crypto_officer_ceremony_activation(&kms, &shares, &UserId::from(alice)).await?;
+
+    assert!(
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
+        "Alice must be an active CO after the REST activation"
+    );
+
+    // The reconstructed key UID (base UID without #N suffix) must NOT be in DB.
+    let reconstructed_uid = key_uid; // base UID = source key UID = ceremony-key-rest-path-test
+    assert!(
+        kms.database
+            .retrieve_object(reconstructed_uid)
+            .await?
+            .is_none(),
+        "REST activation path must NOT store the reconstructed key in the DB"
+    );
+
+    Ok(())
+}
+
+/// **`JoinSplitKey` (CLI path)** stores the reconstructed key as a managed object.
+///
+/// This is the complementary test: the KMIP path explicitly persists the key so
+/// the caller can use it as a wrapping/encryption key after ceremony completion.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_join_split_key_stores_reconstructed_key() -> KResult<()> {
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+    let provisioner = "admin";
+    let n = 3_i32;
+
+    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
+
+    let key_uid = "ceremony-key-kmip-path-test";
+    let no_tags: &[&str] = &[];
+    let mut req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        Some(UniqueIdentifier::TextString(key_uid.to_owned())),
+        256,
+        CryptographicAlgorithm::AES,
+        no_tags,
+        false,
+        None,
+    )?;
+    req.attributes.activation_date = None;
+    kms.create(req, &UserId::from(provisioner)).await?;
+
+    let shares = Box::pin(split_key(&kms, provisioner, key_uid, n)).await?;
+
+    kms.database
+        .grant_operations(
+            &shares[1],
+            &UserId::from(alice),
+            std::collections::HashSet::from([KmipOperation::Get]),
+        )
+        .await?;
+    kms.database
+        .grant_operations(
+            &shares[2],
+            &UserId::from(alice),
+            std::collections::HashSet::from([KmipOperation::Get]),
+        )
+        .await?;
+
+    // ── Activate via JoinSplitKey (KMIP / CLI path) ───────────────────────────
+    // This DOES store the reconstructed key before ceremony activation runs.
+    let reconstructed_uid = join_shares(&kms, alice, &shares, ObjectType::SymmetricKey).await?;
+
+    assert!(
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
+        "Alice must be an active CO after JoinSplitKey"
+    );
+
+    // The reconstructed key must exist in the DB.
+    let owm = kms.database.retrieve_object(&reconstructed_uid).await?;
+    assert!(
+        owm.is_some(),
+        "KMIP JoinSplitKey path must store the reconstructed key in the DB (uid={reconstructed_uid})"
+    );
+
+    Ok(())
+}
+
+/// Per-user model: each CO candidate activates independently. Multiple CO users
+/// can be simultaneously active. When Carol activates after Alice, Alice remains
+/// an active CO — Carol's activation does NOT demote Alice.
+///
+/// Sequence: alice activates → alice is CO; carol activates → carol AND alice are
+/// both CO simultaneously; bob never activates → bob is still Operator.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_multiple_co_simultaneous_activation() -> KResult<()> {
     let alice = "alice@example.com";
     let bob = "bob@example.com";
     let carol = "carol@example.com";
@@ -1083,14 +1232,14 @@ async fn test_three_co_sequential_activation_single_record_design() -> KResult<(
     perform_crypto_officer_ceremony_activation(&kms, &shares_a, &UserId::from(alice)).await?;
     assert!(
         kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be CO after first activation"
+        "Alice must be CO after her activation"
     );
     assert!(
         !kms.is_crypto_officer(&UserId::from(carol)).await?,
-        "Carol must still be Operator"
+        "Carol must still be Operator before her own ceremony"
     );
 
-    // ── Carol activates (new ceremony) → she becomes the active CO; alice is no longer CO ──
+    // ── Carol activates her own ceremony → she becomes CO; Alice stays CO ─────
     let key_c = create_key(&kms, provisioner).await?;
     let shares_c = Box::pin(split_key(&kms, provisioner, &key_c, n)).await?;
     // Shares auto-assigned round-robin: shares_c[0] → alice, shares_c[1] → bob,
@@ -1110,20 +1259,33 @@ async fn test_three_co_sequential_activation_single_record_design() -> KResult<(
         )
         .await?;
     perform_crypto_officer_ceremony_activation(&kms, &shares_c, &UserId::from(carol)).await?;
-    // Single-record design: only carol is now CO.
+
+    // Per-user model: both Alice and Carol are now simultaneously active COs.
     assert!(
         kms.is_crypto_officer(&UserId::from(carol)).await?,
         "Carol must be CO after her activation"
     );
     assert!(
-        !kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice is NOT CO — single-record design: only the last activator is CO"
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
+        "Alice must STILL be CO — her activation was not affected by Carol's"
     );
 
-    // ── Verify bob (in the CO list, but never activated) is still not CO ─────
+    // Bob never activated — still an Operator.
     assert!(
         !kms.is_crypto_officer(&UserId::from(bob)).await?,
         "Bob must remain Operator until he runs his own ceremony"
+    );
+
+    // Peer-revoke Carol: Alice (active CO) revokes Carol.
+    kms.disable_crypto_officer_ceremony(&UserId::from(alice), Some(&UserId::from(carol)))
+        .await?;
+    assert!(
+        !kms.is_crypto_officer(&UserId::from(carol)).await?,
+        "Carol must be demoted after Alice peer-revokes her"
+    );
+    assert!(
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
+        "Alice must remain CO — only Carol's record was revoked"
     );
     Ok(())
 }

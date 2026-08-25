@@ -59,12 +59,17 @@ The constraint: $n \ge 3$ (threshold equals total parts, minimum 3 custodians re
 
 | Store | Written by | Purpose |
 |---|---|---|
-| `crypto_officer_activations` DB table | `JoinSplitKey` on ceremony shares, or `POST /access/crypto_officer/ceremony/activate` | **Sole source of truth** for CO role status. Sealed with AES-256-GCM under `ceremony_secret`. |
-| `objects` DB table | Every `JoinSplitKey` call (ceremony and non-ceremony) | Stores the reconstructed key as a managed KMS object owned by the caller. For ceremony shares the key is stored **unconditionally** before the activation side-effect runs. |
+| `crypto_officer_activations` DB table | Both activation paths (see below) | **Sole source of truth** for CO role status. Sealed with AES-256-GCM under `ceremony_secret`. |
+| `objects` DB table | **`JoinSplitKey` KMIP path only** | Stores the reconstructed key as a managed KMS object owned by the caller. The REST activation path never writes here. |
 
-!!! info "Two ceremony completion paths"
-    - **`JoinSplitKey` KMIP operation** (primary path): stores the reconstructed key in `objects` **and** writes the CO activation record. Suitable for clients that need the reconstructed key as a usable KMS object.
-    - **`POST /access/crypto_officer/ceremony/activate`** (CLI legacy path): reconstructs the secret in RAM only (for hash verification), writes the CO activation record, and **does not store a key object**.
+!!! info "Two ceremony completion paths — different key-storage behaviour"
+    - **`JoinSplitKey` KMIP operation** — **CLI path** (`ckms sym keys join-split-key`): stores the
+      reconstructed key in `objects` **and** writes the CO activation record. The key persists as an
+      Active managed object the caller can use for wrapping, encryption, or re-keying operations.
+    - **`POST /access/crypto_officer/ceremony/activate`** — **Web UI path**: reconstructs the secret
+      in RAM only (to verify the SHA-256 key fingerprint), writes the CO activation record, then
+      **zeroizes the secret immediately** — no key object is ever written to `objects`. Verified by
+      unit test `test_activation_endpoint_does_not_store_reconstructed_key`.
 
 The `x-cosmian-crypto-officer-ceremony` tag on shares identifies which shares belong to
 a ceremony split. **It does NOT grant any privilege.** The server checks this tag only
@@ -142,8 +147,10 @@ ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc
 
 CryptoOfficer privileges are **inactive** at startup. At least **3** users must be listed
 in `crypto_officer_users` when `require_ceremony = true` (the server rejects fewer).
-The role becomes active only after the ceremony completes (KMIP `JoinSplitKey` with all
-ceremony-tagged shares).
+Each configured CO candidate activates **independently** by running their own ceremony
+(`JoinSplitKey` with a fresh set of shares). Multiple COs can be simultaneously active
+at any time — activating your own ceremony does **not** revoke any other currently active
+CO.
 
 ---
 
@@ -184,22 +191,38 @@ sequenceDiagram
 !!! note "Source key is destroyed"
     The server destroys the ceremony source key immediately after all shares are stored.
 
-### Phase 2 — Activate Crypto Officer Role (JoinSplitKey)
+### Phase 2 — Activate Crypto Officer Role
 
 The CO candidate assembles all $n$ share UIDs (after each other CO grants GET access to
-their share), then calls `JoinSplitKey`. The server:
+their share), then activates via one of two paths:
+
+**Web UI path** (`POST /access/crypto_officer/ceremony/activate`):
 
 1. Retrieves each share — the candidate must have `Get` on each.
 2. Verifies all shares carry `x-cosmian-crypto-officer-ceremony`.
 3. Verifies all shares originate from the same source key.
 4. Verifies the share count equals the threshold.
 5. Verifies the candidate is in `crypto_officer_users`.
-6. Verifies that at least one share is owned by a **different** CO (dual-control — prevents
-   solo self-activation). The activating candidate may own one or more shares; what is
-   forbidden is that *all* shares belong to the activating candidate alone.
-7. Reconstructs the secret via XOR, stores it as a managed object.
-8. Persists a `crypto_officer_activations` record (activated-by, participants, SHA-256 hash).
-9. The candidate is now an **active CryptoOfficer**.
+6. Verifies that at least one share is owned by a **different** CO (dual-control).
+7. XOR-reconstructs the secret in RAM, computes the SHA-256 fingerprint.
+8. **Zeroizes the secret immediately** — it is never written to `objects`.
+9. Persists a `crypto_officer_activations` record (activated-by, participants, hash).
+10. The candidate is now an **active CryptoOfficer**.
+
+**CLI path** (`ckms sym keys join-split-key` → KMIP `JoinSplitKey`):
+
+Same verification steps 1–6, then:
+
+1. Stores the reconstructed key as an Active managed object in `objects` (owned by the caller).
+2. Persists the `crypto_officer_activations` record.
+3. The candidate is now an **active CryptoOfficer**.
+
+!!! warning "Key storage difference between paths"
+    The CLI path (`JoinSplitKey`) stores the reconstructed key as a usable KMS object.
+    The UI path (`POST /access/crypto_officer/ceremony/activate`) does **not** — the secret
+    is RAM-only and zeroized after the activation record is written.
+    Both paths enforce identical ceremony constraints; they differ only in whether a managed
+    key object is created as a side-effect.
 
 ```mermaid
 sequenceDiagram
@@ -213,24 +236,24 @@ sequenceDiagram
     CO2->>KMS: GrantAccess(share_1_id → Alice, Get)
     CO3->>KMS: GrantAccess(share_3_id → Alice, Get)
 
-    CO->>KMS: JoinSplitKey([share_1_id, share_2_id, share_3_id])
-    Note right of KMS: • Verify x-cosmian-crypto-officer-ceremony on all shares<br/>• Verify all shares from same source key<br/>• Verify count = n<br/>• Verify Alice ∈ crypto_officer_users<br/>• Verify at least one share owned by a different CO<br/>• XOR reconstruction → store reconstructed key<br/>• Persist crypto_officer_activations row
-    KMS-->>CO: JoinSplitKeyResponse{uid: "key_id"}
+    CO->>KMS: POST /access/crypto_officer/ceremony/activate (UI)<br/>or JoinSplitKey([share_1_id, share_2_id, share_3_id]) (CLI)
+    Note right of KMS: • Verify x-cosmian-crypto-officer-ceremony on all shares<br/>• Verify all shares from same source key<br/>• Verify count = n<br/>• Verify Alice ∈ crypto_officer_users<br/>• Verify dual-control (at least one share from another CO)<br/>• XOR reconstruction in RAM → hash<br/>• UI: zeroize secret, no key stored<br/>• CLI: store key in objects table<br/>• Persist crypto_officer_activations row
+    KMS-->>CO: 200 OK / JoinSplitKeyResponse
 
     Note over CO,KMS: CryptoOfficer role is now ACTIVE
-    CO->>KMS: GET /access/crypto_officer/status → {ceremony_activated: true}
+    CO->>KMS: GET /access/crypto_officer/status → {is_crypto_officer: true}
 ```
-
-!!! info "JoinSplitKey = Activation"
-    `JoinSplitKey` with ceremony-tagged shares is the activation mechanism. The reconstructed
-    key is stored as a KMS object, and the `crypto_officer_activations` record is written
-    automatically. No separate activation endpoint call is needed from the UI.
-    The dedicated REST endpoint `POST /access/crypto_officer/ceremony/activate` is kept
-    for CLI backward compatibility only.
 
 ### Phase 3 — Active use
 
-While the ceremony is active, the CryptoOfficer can manage all keys in the KMS:
+!!! info "Per-user independent activation"
+    Each CO candidate activates independently. Multiple COs can be **simultaneously active**
+    — when Alice activates, Bob (already active) is **not** affected. The `is_crypto_officer`
+    field in `GET /access/crypto_officer/status` is always per-user ("am I personally active?").
+    The `ceremony_activated` field is global ("is anyone active?"). Revocation is per-user:
+    revoking Alice does not affect Bob's active status.
+
+While the ceremony is active, an active CryptoOfficer can manage all keys in the KMS:
 
 ```mermaid
 sequenceDiagram
@@ -329,16 +352,18 @@ When all CO candidates are unavailable:
 |---|---|
 | **Information-theoretic secrecy** | $< n$ shares reveal zero bits about the secret |
 | **Single-point-of-failure elimination** | No single custodian can activate the role alone |
+| **Independent per-user activation** | Each CO candidate activates independently via their own ceremony run. Multiple COs can be simultaneously active; activating your own ceremony never revokes another CO's active status. |
+| **Per-user revocation isolation** | Revoking CO Alice does not affect CO Bob's active status — only Alice's `crypto_officer_activations` row is updated. |
 | **Insider threat mitigation** | A CO candidate cannot escalate without all custodians cooperating (n ≥ 3 prevents dealer computing other shares) |
 | **Dealer-colluder resistance** | With n ≥ 3, the key creator knows one share; deriving any other individual share is impossible without that custodian's cooperation |
 | **Audit trail** | Every activation records: activator, participant list, SHA-256 key fingerprint, timestamp |
 | **Self-revocability** | The active CO can revoke their own ceremony immediately in one call |
-| **Peer revocability** | Any CO candidate can revoke the active CO — enables compromise recovery without server restart |
+| **Peer revocability** | Any CO candidate can revoke a specific active CO — enables compromise recovery without server restart |
 | **Reconstructed key independent** | Revoking the CO role does NOT destroy the reconstructed key — it remains accessible to its owner as an Operator |
 | **Tag-based escalation prevention** | CO role is determined by `crypto_officer_activations` table only. The `x-cosmian-crypto-officer-ceremony` tag on KMS objects is used only as validation input, never for privilege checks. |
 | **Dual-control enforcement** | Assembling user must not own any share — all shares must come from other CO candidates |
 | **Replay prevention** | Re-activation requires re-running the full ceremony (JoinSplitKey with new ceremony-tagged shares) |
-| **RAM-only reconstruction** | During JoinSplitKey, the XOR secret is reconstructed in process RAM only; zeroized after storing the reconstructed key (ADP-20) |
+| **RAM-only reconstruction (UI path)** | Via `POST /access/crypto_officer/ceremony/activate`: the XOR secret is reconstructed in RAM, used for hash verification, then zeroized — no key object is stored. |
 | **Ceremony key destruction** | The source key is automatically destroyed after all shares are stored, removing any direct reconstruction path |
 | **HSM key exclusion** | Ownership bypass does not apply to HSM-backed keys (governed by HSM admin rules) |
 | **Emergency recovery** | If all CO candidates unavailable: remove from `crypto_officer_users` and restart |

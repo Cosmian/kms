@@ -626,7 +626,7 @@ pub(super) async fn test_hsm_permissions() -> KResult<()> {
     let aes_uuid = Uuid::new_v4();
     let rsa_uuid = Uuid::new_v4();
 
-    let (kms, kek_uid, slot) = setup_kms(Some(kek_uuid)).await?;
+    let (kms, kek_uid, slot) = Box::pin(setup_kms(Some(kek_uuid))).await?;
     let kek_uid = kek_uid.expect("KEK should be configured");
     let aes_uid = as_hsm_uid!(slot, aes_uuid);
     let rsa_uid = as_hsm_uid!(slot, rsa_uuid);

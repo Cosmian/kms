@@ -90,7 +90,7 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
 
     let owner = UserId::from("mt_owner");
     let user = UserId::from("mt_normal_user");
-    let kms = init_test_kms("redis_dump_v5_2_0.bin").await?;
+    let kms = Box::pin(init_test_kms("redis_dump_v5_2_0.bin")).await?;
 
     // Now, we check that the data is correctly migrated by "locating" it.
     // All keys have the "cat" tag, so the owner should find 5 keys.

@@ -340,8 +340,10 @@ const CryptoOfficerRole: React.FC = () => {
                     </Card>
                 )}
 
-                {/* Ceremony workflow — only shown when ceremony mode is required and role is dormant */}
-                {status && status.enabled && status.require_ceremony && !status.ceremony_activated && (
+                {/* Ceremony workflow — shown when ceremony is required and the current user is not yet active.
+                    With the per-user model multiple COs can be simultaneously active, so we gate on
+                    `is_crypto_officer` (am I personally active?) not `ceremony_activated` (is anyone active?). */}
+                {status && status.enabled && status.require_ceremony && !status.is_crypto_officer && (
                     <>
                         {/* ── Step 1: Create & Split Key ────────────────────────────── */}
                         <Card title={t("cryptoOfficer.step1Title", { count: status.custodians_count })} data-testid="split-key-step-card">

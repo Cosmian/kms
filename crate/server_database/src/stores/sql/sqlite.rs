@@ -1207,9 +1207,11 @@ impl PermissionsStore for SqlitePool {
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
-                    // Revoke any existing active record (0 rows affected is fine).
-                    tx.execute(&revoke_sql, params_from_iter([&revoked_by_s]))?;
-                    // Insert the new activation record.
+                    // Revoke only this user's prior active record (0 rows affected is fine).
+                    tx.execute(
+                        &revoke_sql,
+                        params_from_iter([&revoked_by_s, &activated_by_s]),
+                    )?;
                     tx.execute(&insert_sql, params_from_iter([&sealed, &activated_by_s]))?;
                     tx.commit()?;
                     Ok(())
@@ -1220,14 +1222,20 @@ impl PermissionsStore for SqlitePool {
         Ok(())
     }
 
-    async fn get_crypto_officer_activation(&self) -> InterfaceResult<Option<String>> {
-        let sql =
-            replace_dollars_with_qn(get_sqlite_query!("select-active-crypto-officer-activation"));
+    async fn get_crypto_officer_activation_by(
+        &self,
+        user: &str,
+    ) -> InterfaceResult<Option<String>> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!(
+            "select-active-crypto-officer-activation-by"
+        ));
+        let user_s = user.to_owned();
         let result: Option<String> = self
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
-                    c.query_row(&sql, [], |row| row.get(0)).optional()
+                    c.query_row(&sql, params_from_iter([&user_s]), |row| row.get(0))
+                        .optional()
                 },
             )
             .await
@@ -1235,14 +1243,35 @@ impl PermissionsStore for SqlitePool {
         Ok(result)
     }
 
-    async fn revoke_crypto_officer_activation(&self, revoked_by: &str) -> InterfaceResult<()> {
+    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!(
+            "select-any-active-crypto-officer-activation"
+        ));
+        let count: i64 = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<i64, rusqlite::Error> {
+                    c.query_row(&sql, [], |row| row.get(0))
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(count > 0)
+    }
+
+    async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
         let sql = replace_dollars_with_qn(get_sqlite_query!("revoke-crypto-officer-activation"));
         let revoked_by_s = revoked_by.to_owned();
+        let activated_by_s = activated_by.to_owned();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
-                    tx.execute(&sql, params_from_iter([&revoked_by_s]))?;
+                    tx.execute(&sql, params_from_iter([&revoked_by_s, &activated_by_s]))?;
                     tx.commit()?;
                     Ok(())
                 },

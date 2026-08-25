@@ -93,17 +93,9 @@ impl Database {
 
     /// Record that the Crypto Officer split-key ceremony has been completed.
     ///
-    /// **Single-record model**: at most one CO is active at any time. When a new
-    /// activator completes `JoinSplitKey`, the prior active record (if any) is
-    /// revoked atomically inside the same database transaction before the new one
-    /// is inserted. This closes the TOCTOU race described in
-    /// <https://github.com/Cosmian/kms/pull/991#discussion_r3846662505>.
-    ///
-    /// `is_crypto_officer_activated_by` checks the `activated_by` field of the
-    /// single active row — any user in `crypto_officer_users` is an Operator until
-    /// they run their own `JoinSplitKey`, but the server only has **one** active CO
-    /// at a time (the most recent activator). If B activates after A, A is
-    /// automatically demoted to Operator.
+    /// **Per-user model**: multiple CO users can be simultaneously active. This call
+    /// only touches the record for `activated_by` — no other user's activation is
+    /// affected. Each CO candidate activates independently by running `JoinSplitKey`.
     pub async fn activate_crypto_officer_ceremony(
         &self,
         activated_by: &str,
@@ -112,28 +104,28 @@ impl Database {
     ) -> DbResult<()> {
         let sealed =
             self.seal_ceremony_record(activated_by, participants, key_hash, "crypto_officer")?;
-        // The trait implementation performs revoke+insert in one atomic transaction.
-        // `revoked_by = activated_by`: the activator implicitly revokes the prior record.
+        // The trait implementation performs revoke+insert in one atomic transaction,
+        // scoped to `activated_by` only — idempotent re-activation for the same user.
         Ok(self
             .permissions
             .activate_crypto_officer_ceremony(&sealed, activated_by, activated_by)
             .await?)
     }
 
-    /// Returns `true` if there is an active (not revoked) Crypto Officer ceremony record.
+    /// Returns `true` if **any** user currently has an active Crypto Officer ceremony record.
     pub async fn is_crypto_officer_activated(&self) -> DbResult<bool> {
-        let sealed_opt = self.permissions.get_crypto_officer_activation().await?;
-        self.verify_ceremony_record(sealed_opt, "crypto_officer")
+        Ok(self.permissions.is_any_crypto_officer_activated().await?)
     }
 
-    /// Returns `true` if there is an active Crypto Officer ceremony record **and** the
-    /// `activated_by` field of that record equals `user`.
+    /// Returns `true` if `user` has their own active Crypto Officer ceremony record.
     ///
-    /// This ensures that only the specific user who ran `JoinSplitKey` is granted the
-    /// `CryptoOfficer` role — other users in `crypto_officer_users` remain Operators until
-    /// they complete their own ceremony.
+    /// Other users in `crypto_officer_users` may simultaneously be active COs with
+    /// their own independent activation records.
     pub async fn is_crypto_officer_activated_by(&self, user: &str) -> DbResult<bool> {
-        let sealed_opt = self.permissions.get_crypto_officer_activation().await?;
+        let sealed_opt = self
+            .permissions
+            .get_crypto_officer_activation_by(user)
+            .await?;
         match sealed_opt {
             None => Ok(false),
             Some(sealed) => {
@@ -142,17 +134,25 @@ impl Database {
                         "ceremony_secret not configured: cannot verify ceremony record".to_owned(),
                     )
                 })?;
-                let payload = keys.unseal(&sealed, "crypto_officer")?;
-                Ok(payload.activated_by == user)
+                // Unseal verifies the GCM tag and payload integrity.
+                keys.unseal(&sealed, "crypto_officer")?;
+                Ok(true)
             }
         }
     }
 
-    /// Revoke the active Crypto Officer ceremony record (set `revoked_at` to now).
-    pub async fn revoke_crypto_officer_activation(&self, revoked_by: &str) -> DbResult<()> {
+    /// Revoke `activated_by`'s active Crypto Officer ceremony record.
+    ///
+    /// `revoked_by` is stored in the audit column (who issued the revocation).
+    /// Only `activated_by`'s record is touched — all other users' records remain active.
+    pub async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> DbResult<()> {
         Ok(self
             .permissions
-            .revoke_crypto_officer_activation(revoked_by)
+            .revoke_crypto_officer_activation(revoked_by, activated_by)
             .await?)
     }
 }
@@ -180,23 +180,5 @@ impl Database {
             key_hash: key_hash.to_owned(),
         };
         keys.seal(&payload, role)
-    }
-
-    /// Verify sealed record integrity. Returns `true` if a valid sealed record exists,
-    /// `false` if no record, or `Err` if the record is tampered.
-    fn verify_ceremony_record(&self, sealed_opt: Option<String>, role: &str) -> DbResult<bool> {
-        match sealed_opt {
-            None => Ok(false),
-            Some(sealed) => {
-                let keys = self.ceremony_keys.as_ref().ok_or_else(|| {
-                    DbError::DatabaseError(
-                        "ceremony_secret not configured: cannot verify ceremony record".to_owned(),
-                    )
-                })?;
-                // Unseal verifies GCM tag — tampered records produce Err here.
-                keys.unseal(&sealed, role)?;
-                Ok(true)
-            }
-        }
     }
 }

@@ -1347,14 +1347,17 @@ impl PermissionsStore for PgPool {
         let activated_by_s = activated_by.to_owned();
         let revoked_by_s = revoked_by.to_owned();
         pg_retry_tx!(self.pool, |tx| {
-            // Revoke any existing active record and insert the new one atomically.
+            // Revoke only this user's prior active record, then insert the new one.
             let revoke_stmt = tx
                 .prepare(get_pgsql_query!("revoke-crypto-officer-activation"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            tx.execute(&revoke_stmt, &[&revoked_by_s.as_str()])
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            tx.execute(
+                &revoke_stmt,
+                &[&revoked_by_s.as_str(), &activated_by_s.as_str()],
+            )
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let insert_stmt = tx
                 .prepare(get_pgsql_query!("insert-crypto-officer-activation"))
                 .await
@@ -1366,28 +1369,54 @@ impl PermissionsStore for PgPool {
         })
     }
 
-    async fn get_crypto_officer_activation(&self) -> InterfaceResult<Option<String>> {
+    async fn get_crypto_officer_activation_by(
+        &self,
+        user: &str,
+    ) -> InterfaceResult<Option<String>> {
         pg_retry!(self.pool, |client| {
             let stmt = client
-                .prepare(get_pgsql_query!("select-active-crypto-officer-activation"))
+                .prepare(get_pgsql_query!(
+                    "select-active-crypto-officer-activation-by"
+                ))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let rows = client
-                .query(&stmt, &[])
+                .query(&stmt, &[&user])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(rows.first().map(|row| row.get(0)))
         })
     }
 
-    async fn revoke_crypto_officer_activation(&self, revoked_by: &str) -> InterfaceResult<()> {
+    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!(
+                    "select-any-active-crypto-officer-activation"
+                ))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let count: i64 = rows.first().map_or(0, |row| row.get(0));
+            Ok(count > 0)
+        })
+    }
+
+    async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
         pg_retry!(self.pool, |client| {
             let stmt = client
                 .prepare(get_pgsql_query!("revoke-crypto-officer-activation"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             client
-                .execute(&stmt, &[&revoked_by])
+                .execute(&stmt, &[&revoked_by, &activated_by])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(())
