@@ -1194,15 +1194,23 @@ impl PermissionsStore for SqlitePool {
         &self,
         sealed_record: &str,
         activated_by: &str,
+        revoked_by: &str,
     ) -> InterfaceResult<()> {
-        let sql = replace_dollars_with_qn(get_sqlite_query!("insert-crypto-officer-activation"));
+        let revoke_sql =
+            replace_dollars_with_qn(get_sqlite_query!("revoke-crypto-officer-activation"));
+        let insert_sql =
+            replace_dollars_with_qn(get_sqlite_query!("insert-crypto-officer-activation"));
         let sealed = sealed_record.to_owned();
         let activated_by_s = activated_by.to_owned();
+        let revoked_by_s = revoked_by.to_owned();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
-                    tx.execute(&sql, params_from_iter([&sealed, &activated_by_s]))?;
+                    // Revoke any existing active record (0 rows affected is fine).
+                    tx.execute(&revoke_sql, params_from_iter([&revoked_by_s]))?;
+                    // Insert the new activation record.
+                    tx.execute(&insert_sql, params_from_iter([&sealed, &activated_by_s]))?;
                     tx.commit()?;
                     Ok(())
                 },

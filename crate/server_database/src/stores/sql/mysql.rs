@@ -952,14 +952,26 @@ impl PermissionsStore for MySqlPool {
         &self,
         sealed_record: &str,
         activated_by: &str,
+        revoked_by: &str,
     ) -> InterfaceResult<()> {
-        let sql = get_mysql_query!("insert-crypto-officer-activation");
         let mut conn = self
             .pool
             .get_conn()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        conn.exec_drop(sql, (sealed_record, activated_by))
+        let mut tx: Transaction<'_> = conn
+            .start_transaction(mysql_async::TxOpts::default())
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let revoke_sql = get_mysql_query!("revoke-crypto-officer-activation");
+        tx.exec_drop(revoke_sql, (revoked_by,))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let insert_sql = get_mysql_query!("insert-crypto-officer-activation");
+        tx.exec_drop(insert_sql, (sealed_record, activated_by))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        tx.commit()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(())

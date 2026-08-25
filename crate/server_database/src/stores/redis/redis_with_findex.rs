@@ -1265,10 +1265,12 @@ impl PermissionsStore for RedisWithFindex {
         &self,
         sealed_record: &str,
         _activated_by: &str,
+        _revoked_by: &str,
     ) -> InterfaceResult<()> {
-        // Redis stores ceremony records by an obfuscated role key.
-        // `_activated_by` is captured inside the AES-GCM sealed payload
-        // and is verified on unseal; no separate plaintext column exists in Redis.
+        // Redis stores ceremony records as a single JSON value under an obfuscated key.
+        // A SET is atomic: it atomically replaces any prior record, so no separate
+        // revoke step is needed. `_activated_by` and `_revoked_by` are captured
+        // inside the AES-GCM sealed payload and verified on unseal.
         self.store_ceremony_record(&self.ceremony_key_crypto_officer, sealed_record)
             .await
     }

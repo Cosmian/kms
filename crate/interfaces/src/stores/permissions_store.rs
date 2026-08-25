@@ -56,15 +56,24 @@ pub trait PermissionsStore {
 
     // ── Crypto Officer ceremony ─────────────────────────────────────────────
 
-    /// Store a sealed (AES-256-GCM encrypted) crypto officer ceremony activation record.
+    /// Atomically revoke any existing active ceremony record and insert a new one.
+    ///
+    /// The revoke and insert **must** be performed in a single database transaction
+    /// to close the TOCTOU race where two concurrent activations could both slip
+    /// through the revoke window and leave two active rows.
     ///
     /// `activated_by` is stored as a plaintext column to support unique-per-user
     /// partial indexing (`WHERE revoked_at IS NULL`), preventing duplicate active
     /// records for the same user at the database level.
+    ///
+    /// `revoked_by` is written to the `revoked_by` audit column of any prior active
+    /// record (typically equals `activated_by` — the activator implicitly revokes
+    /// the previous record by replacing it).
     async fn activate_crypto_officer_ceremony(
         &self,
         sealed_record: &str,
         activated_by: &str,
+        revoked_by: &str,
     ) -> InterfaceResult<()>;
 
     /// Retrieve the active (non-revoked) sealed crypto officer ceremony record, if any.

@@ -1341,17 +1341,28 @@ impl PermissionsStore for PgPool {
         &self,
         sealed_record: &str,
         activated_by: &str,
+        revoked_by: &str,
     ) -> InterfaceResult<()> {
-        pg_retry!(self.pool, |client| {
-            let stmt = client
+        let sealed = sealed_record.to_owned();
+        let activated_by_s = activated_by.to_owned();
+        let revoked_by_s = revoked_by.to_owned();
+        pg_retry_tx!(self.pool, |tx| {
+            // Revoke any existing active record and insert the new one atomically.
+            let revoke_stmt = tx
+                .prepare(get_pgsql_query!("revoke-crypto-officer-activation"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            tx.execute(&revoke_stmt, &[&revoked_by_s.as_str()])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let insert_stmt = tx
                 .prepare(get_pgsql_query!("insert-crypto-officer-activation"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            client
-                .execute(&stmt, &[&sealed_record, &activated_by])
+            tx.execute(&insert_stmt, &[&sealed.as_str(), &activated_by_s.as_str()])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            Ok(())
+            Ok::<(), InterfaceError>(())
         })
     }
 

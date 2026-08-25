@@ -93,26 +93,30 @@ impl Database {
 
     /// Record that the Crypto Officer split-key ceremony has been completed.
     ///
-    /// Revokes any existing active ceremony record before inserting the new one,
-    /// ensuring at most one active record exists at any time.
+    /// **Single-record model**: at most one CO is active at any time. When a new
+    /// activator completes `JoinSplitKey`, the prior active record (if any) is
+    /// revoked atomically inside the same database transaction before the new one
+    /// is inserted. This closes the TOCTOU race described in
+    /// <https://github.com/Cosmian/kms/pull/991#discussion_r3846662505>.
+    ///
+    /// `is_crypto_officer_activated_by` checks the `activated_by` field of the
+    /// single active row — any user in `crypto_officer_users` is an Operator until
+    /// they run their own `JoinSplitKey`, but the server only has **one** active CO
+    /// at a time (the most recent activator). If B activates after A, A is
+    /// automatically demoted to Operator.
     pub async fn activate_crypto_officer_ceremony(
         &self,
         activated_by: &str,
         participants: &[String],
         key_hash: &str,
     ) -> DbResult<()> {
-        // Revoke any existing active record to prevent multiple active rows.
-        // Failure is expected when no prior activation exists.
-        drop(
-            self.permissions
-                .revoke_crypto_officer_activation(activated_by)
-                .await,
-        );
         let sealed =
             self.seal_ceremony_record(activated_by, participants, key_hash, "crypto_officer")?;
+        // The trait implementation performs revoke+insert in one atomic transaction.
+        // `revoked_by = activated_by`: the activator implicitly revokes the prior record.
         Ok(self
             .permissions
-            .activate_crypto_officer_ceremony(&sealed, activated_by)
+            .activate_crypto_officer_ceremony(&sealed, activated_by, activated_by)
             .await?)
     }
 
