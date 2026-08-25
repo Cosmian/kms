@@ -306,7 +306,8 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     trace!("Starting test server with non-revocable key ids");
     ONCE_SERVER_WITH_NON_REVOCABLE_KEY
         .get_or_try_init(|| async move {
-            let config_path = root_dir().join("../../test_data/configs/server/test/non_revocable.toml");
+            let config_path =
+                root_dir().join("../../test_data/configs/server/test/non_revocable.toml");
             let mut config = load_test_config_from_toml(&config_path)?;
             config.non_revocable_key_id = non_revocable_key_id;
             apply_test_db_override(&mut config);

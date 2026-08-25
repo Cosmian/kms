@@ -2,14 +2,18 @@ use clap::Parser;
 use cosmian_kms_client::{
     KmsClient,
     kmip_2_1::{
+        kmip_attributes::Attribute,
         kmip_objects,
-        kmip_operations::CreateSplitKey,
-        kmip_types::{SplitKeyMethod, UniqueIdentifier},
+        kmip_operations::{CreateSplitKey, DeleteAttribute, SetAttribute},
+        kmip_types::{
+            AttributeReference, SplitKeyMethod, UniqueIdentifier, VendorAttribute,
+            VendorAttributeReference, VendorAttributeValue,
+        },
     },
 };
 
 use crate::{
-    actions::console,
+    actions::{console, shared::VENDOR_ATTR_CO_CEREMONY},
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
@@ -24,6 +28,16 @@ use crate::{
 /// vendor attribute before splitting. The server then distributes each share to a
 /// different Crypto Officer candidate (round-robin), enforcing dual control:
 /// the future active CO must obtain GET grants from every other CO before activating.
+///
+/// # Two ceremony split commands
+///
+/// This command (`ckms sym keys create-split-key --ceremony`) is the **bring-your-own-key**
+/// path: the key already exists and the caller wants to turn it into a ceremony key.
+/// The guided alternative (`ckms access-rights crypto-officer create-split-key`) creates
+/// the AES-256 source key for you, stamps it, splits it, and cleans up the source key on
+/// failure — suitable for operators who want a single-step ceremony provisioning command.
+/// Both commands stamp the same attribute and call the same server-side `CreateSplitKey`
+/// operation; they differ only in who creates and owns the source key.
 ///
 /// Example:
 ///   `ckms sym keys create-split-key --key-id <KEY_UID> --total-parts 3`
@@ -83,23 +97,23 @@ impl CreateSplitKeyAction {
     /// When `--ceremony` is set, the key is first stamped with the
     /// `x-cosmian-crypto-officer-ceremony` vendor attribute so the server
     /// distributes shares to different CO candidates instead of assigning
-    /// them all to the caller.
+    /// them all to the caller.  If `CreateSplitKey` fails after the attribute
+    /// was stamped, a best-effort `DeleteAttribute` is issued to leave the
+    /// caller's key in its original state.  Unlike the guided
+    /// `access-rights crypto-officer create-split-key` command, the source key
+    /// is **not** destroyed on failure — it existed before this command ran.
     ///
     /// # Errors
     ///
     /// Returns an error if the server request fails.
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
+        let vendor_id = kms_rest_client.config.vendor_id.as_str();
+
         // If --ceremony, stamp the vendor attribute on the source key first.
-        if self.ceremony {
-            use cosmian_kms_client::kmip_2_1::{
-                kmip_attributes::Attribute,
-                kmip_operations::SetAttribute,
-                kmip_types::{VendorAttribute, VendorAttributeValue},
-            };
-            const VENDOR_ID_COSMIAN: &str = "cosmian";
+        let ceremony_attr_stamped = if self.ceremony {
             let attr = Attribute::VendorAttribute(VendorAttribute {
-                vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-                attribute_name: "x-cosmian-crypto-officer-ceremony".to_owned(),
+                vendor_identification: vendor_id.to_owned(),
+                attribute_name: VENDOR_ATTR_CO_CEREMONY.to_owned(),
                 attribute_value: VendorAttributeValue::TextString("true".to_owned()),
             });
             kms_rest_client
@@ -109,7 +123,10 @@ impl CreateSplitKeyAction {
                 })
                 .await
                 .with_context(|| "failed to set ceremony attribute on key before splitting")?;
-        }
+            true
+        } else {
+            false
+        };
 
         let request = CreateSplitKey {
             object_type: kmip_objects::ObjectType::SymmetricKey,
@@ -121,11 +138,46 @@ impl CreateSplitKeyAction {
             protection_storage_masks: None,
         };
 
-        let response = kms_rest_client
+        let split_result = kms_rest_client
             .create_split_key(request)
             .await
-            .with_context(|| "failed to create split key shares")?;
+            .with_context(|| "failed to create split key shares");
 
+        let response = match split_result {
+            Ok(r) => r,
+            Err(e) => {
+                // Compensating delete: if we stamped the ceremony attribute and then the split
+                // failed, remove the attribute so the key is left in its original state.
+                // The source key itself is NOT destroyed — it existed before this command.
+                if ceremony_attr_stamped {
+                    let attr_ref = AttributeReference::Vendor(VendorAttributeReference {
+                        vendor_identification: vendor_id.to_owned(),
+                        attribute_name: VENDOR_ATTR_CO_CEREMONY.to_owned(),
+                    });
+                    if let Err(del_err) = kms_rest_client
+                        .delete_attribute(DeleteAttribute {
+                            unique_identifier: Some(UniqueIdentifier::TextString(
+                                self.key_id.clone(),
+                            )),
+                            current_attribute: None,
+                            attribute_references: Some(vec![attr_ref]),
+                        })
+                        .await
+                    {
+                        eprintln!(
+                            "WARNING: CreateSplitKey failed and the compensating removal of the \
+                             ceremony attribute on key '{}' also failed ({del_err}). \
+                             The key retains the `{VENDOR_ATTR_CO_CEREMONY}` attribute; \
+                             remove it manually with: \
+                             ckms attributes delete --id {} --vendor-id {vendor_id} \
+                             --attr-name {VENDOR_ATTR_CO_CEREMONY}",
+                            self.key_id, self.key_id,
+                        );
+                    }
+                }
+                return Err(e);
+            }
+        };
         let share_count = response.unique_identifier.len();
         let mut stdout = console::Stdout::new(&format!(
             "Key {} successfully split into {} share(s) (XOR n-of-n){}.",

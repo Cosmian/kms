@@ -19,7 +19,7 @@ use cosmian_kms_client::{
 use serde_json;
 
 use crate::{
-    actions::console,
+    actions::{console, shared::VENDOR_ATTR_CO_CEREMONY},
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
@@ -394,9 +394,6 @@ pub struct CryptoOfficerCreateSplitKey {
     #[clap(long = "key-id", short = 'k')]
     pub key_id: Option<String>,
 }
-
-/// Constant: the vendor attribute name for the CO ceremony flag.
-const VENDOR_ATTR_CO_CEREMONY: &str = "x-cosmian-crypto-officer-ceremony";
 
 impl CryptoOfficerCreateSplitKey {
     /// Runs the `CryptoOfficerCreateSplitKey` action.
