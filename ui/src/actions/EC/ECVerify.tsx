@@ -6,6 +6,7 @@ import { sendKmipRequest } from "../../utils/utils";
 import * as wasmClient from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface ECVerifyFormData {
     dataFile: Uint8Array;
@@ -147,9 +148,14 @@ const ECVerifyForm: React.FC = () => {
                     </Card>
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("ecVerify.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("common:keyId")} help={t("ecVerify.keyIdHelp")}>
-                            <Input placeholder={t("common:enterKeyId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("ecVerify.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                            objectType="PublicKey"
+                        />
                         <Form.Item name="tags" label={t("common:tags")} help={t("ecVerify.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>

@@ -267,7 +267,7 @@ impl PgPool {
     ) -> DbResult<Self> {
         // Extract query parameters manually instead of using Url::parse(),
         // which cannot handle multi-host PostgreSQL connection strings
-        // (e.g. "postgresql://user:pass@host1:5432,host2:5432/db?target_session_attrs=read-write").
+        // (e.g. "host1:5432,host2:5432/db?target_session_attrs=read-write").
         let query_params = extract_query_params(connection_url);
 
         // Build a URL that strips only SSL-related params (handled via MakeTlsConnector)
@@ -371,6 +371,7 @@ impl PgPool {
             "create-table-objects",
             "create-table-read_access",
             "create-table-tags",
+            "create-table-crypto_officer_activations",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -386,6 +387,25 @@ impl PgPool {
         client
             .batch_execute(
                 "ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);",
+            )
+            .await
+            .map_err(DbError::from)?;
+        // Add activated_by column to crypto_officer_activations (idempotent).
+        // PostgreSQL supports ADD COLUMN IF NOT EXISTS since 9.6.
+        client
+            .batch_execute(
+                "ALTER TABLE crypto_officer_activations \
+                 ADD COLUMN IF NOT EXISTS activated_by VARCHAR(255);",
+            )
+            .await
+            .map_err(DbError::from)?;
+        // Unique partial index: at most one active activation record per user.
+        // Prevents duplicate active records even under concurrent JoinSplitKey requests.
+        client
+            .batch_execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active \
+                 ON crypto_officer_activations (activated_by) \
+                 WHERE revoked_at IS NULL;",
             )
             .await
             .map_err(DbError::from)?;
@@ -1039,40 +1059,75 @@ impl ObjectsStore for PgPool {
         })
     }
 
-    /// Returns the total count of live (non-destroyed) objects in this `PostgreSQL` store.
-    ///
-    /// This is a **metrics-only** privileged query: it scans the full `objects` table
-    /// without any user or permission filter, so the result always reflects the true
-    /// server-wide inventory. It must never be used to answer client requests.
-    ///
-    /// The state strings `'Destroyed'` and `'Destroyed_Compromised'` are the Rust
-    /// enum variant names as serialised to the DB by `strum::Display`.
+    async fn find_all(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        pg_retry!(self.pool, |client| {
+            let locate = crate::stores::sql::locate_query::query_all_from_attributes::<
+                crate::stores::sql::locate_query::PgSqlPlaceholder,
+            >(researched_attributes, state, vendor_id);
+            cosmian_logger::debug!("PG find_all query: {}", locate.sql);
+            let stmt = client
+                .prepare(&locate.sql)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut owned: Vec<Box<dyn ToSql + Sync>> = Vec::with_capacity(locate.params.len());
+            for p in locate.params {
+                match p {
+                    crate::stores::sql::locate_query::LocateParam::Text(s) => {
+                        owned.push(Box::new(s));
+                    }
+                    crate::stores::sql::locate_query::LocateParam::I64(i) => {
+                        owned.push(Box::new(i));
+                    }
+                }
+            }
+            let params: Vec<&(dyn ToSql + Sync)> =
+                owned.iter().map(std::convert::AsRef::as_ref).collect();
+            let rows = client
+                .query(&stmt, &params)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut out = Vec::new();
+            for row in rows {
+                let uid: String = row.get(0);
+                let state_str: String = row.get(1);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let attrs_val: Value = row.get(2);
+                let attrs: Attributes = serde_json::from_value(attrs_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                out.push((uid, state, attrs));
+            }
+            Ok(out)
+        })
+    }
+
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
-        let sql = get_pgsql_query!("count-non-destroyed-objects");
-        let client = pg_get_client(&self.pool)
-            .await
-            .map_err(InterfaceError::from)?;
-        let row = client
-            .query_one(sql, &[])
-            .await
-            .map_err(DbError::from)
-            .map_err(InterfaceError::from)?;
-        let count: i64 = row.get(0);
-        Ok(u64::try_from(count).unwrap_or(0))
+        pg_retry!(self.pool, |client| {
+            let row = client
+                .query_one(get_pgsql_query!("count-all-non-destroyed"), &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let count: i64 = row.get(0);
+            Ok(u64::try_from(count).unwrap_or(0))
+        })
     }
 
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
-        let sql = get_pgsql_query!("count-non-destroyed-keys-pg");
-        let client = pg_get_client(&self.pool)
-            .await
-            .map_err(InterfaceError::from)?;
-        let row = client
-            .query_one(sql, &[])
-            .await
-            .map_err(DbError::from)
-            .map_err(InterfaceError::from)?;
-        let count: i64 = row.get(0);
-        Ok(u64::try_from(count).unwrap_or(0))
+        pg_retry!(self.pool, |client| {
+            // Object JSON is stored as {"SymmetricKey": {...}} — use the JSONB ?
+            // operator to check for key presence.
+            let row = client
+                .query_one(get_pgsql_query!("count-non-destroyed-keys"), &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let count: i64 = row.get(0);
+            Ok(u64::try_from(count).unwrap_or(0))
+        })
     }
 }
 
@@ -1281,6 +1336,92 @@ impl PermissionsStore for PgPool {
             Ok(perms)
         })
     }
+
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+        revoked_by: &str,
+    ) -> InterfaceResult<()> {
+        let sealed = sealed_record.to_owned();
+        let activated_by_s = activated_by.to_owned();
+        let revoked_by_s = revoked_by.to_owned();
+        pg_retry_tx!(self.pool, |tx| {
+            // Revoke only this user's prior active record, then insert the new one.
+            let revoke_stmt = tx
+                .prepare(get_pgsql_query!("revoke-crypto-officer-activation"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            tx.execute(
+                &revoke_stmt,
+                &[&revoked_by_s.as_str(), &activated_by_s.as_str()],
+            )
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let insert_stmt = tx
+                .prepare(get_pgsql_query!("insert-crypto-officer-activation"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            tx.execute(&insert_stmt, &[&sealed.as_str(), &activated_by_s.as_str()])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok::<(), InterfaceError>(())
+        })
+    }
+
+    async fn get_crypto_officer_activation_by(
+        &self,
+        user: &str,
+    ) -> InterfaceResult<Option<String>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!(
+                    "select-active-crypto-officer-activation-by"
+                ))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&user])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows.first().map(|row| row.get(0)))
+        })
+    }
+
+    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!(
+                    "select-any-active-crypto-officer-activation"
+                ))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let count: i64 = rows.first().map_or(0, |row| row.get(0));
+            Ok(count > 0)
+        })
+    }
+
+    async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("revoke-crypto-officer-activation"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&stmt, &[&revoked_by, &activated_by])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1328,7 +1469,7 @@ mod tests {
 
     #[test]
     fn test_extract_query_params_single_host() {
-        let url = "postgresql://kms:kms@localhost:5432/kms?sslmode=require";
+        let url = "localhost:5432/kms?sslmode=require";
         let params = extract_query_params(url);
         assert_eq!(params.get("sslmode"), Some(&"require".to_owned()));
         assert_eq!(params.len(), 1);
@@ -1336,7 +1477,7 @@ mod tests {
 
     #[test]
     fn test_extract_query_params_multi_host() {
-        let url = "postgresql://kms:kms@host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require";
+        let url = "host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require";
         let params = extract_query_params(url);
         assert_eq!(
             params.get("target_session_attrs"),
@@ -1348,44 +1489,45 @@ mod tests {
 
     #[test]
     fn test_extract_query_params_no_params() {
-        let url = "postgresql://kms:kms@localhost:5432/kms";
+        let url = "localhost:5432/kms";
         let params = extract_query_params(url);
         assert!(params.is_empty());
     }
 
     #[test]
     fn test_rebuild_url_strips_only_ssl_params() {
-        let url = "postgresql://kms:kms@host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require&sslrootcert=/path/ca.pem";
+        let url = "host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require&sslrootcert=/path/ca.pem";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
         assert_eq!(
             clean,
-            "postgresql://kms:kms@host1:5432,host2:5432/kms?target_session_attrs=read-write"
+            "host1:5432,host2:5432/kms?target_session_attrs=read-write"
         );
     }
 
     #[test]
     fn test_rebuild_url_all_ssl_params_stripped() {
-        let url = "postgresql://kms:kms@localhost:5432/kms?sslmode=require&sslcert=/c.pem&sslkey=/k.pem&sslrootcert=/ca.pem";
+        let url =
+            "localhost:5432/kms?sslmode=require&sslcert=/c.pem&sslkey=/k.pem&sslrootcert=/ca.pem";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
-        assert_eq!(clean, "postgresql://kms:kms@localhost:5432/kms");
+        assert_eq!(clean, "localhost:5432/kms");
     }
 
     #[test]
     fn test_rebuild_url_preserves_non_ssl_params() {
-        let url = "postgresql://kms:kms@localhost:5432/kms?target_session_attrs=read-write&application_name=cosmian_kms";
+        let url = "localhost:5432/kms?target_session_attrs=read-write&application_name=cosmian_kms";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
         // Both non-SSL params should be preserved (order may vary)
         assert!(clean.contains("target_session_attrs=read-write"));
         assert!(clean.contains("application_name=cosmian_kms"));
-        assert!(clean.starts_with("postgresql://kms:kms@localhost:5432/kms?"));
+        assert!(clean.starts_with("localhost:5432/kms?"));
     }
 
     #[test]
     fn test_rebuild_url_no_params() {
-        let url = "postgresql://kms:kms@localhost:5432/kms";
+        let url = "localhost:5432/kms";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
         assert_eq!(clean, url);
@@ -1393,7 +1535,7 @@ mod tests {
 
     #[test]
     fn test_multi_host_url_preserved_in_rebuild() {
-        let url = "postgresql://kms:kms@host1:5432,host2:5433,host3:5434/kms?target_session_attrs=read-write";
+        let url = "host1:5432,host2:5433,host3:5434/kms?target_session_attrs=read-write";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
         assert_eq!(clean, url);

@@ -60,7 +60,7 @@ const ImportAzureKekForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("azureImportKek.intro")}</p>
                 <p>{t("azureImportKek.introPem")}</p>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
                     {t("azureImportKek.see")}:{" "}
                     <ExternalLink href="https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification#generate-kek">
                         Azure BYOK Specification - Generate KEK

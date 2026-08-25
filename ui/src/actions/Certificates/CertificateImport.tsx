@@ -7,6 +7,7 @@ import { sendKmipRequest } from "../../utils/utils";
 import { import_certificate_ttlv_request, parse_import_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 type CertificateInputFormat = "JsonTtlv" | "Pem" | "Der" | "Pkcs12";
 
@@ -169,13 +170,14 @@ const CertificateImportForm: React.FC = () => {
                         <Card>
                             <h3 className="text-m font-bold mb-4">{t("certificateImport.certificateRelationships")}</h3>
 
-                            <Form.Item
-                                name="privateKeyId"
+                            <KeyIdInput
+                                form={form}
+                                fieldName="privateKeyId"
                                 label={t("certificateImport.privateKeyId")}
                                 help={t("certificateImport.privateKeyIdHelp")}
-                            >
-                                <Input placeholder={t("certificateImport.enterPrivateKeyId")} />
-                            </Form.Item>
+                                placeholder={t("certificateImport.enterPrivateKeyId")}
+                                objectType="PrivateKey"
+                            />
 
                             <Form.Item
                                 name="publicKeyId"
@@ -185,13 +187,14 @@ const CertificateImportForm: React.FC = () => {
                                 <Input placeholder={t("certificateImport.enterPublicKeyId")} />
                             </Form.Item>
 
-                            <Form.Item
-                                name="issuerCertificateId"
+                            <KeyIdInput
+                                form={form}
+                                fieldName="issuerCertificateId"
                                 label={t("certificateImport.issuerCertificateId")}
                                 help={t("certificateImport.issuerCertificateIdHelp")}
-                            >
-                                <Input placeholder={t("certificateImport.enterIssuerCertificateId")} />
-                            </Form.Item>
+                                placeholder={t("certificateImport.enterIssuerCertificateId")}
+                                objectType="Certificate"
+                            />
                         </Card>
                     )}
 

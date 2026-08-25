@@ -53,4 +53,44 @@ pub trait PermissionsStore {
         user: &UserId,
         no_inherited_access: bool,
     ) -> InterfaceResult<HashSet<KmipOperation>>;
+
+    // ── Crypto Officer ceremony ─────────────────────────────────────────────
+
+    /// Atomically revoke the activating user's prior record (if any) and insert a new one.
+    ///
+    /// **Per-user model**: each CO user maintains their own independent activation record.
+    /// Multiple CO users can be simultaneously active. This call only touches the
+    /// record for `activated_by` — it does not affect any other user's active record.
+    ///
+    /// The revoke and insert are performed in a single database transaction to close
+    /// the TOCTOU race where two concurrent re-activations by the same user could both
+    /// slip through and leave two active rows for the same user.
+    ///
+    /// `revoked_by` is written to the `revoked_by` audit column of the prior active
+    /// record (typically equals `activated_by`).
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+        revoked_by: &str,
+    ) -> InterfaceResult<()>;
+
+    /// Retrieve the active (non-revoked) sealed ceremony record for a specific user.
+    async fn get_crypto_officer_activation_by(&self, user: &str)
+    -> InterfaceResult<Option<String>>;
+
+    /// Returns `true` when at least one user has an active ceremony activation.
+    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool>;
+
+    /// Revoke `activated_by`'s active ceremony record (set `revoked_at` to now).
+    ///
+    /// `revoked_by` is the user who issued the revocation (audit trail).
+    /// `activated_by` filters which user's record to revoke — only that user's
+    /// record is touched; other users' records remain unaffected.
+    /// No-op if the target user has no active record.
+    async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()>;
 }

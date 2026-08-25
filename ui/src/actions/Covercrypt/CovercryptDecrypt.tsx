@@ -6,6 +6,7 @@ import { getMimeType, saveDecryptedFile, sendKmipRequest } from "../../utils/uti
 import { decrypt_cc_ttlv_request, parse_decrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface CCDecryptFormData {
     inputFile: Uint8Array;
@@ -50,7 +51,7 @@ const CCDecryptForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("covercryptDecrypt.intro")}</p>
                 <p>{t("covercryptDecrypt.introKey")}</p>
-                <p className="text-sm text-yellow-600">{t("covercryptDecrypt.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("covercryptDecrypt.note")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
@@ -86,9 +87,13 @@ const CCDecryptForm: React.FC = () => {
 
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("covercryptDecrypt.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("common:keyId")} help={t("covercryptDecrypt.keyIdHelp")}>
-                            <Input placeholder={t("common:enterKeyId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("covercryptDecrypt.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("covercryptDecrypt.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

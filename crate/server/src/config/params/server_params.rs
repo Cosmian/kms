@@ -1,7 +1,8 @@
-use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, time::Duration};
+use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
+use cosmian_kms_access::access::CryptoOfficerConfig;
 use cosmian_kms_server_database::{
-    MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
+    CeremonyKeys, MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
 };
 use cosmian_logger::{debug, warn};
 
@@ -148,9 +149,22 @@ pub struct ServerParams {
     /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
 
-    /// Users who have initial rights to create and grant access rights for Create Kmip Operation
-    /// If None, all users can create and grant create access rights.
-    pub privileged_users: Option<Vec<String>>,
+    /// Crypto Officer role configuration (role-based access control).
+    pub crypto_officer: CryptoOfficerConfig,
+
+    /// Ceremony record encryption keys.
+    ///
+    /// Derived from `ceremony_secret` at startup, or resolved from the object
+    /// store when `ceremony_key_id` is set. `None` when no role requires a ceremony.
+    /// When `Some`, all ceremony activation records are AES-256-GCM sealed before storage
+    /// and verified on read — preventing forgery and protecting participant identities.
+    pub ceremony_keys: Option<Arc<CeremonyKeys>>,
+
+    /// UID of the KMS symmetric key used as the ceremony record sealing key.
+    ///
+    /// When set, `ceremony_key_id` takes precedence over `ceremony_secret`.
+    /// The key is fetched from the object store after database initialization.
+    pub ceremony_key_id: Option<String>,
 
     /// AWS XKS parameters, if any
     pub aws_xks_params: Option<AwsXksParams>,
@@ -170,8 +184,8 @@ pub struct ServerParams {
     pub http_workers: Option<usize>,
 
     /// Extra origins allowed to make cross-origin requests to the KMIP API.
-    /// Empty in production (same-origin only). Set to `["http://127.0.0.1:5173"]` in
-    /// UI E2E tests where the Vite dev server runs on a different port.
+    /// Empty in production (same-origin only). Set to `["http://127.0.0.1:5173"]`
+    /// in UI E2E tests where the Vite dev server runs on port 5173.
     pub cors_allowed_origins: Vec<String>,
 
     /// Maximum number of objects returned by a single Locate operation.
@@ -310,6 +324,13 @@ impl ServerParams {
             "http"
         };
 
+        // Determine whether CO users will come from the deprecated `privileged_users` path.
+        // Used after `res` is built to preserve v5.26.0 behaviour: if the operator had
+        // `force_default_username = true` AND `privileged_users = [...]` (nonsensical but
+        // tolerated before), only warn instead of hard-erroring.
+        let co_from_deprecated_path =
+            conf.roles.crypto_officer_users.is_none() && conf.privileged_users.is_some();
+
         let res = Self {
             identity_provider_configurations: {
                 // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
@@ -389,7 +410,93 @@ impl ServerParams {
                 None
             },
             non_revocable_key_id: conf.non_revocable_key_id,
-            privileged_users: conf.privileged_users,
+            crypto_officer: {
+                // Backward compat: if the deprecated `privileged_users` field is set and
+                // `[roles] crypto_officer_users` is not configured, promote those users to
+                // the CryptoOfficer role automatically.
+                let co_users = match (conf.roles.crypto_officer_users, conf.privileged_users) {
+                    (Some(co), _) => co,
+                    (None, Some(priv_users)) => {
+                        tracing::warn!(
+                            "`privileged_users` is deprecated; please migrate to \
+                             `[roles] crypto_officer_users` in kms.toml"
+                        );
+                        priv_users
+                    }
+                    (None, None) => vec![],
+                };
+                let co = CryptoOfficerConfig {
+                    users: co_users,
+                    require_ceremony: conf.roles.crypto_officer_require_ceremony,
+                    ceremony_wrapping_key_id: conf.roles.ceremony_wrapping_key_id,
+                };
+                co.validate()
+                    .map_err(|e| KmsError::ServerError(format!("Role configuration error: {e}")))?;
+                // Warn operators that config-only CO mode is permanent super-admin —
+                // there is no runtime gate, so a config compromise equals privilege escalation.
+                if !co.users.is_empty() && !co.require_ceremony {
+                    tracing::warn!(
+                        "SECURITY: Crypto Officer is active in config-only mode \
+                         (require_ceremony = false). Any user listed in \
+                         `crypto_officer_users` is a permanent super-admin with no \
+                         runtime activation gate. Consider enabling \
+                         `crypto_officer_require_ceremony = true` in production \
+                         deployments."
+                    );
+                }
+                co
+            },
+            ceremony_keys: {
+                let any_ceremony_required = conf.roles.crypto_officer_require_ceremony;
+                match (
+                    &conf.roles.ceremony_key_id,
+                    &conf.roles.ceremony_secret,
+                    any_ceremony_required,
+                ) {
+                    // ceremony_key_id takes precedence — keys resolved after DB init;
+                    // or neither provided and ceremony is not required.
+                    (Some(_), _, _) | (None, None, false) => None,
+                    // Only ceremony_secret provided — derive keys now
+                    (None, Some(hex_secret), _) => {
+                        let bytes = hex::decode(hex_secret).map_err(|e| {
+                            KmsError::ServerError(format!(
+                                "ceremony_secret: invalid hex encoding: {e}"
+                            ))
+                        })?;
+                        if bytes.len() != cosmian_kms_server_database::CEREMONY_SECRET_LENGTH {
+                            return Err(KmsError::ServerError(format!(
+                                "ceremony_secret must be exactly {} bytes ({} hex chars), got {} bytes",
+                                cosmian_kms_server_database::CEREMONY_SECRET_LENGTH,
+                                cosmian_kms_server_database::CEREMONY_SECRET_LENGTH * 2,
+                                bytes.len(),
+                            )));
+                        }
+                        let mut secret =
+                            [0_u8; cosmian_kms_server_database::CEREMONY_SECRET_LENGTH];
+                        secret.copy_from_slice(&bytes);
+                        let keys = CeremonyKeys::derive(&secret);
+                        // Zeroize the local copy
+                        secret.fill(0);
+                        tracing::warn!(
+                            "ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment \
+                             variable is used in production to avoid persisting the secret to disk. \
+                             If loaded from a config file, ensure it has restrictive permissions \
+                             (0600) and is not committed to version control."
+                        );
+                        Some(Arc::new(keys))
+                    }
+                    // Neither provided but ceremony required
+                    (None, None, true) => {
+                        return Err(KmsError::ServerError(
+                            "ceremony_secret or ceremony_key_id is required when any role has \
+                             require_ceremony = true. Set ceremony_key_id to an existing AES-256 \
+                             symmetric key UID, or generate a secret with: openssl rand -hex 32"
+                                .to_owned(),
+                        ));
+                    }
+                }
+            },
+            ceremony_key_id: conf.roles.ceremony_key_id.clone(),
             ui_session_salt: conf.ui_config.ui_session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
@@ -459,12 +566,35 @@ impl ServerParams {
             vault_pki_mount: conf.vault.vault_pki_mount,
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
-            auth_verifier_config: if conf.auth_verifier.is_enabled() {
-                Some(conf.auth_verifier)
-            } else {
-                None
-            },
+            auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
         };
+
+        // Cross-field validation: force_default_username=true collapses all identities to a
+        // single user, defeating the Crypto Officer dual-control guarantee.
+        //
+        // When CO users came from the new `[roles] crypto_officer_users` key, reject at startup.
+        // When they came only from the deprecated `privileged_users` key, preserve the v5.26.0
+        // behaviour (silently tolerated, though meaningless) and warn instead, so existing
+        // configurations upgrading from v5.26.0 are not broken.
+        if res.force_default_username && !res.crypto_officer.users.is_empty() {
+            if co_from_deprecated_path {
+                tracing::warn!(
+                    "`force_default_username = true` combined with `privileged_users` is \
+                     deprecated and will become an error in a future release. All requests run \
+                     under the same identity, making Crypto Officer dual-control meaningless. \
+                     Please migrate to `[roles] crypto_officer_users` and remove \
+                     `force_default_username`."
+                );
+            } else {
+                return Err(KmsError::ServerError(
+                    "`force_default_username = true` is incompatible with `crypto_officer_users`. \
+                     All requests would run under the same identity, making Crypto Officer \
+                     dual-control and ceremony audit logs meaningless. \
+                     Disable `force_default_username` or remove `crypto_officer_users`."
+                        .to_owned(),
+                ));
+            }
+        }
 
         debug!("{res:#?}");
 
@@ -775,8 +905,8 @@ impl fmt::Debug for ServerParams {
             ),
         );
 
-        if let Some(ref users) = self.privileged_users {
-            debug_struct.field("privileged_users", users);
+        if !self.crypto_officer.users.is_empty() {
+            debug_struct.field("crypto_officer_users", &self.crypto_officer.users);
         }
 
         // Mask the session salt for security (it's a secret)
@@ -852,6 +982,12 @@ impl fmt::Debug for ServerParams {
                 debug_struct.field("auth_verifier_url", &auth_verifier.auth_verifier_url);
             }
         }
+
+        debug_struct.field(
+            "ceremony_keys",
+            &self.ceremony_keys.as_ref().map(|_| "<configured>"),
+        );
+        debug_struct.field("ceremony_key_id", &self.ceremony_key_id);
 
         debug_struct.finish()
     }

@@ -5,6 +5,7 @@ import { ActionResponse } from "../../components/common/ActionResponse";
 import { useActionState } from "../../hooks/useActionState";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface SetRotationPolicyFormData {
     keyId: string;
@@ -61,13 +62,14 @@ const SetRotationPolicyForm: React.FC = () => {
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item
-                            name="keyId"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
                             label={t("common:keyId")}
                             rules={[{ required: true, message: t("setRotationPolicy.pleaseEnterKeyId") }]}
-                        >
-                            <Input placeholder={t("setRotationPolicy.keyIdPlaceholder")} data-testid="rotation-key-id" />
-                        </Form.Item>
+                            placeholder={t("setRotationPolicy.keyIdPlaceholder")}
+                            data-testid="rotation-key-id"
+                        />
 
                         <Form.Item name="interval" label={t("setRotationPolicy.interval")} help={t("setRotationPolicy.intervalHelp")}>
                             <InputNumber

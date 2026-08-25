@@ -8,6 +8,8 @@ use std::{
     ops::Deref,
 };
 
+use serde::{Deserialize, Serialize};
+
 /// A typed user/owner identity (typically an e-mail address or certificate CN).
 ///
 /// Wraps a `String` so that user identity strings are distinct from object UIDs
@@ -17,14 +19,24 @@ use std::{
 /// `UserId` implements `Deref<Target = str>` so a `&UserId` coerces to `&str`
 /// automatically wherever a plain string slice is required (e.g. SQL query
 /// parameters, tracing spans), keeping call-site boilerplate minimal.
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct UserId(String);
 
 impl UserId {
-    /// Wrap any `Into<String>` value as a `UserId`.
-    #[must_use]
-    pub fn new(s: impl Into<String>) -> Self {
-        Self(s.into())
+    /// Try to wrap a string as a `UserId`, rejecting empty strings.
+    ///
+    /// Use this whenever the string originates from user input or any
+    /// untrusted source. For string literals in tests, `UserId::from("…")`
+    /// is sufficient — the `From` impl checks for emptiness in debug builds.
+    ///
+    /// # Errors
+    /// Returns an error if the string is empty.
+    pub fn try_new(s: impl Into<String>) -> Result<Self, String> {
+        let s = s.into();
+        if s.is_empty() {
+            return Err("UserId must not be empty".to_owned());
+        }
+        Ok(Self(s))
     }
 
     /// Return a borrowed `&str` view of the user ID.
@@ -62,12 +74,14 @@ impl Display for UserId {
 
 impl From<String> for UserId {
     fn from(s: String) -> Self {
+        debug_assert!(!s.is_empty(), "UserId must not be empty");
         Self(s)
     }
 }
 
 impl From<&str> for UserId {
     fn from(s: &str) -> Self {
+        debug_assert!(!s.is_empty(), "UserId must not be empty");
         Self(s.to_owned())
     }
 }
@@ -113,7 +127,7 @@ mod tests {
 
     #[test]
     fn deref_coerces_to_str() {
-        let uid = UserId::new("alice@example.com");
+        let uid = UserId::from("alice@example.com");
         let s: &str = &uid;
         assert_eq!(s, "alice@example.com");
     }
@@ -128,8 +142,8 @@ mod tests {
     #[test]
     fn equality_and_hash() {
         use std::collections::HashSet;
-        let a = UserId::new("a@b.com");
-        let b = UserId::new("a@b.com");
+        let a = UserId::from("a@b.com");
+        let b = UserId::from("a@b.com");
         assert_eq!(a, b);
         let mut set = HashSet::new();
         set.insert(a);

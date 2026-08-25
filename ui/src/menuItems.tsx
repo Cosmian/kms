@@ -51,6 +51,8 @@ const baseMenu: MenuItem[] = [
                 label: "Keys",
                 children: [
                     { key: "sym/keys/create", label: "Create" },
+                    { key: "sym/keys/split", label: "Split" },
+                    { key: "sym/keys/join", label: "Join" },
                     { key: "sym/keys/export", label: "Export" },
                     { key: "sym/keys/import", label: "Import" },
                     { key: "sym/keys/rekey", label: "Re-Key" },
@@ -290,6 +292,7 @@ const baseMenu: MenuItem[] = [
             { key: "access-rights/list", label: "List" },
             { key: "access-rights/owned", label: "Owned" },
             { key: "access-rights/obtained", label: "Obtained" },
+            { key: "access-rights/crypto-officer", label: "Crypto Officer" },
         ],
     },
     {

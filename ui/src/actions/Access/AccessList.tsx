@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { getNoTTLVRequest } from "../../utils/utils";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import LocateButton from "../../components/common/LocateButton";
 
 interface AccessListFormData {
     unique_identifier: string;
@@ -59,12 +60,19 @@ const AccessListForm: React.FC = () => {
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <Form.Item
-                            name="unique_identifier"
                             label={t("accessList.objectUid")}
                             rules={[{ required: true, message: t("accessList.pleaseEnterObjectUid") }]}
-                            help={t("accessList.objectUidHelp")}
                         >
-                            <Input placeholder={t("accessList.enterObjectUid")} />
+                            <div className="flex items-center gap-2">
+                                <Form.Item
+                                    name="unique_identifier"
+                                    noStyle
+                                    rules={[{ required: true, message: t("common:pleaseEnter", { value: t("accessList.objectUid") }) }]}
+                                >
+                                    <Input placeholder={t("accessList.enterObjectUid")} style={{ flex: 1 }} />
+                                </Form.Item>
+                                <LocateButton onSelect={(uid: string) => form.setFieldValue("unique_identifier", uid)} />
+                            </div>
                         </Form.Item>
                     </Card>
                     <Form.Item>

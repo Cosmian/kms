@@ -4,7 +4,7 @@ End-to-end tests validating the UI → WASM → KMIP → KMS pipeline.
 
 ## FIPS mode
 
-Run `mise run test:ui --variant fips` to execute the suite
+Run `bash .github/scripts/nix.sh --variant fips test ui` to execute the suite
 against a FIPS-mode KMS server. Three spec files are automatically skipped in
 FIPS mode because they exercise algorithms that are not NIST-approved:
 
@@ -573,6 +573,79 @@ graph LR
     B --> C[List access rights]
     C --> D[Revoke access]
 ```
+
+### role-management
+
+```mermaid
+graph LR
+    A[Navigate to crypto officer role page] --> B[Status loads without error]
+    B --> C[Not-configured card in dev mode]
+    C --> D[Disable button absent when no ceremony]
+```
+
+Covers the CryptoOfficer role-status page (`/ui/access-rights/crypto-officer`).
+Tests run against the dev-mode server (no RBAC configured), so the role
+reports "not configured" and no Disable button is rendered.
+
+### key-ceremony-flow
+
+```mermaid
+graph LR
+    A[CO status page loads] --> B[Status card visible]
+    B --> C[Disable button absent — not active]
+    C --> D[Refresh re-fetches status]
+    D --> E[Split Key page renders form]
+    E --> F[Create + split key — share UIDs returned]
+    F --> G[Join Split Key page renders inputs]
+    G --> H[Add / remove share inputs]
+    H --> I[Submit single fake share — server responds]
+```
+
+Covers the full UI surface of the split-key ceremony:
+
+- `GET /access/crypto_officer/status` → CO status page
+- `POST /kmip/2_1` CreateSplitKey → Split Key page
+- `POST /kmip/2_1` JoinSplitKey → Join Split Key page
+
+Non-FIPS tests are skipped when `PLAYWRIGHT_FIPS_MODE=true`.
+
+### co-role-split-key
+
+```mermaid
+graph LR
+    A[CO Role page — ceremony server] --> B[Status card: 3 CO candidates]
+    B --> C[Create & Split Key card visible]
+    C --> D[Key ID input + preview shows keyId#1,#2,#3]
+    D --> E[Click Create & Split Key]
+    E --> F[3 share UIDs in result]
+    F --> G[Activate Ceremony form auto-populated]
+    F --> H[JoinSplitKey form auto-populated]
+    I[JoinSplitKey card] --> J[share count = 3 from server]
+    J --> K[3 share UID inputs + Locate buttons]
+```
+
+**Requires a ceremony-configured server** — tests are skipped unless
+`PLAYWRIGHT_CEREMONY_SERVER=true`.
+
+Run with:
+
+```bash
+pnpm -C ui build
+cargo run -p cosmian_kms_server --features non-fips -- \
+  -c test_data/configs/server/rbac/crypto_officers.toml &
+
+cd ui
+PLAYWRIGHT_BASE_URL=https://127.0.0.1:9998 \
+PLAYWRIGHT_CEREMONY_SERVER=true \
+  pnpm run test:e2e tests/e2e/co-role-split-key.spec.ts
+```
+
+Playwright authenticates as `owner.client@acme.com` (a CO candidate) via the
+`clientCertificates` config in `playwright.config.ts`.
+
+**Why "Failed to fetch" in a regular browser**: the server requires mTLS client
+certificates. A browser without the certificate installed fails at the TLS handshake —
+this is expected security behaviour. Playwright resolves it automatically.
 
 ### attributes-flow
 

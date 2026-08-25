@@ -10,34 +10,61 @@ The authorization system in the Eviden Key Management Service (KMS) operates bas
    operations on an object. When granted such rights, a user can invoke the corresponding KMIP operation on the KMS for
    that particular object. The owner retains the authority to withdraw these access rights at any given time.
 
+---
+
+## Table of Contents
+
+- [Delegable KMIP operations](#delegable-kmip-operations)
+- [The Get super-privilege](#the-get-super-privilege)
+  - [Practical example](#practical-example)
+- [Special handling of the Create permission](#special-handling-of-the-create-permission)
+- [Privileged users](#privileged-users)
+  - [Operations gated by the privileged-user restriction](#operations-gated-by-the-privileged-user-restriction)
+- [The wildcard user \*](#the-wildcard-user-)
+- [HSM keys and authorization](#hsm-keys-and-authorization)
+  - [Comparison with regular KMS keys](#comparison-with-regular-kms-keys)
+  - [Who is an HSM admin?](#who-is-an-hsm-admin)
+  - [Permission evaluation for HSM keys](#permission-evaluation-for-hsm-keys)
+  - [What can and cannot be delegated](#what-can-and-cannot-be-delegated)
+- [Authentication vs. authorization](#authentication-vs-authorization)
+- [Typical workflow: per-user keys with limited permissions](#typical-workflow-per-user-keys-with-limited-permissions)
+  - [Step 1 — Create the key (as admin/owner)](#step-1--create-the-key-as-adminowner)
+  - [Step 2 — Grant limited permissions](#step-2--grant-limited-permissions)
+  - [Step 3 — Alice uses the key](#step-3--alice-uses-the-key)
+  - [Step 4 — Revoke access (if needed)](#step-4--revoke-access-if-needed)
+- [Access management endpoints](#access-management-endpoints)
+- [Authorization rules summary](#authorization-rules-summary)
+
+---
+
 ## Delegable KMIP operations
 
 Owners can delegate the following KMIP operations to other users via the `grant` and `revoke` endpoints (or the CLI commands `ckms access-rights grant` / `ckms access-rights revoke`):
 
-| Operation           | Description                                                     |
-| ------------------- | --------------------------------------------------------------- |
-| `create`            | Create new cryptographic objects (symmetric keys, key pairs, …) |
-| `certify`           | Issue or renew X.509 certificates                               |
-| `decrypt`           | Decrypt ciphertext using a managed key                          |
-| `derive_key`        | Derive a new key from an existing key                           |
-| `destroy`           | Permanently destroy an object                                   |
-| `encrypt`           | Encrypt plaintext using a managed key                           |
-| `export`            | Export an object (key material + metadata) from the KMS         |
-| `get`               | Retrieve an object — **this is a super-privilege** (see below)  |
-| `get_attributes`    | Read the KMIP attributes of an object                           |
-| `hash`              | Compute a cryptographic hash                                    |
-| `import`            | Import an external object into the KMS                          |
-| `locate`            | Search for objects matching given attributes                    |
-| `mac`               | Compute a Message Authentication Code                           |
-| `revoke`            | Revoke (deactivate) an object                                   |
-| `rekey`             | Re-key an existing symmetric key                                |
-| `sign`              | Generate a digital signature                                    |
-| `signature_verify`  | Verify a digital signature                                      |
-| `validate`          | Validate a certificate chain                                    |
-| `set_attribute`     | Set (replace) an attribute on an object                         |
-| `modify_attribute`  | Modify an existing attribute on an object                       |
-| `add_attribute`     | Add a new attribute value to an object                          |
-| `delete_attribute`  | Remove an attribute from an object                              |
+| Operation          | Description                                                     |
+| ------------------ | --------------------------------------------------------------- |
+| `create`           | Create new cryptographic objects (symmetric keys, key pairs, …) |
+| `certify`          | Issue or renew X.509 certificates                               |
+| `decrypt`          | Decrypt ciphertext using a managed key                          |
+| `derive_key`       | Derive a new key from an existing key                           |
+| `destroy`          | Permanently destroy an object                                   |
+| `encrypt`          | Encrypt plaintext using a managed key                           |
+| `export`           | Export an object (key material + metadata) from the KMS         |
+| `get`              | Retrieve an object — **this is a super-privilege** (see below)  |
+| `get_attributes`   | Read the KMIP attributes of an object                           |
+| `hash`             | Compute a cryptographic hash                                    |
+| `import`           | Import an external object into the KMS                          |
+| `locate`           | Search for objects matching given attributes                    |
+| `mac`              | Compute a Message Authentication Code                           |
+| `revoke`           | Revoke (deactivate) an object                                   |
+| `rekey`            | Re-key an existing symmetric key                                |
+| `sign`             | Generate a digital signature                                    |
+| `signature_verify` | Verify a digital signature                                      |
+| `validate`         | Validate a certificate chain                                    |
+| `set_attribute`    | Set (replace) an attribute on an object                         |
+| `modify_attribute` | Modify an existing attribute on an object                       |
+| `add_attribute`    | Add a new attribute value to an object                          |
+| `delete_attribute` | Remove an attribute from an object                              |
 
 Multiple operations can be granted or revoked in a single call. For example, using the CLI:
 
@@ -71,8 +98,8 @@ This design allows owners to share full read/use access to an object with a sing
 enumerating every operation.
 
 !!! warning Security implication
-    Because `Get` implies all other operation-level permissions, it should be granted with care.
-    If you only need a user to encrypt data with a key, grant `encrypt` — not `get`.
+Because `Get` implies all other operation-level permissions, it should be granted with care.
+If you only need a user to encrypt data with a key, grant `encrypt` — not `get`.
 
 ### Practical example
 
@@ -84,12 +111,12 @@ enumerating every operation.
 | `get`, `destroy`     |           Yes           |          Yes           |           Yes           |
 
 !!! note
-    The `destroy` and `revoke` operations are **never** implied by `get`. They must always be granted explicitly
-    because they are irreversible lifecycle transitions.
+The `destroy` and `revoke` operations are **never** implied by `get`. They must always be granted explicitly
+because they are irreversible lifecycle transitions.
 
 ## Special handling of the `Create` permission
 
-The `Create` operation is not bound to a specific object — it controls whether a user is allowed to create *new* objects
+The `Create` operation is not bound to a specific object — it controls whether a user is allowed to create _new_ objects
 in the KMS. Internally it is stored against the wildcard object identifier `*`.
 
 - When granting or revoking `create`, no object UID is required.
@@ -112,27 +139,27 @@ However, when the KMS server is configured with a list of privileged users, obje
 Because the following operations all result in a **new cryptographic object** being created in the KMS, they are all
 subject to the same privileged-user check:
 
-| Operation        | Reason                                                             |
-| ---------------- | ------------------------------------------------------------------ |
-| `Create`         | Creates a new symmetric key or secret data object                  |
-| `CreateKeyPair`  | Creates a new asymmetric key pair                                  |
-| `Import`         | Imports an external object into the KMS                            |
-| `Register`       | Registers an externally-generated object                           |
-| `Certify`        | May create a new key pair when issuing a certificate               |
-| `ReKey`          | Creates a new replacement symmetric key                            |
-| `ReKeyKeyPair`   | Creates a new replacement asymmetric key pair                      |
+| Operation       | Reason                                               |
+| --------------- | ---------------------------------------------------- |
+| `Create`        | Creates a new symmetric key or secret data object    |
+| `CreateKeyPair` | Creates a new asymmetric key pair                    |
+| `Import`        | Imports an external object into the KMS              |
+| `Register`      | Registers an externally-generated object             |
+| `Certify`       | May create a new key pair when issuing a certificate |
+| `ReKey`         | Creates a new replacement symmetric key              |
+| `ReKeyKeyPair`  | Creates a new replacement asymmetric key pair        |
 
 !!! note
-    `ReKey` and `ReKeyKeyPair` also require the caller to hold the `Rekey` permission on the existing key being
-    re-keyed. Both conditions must be satisfied: the user must be allowed to create new objects **and** be allowed
-    to rekey the specific existing key.
+`ReKey` and `ReKeyKeyPair` also require the caller to hold the `Rekey` permission on the existing key being
+re-keyed. Both conditions must be satisfied: the user must be allowed to create new objects **and** be allowed
+to rekey the specific existing key.
 
 ## The wildcard user `*`
 
-!!! important "The Wildcard User: *"
-    In addition to regular users, a special user called `*` (the wildcard user) can be used to grant access rights on
-    objects to **all** users. When a permission is granted to `*`, every authenticated user benefits from that permission
-    on the targeted object. Individual per-user grants are merged with the wildcard grants when evaluating access.
+!!! important "The Wildcard User: _"
+In addition to regular users, a special user called `_`(the wildcard user) can be used to grant access rights on
+    objects to **all** users. When a permission is granted to`\*`, every authenticated user benefits from that permission
+on the targeted object. Individual per-user grants are merged with the wildcard grants when evaluating access.
 
 ## HSM keys and authorization
 
@@ -142,14 +169,14 @@ important differences apply.
 
 ### Comparison with regular KMS keys
 
-| Aspect | KMS keys | HSM keys |
-|---|---|---|
-| Key material stored in | KMS database (encrypted) | HSM hardware |
-| `Get` is a super-privilege | Yes — implies all operations | **No** — each operation must be granted explicitly |
-| `Get` ↔ `Export` equivalence | No | **Yes** — holding either grants both |
-| `Destroy` / `Revoke` delegable | Yes | **No** — blocked; admin-only |
-| `Create` | Any user (or privileged users if configured) | HSM admin only |
-| `Locate` visibility | All owned / granted objects | Non-admins see only keys with ≥ 1 explicit grant |
+| Aspect                         | KMS keys                                     | HSM keys                                           |
+| ------------------------------ | -------------------------------------------- | -------------------------------------------------- |
+| Key material stored in         | KMS database (encrypted)                     | HSM hardware                                       |
+| `Get` is a super-privilege     | Yes — implies all operations                 | **No** — each operation must be granted explicitly |
+| `Get` ↔ `Export` equivalence   | No                                           | **Yes** — holding either grants both               |
+| `Destroy` / `Revoke` delegable | Yes                                          | **No** — blocked; admin-only                       |
+| `Create`                       | Any user (or privileged users if configured) | HSM admin only                                     |
+| `Locate` visibility            | All owned / granted objects                  | Non-admins see only keys with ≥ 1 explicit grant   |
 
 ### Who is an HSM admin?
 
@@ -174,21 +201,21 @@ Request arrives for operation OP on key hsm::<model>::<slot>::<id>
 
 ### What can and cannot be delegated
 
-| Operation | Delegable via `grant`? | Notes |
-|---|:---:|---|
-| `encrypt`, `decrypt`, `sign`, `mac` | Yes | All standard cryptographic operations |
-| `get` | Yes | Also implies `export` (equivalence) |
-| `export` | Yes | Also implies `get` (equivalence) |
-| `get_attributes`, `locate` | Yes | |
-| `set_attribute`, `modify_attribute`, `add_attribute`, `delete_attribute` | Yes | Operate on KMS metadata only; do not access HSM hardware |
-| `create` | Yes (admin to another admin) | Non-admin cannot receive `create` on HSM |
-| `destroy` | **No** | Blocked — admin-only, cannot be delegated |
-| `revoke` | **No** | Blocked — HSM objects do not use KMIP lifecycle states |
+| Operation                                                                |    Delegable via `grant`?    | Notes                                                    |
+| ------------------------------------------------------------------------ | :--------------------------: | -------------------------------------------------------- |
+| `encrypt`, `decrypt`, `sign`, `mac`                                      |             Yes              | All standard cryptographic operations                    |
+| `get`                                                                    |             Yes              | Also implies `export` (equivalence)                      |
+| `export`                                                                 |             Yes              | Also implies `get` (equivalence)                         |
+| `get_attributes`, `locate`                                               |             Yes              |                                                          |
+| `set_attribute`, `modify_attribute`, `add_attribute`, `delete_attribute` |             Yes              | Operate on KMS metadata only; do not access HSM hardware |
+| `create`                                                                 | Yes (admin to another admin) | Non-admin cannot receive `create` on HSM                 |
+| `destroy`                                                                |            **No**            | Blocked — admin-only, cannot be delegated                |
+| `revoke`                                                                 |            **No**            | Blocked — HSM objects do not use KMIP lifecycle states   |
 
 !!! warning
-    Unlike regular KMS keys, **granting `Get` on an HSM key does not imply `encrypt`,
-    `decrypt`, `sign`, or any other operation**. Each operation must be granted
-    individually.
+Unlike regular KMS keys, **granting `Get` on an HSM key does not imply `encrypt`,
+`decrypt`, `sign`, or any other operation**. Each operation must be granted
+individually.
 
 See the [HSM operations](../hsm_support/hsm_operations.md) page for HSM admin
 configuration details.
@@ -197,26 +224,26 @@ configuration details.
 
 It is important to distinguish authentication from authorization:
 
-- **Authentication** determines *who* the user is. The KMS supports TLS client certificates, JWT tokens, and API tokens.
+- **Authentication** determines _who_ the user is. The KMS supports TLS client certificates, JWT tokens, and API tokens.
   See the [Authentication](authentication.md) page for details on how to configure these methods and how user identities
   are established.
-- **Authorization** determines *what* an authenticated user is allowed to do with a given cryptographic object. This is
+- **Authorization** determines _what_ an authenticated user is allowed to do with a given cryptographic object. This is
   the permission model described on this page.
 
 !!! tip
-    An **API token** (used for authentication) is not the same thing as a **symmetric key** stored in the KMS.
-    The API token proves the user's identity; the symmetric key is a cryptographic object the user may or may not
-    have permission to use.
+An **API token** (used for authentication) is not the same thing as a **symmetric key** stored in the KMS.
+The API token proves the user's identity; the symmetric key is a cryptographic object the user may or may not
+have permission to use.
 
 ## Typical workflow: per-user keys with limited permissions
 
 !!! info "Permissions are managed at runtime, not in `kms.toml`"
-    The `kms.toml` configuration file controls **server-level** settings only (authentication methods, database backend,
-    TLS, privileged users, etc.). It does **not** contain any user-to-key permission mapping.
-    Per-object access rights are managed dynamically at runtime through the REST API (`/access/grant`, `/access/revoke`)
-    or the CLI (`ckms access-rights grant` / `ckms access-rights revoke`).
-    The only authorization-related setting in `kms.toml` is `privileged_users`, which restricts who can create or import
-    new objects (see [Privileged users](#privileged-users) above).
+The `kms.toml` configuration file controls **server-level** settings only (authentication methods, database backend,
+TLS, privileged users, etc.). It does **not** contain any user-to-key permission mapping.
+Per-object access rights are managed dynamically at runtime through the REST API (`/access/grant`, `/access/revoke`)
+or the CLI (`ckms access-rights grant` / `ckms access-rights revoke`).
+The only authorization-related setting in `kms.toml` is `privileged_users`, which restricts who can create or import
+new objects (see [Privileged users](#privileged-users) above).
 
 A common deployment pattern is to have an administrator create one symmetric key per user and grant only the
 operations each user needs (e.g. `encrypt` and `decrypt`).
@@ -253,8 +280,8 @@ ckms access-rights revoke alice@example.com -i a]b2c3d4-... encrypt decrypt
 ```
 
 !!! note
-    Do **not** grant `get` if you only want to allow encrypt/decrypt — `get` is a super-privilege that implies all
-    object-level operations (see above).
+Do **not** grant `get` if you only want to allow encrypt/decrypt — `get` is a super-privilege that implies all
+object-level operations (see above).
 
 ## Access management endpoints
 

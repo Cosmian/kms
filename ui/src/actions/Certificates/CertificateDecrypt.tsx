@@ -6,6 +6,7 @@ import { getMimeType, saveDecryptedFile, sendKmipRequest } from "../../utils/uti
 import { decrypt_certificate_ttlv_request, parse_decrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface CertificateDecryptFormData {
     inputFile: Uint8Array;
@@ -54,7 +55,7 @@ const CertificateDecryptForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("certificateDecrypt.intro")}</p>
                 <p>{t("certificateDecrypt.introKey")}</p>
-                <p className="text-sm text-yellow-600">{t("certificateDecrypt.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("certificateDecrypt.note")}</p>
             </div>
 
             <Form
@@ -95,13 +96,14 @@ const CertificateDecryptForm: React.FC = () => {
                     </Card>
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("certificateDecrypt.privateKeyIdentification")}</h3>
-                        <Form.Item
-                            name="privateKeyId"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="privateKeyId"
                             label={t("certificateDecrypt.privateKeyId")}
                             help={t("certificateDecrypt.privateKeyIdHelp")}
-                        >
-                            <Input placeholder={t("certificateDecrypt.enterPrivateKeyId")} />
-                        </Form.Item>
+                            placeholder={t("certificateDecrypt.enterPrivateKeyId")}
+                            objectType="PrivateKey"
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("certificateDecrypt.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

@@ -121,13 +121,13 @@ const ExportAzureBYOKForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("azureExportByok.intro")}</p>
                 <p>{t("azureExportByok.introKek")}</p>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
                     {t("azureExportByok.see")}:{" "}
                     <a
                         href="https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
+                        className="text-blue-600 dark:text-blue-400 hover:underline"
                     >
                         Azure BYOK Specification
                     </a>

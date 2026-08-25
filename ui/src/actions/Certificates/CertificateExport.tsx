@@ -5,6 +5,7 @@ import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { export_certificate_ttlv_request, parse_export_certificate_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface CertificateExportFormData {
     certificateId?: string;
@@ -83,7 +84,7 @@ const CertificateExportForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("certificateExport.intro")}</p>
                 <p>{t("certificateExport.introPkcs12")}</p>
-                <p className="text-sm text-yellow-600">{t("certificateExport.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("certificateExport.note")}</p>
             </div>
 
             <Form
@@ -97,13 +98,14 @@ const CertificateExportForm: React.FC = () => {
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("certificateExport.certificateIdentification")}</h3>
-                        <Form.Item
-                            name="certificateId"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="certificateId"
                             label={t("certificateExport.certificateId")}
                             help={t("certificateExport.certificateIdHelp")}
-                        >
-                            <Input placeholder={t("certificateExport.enterCertificateId")} />
-                        </Form.Item>
+                            placeholder={t("certificateExport.enterCertificateId")}
+                            objectType="Certificate"
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("certificateExport.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

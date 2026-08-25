@@ -8,7 +8,7 @@ Please check [this page](./marketplace_guide.md) for more information.
 
 When installed using the options below, the KMS server will be automatically configured to run
 using an SQLite database.
-If you wish to change the database configuration, please refer to the [database guide](../configuration/database.md).
+If you wish to change the database configuration, please refer to the [database guide](../configuration/database/configuration.md).
 
 For high availability and scalability, refer to the [High Availability Guide](./high_availability_mode.md).
 

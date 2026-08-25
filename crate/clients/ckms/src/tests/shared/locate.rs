@@ -75,7 +75,7 @@ pub(crate) async fn test_locate_cover_crypt() -> CosmianResult<()> {
 
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
+    let owner_client_conf_path = load_client_config("cert_owner.toml", ctx);
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
@@ -221,7 +221,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> CosmianResult<()> {
     log_init(option_env!("RUST_LOG"));
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
+    let owner_client_conf_path = load_client_config("cert_owner.toml", ctx);
 
     // generate a new key pair
     let (private_key_id, public_key_id) =
@@ -310,7 +310,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> CosmianResult<()> {
 pub(crate) async fn test_locate_symmetric_key() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
+    let owner_client_conf_path = load_client_config("cert_owner.toml", ctx);
 
     // generate a new key
     let key_id = create_symmetric_key(&owner_client_conf_path, &["--tag", "test_sym"])?;
@@ -379,8 +379,8 @@ pub(crate) async fn test_locate_symmetric_key() -> CosmianResult<()> {
 pub(crate) async fn test_locate_grant() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
-    let user_client_conf_path = load_client_config("cert_auth_user.toml", ctx);
+    let owner_client_conf_path = load_client_config("cert_owner.toml", ctx);
+    let user_client_conf_path = load_client_config("cert_user.toml", ctx);
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(

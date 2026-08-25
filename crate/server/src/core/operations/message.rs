@@ -174,7 +174,7 @@ pub(crate) async fn message(
         // KMIP 1.x specific response shaping for GetAttributes defaults:
         // - Remove AlwaysSensitive, Extractable, Sensitive, NeverExtractable,
         //   ShortUniqueIdentifier, KeyFormatType from default responses (when client did not explicitly request them)
-        // - Remove internal Cosmian tag vendor attribute; preserve all user-facing vendor attributes
+        // - Filter vendor attributes to only include vendor_identification == "x" and remove internal Cosmian tag
         // 4) Apply KMIP 1.x response shaping for GetAttributes
         shape_kmip1_get_attributes_response(
             kmip_version,
@@ -366,6 +366,11 @@ async fn process_operation(
 
     // Only capture start time when metrics are enabled to avoid unconditional syscall overhead.
     let start_time = kms.metrics.as_ref().map(|_| std::time::Instant::now());
+
+    // Enforce role-based access control for the RequestMessage path.
+    // This mirrors the check in dispatch_inner() for the single-operation TTLV path.
+    super::dispatch::check_role_permission(kms, user, operation_name, &kms.params.crypto_officer)
+        .await?;
 
     // Process the operation and capture the result
     let result: Result<Operation, KmsError> = Box::pin(async {
@@ -565,11 +570,19 @@ async fn process_operation(
             | Operation::SetAttributeResponse(_)
             | Operation::SignResponse(_)
             | Operation::SignatureVerifyResponse(_)
-            | Operation::ValidateResponse(_) => {
+            | Operation::ValidateResponse(_)
+            | Operation::CreateSplitKeyResponse(_)
+            | Operation::JoinSplitKeyResponse(_) => {
                 return Err(KmsError::Kmip21Error(
                     ErrorReason::Operation_Not_Supported,
                     format!("Operation: {request_operation} not supported"),
                 ));
+            }
+            Operation::CreateSplitKey(req) => {
+                Operation::CreateSplitKeyResponse(Box::pin(kms.create_split_key(req, user)).await?)
+            }
+            Operation::JoinSplitKey(req) => {
+                Operation::JoinSplitKeyResponse(Box::pin(kms.join_split_key(req, user)).await?)
             }
         })
     })
@@ -764,6 +777,12 @@ fn update_id_placeholder_from_response(
         // CreateKeyPair returns public+private UIDs; prefer the private key as placeholder
         Some(Operation::CreateKeyPairResponse(ckpr)) => {
             *id_placeholder = Some(ckpr.private_key_unique_identifier.clone());
+        }
+        // CreateSplitKey returns a list of split key part UIDs; per KMIP spec the ID
+        // Placeholder SHALL be set to the Unique Identifier of the split whose Key Part
+        // Identifier is 1 (i.e., the first entry in the list).
+        Some(Operation::CreateSplitKeyResponse(cskr)) => {
+            *id_placeholder = cskr.unique_identifier.first().cloned();
         }
         // Locate may return a list of UIDs; per KMIP ID Placeholder semantics we only
         // set the placeholder when exactly one UID is located. Otherwise, clear it.

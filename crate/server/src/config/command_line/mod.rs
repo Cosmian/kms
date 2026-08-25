@@ -10,6 +10,7 @@ mod jwks_endpoint_config;
 mod kmip_policy_config;
 mod logging;
 mod proxy_config;
+mod roles_config;
 pub mod secret_backends;
 mod socket_server_config;
 mod tls_config;
@@ -33,6 +34,7 @@ pub use kmip_policy_config::{
 };
 pub use logging::{LoggingConfig, get_default_rolling_log_dir};
 pub use proxy_config::ProxyConfig;
+pub use roles_config::RolesConfig;
 pub use secret_backends::{
     AwsSsmBackendConfig, AzureKvBackendConfig, CosmianKmsSecretConfig, SecretBackendConfig,
     SecretBackendKind, VaultBackendConfig,

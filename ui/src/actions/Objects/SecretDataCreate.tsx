@@ -5,6 +5,7 @@ import { sendKmipRequest } from "../../utils/utils";
 import { create_secret_data_ttlv_request, parse_create_ttlv_response, parse_import_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface SecretDataCreateFormData {
     secretId?: string;
@@ -112,13 +113,14 @@ const SecretDataCreateForm: React.FC = () => {
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
-                        <Form.Item
-                            name="wrappingKeyId"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="wrappingKeyId"
                             label={t("secretDataCreate.wrappingKeyId")}
                             help={t("secretDataCreate.wrappingKeyIdHelp")}
-                        >
-                            <Input placeholder={t("secretDataCreate.enterWrappingKeyId")} />
-                        </Form.Item>
+                            placeholder={t("secretDataCreate.enterWrappingKeyId")}
+                            objectType="SymmetricKey"
+                        />
 
                         <Form.Item name="sensitive" valuePropName="checked" help={t("secretDataCreate.sensitiveHelp")}>
                             <Checkbox>{t("secretDataCreate.sensitive")}</Checkbox>

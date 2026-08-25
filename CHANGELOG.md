@@ -39,8 +39,8 @@ All notable changes to this project will be documented in this file.
 #### Authentication Verifier integration ([#1013](https://github.com/Cosmian/kms/pull/1013))
 
 - Authentication methods delegated to the external Cosmian Authentication Verifier service:
-  - Login/password (basic auth) + TOTP 2FA: supported on Web UI and `ckms login` CLI
-  - `X-Vault-Token` (Vault AppRole, Vault Kubernetes, Vault Token)
+    - Login/password (basic auth) + TOTP 2FA: supported on Web UI and `ckms login` CLI
+    - `X-Vault-Token` (Vault AppRole, Vault Kubernetes, Vault Token)
 
 #### Other
 
@@ -774,7 +774,7 @@ PostgreSQL connections now support multi-host connection strings
 for automatic failover. Added retry logic with exponential backoff for transient
 connection errors during failover, scheme validation for PostgreSQL URLs, and
 additional retryable SQLSTATE codes (08001, 08004, 57P02, 57P03).
-See [database documentation](documentation/docs/database.md) for configuration details.
+See the database documentation for configuration details.
 
 #### HSM multi-admin support with wildcard ([#801](https://github.com/Cosmian/kms/pull/801))
 

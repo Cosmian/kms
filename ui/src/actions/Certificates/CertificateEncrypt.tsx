@@ -6,6 +6,7 @@ import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { encrypt_certificate_ttlv_request, parse_encrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface CertificateEncryptFormData {
     inputFile: Uint8Array;
@@ -55,7 +56,7 @@ const CertificateEncryptForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>{t("certificateEncrypt.intro")}</p>
                 <p>{t("certificateEncrypt.introKey")}</p>
-                <p className="text-sm text-yellow-600">{t("certificateEncrypt.note")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("certificateEncrypt.note")}</p>
             </div>
 
             <Form
@@ -99,13 +100,14 @@ const CertificateEncryptForm: React.FC = () => {
 
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("certificateEncrypt.certificateIdentification")}</h3>
-                        <Form.Item
-                            name="certificateId"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="certificateId"
                             label={t("certificateEncrypt.certificateId")}
                             help={t("certificateEncrypt.certificateIdHelp")}
-                        >
-                            <Input placeholder={t("certificateEncrypt.enterCertificateId")} />
-                        </Form.Item>
+                            placeholder={t("certificateEncrypt.enterCertificateId")}
+                            objectType="Certificate"
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("certificateEncrypt.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

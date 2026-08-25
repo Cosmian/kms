@@ -74,3 +74,18 @@ hostname = "0.0.0.0"
 database_type = "redis-findex"
 database_url = "redis://0.0.0.0:6379"
 redis_master_password = "master-password"
+
+# ── Role-based access control ─────────────────────────────────────────────────
+[roles]
+# Uncomment to assign users to the Crypto Officer role:
+## crypto_officer_users = ["key-mgr@example.com"]
+
+# Enable split-key ceremony requirement (XOR n-of-n):
+## crypto_officer_require_ceremony = true
+
+# Hex-encoded 32-byte secret for ceremony record encryption (AES-256-GCM).
+# Required when any role has require_ceremony = true.
+# All ceremony activation records are encrypted with keys derived from this secret,
+# preventing forgery via direct database writes and protecting participant identities.
+# Generate with: openssl rand -hex 32
+## ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"

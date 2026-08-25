@@ -289,7 +289,171 @@ impl<P: PlaceholderTrait> LocateQueryBuilder<P> {
     }
 }
 
-/// Builds a SQL query depending on `attributes` and `state` constraints,
+/// Appends attribute-based WHERE conditions to `query`, using `AND` or `WHERE` as
+/// determined by `where_added`.  Returns the updated `where_added` flag.
+///
+/// This helper is shared by [`query_from_attributes`] (caller always sets
+/// `where_added = true` because the user-ownership `WHERE` clause is already present)
+/// and [`query_all_from_attributes`] (caller tracks `where_added` from state filter).
+fn apply_attribute_conditions<P: PlaceholderTrait>(
+    qb: &mut LocateQueryBuilder<P>,
+    query: &mut String,
+    mut where_added: bool,
+    attributes: &Attributes,
+) -> bool {
+    // UniqueIdentifier
+    if let Some(UniqueIdentifier::TextString(id)) = &attributes.unique_identifier {
+        let keyword = if where_added { "AND" } else { "WHERE" };
+        where_added = true;
+        *query = format!(
+            "{query} {keyword} objects.id = {}",
+            qb.bind_text(id.clone())
+        );
+    }
+
+    // ObjectGroup
+    if let Some(object_group) = &attributes.object_group {
+        let keyword = if where_added { "AND" } else { "WHERE" };
+        where_added = true;
+        *query = format!(
+            "{query} {keyword} {} = {}",
+            P::extract_attribute_path(&["ObjectGroup"]),
+            qb.bind_text(object_group.clone())
+        );
+    }
+
+    // ObjectGroupMember
+    if let Some(object_group_member) = attributes.object_group_member {
+        let keyword = if where_added { "AND" } else { "WHERE" };
+        where_added = true;
+        *query = format!(
+            "{query} {keyword} {} = {}",
+            P::extract_attribute_path(&["ObjectGroupMember"]),
+            qb.bind_text(object_group_member.to_string())
+        );
+    }
+
+    // CryptographicAlgorithm
+    if let Some(cryptographic_algorithm) = attributes.cryptographic_algorithm {
+        let keyword = if where_added { "AND" } else { "WHERE" };
+        where_added = true;
+        *query = format!(
+            "{query} {keyword} {} = {}",
+            P::extract_attribute_path(&["CryptographicAlgorithm"]),
+            qb.bind_text(cryptographic_algorithm.to_string())
+        );
+    }
+
+    // CryptographicLength
+    if let Some(cryptographic_length) = attributes.cryptographic_length {
+        let len_i64 = i64::from(cryptographic_length);
+        let keyword = if where_added { "AND" } else { "WHERE" };
+        where_added = true;
+        if P::NEEDS_INTEGER_CAST {
+            *query = format!(
+                "{query} {keyword} CAST ({} AS {}) = {}",
+                P::extract_attribute_path(&["CryptographicLength"]),
+                P::TYPE_INTEGER,
+                qb.bind_i64(len_i64)
+            );
+        } else {
+            *query = format!(
+                "{query} {keyword} {} = {}",
+                P::extract_attribute_path(&["CryptographicLength"]),
+                qb.bind_i64(len_i64)
+            );
+        }
+    }
+
+    // KeyFormatType
+    if let Some(key_format_type) = attributes.key_format_type {
+        let keyword = if where_added { "AND" } else { "WHERE" };
+        where_added = true;
+        *query = format!(
+            "{query} {keyword} {} = {}",
+            P::extract_attribute_path(&["KeyFormatType"]),
+            qb.bind_text(key_format_type.to_string())
+        );
+    }
+
+    // ObjectType
+    if let Some(object_type) = attributes.object_type {
+        let keyword = if where_added { "AND" } else { "WHERE" };
+        where_added = true;
+        *query = format!(
+            "{query} {keyword} {} = {}",
+            P::extract_object_type(),
+            qb.bind_text(object_type.to_string())
+        );
+    }
+
+    // ApplicationSpecificInformation
+    if let Some(app) = &attributes.application_specific_information {
+        let keyword = if where_added { "AND" } else { "WHERE" };
+        where_added = true;
+        *query = format!(
+            "{query} {keyword} {} = {}",
+            P::extract_attribute_path(&["ApplicationSpecificInformation", "ApplicationNamespace"]),
+            qb.bind_text(app.application_namespace.clone())
+        );
+        if let Some(data) = &app.application_data {
+            *query = format!(
+                "{query} AND {} = {}",
+                P::extract_attribute_path(&["ApplicationSpecificInformation", "ApplicationData"]),
+                qb.bind_text(data.clone())
+            );
+        }
+    }
+
+    // Link
+    if let Some(links) = &attributes.link {
+        for link in links {
+            let keyword = if where_added { "AND" } else { "WHERE" };
+            where_added = true;
+            *query = format!(
+                "{query} {keyword} {}",
+                P::link_evaluation(
+                    P::JSON_TEXT_LINK_TYPE,
+                    &qb.bind_text(link.link_type.to_string())
+                )
+            );
+            if let TextString(uid) = &link.linked_object_identifier {
+                *query = format!(
+                    "{query} AND {}",
+                    P::link_evaluation(P::JSON_TEXT_LINK_OBJ_ID, &qb.bind_text(uid.clone()))
+                );
+            }
+        }
+    }
+
+    // Name
+    if let Some(names) = &attributes.name {
+        for name in names {
+            let keyword = if where_added { "AND" } else { "WHERE" };
+            where_added = true;
+            *query = format!(
+                "{query} {keyword} {}",
+                P::name_evaluation(
+                    P::JSON_TEXT_NAME_TYPE,
+                    &qb.bind_text(match &name.name_type {
+                        NameType::UninterpretedTextString => "UninterpretedTextString",
+                        NameType::URI => "URI",
+                    })
+                )
+            );
+            *query = format!(
+                "{query} AND {}",
+                P::name_evaluation(
+                    P::JSON_TEXT_NAME_VALUE,
+                    &qb.bind_text(name.name_value.clone())
+                )
+            );
+        }
+    }
+
+    where_added
+}
+
 /// to search for items in database.
 /// Returns a tuple containing the stringified query and the values to bind with.
 /// The different placeholder for variable binding is handled by trait specification.
@@ -376,150 +540,85 @@ ON objects.id = matched_tags.id"
     }
 
     #[allow(clippy::collapsible_match)]
-    // nested match segregates the UniqueIdentifier variant check from unrelated attribute checks below
+    // nested match in apply_attribute_conditions handles UniqueIdentifier variant
     if let Some(attributes) = attributes {
-        // UniqueIdentifier
-        if let Some(uid) = &attributes.unique_identifier {
-            if let UniqueIdentifier::TextString(id) = uid {
-                query = format!("{query} AND objects.id = {}", qb.bind_text(id.clone()));
-            }
-        }
+        // WHERE clause is always present at this point (user ownership filter was added above).
+        let _ = apply_attribute_conditions::<P>(&mut qb, &mut query, true, attributes);
+    }
 
-        // ObjectGroup
-        if let Some(object_group) = &attributes.object_group {
+    qb.finish(query)
+}
+
+/// Builds a SQL query for `find_all`: identical to `query_from_attributes` but with **no**
+/// user-ownership or `read_access` filter. Only call this from `CryptoOfficer` code paths.
+pub(super) fn query_all_from_attributes<P: PlaceholderTrait>(
+    attributes: Option<&Attributes>,
+    state: Option<State>,
+    vendor_id: &str,
+) -> LocateQuery {
+    let mut qb = LocateQueryBuilder::<P>::new();
+
+    // Add additional FROM clauses for link/name JSON iteration if needed
+    let links_from = P::links_additional_rq_from();
+    let names_from = P::names_additional_rq_from();
+
+    // Determine which extra FROMs are actually needed
+    let needs_links = attributes.is_some_and(|a| a.link.is_some());
+    let needs_names = attributes.is_some_and(|a| a.name.is_some());
+
+    let mut from_clause = "FROM objects".to_owned();
+    if needs_links {
+        if let Some(ref lf) = links_from {
+            let _ = write!(from_clause, ", {lf}");
+        }
+    }
+    if needs_names {
+        if let Some(ref nf) = names_from {
+            let _ = write!(from_clause, ", {nf}");
+        }
+    }
+
+    let mut query = format!(
+        "SELECT DISTINCT objects.id as id, objects.state as state, objects.attributes as attrs \
+         {from_clause}"
+    );
+
+    if let Some(attributes) = attributes {
+        // Tags JOIN (same as query_from_attributes)
+        let tags = attributes.get_tags(vendor_id);
+        let tags_len = tags.len();
+        if tags_len > 0 {
+            let tag_placeholders = tags
+                .iter()
+                .map(|t| qb.bind_text(t.clone()))
+                .collect::<Vec<String>>()
+                .join(", ");
+            let tags_len_i64 = i64::try_from(tags_len).unwrap_or(0);
+            let tags_len_placeholder = qb.bind_i64(tags_len_i64);
             query = format!(
-                "{query} AND {} = {}",
-                P::extract_attribute_path(&["ObjectGroup"]),
-                qb.bind_text(object_group.clone())
+                "{query} INNER JOIN (
+    SELECT id
+    FROM tags
+    WHERE tag IN ({tag_placeholders})
+    GROUP BY id
+    HAVING COUNT(DISTINCT tag) = {tags_len_placeholder}
+) AS matched_tags
+ON objects.id = matched_tags.id"
             );
         }
+    }
 
-        // ObjectGroupMember
-        if let Some(object_group_member) = attributes.object_group_member {
-            query = format!(
-                "{query} AND {} = {}",
-                P::extract_attribute_path(&["ObjectGroupMember"]),
-                qb.bind_text(object_group_member.to_string())
-            );
-        }
+    // No user-based WHERE clause — return all objects.
+    // Apply state and attribute filters with the same logic as query_from_attributes.
 
-        // CryptographicAlgorithm
-        if let Some(cryptographic_algorithm) = attributes.cryptographic_algorithm {
-            query = format!(
-                "{query} AND {} = {}",
-                P::extract_attribute_path(&["CryptographicAlgorithm"]),
-                qb.bind_text(cryptographic_algorithm.to_string())
-            );
-        }
+    let where_added = state.is_some_and(|s| {
+        let state_s: &'static str = s.into();
+        query = format!("{query} WHERE state = {}", qb.bind_text(state_s));
+        true
+    });
 
-        // CryptographicLength
-        if let Some(cryptographic_length) = attributes.cryptographic_length {
-            let len_i64 = i64::from(cryptographic_length);
-            if P::NEEDS_INTEGER_CAST {
-                query = format!(
-                    "{query} AND CAST ({} AS {}) = {}",
-                    P::extract_attribute_path(&["CryptographicLength"]),
-                    P::TYPE_INTEGER,
-                    qb.bind_i64(len_i64)
-                );
-            } else {
-                // For MySQL/MariaDB, rely on implicit conversion of unquoted value
-                query = format!(
-                    "{query} AND {} = {}",
-                    P::extract_attribute_path(&["CryptographicLength"]),
-                    qb.bind_i64(len_i64)
-                );
-            }
-        }
-
-        // KeyFormatType
-        if let Some(key_format_type) = attributes.key_format_type {
-            query = format!(
-                "{query} AND {} = {}",
-                P::extract_attribute_path(&["KeyFormatType"]),
-                qb.bind_text(key_format_type.to_string())
-            );
-        }
-
-        // ObjectType
-        if let Some(object_type) = attributes.object_type {
-            query = format!(
-                "{query} AND {} = {}",
-                P::extract_object_type(),
-                qb.bind_text(object_type.to_string())
-            );
-        }
-
-        // ApplicationSpecificInformation
-        if let Some(app) = &attributes.application_specific_information {
-            // ApplicationNamespace is required in the struct
-            query = format!(
-                "{query} AND {} = {}",
-                P::extract_attribute_path(&[
-                    "ApplicationSpecificInformation",
-                    "ApplicationNamespace"
-                ]),
-                qb.bind_text(app.application_namespace.clone())
-            );
-            // ApplicationData is optional
-            if let Some(data) = &app.application_data {
-                query = format!(
-                    "{query} AND {} = {}",
-                    P::extract_attribute_path(&[
-                        "ApplicationSpecificInformation",
-                        "ApplicationData"
-                    ]),
-                    qb.bind_text(data.clone())
-                );
-            }
-        }
-
-        // Link
-        if let Some(links) = &attributes.link {
-            for link in links {
-                // LinkType
-                query = format!(
-                    "{query} AND {}",
-                    P::link_evaluation(
-                        P::JSON_TEXT_LINK_TYPE,
-                        &qb.bind_text(link.link_type.to_string())
-                    )
-                );
-
-                // LinkedObjectIdentifier
-                if let TextString(uid) = &link.linked_object_identifier {
-                    query = format!(
-                        "{query} AND {}",
-                        P::link_evaluation(P::JSON_TEXT_LINK_OBJ_ID, &qb.bind_text(uid.clone()))
-                    );
-                }
-            }
-        }
-
-        // Name
-        if let Some(names) = &attributes.name {
-            for name in names {
-                // NameType
-                query = format!(
-                    "{query} AND {}",
-                    P::name_evaluation(
-                        P::JSON_TEXT_NAME_TYPE,
-                        &qb.bind_text(match &name.name_type {
-                            NameType::UninterpretedTextString => "UninterpretedTextString",
-                            NameType::URI => "URI",
-                        })
-                    )
-                );
-                // NameValue
-                query = format!(
-                    "{query} AND {}",
-                    P::name_evaluation(
-                        P::JSON_TEXT_NAME_VALUE,
-                        &qb.bind_text(name.name_value.clone())
-                    )
-                );
-            }
-        }
+    if let Some(attributes) = attributes {
+        apply_attribute_conditions::<P>(&mut qb, &mut query, where_added, attributes);
     }
 
     qb.finish(query)

@@ -39,7 +39,7 @@ async fn test_secret_data_create_basic() -> KResult<()> {
     // Instantiate KMS
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::new("test_secret_data_create_basic@example.com");
+    let owner = UserId::from("test_secret_data_create_basic@example.com");
 
     // Create a basic secret data object using the existing request function
     let secret_id = format!("test-secret-{}", Uuid::new_v4());
@@ -126,7 +126,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
     // Instantiate KMS
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::new("test_secret_data_wrapping@example.com");
+    let owner = UserId::from("test_secret_data_wrapping@example.com");
 
     // Create a SecretData object with wrapping enabled
     let secret_id = UniqueIdentifier::TextString(format!("test-secret-wrapped-{}", Uuid::new_v4()));
@@ -215,7 +215,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
     let sqlite_path = clap_config.db.sqlite_path.clone();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let key_material = Zeroizing::from(b"TestData".to_vec());
-    let owner = UserId::new("test_secret_data_wrapping@example.com");
+    let owner = UserId::from("test_secret_data_wrapping@example.com");
 
     // create the wrapping key
     let create_wrapping_key_request = symmetric_key_create_request(

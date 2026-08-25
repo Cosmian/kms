@@ -9,6 +9,7 @@ import {
     parse_import_ttlv_response,
 } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 const HASHING_ALGORITHMS = [
     { label: "SHA-256", value: "SHA256" },
@@ -144,14 +145,14 @@ const DeriveKeyForm: React.FC = () => {
                         </Form.Item>
 
                         {sourceType === "key_id" && (
-                            <Form.Item
-                                name="keyId"
+                            <KeyIdInput
+                                form={form}
+                                fieldName="keyId"
                                 label={t("common:keyId")}
-                                rules={[{ required: true, message: t("deriveKey.pleaseEnterSourceKeyId") }]}
                                 help={t("deriveKey.keyIdHelp")}
-                            >
-                                <Input placeholder={t("deriveKey.enterSourceKeyId")} />
-                            </Form.Item>
+                                rules={[{ required: true, message: t("deriveKey.pleaseEnterSourceKeyId") }]}
+                                placeholder={t("deriveKey.enterSourceKeyId")}
+                            />
                         )}
 
                         {sourceType === "password" && (

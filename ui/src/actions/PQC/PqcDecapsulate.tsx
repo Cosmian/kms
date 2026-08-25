@@ -6,6 +6,7 @@ import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { decrypt_ec_ttlv_request, parse_decrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface PqcDecapsulateFormData {
     inputFile: Uint8Array;
@@ -81,9 +82,14 @@ const PqcDecapsulateForm: React.FC = () => {
                     </Card>
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("pqcDecapsulate.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("pqcDecapsulate.privateKeyId")} help={t("pqcDecapsulate.privateKeyIdHelp")}>
-                            <Input placeholder={t("pqcDecapsulate.enterPrivateKeyId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("pqcDecapsulate.privateKeyId")}
+                            help={t("pqcDecapsulate.privateKeyIdHelp")}
+                            placeholder={t("pqcDecapsulate.enterPrivateKeyId")}
+                            objectType="PrivateKey"
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("pqcDecapsulate.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

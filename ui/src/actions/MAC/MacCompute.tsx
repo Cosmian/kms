@@ -3,6 +3,7 @@ import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import { useActionState } from "../../hooks/useActionState";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface MacComputeFormData {
     keyId?: string;
@@ -77,9 +78,14 @@ const MacComputeForm: React.FC = () => {
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("macCompute.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("common:keyId")} help={t("macCompute.keyIdHelp")}>
-                            <Input placeholder={t("common:enterKeyId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("macCompute.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                            objectType="SymmetricKey"
+                        />
                         <Form.Item name="tags" label={t("common:tags")} help={t("macCompute.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>

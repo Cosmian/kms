@@ -1,10 +1,11 @@
-import { Button, Card, Form, Input, Select, Space } from "antd";
+import { Button, Card, Form, Select, Space } from "antd";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { encrypt_ec_ttlv_request, parse_encrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface PqcEncapsulateFormData {
     keyId?: string;
@@ -64,9 +65,14 @@ const PqcEncapsulateForm: React.FC = () => {
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("pqcEncapsulate.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("pqcEncapsulate.publicKeyId")} help={t("pqcEncapsulate.publicKeyIdHelp")}>
-                            <Input placeholder={t("pqcEncapsulate.enterPublicKeyId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("pqcEncapsulate.publicKeyId")}
+                            help={t("pqcEncapsulate.publicKeyIdHelp")}
+                            placeholder={t("pqcEncapsulate.enterPublicKeyId")}
+                            objectType="PublicKey"
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("pqcEncapsulate.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

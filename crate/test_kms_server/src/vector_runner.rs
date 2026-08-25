@@ -28,6 +28,9 @@ static ONCE_VECTOR_REDIS_FINDEX: OnceCell<TestsContext> = OnceCell::const_new();
 static ONCE_VECTOR_CERT_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests requiring server-only TLS (`auth_https.toml`).
 static ONCE_VECTOR_AUTH_HTTPS: OnceCell<TestsContext> = OnceCell::const_new();
+/// Singleton server for Operator/CryptoOfficer test vectors (`cert_auth_operator_and_crypto_officer.toml`).
+static ONCE_VECTOR_CERT_AUTH_OPERATOR_CRYPTO_OFFICER: OnceCell<TestsContext> =
+    OnceCell::const_new();
 /// Singleton server for vector tests requiring `SoftHSM2` + KEK.
 static ONCE_VECTOR_HSM_KEK: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests where the HSM KEK is configured but **not yet created**.
@@ -62,7 +65,7 @@ static HSM_CLEANUP_DONE: OnceCell<()> = OnceCell::const_new();
 /// ```toml
 /// name = "AES Create, Encrypt, Decrypt"
 /// description = "Full lifecycle of an AES-256 symmetric key"
-/// server_config = "test_data/configs/server/auth_plain.toml"
+/// server_config = "test_data/configs/server/auth/plain.toml"
 ///
 /// [[steps]]
 /// operation = "Create"
@@ -90,7 +93,7 @@ pub struct TestManifest {
     /// Optional description
     pub description: Option<String>,
     /// Path to a TOML server config file (relative to the repo root).
-    /// If omitted, defaults to `test_data/configs/server/auth_plain.toml`.
+    /// If omitted, defaults to `test_data/configs/server/auth/plain.toml`.
     pub server_config: Option<String>,
     /// Server type to use for this vector.
     ///
@@ -115,10 +118,10 @@ pub struct TestManifest {
     /// Supported values: `"sqlite"`, `"postgresql"`, `"mysql"`, `"redis-findex"`.
     ///
     /// Each backend maps to a config TOML override:
-    /// - `sqlite` → default (`auth_plain.toml` or `server_config`)
-    /// - `postgresql` → `test_data/configs/server/postgres.toml`
-    /// - `mysql` → `test_data/configs/server/mysql.toml`
-    /// - `redis-findex` → `test_data/configs/server/redis_findex.toml`
+    /// - `sqlite` → default (`auth/plain.toml` or `server_config`)
+    /// - `postgresql` → `test_data/configs/server/db/postgres.toml`
+    /// - `mysql` → `test_data/configs/server/db/mysql.toml`
+    /// - `redis-findex` → `test_data/configs/server/db/redis_findex.toml`
     #[serde(default = "default_backends")]
     pub backends: Vec<String>,
     /// Wire format: `"json"` (default) or `"binary"`.
@@ -165,6 +168,25 @@ pub struct IdentityConfig {
     pub client_cert: String,
     /// Path to the PEM client private key
     pub client_key: String,
+}
+
+/// Captures the Nth occurrence of a repeated TTLV tag from a response.
+///
+/// Used with `capture_nth` in a manifest step to capture individual share UIDs from
+/// `CreateSplitKeyResponse`, which returns N `UniqueIdentifier` tags (one per share).
+///
+/// Example:
+/// ```toml
+/// [steps.capture_nth.share2_id]
+/// tag   = "UniqueIdentifier"
+/// index = 1
+/// ```
+#[derive(Debug, Deserialize)]
+pub struct CaptureNthEntry {
+    /// TTLV tag name to search for in the response.
+    pub tag: String,
+    /// Zero-based index into all occurrences of the tag.
+    pub index: usize,
 }
 
 /// A single request–response step in a test vector.
@@ -250,6 +272,20 @@ pub struct TestStep {
     /// a key that may not exist from a prior run).
     #[serde(default)]
     pub allow_failure: bool,
+    /// Capture the Nth occurrence of a repeated TTLV tag into named variables.
+    ///
+    /// Complements `capture` (which always takes the first occurrence) for responses
+    /// that emit multiple values under the same tag, e.g. `CreateSplitKeyResponse`
+    /// which returns one `UniqueIdentifier` per share.
+    ///
+    /// Example:
+    /// ```toml
+    /// [steps.capture_nth.share2_id]
+    /// tag   = "UniqueIdentifier"
+    /// index = 1
+    /// ```
+    #[serde(default)]
+    pub capture_nth: HashMap<String, CaptureNthEntry>,
 }
 
 const fn default_true() -> bool {
@@ -758,14 +794,18 @@ async fn get_or_init_vector_server(backend: &str) -> Result<&'static TestsContex
 
     let root = repo_root()?;
     let (cell, toml, env_var) = match backend {
-        "postgresql" => (&ONCE_VECTOR_POSTGRESQL, "postgres.toml", "KMS_POSTGRES_URL"),
-        "mysql" => (&ONCE_VECTOR_MYSQL, "mysql.toml", "KMS_MYSQL_URL"),
+        "postgresql" => (
+            &ONCE_VECTOR_POSTGRESQL,
+            "db/postgres.toml",
+            "KMS_POSTGRES_URL",
+        ),
+        "mysql" => (&ONCE_VECTOR_MYSQL, "db/mysql.toml", "KMS_MYSQL_URL"),
         "redis-findex" => (
             &ONCE_VECTOR_REDIS_FINDEX,
-            "redis_findex.toml",
+            "db/redis_findex.toml",
             "KMS_REDIS_URL",
         ),
-        _ => (&ONCE_VECTOR_SQLITE, "auth_plain.toml", ""),
+        _ => (&ONCE_VECTOR_SQLITE, "auth/plain.toml", ""),
     };
     let p = root.join("test_data/configs/server").join(toml);
     // Override the database URL from the environment when set (e.g. MariaDB on
@@ -934,19 +974,24 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
 
         // Manifests with a custom server_config use a per-config singleton server.
         // Each config file gets its own OnceCell to prevent race conditions where a
-        // different config (e.g. auth_https.toml without mTLS) could poison the
+        // different config (e.g. auth/tls.toml without mTLS) could poison the
         // ONCE_VECTOR_CERT_AUTH cell and cause all cert-auth tests to run against
         // the wrong server (reproduces non-deterministically on slower runners like ARM).
         if let Some(server_config) = &manifest.server_config {
             let config_path = root.join(server_config);
             let context = match server_config.as_str() {
-                "test_data/configs/server/auth_https.toml" => {
+                "test_data/configs/server/auth/tls.toml" => {
                     ONCE_VECTOR_AUTH_HTTPS
                         .get_or_try_init(|| crate::start_test_server_from_toml(&config_path))
                         .await?
                 }
+                "test_data/configs/server/auth/cert_roles.toml" => {
+                    ONCE_VECTOR_CERT_AUTH_OPERATOR_CRYPTO_OFFICER
+                        .get_or_try_init(|| crate::start_test_server_from_toml(&config_path))
+                        .await?
+                }
                 _ => {
-                    // Default: cert_auth.toml and any future mTLS configs
+                    // Default: auth/cert.toml and any future mTLS configs
                     ONCE_VECTOR_CERT_AUTH
                         .get_or_try_init(|| crate::start_test_server_from_toml(&config_path))
                         .await?
@@ -1335,6 +1380,23 @@ async fn execute_steps(
                 &mut captures,
                 &step.operation,
             )?;
+        }
+
+        // Capture the Nth occurrence of a repeated tag (e.g. share UIDs from CreateSplitKeyResponse)
+        for (var_name, rule) in &step.capture_nth {
+            let all = find_all_fields_in_json(&response_json, &rule.tag);
+            let value = all.get(rule.index).ok_or_else(|| {
+                KmsClientError::UnexpectedError(format!(
+                    "Step {} '{}': capture_nth '{var_name}': tag '{}' has only {} occurrence(s), \
+                     but index {} was requested",
+                    i,
+                    step.operation,
+                    rule.tag,
+                    all.len(),
+                    rule.index
+                ))
+            })?;
+            captures.insert(var_name.clone(), value.clone());
         }
     }
 
@@ -3579,9 +3641,6 @@ ObjectType = "SymmetricKey"
     }
 
     // ── Negative tests: ReCertify ───────────────────────────────────────
-    // ReCertify is not yet implemented (KMIP 1.4 only); these tests verify the
-    // server correctly rejects the operation. Enable positive recertify tests
-    // above once the operation is dispatched.
 
     #[tokio::test]
     async fn test_neg_recertify_missing_uid() -> Result<(), KmsClientError> {
@@ -4044,6 +4103,61 @@ ObjectType = "SymmetricKey"
             "test_data/vectors/access_control/privilege_escalation_activate_without_permission",
         )
         .await
+    }
+
+    // ── Role separation vectors ───────────────────────────────────────────
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
+    async fn test_vec_access_operator_role_blocked_lifecycle() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/operator_role_blocked_lifecycle").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
+    async fn test_vec_access_crypto_officer_role_allowed_ops() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/crypto_officer_role_allowed_ops").await
+    }
+
+    // ── Split-key (XOR) round-trip vectors ──────────────────────────
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
+    async fn test_vec_create_split_key_sss() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/create_split_key_sss").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
+    async fn test_vec_create_split_key_xor() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/create_split_key_xor").await
+    }
+
+    // ── Split-key negative vectors ────────────────────────────────────────
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
+    async fn test_vec_create_split_key_threshold_too_low() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create_split_key_threshold_too_low").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
+    async fn test_vec_create_split_key_parts_less_than_threshold() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create_split_key_parts_less_than_threshold")
+            .await
     }
 
     // ── HSM + KEK vectors ─────────────────────────────────────────────────

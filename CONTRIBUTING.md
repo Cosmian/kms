@@ -162,7 +162,7 @@ Before submitting a pull request, please ensure that:
 For database-specific testing, you may need to set up local database instances. See
 [§1 Database test environment](AGENTS.md#database-test-environment) in AGENTS.md for details.
 
-If you have access to LLM coding tools, we recommand to use the [kms-last-test-vx](.github/skills/kms-last-test-v5) skill before considering work as finished, as it operates as last human-like sanity check.
+If you have access to LLM coding tools, we recommend to use the [kms-last-test-vx](.github/skills/kms-last-test-v5) skill before considering work as finished, as it operates as last human-like sanity check.
 
 ## Contributor License Agreement
 

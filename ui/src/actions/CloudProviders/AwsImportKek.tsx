@@ -100,14 +100,14 @@ const ImportAwsKekForm: React.FC = () => {
                     <Trans ns="actions" i18nKey="awsImportKek.introKek" components={{ b: <b /> }} />
                 </p>
                 {/* prettier-ignore */}
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
                     {t("awsImportKek.seeDoc")}{" "}
                 <ExternalLink href="https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-get-public-key-and-token.html">
                     {t("awsImportKek.downloadingDoc")}
                 </ExternalLink>.
                 </p>
-                <div className="bg-blue-50 border-l-4 border-blue-500 rounded-md p-4 mt-4">
-                    <div className="text-blue-800 text-sm space-y-2">
+                <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 dark:border-blue-400 rounded-md p-4 mt-4">
+                    <div className="text-blue-800 dark:text-blue-300 text-sm space-y-2">
                         <p>
                             <Trans ns="actions" i18nKey="awsImportKek.byokScripts" components={{ strong: <strong /> }} />{" "}
                             <ExternalLink href="https://docs.cosmian.com/key_management_system/aws/byok/#automated-byok-scripts">

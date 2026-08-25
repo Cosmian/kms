@@ -14,13 +14,13 @@
     "hiddenPqcAlgorithms": ["ml-kem-512-p256", "ml-kem-768-p256", "ml-kem-512-curve25519", "ml-kem-768-curve25519"],
     "tokens": {
         "light": {
-            "colorPrimary": "#FF6D43",
-            "colorText": "#212121"
+            "colorPrimary": "#c73f1b",
+            "colorText": "#1a1a1a"
         },
         "dark": {
-            "colorPrimary": "#FF6D43",
-            "colorText": "#E9E9E9",
-            "colorBgBase": "#151515"
+            "colorPrimary": "#f14611",
+            "colorText": "#bcbdd0",
+            "colorBgBase": "#161923"
         }
     }
 }

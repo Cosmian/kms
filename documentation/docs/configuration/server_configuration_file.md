@@ -48,7 +48,7 @@ complete PKI under the chosen output directory (default `/etc/cosmian/`):
 | `client.key` | Client private key (PKCS#8 PEM)                                       |
 
 Distribute `client.crt` and `client.key` to any client that must authenticate
-with mutual TLS.  You can verify the chain at any time with:
+with mutual TLS. You can verify the chain at any time with:
 
 ```bash
 openssl verify -CAfile /etc/cosmian/ca.crt /etc/cosmian/server.crt
@@ -70,20 +70,20 @@ Configuration file loading precedence:
 > command-line arguments are also provided, the server exits with an error. This prevents silently
 > ignoring arguments the user intended to take effect. To use a different configuration, point
 > explicitly to it with `-c/--config <FILE>`.
-Examples:
+> Examples:
 
 ```bash
 # Explicit configuration file
-./cosmian-kms -c ./test_data/configs/server/jwt_auth.toml
+./cosmian-kms -c ./test_data/configs/server/auth/jwt.toml
 
 # Using an environment variable
-export COSMIAN_KMS_CONF=./test_data/configs/server/jwt_auth.toml
+export COSMIAN_KMS_CONF=./test_data/configs/server/auth/jwt.toml
 ./cosmian-kms
 ```
 
 The file should be a TOML file with the following structure:
 
-```toml
+````toml
 # The default username to use when no authentication method is provided
 default_username = "admin"
 
@@ -171,8 +171,12 @@ info = false
 # ```
 # default_unwrap_type = ["SecretData", "SymmetricKey"]
 
-# List of users who have the right to create and import Objects
-# and grant access rights for Create Kmip Operation.
+# **Deprecated** — use `--crypto-officer-users` (under `[roles]`) instead.
+#
+# List of users who have the right to create and import objects and grant
+# the `Create` access right to other users. Kept for backward compatibility;
+# if set and `[roles] crypto_officer_users` is not configured, these users
+# are promoted to the `CryptoOfficer` role automatically on startup.
 # privileged_users = ["<user_id_1>", "<user_id_2>"]
 
 # Check the database configuration documentation pages for more information
@@ -487,6 +491,76 @@ vault_pki_ca_key_label = ""
 # for this duration to reduce round-trips on every transit/PKI request.
 # Set to `0` to disable caching. Defaults to `30`.
 vault_token_cache_ttl_secs = 0
+
+[roles]
+# Require a split-key ceremony to activate the Crypto Officer role.
+#
+# When `true`, users listed in `crypto_officer_users` are candidates only —
+# the role is inactive until a KMIP `JoinSplitKey` with all shares tagged
+# `x-cosmian-crypto-officer-ceremony` completes
+crypto_officer_require_ceremony = false
+
+# Users with the Crypto Officer role (ISO/IEC 19790 "Crypto Officer" / PKCS#11 `CKU_SO`).
+#
+# May manage key lifecycle (create, import, certify, rekey, activate, revoke, destroy)
+# and access raw key material (get, export — "key output" per ISO/IEC 19790 §7.4.3).
+# When active, gains ownership bypass on all Managed Objects.
+# When set, only listed users (plus those explicitly granted the `Create` right) can
+# create and import objects.
+# crypto_officer_users = ["alice@example.com", "bob@example.com"]
+
+# Hex-encoded 32-byte secret for ceremony record encryption.
+#
+# Required when any role has `require_ceremony = true`.
+# All ceremony activation records are AES-256-GCM encrypted with keys
+# derived from this secret, preventing forgery via direct database writes
+# and protecting participant identities at rest.
+#
+# Generate with: `openssl rand -hex 32`
+# ceremony_secret = ""
+
+# UID of a KMS symmetric key to use as the ceremony record sealing key.
+#
+# When set, key material is fetched from the KMS object store after database
+# initialization and used in place of `ceremony_secret`. This enables:
+#   - Key rotation via standard KMIP `ReKey` / `Rotate` operations.
+#   - HSM-backed sealing when the referenced key is HSM-resident.
+#   - Audit trail: each retrieval of the ceremony key is logged.
+#
+# If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+#
+# **Bootstrap constraint**: the ceremony sealing key must be created before
+# enabling `crypto_officer_require_ceremony = true`. Create it while the server
+# is in config-only CO mode (no ceremony required), then enable ceremony mode:
+#
+# ```bash
+# # 1. Start server with require_ceremony = false
+# # 2. Create the sealing key:
+# ckms sym keys create --id ceremony-seal-2026 --number-of-bits 256
+# # 3. Set ceremony_key_id = "ceremony-seal-2026" in kms.toml
+# # 4. Enable require_ceremony = true and restart
+# ```
+# ceremony_key_id = ""
+
+# UID of a KMS symmetric key to use for AES-KW (RFC 5649) wrapping of split-key shares.
+#
+# When set, `CreateSplitKey` encrypts each share's raw bytes with this key (AES-128/192/256-KWP)
+# before storing in the database.  `JoinSplitKey` automatically detects the
+# `x-cosmian-share-wrapping-key` vendor attribute on each share and unwraps the bytes before
+# XOR reconstruction.
+#
+# The wrapping key must already exist in the KMS object store and must be an AES symmetric key.
+# When the KMS is HSM-backed, this key can be HSM-resident, providing hardware boundary
+# protection equivalent to purpose-built HSM split-key solutions.
+#
+# Generate a suitable key before enabling ceremony mode:
+# ```bash
+# ckms sym keys create --id ceremony-wrap-2026 --number-of-bits 256
+# ```
+#
+# Rotate by creating a new key, updating this value, and re-running the ceremony
+# (existing wrapped shares require the original key; re-ceremony is mandatory on rotation).
+# ceremony_wrapping_key_id = "ceremony-wrap-key"
 ```
 
 ---
@@ -507,9 +581,9 @@ without any explicit configuration.
 
 Although the KMS serves its own Web UI from the same host and port, the
 browser's Fetch API sends an `Origin` header on every non-GET/HEAD request
-(including `POST`) — even when the request originates from the same page.  The
+(including `POST`) — even when the request originates from the same page. The
 actix-cors middleware compares this header against the explicit allow-list and
-returns HTTP 400 if the value is not present.  There is no DNS resolution or
+returns HTTP 400 if the value is not present. There is no DNS resolution or
 network-interface expansion: the comparison is a byte-for-byte string match.
 
 This means `cors_allowed_origins` must contain the **exact URL** the user
@@ -520,7 +594,7 @@ versa.
 
 The binary automatically provides loopback addresses
 (`localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, `[::]` on the configured port) so that
-browser access from the same machine works out-of-the-box.  Any other hostname,
+browser access from the same machine works out-of-the-box. Any other hostname,
 IP address, or port must be added explicitly.
 
 CLI clients (`ckms`, scripts, curl) do not send an `Origin` header and are
@@ -537,9 +611,9 @@ The same list can be provided via the environment variable
 `--cors-allowed-origins`.
 
 !!! warning "Security implications"
-    Every origin in `cors_allowed_origins` can issue **authenticated**
-    cross-origin requests to the KMS — session cookies and credentials are
-    forwarded for each listed origin.
+Every origin in `cors_allowed_origins` can issue **authenticated**
+cross-origin requests to the KMS — session cookies and credentials are
+forwarded for each listed origin.
 
     - **Only add origins you fully control and trust.**  A compromised or
       malicious site listed here can read and manage all cryptographic objects

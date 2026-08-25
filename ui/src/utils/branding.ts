@@ -56,12 +56,13 @@ const DEFAULT_BRANDING: Branding = {
 
     tokens: {
         light: {
-            colorPrimary: "#e34319",
-            colorText: "#292f52",
+            colorPrimary: "#c73f1b",
+            colorText: "#1a1a1a",
         },
         dark: {
-            colorPrimary: "#9e6eff",
-            colorText: "#e4dddd",
+            colorPrimary: "#f14611",
+            colorText: "#bcbdd0",
+            colorBgBase: "#161923",
         },
     },
 };

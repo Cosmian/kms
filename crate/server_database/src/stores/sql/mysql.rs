@@ -33,7 +33,7 @@ use crate::{
             database::SqlDatabase,
             locate_query::{
                 MySqlPlaceholder, find_by_rotate_name_query, find_due_for_rotation_query,
-                query_from_attributes,
+                query_all_from_attributes, query_from_attributes,
             },
         },
     },
@@ -244,6 +244,7 @@ impl MySqlPool {
             "create-table-objects",
             "create-table-read_access",
             "create-table-tags",
+            "create-table-crypto_officer_activations",
         ] {
             let sql = MYSQL_QUERIES
                 .get(name)
@@ -283,6 +284,30 @@ impl MySqlPool {
                 })?;
             conn.query_drop(add_col).await.map_err(DbError::from)?;
         }
+
+        // Add activated_by column to crypto_officer_activations if not present.
+        // MySQL 8.0 does not support ADD COLUMN IF NOT EXISTS.
+        let has_co_col_sql = MYSQL_QUERIES
+            .get("has-column-co-activated-by")
+            .ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: has-column-co-activated-by".to_owned())
+            })?;
+        let co_col_rows: Vec<mysql_async::Row> =
+            conn.query(has_co_col_sql).await.map_err(DbError::from)?;
+        if co_col_rows.is_empty() {
+            let add_co_col = MYSQL_QUERIES
+                .get("add-column-co-activated-by")
+                .ok_or_else(|| {
+                    DbError::DatabaseError(
+                        "Missing SQL query: add-column-co-activated-by".to_owned(),
+                    )
+                })?;
+            conn.query_drop(add_co_col).await.map_err(DbError::from)?;
+        }
+        // Note: MySQL does not support partial (filtered) unique indexes.
+        // Uniqueness of active activations per user is enforced at the application
+        // layer in database_permissions.rs::activate_crypto_officer_ceremony, which
+        // revokes any existing active record for the same user before inserting.
 
         // Ensure the read-path indexes exist. MySQL 8.0 has no
         // `CREATE INDEX IF NOT EXISTS`, so check information_schema first.
@@ -805,43 +830,33 @@ impl ObjectsStore for MySqlPool {
         Ok(results)
     }
 
-    /// Returns the total count of live (non-destroyed) objects in this `MySQL` store.
-    ///
-    /// This is a **metrics-only** privileged query: it scans the full `objects` table
-    /// without any user or permission filter, so the result always reflects the true
-    /// server-wide inventory. It must never be used to answer client requests.
-    ///
-    /// The state strings `'Destroyed'` and `'Destroyed_Compromised'` are the Rust
-    /// enum variant names as serialised to the DB by `strum::Display`.
+    async fn find_all(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        Ok(find_all_(researched_attributes, state, &self.pool, vendor_id).await?)
+    }
+
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
-        let sql = get_mysql_query!("count-non-destroyed-objects");
-        let mut conn = self
-            .get_configured_conn()
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let count: Option<u64> = conn
+            .query_first(get_mysql_query!("count-all-non-destroyed"))
             .await
-            .map_err(InterfaceError::from)?;
-        // MySQL returns COUNT(*) as u64 via the mysql_async FromValue impl.
-        let count: u64 = conn
-            .exec_first(sql, ())
-            .await
-            .map_err(DbError::from)
-            .map_err(InterfaceError::from)?
-            .unwrap_or(0);
-        Ok(count)
+            .map_err(DbError::from)?;
+        Ok(count.unwrap_or(0))
     }
 
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
-        let sql = get_mysql_query!("count-non-destroyed-keys");
-        let mut conn = self
-            .get_configured_conn()
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        // Object JSON is stored as {"SymmetricKey": {...}} — use JSON_TYPE to
+        // check for key presence.
+        let count: Option<u64> = conn
+            .query_first(get_mysql_query!("count-non-destroyed-keys"))
             .await
-            .map_err(InterfaceError::from)?;
-        let count: u64 = conn
-            .exec_first(sql, ())
-            .await
-            .map_err(DbError::from)
-            .map_err(InterfaceError::from)?
-            .unwrap_or(0);
-        Ok(count)
+            .map_err(DbError::from)?;
+        Ok(count.unwrap_or(0))
     }
 }
 
@@ -931,6 +946,84 @@ impl PermissionsStore for MySqlPool {
         no_inherited_access: bool,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await?)
+    }
+
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+        revoked_by: &str,
+    ) -> InterfaceResult<()> {
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let mut tx: Transaction<'_> = conn
+            .start_transaction(mysql_async::TxOpts::default())
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        // Revoke only this user's prior active record.
+        let revoke_sql = get_mysql_query!("revoke-crypto-officer-activation");
+        tx.exec_drop(revoke_sql, (revoked_by, activated_by))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let insert_sql = get_mysql_query!("insert-crypto-officer-activation");
+        tx.exec_drop(insert_sql, (sealed_record, activated_by))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        tx.commit()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(())
+    }
+
+    async fn get_crypto_officer_activation_by(
+        &self,
+        user: &str,
+    ) -> InterfaceResult<Option<String>> {
+        let sql = get_mysql_query!("select-active-crypto-officer-activation-by");
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let result: Option<String> = conn
+            .exec_first(sql, (user,))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(result)
+    }
+
+    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
+        let sql = get_mysql_query!("select-any-active-crypto-officer-activation");
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let count: Option<i64> = conn
+            .exec_first(sql, ())
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(count.unwrap_or(0) > 0)
+    }
+
+    async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
+        let sql = get_mysql_query!("revoke-crypto-officer-activation");
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        conn.exec_drop(sql, (revoked_by, activated_by))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(())
     }
 }
 
@@ -1318,6 +1411,30 @@ pub(super) async fn find_(
         vendor_id,
     );
     trace!("find_: {:?}", locate.sql);
+    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
+    let params: Vec<mysql_async::Value> = locate
+        .params
+        .into_iter()
+        .map(|p| match p {
+            crate::stores::sql::locate_query::LocateParam::Text(s) => {
+                mysql_async::Value::Bytes(s.into_bytes())
+            }
+            crate::stores::sql::locate_query::LocateParam::I64(i) => mysql_async::Value::Int(i),
+        })
+        .collect();
+    let rows: Vec<mysql_async::Row> = conn.exec(locate.sql, params).await.map_err(DbError::from)?;
+    to_qualified_uids(&rows)
+}
+
+pub(super) async fn find_all_(
+    researched_attributes: Option<&Attributes>,
+    state: Option<State>,
+    pool: &Pool,
+    vendor_id: &str,
+) -> DbResult<Vec<(String, State, Attributes)>> {
+    let locate =
+        query_all_from_attributes::<MySqlPlaceholder>(researched_attributes, state, vendor_id);
+    trace!("find_all_: {:?}", locate.sql);
     let mut conn = pool.get_conn().await.map_err(DbError::from)?;
     let params: Vec<mysql_async::Value> = locate
         .params

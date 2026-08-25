@@ -34,7 +34,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
 
     let clap_config = https_clap_config_with_external_proxy();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::new("eyJhbGciOiJSUzI1Ni");
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
     let request = Validate {
         certificate: Some([root_cert.clone()].to_vec()),
         unique_identifier: None,
@@ -126,7 +126,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
 
     let clap_config = https_clap_config_with_external_proxy();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::new("eyJhbGciOiJSUzI1Ni");
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
     // add certificates to kms
     // root
     let root_request = Import {
@@ -521,7 +521,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_ml_dsa44_self_signed() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
         let (cert_id, _sk_id) = pqc_certify(
             &kms,
             &owner,
@@ -540,7 +540,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_ml_dsa65_self_signed() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
         let (cert_id, _) = pqc_certify(
             &kms,
             &owner,
@@ -559,7 +559,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_ml_dsa87_self_signed() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
         let (cert_id, _) = pqc_certify(
             &kms,
             &owner,
@@ -578,7 +578,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_slhdsa_sha2_128s_self_signed() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
         let (cert_id, _) = pqc_certify(
             &kms,
             &owner,
@@ -601,7 +601,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_mldsa44_root_mldsa44_leaf() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         // Root CA (self-signed)
         let (root_id, root_sk) = pqc_certify(
@@ -635,7 +635,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_mldsa44_root_mldsa87_leaf() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -667,7 +667,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_mldsa44_root_mlkem512_leaf_rfc9935() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -698,7 +698,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_mldsa65_root_mlkem768_leaf_rfc9935() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -729,7 +729,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_mldsa87_root_mlkem1024_leaf_rfc9935() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -760,7 +760,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_slhdsa_root_mldsa44_leaf() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -791,7 +791,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_slhdsa_root_mlkem512_leaf() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -830,7 +830,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_all_mldsa_variants() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         // Root CA (self-signed ML-DSA-44)
         let (root_id, root_sk) = pqc_certify(
@@ -877,7 +877,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_mldsa65_chain_mlkem768_leaf() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -919,7 +919,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_slhdsa_root_mldsa_chain() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -961,7 +961,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_unordered_input_still_valid() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -1009,7 +1009,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_ml_kem_self_signed_is_rejected_at_certify() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let attributes = {
             let subject_name = "C=FR, ST=IdF, L=Paris, O=PQCTest, CN=ML-KEM Self-Signed";
@@ -1049,7 +1049,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_ml_kem768_self_signed_is_rejected_at_certify() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let attrs = Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::MLKEM_768),
@@ -1076,7 +1076,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_chain_future_validity_time_fails() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -1111,7 +1111,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_chain_future_validity_time_fails() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -1154,7 +1154,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_missing_intermediate_fails() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -1211,7 +1211,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_missing_root_fails() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -1265,7 +1265,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_empty_chain_fails() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let req = Validate {
             certificate: None,
@@ -1285,7 +1285,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_leaf_with_wrong_issuer_fails() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         // Chain A: ML-DSA-44 root A → ML-DSA-65 leaf A
         let (root_a_id, root_a_sk) = pqc_certify(
@@ -1350,7 +1350,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_all_mldsa_variants_as_self_signed_root() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         for (algo, label) in [
             (CryptographicAlgorithm::MLDSA_44, "ML-DSA-44"),
@@ -1370,7 +1370,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_all_mlkem_variants_as_ca_issued_leaf() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         // One shared root CA
         let (root_id, root_sk) = pqc_certify(
@@ -1409,7 +1409,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_duplicate_ids_are_deduplicated() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
@@ -1461,7 +1461,7 @@ authorityKeyIdentifier=keyid:always,issuer
         // DER value bytes (without tag/length): 55 1D 38
         const NO_REV_AVAIL: &[u8] = &[0x55, 0x1d, 0x38];
         let kms = make_kms().await?;
-        let owner = UserId::new("pqc_test_owner");
+        let owner = UserId::from("pqc_test_owner");
 
         // Certify a self-signed ML-DSA-44 cert with no crlDistributionPoints.
         let (cert_id, _sk_id) = pqc_certify(

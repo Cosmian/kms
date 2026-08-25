@@ -6,6 +6,7 @@ import { sendKmipRequest } from "../../utils/utils";
 import { parse_signature_verify_ttlv_response, signature_verify_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface RsaVerifyFormData {
     dataFile: Uint8Array;
@@ -147,9 +148,14 @@ const RsaVerifyForm: React.FC = () => {
                     </Card>
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("rsaVerify.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("common:keyId")} help={t("rsaVerify.keyIdHelp")}>
-                            <Input placeholder={t("common:enterKeyId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("rsaVerify.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                            objectType="PublicKey"
+                        />
                         <Form.Item name="tags" label={t("common:tags")} help={t("rsaVerify.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>

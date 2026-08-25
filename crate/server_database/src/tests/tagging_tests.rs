@@ -26,7 +26,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     cosmian_logger::log_init(None);
     let mut rng = CsRng::from_entropy();
 
-    let owner = UserId::new("eyJhbGciOiJSUzI1Ni");
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
     let uid = Uuid::new_v4().to_string();
     // create a symmetric key with tags
     let mut symmetric_key_bytes = vec![0; 32];

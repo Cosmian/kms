@@ -5,6 +5,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { getObjectLabel, ObjectType, sendKmipRequest } from "../../utils/utils";
 import { parse_revoke_ttlv_response, revoke_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { useActionState } from "../../hooks/useActionState";
+import LocateButton from "../../components/common/LocateButton";
 
 interface RevokeFormData {
     revocationReasonMessage: string;
@@ -67,13 +68,13 @@ const RevokeForm: React.FC<RevokeFormProps> = ({ objectType }) => {
     return (
         <div className="p-6">
             <div className="flex items-center gap-3 mb-6">
-                <WarningFilled className="text-2xl text-red-500" />
+                <WarningFilled className="text-2xl text-red-500 dark:text-red-400" />
                 <h1 className="text-2xl font-bold">{t("objectsRevoke.title", { typeString, label })}</h1>
             </div>
 
             <div className="mb-8 space-y-2">
-                <div className="bg-red-200 border-l-4 border-red-600 rounded-md p-4">
-                    <div className="text-red-800 text-sm space-y-2">
+                <div className="bg-red-200 dark:bg-red-900/40 border-l-4 border-red-600 dark:border-red-500 rounded-md p-4">
+                    <div className="text-red-800 dark:text-red-300 text-sm space-y-2">
                         <p>
                             <strong>{t("objectsRevoke.warningTitle")}</strong> {t("objectsRevoke.warningCannotUndo")}
                         </p>
@@ -124,12 +125,17 @@ const RevokeForm: React.FC<RevokeFormProps> = ({ objectType }) => {
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("objectsRevoke.identification", { labelCap })}</h3>
 
-                        <Form.Item
-                            name="objectId"
-                            label={t("objectsRevoke.objectIdLabel", { labelCap })}
-                            help={t("objectsRevoke.objectIdHelp", { label })}
-                        >
-                            <Input placeholder={t("objectsRevoke.enterObjectId", { label })} />
+                        <Form.Item label={t("objectsRevoke.objectIdLabel", { labelCap })} help={t("objectsRevoke.objectIdHelp", { label })}>
+                            <div className="flex items-center gap-2">
+                                <Form.Item
+                                    noStyle
+                                    name="objectId"
+                                    rules={[{ required: true, message: t("objectsRevoke.pleaseEnterObjectId", { label }) }]}
+                                >
+                                    <Input placeholder={t("objectsRevoke.enterObjectId", { label })} style={{ flex: 1 }} />
+                                </Form.Item>
+                                <LocateButton onSelect={(uid: string) => form.setFieldValue("objectId", uid)} />
+                            </div>
                         </Form.Item>
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("objectsRevoke.tagsHelp", { labelCap, label })}>
