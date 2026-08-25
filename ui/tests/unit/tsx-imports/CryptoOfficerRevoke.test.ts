@@ -94,41 +94,18 @@ describe("CO revocation: dormant CO candidate can peer-revoke", () => {
         }),
     );
 
-    // NOTE: the whoami mock in the dormant-candidate tests returns "bob@example.com" so
-    // that `status.users.includes(userId)` resolves to true and the revoke controls appear.
-    // "dummy" is not a CO candidate — the revoke section is intentionally hidden for non-candidates.
-    function mockWithBob() {
-        vi.stubGlobal(
-            "fetch",
-            vi.fn(async (input: RequestInfo | URL) => {
-                const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-                if (url.includes("/access/crypto_officer/status")) {
-                    return new Response(JSON.stringify({ ...baseActiveStatus, is_crypto_officer: false }), {
-                        status: 200,
-                        headers: { "Content-Type": "application/json" },
-                    });
-                }
-                if (url.includes("/ui/whoami")) {
-                    return new Response(JSON.stringify({ user_id: "bob@example.com" }), {
-                        status: 200,
-                        headers: { "Content-Type": "application/json" },
-                    });
-                }
-                return new Response(JSON.stringify({}), { status: 200 });
-            }),
-        );
-    }
+    // smokeRender is called with initialUserId so that status.users.includes(userId) is true.
+    // Without it, userId is null (AuthContext default) and the revoke controls are hidden —
+    // intentionally: users who are not yet identified should not see CO revoke controls.
 
     test("renders the peer-revoke button for a dormant CO candidate", async () => {
-        mockWithBob();
-        smokeRender(React.createElement(CryptoOfficerRole));
+        smokeRender(React.createElement(CryptoOfficerRole), { initialUserId: "bob@example.com" });
         await screen.findByTestId("disable-btn");
         expect(screen.getByTestId("disable-btn")).toBeInTheDocument();
     });
 
     test("peer-revoke button is disabled when no target is selected", async () => {
-        mockWithBob();
-        smokeRender(React.createElement(CryptoOfficerRole));
+        smokeRender(React.createElement(CryptoOfficerRole), { initialUserId: "bob@example.com" });
         const btn = await screen.findByTestId("disable-btn");
         expect(btn).toBeDisabled();
     });
