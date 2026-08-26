@@ -8,7 +8,7 @@ services:
     environment:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
-      - ../../test_data/configs/server/no_auth.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/auth/none.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 9998
         published: ${KMS_SLOT_HTTP_PORT:-9998}
@@ -27,7 +27,7 @@ services:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
       - ../../test_data:/data:ro
-      - ../../test_data/configs/server/tls_auth_${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/tls/${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 9999
         published: ${KMS_SLOT_TLS_PORT:-9999}
@@ -48,7 +48,7 @@ services:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
       - ../../test_data:/data:ro
-      - ../../test_data/configs/server/tls13_auth_${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/tls/tls13_${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 10000
         published: ${KMS_SLOT_TLS13_PORT:-10000}
@@ -88,7 +88,7 @@ services:
     environment:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
-      - ../../test_data/configs/server/no_auth.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/auth/none.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 9998
         published: ${KMS_SLOT_KMS_EXAMPLE_PORT:-12098}
@@ -156,7 +156,7 @@ services:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
       - ../../test_data:/data:ro
-      - ../../test_data/configs/server/tls_auth_${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/tls/${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 9999
         published: ${KMS_SLOT_KMS_TLS_NONROOT_PORT:-15099}
@@ -195,7 +195,7 @@ services:
     environment:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
-      - ../../test_data/configs/server/lb_kms1_postgres.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/db/postgres_lb_primary.toml:/etc/cosmian/kms.toml:ro
     expose:
       - '9998'
     healthcheck:
@@ -213,7 +213,7 @@ services:
     environment:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
-      - ../../test_data/configs/server/lb_kms2_postgres.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/db/postgres_lb_secondary.toml:/etc/cosmian/kms.toml:ro
     expose:
       - '9998'
     healthcheck:
@@ -231,7 +231,7 @@ services:
     environment:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
-      - ../../test_data/configs/server/lb_kms3_postgres.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/db/postgres_lb_secondary.toml:/etc/cosmian/kms.toml:ro
     expose:
       - '9998'
     healthcheck:
