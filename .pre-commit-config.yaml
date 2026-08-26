@@ -192,7 +192,7 @@ repos:
     hooks:
       - id: clippy-all-targets-all-features
         types: [rust]
-        stages: [push]
+        stages: [pre-push]
       - id: clippy-all-targets
         stages: [manual]
         types: [rust]
