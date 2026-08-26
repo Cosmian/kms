@@ -3,6 +3,7 @@ import { Select } from "antd";
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useBranding } from "../../contexts/useBranding";
+import { DOCS_BASE_URL } from "../../utils/utils";
 
 export interface HsmSlotStatus {
     slot_id: number;
@@ -64,7 +65,7 @@ const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
     return (
         <div className="flex items-center h-full">
             {logoUrl && (
-                <a href="https://docs.cosmian.com" target="_blank" rel="noreferrer">
+                <a href={DOCS_BASE_URL} target="_blank" rel="noreferrer">
                     <img src={logoUrl} alt={branding.logoAlt} className="h-16 mr-4 transition-opacity duration-300 hover:opacity-80" />
                 </a>
             )}
