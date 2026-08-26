@@ -140,32 +140,32 @@ sequenceDiagram
 ### Phase 2: Activate Crypto Officer Role (JoinSplitKey)
 
 The CO candidate assembles all $n$ share UIDs (after each other CO grants GET access to
-their share), then activates via one of two paths:
+their share), then activates via one of two mechanisms, both reachable from the CLI and
+the Web UI:
 
-**Web UI path** (`POST /access/crypto_officer/ceremony/activate`):
+- **KMIP `JoinSplitKey`** (`ckms sym keys join-split-key`, or the Web UI's Join Split Key
+  page): stores the reconstructed key as an Active managed object in `objects`, owned by
+  the caller.
+- **`POST /access/crypto_officer/ceremony/activate`** (`ckms access-rights crypto-officer
+  activate`, or the Web UI's Crypto Officer Role page): reconstructs the secret in RAM
+  only to verify its SHA-256 fingerprint, then zeroizes it. No key object is stored.
+
+Both run the same checks first:
 
 1. Retrieves each share (the candidate must have `Get` on each) and validates them: same
    ceremony tag, same source key, correct count, and the candidate listed in
    `crypto_officer_users`.
 2. Checks that at least one share belongs to a **different** CO: the activating candidate
    may own shares, but not all of them. This is what prevents solo self-activation.
-3. Reconstructs the secret, stores it as a managed key object, and records the activation.
-4. The candidate is now an **active CryptoOfficer**.
 
-**CLI path** (`ckms sym keys join-split-key` → KMIP `JoinSplitKey`):
+Either way, the server persists the `crypto_officer_activations` record and the candidate
+is now an **active CryptoOfficer**.
 
-Same verification steps 1–6, then:
-
-1. Stores the reconstructed key as an Active managed object in `objects` (owned by the caller).
-2. Persists the `crypto_officer_activations` record.
-3. The candidate is now an **active CryptoOfficer**.
-
-!!! warning "Key storage difference between paths"
-    The CLI path (`JoinSplitKey`) stores the reconstructed key as a usable KMS object.
-    The UI path (`POST /access/crypto_officer/ceremony/activate`) does **not** — the secret
-    is RAM-only and zeroized after the activation record is written.
-    Both paths enforce identical ceremony constraints; they differ only in whether a managed
-    key object is created as a side-effect.
+!!! warning "Key storage difference between the two mechanisms"
+    `JoinSplitKey` stores the reconstructed key as a usable KMS object; `ceremony/activate`
+    does not — the secret is RAM-only and zeroized immediately after the activation record
+    is written. Pick based on whether you need the reconstructed key as a managed object
+    afterward.
 
 ```mermaid
 sequenceDiagram
@@ -179,13 +179,6 @@ sequenceDiagram
     Alice->>KMS: JoinSplitKey([share_1, share_2, share_3])
     KMS-->>Alice: Activated, CryptoOfficer role is now ACTIVE
 ```
-
-!!! info "JoinSplitKey = Activation"
-    `JoinSplitKey` with ceremony-tagged shares is the activation mechanism. The reconstructed
-    key is stored as a KMS object, and the `crypto_officer_activations` record is written
-    automatically. No separate activation endpoint call is needed from the UI.
-    The dedicated REST endpoint `POST /access/crypto_officer/ceremony/activate` is kept
-    for CLI backward compatibility only.
 
 ## Revoking
 
@@ -346,8 +339,8 @@ curl -s -X POST https://<kms>/access/crypto_officer/disable
 | `objects` DB table                    | Every `JoinSplitKey` call (ceremony and non-ceremony)                                 | Stores the reconstructed key as a managed KMS object owned by the caller. For ceremony shares the key is stored **unconditionally** before the activation side-effect runs. |
 
 !!! info "Two ceremony completion paths"
-    - **`JoinSplitKey` KMIP operation** (primary path): stores the reconstructed key in `objects` **and** writes the CO activation record. Suitable for clients that need the reconstructed key as a usable KMS object.
-    - **`POST /access/crypto_officer/ceremony/activate`** (CLI legacy path): reconstructs the secret in RAM only (for hash verification), writes the CO activation record, and **does not store a key object**.
+    - **`JoinSplitKey` KMIP operation**: stores the reconstructed key in `objects` **and** writes the CO activation record. Suitable when you need the reconstructed key as a usable KMS object.
+    - **`POST /access/crypto_officer/ceremony/activate`**: reconstructs the secret in RAM only (for hash verification), writes the CO activation record, and **does not store a key object**.
 
 The `x-cosmian-crypto-officer-ceremony` tag on shares identifies which shares belong to
 a ceremony split. **It does NOT grant any privilege.** The server checks this tag only
