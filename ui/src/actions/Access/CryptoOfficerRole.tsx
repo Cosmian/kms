@@ -218,7 +218,7 @@ const CryptoOfficerRole: React.FC = () => {
                             em: <em />,
                             a: (
                                 <a
-                                    href="https://docs.cosmian.com/key_ceremony"
+                                    href="https://docs.cosmian.com/key_management_system/configuration/authorization/key_ceremony/"
                                     target="_blank"
                                     rel="noreferrer"
                                     className="text-blue-600 dark:text-blue-400 underline"

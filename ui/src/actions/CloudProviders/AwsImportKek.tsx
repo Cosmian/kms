@@ -110,7 +110,7 @@ const ImportAwsKekForm: React.FC = () => {
                     <div className="text-blue-800 dark:text-blue-300 text-sm space-y-2">
                         <p>
                             <Trans ns="actions" i18nKey="awsImportKek.byokScripts" components={{ strong: <strong /> }} />{" "}
-                            <ExternalLink href="https://docs.cosmian.com/key_management_system/aws/byok/#automated-byok-scripts">
+                            <ExternalLink href="https://docs.cosmian.com/key_management_system/integrations/cloud_providers/aws/byok/#automated-byok-scripts">
                                 {t("awsImportKek.learnMore")}
                             </ExternalLink>
                             .
