@@ -10,6 +10,9 @@
 fail_fast: true
 exclude: documentation/pandoc|documentation/overrides|crate/server/src/tests/test_utils.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys|documentation/docs/drawings|test_data|documentation/docs/benchmarks.md|crate/hsm/proteccio/driver|crate/server/ui|kmip/|crate/server_database/src/tests/migrate/postgre-4.20.dump.sql|crate/kmip/src/ttlv/tests/pykmip/|crate/server/documentation/swagger-ui/swagger-ui-bundle.js|crate/server/documentation/swagger-ui/swagger-ui.css
 repos:
+  # ═══════════════════════════════════════════════════════════════════════
+  # 1. Commit message
+  # ═══════════════════════════════════════════════════════════════════════
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.0.0
     hooks:
@@ -17,6 +20,11 @@ repos:
         stages: [commit-msg]
         args: [] # optional: list of Conventional Commits types to allow e.g. [feat, fix, ci, chore, test]
 
+  # ═══════════════════════════════════════════════════════════════════════
+  # 2. Formatting (fast, auto-fix) — ordered by file type
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── Markdown ──────────────────────────────────────────────────────────
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.44.0
     hooks:
@@ -33,21 +41,22 @@ repos:
         exclude: >-
           documentation/docs/kms_clients/cli/main_commands.md|documentation/docs/certifications_and_compliance/audit/crypto_inventory\.md|\.github/skills/|crate/|^CHANGELOG/|^\.cargo/|documentation/docs/SUMMARY\.md|documentation/docs/kms_clients/cli/main_commands\.md
 
+  # ── YAML ──────────────────────────────────────────────────────────────
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.3
     hooks:
       - id: yamlfmt
         args: [--mapping, "2", --sequence, "4", --offset, "2"]
-        # Helm templates use Go template syntax ({{- ... }}) which is not
-        # valid standalone YAML and cannot be parsed/reformatted by yamlfmt.
         exclude: ansible|ui/pnpm-lock.yaml|charts/.*/templates/
 
+  # ── Spelling ──────────────────────────────────────────────────────────
   - repo: https://github.com/crate-ci/typos
     rev: v1.31.1
     hooks:
       - id: typos
         exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/shared/export_import.rs|ui/src/Locate.tsx|kmip/|.mise/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|nix/signing-keys/cosmian-kms-public.asc|sbom/|documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/|crate/clients/clap/src/tests/shared/export_import.rs|crate/crypto/src/crypto/fpe/ff1.rs|documentation/docs/benchmarks/|.mise/scripts/bench/bench_run_flamegraph.sh|docs.instructions.md|crate/server/src/tests/jose/rfc_vectors.rs
 
+  # ── Whitespace / line-endings ─────────────────────────────────────────
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
     hooks:
@@ -58,6 +67,7 @@ repos:
       - id: forbid-tabs
         exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
 
+  # ── Text hygiene ──────────────────────────────────────────────────────
   - repo: https://github.com/sirosen/texthooks
     rev: 0.6.8
     hooks:
@@ -68,10 +78,12 @@ repos:
       - id: forbid-bidi-controls
       - id: macro-expand
 
+  # ── Shell ─────────────────────────────────────────────────────────────
   - repo: https://github.com/jumanjihouse/pre-commit-hooks
     rev: 3.0.0
     hooks:
       - id: shellcheck
+        args: [--severity=warning]
 
   - repo: local
     hooks:
@@ -82,54 +94,14 @@ repos:
         language: system
         types: [shell]
 
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
-    hooks:
-      - id: check-added-large-files
-        exclude: ui/public|documentation/docs/integrations/disk_encryption/images|documentation/docs/benchmarks/
-      - id: check-ast
-      - id: check-byte-order-marker
-      - id: check-builtin-literals
-      - id: check-case-conflict
-      - id: check-docstring-first
-      - id: check-json
-        exclude: ui|documentation/docs/benchmarks/
-      - id: check-merge-conflict
-      - id: check-symlinks
-      - id: check-toml
-      - id: check-vcs-permalinks
-        exclude: crate/kmip/src/ttlv/kmip_ttlv_deserializer
-      - id: check-xml
-        exclude: crate/server/resources/production.drawio.svg
-      - id: check-yaml
-        # Helm templates use Go template syntax and are not valid standalone YAML.
-        exclude: monitoring|charts/.*/templates/
-      - id: debug-statements
-      - id: destroyed-symlinks
-      - id: detect-private-key
-        exclude: test_data|documentation/docs|crate/clients/clap/src/tests/google_cmd/identities.rs|crate/clients/ckms/src/tests/google_cmd/identities.rs|crate/server/src/tests|crate/clients/clap/src/tests/shared/export_import.rs|crate/clients/ckms/src/tests/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/cng/src/key.rs
-
-      - id: double-quote-string-fixer
-      - id: end-of-file-fixer
-        exclude: documentation/docs/cli/main_commands.md|documentation/docs
-      - id: file-contents-sorter
-      - id: fix-byte-order-marker
-      - id: fix-encoding-pragma
-      - id: mixed-line-ending
-        args: [--fix=lf]
-      - id: name-tests-test
-      - id: requirements-txt-fixer
-      - id: sort-simple-yaml
-      - id: trailing-whitespace
-        exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md|documentation/docs/configuration/server_cli.md
-
+  # ── Python ────────────────────────────────────────────────────────────
   - repo: https://github.com/psf/black
     rev: 25.1.0
     hooks:
       - id: black
-        # avoid clash with `double-quote-string-fixer`
-        args: [--skip-string-normalization]
+        args: [--skip-string-normalization] # avoid clash with `double-quote-string-fixer`
 
+  # ── Nix ───────────────────────────────────────────────────────────────
   - repo: local
     hooks:
       - id: nixfmt
@@ -154,12 +126,58 @@ repos:
         files: \.nix$
         pass_filenames: true
 
+  # ── Rust formatting ───────────────────────────────────────────────────
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
     hooks:
+      - id: cargo-format
       - id: nightly-cargo-format
-      - id: cargo-machete
 
+  # ═══════════════════════════════════════════════════════════════════════
+  # 3. Linting / static analysis (medium)
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── Generic file checks ───────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        exclude: ui/public|documentation/docs/integrations/disk_encryption/images|documentation/docs/benchmarks/
+      - id: check-ast
+      - id: check-byte-order-marker
+      - id: check-builtin-literals
+      - id: check-case-conflict
+      - id: check-docstring-first
+      - id: check-json
+        exclude: ui|documentation/docs/benchmarks/
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-vcs-permalinks
+        exclude: crate/kmip/src/ttlv/kmip_ttlv_deserializer
+      - id: check-xml
+        exclude: crate/server/resources/production.drawio.svg
+      - id: check-yaml
+        exclude: monitoring|charts/.*/templates/
+      - id: debug-statements
+      - id: destroyed-symlinks
+      - id: detect-private-key
+        exclude: test_data|documentation/docs|crate/clients/clap/src/tests/google_cmd/identities.rs|crate/clients/ckms/src/tests/google_cmd/identities.rs|crate/server/src/tests|crate/clients/clap/src/tests/shared/export_import.rs|crate/clients/ckms/src/tests/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/cng/src/key.rs
+      - id: double-quote-string-fixer
+      - id: end-of-file-fixer
+        exclude: documentation/docs/cli/main_commands.md|documentation/docs
+      - id: file-contents-sorter
+      - id: fix-byte-order-marker
+      - id: fix-encoding-pragma
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: name-tests-test
+      - id: requirements-txt-fixer
+      - id: sort-simple-yaml
+      - id: trailing-whitespace
+        exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md|documentation/docs/configuration/server_cli.md
+
+  # ── Rust linting ──────────────────────────────────────────────────────
   - repo: local
     hooks:
       - id: cargo-deny
@@ -167,48 +185,436 @@ repos:
         entry: cargo deny check
         language: system
         pass_filenames: false
-        always_run: true
+        types: [rust]
 
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
     hooks:
-      - id: docker-compose-up
       - id: clippy-all-targets-all-features
+        types: [rust]
+        stages: [pre-push]
       - id: clippy-all-targets
         stages: [manual]
+        types: [rust]
+      - id: cargo-format
+        name: cargo-format (post-clippy)
+        types: [rust]
+        stages: [pre-push]
+      - id: cargo-machete
+        types: [rust]
 
+  # ═══════════════════════════════════════════════════════════════════════
+  # 4. Testing (slow, conditional on changed crate)
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── DB-specific Docker services (only when DB store code changes) ─────
   - repo: local
     hooks:
-      - id: generate-docs
-        name: Regenerate all documentation
-        description: |
-          Master doc-generation script. Runs all steps that are triggered by Rust
-          source changes:
-            1. server_cli.md + server_configuration_file.md (from --help / --print-default-config)
-            2. documentation/docs/kms_clients/cli/main_commands.md + usage.md (from ckms markdown)
-            3. KMIP support tables (README.md + kmip_support/support.md)
-            4. crypto_inventory.md (cryptographic asset sensor, no network)
-          CBOM generation (step 5) is skipped on every commit (manual stage only —
-          it requires cdxgen and network access).
-        entry: mise run docs:generate -- --skip-cbom
+      - id: docker-postgres-up
+        name: docker compose up postgres
+        entry: docker compose up -d postgres
+        language: system
+        types: [rust]
+        files: ^crate/server_database/src/stores/sql/postgres\.
+        pass_filenames: false
+        require_serial: true
+
+      - id: docker-postgres-down
+        name: docker compose down postgres
+        entry: docker compose down postgres
+        language: system
+        types: [rust]
+        files: ^crate/server_database/src/stores/sql/postgres\.
+        pass_filenames: false
+        require_serial: true
+
+      - id: docker-mysql-up
+        name: docker compose up mysql
+        entry: docker compose up -d mysql
+        language: system
+        types: [rust]
+        files: ^crate/server_database/src/stores/sql/mysql\.
+        pass_filenames: false
+        require_serial: true
+
+      - id: docker-mysql-down
+        name: docker compose down mysql
+        entry: docker compose down mysql
+        language: system
+        types: [rust]
+        files: ^crate/server_database/src/stores/sql/mysql\.
+        pass_filenames: false
+        require_serial: true
+
+      - id: docker-redis-up
+        name: docker compose up redis
+        entry: docker compose up -d redis
+        language: system
+        types: [rust]
+        files: ^crate/server_database/src/stores/redis/
+        pass_filenames: false
+        require_serial: true
+
+      - id: docker-redis-down
+        name: docker compose down redis
+        entry: docker compose down redis
+        language: system
+        types: [rust]
+        files: ^crate/server_database/src/stores/redis/
+        pass_filenames: false
+        require_serial: true
+
+  # ── Rust tests — per-crate (non-FIPS, auto) ──────────────────────────
+  # Each hook only triggers when files in its crate directory changed.
+  # require_serial: true prevents parallel cargo test invocations.
+  - repo: local
+    hooks:
+      # ── Core server crates ────────────────────────────────────────────
+      - id: test-cosmian_kms_server
+        name: cargo test cosmian_kms_server
+        entry: cargo test -p cosmian_kms_server --lib --features non-fips --quiet
+        language: system
+        files: ^crate/server/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-cosmian_kms_server_database
+        name: cargo test cosmian_kms_server_database
+        entry: cargo test -p cosmian_kms_server_database --lib --features non-fips --quiet
+        language: system
+        files: ^crate/server_database/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-cosmian_kms_crypto
+        name: cargo test cosmian_kms_crypto
+        entry: cargo test -p cosmian_kms_crypto --lib --features non-fips --quiet
+        language: system
+        files: ^crate/crypto/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-cosmian_kmip
+        name: cargo test cosmian_kmip
+        entry: cargo test -p cosmian_kmip --lib --features non-fips --quiet
+        language: system
+        files: ^crate/kmip/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-kmip-derive
+        name: cargo test kmip-derive
+        entry: cargo test -p kmip-derive --lib --quiet
+        language: system
+        files: ^crate/kmip-derive/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-cosmian_kms_access
+        name: cargo test cosmian_kms_access
+        entry: cargo test -p cosmian_kms_access --lib --quiet
+        language: system
+        files: ^crate/access/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-cosmian_kms_interfaces
+        name: cargo test cosmian_kms_interfaces
+        entry: cargo test -p cosmian_kms_interfaces --lib --quiet
+        language: system
+        files: ^crate/interfaces/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-test_kms_server
+        name: cargo test test_kms_server
+        entry: cargo test -p test_kms_server --lib --features non-fips --quiet
+        language: system
+        files: ^crate/test_kms_server/
+        pass_filenames: false
+        require_serial: true
+
+      # ── Client crates ─────────────────────────────────────────────────
+      - id: test-ckms
+        name: cargo test ckms
+        entry: cargo test -p ckms --lib --features non-fips --quiet
+        language: system
+        files: ^crate/clients/ckms/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-cosmian_kms_cli_actions
+        name: cargo test cosmian_kms_cli_actions
+        entry: cargo test -p cosmian_kms_cli_actions --lib --features non-fips --quiet
+        language: system
+        files: ^crate/clients/clap/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-cosmian_kms_client
+        name: cargo test cosmian_kms_client
+        entry: cargo test -p cosmian_kms_client --lib --features non-fips --quiet
+        language: system
+        files: ^crate/clients/client/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-cosmian_kms_client_utils
+        name: cargo test cosmian_kms_client_utils
+        entry: cargo test -p cosmian_kms_client_utils --lib --features non-fips --quiet
+        language: system
+        files: ^crate/clients/client_utils/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-cosmian_kms_client_wasm
+        name: cargo test cosmian_kms_client_wasm
+        entry: cargo test -p cosmian_kms_client_wasm --lib --features non-fips --quiet
+        language: system
+        files: ^crate/clients/wasm/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-cosmian_cng
+        name: cargo test cosmian_cng
+        entry: cargo test -p cosmian_cng --lib --features non-fips --quiet
+        language: system
+        files: ^crate/clients/cng/
+        pass_filenames: false
+        require_serial: true
+
+      # ── K8s client crates ─────────────────────────────────────────────
+      - id: test-cosmian_kms_k8s_plugin
+        name: cargo test cosmian_kms_k8s_plugin
+        entry: cargo test -p cosmian_kms_k8s_plugin --lib --quiet
+        language: system
+        files: ^crate/clients/k8s/plugin/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-cosmian_kms_k8s_operator
+        name: cargo test cosmian_kms_k8s_operator
+        entry: cargo test -p cosmian_kms_k8s_operator --lib --quiet
+        language: system
+        files: ^crate/clients/k8s/operator/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-cosmian_kms_csi_provider
+        name: cargo test cosmian_kms_csi_provider
+        entry: cargo test -p cosmian_kms_csi_provider --lib --quiet
+        language: system
+        files: ^crate/clients/k8s/csi_provider/
+        pass_filenames: false
+        require_serial: true
+
+      # ── PKCS#11 crates ────────────────────────────────────────────────
+      - id: test-cosmian_pkcs11_module
+        name: cargo test cosmian_pkcs11_module
+        entry: cargo test -p cosmian_pkcs11_module --lib --features non-fips --quiet
+        language: system
+        files: ^crate/clients/pkcs11/module/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-cosmian_pkcs11
+        name: cargo test cosmian_pkcs11
+        entry: cargo test -p cosmian_pkcs11 --lib --features non-fips --quiet
+        language: system
+        files: ^crate/clients/pkcs11/provider/
+        pass_filenames: false
+        require_serial: true
+
+      # ── HSM crates ────────────────────────────────────────────────────
+      - id: test-cosmian_kms_base_hsm
+        name: cargo test cosmian_kms_base_hsm
+        entry: cargo test -p cosmian_kms_base_hsm --lib --quiet
+        language: system
+        files: ^crate/hsm/base_hsm/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-softhsm2_pkcs11_loader
+        name: cargo test softhsm2_pkcs11_loader
+        entry: cargo test -p softhsm2_pkcs11_loader --lib --quiet
+        language: system
+        files: ^crate/hsm/softhsm2/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-utimaco_pkcs11_loader
+        name: cargo test utimaco_pkcs11_loader
+        entry: cargo test -p utimaco_pkcs11_loader --lib --quiet
+        language: system
+        files: ^crate/hsm/utimaco/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-proteccio_pkcs11_loader
+        name: cargo test proteccio_pkcs11_loader
+        entry: cargo test -p proteccio_pkcs11_loader --lib --quiet
+        language: system
+        files: ^crate/hsm/proteccio/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-crypt2pay_pkcs11_loader
+        name: cargo test crypt2pay_pkcs11_loader
+        entry: cargo test -p crypt2pay_pkcs11_loader --lib --quiet
+        language: system
+        files: ^crate/hsm/crypt2pay/
+        pass_filenames: false
+        require_serial: true
+
+      - id: test-smartcardhsm_pkcs11_loader
+        name: cargo test smartcardhsm_pkcs11_loader
+        entry: cargo test -p smartcardhsm_pkcs11_loader --lib --quiet
+        language: system
+        files: ^crate/hsm/smartcardhsm/
+        pass_filenames: false
+        require_serial: true
+
+      # ── Workspace-wide fallback (Cargo.lock or root Cargo.toml changed) ─
+      - id: test-workspace-non-fips
+        name: cargo test workspace (Cargo.lock / Cargo.toml changed)
+        entry: cargo test --lib --workspace --features non-fips --quiet
+        language: system
+        files: ^Cargo\.(lock|toml)$
+        pass_filenames: false
+        require_serial: true
+
+      # ── FIPS (manual) ─────────────────────────────────────────────────
+      - id: cargo-test-fips
+        name: cargo test workspace (fips, manual)
+        entry: cargo test --lib --workspace --quiet
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [manual]
+        require_serial: true
+
+      # ── Redis (manual) ────────────────────────────────────────────────
+      - id: redis-cargo-test-non-fips
+        name: Redis and cargo test (non-fips, manual)
+        entry: mise run test:redis -- --variant non-fips
         language: system
         types: [rust]
         pass_filenames: false
         stages: [manual]
 
-      - id: update-log-index
-        name: Update log call-site index (log-reference.md)
+  # ═══════════════════════════════════════════════════════════════════════
+  # 5. UI (JavaScript / TypeScript)
+  # ═══════════════════════════════════════════════════════════════════════
+  - repo: local
+    hooks:
+      - id: pnpm-ui-format
+        name: pnpm ui format
+        entry: pnpm -C ui check:format
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+
+      - id: pnpm-ui-lint
+        name: pnpm ui check:lint
+        entry: pnpm -C ui check:lint
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+
+      - id: ui-wasm-react-unit-tests
+        name: UI wasm + React tests (incl. integration if Docker)
+        entry: mise run test:wasm
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+        stages: [manual]
+
+      - id: ui-e2e
+        name: UI end-to-end
+        entry: mise run test:ui
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+        stages: [manual]
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # 6. Documentation
+  # ═══════════════════════════════════════════════════════════════════════
+  - repo: local
+    hooks:
+      - id: sync-instructions
+        name: Sync instruction files ↔ pre-commit hooks
         description: |
-          Syncs documentation/docs/configuration/log-reference.md against the
-          actual log call-sites in Rust and TypeScript source files.
-          Flags stale entries with [REMOVED], appends new entries, and updates
-          ×N multiplicity counts. Exits 1 when any change is made so the commit
-          is blocked until the updated file is reviewed and re-staged.
-        entry: mise docs:log-index
+          Validates that every instruction file's applyTo pattern has a
+          corresponding pre-commit hook, and vice versa. Run with --report
+          to see the full coverage map.
+        entry: bash .mise/scripts/pre-commit/sync-instructions.sh
+        language: system
+        pass_filenames: false
+        files: ^\.github/instructions/.*\.instructions\.md$
+      - id: update-log-index
+        name: Update log call-site index (smart — only on log macro changes)
+        description: |
+          Smart log-index updater — only runs when log macros actually changed
+          in the staged diff (tracing::info!, log::debug!, console.log, etc.).
+          Much faster than running on every .rs/.ts/.tsx change.
+        entry: bash .mise/scripts/pre-commit/smart-log-index.sh
         language: system
         pass_filenames: false
         files: \.(rs|ts|tsx)$
 
+      - id: generate-docs
+        name: Regenerate all documentation (smart — only on CLI/config changes)
+        description: |
+          Smart docs regeneration — only runs when CLI args or config options
+          change (clap derive macros, config structs). Much faster than running
+          on every Rust change. Use `mise run docs:generate` for full regen.
+        entry: bash .mise/scripts/pre-commit/smart-docs-regen.sh
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: gen-vector-readme
+        name: Regenerate test_kms_server vector README
+        description: |
+          Syncs crate/test_kms_server/README.md with vector_runner.rs and
+          test_data/vectors manifests. Exits 1 when the README is updated so
+          the developer must re-stage the file before committing.
+        entry: mise docs:vector-readme
+        language: system
+        pass_filenames: false
+        files: crate/test_kms_server/src/vector_runner\.rs|\.mise/scripts/docs/gen_vector_readme\.py|\.mise/tasks/docs/vector-readme
+
+  - repo: https://github.com/lycheeverse/lychee
+    rev: v0.15.1
+    hooks:
+      - id: lychee
+        args: [--config, lychee.toml, 'documentation/docs/**/*.md']
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # 7. Nightly / manual cleanup (Rust)
+  # ═══════════════════════════════════════════════════════════════════════
+  - repo: https://github.com/Cosmian/git-hooks.git
+    rev: v1.0.42
+    hooks:
+      - id: nightly-clippy-autofix-unreachable-pub
+        stages: [manual]
+      - id: nightly-clippy-autofix-all-targets-all-features
+        stages: [manual]
+      - id: nightly-clippy-autofix-all-targets
+        stages: [manual]
+      - id: dprint-toml-fix
+        stages: [manual]
+      - id: cargo-upgrade
+        stages: [manual]
+      - id: cargo-update
+        stages: [manual]
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # 8. Release (manual only)
+  # ═══════════════════════════════════════════════════════════════════════
+  - repo: local
+    hooks:
       - id: cargo-deny-licenses
         name: Release - generate SBOM licenses list
         entry: bash -c "cargo deny list -l crate | sed 's/\\x1b\[[0-9;]*m//g' > sbom/licenses.txt"
@@ -241,79 +647,6 @@ repos:
         always_run: true
         stages: [manual]
 
-      # # Remove folders result*
-      # - id: clean-result-folders
-      #   name: Clean result* folders
-      #   entry: bash .mise/scripts/release/clean_result.sh
-      #   language: system
-      #   types: [rust]
-      #   pass_filenames: false
-      #   stages: [manual]
-
-      - id: pnpm-ui-format
-        name: pnpm ui format
-        entry: pnpm -C ui check:format
-        language: system
-        pass_filenames: false
-        types_or: [javascript, jsx, ts, tsx]
-
-      - id: gen-vector-readme
-        name: Regenerate test_kms_server vector README
-        description: |
-          Syncs crate/test_kms_server/README.md with vector_runner.rs and
-          test_data/vectors manifests. Exits 1 when the README is updated so
-          the developer must re-stage the file before committing.
-        entry: mise docs:vector-readme
-        language: system
-        pass_filenames: false
-        files: crate/test_kms_server/src/vector_runner\.rs|\.mise/scripts/docs/gen_vector_readme\.py|\.mise/tasks/docs/vector-readme
-
-      - id: pnpm-ui-lint
-        name: pnpm ui check:lint
-        entry: pnpm -C ui check:lint
-        language: system
-        pass_filenames: false
-        types_or: [javascript, jsx, ts, tsx]
-
-      - id: ui-wasm-react-unit-tests
-        name: UI wasm + React tests (incl. integration if Docker)
-        entry: mise run test:wasm
-        language: system
-        pass_filenames: false
-        types_or: [javascript, jsx, ts, tsx]
-        stages: [manual]
-
-      - id: ui-e2e
-        name: UI end-to-end
-        entry: mise run test:ui
-        language: system
-        pass_filenames: false
-        types_or: [javascript, jsx, ts, tsx]
-        stages: [manual]
-
-      - id: cargo-test-fips
-        name: cargo test (sqlite fips)
-        entry: cargo test --lib --workspace
-        language: system
-        types: [rust]
-        pass_filenames: false
-        stages: [manual]
-
-      - id: cargo-test-non-fips
-        name: cargo test (sqlite non-fips)
-        entry: cargo test --lib --workspace --features non-fips
-        language: system
-        types: [rust]
-        pass_filenames: false
-
-      - id: redis-cargo-test-non-fips
-        name: Redis and cargo test (non-fips)
-        entry: mise run test:redis -- --variant non-fips
-        language: system
-        types: [rust]
-        pass_filenames: false
-        stages: [manual]
-
       - id: nix-build-all
         name: Nix build all derivations (ui → cli → server)
         entry: mise run release:nix-update-hashes
@@ -329,28 +662,3 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [manual]
-
-  - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.42
-    hooks:
-      - id: nightly-clippy-autofix-unreachable-pub
-        stages: [manual]
-      - id: nightly-clippy-autofix-all-targets-all-features
-        stages: [manual]
-      - id: nightly-clippy-autofix-all-targets
-        stages: [manual]
-
-      - id: dprint-toml-fix
-        stages: [manual]
-      - id: cargo-upgrade
-        stages: [manual]
-      - id: cargo-update
-        stages: [manual]
-      - id: cargo-format # in last du to clippy fixes
-      - id: docker-compose-down
-
-  - repo: https://github.com/lycheeverse/lychee
-    rev: v0.15.1
-    hooks:
-      - id: lychee
-        args: [--config, lychee.toml, 'documentation/docs/**/*.md']
