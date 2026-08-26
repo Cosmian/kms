@@ -192,6 +192,7 @@ repos:
     hooks:
       - id: clippy-all-targets-all-features
         types: [rust]
+        stages: [push]
       - id: clippy-all-targets
         stages: [manual]
         types: [rust]
@@ -548,34 +549,26 @@ repos:
         pass_filenames: false
         files: ^\.github/instructions/.*\.instructions\.md$
       - id: update-log-index
-        name: Update log call-site index (log-reference.md)
+        name: Update log call-site index (smart — only on log macro changes)
         description: |
-          Syncs documentation/docs/configuration/log-reference.md against the
-          actual log call-sites in Rust and TypeScript source files.
-          Flags stale entries with [REMOVED], appends new entries, and updates
-          ×N multiplicity counts. Exits 1 when any change is made so the commit
-          is blocked until the updated file is reviewed and re-staged.
-        entry: mise docs:log-index
+          Smart log-index updater — only runs when log macros actually changed
+          in the staged diff (tracing::info!, log::debug!, console.log, etc.).
+          Much faster than running on every .rs/.ts/.tsx change.
+        entry: bash .mise/scripts/pre-commit/smart-log-index.sh
         language: system
         pass_filenames: false
         files: \.(rs|ts|tsx)$
 
       - id: generate-docs
-        name: Regenerate all documentation
+        name: Regenerate all documentation (smart — only on CLI/config changes)
         description: |
-          Master doc-generation script. Runs all steps that are triggered by Rust
-          source changes:
-            1. server_cli.md + server_configuration_file.md (from --help / --print-default-config)
-            2. documentation/docs/kms_clients/cli/main_commands.md + usage.md (from ckms markdown)
-            3. KMIP support tables (README.md + kmip_support/support.md)
-            4. crypto_inventory.md (cryptographic asset sensor, no network)
-          CBOM generation (step 5) is skipped on every commit (manual stage only —
-          it requires cdxgen and network access).
-        entry: mise run docs:generate -- --skip-cbom
+          Smart docs regeneration — only runs when CLI args or config options
+          change (clap derive macros, config structs). Much faster than running
+          on every Rust change. Use `mise run docs:generate` for full regen.
+        entry: bash .mise/scripts/pre-commit/smart-docs-regen.sh
         language: system
         types: [rust]
         pass_filenames: false
-        stages: [manual]
 
       - id: gen-vector-readme
         name: Regenerate test_kms_server vector README
