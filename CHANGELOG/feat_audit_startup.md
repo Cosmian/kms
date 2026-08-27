@@ -14,7 +14,8 @@
 - The KMS now verifies the **entire** hash chain on every boot — not just the last event —
   so a tampered row anywhere in the file is caught, not only at the tail. This runs
   unconditionally (there is no configuration to reduce it back to a tail-only check) and is
-  streamed line-by-line, so it stays cheap in time and memory regardless of log size.
+  streamed line-by-line, so memory use stays constant regardless of log size (runtime is still
+  linear in the number of rows).
 - A best-effort, cross-platform, non-blocking exclusive lock (`<audit-file>.lock`) now
   prevents two KMS instances from corrupting the same audit log during a rolling update on a
   shared volume. If the lock is held by a live peer, the KMS still starts immediately: events

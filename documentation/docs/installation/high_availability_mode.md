@@ -204,10 +204,10 @@ down, clients cannot reach the KMS.
 Using Keepalived (with at least two HAProxy instances) avoids the SPOF by providing a floating VIP.
 
 !!! warning "File-based audit logging is not multi-instance safe"
-If audit logging is enabled (`--audit-enable`), each KMS node must write to its **own**
-audit file, not a shared/network volume. The file backend uses a local lock to serialize
-writes; it only prevents corruption on a single node (e.g. during a rolling restart), not
-across nodes. Pointing several replicas at the same audit file means only one of them will
-ever actually write to it — the others sit idle, so you silently lose their events.
-A centrally consolidated, multi-writer-safe audit trail requires the PostgreSQL audit
-backend.
+    If audit logging is enabled (`--audit-enable`), each KMS node must write to its **own**
+    audit file, not a shared/network volume. The file backend uses a local lock to serialize
+    writes; it only prevents corruption on a single node (e.g. during a rolling restart), not
+    across nodes. Pointing several replicas at the same audit file means only one of them will
+    ever actually write to it — the others sit idle, so you silently lose their events.
+    A centrally consolidated, multi-writer-safe audit trail requires the PostgreSQL audit
+    backend.

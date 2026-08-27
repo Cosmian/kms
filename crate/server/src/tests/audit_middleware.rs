@@ -61,7 +61,7 @@ async fn audit_records_create_encrypt_failure_and_batch() -> KResult<()> {
 
     let path = temp_path("e2e_chain");
     let store = AuditFileStore::start(&path, 128).expect("cannot start audit store");
-    let app = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::default()).await;
+    let (app, _kms) = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::default()).await;
     let fut = async {
         // 1. Create AES-256-GCM key (FIPS-approved)
         let create_request = symmetric_key_create_request(
@@ -372,7 +372,7 @@ async fn audit_records_binary_create_encrypt_failure_and_batch() -> KResult<()> 
 
     let path = temp_path("e2e_chain_binary");
     let store = AuditFileStore::start(&path, 128).expect("cannot start audit store");
-    let app = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::default()).await;
+    let (app, _kms) = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::default()).await;
     let fut = async {
         // 1. Create AES-256-GCM key (FIPS-approved), sent as binary TTLV.
         let create_request = symmetric_key_create_request(
@@ -638,6 +638,14 @@ async fn audit_records_401_unauthenticated() -> KResult<()> {
 /// In `reject` mode, when `enqueue()` fails (dead writer), the middleware must
 /// return HTTP 503 instead of the normal KMIP response.
 ///
+/// `reject` mode is a **post-operation** failure signal, not a pre-commit gate:
+/// `AuditService::call` awaits the inner KMIP handler — which already persisted
+/// the key — before the audit enqueue is even attempted, so the 503 only means
+/// "this outcome was not recorded", not "this operation did not happen". This
+/// test asserts that persisted side effect directly against the database
+/// (bypassing HTTP, since every further request would also be rejected by this
+/// permanently-disconnected store) so the distinction cannot silently regress.
+///
 /// Uses `AuditFileStore::new_disconnected()` so `try_send` always returns
 /// `TrySendError::Closed` — no race with a live writer draining the channel.
 #[tokio::test]
@@ -645,14 +653,15 @@ async fn reject_mode_returns_503_when_audit_unavailable() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
     let store = AuditFileStore::new_disconnected();
-    let app = test_utils::test_app_with_audit(store, AuditFailureMode::Reject).await;
+    let (app, kms) = test_utils::test_app_with_audit(store, AuditFailureMode::Reject).await;
 
+    const TAG: &str = "reject-mode-persisted-check";
     let create_req = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
         None,
         256,
         CryptographicAlgorithm::AES,
-        EMPTY_TAGS,
+        [TAG],
         false,
         None,
     )?;
@@ -670,6 +679,17 @@ async fn reject_mode_returns_503_when_audit_unavailable() -> KResult<()> {
     let body = actix_web::test::read_body(res).await;
     assert_eq!(body.as_ref(), b"Service unavailable");
 
+    let persisted = kms
+        .database
+        .retrieve_objects(&format!(r#"["{TAG}"]"#))
+        .await?;
+    assert_eq!(
+        persisted.len(),
+        1,
+        "the key must still be created even though the response was replaced with 503 — \
+         reject mode does not prevent the operation, it only fails to record it"
+    );
+
     Ok(())
 }
 
@@ -680,7 +700,7 @@ async fn continue_mode_succeeds_when_audit_unavailable() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
     let store = AuditFileStore::new_disconnected();
-    let app = test_utils::test_app_with_audit(store, AuditFailureMode::Continue).await;
+    let (app, _kms) = test_utils::test_app_with_audit(store, AuditFailureMode::Continue).await;
 
     let create_req = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
@@ -714,7 +734,7 @@ async fn reject_mode_passes_through_when_audit_works() -> KResult<()> {
 
     let path = temp_path("reject_passthrough");
     let store = AuditFileStore::start(&path, 128).expect("cannot start audit store");
-    let app = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::Reject).await;
+    let (app, _kms) = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::Reject).await;
 
     let create_req = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
@@ -773,7 +793,7 @@ async fn reject_mode_returns_503_after_size_cap_reached() -> KResult<()> {
     // A 1-byte cap: the very first audit event already exceeds it once written.
     let store =
         AuditFileStore::start_with_max_size(&path, 128, Some(1)).expect("cannot start audit store");
-    let app = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::Reject).await;
+    let (app, _kms) = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::Reject).await;
 
     let create_req = || {
         symmetric_key_create_request(
@@ -845,7 +865,7 @@ async fn continue_mode_succeeds_after_size_cap_reached_without_new_audit_row() -
     let path = temp_path("continue_size_cap");
     let store =
         AuditFileStore::start_with_max_size(&path, 128, Some(1)).expect("cannot start audit store");
-    let app = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::Continue).await;
+    let (app, _kms) = test_utils::test_app_with_audit(store.clone(), AuditFailureMode::Continue).await;
 
     let create_req = || {
         symmetric_key_create_request(

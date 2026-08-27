@@ -79,7 +79,7 @@ ignore = [
   # The fix is in h2 >=0.4.16, but actix-http 3.x (and its master branch as of 2026-08) is hardcoded to h2 ^0.3
   # and there is no actix-http 4.x / actix-web 5.x release yet. No upstream upgrade path exists.
   # Severity: low. Re-evaluate when actix-web 5.x is published.
-  { id = "RUSTSEC-2026-0258", reason = "h2 0.3.x unbounded empty DATA frames (low severity): fixed in h2 0.4.16, but actix-http 3.x is hardcoded to h2 ^0.3 even on master; actix-web 5.x not yet released, no upgrade path available" },
+  { id = "RUSTSEC-2026-0258", reason = "h2 0.3.27 is pulled in by actix-http (actix-web's own HTTP/1.1+2 listener) and remains unpatched — no 0.3.x fix exists, and actix-web has not yet released a version depending on the patched 0.4 line. The separate h2 0.4.16 upgrade in this lockfile only covers the reqwest/hyper client-side dependency chain; it does not touch the server-side listener, which is still exposed. Tracked as an accepted risk pending an actix-web major-version upgrade or an explicit ALPN restriction to disable HTTP/2 on the server listener." },
 ] # The path where the advisory databases are cloned/fetched into
 # db-path = "$CARGO_HOME/advisory-dbs"
 # The url(s) of the advisory databases to use
