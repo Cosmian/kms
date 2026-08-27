@@ -162,6 +162,11 @@ pub struct ServerParams {
     /// When `Some`, all ceremony activation records are AES-256-GCM sealed before storage
     /// and verified on read — preventing forgery and protecting participant identities.
     pub ceremony_keys: Option<Arc<CeremonyKeys>>,
+    /// UID of a KMS symmetric key used to derive ceremony sealing keys at startup.
+    ///
+    /// When set, this takes precedence over `ceremony_secret`; raw key bytes are fetched
+    /// from the object store and converted into [`CeremonyKeys`].
+    pub ceremony_key_id: Option<String>,
 
     /// AWS XKS parameters, if any
     pub aws_xks_params: Option<AwsXksParams>,
@@ -527,6 +532,7 @@ impl ServerParams {
                     (None, false) => None,
                 }
             },
+            ceremony_key_id: conf.roles.ceremony_key_id,
             ui_session_salt: conf.ui_config.ui_session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
@@ -1038,6 +1044,7 @@ impl fmt::Debug for ServerParams {
             "ceremony_keys",
             &self.ceremony_keys.as_ref().map(|_| "<configured>"),
         );
+        debug_struct.field("ceremony_key_id", &self.ceremony_key_id);
 
         debug_struct.field("crl_default_validity_days", &self.crl_default_validity_days);
         if self.crl_refresh_check_hours > 0 {

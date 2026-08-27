@@ -950,7 +950,7 @@ async fn test_crl_no_co_all_revoked_certs_present() -> KResult<()> {
 #[tokio::test]
 async fn test_crl_co_revokes_cert_owned_by_other_user() -> KResult<()> {
     // CO=alice, no ceremony required.
-    let kms = make_kms_with_co("alice").await?;
+    let kms = Box::pin(make_kms_with_co("alice")).await?;
     let alice = UserId::new("alice");
     let bob = UserId::new("bob");
 
@@ -1056,7 +1056,7 @@ async fn test_crl_co_revokes_cert_owned_by_other_user() -> KResult<()> {
 /// Expected CRL: 3 entries.
 #[tokio::test]
 async fn test_crl_mixed_co_and_non_co_revocations_all_present() -> KResult<()> {
-    let kms = make_kms_with_co("alice").await?;
+    let kms = Box::pin(make_kms_with_co("alice")).await?;
     let alice = UserId::new("alice");
     let bob = UserId::new("bob");
     let charlie = UserId::new("charlie");
@@ -1332,7 +1332,7 @@ async fn test_crl_counting_revoked_certs_no_co() -> KResult<()> {
 /// - The CRL count matches the number of CO-initiated revocations precisely.
 #[tokio::test]
 async fn test_crl_counting_revoked_certs_with_co() -> KResult<()> {
-    let kms = make_kms_with_co("alice").await?; // CO = alice, config-only
+    let kms = Box::pin(make_kms_with_co("alice")).await?; // CO = alice, config-only
     let alice = UserId::new("alice");
 
     // Confirm alice is the CO.
