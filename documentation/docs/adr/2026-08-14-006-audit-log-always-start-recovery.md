@@ -91,8 +91,13 @@ state.
 
 A best-effort, non-blocking, cross-platform exclusive lock (`flock`-equivalent via the `fs4`
 crate) on a `<path>.lock` sidecar prevents two live KMS instances from both mutating the same
-audit file — the realistic case being a rolling update on a shared (`ReadWriteMany`) volume,
-where the new pod can become Ready before the old pod terminates.
+audit file when the underlying filesystem honors `flock` semantics for the lock holder that
+matters most in practice — a rolling update where the new pod becomes Ready before the old pod
+terminates. This is **not** a guarantee for arbitrary shared/network volumes: `flock` reliability
+over NFS-backed `ReadWriteMany` mounts depends on the storage backend's lock-manager support, so
+multiple KMS instances must still never be configured to write to the same audit file as a
+steady-state multi-writer setup — see
+[High availability: file-based audit logging is not multi-instance safe](../installation/high_availability_mode.md#deployment-options).
 
 - Lock acquired → sole writer → free to classify, truncate/seal, and write.
 - Lock held by a peer → **the KMS still starts and serves immediately**. The writer does not
@@ -117,10 +122,11 @@ only at the end. This was initially shipped as an opt-in `startup_verify = "full
 assumption behind it — that whole-chain verification is too expensive to run by default — did
 not hold up: hashing and JSON-decoding a JSONL row is cheap per row, and skipping most of the
 log by default left the common case blind to interior tampering for no real benefit. Verification
-now always runs, streamed line-by-line rather than loaded into memory, so it stays cheap in
-both time and memory regardless of log size. As with the rest of this ADR, there is **no**
-corresponding "abort on corruption" toggle: unlike ADR-0003's design, this is not configurable,
-period.
+now always runs, streamed line-by-line rather than loaded into memory, so memory use stays
+constant regardless of log size — runtime is still linear in the number of rows, but that cost is
+small enough per row (a hash and a JSON decode) to be an acceptable default. As with the rest of
+this ADR, there is **no** corresponding "abort on corruption" toggle: unlike ADR-0003's design,
+this is not configurable, period.
 
 ### Offline verification (`ckms audit verify`) gains directory + evidence-integrity support
 
