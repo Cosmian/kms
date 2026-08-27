@@ -218,7 +218,9 @@ impl VerifyAuditAction {
         if self.path.is_dir() {
             let mut files: Vec<PathBuf> = std::fs::read_dir(&self.path)
                 .map_err(crate::error::KmsCliError::IoError)?
-                .filter_map(Result::ok)
+                .collect::<std::io::Result<Vec<_>>>()
+                .map_err(crate::error::KmsCliError::IoError)?
+                .into_iter()
                 .map(|entry| entry.path())
                 .filter(|p| {
                     p.extension().and_then(|e| e.to_str()) == Some("jsonl")
