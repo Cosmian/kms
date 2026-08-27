@@ -1,0 +1,360 @@
+#!/usr/bin/env bash
+#MISE description="SPIRE kmip plugin e2e — binary KMIP 2.1 TCP/TLS (non-FIPS only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+
+# End-to-end test for the SPIRE `kmip` built-in plugins (KeyManager + UpstreamAuthority)
+# speaking KMIP 2.1 binary TTLV over TCP/TLS (port 5696) to a locally-built KMS.
+#
+# What it does:
+#   1. Build KMS server + ckms CLI from source
+#   2. Clone SPIRE fork (feature/kmip-plugins) and build spire-server
+#   3. Generate mTLS test certificates
+#   4. Start KMS with [socket_server] (binary KMIP TCP on port 5696) + mTLS HTTPS
+#   5. Provision root CA key pair + self-signed certificate via ckms
+#   6. Write SPIRE server.conf with kmip plugins (mTLS, binary TTLV)
+#   7. Start SPIRE server, run healthcheck, verify key creation
+#
+# The SPIRE plugins use ovh/kmip-go (binary TTLV/TCP) — NOT the Cosmian HTTPS client.
+# This test validates the full stack: KMS socket_server ↔ SPIRE kmip plugins ↔ mTLS.
+
+set -euo pipefail
+
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_build.sh"
+
+if [ "${usage_variant:-non-fips}" != "non-fips" ]; then
+  print_error "spire-kmip tests require non-fips variant (got: ${usage_variant})"
+fi
+
+kms_init_env "non-fips" "${usage_link:-static}"
+setup_test_logging
+
+KMS_LOG_FILE="/tmp/kms-spire-kmip.log"
+CA_KEY_UID="spire-kmip-root-ca-key"
+SPIRE_FORK_URL="https://github.com/Manuthor/spire.git"
+SPIRE_FORK_BRANCH="feature/kmip-plugins"
+
+# ── Ports ─────────────────────────────────────────────────────────────────────
+KMS_HTTPS_PORT=9998
+KMS_KMIP_PORT=5696
+SPIRE_BIND_PORT=18081
+SPIRE_HEALTH_PORT=19080
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+listener_pids_for_port() { lsof -ti tcp:"$1" 2>/dev/null | sort -u || true; }
+port_is_listening() { lsof -i tcp:"$1" -sTCP:LISTEN 2>/dev/null | grep -q . 2>/dev/null; }
+
+wait_for_port_closed() {
+  local port="$1" timeout_secs="$2" elapsed=0
+  while port_is_listening "${port}"; do
+    [[ "${elapsed}" -ge "${timeout_secs}" ]] && return 1
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+}
+
+stop_listener_on_port() {
+  local port="$1" label="$2" pids pid
+  pids="$(listener_pids_for_port "${port}")"
+  [[ -z "${pids}" ]] && return 0
+  print_info "Stopping stale ${label} listener(s) on port ${port}"
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] && kill "${pid}" 2>/dev/null || true
+  done <<<"${pids}"
+  wait_for_port_closed "${port}" 10 || {
+    while IFS= read -r pid; do
+      [[ -n "${pid}" ]] && kill -9 "${pid}" 2>/dev/null || true
+    done <<<"${pids}"
+    wait_for_port_closed "${port}" 5 || print_error "Port ${port} still in use."
+  }
+}
+
+# ── Cleanup ───────────────────────────────────────────────────────────────────
+SPIRE_PID=""
+_TMP_DIR=""
+
+cleanup() {
+  print_info "Cleaning up spire-kmip test resources..."
+  [[ -n "${SPIRE_PID}" ]] && kill "${SPIRE_PID}" 2>/dev/null && wait "${SPIRE_PID}" 2>/dev/null || true
+  kms_stop
+  [[ -n "${_TMP_DIR}" ]] && rm -rf "${_TMP_DIR}" 2>/dev/null || true
+  # Free ports
+  for p in ${KMS_HTTPS_PORT} ${KMS_KMIP_PORT} ${SPIRE_BIND_PORT} ${SPIRE_HEALTH_PORT}; do
+    stop_listener_on_port "${p}" "spire-kmip" 2>/dev/null || true
+  done
+}
+trap cleanup EXIT
+
+# ── Prerequisites ─────────────────────────────────────────────────────────────
+require_cmd docker
+require_cmd cargo
+require_cmd go
+require_cmd openssl
+
+# ── Clean state ───────────────────────────────────────────────────────────────
+print_status "Resetting spire-kmip test state..."
+for p in ${KMS_HTTPS_PORT} ${KMS_KMIP_PORT} ${SPIRE_BIND_PORT} ${SPIRE_HEALTH_PORT}; do
+  stop_listener_on_port "${p}" "spire-kmip" 2>/dev/null || true
+done
+
+print_header "SPIRE kmip Plugin E2E — Binary KMIP 2.1 TCP/TLS"
+
+# ── Temp directory ────────────────────────────────────────────────────────────
+_TMP_DIR=$(mktemp -d /tmp/spire-kmip-e2e-XXXXXX)
+CERTS_DIR="${_TMP_DIR}/certs"
+mkdir -p "${CERTS_DIR}" "${_TMP_DIR}/data"
+
+# ── Step 1: Build KMS ────────────────────────────────────────────────────────
+print_status "Building KMS server (non-fips)..."
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+print_status "Building ckms CLI..."
+kms_build_cli "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+# ── Step 2: Build spire-server from SPIRE fork ───────────────────────────────
+SPIRE_DIR="${_TMP_DIR}/spire"
+SPIRE_SERVER_BIN="${SPIRE_DIR}/bin/spire-server"
+
+print_status "Cloning SPIRE fork (${SPIRE_FORK_BRANCH})..."
+git clone --depth 1 --branch "${SPIRE_FORK_BRANCH}" \
+  "${SPIRE_FORK_URL}" "${SPIRE_DIR}" 2>&1 | tail -3
+
+print_status "Building spire-server..."
+mkdir -p "${SPIRE_DIR}/bin"
+(cd "${SPIRE_DIR}" && go build -o "${SPIRE_SERVER_BIN}" ./cmd/spire-server/)
+print_success "spire-server built: ${SPIRE_SERVER_BIN}"
+
+# ── Step 3: Generate mTLS test certificates ──────────────────────────────────
+print_status "Generating mTLS test certificates..."
+
+# CA key + self-signed CA cert
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-384 \
+  -nodes -keyout "${CERTS_DIR}/ca.key" -out "${CERTS_DIR}/ca.crt" \
+  -days 365 -subj "/CN=Test CA/O=SPIRE KMIP E2E" 2>/dev/null
+
+# KMS server cert (SANs: localhost, 127.0.0.1)
+openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+  -nodes -keyout "${CERTS_DIR}/kms.key" -out "${CERTS_DIR}/kms.csr" \
+  -subj "/CN=localhost" 2>/dev/null
+cat >"${CERTS_DIR}/kms-ext.cnf" <<EOF
+subjectAltName = DNS:localhost, IP:127.0.0.1
+EOF
+openssl x509 -req -in "${CERTS_DIR}/kms.csr" \
+  -CA "${CERTS_DIR}/ca.crt" -CAkey "${CERTS_DIR}/ca.key" \
+  -CAcreateserial -out "${CERTS_DIR}/kms.crt" -days 365 \
+  -extfile "${CERTS_DIR}/kms-ext.cnf" 2>/dev/null
+
+# SPIRE client cert (for mTLS to KMS)
+openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+  -nodes -keyout "${CERTS_DIR}/spire-client.key" -out "${CERTS_DIR}/spire-client.csr" \
+  -subj "/CN=spire-server/O=SPIRE" 2>/dev/null
+openssl x509 -req -in "${CERTS_DIR}/spire-client.csr" \
+  -CA "${CERTS_DIR}/ca.crt" -CAkey "${CERTS_DIR}/ca.key" \
+  -CAcreateserial -out "${CERTS_DIR}/spire-client.crt" -days 365 2>/dev/null
+
+print_success "Certificates generated in ${CERTS_DIR}"
+
+# ── Step 4: Start KMS with [socket_server] ───────────────────────────────────
+print_status "Starting KMS with HTTPS (port ${KMS_HTTPS_PORT}) + binary KMIP TCP (port ${KMS_KMIP_PORT})..."
+
+KMS_CONF="${_TMP_DIR}/kms.toml"
+cat >"${KMS_CONF}" <<TOML
+default_username = "admin"
+
+[db]
+database_type  = "sqlite"
+sqlite_path    = "${_TMP_DIR}/data/kms-db"
+clear_database = true
+
+[http]
+hostname = "127.0.0.1"
+port     = ${KMS_HTTPS_PORT}
+
+[tls]
+tls_cert_file        = "${CERTS_DIR}/kms.crt"
+tls_key_file         = "${CERTS_DIR}/kms.key"
+clients_ca_cert_file = "${CERTS_DIR}/ca.crt"
+
+[socket_server]
+socket_server_start    = true
+socket_server_port     = ${KMS_KMIP_PORT}
+socket_server_hostname = "127.0.0.1"
+
+[logging]
+rust_log    = "warn,cosmian_kms_server=info"
+ansi_colors = false
+TOML
+
+"$(get_kms_bin)" --config "${KMS_CONF}" >"${KMS_LOG_FILE}" 2>&1 &
+KMS_PID=$!
+
+print_info "Waiting for KMS HTTPS (PID=${KMS_PID})..."
+if ! wait_for_port 127.0.0.1 ${KMS_HTTPS_PORT} 120; then
+  cat "${KMS_LOG_FILE}" || true
+  print_error "KMS HTTPS failed to start. Check ${KMS_LOG_FILE}"
+fi
+print_success "KMS HTTPS ready on port ${KMS_HTTPS_PORT}"
+
+print_info "Waiting for binary KMIP TCP socket on port ${KMS_KMIP_PORT}..."
+TRIES=0
+until nc -z 127.0.0.1 ${KMS_KMIP_PORT} 2>/dev/null; do
+  TRIES=$((TRIES + 1))
+  if [[ "${TRIES}" -ge 30 ]]; then
+    tail -20 "${KMS_LOG_FILE}" || true
+    print_error "Binary KMIP TCP socket did not open after 30s"
+  fi
+  sleep 1
+done
+print_success "Binary KMIP TCP socket ready on port ${KMS_KMIP_PORT}"
+
+# ── Step 5: Provision root CA key pair + self-signed cert ────────────────────
+print_status "Creating root CA key pair and self-signed certificate..."
+
+# Write a ckms config with mTLS client cert (KMS requires client cert auth).
+CKMS_CONF="${_TMP_DIR}/ckms.toml"
+cat >"${CKMS_CONF}" <<CKMS_TOML
+[http_config]
+server_url = "https://127.0.0.1:${KMS_HTTPS_PORT}"
+accept_invalid_certs = true
+tls_client_pem_cert_path = "${CERTS_DIR}/spire-client.crt"
+tls_client_pem_key_path = "${CERTS_DIR}/spire-client.key"
+CKMS_TOML
+
+# Step 5a: Create the EC P-384 key pair with a predictable UID.
+print_info "Creating EC P-384 key pair (uid=${CA_KEY_UID})..."
+"$(get_ckms_bin)" --conf-path "${CKMS_CONF}" \
+  ec keys create \
+  --curve nist-p384 \
+  "${CA_KEY_UID}" \
+  2>&1 | grep -v "^$"
+print_success "Key pair created (uid=${CA_KEY_UID})"
+
+# Step 5b: Create the self-signed root CA certificate.
+_CA_EXT_FILE=$(mktemp /tmp/spire-kmip-ca-ext.XXXXXX)
+cat >"${_CA_EXT_FILE}" <<'EXTEOF'
+[ v3_ca ]
+basicConstraints=critical,CA:TRUE,pathlen:0
+keyUsage=critical,keyCertSign,digitalSignature
+EXTEOF
+
+print_info "Creating self-signed root CA certificate..."
+"$(get_ckms_bin)" --conf-path "${CKMS_CONF}" \
+  certificates certify \
+  --public-key-id-to-certify "${CA_KEY_UID}_pk" \
+  --subject-name "CN=SPIRE KMIP E2E Root CA,O=SPIFFE,C=US" \
+  --certificate-extensions "${_CA_EXT_FILE}" \
+  2>&1 | grep -v "^$"
+
+rm -f "${_CA_EXT_FILE}"
+print_success "Root CA certificate provisioned (signed by ${CA_KEY_UID})"
+
+# ── Step 6: Write SPIRE server.conf ──────────────────────────────────────────
+SPIRE_SOCKET="${_TMP_DIR}/spire-api.sock"
+
+cat >"${_TMP_DIR}/server.conf" <<CONF
+server {
+  bind_address = "127.0.0.1"
+  bind_port    = "${SPIRE_BIND_PORT}"
+  trust_domain = "spire-kmip-e2e.test"
+  data_dir     = "${_TMP_DIR}/data"
+  log_level    = "INFO"
+  socket_path  = "${SPIRE_SOCKET}"
+  ca_ttl                = "1h"
+  default_x509_svid_ttl = "5m"
+  ca_subject {
+    country      = ["US"]
+    organization = ["SPIFFE"]
+    common_name  = ""
+  }
+}
+
+plugins {
+  DataStore "sql" {
+    plugin_data {
+      database_type     = "sqlite3"
+      connection_string = "${_TMP_DIR}/data/datastore.sqlite3"
+    }
+  }
+
+  NodeAttestor "join_token" {
+    plugin_data {}
+  }
+
+  KeyManager "kmip" {
+    plugin_data {
+      kmip_addr        = "127.0.0.1:${KMS_KMIP_PORT}"
+      ca_cert_path     = "${CERTS_DIR}/ca.crt"
+      client_cert_path = "${CERTS_DIR}/spire-client.crt"
+      client_key_path  = "${CERTS_DIR}/spire-client.key"
+      server_id        = "spire-kmip-e2e"
+    }
+  }
+
+  UpstreamAuthority "kmip" {
+    plugin_data {
+      kmip_addr        = "127.0.0.1:${KMS_KMIP_PORT}"
+      ca_cert_path     = "${CERTS_DIR}/ca.crt"
+      client_cert_path = "${CERTS_DIR}/spire-client.crt"
+      client_key_path  = "${CERTS_DIR}/spire-client.key"
+      ca_key_uid       = "${CA_KEY_UID}"
+    }
+  }
+}
+
+health_checks {
+  listener_enabled = true
+  bind_address     = "127.0.0.1"
+  bind_port        = "${SPIRE_HEALTH_PORT}"
+  live_path        = "/live"
+  ready_path       = "/ready"
+}
+CONF
+
+# ── Step 7: Start SPIRE server ───────────────────────────────────────────────
+print_status "Starting SPIRE server (kmip plugins + mTLS)..."
+"${SPIRE_SERVER_BIN}" run -config "${_TMP_DIR}/server.conf" >"${_TMP_DIR}/spire.log" 2>&1 &
+SPIRE_PID=$!
+
+TRIES=0
+until [[ -S "${SPIRE_SOCKET}" ]] || [[ "${TRIES}" -ge 60 ]]; do
+  sleep 1
+  TRIES=$((TRIES + 1))
+done
+if [[ ! -S "${SPIRE_SOCKET}" ]]; then
+  tail -30 "${_TMP_DIR}/spire.log" || true
+  print_error "SPIRE server did not create its API socket after 60s. Check ${_TMP_DIR}/spire.log"
+fi
+
+# ── Step 8: Healthcheck ──────────────────────────────────────────────────────
+print_status "Running SPIRE healthcheck..."
+"${SPIRE_SERVER_BIN}" healthcheck -socketPath "${SPIRE_SOCKET}"
+print_success "SPIRE server is healthy — kmip KeyManager + UpstreamAuthority with mTLS verified."
+
+# ── Step 9: Verify key creation ──────────────────────────────────────────────
+print_status "Generating join token to verify KeyManager..."
+TOKEN=$("${SPIRE_SERVER_BIN}" token generate \
+  -socketPath "${SPIRE_SOCKET}" \
+  -spiffeID "spiffe://spire-kmip-e2e.test/test-agent" 2>/dev/null | awk '/Token:/{print $2}')
+
+if [[ -n "${TOKEN}" ]]; then
+  print_success "Join token generated: ${TOKEN:0:8}... — KeyManager operational."
+else
+  print_error "Token generation failed — kmip KeyManager not operational."
+fi
+
+# ── Step 10: SPIRE server log gate ───────────────────────────────────────────
+print_status "Checking SPIRE server logs for errors..."
+if error_lines=$(grep -n -E 'level=error|level=fatal|[[:space:]]ERROR|[[:space:]]FATA' "${_TMP_DIR}/spire.log" 2>/dev/null); then
+  print_info "SPIRE server ERROR/FATAL log lines:"
+  echo "${error_lines}"
+  print_error "SPIRE server logged errors — see above."
+fi
+print_success "No errors in SPIRE server logs."
+
+print_success "All checks passed — SPIRE kmip plugins working with KMS binary KMIP TCP + mTLS."
