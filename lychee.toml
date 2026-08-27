@@ -69,6 +69,7 @@ exclude = [
   'admin\.google\.com',
   'github\.com/sfackler',
   'jwt\.io',
+  'manpages\.ubuntu\.com',
   'webstore\.ansi\.org',
   # ETSI — returns 503 to automated crawlers
   'www\.etsi\.org',
