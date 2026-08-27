@@ -723,6 +723,7 @@ Crate path: `crate/server`
 | `debug` | `JWT Access granted to {username}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `username` | - |
 | `trace` | `OPA enforcing decision for user={} op={} obj={}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
 | `trace` | `OPA exclusive decision for user={} op={} obj={}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
+| `info` | `ceremony sealing key loaded from object store` | `src/core/kms/mod.rs` | `ceremony_key_id`: KMS UID of the AES-256 ceremony sealing key | Confirms the sealing key was loaded successfully; key material is never logged. |
 
 ### `cosmian_kms_server_database`
 
