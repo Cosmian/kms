@@ -38,11 +38,11 @@ spawned until the feature is explicitly enabled.
 When `audit.file.path` is omitted the file defaults to `<root-data-path>/audit.jsonl`.
 
 !!! warning "Not safe for multiple KMS instances sharing one file"
-The audit file backend is designed for **one writer per file**. If you run multiple KMS
-instances (horizontal scaling, Kubernetes replicas), each one needs its **own** audit file —
-never point several instances at the same path on a shared volume. Only one instance will ever hold the
-lock and write, so the others' events are effectively never recorded. A centralized,
-multi-writer-safe audit trail is planned via a PostgreSQL backend.
+    The audit file backend is designed for **one writer per file**. If you run multiple KMS
+    instances (horizontal scaling, Kubernetes replicas), each one needs its **own** audit file —
+    never point several instances at the same path on a shared volume. Only one instance will ever hold the
+    lock and write, so the others' events are effectively never recorded. A centralized,
+    multi-writer-safe audit trail is planned via a PostgreSQL backend.
 
 ---
 
@@ -92,10 +92,10 @@ instead of the normal KMIP response. The KMIP operation has already executed at 
 503 signals that its outcome was not recorded.
 
 !!! warning "`reject` mode can cause service disruption"
-When `failure_mode = reject`, a saturated audit channel or a dead writer task will
-make every subsequent KMIP request fail with 503 until the condition is resolved.
-Only use this mode when unlogged operations are strictly unacceptable (e.g.
-regulated environments requiring a complete audit trail).
+    When `failure_mode = reject`, a saturated audit channel or a dead writer task will
+    make every subsequent KMIP request fail with 503 until the condition is resolved.
+    Only use this mode when unlogged operations are strictly unacceptable (e.g.
+    regulated environments requiring a complete audit trail).
 
 ---
 
@@ -179,9 +179,11 @@ forged rows — breaks at least one `prev_hash → row_hash` link and is detecte
 Each write is followed by [`fsync()`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/fsync.html) to ensure data is physically written to disk. Events survive
 an OS crash or power failure as long as the storage medium has confirmed the write.
 
-On restart, the KMS always verifies the entire chain — every row's hash and its link to the
-previous row — before serving traffic, then reads the last 64 KiB of the file to decide how to
-resume. **The KMS always starts**, regardless of what it finds — see
+On restart, the audit writer task always verifies the entire chain — every row's hash and its
+link to the previous row — before it appends any queued event, then reads the last 64 KiB of the
+file to decide how to resume. This runs in the background: **the KMS starts and serves traffic
+immediately**, without waiting for verification to finish, and any events submitted in the
+meantime are queued and written once recovery completes — see
 [Startup recovery](#startup-recovery) below.
 
 ---
@@ -213,8 +215,9 @@ buffered (up to `--audit-channel-capacity`) and flushed in order once the lock b
 ### Unwritable path (permissions, read-only mount, disk fault)
 
 A path that cannot be opened for a reason unrelated to log content is treated as a deployment
-fault, not corruption. The KMS starts and serves traffic; each audit event is dropped with an
-`error!` log line, and the writer periodically retries opening the path — audit logging resumes
+fault, not corruption. The KMS starts and serves traffic; audit events are buffered in the
+writer's channel (up to `--audit-channel-capacity`) while it retries opening the path — only once
+that buffer fills does an event get dropped with an `error!` log line. Audit logging resumes
 automatically once the fault is fixed, with no restart required.
 
 ---
@@ -237,13 +240,13 @@ ckms audit verify --path /var/log/cosmian-kms/
 
 **Sample output: intact chain**:
 
-```
+```text
 /var/log/cosmian-kms/audit.jsonl: chain OK: 42 events verified
 ```
 
 **Sample output: tampered file**:
 
-```
+```text
 TAMPERED: /var/log/cosmian-kms/audit.jsonl event id=17 (line 18) has an invalid row_hash
 ```
 
@@ -251,7 +254,7 @@ For every `audit:reanchor` event encountered, `verify` also confirms the sealed 
 references still exists next to the log and its SHA-256 still matches the digest recorded in the
 event — this is what makes deleting or altering sealed evidence after the fact detectable:
 
-```
+```text
 MISSING EVIDENCE: /var/log/cosmian-kms/audit.jsonl: reanchor event id=0 references sealed file
 audit.20260814T140233Z.9f3ac1b2.corrupt.jsonl which no longer exists
 ```
@@ -261,7 +264,7 @@ tampered, or missing/altered sealed evidence.
 
 With `--verbose`, a summary line is printed for every event:
 
-```
+```text
 id=0  2026-05-06T20:31:15Z  Create   chain=ok
 id=1  2026-05-06T20:31:15Z  Encrypt  chain=ok
 ...

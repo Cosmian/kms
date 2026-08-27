@@ -372,16 +372,22 @@ pub(crate) async fn test_app_with_clap_config(
 }
 
 /// Creates a test application that records every KMIP request to an audit file.
-/// Creates a test application that records every KMIP request to an audit file.
 ///
 /// Pass `AuditFileStore::start(path, 128)` for normal operation or
 /// `AuditFileStore::new_disconnected()` to exercise failure paths without a
 /// file on disk. `failure_mode` controls the middleware's response when
 /// `enqueue` fails; existing tests pass `Default::default()` for `Continue`.
+///
+/// Also returns the underlying `Arc<KMS>` so tests can assert on persisted
+/// state directly (bypassing HTTP), e.g. to confirm an operation's side
+/// effect landed even when the middleware replaced the response with a 503.
 pub(crate) async fn test_app_with_audit(
     store: AuditFileStore,
     failure_mode: AuditFailureMode,
-) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
+) -> (
+    impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
+    Arc<KMS>,
+) {
     let clap_config = https_clap_config();
     let server_params =
         Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
@@ -450,7 +456,7 @@ pub(crate) async fn test_app_with_audit(
         .service(routes::jose::list_tags_handler);
     app = app.service(crypto_scope);
 
-    test::init_service(app).await
+    (test::init_service(app).await, kms_server)
 }
 
 /// Creates a test application that records every KMIP request to an audit file,

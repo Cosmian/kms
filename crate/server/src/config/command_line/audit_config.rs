@@ -115,7 +115,9 @@ pub struct AuditConfig {
     /// What to do when an audit event cannot be queued (channel full or writer dead).
     ///
     /// `continue` (default): log the error, keep serving normally.
-    /// `reject`: return HTTP 503 to the client — guarantees no unlogged operations.
+    /// `reject`: return HTTP 503 to the client. The KMIP operation has already
+    /// executed at this point — this signals that its outcome was not recorded,
+    /// it does not prevent the operation from completing.
     #[clap(
         long = "audit-failure-mode",
         env = "KMS_AUDIT_FAILURE_MODE",

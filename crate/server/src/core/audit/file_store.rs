@@ -210,6 +210,9 @@ enum SealReason {
     HashMismatch,
     /// Bytes that don't deserialize as an `AuditEvent` at all.
     Unparseable,
+    /// A valid, verified row whose `id` is `i64::MAX` — incrementing it for the next
+    /// event would overflow, so recovery cannot safely resume the chain in place.
+    IdOverflow,
 }
 
 impl SealReason {
@@ -217,6 +220,7 @@ impl SealReason {
         match self {
             Self::HashMismatch => "hash_mismatch",
             Self::Unparseable => "unparseable",
+            Self::IdOverflow => "id_overflow",
         }
     }
 }
@@ -410,10 +414,17 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
     if ends_with_newline {
         return Ok(match check_row(&last_line) {
             RowCheck::Verified(event) if verify_chain_link(&event, previous_event) => {
-                TailOutcome::Resume {
-                    next_id: event.id + 1,
-                    prev_hash: event.row_hash,
-                    needs_leading_nl: false,
+                match event.id.checked_add(1) {
+                    Some(next_id) => TailOutcome::Resume {
+                        next_id,
+                        prev_hash: event.row_hash,
+                        needs_leading_nl: false,
+                    },
+                    None => TailOutcome::SealAndRoll {
+                        reason: SealReason::IdOverflow,
+                        claimed_last_id: Some(event.id),
+                        failure_offset: last_start,
+                    },
                 }
             }
             RowCheck::Verified(event) | RowCheck::HashMismatch(event) => TailOutcome::SealAndRoll {
@@ -433,15 +444,21 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
     // missing its terminator (crash between the JSON write and the newline write) — not a
     // torn write at all.
     if let RowCheck::Verified(event) = check_row(&last_line) {
-        return Ok(if verify_chain_link(&event, previous_event) {
+        return Ok(if !verify_chain_link(&event, previous_event) {
+            TailOutcome::SealAndRoll {
+                reason: SealReason::HashMismatch,
+                claimed_last_id: Some(event.id),
+                failure_offset: last_start,
+            }
+        } else if let Some(next_id) = event.id.checked_add(1) {
             TailOutcome::Resume {
-                next_id: event.id + 1,
+                next_id,
                 prev_hash: event.row_hash,
                 needs_leading_nl: true,
             }
         } else {
             TailOutcome::SealAndRoll {
-                reason: SealReason::HashMismatch,
+                reason: SealReason::IdOverflow,
                 claimed_last_id: Some(event.id),
                 failure_offset: last_start,
             }
@@ -462,20 +479,22 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
             failure_offset: last_start,
         });
     };
-    let anchor = match check_row(anchor_line) {
-        RowCheck::Verified(event) => Some((event.id + 1, event.row_hash)),
-        RowCheck::HashMismatch(_) | RowCheck::Unparseable => None,
-    };
-
-    match anchor {
-        Some((next_id, prev_hash)) => Ok(TailOutcome::TruncateContinue {
-            keep_len: last_start,
-            next_id,
-            prev_hash,
-            bytes_discarded: last_end - last_start,
-            discard_offset: last_start,
-        }),
-        None => Ok(TailOutcome::SealAndRoll {
+    match check_row(anchor_line) {
+        RowCheck::Verified(event) => match event.id.checked_add(1) {
+            Some(next_id) => Ok(TailOutcome::TruncateContinue {
+                keep_len: last_start,
+                next_id,
+                prev_hash: event.row_hash,
+                bytes_discarded: last_end - last_start,
+                discard_offset: last_start,
+            }),
+            None => Ok(TailOutcome::SealAndRoll {
+                reason: SealReason::IdOverflow,
+                claimed_last_id: Some(event.id),
+                failure_offset: last_start,
+            }),
+        },
+        RowCheck::HashMismatch(_) | RowCheck::Unparseable => Ok(TailOutcome::SealAndRoll {
             reason: SealReason::Unparseable,
             claimed_last_id: None,
             failure_offset: last_start,
@@ -757,7 +776,8 @@ fn try_acquire_lock(lock_path: &Path) -> std::io::Result<std::fs::File> {
 /// interrupted, incomplete last line) as tampering.
 ///
 /// Streams the file line-by-line (`BufReader`) rather than loading it into memory, so
-/// this stays cheap in both time and memory even for a large, long-lived log.
+/// memory use stays constant even for a large, long-lived log (runtime is still linear in
+/// the number of rows).
 ///
 /// Returns the penultimate verified event when every interior row verifies, or the first
 /// broken interior row's recovery metadata.
@@ -980,12 +1000,24 @@ async fn writer_supervisor(
     };
 
     let (sink, next_id, prev_hash) = loop {
-        match recover_and_open(&path) {
-            Ok(triple) => break triple,
-            Err(e) => {
+        // `recover_and_open` does blocking `std::fs` I/O (whole-file scan, hash, and
+        // possible rename on seal-and-roll) — run it on the blocking pool so a large
+        // audit log doesn't monopolize this tokio worker thread during startup/recovery.
+        let path_for_recovery = path.clone();
+        let recovered =
+            tokio::task::spawn_blocking(move || recover_and_open(&path_for_recovery)).await;
+        match recovered {
+            Ok(Ok(triple)) => break triple,
+            Ok(Err(e)) => {
                 error!(
                     "AuditFileStore: cannot open audit log {} ({e}) — retrying",
                     path.display()
+                );
+                tokio::time::sleep(OPEN_RETRY_INTERVAL).await;
+            }
+            Err(join_err) => {
+                error!(
+                    "AuditFileStore: recovery task failed to run ({join_err}) — retrying"
                 );
                 tokio::time::sleep(OPEN_RETRY_INTERVAL).await;
             }
@@ -1089,9 +1121,17 @@ async fn writer_loop<S: AuditSink>(
         if n_dropped > 0 {
             let sentinel = make_eviction_sentinel(n_dropped);
             next_id = write_draft_to_chain(&mut sink, sentinel, next_id, &mut prev_hash);
+            enforce_size_cap(&sink, &write_state, path);
         }
-        next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut prev_hash);
-        enforce_size_cap(&sink, &write_state, path);
+        if write_state.size_limit_reached.load(Ordering::Relaxed) {
+            // The sentinel write alone just crossed the cap: writing the real draft too
+            // would overshoot the documented "one final event may cross" rule by a
+            // second event. Count it as dropped so a future sentinel reports it.
+            dropped_count.fetch_add(1, Ordering::Relaxed);
+        } else {
+            next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut prev_hash);
+            enforce_size_cap(&sink, &write_state, path);
+        }
     }
 
     // Channel closed (sender dropped on graceful shutdown): ensure all written
