@@ -191,7 +191,7 @@ where
                 .request()
                 .extensions()
                 .get::<AuthenticatedUser>()
-                .map_or_else(|| UNAUTHENTICATED.to_owned(), |u| u.username.clone());
+                .map_or_else(|| UNAUTHENTICATED.to_owned(), |u| u.username.to_string());
 
             // Batch path: fan out one draft per BatchItem
             let batch_drafts: Option<Vec<AuditEventDraft>> = res
