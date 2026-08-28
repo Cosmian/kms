@@ -1016,9 +1016,7 @@ async fn writer_supervisor(
                 tokio::time::sleep(OPEN_RETRY_INTERVAL).await;
             }
             Err(join_err) => {
-                error!(
-                    "AuditFileStore: recovery task failed to run ({join_err}) — retrying"
-                );
+                error!("AuditFileStore: recovery task failed to run ({join_err}) — retrying");
                 tokio::time::sleep(OPEN_RETRY_INTERVAL).await;
             }
         }
