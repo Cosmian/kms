@@ -41,6 +41,7 @@ jobs:
           - secret_azure
           - secret_cosmian_kms
           - spire
+          - spire-kmip
           - kmip-go
         features: [fips, non-fips]
         exclude:
@@ -81,6 +82,9 @@ jobs:
             features: fips
           # spire relies on the Vault API which is non-fips only
           - type: spire
+            features: fips
+          # spire-kmip uses binary KMIP TCP socket (non-fips for socket_server)
+          - type: spire-kmip
             features: fips
         include:
           # Docker services required per test type (types without an entry need no containers)
