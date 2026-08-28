@@ -2121,3 +2121,83 @@ async fn test_join_wrapped_shares_fails_after_wrapping_key_deleted() -> KResult<
 
     Ok(())
 }
+
+/// Reproduction for GitHub issue #909 — a non-CO user granted only `Get` on the
+/// wildcard object identifier `*` can bypass the Create/Import authorization gate.
+///
+/// The `*` string doubles as (a) a perfectly valid, user-suppliable object UID and
+/// (b) the internal sentinel under which the global `Create` right is stored. The
+/// `Get` super-privilege fallback in `user_has_permission` then treats `Get` on `*`
+/// as satisfying the `Create` check.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn repro_issue_909_get_on_star_bypasses_import_gate() -> KResult<()> {
+    use cosmian_kms_access::access::Access;
+
+    let admin = "admin@example.com"; // Crypto Officer
+    let bob = "bob@example.com"; // plain, non-CO user
+    let kms = config_only_co_kms(vec![admin.to_owned()]).await?;
+
+    // Bob is not a Crypto Officer.
+    assert!(!kms.is_crypto_officer(&UserId::from(bob)).await?);
+
+    // Precondition: with a CO configured, Bob is blocked from Create/Import.
+    assert!(
+        kms.enforce_create_permission(&UserId::from(bob))
+            .await
+            .is_err(),
+        "precondition: Bob must be blocked from Create/Import before any grant"
+    );
+
+    // Admin creates a symmetric key whose UID is the literal "*".
+    // Nothing reserves "*" as an object identifier.
+    let no_tags: &[&str] = &[];
+    let create_star = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        Some(UniqueIdentifier::TextString("*".to_owned())),
+        256,
+        CryptographicAlgorithm::AES,
+        no_tags,
+        false,
+        None,
+    )?;
+    let created = kms.create(create_star, &UserId::from(admin)).await?;
+    assert_eq!(uid_string(&created.unique_identifier)?, "*");
+
+    // Admin grants ONLY `Get` on object "*" to Bob (the ownership check passes,
+    // because object "*" now really exists and is owned by admin).
+    let access = Access {
+        unique_identifier: Some(UniqueIdentifier::TextString("*".to_owned())),
+        user_id: bob.to_owned(),
+        operation_types: vec![KmipOperation::Get],
+    };
+    kms.grant_access(&access, &UserId::from(admin)).await?;
+
+    // BUG (issue #909): Bob — who was never granted Create and is not a CO — now
+    // passes the Create/Import gate purely via the `Get`-on-`*` super-privilege.
+    assert!(
+        kms.enforce_create_permission(&UserId::from(bob))
+            .await
+            .is_ok(),
+        "issue #909 not reproduced: Bob unexpectedly still blocked"
+    );
+
+    // End-to-end: Bob can now actually import/create a brand-new key.
+    let bob_key = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        no_tags,
+        false,
+        None,
+    )?;
+    let bob_created = kms.create(bob_key, &UserId::from(bob)).await;
+    assert!(
+        bob_created.is_ok(),
+        "issue #909 not reproduced: Bob could not create a key: {:?}",
+        bob_created.err()
+    );
+
+    Ok(())
+}

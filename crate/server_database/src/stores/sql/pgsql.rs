@@ -1607,4 +1607,54 @@ mod tests {
         assert!(!is_pg_retryable_error("permission denied"));
         assert!(!is_pg_retryable_error(""));
     }
+
+    // Regression test for issue #1027: the pooled connection must be released
+    // before sleeping through the retry back-off, not held across it.
+    //
+    // A size-1 pool is pinned to a single connection. One task keeps failing
+    // a retryable transaction (a forced "deadlock detected" error) for all
+    // `PG_MAX_RETRIES` attempts, which spends ~3.15s sleeping across back-offs.
+    // Meanwhile we sample `pool.status().available`: if the connection is
+    // held during the sleeps, the pool never reports itself idle.
+    #[ignore = "Requires a running PostgreSQL instance"]
+    #[tokio::test]
+    async fn pg_connection_released_during_backoff() -> DbResult<()> {
+        let postgres_url = option_env!("KMS_POSTGRES_URL")
+            .unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
+        let pg = PgPool::instantiate(postgres_url, true, Some(1)).await?;
+
+        let pool_for_task = pg.pool.clone();
+        let handle: tokio::task::JoinHandle<InterfaceResult<()>> = tokio::spawn(async move {
+            pg_retry_tx!(pool_for_task, |tx| {
+                tx.batch_execute(
+                    "DO $$ BEGIN RAISE EXCEPTION 'simulated deadlock detected' USING \
+                     ERRCODE = '40001'; END $$;",
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))
+            })
+        });
+
+        let mut idle_samples = 0_usize;
+        let mut total_samples = 0_usize;
+        while !handle.is_finished() {
+            total_samples += 1;
+            if pg.pool.status().available >= 1 {
+                idle_samples += 1;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        // Exhausts all retries and ends in an error — expected, only the
+        // connection-holding behavior along the way is under test here.
+        drop(handle.await);
+
+        let idle_fraction = idle_samples as f64 / total_samples.max(1) as f64;
+        assert!(
+            idle_fraction > 0.5,
+            "pool reported idle in only {idle_samples}/{total_samples} samples \
+             ({idle_fraction:.2}) — connection appears held during back-off sleep"
+        );
+
+        Ok(())
+    }
 }
