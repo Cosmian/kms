@@ -29,7 +29,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     config::AuditFailureMode,
-    core::audit::AuditFileStore,
+    core::{ObjectHandle, audit::AuditFileStore},
     result::KResult,
     tests::test_utils::{self, post_2_1, post_kmip_binary, post_kmip_json},
 };
@@ -684,7 +684,7 @@ async fn reject_mode_returns_503_when_audit_unavailable() -> KResult<()> {
 
     let persisted = kms
         .database
-        .retrieve_objects(&format!(r#"["{TAG}"]"#))
+        .retrieve_objects(ObjectHandle::Tags(&format!(r#"["{TAG}"]"#)))
         .await?;
     assert_eq!(
         persisted.len(),
