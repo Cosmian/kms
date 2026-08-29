@@ -126,19 +126,7 @@ impl Database {
             .permissions
             .get_crypto_officer_activation_by(user)
             .await?;
-        match sealed_opt {
-            None => Ok(false),
-            Some(sealed) => {
-                let keys = self.ceremony_keys.as_ref().ok_or_else(|| {
-                    DbError::DatabaseError(
-                        "ceremony_secret not configured: cannot verify ceremony record".to_owned(),
-                    )
-                })?;
-                // Unseal verifies the GCM tag and payload integrity.
-                keys.unseal(&sealed, "crypto_officer")?;
-                Ok(true)
-            }
-        }
+        self.verify_ceremony_record(sealed_opt, "crypto_officer")
     }
 
     /// Revoke `activated_by`'s active Crypto Officer ceremony record.
@@ -157,31 +145,7 @@ impl Database {
     }
 }
 
-/// Private helpers for ceremony record encryption.
 impl Database {
-    /// Seal a ceremony payload for a given role.
-    ///
-    /// Returns `Err` when `ceremony_keys` is not configured (server misconfiguration).
-    fn seal_ceremony_record(
-        &self,
-        activated_by: &str,
-        participants: &[String],
-        key_hash: &str,
-        role: &str,
-    ) -> DbResult<String> {
-        let keys = self.ceremony_keys.as_ref().ok_or_else(|| {
-            DbError::DatabaseError(
-                "ceremony_secret not configured: cannot seal ceremony record".to_owned(),
-            )
-        })?;
-        let payload = CeremonyPayload {
-            activated_by: activated_by.to_owned(),
-            participants: participants.to_vec(),
-            key_hash: key_hash.to_owned(),
-        };
-        keys.seal(&payload, role)
-    }
-
     // ── CRL persistence ─────────────────────────────────────────────────────
 
     /// Persist (or replace) the most recently generated CRL for `issuer_id`.
