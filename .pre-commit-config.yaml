@@ -662,3 +662,10 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [manual]
+
+  - repo: https://github.com/lycheeverse/lychee
+    rev: v0.15.1
+    hooks:
+      - id: lychee
+        args: [--config, lychee.toml, 'documentation/docs/**/*.md']
+        pass_filenames: false

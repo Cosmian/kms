@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**638 vectors** across 16 categories (including KAT):
+**649 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -129,8 +129,6 @@ replays the steps sequentially.
 | PQC | `slh_dsa_shake_192s_sign_verify` | Creates a SLH-DSA-SHAKE-192s key pair (non-FIPS), signs data, verifies the signature | 3 |
 | PQC | `slh_dsa_shake_256f_sign_verify` | Creates a SLH-DSA-SHAKE-256f key pair (non-FIPS), signs data, verifies the signature | 3 |
 | PQC | `slh_dsa_shake_256s_sign_verify` | Creates a SLH-DSA-SHAKE-256s key pair (non-FIPS), signs data, verifies the signature | 3 |
-| PQC | `ml_dsa_44_export_raw` | CreateKeyPair (ML-DSA-44), Export private (Raw), Export public (Raw) | 3 |
-| PQC | `ml_kem_768_export_raw` | CreateKeyPair (ML-KEM-768), Export private (Raw), Export public (Raw) | 3 |
 | **KMIP Operations** | | | |
 | KMIP Operations | `activate` | Creates a pre-active key, verifies encrypt fails, activates it, encrypts successfully | 6 |
 | KMIP Operations | `attribute_management` | Tests GetAttributes, SetAttribute, AddAttribute, DeleteAttribute, ModifyAttribute, GetAttributeList | 9 |
@@ -240,7 +238,7 @@ replays the steps sequentially.
 | Serialization | `import_destroy_reimport` | Imports a key with explicit UID, destroys it, then re-imports with the same UID — verifies lifecycle state transitions work correctly with the new serialization format | 6 |
 | Serialization | `rsa_sign_verify_roundtrip` | Creates an RSA-2048 key pair, signs data with private key, verifies with public key — verifies asymmetric key material and attributes survive DB serialization | 3 |
 | **K8s Plugin** | | | |
-| K8s Plugin | `dek_wrap_unwrap` | Simulates the exact sequence performed by cosmian-kms-plugin when kube-apiserver | 5 |
+| K8s Plugin | `dek_wrap_unwrap` | Simulates the exact sequence performed by kubernetes-kms-plugin when kube-apiserver | 5 |
 | **Access Control** | | | |
 | Access Control | `crypto_officer_role_allowed_ops` | CryptoOfficer can perform lifecycle operations: Create, Locate, GetAttributes, Destroy. | 4 |
 | Access Control | `grant_access_aes` | Owner creates AES key, grants user access, user can Get/Encrypt/Decrypt, owner destroys key | 7 |
@@ -304,8 +302,6 @@ replays the steps sequentially.
 | HSM / Resident Keyset | `hsm/resident_keyset_set_rotate_name` | Creates an AES-256 key directly on the HSM, assigns a rotate_name via SetAttribute | 6 |
 | HSM / Resident Negative | `hsm/resident_non_aes_rejected` | Attempts to create a 3DES symmetric key directly on the HSM. | 1 |
 | HSM / Resident Negative | `hsm/resident_rsa1024_rejected` | Attempts to create an RSA-1024 keypair with an HSM-resident UID. | 1 |
-| HSM / Aggregate | `hsm/hsm_resident_encrypt` | DB-stored AES key Encrypt+Decrypt via KEK-server (AES-GCM, AES-CBC) | 3 |
-| HSM / Aggregate | `hsm/hsm_resident_sign` | DB-stored EC key Sign via KEK-server (ECDSA P-256) | 2 |
 | HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha1` | Creates an RSA-2048 keypair on the HSM, then encrypts with RSA-OAEP-SHA1 | 7 |
 | HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha256` | Creates an RSA-2048 keypair on the HSM, then attempts to encrypt with RSA-OAEP-SHA256. | 6 |
 | HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_pkcs1v15` | Creates an RSA-2048 keypair on the HSM, then encrypts with RSA-PKCS#1v1.5 | 7 |
@@ -338,9 +334,6 @@ replays the steps sequentially.
 | Integrations | `fips/integrations/mysql` | Simulates MySQL Enterprise Transparent Data Encryption (TDE) KMIP 1.1 protocol: Create AES-256 key → Activate → Get → Revoke → Destroy. | 5 |
 | Integrations | `fips/integrations/percona` | Simulates the Percona PostgreSQL TDE KMIP 1.4 protocol: Register (AES-128 symmetric key) → Locate (by ObjectType + Name) → Get. Mirrors crate/server/src/tests/ttlv_tests/integrations/postgres.rs exactly. | 5 |
 | Integrations | `fips/integrations/synology_dsm` | Replays the exact KMIP 1.2 operation sequence observed from Synology DSM 7.x during encrypted volume creation: Query ×4 → Locate (empty) → Register (SecretData/Password with OperationPolicyName) → ModifyAttribute (rename to volume UUID) → Locate (find) → Activate → GetAttributeList → GetAttributes → Get → Revoke → Destroy. Mirrors crate/server/src/tests/ttlv_tests/integrations/synology_dsm.rs exactly. | 14 |
-| Integrations | `fips/integrations/fortigate_locate_no_match` | Register ×2, Locate (partial name → no match), Revoke ×2, Destroy ×2 (binary TTLV / KMIP 1.0) | 11 |
-| Integrations | `fips/integrations/fortigate_locate_multi_tunnel` | Register ×4, Activate ×4, Locate per-tunnel, Revoke ×4, Destroy ×4 (binary TTLV / KMIP 1.0) | 30 |
-| Integrations | `fips/integrations/fortigate_locate_many_similar_names` | Register ×8, Activate ×8, Locate (strict name match), Revoke ×8, Destroy ×8 (binary TTLV / KMIP 1.0) | 40 |
 | Integrations | `fips/integrations/vast_data` | Replays the exact KMIP 1.4 operation sequence observed in VAST Data production logs (June 2026): DiscoverVersions → Create AES-256 (with OperationPolicyName) → AddAttribute (Name) → AddAttribute (ObjectGroup) → AddAttribute (OperationPolicyName) → Activate → Locate by name → Get (plaintext) → GetAttributes (State + ActivationDate) → ReKey → Locate (find rotated key) → Get (new key material) → GetAttributes (verify Active + OperationPolicyName preserved after rotation) → Revoke old → Destroy old → Revoke new → Destroy new. VAST uses HTTP POST to /kmip with KMIP 1.4 binary TTLV and mTLS authentication. Covers the ReKey bug fix (issue #845): VAST sends ReKey and expects a new UUID returned. Covers the OperationPolicyName persistence fix: OPN must survive AddAttribute and ReKey. | 17 |
 | Integrations | `fips/integrations/veeam` | Replays the KMIP 1.4 operation sequence from Veeam Backup & Replication: CreateKeyPair (RSA-2048, Sign/Verify) → Get (public key) → Get (private key) → Destroy private → Destroy public. Mirrors crate/server/src/tests/ttlv_tests/integrations/veeam.rs exactly. | 5 |
 | Integrations | `fips/integrations/vmware_vcenter` | Simulates the VMware vCenter KMIP 1.1 protocol for VM encryption key management: DiscoverVersions → Query → Create (AES-256) → GetAttributes → AddAttribute (x-Product_Version, x-Vendor, x-Product) → GetAttributes → Get. Mirrors crate/server/src/tests/ttlv_tests/integrations/vmware.rs exactly. | 9 |
@@ -355,72 +348,26 @@ replays the steps sequentially.
 | **OPA Policy Engine** | | | |
 | OPA | `opa/mode_disabled` | OPA not configured; KMS legacy permission logic applies. Creates an AES key, retrieves it, and destroys it. | 3 |
 | OPA | `opa/mode_enforcing_allowed` | OPA enforcing mode; JWT with CryptoOfficer role from auth server; Create then Get allowed by is_owner=true (OPA + KMS both pass). | 3 |
+| OPA | `opa/mode_enforcing_auditor_create_denied` | OPA enforcing mode. A user holding the `Auditor` role attempts to create a | 1 |
+| OPA | `opa/mode_enforcing_co_get_attributes_allowed` | OPA enforcing mode. A `CryptoOfficer` in realm `kms-opa-test` (the default owner / JWT | 3 |
 | OPA | `opa/mode_enforcing_denied` | OPA enforcing mode; owner (mTLS cert) creates AES key; ungranted user (different cert, no roles) is denied Get. | 3 |
+| OPA | `opa/mode_enforcing_empty_roles_denied` | OPA enforcing mode. A bearer token with an empty `roles` claim (and no domain) | 1 |
+| OPA | `opa/mode_enforcing_native_co_cert_allowed` | OPA enforcing mode. A client authenticated via mTLS (cert CN = <owner.client@acme.com>) | 2 |
+| OPA | `opa/mode_enforcing_unknown_role_denied` | OPA enforcing mode. A bearer token carrying an unrecognised role `Hacker` | 1 |
+| OPA | `opa/mode_enforcing_wrong_domain` | OPA enforcing (dual-gate) mode — multi-tenant isolation. | 3 |
 | OPA | `opa/mode_exclusive_allowed` | OPA exclusive mode; JWT with CryptoOfficer role from auth server; Create then Get allowed by is_owner=true. | 3 |
 | OPA | `opa/mode_exclusive_auditor_destroy_denied` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
 | OPA | `opa/mode_exclusive_auditor_get_attributes_allowed` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
+| OPA | `opa/mode_exclusive_auditor_wrong_domain` | OPA exclusive mode — multi-tenant isolation. | 3 |
 | OPA | `opa/mode_exclusive_denied` | OPA exclusive mode; owner (mTLS cert) creates AES key; ungranted user (different cert, no roles) is denied Get. | 3 |
 | OPA | `opa/mode_exclusive_domain_admin_wrong_domain` | OPA exclusive mode. The CryptoOfficer from realm `kms-opa-test` (default JWT client, | 3 |
+| OPA | `opa/mode_exclusive_native_co_cert_denied` | OPA exclusive mode. A client authenticated via mTLS (cert CN = <owner.client@acme.com>) | 1 |
+| OPA | `opa/mode_exclusive_other_domain_allowed` | OPA exclusive mode. A CryptoOfficer from realm `kms-opa-other` (domain=kms-opa-other) | 3 |
+| OPA | `opa/mode_exclusive_super_admin_cross_domain` | OPA exclusive mode — SuperAdmin cross-domain positive test. | 3 |
 | OPA | `opa/mode_exclusive_user_role_denied` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
+| OPA | `opa/mode_exclusive_user_wrong_domain` | OPA exclusive mode — multi-tenant isolation. | 3 |
 | OPA | `opa/mode_exclusive_wrong_domain` | OPA exclusive mode. The CryptoOfficer from realm `kms-opa-test` (default JWT client, | 3 |
 | **Negative** | | | |
-| Negative / Activate | `negative/activate/item_not_found` | Activate unknown key ID → ItemNotFound | 1 |
-| Negative / Activate | `negative/activate/wrong_key_lifecycle_state` | Activate already-Active or Deactivated key → WrongKeyLifecycleState | 3 |
-| Negative / AddAttribute | `negative/add_attribute/item_not_found` | AddAttribute on unknown UID → ItemNotFound | 1 |
-| Negative / AddAttribute | `negative/add_attribute/read_only_attribute` | AddAttribute State (read-only) → InvalidField | 2 |
-| Negative / Certify | `negative/certify/item_not_found` | Certify unknown UID → ItemNotFound | 1 |
-| Negative / Certify | `negative/certify/invalid_object_type` | Certify a SymmetricKey (not a cert) → InvalidField | 2 |
-| Negative / Check | `negative/check/item_not_found` | Check unknown UID → ItemNotFound | 1 |
-| Negative / Create | `negative/create/invalid_message` | Create with missing ObjectType → InvalidMessage | 1 |
-| Negative / Create | `negative/create/invalid_attribute` | Create with unknown attribute name → InvalidField | 1 |
-| Negative / Create | `negative/create/invalid_attribute_value` | Create with bad attribute value type → CodecError | 1 |
-| Negative / Create | `negative/create/invalid_field` | Create with unknown field → InvalidField | 1 |
-| Negative / Create | `negative/create/read_only_attribute` | Create with State attribute (read-only) → InvalidField | 2 |
-| Negative / CreateKeyPair | `negative/create_key_pair/invalid_message` | CreateKeyPair with missing field → InvalidMessage | 1 |
-| Negative / CreateKeyPair | `negative/create_key_pair/invalid_attribute` | CreateKeyPair with unknown attribute → InvalidField | 1 |
-| Negative / CreateKeyPair | `negative/create_key_pair/invalid_attribute_value` | CreateKeyPair with bad attribute value → CodecError | 1 |
-| Negative / DeleteAttribute | `negative/delete_attribute/item_not_found` | DeleteAttribute on unknown UID → ItemNotFound | 1 |
-| Negative / Destroy | `negative/destroy/item_not_found` | Destroy unknown UID → ItemNotFound | 1 |
-| Negative / Destroy | `negative/destroy/wrong_key_lifecycle_state` | Destroy Active key → WrongKeyLifecycleState | 3 |
-| Negative / Decrypt | `negative/decrypt/invalid_message` | Decrypt with missing UniqueIdentifier → InvalidMessage | 1 |
-| Negative / Decrypt | `negative/decrypt/wrong_key_lifecycle_state` | Decrypt with Deactivated key → WrongKeyLifecycleState | 2 |
-| Negative / Encrypt | `negative/encrypt/invalid_message` | Encrypt with malformed request → InvalidMessage | 1 |
-| Negative / Encrypt | `negative/encrypt/invalid_field` | Encrypt with unknown field → InvalidField | 3 |
-| Negative / Encrypt | `negative/encrypt/invalid_object_type` | Encrypt with Certificate (not a key) → InvalidField | 3 |
-| Negative / Encrypt | `negative/encrypt/bad_cryptographic_parameters` | Encrypt with unsupported CryptographicParameters → error | 3 |
-| Negative / Encrypt | `negative/encrypt/unsupported_cryptographic_parameters` | Encrypt with unrecognized parameter combination → error | 3 |
-| Negative / Encrypt | `negative/encrypt/incompatible_cryptographic_usage_mask` | Encrypt with key whose usage mask excludes Encrypt → error | 3 |
-| Negative / Encrypt | `negative/encrypt/wrong_key_lifecycle_state` | Encrypt with Deactivated key → WrongKeyLifecycleState | 2 |
-| Negative / Export | `negative/export/item_not_found` | Export unknown UID → ItemNotFound | 1 |
-| Negative / Export | `negative/export/key_format_type_not_supported` | Export with unsupported KeyFormatType → KeyFormatTypeNotSupported | 2 |
-| Negative / Get | `negative/get/item_not_found` | Get unknown UID → ItemNotFound | 1 |
-| Negative / Get | `negative/get/key_format_type_not_supported` | Get with unsupported KeyFormatType → KeyFormatTypeNotSupported | 2 |
-| Negative / GetAttributeList | `negative/get_attribute_list/item_not_found` | GetAttributeList on unknown UID → ItemNotFound | 1 |
-| Negative / GetAttributes | `negative/get_attributes/item_not_found` | GetAttributes on unknown UID → ItemNotFound | 1 |
-| Negative / Import | `negative/import/invalid_message` | Import with malformed KeyMaterial → InvalidMessage | 1 |
-| Negative / MAC | `negative/mac/item_not_found` | MAC with unknown key UID → ItemNotFound | 1 |
-| Negative / MAC | `negative/mac/wrong_key_lifecycle_state` | MAC with Deactivated key → WrongKeyLifecycleState | 2 |
-| Negative / MACVerify | `negative/mac_verify/item_not_found` | MACVerify with unknown key UID → ItemNotFound | 1 |
-| Negative / MACVerify | `negative/mac_verify/wrong_key_lifecycle_state` | MACVerify with Deactivated key → WrongKeyLifecycleState | 2 |
-| Negative / ModifyAttribute | `negative/modify_attribute/item_not_found` | ModifyAttribute on unknown UID → ItemNotFound | 1 |
-| Negative / ModifyAttribute | `negative/modify_attribute/read_only_attribute` | ModifyAttribute State (server-managed) → InvalidField | 2 |
-| Negative / ReCertify | `negative/recertify_missing_uid` | ReCertify without UniqueIdentifier → unsupported operation | 1 |
-| Negative / ReCertify | `negative/recertify_nonexistent` | ReCertify unknown UID → unsupported operation | 1 |
-| Negative / ReCertify | `negative/recertify_not_a_certificate` | ReCertify a SymmetricKey → unsupported operation | 4 |
-| Negative / Register | `negative/register/invalid_message` | Register with malformed payload → InvalidMessage | 1 |
-| Negative / Register | `negative/register/invalid_attribute` | Register with unknown attribute → InvalidField | 1 |
-| Negative / Register | `negative/register/invalid_attribute_value` | Register with bad attribute value → CodecError | 1 |
-| Negative / Revoke | `negative/revoke/item_not_found` | Revoke unknown UID → ItemNotFound | 1 |
-| Negative / SetAttribute | `negative/set_attribute/item_not_found` | SetAttribute on unknown UID → ItemNotFound | 1 |
-| Negative / SetAttribute | `negative/set_attribute/read_only_attribute` | SetAttribute State (server-managed) → InvalidField | 2 |
-| Negative / Sign | `negative/sign/item_not_found` | Sign with unknown key UID → ItemNotFound | 1 |
-| Negative / Sign | `negative/sign/invalid_message` | Sign with malformed request → InvalidMessage | 1 |
-| Negative / Sign | `negative/sign/wrong_key_lifecycle_state` | Sign with Deactivated key → WrongKeyLifecycleState | 2 |
-| Negative / SignatureVerify | `negative/signature_verify/item_not_found` | SignatureVerify with unknown key UID → ItemNotFound | 1 |
-| Negative / SignatureVerify | `negative/signature_verify/wrong_key_lifecycle_state` | SignatureVerify with Deactivated key → WrongKeyLifecycleState | 2 |
-| Negative / Validate | `negative/validate/item_not_found` | Validate with unknown cert UID → ItemNotFound | 1 |
-| Negative / Lifecycle | `negative/lifecycle/create_hsm_key_without_hsm` | Create HSM key when no HSM configured → error | 1 |
-| Negative / Lifecycle | `negative/lifecycle/reactivate_deactivated` | Activate a Deactivated key → WrongKeyLifecycleState | 4 |
 | Negative / Activate | `negative/activate/item_not_found` | Tests that Activate returns Item_Not_Found error as per KMIP spec | 1 |
 | Negative / Activate | `negative/activate/wrong_key_lifecycle_state` | Tests that Activate returns Wrong_Key_Lifecycle_State error as per KMIP spec | 3 |
 | Negative / AddAttribute | `negative/add_attribute/item_not_found` | Tests that Add Attribute returns Item_Not_Found error as per KMIP spec | 1 |

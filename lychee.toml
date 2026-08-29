@@ -69,6 +69,8 @@ exclude = [
   'cosmian\.com',
   'package\.cosmian\.com',
   'www\.mysql\.com',
+  # Percona docs refuses connections from automated link checkers
+  'docs\.percona\.com',
   'crates\.io',
   'support\.google\.com',
   'admin\.google\.com',
