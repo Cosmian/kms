@@ -964,6 +964,14 @@ impl ObjectsStore for RedisWithFindex {
                     return false;
                 }
                 if let Some(attrs) = researched_attributes {
+                    // Filter by object_type if specified.
+                    if let Some(required_type) = attrs.object_type {
+                        if obj.object_type != required_type {
+                            return false;
+                        }
+                    }
+
+                    // Filter by tags if specified.
                     let tags = attrs.get_tags(vendor_id);
                     if !tags.is_empty() {
                         let obj_tags = obj
@@ -973,6 +981,31 @@ impl ObjectsStore for RedisWithFindex {
                             .unwrap_or_default();
                         if !tags.iter().all(|t| obj_tags.contains(t)) {
                             return false;
+                        }
+                    }
+
+                    // Filter by link attributes if specified — each required link must
+                    // appear in the object's own link list (matched by type and identifier).
+                    // Use the dedicated `attributes` field (covers Certificate objects
+                    // which have no key block and would return an error from
+                    // `obj.object.attributes()`).
+                    if let Some(required_links) = &attrs.link {
+                        if !required_links.is_empty() {
+                            let obj_links = obj
+                                .attributes
+                                .as_ref()
+                                .and_then(|a| a.link.as_deref())
+                                .unwrap_or(&[]);
+                            for req in required_links {
+                                let found = obj_links.iter().any(|l| {
+                                    l.link_type == req.link_type
+                                        && l.linked_object_identifier
+                                            == req.linked_object_identifier
+                                });
+                                if !found {
+                                    return false;
+                                }
+                            }
                         }
                     }
                 }
