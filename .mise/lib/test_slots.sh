@@ -42,7 +42,7 @@
 #     KMS_SLOT_ORACLE_PORT, KMS_SLOT_EDB_PORT
 #     KMS_SLOT_IRIS_WEB_PORT, KMS_SLOT_IRIS_SUPER_PORT
 #     KMS_SLOT_ES_PORT
-#     KMS_SLOT_RSYSLOG_TCP_PORT, KMS_SLOT_VICTORIA_PORT, KMS_SLOT_GRAFANA_PORT
+#     KMS_SLOT_RSYSLOG_TCP_PORT
 #
 #   Computed database URLs:
 #     KMS_POSTGRES_URL, KMS_MYSQL_URL, KMS_MARIADB_URL
@@ -105,8 +105,6 @@ readonly _BASE_IRIS_WEB_PORT=52773
 readonly _BASE_IRIS_SUPER_PORT=1972
 readonly _BASE_ES_PORT=9200
 readonly _BASE_RSYSLOG_TCP_PORT=51514
-readonly _BASE_VICTORIA_PORT=8428
-readonly _BASE_GRAFANA_PORT=3000
 
 # ── slot_init ─────────────────────────────────────────────────────────────────
 # Compute and export all slot-aware variables.
@@ -165,8 +163,6 @@ slot_init() {
   export KMS_SLOT_IRIS_SUPER_PORT=$((_BASE_IRIS_SUPER_PORT + offset))
   export KMS_SLOT_ES_PORT=$((_BASE_ES_PORT + offset))
   export KMS_SLOT_RSYSLOG_TCP_PORT=$((_BASE_RSYSLOG_TCP_PORT + offset))
-  export KMS_SLOT_VICTORIA_PORT=$((_BASE_VICTORIA_PORT + offset))
-  export KMS_SLOT_GRAFANA_PORT=$((_BASE_GRAFANA_PORT + offset))
 
   # ── Computed database URLs (consumed by Rust tests and MISE tasks) ────────
   export KMS_POSTGRES_URL="postgresql://kms:kms@127.0.0.1:${KMS_SLOT_POSTGRES_PORT}/kms"
