@@ -43,6 +43,7 @@ jobs:
           - spire
           - kmip-go
           - cef
+          - monitoring
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -85,6 +86,10 @@ jobs:
             features: fips
           - type: cef
             features: fips
+          # monitoring tests work with both variants, but run non-fips only to avoid
+          # duplicating Docker-heavy test time (OTel + VictoriaMetrics + Grafana).
+          - type: monitoring
+            features: fips
         include:
           # Docker services required per test type (types without an entry need no containers)
           - type: psql
@@ -99,6 +104,8 @@ jobs:
             docker: redis
           - type: otel
             docker: otel-collector jaeger
+          # monitoring test starts OTel collector, VictoriaMetrics, Grafana via docker run;
+          # no pre-started compose service needed.
 
     steps:
       - uses: actions/checkout@v7

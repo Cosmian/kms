@@ -1,15 +1,11 @@
-# Telemetry & Observability
+# Log output
 
-By default, the Eviden KMS server outputs logs to the console with a log level of `INFO`.
-Beyond console logging, the server supports OpenTelemetry (OTLP) export, which unlocks a full
-observability stack: distributed traces, RED metrics, and long-term dashboards via Grafana.
+The Eviden KMS server outputs logs to the console by default at `INFO` level.
 
-## Log call-site directory
-
-For a full listing of every log call-site across all components — grouped by domain
-(KMS server, CLI, PKCS#11 provider, CNG module), with per-level counts and the
-`RUST_LOG` filter name for each crate — see the
-[Log Call-Site Directory](./log-reference.md).
+> **For OTLP metrics & traces**: see [Metrics & Traces (OTLP)](./otlp-telemetry.md).
+> **For the monitoring stack** (Grafana, VictoriaMetrics, OTel Collector): see [Monitoring stack setup](./monitoring-setup.md).
+> **For audit logging** (compliance, SIEM): see [Audit logging](./audit-logs.md).
+> **For every log call-site across all components**: see [Log call-site reference](./log-reference.md).
 
 ---
 
@@ -78,7 +74,7 @@ configuration wizard), the recommended platform-specific defaults are:
 | Platform | Default directory                                        |
 | -------- | ------------------------------------------------------- |
 | Linux    | `/var/log/`                                             |
-| Windows  | `C:\Users\<username>\AppData\Local\Eviden KMS Server` |
+| Windows  | `C:\\Users\\<username>\\AppData\\Local\\Eviden KMS Server` |
 | macOS    | `~/Library/Logs/`                                       |
 
 > **Warning (Windows):** The server does **not** expand Windows environment variables
@@ -86,14 +82,14 @@ configuration wizard), the recommended platform-specific defaults are:
 > in `kms.toml`, you must use the fully-expanded path, for example:
 >
 > ```toml
-> rolling_log_dir = "C:\\Users\\<username>\\AppData\\Local\\Eviden KMS Server"
+> rolling_log_dir = "C:\\\\Users\\\\<username>\\\\AppData\\\\Local\\\\Eviden KMS Server"
 > ```
 >
 > When `rolling_log_dir` is not set, the server resolves the `LOCALAPPDATA`
 > environment variable at runtime and defaults to
-> `C:\Users\<username>\AppData\Local\Eviden KMS Server`.
+> `C:\\Users\\<username>\\AppData\\Local\\Eviden KMS Server`.
 > When running as a Windows service under LocalSystem, the variable may not be set;
-> the server then falls back to `C:\ProgramData\Eviden KMS Server`.
+> the server then falls back to `C:\\ProgramData\\Eviden KMS Server`.
 >
 > **Note (macOS):** The server defaults to `~/Library/Logs/` which is the standard
 > per-user log directory on macOS and is writable without root. If you run the server
@@ -111,182 +107,3 @@ The directory and file name can be overridden via:
   file (`[logging]` section),
 - the `--rolling-log-dir` / `--rolling-log-name` command line arguments,
 - the `KMS_ROLLING_LOG_DIR` / `KMS_ROLLING_LOG_NAME` environment variables.
-
----
-
-## OTLP telemetry
-
-The KMS server can export traces and metering events to any
-[OpenTelemetry](https://opentelemetry.io/) collector that supports the OTLP protocol.
-
-To enable OTLP export, set one of:
-
-- the `otlp` parameter in the TOML configuration file in the `[logging]` section,
-- the `--otlp` command line argument,
-- the `KMS_OTLP_URL` environment variable.
-
-```bash
-KMS_OTLP_URL="http://localhost:4317"
-```
-
-### What the traces contain
-
-Traces produced by the KMS include:
-
-- The start configuration of the KMS server
-- KMIP requests (content adjusted by the log level)
-- Access rights management requests
-- Metering events (when `--enable-metering` is active)
-
-### Enabling metering
-
-Metering events are emitted as OTLP spans and converted to Prometheus metrics downstream.
-Enable the feature with:
-
-- the `--enable-metering` command line argument,
-- or the equivalent TOML key in the `[logging]` section.
-
-For the full list of emitted metrics, their types, and label sets, see the
-[Metrics reference](./otlp-metrics.md).
-
----
-
-## Observability stack (OTel Collector + VictoriaMetrics + Grafana)
-
-For production-grade observability, a pre-configured Docker Compose stack is provided.
-It replaces the Jaeger quick-test setup with a persistent metrics pipeline and Grafana dashboards.
-
-[Full tutorial available here](./monitoring-setup.md)
-
-### Architecture
-
-```text
-KMS ──OTLP gRPC──► OTel Collector ──remote_write──► VictoriaMetrics ◄── Grafana
-                        │
-                        └──prometheus scrape :8888──► VictoriaMetrics
-```
-
-| Component           | Role                                                                                                 |
-| ------------------- | ---------------------------------------------------------------------------------------------------- |
-| **OTel Collector**  | Receives OTLP, enriches with metadata, generates RED metrics from traces, exports to VictoriaMetrics |
-| **VictoriaMetrics** | Long-term metrics storage (configurable retention)                                                   |
-| **Grafana**         | Dashboard UI — queries VictoriaMetrics via PromQL                                                    |
-
-### Quick start
-
-The stack is configured via a single `.env` file. Two deployment modes are available:
-
-**Mode `kms-local` — KMS container included in the stack:**
-
-```bash
-# .env
-COMPOSE_PROFILES=kms-local
-KMS_MODE=local
-
-# Generate a demo TLS certificate (RSA 4096, self-signed, 10 years)
-bash generate-demo-cert.sh
-
-# Start everything
-docker compose up -d
-```
-
-**Mode `external` — existing KMS, stack only:**
-
-```bash
-# .env
-COMPOSE_PROFILES=
-KMS_MODE=external
-
-docker compose up -d
-```
-
-In external mode, configure your KMS to send OTLP data to the collector:
-
-```bash
-# gRPC (recommended)
-KMS_OTLP_URL=http://<collector-host>:4317
-
-# or HTTP
-KMS_OTLP_URL=http://<collector-host>:4318
-```
-
-### `.env` reference
-
-| Variable                   | Default             | Description                                                       |
-| -------------------------- | ------------------- | ----------------------------------------------------------------- |
-| `COMPOSE_PROFILES`         | `kms-local`         | `kms-local` to include the KMS container, empty for external mode |
-| `KMS_MODE`                 | `local`             | `local` or `external` — propagated as label in all metrics/traces |
-| `KMS_CLUSTER`              | `cosmian-kms-local` | Logical cluster name — `kms.cluster` label in dashboards          |
-| `KMS_VERSION`              | `latest`            | Docker image tag for the KMS                                      |
-| `ENVIRONMENT`              | `production`        | Deployment environment (`production`, `staging`, …)               |
-| `GRAFANA_ADMIN_PASSWORD`   | `password`          | Grafana `admin` user password                                     |
-| `METRICS_RETENTION_MONTHS` | `12`                | VictoriaMetrics retention period (months)                         |
-
-### OTel Collector pipeline
-
-The collector enriches every span and metric with the following resource attributes:
-
-| Attribute                | Source                           |
-| ------------------------ | -------------------------------- |
-| `deployment.environment` | `ENVIRONMENT` from `.env`        |
-| `service.name`           | hardcoded `cosmian-kms`          |
-| `service.version`        | `KMS_VERSION` from `.env`        |
-| `kms.mode`               | `KMS_MODE` from `.env`           |
-| `kms.cluster`            | `KMS_CLUSTER` from `.env`        |
-| `kms.node`               | `host.name` of the KMS container |
-
-**RED metrics from traces** are automatically generated by the `spanmetrics` connector with the
-following latency buckets: `10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s, 30s`.
-
-### Exposed ports
-
-| Service         | Port    | Protocol | Usage                                |
-| --------------- | ------- | -------- | ------------------------------------ |
-| KMS             | `9998`  | HTTPS    | KMS API (local mode only)            |
-| OTel Collector  | `4317`  | gRPC     | OTLP traces & metrics ingestion      |
-| OTel Collector  | `4318`  | HTTP     | OTLP traces & metrics ingestion      |
-| OTel Collector  | `8888`  | HTTP     | Collector self-metrics (Prometheus)  |
-| OTel Collector  | `13133` | HTTP     | Health check                         |
-| VictoriaMetrics | `8428`  | HTTP     | PromQL API + `remote_write` endpoint |
-| Grafana         | `3000`  | HTTP     | Dashboard UI                         |
-
-Access Grafana at [http://localhost:3000](http://localhost:3000) with user `admin`.
-
----
-
-## Quick test with Jaeger
-
-To quickly validate that OTLP export works without the full stack:
-
-=== "Docker"
-
-```bash
-docker run -p 16686:16686 -p 4317:4317 \
-  -e COLLECTOR_OTLP_ENABLED=true \
-  jaegertracing/all-in-one:latest
-```
-
-=== "kms.toml"
-
-```toml
-[logging]
-otlp = "http://localhost:4317"
-quiet = true
-```
-
-Then start the KMS locally:
-
-```bash
-./cosmian_kms_server --otlp http://localhost:4317 --quiet
-```
-
-Open [http://localhost:16686](http://localhost:16686) to browse traces in the Jaeger UI.
-
-> For production use, replace Jaeger with the full OTel Collector + VictoriaMetrics + Grafana
-> stack described above.
-
----
-
-## Structured audit log
-
-For tamper-evident, compliance-grade event recording, see [Audit logs](./audit-logs.md).
