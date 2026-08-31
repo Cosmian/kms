@@ -1,7 +1,7 @@
 # Monitoring Stack — Setup Guide
 
 > This guide walks you through deploying the KMS observability stack step by step.
-> For a full reference of OTLP options and metrics, see → [Metrics & Traces (OTLP)](./otlp-telemetry.md)
+> For a full reference of OTLP options and pipeline internals, see → [KMS Telemetry](./logging.md)
 
 ---
 
@@ -13,28 +13,6 @@
 4. [External mode — existing KMS](#external-mode--existing-kms)
 5. [Explore Grafana](#explore-grafana)
 6. [Troubleshooting](#troubleshooting)
-
----
-
-## Architecture overview
-
-```mermaid
-sequenceDiagram
-    participant KMS as KMS Server
-    participant OTel as OTel Collector
-    participant VM as VictoriaMetrics
-    participant Grafana as Grafana
-
-    KMS->>OTel: gRPC OTLP metrics (port 4317)
-    Note over KMS,OTel: kms_* metric families pushed continuously
-    OTel->>VM: remote_write (Prometheus protocol, every 10s)
-    Grafana->>VM: PromQL queries (port 8428)
-    VM-->>Grafana: metric series
-    Note over KMS,OTel: KMS also exposes a Prometheus /metrics endpoint
-```
-
-The collector bridges KMS OTLP push to VictoriaMetrics remote-write. Grafana
-queries VictoriaMetrics directly — it never contacts the KMS server.
 
 ---
 
@@ -100,7 +78,7 @@ Before getting started, make sure the following tools are installed on your mach
   KMS_OTLP_URL=http://<collector-host>:4318
   ```
 
-  See → [Metrics & Traces (OTLP) — configuration](./otlp-telemetry.md)
+  See → [KMS Telemetry — OTLP configuration](./logging.md#otlp-telemetry)
 
 ### Ports availability
 
@@ -400,4 +378,4 @@ Then either stop the conflicting process or edit the port mapping in `docker-com
 ---
 
 > For a complete reference of all OTLP options, log levels, and pipeline internals,
-> see → [Metrics & Traces (OTLP)](./otlp-telemetry.md)
+> see → [KMS Telemetry](./logging.md)

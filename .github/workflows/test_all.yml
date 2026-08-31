@@ -45,7 +45,6 @@ jobs:
           - cef
           - siem
           - audit
-          - monitoring
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -95,10 +94,6 @@ jobs:
           # audit integration tests require non-fips (audit middleware + CEF features)
           - type: audit
             features: fips
-          # monitoring tests work with both variants, but run non-fips only to avoid
-          # duplicating Docker-heavy test time (OTel + VictoriaMetrics + Grafana).
-          - type: monitoring
-            features: fips
         include:
           # Docker services required per test type (types without an entry need no containers)
           - type: psql
@@ -117,8 +112,6 @@ jobs:
           # use docker run internally and do not need a pre-started compose service.
           - type: siem
             docker: elasticsearch
-          # monitoring test starts OTel collector, VictoriaMetrics, Grafana via docker run;
-          # no pre-started compose service needed.
           # audit test has no external Docker dependencies (uses KMS binary directly).
 
     steps:
