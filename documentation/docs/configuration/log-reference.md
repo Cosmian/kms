@@ -517,7 +517,6 @@ Crate path: `crate/server`
 | `trace` | `Request Message: {request_message}` | `src/routes/kmip/handlers.rs` | `request_message` | — |
 | `trace` | `Response Message: {response_message}` | `src/routes/kmip/handlers.rs` | `response_message` | — |
 | `trace` | `retrieved object uid={} type={:?} state={:?} key_fmt={:?}` | `src/core/operations/export_get.rs` | — | — |
-| `trace` | `uid_or_tags: {uid_or_tags:?}, user: {user},          operation_type: {operation_type:?}` | `src/core/retrieve_object_utils.rs` | `uid_or_tags`, `user`, `operation_type` | — |
 | `error` | `Failed to convert Response TTLV to bytes: {}: TTLV:\n{:#?}` | `src/routes/kmip/handlers.rs` | — | — |
 | `warn` | `Failed to process request:\n{response_message}` | `src/routes/kmip/handlers.rs` | `response_message` | — |
 | `info` | `\n{:?}` | `src/routes/kmip/handlers.rs` | — | — |
@@ -615,8 +614,6 @@ Crate path: `crate/server`
 | `warn` | `JOSE CEK cache: failed to construct KMIP SymmetricKey: {e}` | `src/routes/jose/cek_cache.rs` | `e` | - |
 | `warn` | `JOSE CEK cache: unexpected CEK length {other} bytes — not an AES-128/192/256 key` | `src/routes/jose/cek_cache.rs` | `other` | - |
 | `warn` | `JOSE CEK cache: unexpected object type for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
-| `info` | `http_workers not configured; defaulting to total core count ({total})` | `src/start_kms_server.rs` | `total` | - |
-| `info` | `KMS HTTP server configured with {http_workers} worker thread(s)` | `src/start_kms_server.rs` | `http_workers` | - |
 | `debug` | `JOSE CEK cache hit for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `JOSE CEK cached for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `TLS: an authenticated user was already present; skipping certificate check` | `src/middlewares/tls_auth.rs` | - | - |
@@ -681,9 +678,6 @@ Crate path: `crate/server`
 | `warn` | `` `privileged_users` is deprecated; please migrate to                              `[roles] crypto_officer_users` in kms.toml `` | `src/config/params/server_params.rs` | - | - |
 | `warn` | `ceremony check DB error for user {user}: {e};                      falling back to Operator role` | `src/core/operations/dispatch.rs` | `user`, `e` | - |
 | `warn` | `ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment                              variable is used in production to avoid persisting the secret to disk.                              If loaded from a config file, ensure it has restrictive permissions                              (0600) and is not committed to version control.` | `src/config/params/server_params.rs` | - | - |
-| `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip/handlers.rs` | - | - |
-| `debug` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip/handlers.rs` | - | - |
-| `debug` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip/handlers.rs` | - | - |
 | `warn` | `CreateSplitKey: partial failure — {} share(s) already stored                          but remaining shares could not be created. Manual cleanup required.` | `src/core/operations/create_split_key.rs` | - | - |
 | `trace` | `CreateSplitKey: overriding total_parts from {total_parts} to {n_co_i32}                  (matches crypto_officer_users count)` | `src/core/operations/create_split_key.rs` | `total_parts`, `n_co_i32` | - |
 | `warn` | `CreateSplitKey: ceremony source key could not be destroyed after split                      — key material may still be accessible. Manual destruction required.` | `src/core/operations/create_split_key.rs` | - | - |
@@ -711,9 +705,8 @@ Crate path: `crate/server`
 | `error` | `AuditFileStore: writer task has stopped, audit event dropped` | `src/core/audit/file_store.rs` | - | Channel closed; `enqueue` silently drops the event |
 | `debug` | `AuditFileStore: resuming at id={next_id}, prev_hash={}` | `src/core/audit/file_store.rs` | `next_id`, `prev_hash` | `prev_hash` is truncated to its first 8 bytes (hex) |
 | `debug` | `AuditFileStore: writer loop exited (channel closed)` | `src/core/audit/file_store.rs` | - | Graceful shutdown complete |
-| `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
-| `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
-| `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
+| `error` | `audit: event not queued — rejecting response (reject mode)` | `src/middlewares/audit.rs` | - | - |
+| `error` | `audit: event(s) not queued — rejecting response (reject mode)` | `src/middlewares/audit.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
