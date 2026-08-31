@@ -32,10 +32,9 @@ impl<T> Stack<T>
 where
     T: Debug,
 {
-    pub(crate) fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
-            // Pre-allocate for typical KMIP message nesting depth (avoids reallocations)
-            elements: Vec::with_capacity(8),
+            elements: Vec::new(),
         }
     }
 
@@ -69,7 +68,7 @@ pub struct TtlvSerializer {
 
 impl TtlvSerializer {
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             stack: Stack::new(),
             byte_accumulator: None,
