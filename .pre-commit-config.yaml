@@ -583,6 +583,7 @@ repos:
     hooks:
       - id: lychee
         args: [--config, lychee.toml, 'documentation/docs/**/*.md']
+        pass_filenames: false
 
   # ═══════════════════════════════════════════════════════════════════════
   # 7. Nightly / manual cleanup (Rust)
