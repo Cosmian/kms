@@ -806,7 +806,9 @@ mod tests {
         provider.force_flush().expect("flush");
         let mut labels = user_labels(&exporter, "kms.kmip.operations.per_user.total");
         labels.sort();
-        assert_eq!(labels, vec!["alice".to_owned(), "bob".to_owned()]);
+        let mut expected = vec![OtelMetrics::hash_user("alice"), OtelMetrics::hash_user("bob")];
+        expected.sort();
+        assert_eq!(labels, expected);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
