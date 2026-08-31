@@ -247,7 +247,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 - **Unsafe code**: every `unsafe` block requires a `// SAFETY:` comment explaining the invariant that makes it sound.
 - **Clippy**: zero warnings (`cargo clippy-all`). Decision tree for `#[allow(clippy::...)]`: (1) fix it; (2) if unfixable, add an inline comment explaining why; (3) if undecided, report the exact warning to the user.
 - **Tests**: unit tests go in a `#[cfg(test)]` submodule in the same file.
-- **Public API**: all public items require `///` doc comments.
+- **Public API**: all public items that are not trivial require `///` doc comments that explay _why_, _constraints_, _non obvious behaviors_, etc. Comments should not be a paraphrase of the code.
 - **Pre-commit hooks**: must pass before every commit — never use `--no-verify`.
 - **Commit scope**: minimal, focused changes — don't refactor surrounding code alongside a bug fix.
 - **Live DB tests**: `docker compose up -d <service>` before running tests that need a backend (postgres :5432, mysql :3306, redis :6379, etc.).
@@ -496,8 +496,8 @@ RUST_LOG="cosmian_kms_server=trace,cosmian_kms_server_database=trace" \
 Add the failing crate to `RUST_LOG` if the problem originates elsewhere.
 
 - **During debugging**: whenever you add temporary code (a log, a hardcoded value, a
-relaxed auth/CORS/TLS config, a test-only endpoint), mark it immediately with a comment:
-`// TODO: debug — remove before shipping`. This makes residue findable at a glance.
+  relaxed auth/CORS/TLS config, a test-only endpoint), mark it immediately with a comment:
+  `// TODO: debug — remove before shipping`. This makes residue findable at a glance.
 - When working on some feature, run the tests that actually use that feature or (if no direct test) are the most related - Do not run the full test suite to check if a certain new addition is correct.
 
 ### 8.5 GitHub CLI usage

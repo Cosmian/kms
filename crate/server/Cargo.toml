@@ -79,12 +79,14 @@ crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.26.0" }
 dashmap = { workspace = true }
 dialoguer = { workspace = true }
 dotenvy = { workspace = true }
+fs4 = "0.13"
 futures = { workspace = true }
 governor = { version = "0.10", features = ["std"] }
 rand = { workspace = true }
 rand_chacha = "0.10"
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
+ipnet = { version = "2", features = ["serde"] }
 jsonwebtoken = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",

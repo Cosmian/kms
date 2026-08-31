@@ -1,3 +1,4 @@
+pub(crate) mod audit;
 pub(crate) mod certificate;
 #[cfg(feature = "non-fips")]
 pub(crate) mod cover_crypt;

@@ -5,12 +5,13 @@ use cosmian_kms_server_database::{
     CeremonyKeys, MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
 };
 use cosmian_logger::{debug, warn};
+use ipnet::IpNet;
 
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig,
-        JwksEndpointConfig, OidcConfig,
+        AuditFailureMode, AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig,
+        IdpConfig, JwksEndpointConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -250,6 +251,28 @@ pub struct ServerParams {
     /// When set, the KMS validates bearer tokens issued by the Auth Verifier server.
     /// The `sub` claim is used as the user identity.
     pub auth_verifier_config: Option<AuthVerifierConfig>,
+
+    /// When `Some`, tamper-evident JSONL audit logging is enabled and events
+    /// are appended to the file at this path.  `None` means audit logging is
+    /// disabled (the default).
+    pub audit_file_path: Option<std::path::PathBuf>,
+
+    /// Capacity of the bounded in-memory channel between request threads and the
+    /// audit writer task.  Propagated from `--audit-channel-capacity` /
+    /// `KMS_AUDIT_CHANNEL_CAPACITY`.  Must be ≥ 1.
+    pub audit_channel_capacity: usize,
+
+    /// When `Some`, the audit writer stops writing once the file reaches this many
+    /// bytes (see `AuditFileConfig::audit_file_max_size_bytes`). `None` (the default)
+    /// is unlimited. Must be > 0 when set.
+    pub audit_file_max_size_bytes: Option<u64>,
+
+    /// Trusted reverse-proxy CIDR blocks.  `X-Forwarded-For` is only used when
+    /// the direct TCP peer address falls within one of these ranges.
+    pub audit_trusted_proxy_cidrs: Vec<IpNet>,
+
+    /// What to do when an audit event cannot be queued.
+    pub audit_failure_mode: AuditFailureMode,
 }
 
 /// Represents the server parameters.
@@ -567,6 +590,27 @@ impl ServerParams {
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
             auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
+            audit_file_path: if conf.audit.audit_enable {
+                let path = conf
+                    .audit
+                    .file
+                    .audit_file_path
+                    .unwrap_or_else(|| conf.workspace.root_data_path.join("audit.jsonl"));
+                Some(path)
+            } else {
+                None
+            },
+            audit_channel_capacity: conf.audit.audit_channel_capacity,
+            audit_file_max_size_bytes: match conf.audit.file.audit_file_max_size_bytes {
+                Some(0) => {
+                    return Err(KmsError::NotSupported(
+                        "audit_file_max_size_bytes must be greater than 0 when set".to_owned(),
+                    ));
+                }
+                other => other,
+            },
+            audit_trusted_proxy_cidrs: conf.audit.audit_trusted_proxy_cidrs,
+            audit_failure_mode: conf.audit.audit_failure_mode,
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a
@@ -954,6 +998,11 @@ impl fmt::Debug for ServerParams {
                 &self.jwks_endpoint.jwks_endpoint_enabled,
             );
         }
+        debug_struct.field("audit_file_path", &self.audit_file_path);
+        debug_struct.field("audit_channel_capacity", &self.audit_channel_capacity);
+        debug_struct.field("audit_file_max_size_bytes", &self.audit_file_max_size_bytes);
+        debug_struct.field("audit_trusted_proxy_cidrs", &self.audit_trusted_proxy_cidrs);
+        debug_struct.field("audit_failure_mode", &self.audit_failure_mode);
 
         // Vault API fields
         debug_struct.field("vault_api_enabled", &self.vault_api_enabled);
@@ -990,5 +1039,42 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("ceremony_key_id", &self.ceremony_key_id);
 
         debug_struct.finish()
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::ServerParams;
+    use crate::tests::test_utils::https_clap_config;
+
+    /// `max_size_bytes = 0` is a configuration mistake (it would mean either
+    /// "unlimited" or "block everything", ambiguously), so it must be rejected
+    /// at config/parameter construction time rather than silently accepted.
+    #[test]
+    fn audit_file_max_size_bytes_zero_is_rejected() {
+        let mut conf = https_clap_config();
+        conf.audit.file.audit_file_max_size_bytes = Some(0);
+
+        let err = ServerParams::try_from(conf).expect_err("max_size_bytes = 0 must be rejected");
+        assert!(
+            err.to_string()
+                .contains("audit_file_max_size_bytes must be greater than 0"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    /// `None` (unset) and any positive value must both build successfully.
+    #[test]
+    fn audit_file_max_size_bytes_none_or_positive_is_accepted() {
+        let mut conf = https_clap_config();
+        conf.audit.file.audit_file_max_size_bytes = None;
+        let params = ServerParams::try_from(conf).expect("None must be accepted");
+        assert_eq!(params.audit_file_max_size_bytes, None);
+
+        let mut conf = https_clap_config();
+        conf.audit.file.audit_file_max_size_bytes = Some(1_073_741_824);
+        let params = ServerParams::try_from(conf).expect("a positive value must be accepted");
+        assert_eq!(params.audit_file_max_size_bytes, Some(1_073_741_824));
     }
 }

@@ -339,6 +339,7 @@ mod tests {
 
     /// Error message quality: rejection must mention "not permitted".
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn rejection_error_message_quality() {
         let result = check_alg(Algorithm::HS256);
         assert!(result.is_err());

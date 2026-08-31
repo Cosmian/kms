@@ -22,4 +22,11 @@ doctest = false
 
 [dependencies]
 cosmian_kmip = { path = "../kmip", version = "5.26.0", default-features = true }
+hex = { workspace = true, features = ["serde"] }
 serde = { workspace = true }
+sha2 = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
+time = { workspace = true, features = ["serde-human-readable"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -372,10 +372,7 @@ mod tests {
             privileged_users: None,
             roles: RolesConfig::default(),
             print_default_config: false,
-            secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
-            auto_rotation_check_interval_secs: 0,
-            keyset_warn_depth: 5,
-            vault: cosmian_kms_server::config::VaultConfig::default(),
+            ..ClapConfig::default()
         };
 
         let toml_string = r#"
@@ -490,6 +487,14 @@ vault_transit_mount = ""
 vault_pki_mount = ""
 vault_pki_ca_key_label = ""
 vault_token_cache_ttl_secs = 0
+
+[audit]
+enabled = false
+channel_capacity = 0
+trusted_proxy_cidrs = []
+failure_mode = "continue"
+
+[audit.file]
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

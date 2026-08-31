@@ -56,8 +56,8 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache, UserId,
-        api_token_middleware, ensure_auth_middleware, extract_peer_certificate,
+        AuditMiddleware, AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache,
+        UserId, api_token_middleware, ensure_auth_middleware, extract_peer_certificate,
         jwt_auth_middleware, otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
         vault_token_optional_middleware,
     },
@@ -1632,6 +1632,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     vault_http_client.clone(),
                     spire_default_username.clone(),
                 ),
+            ))
+            // Tamper-evident audit logging: wraps every auth method above so both
+            // successful and failed authentication attempts are recorded (LIFO wrap order).
+            .wrap(AuditMiddleware::new(
+                kms_server_for_http.audit_store.clone(),
+                kms_server_for_http.params.audit_trusted_proxy_cidrs.clone(),
+                kms_server_for_http.params.audit_failure_mode.clone(),
             ))
             // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
             // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via
