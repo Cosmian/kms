@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-#MISE description="Run CEF v27 format validation test (ADR-005)"
+#MISE description="Run CEF v27 format validation test"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="Feature variant (must be non-fips)" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
-# Proves ADR-005: CEF v27 format, extension keys, 1:1 mapping, outcome coverage.
+# Proves CEF v27 format, extension keys, 1:1 mapping, outcome coverage.
 # Requires non-fips: CEF export is only available in non-fips builds.
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"

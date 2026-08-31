@@ -3,7 +3,7 @@
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="Feature variant (must be non-fips)" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
-# Proves ADR-005 CEF format via UDP syslog transport.
+# Proves CEF format compliance via UDP syslog transport.
 # Requires non-fips: CEF export is only available in non-fips builds.
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
