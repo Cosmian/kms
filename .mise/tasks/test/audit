@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-#MISE description="Run audit log integration test (ADR-003/004: JSONL, hash chain, fields)"
+#MISE description="Run audit log integration test (JSONL, hash chain, fields)"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="Feature variant (must be non-fips)" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
-# Proves ADR-003 (tamper-evident JSONL single-writer) + ADR-004 (HTTP audit middleware).
+# Proves tamper-evident JSONL single-writer log + HTTP audit middleware capture.
 # Requires non-fips: audit middleware and CEF features are only in non-fips builds.
 # No Nix shell needed. Uses Cargo to build KMS binary.
 set -euo pipefail
@@ -20,7 +20,7 @@ kms_init_env "${VARIANT}" "static"
 setup_test_logging
 
 print_header "Running audit log integration test (${VARIANT_NAME})"
-echo "Purpose: prove ADR-003 (tamper-evident JSONL) + ADR-004 (HTTP audit middleware)"
+echo "Purpose: prove tamper-evident JSONL hash chain + HTTP audit middleware capture"
 
 REPO_ROOT="$(get_repo_root)"
 bash "${REPO_ROOT}/.mise/scripts/test/test_audit_log.sh" --variant "${VARIANT}"

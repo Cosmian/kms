@@ -6,7 +6,7 @@
 #USAGE flag "--suite <suite>" env="SUITE" help="Which CEF sub-test to run" default="all" {
 #USAGE   choices "all" "format" "syslog" "tcp-syslog"
 #USAGE }
-# Proves ADR-005 (CEF v27 format) + ADR-007 (TCP syslog transport).
+# Proves CEF v27 format compliance + TCP syslog transport.
 # Requires non-fips: CEF export is only available in non-fips builds.
 # No Nix shell needed. Uses Docker for syslog receivers and Cargo for KMS.
 set -euo pipefail
@@ -34,7 +34,7 @@ run_sub() {
 }
 
 print_header "Running CEF integration tests — suite='${SUITE}' (${VARIANT_NAME})"
-echo "Purpose: prove ADR-005 (CEF v27 format) + ADR-007 (TCP syslog transport)"
+echo "Purpose: prove CEF v27 format compliance + TCP syslog transport"
 echo ""
 
 case "${SUITE}" in
