@@ -7,8 +7,8 @@ accept = [200, 204, 301, 302]
 # Root directory for resolving relative links
 root_dir = "documentation/docs"
 
-# Exclude SUMMARY.md — it uses mdBook's [Title]() syntax for section headers
-exclude_path = ["documentation/docs/SUMMARY.md"]
+# Exclude SUMMARY.md (mdBook section headers) and .mise/ (shell scripts, not docs)
+exclude_path = ["documentation/docs/SUMMARY.md", ".mise/"]
 
 # Check links to files on disk
 include_verbatim = false
@@ -69,6 +69,7 @@ exclude = [
   'admin\.google\.com',
   'github\.com/sfackler',
   'jwt\.io',
+  'manpages\.ubuntu\.com',
   'webstore\.ansi\.org',
   # ETSI — returns 503 to automated crawlers
   'www\.etsi\.org',
@@ -112,6 +113,9 @@ exclude = [
   'get--export',
   'not-possible',
   'wrapped-by-an-hsm-key',
+
+  # Example/template registries in deny.toml — commented-out placeholder URL
+  'sekretz\.com',
   # Local IP addresses used in test scripts
   '127\.0\.0\.1',
   # cargo-deny registry entries in deny.toml (internal/self-hosted)
