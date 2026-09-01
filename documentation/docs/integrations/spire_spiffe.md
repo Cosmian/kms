@@ -24,11 +24,9 @@ sequenceDiagram
     KMS-->>Admin: 200 OK (key stored, tag: vault_pki_ca)
     Admin->>AuthV: 1a. Admin login (directly)<br/>POST /login?realm=_ (HTTP Basic)
     AuthV-->>Admin: session cookie
-    loop for each identity: "spire-server", "mistral-agents"
-        Admin->>AuthV: 1b. Create AppRole, read role_id, mint secret_id<br/>POST .../role/{name} · GET .../role/{name}/role-id · POST .../role/{name}/secret-id
-        AuthV-->>Admin: role_id + secret_id
-    end
-    Note over Admin,Server: Admin configures SPIRE with spire-server role_id + secret_id
+    Admin->>AuthV: 1b. Create the SPIRE server AppRole, read role_id, mint secret_id<br/>POST .../role/{name} · GET .../role/{name}/role-id · POST .../role/{name}/secret-id
+    AuthV-->>Admin: role_id + secret_id
+    Note over Admin,Server: Admin configures SPIRE with the role_id + secret_id
     Server->>KMS: 2. AppRole login<br/>POST /v1/auth/approle/login<br/>{role_id, secret_id}
     KMS->>AuthV: proxy /v1/auth/* → /auth/*
     AuthV-->>Server: Vault token (hvs.xxxx)
@@ -38,23 +36,17 @@ sequenceDiagram
     Note over Server,Agent: 4. SPIRE Agent attests to SPIRE Server<br/>(join_token in this demo)
     Agent-->>Mistral: 5. Workload API (unix socket)<br/>fetch JWT-SVID
     Mistral->>Mistral: 6. Validate SPIFFE ID,<br/>trust domain, expiry
-    Note over Admin,Mistral: AI agent is provisioned with the "mistral-agents" role_id + secret_id
-    Mistral->>KMS: 7. AppRole login (own credentials)<br/>POST /v1/auth/approle/login<br/>{role_id, secret_id}
-    KMS->>AuthV: proxy /v1/auth/* → /auth/*
-    AuthV-->>Mistral: Vault token (hvs.yyyy)
-    Mistral->>KMS: 8. Transit crypto with own token<br/>POST /v1/transit/keys/{name} · /sign/{name}/{hash}<br/>(X-Vault-Token)
-    Note over KMS: validate X-Vault-Token via AuthV (30 s cache)<br/>owner = "mistral-agents" → keys isolated from other tenants
-    KMS-->>Mistral: transit key / signature
+    Note over Mistral: The workload's identity is its SPIFFE SVID —<br/>it never calls the KMS and holds no AppRole credentials.
 ```
 
-Steps 1–6 establish SPIFFE identity (the SPIRE server chains its CA to the KMS PKI engine,
-and the AI agent workload receives a SPIFFE SVID). Steps 7–8 are where the **`mistral-agents`
-AppRole** (created in 1b) is used: the AI agent authenticates to the KMS's Vault-compatible
-**transit** engine with its *own* AppRole token to create/use keys — which the KMS scopes to
-the `mistral-agents` owner, keeping them isolated from the SPIRE server's (and any other
-tenant's) objects. The two are independent capabilities: SPIFFE identity (5–6) is for the
-agent to authenticate to *other* services, while the transit flow (7–8) is the agent using the
-KMS as its FIPS-backed crypto backend.
+Steps 1–4 are the SPIRE server's Vault-compatible flow: it logs in with its AppRole, then uses
+the KMS PKI engine to sign its intermediate CA and (optionally) the transit engine to store and
+use its own signing keys. Steps 5–6 are the **only** interaction the AI agent workload has with
+SPIRE: it authenticates to the SPIRE Agent through the Workload API and receives a SPIFFE SVID
+(JWT-SVID and/or X.509-SVID), which it uses to authenticate to *other* services. The workload
+never talks to the KMS and holds **no** AppRole credentials — SPIFFE identity (5–6) and the KMS
+AppRole (2–4) are two independent, non-overlapping capabilities: the former for the workload,
+the latter for the SPIRE server.
 
 ## What is it?
 
@@ -143,9 +135,9 @@ different purpose, a different caller, and a different backend implementation.
 
 | Path group | Handled by | Caller | Purpose | Output type |
 |---|---|---|---|---|
-| `/v1/auth/*` | auth-verifier *(proxied)* | SPIRE server, AI agents | AppRole login, token validation, renewal, revocation — all HTTP methods forwarded transparently | Vault token (`hvs.*`) / 204 No Content |
-| `/v1/{mount}/keys/*` | Eviden KMS *(native)* | SPIRE `KeyManager`, AI workloads | Create (`CreateKeyPair`), read (`Find`+`Get`), configure (no-op), list (`Find`), delete (`Revoke`+`Destroy`) asymmetric key pairs; private key `sensitive=true` (non-exportable) | `TransitKeyInfo` (name, type, public key PEM, version map) / 204 No Content |
-| `/v1/{mount}/sign/{name}/{hash_alg}` | Eviden KMS *(native)* | SPIRE `KeyManager`, AI workloads | Server-side signing (`Sign`); private key never leaves the KMS | Signature string (`vault:v1:` prefix + base64) |
+| `/v1/auth/*` | auth-verifier *(proxied)* | SPIRE server | AppRole login, token validation, renewal, revocation — all HTTP methods forwarded transparently | Vault token (`hvs.*`) / 204 No Content |
+| `/v1/{mount}/keys/*` | Eviden KMS *(native)* | SPIRE `KeyManager` | Create (`CreateKeyPair`), read (`Find`+`Get`), configure (no-op), list (`Find`), delete (`Revoke`+`Destroy`) asymmetric key pairs; private key `sensitive=true` (non-exportable) | `TransitKeyInfo` (name, type, public key PEM, version map) / 204 No Content |
+| `/v1/{mount}/sign/{name}/{hash_alg}` | Eviden KMS *(native)* | SPIRE `KeyManager` | Server-side signing (`Sign`); private key never leaves the KMS | Signature string (`vault:v1:` prefix + base64) |
 | `/v1/{mount}/root/sign-intermediate` | Eviden KMS *(native)* | SPIRE `UpstreamAuthority` | Sign a SPIRE intermediate CA CSR with the pre-provisioned Root CA key (`Find`→`Certify`→`Find`+`Get`) — **only** implemented PKI path | `SignIntermediateResult` (signed cert PEM, issuing CA PEM, CA chain PEMs) |
 
 #### `/v1/auth/*` — Authentication proxy
@@ -155,10 +147,10 @@ The KMS never processes credentials itself.
 
 | Method | Path | Caller | Purpose | Output type |
 |---|---|---|---|---|
-| `POST` | `/v1/auth/approle/login` | SPIRE server, AI agents | Exchange `role_id`+`secret_id` for a Vault token | Vault token (`hvs.*` string + lease metadata) |
+| `POST` | `/v1/auth/approle/login` | SPIRE server | Exchange `role_id`+`secret_id` for a Vault token | Vault token (`hvs.*` string + lease metadata) |
 | `GET` | `/v1/auth/token/lookup-self` | KMS middleware (internal) | Validate an `X-Vault-Token` and retrieve `entity_id` (used as KMS owner) | Token metadata (`entity_id`, `expire_time`, policies) |
-| `POST` | `/v1/auth/token/renew-self` | SPIRE server, AI agents | Extend a token's TTL | Renewed Vault token (same `hvs.*` string, updated `lease_duration`) |
-| `POST` | `/v1/auth/token/revoke-self` | SPIRE server, AI agents | Immediately invalidate the caller's own token | 204 No Content |
+| `POST` | `/v1/auth/token/renew-self` | SPIRE server | Extend a token's TTL | Renewed Vault token (same `hvs.*` string, updated `lease_duration`) |
+| `POST` | `/v1/auth/token/revoke-self` | SPIRE server | Immediately invalidate the caller's own token | 204 No Content |
 
 All HTTP methods (`GET`, `POST`, `PUT`, `DELETE`) on any `/v1/auth/{path}` are forwarded
 unchanged to auth-verifier — the KMS never inspects the body or response of auth requests.
@@ -169,8 +161,8 @@ unchanged to auth-verifier — the KMS never inspects the body or response of au
 
 #### `/v1/{mount}/keys/*` and `/v1/{mount}/sign/*` — Transit engine
 
-Handled **natively** by the KMS. Caller: SPIRE server (`KeyManager "vault"` plugin)
-and AI agent workloads. Requires `X-Vault-Token`; the `entity_id` from the token becomes
+Handled **natively** by the KMS. Caller: SPIRE server (`KeyManager "vault"` plugin).
+Requires `X-Vault-Token`; the `entity_id` from the token becomes
 the KMIP object owner, enforcing per-AppRole isolation.
 
 Each transit key is stored as a KMIP `PrivateKey`+`PublicKey` pair tagged
@@ -220,7 +212,7 @@ common source of confusion:
 
 | Plane                | Who                      | Reaches                        | Endpoints                                                                  |
 | -------------------- | ------------------------ | ------------------------------ | -------------------------------------------------------------------------- |
-| **Data plane**       | SPIRE servers, workloads | the **KMS only**               | `/v1/auth/approle/login`, `/v1/auth/token/*`, `/v1/transit/*`, `/v1/pki/*` |
+| **Data plane**       | SPIRE servers            | the **KMS only**               | `/v1/auth/approle/login`, `/v1/auth/token/*`, `/v1/transit/*`, `/v1/pki/*` |
 | **Management plane** | Platform operators       | the **auth-verifier directly** | `/login?realm=_` (admin), `/auth/approle/*` (role/secret-id CRUD)          |
 
 Why AppRole **creation** is not on the data plane: creating a role or minting a
@@ -235,7 +227,7 @@ operators — it is a **separate endpoint** from the KMS, never proxied by it. B
 admin API mints AppRoles (and therefore access to any tenant's keys), it is strongly
 recommended to keep it on a limited-exposure endpoint (a private network, `localhost` on
 the host, or an mTLS-gated ingress) rather than the open internet. The KMS remains the
-only endpoint SPIRE workloads ever touch.
+only endpoint the SPIRE server ever touches.
 
 ### Provisioning AppRoles (operator, management plane)
 
@@ -279,7 +271,7 @@ stack. Each step links to the detailed reference for that component. In order:
 | 2 | **Install the auth-verifier** | Deploy the Cosmian Authentication Server that the KMS proxies `/v1/auth/*` to. | `authentication/server/documentation/docs/installation.md` |
 | 3 | **Enable the Vault API on the KMS** | Turn on the SPIRE-compatible API and point it at the auth-verifier. | [Configuration reference](#configuration-reference) |
 | 4 | **Create the PKI CA key** | Create the KMS key the PKI engine signs intermediate CAs with. | [PKI CA key provisioning](#0-pki-ca-key-provisioning-prerequisite) |
-| 5 | **Provision AppRoles** | Create one AppRole per SPIRE server (and per workload group) and hand out `role_id`/`secret_id`. | [Provisioning AppRoles](#provisioning-approles-operator-management-plane) |
+| 5 | **Provision AppRoles** | Create one AppRole per SPIRE server and hand out its `role_id`/`secret_id`. | [Provisioning AppRoles](#provisioning-approles-operator-management-plane) |
 | 6 | **Configure the SPIRE server** | Point SPIRE's `vault_addr` at the KMS and wire the `UpstreamAuthority`/`KeyManager` plugins. | [SPIRE server configuration](#spire-server-configuration) |
 | 7 | **Start SPIRE and verify** | Start the SPIRE server/agent and confirm the intermediate CA is signed and SVIDs issue. | [Quick start](#quick-start-local-demo-stack) |
 
@@ -415,8 +407,9 @@ ckms --accept-invalid-certs \
 
 ### 1. AppRole provisioning (admin bootstrap)
 
-An administrator provisions one `AppRole` per consumer: one for the SPIRE server itself
-and one for the AI agent workloads that need direct transit signing.
+An administrator provisions one `AppRole` per SPIRE server. AI agent workloads do **not**
+need a KMS AppRole — they authenticate to SPIRE (and, through it, to other services) via
+their SPIFFE SVID, not via the KMS. See [Workload SVID issuance](#5-workload-svid-issuance-ai-agent-identity).
 
 ```mermaid
 sequenceDiagram
@@ -431,12 +424,6 @@ sequenceDiagram
     AuthV-->>Admin: {"data":{"role_id":"..."}}
     Admin->>AuthV: POST /v1/auth/approle/role/spire-server/secret-id
     AuthV-->>Admin: {"data":{"secret_id":"...","secret_id_accessor":"..."}}
-    Admin->>AuthV: POST /v1/auth/approle/role/mistral-agents<br/>{token_ttl, token_policies, secret_id_ttl}
-    AuthV-->>Admin: 200 OK
-    Admin->>AuthV: GET /v1/auth/approle/role/mistral-agents/role-id
-    AuthV-->>Admin: {"data":{"role_id":"..."}}
-    Admin->>AuthV: POST /v1/auth/approle/role/mistral-agents/secret-id
-    AuthV-->>Admin: {"data":{"secret_id":"...","secret_id_accessor":"..."}}
 ```
 
 #### AppRole credentials — what `role_id` and `secret_id` mean
@@ -446,7 +433,7 @@ Two distinct kinds of "admin" appear in this integration — do not confuse them
 | Term                    | What it is                                                                                                  | Used for                                                                                 |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | **Auth-verifier admin** | A **human** administrator account (`Admin` struct) authenticated with username + password in the `_` realm. | Calling `POST /v1/auth/approle/role/{name}` and other role-management endpoints.         |
-| **AppRole**             | A **machine** identity with `role_id` + `secret_id` credentials. No relationship to the `Admin` concept.    | Used by SPIRE server and AI-agent workloads to obtain `hvs.*` tokens from auth-verifier. |
+| **AppRole**             | A **machine** identity with `role_id` + `secret_id` credentials. No relationship to the `Admin` concept.    | Used by the SPIRE server to obtain `hvs.*` tokens from auth-verifier.                   |
 
 An AppRole has three credentials, each with a distinct purpose and lifecycle:
 
@@ -460,7 +447,7 @@ An AppRole has three credentials, each with a distinct purpose and lifecycle:
 
 The `role_id` UUID is only used at login time to look up the AppRole record.
 What the KMS ultimately uses as the object owner is the AppRole **name** — a
-human-readable string like `"spire-server"` or `"mistral-agents"`.
+human-readable string like `"spire-server"` (or, per tenant, `"spire-server-a"`/`"spire-server-b"`).
 
 ```text
 ① SPIRE sends login:
@@ -478,12 +465,12 @@ human-readable string like `"spire-server"` or `"mistral-agents"`.
 
 The mapping from AppRole name to KMS owner is therefore 1-to-1:
 
-| AppRole name     | KMS `username`   | KMS objects owned                                                |
-| ---------------- | ---------------- | ---------------------------------------------------------------- |
-| `spire-server`   | `spire-server`   | Signed intermediate certificates (stored in KMS after `Certify`) |
-| `mistral-agents` | `mistral-agents` | Transit key pairs tagged `vault_transit:{name}`                  |
+| AppRole name       | KMS `username`     | KMS objects owned                                                                 |
+| ------------------ | ------------------ | --------------------------------------------------------------------------------- |
+| `spire-server-a`   | `spire-server-a`   | Signed intermediate certificates and transit key pairs owned by tenant A's server  |
+| `spire-server-b`   | `spire-server-b`   | Signed intermediate certificates and transit key pairs owned by tenant B's server  |
 
-`mistral-agents` cannot read, sign with, or delete objects owned by `spire-server`,
+`spire-server-a` cannot read, sign with, or delete objects owned by `spire-server-b`,
 and vice versa — each AppRole has a **fully isolated KMS object namespace**.
 
 > **PKI root CA exception.**
@@ -520,8 +507,9 @@ signed certificate itself (Vault ≥1.11 semantics).
 
 ### 3. Transit key lifecycle (KeyManager engine)
 
-Whether used by SPIRE's `KeyManager "vault"` plugin or by an application calling the
-Transit API directly, the lifecycle is the same:
+SPIRE's `KeyManager "vault"` plugin drives this engine. The lifecycle of a transit key
+is the same regardless of which AppRole-authenticated client (in practice, SPIRE's
+`KeyManager "vault"` plugin) calls it:
 
 ```mermaid
 sequenceDiagram
@@ -632,7 +620,8 @@ ckms --accept-invalid-certs \
   --subject-name "CN=Eviden KMS Root CA,O=Cosmian,C=FR" \
   --tag vault_pki_ca --days 3650
 
-# 1. Provision AppRoles (spire-server + mistral-agents)
+# 1. Provision AppRoles (one per SPIRE server tenant; the harness also mints a
+#    throwaway "mistral-agents" AppRole purely to smoke-test the transit engine)
 #    Admin API calls go directly to auth-verifier (port 8443).
 #    The smoke-test login uses the KMS vault_addr (port 9998), which proxies to auth-verifier.
 AUTH_VERIFIER_URL=https://localhost:8443 \
@@ -1204,8 +1193,8 @@ The guarantee holds because:
    WHERE (objects.owner = :username OR read_access.userid = :username)
    ```
 
-A token for `"mistral-agents"` therefore returns an empty result set for any object owned
-by `"spire-server"` — not a 403, but a 404 (object not found).
+A token for `"spire-server-b"` therefore returns an empty result set for any object owned
+by `"spire-server-a"` — not a 403, but a 404 (object not found).
 This is enforced at the database layer and cannot be circumvented by manipulating HTTP headers.
 
 > **⚠ Do not set `KMS_FORCE_DEFAULT_USERNAME=true`** (or `--force-default-username`) on a
@@ -1271,7 +1260,7 @@ An attacker who controls the SPIRE server process can therefore:
 - Request new intermediate CA certificates (until the AppRole is revoked).
 - Issue SVIDs to any registered workload identity — allowing impersonation.
 - Perform transit operations (sign, encrypt) under the `spire-server` AppRole — but **only on objects it owns**.
-  It cannot touch transit keys of other AppRoles (e.g. `mistral-agents`).
+  It cannot touch transit keys of other tenants' AppRoles (e.g. `spire-server-b`).
 
 It **cannot**:
 

@@ -8,9 +8,12 @@
 > inside the KMIP server, which executes all cryptographic operations using FIPS-approved
 > algorithms.
 >
-> **SPIRE fork**: the plugin source lives in the
-> [SPIRE fork](https://github.com/Manuthor/spire/tree/feature/kmip-plugins)
-> (branch `feature/kmip-plugins`). The plugins use
+> **SPIRE fork**: the plugin sources live in the Cosmian SPIRE fork:
+>
+> - [KeyManager `kmip`](https://github.com/Cosmian/spire/tree/feature/eviden-kms-plugins) — branch `feature/eviden-kms-plugins` (tracking [spiffe/spire#7235](https://github.com/spiffe/spire/pull/7235))
+> - [UpstreamAuthority `kmip`](https://github.com/Cosmian/spire/tree/feature/kmip-upstream-authority) — branch `feature/kmip-upstream-authority`
+>
+> The plugins use
 > [`ovh/kmip-go`](https://github.com/ovh/kmip-go) as the Go KMIP client library
 > and work with any KMIP 2.1-compliant server.
 >
@@ -137,7 +140,7 @@ No AppRole, no Vault tokens, no static bearer tokens.
 | SPIRE config namespace | `KeyManager "kmip"` / `UpstreamAuthority "kmip"` | SPIRE built-in Vault plugins |
 | Key discovery on restart | KMIP `Locate` by `spire-server-id` Name attribute | Key identifier file on disk |
 | Compatible KMIP servers | Any KMIP 2.1 server (Eviden KMS, PyKMIP, OpenBao) | Eviden KMS only |
-| SPIRE version required | Branch `feature/kmip-plugins` (tracking issue [#7233](https://github.com/spiffe/spire/issues/7233)) | Built-in to SPIRE ≥ 1.9 |
+| SPIRE version required | `Cosmian/spire` branches `feature/eviden-kms-plugins` (KeyManager) and `feature/kmip-upstream-authority` (UpstreamAuthority) — tracking issue [#7233](https://github.com/spiffe/spire/issues/7233) | Built-in to SPIRE ≥ 1.9 |
 
 Choose the `kmip` plugins when you want a direct, minimal, vendor-neutral integration.
 Choose the `vault` plugins with the KMS Vault-compatible API when you need
@@ -475,30 +478,35 @@ builds both KMS and SPIRE from source, provisions the CA, and validates the
 mise run test:spire-kmip
 ```
 
-The `test:spire-kmip` task:
+The `test:spire-kmip` task orchestrates two independent sub-tasks sequentially — one
+per plugin, each on its own SPIRE fork branch:
 
 1. Builds the KMS server and `ckms` CLI from source (non-FIPS)
-2. Clones the SPIRE fork (`feature/kmip-plugins`) and builds `spire-server`
-3. Generates mTLS test certificates (CA, KMS server, SPIRE client)
-4. Starts KMS with HTTPS (port 9998) + binary KMIP TCP socket (port 5696)
-5. Provisions the root CA key pair and self-signed certificate via `ckms`
-6. Writes a `server.conf` wiring both `kmip` plugins with mTLS client certs
-7. Starts the SPIRE server and waits for its API socket
-8. Runs `spire-server healthcheck`
-9. Generates a join token to verify the KeyManager is operational
+2. **KeyManager sub-task** (`test:spire-kmip-key-manager`):
+   clones `Cosmian/spire` branch `feature/eviden-kms-plugins`, builds `spire-server`,
+   starts KMS with binary KMIP TCP socket (port 5696), and validates key creation via join token
+3. **UpstreamAuthority sub-task** (`test:spire-kmip-upstream-authority`):
+   clones `Cosmian/spire` branch `feature/kmip-upstream-authority`, builds `spire-server`,
+   provisions the root CA key pair via `ckms`, starts KMS with binary KMIP TCP socket (port 5697),
+   and validates CA signing via join token
+4. Both sub-tasks generate mTLS test certificates (CA, KMS server, SPIRE client)
+5. Both sub-tasks run `spire-server healthcheck` and generate a join token to confirm plugin operation
 
 ### From the SPIRE fork
 
-The SPIRE fork also contains Kind-based integration test suites that start their
+The Cosmian SPIRE fork also contains Kind-based integration test suites that start their
 own KMS Docker container:
 
 ```bash
-# Clone the SPIRE fork
-git clone --branch feature/kmip-plugins https://github.com/Manuthor/spire
+# Clone the SPIRE fork (KeyManager plugin)
+git clone --branch feature/eviden-kms-plugins https://github.com/Cosmian/spire
 cd spire
 
 # Kind-based integration tests (start KMS Docker, deploy SPIRE into Kind)
 test/integration/suites/key-manager-kmip/
+
+# Clone the SPIRE fork (UpstreamAuthority plugin)
+git clone --branch feature/kmip-upstream-authority https://github.com/Cosmian/spire
 test/integration/suites/upstream-authority-kmip/
 ```
 
@@ -754,7 +762,7 @@ mise run test:live --mtls    # mTLS HTTPS (ghcr.io/cosmian/kms:5.26.0)
 
 The `Configure` RPC was not called before the first operation. This typically happens if
 `BuiltIn()` creates two separate `Plugin` instances (a known bug fixed in the
-`feature/kmip-plugins` branch — ensure you are on the correct branch).
+`feature/eviden-kms-plugins` branch — ensure you are on the correct branch).
 
 ### `basic constraints are not valid`
 
@@ -814,8 +822,10 @@ server or use a compatible KMIP version.
 - [KMIP Go integration](./kmip_go.md) — other Go clients for Eviden KMS
 - SPIRE tracking issue [#7233](https://github.com/spiffe/spire/issues/7233) — feature
   request thread for native KMIP plugins in SPIRE
-- [SPIRE fork — `feature/kmip-plugins`](https://github.com/Manuthor/spire/tree/feature/kmip-plugins) —
-  the SPIRE plugin source (`KeyManager "kmip"` + `UpstreamAuthority "kmip"`)
+- [SPIRE fork — `feature/eviden-kms-plugins`](https://github.com/Cosmian/spire/tree/feature/eviden-kms-plugins) —
+  KeyManager `kmip` plugin source (PR [spiffe/spire#7235](https://github.com/spiffe/spire/pull/7235))
+- [SPIRE fork — `feature/kmip-upstream-authority`](https://github.com/Cosmian/spire/tree/feature/kmip-upstream-authority) —
+  UpstreamAuthority `kmip` plugin source
 - [`github.com/Cosmian/kmip-go`](https://github.com/Cosmian/kmip-go) — the Go HTTPS
   JSON TTLV client library for Eviden KMS
 - [`ovh/kmip-go`](https://github.com/ovh/kmip-go) — the Go KMIP client library used
