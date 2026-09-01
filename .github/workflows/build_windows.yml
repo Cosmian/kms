@@ -11,6 +11,20 @@ on:
         required: true
         type: string
 
+  # TODO: debug — remove before shipping
+  workflow_dispatch:
+    inputs:
+      toolchain:
+        description: Rust toolchain version
+        required: false
+        type: string
+        default: 1.97.0
+      archive-name:
+        description: Archive name prefix
+        required: false
+        type: string
+        default: windows-non-fips-test
+
 jobs:
   cargo-build:
     name: ${{ inputs.archive-name }} - 2022-non-fips
@@ -129,14 +143,30 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  test:
+  sign:
+    name: ${{ inputs.archive-name }} - sign installers
     needs: cargo-build
+    uses: Cosmian/reusable_workflows/.github/workflows/sign-windows-artifacts.yml@feat/azure-code-signing
+    with:
+      artifact-to-download: ${{ inputs.archive-name }}-release
+      files-folder: to-sign
+      files-folder-filter: exe
+      artifact-name: ${{ inputs.archive-name }}-release-signed
+      signing-account-name: cosmian-codesigning-test
+      certificate-profile-name: cosmian-test-profile
+    secrets:
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID_POC }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_POC }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET_POC }}
+
+  test:
+    needs: sign
     name: ${{ inputs.archive-name }} - test on clean env.
     runs-on: windows-2022
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: ${{ inputs.archive-name }}-release
+          name: ${{ inputs.archive-name }}-release-signed
 
       - name: List files recursively
         shell: pwsh
@@ -156,7 +186,7 @@ jobs:
 
   publish-windows-release:
     name: ${{ inputs.archive-name }} - publish assets
-    needs: cargo-build
+    needs: sign
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
@@ -172,7 +202,7 @@ jobs:
       - name: Download Windows build artifact
         uses: actions/download-artifact@v8
         with:
-          name: ${{ inputs.archive-name }}-release
+          name: ${{ inputs.archive-name }}-release-signed
           path: .
 
       - name: List downloaded files

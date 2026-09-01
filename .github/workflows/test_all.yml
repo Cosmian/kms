@@ -194,7 +194,7 @@ jobs:
       matrix:
         hsm-type:
           - utimaco
-          # - proteccio # on July 2026, Proteccio test-HSM is unavailable
+          - proteccio
           - softhsm2
           # - crypt2pay # on August 2026, Crypt2Pay test-HSM is unavailable
         features: [fips, non-fips]
