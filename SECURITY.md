@@ -84,8 +84,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ------------------------------------------------ |
 | Severity   | Critical                                        |
 | Published  | 28 August 2026                                  |
-| Affected   | from 5.0.0 before 5.26.1                        |
-| Fixed in   | 5.26.1                                          |
+| Affected   | from 5.0.0 before 5.27.0                        |
+| Fixed in   | 5.27.0                                          |
 | Found by   | Reported in [GitHub issue #909](https://github.com/Cosmian/kms/issues/909) |
 | References | [#909](https://github.com/Cosmian/kms/issues/909) |
 
