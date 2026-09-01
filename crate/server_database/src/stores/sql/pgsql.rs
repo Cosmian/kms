@@ -1619,8 +1619,8 @@ mod tests {
     #[ignore = "Requires a running PostgreSQL instance"]
     #[tokio::test]
     async fn pg_connection_released_during_backoff() -> DbResult<()> {
-        let postgres_url = option_env!("KMS_POSTGRES_URL")
-            .unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
+        let postgres_url =
+            option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
         let pg = PgPool::instantiate(postgres_url, true, Some(1)).await?;
 
         let pool_for_task = pg.pool.clone();
@@ -1648,12 +1648,12 @@ mod tests {
         // connection-holding behavior along the way is under test here.
         drop(handle.await);
 
-        let idle_fraction = idle_samples as f64 / total_samples.max(1) as f64;
-        assert!(
-            idle_fraction > 0.5,
-            "pool reported idle in only {idle_samples}/{total_samples} samples \
-             ({idle_fraction:.2}) — connection appears held during back-off sleep"
-        );
+        if idle_samples <= total_samples / 2 {
+            return Err(DbError::DatabaseError(format!(
+                "pool reported idle in only {idle_samples}/{total_samples} samples — \
+                 connection appears held during back-off sleep"
+            )));
+        }
 
         Ok(())
     }
