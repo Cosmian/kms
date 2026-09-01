@@ -7,7 +7,7 @@ pub(crate) use find::{
 
 /// Validates that a CRL Distribution Point URL is safe to fetch.
 ///
-/// Mitigations applied (COSMIAN-2026-010):
+/// Mitigations applied (COSMIAN-2026-020):
 /// - Only `http://` and `https://` schemes are permitted (RFC 5280 CDPs are
 ///   typically HTTP to avoid circular TLS-validation dependencies; both are
 ///   allowed here but all other checks still apply).
