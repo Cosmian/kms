@@ -3,10 +3,15 @@
 //! Architecture
 //! ============
 //! * `AuditFileStore` is a cheaply cloneable handle (wraps a channel `Sender`).
-//! * A single background tokio task (`writer_loop`) is the **sole owner** of the
+//! * A single background tokio task (`writer_supervisor`) is the **sole owner** of the
 //!   audit file, the monotonic event counter, and the previous-row hash.  This
 //!   design avoids any mutex around the file and guarantees write order under
 //!   concurrent requests.
+//! * The KMS always starts: `start()` returns synchronously and never blocks on file I/O
+//!   or lock contention. Recovery, exclusive-lock acquisition, and opening the file all
+//!   happen inside the writer task, retrying in the background on failure. Events
+//!   enqueued in the meantime are genuinely queued (not dropped) up to the channel's
+//!   bounded capacity — see `writer_supervisor`.
 //! * The middleware calls `enqueue()` which is a non-blocking `try_send`.  If the
 //!   channel is full (beyond the configured capacity) the draft is silently dropped
 //!   and an error is logged — we never block the request path.
@@ -20,8 +25,9 @@
 //! Use `ckms audit verify --path <file>` to validate the chain offline.
 
 use std::{
-    io::{BufRead, BufReader, Seek, Write},
-    path::Path,
+    ffi::{OsStr, OsString},
+    io::{Read, Seek, Write},
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -29,7 +35,7 @@ use std::{
 };
 
 use cosmian_kms_access::audit::{
-    AuditEvent, AuditEventDraft, AuditResult, compute_row_hash, verify_event,
+    AuditEvent, AuditEventDraft, AuditResult, compute_row_hash, verify_chain_link, verify_event,
 };
 use cosmian_logger::{debug, error};
 use time::OffsetDateTime;
@@ -44,8 +50,9 @@ const TAIL_WINDOW: u64 = 65_536;
 
 /// Message sent to the writer task over the channel.
 enum WriterMsg {
-    /// A draft event to persist.
-    Event(AuditEventDraft),
+    /// A draft event to persist. Boxed so the `Flush` variant (a bare `oneshot::Sender`)
+    /// doesn't force every enum instance to reserve `AuditEventDraft`'s full size.
+    Event(Box<AuditEventDraft>),
     /// A synchronization barrier: the writer acknowledges once every message
     /// enqueued before this one has been written (and, for `File`, `fsync`'d).
     /// Used by tests to await the writer's progress deterministically instead
@@ -55,10 +62,32 @@ enum WriterMsg {
     Flush(oneshot::Sender<()>),
 }
 
+/// Cross-task state for the optional `max_size_bytes` write-stop cap.
+///
+/// `enqueue()` reads `size_limit_reached` as a fast, non-blocking pre-check so a
+/// caller doesn't bother queueing an event the writer will only ever discard; the
+/// writer task is the sole owner of the file and the only one that ever sets it.
+/// `max_size_bytes` is immutable for the store's lifetime, carried alongside so
+/// the writer doesn't need it threaded through as a separate argument everywhere.
+#[derive(Default)]
+struct AuditWriteState {
+    max_size_bytes: Option<u64>,
+    size_limit_reached: std::sync::atomic::AtomicBool,
+}
+
+impl AuditWriteState {
+    const fn new(max_size_bytes: Option<u64>) -> Self {
+        Self {
+            max_size_bytes,
+            size_limit_reached: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+}
+
 /// A cheaply cloneable handle to the audit writer task.
 ///
 /// Cloning this value is O(1) — `tokio::sync::mpsc::Sender` is already backed
-/// by an internal `Arc`, and `dropped_count` is an `Arc<AtomicU64>`.
+/// by an internal `Arc`, and `dropped_count`/`write_state` are themselves `Arc`s.
 /// All clones share the same underlying channel and writer task.
 #[derive(Clone)]
 pub(crate) struct AuditFileStore {
@@ -66,55 +95,54 @@ pub(crate) struct AuditFileStore {
     /// Counts events dropped because the channel was full.
     /// Checked by the writer loop to emit a sentinel event before the next real event.
     dropped_count: Arc<AtomicU64>,
+    /// Set by the writer once the configured `max_size_bytes` cap is reached.
+    write_state: Arc<AuditWriteState>,
 }
 
 impl AuditFileStore {
     /// Initialises the audit file store and spawns the background writer task.
     ///
-    /// If `path` already contains events the writer task will continue the
-    /// existing chain; the next event ID will be `last_id + 1` and `prev_hash`
-    /// will be taken from the last persisted row.
+    /// Returns immediately: the channel is created and handed back synchronously so the
+    /// middleware can start enqueueing events right away, even before the writer has
+    /// acquired the lock or opened the file. `channel_capacity` is the number of events
+    /// that can be buffered before new events are dropped. Must be ≥ 1.
     ///
-    /// `channel_capacity` is the number of events that can be buffered in the
-    /// in-memory channel before new events are dropped.  Must be ≥ 1.
+    /// `max_size_bytes`, when `Some`, stops all writes once the file reaches that many
+    /// bytes — see `AuditFileConfig::audit_file_max_size_bytes`. `None` is unlimited.
+    ///
+    /// Recovery, locking, and opening all happen inside the spawned writer task — see
+    /// `writer_supervisor`. This call never blocks on file I/O or lock contention.
     ///
     /// # Errors
-    /// Returns an error if `channel_capacity` is 0, the audit file cannot be
-    /// opened, or an existing file contains a malformed last line.
-    pub(crate) fn start(path: &Path, channel_capacity: usize) -> KResult<Self> {
+    /// Returns an error only if `channel_capacity` is 0 — a pure configuration mistake,
+    /// not a runtime condition. Every other fault (I/O, lock contention, log corruption)
+    /// is handled inside the writer task without aborting startup; see `writer_supervisor`.
+    pub(crate) fn start_with_max_size(
+        path: &Path,
+        channel_capacity: usize,
+        max_size_bytes: Option<u64>,
+    ) -> KResult<Self> {
         if channel_capacity == 0 {
             return Err(KmsError::ServerError(
                 "audit: channel_capacity must be at least 1".to_owned(),
             ));
         }
-        // ── Read the tail of an existing log to resume the chain ─────────
-        let (next_id, prev_hash) = Self::resume_chain(path)?;
-        debug!(
-            "AuditFileStore: resuming at id={next_id}, prev_hash={}",
-            hex::encode(&prev_hash[..8]) // first 8 bytes (16 hex chars) sufficient for diagnostics
-        );
-
-        // Open before spawning so an unwritable path aborts startup immediately
-        // instead of silently disabling audit logging at runtime.
-        let file = open_append(path).map_err(|e| {
-            KmsError::ServerError(format!(
-                "audit: cannot open log file {}: {e}",
-                path.display()
-            ))
-        })?;
 
         let (tx, rx) = mpsc::channel::<WriterMsg>(channel_capacity);
         let dropped_count = Arc::new(AtomicU64::new(0));
         let dropped_count_for_writer = Arc::clone(&dropped_count);
+        let write_state = Arc::new(AuditWriteState::new(max_size_bytes));
+        let write_state_for_writer = Arc::clone(&write_state);
+        let path = path.to_path_buf();
 
-        // Spawn the sole writer task
         tokio::spawn(async move {
-            writer_loop(file, next_id, prev_hash, rx, dropped_count_for_writer).await;
+            writer_supervisor(path, rx, dropped_count_for_writer, write_state_for_writer).await;
         });
 
         Ok(Self {
             sender: tx,
             dropped_count,
+            write_state,
         })
     }
 
@@ -124,14 +152,22 @@ impl AuditFileStore {
     /// `operation = "audit:eviction"` sentinel that joins the hash chain — making drops
     /// detectable by `ckms audit verify` and compliance tools.
     ///
+    /// If the writer has reported that the configured `max_size_bytes` cap was reached,
+    /// every draft is rejected immediately (same observable effect as a full channel) —
+    /// the writer will never write them anyway.
+    ///
     /// **Note**: for batch requests, `try_send` is called per-draft sequentially.
     /// If the channel fills mid-batch, early drafts are persisted and later ones are
     /// dropped — the sentinel will account for them on the next successful enqueue.
     /// Returns `true` if every draft was successfully queued, `false` if any was dropped.
     pub(crate) fn enqueue(&self, drafts: impl IntoIterator<Item = AuditEventDraft>) -> bool {
+        if self.write_state.size_limit_reached.load(Ordering::Relaxed) {
+            return false;
+        }
+
         let mut all_queued = true;
         for draft in drafts {
-            match self.sender.try_send(WriterMsg::Event(draft)) {
+            match self.sender.try_send(WriterMsg::Event(Box::new(draft))) {
                 Ok(()) => {}
                 Err(mpsc::error::TrySendError::Full(_)) => {
                     self.dropped_count.fetch_add(1, Ordering::Relaxed);
@@ -165,76 +201,473 @@ impl AuditFileStore {
             let _ = rx.await;
         }
     }
+}
 
-    /// Reads the last line of `path` (if any) to extract the last `id` and
-    /// `row_hash` so the chain can be continued on restart.
-    fn resume_chain(path: &Path) -> KResult<(i64, [u8; 32])> {
-        if !path.exists() {
-            return Ok((0, [0_u8; 32]));
+/// Why a row triggered seal-and-roll instead of resuming or truncating.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SealReason {
+    /// A complete, well-formed row whose `row_hash` doesn't match its own bytes.
+    HashMismatch,
+    /// Bytes that don't deserialize as an `AuditEvent` at all.
+    Unparseable,
+    /// A valid, verified row whose `id` is `i64::MAX` — incrementing it for the next
+    /// event would overflow, so recovery cannot safely resume the chain in place.
+    IdOverflow,
+}
+
+impl SealReason {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::HashMismatch => "hash_mismatch",
+            Self::Unparseable => "unparseable",
+            Self::IdOverflow => "id_overflow",
         }
+    }
+}
 
-        let mut file = std::fs::File::open(path).map_err(|e| {
+/// Result of parsing+verifying one candidate JSONL row.
+enum RowCheck {
+    /// Parsed and `row_hash` matches.
+    Verified(AuditEvent),
+    /// Parsed but `row_hash` doesn't match its own bytes — tampered.
+    HashMismatch(AuditEvent),
+    /// Didn't deserialize as an `AuditEvent` at all.
+    Unparseable,
+}
+
+fn check_row(line: &str) -> RowCheck {
+    match serde_json::from_str::<AuditEvent>(line) {
+        Ok(event) if verify_event(&event) => RowCheck::Verified(event),
+        Ok(event) => RowCheck::HashMismatch(event),
+        Err(_) => RowCheck::Unparseable,
+    }
+}
+
+/// Outcome of classifying the tail of an existing (or absent) audit log at startup.
+/// Routes recovery by cause instead of one global policy — see the module docs.
+#[derive(Debug)]
+enum TailOutcome {
+    /// No file, or an empty one: start a brand-new chain.
+    Genesis,
+    /// The tail is trustworthy; continue the chain from it.
+    Resume {
+        next_id: i64,
+        prev_hash: [u8; 32],
+        /// The file's last byte isn't `\n` even though the last row is valid — the
+        /// trailing newline write didn't make it to disk. Must be repaired before the
+        /// next append or the next row would concatenate onto this one.
+        needs_leading_nl: bool,
+    },
+    /// A torn (interrupted) write: the last row is incomplete, but the row before it
+    /// (or genesis) is trustworthy. Truncate the torn fragment and continue in place.
+    TruncateContinue {
+        /// Byte length to truncate the file to — always the end of the last verified row.
+        keep_len: u64,
+        next_id: i64,
+        prev_hash: [u8; 32],
+        bytes_discarded: u64,
+        discard_offset: u64,
+    },
+    /// A complete row is tampered, or the tail is structural garbage with no trustworthy
+    /// anchor to fall back to. Seal the file aside as evidence and start a fresh chain.
+    SealAndRoll {
+        reason: SealReason,
+        claimed_last_id: Option<i64>,
+        failure_offset: u64,
+    },
+}
+
+/// Metadata for the first invalid interior row.
+struct InteriorChainFailure {
+    reason: SealReason,
+    claimed_last_id: Option<i64>,
+    failure_offset: u64,
+}
+
+/// Result of verifying every audit row except the physical tail row.
+///
+/// `previous_event` is the row the tail must link to when the tail is complete.
+struct InteriorChainVerification {
+    previous_event: Option<AuditEvent>,
+    failure: Option<InteriorChainFailure>,
+}
+
+/// Classifies the tail of `path` to decide how startup should recover.
+///
+/// Reads only the last `TAIL_WINDOW` bytes (O(1) regardless of log size) and retains the
+/// last **two** candidate rows so `TruncateContinue` can fall back past a torn fragment to
+/// the row before it.
+///
+/// # Errors
+/// Returns an error only for I/O faults (cannot open/stat/read the path) — never for a
+/// data-corruption condition, which is always routed to a `TailOutcome` variant instead.
+fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<TailOutcome> {
+    if !path.exists() {
+        return Ok(TailOutcome::Genesis);
+    }
+
+    let mut file = std::fs::File::open(path).map_err(|e| {
+        KmsError::ServerError(format!(
+            "audit: cannot open existing log file {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    let file_len = file
+        .metadata()
+        .map_err(|e| KmsError::ServerError(format!("audit: cannot stat log file: {e}")))?
+        .len();
+
+    if file_len == 0 {
+        return Ok(TailOutcome::Genesis);
+    }
+
+    // Seek to the tail window so startup cost is O(1) regardless of log size.
+    let seek_pos = file_len.saturating_sub(TAIL_WINDOW);
+    if seek_pos > 0 {
+        file.seek(std::io::SeekFrom::Start(seek_pos))
+            .map_err(|e| KmsError::ServerError(format!("audit: cannot seek log file: {e}")))?;
+    }
+
+    let mut buf = vec![0_u8; usize::try_from(file_len - seek_pos).unwrap_or(usize::MAX)];
+    file.read_exact(&mut buf)
+        .map_err(|e| KmsError::ServerError(format!("audit: cannot read log file tail: {e}")))?;
+
+    let ends_with_newline = buf.last() == Some(&b'\n');
+    let newline_positions: Vec<usize> = buf
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &b)| (b == b'\n').then_some(i))
+        .collect();
+
+    if newline_positions.is_empty() {
+        // No row boundary anywhere in the window: either one row far larger than
+        // TAIL_WINDOW, or the seek landed inside one. Can't safely discriminate
+        // torn-vs-tampered without risking misclassification — seal.
+        return Ok(TailOutcome::SealAndRoll {
+            reason: SealReason::Unparseable,
+            claimed_last_id: None,
+            failure_offset: seek_pos,
+        });
+    }
+
+    // Complete rows are the byte ranges between consecutive newlines, [start, end).
+    let mut rows: Vec<(usize, usize)> = Vec::new();
+    let mut prev_end = 0_usize;
+    for &nl in &newline_positions {
+        rows.push((prev_end, nl));
+        prev_end = nl + 1;
+    }
+
+    // If seek_pos > 0 the first row may be a fragment cut by the seek — it belongs to an
+    // earlier, already-durable row and isn't needed for classification.
+    if seek_pos > 0 {
+        if rows.len() > 1 {
+            rows.remove(0);
+        } else {
+            return Ok(TailOutcome::SealAndRoll {
+                reason: SealReason::Unparseable,
+                claimed_last_id: None,
+                failure_offset: seek_pos,
+            });
+        }
+    }
+
+    // The trailing fragment after the final newline, if the buffer doesn't end in '\n'.
+    let trailing = (!ends_with_newline).then_some((prev_end, buf.len()));
+
+    let mut candidates: Vec<(String, u64, u64)> = rows
+        .iter()
+        .map(|&(s, e)| {
+            (
+                String::from_utf8_lossy(buf.get(s..e).unwrap_or(&[])).into_owned(),
+                seek_pos + u64::try_from(s).unwrap_or(u64::MAX),
+                seek_pos + u64::try_from(e).unwrap_or(u64::MAX),
+            )
+        })
+        .collect();
+    if let Some((s, e)) = trailing {
+        candidates.push((
+            String::from_utf8_lossy(buf.get(s..e).unwrap_or(&[])).into_owned(),
+            seek_pos + u64::try_from(s).unwrap_or(u64::MAX),
+            seek_pos + u64::try_from(e).unwrap_or(u64::MAX),
+        ));
+    }
+
+    // Keep only the last two candidates.
+    let keep_from = candidates.len().saturating_sub(2);
+    let candidates = candidates.get(keep_from..).unwrap_or(&[]);
+    let Some((last_line, last_start, last_end)) = candidates.last().cloned() else {
+        // Can't happen (newline_positions was non-empty), but never panic on a
+        // recovery path — fall back to the safest outcome.
+        return Ok(TailOutcome::SealAndRoll {
+            reason: SealReason::Unparseable,
+            claimed_last_id: None,
+            failure_offset: seek_pos,
+        });
+    };
+    let second_last = (candidates.len() == 2)
+        .then(|| candidates.first())
+        .flatten()
+        .map(|(line, _, _)| line);
+
+    if ends_with_newline {
+        return Ok(match check_row(&last_line) {
+            RowCheck::Verified(event) if verify_chain_link(&event, previous_event) => {
+                match event.id.checked_add(1) {
+                    Some(next_id) => TailOutcome::Resume {
+                        next_id,
+                        prev_hash: event.row_hash,
+                        needs_leading_nl: false,
+                    },
+                    None => TailOutcome::SealAndRoll {
+                        reason: SealReason::IdOverflow,
+                        claimed_last_id: Some(event.id),
+                        failure_offset: last_start,
+                    },
+                }
+            }
+            RowCheck::Verified(event) | RowCheck::HashMismatch(event) => TailOutcome::SealAndRoll {
+                reason: SealReason::HashMismatch,
+                claimed_last_id: Some(event.id),
+                failure_offset: last_start,
+            },
+            RowCheck::Unparseable => TailOutcome::SealAndRoll {
+                reason: SealReason::Unparseable,
+                claimed_last_id: None,
+                failure_offset: last_start,
+            },
+        });
+    }
+
+    // No trailing newline. If the last row is itself complete and verified, it's simply
+    // missing its terminator (crash between the JSON write and the newline write) — not a
+    // torn write at all.
+    if let RowCheck::Verified(event) = check_row(&last_line) {
+        return Ok(if !verify_chain_link(&event, previous_event) {
+            TailOutcome::SealAndRoll {
+                reason: SealReason::HashMismatch,
+                claimed_last_id: Some(event.id),
+                failure_offset: last_start,
+            }
+        } else if let Some(next_id) = event.id.checked_add(1) {
+            TailOutcome::Resume {
+                next_id,
+                prev_hash: event.row_hash,
+                needs_leading_nl: true,
+            }
+        } else {
+            TailOutcome::SealAndRoll {
+                reason: SealReason::IdOverflow,
+                claimed_last_id: Some(event.id),
+                failure_offset: last_start,
+            }
+        });
+    }
+
+    // Otherwise this is a torn-write candidate: valid only if the row before it is a
+    // trustworthy fallback anchor. `second_last` is always `Some` here: reaching this
+    // point requires `!ends_with_newline`, which guarantees at least one interior row
+    // exists before the trailing fragment (the empty-interior case already returned
+    // `SealAndRoll` above, when `seek_pos > 0` and `rows.len() <= 1`, or was excluded by
+    // the `newline_positions.is_empty()` check).
+    let Some(anchor_line) = second_last else {
+        // Can't happen per the invariant above, but never panic on a recovery path.
+        return Ok(TailOutcome::SealAndRoll {
+            reason: SealReason::Unparseable,
+            claimed_last_id: None,
+            failure_offset: last_start,
+        });
+    };
+    match check_row(anchor_line) {
+        RowCheck::Verified(event) => match event.id.checked_add(1) {
+            Some(next_id) => Ok(TailOutcome::TruncateContinue {
+                keep_len: last_start,
+                next_id,
+                prev_hash: event.row_hash,
+                bytes_discarded: last_end - last_start,
+                discard_offset: last_start,
+            }),
+            None => Ok(TailOutcome::SealAndRoll {
+                reason: SealReason::IdOverflow,
+                claimed_last_id: Some(event.id),
+                failure_offset: last_start,
+            }),
+        },
+        RowCheck::HashMismatch(_) | RowCheck::Unparseable => Ok(TailOutcome::SealAndRoll {
+            reason: SealReason::Unparseable,
+            claimed_last_id: None,
+            failure_offset: last_start,
+        }),
+    }
+}
+
+/// Truncates the audit file to `keep_len` (discarding a torn tail write) and appends an
+/// `audit:torn-write-recovered` sentinel as the first event of this session, joining the
+/// hash chain normally.
+///
+/// Invariant: `keep_len` always came from `classify_tail` as the byte offset immediately
+/// after the last row that both parsed and verified — a verified row is never removed.
+fn truncate_and_continue(
+    path: &Path,
+    keep_len: u64,
+    next_id: i64,
+    prev_hash: [u8; 32],
+    bytes_discarded: u64,
+    discard_offset: u64,
+) -> KResult<(i64, [u8; 32])> {
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .map_err(|e| {
             KmsError::ServerError(format!(
-                "audit: cannot open existing log file {}: {e}",
+                "audit: cannot open log file for truncation {}: {e}",
                 path.display()
             ))
         })?;
+    file.set_len(keep_len)
+        .map_err(|e| KmsError::ServerError(format!("audit: cannot truncate log file: {e}")))?;
+    drop(file);
 
-        let file_len = file
-            .metadata()
-            .map_err(|e| KmsError::ServerError(format!("audit: cannot stat log file: {e}")))
-            .map(|m| m.len())?;
+    error!(
+        "AuditFileStore: torn write recovered — discarded {bytes_discarded} byte(s) at offset \
+         {discard_offset} (process likely killed mid-write); resuming chain at id={next_id}"
+    );
 
-        if file_len == 0 {
-            return Ok((0, [0_u8; 32]));
+    let mut sink = open_append(path).map_err(|e| {
+        KmsError::ServerError(format!(
+            "audit: cannot reopen log file after truncation {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    let details = serde_json::json!({
+        "bytes_discarded": bytes_discarded,
+        "offset": discard_offset,
+    })
+    .to_string();
+    let draft = AuditEventDraft {
+        timestamp: OffsetDateTime::now_utc(),
+        operation: "audit:torn-write-recovered".to_owned(),
+        user: "server".to_owned(),
+        object_uid: None,
+        algorithm: None,
+        client_ip: None,
+        result: AuditResult::Success,
+        duration_ms: 0,
+        request_id: None,
+        details: Some(details),
+    };
+    let mut chain_prev_hash = prev_hash;
+    let final_next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut chain_prev_hash);
+
+    Ok((final_next_id, chain_prev_hash))
+}
+
+/// Builds the sealed filename for a corrupted audit log: `<stem>.<RFC3339-compact
+/// UTC>.<8 hex>.corrupt.<ext>`. The timestamp gives lexicographic chronological ordering
+/// across sealed files; the trailing hex resolves same-second collisions.
+fn sealed_file_path(path: &Path) -> PathBuf {
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("audit");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("jsonl");
+    let now = OffsetDateTime::now_utc();
+    let ts = format!(
+        "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+        now.year(),
+        u8::from(now.month()),
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second()
+    );
+    // Collision-avoidance only, not security-sensitive — derived from a fresh UUID
+    // instead of pulling in a dedicated RNG crate.
+    let suffix = hex::encode(&uuid::Uuid::new_v4().as_bytes()[..4]);
+    path.with_file_name(format!("{stem}.{ts}.{suffix}.corrupt.{ext}"))
+}
+
+/// Seals a corrupted/tampered audit file aside as forensic evidence and starts a fresh
+/// chain at `path`.
+///
+/// Order is load-bearing: the old file is renamed **before** the fresh one is opened, so
+/// the lock holder never observes a half-migrated state (rename, then open — never the
+/// reverse).
+fn seal_and_roll(
+    path: &Path,
+    reason: SealReason,
+    claimed_last_id: Option<i64>,
+    failure_offset: u64,
+) -> KResult<(i64, [u8; 32])> {
+    let (sha256_hex, size) = cosmian_kms_access::audit::sha256_file(path).map_err(|e| {
+        KmsError::ServerError(format!(
+            "audit: cannot read log file to seal {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    let sealed_path = sealed_file_path(path);
+    std::fs::rename(path, &sealed_path).map_err(|e| {
+        KmsError::ServerError(format!(
+            "audit: cannot seal corrupted log file {} -> {}: {e}",
+            path.display(),
+            sealed_path.display()
+        ))
+    })?;
+
+    error!(
+        "AuditFileStore: sealed corrupted audit log as {} (reason={}, sha256={sha256_hex}, \
+         size={size}, claimed_last_id={claimed_last_id:?}, failure_offset={failure_offset}) — \
+         starting a fresh chain",
+        sealed_path.display(),
+        reason.as_str(),
+    );
+
+    // fsync the containing directory so the rename itself is durable.
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = std::fs::File::open(parent) {
+            drop(dir.sync_all());
         }
-
-        // Seek to the tail window so startup cost is O(1) regardless of log size.
-        // TAIL_WINDOW is large enough to contain at least one complete event.
-        let seek_pos = file_len.saturating_sub(TAIL_WINDOW);
-        if seek_pos > 0 {
-            file.seek(std::io::SeekFrom::Start(seek_pos))
-                .map_err(|e| KmsError::ServerError(format!("audit: cannot seek log file: {e}")))?;
-        }
-
-        let reader = BufReader::new(file);
-        let mut last_line = String::new();
-
-        // When seek_pos > 0 the first buffered read may start mid-line (a partial
-        // fragment cut by the seek); taking the LAST non-empty line is correct
-        // regardless because subsequent lines are complete.
-        for line in reader.lines() {
-            let line = line.map_err(|e| {
-                KmsError::ServerError(format!("audit: error reading log file: {e}"))
-            })?;
-            if !line.trim().is_empty() {
-                last_line = line;
-            }
-        }
-
-        if last_line.is_empty() {
-            return Ok((0, [0_u8; 32]));
-        }
-
-        let last_event: AuditEvent = serde_json::from_str(&last_line).map_err(|e| {
-            KmsError::ServerError(format!(
-                "audit: cannot parse last line of log file: {e}\nLine: {last_line}"
-            ))
-        })?;
-
-        // Verify the hash of the last persisted event before trusting it as the
-        // chain seed.  A mismatch signals tampering or a crash-truncated write.
-        if !verify_event(&last_event) {
-            return Err(KmsError::ServerError(format!(
-                "audit: last persisted event (id={}) has an invalid row_hash — \
-                 the log tail may be corrupted or tampered. \
-                 Remove or repair the last line before restarting.",
-                last_event.id
-            )));
-        }
-
-        Ok((last_event.id + 1, last_event.row_hash))
     }
+
+    let mut sink = open_append(path).map_err(|e| {
+        KmsError::ServerError(format!(
+            "audit: cannot open fresh log file {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    let sealed_name = sealed_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let details = serde_json::json!({
+        "sealed_file": sealed_name,
+        "sha256": sha256_hex,
+        "size": size,
+        "claimed_last_id": claimed_last_id,
+        "failure_offset": failure_offset,
+        "reason": reason.as_str(),
+    })
+    .to_string();
+    let draft = AuditEventDraft {
+        timestamp: OffsetDateTime::now_utc(),
+        operation: "audit:reanchor".to_owned(),
+        user: "server".to_owned(),
+        object_uid: None,
+        algorithm: None,
+        client_ip: None,
+        result: AuditResult::Success,
+        duration_ms: 0,
+        request_id: None,
+        details: Some(details),
+    };
+
+    // Reanchor is a new chain root — continuity across a sealed, untrusted tail is never
+    // asserted (see module docs).
+    let mut prev_hash = [0_u8; 32];
+    let next_id = write_draft_to_chain(&mut sink, draft, 0, &mut prev_hash);
+
+    Ok((next_id, prev_hash))
 }
 
 /// Abstraction over the audit log's underlying writer.
@@ -256,6 +689,15 @@ trait AuditSink {
     fn final_sync(&mut self) -> std::io::Result<()> {
         Ok(())
     }
+
+    /// Current on-disk length in bytes, used to enforce `max_size_bytes`.
+    ///
+    /// Only the real `std::fs::File` sink can answer this meaningfully; mock sinks
+    /// used for fault-injection tests never configure a size cap, so the default
+    /// (`Ok(0)`) is never exercised by them.
+    fn current_len(&self) -> std::io::Result<u64> {
+        Ok(0)
+    }
 }
 
 impl AuditSink for std::fs::File {
@@ -275,6 +717,359 @@ impl AuditSink for std::fs::File {
     fn final_sync(&mut self) -> std::io::Result<()> {
         self.sync_data()
     }
+
+    fn current_len(&self) -> std::io::Result<u64> {
+        Ok(self.metadata()?.len())
+    }
+}
+
+/// How long to wait between attempts to acquire the exclusive audit-log lock while a
+/// peer instance (e.g. the other side of a rolling update on a shared volume) holds it.
+const LOCK_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// How long to wait between attempts to recover/open the audit log after a
+/// content-independent I/O fault (EACCES, EIO, read-only mount, missing disk).
+const OPEN_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Builds the sidecar lock file path for `path`, e.g. `audit.jsonl` -> `audit.jsonl.lock`.
+fn lock_file_path(path: &Path) -> PathBuf {
+    let mut name = path
+        .file_name()
+        .map_or_else(OsString::new, OsStr::to_os_string);
+    name.push(".lock");
+    path.with_file_name(name)
+}
+
+/// Attempts to acquire the exclusive, cross-platform advisory lock on `path`'s lock
+/// sidecar. Non-blocking: returns immediately (`Err` if another live instance holds it).
+///
+/// The returned `File` must be kept alive for as long as the lock should be held — the OS
+/// releases it automatically when the handle is dropped or the process exits, so a crash
+/// never leaves a stale lock behind.
+fn try_acquire_lock(lock_path: &Path) -> std::io::Result<std::fs::File> {
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(lock_path)?;
+    if fs4::fs_std::FileExt::try_lock_exclusive(&file)? {
+        Ok(file)
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::WouldBlock,
+            "audit log lock is held by another instance",
+        ))
+    }
+}
+
+/// Scans every row of the audit log except the last one, checking both `verify_event`
+/// and the chain link to the previous row. Runs unconditionally on every boot — this is
+/// the only way an interior break (e.g. a middle row tampered in place) is ever caught,
+/// since `classify_tail`'s tail-window read cannot see it.
+///
+/// The last row is deliberately never checked here: its fate (resume / torn-write /
+/// seal-at-tail) is `classify_tail`'s job alone, and applying this function's stricter
+/// "any defect seals the file" rule to it would misclassify an ordinary torn write (an
+/// interrupted, incomplete last line) as tampering.
+///
+/// Streams the file line-by-line (`BufReader`) rather than loading it into memory, so
+/// memory use stays constant even for a large, long-lived log (runtime is still linear in
+/// the number of rows).
+///
+/// Returns the penultimate verified event when every interior row verifies, or the first
+/// broken interior row's recovery metadata.
+///
+/// # Errors
+/// Returns an error only if the file cannot be opened or read.
+fn verify_interior_chain(path: &Path) -> KResult<InteriorChainVerification> {
+    if !path.exists() {
+        return Ok(InteriorChainVerification {
+            previous_event: None,
+            failure: None,
+        });
+    }
+
+    let file = std::fs::File::open(path).map_err(|e| {
+        KmsError::ServerError(format!(
+            "audit: cannot open log file for startup verification: {e}"
+        ))
+    })?;
+    let reader = std::io::BufReader::new(file);
+
+    let mut prev: Option<AuditEvent> = None;
+    // One-line lookback: a line is only checked once we know a following line exists,
+    // which is exactly what makes it an interior row and not the (unchecked) last one.
+    let mut pending: Option<(String, u64)> = None;
+    let mut offset: u64 = 0;
+
+    for line in std::io::BufRead::lines(reader) {
+        let line = line.map_err(|e| {
+            KmsError::ServerError(format!(
+                "audit: cannot read log file for startup verification: {e}"
+            ))
+        })?;
+        // `.lines()` strips the trailing '\n'; every interior line was terminated by one.
+        let consumed = u64::try_from(line.len()).unwrap_or(u64::MAX) + 1;
+        let line_offset = offset;
+        offset += consumed;
+
+        if let Some((pending_line, pending_offset)) = pending.take() {
+            if !pending_line.trim().is_empty() {
+                match check_row(&pending_line) {
+                    RowCheck::Verified(event) => {
+                        if verify_chain_link(&event, prev.as_ref()) {
+                            prev = Some(event);
+                        } else {
+                            return Ok(InteriorChainVerification {
+                                previous_event: None,
+                                failure: Some(InteriorChainFailure {
+                                    reason: SealReason::HashMismatch,
+                                    claimed_last_id: Some(event.id),
+                                    failure_offset: pending_offset,
+                                }),
+                            });
+                        }
+                    }
+                    RowCheck::HashMismatch(event) => {
+                        return Ok(InteriorChainVerification {
+                            previous_event: None,
+                            failure: Some(InteriorChainFailure {
+                                reason: SealReason::HashMismatch,
+                                claimed_last_id: Some(event.id),
+                                failure_offset: pending_offset,
+                            }),
+                        });
+                    }
+                    RowCheck::Unparseable => {
+                        return Ok(InteriorChainVerification {
+                            previous_event: None,
+                            failure: Some(InteriorChainFailure {
+                                reason: SealReason::Unparseable,
+                                claimed_last_id: prev.as_ref().map(|p| p.id),
+                                failure_offset: pending_offset,
+                            }),
+                        });
+                    }
+                }
+            }
+        }
+        pending = Some((line, line_offset));
+    }
+
+    Ok(InteriorChainVerification {
+        previous_event: prev,
+        failure: None,
+    })
+}
+
+/// Runs an interior-chain integrity scan (unconditional, every boot) plus tail
+/// classification and any required recovery (line-terminator repair, truncate-and-
+/// continue, or seal-and-roll), then opens the file for the writer loop.
+///
+/// Only ever called after the exclusive lock is held — the peer's tail would otherwise be
+/// a moving target.
+///
+/// A break found anywhere in the interior of the chain (never the last row — see
+/// `verify_interior_chain`) routes straight to seal-and-roll.
+///
+/// # Errors
+/// Returns an error only for content-independent I/O faults (cannot read/truncate/rename/
+/// open); a data-corruption condition is always routed to a `TailOutcome` variant instead
+/// and handled without error (see `classify_tail`).
+fn recover_and_open(path: &Path) -> KResult<(std::fs::File, i64, [u8; 32])> {
+    let verification = verify_interior_chain(path)?;
+    let (next_id, prev_hash) = if let Some(failure) = verification.failure {
+        seal_and_roll(
+            path,
+            failure.reason,
+            failure.claimed_last_id,
+            failure.failure_offset,
+        )?
+    } else {
+        let previous_event = verification.previous_event;
+        match classify_tail(path, previous_event.as_ref())? {
+            TailOutcome::Genesis => (0, [0_u8; 32]),
+            TailOutcome::Resume {
+                next_id,
+                prev_hash,
+                needs_leading_nl,
+            } => {
+                if needs_leading_nl {
+                    // The prior process wrote the JSON row but crashed before its trailing
+                    // '\n' hit disk. The row itself is valid — just fix the line boundary
+                    // before the writer task appends anything new.
+                    let mut f = open_append(path).map_err(|e| {
+                        KmsError::ServerError(format!(
+                            "audit: cannot repair missing line terminator in {}: {e}",
+                            path.display()
+                        ))
+                    })?;
+                    f.write_all(b"\n").map_err(|e| {
+                        KmsError::ServerError(format!(
+                            "audit: cannot repair missing line terminator in {}: {e}",
+                            path.display()
+                        ))
+                    })?;
+                    f.sync_data().map_err(|e| {
+                        KmsError::ServerError(format!(
+                            "audit: cannot sync line-terminator repair in {}: {e}",
+                            path.display()
+                        ))
+                    })?;
+                } else {
+                    debug!(
+                        "AuditFileStore: resuming at id={next_id}, prev_hash={}",
+                        hex::encode(&prev_hash[..8]) /* first 8 bytes (16 hex chars) sufficient for diagnostics */
+                    );
+                }
+                (next_id, prev_hash)
+            }
+            TailOutcome::TruncateContinue {
+                keep_len,
+                next_id,
+                prev_hash,
+                bytes_discarded,
+                discard_offset,
+            } => truncate_and_continue(
+                path,
+                keep_len,
+                next_id,
+                prev_hash,
+                bytes_discarded,
+                discard_offset,
+            )?,
+            TailOutcome::SealAndRoll {
+                reason,
+                claimed_last_id,
+                failure_offset,
+            } => seal_and_roll(path, reason, claimed_last_id, failure_offset)?,
+        }
+    };
+
+    let file = open_append(path).map_err(|e| {
+        KmsError::ServerError(format!(
+            "audit: cannot open log file {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    Ok((file, next_id, prev_hash))
+}
+
+/// Supervises the writer's lifecycle so the KMS always starts, regardless of the audit
+/// log's state: acquires the exclusive lock (retrying in the background, without draining
+/// the channel, if a peer holds it), recovers/opens the file (retrying if the path is
+/// unwritable — EACCES, EIO, a read-only mount — so audit logging self-heals the moment
+/// the fault clears), then runs the normal `writer_loop`.
+///
+/// Events enqueued while waiting for either step are genuinely queued in the channel and
+/// flushed in order once the writer proceeds — they are not dropped. Only a channel that
+/// fills to capacity during the wait spills to drop + eviction-sentinel, exactly like
+/// saturation during normal operation.
+async fn writer_supervisor(
+    path: PathBuf,
+    rx: mpsc::Receiver<WriterMsg>,
+    dropped_count: Arc<AtomicU64>,
+    write_state: Arc<AuditWriteState>,
+) {
+    let lock_path = lock_file_path(&path);
+    let mut lock_contended_logged = false;
+    let _lock = loop {
+        match try_acquire_lock(&lock_path) {
+            Ok(lock) => break lock,
+            Err(e) => {
+                if lock_contended_logged {
+                    debug!(
+                        "AuditFileStore: still waiting on audit log lock {} ({e})",
+                        lock_path.display()
+                    );
+                } else {
+                    error!(
+                        "AuditFileStore: audit log lock {} held by another instance ({e}) — \
+                         buffering events until it is released",
+                        lock_path.display()
+                    );
+                    lock_contended_logged = true;
+                }
+                tokio::time::sleep(LOCK_RETRY_INTERVAL).await;
+            }
+        }
+    };
+
+    let (sink, next_id, prev_hash) = loop {
+        // `recover_and_open` does blocking `std::fs` I/O (whole-file scan, hash, and
+        // possible rename on seal-and-roll) — run it on the blocking pool so a large
+        // audit log doesn't monopolize this tokio worker thread during startup/recovery.
+        let path_for_recovery = path.clone();
+        let recovered =
+            tokio::task::spawn_blocking(move || recover_and_open(&path_for_recovery)).await;
+        match recovered {
+            Ok(Ok(triple)) => break triple,
+            Ok(Err(e)) => {
+                error!(
+                    "AuditFileStore: cannot open audit log {} ({e}) — retrying",
+                    path.display()
+                );
+                tokio::time::sleep(OPEN_RETRY_INTERVAL).await;
+            }
+            Err(join_err) => {
+                error!("AuditFileStore: recovery task failed to run ({join_err}) — retrying");
+                tokio::time::sleep(OPEN_RETRY_INTERVAL).await;
+            }
+        }
+    };
+
+    writer_loop(
+        sink,
+        next_id,
+        prev_hash,
+        rx,
+        dropped_count,
+        write_state,
+        &path,
+    )
+    .await;
+}
+
+/// Minimum interval between "still capped" debug log lines while blocked events
+/// keep arriving — avoids flooding the log once `max_size_bytes` is reached.
+const CAPPED_DEBUG_LOG_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Checks `sink`'s current on-disk length against `write_state.max_size_bytes` and
+/// updates `write_state` on the first transition into the capped state (logging
+/// once). Called right after the writer opens/recovers the file (an already-
+/// oversized log must block immediately) and again after every successful write
+/// (a write that crosses the cap is allowed to land, then blocks everything after
+/// it).
+fn enforce_size_cap<S: AuditSink>(sink: &S, write_state: &AuditWriteState, path: &Path) {
+    let Some(cap) = write_state.max_size_bytes else {
+        return;
+    };
+    let len = match sink.current_len() {
+        Ok(len) => len,
+        Err(e) => {
+            error!(
+                "AuditFileStore: cannot stat audit log {} ({e})",
+                path.display()
+            );
+            return;
+        }
+    };
+    if len < cap {
+        return;
+    }
+    let was_already_capped = write_state.size_limit_reached.swap(true, Ordering::Relaxed);
+    if !was_already_capped {
+        error!(
+            "AuditFileStore: audit log {} reached its configured max_size_bytes cap \
+             ({len} bytes >= {cap}) — audit writing is blocked until the log is safely \
+             remediated and the KMS is restarted",
+            path.display()
+        );
+    }
 }
 
 /// The background writer task.  Sole owner of the sink, the id counter, and
@@ -288,10 +1083,15 @@ async fn writer_loop<S: AuditSink>(
     mut prev_hash: [u8; 32],
     mut rx: mpsc::Receiver<WriterMsg>,
     dropped_count: Arc<AtomicU64>,
+    write_state: Arc<AuditWriteState>,
+    path: &Path,
 ) -> S {
+    enforce_size_cap(&sink, &write_state, path);
+    let mut last_capped_log: Option<std::time::Instant> = None;
+
     while let Some(msg) = rx.recv().await {
         let draft = match msg {
-            WriterMsg::Event(draft) => draft,
+            WriterMsg::Event(draft) => *draft,
             WriterMsg::Flush(ack) => {
                 // Every prior message has already been written above; simply
                 // acknowledge. Ignore a dropped receiver (caller stopped waiting).
@@ -299,13 +1099,37 @@ async fn writer_loop<S: AuditSink>(
                 continue;
             }
         };
+
+        if write_state.size_limit_reached.load(Ordering::Relaxed) {
+            let now = std::time::Instant::now();
+            let should_log = last_capped_log
+                .is_none_or(|logged_at| now.duration_since(logged_at) >= CAPPED_DEBUG_LOG_INTERVAL);
+            if should_log {
+                debug!(
+                    "AuditFileStore: audit log {} is at its max_size_bytes cap — event dropped",
+                    path.display()
+                );
+                last_capped_log = Some(now);
+            }
+            continue;
+        }
+
         // Emit a sentinel before the real event if any drops occurred since the last write.
         let n_dropped = dropped_count.swap(0, Ordering::Relaxed);
         if n_dropped > 0 {
             let sentinel = make_eviction_sentinel(n_dropped);
             next_id = write_draft_to_chain(&mut sink, sentinel, next_id, &mut prev_hash);
+            enforce_size_cap(&sink, &write_state, path);
         }
-        next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut prev_hash);
+        if write_state.size_limit_reached.load(Ordering::Relaxed) {
+            // The sentinel write alone just crossed the cap: writing the real draft too
+            // would overshoot the documented "one final event may cross" rule by a
+            // second event. Count it as dropped so a future sentinel reports it.
+            dropped_count.fetch_add(1, Ordering::Relaxed);
+        } else {
+            next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut prev_hash);
+            enforce_size_cap(&sink, &write_state, path);
+        }
     }
 
     // Channel closed (sender dropped on graceful shutdown): ensure all written
@@ -336,6 +1160,7 @@ fn write_draft_to_chain<S: AuditSink>(
         result: draft.result,
         duration_ms: draft.duration_ms,
         request_id: draft.request_id,
+        details: draft.details,
         prev_hash: *prev_hash,
         row_hash: [0_u8; 32],
     };
@@ -378,6 +1203,7 @@ fn make_eviction_sentinel(n_dropped: u64) -> AuditEventDraft {
         result: AuditResult::Failure(format!("{n_dropped} events dropped (channel full)")),
         duration_ms: 0,
         request_id: None,
+        details: None,
     }
 }
 
@@ -415,6 +1241,7 @@ pub(crate) fn make_success_draft(
         result: AuditResult::Success,
         duration_ms,
         request_id: None,
+        details: None,
     }
 }
 
@@ -442,11 +1269,42 @@ pub(crate) fn make_failure_draft(
         result: AuditResult::Failure(reason.into()),
         duration_ms,
         request_id: None,
+        details: None,
+    }
+}
+
+/// Test-only constructors on `AuditFileStore`.
+#[cfg(test)]
+impl AuditFileStore {
+    /// Same as [`Self::start_with_max_size`] with no file-size cap (unlimited, the
+    /// current/default behavior). Only production code goes through
+    /// `start_with_max_size` directly (it always has an `Option<u64>` cap to pass,
+    /// even when it's `None`); this convenience wrapper is kept for the many tests
+    /// that don't care about the cap at all.
+    pub(crate) fn start(path: &Path, channel_capacity: usize) -> KResult<Self> {
+        Self::start_with_max_size(path, channel_capacity, None)
+    }
+
+    /// Creates a store whose channel receiver is immediately dropped.
+    /// Every `try_send` returns `TrySendError::Closed` so `enqueue()` always
+    /// returns `false` — no race with a live writer draining the channel.
+    pub(crate) fn new_disconnected() -> Self {
+        let (sender, _rx) = mpsc::channel::<WriterMsg>(1);
+        Self {
+            sender,
+            dropped_count: Arc::new(AtomicU64::new(0)),
+            write_state: Arc::new(AuditWriteState::default()),
+        }
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use std::{
         io::BufRead as _,
@@ -454,11 +1312,14 @@ mod tests {
         sync::{Arc, atomic::AtomicU64},
     };
 
-    use cosmian_kms_access::audit::{AuditEvent, AuditEventDraft, verify_event};
+    use cosmian_kms_access::audit::{AuditEvent, AuditEventDraft, compute_row_hash, verify_event};
     use time::OffsetDateTime;
     use tokio::sync::mpsc;
 
-    use super::{AuditFileStore, AuditSink, WriterMsg, make_success_draft, writer_loop};
+    use super::{
+        AuditFileStore, AuditSink, AuditWriteState, WriterMsg, lock_file_path, make_success_draft,
+        writer_loop,
+    };
 
     /// Small channel capacity used in all tests.  Large enough for the ≤5-event
     /// functional tests; small enough to fill quickly in the saturation test.
@@ -652,10 +1513,12 @@ mod tests {
         std::fs::remove_file(&path).ok();
     }
 
-    /// `start()` must refuse to continue from a log whose last event's hash is
-    /// invalid — this catches both tampering and crash-truncated partial writes.
+    /// `start()` must never abort on a tampered last event — a complete row whose hash
+    /// doesn't match its own bytes is structurally distinct from a torn write, so it is
+    /// routed to seal-and-roll: the old file is sealed aside as evidence and a fresh
+    /// chain (a reanchor row) starts at the original path.
     #[tokio::test]
-    async fn resume_rejects_tampered_last_line() {
+    async fn resume_seals_and_rolls_tampered_last_line() {
         let path = temp_path("tampered");
         std::fs::remove_file(&path).ok();
 
@@ -675,39 +1538,174 @@ mod tests {
         *lines.last_mut().unwrap() = serde_json::to_string(&last_ev).unwrap();
         std::fs::write(&path, lines.join("\n") + "\n").unwrap();
 
-        // Startup must fail because the last event's hash no longer matches
-        let result = AuditFileStore::start(&path, TEST_CAPACITY);
-        assert!(result.is_err(), "start() must reject a tampered last event");
+        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+            .expect("start() must always succeed, even on a tampered log tail");
+        store.flush().await;
+        drop(store);
+
+        let sealed = find_sealed_file(&path);
+        assert!(sealed.is_some(), "expected a *.corrupt.jsonl sealed file");
+
+        let events = read_events(&path);
+        assert_eq!(
+            events.len(),
+            1,
+            "fresh chain must start with just the reanchor row"
+        );
+        assert_eq!(events[0].id, 0);
+        assert_eq!(events[0].prev_hash, [0_u8; 32]);
+        assert_eq!(events[0].operation, "audit:reanchor");
+        let details = events[0].details.as_deref().unwrap_or_default();
+        assert!(details.contains("hash_mismatch"), "details: {details}");
+        assert!(
+            details.contains(
+                &sealed
+                    .unwrap()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            ),
+            "details must name the sealed file: {details}"
+        );
 
         std::fs::remove_file(&path).ok();
+        cleanup_sealed_files(&path);
     }
 
-    // ── Fail-fast startup ────────────────────────────────────────────────
+    /// The final row must link to its predecessor even when its own row hash was
+    /// recomputed after tampering. The interior scan intentionally skips the physical
+    /// tail to preserve torn-write recovery, so `classify_tail` enforces this link.
+    #[tokio::test]
+    async fn resume_seals_and_rolls_last_row_with_broken_chain_link() {
+        let path = temp_path("last_link_tamper");
+        std::fs::remove_file(&path).ok();
 
-    /// `start()` must abort immediately (not silently disable audit logging)
-    /// when the log path cannot be opened. Using a path that walks *through*
-    /// an existing plain file (instead of relying on filesystem permissions,
-    /// which root ignores) makes this deterministic on every platform/CI user.
-    #[test]
-    fn start_fails_when_path_is_unopenable() {
+        {
+            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            store.enqueue(std::iter::once(make_draft()));
+            store.enqueue(std::iter::once(make_draft()));
+            store.flush().await;
+        }
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        let mut lines: Vec<String> = content.lines().map(str::to_owned).collect();
+        let last_index = lines.len() - 1;
+        let mut last_event: AuditEvent = serde_json::from_str(&lines[last_index]).unwrap();
+        last_event.prev_hash = [0xA5; 32];
+        last_event.row_hash = compute_row_hash(&last_event);
+        lines[last_index] = serde_json::to_string(&last_event).unwrap();
+        std::fs::write(&path, lines.join("\n") + "\n").unwrap();
+
+        let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+        store.flush().await;
+        drop(store);
+
+        assert!(
+            find_sealed_file(&path).is_some(),
+            "a final row with a broken prev_hash link must be sealed"
+        );
+        let events = read_events(&path);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].operation, "audit:reanchor");
+
+        std::fs::remove_file(&path).ok();
+        cleanup_sealed_files(&path);
+    }
+
+    // ── Always-start: lock contention and self-healing ────────────────────
+
+    /// An unwritable path (here: a path that walks *through* an existing plain file,
+    /// deterministic on every platform/CI user unlike relying on permissions, which root
+    /// ignores) must never abort startup. `start()` succeeds immediately; the writer
+    /// keeps retrying in the background and self-heals the moment the fault clears.
+    #[tokio::test]
+    async fn start_self_heals_after_unwritable_path_is_fixed() {
         let blocker = temp_path("unopenable_blocker");
         std::fs::remove_file(&blocker).ok();
         std::fs::write(&blocker, b"i am a file, not a directory").unwrap();
-        // `blocker` is a file, so treating it as a parent directory must fail.
+        // `blocker` is a file, so treating it as a parent directory fails until removed.
         let bogus_path = blocker.join("audit.jsonl");
 
-        let result = AuditFileStore::start(&bogus_path, TEST_CAPACITY);
+        let store = AuditFileStore::start(&bogus_path, TEST_CAPACITY)
+            .expect("start() must always succeed, even for an unwritable path");
+
+        // While broken, enqueued events are dropped (logged), never causing a panic.
+        store.enqueue(std::iter::once(make_draft()));
+
+        // Fix the fault — the writer must notice on its next retry and self-heal.
+        std::fs::remove_file(&blocker).ok();
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            store.enqueue(std::iter::once(make_draft()));
+            if bogus_path.exists() {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "writer never self-healed after the fault was fixed"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        store.flush().await;
+
+        let events = read_events(&bogus_path);
         assert!(
-            result.is_err(),
-            "start() must fail when the log file cannot be opened"
-        );
-        let err = result.err().unwrap().to_string();
-        assert!(
-            err.contains("cannot open"),
-            "unexpected error message: {err}"
+            !events.is_empty(),
+            "expected at least one persisted event after self-heal"
         );
 
-        std::fs::remove_file(&blocker).ok();
+        std::fs::remove_file(&bogus_path).ok();
+        cleanup_sealed_files(&bogus_path);
+    }
+
+    /// While a peer instance holds the exclusive lock, the writer must not touch the
+    /// file at all — events are buffered in the channel, not dropped, and flushed in
+    /// order once the lock is released and acquired.
+    #[tokio::test]
+    async fn lock_contention_buffers_until_released() {
+        let path = temp_path("lock_contention");
+        std::fs::remove_file(&path).ok();
+
+        let lock_path = lock_file_path(&path);
+        if let Some(parent) = lock_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        let held = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&lock_path)
+            .unwrap();
+        fs4::fs_std::FileExt::try_lock_exclusive(&held).unwrap();
+
+        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+            .expect("start() must always succeed even when the lock is held by a peer");
+
+        store.enqueue(std::iter::once(make_draft()));
+        store.enqueue(std::iter::once(make_draft()));
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        assert!(
+            !path.exists(),
+            "must not write anything while the lock is held by a peer"
+        );
+
+        // Release the peer's lock — the writer should acquire it and flush the buffer.
+        fs4::fs_std::FileExt::unlock(&held).ok();
+        drop(held);
+
+        store.flush().await;
+        let events = read_events(&path);
+        assert_eq!(
+            events.len(),
+            2,
+            "buffered events must be flushed once the lock is acquired"
+        );
+        assert_valid_chain(&events);
+
+        std::fs::remove_file(&path).ok();
+        std::fs::remove_file(&lock_path).ok();
     }
 
     /// A zero channel capacity is rejected before any file I/O or task spawn.
@@ -727,25 +1725,301 @@ mod tests {
         std::fs::remove_file(&path).ok();
     }
 
-    /// A last line that isn't valid JSON (e.g. a crash mid-`serde_json::to_writer`,
-    /// before any `\n` was written) must abort startup rather than silently
-    /// resetting the chain from id 0.
-    #[test]
-    fn start_fails_on_malformed_last_line() {
+    /// A last line that isn't valid JSON at all, but the file DOES end in `\n` (a complete,
+    /// terminated, garbage row — not an interrupted write), must seal-and-roll rather than
+    /// abort startup.
+    #[tokio::test]
+    async fn start_seals_and_rolls_malformed_last_line() {
         let path = temp_path("malformed_last_line");
         std::fs::remove_file(&path).ok();
         std::fs::write(&path, b"{not valid json at all\n").unwrap();
 
-        let result = AuditFileStore::start(&path, TEST_CAPACITY);
+        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+            .expect("start() must always succeed, even on structural garbage");
+        store.flush().await;
+        drop(store);
+
+        let sealed = find_sealed_file(&path);
+        assert!(sealed.is_some(), "expected a *.corrupt.jsonl sealed file");
+
+        let events = read_events(&path);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].operation, "audit:reanchor");
+        let details = events[0].details.as_deref().unwrap_or_default();
+        assert!(details.contains("unparseable"), "details: {details}");
+
+        std::fs::remove_file(&path).ok();
+        cleanup_sealed_files(&path);
+    }
+
+    /// Interior-chain verification runs unconditionally on every boot, so it catches a
+    /// mid-chain tamper that `classify_tail`'s tail-window read alone cannot see (the
+    /// last row is untouched and still verifies fine in isolation).
+    #[tokio::test]
+    async fn startup_always_catches_mid_chain_tamper() {
+        let path = temp_path("interior_verify");
+        std::fs::remove_file(&path).ok();
+
+        {
+            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            for _ in 0..3 {
+                store.enqueue(std::iter::once(make_draft()));
+            }
+            store.flush().await;
+        }
+
+        // Tamper an EARLY row's content without touching its stored row_hash — the last
+        // row is untouched and would look perfectly fine to a tail-only check.
+        let content = std::fs::read_to_string(&path).unwrap();
+        let mut lines: Vec<String> = content.lines().map(str::to_owned).collect();
+        let mut row0: AuditEvent = serde_json::from_str(&lines[0]).unwrap();
+        row0.operation = "Destroy".to_owned();
+        lines[0] = serde_json::to_string(&row0).unwrap();
+        std::fs::write(&path, lines.join("\n") + "\n").unwrap();
+
+        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+            .expect("start() must always succeed, even on a mid-chain tamper");
+        store.flush().await;
+        drop(store);
+
         assert!(
-            result.is_err(),
-            "start() must reject a log whose last line is not valid JSON"
+            find_sealed_file(&path).is_some(),
+            "a mid-chain tamper must always be caught and seal-and-rolled"
         );
-        let err = result.err().unwrap().to_string();
+
+        std::fs::remove_file(&path).ok();
+        cleanup_sealed_files(&path);
+    }
+
+    /// Finds the `*.corrupt.<ext>` sibling file sealed next to `path`, if any.
+    fn find_sealed_file(path: &Path) -> Option<PathBuf> {
+        let parent = path.parent()?;
+        let stem = path.file_stem()?.to_string_lossy().into_owned();
+        std::fs::read_dir(parent)
+            .ok()?
+            .filter_map(Result::ok)
+            .find_map(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                (name.starts_with(&stem) && name.contains(".corrupt.")).then(|| entry.path())
+            })
+    }
+
+    /// Removes every `*.corrupt.<ext>` sibling of `path` left behind by a test.
+    fn cleanup_sealed_files(path: &Path) {
+        while let Some(sealed) = find_sealed_file(path) {
+            std::fs::remove_file(&sealed).ok();
+        }
+    }
+
+    /// A torn (interrupted) write — an incomplete trailing fragment with no terminating
+    /// `\n` — is truncated away and the chain continues in place, with a
+    /// `audit:torn-write-recovered` sentinel as the next event. No prior verified row is
+    /// ever removed.
+    #[tokio::test]
+    async fn torn_write_truncates_and_continues() {
+        let path = temp_path("torn");
+        std::fs::remove_file(&path).ok();
+
+        {
+            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            store.enqueue(std::iter::once(make_draft()));
+            store.enqueue(std::iter::once(make_draft()));
+            store.flush().await;
+        }
+        let before = read_events(&path);
+        assert_eq!(before.len(), 2);
+
+        // Simulate a crash mid-write: append an incomplete JSON fragment, no trailing '\n'.
+        {
+            use std::io::Write as _;
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap();
+            write!(f, "{{\"id\":2,\"timestamp\":\"broken-mid-write").unwrap();
+        }
+
+        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+            .expect("start() must always succeed, even after a torn write");
+        store.flush().await;
+        drop(store);
+
         assert!(
-            err.contains("cannot parse last line"),
-            "unexpected error message: {err}"
+            find_sealed_file(&path).is_none(),
+            "a torn write must never seal-and-roll"
         );
+
+        let events = read_events(&path);
+        assert_eq!(events.len(), 3, "2 original + 1 torn-write sentinel");
+        assert_eq!(events[0].id, before[0].id);
+        assert_eq!(events[1].id, before[1].id);
+        assert_eq!(events[2].operation, "audit:torn-write-recovered");
+        assert_eq!(events[2].prev_hash, before[1].row_hash);
+        assert_valid_chain(&events);
+
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !raw.contains("broken-mid-write"),
+            "torn fragment must be discarded"
+        );
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// A complete, verified last row missing only its trailing `\n` (crash between the
+    /// JSON write and the newline write) is resumed in place, not truncated or sealed —
+    /// the line boundary is repaired before the next append.
+    #[tokio::test]
+    async fn resume_repairs_missing_trailing_newline() {
+        let path = temp_path("missing_nl");
+        std::fs::remove_file(&path).ok();
+
+        {
+            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            store.enqueue(std::iter::once(make_draft()));
+            store.enqueue(std::iter::once(make_draft()));
+            store.flush().await;
+        }
+
+        // Strip the final newline — the last row is complete and valid, just unterminated.
+        let content = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, content.trim_end_matches('\n')).unwrap();
+
+        {
+            let store = AuditFileStore::start(&path, TEST_CAPACITY)
+                .expect("start() must always succeed on a missing trailing newline");
+            store.enqueue(std::iter::once(make_draft()));
+            store.flush().await;
+        }
+
+        assert!(find_sealed_file(&path).is_none());
+
+        let events = read_events(&path);
+        assert_eq!(events.len(), 3, "2 original + 1 new event after resume");
+        for (i, ev) in events.iter().enumerate() {
+            assert_eq!(ev.id, i64::try_from(i).unwrap());
+        }
+        assert_valid_chain(&events);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    // ── max_size_bytes write-stop cap ─────────────────────────────────────
+
+    /// `None` (the default) stays unlimited: many events past what would be a tiny
+    /// cap are all written, proving the cap machinery is fully opt-in.
+    #[tokio::test]
+    async fn size_cap_none_is_unlimited() {
+        let path = temp_path("size_cap_none");
+        std::fs::remove_file(&path).ok();
+
+        let store = AuditFileStore::start_with_max_size(&path, TEST_CAPACITY, None).unwrap();
+        for _ in 0..5 {
+            store.enqueue(std::iter::once(make_draft()));
+        }
+        store.flush().await;
+        drop(store);
+
+        let events = read_events(&path);
+        assert_eq!(events.len(), 5);
+        assert_valid_chain(&events);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// A file already at (or past) the configured cap when the writer starts must
+    /// accept no new event at all — the cap is enforced before any queued event is
+    /// processed, not just after a write.
+    #[tokio::test]
+    async fn size_cap_already_reached_blocks_all_writes() {
+        let path = temp_path("size_cap_already_reached");
+        std::fs::remove_file(&path).ok();
+
+        // Baseline: 2 valid events, unbounded.
+        {
+            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            store.enqueue(std::iter::once(make_draft()));
+            store.enqueue(std::iter::once(make_draft()));
+            store.flush().await;
+        }
+        let baseline = read_events(&path);
+        assert_eq!(baseline.len(), 2);
+        let cap = std::fs::metadata(&path).unwrap().len();
+
+        // Cap set to exactly the current file length: already at (>=) the cap.
+        let store = AuditFileStore::start_with_max_size(&path, TEST_CAPACITY, Some(cap)).unwrap();
+        // Synchronize on the writer having performed its startup cap check.
+        store.flush().await;
+
+        let queued = store.enqueue(std::iter::once(make_draft()));
+        assert!(
+            !queued,
+            "enqueue() must report false once the file is already at its size cap"
+        );
+        store.flush().await;
+        drop(store);
+
+        let events = read_events(&path);
+        assert_eq!(
+            events.len(),
+            2,
+            "no new event may be written when the file starts already at the cap"
+        );
+        assert_valid_chain(&events);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// The event that pushes the file to/past the cap is still persisted (the "one
+    /// final event may cross" rule); every event enqueued afterward is rejected and
+    /// never written. The chain stays valid through the crossing event.
+    #[tokio::test]
+    async fn size_cap_allows_crossing_event_then_blocks_further_writes() {
+        let path = temp_path("size_cap_crossing");
+        std::fs::remove_file(&path).ok();
+
+        // Baseline: 3 valid events, unbounded.
+        {
+            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            for _ in 0..3 {
+                store.enqueue(std::iter::once(make_draft()));
+            }
+            store.flush().await;
+        }
+        let len_before = std::fs::metadata(&path).unwrap().len();
+        // A single event is always far more than 1 byte, so the very next write is
+        // guaranteed to cross this cap — regardless of the exact per-event
+        // serialized length, which can vary slightly (e.g. timestamp width).
+        let cap = len_before + 1;
+
+        // `len_before < cap`: the writer must not be capped on startup.
+        let store = AuditFileStore::start_with_max_size(&path, TEST_CAPACITY, Some(cap)).unwrap();
+        store.enqueue(std::iter::once(make_draft()));
+        store.flush().await;
+
+        let events_after_crossing = read_events(&path);
+        assert_eq!(
+            events_after_crossing.len(),
+            4,
+            "the event that crosses the cap must still be persisted"
+        );
+        assert_valid_chain(&events_after_crossing);
+
+        let queued = store.enqueue(std::iter::once(make_draft()));
+        assert!(
+            !queued,
+            "enqueue() must report false once the cap has been crossed"
+        );
+        store.flush().await;
+        drop(store);
+
+        let events_final = read_events(&path);
+        assert_eq!(
+            events_final.len(),
+            4,
+            "no event may be written once the cap has been crossed"
+        );
+        assert_valid_chain(&events_final);
 
         std::fs::remove_file(&path).ok();
     }
@@ -794,10 +2068,23 @@ mod tests {
         // Fail exactly the 3rd write call (0-based index 2).
         let sink = FaultySink::new(|idx| idx == 2);
 
-        let handle = tokio::spawn(writer_loop(sink, 0, [0_u8; 32], rx, dropped_count));
+        let handle = tokio::spawn(async move {
+            writer_loop(
+                sink,
+                0,
+                [0_u8; 32],
+                rx,
+                dropped_count,
+                Arc::new(AuditWriteState::default()),
+                Path::new("faulty_sink_test"),
+            )
+            .await
+        });
 
         for _ in 0..5 {
-            tx.send(WriterMsg::Event(make_draft())).await.unwrap();
+            tx.send(WriterMsg::Event(Box::new(make_draft())))
+                .await
+                .unwrap();
         }
         drop(tx);
 
@@ -825,10 +2112,23 @@ mod tests {
         let dropped_count = Arc::new(AtomicU64::new(0));
         let sink = FaultySink::new(|_| true);
 
-        let handle = tokio::spawn(writer_loop(sink, 0, [0_u8; 32], rx, dropped_count));
+        let handle = tokio::spawn(async move {
+            writer_loop(
+                sink,
+                0,
+                [0_u8; 32],
+                rx,
+                dropped_count,
+                Arc::new(AuditWriteState::default()),
+                Path::new("faulty_sink_test"),
+            )
+            .await
+        });
 
         for _ in 0..3 {
-            tx.send(WriterMsg::Event(make_draft())).await.unwrap();
+            tx.send(WriterMsg::Event(Box::new(make_draft())))
+                .await
+                .unwrap();
         }
         drop(tx);
 

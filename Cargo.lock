@@ -1414,6 +1414,7 @@ dependencies = [
  "cosmian_kmip",
  "hex",
  "serde",
+ "serde_json",
  "sha2 0.10.9",
  "time",
  "uuid",
@@ -1704,6 +1705,7 @@ dependencies = [
  "dashmap",
  "dialoguer",
  "dotenvy",
+ "fs4",
  "futures",
  "governor",
  "hex",
@@ -2736,6 +2738,16 @@ checksum = "b91aa448ca50d7e79433bdf3ee8d99215430d2ec02ade5aefab2a073a1822e8a"
 dependencies = [
  "autocfg",
  "tokio",
+]
+
+[[package]]
+name = "fs4"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8640e34b88f7652208ce9e88b1a37a2ae95227d84abec377ccd3c5cfeb141ed4"
+dependencies = [
+ "rustix",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4255,7 +4267,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
