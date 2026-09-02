@@ -14,7 +14,7 @@ const fn is_blocked_ipv4(v4: std::net::Ipv4Addr) -> bool {
 
 /// Validates that a CRL Distribution Point URL is safe to fetch.
 ///
-/// Mitigations applied (COSMIAN-2026-020):
+/// Mitigations applied (COSMIAN-2026-021):
 /// - Only `http://` and `https://` schemes are permitted (RFC 5280 CDPs are
 ///   typically HTTP to avoid circular TLS-validation dependencies; both are
 ///   allowed here but all other checks still apply).

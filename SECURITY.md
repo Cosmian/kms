@@ -120,7 +120,7 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 **Impact:** Full bypass of the Create/Import authorization gate in any deployment that restricts object creation to a configured allow-list (`privileged_users` or `crypto_officer.users`). A non-privileged user who received only a `Get` grant on the attacker-controlled `"*"` object could create and import arbitrary keys, defeating the intended lifecycle control.
 
-**Mitigation:** Upgrade to 5.26.1. `"*"` is now a reserved object identifier rejected at the database layer (`Database::create` and `Database::atomic`, in `crate/server_database/src/core/database_objects.rs`) for every backend — no object can ever be created under this uid, eliminating the collision at the source rather than patching the permission-check symptom.
+**Mitigation:** Upgrade to 5.27.0. `"*"` is now a reserved object identifier rejected at the database layer (`Database::create` and `Database::atomic`, in `crate/server_database/src/core/database_objects.rs`) for every backend — no object can ever be created under this uid, eliminating the collision at the source rather than patching the permission-check symptom.
 
 ---
 
@@ -701,7 +701,7 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 | ID               | Severity | Affected                | Fixed in | Title                                                         |
 | ---------------- | -------- | ----------------------- | -------- | ------------------------------------------------------------- |
 | COSMIAN-2026-021 | High     | 5.0.0 – 5.26.x          | 5.27.0   | SSRF via CRL Distribution Points in KMIP Validate/Import     |
-| COSMIAN-2026-020 | Critical | 5.0.0 – 5.26.0          | 5.26.1   | `Get` grant on wildcard uid `*` bypasses Create/Import gate   |
+| COSMIAN-2026-020 | Critical | 5.0.0 – 5.26.0          | 5.27.0   | `Get` grant on wildcard uid `*` bypasses Create/Import gate   |
 | COSMIAN-2026-019 | Low      | 5.0.0 – 5.22.x          | 5.23.0   | RUSTSEC-2026-0173: proc-macro-error2 via mysql_async (compile-time) |
 | COSMIAN-2026-018 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Activate uses overly permissive authorization check           |
 | COSMIAN-2026-017 | Critical | 5.0.0 – 5.22.x          | 5.23.0   | ReKey / ReKeyKeyPair authorization bypass                     |

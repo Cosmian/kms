@@ -461,7 +461,7 @@ const CRL_MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
 ///
 /// In production, only `http://` and `https://` URIs are fetched. All other URI
 /// types (bare filesystem paths, LDAP, FTP, …) are rejected to prevent
-/// Server-Side Request Forgery (COSMIAN-2026-020).
+/// Server-Side Request Forgery (COSMIAN-2026-021).
 ///
 /// When the `insecure` feature is enabled (or in `#[cfg(test)]` builds),
 /// `file://` URIs are additionally permitted so that integration tests and
@@ -499,7 +499,7 @@ async fn get_crl_bytes(
     let mut result = HashMap::new();
 
     for uri in uri_list {
-        // SECURITY (COSMIAN-2026-020): when the `insecure` feature is enabled (or
+        // SECURITY (COSMIAN-2026-021): when the `insecure` feature is enabled (or
         // in unit-test builds), `file://` URIs are resolved locally so that test
         // environments can load CRL fixtures without an HTTP server.
         // In standard production builds this branch is compiled out entirely.
@@ -521,7 +521,7 @@ async fn get_crl_bytes(
             continue;
         }
 
-        // SECURITY (COSMIAN-2026-020): reject every non-HTTP(S) URI in production.
+        // SECURITY (COSMIAN-2026-021): reject every non-HTTP(S) URI in production.
         // This covers bare filesystem paths, file:// (production), LDAP, FTP, etc.
         if !uri.starts_with("http://") && !uri.starts_with("https://") {
             if let Ok(parsed) = url::Url::parse(&uri) {
@@ -538,7 +538,7 @@ async fn get_crl_bytes(
             )));
         }
 
-        // SECURITY (COSMIAN-2026-020): validate the URL against SSRF targets
+        // SECURITY (COSMIAN-2026-021): validate the URL against SSRF targets
         // (private IPs, loopback, link-local, internal hostnames) before any
         // network I/O.
         // Exemption: URLs that begin with the server's own public URL are trusted —
@@ -558,7 +558,7 @@ async fn get_crl_bytes(
         }
 
         let mut client_builder = reqwest::Client::builder()
-            // SECURITY (COSMIAN-2026-020): never follow redirects — a 3xx to an
+            // SECURITY (COSMIAN-2026-021): never follow redirects — a 3xx to an
             // internal address would bypass the URL validation above.
             .redirect(reqwest::redirect::Policy::none())
             // Bound the total request time to prevent slowloris / resource exhaustion.
@@ -620,7 +620,7 @@ async fn get_crl_bytes(
             )));
         }
 
-        // SECURITY (COSMIAN-2026-020): cap the body size to prevent memory
+        // SECURITY (COSMIAN-2026-021): cap the body size to prevent memory
         // exhaustion from an unbounded response.bytes().await call.
         // Use saturating conversion: on 32-bit targets a u64 > usize::MAX
         // would overflow; we treat that as "exceeds limit" which is correct.
@@ -974,7 +974,7 @@ mod tests {
 
     // ── validate_crl_url unit tests ─────────────────────────────────────────────
 
-    /// SR-CRL-01: loopback IPv4 addresses must be rejected (COSMIAN-2026-020).
+    /// SR-CRL-01: loopback IPv4 addresses must be rejected (COSMIAN-2026-021).
     #[test]
     fn sr_crl_01_loopback_ipv4_blocked() {
         let err = validate_crl_url("http://127.0.0.1:8765/crl").unwrap_err();
@@ -1056,7 +1056,7 @@ mod tests {
     }
 
     /// SR-CRL-11: IPv6 loopback (`::1`) must be rejected. Regression test for
-    /// COSMIAN-2026-020's IPv6 gap: `Url::host_str()` returns bracketed IPv6
+    /// COSMIAN-2026-021's IPv6 gap: `Url::host_str()` returns bracketed IPv6
     /// hosts (`"[::1]"`), which previously failed to parse as `IpAddr` and
     /// silently bypassed every IP-literal check.
     #[test]
@@ -1151,7 +1151,7 @@ mod tests {
     ///
     /// The CRL-fetch client is configured with `Policy::none()` so the redirect
     /// response is returned as-is (non-2xx), preventing the KMS server from
-    /// acting as an open relay to the redirected target (COSMIAN-2026-020).
+    /// acting as an open relay to the redirected target (COSMIAN-2026-021).
     #[actix_web::test]
     async fn sr_crl_07_redirect_not_followed() {
         // "attacker-controlled" target — must never receive a request.
