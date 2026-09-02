@@ -24,3 +24,8 @@ ANF = "ANF"
 tme = "tme"
 # Plural of PNG (image format)
 PNGs = "PNGs"
+# Security Information and Event Management
+SIEM = "SIEM"
+SIEMs = "SIEMs"
+SIE = "SIE"
+sie = "sie"

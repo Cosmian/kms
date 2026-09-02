@@ -5,12 +5,13 @@ use cosmian_kms_server_database::{
     CeremonyKeys, MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
 };
 use cosmian_logger::{debug, warn};
+use ipnet::IpNet;
 
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig,
-        JwksEndpointConfig, OidcConfig,
+        AuditFailureMode, AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig,
+        IdpConfig, JwksEndpointConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -250,6 +251,23 @@ pub struct ServerParams {
     /// When set, the KMS validates bearer tokens issued by the Auth Verifier server.
     /// The `sub` claim is used as the user identity.
     pub auth_verifier_config: Option<AuthVerifierConfig>,
+
+    /// When `Some`, tamper-evident JSONL audit logging is enabled and events
+    /// are appended to the file at this path.  `None` means audit logging is
+    /// disabled (the default).
+    pub audit_file_path: Option<std::path::PathBuf>,
+
+    /// Capacity of the bounded in-memory channel between request threads and the
+    /// audit writer task.  Propagated from `--audit-channel-capacity` /
+    /// `KMS_AUDIT_CHANNEL_CAPACITY`.  Must be ≥ 1.
+    pub audit_channel_capacity: usize,
+
+    /// Trusted reverse-proxy CIDR blocks.  `X-Forwarded-For` is only used when
+    /// the direct TCP peer address falls within one of these ranges.
+    pub audit_trusted_proxy_cidrs: Vec<IpNet>,
+
+    /// What to do when an audit event cannot be queued.
+    pub audit_failure_mode: AuditFailureMode,
 }
 
 /// Represents the server parameters.
@@ -567,6 +585,19 @@ impl ServerParams {
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
             auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
+            audit_file_path: if conf.audit.audit_enable {
+                let path = conf
+                    .audit
+                    .file
+                    .audit_file_path
+                    .unwrap_or_else(|| conf.workspace.root_data_path.join("audit.jsonl"));
+                Some(path)
+            } else {
+                None
+            },
+            audit_channel_capacity: conf.audit.audit_channel_capacity,
+            audit_trusted_proxy_cidrs: conf.audit.audit_trusted_proxy_cidrs,
+            audit_failure_mode: conf.audit.audit_failure_mode,
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a
@@ -954,6 +985,10 @@ impl fmt::Debug for ServerParams {
                 &self.jwks_endpoint.jwks_endpoint_enabled,
             );
         }
+        debug_struct.field("audit_file_path", &self.audit_file_path);
+        debug_struct.field("audit_channel_capacity", &self.audit_channel_capacity);
+        debug_struct.field("audit_trusted_proxy_cidrs", &self.audit_trusted_proxy_cidrs);
+        debug_struct.field("audit_failure_mode", &self.audit_failure_mode);
 
         // Vault API fields
         debug_struct.field("vault_api_enabled", &self.vault_api_enabled);
