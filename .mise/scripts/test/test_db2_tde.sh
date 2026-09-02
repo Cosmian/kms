@@ -8,11 +8,10 @@
 #                   Database Encryption Master Key (DEMK), and creates an
 #                   encrypted database.  Verifies the key is visible in the KMS.
 #
-# Community-edition graceful degradation:
-#   IBM Db2 Community Edition does NOT include KMIP keystore support.  When the
-#   trial license (LICENSE=accept) also lacks this feature, the script detects the
-#   SQL1726N / SQL6112N / SQL10007N errors and exits 0 with SKIPPED status.  The mTLS
-#   connectivity and KMS REST-API checks are still verified in that case.
+# IBM Db2 Community Edition (12.1+) has no license restriction on KMIP TDE —
+# only "IBM DB2 Performance Management Offering" is gated. KEYSTORE_TYPE=KMIP
+# works out of the box. PRODUCT_NAME=OTHER is the documented value for any
+# third-party KMIP 1.1+ key manager (i.e. not ISKLM or SafeNet KeySecure).
 #
 # Prerequisites:
 #   • Docker must be available.
@@ -52,8 +51,8 @@ setup_test_logging
 
 CERT_DIR="${REPO_ROOT}/test_data/certificates/client_server"
 CA_CERT="${CERT_DIR}/ca/ca.crt"
-SERVER_P12="${CERT_DIR}/server/kmserver.acme.com.p12"
-SERVER_P12_PASSWORD="password"
+SERVER_CERT="${CERT_DIR}/server/kmserver.acme.com.crt"
+SERVER_KEY="${CERT_DIR}/server/kmserver.acme.com.key"
 CLIENT_P12="${CERT_DIR}/owner/owner.client.acme.com.p12"
 
 KMS_SQLITE_DIR="$(mktemp -d -t kms-db2-XXXXXX)"
@@ -101,8 +100,8 @@ RUST_LOG="${RUST_LOG:-cosmian_kms_server=info,cosmian_kmip=warn}" \
   --database-type sqlite \
   --sqlite-path "${KMS_SQLITE_DIR}" \
   --socket-server-port "${KMS_KMIP_PORT}" \
-  --tls-p12-file "${SERVER_P12}" \
-  --tls-p12-password "${SERVER_P12_PASSWORD}" \
+  --tls-cert-file "${SERVER_CERT}" \
+  --tls-key-file "${SERVER_KEY}" \
   --clients-ca-cert-file "${CA_CERT}" \
   --port "${KMS_HTTP_PORT}" \
   --hostname "127.0.0.1" \
@@ -195,105 +194,115 @@ if [ "${DB2_READY}" = false ]; then
 fi
 echo "Db2 is ready."
 
-# ── Step 5: Probe KMIP keystore feature availability ─────────────────────────
+# ── Step 5: Install GSKit tooling prerequisite ────────────────────────────────
+# gsk9certutil_64 (the GSKit CLI in Db2 12.1 — gsk8capicmd_64 was removed) needs
+# libicu, which is missing from the icr.io/db2_community/db2 image.
 echo
-echo "==> Probing Db2 KMIP keystore feature…"
-
-# Attempt to configure KMIP keystore type at the instance level.
-# SQL1726N  = "function not supported in this edition"
-# SQL6112N   = "configuration parameter not updated" (invalid value or unsupported feature)
-# SQL10007N  = various function-not-available messages
-KMIP_FEATURE_PROBE=$(docker exec -u db2inst1 "${DB2_CONTAINER_NAME}" bash -c \
-  '. ~/sqllib/db2profile
-   db2 "UPDATE DBM CFG USING KEYSTORE_TYPE KMIP" 2>&1' || true)
-
-echo "KMIP feature probe: ${KMIP_FEATURE_PROBE}"
-
-if echo "${KMIP_FEATURE_PROBE}" | grep -qiE \
-  "SQL1726N|SQL6112N|SQL10007N|not supported|not available|not licensed|Invalid.*KMIP|feature.*edition"; then
-  echo "==> SKIPPED: Db2 KMIP keystore is not available (Community/trial edition limitation)."
-  echo "  IBM Db2 Advanced Enterprise Server Edition is required for KMIP TDE."
-  echo "  The following were verified successfully:"
-  echo "  ✓ mTLS sad path (connection without cert rejected)"
-  echo "  ✓ KMS REST API encrypt/decrypt round-trip"
-  echo "  ✓ Db2 container started and ready"
-  exit 0
-fi
+echo "==> Installing libicu (required by gsk9certutil_64)…"
+docker exec -u root "${DB2_CONTAINER_NAME}" bash -c 'dnf install -y libicu' >/dev/null 2>&1 ||
+  echo "WARNING: libicu install failed — GSKit keystore setup may fail." >&2
 
 # ── Step 6: Configure mTLS certificates in Db2 GSKit keystore ────────────────
 echo
 echo "==> Configuring GSKit keystore inside Db2 container…"
 
-GSK_DB="/home/db2inst1/kmip_keys.p12"
+# Db2 12.1's instance home is /database/config/<instance>, not /home/<instance>.
+DB2_HOME=$(docker exec -u db2inst1 "${DB2_CONTAINER_NAME}" bash -c 'echo $HOME')
+GSK_DB="${DB2_HOME}/kmip_keys.p12"
+GSK_STASH="${DB2_HOME}/kmip_keys.sth"
 GSK_PWD="KmipGskPass1"
+CLIENT_CERT_LABEL="db2kmip_client"
 
 # Copy CA cert and client P12 into the container.
 docker cp "${CA_CERT}" "${DB2_CONTAINER_NAME}:/tmp/kms_ca.crt"
 docker cp "${CLIENT_P12}" "${DB2_CONTAINER_NAME}:/tmp/client.p12"
 
+# The client P12's personal certificate is stored under its subject DN. GSKit's
+# own listing gives the exact label string it expects for -label (its format
+# does not match openssl's subject rendering), so query it directly rather
+# than reconstructing the DN ourselves.
 GSK_SETUP=$(docker exec -u db2inst1 "${DB2_CONTAINER_NAME}" bash -c "
   . ~/sqllib/db2profile
 
-  # Create PKCS#12 keystore
-  gsk8capicmd_64 -keydb -create -db '${GSK_DB}' -pw '${GSK_PWD}' \
+  gsk9certutil_64 -keydb -create -db '${GSK_DB}' -pw '${GSK_PWD}' \
     -type pkcs12 -expire 3650 -stash 2>&1
 
-  # Import CA certificate
-  gsk8capicmd_64 -cert -add -db '${GSK_DB}' -pw '${GSK_PWD}' \
+  gsk9certutil_64 -cert -add -db '${GSK_DB}' -pw '${GSK_PWD}' \
     -label 'KMS_CA' -file /tmp/kms_ca.crt -format ascii 2>&1
 
-  # Import client certificate
-  gsk8capicmd_64 -cert -import -db /tmp/client.p12 -pw 'password' \
-    -target '${GSK_DB}' -target_pw '${GSK_PWD}' -label 'db2kmip_client' 2>&1
+  CLIENT_SOURCE_LABEL=\$(gsk9certutil_64 -cert -list -db /tmp/client.p12 -pw 'password' 2>&1 |
+    grep -E '^-' | sed 's/^-[[:space:]]*//' | head -1)
 
-  echo 'GSK_SETUP_DONE'
+  gsk9certutil_64 -cert -import -db /tmp/client.p12 -pw 'password' \
+    -label \"\${CLIENT_SOURCE_LABEL}\" \
+    -target '${GSK_DB}' -target_pw '${GSK_PWD}' -new_label '${CLIENT_CERT_LABEL}' 2>&1
+
+  gsk9certutil_64 -cert -list -db '${GSK_DB}' -pw '${GSK_PWD}' 2>&1
 " 2>&1 || true)
 
 echo "GSKit setup: ${GSK_SETUP}"
-if ! echo "${GSK_SETUP}" | grep -q "GSK_SETUP_DONE"; then
-  echo "ERROR: GSKit keystore setup failed." >&2
+if ! echo "${GSK_SETUP}" | grep -q "${CLIENT_CERT_LABEL}"; then
+  echo "ERROR: GSKit keystore setup failed — client certificate label not found." >&2
   exit 1
 fi
 echo "==> PASS: GSKit keystore configured."
 
 # ── Step 7: Configure Db2 instance for KMIP ───────────────────────────────────
+# KEYSTORE_LOCATION for KEYSTORE_TYPE=KMIP must point to a Db2 KMIP config file
+# (not the GSKit .p12 itself). PRODUCT_NAME=OTHER is the documented value for
+# any third-party KMIP 1.1+ manager (i.e. anything other than ISKLM/KeySecure).
+# DEVICE_GROUP and KEYSTORETYPE do not apply to PRODUCT_NAME=OTHER.
 echo
 echo "==> Configuring Db2 DBM CFG for KMIP (host=${KMS_HOST_FROM_DB2}:${KMS_KMIP_PORT})…"
 
+KMIP_CFG_FILE="${DB2_HOME}/ekeystore.cfg"
 DB2_KMIP_CFG=$(docker exec -u db2inst1 "${DB2_CONTAINER_NAME}" bash -c "
+  cat > '${KMIP_CFG_FILE}' <<EKS_EOF
+VERSION=1
+PRODUCT_NAME=OTHER
+ALLOW_KEY_INSERT_WITHOUT_KEYSTORE_BACKUP=TRUE
+SSL_KEYDB=${GSK_DB}
+SSL_KEYDB_STASH=${GSK_STASH}
+SSL_KMIP_CLIENT_CERTIFICATE_LABEL=${CLIENT_CERT_LABEL}
+PRIMARY_SERVER_HOST=${KMS_HOST_FROM_DB2}
+PRIMARY_SERVER_KMIP_PORT=${KMS_KMIP_PORT}
+EKS_EOF
+  chmod 600 '${KMIP_CFG_FILE}'
   . ~/sqllib/db2profile
-  db2 \"UPDATE DBM CFG USING KEYSTORE_LOCATION '${KMS_HOST_FROM_DB2}:${KMS_KMIP_PORT}'\" 2>&1
-  db2 \"UPDATE DBM CFG USING KMIP_SSL_LABEL db2kmip_client\" 2>&1
-  db2 \"UPDATE DBM CFG USING KMIP_DB_PATH '${GSK_DB}'\" 2>&1
+  db2 \"UPDATE DBM CFG USING KEYSTORE_TYPE KMIP KEYSTORE_LOCATION '${KMIP_CFG_FILE}'\" 2>&1
+  db2 force applications all 2>&1
+  db2stop 2>&1
+  db2start 2>&1
   echo 'DB2_CFG_DONE'
 " 2>&1 || true)
 
 echo "Db2 KMIP CFG output: ${DB2_KMIP_CFG}"
 
-if echo "${DB2_KMIP_CFG}" | grep -qiE "SQL1726N|SQL10007N|not supported|not available"; then
-  echo "==> SKIPPED: Db2 KMIP configuration not available in this edition."
-  exit 0
+if ! echo "${DB2_KMIP_CFG}" | grep -q "DB2_CFG_DONE"; then
+  echo "ERROR: Db2 KMIP configuration did not complete." >&2
+  exit 1
 fi
 
 # ── Step 8: Create encrypted database — triggers KMIP key creation ────────────
 echo
-echo "==> Creating encrypted Db2 database '${DB2_DBNAME}' (triggers KMIP Create + Activate)…"
+echo "==> Creating encrypted Db2 database '${DB2_DBNAME}' (triggers KMIP Register + Activate)…"
 
 DB2_CREATE=$(docker exec -u db2inst1 "${DB2_CONTAINER_NAME}" bash -c "
   . ~/sqllib/db2profile
-  db2 \"CREATE DATABASE ${DB2_DBNAME} ENCRYPT USING AES256\" 2>&1
+  db2 \"DROP DATABASE ${DB2_DBNAME}\" 2>&1
+  db2 \"CREATE DATABASE ${DB2_DBNAME} ENCRYPT CIPHER AES KEY LENGTH 256\" 2>&1
   echo 'DB2_CREATE_DONE'
 " 2>&1 || true)
 
 echo "Db2 CREATE DATABASE output: ${DB2_CREATE}"
 
-if echo "${DB2_CREATE}" | grep -qiE "SQL1726N|SQL10007N|not supported|not available|not licensed"; then
-  echo "==> SKIPPED: Encrypted database creation requires Advanced Enterprise Edition."
-  exit 0
-fi
-
 if ! echo "${DB2_CREATE}" | grep -q "DB2_CREATE_DONE"; then
   echo "ERROR: CREATE DATABASE command did not complete." >&2
+  exit 1
+fi
+
+if ! echo "${DB2_CREATE}" | grep -q "DB20000I  The CREATE DATABASE command completed successfully"; then
+  echo "ERROR: Encrypted database creation via KMIP failed." >&2
   exit 1
 fi
 
@@ -311,8 +320,8 @@ KEY_COUNT=$(echo "${LOCATE_OUT}" | grep -c '[0-9a-f]\{8\}-[0-9a-f]\{4\}' || true
 if [[ "${KEY_COUNT}" -ge 2 ]]; then
   echo "==> PASS: At least one DEMK was created on the KMS by Db2 (${KEY_COUNT} key(s) found)."
 else
-  echo "WARNING: Expected ≥2 keys on KMS (test key + DEMK), found ${KEY_COUNT}." >&2
-  echo "  Db2 may use a different key management path — check KMS logs." >&2
+  echo "ERROR: Expected ≥2 keys on KMS (test key + DEMK), found ${KEY_COUNT}." >&2
+  exit 1
 fi
 
 echo
