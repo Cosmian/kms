@@ -986,7 +986,14 @@ fn start_test_kms_server(
             })
     });
     trace!("Waiting for test KMS server to start...");
-    let server_handle = rx.recv_timeout(Duration::from_secs(25)).map_err(|e| {
+    // Each test-spawned server gets its own multi-threaded Tokio runtime
+    // (`available_parallelism()` workers). When many tests run concurrently
+    // (e.g. the full workspace test suite, or `test_kms_all_authentications`
+    // which starts ~18 servers sequentially), the host can be heavily
+    // oversubscribed and an individual server startup can take longer than a
+    // tight timeout would allow. 60s gives enough headroom under contention
+    // while still failing fast on a genuinely stuck server.
+    let server_handle = rx.recv_timeout(Duration::from_secs(60)).map_err(|e| {
         KmsClientError::UnexpectedError(format!("Error getting test KMS server handle: {e}"))
     })?;
     trace!("... got handle ...");
