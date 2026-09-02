@@ -90,7 +90,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Found by   | External reporter (GHSA-rwc8-xwm6-52xc)                                                                                                                                        |
 | References | [GHSA-rwc8-xwm6-52xc](https://github.com/Cosmian/kms/security/advisories/GHSA-rwc8-xwm6-52xc), [COSMIAN-2026-009](#cosmian-2026-009--google-cse-rewrap-ssrf-via-original_kacls_url) |
 
-**Summary:** Cosmian KMS fetched CRLs from URLs embedded in X.509 CRL Distribution Points (CDPs) during KMIP `Validate` and `Import` operations without applying any SSRF mitigations. The `get_crl_bytes()` function in `crate/server/src/core/operations/validate.rs` accepted arbitrary `http://` URLs (including loopback, private RFC-1918, and link-local addresses), followed HTTP redirects unconditionally, read the full response body without a size cap, and treated non-URL CDP values as local filesystem paths — allowing arbitrary file reads. A secondary vector existed via `file://` scheme URLs, which were explicitly converted to filesystem paths.
+**Summary:** Cosmian KMS fetched CRLs from URLs embedded in X.509 CRL Distribution Points (CDPs) during KMIP `Validate` and `Import` operations without applying any SSRF mitigations. The `get_crl_bytes()` function in `crate/server/src/core/operations/validate.rs` accepted arbitrary `http://` URLs (including IPv4 and IPv6 loopback, private/unique-local, and link-local addresses), followed HTTP redirects unconditionally, read the full response body without a size cap, and treated non-URL CDP values as local filesystem paths — allowing arbitrary file reads. A secondary vector existed via `file://` scheme URLs, which were explicitly converted to filesystem paths.
 
 This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_url` SSRF); the fix for that advisory did not cover CRL Distribution Point fetches.
 
@@ -101,7 +101,7 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 - Read arbitrary local files readable by the KMS process via bare filesystem paths or `file://` URIs.
 - Cause denial of service via a slow or unbounded HTTP response body (no size cap, no timeout).
 
-**Mitigation:** Upgrade to 5.27.0. The fix adds `validate_crl_url()` in `crate/server/src/core/certificate/mod.rs` (HTTPS and HTTP allowed; private, loopback, link-local IPs and internal hostnames rejected), applies `reqwest::redirect::Policy::none()` and a 30-second timeout to the CRL-fetch client, caps responses at 10 MiB, and removes filesystem-path and `file://` CRL resolution in production builds (`file://` remains available in `#[cfg(test)]` only). Ten regression tests (SR-CRL-01 through SR-CRL-10) cover all mitigations.
+**Mitigation:** Upgrade to 5.27.0. The fix adds `validate_crl_url()` in `crate/server/src/core/certificate/mod.rs` (HTTPS and HTTP allowed; IPv4 and IPv6 private/unique-local, loopback, link-local, and unspecified addresses — including IPv4-mapped IPv6 (`::ffff:0:0/96`) — and internal hostnames rejected), applies `reqwest::redirect::Policy::none()` and a 30-second timeout to the CRL-fetch client, caps responses at 10 MiB, and removes filesystem-path and `file://` CRL resolution in production builds (`file://` remains available in `#[cfg(test)]` only). Sixteen regression tests (SR-CRL-01 through SR-CRL-16) cover all mitigations, including the IPv4 and IPv6 address-range checks.
 
 ---
 

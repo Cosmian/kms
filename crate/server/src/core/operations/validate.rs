@@ -1055,6 +1055,79 @@ mod tests {
         }
     }
 
+    /// SR-CRL-11: IPv6 loopback (`::1`) must be rejected. Regression test for
+    /// COSMIAN-2026-020's IPv6 gap: `Url::host_str()` returns bracketed IPv6
+    /// hosts (`"[::1]"`), which previously failed to parse as `IpAddr` and
+    /// silently bypassed every IP-literal check.
+    #[test]
+    fn sr_crl_11_loopback_ipv6_blocked() {
+        let err = validate_crl_url("http://[::1]/crl").unwrap_err();
+        assert!(
+            err.to_string().contains("loopback") || err.to_string().contains("private"),
+            "Expected loopback/private error, got: {err}"
+        );
+    }
+
+    /// SR-CRL-12: IPv6 unique-local addresses (`fc00::/7`, RFC 4193 — the
+    /// IPv6 equivalent of RFC-1918 private space) must be rejected.
+    #[test]
+    fn sr_crl_12_unique_local_ipv6_blocked() {
+        let err = validate_crl_url("http://[fc00::1]/crl").unwrap_err();
+        assert!(
+            err.to_string().contains("private") || err.to_string().contains("loopback"),
+            "Expected private-IP error, got: {err}"
+        );
+    }
+
+    /// SR-CRL-13: IPv6 link-local addresses (`fe80::/10`) must be rejected.
+    #[test]
+    fn sr_crl_13_link_local_ipv6_blocked() {
+        let err = validate_crl_url("http://[fe80::1]/crl").unwrap_err();
+        assert!(
+            err.to_string().contains("link-local")
+                || err.to_string().contains("loopback")
+                || err.to_string().contains("private"),
+            "Expected link-local/private error, got: {err}"
+        );
+    }
+
+    /// SR-CRL-14: the IPv6 unspecified address (`::`) must be rejected.
+    #[test]
+    fn sr_crl_14_unspecified_ipv6_blocked() {
+        let err = validate_crl_url("http://[::]/crl").unwrap_err();
+        assert!(
+            err.to_string().contains("loopback") || err.to_string().contains("private"),
+            "Expected loopback/private error, got: {err}"
+        );
+    }
+
+    /// SR-CRL-15: IPv4-mapped IPv6 addresses (`::ffff:0:0/96`, RFC 4291) must
+    /// be unwrapped and the embedded IPv4 address checked, so cloud-metadata
+    /// and loopback/private targets cannot be reached via this encoding.
+    #[test]
+    fn sr_crl_15_ipv4_mapped_ipv6_blocked() {
+        for url in &[
+            "http://[::ffff:127.0.0.1]/crl",
+            "http://[::ffff:10.0.0.1]/crl",
+            "http://[::ffff:169.254.169.254]/latest/meta-data/",
+        ] {
+            let err = validate_crl_url(url).unwrap_err();
+            assert!(
+                err.to_string().contains("loopback")
+                    || err.to_string().contains("private")
+                    || err.to_string().contains("link-local"),
+                "Expected loopback/private/link-local error for {url}, got: {err}"
+            );
+        }
+    }
+
+    /// SR-CRL-16: legitimate public IPv6 URLs must pass validation.
+    #[test]
+    fn sr_crl_16_public_ipv6_allowed() {
+        validate_crl_url("http://[2001:4860:4860::8888]/crl")
+            .unwrap_or_else(|e| panic!("Expected Ok for public IPv6 URL, got: {e}"));
+    }
+
     // ── get_crl_bytes integration tests ────────────────────────────────────────
 
     /// Spawn a one-shot HTTP server that immediately returns a 307 redirect.
