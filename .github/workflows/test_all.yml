@@ -36,6 +36,7 @@ jobs:
           - veracrypt
           - jose
           - iris
+          - db2
           - secret_vault
           - secret_aws
           - secret_azure
@@ -70,6 +71,9 @@ jobs:
             features: fips
           # iris requires non-fips (PKCS#12 + full TLS stack)
           - type: iris
+            features: fips
+          # db2 requires non-fips (PKCS#12 + full TLS stack for mTLS)
+          - type: db2
             features: fips
           # secret_cosmian_kms runs against a local KMS server — works with both fips and non-fips
           # secret_vault, secret_aws, secret_azure require external services — run non-fips only

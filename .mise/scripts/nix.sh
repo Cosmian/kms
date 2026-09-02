@@ -39,6 +39,8 @@ usage() {
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
       iris                   Run IRIS ↔ KMS mTLS integration tests (requires Docker + IRIS image)
+      db2                    Run IBM Db2 LUW KMIP TDE integration tests (requires Docker)
+      ase                    Run SAP ASE KMIP TDE integration test (local dev only, requires manually built image)
       hsm [backend]          Run HSM tests (Linux + macOS for softhsm2)
                              backend: softhsm2 | utimaco | proteccio | all (default)
       ui                     Run UI E2E tests with Playwright (non-FIPS only)
@@ -493,6 +495,12 @@ test_command() {
       ;;
     iris)
       SCRIPT="$REPO_ROOT/.mise/scripts/test/test_iris.sh"
+      ;;
+    db2)
+      SCRIPT="$REPO_ROOT/.mise/scripts/test/test_db2_tde.sh"
+      ;;
+    ase)
+      SCRIPT="$REPO_ROOT/.mise/scripts/test/test_ase_tde.sh"
       ;;
     gcp_cmek)
       SCRIPT="$REPO_ROOT/.mise/scripts/test/test_gcp_cmek.sh"

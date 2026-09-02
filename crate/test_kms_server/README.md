@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**638 vectors** across 16 categories (including KAT):
+**651 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -315,6 +315,7 @@ replays the steps sequentially.
 | HSM / Resident Sign | `hsm/resident_rsa4096_create_sign` | Creates an RSA-4096 keypair directly on the HSM via CreateKeyPair. | 6 |
 | HSM / Negative | `hsm/wrong_prefix` | Attempts to encrypt using a key ID with an invalid HSM slot prefix (hsm::99::nonexistent). | 1 |
 | **Integrations** | | | |
+| Integrations | `fips/integrations/db2_luw` | Simulates IBM Db2 LUW 11.1+ native encryption KMIP 1.1 protocol: Create named AES-256 Database Encryption Master Key (DEMK) → Activate → Get → Revoke → Destroy. | 5 |
 | Integrations | `fips/integrations/fortigate` | Simulates FortiOS KMIP 1.0 batched key lookup: Register named AES-128 and HMAC-SHA1 keys → Activate → Batched Locate×4 with UsernamePassword Authentication → Revoke → Destroy. Matches real FortiOS TRACES_40F_1.txt traces (BatchCount=4, BatchOrderOption=true, MaximumItems=1 per Locate, KMIP 1.0 TemplateAttribute). | 17 |
 | Integrations | `fips/integrations/fortigate_credential_type` | Non-regression for GitHub issue #824 (FortiOS 7.6.0 / FortiGate 40F support). FortiGate sends CredentialType as a raw numeric enumeration (0x00000001) rather than the symbolic name "UsernameAndPassword". The server previously failed with "missing field `CredentialType`" because the Authentication/Credential structure was not being deserialized correctly. This test sends a KMIP 1.0 Locate request with Authentication containing the numeric CredentialType value and verifies the server processes it successfully. | 5 |
 | Integrations | `fips/integrations/fortigate_locate_filter` | Non-regression for GitHub issue #824 comment (FortiOS 7.6 / FortiGate 40F). FortiGate sends KMIP 1.0 Locate requests filtered on the Name attribute to resolve IPsec keys (ENC and AUTH, both directions). The bug caused the server to return the same UniqueIdentifier for all Locate requests regardless of the requested NameValue. This test creates two keys with different names matching the FortiGate naming pattern, locates each by name using KMIP 1.0 TemplateAttribute, and verifies each Locate returns the correct (distinct) key. | 10 |
@@ -333,6 +334,7 @@ replays the steps sequentially.
 | Integrations | `fips/integrations/kmip_3_0_symmetric` | Creates AES-256 key, encrypts, decrypts, and destroys using KMIP 3.0 binary wire format | 6 |
 | Integrations | `fips/integrations/mysql` | Simulates MySQL Enterprise Transparent Data Encryption (TDE) KMIP 1.1 protocol: Create AES-256 key → Activate → Get → Revoke → Destroy. | 5 |
 | Integrations | `fips/integrations/percona` | Simulates the Percona PostgreSQL TDE KMIP 1.4 protocol: Register (AES-128 symmetric key) → Locate (by ObjectType + Name) → Get. Mirrors crate/server/src/tests/ttlv_tests/integrations/postgres.rs exactly. | 5 |
+| Integrations | `fips/integrations/sybase_ase` | Simulates SAP Sybase ASE 16.x Transparent Data Encryption (TDE) KMIP 1.1 protocol: Create named AES-256 master key → Activate → Get → Revoke → Destroy. | 5 |
 | Integrations | `fips/integrations/synology_dsm` | Replays the exact KMIP 1.2 operation sequence observed from Synology DSM 7.x during encrypted volume creation: Query ×4 → Locate (empty) → Register (SecretData/Password with OperationPolicyName) → ModifyAttribute (rename to volume UUID) → Locate (find) → Activate → GetAttributeList → GetAttributes → Get → Revoke → Destroy. Mirrors crate/server/src/tests/ttlv_tests/integrations/synology_dsm.rs exactly. | 14 |
 | Integrations | `fips/integrations/vast_data` | Replays the exact KMIP 1.4 operation sequence observed in VAST Data production logs (June 2026): DiscoverVersions → Create AES-256 (with OperationPolicyName) → AddAttribute (Name) → AddAttribute (ObjectGroup) → AddAttribute (OperationPolicyName) → Activate → Locate by name → Get (plaintext) → GetAttributes (State + ActivationDate) → ReKey → Locate (find rotated key) → Get (new key material) → GetAttributes (verify Active + OperationPolicyName preserved after rotation) → Revoke old → Destroy old → Revoke new → Destroy new. VAST uses HTTP POST to /kmip with KMIP 1.4 binary TTLV and mTLS authentication. Covers the ReKey bug fix (issue #845): VAST sends ReKey and expects a new UUID returned. Covers the OperationPolicyName persistence fix: OPN must survive AddAttribute and ReKey. | 17 |
 | Integrations | `fips/integrations/veeam` | Replays the KMIP 1.4 operation sequence from Veeam Backup & Replication: CreateKeyPair (RSA-2048, Sign/Verify) → Get (public key) → Get (private key) → Destroy private → Destroy public. Mirrors crate/server/src/tests/ttlv_tests/integrations/veeam.rs exactly. | 5 |
@@ -348,13 +350,24 @@ replays the steps sequentially.
 | **OPA Policy Engine** | | | |
 | OPA | `opa/mode_disabled` | OPA not configured; KMS legacy permission logic applies. Creates an AES key, retrieves it, and destroys it. | 3 |
 | OPA | `opa/mode_enforcing_allowed` | OPA enforcing mode; JWT with CryptoOfficer role from auth server; Create then Get allowed by is_owner=true (OPA + KMS both pass). | 3 |
+| OPA | `opa/mode_enforcing_auditor_create_denied` | OPA enforcing mode. A user holding the `Auditor` role attempts to create a | 1 |
+| OPA | `opa/mode_enforcing_co_get_attributes_allowed` | OPA enforcing mode. A `CryptoOfficer` in realm `kms-opa-test` (the default owner / JWT | 3 |
 | OPA | `opa/mode_enforcing_denied` | OPA enforcing mode; owner (mTLS cert) creates AES key; ungranted user (different cert, no roles) is denied Get. | 3 |
+| OPA | `opa/mode_enforcing_empty_roles_denied` | OPA enforcing mode. A bearer token with an empty `roles` claim (and no domain) | 1 |
+| OPA | `opa/mode_enforcing_native_co_cert_allowed` | OPA enforcing mode. A client authenticated via mTLS (cert CN = <owner.client@acme.com>) | 2 |
+| OPA | `opa/mode_enforcing_unknown_role_denied` | OPA enforcing mode. A bearer token carrying an unrecognised role `Hacker` | 1 |
+| OPA | `opa/mode_enforcing_wrong_domain` | OPA enforcing (dual-gate) mode — multi-tenant isolation. | 3 |
 | OPA | `opa/mode_exclusive_allowed` | OPA exclusive mode; JWT with CryptoOfficer role from auth server; Create then Get allowed by is_owner=true. | 3 |
 | OPA | `opa/mode_exclusive_auditor_destroy_denied` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
 | OPA | `opa/mode_exclusive_auditor_get_attributes_allowed` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
+| OPA | `opa/mode_exclusive_auditor_wrong_domain` | OPA exclusive mode — multi-tenant isolation. | 3 |
 | OPA | `opa/mode_exclusive_denied` | OPA exclusive mode; owner (mTLS cert) creates AES key; ungranted user (different cert, no roles) is denied Get. | 3 |
 | OPA | `opa/mode_exclusive_domain_admin_wrong_domain` | OPA exclusive mode. The CryptoOfficer from realm `kms-opa-test` (default JWT client, | 3 |
+| OPA | `opa/mode_exclusive_native_co_cert_denied` | OPA exclusive mode. A client authenticated via mTLS (cert CN = <owner.client@acme.com>) | 1 |
+| OPA | `opa/mode_exclusive_other_domain_allowed` | OPA exclusive mode. A CryptoOfficer from realm `kms-opa-other` (domain=kms-opa-other) | 3 |
+| OPA | `opa/mode_exclusive_super_admin_cross_domain` | OPA exclusive mode — SuperAdmin cross-domain positive test. | 3 |
 | OPA | `opa/mode_exclusive_user_role_denied` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
+| OPA | `opa/mode_exclusive_user_wrong_domain` | OPA exclusive mode — multi-tenant isolation. | 3 |
 | OPA | `opa/mode_exclusive_wrong_domain` | OPA exclusive mode. The CryptoOfficer from realm `kms-opa-test` (default JWT client, | 3 |
 | **Negative** | | | |
 | Negative / Activate | `negative/activate/item_not_found` | Tests that Activate returns Item_Not_Found error as per KMIP spec | 1 |

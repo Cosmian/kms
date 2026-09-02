@@ -212,6 +212,32 @@ services:
       # "host-gateway" maps to the host IP).
       - host.docker.internal:host-gateway
 
+  # IBM Db2 LUW — KMIP TDE integration test
+  # Started on demand with: docker compose up -d db2-tde
+  # Requires Docker privileged mode. Startup takes up to 5 minutes.
+  # LICENSE=accept is required to run the Community Edition image.
+  db2-tde:
+    image: ${DB2_DOCKER_IMAGE:-icr.io/db2_community/db2}
+    container_name: ${DB2_CONTAINER_NAME:-db2-kmip-test}
+    privileged: true
+    profiles:
+      - db2
+    ports:
+      - ${KMS_SLOT_DB2_PORT:-50000}:50000
+    environment:
+      - LICENSE=accept
+      - DB2INST1_PASSWORD=${DB2_INSTANCE_PWD:-Db2KmipTest1}
+      - DBNAME=${DB2_DBNAME:-KMIPDB}
+      - ARCHIVE_LOGS=false
+      - AUTOCONFIG=false
+    volumes:
+      - ./test_data/certificates/client_server/ca/ca.crt:/db2-kmip-certs/ca.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/db2-kmip-certs/client.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.key:/db2-kmip-certs/client.key:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+      - kmserver.acme.com:host-gateway
+
   # InterSystems IRIS — mTLS integration test
   # Started on demand with: docker compose up -d iris
   # The profile keeps it out of the default `docker compose up -d` that runs

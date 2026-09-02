@@ -2635,6 +2635,18 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_integration_sybase_ase() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/integrations/sybase_ase").await
+    }
+
+    #[tokio::test]
+    async fn test_integration_db2_luw() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/integrations/db2_luw").await
+    }
+
+    #[tokio::test]
     async fn test_integration_percona() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/integrations/percona").await
