@@ -13,3 +13,15 @@ AND (
     json_type(object, '$.PublicKey')    IS NOT NULL OR
     json_type(object, '$.SplitKey')     IS NOT NULL
 );
+
+-- ── CRL persistence (SQLite-specific override) ────────────────────────────────
+-- SQLite uses BLOB instead of PostgreSQL's BYTEA.
+
+-- name: create-table-crls
+CREATE TABLE IF NOT EXISTS crls (
+    issuer_id    TEXT    NOT NULL PRIMARY KEY,
+    crl_der      BLOB    NOT NULL,
+    crl_number   INTEGER NOT NULL,
+    generated_at TEXT    NOT NULL,
+    next_update  TEXT    NOT NULL
+);

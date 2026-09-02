@@ -114,7 +114,13 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
         }) = &request.object
         {
             if let Ok(cert) = X509::from_der(certificate_value) {
-                match verify_crls(vec![cert], kms.params.proxy_params.as_ref()).await {
+                match verify_crls(
+                    vec![cert],
+                    kms.params.proxy_params.as_ref(),
+                    kms.params.kms_public_url.as_deref(),
+                )
+                .await
+                {
                     Err(KmsError::Certificate(_)) => {
                         debug!(
                             "Import: certificate is revoked per CRL check, \

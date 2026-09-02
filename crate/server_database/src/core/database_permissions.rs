@@ -126,19 +126,7 @@ impl Database {
             .permissions
             .get_crypto_officer_activation_by(user)
             .await?;
-        match sealed_opt {
-            None => Ok(false),
-            Some(sealed) => {
-                let keys = self.ceremony_keys.as_ref().ok_or_else(|| {
-                    DbError::DatabaseError(
-                        "ceremony_secret not configured: cannot verify ceremony record".to_owned(),
-                    )
-                })?;
-                // Unseal verifies the GCM tag and payload integrity.
-                keys.unseal(&sealed, "crypto_officer")?;
-                Ok(true)
-            }
-        }
+        self.verify_ceremony_record(sealed_opt, "crypto_officer")
     }
 
     /// Revoke `activated_by`'s active Crypto Officer ceremony record.
@@ -154,6 +142,44 @@ impl Database {
             .permissions
             .revoke_crypto_officer_activation(revoked_by, activated_by)
             .await?)
+    }
+}
+
+impl Database {
+    // ── CRL persistence ─────────────────────────────────────────────────────
+
+    /// Persist (or replace) the most recently generated CRL for `issuer_id`.
+    pub async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> DbResult<()> {
+        Ok(self
+            .permissions
+            .upsert_crl(issuer_id, crl_der, crl_number, generated_at, next_update)
+            .await?)
+    }
+
+    /// Retrieve the persisted CRL DER bytes and generation timestamp for `issuer_id`.
+    pub async fn get_crl(&self, issuer_id: &str) -> DbResult<Option<(Vec<u8>, String)>> {
+        Ok(self.permissions.get_crl(issuer_id).await?)
+    }
+
+    /// List all issuer IDs with their stored `next_update` timestamps.
+    pub async fn list_crl_issuers(&self) -> DbResult<Vec<(String, String)>> {
+        Ok(self.permissions.list_crl_issuers().await?)
+    }
+
+    /// Return the highest `crl_number` across all stored CRLs, or `None` when none exist.
+    ///
+    /// Called once during [`KMS::instantiate`] to seed the CRL sequence counter so that
+    /// CRL Numbers are strictly monotonically increasing across server restarts
+    /// (RFC 5280 §5.2.3).
+    pub async fn get_max_crl_number(&self) -> DbResult<Option<u64>> {
+        Ok(self.permissions.get_max_crl_number().await?)
     }
 }
 
@@ -180,5 +206,23 @@ impl Database {
             key_hash: key_hash.to_owned(),
         };
         keys.seal(&payload, role)
+    }
+
+    /// Verify sealed record integrity. Returns `true` if a valid sealed record exists,
+    /// `false` if no record, or `Err` if the record is tampered.
+    fn verify_ceremony_record(&self, sealed_opt: Option<String>, role: &str) -> DbResult<bool> {
+        match sealed_opt {
+            None => Ok(false),
+            Some(sealed) => {
+                let keys = self.ceremony_keys.as_ref().ok_or_else(|| {
+                    DbError::DatabaseError(
+                        "ceremony_secret not configured: cannot verify ceremony record".to_owned(),
+                    )
+                })?;
+                // Unseal verifies GCM tag — tampered records produce Err here.
+                keys.unseal(&sealed, role)?;
+                Ok(true)
+            }
+        }
     }
 }

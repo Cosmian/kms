@@ -570,14 +570,22 @@ crypto_officer_require_ceremony = false
 Cross-Origin Resource Sharing (CORS) controls which browser origins are allowed
 to make requests to the KMS HTTP API.
 
-**You must configure `cors_allowed_origins` for any Web UI deployment
-that uses a hostname other than localhost.**
+When `cors_allowed_origins` is **not** set in the configuration file, CLI, or
+environment, the server builds the allowed-origins list automatically:
 
-When `cors_allowed_origins` is not set in the configuration file, CLI, or
-environment, the binary defaults to loopback origins matching the configured
-scheme (HTTP or HTTPS) and port. This covers `localhost`, `127.0.0.1`,
-`0.0.0.0`, `[::1]`, and `[::]` so the bundled Web UI works out-of-the-box
-without any explicit configuration.
+1. The standard loopback addresses (`localhost`, `127.0.0.1`, `0.0.0.0`,
+   `[::1]`, `[::]`) on the configured port and scheme (HTTP or HTTPS) are
+   always included so the bundled Web UI works out-of-the-box when accessed
+   from the same machine.
+2. If `kms_public_url` is set, its value is **automatically appended** to the
+   default list.  This means that in the common deployment scenario where
+   `kms_public_url` is configured (e.g. `https://kms.example.com`), the Web
+   UI is accessible at that URL without any additional `cors_allowed_origins`
+   entry.
+
+When `cors_allowed_origins` **is** set explicitly, the automatic defaults
+(including `kms_public_url`) are **not** merged in — the explicit list is used
+verbatim.  This lets operators lock down the allow-list precisely.
 
 Although the KMS serves its own Web UI from the same host and port, the
 browser's Fetch API sends an `Origin` header on every non-GET/HEAD request
@@ -586,7 +594,7 @@ actix-cors middleware compares this header against the explicit allow-list and
 returns HTTP 400 if the value is not present. There is no DNS resolution or
 network-interface expansion: the comparison is a byte-for-byte string match.
 
-This means `cors_allowed_origins` must contain the **exact URL** the user
+This means the origins in the allow-list must contain the **exact URL** the user
 types in the browser's address bar — scheme, hostname, and port all included.
 Configuring `0.0.0.0` (the bind address) or the server's IP address does **not**
 match a hostname-based origin such as `http://kms.example.com:9998`, and vice

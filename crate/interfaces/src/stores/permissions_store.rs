@@ -93,4 +93,46 @@ pub trait PermissionsStore {
         revoked_by: &str,
         activated_by: &str,
     ) -> InterfaceResult<()>;
+
+    // ── CRL persistence (RFC 5280 §5) ──────────────────────────────────────
+
+    /// Persist (or replace) the most recently generated CRL for `issuer_id`.
+    ///
+    /// Called by `generate_crl` after every successful CRL signing so the
+    /// public CDP endpoint can resume serving after a server restart without
+    /// requiring a manual re-generation.
+    ///
+    /// # Arguments
+    /// * `issuer_id`    — UID of the CA certificate (primary key)
+    /// * `crl_der`      — DER-encoded signed CRL bytes
+    /// * `crl_number`   — Monotonically increasing CRL sequence number (RFC 5280 §5.2.3)
+    /// * `generated_at` — ISO-8601 UTC timestamp of generation
+    /// * `next_update`  — ISO-8601 UTC timestamp of expiry
+    async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> InterfaceResult<()>;
+
+    /// Retrieve the persisted CRL DER bytes and generation timestamp for `issuer_id`.
+    ///
+    /// Returns `None` when no CRL has ever been generated for this issuer.
+    async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>>;
+
+    /// List all issuer IDs with their stored `next_update` timestamps.
+    ///
+    /// Used by the background CRL refresh scheduler to identify CRLs that are
+    /// expiring soon without fetching the full DER bytes for every CA.
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>>;
+
+    /// Return the highest `crl_number` stored across all issuers, or `None` when
+    /// no CRL has ever been persisted.
+    ///
+    /// Used on startup to seed the monotonically-increasing CRL sequence counter
+    /// so that CRL Numbers remain strictly greater than any previously issued
+    /// number across server restarts (RFC 5280 §5.2.3).
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>>;
 }
