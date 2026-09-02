@@ -2121,3 +2121,59 @@ async fn test_join_wrapped_shares_fails_after_wrapping_key_deleted() -> KResult<
 
     Ok(())
 }
+
+/// Regression test for GitHub issue #909: a non-CO user granted only `Get` on the
+/// wildcard object identifier `*` tries to bypass the Create/Import authorization gate.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn repro_issue_909_get_on_star_bypasses_import_gate() -> KResult<()> {
+    let admin = "admin@example.com"; // Crypto Officer
+    let bob = "bob@example.com"; // plain, non-CO user
+    let kms = config_only_co_kms(vec![admin.to_owned()]).await?;
+
+    // Bob is not a Crypto Officer.
+    assert!(!kms.is_crypto_officer(&UserId::from(bob)).await?);
+
+    // Precondition: with a CO configured, Bob is blocked from Create/Import.
+    assert!(
+        kms.enforce_create_permission(&UserId::from(bob))
+            .await
+            .is_err(),
+        "precondition: Bob must be blocked from Create/Import before any grant"
+    );
+
+    // Admin attempts to create an object whose UID is the literal "*".
+    // This must now be rejected: "*" is reserved as the internal sentinel for the
+    // global Create-right grant, so it can never back a real, ownable object.
+    let no_tags: &[&str] = &[];
+    let create_star = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        Some(UniqueIdentifier::TextString("*".to_owned())),
+        256,
+        CryptographicAlgorithm::AES,
+        no_tags,
+        false,
+        None,
+    )?;
+    let result = kms.create(create_star, &UserId::from(admin)).await;
+    assert!(
+        result.is_err(),
+        "issue #909 fix regressed: object with reserved uid '*' was created"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("reserved"),
+        "expected a reserved-identifier error, got: {err}"
+    );
+
+    // Since "*" can never be a real, owned object, Bob's Create/Import gate remains
+    // closed — there's no path to a Get-on-"*" grant to escalate through anymore.
+    assert!(
+        kms.enforce_create_permission(&UserId::from(bob))
+            .await
+            .is_err(),
+        "Bob must still be blocked from Create/Import"
+    );
+
+    Ok(())
+}

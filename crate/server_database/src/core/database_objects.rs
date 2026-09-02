@@ -19,6 +19,22 @@ use crate::{
     error::{DbError, DbResult},
 };
 
+/// Object unique identifiers that can never be assigned to a user-created object.
+///
+/// `"*"` is the internal sentinel under which the global `Create` right is stored
+/// (see `KMS::grant_access`).
+const RESERVED_UIDS: &[&str] = &["*"];
+
+/// Reject `uid` if it is a reserved identifier (see [`RESERVED_UIDS`]).
+fn reject_reserved_uid(uid: &str) -> DbResult<()> {
+    if RESERVED_UIDS.contains(&uid) {
+        return Err(DbError::InvalidRequest(format!(
+            "'{uid}' is a reserved identifier and cannot be used as an object unique identifier"
+        )));
+    }
+    Ok(())
+}
+
 /// Struct representing the database and providing methods to manipulate objects within it.
 ///
 /// The `Database` struct provides various methods to register, unregister, retrieve, create, update,
@@ -190,6 +206,9 @@ impl Database {
         attributes: &Attributes,
         tags: &HashSet<String>,
     ) -> DbResult<String> {
+        if let Some(ref uid) = uid {
+            reject_reserved_uid(uid)?;
+        }
         self.record("create", async move {
             let db = self
                 .get_object_store(uid.as_deref().unwrap_or_default())
@@ -568,6 +587,11 @@ impl Database {
         if operations.is_empty() {
             return Ok(vec![]);
         }
+        for op in operations {
+            if let AtomicOperation::Create((uid, ..)) = op {
+                reject_reserved_uid(uid)?;
+            }
+        }
         #[expect(clippy::indexing_slicing)]
         let first_op = &operations[0];
         let first_uid = first_op.get_object_uid();
@@ -608,17 +632,112 @@ impl Database {
 #[expect(clippy::expect_used, clippy::panic)]
 mod tests {
     use std::{
-        collections::HashMap,
+        collections::{HashMap, HashSet},
         num::NonZeroUsize,
         sync::{Arc, Mutex},
         time::Duration,
     };
 
-    use cosmian_kms_interfaces::UserId;
+    use cosmian_kmip::kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+        kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+    };
+    use cosmian_kms_interfaces::{AtomicOperation, UserId};
     use tempfile::TempDir;
 
-    use super::Database;
+    use super::{Database, reject_reserved_uid};
     use crate::core::{DbMetricsRecorder, MainDbKind, MainDbParams};
+
+    async fn test_db() -> Database {
+        let tmp = TempDir::new().expect("Failed to create temp dir");
+        Database::instantiate(
+            &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
+            false,
+            HashMap::new(),
+            Duration::from_secs(1),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to instantiate in-memory database")
+    }
+
+    /// Direct unit coverage of the reserved-uid check (issue #909).
+    #[test]
+    fn test_reject_reserved_uid_direct() {
+        assert!(reject_reserved_uid("*").is_err());
+        reject_reserved_uid("some-real-uid").expect("real uid must be accepted");
+    }
+
+    /// `Database::create` must refuse to create an object with the reserved uid `"*"`.
+    ///
+    /// See `repro_issue_909_get_on_star_bypasses_import_gate` for the end-to-end
+    /// escalation this prevents: a real object at uid `"*"` collides with the
+    /// internal sentinel used to store the global `Create` right.
+    #[tokio::test]
+    async fn test_create_rejects_reserved_uid() {
+        let db = test_db().await;
+        let owner = UserId::from("owner@example.com");
+        let key = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &[0_u8; 32],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )
+        .expect("failed to build test key object");
+        let attributes = key.attributes().expect("key has attributes").clone();
+
+        let result = db
+            .create(
+                Some("*".to_owned()),
+                &owner,
+                &key,
+                &attributes,
+                &HashSet::new(),
+            )
+            .await;
+        let err = result.expect_err("creating an object with uid '*' must fail");
+        assert!(
+            err.to_string().contains("reserved"),
+            "expected a reserved-identifier error, got: {err}"
+        );
+    }
+
+    /// `Database::atomic` must refuse a `Create` operation targeting the reserved uid `"*"`.
+    #[tokio::test]
+    async fn test_atomic_rejects_reserved_uid() {
+        let db = test_db().await;
+        let owner = UserId::from("owner@example.com");
+        let key = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &[0_u8; 32],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )
+        .expect("failed to build test key object");
+        let attributes = key.attributes().expect("key has attributes").clone();
+
+        let operations = vec![AtomicOperation::Create((
+            "*".to_owned(),
+            owner.clone(),
+            key,
+            attributes,
+            HashSet::new(),
+        ))];
+        let result = db.atomic(&owner, &operations).await;
+        let err = result.expect_err("atomic Create with uid '*' must fail");
+        assert!(
+            err.to_string().contains("reserved"),
+            "expected a reserved-identifier error, got: {err}"
+        );
+    }
 
     /// Verify that a UID with an HSM prefix is rejected when no HSM store is registered.
     #[tokio::test]

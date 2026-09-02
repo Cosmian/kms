@@ -5,6 +5,7 @@
     - [Severity Rating](#severity-rating)
     - [Known Vulnerabilities](#known-vulnerabilities)
         - [2026](#2026)
+            - [COSMIAN-2026-020 — `Get` grant on wildcard uid `*` bypasses the Create/Import authorization gate](#cosmian-2026-020--get-grant-on-wildcard-uid--bypasses-the-createimport-authorization-gate)
             - [COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`](#cosmian-2026-019--rustsec-2026-0173-proc-macro-error2-soundness-issue-via-mysql_async)
             - [COSMIAN-2026-018 — Activate operation uses overly permissive authorization check](#cosmian-2026-018--activate-operation-uses-overly-permissive-authorization-check)
             - [COSMIAN-2026-017 — ReKey / ReKeyKeyPair authorization bypass via raw object retrieval](#cosmian-2026-017--rekey--rekeykeypair-authorization-bypass-via-raw-object-retrieval)
@@ -76,6 +77,25 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### COSMIAN-2026-020 — `Get` grant on wildcard uid `*` bypasses the Create/Import authorization gate
+
+| Field      | Value                                           |
+| ---------- | ------------------------------------------------ |
+| Severity   | Critical                                        |
+| Published  | 28 August 2026                                  |
+| Affected   | from 5.0.0 before 5.27.0                        |
+| Fixed in   | 5.27.0                                          |
+| Found by   | Reported in [GitHub issue #909](https://github.com/Cosmian/kms/issues/909) |
+| References | [#909](https://github.com/Cosmian/kms/issues/909) |
+
+**Summary:** The Create/Import authorization gate (`privileged_users` / `crypto_officer.users` configuration) checks whether the caller holds the `Create` operation on the internal sentinel object identifier `"*"`, under which the global `Create` grant is stored. `"*"` was never reserved as an identifier: any user could `Create`/`Import`/`Register` a real object whose unique identifier is the literal string `"*"`. Because `user_has_permission`'s `Get`-super-privilege fallback treats holding `Get` on an object as satisfying *any* operation check on that same object, a user who owned this collided object could grant another user `Get` on it and thereby hand them the `Create` right — fully bypassing the privileged-user/Crypto-Officer gate.
+
+**Impact:** Full bypass of the Create/Import authorization gate in any deployment that restricts object creation to a configured allow-list (`privileged_users` or `crypto_officer.users`). A non-privileged user who received only a `Get` grant on the attacker-controlled `"*"` object could create and import arbitrary keys, defeating the intended lifecycle control.
+
+**Mitigation:** Upgrade to 5.26.1. `"*"` is now a reserved object identifier rejected at the database layer (`Database::create` and `Database::atomic`, in `crate/server_database/src/core/database_objects.rs`) for every backend — no object can ever be created under this uid, eliminating the collision at the source rather than patching the permission-check symptom.
+
+---
 
 #### COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`
 
@@ -653,6 +673,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 | ID               | Severity | Affected                | Fixed in | Title                                                         |
 | ---------------- | -------- | ----------------------- | -------- | ------------------------------------------------------------- |
+| COSMIAN-2026-020 | Critical | 5.0.0 – 5.26.0          | 5.26.1   | `Get` grant on wildcard uid `*` bypasses Create/Import gate   |
 | COSMIAN-2026-019 | Low      | 5.0.0 – 5.22.x          | 5.23.0   | RUSTSEC-2026-0173: proc-macro-error2 via mysql_async (compile-time) |
 | COSMIAN-2026-018 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Activate uses overly permissive authorization check           |
 | COSMIAN-2026-017 | Critical | 5.0.0 – 5.22.x          | 5.23.0   | ReKey / ReKeyKeyPair authorization bypass                     |
