@@ -1,5 +1,5 @@
 ---
-title: "ADR-0005: CEF v27 as SIEM Export Format for Audit Events"
+title: "ADR-2026-07-09-cef-siem-export-format: CEF v27 as SIEM Export Format for Audit Events"
 status: "Accepted"
 date: "2026-07-09"
 authors: "contributors, security operations engineers, compliance engineers"
@@ -8,7 +8,7 @@ supersedes: ""
 superseded_by: ""
 ---
 
-# ADR-0005: CEF v27 as SIEM Export Format for Audit Events
+# ADR-2026-07-09-cef-siem-export-format: CEF v27 as SIEM Export Format for Audit Events
 
 ## Status
 
@@ -16,7 +16,7 @@ Accepted
 
 ## Context
 
-The tamper-evident JSONL audit log (ADR-0003) stores events in a KMS-specific JSON schema
+The tamper-evident JSONL audit log (ADR-2026-07-09-audit-log-single-writer-design) stores events in a KMS-specific JSON schema
 optimised for hash-chain verification. Compliance environments additionally require feeding
 audit events into centralised SIEM systems such as ArcSight, Splunk, IBM QRadar, or
 Microsoft Sentinel for:
@@ -135,9 +135,9 @@ SIEM-specific network transport dependencies.
   (OpenText, April 2024)
 - **IMP-003**: Severity thresholds (5/6/7) are constants in `cef.rs`; operators needing
   different mappings should adjust there.
-- **IMP-004**: Transport is out of scope for this implementation. Recommended pattern:
-  tail the JSONL file with `filebeat` / `fluent-bit`, convert each line via
-  `ckms audit to-cef`, pipe to a syslog destination.
+- **IMP-004**: Transport is out of scope for this implementation. For production TCP
+  syslog delivery with RFC 6587 octet-counting framing, see ADR-2026-08-10-tcp-syslog-cef-transport. File-tailing
+  ingestion (filebeat, fluent-bit) is documented in `siems.md`.
 - **IMP-005**: CEF escaping: `|` → `\|`, `\` → `\\` in header fields;
   `=` → `\=`, `\n` → `\\n`, `\r` → `\\r` in extension values. Covered by unit tests
   in `cef.rs`.
@@ -147,8 +147,9 @@ SIEM-specific network transport dependencies.
 
 ## References
 
-- **REF-001**: ADR-0003 — Tamper-Evident JSONL Audit Log (authoritative record)
-- **REF-002**: ADR-0004 — HTTP-Layer Audit Middleware (capture architecture)
+- **REF-001**: ADR-2026-07-09-audit-log-single-writer-design — Tamper-Evident JSONL Audit Log (authoritative record)
+- **REF-002**: ADR-2026-07-09-audit-middleware-extension-injection — HTTP-Layer Audit Middleware (capture architecture)
 - **REF-003**: [ArcSight CEF Implementation Standard v27](https://www.microfocus.com/documentation/arcsight/arcsight-smartconnectors-24.2/pdfdoc/cef-implementation-standard/cef-implementation-standard.pdf) (OpenText, April 2024)
 - **REF-004**: OCSF v1.x specification — <https://schema.ocsf.io>
 - **REF-005**: `crate/access/src/audit/cef.rs`
+- **REF-006**: ADR-2026-08-10-tcp-syslog-cef-transport — TCP Syslog CEF Transport (production delivery)

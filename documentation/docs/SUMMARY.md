@@ -104,7 +104,7 @@
         - [Logging](configuration/logging.md)
         - [Log reference](configuration/log-reference.md)
     - [Audit & SIEM]()
-        - [Audit logs](configuration/audit-logs.md)
+        - [Audit logging](configuration/audit-logs.md)
         - [CEF export format](configuration/cef-export.md)
         - [SIEM integration](configuration/siems.md)
     - [Monitoring]()
