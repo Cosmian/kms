@@ -207,6 +207,10 @@ impl From<tokio_postgres::Error> for DbError {
             if *db_err.code() == SqlState::UNIQUE_VIOLATION {
                 return Self::DatabaseError("one or more objects already exist".to_owned());
             }
+            // `tokio_postgres::Error`'s Display collapses every DB-side error to the
+            // literal "db error", discarding the SQLSTATE/message that
+            // `is_pg_retryable_error` needs to detect deadlocks and serialization failures.
+            return Self::SqlError(format!("{} {}", db_err.code().code(), db_err.message()));
         }
         Self::SqlError(e.to_string())
     }
