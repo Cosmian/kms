@@ -16,7 +16,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{Create, GetAttributes},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
+        kmip_types::{
+            AttributeReference, CryptographicAlgorithm, KeyFormatType, Tag, UniqueIdentifier,
+        },
     },
 };
 use cosmian_logger::warn;
@@ -138,7 +140,7 @@ pub(crate) enum KeyUsage {
 ///     "keyStatus": "ENABLED"
 /// }
 /// ```
-#[derive(Serialize, Default, Deserialize)]
+#[derive(Debug, Serialize, Default, Deserialize)]
 #[allow(non_snake_case)]
 pub(crate) struct GetKeyMetadataResponse {
     /// Specifies the type of external key.
@@ -330,7 +332,10 @@ pub(crate) async fn create_key(
             .get_attributes(
                 GetAttributes {
                     unique_identifier: Some(uid.clone()),
-                    attribute_reference: None,
+                    attribute_reference: Some(vec![
+                        AttributeReference::Standard(Tag::ObjectType),
+                        AttributeReference::Standard(Tag::Tag),
+                    ]),
                 },
                 &owner,
             )
@@ -339,8 +344,19 @@ pub(crate) async fn create_key(
                 errorName: XksErrorName::InternalException,
                 errorMessage: Some(format!("Failed to check prior existence of key {uid}: {e}")),
             })?;
-        if get_att_response.attributes.object_type == Some(ObjectType::SymmetricKey) {
+        let is_xks_key = get_att_response
+            .attributes
+            .get_tags(&kms.params.vendor_identification)
+            .contains("aws-xks");
+        if get_att_response.attributes.object_type == Some(ObjectType::SymmetricKey) && is_xks_key {
             warn!("AWS XKS create: key {uid} already exists (ignoring creation).");
+        } else if get_att_response.attributes.object_type == Some(ObjectType::SymmetricKey) {
+            return Err(XksErrorReply {
+                errorName: XksErrorName::InternalException,
+                errorMessage: Some(format!(
+                    "Key {uid} already exists and is not an AWS XKS key; refusing to grant XKS access"
+                )),
+            });
         } else {
             return Err(XksErrorReply {
                 errorName: XksErrorName::InternalException,

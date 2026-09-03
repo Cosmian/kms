@@ -29,7 +29,7 @@ mod session_auth;
 use actix_web::{dev::ServiceRequest, http::header};
 pub(crate) use session_auth::SessionAuth;
 
-use crate::{error::KmsError, result::KResult};
+use crate::{error::KmsError, result::KResult, routes::aws_xks::AWS_XKS_SERVICE_USER};
 
 /// Extract a Bearer token from the `Authorization` header of a request.
 ///
@@ -90,4 +90,36 @@ pub(crate) struct AuthenticatedUser {
     pub username: UserId,
     /// Which authentication method was used
     pub auth_method: AuthMethod,
+}
+
+/// Reject the reserved AWS XKS service identity on externally-derived auth paths.
+pub(crate) fn reject_reserved_aws_xks_identity(username: &UserId) -> KResult<()> {
+    if username.as_str() == AWS_XKS_SERVICE_USER {
+        return Err(KmsError::Unauthorized(format!(
+            "reserved AWS XKS service identity `{AWS_XKS_SERVICE_USER}` cannot be used as an \
+             externally authenticated username"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reject_reserved_aws_xks_identity_rejects_reserved_username() {
+        assert!(matches!(
+            reject_reserved_aws_xks_identity(&UserId::from(AWS_XKS_SERVICE_USER)),
+            Err(KmsError::Unauthorized(_))
+        ));
+    }
+
+    #[test]
+    fn reject_reserved_aws_xks_identity_accepts_regular_username() {
+        assert!(matches!(
+            reject_reserved_aws_xks_identity(&UserId::from("alice@example.com")),
+            Ok(())
+        ));
+    }
 }
