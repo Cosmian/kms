@@ -234,7 +234,7 @@ mod tests {
     #[allow(clippy::panic_in_result_fn)]
     fn test_auth_verifier_toml_config_parses() -> Result<(), Box<dyn std::error::Error>> {
         let config_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../test_data/configs/server/auth/verifier.toml");
+            .join("../../test_data/configs/server/auth_verifier.toml");
         let toml_content = std::fs::read_to_string(&config_path)
             .map_err(|e| format!("failed to read {}: {e}", config_path.display()))?;
 
