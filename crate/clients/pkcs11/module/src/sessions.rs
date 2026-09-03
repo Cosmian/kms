@@ -532,7 +532,9 @@ impl Session {
         let mut objects_store = OBJECTS_STORE.write()?;
 
         let key_length = attributes.get_value_len()?;
-        let sensitive = attributes.get_sensitive()?;
+        // PKCS#11 defaults CKA_SENSITIVE to CK_FALSE when the caller omits it
+        // (e.g. SAP ASE's `create encryption key ... on external keystore` does).
+        let sensitive = attributes.get_sensitive().unwrap_or(false);
         let label = attributes.get_label()?;
 
         let object = backend()?.generate_key(

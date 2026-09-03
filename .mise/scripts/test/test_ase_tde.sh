@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────────────────────
-# test_ase_tde.sh — SAP ASE ↔ Cosmian KMS KMIP TDE integration test
+# test_ase_tde.sh — SAP ASE ↔ Cosmian KMS PKCS#11 TDE integration test
 #
-# LOCAL DEV ONLY — not run in CI.
+# LOCAL DEV ONLY — not run in CI (needs a manually built SAP ASE image).
 #
 # SAP ASE has no redistributable Docker image. The image must be built locally
 # from the SAP ASE Developer Edition installer (ASE_Suite.linuxamd64.tgz),
@@ -14,19 +14,24 @@
 # If the image is not present locally, this script SKIPs (exit 0) after
 # verifying the KMS-side mTLS and REST API behavior.
 #
+# ASE talks to external key managers over PKCS#11, NOT KMIP directly. The
+# integration path is:
+#   SAP ASE --PKCS#11--> libcosmian_pkcs11.so --KMIP--> Cosmian KMS
+# configured via `sp_encryption 'hsm_credential', 'lib=...; pin=...; slot=...'`
+# (SAP's documented format — semicolon-separated; there is no KEYSTORE/KMIP
+# parameter on the ASE side at all).
+#
 # What this tests:
 #   1. Sad path  — KMS rejects connections without a client certificate.
 #   2. KMS REST API round-trip (sanity check, independent of ASE).
-#   3. If cosmian-ase-kmip image exists: start ASE, attempt KMIP keystore
-#      configuration and encrypted-database creation. Any SQL error is
-#      reported and the KMIP portion is SKIPPED (ASE KMIP command syntax is
-#      version/build-dependent and not independently verified here).
+#   3. If cosmian-ase-kmip image exists: build libcosmian_pkcs11.so for
+#      linux/amd64, load it into ASE via hsm_credential, and create a real
+#      HSM-backed encryption key. Verifies the key is visible in the KMS.
 #
 # Configurable environment variables:
 #   ASE_DOCKER_IMAGE     Image name (default: cosmian-ase-kmip)
 #   ASE_CONTAINER_NAME   Container name (default: ase-kmip-test)
 #   ASE_SA_PASSWORD      sa password (default: SapAse1!)
-#   KMS_KMIP_PORT        KMIP socket port (default: dynamically allocated)
 #   KMS_HTTP_PORT        KMS HTTP/HTTPS port (default: dynamically allocated)
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -47,14 +52,19 @@ setup_test_logging
 : "${ASE_DOCKER_IMAGE:=cosmian-ase-kmip}"
 : "${ASE_CONTAINER_NAME:=ase-kmip-test}"
 : "${ASE_SA_PASSWORD:=SapAse1!}"
-: "${KMS_KMIP_PORT:=$(kms_pick_free_port)}"
 : "${KMS_HTTP_PORT:=$(kms_pick_free_port)}"
-: "${ASE_HOST_PORT:=$(kms_pick_free_port)}"
+# Fixed PIN/slot for the Cosmian PKCS#11 software provider: it exposes a
+# single always-present token whose CK_SLOT_ID is 1 (slot 0 does not exist)
+# and does not enforce a real PIN policy.
+PKCS11_PIN="0000"
+PKCS11_SLOT="1"
+# Hostname ASE (inside its container) uses to reach the KMS running on the host.
+KMS_HOST_FROM_ASE="host.docker.internal"
 
 CERT_DIR="${REPO_ROOT}/test_data/certificates/client_server"
 CA_CERT="${CERT_DIR}/ca/ca.crt"
-SERVER_P12="${CERT_DIR}/server/kmserver.acme.com.p12"
-SERVER_P12_PASSWORD="password"
+SERVER_CERT="${CERT_DIR}/server/kmserver.acme.com.crt"
+SERVER_KEY="${CERT_DIR}/server/kmserver.acme.com.key"
 CLIENT_P12="${CERT_DIR}/owner/owner.client.acme.com.p12"
 
 KMS_SQLITE_DIR="$(mktemp -d -t kms-ase-XXXXXX)"
@@ -95,18 +105,19 @@ tls_client_pkcs12_path = "${CLIENT_P12}"
 tls_client_pkcs12_password = "password"
 CKMS_CONF_EOF
 
-echo "==> Starting KMS (KMIP socket port ${KMS_KMIP_PORT}, HTTP port ${KMS_HTTP_PORT})…"
+# Bound to 0.0.0.0 so the ASE Docker container can reach it via
+# host.docker.internal (PKCS#11 does not need the KMIP socket server: the
+# cosmian_pkcs11 provider talks to the KMS over the HTTP/KMIP-over-REST API).
+echo "==> Starting KMS (HTTP port ${KMS_HTTP_PORT})…"
 RUST_LOG="${RUST_LOG:-cosmian_kms_server=info,cosmian_kmip=warn}" \
-  KMS_SOCKET_SERVER_START=true \
   cargo run --bin cosmian_kms "${FEATURES_FLAG[@]}" -- \
   --database-type sqlite \
   --sqlite-path "${KMS_SQLITE_DIR}" \
-  --socket-server-port "${KMS_KMIP_PORT}" \
-  --tls-p12-file "${SERVER_P12}" \
-  --tls-p12-password "${SERVER_P12_PASSWORD}" \
+  --tls-cert-file "${SERVER_CERT}" \
+  --tls-key-file "${SERVER_KEY}" \
   --clients-ca-cert-file "${CA_CERT}" \
   --port "${KMS_HTTP_PORT}" \
-  --hostname "127.0.0.1" \
+  --hostname "0.0.0.0" \
   &
 KMS_PID=$!
 popd >/dev/null
@@ -122,7 +133,7 @@ echo "KMS is ready."
 echo
 echo "==> Sad path: connecting WITHOUT a client certificate (expect rejection)…"
 OPENSSL_RESULT=$(openssl s_client \
-  -connect "127.0.0.1:${KMS_KMIP_PORT}" \
+  -connect "127.0.0.1:${KMS_HTTP_PORT}" \
   -CAfile "${CA_CERT}" \
   -verify_return_error \
   -brief \
@@ -172,6 +183,11 @@ else
   exit 1
 fi
 
+BASELINE_AES_COUNT=$(
+  "${CKMS_BIN}" --conf-path "${CKMS_CONF}" locate --algorithm AES 2>&1 |
+    grep -c '[0-9a-f]\{8\}-[0-9a-f]\{4\}\|^SAP ASE' || true
+)
+
 # ── Step 4: Check the locally-built ASE image is present ─────────────────────
 echo
 echo "==> Checking for local SAP ASE image '${ASE_DOCKER_IMAGE}'…"
@@ -188,14 +204,41 @@ if ! docker image inspect "${ASE_DOCKER_IMAGE}" >/dev/null 2>&1; then
   exit 0
 fi
 
-# ── Step 5: Start ASE container ───────────────────────────────────────────────
+# ── Step 5: Build libcosmian_pkcs11.so for linux/amd64 ────────────────────────
+# ASE always runs linux/amd64. On a Linux/x86_64 dev machine or CI runner this
+# is a native build; everywhere else (e.g. macOS) it is cross-built inside a
+# matching `rust` Docker image, pinned to the same toolchain as rust-toolchain.toml.
+#
+# The target dir is wiped first: incremental compilation state does not
+# survive reliably across separate --rm container invocations sharing a
+# bind-mounted host target dir, and a stale binary here is silently wrong.
+echo
+echo "==> Building libcosmian_pkcs11.so for linux/amd64…"
+PKCS11_TARGET_DIR="${REPO_ROOT}/target/pkcs11-linux-amd64"
+rm -rf "${PKCS11_TARGET_DIR}"
+if [ "$(uname -s)" = "Linux" ] && [ "$(uname -m)" = "x86_64" ]; then
+  cargo build -p cosmian_pkcs11 --features non-fips --target-dir "${PKCS11_TARGET_DIR}"
+else
+  RUST_VERSION=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' "${REPO_ROOT}/rust-toolchain.toml" | head -1)
+  docker run --rm --platform linux/amd64 \
+    -v "${REPO_ROOT}:/work" -w /work \
+    "rust:${RUST_VERSION}-bookworm" \
+    bash -c "apt-get update -qq && apt-get install -y -qq clang libssl-dev pkg-config >/dev/null 2>&1; \
+      cargo build -p cosmian_pkcs11 --features non-fips --target-dir /work/target/pkcs11-linux-amd64"
+fi
+PKCS11_LIB="${PKCS11_TARGET_DIR}/debug/libcosmian_pkcs11.so"
+if [ ! -f "${PKCS11_LIB}" ]; then
+  echo "ERROR: libcosmian_pkcs11.so was not produced at ${PKCS11_LIB}." >&2
+  exit 1
+fi
+echo "==> PASS: libcosmian_pkcs11.so built for linux/amd64."
+
+# ── Step 6: Start ASE container ───────────────────────────────────────────────
 echo
 echo "==> Starting SAP ASE container '${ASE_CONTAINER_NAME}'…"
 docker run -d --rm --platform linux/amd64 \
   --name "${ASE_CONTAINER_NAME}" \
-  -p "${ASE_HOST_PORT}:5000" \
-  -v "${CA_CERT}:/ase-kmip-certs/ca.crt:ro" \
-  -v "${CLIENT_P12}:/ase-kmip-certs/client.p12:ro" \
+  --add-host "${KMS_HOST_FROM_ASE}:host-gateway" \
   -e "SA_PASSWORD=${ASE_SA_PASSWORD}" \
   "${ASE_DOCKER_IMAGE}" >/dev/null
 
@@ -215,42 +258,121 @@ if [ "${ASE_READY}" = false ]; then
 fi
 echo "ASE is ready."
 
-# ── Step 6: Attempt KMIP keystore configuration ───────────────────────────────
+# ── Step 7: Deploy the PKCS#11 library + KMS client config into the container ─
 echo
-echo "==> Attempting SAP ASE KMIP configuration (host=host.docker.internal:${KMS_KMIP_PORT})…"
+echo "==> Deploying libcosmian_pkcs11.so and ckms.toml into the ASE container…"
 
-KMIP_ADDR="host.docker.internal:${KMS_KMIP_PORT}"
-docker cp "${REPO_ROOT}/.mise/scripts/docker/ase/configure_kmip.sql" \
-  "${ASE_CONTAINER_NAME}:/tmp/configure_kmip.sql"
+# SAP requires the PKCS#11 module to live under $SYBASE/ASE-16_x/lib.
+ASE_HOME=$(docker exec "${ASE_CONTAINER_NAME}" bash -c 'ls -d /opt/sap/ASE-16_*' | head -1)
+ASE_LIB_DIR="${ASE_HOME}/lib"
+ASE_SSL_DIR="${ASE_HOME}/ssl"
+PKCS11_MODULE_NAME="cosmian_pkcs11.so"
 
-# Substitute the KMIP endpoint placeholder used in configure_kmip.sql.
-docker exec "${ASE_CONTAINER_NAME}" \
-  sed -i "s|\$(KMIP_ADDR)|${KMIP_ADDR}|g; s|\$(SYBSSL)|/opt/sap/ASE-16_1/ssl|g" \
-  /tmp/configure_kmip.sql
+# The provider loads ckms.toml alongside the library (or via CKMS_CONF).
+ASE_CKMS_CONF="${KMS_SQLITE_DIR}/ase_ckms.toml"
+cat >"${ASE_CKMS_CONF}" <<ASE_CKMS_EOF
+[http_config]
+server_url = "https://${KMS_HOST_FROM_ASE}:${KMS_HTTP_PORT}"
+accept_invalid_certs = true
+tls_client_pkcs12_path = "${ASE_SSL_DIR}/client.p12"
+tls_client_pkcs12_password = "password"
+ASE_CKMS_EOF
 
-ASE_KMIP_OUT=$(docker exec \
-  -e SYBASE=/opt/sap -e SYBASE_OCS=OCS-16_1 \
-  -e LD_LIBRARY_PATH=/opt/sap/ASE-16_1/lib:/opt/sap/OCS-16_1/lib:/opt/sap/OCS-16_1/lib3p64:/opt/sap/OCS-16_1/lib3p \
-  "${ASE_CONTAINER_NAME}" \
-  /opt/sap/OCS-16_1/bin/isql -S SAPASE -U sa -P "${ASE_SA_PASSWORD}" -w 200 \
-  -i /tmp/configure_kmip.sql 2>&1 || true)
+docker cp "${PKCS11_LIB}" "${ASE_CONTAINER_NAME}:${ASE_LIB_DIR}/${PKCS11_MODULE_NAME}"
+docker cp "${CLIENT_P12}" "${ASE_CONTAINER_NAME}:${ASE_SSL_DIR}/client.p12"
+docker cp "${ASE_CKMS_CONF}" "${ASE_CONTAINER_NAME}:${ASE_LIB_DIR}/ckms.toml"
+echo "==> PASS: PKCS#11 module and KMS client config deployed."
 
-echo "ASE KMIP configuration output:"
-echo "${ASE_KMIP_OUT}"
+# ── Step 8: Configure ASE for HSM-backed encryption via PKCS#11 ──────────────
+# SAP's documented prerequisites/format for `sp_encryption 'hsm_credential'`:
+#   sp_configure 'external keystore', 0, 'HSM'
+#   sp_configure 'enable encrypted columns', 1
+#   sp_encryption 'system_encr_passwd', '<password>'
+#   sp_encryption 'hsm_credential', 'lib=<name>.so; pin=<pin>; slot=<n>'
+# The credential value is semicolon-separated; no KEYSTORE/KMIP parameter
+# exists on the ASE side — everything KMIP-related lives inside the PKCS#11
+# module, invisible to ASE.
+echo
+echo "==> Configuring ASE HSM credential (lib=${PKCS11_MODULE_NAME}, slot=${PKCS11_SLOT})…"
 
-if echo "${ASE_KMIP_OUT}" | grep -qiE "Msg [0-9]+|not supported|not licensed|error"; then
-  echo "==> SKIPPED: SAP ASE KMIP configuration did not complete cleanly."
-  echo "  The exact KMIP setup SQL is version/build-dependent and not"
-  echo "  independently verified against a real ASE Enterprise instance."
-  echo "  The following were verified successfully:"
-  echo "  ✓ mTLS sad path"
-  echo "  ✓ KMS REST API round-trip"
-  echo "  ✓ SAP ASE container started and ready"
-  exit 0
+_isql_env='
+  export SYBASE=/opt/sap
+  export SYBASE_OCS="$(basename "$(ls -d /opt/sap/OCS-16_* | head -1)")"
+  export LD_LIBRARY_PATH="${SYBASE}/ASE-16_1/lib:${SYBASE}/${SYBASE_OCS}/lib:${SYBASE}/${SYBASE_OCS}/lib3p64:${SYBASE}/${SYBASE_OCS}/lib3p"
+  export CKMS_CONF="'"${ASE_LIB_DIR}"'/ckms.toml"
+'
+
+ASE_HSM_CFG=$(docker exec "${ASE_CONTAINER_NAME}" bash -c "
+${_isql_env}
+ISQL=\"\${SYBASE}/\${SYBASE_OCS}/bin/isql\"
+printf \"sp_configure 'external keystore', 0, 'HSM'\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
+printf \"sp_configure 'enable encrypted columns', 1\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
+printf \"sp_encryption 'system_encr_passwd', 'MasterPass1!'\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
+printf \"sp_encryption 'hsm_credential', 'lib=${PKCS11_MODULE_NAME}; pin=${PKCS11_PIN}; slot=${PKCS11_SLOT}'\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
+echo 'ASE_HSM_CFG_DONE'
+" 2>&1 || true)
+
+echo "ASE HSM configuration output:"
+echo "${ASE_HSM_CFG}"
+
+if ! echo "${ASE_HSM_CFG}" | grep -q "ASE_HSM_CFG_DONE"; then
+  echo "ERROR: ASE HSM credential configuration did not complete." >&2
+  exit 1
+fi
+if echo "${ASE_HSM_CFG}" | grep -qiE "^Msg [0-9]+"; then
+  echo "ERROR: ASE reported an error while configuring the HSM credential." >&2
+  exit 1
+fi
+echo "==> PASS: ASE HSM credential configured."
+
+# ── Step 9: Create an HSM-backed encryption key — the real functional test ───
+# SAP has no dedicated "test HSM connectivity" command: creating (and using) a
+# key on the external keystore IS the functional test of the PKCS#11 path.
+echo
+echo "==> Creating HSM-backed encryption key via the Cosmian PKCS#11 provider…"
+
+ASE_KEY_OUT=$(docker exec "${ASE_CONTAINER_NAME}" bash -c "
+${_isql_env}
+ISQL=\"\${SYBASE}/\${SYBASE_OCS}/bin/isql\"
+printf \"create encryption key hsm_key on external keystore with keylength 256 init_vector random\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
+echo 'ASE_KEY_CREATE_DONE'
+" 2>&1 || true)
+
+echo "ASE create encryption key output:"
+echo "${ASE_KEY_OUT}"
+
+if ! echo "${ASE_KEY_OUT}" | grep -q "ASE_KEY_CREATE_DONE"; then
+  echo "ERROR: CREATE ENCRYPTION KEY command did not complete." >&2
+  exit 1
+fi
+if echo "${ASE_KEY_OUT}" | grep -qiE "^Msg [0-9]+"; then
+  echo "ERROR: ASE failed to create the HSM-backed encryption key via the Cosmian PKCS#11 provider." >&2
+  exit 1
+fi
+echo "==> PASS: HSM-backed encryption key created through the PKCS#11 provider."
+
+# ── Step 10: Verify the key was created on the KMS side ──────────────────────
+echo
+echo "==> Verifying the HSM key is visible on the KMS side…"
+LOCATE_OUT=$(
+  "${CKMS_BIN}" --conf-path "${CKMS_CONF}" \
+    locate --algorithm AES 2>&1
+) || true
+echo "  KMS key list: ${LOCATE_OUT}"
+
+NEW_AES_COUNT=$(echo "${LOCATE_OUT}" | grep -c '[0-9a-f]\{8\}-[0-9a-f]\{4\}\|^SAP ASE' || true)
+if [[ "${NEW_AES_COUNT}" -gt "${BASELINE_AES_COUNT}" ]]; then
+  echo "==> PASS: A new key was created on the KMS by ASE via PKCS#11 (${BASELINE_AES_COUNT} -> ${NEW_AES_COUNT})."
+else
+  echo "ERROR: Expected an additional AES key on the KMS after ASE key creation, count unchanged (${NEW_AES_COUNT})." >&2
+  exit 1
 fi
 
-echo "==> PASS: SAP ASE KMIP TDE integration test completed successfully."
+echo
+echo "==> PASS: SAP ASE PKCS#11 TDE integration test completed successfully."
 echo "  ✓ mTLS sad path"
 echo "  ✓ KMS REST API round-trip"
-echo "  ✓ SAP ASE container started and ready"
-echo "  ✓ KMIP encryption key + encrypted database created"
+echo "  ✓ libcosmian_pkcs11.so built for linux/amd64"
+echo "  ✓ ASE HSM credential configured (lib=/pin=/slot=)"
+echo "  ✓ HSM-backed encryption key created via PKCS#11"
+echo "  ✓ Key visible in the KMS"
