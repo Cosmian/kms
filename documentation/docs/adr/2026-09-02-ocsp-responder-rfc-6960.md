@@ -32,6 +32,19 @@ Proposed | **Accepted** | Rejected | Superseded | Deprecated
 > review" under Decision, POS-006, and IMP-007–IMP-010 below. Full report:
 > `threat-model-20260903-060003/` (repository root; gitignored, a local session artifact
 > — not committed).
+>
+> **Revised 2026-09-03 (2)** — a peer security review of the same PR (GitHub PR #1164)
+> found two further gaps and a cross-platform build defect, all closed: (1) the
+> delegated OCSP responder certificate's required `id-kp-OCSPSigning` extended key
+> usage (RFC 6960 §4.2.2.2) was documented but never actually enforced; (2) the GET
+> transport had no OCSP-specific request-size cap before decoding (RFC 6960
+> Appendix A); (3) several OCSP crypto functions passed `i64` values directly to FFI
+> functions expecting C's `long`, which is only 32-bit on Windows (LLP64) — causing a
+> Windows-only compile failure — and two `Validate` test helpers built malformed
+> `file://` CRL fixture URIs on Windows for an unrelated reason (OpenSSL's
+> config-text extension parser treats backslash as an escape character). See
+> "Hardening applied after peer review" under Decision, POS-007, and IMP-011–IMP-013
+> below.
 
 ## Context
 
@@ -221,6 +234,61 @@ mapping):
   incorrectly hide a `Compromised` certificate's state even from its own owner for this
   internal use.
 
+### Hardening applied after peer review (2026-09-03, PR #1164)
+
+A peer security review of this PR (GitHub PR #1164, comment
+`#issuecomment-5523005277`) found the responder's core OCSP protocol handling
+(nonce bounds, signing algorithm choice, cache freshness, DoS hardening) already
+correctly implemented, and identified two further, narrower gaps plus an
+unrelated cross-platform build/test defect, all closed the same day:
+
+- **Delegated OCSP responder EKU enforcement (RFC 6960 §4.2.2.2)**: the doc
+  comment on `ocsp_responder_cert_uid` (`ocsp_config.rs`) documents that the
+  referenced certificate "MUST have" the `id-kp-OCSPSigning` extended key usage
+  (OID 1.3.6.1.5.5.7.3.9) and SHOULD have `id-pkix-ocsp-nocheck` (OID
+  1.3.6.1.5.5.7.48.1.5) — but `retrieve_signer_cert_and_key` never actually
+  checked either extension, only the KMS lifecycle `State`. An operator could
+  point `ocsp_responder_cert_uid` at any certificate/key pair in the KMS (e.g. a
+  TLS server certificate) and the responder would sign with it anyway. A new
+  `check_delegated_responder_extensions` (using `x509-parser`, already a
+  workspace dependency) now rejects a *distinct* delegated responder certificate
+  missing the `OCSPSigning` EKU (a MUST); a missing `nocheck` extension (a
+  SHOULD) is logged as a warning rather than rejected. Does not apply when the
+  signer is the CA's own certificate (no delegate configured) — the CA's own
+  key usage is governed by its issuance policy, not the delegated-responder
+  rules.
+- **GET transport size cap (RFC 6960 Appendix A)**: `get_ocsp` base64url-decoded
+  the path segment with no OCSP-specific upper bound, relying solely on the
+  generic web-framework URI length limit — RFC 6960 Appendix A recommends GET
+  only for small requests. A new, explicit 4 KB cap (`MAX_OCSP_GET_PATH_LEN`,
+  checked by the extracted, independently-unit-tested `check_get_path_len`) is
+  now enforced before any base64/DER decoding work.
+- **Windows-only compile failure (unrelated to the peer review, found via CI)**:
+  several OCSP crypto functions (`parse_ocsp_request`, `build_ocsp_response`,
+  `request_has_nonce`, `add_archive_cutoff`) passed `i64` epoch timestamps and
+  byte lengths directly to FFI functions declared with C's `long` parameter
+  type. `c_long` is 64-bit on Unix (LP64: Linux/macOS — where it is type-identical
+  to `i64`, so the mismatch never surfaced locally) but only 32-bit on Windows
+  (LLP64) — a genuinely different primitive there, causing
+  `error[E0308]: mismatched types` at every such call site. All are now routed
+  through a fallible `i64 -> c_long` conversion (`to_c_long`), never a panic.
+- **Two Windows-only flaky `Validate` unit tests (found via the same CI run)**:
+  the `file_uri()` test helper (`test_validate.rs`) built `file://` CRL fixture
+  URIs via `path.display()`, which on Windows yields backslash-separated paths
+  with no leading `/` (`C:\Users\...`). When that URI is embedded into an X.509
+  `crlDistributionPoints` extension via OpenSSL's config-text extension parser
+  (`crlDistributionPoints=URI:{cdp_uri}`), backslash is treated by OpenSSL's own
+  NCONF value parser as an escape character and silently stripped — turning the
+  CDP URI into something unparsable (`file://C:UsersRUNNER~1...`, every path
+  separator gone) and failing the test with an obscure "invalid international
+  domain name" error rather than a clear one. `file_uri()` (and the unrelated,
+  coincidentally-passing `sr_crl_10_file_uri_allowed_in_tests` test in
+  `validate.rs`, hardened for consistency even though it does not go through
+  the OpenSSL config parser) now always emit forward slashes on every platform,
+  matching the pre-existing, already-correct `path_to_file_uri` convention used
+  elsewhere in the test suite (`crate/test_kms_server/src/vector_runner.rs`,
+  `crate/clients/ckms/src/tests/certificates/certify.rs`).
+
 ## Consequences
 
 ### Positive
@@ -243,6 +311,13 @@ mapping):
   reuse and cache freshness — with no observed exploitation. Every fix is covered by
   the existing external black-box test suites (`test:ocsp`, `test:pki-revocation`) and
   the full server test suite, both `fips` and `non-fips`.
+- **POS-007**: A peer security review of the PR confirmed the responder's core
+  protocol handling (nonce bounds, signing algorithm, cache freshness, DoS
+  hardening) was already sound, and its two additional findings (delegated
+  responder EKU enforcement, GET size cap) plus an independently-discovered
+  Windows-only build/test defect were all closed the same day, before merge —
+  again with no observed exploitation and full test coverage (7 new unit tests
+  across `handler.rs`/`test_validate.rs`, plus the existing black-box suites).
 
 ### Negative
 
@@ -374,6 +449,27 @@ mapping):
   that the first attempt at the delegated-signer-refusal fix (IMP above) initially broke
   before being narrowed to only apply to a genuinely distinct, independently-compromised
   delegate.
+- **IMP-011**: `check_delegated_responder_extensions` (`crate/server/src/routes/ocsp/
+  handler.rs`) uses `x509_parser::prelude::X509Certificate` (already a workspace
+  dependency) to read `ParsedExtension::ExtendedKeyUsage::ocsp_signing` for the EKU
+  check, and `X509Certificate::get_extension_unique` with a manually-constructed
+  `Oid` (`1.3.6.1.5.5.7.48.1.5`, built via the fallible `Oid::from(&[u64])` and
+  propagated with `?`, never `.expect()`) for the `nocheck` lookup — x509-parser has
+  no dedicated `ParsedExtension` variant for `nocheck` since its content is DER
+  `NULL`. Covered by 4 new unit tests (missing EKU, EKU without nocheck, both
+  present, malformed DER) using a `build_test_cert` helper that constructs a raw
+  OpenSSL test certificate with `openssl::nid::Nid::ID_PKIX_OCSP_NOCHECK`.
+- **IMP-012**: The GET-path length check is extracted into a pure
+  `check_get_path_len(&str) -> KResult<()>` function specifically so it can be unit-
+  tested (3 new tests: below/at/above `MAX_OCSP_GET_PATH_LEN`) without constructing a
+  full `KMS` instance — the same pattern used by other pure-validation helpers in
+  this codebase.
+- **IMP-013**: `to_c_long` (`crate/crypto/src/openssl/ocsp.rs`) centralizes every
+  `i64 -> c_long` conversion needed by the OCSP FFI layer, always via `c_long::
+  try_from(...)` and propagated as a `CryptoError`, never `.unwrap()`/`.expect()` —
+  the Windows-only mismatch was a genuine 32-bit-vs-64-bit type difference (LLP64 vs
+  LP64), not a value that could realistically overflow in practice, but the fix does
+  not rely on that assumption.
 
 ## References
 
@@ -413,3 +509,16 @@ mapping):
   (`extract_serial_hex_for_ocsp_cache`), `crate/server/src/core/operations/validate.rs`
   (`MAX_VALIDATE_CHAIN_LENGTH`, `user_has_permission` re-check in
   `tag_raw_certificates_with_state`).
+- **REF-013**: Peer security review — GitHub PR #1164,
+  <https://github.com/Cosmian/kms/pull/1164#issuecomment-5523005277>.
+- **REF-014**: Windows CI failure (build) —
+  <https://github.com/Cosmian/kms/actions/runs/33720375357/job/100538102566?pr=1164>.
+- **REF-015**: Windows CI failure (flaky tests, same PR, later run) —
+  <https://github.com/Cosmian/kms/actions/runs/33722401658/job/100572165429?pr=1164>.
+- **REF-016**: Peer-review + Windows fix locations —
+  `crate/server/src/routes/ocsp/handler.rs`
+  (`check_delegated_responder_extensions`, `check_get_path_len`,
+  `MAX_OCSP_GET_PATH_LEN`), `crate/crypto/src/openssl/ocsp.rs` (`to_c_long`),
+  `crate/server/src/tests/test_validate.rs` (`file_uri`),
+  `crate/server/src/core/operations/validate.rs`
+  (`sr_crl_10_file_uri_allowed_in_tests`).

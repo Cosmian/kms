@@ -1405,9 +1405,19 @@ mod tests {
             .expect("failed to write sentinel bytes");
         tmp.flush().expect("failed to flush temp file");
 
-        let path = tmp.path().to_str().expect("temp path is not valid UTF-8");
-        // Build the canonical file URI (three slashes: scheme + empty authority + absolute path).
-        let uri = format!("file://{path}");
+        // Build the canonical file URI (three slashes: scheme + empty authority +
+        // absolute path). On Windows, `tmp.path()` has no leading `/` and uses
+        // `\` separators (`C:\Users\...`); normalize to forward slashes so the
+        // result is a well-formed `file://` URI on every platform (backslashes
+        // are not valid path separators in a URI, even though some parsers are
+        // lenient about it in this particular two-slash form).
+        #[cfg(windows)]
+        let uri = format!(
+            "file:///{}",
+            tmp.path().to_string_lossy().replace('\\', "/")
+        );
+        #[cfg(not(windows))]
+        let uri = format!("file://{}", tmp.path().display());
 
         let result = get_crl_bytes(vec![uri.clone()], None, None)
             .await

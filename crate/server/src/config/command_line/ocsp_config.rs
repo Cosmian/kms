@@ -45,10 +45,15 @@ pub struct OcspConfig {
     /// When set, OCSP responses are signed by this delegated key+certificate rather
     /// than the CA's own private key.  The referenced certificate MUST have:
     /// - `extKeyUsage: OCSPSigning` (OID 1.3.6.1.5.5.7.3.9)
-    /// - `id-pkix-ocsp-nocheck` extension (OID 1.3.6.1.5.5.7.48.1.5)
     ///
-    /// Both requirements are enforced at request time: the server rejects the
-    /// delegated certificate (and refuses to sign) if either is missing.
+    /// It SHOULD also have the `id-pkix-ocsp-nocheck` extension (OID
+    /// 1.3.6.1.5.5.7.48.1.5, RFC 6960 §4.2.2.2.1) — this is only one of three
+    /// RFC-sanctioned ways to let relying parties check the responder certificate's
+    /// own revocation status (the others being a CDP/AIA pointer, or local policy), so
+    /// its absence is not required, only logged as a warning.
+    ///
+    /// The `OCSPSigning` requirement is enforced at request time: the server rejects
+    /// the delegated certificate (and refuses to sign) if it is missing.
     ///
     /// The referenced key may be backed by an HSM via the existing PKCS#11 routing —
     /// no additional configuration is required.

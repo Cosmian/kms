@@ -35,6 +35,7 @@ use super::ocsp_ffi::{
     V_OCSP_CERTSTATUS_REVOKED, V_OCSP_CERTSTATUS_UNKNOWN,
 };
 use crate::error::CryptoError;
+use cosmian_logger::warn;
 
 /// Maximum number of `SingleRequest`/`CertID` entries accepted in a single
 /// `OCSPRequest`. RFC 5019 (the lightweight OCSP profile most CDN/proxy
@@ -320,21 +321,26 @@ pub fn verify_issuer_hashes_match_ca(
 
 /// Verify that a delegated OCSP responder certificate satisfies RFC 6960 §4.2.2.2:
 ///
-/// - `extKeyUsage` MUST contain `id-kp-OCSPSigning` (OID `1.3.6.1.5.5.7.3.9`).
-/// - `id-pkix-ocsp-nocheck` (OID `1.3.6.1.5.5.7.48.1.5`) SHOULD be present so that
-///   relying parties are not required to recursively check the *responder's own*
-///   revocation status; this responder treats it as a hard requirement to avoid an
-///   operator relying on an unqualified certificate (e.g. a TLS server cert) as an
-///   OCSP signer without deliberately provisioning a purpose-built one.
+/// - `extKeyUsage` MUST contain `id-kp-OCSPSigning` (OID `1.3.6.1.5.5.7.3.9`) — this
+///   is a hard requirement for OCSP signing delegation ("OCSP signing delegation
+///   SHALL be designated by the inclusion of id-kp-OCSPSigning ... in the OCSP
+///   response signer's certificate", RFC 6960 §4.2.2.2) and is rejected outright when
+///   absent.
+/// - `id-pkix-ocsp-nocheck` (OID `1.3.6.1.5.5.7.48.1.5`, RFC 6960 §4.2.2.2.1) is
+///   **not** a MUST: the RFC presents it as only one of three equally valid ways a
+///   relying party may check the *responder's own* revocation status — the CA may
+///   instead point to a CDP/AIA for the responder cert, or leave it to local policy.
+///   Its absence is therefore logged as a warning, not rejected, so a delegated
+///   responder certificate that relies on one of the other two RFC-sanctioned
+///   strategies is not incorrectly refused.
 ///
 /// Only applies to *delegated* responder certificates (`ocsp_responder_cert_uid` set
 /// to something other than the CA itself) — direct CA signing is exempt, matching the
 /// scoping of the compromised-state check in the caller.
 ///
 /// # Errors
-/// Returns [`CryptoError`] if the certificate DER cannot be parsed, or a descriptive
-/// error identifying which requirement (`OCSPSigning` EKU or `nocheck` extension) is
-/// missing.
+/// Returns [`CryptoError`] if the certificate DER cannot be parsed, or if the
+/// `id-kp-OCSPSigning` extended key usage is missing.
 pub fn verify_delegated_responder_authorization(signer_cert_der: &[u8]) -> Result<(), CryptoError> {
     use x509_parser::{der_parser::oid, oid_registry::Oid, prelude::FromDer};
 
@@ -360,6 +366,8 @@ pub fn verify_delegated_responder_authorization(signer_cert_der: &[u8]) -> Resul
     }
 
     // `id-pkix-ocsp-nocheck` has no named constant in `oid-registry`; match by raw OID.
+    // Its absence is a warning, not a rejection — see the doc comment above for why
+    // this is only one of three RFC 6960 §4.2.2.2.1-sanctioned strategies, not a MUST.
     let ocsp_nocheck_oid: Oid<'_> = oid!(1.3.6.1.5.5.7.48.1.5);
     let has_nocheck = cert
         .tbs_certificate
@@ -371,12 +379,12 @@ pub fn verify_delegated_responder_authorization(signer_cert_der: &[u8]) -> Resul
         })?
         .is_some();
     if !has_nocheck {
-        return Err(CryptoError::Default(
-            "Delegated OCSP responder certificate is missing the required \
-             `id-pkix-ocsp-nocheck` extension (OID 1.3.6.1.5.5.7.48.1.5) per \
-             RFC 6960 §4.2.2.2"
-                .to_owned(),
-        ));
+        warn!(
+            "Delegated OCSP responder certificate does not carry the `id-pkix-ocsp-nocheck` \
+             extension (OID 1.3.6.1.5.5.7.48.1.5, RFC 6960 §4.2.2.2.1). Relying parties may \
+             attempt to recursively check this certificate's own revocation status via CDP, \
+             AIA, or local policy instead."
+        );
     }
 
     Ok(())
@@ -1431,19 +1439,18 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_delegated_responder_authorization_rejects_missing_nocheck() {
+    fn test_verify_delegated_responder_authorization_accepts_missing_nocheck_with_warning() {
+        // `id-pkix-ocsp-nocheck` is only one of three RFC 6960 §4.2.2.2.1-sanctioned
+        // strategies for checking a delegated responder's own revocation status, not
+        // a MUST — its absence must not cause rejection, only a logged warning.
         let eku = openssl::x509::extension::ExtendedKeyUsage::new()
             .other("OCSPSigning")
             .build()
             .expect("eku build");
         let cert_der = create_test_cert_with_extensions(&[eku]);
 
-        let err = verify_delegated_responder_authorization(&cert_der)
-            .expect_err("cert without id-pkix-ocsp-nocheck must be rejected");
-        assert!(
-            err.to_string().contains("nocheck"),
-            "error should mention the missing nocheck extension: {err}"
-        );
+        verify_delegated_responder_authorization(&cert_der)
+            .expect("cert with OCSPSigning EKU but no nocheck extension must be accepted");
     }
 
     #[test]

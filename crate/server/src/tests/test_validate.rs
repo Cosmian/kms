@@ -1412,8 +1412,31 @@ basicConstraints=critical,CA:FALSE
 
     /// Build a `file://` URI for an absolute path (three slashes: scheme + empty
     /// authority + absolute path), matching `SR-CRL-10`'s convention.
+    ///
+    /// This URI is embedded verbatim into an X.509 `crlDistributionPoints`
+    /// extension via an OpenSSL `v3_ca`-style config string
+    /// (`crlDistributionPoints=URI:{cdp_uri}`, see `leaf_ext`/`intermediate_ext`
+    /// below). OpenSSL's NCONF value parser treats backslash (`\`) as an escape
+    /// character, silently swallowing it and keeping only the following
+    /// character — so a raw Windows path (`C:\Users\...`) fed through
+    /// `path.display()` loses every path separator by the time the extension is
+    /// parsed back out (`C:\Users\...` becomes `C:Users...`), which then fails
+    /// downstream URI parsing with an obscure "invalid international domain
+    /// name" error instead of a clear one. Always emit forward slashes — valid
+    /// in a `file://` URI on every platform, and never treated as an escape
+    /// character by OpenSSL's config parser — matching the same convention
+    /// already used by `path_to_file_uri` in
+    /// `crate/test_kms_server/src/vector_runner.rs` and
+    /// `crate/clients/ckms/src/tests/certificates/certify.rs`.
     fn file_uri(path: &std::path::Path) -> String {
-        format!("file://{}", path.display())
+        #[cfg(windows)]
+        {
+            format!("file:///{}", path.to_string_lossy().replace('\\', "/"))
+        }
+        #[cfg(not(windows))]
+        {
+            format!("file://{}", path.display())
+        }
     }
 
     async fn get_cert_der(kms: &Arc<KMS>, owner: &UserId, cert_id: &str) -> Vec<u8> {

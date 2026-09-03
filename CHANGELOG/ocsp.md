@@ -129,13 +129,17 @@ feature, applied before release — none were exploited in the wild.
     UID-based path already relies on before disclosing internal state.
 - **OCSP responder: unauthorized delegated responder certificate accepted for
     signing.** `--ocsp-responder-cert-uid` documented that the referenced certificate
-    must carry `extKeyUsage: OCSPSigning` (OID 1.3.6.1.5.5.7.3.9) and the
-    `id-pkix-ocsp-nocheck` extension (OID 1.3.6.1.5.5.7.48.1.5), per RFC 6960 §4.2.2.2,
-    but this was never actually checked — any certificate reachable via that UID was
-    used to sign responses regardless of its extensions. `retrieve_signer_cert_and_key`
-    now verifies both requirements for any delegated (non-CA) signer certificate and
-    refuses to sign otherwise. Not applied to CA-direct signing, which must remain
-    unaffected by an EKU check on the CA's own certificate (RFC 6960 §2.7 cascade).
+    must carry `extKeyUsage: OCSPSigning` (OID 1.3.6.1.5.5.7.3.9) — per RFC 6960
+    §4.2.2.2 a hard MUST for OCSP signing delegation — but this was never actually
+    checked; any certificate reachable via that UID was used to sign responses
+    regardless of its extensions. `retrieve_signer_cert_and_key` now verifies this for
+    any delegated (non-CA) signer certificate and refuses to sign otherwise. Not
+    applied to CA-direct signing, which must remain unaffected by an EKU check on the
+    CA's own certificate (RFC 6960 §2.7 cascade). The companion `id-pkix-ocsp-nocheck`
+    extension (OID 1.3.6.1.5.5.7.48.1.5) is, per RFC 6960 §4.2.2.2.1, only one of three
+    equally-valid options for how a relying party checks the *responder's own*
+    revocation status (the other two being CDP/AIA-based checking, or local policy) —
+    not a MUST — so its absence is logged as a warning rather than rejected.
 - **OCSP responder: GET requests decoded before any size bound was enforced.** RFC 6960
     Appendix A intends the GET form for requests small enough to fit comfortably in a
     URL; only Actix's generic URI length limit previously bounded the base64url path
@@ -168,6 +172,25 @@ feature, applied before release — none were exploited in the wild.
     crypto layer's own hex extraction for ~1-in-16 randomly generated serial numbers
     (any serial whose most-significant remaining byte is `< 0x10`). Fixed to preserve
     the leading zero nibble, matching the canonical form OpenSSL's `BN_bn2hex` produces.
+- **Windows build failure (`error[E0308]: mismatched types`)**: several OCSP crypto
+    functions (`parse_ocsp_request`, `build_ocsp_response`, `request_has_nonce`,
+    `add_archive_cutoff`) passed `i64` epoch timestamps and byte lengths directly to
+    FFI functions expecting C's `long` type. `c_long` is 64-bit on Unix (LP64:
+    Linux/macOS, where it happens to be type-identical to `i64`) but only 32-bit on
+    Windows (LLP64) — a genuinely different primitive there. All affected call sites
+    now go through a fallible `i64 -> c_long` conversion instead.
+- **Two `Validate` unit tests were flaky on Windows**: `file_uri()` (a test helper
+    building `file://` CRL fixture URIs) used `path.display()` directly, which on
+    Windows yields backslash-separated paths with no leading `/`
+    (`C:\Users\...\name.crl.der`). When embedded into an X.509
+    `crlDistributionPoints` extension via OpenSSL's config-text parser, backslash is
+    treated as an escape character and silently stripped — turning the CDP URI into
+    something unparsable (`file://C:UsersRUNNER~1...`) and failing the test with an
+    obscure "invalid international domain name" error instead of a clear one. `file_uri()`
+    now always emits forward slashes, matching the existing `path_to_file_uri`
+    convention already used elsewhere in the test suite
+    (`crate/test_kms_server/src/vector_runner.rs`,
+    `crate/clients/ckms/src/tests/certificates/certify.rs`).
 
 ## Changed
 
