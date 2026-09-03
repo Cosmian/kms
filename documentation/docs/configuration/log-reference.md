@@ -721,6 +721,7 @@ Crate path: `crate/server`
 | `info` | `POST /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP: all serials served from cache` | `src/routes/ocsp/handler.rs` | - | - |
+| `debug` | `OCSP GET request path exceeds MAX_OCSP_GET_ENCODED_LEN` | `src/routes/ocsp/handler.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -830,6 +831,7 @@ Crate path: `crate/crypto`
 | `trace` | `encrypt: sym_cipher: {sym_cipher:?}, key length: {}, nonce length: {}, aad length: {},          plaintext length: {}, padding_method: {padding_method:?}`                                                                             | `src/crypto/symmetric/symmetric_ciphers.rs`         | `sym_cipher`, `padding_method`                                                    | —               |
 | `warn` | `` ignored `basicConstraints` extension's value: {value} `` | `src/openssl/x509_extensions.rs` | `value` | - |
 | `info` | `` RFC 3394 is deprecated in favor of RFC 5649 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `. `` | `src/crypto/symmetric/symmetric_ciphers.rs` | - | ×2 in this file |
+| `warn` | `` Delegated OCSP responder certificate does not carry the `id-pkix-ocsp-nocheck`              extension (OID 1.3.6.1.5.5.7.48.1.5, RFC 6960 §4.2.2.2.1). Relying parties may              attempt to recursively check this certificate's own revocation status via CDP,              AIA, or local policy instead. `` | `src/openssl/ocsp.rs` | - | - |
 
 ### `cosmian_kmip`
 
