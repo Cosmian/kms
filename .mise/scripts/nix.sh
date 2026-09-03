@@ -297,6 +297,11 @@ resolve_command_args() {
     export WITH_DOCKER=1
   fi
 
+  # SAP ASE and Db2 TDE tests need Docker to run the database container.
+  if [ "$COMMAND" = "test" ] && { [ "${TEST_TYPE:-}" = "ase" ] || [ "${TEST_TYPE:-}" = "db2" ]; }; then
+    export WITH_DOCKER=1
+  fi
+
   # In strict mode (`set -u`), expanding an unset array triggers an error.
   # Use the nounset-safe idiom so CI invocations without trailing args work.
   COMMAND_ARGS=("${args[@]+"${args[@]}"}")
