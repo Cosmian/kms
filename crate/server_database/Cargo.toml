@@ -47,6 +47,7 @@ mysql_async = { version = "0.37", default-features = false, features = [
 
 openssl = "0.10"
 postgres-openssl = "0.5"
+x509-parser = { workspace = true }
 rawsql = "0.1"
 redis = { version = "0.32", features = [
   "aio",

@@ -1616,6 +1616,7 @@ dependencies = [
  "cosmian_logger",
  "mockall",
  "num-bigint-dig",
+ "openssl",
  "serde",
  "serde_json",
  "thiserror 2.0.19",
@@ -1774,6 +1775,7 @@ dependencies = [
  "tokio-rusqlite",
  "url",
  "uuid",
+ "x509-parser",
  "zeroize",
 ]
 

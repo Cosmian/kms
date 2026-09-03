@@ -42,6 +42,8 @@ jobs:
           - secret_cosmian_kms
           - spire
           - kmip-go
+          - ocsp
+          - pki-revocation
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
