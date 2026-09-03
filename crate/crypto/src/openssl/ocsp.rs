@@ -12,7 +12,10 @@
 //! - All FFI pointers are null-checked before use.
 //! - Resources are freed via RAII guards to prevent leaks on error paths.
 
-use std::{ffi::CStr, ptr};
+use std::{
+    ffi::{CStr, c_long},
+    ptr,
+};
 
 use foreign_types::ForeignTypeRef;
 use openssl::{
@@ -44,6 +47,21 @@ use crate::error::CryptoError;
 /// OCSP stapling proxy checking a handful of certificates at once) while
 /// keeping a single request's cost bounded.
 const MAX_OCSP_QUERIES_PER_REQUEST: usize = 128;
+
+/// Convert an `i64` (epoch seconds or a byte length) to the platform's C `long`.
+///
+/// `c_long` is 64-bit on Unix (LP64: Linux, macOS) but only **32-bit** on
+/// Windows (LLP64), so a direct `as`/implicit cast that happens to compile on
+/// Unix fails to compile at all on Windows (`error[E0308]: mismatched types`)
+/// — this must go through a real, fallible conversion on every platform.
+/// Never panics: propagates a [`CryptoError`] instead of the
+/// `.try_into().unwrap()` rustc would otherwise suggest, since silently
+/// panicking on a large-but-plausible timestamp (e.g. a distant `nextUpdate`)
+/// is not acceptable in production code.
+fn to_c_long(value: i64) -> Result<c_long, CryptoError> {
+    c_long::try_from(value)
+        .map_err(|e| CryptoError::Default(format!("value {value} does not fit in a C long: {e}")))
+}
 
 // ──────────────────────────────────────────────────────────────
 // Public types
@@ -196,7 +214,7 @@ impl Drop for CidGuard {
 /// Returns [`CryptoError`] if the DER is malformed or contains no certificate IDs.
 #[expect(unsafe_code)]
 pub fn parse_ocsp_request(request_der: &[u8]) -> Result<Vec<ParsedOcspQuery>, CryptoError> {
-    let req_len = i64::try_from(request_der.len())
+    let req_len = c_long::try_from(request_der.len())
         .map_err(|e| CryptoError::Default(format!("OCSP request DER too large: {e}")))?;
 
     // SAFETY: d2i_OCSP_REQUEST advances the pointer and returns null on error.
@@ -328,7 +346,7 @@ pub fn build_ocsp_response(
     entries: &[OcspStatusEntry],
     config: &OcspBuildConfig,
 ) -> Result<Vec<u8>, CryptoError> {
-    let req_len = i64::try_from(request_der.len())
+    let req_len = c_long::try_from(request_der.len())
         .map_err(|e| CryptoError::Default(format!("OCSP request DER too large: {e}")))?;
 
     // Parse the request.
@@ -353,8 +371,10 @@ pub fn build_ocsp_response(
     let brsp_guard = BasicRespGuard(brsp);
 
     // ── Compute thisUpdate and nextUpdate ────────────────────────────────────────
-    let now_epoch = OffsetDateTime::now_utc().unix_timestamp();
-    let next_epoch = now_epoch + i64::try_from(config.ttl_secs).unwrap_or(86400);
+    let now_epoch = to_c_long(OffsetDateTime::now_utc().unix_timestamp())?;
+    let next_epoch = now_epoch
+        .checked_add(c_long::try_from(config.ttl_secs).unwrap_or(c_long::MAX))
+        .ok_or_else(|| CryptoError::Default("OCSP nextUpdate epoch overflowed".to_owned()))?;
 
     // SAFETY: ASN1_GENERALIZEDTIME_set allocates a new object when first arg is null.
     let this_update = unsafe { ASN1_GENERALIZEDTIME_set(ptr::null_mut(), now_epoch) };
@@ -546,8 +566,9 @@ fn add_single_response(
 
     // Build revocation time ASN1_GENERALIZEDTIME if needed.
     let rev_gt = rev_time.map_or(Ok(ptr::null_mut()), |rt| {
+        let rt_epoch = to_c_long(rt.unix_timestamp())?;
         // SAFETY: ASN1_GENERALIZEDTIME_set allocates a new object.
-        let gt = unsafe { ASN1_GENERALIZEDTIME_set(ptr::null_mut(), rt.unix_timestamp()) };
+        let gt = unsafe { ASN1_GENERALIZEDTIME_set(ptr::null_mut(), rt_epoch) };
         if gt.is_null() {
             return Err(CryptoError::Default(
                 "ASN1_GENERALIZEDTIME_set (revocationTime) failed".to_owned(),
@@ -654,7 +675,7 @@ fn extract_request_nonce(req: *mut openssl_sys::OCSP_REQUEST) -> Option<Vec<u8>>
 /// Returns [`CryptoError`] if `request_der` is not a well-formed OCSP request.
 #[expect(unsafe_code)]
 pub fn request_has_nonce(request_der: &[u8]) -> Result<bool, CryptoError> {
-    let req_len = i64::try_from(request_der.len())
+    let req_len = c_long::try_from(request_der.len())
         .map_err(|e| CryptoError::Default(format!("OCSP request DER too large: {e}")))?;
     // SAFETY: d2i_OCSP_REQUEST advances the pointer and returns null on error.
     let req = unsafe {
@@ -718,10 +739,10 @@ fn handle_nonce(
 #[expect(unsafe_code)]
 fn add_archive_cutoff(
     brsp: *mut openssl_sys::OCSP_BASICRESP,
-    now_epoch: i64,
+    now_epoch: c_long,
     archive_cutoff_secs: u64,
 ) -> Result<(), CryptoError> {
-    let cutoff_epoch = now_epoch.saturating_sub(i64::try_from(archive_cutoff_secs).unwrap_or(0));
+    let cutoff_epoch = now_epoch.saturating_sub(c_long::try_from(archive_cutoff_secs).unwrap_or(0));
 
     // Allocate a GeneralizedTime for the cutoff.
     // SAFETY: ASN1_GENERALIZEDTIME_set allocates when first arg is null.
@@ -1110,7 +1131,7 @@ mod tests {
         // is structurally wrong and fails real client-side verification. Re-parse
         // both DER blobs with the same raw `OCSP_check_nonce` API a real client
         // (e.g. `openssl ocsp`) uses, to catch that class of bug.
-        let req_len = i64::try_from(req_der.len()).expect("req len");
+        let req_len = c_long::try_from(req_der.len()).expect("req len");
         // SAFETY: d2i_OCSP_REQUEST advances the pointer and returns null on error.
         let req_ptr = unsafe {
             let mut p = req_der.as_ptr();

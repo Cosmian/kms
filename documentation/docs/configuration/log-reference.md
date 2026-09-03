@@ -717,6 +717,10 @@ Crate path: `crate/server`
 | `debug` | `[crl-refresh-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
 | `debug` | `[kms-init] Failed to read max CRL number from DB: {e};                          using unix timestamp as CRL counter seed` | `src/core/kms/mod.rs` | `e` | - |
 | `trace` | `Sorted candidate mismatch: cert AKI={}, SKI={}, sorted SKI={}, AKI={}` | `src/core/operations/validate.rs` | - | - |
+| `info` | `GET /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
+| `info` | `POST /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
+| `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
+| `debug` | `OCSP: all serials served from cache` | `src/routes/ocsp/handler.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
