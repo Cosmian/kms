@@ -270,6 +270,30 @@ pub struct ServerParams {
     /// The scheduler pre-generates a new CRL this many hours before the current one
     /// expires, preventing relying parties from seeing a stale CRL.
     pub crl_refresh_overlap_hours: u32,
+
+    // ── OCSP responder ────────────────────────────────────────────────────────────
+    /// Enable the OCSP responder at `GET/POST /ocsp/`.
+    pub ocsp_enabled: bool,
+
+    /// UID of the CA certificate used for issuer hash verification and status lookup.
+    pub ocsp_ca_uid: Option<String>,
+
+    /// UID of the delegated OCSP signing certificate (RFC 6960 §4.2.2.2).
+    ///
+    /// When set, responses are signed with this key; when `None` the CA key is used.
+    pub ocsp_responder_cert_uid: Option<String>,
+
+    /// Response validity period in seconds (`thisUpdate` → `nextUpdate`).
+    pub ocsp_cache_ttl_secs: u64,
+
+    /// Nonce handling policy (RFC 9654 §3): optional / required / ignore.
+    pub ocsp_nonce_policy: crate::config::command_line::NoncePolicyConfig,
+
+    /// Include the signing certificate chain in `BasicResponse`s.
+    pub ocsp_include_cert_chain: bool,
+
+    /// Archive-cutoff extension retention in seconds (0 = disabled, RFC 6960 §4.4.4).
+    pub ocsp_archive_cutoff_secs: u64,
 }
 
 /// Represents the server parameters.
@@ -604,6 +628,13 @@ impl ServerParams {
             crl_default_validity_days: conf.crl.crl_default_validity_days,
             crl_refresh_check_hours: conf.crl.crl_refresh_check_hours,
             crl_refresh_overlap_hours: conf.crl.crl_refresh_overlap_hours,
+            ocsp_enabled: conf.ocsp.ocsp_enabled,
+            ocsp_ca_uid: conf.ocsp.ocsp_ca_uid,
+            ocsp_responder_cert_uid: conf.ocsp.ocsp_responder_cert_uid,
+            ocsp_cache_ttl_secs: conf.ocsp.ocsp_cache_ttl_secs,
+            ocsp_nonce_policy: conf.ocsp.ocsp_nonce_policy,
+            ocsp_include_cert_chain: conf.ocsp.ocsp_include_cert_chain,
+            ocsp_archive_cutoff_secs: conf.ocsp.ocsp_archive_cutoff_secs,
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a
@@ -1032,7 +1063,7 @@ impl fmt::Debug for ServerParams {
             debug_struct.field("crl_refresh_overlap_hours", &self.crl_refresh_overlap_hours);
         }
 
-        debug_struct.finish()
+        debug_struct.finish_non_exhaustive()
     }
 }
 

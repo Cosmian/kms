@@ -16,6 +16,8 @@ storing, validating, and revoking certificates for both **classical** and
 | [RFC 9909](https://datatracker.ietf.org/doc/html/rfc9909) | SLH-DSA in X.509 (FIPS 205) | Post-quantum signing certificates |
 | [RFC 9935](https://datatracker.ietf.org/doc/html/rfc9935) | ML-KEM in X.509 (FIPS 203) | Post-quantum KEM certificates |
 | [RFC 9608](https://datatracker.ietf.org/doc/html/rfc9608) | No Revocation Available extension | All self-signed end-entity certs |
+| [RFC 6960](https://www.rfc-editor.org/rfc/rfc6960) | Online Certificate Status Protocol (OCSP) | Real-time certificate status |
+| [RFC 9654](https://www.rfc-editor.org/rfc/rfc9654) | OCSP Nonce Extension | OCSP request/response freshness |
 
 ### Not supported
 
@@ -24,7 +26,6 @@ The following specifications are **not** currently implemented:
 - **Merkle Tree Certificates** (IETF draft) — transparency-based certificate format.
 - **Composite Certificates** (draft-ietf-lamps-pq-composite-sigs / draft-ietf-lamps-pq-composite-kem) — hybrid classical+PQC keys in a single certificate.
 - **Delta CRLs** ([RFC 5280 §5.4](https://www.rfc-editor.org/rfc/rfc5280#section-5.4)) — incremental CRLs containing only certificates revoked since the last full CRL baseline.
-- **OCSP responder** — the KMS does not act as an OCSP responder.
 
 ## Certificate export formats
 
@@ -262,4 +263,5 @@ All standard KMIP certificate lifecycle operations work with certificates:
 
 See **[Revocation & CRL Distribution](pki-revocation.md)** for CRL generation,
 automatic CDP injection, the public distribution endpoint, and the `noRevAvail`
-extension.
+extension. See **[OCSP Responder](pki-ocsp.md)** for real-time, per-certificate
+revocation status.

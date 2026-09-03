@@ -31,7 +31,7 @@ tags:
   - name: Server
     description: Server information and HSM status
   - name: Certificates
-    description: X.509 certificate lifecycle — CRL generation
+    description: X.509 certificate lifecycle — CRL generation, OCSP status (RFC 6960)
   - name: REST Crypto API
     description: Simplified JWE/JWS/HMAC REST API built on top of KMIP keys
   - name: Google CSE
@@ -2402,6 +2402,104 @@ paths:
             The CRL is generated automatically when a certificate is revoked.
             If no certificate has been revoked yet, call `GET /certificates/{issuer_id}/crl`
             (authenticated) to generate an initial CRL.
+
+  /ocsp/{encoded_request}:
+    get:
+      tags: [Certificates]
+      summary: OCSP status check via HTTP GET (no authentication)
+      description: |
+        Implements RFC 6960 Appendix A.1: submit a DER-encoded `OCSPRequest`,
+        base64url-encoded directly in the URL path, for small requests (the
+        encoded request SHOULD fit within typical URL length limits).
+
+        Returns a signed, DER-encoded `OCSPResponse` reporting `good`, `revoked`
+        (with `CRLReason` and `revocationTime`), or `unknown` for each certificate
+        serial number queried, based on the KMS's internal certificate lifecycle
+        state for the CA configured via `ocsp_ca_uid`.
+
+        This endpoint is **public and unauthenticated** per RFC 6960 §2 — OCSP
+        response content is public information; requiring authentication would
+        break standard relying-party tooling (`openssl ocsp`, TLS stacks, browsers).
+
+        Returns `404` when `ocsp_enabled = false` (the default).
+
+        See `POST /ocsp/` for the equivalent transport used for larger requests
+        (RFC 6960 Appendix A.2), and the "PKI Support → OCSP Responder"
+        documentation for the full configuration reference and CA-compromise
+        cascade behavior (RFC 6960 §2.7).
+      operationId: getOcsp
+      security: []
+      parameters:
+        - name: encoded_request
+          in: path
+          required: true
+          description: base64url encoding of the DER-encoded `OCSPRequest`
+          schema:
+            type: string
+      responses:
+        '200':
+          description: |
+            Signed, DER-encoded `OCSPResponse` (RFC 6960 §4.2). Also returned for
+            protocol-level rejections (`malformedRequest`, `unauthorized`) per
+            RFC 6960 §2.3 — these are unsigned, minimal `OCSPResponse` bodies, not
+            HTTP error statuses, since standard OCSP clients cannot parse anything
+            other than a DER `OCSPResponse`.
+          headers:
+            Cache-Control:
+              description: >-
+                RFC 5019 §2.2.1 caching directive, e.g. `max-age=86400, public`.
+                Absent when the request carries a nonce that must be echoed.
+              schema:
+                type: string
+            Last-Modified:
+              schema:
+                type: string
+            Expires:
+              schema:
+                type: string
+            ETag:
+              description: Strong validator — SHA-256 hex digest of the response body
+              schema:
+                type: string
+          content:
+            application/ocsp-response:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: OCSP responder disabled (`ocsp_enabled = false`, the default)
+
+  /ocsp/:
+    post:
+      tags: [Certificates]
+      summary: OCSP status check via HTTP POST (no authentication)
+      description: |
+        Implements RFC 6960 Appendix A.2: submit a DER-encoded `OCSPRequest` as
+        the request body with `Content-Type: application/ocsp-request`. Use this
+        transport for requests too large to fit in a URL (e.g. batched queries),
+        subject to the responder's maximum accepted query count per request.
+
+        See `GET /ocsp/{encoded_request}` for the full response format,
+        authentication posture, and status-mapping documentation.
+      operationId: postOcsp
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/ocsp-request:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Signed, DER-encoded `OCSPResponse` — see `GET /ocsp/{encoded_request}` for details.
+          content:
+            application/ocsp-response:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: OCSP responder disabled (`ocsp_enabled = false`, the default)
 
   /v1/crypto/encrypt:
     post:

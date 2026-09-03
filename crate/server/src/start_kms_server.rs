@@ -70,7 +70,7 @@ use crate::{
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, root_redirect,
+        ms_dke, ocsp, root_redirect,
         spire::{
             auth_proxy::proxy_auth_request,
             pki::sign_intermediate,
@@ -1559,6 +1559,9 @@ pub async fn prepare_kms_server(
             // Registered directly on the app (not in a scope) so it takes priority over
             // the default catch-all scope without interfering with other routes.
             .service(crl::get_crl_public)
+            // Public OCSP responder (no authentication, RFC 6960 §2 — public information).
+            .service(ocsp::get_ocsp)
+            .service(ocsp::post_ocsp)
             .service(swagger::get_openapi_yaml)
             .service(swagger::get_swagger_ui)
             .service(swagger::get_swagger_ui_js)
