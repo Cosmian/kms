@@ -786,6 +786,32 @@ impl KmsClient {
         Err(process_error_response(endpoint, status_code, &response))
     }
 
+    /// Perform a GET request and return the raw response bytes.
+    ///
+    /// Useful for endpoints that return non-JSON content (e.g. DER/PEM encoded data).
+    pub async fn get_bytes<O>(
+        &self,
+        endpoint: &str,
+        data: Option<&O>,
+    ) -> Result<Vec<u8>, KmsClientError>
+    where
+        O: Serialize + Sync,
+    {
+        let server_url = format!("{}{endpoint}", self.client.server_url);
+        info!("GET {server_url}");
+        let response = match data {
+            Some(d) => self.client.get_with_query(&server_url, d).await?,
+            None => self.client.get(&server_url).await?,
+        };
+
+        let status_code = response.status;
+        if status_code.is_success() {
+            return Ok(response.bytes().to_vec());
+        }
+
+        Err(process_error_response(endpoint, status_code, &response))
+    }
+
     pub async fn delete_no_ttlv<O, R>(&self, endpoint: &str, data: &O) -> Result<R, KmsClientError>
     where
         O: Serialize + Sync,

@@ -476,6 +476,102 @@ services:
       - JWT_AUDIENCE=cosmian-kms
       - MAX_SVID_TTL_SECONDS=7200
 
+  # ── SDS test services (profile: spire-sds) ───────────────────────────────
+  # Tests PKI-10: deliver certificates to a mesh sidecar via the standard SDS
+  # interface (Envoy Secret Discovery Service). Envoy fetches its X.509-SVID
+  # and trust bundle directly from the SPIRE agent — no static cert files.
+  #
+  # Topology:
+  #   socat-probe → envoy-sds-downstream (mTLS client, cert from SDS)
+  #               ──►  envoy-sds-upstream (mTLS server, cert from SDS)
+  #                           ──► socat-echo (plain TCP echo backend)
+
+  socat-echo:
+    image: alpine/socat:latest
+    profiles: [spire-sds]
+    container_name: socat-echo
+    # Echo back any TCP input on port 8000
+    command:
+      - -d
+      - -d
+      - TCP-LISTEN:8000,fork,reuseaddr
+      - EXEC:cat
+
+  envoy-sds-upstream:
+    image: envoyproxy/envoy:v1.32-latest
+    profiles: [spire-sds]
+    container_name: envoy-sds-upstream
+    # NOTE: depends_on spire-agent-a is intentionally omitted — spire-agent-a
+    # belongs to the 'spire' profile.  test_sds.sh verifies the agent is running
+    # and the socket volume is populated before starting the Envoy containers.
+    depends_on:
+      socat-echo:
+        condition: service_started
+    volumes:
+      # SPIRE agent socket — Envoy is attested as a workload via this socket
+      - spire-agent-socket-a:/tmp/spire-agent:ro
+      # Envoy config (SDS-only, no static cert files)
+      - ./test_data/spire/config/envoy-upstream.yaml:/etc/envoy/envoy.yaml:ro
+    # Admin port exposed on a high port to avoid conflicts and allow host-side health checks.
+    ports:
+      - 19901:9901
+    # Envoy official image (v1.32+) does not have wget/curl.
+    # The binary drops to uid=101 (envoy) at startup; workload entry uses unix:uid:101.
+    command: [-c, /etc/envoy/envoy.yaml, --log-level, info]
+    healthcheck:
+      # Use bash /dev/tcp to check the admin /ready endpoint (no wget/curl in image).
+      test: [CMD, bash, -c, "exec 3<>/dev/tcp/127.0.0.1/9901 2>/dev/null && printf 'GET /ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -1\
+            \ <&3 | grep -q ' 200 '"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  envoy-sds-downstream:
+    image: envoyproxy/envoy:v1.32-latest
+    profiles: [spire-sds]
+    container_name: envoy-sds-downstream
+    depends_on:
+      envoy-sds-upstream:
+        condition: service_started  # test_sds.sh waits explicitly via wait_envoy_ready
+    volumes:
+      - spire-agent-socket-a:/tmp/spire-agent:ro
+      - ./test_data/spire/config/envoy-downstream.yaml:/etc/envoy/envoy.yaml:ro
+    ports:
+      - 19902:9902
+    command: [-c, /etc/envoy/envoy.yaml, --log-level, info]
+    healthcheck:
+      test: [CMD, bash, -c, "exec 3<>/dev/tcp/127.0.0.1/9902 2>/dev/null && printf 'GET /ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -1\
+            \ <&3 | grep -q ' 200 '"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  socat-probe:
+    image: alpine/socat:latest
+    profiles: [spire-sds]
+    container_name: socat-probe
+    depends_on:
+      envoy-sds-downstream:
+        condition: service_started  # test_sds.sh waits for Envoy readiness before running the probe
+    # Send a single probe string through the mTLS proxy and capture the echo.
+    # Exit 0 if the response matches, non-zero otherwise.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        MSG="spire-sds-probe-ok"
+        RESPONSE=$(printf '%s' "$$MSG" | socat -T5 - TCP:envoy-sds-downstream:8001 2>/dev/null)
+        if [ "$$RESPONSE" = "$$MSG" ]; then
+          echo "SDS probe PASSED: mTLS connection established via SPIRE SDS certificates"
+          exit 0
+        else
+          echo "SDS probe FAILED: expected '$$MSG', got '$$RESPONSE'" >&2
+          exit 1
+        fi
+
 volumes:
   spire-data-a:
   spire-data-b:

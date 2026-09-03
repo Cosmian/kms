@@ -1,4 +1,5 @@
 mod certificate;
+pub mod crl;
 mod hashing;
 mod private_key;
 mod public_key;

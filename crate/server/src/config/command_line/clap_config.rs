@@ -9,9 +9,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::taggin
 use serde::{Deserialize, Serialize};
 
 use super::{
-    AuthVerifierConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, JwksEndpointConfig,
-    KmipPolicyConfig, MainDBConfig, RolesConfig, WorkspaceConfig, logging::LoggingConfig,
-    secret_backends::SecretBackendConfig, ui_config::UiConfig, vault_config::VaultConfig,
+    AuthVerifierConfig, CrlConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig,
+    JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, RolesConfig, WorkspaceConfig,
+    logging::LoggingConfig, secret_backends::SecretBackendConfig, ui_config::UiConfig,
+    vault_config::VaultConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -78,6 +79,7 @@ impl Default for ClapConfig {
             jwks_endpoint: JwksEndpointConfig::default(),
             secret_backends: SecretBackendConfig::default(),
             vault: VaultConfig::default(),
+            crl: CrlConfig::default(),
         }
     }
 }
@@ -273,6 +275,11 @@ pub struct ClapConfig {
     #[command(flatten)]
     #[serde(default)]
     pub vault: VaultConfig,
+
+    /// CRL (Certificate Revocation List) lifecycle settings.
+    #[command(flatten)]
+    #[serde(default)]
+    pub crl: CrlConfig,
 }
 
 impl ClapConfig {

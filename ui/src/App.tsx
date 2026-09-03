@@ -15,6 +15,7 @@ import CertificateCertifyForm from "./actions/Certificates/CertificateCertify";
 import CertificateDecryptForm from "./actions/Certificates/CertificateDecrypt";
 import CertificateEncryptForm from "./actions/Certificates/CertificateEncrypt";
 import CertificateExportForm from "./actions/Certificates/CertificateExport";
+import CertificateGenerateCrlForm from "./actions/Certificates/CertificateGenerateCrl";
 import CertificateImportForm from "./actions/Certificates/CertificateImport";
 import CertificateReCertifyForm from "./actions/Certificates/CertificateReCertify";
 import CertificateValidateForm from "./actions/Certificates/CertificateValidate";
@@ -430,6 +431,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="certs/revoke" element={<RevokeForm objectType="certificate" />} />
                             <Route path="certs/destroy" element={<DestroyForm objectType="certificate" />} />
                             <Route path="certs/validate" element={<CertificateValidateForm />} />
+                            <Route path="certs/generate-crl" element={<CertificateGenerateCrlForm />} />
                             <Route path="encrypt" element={<CertificateEncryptForm />} />
                             <Route path="decrypt" element={<CertificateDecryptForm />} />
                             <Route path="certs/certify" element={<CertificateCertifyForm />} />

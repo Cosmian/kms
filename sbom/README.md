@@ -13,12 +13,103 @@ The generation pipeline covers **three layers** of components:
 | Layer | Tool | Scope |
 |-------|------|-------|
 | System / Nix runtime | sbomnix | Shared libraries linked at runtime (glibc, openssl, libidn2…) |
-| Rust crates | `enrich_sbom_authors.py` | ~580 third-party crates compiled into the binary (from `Cargo.lock`) |
-| npm/pnpm packages | `enrich_sbom_authors.py` | ~320 third-party UI packages (from `ui/pnpm-lock.yaml`) |
+| Rust crates | `enrich_sbom_authors.py` | ~670 third-party crates compiled into the binary (from `Cargo.lock`) |
+| npm/pnpm packages | `enrich_sbom_authors.py` | ~310 third-party UI packages (from `ui/pnpm-lock.yaml`) |
 
 The `bom.cdx.json` and `bom.spdx.json` files produced by `generate_sbom.sh` are
 automatically enriched in-place by `.mise/scripts/sbom/enrich_sbom_authors.py`
-after sbomnix completes. Every component receives a `supplier` / `originator` field.
+(supplier/author fields) and then by `.mise/scripts/sbom/enrich_cpe.py`
+(CPE 2.3 identifiers — see section below).
+
+## 🏷️ CPE 2.3 Identifiers
+
+### What is CPE?
+
+**Common Platform Enumeration (CPE)** is a structured naming scheme for IT systems,
+software, and packages, standardised by NIST in
+[NISTIR 7695](https://nvlpubs.nist.gov/nistpubs/Legacy/IR/nistir7695.pdf).
+CPE 2.3 is the version required by the NVD (National Vulnerability Database) and
+by the **Eviden PSIRT tooling service** (slide 10, "Eviden PSIRT Tooling V3", 2026-07-24).
+
+### Why it matters
+
+CVE scanners — Grype, Vulnix, Dependency-Track — use the CPE field to match SBOM
+components against NVD vulnerability records.  **Without a CPE, a component is
+invisible to CPE-based vulnerability matching**, meaning known CVEs may go
+undetected.
+
+### CPE 2.3 format
+
+```text
+cpe:2.3:<part>:<vendor>:<product>:<version>:*:*:*:*:*:*:*
+```
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `part` | `a` | Always `a` (application) for Rust crates and npm packages |
+| `vendor` | organisation name | Lower-cased, dashes → underscores |
+| `product` | component base name | Lower-cased, dashes → underscores |
+| `version` | exact semver | No `v` prefix |
+
+**CPE dictionary reference:** <https://nvd.nist.gov/feeds/json/cpe/2.0/nvdcpe-2.0.zip>
+
+### Coverage in this SBOM
+
+All **988 components** in `bom.cdx.json` carry a CPE 2.3 identifier after generation:
+
+| Layer | Count | CPE source |
+|-------|-------|-----------|
+| System / Nix libs | ~4 | Hand-crafted (glibc, openssl, libidn2, libunistring) |
+| Rust crates | ~670 | Auto-derived via `enrich_cpe.py` |
+| npm/pnpm packages | ~310 | Auto-derived via `enrich_cpe.py` |
+
+### Vendor derivation rules
+
+`enrich_cpe.py` derives the `vendor` field using the following priority order:
+
+1. **`cpe_overrides.json`** — manual table for crates/packages whose NVD vendor
+   is known and differs from the auto-derived value.  Examples: `ring` → `ring-project`,
+   `tokio` → `tokio_rs`, `serde` → `serde_rs`.  Edit
+   `.mise/scripts/sbom/cpe_overrides.json` to add or correct entries.
+
+2. **GitHub organisation** from the `vcs` external-reference URL emitted by
+   [`cargo-sbom`](https://github.com/psastras/sbom-rs).  For example,
+   `https://github.com/actix/actix-web` → vendor `actix`.
+   Coverage: ~99 % of Rust crates.
+
+3. **First author name** from the `author` field emitted by `cargo-sbom`,
+   taking the text before the first `<` or `(`, lower-cased.
+   Coverage: ~83 % of Rust crates.
+
+4. **Fallback**: the component name itself, lower-cased with dashes replaced by
+   underscores (NVD convention for personal/small crates).
+
+### Rust tooling evaluated
+
+| Tool | Version | CPE output | Role in this pipeline |
+|------|---------|-----------|----------------------|
+| [`cargo-cyclonedx`](https://github.com/CycloneDX/cyclonedx-rust-cargo) | 0.5.9 | ❌ None | — |
+| [`cargo-sbom`](https://github.com/psastras/sbom-rs) | 0.10.0 | ❌ None | ✅ **VCS + author data source** for vendor derivation |
+| [`cpe`](https://crates.io/crates/cpe) crate | 0.1.5 | Parsing/validation only | — |
+| [`get-cpe`](https://crates.io/crates/get-cpe) | 0.6.7 | NVD dictionary lookup | Too slow for 988 components |
+
+None of the available Rust tools generate CPE 2.3 fields automatically.
+`enrich_cpe.py` fills this gap using `cargo-sbom` as a metadata source.
+
+### Updating overrides
+
+When a CPE for a well-known crate is incorrect or missing, add it to
+`.mise/scripts/sbom/cpe_overrides.json`:
+
+```json
+{
+  "crate-name": "cpe:2.3:a:<vendor>:<product>:{version}:*:*:*:*:*:*:*"
+}
+```
+
+Use `{version}` as a placeholder — it is substituted at generation time.
+Look up the correct vendor/product in the
+[NVD CPE search](https://nvd.nist.gov/products/cpe/search).
 
 Report locations:
 
