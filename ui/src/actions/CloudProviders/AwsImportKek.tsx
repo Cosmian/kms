@@ -3,7 +3,7 @@ import { Button, Card, Form, Input, Select, Space, Tabs, Upload } from "antd";
 import React, { useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import ExternalLink from "../../components/common/ExternalLink";
-import { sendKmipRequest } from "../../utils/utils";
+import { docsUrl, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 
@@ -110,7 +110,7 @@ const ImportAwsKekForm: React.FC = () => {
                     <div className="text-blue-800 dark:text-blue-300 text-sm space-y-2">
                         <p>
                             <Trans ns="actions" i18nKey="awsImportKek.byokScripts" components={{ strong: <strong /> }} />{" "}
-                            <ExternalLink href="https://docs.cosmian.com/key_management_system/aws/byok/#automated-byok-scripts">
+                            <ExternalLink href={docsUrl("integrations/cloud_providers/aws/byok", "automated-byok-scripts")}>
                                 {t("awsImportKek.learnMore")}
                             </ExternalLink>
                             .

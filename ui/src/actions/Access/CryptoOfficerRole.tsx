@@ -2,7 +2,7 @@ import { Badge, Button, Card, Form, Input, Select, Space, Tag, Tooltip, Typograp
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
-import { getNoTTLVRequest, postNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
+import { docsUrl, getNoTTLVRequest, postNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import LocateButton from "../../components/common/LocateButton";
 import * as wasm from "../../wasm/pkg";
 import { buildCreateSplitKeyRequest } from "../../utils/splitKeyUtils";
@@ -218,7 +218,7 @@ const CryptoOfficerRole: React.FC = () => {
                             em: <em />,
                             a: (
                                 <a
-                                    href="https://docs.cosmian.com/key_ceremony"
+                                    href={docsUrl("configuration/authorization/key_ceremony")}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="text-blue-600 dark:text-blue-400 underline"
