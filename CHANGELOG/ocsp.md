@@ -127,6 +127,21 @@ feature, applied before release — none were exploited in the wild.
     certificate revocation status by supplying its (publicly obtainable) DER bytes.
     The raw-bytes path now enforces the same ownership/Grant permission check the
     UID-based path already relies on before disclosing internal state.
+- **OCSP responder: unauthorized delegated responder certificate accepted for
+    signing.** `--ocsp-responder-cert-uid` documented that the referenced certificate
+    must carry `extKeyUsage: OCSPSigning` (OID 1.3.6.1.5.5.7.3.9) and the
+    `id-pkix-ocsp-nocheck` extension (OID 1.3.6.1.5.5.7.48.1.5), per RFC 6960 §4.2.2.2,
+    but this was never actually checked — any certificate reachable via that UID was
+    used to sign responses regardless of its extensions. `retrieve_signer_cert_and_key`
+    now verifies both requirements for any delegated (non-CA) signer certificate and
+    refuses to sign otherwise. Not applied to CA-direct signing, which must remain
+    unaffected by an EKU check on the CA's own certificate (RFC 6960 §2.7 cascade).
+- **OCSP responder: GET requests decoded before any size bound was enforced.** RFC 6960
+    Appendix A intends the GET form for requests small enough to fit comfortably in a
+    URL; only Actix's generic URI length limit previously bounded the base64url path
+    segment before it was decoded and parsed. `get_ocsp` now rejects any encoded path
+    segment longer than 4096 bytes with an unsigned `malformedRequest` response before
+    attempting to decode it.
 
 ## Fixed
 

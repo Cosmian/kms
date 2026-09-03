@@ -40,7 +40,7 @@ use cosmian_kms_server_database::reexport::{
         ocsp::{
             CrlReasonCode, NoncePolicy, OcspBuildConfig, OcspCertStatus, OcspStatusEntry,
             build_ocsp_response, parse_ocsp_request, request_has_nonce,
-            verify_issuer_hashes_match_ca,
+            verify_delegated_responder_authorization, verify_issuer_hashes_match_ca,
         },
     },
 };
@@ -58,6 +58,21 @@ use crate::{
 
 // Content type per RFC 6960 Appendix C.
 const CT_OCSP_RESPONSE: &str = "application/ocsp-response";
+
+/// Maximum accepted length (bytes) of the base64url-encoded path segment on
+/// `GET /ocsp/{encoded_request}`, checked before decoding.
+///
+/// RFC 6960 Appendix A intends GET only for requests small enough to fit
+/// comfortably in a URL — in practice a handful of `SingleRequest` entries.
+/// 4096 is generous headroom over any legitimate lightweight-profile request
+/// while bounding the cost of decoding an attacker-controlled path segment.
+const MAX_OCSP_GET_ENCODED_LEN: usize = 4096;
+
+/// Returns `true` if a base64url-encoded GET path segment of the given length
+/// exceeds [`MAX_OCSP_GET_ENCODED_LEN`] and must be rejected before decoding.
+const fn is_ocsp_get_path_too_long(encoded_len: usize) -> bool {
+    encoded_len > MAX_OCSP_GET_ENCODED_LEN
+}
 
 type OcspResponseFuture<'a> = Pin<Box<dyn Future<Output = KResult<HttpResponse>> + 'a>>;
 type OcspStatusFuture<'a> = Pin<Box<dyn Future<Output = KResult<OcspCertStatus>> + 'a>>;
@@ -104,6 +119,12 @@ static HTTP_MONTH_NAMES: [&str; 12] = [
 /// ```text
 /// GET /ocsp/{url-encoding of base-64 encoding of the DER encoding of the OCSPRequest}
 /// ```
+///
+/// RFC 6960 Appendix A recommends GET only for requests small enough to fit
+/// comfortably in a URL (in practice a handful of certificate IDs at most).
+/// `MAX_OCSP_GET_ENCODED_LEN` bounds the base64url-encoded path segment
+/// *before* decoding, so an oversized path cannot force a wasted decode+parse
+/// cycle ahead of the (already-enforced) `MAX_OCSP_QUERIES_PER_REQUEST` bound.
 #[get("/ocsp/{encoded_request}")]
 pub(crate) async fn get_ocsp(
     _req: HttpRequest,
@@ -111,6 +132,14 @@ pub(crate) async fn get_ocsp(
     path: Path<String>,
 ) -> KResult<HttpResponse> {
     let encoded = path.into_inner();
+    if is_ocsp_get_path_too_long(encoded.len()) {
+        debug!(
+            len = encoded.len(),
+            "OCSP GET request path exceeds MAX_OCSP_GET_ENCODED_LEN"
+        );
+        return Ok(build_malformed_request_response());
+    }
+
     let request_der = URL_SAFE.decode(encoded.as_bytes()).map_err(|e| {
         KmsError::InvalidRequest(format!("Invalid base64url in OCSP GET path: {e}"))
     })?;
@@ -439,11 +468,9 @@ fn retrieve_signer_cert_and_key<'a>(
             )));
         }
 
-        let signer_cert = match cert_owm.object() {
+        let signer_cert_der = match cert_owm.object() {
             cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(c) => {
-                X509::from_der(&c.certificate_value).map_err(|e| {
-                    KmsError::InvalidRequest(format!("Cannot parse OCSP signer cert: {e}"))
-                })?
+                c.certificate_value.clone()
             }
             _ => {
                 return Err(KmsError::InvalidRequest(format!(
@@ -451,6 +478,23 @@ fn retrieve_signer_cert_and_key<'a>(
                 )))
             }
         };
+
+        // A delegated responder certificate (RFC 6960 §4.2.2.2) MUST carry the
+        // `OCSPSigning` extended key usage and the `id-pkix-ocsp-nocheck` extension.
+        // Enforced here — not just documented — so that `ocsp_responder_cert_uid`
+        // cannot be pointed at an arbitrary, unqualified certificate/key pair (e.g. a
+        // TLS server cert) already present in the KMS. Direct CA signing is exempt.
+        if signer_cert_uid != ca_uid {
+            verify_delegated_responder_authorization(&signer_cert_der).map_err(|e| {
+                KmsError::InvalidRequest(format!(
+                    "OCSP delegated responder certificate '{signer_cert_uid}' is not \
+                     authorized to sign OCSP responses: {e}"
+                ))
+            })?;
+        }
+
+        let signer_cert = X509::from_der(&signer_cert_der)
+            .map_err(|e| KmsError::InvalidRequest(format!("Cannot parse OCSP signer cert: {e}")))?;
 
         // If signer == CA, return CA cert directly (we already have the CA X509).
         // Otherwise use the signer cert we just parsed.
@@ -581,6 +625,12 @@ fn build_malformed_request_response() -> HttpResponse {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_is_ocsp_get_path_too_long() {
+        assert!(!is_ocsp_get_path_too_long(MAX_OCSP_GET_ENCODED_LEN));
+        assert!(is_ocsp_get_path_too_long(MAX_OCSP_GET_ENCODED_LEN + 1));
+    }
 
     #[test]
     fn test_map_nonce_policy_optional() {

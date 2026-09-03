@@ -318,6 +318,70 @@ pub fn verify_issuer_hashes_match_ca(
     Ok(false)
 }
 
+/// Verify that a delegated OCSP responder certificate satisfies RFC 6960 §4.2.2.2:
+///
+/// - `extKeyUsage` MUST contain `id-kp-OCSPSigning` (OID `1.3.6.1.5.5.7.3.9`).
+/// - `id-pkix-ocsp-nocheck` (OID `1.3.6.1.5.5.7.48.1.5`) SHOULD be present so that
+///   relying parties are not required to recursively check the *responder's own*
+///   revocation status; this responder treats it as a hard requirement to avoid an
+///   operator relying on an unqualified certificate (e.g. a TLS server cert) as an
+///   OCSP signer without deliberately provisioning a purpose-built one.
+///
+/// Only applies to *delegated* responder certificates (`ocsp_responder_cert_uid` set
+/// to something other than the CA itself) — direct CA signing is exempt, matching the
+/// scoping of the compromised-state check in the caller.
+///
+/// # Errors
+/// Returns [`CryptoError`] if the certificate DER cannot be parsed, or a descriptive
+/// error identifying which requirement (`OCSPSigning` EKU or `nocheck` extension) is
+/// missing.
+pub fn verify_delegated_responder_authorization(signer_cert_der: &[u8]) -> Result<(), CryptoError> {
+    use x509_parser::{der_parser::oid, oid_registry::Oid, prelude::FromDer};
+
+    let (_, cert) =
+        x509_parser::certificate::X509Certificate::from_der(signer_cert_der).map_err(|e| {
+            CryptoError::Default(format!(
+                "Cannot parse delegated OCSP signer cert for authorization check: {e}"
+            ))
+        })?;
+
+    let has_ocsp_signing_eku = cert
+        .tbs_certificate
+        .extended_key_usage()
+        .map_err(|e| CryptoError::Default(format!("Invalid ExtendedKeyUsage extension: {e}")))?
+        .is_some_and(|eku| eku.value.ocsp_signing);
+    if !has_ocsp_signing_eku {
+        return Err(CryptoError::Default(
+            "Delegated OCSP responder certificate is missing the required \
+             `extKeyUsage: OCSPSigning` (id-kp-OCSPSigning, OID 1.3.6.1.5.5.7.3.9) per \
+             RFC 6960 §4.2.2.2"
+                .to_owned(),
+        ));
+    }
+
+    // `id-pkix-ocsp-nocheck` has no named constant in `oid-registry`; match by raw OID.
+    let ocsp_nocheck_oid: Oid<'_> = oid!(1.3.6.1.5.5.7.48.1.5);
+    let has_nocheck = cert
+        .tbs_certificate
+        .get_extension_unique(&ocsp_nocheck_oid)
+        .map_err(|e| {
+            CryptoError::Default(format!(
+                "Invalid extensions on delegated OCSP signer cert: {e}"
+            ))
+        })?
+        .is_some();
+    if !has_nocheck {
+        return Err(CryptoError::Default(
+            "Delegated OCSP responder certificate is missing the required \
+             `id-pkix-ocsp-nocheck` extension (OID 1.3.6.1.5.5.7.48.1.5) per \
+             RFC 6960 §4.2.2.2"
+                .to_owned(),
+        ));
+    }
+
+    Ok(())
+}
+
 /// Build a DER-encoded OCSP response.
 ///
 /// # Arguments
@@ -1294,6 +1358,91 @@ mod tests {
         assert!(
             !verify_issuer_hashes_match_ca(&queries, &ca).expect("verify"),
             "a request for a different CA must not match"
+        );
+    }
+
+    /// Build a self-signed test certificate carrying the given extra extensions,
+    /// used to exercise `verify_delegated_responder_authorization`.
+    fn create_test_cert_with_extensions(
+        extra_extensions: &[openssl::x509::X509Extension],
+    ) -> Vec<u8> {
+        let rsa = openssl::rsa::Rsa::generate(2048).expect("RSA keygen");
+        let pkey = PKey::from_rsa(rsa).expect("PKey");
+
+        let mut nb = X509NameBuilder::new().expect("X509NameBuilder");
+        nb.append_entry_by_text("CN", "Test OCSP Signer")
+            .expect("CN");
+        let name = nb.build();
+
+        let mut b = X509Builder::new().expect("X509Builder");
+        b.set_version(2).expect("v3");
+        b.set_subject_name(&name).expect("subject");
+        b.set_issuer_name(&name).expect("issuer");
+        b.set_pubkey(&pkey).expect("pubkey");
+        let not_before = openssl::asn1::Asn1Time::days_from_now(0).expect("not_before");
+        let not_after = openssl::asn1::Asn1Time::days_from_now(365).expect("not_after");
+        b.set_not_before(&not_before).expect("set_not_before");
+        b.set_not_after(&not_after).expect("set_not_after");
+        let serial =
+            Asn1Integer::from_bn(BigNum::from_u32(1).expect("bn").as_ref()).expect("serial");
+        b.set_serial_number(&serial).expect("set_serial");
+        for ext in extra_extensions {
+            b.append_extension2(ext).expect("append extra extension");
+        }
+        b.sign(&pkey, MessageDigest::sha256()).expect("sign");
+        b.build().to_der().expect("to_der")
+    }
+
+    /// Build the `id-pkix-ocsp-nocheck` extension (OID 1.3.6.1.5.5.7.48.1.5),
+    /// whose DER content is the ASN.1 NULL value (`05 00`), non-critical.
+    fn build_ocsp_nocheck_extension() -> openssl::x509::X509Extension {
+        let oid = openssl::asn1::Asn1Object::from_str("1.3.6.1.5.5.7.48.1.5")
+            .expect("Asn1Object::from_str");
+        let der_null = openssl::asn1::Asn1OctetString::new_from_bytes(&[0x05, 0x00])
+            .expect("Asn1OctetString::new_from_bytes");
+        openssl::x509::X509Extension::new_from_der(&oid, false, &der_null)
+            .expect("X509Extension::new_from_der")
+    }
+
+    #[test]
+    fn test_verify_delegated_responder_authorization_accepts_valid_cert() {
+        let eku = openssl::x509::extension::ExtendedKeyUsage::new()
+            .other("OCSPSigning")
+            .build()
+            .expect("eku build");
+        let nocheck = build_ocsp_nocheck_extension();
+        let cert_der = create_test_cert_with_extensions(&[eku, nocheck]);
+
+        verify_delegated_responder_authorization(&cert_der)
+            .expect("cert with OCSPSigning EKU + nocheck must be accepted");
+    }
+
+    #[test]
+    fn test_verify_delegated_responder_authorization_rejects_missing_eku() {
+        let nocheck = build_ocsp_nocheck_extension();
+        let cert_der = create_test_cert_with_extensions(&[nocheck]);
+
+        let err = verify_delegated_responder_authorization(&cert_der)
+            .expect_err("cert without OCSPSigning EKU must be rejected");
+        assert!(
+            err.to_string().contains("OCSPSigning"),
+            "error should mention the missing OCSPSigning EKU: {err}"
+        );
+    }
+
+    #[test]
+    fn test_verify_delegated_responder_authorization_rejects_missing_nocheck() {
+        let eku = openssl::x509::extension::ExtendedKeyUsage::new()
+            .other("OCSPSigning")
+            .build()
+            .expect("eku build");
+        let cert_der = create_test_cert_with_extensions(&[eku]);
+
+        let err = verify_delegated_responder_authorization(&cert_der)
+            .expect_err("cert without id-pkix-ocsp-nocheck must be rejected");
+        assert!(
+            err.to_string().contains("nocheck"),
+            "error should mention the missing nocheck extension: {err}"
         );
     }
 

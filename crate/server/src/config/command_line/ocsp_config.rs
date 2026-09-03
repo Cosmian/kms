@@ -47,6 +47,9 @@ pub struct OcspConfig {
     /// - `extKeyUsage: OCSPSigning` (OID 1.3.6.1.5.5.7.3.9)
     /// - `id-pkix-ocsp-nocheck` extension (OID 1.3.6.1.5.5.7.48.1.5)
     ///
+    /// Both requirements are enforced at request time: the server rejects the
+    /// delegated certificate (and refuses to sign) if either is missing.
+    ///
     /// The referenced key may be backed by an HSM via the existing PKCS#11 routing —
     /// no additional configuration is required.
     ///
