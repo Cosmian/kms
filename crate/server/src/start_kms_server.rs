@@ -272,13 +272,7 @@ pub(crate) async fn migrate_aws_xks_key_access(kms_server: &Arc<KMS>) -> KResult
                 );
                 continue;
             }
-            Err(error) => {
-                warn!(
-                    "AWS XKS: skipping migration for key `{uid}` because its owner could not be \
-                     determined: {error:?}"
-                );
-                continue;
-            }
+            Err(error) => return Err(error.into()),
         };
 
         if owner == *AWS_XKS_SERVICE_USER {
