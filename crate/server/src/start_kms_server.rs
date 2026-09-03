@@ -1141,13 +1141,18 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         if ui_enable && ui_index_folder.join("index.html").exists() {
             let oidc_config = kms_server.params.ui_oidc_auth.clone();
             let proxy_params = kms_server.params.proxy_params.clone();
-            // When OIDC was auto-populated from [auth_verifier], inherit its
-            // accept_invalid_certs flag so the discovery fetch works with self-signed certs.
+            // Accept invalid/self-signed TLS certs for the discovery fetch when either:
+            //   - OIDC was auto-populated from [auth_verifier] (inherits its flag), or
+            //   - the operator explicitly configured [ui_config.ui_oidc_auth] against
+            //     the same dev/test IdP validated via [idp_auth] (idp_auth_accept_invalid_certs).
+            // This covers both Option A/B ([auth_verifier]-based) and Option D
+            // (pure [idp_auth], no [auth_verifier] section) deployments.
             let oidc_accept_invalid_certs = kms_server
                 .params
                 .auth_verifier_config
                 .as_ref()
-                .is_some_and(|c| c.auth_verifier_accept_invalid_certs);
+                .is_some_and(|c| c.auth_verifier_accept_invalid_certs)
+                || kms_server.params.idp_auth_accept_invalid_certs;
 
             // Derive a 32-byte HMAC-SHA256 key for signing the OIDC `state` JWT.
             // The state carries the PKCE verifier and nonce so they survive the
