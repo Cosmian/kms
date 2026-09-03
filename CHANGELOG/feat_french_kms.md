@@ -7,6 +7,7 @@
   - Full translation of the sidebar menu, layout (header, footer, login, 404), `Locate` page, and every action form (`common`, `layout`, `locate`, `menu`, `actions` namespaces)
   - Ant Design components (date pickers, pagination, popconfirm, …) and `dayjs` now follow the French locale when selected
   - Terminology policy: cryptographic algorithms/standards (`RSA`, `AES`, `EC`, `PQC`, `Covercrypt`, `MAC`, `FPE`, `HSM`, `KEK`, `BYOK`, `ML-KEM`, `ML-DSA`, `SLH-DSA`, …) are kept untranslated; business/user-facing copy is translated. "Chiffrer/Déchiffrer" is used consistently for encrypt/decrypt (never "crypter/décrypter")
+- Add missing French, English and Simplified Chinese translations for the "Download CRL" (`certificateGenerateCrl`) action, and missing French translations for the login method labels (`login.oidc`, `login.certificate`, `login.authVerifier`)
 
 ## Refactoring
 

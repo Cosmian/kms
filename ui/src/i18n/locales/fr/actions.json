@@ -1890,5 +1890,20 @@
         "responseTitle": "Réponse de reconstitution de la clé partagée",
         "result": "Clé reconstituée avec succès à partir de {{count}} parts.\nIdentifiant de la clé reconstituée : {{uid}}",
         "resultFallback": "Opération de reconstitution terminée. Réponse : {{response}}"
+    },
+    "certificateGenerateCrl": {
+        "title": "Télécharger la CRL",
+        "alertMessage": "La CRL est téléchargée depuis le point de distribution public.",
+        "alertDescription": "Les certificats révoqués sont collectés automatiquement auprès de tous les utilisateurs. La CRL est actualisée à chaque révocation et par un planificateur en arrière-plan. Aucun rôle Crypto Officer n'est requis pour la télécharger.",
+        "issuerCertificateId": "Identifiant du certificat émetteur",
+        "issuerCertificateIdRequired": "Veuillez saisir l'identifiant du certificat de l'autorité de certification (AC)",
+        "issuerCertificateIdPlaceholder": "Saisir l'identifiant unique du certificat AC",
+        "outputFormat": "Format de sortie",
+        "formatDer": "DER (binaire)",
+        "formatPem": "PEM (texte)",
+        "submit": "Télécharger la CRL",
+        "responseTitle": "Résultat du téléchargement de la CRL",
+        "error404": "Aucune CRL trouvée pour l'émetteur '{{issuerId}}'. La CRL est générée automatiquement lors de la révocation d'un certificat. Si aucun certificat n'a encore été révoqué, la CRL n'existe peut-être pas.",
+        "success": "CRL téléchargée avec succès ({{bytes}} octets, format {{format}})"
     }
 }

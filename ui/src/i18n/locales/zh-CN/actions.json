@@ -1890,5 +1890,20 @@
         "responseTitle": "合并拆分密钥响应",
         "result": "已成功从 {{count}} 份份额重建密钥。\n重建后的密钥 UID：{{uid}}",
         "resultFallback": "合并操作已完成。响应：{{response}}"
+    },
+    "certificateGenerateCrl": {
+        "title": "下载 CRL",
+        "alertMessage": "CRL 从公共分发点下载。",
+        "alertDescription": "系统自动收集所有用户的已吊销证书。每次吊销操作及后台调度程序均会刷新 CRL。下载无需密码官角色。",
+        "issuerCertificateId": "颁发者证书 ID",
+        "issuerCertificateIdRequired": "请输入颁发者（CA）证书 ID",
+        "issuerCertificateIdPlaceholder": "输入 CA 证书唯一标识符",
+        "outputFormat": "输出格式",
+        "formatDer": "DER（二进制）",
+        "formatPem": "PEM（文本）",
+        "submit": "下载 CRL",
+        "responseTitle": "CRL 下载结果",
+        "error404": "未找到颁发者 '{{issuerId}}' 的 CRL。吊销证书时系统会自动生成 CRL。若尚未吊销任何证书，CRL 可能不存在。",
+        "success": "CRL 下载成功（{{bytes}} 字节，{{format}} 格式）"
     }
 }
