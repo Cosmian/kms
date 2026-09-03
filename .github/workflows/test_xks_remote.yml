@@ -1,0 +1,70 @@
+---
+name: AWS XKS remote
+
+on:
+  push:
+    tags:
+      - '**'
+  pull_request:
+  workflow_dispatch:
+
+# Prevent parallel runs against the same remote server.
+concurrency:
+  group: xks-remote
+  cancel-in-progress: false
+
+jobs:
+  xks-remote:
+    name: AWS XKS — remote server
+    runs-on: ubuntu-latest
+    # `xks-remote` uses a single concurrency slot with cancel-in-progress: false, so a stalled
+    # remote server would otherwise block every later run indefinitely. Bound the job so a
+    # stuck health-check wait or test run releases the concurrency group.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    # Maintainers must configure required reviewers on this environment in
+    # Settings > Environments before PR jobs can access its secrets.
+    environment: xks-remote-approval
+    # Skip for fork PRs (secrets not available) and dependabot.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+
+    steps:
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.0
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Build KMS binary (non-fips, release)
+        run: cargo build --bin cosmian_kms --features non-fips --release
+
+      - name: Deploy binary to XKS test server
+        env:
+          KMS_XKS_SSH_PRIVATE_KEY: ${{ secrets.KMS_XKS_SSH_PRIVATE_KEY }}
+          KMS_XKS_SSH_KNOWN_HOSTS: ${{ secrets.KMS_XKS_SSH_KNOWN_HOSTS }}
+          KMS_XKS_SSH_USER: ${{ secrets.KMS_XKS_SSH_USER }}
+          KMS_BIN: target/release/cosmian_kms
+        run: bash .mise/scripts/test/deploy_xks_remote.sh
+
+      - name: Run XKS tests against remote server
+        env:
+          KMS_XKS_HOST: aws-xks-kms.cosmian.dev
+          KMS_XKS_URI_PREFIX: aws
+          KMS_XKS_REGION: eu-west-1
+          KMS_XKS_SIGV4_ACCESS_KEY_ID: ${{ secrets.KMS_XKS_SIGV4_ACCESS_KEY_ID }}
+          KMS_XKS_SIGV4_SECRET_ACCESS_KEY: ${{ secrets.KMS_XKS_SIGV4_SECRET_ACCESS_KEY }}
+        run: |
+          bash .mise/scripts/test/test_xks_remote.sh
+
+      - name: Run AWS KMS XKS end-to-end test
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_XKS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_XKS_SECRET_ACCESS_KEY }}
+          AWS_XKS_KEY_ARN: ${{ secrets.AWS_XKS_KEY_ARN }}
+        run: bash .mise/scripts/test/test_xks_aws_e2e.sh

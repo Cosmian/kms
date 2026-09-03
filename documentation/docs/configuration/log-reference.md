@@ -54,7 +54,6 @@ Crate path: `crate/server`
 | `warn` | `Azure EKM client authentication is disabled, this should only be done in tests, and won't work for production environments.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `Failed to persist auto-activation of object {}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
 | `warn` | `Fetch JWKS: {e}` | `src/middlewares/jwt/jwks.rs` | `e`: caught error | - |
-| `warn` | `SigV4 failure: {signature_error}` | `src/routes/aws_xks/sigv4_middleware.rs` | `signature_error`: SigV4 signature validation error | - |
 | `warn` | `Socket server: connection failed: {e}` | `src/socket_server.rs` | `e`: caught error | - |
 | `warn` | `UI folder invalid or Linux default detected, falling back to: {fallback:#?}` | `src/config/params/server_params.rs` | `fallback`: fallback UI folder path | - |
 | `warn` | `{:?} {} 401 unauthorized, no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
@@ -665,20 +664,20 @@ Crate path: `crate/server`
 | `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
-| `warn` | `` `privileged_users` is deprecated; please migrate to                              `[roles] crypto_officer_users` in kms.toml `` | `src/config/params/server_params.rs` | - | - |
-| `warn` | `ceremony check DB error for user {user}: {e};                      falling back to Operator role` | `src/core/operations/dispatch.rs` | `user`, `e` | - |
-| `warn` | `ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment                              variable is used in production to avoid persisting the secret to disk.                              If loaded from a config file, ensure it has restrictive permissions                              (0600) and is not committed to version control.` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `` `privileged_users` is deprecated; please migrate to `[roles] crypto_officer_users` in kms.toml `` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `ceremony check DB error for user {user}: {e}; falling back to Operator role` | `src/core/operations/dispatch.rs` | `user`, `e` | - |
+| `warn` | `ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment variable is used in production to avoid persisting the secret to disk. If loaded from a config file, ensure it has restrictive permissions (0600) and is not committed to version control.` | `src/config/params/server_params.rs` | - | - |
 | `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
 | `debug` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
 | `debug` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
-| `warn` | `CreateSplitKey: partial failure — {} share(s) already stored                          but remaining shares could not be created. Manual cleanup required.` | `src/core/operations/create_split_key.rs` | - | - |
-| `trace` | `CreateSplitKey: overriding total_parts from {total_parts} to {n_co_i32}                  (matches crypto_officer_users count)` | `src/core/operations/create_split_key.rs` | `total_parts`, `n_co_i32` | - |
-| `warn` | `CreateSplitKey: ceremony source key could not be destroyed after split                      — key material may still be accessible. Manual destruction required.` | `src/core/operations/create_split_key.rs` | - | - |
+| `warn` | `CreateSplitKey: partial failure — {} share(s) already stored but remaining shares could not be created. Manual cleanup required.` | `src/core/operations/create_split_key.rs` | - | - |
+| `trace` | `CreateSplitKey: overriding total_parts from {total_parts} to {n_co_i32} (matches crypto_officer_users count)` | `src/core/operations/create_split_key.rs` | `total_parts`, `n_co_i32` | - |
+| `warn` | `CreateSplitKey: ceremony source key could not be destroyed after split — key material may still be accessible. Manual destruction required.` | `src/core/operations/create_split_key.rs` | - | - |
 | `error` | `CRYPTO_OFFICER_ACCESS: crypto officer bypassed ownership check` | `src/core/kms/permissions.rs` | - | - |
 | `error` | `CRYPTO_OFFICER_CEREMONY_ACTIVATED: Crypto Officer ceremony completed` | `src/core/operations/join_split_key.rs` | - | - |
 | `error` | `CRYPTO_OFFICER_DISABLED: Crypto Officer ceremony activation revoked` | `src/core/kms/permissions.rs` | - | - |
-| `warn` | `` SECURITY: Crypto Officer is active in config-only mode                          (require_ceremony = false). Any user listed in                          `crypto_officer_users` is a permanent super-admin with no                          runtime activation gate. Consider enabling                          `crypto_officer_require_ceremony = true` in production                          deployments. `` | `src/config/params/server_params.rs` | - | - |
-| `warn` | `SECURITY: Crypto Officer is configured but rate_limit_per_second is not set.              The ceremony activation endpoint performs crypto operations on every request.              Set rate_limit_per_second in the server config to protect against abuse in              production deployments.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `` SECURITY: Crypto Officer is active in config-only mode (require_ceremony = false). Any user listed in `crypto_officer_users` is a permanent super-admin with no runtime activation gate. Consider enabling `crypto_officer_require_ceremony = true` in production deployments. `` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `SECURITY: Crypto Officer is configured but rate_limit_per_second is not set. The ceremony activation endpoint performs crypto operations on every request. Set rate_limit_per_second in the server config to protect against abuse in production deployments.` | `src/start_kms_server.rs` | - | - |
 | `debug` | `CreateSplitKey: resolved ceremony parameters` | `src/core/operations/create_split_key.rs` | - | - |
 | `info` | `POST /access/crypto_officer/disable` | `src/routes/access.rs` | - | - |
 | `info` | `JoinSplitKey: CO ceremony auto-activated via reconstructed key` | `src/core/operations/join_split_key.rs` | - | - |
@@ -687,10 +686,12 @@ Crate path: `crate/server`
 | `error` | `CreateSplitKey: ceremony source key destroyed after successful split` | `src/core/operations/create_split_key.rs` | `uid` (source key UID), `user`, `session_id` | Audit — ceremony source key destroyed; split shares are now the only copies |
 | `error` | `CreateSplitKey: split-key share stored` | `src/core/operations/create_split_key.rs` | `uid` (share UID), `part`, `total`, `source` (source key UID), `owner`, `user`, `session_id` | Audit — ceremony share created; `session_id` correlates all shares from one CreateSplitKey call |
 | `error` | `JoinSplitKey: reconstructed key stored` | `src/core/operations/join_split_key.rs` | `uid` (reconstructed key UID), `shares` (count), `user`, `session_id` | Audit — key reconstructed from split-key shares |
-| `error` | `JoinSplitKey: CO ceremony activation failed — rolling back                      reconstructed key from DB` | `src/core/operations/join_split_key.rs` | `uid` (reconstructed key UID), `user`, `session_id`, `error` (activation error) | Audit — compensating delete triggered; activation failure made the ceremony invalid; key is being removed |
-| `error` | `JoinSplitKey: CRITICAL — reconstructed key rollback failed;                          orphaned key remains in DB, manual cleanup required` | `src/core/operations/join_split_key.rs` | `uid` (orphaned key UID), `user`, `session_id`, `rollback_error` (delete error) | CRITICAL audit — DB is in inconsistent state; manual deletion of the `uid` object is required; alert SIEM |
-| `warn` | `` `force_default_username = true` combined with `privileged_users` is                      deprecated and will become an error in a future release. All requests run                      under the same identity, making Crypto Officer dual-control meaningless.                      Please migrate to `[roles] crypto_officer_users` and remove                      `force_default_username`. `` | `src/config/params/server_params.rs` | - | - |
+| `error` | `JoinSplitKey: CO ceremony activation failed — rolling back reconstructed key from DB` | `src/core/operations/join_split_key.rs` | `uid` (reconstructed key UID), `user`, `session_id`, `error` (activation error) | Audit — compensating delete triggered; activation failure made the ceremony invalid; key is being removed |
+| `error` | `JoinSplitKey: CRITICAL — reconstructed key rollback failed; orphaned key remains in DB, manual cleanup required` | `src/core/operations/join_split_key.rs` | `uid` (orphaned key UID), `user`, `session_id`, `rollback_error` (delete error) | CRITICAL audit — DB is in inconsistent state; manual deletion of the `uid` object is required; alert SIEM |
+| `warn` | `` `force_default_username = true` combined with `privileged_users` is deprecated and will become an error in a future release. All requests run under the same identity, making Crypto Officer dual-control meaningless. Please migrate to `[roles] crypto_officer_users` and remove `force_default_username`. `` | `src/config/params/server_params.rs` | - | - |
 | `info` | `ceremony sealing key loaded from object store` | `src/core/kms/mod.rs` | - | - |
+| `warn` | `SigV4 failure: {sigv4_err}` | `src/routes/aws_xks/sigv4_middleware.rs` | `sigv4_err`: SigV4 validation error detail (signature mismatch, expired timestamp, bad credentials, etc.) | Authentication failure — check client SigV4 credentials, clock skew (±5 min), and signed headers. |
+| `info` | `` AWS XKS: granted usage on {migrated} pre-existing key(s) to the reserved service identity `{AWS_XKS_SERVICE_USER}` `` | `src/start_kms_server.rs` | `migrated`, `AWS_XKS_SERVICE_USER` | - |
 | `warn` | `[{idx}] CRL distribution point unreachable for '{:?}', skipping                          revocation check: {e}` | `src/core/operations/validate.rs` | `idx`, `e` | - |
 | `warn` | `CRL signature could not be verified against chain issuers;                          issuer: {crl_issuer:?}, path: {crl_path}.                          Continuing (trusted local delivery).` | `src/core/operations/validate.rs` | `crl_issuer`, `crl_path` | - |
 | `warn` | `CRL validation failed: {crl_err}` | `src/core/operations/validate.rs` | `crl_err` | - |
@@ -726,7 +727,9 @@ Crate path: `crate/server`
 | `warn` | `` AWS XKS: skipping migration for key `{uid}` because its owner could not be                      determined (object missing) `` | `src/start_kms_server.rs` | `uid` | - |
 | `warn` | `Session: rejecting reserved AWS XKS service identity from stored                              session user_id: {error}` | `src/middlewares/session_auth.rs` | `error` | - |
 | `warn` | `{log_prefix}: rejecting reserved AWS XKS service identity in SPIRE auth:                      {error}` | `src/middlewares/spire_token.rs` | `log_prefix`, `error` | - |
-| `info` | `` AWS XKS: granted usage on {migrated} pre-existing key(s) to the reserved service              identity `{AWS_XKS_SERVICE_USER}` `` | `src/start_kms_server.rs` | `migrated`, `AWS_XKS_SERVICE_USER` | - |
+| `warn` | `` AWS XKS: skipping migration for key `{uid}` because its owner could not be                      determined (object missing) `` | `src/start_kms_server.rs` | `uid` | - |
+| `warn` | `Session: rejecting reserved AWS XKS service identity from stored                              session user_id: {error}` | `src/middlewares/session_auth.rs` | `error` | - |
+| `warn` | `{log_prefix}: rejecting reserved AWS XKS service identity in SPIRE auth:                      {error}` | `src/middlewares/spire_token.rs` | `log_prefix`, `error` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -1282,9 +1285,8 @@ Crate path: `crate/clients/pkcs11/module`
 | `debug` | `C_GenerateKey: session: {hSession:?}, pMechanism: {pMechanism:?}, pTemplate:              {pTemplate:?}, ulCount: {ulCount:?}, phKey: {phKey:?}` | `src/pkcs11.rs` | `hSession`, `pMechanism`, `pTemplate`, `ulCount`, `phKey` | — |
 | `debug` | `load_find_context_by_class: loading for class: {search_class:?} and options:              {search_options:?}, attributes: {attributes:?}` | `src/sessions.rs` | `search_class`, `search_options`, `attributes` | — |
 | `debug` | `load_find_context_by_class: search by id: {} -> handle:                                          {} -> certificate: {}:{}` | `src/sessions.rs` | — | — |
-| `warn` | `load_find_context_by_class: no {search_class:?} object found for id                              {id}` | `src/sessions.rs` | `search_class`, `id` | - |
+| `warn` | `load_find_context_by_class: no {search_class:?} object found for id                              {id}` | `src/sessions.rs` | `search_class`, `id` | ×2 in this file |
 | `debug` | `load_find_context_by_class: search by id: {} -> handle: {} ->                              object: {}:{}` | `src/sessions.rs` | - | - |
-| `warn` | `load_find_context_by_class: no {search_class:?} object found for                                  id {id}` | `src/sessions.rs` | `search_class`, `id` | - |
 | `debug` | `load_find_context_by_class: backend fallback — search by id: {}                                  -> handle: {} -> object: {}:{}` | `src/sessions.rs` | - | - |
 
 ---

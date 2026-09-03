@@ -119,7 +119,7 @@ nav:
           - KMIP compliance tests (ovh/kmip-go): integrations/kmip_go.md
           - S/MIME Email encryption: integrations/smime.md
           - Terraform / OpenTofu Provider: integrations/terraform.md
-      - SPIRE / SPIFFE:
+      - Zero Trust M2M (SPIRE / SPIFFE):
           - Vault-compatible integration: integrations/spire_spiffe.md
           - Native KMIP 2.1 plugins: integrations/spire_spiffe_kmip_plugin.md
   - Installation:

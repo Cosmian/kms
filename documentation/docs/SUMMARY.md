@@ -80,7 +80,7 @@
     - [OpenSSH](integrations/openssh.md)
     - [PyKMIP](integrations/pykmip.md)
     - [S/MIME Email encryption](integrations/smime.md)
-    - [SPIRE / SPIFFE]()
+    - [SPIRE / SPIFFE (Zero-Trust M2M)]()
       - [Vault-compatible integration](integrations/spire_spiffe.md)
       - [Native KMIP 2.1 plugins](integrations/spire_spiffe_kmip_plugin.md)
 - [Installation]()
