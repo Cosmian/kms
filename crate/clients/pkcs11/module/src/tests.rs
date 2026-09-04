@@ -232,6 +232,16 @@ impl Backend for TestBackend {
     ) -> ModuleResult<Vec<u8>> {
         Err(ModuleError::FunctionNotSupported)
     }
+
+    fn remote_verify(
+        &self,
+        _remote_id: &str,
+        _algorithm: &SignatureAlgorithm,
+        _data: &[u8],
+        _signature: &[u8],
+    ) -> ModuleResult<()> {
+        Err(ModuleError::FunctionNotSupported)
+    }
 }
 
 cryptoki_fn!(
@@ -1374,6 +1384,16 @@ impl Backend for FallbackBackend {
         _algorithm: &SignatureAlgorithm,
         _data: &[u8],
     ) -> ModuleResult<Vec<u8>> {
+        Err(ModuleError::FunctionNotSupported)
+    }
+
+    fn remote_verify(
+        &self,
+        _remote_id: &str,
+        _algorithm: &SignatureAlgorithm,
+        _data: &[u8],
+        _signature: &[u8],
+    ) -> ModuleResult<()> {
         Err(ModuleError::FunctionNotSupported)
     }
 }

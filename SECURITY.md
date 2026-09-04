@@ -91,13 +91,13 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 #### GHSA-8mmx-f92q-2gq8 — `Extractable` and `NeverExtractable` not enforced on key export paths
 
-| Field      | Value                                                                             |
-| ---------- | --------------------------------------------------------------------------------- |
-| Severity   | High                                                                              |
-| Published  | Pending                                                                           |
-| Affected   | 5.0.0 – 5.27.1                                                                    |
-| Fixed in   | 5.28.0                                                                            |
-| Found by   | External reporter (GHSA-8mmx-f92q-2gq8)                                           |
+| Field      | Value                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------- |
+| Severity   | High                                                                                          |
+| Published  | Pending                                                                                       |
+| Affected   | 5.0.0 – 5.27.1                                                                                |
+| Fixed in   | 5.28.0                                                                                        |
+| Found by   | External reporter (GHSA-8mmx-f92q-2gq8)                                                       |
 | References | [GHSA-8mmx-f92q-2gq8](https://github.com/Cosmian/kms/security/advisories/GHSA-8mmx-f92q-2gq8) |
 
 **Summary:** The KMIP `Extractable` and `NeverExtractable` attributes were stored and echoed by the server but never evaluated on output paths (`Get`, `Export`, and PKCS#12 export). A key created or registered with `Extractable=false` could be exported in plaintext by any user holding a `Get` grant. Furthermore, client-supplied `NeverExtractable` values could contradict server-managed latch semantics, and PKCS#12 export routes did not validate that key-wrapping specifications provided non-empty password credentials for sensitive keys.
@@ -110,13 +110,13 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 #### GHSA-pvw2-jxwc-95xq — Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite
 
-| Field      | Value                                                                             |
-| ---------- | --------------------------------------------------------------------------------- |
-| Severity   | High                                                                              |
-| Published  | Pending                                                                           |
-| Affected   | 5.0.0 – 5.27.1                                                                    |
-| Fixed in   | 5.28.0                                                                            |
-| Found by   | External reporter (GHSA-pvw2-jxwc-95xq)                                           |
+| Field      | Value                                                                                                                                                                                                         |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | High                                                                                                                                                                                                          |
+| Published  | Pending                                                                                                                                                                                                       |
+| Affected   | 5.0.0 – 5.27.1                                                                                                                                                                                                |
+| Fixed in   | 5.28.0                                                                                                                                                                                                        |
+| Found by   | External reporter (GHSA-pvw2-jxwc-95xq)                                                                                                                                                                       |
 | References | [GHSA-pvw2-jxwc-95xq](https://github.com/Cosmian/kms/security/advisories/GHSA-pvw2-jxwc-95xq), [COSMIAN-2026-020](#cosmian-2026-020--get-grant-on-wildcard-uid--bypasses-the-createimport-authorization-gate) |
 
 **Summary:** The COSMIAN-2026-020 reserved UID check screened `AtomicOperation::Create` in `Database::atomic`, but did not screen `AtomicOperation::Upsert`. Operations such as `Certify` write via `Upsert` and take destination UIDs directly from requests without prior destination authorization, allowing re-creation of the reserved `"*"` UID and potential overwrite of existing objects owned by other users. In addition, MySQL lacked the `WHERE objects.owner=$5` SQL guard present in PostgreSQL and SQLite, and tag mutations were not gated on affected row counts.
@@ -129,13 +129,13 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 #### GHSA-c75c-3cmm-48h7 — `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant
 
-| Field      | Value                                                                             |
-| ---------- | --------------------------------------------------------------------------------- |
-| Severity   | High                                                                              |
-| Published  | Pending                                                                           |
-| Affected   | 5.0.0 – 5.27.1                                                                    |
-| Fixed in   | 5.28.0                                                                            |
-| Found by   | External reporter (GHSA-c75c-3cmm-48h7)                                           |
+| Field      | Value                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------- |
+| Severity   | High                                                                                          |
+| Published  | Pending                                                                                       |
+| Affected   | 5.0.0 – 5.27.1                                                                                |
+| Fixed in   | 5.28.0                                                                                        |
+| Found by   | External reporter (GHSA-c75c-3cmm-48h7)                                                       |
 | References | [GHSA-c75c-3cmm-48h7](https://github.com/Cosmian/kms/security/advisories/GHSA-c75c-3cmm-48h7) |
 
 **Summary:** `Sensitive` export enforcement prevents plaintext retrieval of keys flagged sensitive unless wrapped. However, `DeleteAttribute` permitted removal of `Sensitive` and `Extractable` attributes, and `retrieve_object_for_operation`'s permission check allowed any caller with a read-only `Get` grant to invoke `DeleteAttribute`, `SetAttribute`, `ModifyAttribute`, or `AddAttribute` on the target object. A user with read-only access to another user's sensitive key could strip `Sensitive` or toggle `Extractable` and subsequently read the plaintext key material.
