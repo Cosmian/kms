@@ -488,6 +488,40 @@ To decrypt a message using AES GCM with the symmetric key `hsm::4::my_aes_key`, 
 The decrypted file is available at "/tmp/secret.recovered.txt"
 ```
 
+### Sign
+
+RSA private keys can be used to sign data. Only HSM admin users, or a user granted the `Sign`
+operation by an HSM admin, can sign data with keys stored in the HSM.
+
+Two families of RSA signing mechanisms are supported:
+
+- **PKCS#1 v1.5** (`CKM_SHA{1,256,384,512}_RSA_PKCS`): deterministic, the classic RSA signature
+  scheme.
+- **RSASSA-PSS** (`CKM_SHA{256,384,512}_RSA_PKCS_PSS`): the probabilistic scheme recommended by
+  current standards (e.g. FIPS 186-5, RFC 8017). The salt length defaults to the digest length in
+  bytes (32 for SHA-256, 48 for SHA-384, 64 for SHA-512) and can be overridden via the KMIP
+  `CryptographicParameters.salt_length` field; `salt_length: 0` produces a deterministic PSS
+  signature.
+
+The `ckms rsa sign` CLI command always uses RSASSA-PSS with SHA-256, matching the KMS software
+signing path. To sign a file with the HSM-resident private key `hsm::4::my_rsa_key`, the following
+command can be used:
+
+```shell
+❯ ckms rsa sign --key-id hsm::4::my_rsa_key -o /tmp/secret.sig /tmp/secret.txt
+The signature is available at "/tmp/secret.sig"
+```
+
+!!! info HSM-delegated RSA-PSS signing
+    RSA-PSS signing over HSM-resident keys is delegated end-to-end to the PKCS#11 device: the
+    private key never leaves the HSM, and the PSS mechanism parameters (hash algorithm, MGF1
+    hash algorithm, salt length) are built from the KMIP request and passed directly to
+    `C_Sign` via `CK_RSA_PKCS_PSS_PARAMS`. This is purely additive: existing PKCS#1 v1.5 and
+    OAEP mechanisms, key types, and HSM vendor loaders are unaffected. See
+    [ADR-2026-09-05](../adr/2026-09-05-hsm-track-a-rsa-pss-scope-decision.md) for the scope
+    decision (EC key generation, ECDSA signing, and HSM-delegated PBKDF2 derivation are tracked
+    as separate follow-up work).
+
 ## PKCS#11 protocol version compatibility
 
 Eviden KMS talks to HSMs over Cryptoki (PKCS#11) **v2.40** on the consumer side (`crate/hsm/base_hsm`
