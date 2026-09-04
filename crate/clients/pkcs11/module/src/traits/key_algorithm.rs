@@ -77,7 +77,10 @@ impl KeyAlgorithm {
             Self::X448 => "1.3.101.111",
             Self::Ed448 => "1.3.101.113",
             Self::Secp224k1 => "1.3.132.0.32",
-            Self::Secp256k1 => "1.3.132.0.33",
+            // SEC 2-registered OID for secp256k1. NOT "1.3.132.0.33" (that OID is
+            // secp224r1/NIST P-224) — see crate/hsm/base_hsm/src/session/ec.rs,
+            // which documents both OIDs correctly.
+            Self::Secp256k1 => "1.3.132.0.10",
         }
     }
 
@@ -98,7 +101,7 @@ impl KeyAlgorithm {
             "1.3.101.111" => Some(Self::X448),
             "1.3.101.113" => Some(Self::Ed448),
             "1.3.132.0.32" => Some(Self::Secp224k1),
-            "1.3.132.0.33" => Some(Self::Secp256k1),
+            "1.3.132.0.10" => Some(Self::Secp256k1),
             _ => None,
         }
     }
