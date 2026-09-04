@@ -3,6 +3,6 @@ mod interface;
 
 pub use hsm_store::HsmStore;
 pub use interface::{
-    HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial,
-    RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
+    EcCurve, EcPrivateKeyMaterial, EcPublicKeyMaterial, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm,
+    HsmObject, HsmObjectFilter, KeyMaterial, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
