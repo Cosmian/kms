@@ -25,10 +25,7 @@ use pkcs11_sys::{
     CKR_FUNCTION_FAILED, CKR_OK, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 
-use crate::{
-    kms_object::{RUNTIME, get_kms_config},
-    logging::initialize_logging,
-};
+use crate::{kms_object::get_kms_config, logging::initialize_logging};
 
 /// Number of `CK_INTERFACE` entries `C_GetInterfaceList` publishes: the same "PKCS 11" function
 /// table under both the implemented Cryptoki version and `{3, 0}`. See `C_GetInterface` for why
@@ -86,6 +83,42 @@ mod pkcs11_data_object;
 mod pkcs11_private_key;
 mod pkcs11_public_key;
 mod pkcs11_symmetric_key;
+
+/// Clears the benchmark-only in-memory Sign phase counters.
+#[cfg(feature = "benchmarking")]
+#[unsafe(no_mangle)]
+pub extern "C" fn cosmian_pkcs11_benchmark_sign_profile_reset() {
+    cosmian_pkcs11_module::profiling::reset();
+}
+
+/// Enables or disables benchmark-only Sign phase collection.
+#[cfg(feature = "benchmarking")]
+#[unsafe(no_mangle)]
+pub extern "C" fn cosmian_pkcs11_benchmark_sign_profile_set_enabled(enabled: bool) {
+    cosmian_pkcs11_module::profiling::set_enabled(enabled);
+}
+
+/// Copies the benchmark-only Sign phase counters into `snapshot`.
+///
+/// # Safety
+///
+/// `snapshot` must be non-null, correctly aligned, and writable for one
+/// [`cosmian_pkcs11_module::profiling::SignProfileSnapshot`].
+#[cfg(feature = "benchmarking")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cosmian_pkcs11_benchmark_sign_profile_snapshot(
+    snapshot: *mut cosmian_pkcs11_module::profiling::SignProfileSnapshot,
+) -> CK_RV {
+    if snapshot.is_null() {
+        return CKR_ARGUMENTS_BAD;
+    }
+    // SAFETY: the caller contract above requires a valid writable pointer, and the
+    // null case was rejected immediately above.
+    unsafe {
+        snapshot.write(cosmian_pkcs11_module::profiling::snapshot());
+    }
+    CKR_OK
+}
 
 /// On Windows, return the directory that contains this DLL.
 /// Uses `GetModuleHandleExW` with a static data anchor (more reliable than a
@@ -367,7 +400,11 @@ pub unsafe extern "C" fn C_GetInterface(
         // SAFETY: caller guarantees p_version points to a valid CK_VERSION per this function's
         // safety contract.
         let version = unsafe { *p_version };
-        if version.major != CRYPTOKI_VERSION_MAJOR {
+        // Same major version required; minor version must not exceed what this module
+        // implements (3.1) — a v3.1 implementation must still satisfy a backward-compatible
+        // caller explicitly requesting {major: 3, minor: 0}, per this function's own doc
+        // comment above. An exact-match check here would reject that valid request.
+        if version.major != CRYPTOKI_VERSION_MAJOR || version.minor > CRYPTOKI_VERSION_MINOR {
             return CKR_ARGUMENTS_BAD;
         }
         if version.minor == CRYPTOKI_VERSION_MINOR {
@@ -392,6 +429,10 @@ pub unsafe extern "C" fn C_GetInterface(
 #[cfg(feature = "non-fips")]
 #[expect(clippy::expect_used, clippy::panic_in_result_fn)]
 mod tests;
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
+#[expect(clippy::expect_used, clippy::panic_in_result_fn)]
+mod tests_v3;
 #[cfg(test)]
 #[cfg(feature = "non-fips")]
 #[expect(clippy::expect_used, clippy::panic_in_result_fn)]

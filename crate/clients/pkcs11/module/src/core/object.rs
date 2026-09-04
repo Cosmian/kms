@@ -237,7 +237,12 @@ fn private_key_attribute(
             | KeyAlgorithm::X25519
             | KeyAlgorithm::Ed25519
             | KeyAlgorithm::X448
-            | KeyAlgorithm::Ed448 => Some(Attribute::EcParams(
+            | KeyAlgorithm::Ed448
+            // Needed so callers can disambiguate this private key's curve from
+            // another `CKK_EC` private key (e.g. P-256) via `CKA_EC_PARAMS` —
+            // `cosmian_pkcs11_bench` provisions both a P-256 and a secp256k1 key
+            // pair, and `CK_KEY_TYPE` alone cannot tell them apart.
+            | KeyAlgorithm::Secp256k1 => Some(Attribute::EcParams(
                 private_key.algorithm().to_oid()?.to_der()?,
             )),
             _ => None,

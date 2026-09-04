@@ -36,7 +36,10 @@ impl Session {
                 ulParameterLen: 0,
             };
             let is_sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
-            let mut template = aes_key_template!(id, size, is_sensitive);
+            // A sensitive key must not be extractable: derive CKA_EXTRACTABLE from
+            // the `sensitive` flag instead of hard-coding it to CK_TRUE.
+            let is_extractable = if sensitive { CK_FALSE } else { CK_TRUE };
+            let mut template = aes_key_template!(id, size, is_sensitive, is_extractable);
             let p_mechanism: CK_MECHANISM_PTR = &raw mut mechanism;
             let p_mut_template: CK_ATTRIBUTE_PTR = template.as_mut_ptr();
             let mut aes_key_handle = CK_OBJECT_HANDLE::default();
