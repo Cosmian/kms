@@ -266,7 +266,7 @@ impl DeriveKeyAction {
     }
 
     /// Build the `DerivationParameters` from the CLI arguments.
-    fn build_derivation_params(&self) -> KmsCliResult<DerivationParameters> {
+    fn build_derivation_params(&self, base_key_id: &str) -> KmsCliResult<DerivationParameters> {
         let salt_hex = self
             .salt
             .as_ref()
