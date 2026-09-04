@@ -279,6 +279,7 @@ fn test_get_function_list_rejects_null_output() {
     );
 }
 
+#[test]
 #[expect(unsafe_code)]
 fn test_init() {
     // export RUST_LOG="cosmian_pkcs11=trace,ckms=trace,cosmian_config_utils=trace"
