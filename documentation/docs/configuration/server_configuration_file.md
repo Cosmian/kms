@@ -110,9 +110,9 @@ info = false
 
 # The HSM model.
 # `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-# `Smartcard HSM`, and `SoftHSM2` are natively supported.
+# `Smartcard HSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
 # Other HSMs are supported too; specify `other` and check the documentation
-# hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other
+# hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | kryoptic | other
 # List of KMS usernames that are granted HSM admin privileges.
 # HSM admins can create, destroy, and potentially export objects on the HSM.
 # Use `"*"` as the only entry to grant all authenticated users admin access.
@@ -139,14 +139,14 @@ info = false
 # Uses the new UID convention: hsm::<model>::<slot_id>::<key_id>
 # To connect HSMs, declare one [[hsm_instances]] section per device.
 # `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-# `Smartcard HSM`, and `SoftHSM2` are natively supported.
+# `Smartcard HSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
 # Other HSMs are supported too; specify `other` and check the documentation.
 #
 # The first entry gets the routing prefix "hsm::<model>", the second
 # "hsm::<model>_1", etc. Object UIDs take the form "<prefix>::<slot>::<key-id>".
 #
 ## [[hsm_instances]]
-## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other
+## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | kryoptic | other
 ## hsm_admin    = ["tech@example.com"] # KMS users with admin rights on this HSM
 ## hsm_slot     = [0]                  # PKCS#11 slot indices (use softhsm2-util --show-slots to list them)
 ## hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
