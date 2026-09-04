@@ -69,7 +69,7 @@ hsm_password = ["anotherpass"]
 
 | Field | Description |
 |---|---|
-| `hsm_model` | HSM model: `softhsm2`, `utimaco`, `proteccio`, `crypt2pay`, `smartcardhsm`, `other` |
+| `hsm_model` | HSM model: `softhsm2`, `utimaco`, `proteccio`, `crypt2pay`, `smartcardhsm`, `kryoptic`, `other` |
 | `hsm_admin` | List of KMS user identities that have admin rights on this HSM |
 | `hsm_slot` | PKCS#11 slot indices to open |
 | `hsm_password` | Login passwords for the corresponding slots (same order as `hsm_slot`) |
@@ -116,14 +116,15 @@ The same information is available in the **HSM Status** page of the Web UI
 
 HSM support is available on:
 
-- Linux x86\_64 — all models (`softhsm2`, `utimaco`, `proteccio`, `crypt2pay`, `smartcardhsm`, `other`)
-- macOS (arm64 / x86\_64) — `softhsm2` and `smartcardhsm` only
+- Linux x86\_64 — all models (`softhsm2`, `utimaco`, `proteccio`, `crypt2pay`, `smartcardhsm`, `kryoptic`, `other`)
+- macOS (arm64 / x86\_64) — `softhsm2`, `smartcardhsm`, and `kryoptic`
 
 ---
 
 ## See also
 
 - [SoftHSM2 setup](softhsm2.md)
+- [Kryoptic setup](kryoptic.md)
 - [Utimaco setup](utimaco.md)
 - [Proteccio setup](proteccio.md)
 - [HSM operations](hsm_operations.md)
