@@ -243,6 +243,7 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
         &symmetric_key_3,
         symmetric_key_3.attributes()?,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -307,6 +308,7 @@ pub(super) async fn upsert<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -383,6 +385,7 @@ pub(super) async fn crud<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
             &symmetric_key,
             symmetric_key.attributes()?,
             &HashSet::new(),
+            "",
         )
         .await?;
     assert_eq!(&uid, &uid_);
@@ -476,6 +479,7 @@ pub(super) async fn block_cipher_mode_migration_after_json_deserialization<DB: O
         &object,
         &attributes,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -559,6 +563,7 @@ pub(super) async fn find_due_for_rotation_test<DB: ObjectsStore>(db: &DB) -> DbR
         &make_key(&mut rng)?,
         &attrs_due,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -578,6 +583,7 @@ pub(super) async fn find_due_for_rotation_test<DB: ObjectsStore>(db: &DB) -> DbR
         &make_key(&mut rng)?,
         &attrs_not_due,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -596,6 +602,7 @@ pub(super) async fn find_due_for_rotation_test<DB: ObjectsStore>(db: &DB) -> DbR
         &make_key(&mut rng)?,
         &attrs_no_auto,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -672,6 +679,7 @@ pub(super) async fn wrapping_key_link_test<DB: ObjectsStore>(db: &DB) -> DbResul
         &wrapped_obj,
         &attributes,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -695,6 +703,7 @@ pub(super) async fn wrapping_key_link_test<DB: ObjectsStore>(db: &DB) -> DbResul
         &plain_obj,
         &attributes,
         &HashSet::new(),
+        "",
     )
     .await?;
 

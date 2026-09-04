@@ -195,13 +195,6 @@ repos:
         stages: [pre-push]
       - id: clippy-all-targets
         stages: [manual]
-        types: [rust]
-      - id: cargo-format
-        name: cargo-format (post-clippy)
-        types: [rust]
-        stages: [pre-push]
-      - id: cargo-machete
-        types: [rust]
 
   # ═══════════════════════════════════════════════════════════════════════
   # 4. Testing (slow, conditional on changed crate)
@@ -648,6 +641,79 @@ repos:
         always_run: true
         stages: [manual]
 
+      # # Remove folders result*
+      # - id: clean-result-folders
+      #   name: Clean result* folders
+      #   entry: bash .mise/scripts/release/clean_result.sh
+      #   language: system
+      #   types: [rust]
+      #   pass_filenames: false
+      #   stages: [manual]
+
+      - id: pnpm-ui-format
+        name: pnpm ui format
+        entry: pnpm -C ui check:format
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+
+      - id: gen-vector-readme
+        name: Regenerate test_kms_server vector README
+        description: |
+          Syncs crate/test_kms_server/README.md with vector_runner.rs and
+          test_data/vectors manifests. Exits 1 when the README is updated so
+          the developer must re-stage the file before committing.
+        entry: mise docs:vector-readme
+        language: system
+        pass_filenames: false
+        files: crate/test_kms_server/src/vector_runner\.rs|\.mise/scripts/docs/gen_vector_readme\.py|\.mise/tasks/docs/vector-readme
+
+      - id: pnpm-ui-lint
+        name: pnpm ui check:lint
+        entry: pnpm -C ui check:lint
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+
+      - id: ui-wasm-react-unit-tests
+        name: UI wasm + React tests (incl. integration if Docker)
+        entry: mise run test:wasm
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+        stages: [manual]
+
+      - id: ui-e2e
+        name: UI end-to-end
+        entry: mise run test:ui
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+        stages: [manual]
+
+      - id: cargo-test-fips
+        name: cargo test (sqlite fips)
+        entry: cargo test --lib --workspace
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [manual]
+
+      - id: cargo-test-non-fips
+        name: cargo test (sqlite non-fips)
+        entry: cargo test --lib --workspace --features non-fips
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: redis-cargo-test-non-fips
+        name: Redis and cargo test (non-fips)
+        entry: mise run test:redis -- --variant non-fips
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [manual]
+
       - id: nix-build-all
         name: Nix build all derivations (ui → cli → server)
         entry: mise run release:nix-update-hashes
@@ -663,3 +729,28 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [manual]
+
+  - repo: https://github.com/Cosmian/git-hooks.git
+    rev: v1.0.42
+    hooks:
+      - id: nightly-clippy-autofix-unreachable-pub
+        stages: [manual]
+      - id: nightly-clippy-autofix-all-targets-all-features
+        stages: [manual]
+      - id: nightly-clippy-autofix-all-targets
+        stages: [manual]
+
+      - id: dprint-toml-fix
+        stages: [manual]
+      - id: cargo-upgrade
+        stages: [manual]
+      - id: cargo-update
+        stages: [manual]
+      - id: cargo-format # in last du to clippy fixes
+      - id: docker-compose-down
+
+  - repo: https://github.com/lycheeverse/lychee
+    rev: v0.15.1
+    hooks:
+      - id: lychee
+        args: [--config, lychee.toml, 'documentation/docs/**/*.md']

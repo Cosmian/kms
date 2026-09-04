@@ -1,5 +1,5 @@
 import { DownOutlined } from "@ant-design/icons";
-import { Alert, Button, Dropdown, Input } from "antd";
+import { Alert, Button, Dropdown, Input, Select } from "antd";
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -12,11 +12,17 @@ interface LoginProps {
     error?: undefined | string;
     /** Configured login methods, ordered by priority (primary first). */
     authMethods?: AuthMethod[];
+    /**
+     * Realms available for Auth Verifier username/password login.
+     * Empty when only one realm is configured (server uses its default).
+     * When non-empty the login form shows a realm selector dropdown.
+     */
+    authVerifierRealms?: string[];
     /** Called when a client-certificate probe succeeds; updates isAuthenticated in App. */
     onCertAuthenticated?: () => void;
 }
 
-const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthenticated }) => {
+const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, authVerifierRealms = [], onCertAuthenticated }) => {
     // Keep only browser-login methods, preserving the server's priority order.
     const methods = (authMethods ?? []).filter((m): m is AuthMethod => m === "JWT" || m === "AUTH_VERIFIER" || m === "CERT");
     const [selectedMethod, setSelectedMethod] = useState<AuthMethod | undefined>(methods[0]);
@@ -27,6 +33,8 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
     const [authVerifierTotpCode, setAuthVerifierTotpCode] = useState("");
     const [authVerifierTotpRequired, setAuthVerifierTotpRequired] = useState(false);
     const [authVerifierError, setAuthVerifierError] = useState<string | null>(null);
+    // Realm selector: only relevant when multiple realms are configured.
+    const [selectedRealm, setSelectedRealm] = useState<string | undefined>(authVerifierRealms[0]);
     const { login, serverUrl } = useAuth();
     const navigate = useNavigate();
     const branding = useBranding();
@@ -104,6 +112,8 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
                 authVerifierUsername,
                 authVerifierPassword,
                 authVerifierTotpRequired ? authVerifierTotpCode : undefined,
+                // Send realm only when multiple realms are configured; omit to use server default.
+                authVerifierRealms.length > 1 ? selectedRealm : undefined,
             );
             if (nextStep === "TotpRequired") {
                 setAuthVerifierTotpRequired(true);
@@ -140,7 +150,19 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
                     {certError && (
                         <Alert type="error" showIcon message={t("login.certFailed")} description={certError} className="text-left mb-8" />
                     )}
-                    {selectedMethod === "AUTH_VERIFIER" ? (
+                    {methods.length === 0 ? (
+                        <Alert
+                            type="info"
+                            showIcon
+                            data-testid="no-browser-auth-notice"
+                            message={t("login.noBrowserAuth", "Authentication required")}
+                            description={t(
+                                "login.noBrowserAuthDescription",
+                                "This KMS server requires an API token or client certificate configured outside the browser. Please refer to the server documentation.",
+                            )}
+                            className="text-left"
+                        />
+                    ) : selectedMethod === "AUTH_VERIFIER" ? (
                         <div className="space-y-4 text-left" data-testid="auth-verifier-login-form">
                             {authVerifierError && (
                                 <Alert
@@ -163,6 +185,16 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
                                 />
                             ) : (
                                 <>
+                                    {authVerifierRealms.length > 1 && (
+                                        <Select
+                                            className="w-full"
+                                            value={selectedRealm}
+                                            onChange={setSelectedRealm}
+                                            options={authVerifierRealms.map((r) => ({ value: r, label: r }))}
+                                            placeholder={t("login.realmPlaceholder", "Select realm")}
+                                            data-testid="auth-verifier-realm-select"
+                                        />
+                                    )}
                                     <Input
                                         autoFocus
                                         placeholder={t("login.usernamePlaceholder")}

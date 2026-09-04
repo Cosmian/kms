@@ -77,7 +77,8 @@ if [[ $# -gt 0 && "$1" != --* ]]; then
 fi
 
 case "$TASK" in
-  all) ;;
+  all)
+    ;;
   server-docs)
     SKIP_CKMS=true
     SKIP_KMIP=true

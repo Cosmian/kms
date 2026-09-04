@@ -18,6 +18,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     reexport::rand_core::SeedableRng,
 };
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 use crate::error::{DbError, DbResult};
 
@@ -40,11 +41,9 @@ pub struct CeremonyPayload {
 ///
 /// # Zeroization
 ///
-/// Both sensitive fields are heap-pinned via `Pin<Box<[u8;32]>>` inside
-/// `SymmetricKey<32>` → `Secret<32>` and are auto-zeroized on drop:
-/// - `aes_key`: `ZeroizeOnDrop` via `#[derive(ZeroizeOnDrop)]` on `SymmetricKey`
-/// - `obfuscation_key`: same — heap-pinned, so moves never copy the 32 key bytes;
-///   only the fat pointer is moved.
+/// Both sensitive fields are automatically wiped on drop:
+/// - `aes_key` wraps `SymmetricKey<32>` → `Secret<32>: ZeroizeOnDrop`
+/// - `obfuscation_key` is wrapped in `Zeroizing<[u8; 32]>: ZeroizeOnDrop`
 ///
 /// The `Aes256Gcm` cipher is **not** stored as a field because
 /// `aes_gcm::AesGcm` does not implement `ZeroizeOnDrop` (the round-key schedule
@@ -52,11 +51,10 @@ pub struct CeremonyPayload {
 /// locally inside each `seal`/`unseal` call from `aes_key` and dropped
 /// immediately after use.
 pub struct CeremonyKeys {
-    /// Raw AES-256 key bytes — heap-pinned, auto-zeroized on drop via `SymmetricKey: ZeroizeOnDrop`.
+    /// Raw AES-256 key bytes — auto-zeroized on drop via `Secret<32>: ZeroizeOnDrop`.
     aes_key: SymmetricKey<32>,
     /// Key material for SHAKE-256 obfuscation of Redis key names.
-    /// Heap-pinned: moves copy only the fat pointer, not the 32 key bytes.
-    obfuscation_key: SymmetricKey<32>,
+    obfuscation_key: Zeroizing<[u8; 32]>,
     /// Thread-safe RNG for nonce generation.
     rng: Mutex<CsRng>,
 }
@@ -72,7 +70,7 @@ impl CeremonyKeys {
         let mut aes_key = SymmetricKey::<32>::default();
         kdf256!(&mut *aes_key, ceremony_secret, b"ceremony_aes_key");
 
-        let mut obfuscation_key = SymmetricKey::<32>::default();
+        let mut obfuscation_key = Zeroizing::new([0_u8; 32]);
         kdf256!(
             &mut *obfuscation_key,
             ceremony_secret,

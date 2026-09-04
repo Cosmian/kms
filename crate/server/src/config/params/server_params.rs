@@ -149,21 +149,23 @@ pub struct ServerParams {
     /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
 
+    /// OPA (Open Policy Agent) RBAC evaluation parameters.
+    /// When set, the KMS calls OPA before (or instead of) its internal permission check.
+    pub(crate) opa_params: Option<crate::core::opa::OpaParams>,
+
     /// Crypto Officer role configuration (role-based access control).
     pub crypto_officer: CryptoOfficerConfig,
 
     /// Ceremony record encryption keys.
     ///
-    /// Derived from `ceremony_secret` at startup, or resolved from the object
-    /// store when `ceremony_key_id` is set. `None` when no role requires a ceremony.
+    /// Derived from `ceremony_secret` at startup. `None` when no role requires a ceremony.
     /// When `Some`, all ceremony activation records are AES-256-GCM sealed before storage
     /// and verified on read — preventing forgery and protecting participant identities.
     pub ceremony_keys: Option<Arc<CeremonyKeys>>,
-
-    /// UID of the KMS symmetric key used as the ceremony record sealing key.
+    /// UID of a KMS symmetric key used to derive ceremony sealing keys at startup.
     ///
-    /// When set, `ceremony_key_id` takes precedence over `ceremony_secret`.
-    /// The key is fetched from the object store after database initialization.
+    /// When set, this takes precedence over `ceremony_secret`; raw key bytes are fetched
+    /// from the object store and converted into [`CeremonyKeys`].
     pub ceremony_key_id: Option<String>,
 
     /// AWS XKS parameters, if any
@@ -458,6 +460,25 @@ impl ServerParams {
                 None
             },
             non_revocable_key_id: conf.non_revocable_key_id,
+            opa_params: {
+                let mode = conf
+                    .opa
+                    .opa_mode
+                    .parse::<crate::core::opa::OpaMode>()
+                    .map_err(|_e| KmsError::InvalidRequest(
+                        "invalid `opa_mode` value; expected one of: disabled, exclusive, enforcing".to_owned()
+                    ))?;
+                match (conf.opa.opa_url, mode) {
+                    (None, crate::core::opa::OpaMode::Disabled) => None,
+                    (None, active_mode) => {
+                        return Err(KmsError::InvalidRequest(format!(
+                            "`--opa-mode {active_mode}` requires `--opa-url` to be set; \
+                             OPA cannot be active without a server URL"
+                        )));
+                    }
+                    (Some(url), mode) => Some(crate::core::opa::OpaParams { url, mode }),
+                }
+            },
             crypto_officer: {
                 // Backward compat: if the deprecated `privileged_users` field is set and
                 // `[roles] crypto_officer_users` is not configured, promote those users to
@@ -496,16 +517,8 @@ impl ServerParams {
             },
             ceremony_keys: {
                 let any_ceremony_required = conf.roles.crypto_officer_require_ceremony;
-                match (
-                    &conf.roles.ceremony_key_id,
-                    &conf.roles.ceremony_secret,
-                    any_ceremony_required,
-                ) {
-                    // ceremony_key_id takes precedence — keys resolved after DB init;
-                    // or neither provided and ceremony is not required.
-                    (Some(_), _, _) | (None, None, false) => None,
-                    // Only ceremony_secret provided — derive keys now
-                    (None, Some(hex_secret), _) => {
+                match (&conf.roles.ceremony_secret, any_ceremony_required) {
+                    (Some(hex_secret), _) => {
                         let bytes = hex::decode(hex_secret).map_err(|e| {
                             KmsError::ServerError(format!(
                                 "ceremony_secret: invalid hex encoding: {e}"
@@ -533,18 +546,17 @@ impl ServerParams {
                         );
                         Some(Arc::new(keys))
                     }
-                    // Neither provided but ceremony required
-                    (None, None, true) => {
+                    (None, true) => {
                         return Err(KmsError::ServerError(
-                            "ceremony_secret or ceremony_key_id is required when any role has \
-                             require_ceremony = true. Set ceremony_key_id to an existing AES-256 \
-                             symmetric key UID, or generate a secret with: openssl rand -hex 32"
+                            "ceremony_secret is required when any role has require_ceremony = true. \
+                             Generate one with: openssl rand -hex 32"
                                 .to_owned(),
                         ));
                     }
+                    (None, false) => None,
                 }
             },
-            ceremony_key_id: conf.roles.ceremony_key_id.clone(),
+            ceremony_key_id: conf.roles.ceremony_key_id,
             ui_session_salt: conf.ui_config.ui_session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
@@ -1049,6 +1061,14 @@ impl fmt::Debug for ServerParams {
             if auth_verifier.is_enabled() {
                 debug_struct.field("auth_verifier_url", &auth_verifier.auth_verifier_url);
             }
+        }
+
+        if let Some(ref opa) = self.opa_params {
+            debug_struct
+                .field("opa_url", &opa.url)
+                .field("opa_mode", &opa.mode);
+        } else {
+            debug_struct.field("opa_mode", &"disabled");
         }
 
         debug_struct.field(

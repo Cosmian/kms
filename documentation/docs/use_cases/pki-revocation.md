@@ -152,6 +152,17 @@ is stored in the database.
     per-certificate revocation status — see
     [OCSP Responder](pki-ocsp.md).
 
+## Authority Information Access (AIA)
+
+The AIA extension (`authorityInfoAccess`, OID `1.3.6.1.5.5.7.1.1`) can be added
+via the extension config file to point relying parties to an OCSP responder or to
+the CA issuer certificate:
+
+```ini
+[ v3_ext ]
+authorityInfoAccess=OCSP;URI:http://ocsp.example.com/,caIssuers;URI:http://ca.example.com/ca.crt
+```
+
 ## No Revocation Available (`id-ce-noRevAvail`, RFC 9608)
 
 For **self-signed certificates** (no issuer key provided) that do not carry a CRL

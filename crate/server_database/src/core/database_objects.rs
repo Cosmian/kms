@@ -206,6 +206,7 @@ impl Database {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
+        domain: &str,
     ) -> DbResult<String> {
         if let Some(ref uid) = uid {
             reject_reserved_uid(uid)?;
@@ -214,7 +215,11 @@ impl Database {
             let db = self
                 .get_object_store(uid.as_deref().unwrap_or_default())
                 .await?;
-            Ok(db.create(uid, owner, object, attributes, tags).await?)
+            let uid = db
+                .create(uid, owner, object, attributes, tags, domain)
+                .await?;
+            // New objects never have a cache entry; nothing to invalidate.
+            Ok(uid)
         })
         .await
     }
@@ -856,6 +861,7 @@ mod tests {
                 &key,
                 &attributes,
                 &HashSet::new(),
+                "",
             )
             .await;
         let err = result.expect_err("creating an object with uid '*' must fail");
@@ -1109,7 +1115,7 @@ mod tests {
             ..Default::default()
         };
         let uid = db
-            .create(None, &owner, &cert_object, &attributes, &HashSet::new())
+            .create(None, &owner, &cert_object, &attributes, &HashSet::new(), "")
             .await
             .expect("failed to create certificate object");
 
@@ -1142,7 +1148,7 @@ mod tests {
             object_type: Some(ObjectType::Certificate),
             ..Default::default()
         };
-        db.create(None, &owner, &cert_object, &attributes, &HashSet::new())
+        db.create(None, &owner, &cert_object, &attributes, &HashSet::new(), "")
             .await
             .expect("failed to create certificate object");
 

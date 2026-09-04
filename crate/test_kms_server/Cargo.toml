@@ -49,5 +49,5 @@ toml = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 futures = { workspace = true }
-reqwest = { workspace = true, features = ["rustls-tls", "cookies"] }
+reqwest = { workspace = true, features = ["rustls-tls", "json", "cookies", "cookies"] }
 zeroize = { workspace = true }

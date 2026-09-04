@@ -18,10 +18,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Args, Clone, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct RolesConfig {
-    /// Users with the Crypto Officer role.
+    /// Users with the Crypto Officer role (ISO/IEC 19790 "Crypto Officer" / PKCS#11 `CKU_SO`).
     ///
     /// May manage key lifecycle (create, import, certify, rekey, activate, revoke, destroy)
-    /// and access raw key material.
+    /// and access raw key material (get, export — "key output" per ISO/IEC 19790 §7.4.3).
     /// When active, gains ownership bypass on all Managed Objects.
     /// When set, only listed users (plus those explicitly granted the `Create` right) can
     /// create and import objects.
@@ -32,7 +32,8 @@ pub struct RolesConfig {
     ///
     /// When `true`, users listed in `crypto_officer_users` are candidates only —
     /// the role is inactive until a KMIP `JoinSplitKey` with all shares tagged
-    /// `x-cosmian-crypto-officer-ceremony` completes.
+    /// `x-cosmian-crypto-officer-ceremony` completes
+    /// (NIST SP 800-57 Part 2 Rev 1 §4.6 split knowledge, XOR n-of-n).
     #[clap(long, verbatim_doc_comment, default_value = "false")]
     pub crypto_officer_require_ceremony: bool,
 
@@ -47,15 +48,13 @@ pub struct RolesConfig {
     #[clap(long, env = "KMS_CEREMONY_SECRET", verbatim_doc_comment)]
     pub ceremony_secret: Option<String>,
 
-    /// UID of a KMS symmetric key to use as the ceremony record sealing key.
+    /// UID of a KMS symmetric key to use as the ceremony record sealing key (ADP-26).
     ///
-    /// When set, key material is fetched from the KMS object store after database
-    /// initialization and used in place of `ceremony_secret`. This enables:
+    /// When set, key material is fetched from the KMS object store via a direct DB read
+    /// (bypassing KMIP auth) and used in place of `ceremony_secret`. This enables:
     ///   - Key rotation via standard KMIP `ReKey` / `Rotate` operations.
     ///   - HSM-backed sealing when the referenced key is HSM-resident.
-    ///   - Audit trail: each retrieval of the ceremony key is logged.
-    ///
-    /// If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+    ///   - Audit trail: each `Get` of the ceremony key is logged.
     ///
     /// **Bootstrap constraint**: the ceremony sealing key must be created before
     /// enabling `crypto_officer_require_ceremony = true`. Create it while the server
@@ -68,6 +67,11 @@ pub struct RolesConfig {
     /// # 3. Set ceremony_key_id = "ceremony-seal-2026" in kms.toml
     /// # 4. Enable require_ceremony = true and restart
     /// ```
+    ///
+    /// If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+    ///
+    /// **Status**: ADP-26 (planned). This field is accepted by the config parser but is not yet
+    /// functional. Set `ceremony_secret` in the meantime.
     #[clap(long, env = "KMS_CEREMONY_KEY_ID", verbatim_doc_comment)]
     pub ceremony_key_id: Option<String>,
 

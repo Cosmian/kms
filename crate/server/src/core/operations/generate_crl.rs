@@ -25,7 +25,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_private_key_to_openssl,
     },
 };
-use cosmian_logger::{debug, trace, warn};
+use cosmian_logger::{debug, error, trace, warn};
 use openssl::x509::{X509, X509Crl};
 use time::OffsetDateTime;
 
@@ -134,6 +134,25 @@ pub(crate) async fn generate_crl(
         "Generating CRL for issuer certificate: {}",
         issuer_certificate_id
     );
+
+    // Guard: when CO users are configured, only an active CO may call this.
+    // CRL generation uses find_all (no user filter) — the CO role is the
+    // documented gating condition for that bypass (same as Locate with CO).
+    if !kms.params.crypto_officer.users.is_empty() && !kms.is_crypto_officer(user).await? {
+        return Err(KmsError::Unauthorized(format!(
+            "Generating a CRL requires the Crypto Officer role. \
+             User '{user}' is not an active Crypto Officer."
+        )));
+    }
+    if !kms.params.crypto_officer.users.is_empty() {
+        // Audit log — CO bypass is a high-value security event.
+        error!(
+            target: "audit",
+            user = %user,
+            issuer_id = issuer_certificate_id,
+            "CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)",
+        );
+    }
 
     // 1. Retrieve the issuer certificate
     let issuer_owm = retrieve_object_for_operation(

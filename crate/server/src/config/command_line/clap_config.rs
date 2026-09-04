@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     AuthVerifierConfig, CrlConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig,
-    JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, OcspConfig, RolesConfig, WorkspaceConfig,
-    logging::LoggingConfig, secret_backends::SecretBackendConfig, ui_config::UiConfig,
-    vault_config::VaultConfig,
+    JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, OcspConfig, OpaConfig, RolesConfig,
+    WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
+    ui_config::UiConfig, vault_config::VaultConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -72,6 +72,7 @@ impl Default for ClapConfig {
             roles: RolesConfig::default(),
             privileged_users: None,
             aws_xks_config: AwsXksConfig::default(),
+            opa: OpaConfig::default(),
             kmip_policy: KmipPolicyConfig::default(),
             azure_ekm_config: AzureEkmConfig::default(),
             auto_rotation_check_interval_secs: 0,
@@ -233,6 +234,9 @@ pub struct ClapConfig {
 
     #[clap(flatten)]
     pub aws_xks_config: AwsXksConfig,
+
+    #[clap(flatten)]
+    pub opa: OpaConfig,
 
     /// KMIP algorithm policy.
     ///
@@ -767,6 +771,7 @@ impl fmt::Debug for ClapConfig {
             &self.auto_rotation_check_interval_secs,
         );
         let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
+        let x = x.field("opa", &self.opa);
 
         x.finish()
     }

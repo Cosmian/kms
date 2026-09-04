@@ -9,7 +9,11 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{trace, warn};
 
 use crate::{
-    core::{KMS, uid_utils::ObjectHandle},
+    core::{
+        KMS,
+        opa::{OpaInput, OpaMode, get_opa_user_context},
+        uid_utils::ObjectHandle,
+    },
     error::KmsError,
     middlewares::UserId,
     result::KResult,
@@ -256,6 +260,47 @@ pub(crate) async fn retrieve_object_for_operation(
     ))
 }
 
+/// Build the OPA input document from the current request context.
+///
+/// Fields that require the authentication server integration (roles, `user_domain`)
+/// are populated from the JWT claims extracted by the middleware.
+fn build_opa_input(
+    user: &str,
+    roles: &[String],
+    user_domain: Option<&str>,
+    owm: Option<&ObjectWithMetadata>,
+    operation_type: KmipOperation,
+) -> OpaInput {
+    let (object_uid, object_domain, is_owner) = owm.map_or_else(
+        || {
+            (
+                // Object-less operations (Create, Locate, …): use wildcard UID and derive the
+                // object domain from the caller's domain so that same_domain rules pass.
+                "*".to_owned(),
+                user_domain.unwrap_or_default().to_owned(),
+                false,
+            )
+        },
+        |obj| {
+            (
+                obj.id().to_owned(),
+                obj.domain().to_owned(),
+                user == obj.owner(),
+            )
+        },
+    );
+
+    OpaInput {
+        user: user.to_owned(),
+        user_domain: user_domain.unwrap_or_default().to_owned(),
+        roles: roles.to_vec(),
+        operation: operation_type.to_string(),
+        object_uid,
+        object_domain,
+        is_owner,
+    }
+}
+
 /// Check if a user has permission to perform an operation on an object.
 ///  If the user is the owner of the object, it will always return true.
 ///  For non-HSM objects, having the `Get` permission implies all other operations.
@@ -274,6 +319,103 @@ pub(crate) async fn user_has_permission(
     operation_type: &KmipOperation,
     kms: &KMS,
 ) -> KResult<bool> {
+    // ── OPA evaluation (Phase 8, Step 20) ───────────────────────────────────
+    if let Some(ref opa_client) = kms.opa_client {
+        let mode = kms
+            .params
+            .opa_params
+            .as_ref()
+            .map_or(OpaMode::Disabled, |p| p.mode);
+
+        match mode {
+            OpaMode::Disabled => { /* fall through to legacy logic */ }
+            OpaMode::Exclusive => {
+                let opa_ctx = get_opa_user_context();
+                let input = build_opa_input(
+                    user,
+                    &opa_ctx.roles,
+                    opa_ctx.domain.as_deref(),
+                    owm,
+                    *operation_type,
+                );
+                let allowed = opa_client.query(&input).await.unwrap_or(false);
+                trace!(
+                    "OPA exclusive decision for user={} op={} obj={}: {}",
+                    user, operation_type, input.object_uid, allowed
+                );
+                return Ok(allowed);
+            }
+            OpaMode::Enforcing => {
+                // ── Native KMS CO bypass ────────────────────────────────────────────
+                // Users listed in `crypto_officer_users` bypass OPA Gate 1 in
+                // enforcing mode regardless of whether they have completed the ceremony.
+                //
+                // Rationale: OPA Gate 1 enforces JWT role/domain policy for external
+                // users.  CO candidates are KMS-native — enrolled via server TOML config,
+                // not via JWT — and therefore operate outside OPA's role model.
+                // Requiring them to pass OPA Gate 1 creates a chicken-and-egg deadlock
+                // during the ceremony: candidates must Get peer shares to call
+                // JoinSplitKey, but `is_crypto_officer()` returns `false` until
+                // the ceremony completes.
+                //
+                // The bypass applies to BOTH:
+                //   a) activated COs   (`is_crypto_officer()` = true)
+                //   b) ceremony candidates listed in `co_users` (not yet activated)
+                //
+                // Both groups fall through to the legacy KMS gate, which enforces
+                // ownership and explicit DB grant checks — so bypassing OPA Gate 1
+                // does NOT grant unconditional access.
+                //
+                // HSM keys are excluded: their access model is separate and requires
+                // explicit HSM-admin grants.
+                let object_id = owm.map_or("*", ObjectWithMetadata::id);
+                let is_native_co = !ObjectHandle::from(object_id).is_hsm()
+                    && (kms.is_crypto_officer(user).await?
+                        || kms
+                            .params
+                            .crypto_officer
+                            .users
+                            .iter()
+                            .any(|u| u == user.as_str()));
+                if !is_native_co {
+                    // ── OPA Gate 1 ────────────────────────────────────────────────────
+                    let opa_ctx = get_opa_user_context();
+                    let input = build_opa_input(
+                        user,
+                        &opa_ctx.roles,
+                        opa_ctx.domain.as_deref(),
+                        owm,
+                        *operation_type,
+                    );
+                    let allowed = opa_client.query(&input).await.unwrap_or(false);
+                    trace!(
+                        "OPA enforcing decision for user={} op={} obj={}: {}",
+                        user, operation_type, input.object_uid, allowed
+                    );
+                    if !allowed {
+                        return Ok(false);
+                    }
+                    // OPA approved. In enforcing mode OPA is the authoritative
+                    // role/domain policy engine: it already evaluated `is_owner`,
+                    // `same_domain`, and the role hierarchy against the operation.
+                    // Trust this decision and return immediately for non-HSM objects
+                    // rather than re-evaluating ownership/grants in the KMS legacy gate,
+                    // which would deny valid role-based access that OPA explicitly allowed
+                    // (e.g. CryptoOfficer reading GetAttributes on a peer's key).
+                    // HSM-backed keys still fall through to the HSM-admin / per-HSM-grant
+                    // check because their access model is independent of the KMIP
+                    // object-grant model and OPA does not evaluate HSM admin status.
+                    let is_hsm = owm.is_some_and(|o| ObjectHandle::from(o.id()).is_hsm());
+                    if !is_hsm {
+                        return Ok(true);
+                    }
+                }
+                // Native CO: fall through to the legacy KMS gate below.
+            }
+        }
+    }
+
+    // ── Legacy KMS permission logic ─────────────────────────────────────────
     let id = match owm {
         Some(object) if user == object.owner() => return Ok(true),
         Some(object) => object.id(),
@@ -330,4 +472,182 @@ pub(crate) async fn user_has_permission(
     }
 
     Ok(permissions.contains(operation_type) || permissions.contains(&KmipOperation::Get))
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+mod tests {
+    use cosmian_kms_server_database::reexport::{
+        cosmian_kmip::{
+            kmip_0::kmip_types::State,
+            kmip_2_1::{
+                KmipOperation,
+                kmip_attributes::Attributes,
+                kmip_objects::{Object, OpaqueObject},
+                kmip_types::OpaqueDataType,
+            },
+        },
+        cosmian_kms_interfaces::ObjectWithMetadata,
+    };
+
+    use super::build_opa_input;
+
+    // ── Helper ──────────────────────────────────────────────────────────────
+
+    /// Build a minimal `ObjectWithMetadata` for testing.
+    ///
+    /// Uses `OpaqueObject` (the lightest available `Object` variant) to avoid
+    /// constructing crypto key material in unit tests.
+    fn make_owm(uid: &str, owner: &str, domain: &str) -> ObjectWithMetadata {
+        ObjectWithMetadata::new(
+            uid.to_owned(),
+            Object::OpaqueObject(OpaqueObject {
+                opaque_data_type: OpaqueDataType::Unknown,
+                opaque_data_value: uid.as_bytes().to_vec(),
+            }),
+            owner.to_owned(),
+            State::Active,
+            Attributes::default(),
+            domain.to_owned(),
+        )
+    }
+
+    // ── Object-less operations (owm = None) ──────────────────────────────────
+
+    /// When `owm` is `None` (object-less operation such as `Create`):
+    /// - `object_uid` must be `"*"` (wildcard UID)
+    /// - `object_domain` must equal `user_domain` so `same_domain` passes
+    /// - `is_owner` must be `false`
+    #[test]
+    fn test_build_opa_input_objectless_uses_wildcard_uid() {
+        let input = build_opa_input(
+            "alice@acme.com",
+            &["CryptoOfficer".to_owned()],
+            Some("acme.com"),
+            None,
+            KmipOperation::Create,
+        );
+        assert_eq!(input.object_uid, "*", "object-less op must use '*' UID");
+        assert_eq!(
+            input.object_domain, "acme.com",
+            "object_domain must equal user_domain for object-less ops"
+        );
+        assert!(
+            !input.is_owner,
+            "is_owner must be false for object-less ops"
+        );
+    }
+
+    /// When no user domain is supplied (`None`) for an object-less operation,
+    /// both `user_domain` and `object_domain` default to empty string so the
+    /// `same_domain` check in Rego still passes (both are `""`).
+    #[test]
+    fn test_build_opa_input_objectless_no_domain_defaults_to_empty_string() {
+        let input = build_opa_input("alice@acme.com", &[], None, None, KmipOperation::Create);
+        assert_eq!(input.user_domain, "");
+        assert_eq!(
+            input.object_domain, "",
+            "object_domain must be '' when user_domain is None"
+        );
+        assert_eq!(input.object_uid, "*");
+    }
+
+    // ── Operations on existing objects ──────────────────────────────────────
+
+    /// When `user == obj.owner()`, `is_owner` must be `true` and the object
+    /// UID and domain must be taken from the object (not the wildcard).
+    #[test]
+    fn test_build_opa_input_owner_sets_is_owner_true() {
+        let owm = make_owm("uid-001", "alice@acme.com", "acme.com");
+        let input = build_opa_input(
+            "alice@acme.com",
+            &["CryptoOfficer".to_owned()],
+            Some("acme.com"),
+            Some(&owm),
+            KmipOperation::Get,
+        );
+        assert!(input.is_owner, "caller must be recognised as owner");
+        assert_eq!(input.object_uid, "uid-001");
+        assert_eq!(input.object_domain, "acme.com");
+    }
+
+    /// When `user != obj.owner()`, `is_owner` must be `false`.
+    #[test]
+    fn test_build_opa_input_non_owner_sets_is_owner_false() {
+        let owm = make_owm("uid-002", "alice@acme.com", "acme.com");
+        let input = build_opa_input(
+            "bob@acme.com",
+            &["CryptoOfficer".to_owned()],
+            Some("acme.com"),
+            Some(&owm),
+            KmipOperation::Get,
+        );
+        assert!(!input.is_owner, "non-owner must have is_owner=false");
+        assert_eq!(input.object_uid, "uid-002");
+    }
+
+    /// Object domain is read from the stored object metadata, not from the
+    /// user domain.  This is the cross-domain isolation invariant.
+    #[test]
+    fn test_build_opa_input_object_domain_comes_from_owm() {
+        let owm = make_owm("uid-003", "alice@other.com", "other.com");
+        let input = build_opa_input(
+            "bob@acme.com",
+            &["CryptoOfficer".to_owned()],
+            Some("acme.com"),
+            Some(&owm),
+            KmipOperation::Get,
+        );
+        assert_eq!(input.user_domain, "acme.com");
+        assert_eq!(
+            input.object_domain, "other.com",
+            "object_domain must come from the stored object"
+        );
+    }
+
+    // ── Operation name format ────────────────────────────────────────────────
+
+    /// `KmipOperation::to_string()` must produce the lowercase `snake_case` names
+    /// that the `kms.rego` policy uses for operation set membership tests.
+    #[test]
+    fn test_build_opa_input_operation_is_lowercase_snake_case() {
+        let cases = [
+            (KmipOperation::Create, "create"),
+            (KmipOperation::Get, "get"),
+            (KmipOperation::GetAttributes, "get_attributes"),
+            (KmipOperation::Destroy, "destroy"),
+            (KmipOperation::Locate, "locate"),
+        ];
+        for (op, expected) in cases {
+            let input = build_opa_input("u", &[], None, None, op);
+            assert_eq!(
+                input.operation, expected,
+                "KmipOperation::{op:?} must serialize to '{expected}'"
+            );
+        }
+    }
+
+    // ── Roles and user identity passthrough ──────────────────────────────────
+
+    /// Roles are passed through unchanged; they are never modified by
+    /// `build_opa_input` (KMS is role-vocabulary-agnostic).
+    #[test]
+    fn test_build_opa_input_roles_passed_through_unchanged() {
+        let roles = vec!["CryptoOfficer".to_owned(), "Auditor".to_owned()];
+        let input = build_opa_input("u", &roles, None, None, KmipOperation::Create);
+        assert_eq!(input.roles, roles);
+    }
+
+    /// The user identity is copied verbatim to `input.user`.
+    #[test]
+    fn test_build_opa_input_user_identity_is_preserved() {
+        let input = build_opa_input(
+            "alice@tenant.example",
+            &[],
+            None,
+            None,
+            KmipOperation::Create,
+        );
+        assert_eq!(input.user, "alice@tenant.example");
+    }
 }

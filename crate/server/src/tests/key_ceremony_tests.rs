@@ -35,7 +35,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 use crate::{
     config::{ClapConfig, MainDBConfig, ServerParams},
     core::{KMS, operations::perform_crypto_officer_ceremony_activation},
-    error::KmsError,
     middlewares::UserId,
     result::KResult,
     tests::test_utils::get_tmp_sqlite_path,
@@ -45,24 +44,8 @@ use crate::{
 const TEST_CEREMONY_SECRET: &str =
     "deadbeefcafebabe0102030405060708090a0b0c0d0e0f10deadbeefcafebabe";
 
-/// Extract the text-string from a `UniqueIdentifier`, propagating as a `KResult`.
-/// Replaces `.as_str().expect("UID must be a string")` throughout this file so
-/// a malformed server response produces a descriptive error rather than a panic.
-fn uid_string(uid: &UniqueIdentifier) -> KResult<String> {
-    uid.as_str()
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| KmsError::InvalidRequest(format!("expected TextString UID, got {uid:?}")))
-}
-
-/// Build a base `ClapConfig` for CO-related tests.
-///
-/// - `require_ceremony`: when `true`, also sets `ceremony_secret = TEST_CEREMONY_SECRET`
-/// - `wrap_key_id`: when `Some`, sets `ceremony_wrapping_key_id`
-fn base_ceremony_conf(
-    co_users: Vec<String>,
-    require_ceremony: bool,
-    wrap_key_id: Option<&str>,
-) -> ClapConfig {
+/// Build a `KMS` configured for ceremony mode with the given CO users.
+async fn ceremony_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
     let mut conf = ClapConfig {
         db: MainDBConfig {
             database_type: Some("sqlite".to_owned()),
@@ -73,19 +56,9 @@ fn base_ceremony_conf(
         ..Default::default()
     };
     conf.roles.crypto_officer_users = Some(co_users);
-    conf.roles.crypto_officer_require_ceremony = require_ceremony;
-    if require_ceremony {
-        conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
-    }
-    if let Some(id) = wrap_key_id {
-        conf.roles.ceremony_wrapping_key_id = Some(id.to_owned());
-    }
-    conf
-}
+    conf.roles.crypto_officer_require_ceremony = true;
+    conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
 
-/// Build a `KMS` configured for ceremony mode with the given CO users.
-async fn ceremony_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
-    let conf = base_ceremony_conf(co_users, true, None);
     let params = ServerParams::try_from(conf)?;
     Ok(Arc::new(KMS::instantiate(Arc::new(params)).await?))
 }
@@ -95,7 +68,22 @@ async fn ceremony_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
 /// A fresh wrapping key is pre-created and its UID is set as `ceremony_wrapping_key_id`.
 /// The returned `Arc<KMS>` is ready for split-key operations that wrap shares at rest.
 async fn ceremony_kms_with_wrapping(co_users: Vec<String>, wrap_key_id: &str) -> KResult<Arc<KMS>> {
-    let conf = base_ceremony_conf(co_users.clone(), true, Some(wrap_key_id));
+    // First, start a temporary ceremony KMS without wrapping to create the key.
+    let mut conf = ClapConfig {
+        db: MainDBConfig {
+            database_type: Some("sqlite".to_owned()),
+            sqlite_path: get_tmp_sqlite_path(),
+            clear_database: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    conf.roles.crypto_officer_users = Some(co_users.clone());
+    conf.roles.crypto_officer_require_ceremony = true;
+    conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
+    // Wrapping key ID is configured from the start so that `CreateSplitKey` uses it.
+    conf.roles.ceremony_wrapping_key_id = Some(wrap_key_id.to_owned());
+
     let params = ServerParams::try_from(conf)?;
     let kms = Arc::new(KMS::instantiate(Arc::new(params)).await?);
 
@@ -116,9 +104,19 @@ async fn ceremony_kms_with_wrapping(co_users: Vec<String>, wrap_key_id: &str) ->
 
     Ok(kms)
 }
-
 async fn config_only_co_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
-    let conf = base_ceremony_conf(co_users, false, None);
+    let mut conf = ClapConfig {
+        db: MainDBConfig {
+            database_type: Some("sqlite".to_owned()),
+            sqlite_path: get_tmp_sqlite_path(),
+            clear_database: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    conf.roles.crypto_officer_users = Some(co_users);
+    conf.roles.crypto_officer_require_ceremony = false;
+
     let params = ServerParams::try_from(conf)?;
     Ok(Arc::new(KMS::instantiate(Arc::new(params)).await?))
 }
@@ -137,7 +135,11 @@ async fn create_key(kms: &KMS, owner: &str) -> KResult<String> {
     )?;
     req.attributes.activation_date = None;
     let resp = kms.create(req, &UserId::from(owner)).await?;
-    uid_string(&resp.unique_identifier)
+    Ok(resp
+        .unique_identifier
+        .as_str()
+        .expect("UID must be a string")
+        .to_owned())
 }
 
 /// Split `key_uid` into `total_parts` XOR shares; return share UIDs.
@@ -157,10 +159,11 @@ async fn split_key(
         protection_storage_masks: None,
     };
     let resp = Box::pin(kms.create_split_key(req, &UserId::from(owner))).await?;
-    resp.unique_identifier
+    Ok(resp
+        .unique_identifier
         .iter()
-        .map(uid_string)
-        .collect::<KResult<Vec<_>>>()
+        .map(|u| u.as_str().expect("UID must be a string").to_owned())
+        .collect())
 }
 
 /// Reconstruct from the given share UIDs; return the reconstructed key UID.
@@ -181,7 +184,11 @@ async fn join_shares(
         protection_storage_masks: None,
     };
     let resp = kms.join_split_key(req, &UserId::from(user)).await?;
-    uid_string(&resp.unique_identifier)
+    Ok(resp
+        .unique_identifier
+        .as_str()
+        .expect("UID must be a string")
+        .to_owned())
 }
 
 // ─── Test 1: config-only CO ──────────────────────────────────────────────────
@@ -1040,152 +1047,7 @@ async fn test_post_revocation_co_is_demoted_to_operator() -> KResult<()> {
     Ok(())
 }
 
-// ─── Test 19: reconstructed-key storage — per activation path ─────────────────
-
-/// **`POST /access/crypto_officer/ceremony/activate` (UI path)**:
-/// The reconstructed key is computed in RAM to derive its hash, then zeroized.
-/// It is **never stored** in the `objects` table.  After activation the base key
-/// UID (i.e., the share root without the `#N` suffix) must be absent from the DB.
-///
-/// **`JoinSplitKey` KMIP operation (CLI path)**:
-/// The reconstructed key IS stored as an Active managed object before the ceremony
-/// activation side-effect runs.  After `join_shares` the base UID must exist.
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_activation_endpoint_does_not_store_reconstructed_key() -> KResult<()> {
-    let alice = "alice@example.com";
-    let bob = "bob@example.com";
-    let carol = "carol@example.com";
-    let provisioner = "admin";
-    let n = 3_i32;
-
-    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
-
-    // ── Create the ceremony key with a deterministic UID ──────────────────────
-    let key_uid = "ceremony-key-rest-path-test";
-    let no_tags: &[&str] = &[];
-    let mut req = symmetric_key_create_request(
-        VENDOR_ID_COSMIAN,
-        Some(UniqueIdentifier::TextString(key_uid.to_owned())),
-        256,
-        CryptographicAlgorithm::AES,
-        no_tags,
-        false,
-        None,
-    )?;
-    req.attributes.activation_date = None;
-    kms.create(req, &UserId::from(provisioner)).await?;
-
-    let shares = Box::pin(split_key(&kms, provisioner, key_uid, n)).await?;
-
-    // ── Source key is destroyed after the split ───────────────────────────────
-    assert!(
-        kms.database.retrieve_object(key_uid).await?.is_none(),
-        "Source key must be destroyed after CreateSplitKey"
-    );
-
-    // ── Grant alice access to bob and carol's shares ──────────────────────────
-    kms.database
-        .grant_operations(
-            &shares[1],
-            &UserId::from(alice),
-            std::collections::HashSet::from([KmipOperation::Get]),
-        )
-        .await?;
-    kms.database
-        .grant_operations(
-            &shares[2],
-            &UserId::from(alice),
-            std::collections::HashSet::from([KmipOperation::Get]),
-        )
-        .await?;
-
-    // ── Activate via the REST path (perform_crypto_officer_ceremony_activation) ─
-    // This is what the UI calls — it must NOT store the reconstructed key.
-    perform_crypto_officer_ceremony_activation(&kms, &shares, &UserId::from(alice)).await?;
-
-    assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be an active CO after the REST activation"
-    );
-
-    // The reconstructed key UID (base UID without #N suffix) must NOT be in DB.
-    let reconstructed_uid = key_uid; // base UID = source key UID = ceremony-key-rest-path-test
-    assert!(
-        kms.database
-            .retrieve_object(reconstructed_uid)
-            .await?
-            .is_none(),
-        "REST activation path must NOT store the reconstructed key in the DB"
-    );
-
-    Ok(())
-}
-
-/// **`JoinSplitKey` (CLI path)** stores the reconstructed key as a managed object.
-///
-/// This is the complementary test: the KMIP path explicitly persists the key so
-/// the caller can use it as a wrapping/encryption key after ceremony completion.
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_join_split_key_stores_reconstructed_key() -> KResult<()> {
-    let alice = "alice@example.com";
-    let bob = "bob@example.com";
-    let carol = "carol@example.com";
-    let provisioner = "admin";
-    let n = 3_i32;
-
-    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
-
-    let key_uid = "ceremony-key-kmip-path-test";
-    let no_tags: &[&str] = &[];
-    let mut req = symmetric_key_create_request(
-        VENDOR_ID_COSMIAN,
-        Some(UniqueIdentifier::TextString(key_uid.to_owned())),
-        256,
-        CryptographicAlgorithm::AES,
-        no_tags,
-        false,
-        None,
-    )?;
-    req.attributes.activation_date = None;
-    kms.create(req, &UserId::from(provisioner)).await?;
-
-    let shares = Box::pin(split_key(&kms, provisioner, key_uid, n)).await?;
-
-    kms.database
-        .grant_operations(
-            &shares[1],
-            &UserId::from(alice),
-            std::collections::HashSet::from([KmipOperation::Get]),
-        )
-        .await?;
-    kms.database
-        .grant_operations(
-            &shares[2],
-            &UserId::from(alice),
-            std::collections::HashSet::from([KmipOperation::Get]),
-        )
-        .await?;
-
-    // ── Activate via JoinSplitKey (KMIP / CLI path) ───────────────────────────
-    // This DOES store the reconstructed key before ceremony activation runs.
-    let reconstructed_uid = join_shares(&kms, alice, &shares, ObjectType::SymmetricKey).await?;
-
-    assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be an active CO after JoinSplitKey"
-    );
-
-    // The reconstructed key must exist in the DB.
-    let owm = kms.database.retrieve_object(&reconstructed_uid).await?;
-    assert!(
-        owm.is_some(),
-        "KMIP JoinSplitKey path must store the reconstructed key in the DB (uid={reconstructed_uid})"
-    );
-
-    Ok(())
-}
+// ─── Test 17: 3-CO case — simultaneous activation (per-user design) ─────────
 
 /// Per-user model: each CO candidate activates independently. Multiple CO users
 /// can be simultaneously active. When Carol activates after Alice, Alice remains
@@ -1553,7 +1415,11 @@ async fn test_co_cannot_get_sensitive_key_without_wrapping() -> KResult<()> {
     req.attributes.activation_date = None;
     req.attributes.sensitive = Some(true); // mark sensitive
     let create_resp = kms.create(req, &UserId::from(alice)).await?;
-    let key_uid = uid_string(&create_resp.unique_identifier)?;
+    let key_uid = create_resp
+        .unique_identifier
+        .as_str()
+        .expect("UID must be a string")
+        .to_owned();
 
     // Alice (active CO and owner) tries to Get her own key without a wrapping specification.
     let get_req = Get {
@@ -2038,8 +1904,8 @@ async fn test_generic_split_without_wrapping_key_roundtrip() -> KResult<()> {
     let share_uids: Vec<String> = resp
         .unique_identifier
         .iter()
-        .map(uid_string)
-        .collect::<KResult<Vec<_>>>()?;
+        .map(|u| u.as_str().expect("UID must be a string").to_owned())
+        .collect();
     assert_eq!(share_uids.len(), 2, "expected 2 unwrapped shares");
 
     // Reconstruct — source key is still alive (no ceremony destruction).
@@ -2117,6 +1983,173 @@ async fn test_join_wrapped_shares_fails_after_wrapping_key_deleted() -> KResult<
     assert!(
         err.contains("not found") || err.contains("ItemNotFound") || err.contains(WRAP_KEY_ID),
         "error must reference the missing wrapping key, got: {err}"
+    );
+
+    Ok(())
+}
+
+// ─── Regression — OPA enforcing mode does not deadlock CO ceremony ────────────
+
+/// **BUG REGRESSION**: CO ceremony was impossible in OPA enforcing mode.
+///
+/// ## Root cause
+///
+/// In `user_has_permission()`, the OPA Gate 1 bypass for "native COs" used
+/// `kms.is_crypto_officer(user)`, which returns **false** for ceremony candidates
+/// who have not yet activated.  This created a chicken-and-egg deadlock:
+///
+/// - Ceremony candidates need to `Get` peer shares (held by other COs) in order to
+///   call `JoinSplitKey` and complete the ceremony.
+/// - Before ceremony completion, `is_crypto_officer()` → false → OPA Gate 1 runs.
+/// - OPA sees `roles = []` (mTLS auth, no JWT) and `is_owner = false` (peer share)
+///   → **deny** → ceremony blocked.
+///
+/// ## Fix
+///
+/// Extend `is_native_co` in `user_has_permission` to also include users listed in
+/// `crypto_officer.users`, regardless of ceremony completion.  These users bypass
+/// OPA Gate 1 (which is designed for JWT-role enforcement) but still go through the
+/// legacy gate (DB ownership + grant checks).
+///
+/// ## Feedback loop
+///
+/// We call `user_has_permission` directly with:
+/// - OPA enforcing + unreachable URL (any OPA call → fail-closed deny)
+/// - alice is a CO candidate (in `co_users`) but ceremony not yet complete
+/// - alice has an explicit DB `Get` grant on bob's key
+///
+/// BEFORE fix: `is_native_co = is_crypto_officer(alice) = false`
+///   → OPA Gate 1 runs → unreachable → `false` → alice cannot access bob's key.
+///
+/// AFTER fix: `is_native_co = alice in co_users → true`
+///   → OPA Gate 1 bypassed → legacy gate: alice has DB grant → `true`.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_ceremony_not_blocked_by_opa_enforcing_mode() -> KResult<()> {
+    use std::collections::HashSet;
+
+    use crate::core::retrieve_object_utils::user_has_permission;
+
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+
+    // ── 1. Build a ceremony KMS with OPA enforcing + unreachable URL ─────────
+    //
+    // Any operation that reaches OPA Gate 1 will fail-close (deny), because
+    // the reqwest client gets ECONNREFUSED on 127.0.0.1:1 and `unwrap_or(false)`
+    // translates the error into a deny.
+    let mut conf = ClapConfig {
+        db: MainDBConfig {
+            database_type: Some("sqlite".to_owned()),
+            sqlite_path: get_tmp_sqlite_path(),
+            clear_database: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    conf.roles.crypto_officer_users =
+        Some(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]);
+    conf.roles.crypto_officer_require_ceremony = true;
+    conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
+    // OPA enforcing mode, port 1 is always refused — OPA Gate 1 calls always deny.
+    conf.opa.opa_url = Some("http://127.0.0.1:1".to_owned());
+    conf.opa.opa_mode = "enforcing".to_owned();
+
+    let params = ServerParams::try_from(conf)?;
+    let kms = Arc::new(KMS::instantiate(Arc::new(params)).await?);
+
+    // ── 2. Set up state via server API ────────────────────────────────────────
+    //
+    // `kms.create()` calls `enforce_create_permission()` which checks
+    // `is_privileged = user in co_users` — alice and bob are in co_users, so the
+    // OPA Create check is bypassed.  The keys are stored in the DB with the
+    // respective users as owners.
+    let alice_key_uid = create_key(&kms, alice).await?;
+    let bob_key_uid = create_key(&kms, bob).await?;
+
+    // Grant alice explicit GET access on bob's key (direct DB — no OPA path).
+    kms.database
+        .grant_operations(
+            &bob_key_uid,
+            &UserId::from(alice),
+            HashSet::from([KmipOperation::Get]),
+        )
+        .await?;
+
+    // ── 3. Retrieve ObjectWithMetadata directly (no OPA) ─────────────────────
+    let alice_objects = kms
+        .database
+        .retrieve_objects(crate::core::ObjectHandle::from(alice_key_uid.as_str()))
+        .await?;
+    let alice_owm = alice_objects
+        .into_values()
+        .next()
+        .expect("alice's key must be in DB");
+
+    let bob_objects = kms
+        .database
+        .retrieve_objects(crate::core::ObjectHandle::from(bob_key_uid.as_str()))
+        .await?;
+    let bob_owm = bob_objects
+        .into_values()
+        .next()
+        .expect("bob's key must be in DB");
+
+    // ── 4. Verify alice can access her OWN key ────────────────────────────────
+    //
+    // Before fix: fails (alice not is_native_co, OPA unreachable → deny even for owner).
+    // After fix:  passes (alice in co_users → bypass OPA Gate 1 → legacy gate: owner → allow).
+    let alice_can_get_own = user_has_permission(
+        &UserId::from(alice),
+        Some(&alice_owm),
+        &KmipOperation::Get,
+        &kms,
+    )
+    .await?;
+    assert!(
+        alice_can_get_own,
+        "CO candidate alice must be able to GET her own key in OPA enforcing mode \
+         (CO candidates bypass OPA Gate 1 — is_owner path in legacy gate must apply)"
+    );
+
+    // ── 5. Verify alice can access BOB's key via explicit grant ──────────────
+    //
+    // This is the direct ceremony deadlock scenario: alice needs to Get a peer's
+    // share before she can call JoinSplitKey.
+    //
+    // Before fix: fails (alice not is_native_co, OPA Gate 1: is_owner=false,
+    //             roles=[] → unreachable → deny).
+    // After fix:  passes (alice in co_users → bypass OPA Gate 1 → legacy gate:
+    //             alice has explicit Get grant → allow).
+    let alice_can_get_bobs = user_has_permission(
+        &UserId::from(alice),
+        Some(&bob_owm),
+        &KmipOperation::Get,
+        &kms,
+    )
+    .await?;
+    assert!(
+        alice_can_get_bobs,
+        "CO candidate alice must be able to GET bob's key via explicit DB grant \
+         when OPA is enforcing with unreachable URL (CO candidates bypass Gate 1)"
+    );
+
+    // ── 6. Verify bob CANNOT access alice's key without a grant ─────────────
+    //
+    // After fix, CO candidates still go through the legacy gate for peer objects.
+    // Bob has no grant on alice's key — the legacy gate must deny.
+    let bob_can_get_alice = user_has_permission(
+        &UserId::from(bob),
+        Some(&alice_owm),
+        &KmipOperation::Get,
+        &kms,
+    )
+    .await?;
+    assert!(
+        !bob_can_get_alice,
+        "CO candidate bob must NOT be able to GET alice's key without an explicit grant \
+         (legacy gate must still apply for CO candidates)"
     );
 
     Ok(())

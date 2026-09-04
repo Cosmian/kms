@@ -528,6 +528,7 @@ impl ObjectsStore for RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
+        _domain: &str,
     ) -> InterfaceResult<String> {
         let (uid, db_object) = self
             .prepare_object_for_create(uid, owner.as_str(), object, attributes, tags)
@@ -558,6 +559,7 @@ impl ObjectsStore for RedisWithFindex {
                     o.owner,
                     o.state,
                     o.attributes.unwrap_or_default(),
+                    String::new(),
                 )
             })
         })?)

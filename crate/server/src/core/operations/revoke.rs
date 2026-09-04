@@ -220,12 +220,6 @@ pub(crate) async fn recursively_revoke_key(
                 // public URL, immediately refresh the CRL so the CDP endpoint serves
                 // an up-to-date list without requiring a manual generate-crl call.
                 // Errors here must never fail the Revoke operation.
-                //
-                // Pass the actual revoking user, not `default_username`: the revoking
-                // user already proved they can access the CA chain (they own or have
-                // Revoke rights on the cert), so they can also read the CA cert and its
-                // private key to sign the CRL.  Using `default_username` caused a silent
-                // permission failure because that user does not own the CA objects.
                 if kms.params.kms_public_url.is_some() {
                     if let Some(issuer_id) = issuer_id {
                         trigger_crl_regeneration(kms, &issuer_id, user).await;
@@ -409,23 +403,30 @@ fn extract_serial_hex_for_ocsp_cache(object: &Object) -> Option<String> {
 /// Trigger CRL regeneration for `issuer_id` after a certificate revocation.
 ///
 /// CRL content is public information (RFC 5280 §3) so no special role is required.
-/// Uses the `revoking_user` identity — the user who just performed the Revoke — because
-/// they have already proven they can access the CA chain (owner or explicit `Revoke`
-/// grant), and therefore have the necessary permissions to read the CA certificate and
-/// its private key for CRL signing.  Using `default_username` caused a silent
-/// permission failure when the CA objects were owned by a different user (e.g., CO).
+/// The signer is the first active Crypto Officer when one exists, because
+/// `generate_crl` gates the `find_all` bypass on the CO role whenever
+/// `crypto_officer.users` is configured. When no CO is configured (or none has
+/// completed the ceremony) the `revoking_user` identity is used instead: that user
+/// has already proven they can access the CA chain (owner or explicit `Revoke`
+/// grant), so they can also read the CA certificate and its private key to sign the
+/// CRL. Using `default_username` caused a silent permission failure when the CA
+/// objects were owned by a different user.
 ///
 /// Errors are logged at `warn` level and never propagated — this must not fail
 /// the parent `Revoke` operation.
 async fn trigger_crl_regeneration(kms: &KMS, issuer_id: &str, revoking_user: &UserId) {
+    let signer = match kms.find_active_co().await {
+        Ok(Some(co)) => co,
+        _ => revoking_user.clone(),
+    };
+
     info!(
         issuer_id = issuer_id,
         "Auto-CRL: triggered CRL regeneration for issuer '{issuer_id}' after certificate revocation"
     );
 
     if let Err(e) =
-        crate::core::operations::generate_crl::generate_crl(kms, issuer_id, None, revoking_user)
-            .await
+        crate::core::operations::generate_crl::generate_crl(kms, issuer_id, None, &signer).await
     {
         warn!(
             issuer_id = issuer_id,

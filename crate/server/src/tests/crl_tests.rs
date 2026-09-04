@@ -39,13 +39,13 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             Certify, Get, GetAttributes, GetAttributesResponse, Revoke, RevokeResponse,
         },
         kmip_types::{
-            CertificateAttributes, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
-            UniqueIdentifier, VendorAttribute, VendorAttributeValue,
+            CertificateAttributes, CertificateRequestType, CryptographicAlgorithm, Link, LinkType,
+            LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute, VendorAttributeValue,
         },
     },
 };
-use openssl::x509::X509Crl;
-use x509_parser::prelude::{CertificateRevocationList, FromDer};
+use openssl::x509::{X509Crl, X509NameBuilder, X509ReqBuilder};
+use x509_parser::prelude::{CertificateRevocationList, FromDer, X509Certificate};
 
 use crate::{
     config::ServerParams,
@@ -55,16 +55,6 @@ use crate::{
     result::KResult,
     tests::test_utils::{https_clap_config, https_clap_config_opts, setup_app},
 };
-
-trait TestUserIdExt {
-    fn new(value: impl Into<String>) -> Self;
-}
-
-impl TestUserIdExt for UserId {
-    fn new(value: impl Into<String>) -> Self {
-        Self::try_new(value).expect("test user ID should be valid")
-    }
-}
 
 // ── Extension strings ────────────────────────────────────────────────────────
 
@@ -1450,5 +1440,190 @@ async fn test_crl_counting_revoked_certs_with_co() -> KResult<()> {
             "CO final: serial of co_leaf_{i} must be present in the final CRL"
         );
     }
+    Ok(())
+}
+
+// ── CSR-based Certify with TTL ────────────────────────────────────────────────
+//
+// Regression tests for the SPIRE / kmip-go limitation documented at
+// https://github.com/spiffe/spire/pull/7235#discussion_r3829548963
+//
+// The Eviden KMS already honours the `requested_validity_days` vendor attribute
+// on CSR-based Certify requests. These tests lock that behaviour in place so
+// that future refactors cannot accidentally regress it.
+
+/// Build a self-signed PKCS#10 CSR (PEM-encoded) for testing.
+///
+/// Uses RSA-2048 so the test runs in both FIPS and non-FIPS modes.
+/// Returns the PEM bytes of the CSR (not the private key — the KMS signs
+/// the certificate with the issuer's key, not the subject's key).
+fn generate_test_csr(cn: &str) -> Vec<u8> {
+    use openssl::{hash::MessageDigest, pkey::PKey, rsa::Rsa};
+
+    let rsa = Rsa::generate(2048).expect("RSA key");
+    let pkey = PKey::from_rsa(rsa).expect("PKey");
+
+    let mut name = X509NameBuilder::new().expect("X509NameBuilder");
+    name.append_entry_by_text("C", "FR").expect("C");
+    name.append_entry_by_text("O", "KMS Test").expect("O");
+    name.append_entry_by_text("CN", cn).expect("CN");
+    let name = name.build();
+
+    let mut builder = X509ReqBuilder::new().expect("X509ReqBuilder");
+    builder.set_pubkey(&pkey).expect("set pubkey");
+    builder.set_subject_name(&name).expect("set subject name");
+    builder
+        .sign(&pkey, MessageDigest::sha256())
+        .expect("sign CSR");
+
+    builder.build().to_pem().expect("CSR to PEM")
+}
+
+/// CSR-based `Certify` with `requested_validity_days` vendor attribute must
+/// produce a certificate whose `not_after` matches the requested TTL, **not**
+/// the server default (365 days).
+///
+/// This is the positive regression test: the vendor attribute already works;
+/// this test makes it impossible to regress silently.
+#[tokio::test]
+async fn test_certify_from_csr_with_requested_validity_days() -> KResult<()> {
+    const TTL_DAYS: i32 = 30;
+    let kms = make_kms().await?;
+    let owner = UserId::new("csr_ttl_owner");
+
+    // 1. Create a root CA with cRLSign so CRL generation also works.
+    let (ca_id, ca_sk_id) = certify(&kms, &owner, "CSR-TTL Root CA", None, None, CA_EXT).await?;
+
+    // 2. Generate a CSR signed by a fresh local RSA key.
+    let csr_pem = generate_test_csr("CSR-TTL Subject");
+
+    // 3. Certify the CSR with a 30-day TTL via the `requested_validity_days`
+    //    vendor attribute — the path SPIRE/kmip-go uses.
+    let attrs = Attributes {
+        link: Some(vec![
+            Link {
+                link_type: LinkType::PrivateKeyLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(ca_sk_id),
+            },
+            Link {
+                link_type: LinkType::CertificateLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(ca_id),
+            },
+        ]),
+        vendor_attributes: Some(vec![VendorAttribute {
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            attribute_name: "requested_validity_days".to_owned(),
+            attribute_value: VendorAttributeValue::Integer(TTL_DAYS),
+        }]),
+        ..Attributes::default()
+    };
+    let cert_id = kms
+        .certify(
+            Certify {
+                certificate_request_type: Some(CertificateRequestType::PEM),
+                certificate_request_value: Some(csr_pem),
+                attributes: Some(attrs),
+                ..Certify::default()
+            },
+            &owner,
+        )
+        .await?
+        .unique_identifier
+        .to_string();
+
+    // 4. Retrieve and parse the issued certificate.
+    let cert_der = get_cert_der(&kms, &owner, &cert_id).await;
+    let (_, cert) = X509Certificate::from_der(&cert_der).expect("issued cert must parse as X.509");
+
+    // 5. Assert `not_after ≈ now + TTL_DAYS` (±1 day tolerance for CI timing).
+    let not_after = cert.validity().not_after.timestamp();
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time")
+        .as_secs();
+    let now = i64::try_from(now_secs).unwrap_or(i64::MAX);
+    let actual_days = (not_after - now) / 86_400;
+    let ttl_i64 = i64::from(TTL_DAYS);
+
+    assert!(
+        (ttl_i64 - 1..=ttl_i64 + 1).contains(&actual_days),
+        "CSR-based Certify with requested_validity_days={TTL_DAYS}: \
+         expected not_after ≈ {TTL_DAYS} days from now, got {actual_days} days"
+    );
+
+    // 6. The subject CN must come from the CSR, not from request attributes.
+    let cn = cert
+        .subject()
+        .iter_common_name()
+        .next()
+        .and_then(|cn| cn.as_str().ok())
+        .unwrap_or("");
+    assert_eq!(
+        cn, "CSR-TTL Subject",
+        "subject CN must be taken from the CSR, not from request attributes"
+    );
+
+    Ok(())
+}
+
+/// CSR-based `Certify` with **no** `requested_validity_days` attribute falls
+/// back to the server default of 365 days.
+///
+/// This test is the counterpart of `test_certify_from_csr_with_requested_validity_days`:
+/// it ensures the default path is not inadvertently affected when the optional
+/// TTL attribute is absent.
+#[tokio::test]
+async fn test_certify_from_csr_default_validity() -> KResult<()> {
+    let kms = make_kms().await?;
+    let owner = UserId::new("csr_default_owner");
+
+    let (ca_id, ca_sk_id) =
+        certify(&kms, &owner, "CSR-Default Root CA", None, None, CA_EXT).await?;
+
+    let csr_pem = generate_test_csr("CSR-Default Subject");
+
+    let attrs = Attributes {
+        link: Some(vec![
+            Link {
+                link_type: LinkType::PrivateKeyLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(ca_sk_id),
+            },
+            Link {
+                link_type: LinkType::CertificateLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(ca_id),
+            },
+        ]),
+        ..Attributes::default()
+    };
+    let cert_id = kms
+        .certify(
+            Certify {
+                certificate_request_type: Some(CertificateRequestType::PEM),
+                certificate_request_value: Some(csr_pem),
+                attributes: Some(attrs),
+                ..Certify::default()
+            },
+            &owner,
+        )
+        .await?
+        .unique_identifier
+        .to_string();
+
+    let cert_der = get_cert_der(&kms, &owner, &cert_id).await;
+    let (_, cert) = X509Certificate::from_der(&cert_der).expect("issued cert must parse as X.509");
+
+    let not_after = cert.validity().not_after.timestamp();
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time")
+        .as_secs();
+    let now = i64::try_from(now_secs).unwrap_or(i64::MAX);
+    let actual_days = (not_after - now) / 86_400;
+
+    assert!(
+        (364..=366).contains(&actual_days),
+        "CSR-based Certify with no TTL attribute must default to ~365 days, got {actual_days} days"
+    );
+
     Ok(())
 }

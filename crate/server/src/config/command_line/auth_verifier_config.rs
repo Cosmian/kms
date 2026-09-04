@@ -1,5 +1,36 @@
 use clap::Args;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
+
+/// Deserialize `auth_verifier_realm` accepting both a single string and a list.
+///
+/// ```toml
+/// auth_verifier_realm = "acme.com"                    # still works
+/// auth_verifier_realm = ["acme.com", "partner.com"]   # new multi-realm form
+/// ```
+fn deserialize_realm_list<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrList {
+        One(String),
+        Many(Vec<String>),
+    }
+
+    let opt: Option<StringOrList> = Option::deserialize(deserializer)?;
+    match opt {
+        None => Ok(None),
+        Some(StringOrList::One(s)) if s.is_empty() => {
+            Err(de::Error::custom("auth_verifier_realm must not be empty"))
+        }
+        Some(StringOrList::One(s)) => Ok(Some(vec![s])),
+        Some(StringOrList::Many(v)) if v.is_empty() => Err(de::Error::custom(
+            "auth_verifier_realm list must not be empty",
+        )),
+        Some(StringOrList::Many(v)) => Ok(Some(v)),
+    }
+}
 
 /// Configuration for the Auth Verifier server (server-side).
 ///
@@ -35,14 +66,29 @@ pub struct AuthVerifierConfig {
     #[clap(long, env = "KMS_AUTH_VERIFIER_JWKS_URI", verbatim_doc_comment)]
     pub auth_verifier_jwks_uri: Option<String>,
 
-    /// Realm to authenticate the Web UI against on the Auth Verifier server.
+    /// Realm(s) to authenticate the Web UI against on the Auth Verifier server.
     ///
     /// Required only to enable the Web UI login form for the Auth Verifier
     /// server (`POST /ui/login_as`); bearer-token validation of already-issued tokens
     /// does not need a realm. When unset, the UI falls back to any other configured
     /// authentication method (OIDC/JWT or client certificate).
+    ///
+    /// Accepts a single realm name or a list:
+    ///
+    /// ```toml
+    /// auth_verifier_realm = "acme.com"                    # single realm
+    /// auth_verifier_realm = ["acme.com", "partner.com"]   # multi-realm
+    /// ```
+    ///
+    /// When multiple realms are configured the Web UI shows a realm selector before
+    /// the username/password form.
     #[clap(long, env = "KMS_AUTH_VERIFIER_REALM", verbatim_doc_comment)]
-    pub auth_verifier_realm: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_realm_list",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub auth_verifier_realm: Option<Vec<String>>,
 
     /// Accept invalid or self-signed TLS certificates when fetching the JWKS.
     ///
@@ -64,11 +110,30 @@ impl AuthVerifierConfig {
     }
 
     /// Returns `true` if the Web UI login form for the Auth Verifier server
-    /// should be enabled, i.e. both `auth_verifier_url` and `auth_verifier_realm`
+    /// should be enabled, i.e. both `auth_verifier_url` and at least one realm
     /// are configured.
     #[must_use]
-    pub const fn ui_login_enabled(&self) -> bool {
-        self.auth_verifier_url.is_some() && self.auth_verifier_realm.is_some()
+    pub fn ui_login_enabled(&self) -> bool {
+        self.auth_verifier_url.is_some()
+            && self
+                .auth_verifier_realm
+                .as_ref()
+                .is_some_and(|v| !v.is_empty())
+    }
+
+    /// Returns the list of configured realms, or an empty slice when none are set.
+    #[must_use]
+    pub fn realms(&self) -> &[String] {
+        self.auth_verifier_realm.as_deref().unwrap_or(&[])
+    }
+
+    /// Returns the first configured realm, used as the default when the UI does
+    /// not specify one explicitly.
+    #[must_use]
+    pub fn primary_realm(&self) -> Option<&str> {
+        self.auth_verifier_realm
+            .as_ref()
+            .and_then(|v| v.first().map(String::as_str))
     }
 
     /// Returns the effective JWKS URI:
@@ -147,23 +212,63 @@ mod tests {
         cfg.auth_verifier_url = Some("https://auth.example.com".to_owned());
         assert!(!cfg.ui_login_enabled());
 
-        cfg.auth_verifier_realm = Some("kms".to_owned());
+        // Single realm via vec
+        cfg.auth_verifier_realm = Some(vec!["kms".to_owned()]);
         assert!(cfg.ui_login_enabled());
+        assert_eq!(cfg.realms(), &["kms"]);
+        assert_eq!(cfg.primary_realm(), Some("kms"));
+
+        // Multiple realms
+        cfg.auth_verifier_realm = Some(vec!["acme.com".to_owned(), "partner.com".to_owned()]);
+        assert!(cfg.ui_login_enabled());
+        assert_eq!(cfg.realms(), &["acme.com", "partner.com"]);
+        assert_eq!(cfg.primary_realm(), Some("acme.com"));
     }
 
-    /// Verify that the `auth_verifier.toml` test config parses correctly and
+    #[test]
+    #[allow(clippy::panic_in_result_fn)]
+    fn test_realm_deserializes_single_string() -> Result<(), Box<dyn std::error::Error>> {
+        let toml = r#"
+            auth_verifier_url = "https://auth.example.com"
+            auth_verifier_realm = "acme.com"
+        "#;
+        let cfg: AuthVerifierConfig = toml::from_str(toml)?;
+        assert_eq!(cfg.realms(), &["acme.com"]);
+        assert!(cfg.ui_login_enabled());
+        Ok(())
+    }
+
+    #[test]
+    #[allow(clippy::panic_in_result_fn)]
+    fn test_realm_deserializes_list() -> Result<(), Box<dyn std::error::Error>> {
+        let toml = r#"
+            auth_verifier_url = "https://auth.example.com"
+            auth_verifier_realm = ["acme.com", "partner.com"]
+        "#;
+        let cfg: AuthVerifierConfig = toml::from_str(toml)?;
+        assert_eq!(cfg.realms(), &["acme.com", "partner.com"]);
+        assert_eq!(cfg.primary_realm(), Some("acme.com"));
+        assert!(cfg.ui_login_enabled());
+        Ok(())
+    }
+
+    /// Verify that the canonical `[auth_verifier]` section parses correctly and
     /// enables both bearer-token validation and the Web UI login form.
+    ///
+    /// The TOML is inlined here to keep the test self-contained; it mirrors
+    /// `test_data/configs/server/auth/auth_verifier.toml` which is in a submodule
+    /// not checked out during unit-test CI runs.
     #[test]
     #[allow(clippy::panic_in_result_fn)]
     fn test_auth_verifier_toml_config_parses() -> Result<(), Box<dyn std::error::Error>> {
-        let config_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../test_data/configs/server/auth/verifier.toml");
-        let toml_content = std::fs::read_to_string(&config_path)
-            .map_err(|e| format!("failed to read {}: {e}", config_path.display()))?;
+        let toml_content = r#"
+[auth_verifier]
+auth_verifier_url = "https://localhost:8443"
+auth_verifier_accept_invalid_certs = true
+auth_verifier_realm = "_"
+"#;
 
-        // Extract just the [auth_verifier] section and parse it.
-        let parsed: toml::Value = toml::from_str(&toml_content)?;
-
+        let parsed: toml::Value = toml::from_str(toml_content)?;
         let auth_section = parsed
             .get("auth_verifier")
             .ok_or("missing [auth_verifier] section")?;
@@ -179,7 +284,7 @@ mod tests {
             cfg.auth_verifier_url.as_deref(),
             Some("https://localhost:8443")
         );
-        assert_eq!(cfg.auth_verifier_realm.as_deref(), Some("_"));
+        assert_eq!(cfg.primary_realm(), Some("_"));
         assert!(cfg.auth_verifier_accept_invalid_certs);
         assert_eq!(
             cfg.jwks_uri().as_deref(),

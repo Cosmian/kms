@@ -57,7 +57,6 @@ Crate path: `crate/server`
 | `warn` | `SigV4 failure: {signature_error}` | `src/routes/aws_xks/sigv4_middleware.rs` | `signature_error`: SigV4 signature validation error | - |
 | `warn` | `Socket server: connection failed: {e}` | `src/socket_server.rs` | `e`: caught error | - |
 | `warn` | `UI folder invalid or Linux default detected, falling back to: {fallback:#?}` | `src/config/params/server_params.rs` | `fallback`: fallback UI folder path | - |
-| `warn` | `{:?} {} 401 unauthorized, no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
 | `warn` | `{:?} {} 401 unauthorized: bad JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
 | `warn` | `{error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | - |
 | `warn` | `{status_code} - {message}` | `src/routes/mod.rs` | `status_code`: HTTP status code<br>`message`: human-readable message text | - |
@@ -198,7 +197,6 @@ Crate path: `crate/server`
 | `debug` | `Imported object with uid: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing leaf certificate with attributes: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing PKCS12: private_key_id={:?}, leaf_certificate_id={:?}, chain={:?}` | `src/core/operations/import.rs` | - | - |
-| `debug` | `JWT Access granted to {email}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `email`: user email address | - |
 | `debug` | `JWT authentication failed: {e:?}` | `src/middlewares/jwt/jwt_middleware.rs` | `e`: caught error | - |
 | `debug` | `Key successfully unwrapped with wrapping key: {}` | `src/core/wrapping/unwrap.rs` | - | - |
 | `debug` | `Key wrap type: {:?}` | `src/core/operations/export_get.rs` | - | - |
@@ -690,7 +688,6 @@ Crate path: `crate/server`
 | `error` | `JoinSplitKey: CO ceremony activation failed — rolling back                      reconstructed key from DB` | `src/core/operations/join_split_key.rs` | `uid` (reconstructed key UID), `user`, `session_id`, `error` (activation error) | Audit — compensating delete triggered; activation failure made the ceremony invalid; key is being removed |
 | `error` | `JoinSplitKey: CRITICAL — reconstructed key rollback failed;                          orphaned key remains in DB, manual cleanup required` | `src/core/operations/join_split_key.rs` | `uid` (orphaned key UID), `user`, `session_id`, `rollback_error` (delete error) | CRITICAL audit — DB is in inconsistent state; manual deletion of the `uid` object is required; alert SIEM |
 | `warn` | `` `force_default_username = true` combined with `privileged_users` is                      deprecated and will become an error in a future release. All requests run                      under the same identity, making Crypto Officer dual-control meaningless.                      Please migrate to `[roles] crypto_officer_users` and remove                      `force_default_username`. `` | `src/config/params/server_params.rs` | - | - |
-| `info` | `ceremony sealing key loaded from object store` | `src/core/kms/mod.rs` | - | - |
 | `warn` | `[{idx}] CRL distribution point unreachable for '{:?}', skipping                          revocation check: {e}` | `src/core/operations/validate.rs` | `idx`, `e` | - |
 | `warn` | `CRL signature could not be verified against chain issuers;                          issuer: {crl_issuer:?}, path: {crl_path}.                          Continuing (trusted local delivery).` | `src/core/operations/validate.rs` | `crl_issuer`, `crl_path` | - |
 | `warn` | `CRL validation failed: {crl_err}` | `src/core/operations/validate.rs` | `crl_err` | - |
@@ -705,6 +702,7 @@ Crate path: `crate/server`
 | `error` (audit) | `CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)` | `src/core/operations/generate_crl.rs` | `user`, `issuer_id` | Emitted every time a CO generates a CRL; always visible regardless of `RUST_LOG`. |
 | `info` | `Auto-CRL: triggered CRL regeneration for issuer '{issuer_id}' after certificate revocation` | `src/core/operations/revoke.rs` | `issuer_id`, `user` | Emitted on every successful auto-regen trigger. |
 | `warn` | `Auto-CRL: CRL regeneration failed for issuer '{issuer_id}': {e}` | `src/core/operations/revoke.rs` | `issuer_id`, `e` | Signing or DB error during auto-regen; Revoke still succeeds. |
+| `error` (audit) | `CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)` | `src/core/operations/generate_crl.rs` | `user`, `issuer_id` | Emitted every time a CO generates a CRL; always visible regardless of `RUST_LOG`. |
 | `trace` | `Found {} revoked certificate(s) for issuer '{}'` | `src/core/operations/generate_crl.rs` | - | - |
 | `trace` | `Skipping certificate '{}': cannot parse DER: {e}` | `src/core/operations/generate_crl.rs` | `e` | - |
 | `warn` | `Failed to load CRL from database for issuer '{issuer_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_id`, `e` | - |
@@ -717,6 +715,15 @@ Crate path: `crate/server`
 | `debug` | `[crl-refresh-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
 | `debug` | `[kms-init] Failed to read max CRL number from DB: {e};                          using unix timestamp as CRL counter seed` | `src/core/kms/mod.rs` | `e` | - |
 | `trace` | `Sorted candidate mismatch: cert AKI={}, SKI={}, sorted SKI={}, AKI={}` | `src/core/operations/validate.rs` | - | - |
+| `error` | `CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)` | `src/core/operations/generate_crl.rs` | - | - |
+| `warn` | `OPA request failed (fail-closed deny): {e}` | `src/core/opa/client.rs` | `e` | - |
+| `warn` | `OPA response parse failed (fail-closed deny): {e}` | `src/core/opa/client.rs` | `e` | - |
+| `warn` | `OPA returned non-2xx (fail-closed deny): {status} — {body_text}` | `src/core/opa/client.rs` | `status`, `body_text` | - |
+| `warn` | `{:?} {} 401 unauthorized, no email or sub in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
+| `debug` | `JWT Access granted to {username}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `username` | - |
+| `trace` | `OPA enforcing decision for user={} op={} obj={}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
+| `trace` | `OPA exclusive decision for user={} op={} obj={}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
+| `info` | `ceremony sealing key loaded from object store` | `src/core/kms/mod.rs` | `ceremony_key_id`: KMS UID of the AES-256 ceremony sealing key | Confirms the sealing key was loaded successfully; key material is never logged. |
 | `info` | `GET /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `info` | `POST /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
