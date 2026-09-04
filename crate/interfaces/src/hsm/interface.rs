@@ -19,8 +19,53 @@ pub enum HsmKeyAlgorithm {
 }
 
 /// Supported key pair algorithms
+#[derive(Debug, Clone, Copy)]
 pub enum HsmKeypairAlgorithm {
     RSA,
+    /// Elliptic Curve. The specific FIPS-approved NIST curve (P-224/P-256/P-384/P-521) is
+    /// selected via the `key_length_in_bits` parameter of `HSM::create_keypair`, mirroring how
+    /// RSA selects its modulus size, so no new parameter is added to the trait.
+    EC,
+}
+
+/// FIPS-approved NIST elliptic curves supported for HSM-delegated EC key generation and ECDSA
+/// signing. Only prime curves over `GF(p)` are supported, matching the software EC key
+/// generation gating in `crate::crypto::elliptic_curves::operation` (`P192`/`SECP256K1`/
+/// `SECP224K1` remain non-fips-only and are intentionally not exposed for HSM delegation).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EcCurve {
+    P224,
+    P256,
+    P384,
+    P521,
+}
+
+impl EcCurve {
+    /// Select a curve from a requested key length in bits, mirroring the RSA key-size
+    /// selection convention used by `HSM::create_keypair`.
+    pub fn from_key_length_in_bits(key_length_in_bits: usize) -> InterfaceResult<Self> {
+        match key_length_in_bits {
+            224 => Ok(Self::P224),
+            256 => Ok(Self::P256),
+            384 => Ok(Self::P384),
+            521 => Ok(Self::P521),
+            x => Err(InterfaceError::Default(format!(
+                "Invalid key length: {x} bits, for an HSM EC key (valid values are 224, 256, \
+                 384, 521)"
+            ))),
+        }
+    }
+
+    /// The curve's field size, in bits (matches the `key_length_in_bits` used to select it).
+    #[must_use]
+    pub const fn key_length_in_bits(self) -> usize {
+        match self {
+            Self::P224 => 224,
+            Self::P256 => 256,
+            Self::P384 => 384,
+            Self::P521 => 521,
+        }
+    }
 }
 
 /// Supported object filters on find
@@ -31,6 +76,9 @@ pub enum HsmObjectFilter {
     RsaKey,
     RsaPrivateKey,
     RsaPublicKey,
+    EcKey,
+    EcPrivateKey,
+    EcPublicKey,
 }
 
 impl TryFrom<&Attributes> for HsmObjectFilter {
@@ -43,6 +91,7 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
             match cryptographic_algorithm {
                 CryptographicAlgorithm::AES => Self::AesKey,
                 CryptographicAlgorithm::RSA => Self::RsaKey,
+                CryptographicAlgorithm::EC | CryptographicAlgorithm::ECDSA => Self::EcKey,
                 _ => {
                     return Err(InterfaceError::Default(format!(
                         "Unsupported cryptographic algorithm for HSMs: {cryptographic_algorithm}"
@@ -56,9 +105,9 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
         if let Some(object_type) = researched_attributes.object_type {
             object_filter = match object_type {
                 ObjectType::SymmetricKey => {
-                    if object_filter == Self::RsaKey {
+                    if object_filter == Self::RsaKey || object_filter == Self::EcKey {
                         return Err(InterfaceError::Default(
-                            "Incompatible object type: SymmetricKey with RSA".to_owned(),
+                            "Incompatible object type: SymmetricKey with RSA/EC".to_owned(),
                         ));
                     }
                     Self::AesKey
@@ -69,7 +118,11 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
                             "Incompatible object type: PublicKey with AES".to_owned(),
                         ));
                     }
-                    Self::RsaPublicKey
+                    if object_filter == Self::EcKey {
+                        Self::EcPublicKey
+                    } else {
+                        Self::RsaPublicKey
+                    }
                 }
                 ObjectType::PrivateKey => {
                     if object_filter == Self::AesKey {
@@ -77,7 +130,11 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
                             "Incompatible object type: PrivateKey with AES".to_owned(),
                         ));
                     }
-                    Self::RsaPrivateKey
+                    if object_filter == Self::EcKey {
+                        Self::EcPrivateKey
+                    } else {
+                        Self::RsaPrivateKey
+                    }
                 }
                 _ => {
                     return Err(InterfaceError::Default(format!(
@@ -113,12 +170,30 @@ pub struct RsaPublicKeyMaterial {
     pub public_exponent: Vec<u8>,
 }
 
+/// EC private key value representation.
+/// `d` is the private scalar in big-endian format; `curve` identifies the NIST curve.
+#[derive(Debug)]
+pub struct EcPrivateKeyMaterial {
+    pub curve: EcCurve,
+    pub d: Zeroizing<Vec<u8>>,
+}
+
+/// EC public key value representation.
+/// `q` is the public point in uncompressed X9.62 format (`0x04 || X || Y`).
+#[derive(Debug)]
+pub struct EcPublicKeyMaterial {
+    pub curve: EcCurve,
+    pub q: Vec<u8>,
+}
+
 /// Key material representation
 #[derive(Debug)]
 pub enum KeyMaterial {
     AesKey(Zeroizing<Vec<u8>>),
     RsaPrivateKey(RsaPrivateKeyMaterial),
     RsaPublicKey(RsaPublicKeyMaterial),
+    EcPrivateKey(EcPrivateKeyMaterial),
+    EcPublicKey(EcPublicKeyMaterial),
 }
 
 /// HSM object representation

@@ -293,6 +293,22 @@ The symmetric key was successfully generated.
    Unique identifier: hsm::4::my_aes_key
 ```
 
+!!! info HSM-delegated EC key generation
+    Elliptic curve key pairs can also be created directly on the HSM, using the same `ec keys
+    create` CLI command as for software keys. The four NIST curves supported by the HSM
+    integration are P-224, P-256 (default), P-384, and P-521 — the same curves accepted by
+    `--curve nist-p224/nist-p256/nist-p384/nist-p521`. Non-NIST curves (Ed25519, X25519, Ed448,
+    X448, secp256k1, secp224k1) are not supported by the HSM delegation and remain software-only.
+
+Create an EC P-384 key pair on HSM slot 4, with the KMS CLI:
+
+```shell
+❯ ckms ec keys create --curve nist-p384 hsm::4::my_ec_key
+The EC key pair has been created.
+      Public key unique identifier: hsm::4::my_ec_key_pk
+      Private key unique identifier: hsm::4::my_ec_key
+```
+
 HSM keys are always created with `CKA_SENSITIVE=true` (private/symmetric key material cannot be
 exported). Pass `--sensitive false` explicitly only if you intentionally need an extractable key.
 
@@ -490,8 +506,8 @@ The decrypted file is available at "/tmp/secret.recovered.txt"
 
 ### Sign
 
-RSA private keys can be used to sign data. Only HSM admin users, or a user granted the `Sign`
-operation by an HSM admin, can sign data with keys stored in the HSM.
+RSA and EC private keys can be used to sign data. Only HSM admin users, or a user granted the
+`Sign` operation by an HSM admin, can sign data with keys stored in the HSM.
 
 Two families of RSA signing mechanisms are supported:
 
@@ -519,8 +535,32 @@ The signature is available at "/tmp/secret.sig"
     `C_Sign` via `CK_RSA_PKCS_PSS_PARAMS`. This is purely additive: existing PKCS#1 v1.5 and
     OAEP mechanisms, key types, and HSM vendor loaders are unaffected. See
     [ADR-2026-09-05](../adr/2026-09-05-hsm-track-a-rsa-pss-scope-decision.md) for the scope
-    decision (EC key generation, ECDSA signing, and HSM-delegated PBKDF2 derivation are tracked
-    as separate follow-up work).
+    decision.
+
+ECDSA signing over an HSM-resident EC private key uses the same `ec sign` CLI command as the
+software signing path. The hashing algorithm (SHA-256/384/512) is selected from the KMIP request
+and dispatched to `C_Sign` with `CKM_ECDSA_SHA{256,384,512}`.
+
+To sign a file with the HSM-resident EC private key `hsm::4::my_ec_key`, the following command
+can be used:
+
+```shell
+❯ ckms ec sign --key-id hsm::4::my_ec_key -o /tmp/secret.sig /tmp/secret.txt
+The signature is available at "/tmp/secret.sig"
+```
+
+!!! info HSM-delegated ECDSA signing
+    ECDSA signing over HSM-resident EC keys is delegated end-to-end to the PKCS#11 device: the
+    private key never leaves the HSM. PKCS#11 ECDSA signatures are the raw, fixed-length `r‖s`
+    concatenation; the KMS converts this to the DER `SEQUENCE { r, s }` encoding expected
+    elsewhere in the codebase before returning the signature. ECDSA is a randomized scheme:
+    signing the same data twice with the same key produces two different, independently
+    verifiable signatures. This is purely additive: existing RSA signing mechanisms, key types,
+    and HSM vendor loaders are unaffected. See
+    [ADR-2026-09-06](../adr/2026-09-06-hsm-track-a-ec-ecdsa-completion-pbkdf2-deferral.md) for
+    implementation details and the PBKDF2 deferral rationale (SoftHSM2, the only backend
+    available for end-to-end validation in this environment, does not implement
+    `CKM_PKCS5_PBKD2`).
 
 ## PKCS#11 protocol version compatibility
 
