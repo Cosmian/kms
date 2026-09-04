@@ -4,7 +4,9 @@ import { Trans, useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import {
     create_secret_data_ttlv_request,
+    derive_key_asymmetric_ttlv_request,
     derive_key_ttlv_request,
+    parse_derive_key_asymmetric_ttlv_response,
     parse_derive_key_ttlv_response,
     parse_import_ttlv_response,
 } from "../../wasm/pkg";
@@ -41,7 +43,7 @@ interface DeriveKeyFormData {
     sourceType: "key_id" | "password";
     keyId?: string;
     password?: string;
-    derivationMethod: "PBKDF2" | "HKDF";
+    derivationMethod: "PBKDF2" | "HKDF" | "X25519";
     salt: string;
     iterationCount: number;
     initializationVector?: string;
@@ -49,6 +51,9 @@ interface DeriveKeyFormData {
     symmetricAlgorithm: string;
     cryptographicLength: number;
     derivedKeyId?: string;
+    // X25519 ECDH (asymmetric) fields
+    privateKeyId?: string;
+    peerPublicKeyId?: string;
 }
 
 type ImportResponse = { UniqueIdentifier: string };
@@ -60,9 +65,28 @@ const DeriveKeyForm: React.FC = () => {
     const { t } = useTranslation("actions");
     const sourceType = Form.useWatch("sourceType", form);
     const derivationMethod = Form.useWatch("derivationMethod", form);
+    const isAsymmetric = derivationMethod === "X25519";
 
     const onFinish = async (values: DeriveKeyFormData) => {
         await execute(async () => {
+            if (isAsymmetric) {
+                if (!values.privateKeyId) throw new Error(t("deriveKey.privateKeyIdRequired"));
+                if (!values.peerPublicKeyId) throw new Error(t("deriveKey.peerPublicKeyIdRequired"));
+
+                const request = derive_key_asymmetric_ttlv_request(
+                    values.privateKeyId,
+                    values.peerPublicKeyId,
+                    values.derivedKeyId || null,
+                );
+
+                const resultStr = await sendKmipRequest(request, serverUrl);
+                if (resultStr) {
+                    const result: DeriveKeyResponse = await parse_derive_key_asymmetric_ttlv_response(resultStr);
+                    return t("deriveKey.success", { keyId: result.UniqueIdentifier });
+                }
+                return;
+            }
+
             let baseKeyId: string;
 
             if (values.sourceType === "password") {
@@ -118,6 +142,9 @@ const DeriveKeyForm: React.FC = () => {
                         <Trans ns="actions" i18nKey="deriveKey.introPassword" components={{ strong: <strong /> }} />
                     </li>
                     <li>{t("deriveKey.introSalt")}</li>
+                    <li>
+                        <Trans ns="actions" i18nKey="deriveKey.introX25519" components={{ strong: <strong /> }} />
+                    </li>
                 </ul>
             </div>
 
@@ -135,133 +162,175 @@ const DeriveKeyForm: React.FC = () => {
                 }}
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
-                    {/* Source */}
-                    <Card title={t("deriveKey.sourceCard")}>
-                        <Form.Item name="sourceType" label={t("deriveKey.sourceType")}>
-                            <Radio.Group>
-                                <Radio value="key_id">{t("deriveKey.existingKeyId")}</Radio>
-                                <Radio value="password">{t("deriveKey.password")}</Radio>
-                            </Radio.Group>
-                        </Form.Item>
-
-                        {sourceType === "key_id" && (
-                            <KeyIdInput
-                                form={form}
-                                fieldName="keyId"
-                                label={t("common:keyId")}
-                                help={t("deriveKey.keyIdHelp")}
-                                rules={[{ required: true, message: t("deriveKey.pleaseEnterSourceKeyId") }]}
-                                placeholder={t("deriveKey.enterSourceKeyId")}
-                            />
-                        )}
-
-                        {sourceType === "password" && (
-                            <Form.Item
-                                name="password"
-                                label={t("deriveKey.password")}
-                                rules={[{ required: true, message: t("deriveKey.pleaseEnterPassword") }]}
-                                help={t("deriveKey.passwordHelp")}
-                            >
-                                <Input.Password placeholder={t("deriveKey.enterPassword")} />
-                            </Form.Item>
-                        )}
-                    </Card>
-
-                    {/* Derivation parameters */}
-                    <Card title={t("deriveKey.paramsCard")}>
+                    {/* Derivation method */}
+                    <Card title={t("deriveKey.methodCard")}>
                         <Form.Item name="derivationMethod" label={t("deriveKey.derivationMethod")}>
                             <Radio.Group>
-                                <Radio value="PBKDF2">PBKDF2</Radio>
-                                <Radio value="HKDF">HKDF</Radio>
+                                <Radio value="PBKDF2" data-testid="derivation-method-pbkdf2">
+                                    PBKDF2
+                                </Radio>
+                                <Radio value="HKDF" data-testid="derivation-method-hkdf">
+                                    HKDF
+                                </Radio>
+                                <Radio value="X25519" data-testid="derivation-method-x25519">
+                                    {t("deriveKey.x25519Method")}
+                                </Radio>
                             </Radio.Group>
                         </Form.Item>
-
-                        <Form.Item
-                            name="salt"
-                            label={t("deriveKey.salt")}
-                            rules={[
-                                { required: true, message: t("deriveKey.pleaseEnterSalt") },
-                                {
-                                    pattern: HEX_PATTERN,
-                                    message: t("deriveKey.saltHexError"),
-                                },
-                                {
-                                    validator: (_, value: string) =>
-                                        value && value.length % 2 !== 0
-                                            ? Promise.reject(new Error(t("deriveKey.saltEvenError")))
-                                            : Promise.resolve(),
-                                },
-                            ]}
-                            help={t("deriveKey.saltHelp")}
-                        >
-                            <Input placeholder={t("deriveKey.saltPlaceholder")} />
-                        </Form.Item>
-
-                        {derivationMethod === "PBKDF2" && (
-                            <Form.Item
-                                name="iterationCount"
-                                label={t("deriveKey.iterationCount")}
-                                help={t("deriveKey.iterationCountHelp")}
-                                rules={[{ required: true, message: t("deriveKey.pleaseEnterIterationCount") }]}
-                            >
-                                <InputNumber min={1} style={{ width: "100%" }} />
-                            </Form.Item>
-                        )}
-
-                        <Form.Item
-                            name="initializationVector"
-                            label={t("deriveKey.initializationVector")}
-                            rules={[
-                                {
-                                    pattern: /^([0-9a-fA-F]{2})*$/,
-                                    message: t("deriveKey.ivHexError"),
-                                },
-                            ]}
-                            help={t("deriveKey.ivHelp")}
-                        >
-                            <Input placeholder={t("deriveKey.ivPlaceholder")} />
-                        </Form.Item>
-
-                        <Form.Item
-                            name="hashingAlgorithm"
-                            label={t("deriveKey.hashingAlgorithm")}
-                            rules={[{ required: true, message: t("deriveKey.pleaseSelectHashingAlgorithm") }]}
-                            help={t("deriveKey.hashingAlgorithmHelp")}
-                        >
-                            <Select data-testid="hashing-algorithm-select" options={HASHING_ALGORITHMS} />
-                        </Form.Item>
                     </Card>
 
-                    {/* Output key specification */}
-                    <Card title={t("deriveKey.outputCard")}>
-                        <Form.Item
-                            name="symmetricAlgorithm"
-                            label={t("deriveKey.algorithm")}
-                            rules={[{ required: true, message: t("deriveKey.pleaseSelectOutputAlgorithm") }]}
-                            help={t("deriveKey.algorithmHelp")}
-                        >
-                            <Select data-testid="symmetric-algorithm-select" options={SYMMETRIC_ALGORITHMS} />
-                        </Form.Item>
-
-                        <Form.Item
-                            name="cryptographicLength"
-                            label={t("deriveKey.keyLength")}
-                            rules={[{ required: true, message: t("deriveKey.pleaseSelectKeyLength") }]}
-                            help={t("deriveKey.keyLengthHelp")}
-                        >
-                            <Select
-                                data-testid="key-length-select"
-                                options={KEY_LENGTHS.map((o) => ({
-                                    value: o.length,
-                                    label: t("deriveKey.bitsLabel", { length: o.length }),
-                                }))}
+                    {isAsymmetric ? (
+                        /* X25519 ECDH key agreement */
+                        <Card title={t("deriveKey.x25519Card")}>
+                            <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">{t("deriveKey.x25519Intro")}</p>
+                            <KeyIdInput
+                                form={form}
+                                fieldName="privateKeyId"
+                                label={t("deriveKey.privateKeyId")}
+                                help={t("deriveKey.privateKeyIdHelp")}
+                                objectType="PrivateKey"
+                                rules={[{ required: true, message: t("deriveKey.pleaseEnterPrivateKeyId") }]}
+                                placeholder={t("deriveKey.enterPrivateKeyId")}
                             />
-                        </Form.Item>
 
-                        <Form.Item name="derivedKeyId" label={t("deriveKey.derivedKeyId")} help={t("deriveKey.derivedKeyIdHelp")}>
-                            <Input placeholder={t("deriveKey.derivedKeyIdPlaceholder")} />
-                        </Form.Item>
-                    </Card>
+                            <KeyIdInput
+                                form={form}
+                                fieldName="peerPublicKeyId"
+                                label={t("deriveKey.peerPublicKeyId")}
+                                help={t("deriveKey.peerPublicKeyIdHelp")}
+                                objectType="PublicKey"
+                                rules={[{ required: true, message: t("deriveKey.pleaseEnterPeerPublicKeyId") }]}
+                                placeholder={t("deriveKey.enterPeerPublicKeyId")}
+                            />
+
+                            <Form.Item name="derivedKeyId" label={t("deriveKey.derivedKeyId")} help={t("deriveKey.derivedKeyIdHelp")}>
+                                <Input placeholder={t("deriveKey.derivedKeyIdPlaceholder")} />
+                            </Form.Item>
+                        </Card>
+                    ) : (
+                        <>
+                            {/* Source */}
+                            <Card title={t("deriveKey.sourceCard")}>
+                                <Form.Item name="sourceType" label={t("deriveKey.sourceType")}>
+                                    <Radio.Group>
+                                        <Radio value="key_id">{t("deriveKey.existingKeyId")}</Radio>
+                                        <Radio value="password">{t("deriveKey.password")}</Radio>
+                                    </Radio.Group>
+                                </Form.Item>
+
+                                {sourceType === "key_id" && (
+                                    <KeyIdInput
+                                        form={form}
+                                        fieldName="keyId"
+                                        label={t("common:keyId")}
+                                        help={t("deriveKey.keyIdHelp")}
+                                        rules={[{ required: true, message: t("deriveKey.pleaseEnterSourceKeyId") }]}
+                                        placeholder={t("deriveKey.enterSourceKeyId")}
+                                    />
+                                )}
+
+                                {sourceType === "password" && (
+                                    <Form.Item
+                                        name="password"
+                                        label={t("deriveKey.password")}
+                                        rules={[{ required: true, message: t("deriveKey.pleaseEnterPassword") }]}
+                                        help={t("deriveKey.passwordHelp")}
+                                    >
+                                        <Input.Password placeholder={t("deriveKey.enterPassword")} />
+                                    </Form.Item>
+                                )}
+                            </Card>
+
+                            {/* Derivation parameters */}
+                            <Card title={t("deriveKey.paramsCard")}>
+                                <Form.Item
+                                    name="salt"
+                                    label={t("deriveKey.salt")}
+                                    rules={[
+                                        { required: true, message: t("deriveKey.pleaseEnterSalt") },
+                                        {
+                                            pattern: HEX_PATTERN,
+                                            message: t("deriveKey.saltHexError"),
+                                        },
+                                        {
+                                            validator: (_, value: string) =>
+                                                value && value.length % 2 !== 0
+                                                    ? Promise.reject(new Error(t("deriveKey.saltEvenError")))
+                                                    : Promise.resolve(),
+                                        },
+                                    ]}
+                                    help={t("deriveKey.saltHelp")}
+                                >
+                                    <Input placeholder={t("deriveKey.saltPlaceholder")} />
+                                </Form.Item>
+
+                                {derivationMethod === "PBKDF2" && (
+                                    <Form.Item
+                                        name="iterationCount"
+                                        label={t("deriveKey.iterationCount")}
+                                        help={t("deriveKey.iterationCountHelp")}
+                                        rules={[{ required: true, message: t("deriveKey.pleaseEnterIterationCount") }]}
+                                    >
+                                        <InputNumber min={1} style={{ width: "100%" }} />
+                                    </Form.Item>
+                                )}
+
+                                <Form.Item
+                                    name="initializationVector"
+                                    label={t("deriveKey.initializationVector")}
+                                    rules={[
+                                        {
+                                            pattern: /^([0-9a-fA-F]{2})*$/,
+                                            message: t("deriveKey.ivHexError"),
+                                        },
+                                    ]}
+                                    help={t("deriveKey.ivHelp")}
+                                >
+                                    <Input placeholder={t("deriveKey.ivPlaceholder")} />
+                                </Form.Item>
+
+                                <Form.Item
+                                    name="hashingAlgorithm"
+                                    label={t("deriveKey.hashingAlgorithm")}
+                                    rules={[{ required: true, message: t("deriveKey.pleaseSelectHashingAlgorithm") }]}
+                                    help={t("deriveKey.hashingAlgorithmHelp")}
+                                >
+                                    <Select data-testid="hashing-algorithm-select" options={HASHING_ALGORITHMS} />
+                                </Form.Item>
+                            </Card>
+
+                            {/* Output key specification */}
+                            <Card title={t("deriveKey.outputCard")}>
+                                <Form.Item
+                                    name="symmetricAlgorithm"
+                                    label={t("deriveKey.algorithm")}
+                                    rules={[{ required: true, message: t("deriveKey.pleaseSelectOutputAlgorithm") }]}
+                                    help={t("deriveKey.algorithmHelp")}
+                                >
+                                    <Select data-testid="symmetric-algorithm-select" options={SYMMETRIC_ALGORITHMS} />
+                                </Form.Item>
+
+                                <Form.Item
+                                    name="cryptographicLength"
+                                    label={t("deriveKey.keyLength")}
+                                    rules={[{ required: true, message: t("deriveKey.pleaseSelectKeyLength") }]}
+                                    help={t("deriveKey.keyLengthHelp")}
+                                >
+                                    <Select
+                                        data-testid="key-length-select"
+                                        options={KEY_LENGTHS.map((o) => ({
+                                            value: o.length,
+                                            label: t("deriveKey.bitsLabel", { length: o.length }),
+                                        }))}
+                                    />
+                                </Form.Item>
+
+                                <Form.Item name="derivedKeyId" label={t("deriveKey.derivedKeyId")} help={t("deriveKey.derivedKeyIdHelp")}>
+                                    <Input placeholder={t("deriveKey.derivedKeyIdPlaceholder")} />
+                                </Form.Item>
+                            </Card>
+                        </>
+                    )}
 
                     <Button type="primary" htmlType="submit" loading={isLoading} data-testid="submit-btn">
                         {t("deriveKey.submit")}
