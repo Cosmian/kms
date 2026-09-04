@@ -154,7 +154,6 @@ Crate path: `crate/server`
 | `debug` | `create_user_decryption_key_: Access Policy: {access_policy:?}` | `src/core/cover_crypt/create_user_decryption_key.rs` | `access_policy`: Covercrypt access policy expression | - |
 | `debug` | `Created secret data with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
 | `debug` | `Created symmetric key with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
-| `debug` | `Creating SecretData object` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `CSE Error: {:?}` | `src/routes/google_cse/mod.rs` | - | - |
 | `debug` | `decode encrypted_dek` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `decrypt private key` | `src/routes/google_cse/operations.rs` | - | - |
@@ -164,8 +163,6 @@ Crate path: `crate/server`
 | `debug` | `Decryption Oracle for prefix: {prefix}, total ciphertext is {} bytes long` | `src/core/operations/decrypt.rs` | `prefix`: decryption oracle prefix bytes | - |
 | `debug` | `DeriveKey operation completed successfully` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `DeriveKey operation starting` | `src/core/operations/derive_key.rs` | - | - |
-| `debug` | `DeriveKey: activation_date={:?} <= now, setting state to Active` | `src/core/operations/derive_key.rs` | - | - |
-| `debug` | `DeriveKey: no activation_date or future date, setting state to PreActive` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `DeriveKey: No derivation data (info) provided for HKDF` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `DeriveKey: No iteration count provided for PBKDF2, using default` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `EKM Error: {:?}` | `src/routes/azure_ekm/error.rs` | - | - |
@@ -722,6 +719,7 @@ Crate path: `crate/server`
 | `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP: all serials served from cache` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP GET request path exceeds MAX_OCSP_GET_ENCODED_LEN` | `src/routes/ocsp/handler.rs` | - | - |
+| `debug` | `DeriveKey asymmetric operation completed successfully` | `src/core/operations/derive_key.rs` | - | Emitted after a non-FIPS X25519 ECDH `DeriveKey` request has validated both referenced keys, derived the shared secret, and persisted the resulting `SecretData` object. |
 
 ### `cosmian_kms_server_database`
 
