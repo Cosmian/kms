@@ -829,6 +829,18 @@ mod tests {
         reject_reserved_uid("some-real-uid").expect("real uid must be accepted");
     }
 
+    fn test_key() -> Object {
+        create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &[0_u8; 32],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )
+        .expect("failed to build test key object")
+    }
+
     /// `Database::create` must refuse to create an object with the reserved uid `"*"`.
     ///
     /// See `repro_issue_909_get_on_star_bypasses_import_gate` for the end-to-end
@@ -838,15 +850,7 @@ mod tests {
     async fn test_create_rejects_reserved_uid() {
         let db = test_db().await;
         let owner = UserId::from("owner@example.com");
-        let key = create_symmetric_key_kmip_object(
-            VENDOR_ID_COSMIAN,
-            &[0_u8; 32],
-            &Attributes {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                ..Default::default()
-            },
-        )
-        .expect("failed to build test key object");
+        let key = test_key();
         let attributes = key.attributes().expect("key has attributes").clone();
 
         let result = db
@@ -870,15 +874,7 @@ mod tests {
     async fn test_atomic_rejects_reserved_uid() {
         let db = test_db().await;
         let owner = UserId::from("owner@example.com");
-        let key = create_symmetric_key_kmip_object(
-            VENDOR_ID_COSMIAN,
-            &[0_u8; 32],
-            &Attributes {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                ..Default::default()
-            },
-        )
-        .expect("failed to build test key object");
+        let key = test_key();
         let attributes = key.attributes().expect("key has attributes").clone();
 
         let operations = vec![AtomicOperation::Create((

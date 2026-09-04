@@ -138,6 +138,8 @@ macro_rules! pg_retry {
                                     error = %e,
                                     "PostgreSQL retryable error — retrying"
                                 );
+                                // Release the connection before sleeping through the back-off.
+                                drop($client);
                                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms))
                                     .await;
                                 last_err = Some(e);
@@ -178,67 +180,70 @@ macro_rules! pg_retry {
 /// `pool.get()` time, guaranteeing a live connection for every retry.
 macro_rules! pg_retry_tx {
     ($pool:expr, | $tx:ident | $body:expr) => {{
-        for attempt in 0..PG_MAX_RETRIES {
-            let mut client = match pg_get_client_for_tx(&$pool, attempt).await {
-                Ok(c) => c,
-                Err(e) => {
-                    if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
-                        continue;
-                    }
-                    return Err(InterfaceError::from(e));
-                }
-            };
-            let $tx = match client.transaction().await {
-                Ok(tx) => tx,
-                Err(e) => {
-                    if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
-                        let delay_ms = pg_retry_backoff_ms(attempt);
-                        tracing::warn!(
-                            attempt,
-                            delay_ms,
-                            error = %e,
-                            "PostgreSQL BEGIN failed — retrying"
-                        );
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                        continue;
-                    }
-                    return Err(InterfaceError::from(DbError::from(e)));
-                }
-            };
-            match (async { $body }).await {
-                Ok(v) => match $tx.commit().await {
-                    Ok(()) => return Ok(v),
+        'retry: for attempt in 0..PG_MAX_RETRIES {
+            // `client` (and `$tx`, when bound) live only inside this block, so both
+            // are dropped — and the connection returned to the pool — before the
+            // `sleep` below runs, instead of being held across the back-off.
+            let delay_ms: u64 = 'release_connection: {
+                let mut client = match pg_get_client_for_tx(&$pool, attempt).await {
+                    Ok(c) => c,
                     Err(e) => {
-                        let msg = e.to_string();
-                        if is_pg_retryable_error(&msg) && attempt + 1 < PG_MAX_RETRIES {
+                        if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
+                            continue 'retry; // pg_get_client_for_tx already slept; no client to release
+                        }
+                        return Err(InterfaceError::from(e)); // bail out of the whole function
+                    }
+                };
+                let $tx = match client.transaction().await {
+                    Ok(tx) => tx,
+                    Err(e) => {
+                        if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
                             let delay_ms = pg_retry_backoff_ms(attempt);
                             tracing::warn!(
                                 attempt,
                                 delay_ms,
-                                error = %msg,
-                                "PostgreSQL COMMIT failed — retrying"
+                                error = %e,
+                                "PostgreSQL BEGIN failed — retrying"
                             );
-                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                            continue;
+                            break 'release_connection delay_ms; // <-- here
                         }
                         return Err(InterfaceError::from(DbError::from(e)));
                     }
-                },
-                Err(e) => {
-                    if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
-                        let delay_ms = pg_retry_backoff_ms(attempt);
-                        tracing::warn!(
-                            attempt,
-                            delay_ms,
-                            error = %e,
-                            "PostgreSQL transaction body failed — retrying"
-                        );
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                        continue;
+                };
+                match (async { $body }).await {
+                    Ok(v) => match $tx.commit().await {
+                        Ok(()) => return Ok(v), // success: return straight out
+                        Err(e) => {
+                            let msg = e.to_string();
+                            if is_pg_retryable_error(&msg) && attempt + 1 < PG_MAX_RETRIES {
+                                let delay_ms = pg_retry_backoff_ms(attempt);
+                                tracing::warn!(
+                                    attempt,
+                                    delay_ms,
+                                    error = %msg,
+                                    "PostgreSQL COMMIT failed — retrying"
+                                );
+                                break 'release_connection delay_ms; // <-- here too
+                            }
+                            return Err(InterfaceError::from(DbError::from(e)));
+                        }
+                    },
+                    Err(e) => {
+                        if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
+                            let delay_ms = pg_retry_backoff_ms(attempt);
+                            tracing::warn!(
+                                attempt,
+                                delay_ms,
+                                error = %e,
+                                "PostgreSQL transaction body failed — retrying"
+                            );
+                            break 'release_connection delay_ms; // <-- and here
+                        }
+                        return Err(InterfaceError::from(e));
                     }
-                    return Err(InterfaceError::from(e));
                 }
-            }
+            };
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
         }
         Err(InterfaceError::from(DbError::DatabaseError(
             "too much contention: too many attempts".to_owned(),
@@ -482,6 +487,10 @@ impl PgPool {
                 let sql = tmp_loader.get_query(name)?;
                 client.batch_execute(sql).await.map_err(DbError::from)?;
             }
+            // Release the connection before requesting another one below — with a
+            // pool sized to a single connection, holding `client` here would
+            // self-deadlock the following `pg_get_client` calls.
+            drop(client);
             let tmp = Self { pool: pool.clone() };
             tmp.set_current_db_version(env!("CARGO_PKG_VERSION"))
                 .await?;
@@ -1693,12 +1702,8 @@ mod tests {
 
     // Regression test for issue #1027: the pooled connection must be released
     // before sleeping through the retry back-off, not held across it.
-    //
-    // A size-1 pool is pinned to a single connection. One task keeps failing
-    // a retryable transaction (a forced "deadlock detected" error) for all
-    // `PG_MAX_RETRIES` attempts, which spends ~3.15s sleeping across back-offs.
-    // Meanwhile we sample `pool.status().available`: if the connection is
-    // held during the sleeps, the pool never reports itself idle.
+    // A size-1 pool pins to one connection, so if `pool.status().available`
+    // never reports idle while a retryable transaction backs off, it's held.
     #[ignore = "Requires a running PostgreSQL instance"]
     #[tokio::test]
     async fn pg_connection_released_during_backoff() -> DbResult<()> {
@@ -1731,7 +1736,7 @@ mod tests {
         // connection-holding behavior along the way is under test here.
         drop(handle.await);
 
-        if idle_samples <= total_samples / 2 {
+        if idle_samples * 2 <= total_samples.max(1) {
             return Err(DbError::DatabaseError(format!(
                 "pool reported idle in only {idle_samples}/{total_samples} samples — \
                  connection appears held during back-off sleep"
