@@ -262,6 +262,10 @@ ASE_HOME=$(docker exec "${ASE_CONTAINER_NAME}" bash -c 'ls -d /opt/sap/ASE-16_*'
 ASE_LIB_DIR="${ASE_HOME}/lib"
 ASE_SSL_DIR="${ASE_HOME}/ssl"
 PKCS11_MODULE_NAME="cosmian_pkcs11.so"
+# `sp_encryption 'hsm_credential'` requires the full absolute path in `lib=` —
+# a bare filename is not resolved against the dataserver process's own
+# LD_LIBRARY_PATH and fails with "Cannot load PKCS#11 dynamic load libraries".
+PKCS11_MODULE_PATH="${ASE_LIB_DIR}/${PKCS11_MODULE_NAME}"
 
 # The provider loads ckms.toml alongside the library (or via CKMS_CONF).
 ASE_CKMS_CONF="${KMS_SQLITE_DIR}/ase_ckms.toml"
@@ -288,7 +292,7 @@ echo "==> PASS: PKCS#11 module and KMS client config deployed."
 # exists on the ASE side — everything KMIP-related lives inside the PKCS#11
 # module, invisible to ASE.
 echo
-echo "==> Configuring ASE HSM credential (lib=${PKCS11_MODULE_NAME}, slot=${PKCS11_SLOT})…"
+echo "==> Configuring ASE HSM credential (lib=${PKCS11_MODULE_PATH}, slot=${PKCS11_SLOT})…"
 
 _isql_env='
   export SYBASE=/opt/sap
@@ -303,7 +307,7 @@ ISQL=\"\${SYBASE}/\${SYBASE_OCS}/bin/isql\"
 printf \"sp_configure 'external keystore', 0, 'HSM'\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
 printf \"sp_configure 'enable encrypted columns', 1\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
 printf \"sp_encryption 'system_encr_passwd', 'MasterPass1!'\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
-printf \"sp_encryption 'hsm_credential', 'lib=${PKCS11_MODULE_NAME}; pin=${PKCS11_PIN}; slot=${PKCS11_SLOT}'\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
+printf \"sp_encryption 'hsm_credential', 'lib=${PKCS11_MODULE_PATH}; pin=${PKCS11_PIN}; slot=${PKCS11_SLOT}'\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
 echo 'ASE_HSM_CFG_DONE'
 " 2>&1 || true)
 
