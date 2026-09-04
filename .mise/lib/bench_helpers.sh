@@ -317,6 +317,78 @@ EOF
   echo "KEK created: ${HSM_KEK_UID}"
 }
 
+# Start a KMS server with an HSM backend registered for HSM-*resident* key
+# benchmarking (`ckms bench --hsm`): unlike bench_start_server_hsm, this does
+# NOT set key_encryption_key — no KEK is created, no software key is ever
+# wrapped. The HSM is only used to route `hsm::softhsm2::<slot>::<uuid>`
+# unique identifiers to the CryptoOracle, so both key generation and
+# Encrypt/Sign for those keys execute directly on the HSM (PKCS#11).
+#
+# Requires:
+#   - softhsm2.sh must already be sourced by the caller.
+#   - bench_build_binaries (or bench_build_ckms) must have run, so KMS_BIN and
+#     CKMS_BIN are set.
+#
+# Usage: bench_start_server_hsm_resident <port> <tmp_dir> [http_workers]
+# Sets:  KMS_PID, SOFTHSM2_HSM_SLOT_ID
+bench_start_server_hsm_resident() {
+  local port="$1" tmp_dir="$2" http_workers="${3:-}"
+  local sqlite_path="${tmp_dir}/kms-data"
+  local kms_conf="${tmp_dir}/kms.toml"
+  local kms_log="${tmp_dir}/kms.log"
+
+  require_cmd softhsm2-util \
+    "SoftHSM2 (softhsm2-util) is required for HSM benchmarks. Install: brew install softhsm (macOS) or apt install softhsm2 (Linux)"
+
+  # Initialize a fresh single-token SoftHSM2 environment.
+  softhsm2_setup "${tmp_dir}/softhsm2/tokens" "${tmp_dir}/softhsm2/softhsm2.conf"
+  local init_out
+  init_out=$(softhsm2_init_token "bench_resident" "${HSM_USER_PASSWORD}" "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
+  SOFTHSM2_HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_resident")
+  export SOFTHSM2_HSM_SLOT_ID
+
+  mkdir -p "$sqlite_path"
+
+  # Write kms.toml with the HSM backend registered but no key_encryption_key:
+  # hsm::softhsm2::<slot>:: keys route to the HSM; every other key stays on
+  # the (temporary) SQLite backend, unwrapped.
+  cat >"${kms_conf}" <<EOF
+hsm_model    = "softhsm2"
+hsm_admin    = ["admin"]
+hsm_slot     = [${SOFTHSM2_HSM_SLOT_ID}]
+hsm_password = ["${HSM_USER_PASSWORD}"]
+
+[db]
+database_type = "sqlite"
+sqlite_path   = "${sqlite_path}"
+
+[http]
+hostname = "0.0.0.0"
+port     = ${port}
+EOF
+
+  if [ -n "${http_workers}" ]; then
+    printf 'http_workers = %s\n' "${http_workers}" >>"${kms_conf}"
+  fi
+
+  echo "Starting KMS server (HSM-resident, no KEK) on port ${port}..."
+  local lib_path_var
+  lib_path_var=$(softhsm2_lib_path_var)
+  local lib_path
+  lib_path=$(softhsm2_lib_search_path)
+
+  env \
+    "${lib_path_var}=${lib_path}" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH}" \
+    SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
+    "${KMS_BIN}" --config "${kms_conf}" \
+    >"${kms_log}" 2>&1 &
+  KMS_PID=$!
+  export KMS_PID
+
+  kms_wait_ready "http://127.0.0.1:${port}/kmip/2_1" "${KMS_PID}" "${kms_log}" 60
+}
+
 # Write a markdown benchmark report.
 # Usage: bench_write_md <out_path> <kms_port> <criterion_md_path> [page_title]
 bench_write_md() {
@@ -454,7 +526,20 @@ PYEOF
 
 # Generate SVG charts and a markdown report from benchmark data.
 # Call after running load tests and/or criterion benchmarks.
-# Usage: bench_generate_report <kms_port>
+# Usage: bench_generate_report <kms_port> [docs_subdir] [is_hsm] [is_hsm_kek]
+#   docs_subdir defaults to "ckms_bench" (the shared software-bench baseline
+#   used by bench/load). Pass a distinct name (e.g. "ckms_bench_hsm" or
+#   "ckms_bench_hsm_kek") to avoid clobbering that baseline with a different
+#   benchmark's results — the docs dir is entirely replaced on each call.
+#   is_hsm ("true"/"false", default "false"): when "true", passes --hsm to
+#   plot_version_compare.py so the report's Protocols/Methodology sections
+#   describe the HSM/CryptoOracle delegation model instead of the generic
+#   software-bench text.
+#   is_hsm_kek ("true"/"false", default "false"): when "true" (and is_hsm is
+#   "false"), passes --kek to plot_version_compare.py so the report's
+#   Protocols/Methodology sections keep the generic software-bench text but
+#   are prefixed with a short note that the KEK (not the benchmarked keys)
+#   is HSM-resident. Ignored if is_hsm is "true".
 # Reads:  $CRITERION_HOME/load_*.json  (load tests)
 #         $CRITERION_HOME/criterion.json  (criterion benchmarks)
 # Writes: $CRITERION_HOME/reports/<version>/  data files + report.md + SVGs
@@ -463,6 +548,9 @@ PYEOF
 #         $CRITERION_HOME/reports/<version>/report.md   combined report
 bench_generate_report() {
   local port="$1"
+  local docs_subdir="${2:-ckms_bench}"
+  local is_hsm="${3:-false}"
+  local is_hsm_kek="${4:-false}"
 
   # Compute criterion home step-by-step to avoid deeply nested expansions.
   local crit_home
@@ -508,7 +596,10 @@ bench_generate_report() {
   fi
 
   echo "Generating report..."
-  python3 "${plot_script}" "${report_dir}" "${version}" || {
+  local plot_args=("${report_dir}" "${version}")
+  [ "${is_hsm}" = "true" ] && plot_args+=("--hsm")
+  [ "${is_hsm}" != "true" ] && [ "${is_hsm_kek}" = "true" ] && plot_args+=("--kek")
+  python3 "${plot_script}" "${plot_args[@]}" || {
     echo "WARNING: report generation failed — raw data is in ${report_dir}/${version}/"
     return 0
   }
@@ -523,7 +614,7 @@ bench_generate_report() {
   # the developer's local run).
   local docs_bench_dir
   # shellcheck disable=SC2119
-  docs_bench_dir="$(get_repo_root)/documentation/docs/benchmarks/ckms_bench"
+  docs_bench_dir="$(get_repo_root)/documentation/docs/benchmarks/${docs_subdir}"
   echo "Updating docs: ${docs_bench_dir}..."
   rm -rf "${docs_bench_dir:?}"
   mkdir -p "${docs_bench_dir}"

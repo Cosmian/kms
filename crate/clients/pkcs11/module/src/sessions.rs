@@ -42,8 +42,11 @@ use crate::{
     },
     objects_store::{OBJECTS_STORE, ObjectsStore},
     traits::{
+
         DecryptContext, EncryptContext, KeyAlgorithm, SearchOptions, SignContext, VerifyContext,
-        backend, use_pin_as_access_token,
+        backend,
+        use_pin_as_access_token,
+    , use_pin_as_access_token,
     },
 };
 

@@ -2,6 +2,7 @@ mod aes;
 mod ec;
 mod eddsa;
 mod message_aead;
+mod ec;
 mod rsa;
 
 mod session_impl;

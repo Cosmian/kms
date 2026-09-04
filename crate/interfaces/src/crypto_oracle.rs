@@ -196,6 +196,33 @@ impl SigningAlgorithm {
                     | DigitalSignatureAlgorithm::ECDSAWithSHA384
                     | DigitalSignatureAlgorithm::ECDSAWithSHA512
             );
+            if (is_rsa_dsa && key_type != KeyType::RsaPrivateKey)
+                || (is_ecdsa && key_type != KeyType::EcPrivateKey)
+            {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "Unsupported digital signature algorithm for HSM signing: {dsa:?}"
+                )));
+            }
+
+            // Reject up-front any explicit algorithm family that does not match the actual key
+            // type: without this check an RSA key requested with an ECDSA algorithm (or vice
+            // versa) would fall through to the HSM, which rejects the mismatched mechanism with
+            // an opaque low-level PKCS#11 return code instead of a clear KMIP error.
+            let is_rsa_dsa = matches!(
+                dsa,
+                DigitalSignatureAlgorithm::SHA1WithRSAEncryption
+                    | DigitalSignatureAlgorithm::SHA224WithRSAEncryption
+                    | DigitalSignatureAlgorithm::SHA256WithRSAEncryption
+                    | DigitalSignatureAlgorithm::SHA384WithRSAEncryption
+                    | DigitalSignatureAlgorithm::SHA512WithRSAEncryption
+                    | DigitalSignatureAlgorithm::RSASSAPSS
+            );
+            let is_ecdsa = matches!(
+                dsa,
+                DigitalSignatureAlgorithm::ECDSAWithSHA256
+                    | DigitalSignatureAlgorithm::ECDSAWithSHA384
+                    | DigitalSignatureAlgorithm::ECDSAWithSHA512
+            );
             // Accept both the private key (signing) and the public key (verification): this
             // guard is shared by `sign` and `signature_verify` (the latter passes either key
             // type depending on whether the paired key was imported).

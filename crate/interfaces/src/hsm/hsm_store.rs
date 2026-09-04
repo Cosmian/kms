@@ -2152,4 +2152,196 @@ mod tests {
         }
         Ok(())
     }
+
+    #[test]
+    fn test_hsm_object_filter_accepts_ecdh_filters() {
+        let attrs = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+            object_type: Some(ObjectType::PublicKey),
+            ..Default::default()
+        };
+
+        assert!(matches!(
+            HsmObjectFilter::try_from(&attrs),
+            Ok(HsmObjectFilter::EcPublicKey)
+        ));
+    }
+
+    #[test]
+    fn test_ec_domain_parameters_leave_qlength_unset() {
+        let params = super::ec_domain_parameters_for_curve(EcCurve::P384);
+        assert_eq!(params.qlength, None);
+        assert_eq!(params.recommended_curve, Some(RecommendedCurve::P384));
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_non_sensitive_export_error_is_propagated() {
+        let mut mock = MockHsm::new();
+        mock.expect_export()
+            .return_once(|_, _| Err(InterfaceError::Default("export failed".to_owned())));
+        mock.expect_get_key_metadata().return_once(|_, _| {
+            Ok(Some(KeyMetadata {
+                key_type: KeyType::EcPrivateKey,
+                key_length_in_bits: 256,
+                sensitive: false,
+                id: "key".to_owned(),
+                curve: Some(EcCurve::P256),
+                start_date: None,
+                end_date: None,
+                rotate_name: None,
+                rotate_generation: None,
+            }))
+        });
+
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        let result = store.retrieve("hsm::1::key").await;
+
+        assert!(matches!(
+            result,
+            Err(InterfaceError::Default(ref msg)) if msg == "export failed"
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_sensitive_export_error_falls_back_to_stub() {
+        let mut mock = MockHsm::new();
+        mock.expect_export()
+            .return_once(|_, _| Err(InterfaceError::Default("sensitive".to_owned())));
+        mock.expect_get_key_metadata().return_once(|_, _| {
+            Ok(Some(KeyMetadata {
+                key_type: KeyType::EcPrivateKey,
+                key_length_in_bits: 256,
+                sensitive: true,
+                id: "key".to_owned(),
+                curve: Some(EcCurve::P256),
+                start_date: None,
+                end_date: None,
+                rotate_name: None,
+                rotate_generation: None,
+            }))
+        });
+
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        let result = store.retrieve("hsm::1::key").await;
+        assert!(result.is_ok());
+        let Ok(result) = result else {
+            return;
+        };
+        assert!(result.is_some());
+        let Some(owm) = result else {
+            return;
+        };
+
+        assert_eq!(owm.attributes().sensitive, Some(true));
+        assert_eq!(owm.attributes().object_type, Some(ObjectType::PrivateKey));
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_hsm_object_filter_accepts_eddsa_filters() {
+        for algorithm in [
+            CryptographicAlgorithm::Ed25519,
+            CryptographicAlgorithm::Ed448,
+        ] {
+            let attrs = Attributes {
+                cryptographic_algorithm: Some(algorithm),
+                object_type: Some(ObjectType::PrivateKey),
+                ..Default::default()
+            };
+
+            assert!(matches!(
+                HsmObjectFilter::try_from(&attrs),
+                Ok(HsmObjectFilter::EcPrivateKey)
+            ));
+        }
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_sensitive_x25519_stub_preserves_ecdh_metadata() {
+        let meta = KeyMetadata {
+            key_type: KeyType::EcPrivateKey,
+            key_length_in_bits: 256,
+            sensitive: true,
+            id: "x25519".to_owned(),
+            curve: Some(EcCurve::X25519),
+            start_date: None,
+            end_date: None,
+            rotate_name: None,
+            rotate_generation: None,
+        };
+
+        let attrs = build_sensitive_stub_attributes(&meta);
+        assert_eq!(
+            attrs.cryptographic_algorithm,
+            Some(CryptographicAlgorithm::ECDH)
+        );
+        assert_eq!(
+            attrs.cryptographic_usage_mask,
+            Some(CryptographicUsageMask::DeriveKey)
+        );
+        assert_eq!(
+            attrs.key_format_type,
+            Some(KeyFormatType::TransparentECPrivateKey)
+        );
+        assert_eq!(
+            attrs
+                .cryptographic_domain_parameters
+                .and_then(|params| params.recommended_curve),
+            Some(RecommendedCurve::CURVE25519)
+        );
+        let object = build_sensitive_stub_object(&meta);
+        assert!(matches!(object, Object::PrivateKey(_)));
+        let Object::PrivateKey(private_key) = object else {
+            return;
+        };
+        assert_eq!(
+            private_key.key_block.cryptographic_algorithm,
+            Some(CryptographicAlgorithm::ECDH)
+        );
+        assert!(matches!(
+            private_key.key_block.key_value.as_ref(),
+            Some(KeyValue::Structure {
+                key_material: KmipKeyMaterial::TransparentECPrivateKey {
+                    recommended_curve: RecommendedCurve::CURVE25519,
+                    ..
+                },
+                ..
+            })
+        ));
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_to_object_with_metadata_preserves_eddsa_algorithm() {
+        let hsm_object = HsmObject::new(
+            KeyMaterial::EcPrivateKey(EcPrivateKeyMaterial {
+                curve: EcCurve::Ed25519,
+                d: Zeroizing::new(vec![1; 32]),
+            }),
+            "[]".to_owned(),
+        );
+        let owm_result =
+            to_object_with_metadata(&hsm_object, "hsm::1::ed25519", "admin", "cosmian");
+        assert!(owm_result.is_ok());
+        let Ok(owm) = owm_result else {
+            return;
+        };
+        let attrs = owm.attributes();
+        assert_eq!(
+            attrs.cryptographic_algorithm,
+            Some(CryptographicAlgorithm::Ed25519)
+        );
+        assert_eq!(
+            attrs.key_format_type,
+            Some(KeyFormatType::TransparentECPrivateKey)
+        );
+        assert_eq!(
+            attrs
+                .cryptographic_domain_parameters
+                .as_ref()
+                .and_then(|params| params.recommended_curve),
+            Some(RecommendedCurve::CURVEED25519)
+        );
+    }
 }

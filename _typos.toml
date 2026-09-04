@@ -26,3 +26,6 @@ tme = "tme"
 PNGs = "PNGs"
 # Base64url fragment inside an example JWK "y" coordinate in openapi.yaml.
 Stik = "Stik"
+# Matches the "hsm_delegation_benchs" branch name, required verbatim as the
+# CHANGELOG/<branch-name>.md filename convention.
+benchs = "benchs"

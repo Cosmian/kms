@@ -38,8 +38,14 @@ _JWA_SYMMETRIC_RE = re.compile(r'^a\d+(gcm|cbc)', re.IGNORECASE)
 
 
 def _is_symmetric(algorithm: str) -> bool:
-    """Return True if the algorithm name suggests a symmetric cipher."""
-    alg = algorithm.lower()
+    """Return True if the algorithm name suggests a symmetric cipher.
+
+    Strips an optional 'hsm-' prefix first: HSM-delegated benchmarks (see
+    `bench/load-hsm --delegated`) label their algorithm 'hsm-aes-gcm', 'hsm-rsa-oaep',
+    etc. so the criterion group's op_type still parses correctly (a bare 'hsm/'
+    path segment would shift `bench_id_to_parts`'s op_type/algorithm split).
+    """
+    alg = algorithm.lower().removeprefix('hsm-')
     return any(alg.startswith(p) for p in _SYMMETRIC_PREFIXES) or bool(
         _JWA_SYMMETRIC_RE.match(alg)
     )
@@ -625,11 +631,76 @@ def _render_env_section(env_data: dict[str, dict], versions: list[str]) -> list[
     return lines
 
 
-def _render_protocol_section() -> list[str]:
-    """Render the static ## Protocols section."""
+def _render_protocol_section(
+    *, is_hsm: bool = False, is_hsm_kek: bool = False
+) -> list[str]:
+    """Render the static ## Protocols section.
+
+    When `is_hsm` is set, only ttlv-json is documented: `ttlv-bytes` and
+    `jose` are both excluded (for different reasons — see below), so
+    `--hsm` benchmarks exercise a single wire protocol.
+
+    When `is_hsm_kek` is set, all three protocols are documented exactly as
+    in the plain software report, preceded by a short note that this report
+    benchmarks software crypto with an HSM-resident *key-wrapping* key
+    (KEK), not HSM-delegated crypto operations (see the dedicated HSM
+    report for that).
+    """
+    if is_hsm:
+        return [
+            '## Protocols',
+            '',
+            'This report benchmarks cryptographic operations delegated to an HSM'
+            ' (PKCS#11) via the KMS `CryptoOracle`, exercised over a single wire'
+            ' protocol: **ttlv-json**.',
+            '',
+            '| Protocol | Transport | Encoding | Endpoint | Description |',
+            '|---|---|---|---|---|',
+            '| **ttlv-json** | HTTP/1.1 | KMIP 2.1 JSON-TTLV | `POST /kmip/2_1` |'
+            ' Primary interoperability protocol — any KMIP 2.1 compliant client can use it |',
+            '',
+            '**KMIP TTLV** (Tag-Type-Length-Value) is the native encoding of the KMIP 2.1 standard'
+            ' (OASIS KMIP Spec v2.1, §9.1).'
+            " The **JSON** variant wraps every field in a `{\"tag\": …, \"type\": …, \"value\": …}`"
+            ' JSON object and base64-encodes binary values.',
+            '',
+            '**ttlv-bytes is not benchmarked here.** Measuring it would require running it'
+            ' either against the same HSM-resident key/token as the ttlv-json sweep (strictly'
+            ' after it completes) or on a fresh token started specifically for that purpose.'
+            ' The former was tried first and rejected: cumulative SoftHSM2 token load from the'
+            ' preceding ttlv-json sweep contaminated every ttlv-bytes measurement, making'
+            ' ttlv-json appear *faster* than ttlv-bytes in every single operation — the'
+            ' opposite of the software baseline (where ttlv-bytes is consistently faster, as'
+            ' expected, since it skips JSON parsing). Rather than publish numbers that are'
+            ' measurement artefacts of test ordering, ttlv-bytes is omitted from this report'
+            ' until the harness can measure both protocols under equivalent conditions'
+            ' (e.g. independent tokens per protocol).',
+            '',
+            '**JOSE is not benchmarked here.** The JOSE REST key-creation endpoint'
+            ' (`POST /v1/crypto/keys`) has no parameter to request a caller-chosen'
+            ' `kid`, and HSM-resident key delegation requires the client to choose'
+            ' the `hsm::<slot>::<uuid>` unique identifier up front (the HSM has no'
+            ' server-assigned ID scheme) — so an HSM-resident key cannot be created'
+            ' through the JOSE endpoints at all.',
+            '',
+        ]
     return [
         '## Protocols',
         '',
+        *(
+            [
+                '> **HSM-backed KEK, software crypto.** The root key-encryption-key (KEK)'
+                ' used to wrap every benchmarked key is HSM-resident (SoftHSM2); only its'
+                ' unwrap touches the HSM. Encrypt/Sign themselves still execute in KMS'
+                ' software (OpenSSL), same as the plain software baseline — this report'
+                ' isolates the cost of HSM-backed key wrapping. For benchmarks where the'
+                ' cryptographic operation itself executes ON the HSM, see the dedicated'
+                ' HSM-delegated-crypto report.',
+                '',
+            ]
+            if is_hsm_kek
+            else []
+        ),
         'The KMS server was exercised over three distinct wire protocols.',
         'Each benchmark column is labelled with the protocol name it used.',
         '',
@@ -658,11 +729,156 @@ def _render_protocol_section() -> list[str]:
     ]
 
 
-def _render_methodology_section() -> list[str]:
+def _render_methodology_section(
+    *, is_hsm: bool = False, is_hsm_kek: bool = False
+) -> list[str]:
     """Render the static ## Benchmark Methodology section."""
+    if is_hsm:
+        return [
+            '## Benchmark Methodology',
+            '',
+            '### HSM delegation model',
+            '',
+            'Every operation in this report is executed against an `hsm::<slot>::<uuid>`'
+            ' unique identifier. The KMS server routes both key generation'
+            ' (`Create`/`CreateKeyPair`) and cryptographic operations (`Encrypt`/`Sign`)'
+            ' for such keys to the HSM'
+            "'s `CryptoOracle` (PKCS#11) instead of executing them in KMS software —"
+            ' the benchmarked latency/throughput is therefore dominated by the PKCS#11'
+            ' round-trip to the HSM, not by in-process OpenSSL. `Verify` is not'
+            ' implemented for HSM-resident keys at all yet, for any algorithm, and is'
+            ' intentionally excluded from this report.',
+            '',
+            '> **Reference HSM:** SoftHSM2 (a software PKCS#11 simulator), single'
+            ' SoftHSM2 token per benchmark run. A hardware HSM will exhibit different'
+            ' absolute numbers (typically bound by the HSM'
+            "'s own internal parallelism and network/PCIe transport latency rather than"
+            ' loopback TCP), but the same operations and request shapes apply unchanged.',
+            '',
+            '### Algorithm coverage and SoftHSM2-specific constraints',
+            '',
+            'Every algorithm variant of the KMS'
+            "'s `CryptoAlgorithm` (encrypt) and `SigningAlgorithm` (sign) oracle enums"
+            ' reachable via an ordinary (non-prehashed-digest-only) KMIP request is'
+            ' covered:',
+            '',
+            '| Category | Algorithms covered | Notes |',
+            '|---|---|---|',
+            '| Encrypt | AES-GCM, AES-CBC, RSA-OAEP-SHA256, RSA-OAEP-SHA1, RSA-PKCS1v15 | 2048-bit RSA, 256-bit AES |',
+            '| Sign | RSA-PSS, RSA-PKCS1v15 (SHA1/256/384/512 hash-and-sign) | 2048-bit RSA |',
+            '| Sign | ECDSA P-256 / P-384 | **Prehashed only** (`digested_data`): SoftHSM2 2.6.1 implements only the raw `CKM_ECDSA` mechanism, not the combined `CKM_ECDSA_SHA*` hash-and-sign mechanisms |',
+            '| Sign | EdDSA Ed25519 / Ed448 | Non-FIPS only; pure, un-hashed `CKM_EDDSA` — the full message is sent, never a digest |',
+            '| Key creation | AES-256, RSA-2048, EC P-256, Ed25519, Ed448 | P-521 excluded — see below |',
+            '',
+            'Two gaps are **not** HSM-delegation limitations and are excluded for'
+            ' unrelated reasons:',
+            '',
+            '- **P-521 key creation**: `crate/crypto/src/crypto/elliptic_curves/operation.rs`'
+            " derives the KMIP `CryptographicLength` from the generated private scalar's"
+            ' serialized byte length rather than the curve'
+            "'s nominal bit length, which can under-count P-521 keys by one byte and makes"
+            ' `HSM::create_keypair` reject the result — a pre-existing bug unrelated to HSM'
+            ' delegation, tracked as a follow-up.',
+            '- **Bare `SigningAlgorithm::RsaPkcsV15`** (a raw `CKM_RSA_PKCS` sign over a'
+            ' caller-supplied `DigestInfo` blob) has no ordinary KMIP request shape that'
+            ' reaches it — `padding_method: PKCS1v15` without an explicit digest always'
+            ' resolves to one of the hash-and-sign variants above, which exercise the'
+            ' same PKCS#11 mechanism family end-to-end.',
+            '',
+            '### Payload sizes',
+            '',
+            'All encrypt benchmarks use a **64-byte** fixed-size random payload'
+            ' (128 bytes for AES-CBC/PKCS1v15, which pad to a whole block); all sign'
+            ' benchmarks use a **32-byte** fixed-size message (or, for prehashed ECDSA,'
+            ' a 32-byte SHA-256 digest of that same message) — small enough that the'
+            ' RSA-2048 modulus bounds every RSA variant without truncation.',
+            '',
+            '### SoftHSM2 per-token degradation (key creation only)',
+            '',
+            'Concurrent/cumulative RSA and EC key **generation** against a single'
+            ' SoftHSM2 token progressively degrades that token — later PKCS#11'
+            ' operations, even unrelated `Encrypt`/`Sign` calls against different keys,'
+            ' can slow from milliseconds to *minutes* per request. This is a SoftHSM2'
+            ' limitation (a software simulator, not built for heavy concurrent/cumulative'
+            ' key generation on one token), not a KMS defect. Mitigations applied to keep'
+            ' this report reproducible:',
+            '',
+            '- Load-test key-creation concurrency is capped at 4 regardless of the'
+            ' requested sweep (`PreparedLoadOp::max_concurrency`).',
+            '- The `bench/load-hsm --delegated` task runs `key-creation`, `encrypt`, and'
+            ' `sign-verify` as three separate SoftHSM2 sessions (each with its own fresh'
+            ' token) when `--mode all` (the default), so key-creation load never'
+            ' contaminates the encrypt/sign token; results are merged into this single'
+            ' report afterward.',
+            '',
+            '### Why ttlv-json only (no ttlv-bytes)',
+            '',
+            'An earlier version of this report benchmarked both `ttlv-json` and `ttlv-bytes`'
+            ' for every HSM-delegated operation, sharing one HSM-resident key between the two'
+            ' protocol variants and measuring `ttlv-json`'
+            "'s full concurrency sweep before `ttlv-bytes`"
+            "'s. Every single result inverted the expected direction — `ttlv-json` appeared"
+            ' *faster* than `ttlv-bytes`, the opposite of the software baseline (where binary'
+            ' TTLV is consistently faster, since it skips JSON parsing). Root cause: the'
+            ' `ttlv-bytes` sweep always ran second against the same already-active HSM'
+            ' session/token, so it inherited whatever cumulative SoftHSM2 degradation the'
+            ' `ttlv-json` sweep had already caused (the same class of per-token degradation'
+            ' described above, triggered here by sustained Encrypt/Sign call volume rather'
+            ' than key generation) — a test-ordering artefact, not a real protocol'
+            ' difference. This report therefore benchmarks `ttlv-json` only, until the'
+            ' harness can measure both protocols under equivalent conditions (e.g.'
+            ' independent SoftHSM2 tokens per protocol).',
+            '',
+            '### Load test (`ckms bench --load --hsm`)',
+            '',
+            'The load test sweeps a configurable list of concurrency levels.'
+            ' At each level *N* concurrent async tasks send pre-serialised requests in tight loops'
+            ' for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase**'
+            ' (default: 5 s) that is excluded from measurements.'
+            ' Pre-serialisation happens once at setup time and the same bytes are reused on every iteration,'
+            ' isolating server-side (and HSM-side) latency from client-side encoding overhead.'
+            ' Key **creation** cannot be pre-serialised the same way — the HSM has no'
+            ' auto-generated ID, so each iteration builds a fresh request with a distinct'
+            ' `hsm::` unique identifier.',
+            'Recorded metrics per *(protocol, operation, concurrency)* triple:',
+            '',
+            '- **Throughput** — requests per second (req/s)',
+            '- **p50 / p95 / p99** — round-trip latency percentiles (ms)',
+            '',
+            '### Criterion micro-benchmarks (`ckms bench --hsm`)',
+            '',
+            'Criterion (Rust, v0.5) measures the **round-trip latency of a single request**'
+            ' from the ckms client library through the KMS server (and, for these'
+            ' benchmarks, onward to the HSM) and back over a loopback TCP connection.'
+            ' The server is started once and kept alive across all benchmarks in the suite.',
+            'The reported value is the **mean ± 95 % confidence interval** over a configurable'
+            ' number of samples (preset `quick`: 3 s warm-up + 5 s measurement per benchmark).',
+            '',
+            '> **Infrastructure note:** The load test and criterion benchmarks both use a'
+            ' **local SQLite** backend (temporary, discarded after the run) for the KMS'
+            ' server'
+            "'s own metadata store — the key material itself resides on the HSM, never in"
+            ' SQLite. Throughput figures will differ on a production deployment backed by'
+            ' PostgreSQL or Redis-Findex, and even more so against a hardware HSM instead'
+            ' of SoftHSM2.',
+            '',
+        ]
     return [
         '## Benchmark Methodology',
         '',
+        *(
+            [
+                '> **HSM-backed KEK.** The server is started with a SoftHSM2-registered'
+                ' `key_encryption_key` (KEK): every benchmarked software key is wrapped by'
+                ' this HSM-resident KEK at rest, and unwrapped via a PKCS#11 round-trip on'
+                ' each use. All other methodology below (payload sizes, load-test/criterion'
+                ' procedure) is identical to the plain software baseline — the only'
+                ' difference is this extra HSM unwrap step per operation.',
+                '',
+            ]
+            if is_hsm_kek
+            else []
+        ),
         '### Plaintext / payload sizes',
         '',
         'All encrypt/decrypt benchmarks use a **fixed-size random payload**.'
@@ -723,6 +939,9 @@ def generate_report(
     load_charts: list[str],
     crit_charts: list[str],
     env_data: dict[str, dict] | None = None,
+    *,
+    is_hsm: bool = False,
+    is_hsm_kek: bool = False,
 ) -> None:
     """Write report.md combining load-test and criterion sections."""
     sep = ['', '---', '']
@@ -742,11 +961,11 @@ def generate_report(
             lines += sep
 
     # ── Protocols ─────────────────────────────────────────────────────────────
-    lines += _render_protocol_section()
+    lines += _render_protocol_section(is_hsm=is_hsm, is_hsm_kek=is_hsm_kek)
     lines += sep
 
     # ── Methodology ───────────────────────────────────────────────────────────
-    lines += _render_methodology_section()
+    lines += _render_methodology_section(is_hsm=is_hsm, is_hsm_kek=is_hsm_kek)
     lines += sep
 
     # ── Load tests ────────────────────────────────────────────────────────
@@ -837,12 +1056,26 @@ def generate_report(
 
 
 def main() -> None:
-    if len(sys.argv) < 3:
-        print(f"Usage: {sys.argv[0]} <results_dir> <version1> [version2] ...")
+    # Optional --hsm flag: may appear anywhere in argv. When set, the report
+    # documents the HSM/CryptoOracle delegation model (Protocols/Methodology
+    # sections) instead of the generic software-bench text.
+    # Optional --kek flag: may appear anywhere in argv. When set, the report
+    # is otherwise identical to the plain software-bench text but prefixed
+    # with a short note that the KEK (not the benchmarked keys themselves)
+    # is HSM-resident. Mutually exclusive with --hsm (--hsm takes priority).
+    argv = sys.argv[1:]
+    is_hsm = '--hsm' in argv
+    is_hsm_kek = '--kek' in argv and not is_hsm
+    argv = [a for a in argv if a not in ('--hsm', '--kek')]
+
+    if len(argv) < 2:
+        print(
+            f"Usage: {sys.argv[0]} <results_dir> <version1> [version2] ... [--hsm|--kek]"
+        )
         sys.exit(1)
 
-    out_dir = Path(sys.argv[1])
-    versions = sys.argv[2:]
+    out_dir = Path(argv[0])
+    versions = argv[1:]
 
     print('── Environment data ──')
     env_data: dict[str, dict] = {}
@@ -904,6 +1137,8 @@ def main() -> None:
         load_charts,
         crit_charts,
         env_data=env_data or None,
+        is_hsm=is_hsm,
+        is_hsm_kek=is_hsm_kek,
     )
 
 

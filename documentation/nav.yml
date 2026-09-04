@@ -166,7 +166,9 @@ nav:
           - Security Audit (OWASP): certifications_and_compliance/audit/owasp_security_audit.md
           - Multi-Framework Security Audit: certifications_and_compliance/audit/multi_framework_security_audit.md
   - Benchmarks:
-      - Reports: benchmarks/ckms_bench/report.md
+      - Software: benchmarks/ckms_bench/report.md
+      - HSM KEK-Wrap: benchmarks/ckms_bench_hsm_kek/report.md
+      - HSM Delegated Crypto: benchmarks/ckms_bench_hsm/report.md
       - CPU Scaling & Flamegraphs: benchmarks/cpu_scaling.md
   - KMS Clients:
       - Getting started: kms_clients/index.md
