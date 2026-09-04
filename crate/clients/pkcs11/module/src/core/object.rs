@@ -263,7 +263,10 @@ fn profile_attribute(id: CK_PROFILE_ID, type_: AttributeType) -> Option<Attribut
         AttributeType::Class => Some(Attribute::Class(CKO_PROFILE)),
         AttributeType::ProfileId => Some(Attribute::ProfileId(id)),
         AttributeType::Token => Some(Attribute::Token(true)),
-        AttributeType::Private => Some(Attribute::Private(true)),
+        // Profile objects self-declare the module's conformance profiles (OASIS PKCS#11
+        // Profiles v3.1 §Object Model). They must be discoverable by `C_FindObjects` even
+        // on a session that has not called `C_Login`, so `CKA_PRIVATE` MUST be `CK_FALSE`.
+        AttributeType::Private => Some(Attribute::Private(false)),
         _ => {
             error!("profile: type_ unimplemented: {type_:?}");
             None

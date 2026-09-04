@@ -90,7 +90,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 
 - Performance: built in Rust for low-latency crypto and high throughput.
 - Trust by design: FIPS 140-3 mode by default; non-FIPS for broader algorithm access when needed.
-- Interoperable: full KMIP 1.0–2.1 support, PKCS#11 integrations, rich client tooling, and a built-in [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/integrations/openapi.md).
+- Interoperable: full KMIP 1.0–2.1 support, [PKCS#11 integrations](./documentation/docs/integrations/pkcs11_provider.md), rich client tooling, and a built-in [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/integrations/openapi.md).
 - HSM-first: optional HSM key-wrapping and vendor modules (Utimaco, SmartCard-HSM, Proteccio, Crypt2pay…).
 - Cloud-native: official Docker image, simple horizontal scaling, and OpenTelemetry observability.
 - End-to-end: server, CLI, and web UI for a complete developer and operator experience.
