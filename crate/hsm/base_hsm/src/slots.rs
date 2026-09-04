@@ -94,6 +94,41 @@ impl ObjectHandlesCache {
     }
 }
 
+/// A checked-out HSM session that is returned to its slot pool only after a
+/// successful operation.
+///
+/// Dropping the guard without calling [`Self::checkin`] drops the underlying
+/// session, which closes it instead of returning a potentially failed session
+/// to the pool.
+pub(crate) struct SessionGuard<'a> {
+    slot: &'a SlotManager,
+    session: Option<Session>,
+}
+
+impl<'a> SessionGuard<'a> {
+    /// Wrap a session checked out from `slot`.
+    pub(crate) const fn new(slot: &'a SlotManager, session: Session) -> Self {
+        Self {
+            slot,
+            session: Some(session),
+        }
+    }
+
+    /// Borrow the checked-out session while it remains owned by this guard.
+    pub(crate) fn session(&self) -> HResult<&Session> {
+        self.session
+            .as_ref()
+            .ok_or_else(|| HError::Default("HSM session guard is empty".to_owned()))
+    }
+
+    /// Return a successfully used session to its slot pool.
+    pub(crate) fn checkin(mut self) {
+        if let Some(session) = self.session.take() {
+            self.slot.checkin_session(session);
+        }
+    }
+}
+
 /// A manager for a specific PKCS#11 slot in a Hardware Security Module (HSM).
 ///
 /// This structure maintains the connection to a specific slot within an HSM,
@@ -115,6 +150,7 @@ pub struct SlotManager {
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
     _login_session: Option<Session>,
+    session_pool: Arc<Mutex<Vec<Session>>>,
     hsm_capabilities: HsmCapabilities,
 }
 
@@ -146,6 +182,7 @@ impl SlotManager {
     ) -> HResult<Self> {
         let object_handles_cache = Arc::new(ObjectHandlesCache::new());
         let supported_oaep_hash_cache = Arc::new(Mutex::new(None));
+        let session_pool = Arc::new(Mutex::new(Vec::new()));
         if let Some(password) = login_password {
             let login_session = Self::open_session_(
                 &hsm_lib,
@@ -162,6 +199,7 @@ impl SlotManager {
                 object_handles_cache,
                 supported_oaep_hash_cache,
                 _login_session: Some(login_session),
+                session_pool,
                 hsm_capabilities,
             })
         } else {
@@ -171,9 +209,16 @@ impl SlotManager {
                 object_handles_cache,
                 supported_oaep_hash_cache,
                 _login_session: None,
+                session_pool,
                 hsm_capabilities,
             })
         }
+    }
+
+    /// Get the HSM capabilities configured for this slot manager.
+    #[must_use]
+    pub const fn capabilities(&self) -> &HsmCapabilities {
+        &self.hsm_capabilities
     }
 
     /// Retrieve the list of supported cryptographic mechanisms for this HSM slot.
@@ -283,6 +328,32 @@ impl SlotManager {
             None, // Do Not Log In
             self.hsm_capabilities.clone(),
         )
+    }
+
+    /// Check out a pooled read-write session if available, otherwise open a new one.
+    ///
+    /// The pool only ever holds read-write sessions, so callers can never receive a
+    /// session with different access rights than the ones it was opened with.
+    pub fn checkout_session(&self) -> HResult<Session> {
+        let pooled = {
+            let mut pool = self
+                .session_pool
+                .lock()
+                .map_err(|e| HError::Default(format!("Failed to lock session pool: {e}")))?;
+            pool.pop()
+        };
+        pooled.map_or_else(|| self.open_session(true), Ok)
+    }
+
+    /// Return a healthy session to the pool for reuse.
+    pub fn checkin_session(&self, session: Session) {
+        const MAX_POOL_SIZE: usize = 32;
+        if let Ok(mut pool) = self.session_pool.lock() {
+            if pool.len() < MAX_POOL_SIZE {
+                pool.push(session);
+            }
+            // Otherwise session drops and closes
+        }
     }
 
     fn open_session_(

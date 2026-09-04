@@ -24,9 +24,7 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
         lib_path: shared::lib_path("PROTECCIO_PKCS11_LIB", PROTECCIO_PKCS11_LIB),
         slot_ids_and_passwords: HashMap::from([(slot, Some(user_password))]),
         slot_id_for_tests: slot,
-        rsa_oaep_digest: Some(RsaOaepDigest::SHA256),
         threads: 4,
-        supports_rsa_wrap: true,
     })
 }
 

@@ -6,7 +6,7 @@ use std::{
     ptr,
 };
 
-use cosmian_kms_base_hsm::{HResult, RsaOaepDigest, tests_shared as shared};
+use cosmian_kms_base_hsm::{HResult, tests_shared as shared};
 use libloading::Library;
 use pkcs11_sys::{
     CK_C_INITIALIZE_ARGS, CK_FUNCTION_LIST_PTR, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CK_ULONG,
@@ -168,9 +168,7 @@ fn test_hsm_kryoptic_all() -> HResult<()> {
         lib_path: lib_path.to_string_lossy().into_owned(),
         slot_ids_and_passwords: HashMap::from([(SLOT_ID, Some(USER_PIN.to_owned()))]),
         slot_id_for_tests: SLOT_ID,
-        rsa_oaep_digest: Some(RsaOaepDigest::SHA1),
         threads: 4,
-        supports_rsa_wrap: true,
     };
 
     let hsm = shared::instantiate::<KryopticCapabilityProvider>(&test_cfg)?;
@@ -181,16 +179,16 @@ fn test_hsm_kryoptic_all() -> HResult<()> {
     shared::destroy_all(&slot)?;
     shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
-    shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA1)?;
+    shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
     shared::rsa_pkcs_encrypt(&slot)?;
-    shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA1)?;
+    shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
     shared::aes_gcm_encrypt(&slot)?;
     shared::aes_cbc_encrypt(&slot)?;
     shared::aes_cbc_multi_round(&slot)?;
     shared::rsa_pkcs_v15_sign(&slot)?;
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
-    shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA1, test_cfg.threads)?;
+    shared::multi_threaded_rsa(&slot, shared::TEST_RSA_OAEP_DIGEST, test_cfg.threads)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &test_cfg)?;

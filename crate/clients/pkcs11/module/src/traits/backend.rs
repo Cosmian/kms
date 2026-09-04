@@ -19,8 +19,35 @@ use crate::{
 pub struct SignContext {
     pub algorithm: SignatureAlgorithm,
     pub private_key: Arc<dyn PrivateKey>,
+    pub operation: SignOperation,
     /// Payload stored for multipart `C_SignUpdate` operations.
     pub payload: Option<Vec<u8>>,
+    /// Signature computed during a NULL-buffer length-query call (e.g. the first
+    /// call of `C_SignFinal`/`C_Sign`'s two-call convention), cached so the
+    /// follow-up call that actually copies the bytes out reuses this exact
+    /// signature instead of re-signing. This is required for variable-length
+    /// signatures (e.g. DER-encoded ECDSA, whose length varies call-to-call due
+    /// to leading-zero bytes in r/s): re-signing on the second call could
+    /// produce a different-length signature than what was reported by the
+    /// length query, causing a spurious `CKR_BUFFER_TOO_SMALL`.
+    pub pending_signature: Option<PendingSignature>,
+}
+
+/// A signature cached between the two calls of the PKCS#11 length-query convention,
+/// bound to the exact data it was computed over.
+#[derive(Debug)]
+pub struct PendingSignature {
+    /// The data that was signed. The cached signature is only reused for a follow-up
+    /// call over identical data; a caller that changes the data between the length
+    /// query and the real call gets a fresh signature, never one over the old data.
+    pub data: Vec<u8>,
+    pub signature: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignOperation {
+    Classic,
+    Message,
 }
 
 #[derive(Debug)]

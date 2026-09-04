@@ -9,13 +9,17 @@
 #   bench_build_binaries [release|debug]
 #   bench_download_server <version> <out_dir>
 #   bench_start_server <port> <tmp_dir> [http_workers]
+#   bench_stop_server
+#   bench_wait_ready_tls <url> <accept_invalid_certs> <ca_cert> <client_cert> <client_key> [<timeout_secs>]
+#   bench_write_ckms_tls_conf <out_path> <server_url> <accept_invalid_certs> <ca_cert_path> <client_pem_cert> <client_pem_key> <client_pkcs12> <client_pkcs12_password>
 #   bench_register_cleanup
+#   bench_prepare_hsm <hsm_model>
 #   bench_write_md <out_path> <kms_port> <criterion_md_path> [page_title]
-#
 # Globals set:
 #   CARGO_TARGET_DIR, KMS_BIN, CKMS_BIN, KMS_PID, TMP_DIR
 #   BENCH_DEB_BINARY, BENCH_DEB_OSSL_MODS  (after bench_download_server)
 #   OPENSSL_MODULES_DIR                    (set by caller for deb-based server)
+#   BENCH_HSM_SLOT, BENCH_HSM_PASSWORD      (after bench_prepare_hsm)
 
 # ── Guard ─────────────────────────────────────────────────────────────────────
 [ -n "${_MISE_BENCH_HELPERS_SH_LOADED:-}" ] && return 0
@@ -34,6 +38,8 @@ TMP_DIR=""
 BENCH_DEB_BINARY=""
 BENCH_DEB_OSSL_MODS=""
 OPENSSL_MODULES_DIR=""
+BENCH_HSM_PASSWORD=""
+BENCH_VPN_PID_FILES=()
 
 # Build only the ckms CLI (no server).
 # Usage: bench_build_ckms [release|debug]
@@ -131,11 +137,21 @@ bench_download_server() {
   echo "Server binary: ${BENCH_DEB_BINARY}"
 }
 
-# Warn when CPU frequency scaling / turbo may distort load-sweep scaling curves.
+# Warn when CPU frequency scaling / turbo may distort load-sweep scaling curves,
+# or when other processes are already competing for CPU on this host.
 # On power-limited CPUs (laptops, Intel "T" SKUs, thermally constrained hosts) a
 # heavy concurrency level draws more power and throttles to a LOWER clock than a
 # light level, which exaggerates sublinear scaling independently of the server.
 # No warmup/cooldown value can compensate for load-dependent DVFS; pin the clock.
+#
+# The load-average check exists because of a concrete, reproduced false alarm: on
+# a shared (non-dedicated) development host, the exact same single-operation
+# criterion benchmark (`mise bench:load-pkcs11 --criterion`) measured 400-700us in
+# two back-to-back runs and ~70ms (a ~100x outlier) in a third — not a code
+# regression, just unrelated processes (IDE background indexing, etc.) briefly
+# saturating the CPU during that one run. A load-average warning up front makes
+# that kind of run-to-run noise legible instead of being mistaken for a real
+# bottleneck.
 bench_warn_cpu_scaling() {
   local gov="" turbo="" f0="" fmax=""
   gov=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true)
@@ -159,6 +175,29 @@ bench_warn_cpu_scaling() {
     echo "         and, ideally, run the client on a SEPARATE host so it does not compete"
     echo "         with the server for CPU (co-location caps throughput on shared cores)."
     echo "-------------------------------------------------------------------------------"
+  fi
+
+  local load1="" ncpu=""
+  load1=$(awk '{print $1}' /proc/loadavg 2>/dev/null || true)
+  ncpu=$(nproc 2>/dev/null || true)
+  if [ -n "$load1" ] && [ -n "$ncpu" ] && [ "$ncpu" -gt 0 ] 2>/dev/null; then
+    # A flat, low absolute threshold (not scaled by core count): the false alarm
+    # this reproduced happened on a 32-core host at load average ~3-4, nowhere
+    # near saturating total capacity — a handful of bursty background processes
+    # (IDE indexing, etc.) is enough to occasionally delay a single
+    # latency-sensitive benchmark thread regardless of how many cores are idle.
+    if awk -v l="$load1" 'BEGIN { exit !(l > 2.0) }'; then
+      echo "-------------------------------------------------------------------------------"
+      echo "WARNING: elevated system load (1-min load average ${load1} on ${ncpu} cores)"
+      echo "         Other processes are already competing for CPU on this host — expect"
+      echo "         noisy, possibly wildly inflated latency samples (seen in practice: the"
+      echo "         exact same single-operation criterion benchmark measuring <1ms in one"
+      echo "         run and ~100x that in the next, purely from unrelated background load,"
+      echo "         not a code regression). Close other CPU-heavy work (IDE background"
+      echo "         indexing/compilation, browsers, media/torrent clients, ...) or re-run"
+      echo "         on a quieter host/window before trusting an outlier result."
+      echo "-------------------------------------------------------------------------------"
+    fi
   fi
 }
 
@@ -212,12 +251,68 @@ bench_stop_server() {
   KMS_PID=""
 }
 
+# Wait for a KMS server to accept HTTP requests, using curl flags appropriate for
+# optional TLS server/client verification. Exits 1 (like kms_wait_ready) on timeout.
+# Usage: bench_wait_ready_tls <url> <accept_invalid_certs> <ca_cert> <client_cert> <client_key> [<timeout_secs>]
+bench_wait_ready_tls() {
+  local url="$1" accept_invalid_certs="$2" ca_cert="$3" client_cert="$4" client_key="$5" timeout="${6:-15}"
+  require_cmd curl "curl is required for bench_wait_ready_tls"
+  local curl_args=(-sS --max-time 2 -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}')
+  [ "${accept_invalid_certs}" = "true" ] && curl_args+=(--insecure)
+  [ -n "${ca_cert}" ] && curl_args+=(--cacert "${ca_cert}")
+  [ -n "${client_cert}" ] && curl_args+=(--cert "${client_cert}")
+  [ -n "${client_key}" ] && curl_args+=(--key "${client_key}")
+  echo "Waiting for KMS server at ${url} to be ready..."
+  local _i
+  for _i in $(seq 1 "${timeout}"); do
+    if env -u LD_PRELOAD -u LD_LIBRARY_PATH curl "${curl_args[@]}" "${url}" 2>/dev/null | grep -Eq '^[0-9]{3}$'; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "ERROR: KMS server at ${url} did not respond within ${timeout}s" >&2
+  exit 1
+}
+
+# Write a temporary ckms.toml [http_config] section pointing at server_url, with
+# optional TLS client settings. `ca_cert_path`, when non-empty, is read and inlined
+# as `verified_cert` (HttpClientConfig::verified_cert expects PEM content, not a
+# path — see crate/clients/client/src/http_client/client.rs:58-59).
+# Usage: bench_write_ckms_tls_conf <out_path> <server_url> <accept_invalid_certs> \
+#          <ca_cert_path> <client_pem_cert> <client_pem_key> <client_pkcs12> <client_pkcs12_password>
+bench_write_ckms_tls_conf() {
+  local out_path="$1" server_url="$2" accept_invalid_certs="$3" ca_cert_path="$4"
+  local client_pem_cert="$5" client_pem_key="$6" client_pkcs12="$7" client_pkcs12_password="$8"
+  cat >"${out_path}" <<EOF
+[http_config]
+server_url = "${server_url}"
+$([ "${accept_invalid_certs}" = "true" ] && echo 'accept_invalid_certs = true')
+$([ -n "${client_pem_cert}" ] && echo "tls_client_pem_cert_path = \"${client_pem_cert}\"")
+$([ -n "${client_pem_key}" ] && echo "tls_client_pem_key_path = \"${client_pem_key}\"")
+$([ -n "${client_pkcs12}" ] && echo "tls_client_pkcs12_path = \"${client_pkcs12}\"")
+$([ -n "${client_pkcs12_password}" ] && echo "tls_client_pkcs12_password = \"${client_pkcs12_password}\"")
+EOF
+  if [ -n "${ca_cert_path}" ]; then
+    {
+      echo 'verified_cert = """'
+      cat "${ca_cert_path}"
+      echo '"""'
+    } >>"${out_path}"
+  fi
+}
+
 # Internal cleanup handler.
 _bench_cleanup() {
   [ -n "${KMS_PID:-}" ] && {
     kill "${KMS_PID}" 2>/dev/null || true
     wait "${KMS_PID}" 2>/dev/null || true
   }
+  local pid_file
+  for pid_file in ${BENCH_VPN_PID_FILES[@]+"${BENCH_VPN_PID_FILES[@]}"}; do
+    [ -f "${pid_file}" ] || continue
+    sudo kill "$(cat "${pid_file}")" 2>/dev/null || true
+    sudo rm -f "${pid_file}"
+  done
   rm -rf "${TMP_DIR:-}"
 }
 
@@ -252,10 +347,12 @@ bench_start_server_hsm() {
   softhsm2_setup "${tmp_dir}/softhsm2/tokens" "${tmp_dir}/softhsm2/softhsm2.conf"
   local init_out
   init_out=$(softhsm2_init_token "bench_kek" "${HSM_USER_PASSWORD}" "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
-  SOFTHSM2_HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_kek")
+  HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_kek")
+  export HSM_SLOT_ID
+  SOFTHSM2_HSM_SLOT_ID="${HSM_SLOT_ID}"
   export SOFTHSM2_HSM_SLOT_ID
 
-  HSM_KEK_UID="hsm::${SOFTHSM2_HSM_SLOT_ID}::bench_kek"
+  HSM_KEK_UID="hsm::${HSM_SLOT_ID}::bench_kek"
   export HSM_KEK_UID
 
   mkdir -p "$sqlite_path"
@@ -267,7 +364,7 @@ key_encryption_key = "${HSM_KEK_UID}"
 
 hsm_model    = "softhsm2"
 hsm_admin    = ["admin"]
-hsm_slot     = [${SOFTHSM2_HSM_SLOT_ID}]
+hsm_slot     = [${HSM_SLOT_ID}]
 hsm_password = ["${HSM_USER_PASSWORD}"]
 
 [db]
@@ -315,6 +412,229 @@ EOF
     --number-of-bits 256 \
     "${HSM_KEK_UID}"
   echo "KEK created: ${HSM_KEK_UID}"
+}
+
+# Prepare the host once for HSM-resident benchmarks on <hsm_model>, reusing the
+# same .github/reusable_scripts/prepare_*.sh scripts as the `test:hsm-<model>`
+# tasks (library install, simulator start, VPN tunnel). Call it after
+# bench_register_cleanup so any VPN it opens is torn down on exit.
+#
+# Credentials come from the environment (CI secrets) or, locally, from an
+# optional ~/.cosmian/<hsm_model>.sh (e.g. PROTECCIO_PASSWORD, CRYPT2PAY_SLOT_ID).
+#
+# Usage: bench_prepare_hsm <hsm_model>
+# Sets:  BENCH_HSM_SLOT (unless already set), BENCH_HSM_PASSWORD
+bench_prepare_hsm() {
+  local hsm_model="$1"
+  local scripts_dir
+  # shellcheck disable=SC2119
+  scripts_dir="${MISE_CONFIG_ROOT:-$(get_repo_root)}/.github/reusable_scripts"
+
+  if [ -f "${HOME}/.cosmian/${hsm_model}.sh" ]; then
+    # shellcheck source=/dev/null
+    source "${HOME}/.cosmian/${hsm_model}.sh"
+  fi
+
+  case "${hsm_model}" in
+    softhsm2)
+      source "${MISE_CONFIG_ROOT:-$(get_repo_root)}/.mise/lib/softhsm2.sh"
+      ;;
+    kryoptic)
+      # Built and initialised per server by bench_start_server_hsm_resident.
+      ;;
+    proteccio)
+      bash "${scripts_dir}/prepare_proteccio.sh"
+      ;;
+    crypt2pay)
+      BENCH_VPN_PID_FILES+=("${CRYPT2PAY_OPENVPN_PID_FILE:-/tmp/crypt2pay-openvpn.pid}")
+      bash "${scripts_dir}/prepare_crypt2pay.sh"
+      ;;
+    utimaco)
+      # Starts the simulator and exports UTIMACO_PKCS11_LIB + CS_PKCS11_R3_CFG;
+      # the token is initialised on slot 0 with user PIN 12345678.
+      # shellcheck source=/dev/null
+      source "${scripts_dir}/prepare_utimaco.sh"
+      BENCH_HSM_SLOT="${BENCH_HSM_SLOT:-0}"
+      BENCH_HSM_PASSWORD="12345678"
+      ;;
+    aws_cloudhsm)
+      BENCH_VPN_PID_FILES+=("${CLOUDHSM_OPENVPN_PID_FILE:-/tmp/cloudhsm-openvpn.pid}")
+      # Exports AWS_CLOUDHSM_PKCS11_LIB, HSM_USER_PASSWORD and (optionally) HSM_SLOT_ID.
+      # shellcheck source=/dev/null
+      source "${scripts_dir}/prepare_aws_cloudhsm.sh"
+      BENCH_HSM_SLOT="${BENCH_HSM_SLOT:-${HSM_SLOT_ID:-}}"
+      BENCH_HSM_PASSWORD="${HSM_USER_PASSWORD}"
+      ;;
+    *)
+      # smartcardhsm / other: the caller provides the library env and --hsm-slot.
+      ;;
+  esac
+  export BENCH_HSM_SLOT BENCH_HSM_PASSWORD
+}
+
+# Start a KMS server with an HSM backend registered for HSM-*resident* key
+# benchmarking (`ckms bench --hsm`): unlike bench_start_server_hsm, this does
+# NOT set key_encryption_key — no KEK is created, no software key is ever
+# wrapped. The HSM is only used to route `hsm::softhsm2::<slot>::<uuid>`
+# unique identifiers to the CryptoOracle, so both key generation and
+# Encrypt/Sign for those keys execute directly on the HSM (PKCS#11).
+#
+# Requires:
+#   - softhsm2.sh must already be sourced by the caller.
+#   - bench_build_binaries (or bench_build_ckms) must have run, so KMS_BIN and
+#     CKMS_BIN are set.
+#
+# Usage: bench_start_server_hsm_resident <port> <tmp_dir> [http_workers] [hsm_model] [hsm_slot] [hsm_password]
+# Sets:  KMS_PID, HSM_SLOT_ID
+bench_start_server_hsm_resident() {
+  local port="$1" tmp_dir="$2" http_workers="${3:-}"
+  local hsm_model="${4:-softhsm2}"
+  local custom_slot="${5:-}"
+  local custom_password="${6:-}"
+  local sqlite_path="${tmp_dir}/kms-data"
+  local kms_conf="${tmp_dir}/kms.toml"
+  local kms_log="${tmp_dir}/kms.log"
+  local env_vars=()
+
+  mkdir -p "$sqlite_path"
+
+  if [ "${hsm_model}" = "kryoptic" ]; then
+    source "${MISE_CONFIG_ROOT:-$(get_repo_root)}/.mise/lib/kryoptic.sh"
+    kryoptic_build_cdylib
+    kryoptic_setup "${tmp_dir}/kryoptic"
+    python3 -c "
+import ctypes, os, sys
+lib_path = sys.argv[1]
+conf_path = sys.argv[2]
+os.environ['KRYOPTIC_CONF'] = conf_path
+lib = ctypes.CDLL(lib_path)
+CK_ULONG = ctypes.c_ulong
+CK_RV = CK_ULONG
+CK_SLOT_ID = CK_ULONG
+CK_SESSION_HANDLE = CK_ULONG
+FUNC_TYPES = [
+    ('version', ctypes.c_char * 8),
+    ('C_Initialize', ctypes.CFUNCTYPE(CK_RV, ctypes.c_void_p)),
+    ('C_Finalize', ctypes.CFUNCTYPE(CK_RV, ctypes.c_void_p)),
+    ('C_GetInfo', ctypes.c_void_p),
+    ('C_GetFunctionList', ctypes.c_void_p),
+    ('C_GetSlotList', ctypes.c_void_p),
+    ('C_GetSlotInfo', ctypes.c_void_p),
+    ('C_GetTokenInfo', ctypes.c_void_p),
+    ('C_GetMechanismList', ctypes.c_void_p),
+    ('C_GetMechanismInfo', ctypes.c_void_p),
+    ('C_InitToken', ctypes.CFUNCTYPE(CK_RV, CK_SLOT_ID, ctypes.c_char_p, CK_ULONG, ctypes.c_char_p)),
+    ('C_InitPIN', ctypes.CFUNCTYPE(CK_RV, CK_SESSION_HANDLE, ctypes.c_char_p, CK_ULONG)),
+    ('C_SetPIN', ctypes.c_void_p),
+    ('C_OpenSession', ctypes.CFUNCTYPE(CK_RV, CK_SLOT_ID, CK_ULONG, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(CK_SESSION_HANDLE))),
+    ('C_CloseSession', ctypes.CFUNCTYPE(CK_RV, CK_SESSION_HANDLE)),
+    ('C_CloseAllSessions', ctypes.c_void_p),
+    ('C_GetSessionInfo', ctypes.c_void_p),
+    ('C_GetOperationState', ctypes.c_void_p),
+    ('C_SetOperationState', ctypes.c_void_p),
+    ('C_Login', ctypes.CFUNCTYPE(CK_RV, CK_SESSION_HANDLE, CK_ULONG, ctypes.c_char_p, CK_ULONG)),
+    ('C_Logout', ctypes.CFUNCTYPE(CK_RV, CK_SESSION_HANDLE)),
+]
+class CK_FUNCTION_LIST(ctypes.Structure):
+    _fields_ = FUNC_TYPES
+p_fn_list = ctypes.POINTER(CK_FUNCTION_LIST)()
+lib.C_GetFunctionList.argtypes = [ctypes.POINTER(ctypes.POINTER(CK_FUNCTION_LIST))]
+lib.C_GetFunctionList.restype = CK_RV
+assert lib.C_GetFunctionList(ctypes.byref(p_fn_list)) == 0
+fns = p_fn_list.contents
+class CK_C_INITIALIZE_ARGS(ctypes.Structure):
+    _fields_ = [('CreateMutex', ctypes.c_void_p), ('DestroyMutex', ctypes.c_void_p), ('LockMutex', ctypes.c_void_p), ('UnlockMutex', ctypes.c_void_p), ('flags', CK_ULONG), ('pReserved', ctypes.c_void_p)]
+init_args = CK_C_INITIALIZE_ARGS(0, 0, 0, 0, 2, None)
+assert fns.C_Initialize(ctypes.byref(init_args)) == 0
+so_pin = b'87654321'
+label = b'Cosmian Kryoptic Token          '
+assert fns.C_InitToken(1, so_pin, len(so_pin), label) == 0
+session = CK_SESSION_HANDLE(0)
+assert fns.C_OpenSession(1, 6, None, None, ctypes.byref(session)) == 0
+assert fns.C_Login(session, 0, so_pin, len(so_pin)) == 0
+user_pin = b'12345678'
+assert fns.C_InitPIN(session, user_pin, len(user_pin)) == 0
+assert fns.C_Logout(session) == 0
+assert fns.C_CloseSession(session) == 0
+assert fns.C_Finalize(None) == 0
+" "${KRYOPTIC_PKCS11_LIB}" "${KRYOPTIC_CONF}"
+
+    HSM_SLOT_ID="${KRYOPTIC_HSM_SLOT_ID}"
+    export HSM_SLOT_ID
+    env_vars+=(
+      "KRYOPTIC_PKCS11_LIB=${KRYOPTIC_PKCS11_LIB}"
+      "KRYOPTIC_CONF=${KRYOPTIC_CONF}"
+    )
+    hsm_password="${HSM_USER_PASSWORD}"
+  elif [ "${hsm_model}" = "proteccio" ]; then
+    HSM_SLOT_ID="${custom_slot:-${PROTECCIO_SLOT:-5}}"
+    export HSM_SLOT_ID
+    hsm_password="${custom_password:-${PROTECCIO_PASSWORD:-}}"
+    env_vars+=(
+      "PROTECCIO_PKCS11_LIB=${PROTECCIO_PKCS11_LIB:-/lib/libnethsm.so}"
+    )
+  elif [ "${hsm_model}" = "crypt2pay" ]; then
+    HSM_SLOT_ID="${custom_slot:-${CRYPT2PAY_SLOT_ID:-1}}"
+    export HSM_SLOT_ID
+    hsm_password="${custom_password:-${CRYPT2PAY_PASSWORD:-}}"
+    env_vars+=(
+      "CRYPT2PAY_PKCS11_LIB=${CRYPT2PAY_PKCS11_LIB:-/lib/libpkcs11c2p.so}"
+      "C2P_CONF=${C2P_CONF:-/etc/c2p/c2p.xml}"
+    )
+  elif [ "${hsm_model}" = "softhsm2" ]; then
+    require_cmd softhsm2-util \
+      "SoftHSM2 (softhsm2-util) is required for HSM benchmarks. Install: brew install softhsm (macOS) or apt install softhsm2 (Linux)"
+    softhsm2_setup "${tmp_dir}/softhsm2/tokens" "${tmp_dir}/softhsm2/softhsm2.conf"
+    local init_out
+    init_out=$(softhsm2_init_token "bench_resident" "${HSM_USER_PASSWORD}" "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
+    HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_resident")
+    export HSM_SLOT_ID
+    local lib_path_var lib_path
+    lib_path_var=$(softhsm2_lib_path_var)
+    lib_path=$(softhsm2_lib_search_path)
+    env_vars+=(
+      "${lib_path_var}=${lib_path}"
+      "SOFTHSM2_PKCS11_LIB=${SOFTHSM2_PKCS11_LIB_PATH}"
+      "SOFTHSM2_CONF=${SOFTHSM2_CONF}"
+    )
+    hsm_password="${HSM_USER_PASSWORD}"
+  else
+    HSM_SLOT_ID="${custom_slot:-1}"
+    export HSM_SLOT_ID
+    hsm_password="${custom_password}"
+  fi
+
+  cat >"${kms_conf}" <<EOF
+default_username = "admin"
+
+hsm_model    = "${hsm_model}"
+hsm_admin    = ["admin"]
+hsm_slot     = [${HSM_SLOT_ID}]
+hsm_password = ["${hsm_password}"]
+
+[db]
+database_type = "sqlite"
+sqlite_path   = "${sqlite_path}"
+
+[http]
+hostname = "0.0.0.0"
+port     = ${port}
+EOF
+
+  if [ -n "${http_workers}" ]; then
+    printf 'http_workers = %s\n' "${http_workers}" >>"${kms_conf}"
+  fi
+
+  echo "Starting KMS server (HSM-resident [${hsm_model}], no KEK) on port ${port}..."
+
+  env \
+    ${env_vars[@]+"${env_vars[@]}"} \
+    "${KMS_BIN}" --config "${kms_conf}" \
+    >"${kms_log}" 2>&1 &
+  KMS_PID=$!
+  export KMS_PID
+
+  kms_wait_ready "http://127.0.0.1:${port}/kmip/2_1" "${KMS_PID}" "${kms_log}" 60
 }
 
 # Write a markdown benchmark report.
@@ -454,16 +774,38 @@ PYEOF
 
 # Generate SVG charts and a markdown report from benchmark data.
 # Call after running load tests and/or criterion benchmarks.
-# Usage: bench_generate_report <kms_port>
+# Usage: bench_generate_report <kms_port> [docs_subdir] [is_hsm] [is_hsm_kek] [is_pkcs11]
+#   docs_subdir defaults to "ckms_bench" (the shared software-bench baseline
+#   used by bench/load). Pass a distinct name (e.g. "ckms_bench_delegated_crypto_operations" or
+#   "ckms_bench_hsm_kek") to avoid clobbering that baseline with a different
+#   benchmark's results — the docs dir is entirely replaced on each call.
+#   is_hsm ("true"/"false", default "false"): when "true", passes --hsm to
+#   plot_version_compare.py so the report's Protocols/Methodology sections
+#   describe the HSM/CryptoOracle delegation model instead of the generic
+#   software-bench text.
+#   is_hsm_kek ("true"/"false", default "false"): when "true" (and is_hsm is
+#   "false"), passes --kek to plot_version_compare.py so the report's
+#   Protocols/Methodology sections keep the generic software-bench text but
+#   are prefixed with a short note that the KEK (not the benchmarked keys)
+#   is HSM-resident. Ignored if is_hsm is "true".
+#   is_pkcs11 ("true"/"false", default "false"): when "true", passes
+#   --pkcs11 to plot_version_compare.py so the report describes the real
+#   dlopen()-based Cryptoki C API benchmark. May be combined with is_hsm=true
+#   for PKCS#11 operations delegated to HSM-resident keys.
 # Reads:  $CRITERION_HOME/load_*.json  (load tests)
 #         $CRITERION_HOME/criterion.json  (criterion benchmarks)
+#         $CRITERION_HOME/pkcs11_overhead.json  (PKCS#11 overhead breakdown)
 # Writes: $CRITERION_HOME/reports/<version>/  data files + report.md + SVGs
 #         $CRITERION_HOME/reports/<version>/load/       load SVGs
 #         $CRITERION_HOME/reports/<version>/criterion/  criterion SVGs
 #         $CRITERION_HOME/reports/<version>/report.md   combined report
 bench_generate_report() {
   local port="$1"
-
+  local docs_subdir="${2:-ckms_bench}"
+  local is_hsm="${3:-false}"
+  local is_hsm_kek="${4:-false}"
+  local is_pkcs11="${5:-false}"
+  local base_url_override="${6:-}"
   # Compute criterion home step-by-step to avoid deeply nested expansions.
   local crit_home
   if [ -n "${CRITERION_HOME:-}" ]; then
@@ -480,9 +822,9 @@ bench_generate_report() {
   local plot_script="${MISE_CONFIG_ROOT:-$(get_repo_root)}/.mise/scripts/bench/plot_version_compare.py"
 
   # Derive version label from running server (only the numeric part, e.g. "5.24.0").
+  local base_url="${base_url_override:-http://127.0.0.1:${port}}"
   local raw_version
-  raw_version="$(curl -sf "http://127.0.0.1:${port}/version" 2>/dev/null || true)"
-  local version
+  raw_version="$(curl -sf "${base_url}/version" 2>/dev/null || true)"
   # Strip JSON quotes then take only the first whitespace-delimited token.
   version="$(printf '%s' "${raw_version}" | tr -d '"' | awk '{print $1}')"
   [ -z "${version}" ] && version="current"
@@ -501,6 +843,10 @@ bench_generate_report() {
     cp "${crit_home}/criterion.json" "${report_dir}/${version}/"
     found=1
   fi
+  if [ -f "${crit_home}/pkcs11_overhead.json" ]; then
+    cp "${crit_home}/pkcs11_overhead.json" "${report_dir}/${version}/"
+    found=1
+  fi
 
   if [ "${found}" -eq 0 ]; then
     echo "WARNING: no benchmark data files found in ${crit_home}"
@@ -508,7 +854,16 @@ bench_generate_report() {
   fi
 
   echo "Generating report..."
-  python3 "${plot_script}" "${report_dir}" "${version}" || {
+  local plot_args=("${report_dir}" "${version}")
+  if [ "${is_hsm}" = "true" ]; then
+    plot_args+=("--hsm")
+  elif [ "${is_hsm_kek}" = "true" ]; then
+    plot_args+=("--kek")
+  fi
+  if [ "${is_pkcs11}" = "true" ]; then
+    plot_args+=("--pkcs11")
+  fi
+  python3 "${plot_script}" "${plot_args[@]}" || {
     echo "WARNING: report generation failed — raw data is in ${report_dir}/${version}/"
     return 0
   }
@@ -520,10 +875,15 @@ bench_generate_report() {
 
   # Mirror the freshly generated report into the documentation tree so the
   # checked-in docs always reflect the latest run (committed by the CI job or
-  # the developer's local run).
+  # the developer's local run). Sanity runs (2 s/level, debug build) only
+  # smoke-test the pipeline: never let them overwrite the published reports.
+  if [ "${BENCH_SANITY:-}" = "true" ]; then
+    echo "Sanity run: leaving documentation/docs/benchmarks/${docs_subdir} untouched."
+    return 0
+  fi
   local docs_bench_dir
   # shellcheck disable=SC2119
-  docs_bench_dir="$(get_repo_root)/documentation/docs/benchmarks/ckms_bench"
+  docs_bench_dir="$(get_repo_root)/documentation/docs/benchmarks/${docs_subdir}"
   echo "Updating docs: ${docs_bench_dir}..."
   rm -rf "${docs_bench_dir:?}"
   mkdir -p "${docs_bench_dir}"

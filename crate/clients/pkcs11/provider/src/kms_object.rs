@@ -10,7 +10,10 @@ use ckms::{
                 PaddingMethod, RevocationReason, RevocationReasonCode, SecretDataType,
             },
             kmip_2_1::{
-                extra::{VENDOR_ID_COSMIAN, tagging::SYSTEM_TAG_SYMMETRIC_KEY},
+                extra::{
+                    VENDOR_ID_COSMIAN,
+                    tagging::{SYSTEM_TAG_SECRET_DATA, SYSTEM_TAG_SYMMETRIC_KEY},
+                },
                 kmip_attributes::Attributes,
                 kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
@@ -19,10 +22,11 @@ use ckms::{
                     Revoke, Sign, SignatureVerify,
                 },
                 kmip_types::{
-                    CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
-                    KeyFormatType, QueryFunction, RecommendedCurve, UniqueIdentifier,
-                    ValidityIndicator,
+                    AttributeReference, CryptographicAlgorithm, CryptographicParameters,
+                    DigitalSignatureAlgorithm, KeyFormatType, QueryFunction, RecommendedCurve, Tag,
+                    UniqueIdentifier, ValidityIndicator,
                 },
+                requests::symmetric_key_create_request,
             },
         },
         cosmian_kms_client::{
@@ -35,9 +39,12 @@ use ckms::{
     },
 };
 use cosmian_logger::{debug, error, trace};
-use cosmian_pkcs11_module::traits::{
-    DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
-    SignatureAlgorithm,
+use cosmian_pkcs11_module::{
+    profiling::{self, SignPhase},
+    traits::{
+        DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
+        SignatureAlgorithm,
+    },
 };
 use zeroize::Zeroizing;
 
@@ -575,28 +582,43 @@ pub(crate) async fn kms_import_symmetric_key_async(
             key_wrapping_data: None,
         },
     });
-    let response = kms_rest_client
-        .import(Import {
-            unique_identifier: label
-                .map(|l| UniqueIdentifier::TextString(l.to_owned()))
-                .unwrap_or_default(),
-            object_type: cosmian_kmip::kmip_2_1::kmip_objects::ObjectType::SymmetricKey,
-            replace_existing: Some(true),
-            key_wrap_type: None,
-            attributes: attributes.clone(),
-            object: object.clone(),
-        })
-        .await?;
+    let is_hsm_key = label.is_some_and(|label| label.starts_with("hsm::"));
+    let remote_id = if is_hsm_key {
+        let request = symmetric_key_create_request(
+            vendor_id,
+            label.map(|label| UniqueIdentifier::TextString(label.to_owned())),
+            key_length * 8,
+            cryptographic_algorithm,
+            &tags,
+            sensitive,
+            None,
+        )?;
+        kms_rest_client.create(request).await?.unique_identifier
+    } else {
+        let response = kms_rest_client
+            .import(Import {
+                unique_identifier: label
+                    .map(|l| UniqueIdentifier::TextString(l.to_owned()))
+                    .unwrap_or_default(),
+                object_type: cosmian_kmip::kmip_2_1::kmip_objects::ObjectType::SymmetricKey,
+                replace_existing: Some(true),
+                key_wrap_type: None,
+                attributes: attributes.clone(),
+                object: object.clone(),
+            })
+            .await?;
 
-    // Activate the key so it moves from PreActive → Active state and can be used for Encrypt/Decrypt.
-    kms_rest_client
-        .activate(Activate {
-            unique_identifier: response.unique_identifier.clone(),
-        })
-        .await?;
+        // Imported software keys start PreActive and must be activated before use.
+        kms_rest_client
+            .activate(Activate {
+                unique_identifier: response.unique_identifier.clone(),
+            })
+            .await?;
+        response.unique_identifier
+    };
 
     let res = KmsObject {
-        remote_id: response.unique_identifier.to_string(),
+        remote_id: remote_id.to_string(),
         object,
         attributes,
         other_tags: tags,
@@ -629,7 +651,7 @@ pub(crate) async fn kms_import_object_async(
         "kms_import_object_async: label: {label}, data (length): {}",
         data.len()
     );
-    let tags = vec![label.to_owned()];
+    let tags = vec![label.to_owned(), SYSTEM_TAG_SECRET_DATA.to_owned()];
     let unique_identifier = UniqueIdentifier::TextString(label.to_owned());
 
     let secret_data_value = data.to_vec();
@@ -879,12 +901,15 @@ pub(crate) fn kms_sign(
     algorithm: &SignatureAlgorithm,
     data: &[u8],
 ) -> Pkcs11Result<Vec<u8>> {
-    RUNTIME.block_on(kms_sign_async(
+    let runtime_block_on = profiling::phase(SignPhase::RuntimeBlockOn);
+    let result = RUNTIME.block_on(kms_sign_async(
         kms_rest_client,
         unique_identifier,
         algorithm,
         data,
-    ))
+    ));
+    drop(runtime_block_on);
+    result
 }
 
 /// Map a PKCS#11 `DigestType` to its KMIP `HashingAlgorithm` counterpart.
@@ -1006,6 +1031,7 @@ pub(crate) async fn kms_sign_async(
     algorithm: &SignatureAlgorithm,
     data: &[u8],
 ) -> Pkcs11Result<Vec<u8>> {
+    let request_build = profiling::phase(SignPhase::RequestBuild);
     // Map the PKCS#11 mechanism to KMIP CryptographicParameters.
     // For CKM_ECDSA (SignatureAlgorithm::Ecdsa), the data is a pre-computed hash
     // passed by OpenSSH — send it as `digested_data` to prevent double-hashing on
@@ -1022,8 +1048,12 @@ pub(crate) async fn kms_sign_async(
         init_indicator: None,
         final_indicator: None,
     };
+    drop(request_build);
 
-    let response = kms_rest_client.sign(sign_request).await?;
+    let kms_client_sign = profiling::phase(SignPhase::KmsClientSign);
+    let response = kms_rest_client.sign_bytes(sign_request).await;
+    drop(kms_client_sign);
+    let response = response?;
     response.signature_data.ok_or_else(|| {
         Pkcs11Error::ServerError("Sign response does not contain signature data".to_owned())
     })
@@ -1093,7 +1123,12 @@ pub(crate) async fn get_kms_object_attributes_async(
     let response = kms_client
         .get_attributes(GetAttributes {
             unique_identifier: Some(UniqueIdentifier::TextString(object_id.to_owned())),
-            attribute_reference: None,
+            attribute_reference: Some(vec![
+                AttributeReference::Standard(Tag::CryptographicAlgorithm),
+                AttributeReference::Standard(Tag::CryptographicLength),
+                AttributeReference::Standard(Tag::ObjectType),
+                AttributeReference::Standard(Tag::CryptographicDomainParameters),
+            ]),
         })
         .await?;
     Ok(response.attributes)

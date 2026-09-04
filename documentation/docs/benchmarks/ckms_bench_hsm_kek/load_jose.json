@@ -1,0 +1,15 @@
+{"protocol":"jose","operation":"encrypt/a256gcm","concurrency":1,"throughput_rps":17258.50,"p50_ms":0.055,"p95_ms":0.065,"p99_ms":0.132}
+{"protocol":"jose","operation":"encrypt/a256gcm","concurrency":2,"throughput_rps":30988.40,"p50_ms":0.064,"p95_ms":0.071,"p99_ms":0.132}
+{"protocol":"jose","operation":"encrypt/a256gcm","concurrency":4,"throughput_rps":49684.60,"p50_ms":0.076,"p95_ms":0.120,"p99_ms":0.174}
+{"protocol":"jose","operation":"encrypt/a256gcm","concurrency":8,"throughput_rps":63644.25,"p50_ms":0.091,"p95_ms":0.209,"p99_ms":0.238}
+{"protocol":"jose","operation":"encrypt/a256gcm","concurrency":16,"throughput_rps":84360.50,"p50_ms":0.161,"p95_ms":0.297,"p99_ms":0.337}
+{"protocol":"jose","operation":"sign-verify/ecdsa-p256","concurrency":1,"throughput_rps":2305.35,"p50_ms":0.422,"p95_ms":0.467,"p99_ms":0.710}
+{"protocol":"jose","operation":"sign-verify/ecdsa-p256","concurrency":2,"throughput_rps":4253.20,"p50_ms":0.473,"p95_ms":0.494,"p99_ms":0.513}
+{"protocol":"jose","operation":"sign-verify/ecdsa-p256","concurrency":4,"throughput_rps":6727.05,"p50_ms":0.576,"p95_ms":0.664,"p99_ms":1.009}
+{"protocol":"jose","operation":"sign-verify/ecdsa-p256","concurrency":8,"throughput_rps":10270.20,"p50_ms":0.698,"p95_ms":1.120,"p99_ms":1.242}
+{"protocol":"jose","operation":"sign-verify/ecdsa-p256","concurrency":16,"throughput_rps":14883.95,"p50_ms":0.912,"p95_ms":1.399,"p99_ms":1.483}
+{"protocol":"jose","operation":"sign-verify/eddsa-ed25519","concurrency":1,"throughput_rps":11223.75,"p50_ms":0.085,"p95_ms":0.102,"p99_ms":0.168}
+{"protocol":"jose","operation":"sign-verify/eddsa-ed25519","concurrency":2,"throughput_rps":19961.80,"p50_ms":0.099,"p95_ms":0.107,"p99_ms":0.124}
+{"protocol":"jose","operation":"sign-verify/eddsa-ed25519","concurrency":4,"throughput_rps":32055.45,"p50_ms":0.118,"p95_ms":0.203,"p99_ms":0.286}
+{"protocol":"jose","operation":"sign-verify/eddsa-ed25519","concurrency":8,"throughput_rps":45385.90,"p50_ms":0.142,"p95_ms":0.262,"p99_ms":0.298}
+{"protocol":"jose","operation":"sign-verify/eddsa-ed25519","concurrency":16,"throughput_rps":63545.05,"p50_ms":0.231,"p95_ms":0.360,"p99_ms":0.393}

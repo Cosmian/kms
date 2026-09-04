@@ -14,3 +14,7 @@
 
     The provider crate is a PKCS#11 library that interfaces the KMS. It provides a PKCS#11 library that can be used by
     applications such as LUKS to interface the KMS. The `provider` crate is built from the `module` crate.
+
+3. `bench` subcommand
+
+    The `provider` crate's compiled shared library can be benchmarked via `ckms pkcs11 bench --help` (driven through `mise bench:load-pkcs11`).

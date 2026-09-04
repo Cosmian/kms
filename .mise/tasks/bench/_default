@@ -1,0 +1,95 @@
+#!/usr/bin/env -S usage bash
+#MISE description="Run all benchmarks (load, HSM KEK/delegated, PKCS#11 software/delegated)"
+#USAGE flag "-v --variant <v>"      env="BENCH_VARIANT" default="non-fips" help="FIPS variant" { choices "fips" "non-fips" }
+#USAGE flag "-l --link <l>"         env="BENCH_LINK"    default="static"   help="Linkage type" { choices "static" "dynamic" }
+#USAGE flag "-r --release"          env="BENCH_RELEASE"                    help="Build in release mode"
+#USAGE flag "-s --sanity"           env="BENCH_SANITY"                     help="Quick sanity check"
+#USAGE flag "-u --server-url <u>"   env="BENCH_SERVER_URL"                 help="Target KMS server URL (e.g. http://192.168.1.17:9090); omit to build local"
+#USAGE flag "--speed <speed>"       env="BENCH_SPEED"   default="quick"    help="Criterion speed preset" { choices "quick" "normal" "sanity" }
+#USAGE flag "--hsm-model <m>"       env="BENCH_HSM_MODEL" default="softhsm2" help="HSM for the delegated PKCS#11 benchmark. softhsm2 runs the full suite; any other model runs only bench:load-pkcs11 --delegated against that HSM (the software and HSM-KEK benchmarks are SoftHSM2-bound and HSM-independent)" { choices "softhsm2" "kryoptic" "proteccio" "crypt2pay" "utimaco" "aws_cloudhsm" }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+
+print_header "Running full benchmark suite (${VARIANT_NAME})"
+
+TASK_DIR="${MISE_CONFIG_ROOT}/.mise/tasks/bench"
+
+COMMON_ARGS=(
+  --variant "${usage_variant:-non-fips}"
+  --link "${usage_link:-static}"
+  --speed "${usage_speed:-quick}"
+)
+
+# Only run criterion benchmarks if NOT in sanity mode
+if [ "${usage_sanity:-false}" != "true" ]; then
+  COMMON_ARGS+=(--criterion)
+fi
+
+if [ -n "${usage_server_url:-}" ]; then
+  COMMON_ARGS+=(--server-url "${usage_server_url}")
+fi
+
+if [ "${usage_release:-false}" = "true" ]; then
+  COMMON_ARGS+=(--release)
+fi
+
+if [ "${usage_sanity:-false}" = "true" ]; then
+  COMMON_ARGS+=(--sanity)
+fi
+
+FAILED=()
+HSM_MODEL="${usage_hsm_model:-softhsm2}"
+
+# Determine which tasks to run based on whether a remote server URL was provided
+# Remote servers don't support load-hsm (which creates its own local HSM)
+if [ -n "${usage_server_url:-}" ]; then
+  REMOTE_MODE="true"
+  print_status "Remote server mode: --server-url provided"
+  print_status "Skipping load-hsm tasks (they require local HSM token control)"
+else
+  REMOTE_MODE="false"
+  print_status "Local mode: building and starting a local KMS server"
+fi
+
+run_bench() {
+  local name="$1"
+  shift
+  print_status "Running benchmark: $name"
+  if "$@"; then
+    print_success "$name passed"
+  else
+    print_warning "$name FAILED (continuing...)"
+    FAILED+=("$name")
+  fi
+}
+
+if [ "${HSM_MODEL}" != "softhsm2" ]; then
+  # Only the delegated PKCS#11 benchmark targets a selectable HSM.
+  [ "${REMOTE_MODE}" = "false" ] || print_error "--hsm-model ${HSM_MODEL} requires a local server (no --server-url)"
+  run_bench "bench:load-pkcs11 --delegated --hsm-model ${HSM_MODEL}" \
+    "${TASK_DIR}/load-pkcs11" "${COMMON_ARGS[@]}" --delegated --hsm-model "${HSM_MODEL}"
+else
+  # 1. mise bench:load --criterion
+  run_bench "bench:load" "${TASK_DIR}/load" "${COMMON_ARGS[@]}"
+
+  # 2-5. HSM and PKCS#11 tasks only run in LOCAL mode (not with remote --server-url)
+  if [ "${REMOTE_MODE}" = "false" ]; then
+    run_bench "bench:load-hsm" "${TASK_DIR}/load-hsm" "${COMMON_ARGS[@]}"
+    run_bench "bench:load-hsm --delegated" "${TASK_DIR}/load-hsm" "${COMMON_ARGS[@]}" --delegated
+    run_bench "bench:load-pkcs11" "${TASK_DIR}/load-pkcs11" "${COMMON_ARGS[@]}"
+    run_bench "bench:load-pkcs11 --delegated" "${TASK_DIR}/load-pkcs11" "${COMMON_ARGS[@]}" --delegated
+  else
+    print_warning "Skipping bench:load-hsm / bench:load-pkcs11 (require local HSM control)"
+  fi
+fi
+
+echo ''
+echo '============================================'
+if [ ${#FAILED[@]} -gt 0 ]; then
+  echo "FAILED benchmarks: ${FAILED[*]}" >&2
+  echo '============================================' >&2
+  exit 1
+fi
+echo '============================================'
+print_success "All benchmarks completed successfully"

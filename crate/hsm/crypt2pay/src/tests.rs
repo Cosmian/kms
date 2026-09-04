@@ -26,9 +26,7 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
             Some(user_password),
         )]),
         slot_id_for_tests: SLOT_ID,
-        rsa_oaep_digest: Some(RsaOaepDigest::SHA256),
         threads: 4,
-        supports_rsa_wrap: true,
     })
 }
 

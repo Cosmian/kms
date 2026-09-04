@@ -2,6 +2,7 @@
 
 use std::{
     cmp::min,
+    collections::HashSet,
     ops::Add,
     ptr,
     sync::{Arc, Mutex},
@@ -19,17 +20,17 @@ use pkcs11_sys::{
     CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
     CK_RSA_PKCS_OAEP_PARAMS, CK_RSA_PKCS_PSS_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG,
     CKA_CLASS, CKA_COEFFICIENT, CKA_DERIVE, CKA_EC_PARAMS, CKA_EC_POINT, CKA_END_DATE,
-    CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1,
-    CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_START_DATE,
-    CKA_TOKEN, CKA_VALUE, CKA_VALUE_LEN, CKF_HKDF_SALT_DATA, CKF_HKDF_SALT_NULL, CKG_MGF1_SHA1,
-    CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_EC, CKK_EC_EDWARDS,
-    CKK_EC_MONTGOMERY, CKK_GENERIC_SECRET, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM,
-    CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_EDDSA,
-    CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_RSA_PKCS_PSS,
-    CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS,
-    CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512, CKM_SHA512_RSA_PKCS,
-    CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED,
-    CKR_ATTRIBUTE_SENSITIVE, CKR_ATTRIBUTE_TYPE_INVALID, CKR_MECHANISM_INVALID,
+    CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_EXTRACTABLE, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS,
+    CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE,
+    CKA_START_DATE, CKA_TOKEN, CKA_VALUE, CKA_VALUE_LEN, CKF_HKDF_SALT_DATA, CKF_HKDF_SALT_NULL,
+    CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_EC,
+    CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKK_GENERIC_SECRET, CKK_RSA, CKK_VENDOR_DEFINED,
+    CKM_AES_CBC, CKM_AES_GCM, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512,
+    CKM_EDDSA, CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
+    CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS,
+    CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512,
+    CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
+    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_MECHANISM_INVALID,
     CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID,
     CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
 };
@@ -41,7 +42,9 @@ pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
 use crate::{
     HError, HResult, ObjectHandlesCache, hsm_call,
     hsm_capabilities::HsmCapabilities,
-    session::{curve_byte_size, curve_from_der_oid},
+    session::{
+        curve_byte_size, curve_from_der_oid, deserialize_tagged_label, serialize_tagged_label,
+    },
 };
 
 /// AES block size in bytes
@@ -161,16 +164,38 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
     }
 }
 
-/// Returns `true` for return codes that indicate the requested mechanism (or its
-/// parameters) is simply not supported by the loaded PKCS#11 library — as opposed to
-/// a hard failure. Callers use this to gracefully degrade (e.g. report the mechanism
-/// as unavailable) instead of surfacing a generic HSM error, mirroring the additive,
-/// non-breaking philosophy already established for the v3.0 capability probes in
-/// `HsmLib` (issue #1153).
+#[cfg(not(feature = "non-fips"))]
+const fn is_encryption_algorithm_supported(algorithm: HsmEncryptionAlgorithm) -> bool {
+    !matches!(algorithm, HsmEncryptionAlgorithm::RsaOaepSha1)
+}
+
+#[cfg(feature = "non-fips")]
+const fn is_encryption_algorithm_supported(_: HsmEncryptionAlgorithm) -> bool {
+    true
+}
+
+#[cfg(not(feature = "non-fips"))]
+const fn is_signing_algorithm_supported(algorithm: HsmSigningAlgorithm) -> bool {
+    // Both the hashing mechanism and the pre-hashed `DigestInfo` path must be rejected:
+    // otherwise a 20-byte SHA-1 digest signed through raw `CKM_RSA_PKCS` bypasses the gate.
+    !matches!(
+        algorithm,
+        HsmSigningAlgorithm::Sha1WithRsa
+            | HsmSigningAlgorithm::RsaPkcsV15Digest {
+                hashing_algorithm: HashingAlgorithm::SHA1
+            }
+    )
+}
+
+#[cfg(feature = "non-fips")]
+const fn is_signing_algorithm_supported(_: HsmSigningAlgorithm) -> bool {
+    true
+}
+
+/// Returns whether a PKCS#11 return code means a mechanism is unsupported.
 const fn is_mechanism_unsupported_rv(rv: pkcs11_sys::CK_RV) -> bool {
     rv == CKR_MECHANISM_INVALID || rv == CKR_MECHANISM_PARAM_INVALID
 }
-
 /// An active PKCS#11 session with an HSM.
 pub struct Session {
     hsm: Arc<crate::hsm_lib::HsmLib>,
@@ -204,6 +229,11 @@ impl Session {
     /// Get the HSM library interface
     pub(crate) fn hsm(&self) -> Arc<crate::hsm_lib::HsmLib> {
         self.hsm.clone()
+    }
+
+    /// Get the HSM vendor capability flags (e.g. attribute quirks, size limits).
+    pub(crate) const fn hsm_capabilities(&self) -> &HsmCapabilities {
+        &self.hsm_capabilities
     }
 
     /// Get the PKCS#11 session handle
@@ -277,8 +307,9 @@ impl Session {
         let (sk_handle, pk_handle) = self.generate_rsa_key_pair(
             sk_id.as_bytes(),
             pk_id.as_bytes(),
-            RsaKeySize::Rsa1024, //As the specific key size doesn't matter, use the smallest (fastest) algorithm supported.
+            RsaKeySize::Rsa2048,
             false,
+            None,
         )?;
 
         let candidates: &[(CK_MECHANISM_TYPE, CK_RSA_PKCS_MGF_TYPE)] = &[
@@ -361,7 +392,7 @@ impl Session {
             CK_ULONG::try_from(template.len())?
         );
 
-        let max_object_count = usize::try_from(self.hsm_capabilities.find_max_object_count)?;
+        let max_object_count = usize::try_from(self.hsm_capabilities().find_max_object_count)?;
         let mut handles_buf = vec![CK_OBJECT_HANDLE::default(); max_object_count];
         let mut object_count: CK_ULONG = 0;
         loop {
@@ -371,7 +402,7 @@ impl Session {
                 C_FindObjects,
                 self.handle,
                 handles_buf.as_mut_ptr(),
-                self.hsm_capabilities.find_max_object_count, // ulMaxObjectCount
+                self.hsm_capabilities().find_max_object_count, // ulMaxObjectCount
                 &raw mut object_count
             );
             if object_count == 0 {
@@ -791,48 +822,130 @@ impl Session {
         Ok(unpadded)
     }
 
+    /// AES-GCM encryption with a caller-generated random 96-bit IV.
+    fn encrypt_aes_gcm_classic(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        plaintext: &[u8],
+    ) -> HResult<EncryptedContent> {
+        self.encrypt_aes_gcm_with_iv_buffer(
+            key_handle,
+            generate_random_nonce::<AES_GCM_IV_LENGTH>()?,
+            plaintext,
+        )
+    }
+
+    /// AES-GCM encryption for HSMs that reject a caller-supplied IV
+    /// (`HsmCapabilities::supports_aes_gcm_caller_iv == false`): a zeroed
+    /// `pIv` buffer is passed and the HSM writes the IV it drew from its own RNG back
+    /// into it. An IV still all-zero afterwards means the HSM did not generate one;
+    /// it is rejected to rule out nonce reuse under a constant IV.
+    fn encrypt_aes_gcm_hsm_generated_iv(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        plaintext: &[u8],
+    ) -> HResult<EncryptedContent> {
+        let content =
+            self.encrypt_aes_gcm_with_iv_buffer(key_handle, [0_u8; AES_GCM_IV_LENGTH], plaintext)?;
+        if content
+            .iv
+            .as_deref()
+            .is_none_or(|iv| iv.iter().all(|&b| b == 0))
+        {
+            return Err(HError::Default(
+                "The HSM did not generate an AES-GCM IV; refusing to use an all-zero nonce"
+                    .to_owned(),
+            ));
+        }
+        Ok(content)
+    }
+
+    /// Runs `CKM_AES_GCM` with `nonce` as the `pIv` buffer and returns the IV as it
+    /// reads after the call (HSMs that generate the IV write it back into the buffer).
+    fn encrypt_aes_gcm_with_iv_buffer(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        mut nonce: [u8; AES_GCM_IV_LENGTH],
+        plaintext: &[u8],
+    ) -> HResult<EncryptedContent> {
+        let mut params = CK_AES_GCM_PARAMS {
+            pIv: nonce.as_mut_ptr(),
+            ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
+            ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
+            pAAD: ptr::null_mut(),
+            ulAADLen: 0,
+            ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_GCM,
+            pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+            ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
+        };
+        let ciphertext = self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
+        let split_at = ciphertext
+            .len()
+            .checked_sub(AES_GCM_AUTH_TAG_LENGTH)
+            .ok_or_else(|| {
+                HError::Default("Failed to extract GCM authentication tag".to_owned())
+            })?;
+        Ok(EncryptedContent {
+            iv: Some(nonce.to_vec()),
+            ciphertext: ciphertext
+                .get(..split_at)
+                .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?
+                .to_vec(),
+            tag: Some(
+                ciphertext
+                    .get(split_at..)
+                    .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
+                    .to_vec(),
+            ),
+        })
+    }
+
     /// Encrypt data using the specified key and algorithm
     pub fn encrypt(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         algorithm: HsmEncryptionAlgorithm,
         plaintext: &[u8],
+        iv_counter_nonce: Option<&[u8]>,
     ) -> HResult<EncryptedContent> {
+        if !is_encryption_algorithm_supported(algorithm) {
+            return Err(HError::Default(
+                "RSA-OAEP with SHA-1 is unavailable in FIPS mode".to_owned(),
+            ));
+        }
         Ok(match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
-                let mut nonce = generate_random_nonce::<12>()?;
-                let mut params = CK_AES_GCM_PARAMS {
-                    pIv: nonce.as_mut_ptr(),
-                    ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
-                    ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
-                    pAAD: ptr::null_mut(),
-                    ulAADLen: 0,
-                    ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
-                };
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_AES_GCM,
-                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
-                    ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
-                };
-                let ciphertext =
-                    self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
-                EncryptedContent {
-                    iv: Some(nonce.to_vec()),
-                    ciphertext: ciphertext
-                        .get(..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH)
-                        .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?
-                        .to_vec(),
-                    tag: Some(
-                        ciphertext
-                            .get(ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH..)
-                            .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
-                            .to_vec(),
-                    ),
+                if iv_counter_nonce.is_some() {
+                    return Err(HError::Default(
+                        "Caller-supplied AES-GCM IVs are not accepted by HSM encryption; \
+                         the HSM integration generates a fresh nonce"
+                            .to_owned(),
+                    ));
+                }
+                if self.hsm_capabilities().supports_aes_gcm_message
+                    && self.hsm().supports_message_encrypt()
+                {
+                    self.encrypt_message_aes_gcm(key_handle, &[], plaintext)?
+                } else if self.hsm_capabilities().supports_aes_gcm_caller_iv {
+                    self.encrypt_aes_gcm_classic(key_handle, plaintext)?
+                } else {
+                    self.encrypt_aes_gcm_hsm_generated_iv(key_handle, plaintext)?
                 }
             }
             HsmEncryptionAlgorithm::AesCbc => {
-                let mut iv = generate_random_nonce::<AES_CBC_IV_LENGTH>()?;
-                if let Some(max_cbc_data_size) = self.hsm_capabilities.max_cbc_data_size {
+                let mut iv: [u8; AES_CBC_IV_LENGTH] = match iv_counter_nonce {
+                    Some(iv) => iv.try_into().map_err(|_invalid_length| {
+                        HError::Default(format!(
+                            "Invalid AES-CBC IV length: expected {AES_CBC_IV_LENGTH}, got {}",
+                            iv.len()
+                        ))
+                    })?,
+                    None => generate_random_nonce::<AES_CBC_IV_LENGTH>()?,
+                };
+                if let Some(max_cbc_data_size) = self.hsm_capabilities().max_cbc_data_size {
                     if plaintext.len() > max_cbc_data_size {
                         debug!("Performing multi round AES CBC encryption");
                         return self.encrypt_aes_cbc_multi_round(
@@ -931,14 +1044,42 @@ impl Session {
         algorithm: HsmEncryptionAlgorithm,
         ciphertext: &[u8],
     ) -> HResult<Zeroizing<Vec<u8>>> {
+        if !is_encryption_algorithm_supported(algorithm) {
+            return Err(HError::Default(
+                "RSA-OAEP with SHA-1 is unavailable in FIPS mode".to_owned(),
+            ));
+        }
         match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
-                if ciphertext.len() < AES_GCM_IV_LENGTH {
+                if ciphertext.len() < AES_GCM_IV_LENGTH + AES_GCM_AUTH_TAG_LENGTH {
                     return Err(HError::Default("Invalid AES GCM ciphertext".to_owned()));
                 }
-                let mut nonce: [u8; AES_GCM_IV_LENGTH] = ciphertext
+                let iv = ciphertext
                     .get(..AES_GCM_IV_LENGTH)
-                    .ok_or_else(|| HError::Default("Failed to extract nonce".to_owned()))?
+                    .ok_or_else(|| HError::Default("Failed to extract nonce".to_owned()))?;
+                let encrypted = ciphertext
+                    .get(AES_GCM_IV_LENGTH..)
+                    .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?;
+                if self.hsm_capabilities().supports_aes_gcm_message
+                    && self.hsm().supports_message_decrypt()
+                {
+                    let split_at = encrypted
+                        .len()
+                        .checked_sub(AES_GCM_AUTH_TAG_LENGTH)
+                        .ok_or_else(|| HError::Default("Failed to extract GCM tag".to_owned()))?;
+                    return self.decrypt_message_aes_gcm(
+                        key_handle,
+                        &[],
+                        iv,
+                        encrypted.get(split_at..).ok_or_else(|| {
+                            HError::Default("Failed to extract GCM tag".to_owned())
+                        })?,
+                        encrypted.get(..split_at).ok_or_else(|| {
+                            HError::Default("Failed to extract ciphertext".to_owned())
+                        })?,
+                    );
+                }
+                let mut nonce: [u8; AES_GCM_IV_LENGTH] = iv
                     .try_into()
                     .map_err(|e| HError::Default(format!("Invalid AES GCM nonce: {e}")))?;
                 let mut params = CK_AES_GCM_PARAMS {
@@ -972,7 +1113,7 @@ impl Session {
                     .ok_or_else(|| HError::Default("Failed to extract iv".to_owned()))?
                     .try_into()
                     .map_err(|e| HError::Default(format!("Invalid AES CBC IV: {e}")))?;
-                if let Some(max_cbc_data_size) = self.hsm_capabilities.max_cbc_data_size {
+                if let Some(max_cbc_data_size) = self.hsm_capabilities().max_cbc_data_size {
                     if ciphertext.len() > (max_cbc_data_size + AES_CBC_IV_LENGTH) {
                         debug!("Performing multi round AES CBC decryption");
                         return self.decrypt_aes_cbc_multi_round(
@@ -1330,6 +1471,11 @@ impl Session {
         algorithm: HsmSigningAlgorithm,
         data: &[u8],
     ) -> HResult<Vec<u8>> {
+        if !is_signing_algorithm_supported(algorithm) {
+            return Err(HError::Default(format!(
+                "Signing algorithm {algorithm:?} is unavailable in FIPS mode"
+            )));
+        }
         match algorithm {
             HsmSigningAlgorithm::RsaPkcsV15 => {
                 self.sign_with_simple_mechanism(key_handle, CKM_RSA_PKCS, data)
@@ -1397,12 +1543,7 @@ impl Session {
                 // domain separator, even with a zero-length context), which not every
                 // conformant library implements — do not pass params unless a context
                 // string or the prehash flag is actually required.
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_EDDSA,
-                    pParameter: ptr::null_mut(),
-                    ulParameterLen: 0,
-                };
-                self.sign_with_mechanism(key_handle, &mut mechanism, data)
+                self.sign_with_simple_mechanism(key_handle, CKM_EDDSA, data)
             }
         }
     }
@@ -1700,6 +1841,11 @@ impl Session {
         data: &[u8],
         signature: &[u8],
     ) -> HResult<bool> {
+        if !is_signing_algorithm_supported(algorithm) {
+            return Err(HError::Default(format!(
+                "Signing algorithm {algorithm:?} is unavailable in FIPS mode"
+            )));
+        }
         match algorithm {
             HsmSigningAlgorithm::RsaPkcsV15 => {
                 self.verify_with_simple_mechanism(key_handle, CKM_RSA_PKCS, data, signature)
@@ -1759,7 +1905,12 @@ impl Session {
                 // (matching the software ECDSA verify convention). Convert it back,
                 // using the key's own `CKA_EC_PARAMS` to determine the field size.
                 let curve = self.ec_curve_for_key(key_handle)?;
-                let raw_signature = Self::ecdsa_der_to_raw(signature, curve_byte_size(curve))?;
+                // A signature that is not a well-formed `ECDSA-Sig-Value` for this curve is
+                // simply invalid (as in the software verify path), not an operation error.
+                let Ok(raw_signature) = Self::ecdsa_der_to_raw(signature, curve_byte_size(curve))
+                else {
+                    return Ok(false);
+                };
                 self.verify_with_simple_mechanism(key_handle, mechanism, data, &raw_signature)
             }
             // EdDSA (Ed25519/Ed448) is a pure, un-hashed signature scheme (RFC 8032): the raw
@@ -1771,12 +1922,7 @@ impl Session {
             HsmSigningAlgorithm::Eddsa => {
                 // See the matching comment in `sign()`: omit `CK_EDDSA_PARAMS` to
                 // request the pure Ed25519 variant (RFC 8032), not `Ed25519ctx`.
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_EDDSA,
-                    pParameter: ptr::null_mut(),
-                    ulParameterLen: 0,
-                };
-                self.verify_with_mechanism(key_handle, &mut mechanism, data, signature)
+                self.verify_with_simple_mechanism(key_handle, CKM_EDDSA, data, signature)
             }
         }
     }
@@ -1989,6 +2135,9 @@ impl Session {
         }
 
         #[expect(unsafe_code)]
+        // SAFETY: `data` and `signature` are live owned buffers whose lengths are passed
+        // alongside their pointers; `self.handle` is an opaque PKCS#11 handle passed
+        // through unchanged.
         let rv = match self.hsm.C_Verify {
             Some(func) => unsafe {
                 func(
@@ -2097,10 +2246,10 @@ impl Session {
             CK_ATTRIBUTE {
                 // `CKK_GENERIC_SECRET` (not `CKK_AES`): per OASIS Cryptoki v3.0
                 // §2.5, `CKM_HKDF_DERIVE` output is arbitrary derived key
-                // material — several conformant libraries (e.g. `kryoptic`)
-                // reject any other `CKA_KEY_TYPE` on the derived object with
-                // `CKR_KEY_TYPE_INCONSISTENT`. Callers needing an AES-typed key
-                // from HKDF output must re-wrap/re-import the raw bytes.
+                // material; conformant libraries reject any other `CKA_KEY_TYPE`
+                // on the derived object with `CKR_KEY_TYPE_INCONSISTENT`. Callers
+                // needing an AES-typed key from HKDF output must re-wrap/re-import
+                // the raw bytes.
                 type_: CKA_KEY_TYPE,
                 pValue: std::ptr::from_ref(&CKK_GENERIC_SECRET)
                     .cast::<std::ffi::c_void>()
@@ -2148,6 +2297,10 @@ impl Session {
 
         let mut derived_key_handle = CK_OBJECT_HANDLE::default();
         #[expect(unsafe_code)]
+        // SAFETY: `mechanism` (and the `hkdf_params`, `salt_bytes`, `info_bytes` it points
+        // to) and `template` (and the values it points to) outlive this call;
+        // `derived_key_handle` is a valid out-pointer; `self.handle` and `base_key_handle`
+        // are opaque PKCS#11 handles passed through unchanged.
         let rv = match self.hsm.C_DeriveKey {
             Some(func) => unsafe {
                 func(
@@ -2322,6 +2475,10 @@ impl Session {
         }
     }
 
+    fn decode_key_label(label_bytes: Vec<u8>) -> HResult<(String, HashSet<String>)> {
+        deserialize_tagged_label(label_bytes)
+    }
+
     fn export_rsa_private_key(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<HsmObject>> {
         // Get the key size
         let mut template = [
@@ -2448,8 +2605,7 @@ impl Session {
         {
             return Ok(None);
         }
-        let label = String::from_utf8(label_bytes)
-            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
+        let (label, tags) = Self::decode_key_label(label_bytes)?;
         Ok(Some(HsmObject::new(
             KeyMaterial::RsaPrivateKey(RsaPrivateKeyMaterial {
                 modulus,
@@ -2462,6 +2618,7 @@ impl Session {
                 coefficient: Zeroizing::new(coefficient),
             }),
             label,
+            tags,
         )))
     }
 
@@ -2519,8 +2676,7 @@ impl Session {
         {
             return Ok(None);
         }
-        let mut label = String::from_utf8(label_bytes)
-            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
+        let (mut label, tags) = Self::decode_key_label(label_bytes)?;
         if !label.trim().ends_with("_pk") {
             label = label.trim().to_owned().add("_pk");
         }
@@ -2530,6 +2686,7 @@ impl Session {
                 public_exponent,
             }),
             label,
+            tags,
         )))
     }
 
@@ -2587,8 +2744,7 @@ impl Session {
             return Ok(None);
         }
         let curve = curve_from_der_oid(&ec_params)?;
-        let label = String::from_utf8(label_bytes)
-            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
+        let (label, tags) = Self::decode_key_label(label_bytes)?;
         // Left-pad the private scalar to the curve's field size, in case the token stripped
         // leading zero bytes.
         let byte_size = curve_byte_size(curve);
@@ -2600,6 +2756,7 @@ impl Session {
                 d: Zeroizing::new(d),
             }),
             label,
+            tags,
         )))
     }
 
@@ -2657,8 +2814,7 @@ impl Session {
             return Ok(None);
         }
         let curve = curve_from_der_oid(&ec_params)?;
-        let mut label = String::from_utf8(label_bytes)
-            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
+        let (mut label, tags) = Self::decode_key_label(label_bytes)?;
         if !label.trim().ends_with("_pk") {
             label = label.trim().to_owned().add("_pk");
         }
@@ -2666,6 +2822,7 @@ impl Session {
         Ok(Some(HsmObject::new(
             KeyMaterial::EcPublicKey(EcPublicKeyMaterial { curve, q }),
             label,
+            tags,
         )))
     }
 
@@ -2710,7 +2867,11 @@ impl Session {
             }
         };
 
-        if trailing.is_empty() && content.first() == Some(&0x04) {
+        // A well-formed DER OCTET STRING (tag 0x04, exact length, no trailing
+        // bytes) wraps the raw point regardless of its first byte: NIST curves
+        // produce uncompressed points (`0x04 || X || Y`), while Ed25519/Ed448
+        // points are bare 32/57-byte encodings with no `0x04` prefix.
+        if trailing.is_empty() {
             Ok(content.to_vec())
         } else {
             Ok(der.to_vec())
@@ -2766,22 +2927,28 @@ impl Session {
         {
             return Ok(None);
         }
-        let label = String::from_utf8(label_bytes)
-            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
+        let (label, tags) = Self::decode_key_label(label_bytes)?;
         Ok(Some(HsmObject::new(
             KeyMaterial::AesKey(Zeroizing::new(key_value)),
             label,
+            tags,
         )))
     }
 
-    fn call_get_attributes(
+    /// Raw `C_GetAttributeValue` call, returning the `CK_RV` unchanged so callers can decide how
+    /// to interpret HSM-specific error codes (e.g. [`call_get_attributes`](Self::call_get_attributes)
+    /// treats most non-`CKR_OK` codes as hard failures, while
+    /// [`get_key_dates`](Self::get_key_dates) tolerates only `CKR_OBJECT_HANDLE_INVALID`).
+    fn raw_get_attributes(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         template: &mut [CK_ATTRIBUTE],
-    ) -> HResult<Option<()>> {
+    ) -> HResult<pkcs11_sys::CK_RV> {
         debug!("Retrieving HSM key attributes for key handle: {key_handle}");
-        // Get the length of the key value
         #[expect(unsafe_code)]
+        // SAFETY: `template` points to caller-owned `CK_ATTRIBUTE`s whose `pValue` buffers
+        // match their `ulValueLen` (or are null for length queries) and outlive this call;
+        // `self.handle` and `key_handle` are opaque PKCS#11 handles passed through unchanged.
         let rv = match self.hsm.C_GetAttributeValue {
             Some(func) => unsafe {
                 func(
@@ -2797,6 +2964,15 @@ impl Session {
                 ));
             }
         };
+        Ok(rv)
+    }
+
+    fn call_get_attributes(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        template: &mut [CK_ATTRIBUTE],
+    ) -> HResult<Option<()>> {
+        let rv = self.raw_get_attributes(key_handle, template)?;
         if rv == CKR_ATTRIBUTE_SENSITIVE {
             return Err(HError::Default(
                 "This key is sensitive and cannot be exported from the HSM.".to_owned(),
@@ -2837,6 +3013,9 @@ impl Session {
         &self,
         key_handle: CK_OBJECT_HANDLE,
     ) -> HResult<(Option<time::Date>, Option<time::Date>)> {
+        if !self.hsm_capabilities().supports_key_dates {
+            return Ok((None, None));
+        }
         let mut start_date = CK_DATE {
             year: [0; 4],
             month: [0; 2],
@@ -2859,27 +3038,10 @@ impl Session {
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_DATE>())?,
             },
         ];
-        // Some PKCS#11 libraries (e.g. Crypt2Pay) reject CKA_START_DATE/CKA_END_DATE on
-        // secret-key objects with CKR_ATTRIBUTE_TYPE_INVALID rather than returning an empty
-        // value. Treat that case, like an unsupported object, as "no dates" instead of
-        // failing the whole metadata lookup.
-        #[expect(unsafe_code)]
-        let rv = match self.hsm.C_GetAttributeValue {
-            Some(func) => unsafe {
-                func(
-                    self.handle,
-                    key_handle,
-                    template.as_mut_ptr(),
-                    CK_ULONG::try_from(template.len())?,
-                )
-            },
-            None => {
-                return Err(HError::Default(
-                    "C_GetAttributeValue not available on library".to_owned(),
-                ));
-            }
-        };
-        if rv == CKR_ATTRIBUTE_TYPE_INVALID || rv == CKR_OBJECT_HANDLE_INVALID {
+        // A vanished key (`CKR_OBJECT_HANDLE_INVALID`) yields no dates; HSMs lacking date
+        // attributes are handled by `HsmCapabilities::supports_key_dates`.
+        let rv = self.raw_get_attributes(key_handle, &mut template)?;
+        if rv == CKR_OBJECT_HANDLE_INVALID {
             return Ok((None, None));
         }
         if rv != CKR_OK {
@@ -2931,6 +3093,13 @@ impl Session {
         start_date: Option<time::Date>,
         end_date: Option<time::Date>,
     ) -> HResult<()> {
+        if !self.hsm_capabilities().supports_key_dates {
+            return Err(HError::Default(
+                "This HSM does not support CKA_START_DATE/CKA_END_DATE on keys; HSM key \
+                 rotation scheduling is unavailable"
+                    .to_owned(),
+            ));
+        }
         let start_ck = start_date.map_or(
             CK_DATE {
                 year: [0; 4],
@@ -2962,6 +3131,9 @@ impl Session {
         ];
 
         #[expect(unsafe_code)]
+        // SAFETY: `template` points to two live `CK_ATTRIBUTE`s whose `pValue` buffers
+        // (`start_ck`/`end_ck`) live on this stack frame until the call returns;
+        // `self.handle` and `key_handle` are opaque PKCS#11 handles passed through unchanged.
         let rv = match self.hsm.C_SetAttributeValue {
             Some(func) => unsafe {
                 func(
@@ -3024,34 +3196,26 @@ impl Session {
         (Some(rotate_name.to_owned()), Some(generation))
     }
 
-    /// Build the `CKA_LABEL` value for a keyset key.
-    ///
-    /// Format: `rotate_name::generation::key_id` (retired) or
-    ///         `rotate_name::generation::key_id@latest` (current latest).
-    // Used by the HSM ReKey flow (Phase 3).
-    #[allow(dead_code)]
-    pub(crate) fn build_keyset_label(
-        rotate_name: &str,
-        generation: i32,
-        key_id: &str,
-        latest: bool,
-    ) -> String {
-        if latest {
-            format!("{rotate_name}::{generation}::{key_id}@latest")
-        } else {
-            format!("{rotate_name}::{generation}::{key_id}")
-        }
-    }
-
-    /// Set `CKA_LABEL` on a key object via `C_SetAttributeValue`.
+    /// Set `CKA_LABEL` on a key object while preserving embedded tags.
     pub fn set_label(&self, key_handle: CK_OBJECT_HANDLE, label: &str) -> HResult<()> {
-        let label_bytes = label.as_bytes();
+        let tags = self
+            .get_key_metadata(key_handle)?
+            .map_or_else(HashSet::new, |metadata| metadata.tags);
+        let tagged_label = serialize_tagged_label(
+            label.as_bytes(),
+            Some(&tags),
+            self.hsm_capabilities().max_label_len,
+        )?;
+        let label_bytes = tagged_label.as_deref().unwrap_or(label.as_bytes());
         let mut template = vec![CK_ATTRIBUTE {
             type_: CKA_LABEL,
             pValue: label_bytes.as_ptr().cast_mut().cast(),
             ulValueLen: CK_ULONG::try_from(label_bytes.len())?,
         }];
         #[expect(unsafe_code)]
+        // SAFETY: `template` points to one live `CK_ATTRIBUTE` whose `pValue` buffer
+        // (`label_bytes`) lives until the call returns; `self.handle` and `key_handle` are
+        // opaque PKCS#11 handles passed through unchanged.
         let rv = match self.hsm.C_SetAttributeValue {
             Some(func) => unsafe {
                 func(
@@ -3112,8 +3276,8 @@ impl Session {
                     .first()
                     .ok_or_else(|| HError::Default("Failed to get label length".to_owned()))?
                     .ulValueLen;
-                let label = if label_len == 0 {
-                    String::new()
+                let (label, tags) = if label_len == 0 {
+                    (String::new(), HashSet::new())
                 } else {
                     let mut label_bytes: Vec<u8> = vec![0_u8; usize::try_from(label_len)?];
                     let mut template = [CK_ATTRIBUTE {
@@ -3127,9 +3291,7 @@ impl Session {
                     {
                         return Ok(None);
                     }
-                    String::from_utf8(label_bytes).map_err(|e| {
-                        HError::Default(format!("Failed to convert label to string: {e}"))
-                    })?
+                    Self::decode_key_label(label_bytes)?
                 };
                 let (start_date, end_date) = self.get_key_dates(key_handle)?;
                 let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
@@ -3140,6 +3302,7 @@ impl Session {
                     })? * 8,
                     sensitive: sensitive == CK_TRUE,
                     id: label,
+                    tags,
                     curve: None,
                     start_date,
                     end_date,
@@ -3197,12 +3360,10 @@ impl Session {
                 }
                 let key_length_in_bits = modulus.len() * 8;
 
-                let mut label = if label_len == 0 {
-                    String::new()
+                let (mut label, tags) = if label_len == 0 {
+                    (String::new(), HashSet::new())
                 } else {
-                    String::from_utf8(label_bytes).map_err(|e| {
-                        HError::Default(format!("Failed to convert label to string: {e}"))
-                    })?
+                    Self::decode_key_label(label_bytes)?
                 };
                 if key_type == KeyType::RsaPublicKey && !label.trim().ends_with("_pk") {
                     label = label.trim().to_owned().add("_pk");
@@ -3215,6 +3376,7 @@ impl Session {
                     key_length_in_bits,
                     sensitive,
                     id: label,
+                    tags,
                     curve: None,
                     start_date,
                     end_date,
@@ -3273,12 +3435,10 @@ impl Session {
                 let curve = curve_from_der_oid(&ec_params)?;
                 let key_length_in_bits = curve.key_length_in_bits();
 
-                let mut label = if label_len == 0 {
-                    String::new()
+                let (mut label, tags) = if label_len == 0 {
+                    (String::new(), HashSet::new())
                 } else {
-                    String::from_utf8(label_bytes).map_err(|e| {
-                        HError::Default(format!("Failed to convert label to string: {e}"))
-                    })?
+                    Self::decode_key_label(label_bytes)?
                 };
                 if key_type == KeyType::EcPublicKey && !label.trim().ends_with("_pk") {
                     label = label.trim().to_owned().add("_pk");
@@ -3291,6 +3451,7 @@ impl Session {
                     key_length_in_bits,
                     sensitive,
                     id: label,
+                    tags,
                     curve: Some(curve),
                     start_date,
                     end_date,
@@ -3395,12 +3556,20 @@ impl Session {
     /// # Returns
     /// * `Result<Option<Vec<u8>>>` - The key object id if the object exists
     ///
-    /// Reads `CKA_ID` first (set by Cosmian KMS on every key it creates); if absent or
-    /// empty, falls back to `CKA_LABEL` (for externally provisioned keys).
-    /// For RSA public keys read via `CKA_LABEL`, the `_pk` suffix is appended if missing.
+    /// Reads `CKA_LABEL` first for public keys so paired keys can share `CKA_ID`; for
+    /// private and symmetric keys, reads `CKA_ID` first and falls back to `CKA_LABEL`.
+    /// For public keys read via `CKA_LABEL`, the `_pk` suffix is appended if missing.
     pub fn get_object_id(&self, object_handle: CK_OBJECT_HANDLE) -> HResult<Option<Vec<u8>>> {
-        // Try CKA_ID first, then CKA_LABEL
-        for attr_type in [CKA_ID, CKA_LABEL] {
+        let is_public_key = matches!(
+            self.get_key_type(object_handle)?,
+            Some(KeyType::RsaPublicKey | KeyType::EcPublicKey)
+        );
+        let attr_types = if is_public_key {
+            [CKA_LABEL, CKA_ID]
+        } else {
+            [CKA_ID, CKA_LABEL]
+        };
+        for attr_type in attr_types {
             let mut template = [CK_ATTRIBUTE {
                 type_: attr_type,
                 pValue: ptr::null_mut(),
@@ -3431,17 +3600,42 @@ impl Session {
             if id.is_empty() {
                 continue;
             }
-            // When read via CKA_LABEL, append _pk for RSA public keys lacking the suffix.
-            // (When read via CKA_ID, KMS already stored the _pk suffix in the id.)
-            if attr_type == CKA_LABEL
-                && self.get_key_type(object_handle)? == Some(KeyType::RsaPublicKey)
-                && !id.ends_with(b"_pk")
-            {
+            let (decoded_id, _) = if attr_type == CKA_LABEL {
+                Self::decode_key_label(id)?
+            } else {
+                (
+                    String::from_utf8(id).map_err(|e| HError::Default(e.to_string()))?,
+                    HashSet::new(),
+                )
+            };
+            let mut id = decoded_id.into_bytes();
+            // When read via CKA_LABEL, append _pk for public keys lacking the suffix.
+            if attr_type == CKA_LABEL && is_public_key && !id.ends_with(b"_pk") {
                 id.extend_from_slice(b"_pk");
             }
             return Ok(Some(id));
         }
         Ok(None)
+    }
+
+    /// Read the `CKA_EXTRACTABLE` attribute of a key object.
+    ///
+    /// Returns `Ok(None)` if the object cannot be found or the attribute
+    /// cannot be read (e.g. the HSM does not expose it for this object type).
+    pub fn is_extractable(&self, object_handle: CK_OBJECT_HANDLE) -> HResult<Option<bool>> {
+        let mut extractable: CK_BBOOL = CK_FALSE;
+        let mut template = [CK_ATTRIBUTE {
+            type_: CKA_EXTRACTABLE,
+            pValue: (&raw mut extractable).cast::<std::ffi::c_void>(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+        }];
+        if self
+            .call_get_attributes(object_handle, &mut template)?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        Ok(Some(extractable == CK_TRUE))
     }
 }
 
@@ -3471,13 +3665,6 @@ mod tests {
         assert_eq!(hash_alg, CKM_SHA384);
         assert_eq!(mgf, CKG_MGF1_SHA384);
         assert_eq!(salt_len, 0);
-    }
-
-    #[test]
-    fn rsa_pkcs_pss_params_sha512_digest_length_default() {
-        let params = Session::rsa_pkcs_pss_params(CKM_SHA512, CKG_MGF1_SHA512, 64, None);
-        let salt_len = params.sLen;
-        assert_eq!(salt_len, 64);
     }
 
     #[test]
