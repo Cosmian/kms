@@ -40,7 +40,7 @@ usage() {
                              Alias: 'otel' (backward-compatible)
       iris                   Run IRIS ↔ KMS mTLS integration tests (requires Docker + IRIS image)
       db2                    Run IBM Db2 LUW KMIP TDE integration tests (requires Docker)
-      ase                    Run SAP ASE KMIP TDE integration test (local dev only, requires manually built image)
+      ase                    Run SAP ASE KMIP TDE integration test (builds the ASE image on the fly)
       hsm [backend]          Run HSM tests (Linux + macOS for softhsm2)
                              backend: softhsm2 | utimaco | proteccio | all (default)
       ui                     Run UI E2E tests with Playwright (non-FIPS only)

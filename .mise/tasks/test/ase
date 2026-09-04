@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run SAP ASE KMIP TDE integration test (local dev only, requires manually built cosmian-ase-kmip image)"
+#MISE description="Run SAP ASE KMIP TDE integration test (builds the cosmian-ase-kmip image on the fly)"
 #MISE depends=["build:kms"]
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
 #USAGE   choices "fips" "non-fips"

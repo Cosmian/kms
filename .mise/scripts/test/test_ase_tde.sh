@@ -2,17 +2,11 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # test_ase_tde.sh — SAP ASE ↔ Cosmian KMS PKCS#11 TDE integration test
 #
-# LOCAL DEV ONLY — not run in CI (needs a manually built SAP ASE image).
-#
-# SAP ASE has no redistributable Docker image. The image must be built locally
-# from the SAP ASE Developer Edition installer (ASE_Suite.linuxamd64.tgz),
-# downloaded manually from an SAP account (me.sap.com/softwarecenter → search
-# "Adaptive Server Enterprise"). Place the .tgz in .mise/scripts/docker/ase/
-# then build:
+# SAP ASE has no redistributable Docker image, so the image is built on the
+# fly: the Developer Edition installer (ASE_Suite.linuxamd64.tgz) is
+# downloaded from ASE_INSTALLER_URL (if not already present in
+# .mise/scripts/docker/ase/), then the image is built with:
 #   docker build --platform linux/amd64 -t cosmian-ase-kmip .mise/scripts/docker/ase/
-#
-# If the image is not present locally, this script SKIPs (exit 0) after
-# verifying the KMS-side mTLS and REST API behavior.
 #
 # ASE talks to external key managers over PKCS#11, NOT KMIP directly. The
 # integration path is:
@@ -24,14 +18,15 @@
 # What this tests:
 #   1. Sad path  — KMS rejects connections without a client certificate.
 #   2. KMS REST API round-trip (sanity check, independent of ASE).
-#   3. If cosmian-ase-kmip image exists: build libcosmian_pkcs11.so for
-#      linux/amd64, load it into ASE via hsm_credential, and create a real
-#      HSM-backed encryption key. Verifies the key is visible in the KMS.
+#   3. Download/build the cosmian-ase-kmip image, build libcosmian_pkcs11.so
+#      for linux/amd64, load it into ASE via hsm_credential, and create a
+#      real HSM-backed encryption key. Verifies the key is visible in the KMS.
 #
 # Configurable environment variables:
+#   ASE_INSTALLER_URL    Download URL for ASE_Suite.linuxamd64.tgz
+#                        (default: SAP ASE 16 Developer Edition CloudFront link)
 #   ASE_DOCKER_IMAGE     Image name (default: cosmian-ase-kmip)
 #   ASE_CONTAINER_NAME   Container name (default: ase-kmip-test)
-#   ASE_SA_PASSWORD      sa password (default: SapAse1!)
 #   KMS_HTTP_PORT        KMS HTTP/HTTPS port (default: dynamically allocated)
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -49,9 +44,10 @@ init_build_env "$@"
 setup_test_logging
 
 # ── Configuration ─────────────────────────────────────────────────────────────
+: "${ASE_INSTALLER_URL:=https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.linuxamd64.tgz}"
 : "${ASE_DOCKER_IMAGE:=cosmian-ase-kmip}"
 : "${ASE_CONTAINER_NAME:=ase-kmip-test}"
-: "${ASE_SA_PASSWORD:=SapAse1!}"
+ASE_SA_PASSWORD=SapAse1!
 : "${KMS_HTTP_PORT:=$(kms_pick_free_port)}"
 # Fixed PIN/slot for the Cosmian PKCS#11 software provider: it exposes a
 # single always-present token whose CK_SLOT_ID is 1 (slot 0 does not exist)
@@ -188,20 +184,20 @@ BASELINE_AES_COUNT=$(
     grep -c '[0-9a-f]\{8\}-[0-9a-f]\{4\}\|^SAP ASE' || true
 )
 
-# ── Step 4: Check the locally-built ASE image is present ─────────────────────
+# ── Step 4: Download the installer (if needed) and build the ASE image ───────
+ASE_DOCKER_CTX="${REPO_ROOT}/.mise/scripts/docker/ase"
+ASE_INSTALLER_TGZ="${ASE_DOCKER_CTX}/ASE_Suite.linuxamd64.tgz"
+
 echo
 echo "==> Checking for local SAP ASE image '${ASE_DOCKER_IMAGE}'…"
 if ! docker image inspect "${ASE_DOCKER_IMAGE}" >/dev/null 2>&1; then
-  echo "==> SKIPPED: SAP ASE image '${ASE_DOCKER_IMAGE}' not found locally."
-  echo "  SAP ASE has no redistributable Docker image — build it manually:"
-  echo "    1. Download ASE_Suite.linuxamd64.tgz from an SAP account"
-  echo "       (me.sap.com/softwarecenter → Adaptive Server Enterprise)"
-  echo "    2. cp ASE_Suite.linuxamd64.tgz .mise/scripts/docker/ase/"
-  echo "    3. docker build --platform linux/amd64 -t ${ASE_DOCKER_IMAGE} .mise/scripts/docker/ase/"
-  echo "  The following were verified successfully:"
-  echo "  ✓ mTLS sad path (connection without cert rejected)"
-  echo "  ✓ KMS REST API encrypt/decrypt round-trip"
-  exit 0
+  if [ ! -f "${ASE_INSTALLER_TGZ}" ]; then
+    echo "==> Downloading SAP ASE installer from ${ASE_INSTALLER_URL}…"
+    require_cmd curl "curl is required to download the SAP ASE installer."
+    curl -fsSL --retry 3 -o "${ASE_INSTALLER_TGZ}" "${ASE_INSTALLER_URL}"
+  fi
+  echo "==> Building SAP ASE image '${ASE_DOCKER_IMAGE}' (this takes ~3-5 min)…"
+  docker build --platform linux/amd64 -t "${ASE_DOCKER_IMAGE}" "${ASE_DOCKER_CTX}"
 fi
 
 # ── Step 5: Build libcosmian_pkcs11.so for linux/amd64 ────────────────────────
@@ -239,7 +235,6 @@ echo "==> Starting SAP ASE container '${ASE_CONTAINER_NAME}'…"
 docker run -d --rm --platform linux/amd64 \
   --name "${ASE_CONTAINER_NAME}" \
   --add-host "${KMS_HOST_FROM_ASE}:host-gateway" \
-  -e "SA_PASSWORD=${ASE_SA_PASSWORD}" \
   "${ASE_DOCKER_IMAGE}" >/dev/null
 
 echo "Waiting for ASE to become ready (up to 180 s — first boot is slow)…"
