@@ -144,6 +144,13 @@ pub enum SigningAlgorithm {
     EcdsaSha384,
     /// `CKM_ECDSA_SHA512`
     EcdsaSha512,
+    /// `CKM_EDDSA` over an Ed25519 private key (pure `EdDSA`, no pre-hashing). Non-FIPS: mirrors
+    /// the gating of `Ed25519` signing in `crate::crypto::elliptic_curves::sign` (issue #1157).
+    #[cfg(feature = "non-fips")]
+    Ed25519,
+    /// `CKM_EDDSA` over an Ed448 private key. Non-FIPS: see `Ed25519` above.
+    #[cfg(feature = "non-fips")]
+    Ed448,
 }
 
 impl SigningAlgorithm {
@@ -178,7 +185,21 @@ impl SigningAlgorithm {
             };
         }
 
-        // 2. cryptographic_algorithm + hashing_algorithm (EC/ECDSA)
+        // 2. cryptographic_algorithm alone (EdDSA — KMIP has no DigitalSignatureAlgorithm
+        // variant for Ed25519/Ed448; the algorithm is carried directly by
+        // CryptographicAlgorithm, and `EdDSA` never takes a separate hashing_algorithm or
+        // padding_method). Non-FIPS: mirrors the software `EdDSA` signing gating (issue #1157).
+        #[cfg(feature = "non-fips")]
+        {
+            if params.cryptographic_algorithm == Some(CryptographicAlgorithm::Ed25519) {
+                return Ok(Self::Ed25519);
+            }
+            if params.cryptographic_algorithm == Some(CryptographicAlgorithm::Ed448) {
+                return Ok(Self::Ed448);
+            }
+        }
+
+        // 3. cryptographic_algorithm + hashing_algorithm (EC/ECDSA)
         if matches!(
             params.cryptographic_algorithm,
             Some(CryptographicAlgorithm::EC | CryptographicAlgorithm::ECDSA)
@@ -509,6 +530,35 @@ mod tests {
         assert_eq!(
             SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
             SigningAlgorithm::Sha384WithRsa
+        );
+    }
+
+    /// HSM-delegated `EdDSA` signing (issue #1157). `EdDSA` has no `DigitalSignatureAlgorithm`
+    /// variant in KMIP 2.1: it is resolved from `CryptographicAlgorithm::Ed25519`/`Ed448` alone,
+    /// with no accompanying `hashing_algorithm`/`padding_method` (unlike RSA/ECDSA above).
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn from_kmip_ed25519_resolves_via_cryptographic_algorithm_alone() {
+        let params = params_with(
+            None,
+            Some(CryptographicAlgorithm::Ed25519),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(
+            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
+            SigningAlgorithm::Ed25519
+        );
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn from_kmip_ed448_resolves_via_cryptographic_algorithm_alone() {
+        let params = params_with(None, Some(CryptographicAlgorithm::Ed448), None, None, None);
+        assert_eq!(
+            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
+            SigningAlgorithm::Ed448
         );
     }
 }

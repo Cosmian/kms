@@ -3,15 +3,26 @@ use std::ptr;
 use cosmian_kms_interfaces::EcCurve;
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_PTR,
-    CK_OBJECT_HANDLE, CK_TRUE, CK_ULONG, CKA_EC_PARAMS, CKA_EXTRACTABLE, CKA_ID, CKA_KEY_TYPE,
-    CKA_LABEL, CKA_PRIVATE, CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_VERIFY, CKK_EC,
-    CKM_EC_KEY_PAIR_GEN,
+    CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_TRUE, CK_ULONG, CKA_DERIVE, CKA_EC_PARAMS,
+    CKA_EXTRACTABLE, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_PRIVATE, CKA_SENSITIVE, CKA_SIGN,
+    CKA_TOKEN, CKA_VERIFY, CKK_EC, CKM_EC_KEY_PAIR_GEN,
+};
+#[cfg(feature = "non-fips")]
+use pkcs11_sys::{
+    CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKM_EC_EDWARDS_KEY_PAIR_GEN, CKM_EC_MONTGOMERY_KEY_PAIR_GEN,
 };
 
 use crate::{HError, HResult, hsm_call, session::Session};
 
-/// DER-encoded `ASN.1 OBJECT IDENTIFIER` for each FIPS-approved NIST prime curve supported for
-/// HSM-delegated EC key generation, as required by the PKCS#11 `CKA_EC_PARAMS` attribute.
+/// PKCS#11 `CKA_EC_PARAMS` value for each curve supported for HSM-delegated EC key generation.
+/// FIPS-approved NIST prime curves always use the DER-encoded `ASN.1 OBJECT IDENTIFIER`.
+/// Edwards/Montgomery curves (`Ed25519`/`Ed448`/`X25519`, gated behind the `non-fips` feature,
+/// mirroring `crate::crypto::elliptic_curves::sign`, issue #1157) use the DER-encoded
+/// `PrintableString` curve name instead (OASIS Cryptoki v3.0 §2.3.7/§2.3.8, Table 8): the OID
+/// form is also spec-permitted, but the `PrintableString` form was empirically verified to be
+/// the one actually required by `SoftHSM2` 2.6.1's `CKM_EC_EDWARDS_KEY_PAIR_GEN` (`pkcs11-tool
+/// --keypairgen --key-type EC:edwards25519` produces `EC_PARAMS: 130c656477617264733235353139`,
+/// i.e. tag `0x13` = `PrintableString`, not tag `0x06` = `OBJECT IDENTIFIER`).
 #[must_use]
 pub(crate) const fn curve_der_oid(curve: EcCurve) -> &'static [u8] {
     match curve {
@@ -23,23 +34,82 @@ pub(crate) const fn curve_der_oid(curve: EcCurve) -> &'static [u8] {
         EcCurve::P384 => &[0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x22],
         // secp521r1 (1.3.132.0.35)
         EcCurve::P521 => &[0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x23],
+        // PrintableString "edwards25519"
+        #[cfg(feature = "non-fips")]
+        EcCurve::Ed25519 => &[
+            0x13, 0x0C, 0x65, 0x64, 0x77, 0x61, 0x72, 0x64, 0x73, 0x32, 0x35, 0x35, 0x31, 0x39,
+        ],
+        // PrintableString "edwards448"
+        #[cfg(feature = "non-fips")]
+        EcCurve::Ed448 => &[
+            0x13, 0x0A, 0x65, 0x64, 0x77, 0x61, 0x72, 0x64, 0x73, 0x34, 0x34, 0x38,
+        ],
+        // PrintableString "curve25519"
+        #[cfg(feature = "non-fips")]
+        EcCurve::X25519 => &[
+            0x13, 0x0A, 0x63, 0x75, 0x72, 0x76, 0x65, 0x32, 0x35, 0x35, 0x31, 0x39,
+        ],
+    }
+}
+
+/// The `CK_MECHANISM_TYPE` used by `C_GenerateKeyPair` to create a key pair on `curve`.
+/// FIPS-approved NIST prime curves use the generic `CKM_EC_KEY_PAIR_GEN`; Edwards curves
+/// (`Ed25519`/`Ed448`) use `CKM_EC_EDWARDS_KEY_PAIR_GEN`; the Montgomery curve (`X25519`) uses
+/// `CKM_EC_MONTGOMERY_KEY_PAIR_GEN` (PKCS#11 v3.0 §2.3.7/§2.3.8, issue #1157).
+#[must_use]
+pub(crate) const fn curve_key_pair_gen_mechanism(curve: EcCurve) -> CK_MECHANISM_TYPE {
+    match curve {
+        EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 => CKM_EC_KEY_PAIR_GEN,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Ed25519 | EcCurve::Ed448 => CKM_EC_EDWARDS_KEY_PAIR_GEN,
+        #[cfg(feature = "non-fips")]
+        EcCurve::X25519 => CKM_EC_MONTGOMERY_KEY_PAIR_GEN,
+    }
+}
+
+/// The `CKA_KEY_TYPE` value the generated key pair's objects must carry. FIPS-approved NIST
+/// prime curves use the generic `CKK_EC`; Edwards curves use `CKK_EC_EDWARDS`; the Montgomery
+/// curve uses `CKK_EC_MONTGOMERY` — mismatching this against the key-pair-gen mechanism causes
+/// `CKR_TEMPLATE_INCONSISTENT` on at least `SoftHSM2` (empirically verified, issue #1157).
+#[must_use]
+pub(crate) const fn curve_key_type(curve: EcCurve) -> CK_KEY_TYPE {
+    match curve {
+        EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 => CKK_EC,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Ed25519 | EcCurve::Ed448 => CKK_EC_EDWARDS,
+        #[cfg(feature = "non-fips")]
+        EcCurve::X25519 => CKK_EC_MONTGOMERY,
     }
 }
 
 /// Recover the `EcCurve` matching a DER-encoded `CKA_EC_PARAMS` value read back from the HSM.
 pub(crate) fn curve_from_der_oid(oid: &[u8]) -> HResult<EcCurve> {
-    for curve in [EcCurve::P224, EcCurve::P256, EcCurve::P384, EcCurve::P521] {
+    #[cfg(not(feature = "non-fips"))]
+    let curves = [EcCurve::P224, EcCurve::P256, EcCurve::P384, EcCurve::P521];
+    #[cfg(feature = "non-fips")]
+    let curves = [
+        EcCurve::P224,
+        EcCurve::P256,
+        EcCurve::P384,
+        EcCurve::P521,
+        EcCurve::Ed25519,
+        EcCurve::Ed448,
+        EcCurve::X25519,
+    ];
+    for curve in curves {
         if curve_der_oid(curve) == oid {
             return Ok(curve);
         }
     }
     Err(HError::Default(format!(
-        "Unsupported or non-FIPS EC curve OID: {oid:02x?}"
+        "Unsupported EC curve OID: {oid:02x?}"
     )))
 }
 
 /// The curve's field element size, in bytes (used to size the `CKA_VALUE` private scalar and
-/// to split the raw `r || s` ECDSA signature).
+/// to split the raw `r || s` ECDSA signature). Not meaningful for `EdDSA` signatures, which are
+/// always `2 * curve_byte_size` for the Edwards curves below (64 bytes for Ed25519, 114 bytes
+/// for Ed448) and are sized directly by `Session::sign`.
 #[must_use]
 pub(crate) const fn curve_byte_size(curve: EcCurve) -> usize {
     match curve {
@@ -48,13 +118,33 @@ pub(crate) const fn curve_byte_size(curve: EcCurve) -> usize {
         EcCurve::P384 => 48,
         // 521 bits -> ceil(521 / 8) = 66 bytes
         EcCurve::P521 => 66,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Ed25519 | EcCurve::X25519 => 32,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Ed448 => 57,
+    }
+}
+
+/// `true` for the Montgomery curve (`X25519`), which is used only for ECDH key agreement
+/// (`CKA_DERIVE`) and does not support `CKA_SIGN`/`CKA_VERIFY`, unlike every other curve here
+/// (issue #1157). Always `false` in FIPS-only builds, where `EcCurve::X25519` does not exist.
+#[must_use]
+pub(crate) const fn curve_is_montgomery(curve: EcCurve) -> bool {
+    match curve {
+        EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 => false,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Ed25519 | EcCurve::Ed448 => false,
+        #[cfg(feature = "non-fips")]
+        EcCurve::X25519 => true,
     }
 }
 
 impl Session {
     /// Generate an EC key pair and return the private and public key handles in this order.
     ///
-    /// Only FIPS-approved NIST prime curves (P-224/P-256/P-384/P-521) are supported.
+    /// FIPS-approved NIST prime curves (P-224/P-256/P-384/P-521) are always supported; the
+    /// Edwards curves (`Ed25519`/`Ed448`, for `EdDSA` signing) and the Montgomery curve
+    /// (`X25519`, for ECDH key agreement) require the `non-fips` feature (issue #1157).
     ///
     /// If exportable is set to `false`, the `sensitive` flag is set to true, and the private
     /// key will not be exportable.
@@ -73,12 +163,21 @@ impl Session {
         sensitive: bool,
     ) -> HResult<(CK_OBJECT_HANDLE, CK_OBJECT_HANDLE)> {
         let ec_params = curve_der_oid(curve);
+        let key_type = curve_key_type(curve);
         let sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
+        // Montgomery curves (X25519) are derive-only: CKA_DERIVE replaces CKA_SIGN/CKA_VERIFY.
+        let is_montgomery = curve_is_montgomery(curve);
+        let usage_attribute_type = if is_montgomery {
+            CKA_DERIVE
+        } else {
+            CKA_VERIFY
+        };
+        let priv_usage_attribute_type = if is_montgomery { CKA_DERIVE } else { CKA_SIGN };
 
         let mut pub_key_template = vec![
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
-                pValue: std::ptr::from_ref(&CKK_EC)
+                pValue: std::ptr::from_ref(&key_type)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
@@ -106,20 +205,21 @@ impl Session {
                 ulValueLen: CK_ULONG::try_from(pk_id.len())?,
             },
             CK_ATTRIBUTE {
-                type_: CKA_VERIFY,
+                type_: usage_attribute_type,
                 pValue: std::ptr::from_ref(&CK_TRUE)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
         ];
-        // AES/RSA-style wrap/encrypt flags do not apply to EC keys — only sign/verify are set
-        // (matching PKCS#11's CKA_SIGN/CKA_VERIFY convention for EC keys).
+        // AES/RSA-style wrap/encrypt flags do not apply to EC keys — only sign/verify (or,
+        // for the Montgomery curve X25519, derive) are set (matching PKCS#11's CKA_SIGN/
+        // CKA_VERIFY/CKA_DERIVE convention for EC keys).
 
         let mut priv_key_template = vec![
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
-                pValue: std::ptr::from_ref(&CKK_EC)
+                pValue: std::ptr::from_ref(&key_type)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
@@ -149,7 +249,7 @@ impl Session {
                 ulValueLen: CK_ULONG::try_from(sk_id.len())?,
             },
             CK_ATTRIBUTE {
-                type_: CKA_SIGN,
+                type_: priv_usage_attribute_type,
                 pValue: std::ptr::from_ref(&CK_TRUE)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
@@ -173,7 +273,7 @@ impl Session {
         // mask set by the software EC key generation path.
 
         let mut mechanism = CK_MECHANISM {
-            mechanism: CKM_EC_KEY_PAIR_GEN,
+            mechanism: curve_key_pair_gen_mechanism(curve),
             pParameter: ptr::null_mut(),
             ulParameterLen: 0,
         };
@@ -202,5 +302,106 @@ impl Session {
             .insert(pk_id.to_vec(), pub_key_handle)?;
 
         Ok((priv_key_handle, pub_key_handle))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+    use cosmian_kms_interfaces::EcCurve;
+    use pkcs11_sys::{CKK_EC, CKM_EC_KEY_PAIR_GEN};
+
+    use super::{curve_der_oid, curve_from_der_oid, curve_key_pair_gen_mechanism, curve_key_type};
+
+    /// `curve_from_der_oid` must recover the exact curve that `curve_der_oid` encoded, for
+    /// every FIPS-approved NIST prime curve — a pure round-trip test requiring no HSM
+    /// connection (no simulator can help here; this is HSM-independent parameter logic).
+    #[test]
+    fn nist_curve_oid_round_trips() {
+        for curve in [EcCurve::P224, EcCurve::P256, EcCurve::P384, EcCurve::P521] {
+            let oid = curve_der_oid(curve);
+            assert_eq!(
+                curve_from_der_oid(oid).expect("must recognize a curve it just encoded"),
+                curve
+            );
+            assert_eq!(curve_key_pair_gen_mechanism(curve), CKM_EC_KEY_PAIR_GEN);
+            assert_eq!(curve_key_type(curve), CKK_EC);
+        }
+    }
+
+    #[test]
+    fn unsupported_oid_is_rejected() {
+        // secp256k1 (1.3.132.0.10) is intentionally not supported for HSM delegation.
+        let secp256k1_oid = [0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x0A];
+        curve_from_der_oid(&secp256k1_oid).unwrap_err();
+    }
+}
+
+/// Mocked/parameter-only coverage for HSM-delegated `EdDSA`/X25519 key generation (issue #1157):
+/// neither `SoftHSM2` 2.6.1 nor the Utimaco `CryptoServer` simulator expose the Montgomery
+/// (X25519) key-pair-gen mechanism, so this suite cannot be exercised end-to-end against any
+/// available simulator; `SoftHSM2` *does* support `EdDSA`/`Ed25519`/`Ed448`, which is covered
+/// live by `tests_shared::eddsa_sign_all_curves` instead. These tests only assert the pure
+/// PKCS#11 parameter-encoding logic (`CKA_EC_PARAMS`, `CKA_KEY_TYPE`, mechanism selection).
+#[cfg(all(test, feature = "non-fips"))]
+mod non_fips_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+    use cosmian_kms_interfaces::EcCurve;
+    use pkcs11_sys::{
+        CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKM_EC_EDWARDS_KEY_PAIR_GEN,
+        CKM_EC_MONTGOMERY_KEY_PAIR_GEN,
+    };
+
+    use super::{
+        curve_der_oid, curve_from_der_oid, curve_is_montgomery, curve_key_pair_gen_mechanism,
+        curve_key_type,
+    };
+
+    #[test]
+    fn edwards_and_montgomery_curve_params_round_trip() {
+        for curve in [EcCurve::Ed25519, EcCurve::Ed448, EcCurve::X25519] {
+            let oid = curve_der_oid(curve);
+            assert_eq!(
+                curve_from_der_oid(oid).expect("must recognize a curve it just encoded"),
+                curve
+            );
+        }
+    }
+
+    #[test]
+    fn edwards_curves_use_edwards_key_type_and_mechanism() {
+        for curve in [EcCurve::Ed25519, EcCurve::Ed448] {
+            assert_eq!(curve_key_type(curve), CKK_EC_EDWARDS);
+            assert_eq!(
+                curve_key_pair_gen_mechanism(curve),
+                CKM_EC_EDWARDS_KEY_PAIR_GEN
+            );
+            assert!(!curve_is_montgomery(curve));
+        }
+    }
+
+    #[test]
+    fn x25519_uses_montgomery_key_type_mechanism_and_is_derive_only() {
+        assert_eq!(curve_key_type(EcCurve::X25519), CKK_EC_MONTGOMERY);
+        assert_eq!(
+            curve_key_pair_gen_mechanism(EcCurve::X25519),
+            CKM_EC_MONTGOMERY_KEY_PAIR_GEN
+        );
+        assert!(curve_is_montgomery(EcCurve::X25519));
+    }
+
+    #[test]
+    fn curve_param_encodings_use_printable_string_not_oid() {
+        // SoftHSM2 2.6.1 was empirically verified (pkcs11-tool --keypairgen --key-type
+        // EC:edwards25519) to require the PrintableString curve-name encoding, not the DER
+        // OID, for CKA_EC_PARAMS on Edwards/Montgomery curves; see curve_der_oid's doc comment.
+        for curve in [EcCurve::Ed25519, EcCurve::Ed448, EcCurve::X25519] {
+            let oid = curve_der_oid(curve);
+            assert_eq!(
+                oid.first().copied(),
+                Some(0x13),
+                "expected PrintableString DER tag (0x13) for {curve:?}"
+            );
+        }
     }
 }

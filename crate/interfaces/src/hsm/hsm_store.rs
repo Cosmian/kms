@@ -29,13 +29,20 @@ use crate::{
 };
 
 /// Map an `EcCurve` (HSM interface curve enum) to the corresponding KMIP `RecommendedCurve`.
-/// Only the FIPS-approved NIST prime curves supported for HSM delegation are covered.
+/// FIPS-approved NIST prime curves are always covered; the Edwards/Montgomery curves added for
+/// `EdDSA`/X25519 HSM delegation (issue #1157) require the `non-fips` feature.
 const fn ec_curve_to_recommended_curve(curve: EcCurve) -> RecommendedCurve {
     match curve {
         EcCurve::P224 => RecommendedCurve::P224,
         EcCurve::P256 => RecommendedCurve::P256,
         EcCurve::P384 => RecommendedCurve::P384,
         EcCurve::P521 => RecommendedCurve::P521,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Ed25519 => RecommendedCurve::CURVEED25519,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Ed448 => RecommendedCurve::CURVEED448,
+        #[cfg(feature = "non-fips")]
+        EcCurve::X25519 => RecommendedCurve::CURVE25519,
     }
 }
 
@@ -260,6 +267,10 @@ impl ObjectsStore for HsmStore {
             let default_key_length = match algorithm {
                 HsmKeypairAlgorithm::RSA => 2048,
                 HsmKeypairAlgorithm::EC => 256,
+                #[cfg(feature = "non-fips")]
+                HsmKeypairAlgorithm::Ed25519 | HsmKeypairAlgorithm::X25519 => 256,
+                #[cfg(feature = "non-fips")]
+                HsmKeypairAlgorithm::Ed448 => 456,
             };
             self.hsm
                 .create_keypair(
@@ -1201,11 +1212,30 @@ fn is_asymmetric_keypair_creation(
             }
             let algorithm = match attributes.cryptographic_algorithm {
                 Some(CryptographicAlgorithm::RSA) => HsmKeypairAlgorithm::RSA,
+                // X25519 is requested via CryptographicAlgorithm::ECDH + a CURVE25519
+                // RecommendedCurve (KMIP has no dedicated "X25519" CryptographicAlgorithm);
+                // any other ECDH/EC/ECDSA request maps to a NIST prime curve (issue #1157).
+                #[cfg(feature = "non-fips")]
+                Some(CryptographicAlgorithm::ECDH)
+                    if matches!(
+                        attributes
+                            .cryptographic_domain_parameters
+                            .as_ref()
+                            .and_then(|cdp| cdp.recommended_curve),
+                        Some(RecommendedCurve::CURVE25519)
+                    ) =>
+                {
+                    HsmKeypairAlgorithm::X25519
+                }
                 Some(
                     CryptographicAlgorithm::EC
                     | CryptographicAlgorithm::ECDH
                     | CryptographicAlgorithm::ECDSA,
                 ) => HsmKeypairAlgorithm::EC,
+                #[cfg(feature = "non-fips")]
+                Some(CryptographicAlgorithm::Ed25519) => HsmKeypairAlgorithm::Ed25519,
+                #[cfg(feature = "non-fips")]
+                Some(CryptographicAlgorithm::Ed448) => HsmKeypairAlgorithm::Ed448,
                 _ => return None,
             };
             Some((

@@ -26,23 +26,52 @@ pub enum HsmKeypairAlgorithm {
     /// selected via the `key_length_in_bits` parameter of `HSM::create_keypair`, mirroring how
     /// RSA selects its modulus size, so no new parameter is added to the trait.
     EC,
+    /// Ed25519 (`CKM_EC_EDWARDS_KEY_PAIR_GEN`), for `EdDSA` signing. Non-FIPS: mirrors the
+    /// gating of `Ed25519` in `crate::crypto::elliptic_curves::sign` (issue #1157).
+    #[cfg(feature = "non-fips")]
+    Ed25519,
+    /// Ed448 (`CKM_EC_EDWARDS_KEY_PAIR_GEN`), for `EdDSA` signing. Non-FIPS: see `Ed25519` above.
+    #[cfg(feature = "non-fips")]
+    Ed448,
+    /// X25519 (`CKM_EC_MONTGOMERY_KEY_PAIR_GEN`), for ECDH key agreement. Non-FIPS: see
+    /// `Ed25519` above.
+    #[cfg(feature = "non-fips")]
+    X25519,
 }
 
 /// FIPS-approved NIST elliptic curves supported for HSM-delegated EC key generation and ECDSA
-/// signing. Only prime curves over `GF(p)` are supported, matching the software EC key
-/// generation gating in `crate::crypto::elliptic_curves::operation` (`P192`/`SECP256K1`/
-/// `SECP224K1` remain non-fips-only and are intentionally not exposed for HSM delegation).
+/// signing, plus (behind the `non-fips` feature) the Edwards/Montgomery curves used for
+/// `EdDSA` signing and X25519 ECDH key agreement (issue #1157). Only prime curves over `GF(p)`
+/// are supported for ECDSA, matching the software EC key generation gating in
+/// `crate::crypto::elliptic_curves::operation` (`P192`/`SECP256K1`/`SECP224K1` remain
+/// non-fips-only and are intentionally not exposed for HSM delegation).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EcCurve {
     P224,
     P256,
     P384,
     P521,
+    /// Edwards curve used for `EdDSA` signing (`CKM_EDDSA` / `CKM_EC_EDWARDS_KEY_PAIR_GEN`).
+    /// Non-FIPS: mirrors the gating of `Ed25519`/`Ed448` in
+    /// `crate::crypto::elliptic_curves::sign` (issue #1157).
+    #[cfg(feature = "non-fips")]
+    Ed25519,
+    /// Edwards curve used for `EdDSA` signing. Non-FIPS: see `Ed25519` above.
+    #[cfg(feature = "non-fips")]
+    Ed448,
+    /// Montgomery curve used for X25519 ECDH key agreement
+    /// (`CKM_EC_MONTGOMERY_KEY_PAIR_GEN` / `CKM_ECDH1_DERIVE`). Non-FIPS: see `Ed25519` above.
+    #[cfg(feature = "non-fips")]
+    X25519,
 }
 
 impl EcCurve {
     /// Select a curve from a requested key length in bits, mirroring the RSA key-size
     /// selection convention used by `HSM::create_keypair`.
+    ///
+    /// Only selects among the FIPS-approved NIST prime curves; Edwards/Montgomery curves are
+    /// selected explicitly (e.g. `EcCurve::Ed25519`), not by key length, since key length alone
+    /// does not disambiguate them (Ed25519 and X25519 share a 256-bit field size).
     pub fn from_key_length_in_bits(key_length_in_bits: usize) -> InterfaceResult<Self> {
         match key_length_in_bits {
             224 => Ok(Self::P224),
@@ -64,6 +93,10 @@ impl EcCurve {
             Self::P256 => 256,
             Self::P384 => 384,
             Self::P521 => 521,
+            #[cfg(feature = "non-fips")]
+            Self::Ed25519 | Self::X25519 => 256,
+            #[cfg(feature = "non-fips")]
+            Self::Ed448 => 456,
         }
     }
 }

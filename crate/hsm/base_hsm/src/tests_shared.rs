@@ -16,6 +16,11 @@ use openssl::{
     hash::MessageDigest,
     nid::Nid,
 };
+#[cfg(feature = "non-fips")]
+use openssl::{
+    pkey::{Id, PKey},
+    sign::Verifier,
+};
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_C_INITIALIZE_ARGS, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_PTR, CK_OBJECT_HANDLE, CK_RV, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_DECRYPT,
@@ -895,7 +900,115 @@ pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> 
     Ok(())
 }
 
+/// HSM-delegated `EdDSA` signing (issue #1157, "HSM delegation Track B"). Exercises
+/// `CKM_EC_EDWARDS_KEY_PAIR_GEN` key generation and `CKM_EDDSA` signing for Ed25519 and Ed448,
+/// verifying each HSM-produced signature independently with OpenSSL. Additive: does not touch
+/// any of the pre-existing ECDSA/RSA signing coverage above.
+///
+/// Requires an HSM that implements the PKCS#11 v3.0 `CKM_EDDSA`/`CKM_EC_EDWARDS_KEY_PAIR_GEN`
+/// mechanisms (verified against `SoftHSM2` 2.6.1 and the Utimaco `CryptoServer` simulator; not
+/// supported by all vendors/firmware versions, hence the mechanism-support skip below).
+#[cfg(feature = "non-fips")]
+#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
+pub fn eddsa_sign_all_curves(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let supported_mechanisms = slot.get_supported_mechanisms()?;
+    let session = slot.open_session(true)?;
+    let data = b"test data for EdDSA signing";
+
+    let curves = [
+        (
+            EcCurve::Ed25519,
+            HsmSigningAlgorithm::Ed25519,
+            Id::ED25519,
+            32_usize,
+        ),
+        (EcCurve::Ed448, HsmSigningAlgorithm::Ed448, Id::ED448, 57),
+    ];
+
+    let mut tested = 0;
+    for (curve, signing_algorithm, openssl_id, expected_point_len) in curves {
+        if !supported_mechanisms.contains(&pkcs11_sys::CKM_EDDSA) {
+            warn!("{curve:?} (CKM_EDDSA) not supported by HSM, skipping");
+            continue;
+        }
+        let sk_id = Uuid::new_v4().to_string();
+        let pk_id = sk_id.clone() + "_pk";
+        let (sk, pk) =
+            session.generate_ec_key_pair(sk_id.as_bytes(), pk_id.as_bytes(), curve, true)?;
+        let exported_pk = session
+            .export_key(pk)?
+            .expect("Failed to export the EdDSA public key");
+        let raw_point = match exported_pk.key_material() {
+            KeyMaterial::EcPublicKey(v) => {
+                assert_eq!(v.curve, curve);
+                assert_eq!(
+                    v.q.len(),
+                    expected_point_len,
+                    "raw EdDSA point length mismatch for {curve:?}"
+                );
+                v.q.clone()
+            }
+            _ => panic!("Expected an EC public key"),
+        };
+        let openssl_pk = PKey::public_key_from_raw_bytes(&raw_point, openssl_id)
+            .map_err(|e| HError::Default(format!("OpenSSL EdDSA public key error: {e}")))?;
+
+        let signature = session.sign(sk, signing_algorithm, data)?;
+        verify_eddsa_signature(&openssl_pk, data, &signature)?;
+        info!("Successfully signed and verified {curve:?}/EdDSA");
+
+        // Pure EdDSA (RFC 8032) is deterministic: two signatures over the same data must match,
+        // unlike ECDSA above.
+        let signature_2 = session.sign(sk, signing_algorithm, data)?;
+        assert_eq!(
+            signature, signature_2,
+            "EdDSA signing must be deterministic ({curve:?})"
+        );
+
+        // Tampering with the signed data must be detected.
+        let mut tampered = data.to_vec();
+        if let Some(first) = tampered.first_mut() {
+            *first ^= 0xFF;
+        }
+        assert!(
+            verify_eddsa_signature(&openssl_pk, &tampered, &signature).is_err(),
+            "A tampered message must fail EdDSA verification ({curve:?})"
+        );
+        tested += 1;
+    }
+    if tested == 0 {
+        warn!("No EdDSA mechanism was supported by the HSM; skipping (see issue #1157)");
+    }
+    Ok(())
+}
+
+/// Verify a raw `EdDSA` signature (no digest, no DER wrapping) against `data` using the given
+/// OpenSSL Ed25519/Ed448 public key.
+#[cfg(feature = "non-fips")]
+fn verify_eddsa_signature(
+    public_key: &PKey<openssl::pkey::Public>,
+    data: &[u8],
+    signature: &[u8],
+) -> HResult<()> {
+    let mut verifier = Verifier::new_without_digest(public_key)
+        .map_err(|e| HError::Default(format!("OpenSSL EdDSA verifier init error: {e}")))?;
+    let valid = verifier
+        .verify_oneshot(signature, data)
+        .map_err(|e| HError::Default(format!("OpenSSL EdDSA verification error: {e}")))?;
+    if valid {
+        Ok(())
+    } else {
+        Err(HError::Default(
+            "EdDSA signature verification failed".to_owned(),
+        ))
+    }
+}
+
 /// Build an OpenSSL `EcKey` from the raw uncompressed X9.62 point exported from the HSM.
+///
+/// Only applies to the FIPS-approved NIST prime curves: `EdDSA`/X25519 keys are not classic
+/// OpenSSL `EC_KEY` objects (see `eddsa_public_key_from_material` for those, issue #1157).
 fn ec_public_key_from_material(
     material: &cosmian_kms_interfaces::EcPublicKeyMaterial,
 ) -> HResult<EcKey<openssl::pkey::Public>> {
@@ -904,6 +1017,14 @@ fn ec_public_key_from_material(
         EcCurve::P256 => Nid::X9_62_PRIME256V1,
         EcCurve::P384 => Nid::SECP384R1,
         EcCurve::P521 => Nid::SECP521R1,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Ed25519 | EcCurve::Ed448 | EcCurve::X25519 => {
+            return Err(HError::Default(
+                "ec_public_key_from_material: Ed25519/Ed448/X25519 are not OpenSSL EC_KEY \
+                 objects; use eddsa_public_key_from_material instead"
+                    .to_owned(),
+            ));
+        }
     };
     let group = EcGroup::from_curve_name(nid)
         .map_err(|e| HError::Default(format!("OpenSSL EC group error: {e}")))?;

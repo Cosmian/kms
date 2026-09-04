@@ -66,6 +66,8 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     shared::rsa_sign_all_algorithms(&slot)?;
     shared::rsa_pss_sign_all_algorithms(&slot)?;
     shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
+    #[cfg(feature = "non-fips")]
+    shared::eddsa_sign_all_curves(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA1, cfg.threads)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
@@ -249,6 +251,18 @@ fn test_hsm_softhsm2_generate_ec_keypair() -> HResult<()> {
 fn test_hsm_softhsm2_ecdsa_sign_all_curves_and_hashes() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
     shared::ecdsa_sign_all_curves_and_hashes(&slot)
+}
+
+/// HSM-delegated `EdDSA` signing (issue #1157, "HSM delegation Track B"). Additive: exercises
+/// only the new `CKM_EC_EDWARDS_KEY_PAIR_GEN`/`CKM_EDDSA` mechanisms without touching any of
+/// the pre-existing ECDSA/RSA signing coverage above. `SoftHSM2` 2.6.1 was verified (via
+/// `pkcs11-tool -M`) to support both mechanisms; run with `--features non-fips,softhsm2`.
+#[cfg(feature = "non-fips")]
+#[test]
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_eddsa_sign_all_curves() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::eddsa_sign_all_curves(&slot)
 }
 
 #[test]
