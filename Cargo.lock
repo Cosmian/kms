@@ -1417,6 +1417,7 @@ name = "cosmian_kms_base_hsm"
 version = "5.27.1"
 dependencies = [
  "async-trait",
+ "cc",
  "cosmian_kms_interfaces",
  "cosmian_logger",
  "futures",
@@ -1709,6 +1710,7 @@ dependencies = [
  "http 1.5.0",
  "ipnet",
  "jsonwebtoken",
+ "kryoptic_pkcs11_loader",
  "native-tls",
  "num-bigint-dig",
  "openssl",
@@ -3793,6 +3795,15 @@ version = "5.27.1"
 dependencies = [
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "kryoptic_pkcs11_loader"
+version = "5.27.1"
+dependencies = [
+ "cosmian_kms_base_hsm",
+ "libloading",
+ "pkcs11-sys",
 ]
 
 [[package]]
