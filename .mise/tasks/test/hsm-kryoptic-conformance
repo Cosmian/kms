@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+#MISE description="Run the Kryoptic PKCS#11 v3.0 conformance test suite (opt-in, dev-only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kryoptic.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+print_header "Running Kryoptic PKCS#11 v3.0 conformance suite (${VARIANT_NAME})"
+
+# This is NOT a vendor HSM backend: `kryoptic` is a real, actively-maintained
+# (latchset/kryoptic) PKCS#11 v3.0 software token used purely as a conformance-test
+# oracle for `crate/hsm/base_hsm`'s v3.0 mechanism support (EdDSA, HKDF, message-based
+# AEAD, populated interface list). Built out-of-tree by `kryoptic_build_cdylib`
+# (network access required to pull the published crate from crates.io on first run)
+# — never added to the workspace dependency graph (see .mise/lib/kryoptic.sh and the
+# NOTE in crate/hsm/base_hsm/Cargo.toml explaining the rusqlite version conflict this
+# avoids). `kryoptic_build_cdylib` also builds this workspace's own OpenSSL 3.6.2 (if
+# not already built) and points kryoptic's OpenSSL discovery at it via
+# `PKG_CONFIG_PATH`, so the suite does not depend on — and is not broken by — an older
+# system-installed OpenSSL (kryoptic's `standard` feature requires OpenSSL >= 3.2.0).
+kryoptic_build_cdylib
+
+env \
+  KRYOPTIC_PKCS11_LIB="$KRYOPTIC_PKCS11_LIB" \
+  cargo test \
+  -p cosmian_kms_base_hsm \
+  --test kryoptic_conformance \
+  -- --ignored
+
+print_success "Kryoptic PKCS#11 v3.0 conformance suite completed"

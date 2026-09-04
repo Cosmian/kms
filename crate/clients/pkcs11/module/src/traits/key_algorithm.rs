@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use pkcs1::ObjectIdentifier;
-use pkcs11_sys::{CK_KEY_TYPE, CKK_AES, CKK_EC, CKK_RSA};
+use pkcs11_sys::{CK_KEY_TYPE, CKK_AES, CKK_EC, CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKK_RSA};
 
 use crate::ModuleResult;
 
@@ -21,20 +21,25 @@ pub enum KeyAlgorithm {
 }
 
 impl KeyAlgorithm {
+    /// Maps this key algorithm to its PKCS#11 `CKA_KEY_TYPE` value.
+    ///
+    /// PKCS#11 v2.40 introduced `CKK_EC_EDWARDS` and `CKK_EC_MONTGOMERY` as the
+    /// dedicated key types for Edwards-curve (Ed25519/Ed448) and Montgomery-curve
+    /// (X25519/X448) keys, distinct from the NIST/SECG `CKK_EC` type used by
+    /// P-256/P-384/P-521/secp256k1/secp224k1. Reporting the correct, distinct type
+    /// is required for PKCS#11 v3.x conformance: `CKA_KEY_TYPE`-aware clients (e.g.
+    /// `OpenSC`'s `pkcs11-tool --mechanism EDDSA`) search for `CKK_EC_EDWARDS`
+    /// specifically and will not find Ed25519/Ed448 keys reported as `CKK_EC`.
     #[must_use]
     pub const fn to_ck_key_type(&self) -> CK_KEY_TYPE {
         match self {
             Self::Aes256 => CKK_AES,
             Self::Rsa => CKK_RSA,
-            Self::EccP256
-            | Self::Secp224k1
-            | Self::Secp256k1
-            | Self::EccP384
-            | Self::EccP521
-            | Self::Ed448
-            | Self::Ed25519
-            | Self::X448
-            | Self::X25519 => CKK_EC,
+            Self::EccP256 | Self::Secp224k1 | Self::Secp256k1 | Self::EccP384 | Self::EccP521 => {
+                CKK_EC
+            }
+            Self::Ed25519 | Self::Ed448 => CKK_EC_EDWARDS,
+            Self::X25519 | Self::X448 => CKK_EC_MONTGOMERY,
         }
     }
 
