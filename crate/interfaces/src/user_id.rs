@@ -122,6 +122,8 @@ impl PartialEq<UserId> for String {
 }
 
 #[cfg(test)]
+// Test-only: `expect()` and `assert!` on result states are idiomatic in unit tests.
+#[allow(clippy::expect_used, clippy::assertions_on_result_states)]
 mod tests {
     use super::*;
 
