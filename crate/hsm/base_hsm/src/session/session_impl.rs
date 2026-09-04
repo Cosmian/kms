@@ -14,6 +14,8 @@ use cosmian_kms_interfaces::{
     RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
 };
 use cosmian_logger::{debug, trace};
+#[cfg(feature = "non-fips")]
+use pkcs11_sys::CKM_EDDSA;
 use pkcs11_sys::{
     CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_DATE, CK_FALSE, CK_HKDF_PARAMS, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE, CK_RSA_PKCS_OAEP_PARAMS, CK_RSA_PKCS_PSS_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CKA_CLASS, CKA_COEFFICIENT, CKA_DERIVE, CKA_EC_PARAMS, CKA_EC_POINT, CKA_END_DATE, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_START_DATE, CKA_TOKEN, CKA_VALUE, CKA_VALUE_LEN, CKF_HKDF_SALT_DATA, CKF_HKDF_SALT_NULL, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_EC, CKK_GENERIC_SECRET, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_EDDSA, CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512, CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
 };
@@ -96,6 +98,13 @@ pub enum HsmSigningAlgorithm {
     EcdsaSha384,
     /// `CKM_ECDSA_SHA512`.
     EcdsaSha512,
+    /// `CKM_EDDSA` over an Ed25519 private key (pure `EdDSA`, un-hashed input). Non-FIPS: see
+    /// `crate::crypto::elliptic_curves::sign` for the equivalent software gating (issue #1157).
+    #[cfg(feature = "non-fips")]
+    Ed25519,
+    /// `CKM_EDDSA` over an Ed448 private key.
+    #[cfg(feature = "non-fips")]
+    Ed448,
     /// `CKM_EDDSA` — pure Ed25519 (OASIS Cryptoki v3.0 §2.3.9). Not (yet) reachable
     /// through `SigningAlgorithm::from`/KMIP (Phase 2); only constructed directly by
     /// `base_hsm`-internal callers and tests until the KMIP integration phase wires it
@@ -117,6 +126,10 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
             SigningAlgorithm::EcdsaSha256 => Self::EcdsaSha256,
             SigningAlgorithm::EcdsaSha384 => Self::EcdsaSha384,
             SigningAlgorithm::EcdsaSha512 => Self::EcdsaSha512,
+            #[cfg(feature = "non-fips")]
+            SigningAlgorithm::Ed25519 => Self::Ed25519,
+            #[cfg(feature = "non-fips")]
+            SigningAlgorithm::Ed448 => Self::Ed448,
         }
     }
 }
@@ -1336,6 +1349,13 @@ impl Session {
                 let raw = self.sign_with_simple_mechanism(key_handle, CKM_ECDSA_SHA512, data)?;
                 Self::ecdsa_raw_to_der(&raw)
             }
+            // EdDSA (Ed25519/Ed448) is a pure, un-hashed signature scheme (RFC 8032): the raw
+            // message is passed directly to CKM_EDDSA, with no digest and no DER re-encoding
+            // (unlike ECDSA above), matching the software `eddsa_sign` convention.
+            #[cfg(feature = "non-fips")]
+            HsmSigningAlgorithm::Ed25519 | HsmSigningAlgorithm::Ed448 => {
+                self.sign_with_simple_mechanism(key_handle, CKM_EDDSA, data)
+            }
             HsmSigningAlgorithm::Eddsa => {
                 // `CKM_EDDSA` (OASIS Cryptoki v3.0 §2.3.9): per the spec, `pParameter`
                 // is OPTIONAL — omitting it (`pParameter = NULL`, `ulParameterLen = 0`)
@@ -2012,7 +2032,7 @@ impl Session {
                     KeyType::RsaPublicKey
                 }
             }
-            CKK_EC => {
+            CKK_EC | CKK_EC_EDWARDS | CKK_EC_MONTGOMERY => {
                 if class == CKO_PRIVATE_KEY {
                     KeyType::EcPrivateKey
                 } else {
@@ -3017,12 +3037,12 @@ impl Session {
                     KeyType::RsaPublicKey
                 }
             }
-            CKK_EC => {
-                // Validate that the curve is one Cosmian KMS recognizes (CKA_EC_PARAMS
-                // decodes to a supported `EcCurve`). This rejects HSM objects using
-                // curves outside the FIPS-approved set (e.g. brainpool curves), keeping
-                // them excluded from generic searches/exports exactly like any other
-                // unsupported key type.
+            // Validate that the curve is one Cosmian KMS recognizes (CKA_EC_PARAMS decodes to
+            // a supported `EcCurve`, including Ed25519/Ed448/X25519, issue #1157). This
+            // rejects HSM objects using curves outside the supported set (e.g. brainpool
+            // curves), keeping them excluded from generic searches/exports exactly like any
+            // other unsupported key type.
+            CKK_EC | CKK_EC_EDWARDS | CKK_EC_MONTGOMERY => {
                 let mut len_template = [CK_ATTRIBUTE {
                     type_: CKA_EC_PARAMS,
                     pValue: ptr::null_mut(),

@@ -135,6 +135,21 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
                 session.generate_ec_key_pair(sk_id, pk_id, curve, sensitive)?;
                 Ok(())
             }
+            #[cfg(feature = "non-fips")]
+            HsmKeypairAlgorithm::Ed25519 => {
+                session.generate_ec_key_pair(sk_id, pk_id, EcCurve::Ed25519, sensitive)?;
+                Ok(())
+            }
+            #[cfg(feature = "non-fips")]
+            HsmKeypairAlgorithm::Ed448 => {
+                session.generate_ec_key_pair(sk_id, pk_id, EcCurve::Ed448, sensitive)?;
+                Ok(())
+            }
+            #[cfg(feature = "non-fips")]
+            HsmKeypairAlgorithm::X25519 => {
+                session.generate_ec_key_pair(sk_id, pk_id, EcCurve::X25519, sensitive)?;
+                Ok(())
+            }
         }
     }
 

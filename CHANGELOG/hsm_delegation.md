@@ -86,3 +86,76 @@ changes, validated against a live SoftHSM2 token). PBKDF2 HSM derivation remains
 open and is tracked in a follow-up issue, as SoftHSM2 does not implement
 `CKM_PKCS5_PBKD2` and no other PKCS#11 backend was available for validation in
 this environment.
+
+# HSM delegation Track B — EdDSA / X25519 key generation (partial)
+
+## Features
+
+### HSM
+
+- Add a new `non-fips` feature to `cosmian_kms_interfaces`, `cosmian_kms_base_hsm`,
+  and every vendor PKCS#11 loader crate (`softhsm2`, `utimaco`, `proteccio`,
+  `crypt2pay`, `smartcardhsm`), gating HSM-delegated `EdDSA`/X25519 exactly like
+  the existing software gating in `crate::crypto::elliptic_curves::sign`. HKDF is
+  NIST-approved regardless of transport and is intentionally **not** gated (not
+  yet implemented in this pass — see "Deferred" below)
+- Add HSM-delegated `EdDSA` signing: new `EcCurve::Ed25519`/`Ed448` (Edwards
+  curves, `CKM_EC_EDWARDS_KEY_PAIR_GEN`) and `SigningAlgorithm::Ed25519`/`Ed448`
+  (`CKM_EDDSA`, pure/un-hashed signing), resolved from KMIP
+  `CryptographicAlgorithm::Ed25519`/`Ed448` (KMIP 2.1 has no
+  `DigitalSignatureAlgorithm` variant for `EdDSA`, unlike ECDSA). Fully
+  KMIP-reachable via the existing `CreateKeyPair`/`Sign` HSM delegation paths —
+  no new operation wiring required
+- Add HSM-delegated X25519 key generation: new `EcCurve::X25519` (Montgomery
+  curve, `CKM_EC_MONTGOMERY_KEY_PAIR_GEN`), requested via KMIP
+  `CryptographicAlgorithm::ECDH` + a `CURVE25519` `RecommendedCurve` domain
+  parameter (KMIP has no dedicated "X25519" `CryptographicAlgorithm`). The
+  generated key pair carries `CKA_DERIVE` instead of `CKA_SIGN`/`CKA_VERIFY`,
+  since X25519 is derive-only
+- `CKA_EC_PARAMS`/`CKA_KEY_TYPE` for Edwards/Montgomery curves are set correctly:
+  `CKA_KEY_TYPE` is `CKK_EC_EDWARDS`/`CKK_EC_MONTGOMERY` (not the NIST-curve
+  `CKK_EC`), and `CKA_EC_PARAMS` uses the DER-encoded `PrintableString` curve name
+  (`"edwards25519"`/`"edwards448"`/`"curve25519"`), not the OID form — empirically
+  verified against `SoftHSM2` 2.6.1, which rejects the OID form with
+  `CKR_TEMPLATE_INCONSISTENT`
+
+## Deferred (tracked as remaining #1157 scope)
+
+- **HSM-delegated X25519 ECDH key agreement** (`DeriveKey` operation): no PKCS#11
+  backend available in this environment (`SoftHSM2` 2.6.1, Utimaco CryptoServer
+  simulator) exposes `CKM_EC_MONTGOMERY_KEY_PAIR_GEN`, so the derive path could
+  not be validated end-to-end; also requires new KMIP `DeriveKey` → HSM wiring
+  (currently software-only in `derive_key.rs`)
+- **HSM-delegated HKDF / SP 800-108 KDF** (`CKM_HKDF_DERIVE`,
+  `CKM_SP800_108_*_KDF`): neither available simulator implements these
+  mechanisms; same `DeriveKey` wiring gap as above
+- **HSM-delegated message-based AEAD** (`C_MessageEncryptInit`/`EncryptMessage`/
+  `MessageEncryptFinal` and `Decrypt` equivalents): neither available simulator
+  exports these PKCS#11 v3.0 functions; additionally requires a session-state
+  design decision (amortizing key/session setup across a KMIP batch) that is
+  out of scope for this change
+
+## Tests
+
+- Add unit tests: NIST curve OID round-trip, Edwards/Montgomery curve parameter
+  encoding (`PrintableString`, `CKK_EC_EDWARDS`/`CKK_EC_MONTGOMERY`, correct
+  key-pair-gen mechanism), and `SigningAlgorithm::from_kmip` resolution for
+  `Ed25519`/`Ed448`
+- Add `#[ignore]`d `eddsa_sign_all_curves` SoftHSM2 integration test (Ed25519 +
+  Ed448), manually run against a live `SoftHSM2` 2.6.1 token: key generation,
+  sign/verify via an independent OpenSSL check, determinism (unlike ECDSA,
+  `EdDSA` is deterministic), and tamper-detection
+- X25519 key generation, HKDF, and message-based AEAD have **no** integration
+  test: neither `SoftHSM2` nor the Utimaco CryptoServer simulator implement the
+  required mechanisms in this environment (confirmed via `pkcs11-tool -M` against
+  both). Only mocked/parameter-only unit tests are provided for the pieces that
+  were implemented (X25519 key generation); HKDF, SP 800-108, and message-based
+  AEAD are not implemented at all in this pass (see "Deferred" above)
+
+---
+
+Partially addresses #1157: `EdDSA` signing (Ed25519/Ed448) is complete and
+validated live; X25519 key generation is implemented but unvalidated
+end-to-end (no available HSM simulator supports its key-pair-gen mechanism);
+X25519 ECDH derive, HKDF/SP 800-108 KDF, and message-based AEAD remain open,
+tracked as remaining scope on #1157.

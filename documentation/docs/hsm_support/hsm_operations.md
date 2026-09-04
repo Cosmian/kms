@@ -297,8 +297,11 @@ The symmetric key was successfully generated.
     Elliptic curve key pairs can also be created directly on the HSM, using the same `ec keys
     create` CLI command as for software keys. The four NIST curves supported by the HSM
     integration are P-224, P-256 (default), P-384, and P-521 — the same curves accepted by
-    `--curve nist-p224/nist-p256/nist-p384/nist-p521`. Non-NIST curves (Ed25519, X25519, Ed448,
-    X448, secp256k1, secp224k1) are not supported by the HSM delegation and remain software-only.
+    `--curve nist-p224/nist-p256/nist-p384/nist-p521`. With the `non-fips` build feature,
+    Ed25519 and Ed448 (for `EdDSA` signing) and X25519 (for ECDH key agreement) are also
+    supported — see [HSM-delegated `EdDSA` signing](#sign) below. X448 and the non-FIPS NIST
+    curves (secp256k1, secp224k1) remain unsupported by the HSM delegation and are
+    software-only.
 
 Create an EC P-384 key pair on HSM slot 4, with the KMS CLI:
 
@@ -561,6 +564,36 @@ The signature is available at "/tmp/secret.sig"
     implementation details and the PBKDF2 deferral rationale (SoftHSM2, the only backend
     available for end-to-end validation in this environment, does not implement
     `CKM_PKCS5_PBKD2`).
+
+`EdDSA` signing (Ed25519/Ed448) over an HSM-resident Edwards-curve private key is available with
+the `non-fips` build feature, using the same `ec sign` CLI command as ECDSA above. Unlike ECDSA,
+`EdDSA` is a pure, un-hashed signature scheme (RFC 8032): the raw message is passed directly to
+`C_Sign` with `CKM_EDDSA`, with no digest step and no DER re-encoding.
+
+```shell
+❯ ckms ec keys create --curve ed25519 hsm::4::my_ed25519_key
+The EC key pair has been created.
+      Public key unique identifier: hsm::4::my_ed25519_key_pk
+      Private key unique identifier: hsm::4::my_ed25519_key
+
+❯ ckms ec sign --key-id hsm::4::my_ed25519_key -o /tmp/secret.sig /tmp/secret.txt
+The signature is available at "/tmp/secret.sig"
+```
+
+!!! info HSM-delegated `EdDSA` signing (Ed25519/Ed448)
+    `EdDSA` signing over HSM-resident Ed25519/Ed448 keys is delegated end-to-end to the PKCS#11
+    device via `CKM_EC_EDWARDS_KEY_PAIR_GEN` (key generation) and `CKM_EDDSA` (signing). Unlike
+    ECDSA, `EdDSA` is deterministic: signing the same data twice with the same key always
+    produces the same signature. Gated behind the `non-fips` build feature, mirroring the
+    existing software `EdDSA` gating in `crate::crypto::elliptic_curves::sign` — HKDF and SP
+    800-108 KDF are NIST-approved and not affected by this flag. Validated live against a
+    `SoftHSM2` 2.6.1 token. HSM-delegated X25519 key generation
+    (`CKM_EC_MONTGOMERY_KEY_PAIR_GEN`) is also implemented, but X25519 ECDH key agreement
+    (`DeriveKey`), HKDF/SP 800-108 key derivation, and message-based AEAD are **not yet**
+    implemented — no PKCS#11 backend available in this environment (`SoftHSM2`, the Utimaco
+    CryptoServer simulator) exposes the required mechanisms for end-to-end validation. This
+    remains open, tracked on
+    [issue #1157](https://github.com/Cosmian/kms/issues/1157).
 
 ## PKCS#11 protocol version compatibility
 
