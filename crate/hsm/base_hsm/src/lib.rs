@@ -31,7 +31,7 @@ pub mod tests_shared;
 // per PKCS#11 v2 and avoid warnings with pkcs11-tool --list-objects
 #[macro_export]
 macro_rules! aes_key_template {
-    ($id:expr, $size:expr, $sensitive:expr) => {
+    ($id:expr, $size:expr, $sensitive:expr, $extractable:expr) => {
         [
             pkcs11_sys::CK_ATTRIBUTE {
                 type_: pkcs11_sys::CKA_CLASS,
@@ -103,7 +103,7 @@ macro_rules! aes_key_template {
             },
             pkcs11_sys::CK_ATTRIBUTE {
                 type_: pkcs11_sys::CKA_EXTRACTABLE,
-                pValue: std::ptr::from_ref::<u8>(&pkcs11_sys::CK_TRUE)
+                pValue: std::ptr::from_ref::<u8>(&$extractable)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: pkcs11_sys::CK_ULONG::try_from(std::mem::size_of::<

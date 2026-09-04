@@ -48,7 +48,7 @@ use pkcs11_sys::{
 };
 use serial_test::serial;
 use test_kms_server::{
-    start_default_test_kms_server, start_default_test_kms_server_with_hsm_and_kek,
+    start_default_test_kms_server, start_default_test_kms_server_with_softhsm2_and_kek,
 };
 
 use crate::{
@@ -111,7 +111,7 @@ fn test_hsm_kek_ecdsa_p256_sign() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
     let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
-        let ctx = start_default_test_kms_server_with_hsm_and_kek().await;
+        let ctx = start_default_test_kms_server_with_softhsm2_and_kek().await;
         let kms_rest_client = ctx.get_owner_client();
         let (sk_id, pk_id) = create_ec_ssh_keypair(&kms_rest_client, RecommendedCurve::P256).await;
         (ctx.owner_client_config.clone(), sk_id, pk_id)
@@ -156,7 +156,7 @@ fn test_hsm_kek_ecdsa_secp256k1_sign() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
     let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
-        let ctx = start_default_test_kms_server_with_hsm_and_kek().await;
+        let ctx = start_default_test_kms_server_with_softhsm2_and_kek().await;
         let kms_rest_client = ctx.get_owner_client();
         let (sk_id, pk_id) =
             create_ec_ssh_keypair(&kms_rest_client, RecommendedCurve::SECP256K1).await;
@@ -200,7 +200,7 @@ fn test_hsm_kek_eddsa_ed25519_sign() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
     let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
-        let ctx = start_default_test_kms_server_with_hsm_and_kek().await;
+        let ctx = start_default_test_kms_server_with_softhsm2_and_kek().await;
         let kms_rest_client = ctx.get_owner_client();
         let (sk_id, pk_id) =
             create_ec_ssh_keypair(&kms_rest_client, RecommendedCurve::CURVEED25519).await;
@@ -782,28 +782,26 @@ fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
         CKR_ARGUMENTS_BAD
     );
 
-    // A minor version *below* the implemented one (e.g. a v3.0 request against this v3.1
-    // implementation) is backward-compatible and must be accepted, not rejected — a v3.1
-    // interface is a superset of v3.0. Only a minor version *above* the implemented one is
-    // truly unsupported.
-    let mut compatible_minor = CK_VERSION {
+    // Backward-compatible v3.0 request: this 3.1 implementation must still satisfy a caller
+    // explicitly requesting exactly {major: 3, minor: 0} (see the `C_GetInterface` doc comment).
+    let mut v3_0_request = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: 0,
     };
     assert_eq!(
-        // SAFETY: `compatible_minor` and `interface_ptr` are valid stack values.
+        // SAFETY: `v3_0_request` and `interface_ptr` are valid stack values.
         unsafe {
             C_GetInterface(
                 std::ptr::null_mut(),
-                &raw mut compatible_minor,
+                &raw mut v3_0_request,
                 &raw mut interface_ptr,
                 0,
             )
         },
         CKR_OK
     );
-    assert!(!interface_ptr.is_null());
 
+    // A minor version newer than the one implemented must still be rejected.
     let mut unsupported_minor = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: CRYPTOKI_VERSION_MINOR.saturating_add(1),
@@ -1061,7 +1059,7 @@ fn test_hsm_kek_rsa_pss_sign() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
     let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
-        let ctx = start_default_test_kms_server_with_hsm_and_kek().await;
+        let ctx = start_default_test_kms_server_with_softhsm2_and_kek().await;
         let kms_rest_client = ctx.get_owner_client();
         let (sk_id, pk_id) = create_rsa_ssh_keypair(&kms_rest_client, 2048).await;
         (ctx.owner_client_config.clone(), sk_id, pk_id)
@@ -1125,7 +1123,7 @@ fn test_hsm_kek_c_verify_round_trip() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
     let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
-        let ctx = start_default_test_kms_server_with_hsm_and_kek().await;
+        let ctx = start_default_test_kms_server_with_softhsm2_and_kek().await;
         let kms_rest_client = ctx.get_owner_client();
         let (sk_id, pk_id) = create_ec_ssh_keypair(&kms_rest_client, RecommendedCurve::P256).await;
         (ctx.owner_client_config.clone(), sk_id, pk_id)

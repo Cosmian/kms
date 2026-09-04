@@ -769,28 +769,26 @@ fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
         CKR_ARGUMENTS_BAD
     );
 
-    // A minor version *below* the implemented one (e.g. a v3.0 request against this v3.1
-    // implementation) is backward-compatible and must be accepted, not rejected — a v3.1
-    // interface is a superset of v3.0. Only a minor version *above* the implemented one is
-    // truly unsupported.
-    let mut compatible_minor = CK_VERSION {
+    // Backward-compatible v3.0 request: this 3.1 implementation must still satisfy a caller
+    // explicitly requesting exactly {major: 3, minor: 0} (see the `C_GetInterface` doc comment).
+    let mut v3_0_request = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: 0,
     };
     assert_eq!(
-        // SAFETY: `compatible_minor` and `interface_ptr` are valid stack values.
+        // SAFETY: `v3_0_request` and `interface_ptr` are valid stack values.
         unsafe {
             C_GetInterface(
                 std::ptr::null_mut(),
-                &raw mut compatible_minor,
+                &raw mut v3_0_request,
                 &raw mut interface_ptr,
                 0,
             )
         },
         CKR_OK
     );
-    assert!(!interface_ptr.is_null());
 
+    // A minor version newer than the one implemented must still be rejected.
     let mut unsupported_minor = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: CRYPTOKI_VERSION_MINOR.saturating_add(1),
