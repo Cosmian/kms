@@ -15,7 +15,8 @@ use pkcs11_sys::{
     CKA_ECDSA_PARAMS, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_PRIVATE,
     CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP, CKF_OS_LOCKING_OK,
     CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS,
-    CKM_SHA256_RSA_PKCS, CKM_SHA384_RSA_PKCS, CKM_SHA512_RSA_PKCS, CKR_OK,
+    CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS,
+    CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKR_OK,
 };
 use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
@@ -659,6 +660,90 @@ pub fn rsa_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
         tested > 0,
         "No signing algorithms were supported by the HSM"
     );
+    Ok(())
+}
+
+/// Exercises HSM-delegated RSA-PSS signing (issue #1154, RSA-PSS sub-item) across the
+/// SHA-256/384/512 variants, both with the default salt length (= digest length) and
+/// with an explicit shorter salt length (including the deterministic `salt_length: 0`
+/// case). Confirms signatures are well-formed (correct length) and that non-zero-salt
+/// PSS signing is randomized (unlike deterministic PKCS#1 v1.5, already covered by
+/// `rsa_sha256_sign`).
+pub fn rsa_pss_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let supported_mechanisms = slot.get_supported_mechanisms()?;
+    let session = slot.open_session(true)?;
+    let data = b"test data for RSA-PSS signing";
+    let sk_id = Uuid::new_v4().to_string();
+    let pk_id = sk_id.clone() + "_pk";
+    let (sk, _pk) = session.generate_rsa_key_pair(
+        sk_id.as_bytes(),
+        pk_id.as_bytes(),
+        RsaKeySize::Rsa2048,
+        true,
+    )?;
+    let algorithms = [
+        (
+            "RsaPssSha256 (default salt)",
+            HsmSigningAlgorithm::RsaPssSha256 { salt_length: None },
+            CKM_SHA256_RSA_PKCS_PSS,
+        ),
+        (
+            "RsaPssSha256 (salt=0, deterministic)",
+            HsmSigningAlgorithm::RsaPssSha256 {
+                salt_length: Some(0),
+            },
+            CKM_SHA256_RSA_PKCS_PSS,
+        ),
+        (
+            "RsaPssSha384 (default salt)",
+            HsmSigningAlgorithm::RsaPssSha384 { salt_length: None },
+            CKM_SHA384_RSA_PKCS_PSS,
+        ),
+        (
+            "RsaPssSha512 (default salt)",
+            HsmSigningAlgorithm::RsaPssSha512 { salt_length: None },
+            CKM_SHA512_RSA_PKCS_PSS,
+        ),
+    ];
+    let mut tested = 0;
+    for (name, algorithm, ckm) in algorithms {
+        if !supported_mechanisms.contains(&ckm) {
+            warn!("{name} (CKM {ckm}) not supported by HSM, skipping");
+            continue;
+        }
+        let signature = session.sign(sk, algorithm, data)?;
+        // RSA-2048 signature is 256 bytes regardless of the salt length used.
+        assert_eq!(
+            signature.len(),
+            2048 / 8,
+            "Signature length mismatch for {name}"
+        );
+        info!("Successfully signed with {name}");
+        tested += 1;
+    }
+    assert!(
+        tested > 0,
+        "No RSA-PSS signing algorithms were supported by the HSM"
+    );
+    // PSS is randomized (unless salt_length is 0): two signatures over the same data with
+    // the default salt length must differ, unlike PKCS#1 v1.5 which is deterministic.
+    if supported_mechanisms.contains(&CKM_SHA256_RSA_PKCS_PSS) {
+        let sig_a = session.sign(
+            sk,
+            HsmSigningAlgorithm::RsaPssSha256 { salt_length: None },
+            data,
+        )?;
+        let sig_b = session.sign(
+            sk,
+            HsmSigningAlgorithm::RsaPssSha256 { salt_length: None },
+            data,
+        )?;
+        assert_ne!(
+            sig_a, sig_b,
+            "RSA-PSS with a non-zero salt length must be randomized"
+        );
+    }
     Ok(())
 }
 

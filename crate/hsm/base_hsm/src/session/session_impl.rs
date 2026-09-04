@@ -17,15 +17,16 @@ use cosmian_logger::{debug, trace};
 use pkcs11_sys::{
     CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_DATE, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
-    CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CKA_CLASS, CKA_COEFFICIENT,
-    CKA_END_DATE, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS,
-    CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE,
-    CKA_START_DATE, CKA_VALUE, CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384,
-    CKG_MGF1_SHA512, CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS,
-    CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384,
-    CKM_SHA384_RSA_PKCS, CKM_SHA512, CKM_SHA512_RSA_PKCS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
-    CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
-    CKZ_DATA_SPECIFIED,
+    CK_RSA_PKCS_OAEP_PARAMS, CK_RSA_PKCS_PSS_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG,
+    CKA_CLASS, CKA_COEFFICIENT, CKA_END_DATE, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE,
+    CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT,
+    CKA_SENSITIVE, CKA_START_DATE, CKA_VALUE, CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256,
+    CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC,
+    CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256,
+    CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_RSA_PKCS,
+    CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512, CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS,
+    CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE,
+    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKZ_DATA_SPECIFIED,
 };
 use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
@@ -80,6 +81,21 @@ pub enum HsmSigningAlgorithm {
     Sha256WithRsa,
     Sha384WithRsa,
     Sha512WithRsa,
+    /// `CKM_SHA256_RSA_PKCS_PSS`. `salt_length` in bytes; `None` defaults to the SHA-256 digest
+    /// length (32 bytes).
+    RsaPssSha256 {
+        salt_length: Option<u32>,
+    },
+    /// `CKM_SHA384_RSA_PKCS_PSS`. `salt_length` in bytes; `None` defaults to the SHA-384 digest
+    /// length (48 bytes).
+    RsaPssSha384 {
+        salt_length: Option<u32>,
+    },
+    /// `CKM_SHA512_RSA_PKCS_PSS`. `salt_length` in bytes; `None` defaults to the SHA-512 digest
+    /// length (64 bytes).
+    RsaPssSha512 {
+        salt_length: Option<u32>,
+    },
 }
 
 impl From<SigningAlgorithm> for HsmSigningAlgorithm {
@@ -90,6 +106,9 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
             SigningAlgorithm::Sha256WithRsa => Self::Sha256WithRsa,
             SigningAlgorithm::Sha384WithRsa => Self::Sha384WithRsa,
             SigningAlgorithm::Sha512WithRsa => Self::Sha512WithRsa,
+            SigningAlgorithm::RsaPssSha256 { salt_length } => Self::RsaPssSha256 { salt_length },
+            SigningAlgorithm::RsaPssSha384 { salt_length } => Self::RsaPssSha384 { salt_length },
+            SigningAlgorithm::RsaPssSha512 { salt_length } => Self::RsaPssSha512 { salt_length },
         }
     }
 }
@@ -1217,19 +1236,90 @@ impl Session {
         algorithm: HsmSigningAlgorithm,
         data: &[u8],
     ) -> HResult<Vec<u8>> {
-        let mechanism_type = match algorithm {
-            HsmSigningAlgorithm::RsaPkcsV15 => CKM_RSA_PKCS,
-            HsmSigningAlgorithm::Sha1WithRsa => CKM_SHA1_RSA_PKCS,
-            HsmSigningAlgorithm::Sha256WithRsa => CKM_SHA256_RSA_PKCS,
-            HsmSigningAlgorithm::Sha384WithRsa => CKM_SHA384_RSA_PKCS,
-            HsmSigningAlgorithm::Sha512WithRsa => CKM_SHA512_RSA_PKCS,
-        };
+        match algorithm {
+            HsmSigningAlgorithm::RsaPkcsV15 => {
+                self.sign_with_simple_mechanism(key_handle, CKM_RSA_PKCS, data)
+            }
+            HsmSigningAlgorithm::Sha1WithRsa => {
+                self.sign_with_simple_mechanism(key_handle, CKM_SHA1_RSA_PKCS, data)
+            }
+            HsmSigningAlgorithm::Sha256WithRsa => {
+                self.sign_with_simple_mechanism(key_handle, CKM_SHA256_RSA_PKCS, data)
+            }
+            HsmSigningAlgorithm::Sha384WithRsa => {
+                self.sign_with_simple_mechanism(key_handle, CKM_SHA384_RSA_PKCS, data)
+            }
+            HsmSigningAlgorithm::Sha512WithRsa => {
+                self.sign_with_simple_mechanism(key_handle, CKM_SHA512_RSA_PKCS, data)
+            }
+            HsmSigningAlgorithm::RsaPssSha256 { salt_length } => {
+                let mut params =
+                    Self::rsa_pkcs_pss_params(CKM_SHA256, CKG_MGF1_SHA256, 32, salt_length);
+                self.sign_with_pss_mechanism(key_handle, CKM_SHA256_RSA_PKCS_PSS, &mut params, data)
+            }
+            HsmSigningAlgorithm::RsaPssSha384 { salt_length } => {
+                let mut params =
+                    Self::rsa_pkcs_pss_params(CKM_SHA384, CKG_MGF1_SHA384, 48, salt_length);
+                self.sign_with_pss_mechanism(key_handle, CKM_SHA384_RSA_PKCS_PSS, &mut params, data)
+            }
+            HsmSigningAlgorithm::RsaPssSha512 { salt_length } => {
+                let mut params =
+                    Self::rsa_pkcs_pss_params(CKM_SHA512, CKG_MGF1_SHA512, 64, salt_length);
+                self.sign_with_pss_mechanism(key_handle, CKM_SHA512_RSA_PKCS_PSS, &mut params, data)
+            }
+        }
+    }
+
+    /// Sign using a parameterless mechanism (raw PKCS#1 v1.5 or one of its hash-prefixed
+    /// variants).
+    fn sign_with_simple_mechanism(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        mechanism_type: CK_MECHANISM_TYPE,
+        data: &[u8],
+    ) -> HResult<Vec<u8>> {
         let mut mechanism = CK_MECHANISM {
             mechanism: mechanism_type,
             pParameter: std::ptr::null_mut(),
             ulParameterLen: 0,
         };
         self.sign_with_mechanism(key_handle, &mut mechanism, data)
+    }
+
+    /// Sign using an RSASSA-PSS mechanism, passing the pre-built `CK_RSA_PKCS_PSS_PARAMS` as the
+    /// mechanism parameter.
+    fn sign_with_pss_mechanism(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        mechanism_type: CK_MECHANISM_TYPE,
+        params: &mut CK_RSA_PKCS_PSS_PARAMS,
+        data: &[u8],
+    ) -> HResult<Vec<u8>> {
+        let mut mechanism = CK_MECHANISM {
+            mechanism: mechanism_type,
+            pParameter: (&raw mut *params).cast::<std::ffi::c_void>(),
+            ulParameterLen: CK_ULONG::try_from(size_of::<CK_RSA_PKCS_PSS_PARAMS>())?,
+        };
+        self.sign_with_mechanism(key_handle, &mut mechanism, data)
+    }
+
+    /// Build a `CK_RSA_PKCS_PSS_PARAMS` value for RSASSA-PSS signing.
+    ///
+    /// `salt_length` defaults to `digest_len_bytes` (the widely-used "salt length = digest
+    /// length" convention, matching the software RSASSA-PSS default in
+    /// `crate::crypto::rsa::sign`) when not explicitly provided by the caller.
+    fn rsa_pkcs_pss_params(
+        hash_alg: CK_MECHANISM_TYPE,
+        mgf: CK_RSA_PKCS_MGF_TYPE,
+        digest_len_bytes: u32,
+        salt_length: Option<u32>,
+    ) -> CK_RSA_PKCS_PSS_PARAMS {
+        let salt_len = salt_length.unwrap_or(digest_len_bytes);
+        CK_RSA_PKCS_PSS_PARAMS {
+            hashAlg: hash_alg,
+            mgf,
+            sLen: CK_ULONG::from(salt_len),
+        }
     }
 
     fn sign_with_mechanism(
@@ -2123,5 +2213,46 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         drop(self.close());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rsa_pkcs_pss_params_defaults_salt_length_to_digest_length() {
+        let params = Session::rsa_pkcs_pss_params(CKM_SHA256, CKG_MGF1_SHA256, 32, None);
+        assert_eq!(params.hashAlg, CKM_SHA256);
+        assert_eq!(params.mgf, CKG_MGF1_SHA256);
+        assert_eq!(params.sLen, 32);
+    }
+
+    #[test]
+    fn rsa_pkcs_pss_params_honors_explicit_salt_length() {
+        let params = Session::rsa_pkcs_pss_params(CKM_SHA384, CKG_MGF1_SHA384, 48, Some(0));
+        assert_eq!(params.hashAlg, CKM_SHA384);
+        assert_eq!(params.mgf, CKG_MGF1_SHA384);
+        assert_eq!(params.sLen, 0);
+    }
+
+    #[test]
+    fn rsa_pkcs_pss_params_sha512_digest_length_default() {
+        let params = Session::rsa_pkcs_pss_params(CKM_SHA512, CKG_MGF1_SHA512, 64, None);
+        assert_eq!(params.sLen, 64);
+    }
+
+    #[test]
+    fn hsm_signing_algorithm_from_signing_algorithm_preserves_pss_salt_length() {
+        let algo: HsmSigningAlgorithm = SigningAlgorithm::RsaPssSha256 {
+            salt_length: Some(16),
+        }
+        .into();
+        assert!(matches!(
+            algo,
+            HsmSigningAlgorithm::RsaPssSha256 {
+                salt_length: Some(16)
+            }
+        ));
     }
 }

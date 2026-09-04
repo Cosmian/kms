@@ -63,6 +63,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     shared::rsa_pkcs_v15_sign(&slot)?;
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
+    shared::rsa_pss_sign_all_algorithms(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA1, cfg.threads)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
@@ -207,6 +208,16 @@ fn test_hsm_softhsm2_rsa_sha256_sign() -> HResult<()> {
 fn test_hsm_softhsm2_rsa_sign_all_algorithms() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
     shared::rsa_sign_all_algorithms(&slot)
+}
+
+/// HSM-delegated RSA-PSS signing (issue #1154). Additive: exercises only the new
+/// `HsmSigningAlgorithm::RsaPssSha{256,384,512}` variants without touching any of the
+/// pre-existing PKCS#1 v1.5 signing coverage above.
+#[test]
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_rsa_pss_sign_all_algorithms() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::rsa_pss_sign_all_algorithms(&slot)
 }
 
 #[test]
