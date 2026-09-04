@@ -21,21 +21,22 @@ use cosmian_config_utils::ConfigUtils;
 use cosmian_logger::{debug, log_init};
 use cosmian_pkcs11_module::{
     pkcs11::{
-        C_CloseSession, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
-        C_Initialize, C_OpenSession, SLOT_ID,
+        C_CloseSession, C_Decrypt, C_DecryptInit, C_Encrypt, C_EncryptInit, C_Finalize,
+        C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit, C_Initialize, C_OpenSession, SLOT_ID,
     },
     test_decrypt, test_encrypt,
     traits::{Backend, SignatureAlgorithm},
 };
 use pkcs11_sys::{
-    CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INVALID_HANDLE, CK_OBJECT_CLASS, CK_ULONG, CKA_CLASS,
-    CKA_LABEL, CKF_SERIAL_SESSION, CKO_DATA, CKR_OK,
+    CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_GCM_PARAMS, CK_INTERFACE, CK_INVALID_HANDLE, CK_MECHANISM,
+    CK_OBJECT_CLASS, CK_ULONG, CK_VERSION, CKA_CLASS, CKA_LABEL, CKF_SERIAL_SESSION, CKM_AES_GCM,
+    CKO_DATA, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL, CKR_OK,
 };
 use serial_test::serial;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
-    C_GetFunctionList,
+    C_GetFunctionList, C_GetInterface, C_GetInterfaceList,
     backend::{COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, COSMIAN_PKCS11_SSH_KEY_TAG, CliBackend},
     error::{Pkcs11Error, result::Pkcs11Result},
     kms_object::get_kms_objects_async,
@@ -583,6 +584,277 @@ fn test_ssh_key_discovery() -> Pkcs11Result<()> {
     assert!(
         pub_ids.contains(&ec_pk_id),
         "EC SSH public key {ec_pk_id} not found in find_all_public_keys"
+    );
+    Ok(())
+}
+
+/// PKCS#11 v3.0 rollout (issue #1156): full `CKM_AES_GCM` encrypt/decrypt round trip against a
+/// live KMS server, exercising the AAD threading and ciphertext||tag concatenation convention
+/// implemented in `kms_object::kms_encrypt_async`/`kms_decrypt_async`.
+#[test]
+#[serial]
+#[expect(unsafe_code, clippy::indexing_slicing)]
+fn test_aes_gcm_encrypt_decrypt_roundtrip() -> Pkcs11Result<()> {
+    let _backend = initialize_backend()?;
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: `#[serial]` ensures no other thread concurrently reads or modifies the process
+    // environment, satisfying the thread-safety requirement for `set_var` (Rust 2024 edition).
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
+
+    test_init();
+    assert_eq!(C_Initialize(std::ptr::null_mut()), CKR_OK);
+    let mut handle = CK_INVALID_HANDLE;
+    assert_eq!(
+        // SAFETY: `SLOT_ID` is the only valid slot; the two null/None args are optional and
+        // intentionally unused; `handle` is a properly-aligned out-parameter on the stack.
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                std::ptr::null_mut(),
+                None,
+                &raw mut handle,
+            )
+        },
+        CKR_OK
+    );
+
+    // Locate the pre-imported "vol1" AES key, exactly like `test_generate_key_encrypt_decrypt`.
+    let mut label_bytes = b"vol1".to_vec();
+    let label_len: CK_ULONG = label_bytes.len().try_into()?;
+    #[allow(clippy::cast_ptr_alignment)]
+    let mut template = [CK_ATTRIBUTE {
+        type_: CKA_LABEL,
+        pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
+        ulValueLen: label_len,
+    }];
+    let template_len: CK_ULONG = template.len().try_into()?;
+    assert_eq!(
+        unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), template_len) },
+        CKR_OK
+    );
+    let mut obj_handles = [CK_INVALID_HANDLE; 4];
+    let mut count: CK_ULONG = 0;
+    let max_count: CK_ULONG = obj_handles.len().try_into()?;
+    assert_eq!(
+        unsafe { C_FindObjects(handle, obj_handles.as_mut_ptr(), max_count, &raw mut count) },
+        CKR_OK
+    );
+    assert_eq!(C_FindObjectsFinal(handle), CKR_OK);
+    assert!(
+        count > 0,
+        "C_FindObjects should locate the pre-imported 'vol1' AES key"
+    );
+    let key_handle = obj_handles[0];
+
+    let mut iv = [0x11_u8; 12];
+    let mut aad = b"pkcs11-v3-rollout-aad".to_vec();
+    let mut gcm_params = CK_GCM_PARAMS {
+        pIv: iv.as_mut_ptr(),
+        ulIvLen: iv.len().try_into()?,
+        ulIvBits: 0,
+        pAAD: aad.as_mut_ptr(),
+        ulAADLen: aad.len().try_into()?,
+        ulTagBits: 128,
+    };
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_AES_GCM,
+        pParameter: (&raw mut gcm_params).cast::<std::ffi::c_void>(),
+        ulParameterLen: size_of::<CK_GCM_PARAMS>().try_into()?,
+    };
+
+    let mut plaintext = b"pkcs11-v3-rollout-aes-gcm-test-message".to_vec();
+    assert_eq!(
+        unsafe { C_EncryptInit(handle, &raw mut mechanism, key_handle) },
+        CKR_OK
+    );
+    // ciphertext || 16-byte tag, per the PKCS#11 CKM_AES_GCM C_Encrypt convention.
+    let mut ciphertext = vec![0_u8; plaintext.len() + 16];
+    let mut ciphertext_len: CK_ULONG = ciphertext.len().try_into()?;
+    assert_eq!(
+        unsafe {
+            C_Encrypt(
+                handle,
+                plaintext.as_mut_ptr(),
+                plaintext.len().try_into()?,
+                ciphertext.as_mut_ptr(),
+                &raw mut ciphertext_len,
+            )
+        },
+        CKR_OK
+    );
+    ciphertext.truncate(usize::try_from(ciphertext_len)?);
+    assert_ne!(ciphertext[..ciphertext.len() - 16], plaintext[..]);
+
+    assert_eq!(
+        unsafe { C_DecryptInit(handle, &raw mut mechanism, key_handle) },
+        CKR_OK
+    );
+    let mut decrypted = vec![0_u8; ciphertext.len()];
+    let mut decrypted_len: CK_ULONG = decrypted.len().try_into()?;
+    assert_eq!(
+        unsafe {
+            C_Decrypt(
+                handle,
+                ciphertext.as_mut_ptr(),
+                ciphertext.len().try_into()?,
+                decrypted.as_mut_ptr(),
+                &raw mut decrypted_len,
+            )
+        },
+        CKR_OK
+    );
+    decrypted.truncate(usize::try_from(decrypted_len)?);
+    assert_eq!(decrypted, plaintext);
+
+    assert_eq!(C_CloseSession(handle), CKR_OK);
+    assert_eq!(C_Finalize(std::ptr::null_mut()), CKR_OK);
+    Ok(())
+}
+
+/// PKCS#11 v3.0 rollout (issue #1156): `C_GetInterfaceList`/`C_GetInterface` interface-discovery
+/// entry points. Does not require a live KMS server for the argument-validation paths, but does
+/// trigger the same backend/config initialization as `C_GetFunctionList` (see
+/// `ensure_backend_registered`), so it still needs a valid `ckms.toml` on the search path —
+/// reuses the same config as the other tests in this module.
+#[test]
+#[serial]
+#[expect(unsafe_code)]
+fn c_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
+    let _backend = initialize_backend()?;
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: `#[serial]` ensures no other thread concurrently reads or modifies the process
+    // environment, satisfying the thread-safety requirement for `set_var` (Rust 2024 edition).
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
+
+    // C_GetInterfaceList: null buffer -> count only.
+    let mut count: CK_ULONG = 0;
+    assert_eq!(
+        unsafe { C_GetInterfaceList(std::ptr::null_mut(), &raw mut count) },
+        CKR_OK
+    );
+    assert_eq!(count, 1);
+
+    // C_GetInterfaceList: null pulCount -> CKR_ARGUMENTS_BAD.
+    assert_eq!(
+        unsafe { C_GetInterfaceList(std::ptr::null_mut(), std::ptr::null_mut()) },
+        CKR_ARGUMENTS_BAD
+    );
+
+    // C_GetInterfaceList: buffer too small (count == 0) -> CKR_BUFFER_TOO_SMALL, count patched to 1.
+    let mut too_small: CK_ULONG = 0;
+    let mut interfaces = [CK_INTERFACE::default(); 1];
+    assert_eq!(
+        unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut too_small) },
+        CKR_BUFFER_TOO_SMALL
+    );
+    assert_eq!(too_small, 1);
+
+    // C_GetInterfaceList: properly sized buffer -> CKR_OK, one "PKCS 11" interface copied out.
+    let mut got: CK_ULONG = 1;
+    assert_eq!(
+        unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut got) },
+        CKR_OK
+    );
+    assert_eq!(got, 1);
+    assert!(!interfaces[0].pInterfaceName.is_null());
+    assert!(!interfaces[0].pFunctionList.is_null());
+
+    // C_GetInterface: null pInterfaceName/pVersion -> matches the sole "PKCS 11" interface.
+    let mut interface_ptr: *mut CK_INTERFACE = std::ptr::null_mut();
+    assert_eq!(
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &raw mut interface_ptr,
+                0,
+            )
+        },
+        CKR_OK
+    );
+    assert!(!interface_ptr.is_null());
+
+    // C_GetInterface: explicit "PKCS 11" name and major version 3 -> matches.
+    let mut name = b"PKCS 11\0".to_vec();
+    let mut version = CK_VERSION { major: 3, minor: 0 };
+    let mut interface_ptr2: *mut CK_INTERFACE = std::ptr::null_mut();
+    assert_eq!(
+        unsafe {
+            C_GetInterface(
+                name.as_mut_ptr(),
+                &raw mut version,
+                &raw mut interface_ptr2,
+                0,
+            )
+        },
+        CKR_OK
+    );
+    assert!(!interface_ptr2.is_null());
+
+    // C_GetInterface: unknown interface name -> CKR_ARGUMENTS_BAD.
+    let mut bad_name = b"NOT PKCS 11\0".to_vec();
+    let mut interface_ptr3: *mut CK_INTERFACE = std::ptr::null_mut();
+    assert_eq!(
+        unsafe {
+            C_GetInterface(
+                bad_name.as_mut_ptr(),
+                std::ptr::null_mut(),
+                &raw mut interface_ptr3,
+                0,
+            )
+        },
+        CKR_ARGUMENTS_BAD
+    );
+
+    // C_GetInterface: unsupported major version -> CKR_ARGUMENTS_BAD.
+    let mut wrong_version = CK_VERSION {
+        major: 2,
+        minor: 40,
+    };
+    let mut interface_ptr4: *mut CK_INTERFACE = std::ptr::null_mut();
+    assert_eq!(
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                &raw mut wrong_version,
+                &raw mut interface_ptr4,
+                0,
+            )
+        },
+        CKR_ARGUMENTS_BAD
+    );
+
+    // C_GetInterface: non-zero flags (no interface supports any special guarantee) ->
+    // CKR_ARGUMENTS_BAD.
+    let mut interface_ptr5: *mut CK_INTERFACE = std::ptr::null_mut();
+    assert_eq!(
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &raw mut interface_ptr5,
+                1,
+            )
+        },
+        CKR_ARGUMENTS_BAD
+    );
+
+    // C_GetInterface: null ppInterface -> CKR_ARGUMENTS_BAD.
+    assert_eq!(
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                0,
+            )
+        },
+        CKR_ARGUMENTS_BAD
     );
     Ok(())
 }

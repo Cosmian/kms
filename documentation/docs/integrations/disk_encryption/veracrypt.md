@@ -9,6 +9,9 @@ Veracrypt has undergone a formal security evaluation by the BSI.
 Using the Eviden KMS PKCS#11 provider library, Veracrypt can use keys stored in the KMS to
 encrypt and decrypt volumes.
 
+See the [PKCS#11 provider module](../pkcs11_provider.md) reference page for the mechanisms
+and Cryptoki versions supported by the library.
+
 ![Veracrypt-cosmian](./images/veracrypt_ckms.svg)
 
 ## Installing the PKCS#11 provider library on Veracrypt
