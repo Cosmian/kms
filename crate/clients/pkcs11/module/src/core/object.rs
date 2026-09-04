@@ -30,8 +30,8 @@ use p256::{
     pkcs8::der::{Encode, asn1::OctetStringRef},
 };
 use pkcs11_sys::{
-    CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID, CKC_X_509, CKO_CERTIFICATE, CKO_DATA,
-    CKO_PRIVATE_KEY, CKO_PROFILE, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
+    CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID, CK_ULONG, CKC_X_509, CKO_CERTIFICATE,
+    CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
 };
 
 use crate::{
@@ -126,6 +126,23 @@ impl Object {
         );
         Ok(attribute)
     }
+}
+
+/// Number of significant bits in a big-endian modulus byte string, i.e. the
+/// PKCS#11 `CKA_MODULUS_BITS` value: strips any leading `0x00` DER
+/// sign-padding byte, then counts the bit length of the first significant
+/// byte precisely (rather than assuming a full byte boundary), matching
+/// OpenSSL's `BN_num_bits` semantics for the same modulus.
+fn modulus_bit_length(modulus_be_bytes: &[u8]) -> u32 {
+    let bytes = modulus_be_bytes
+        .iter()
+        .position(|&b| b != 0)
+        .and_then(|first_nonzero| modulus_be_bytes.get(first_nonzero..))
+        .unwrap_or_default();
+    let Some((&first_byte, rest)) = bytes.split_first() else {
+        return 0;
+    };
+    u32::try_from(rest.len()).unwrap_or(0) * 8 + (8 - first_byte.leading_zeros())
 }
 
 /// Parse an RSA private key from PKCS#8 DER bytes.
@@ -234,6 +251,24 @@ fn private_key_attribute(
         AttributeType::Modulus => Some(Attribute::Modulus(
             rsa_from_private_key(private_key)?.n().to_vec(),
         )),
+        // OpenSC's `pkcs11-tool` reads `CKA_MODULUS_BITS` off the *private*
+        // key object to size the RSA-PSS output buffer before signing; if
+        // this attribute is missing it falls back to searching for a public
+        // key sharing the same `CKA_ID`, which fails whenever (as here) the
+        // private and public key objects are assigned distinct KMS unique
+        // identifiers as their `CKA_ID` — found via external `pkcs11-tool`
+        // conformance testing (PKCS#11 v3.1 Table 33, RSA private key
+        // objects).
+        AttributeType::ModulusBits => {
+            if !private_key.algorithm().is_rsa() {
+                return Ok(None);
+            }
+            let bits: u32 = rsa_from_private_key(private_key)?
+                .n()
+                .num_bits()
+                .try_into()?;
+            Some(Attribute::ModulusBits(CK_ULONG::from(bits)))
+        }
         AttributeType::NeverExtractable => Some(Attribute::NeverExtractable(true)),
         AttributeType::Private => Some(Attribute::Private(true)),
         AttributeType::PublicExponent => Some(Attribute::PublicExponent(
@@ -297,6 +332,14 @@ fn public_key_attribute(
                 return Ok(None);
             }
             Some(Attribute::Modulus(pk.rsa_modulus()?))
+        }
+        AttributeType::ModulusBits => {
+            if !pk.algorithm().is_rsa() {
+                return Ok(None);
+            }
+            Some(Attribute::ModulusBits(CK_ULONG::from(modulus_bit_length(
+                &pk.rsa_modulus()?,
+            ))))
         }
         AttributeType::PublicExponent => {
             if !pk.algorithm().is_rsa() {

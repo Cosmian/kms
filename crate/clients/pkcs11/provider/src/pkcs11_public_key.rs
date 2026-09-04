@@ -3,7 +3,7 @@ use std::sync::Arc;
 use cosmian_logger::error;
 use cosmian_pkcs11_module::{
     ModuleError, ModuleResult,
-    traits::{KeyAlgorithm, PublicKey, SignatureAlgorithm},
+    traits::{KeyAlgorithm, PublicKey, SignatureAlgorithm, backend},
 };
 use pkcs1::{RsaPublicKey, der::Decode};
 use sha3::Digest;
@@ -104,12 +104,19 @@ impl PublicKey for Pkcs11PublicKey {
 
     fn verify(
         &self,
-        _algorithm: &SignatureAlgorithm,
-        _data: &[u8],
-        _signature: &[u8],
+        algorithm: &SignatureAlgorithm,
+        data: &[u8],
+        signature: &[u8],
     ) -> ModuleResult<()> {
-        error!("verify not implemented for Pkcs11PublicKey");
-        Err(ModuleError::FunctionNotSupported)
+        backend()?
+            .remote_verify(&self.remote_id, algorithm, data, signature)
+            .map_err(|e| {
+                error!(
+                    "remote_verify failed for Pkcs11PublicKey with remote_id {}: {e}",
+                    self.remote_id
+                );
+                e
+            })
     }
 
     fn delete(self: Arc<Self>) {}
