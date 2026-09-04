@@ -83,12 +83,11 @@ pub fn ecdsa_verify(
                                     "Verify - invalid P256 public key: {e}"
                                 ))
                             })?;
-                        let signature = P256Signature::from_der(signature).map_err(|e| {
-                            CryptoError::ConversionError(format!(
-                                "Verify - invalid ECDSA P256 signature: {e}"
-                            ))
-                        })?;
-                        verifying_key.verify_prehash(data, &signature).is_ok()
+                        // A malformed/undecodable `signature` is attacker-controlled input, not
+                        // a server-side error: per KMIP semantics (and PKCS#11's CKR_SIGNATURE_INVALID
+                        // contract), it must yield ValidityIndicator::Invalid, not propagate as Err.
+                        P256Signature::from_der(signature)
+                            .is_ok_and(|sig| verifying_key.verify_prehash(data, &sig).is_ok())
                     } else {
                         let verifying_key = K256VerifyingKey::from_sec1_bytes(&pub_key_sec1)
                             .map_err(|e| {
@@ -96,12 +95,8 @@ pub fn ecdsa_verify(
                                     "Verify - invalid K256 public key: {e}"
                                 ))
                             })?;
-                        let signature = K256Signature::from_der(signature).map_err(|e| {
-                            CryptoError::ConversionError(format!(
-                                "Verify - invalid ECDSA K256 signature: {e}"
-                            ))
-                        })?;
-                        verifying_key.verify_prehash(data, &signature).is_ok()
+                        K256Signature::from_der(signature)
+                            .is_ok_and(|sig| verifying_key.verify_prehash(data, &sig).is_ok())
                     };
                     return Ok(if is_valid {
                         ValidityIndicator::Valid
@@ -120,14 +115,12 @@ pub fn ecdsa_verify(
     // digest bytes directly without any additional hashing.
     if is_digested {
         if let Ok(ec_key) = verification_key.ec_key() {
-            let ecdsa_sig = openssl::ecdsa::EcdsaSig::from_der(signature).map_err(|e| {
-                CryptoError::ConversionError(format!(
-                    "ECDSA prehash verify: invalid DER signature: {e}"
-                ))
-            })?;
-            let is_valid = ecdsa_sig
-                .verify(data, &ec_key)
-                .map_err(|e| CryptoError::Kmip(format!("ECDSA prehash verify failed: {e}")))?;
+            // As above: a malformed `signature` (bad DER, or one OpenSSL otherwise rejects
+            // during verification) must map to Invalid, not an operation error.
+            let is_valid = openssl::ecdsa::EcdsaSig::from_der(signature)
+                .ok()
+                .and_then(|ecdsa_sig| ecdsa_sig.verify(data, &ec_key).ok())
+                .unwrap_or(false);
             return Ok(if is_valid {
                 ValidityIndicator::Valid
             } else {
@@ -141,7 +134,8 @@ pub fn ecdsa_verify(
     } else {
         Verifier::new(md, verification_key)?
     };
-    let ok = verifier.verify_oneshot(signature, data)?;
+    // A malformed `signature` must yield Invalid, not an operation error (see above).
+    let ok = verifier.verify_oneshot(signature, data).unwrap_or(false);
     Ok(if ok {
         ValidityIndicator::Valid
     } else {
@@ -155,7 +149,8 @@ pub fn ed_verify(
     signature: &[u8],
 ) -> CryptoResult<ValidityIndicator> {
     let mut verifier = Verifier::new_without_digest(verification_key)?;
-    let ok = verifier.verify_oneshot(signature, data)?;
+    // A malformed `signature` must yield Invalid, not an operation error (see above).
+    let ok = verifier.verify_oneshot(signature, data).unwrap_or(false);
     Ok(if ok {
         ValidityIndicator::Valid
     } else {
