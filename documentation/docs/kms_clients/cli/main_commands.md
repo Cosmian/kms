@@ -2526,13 +2526,21 @@ Derive a new key from an existing key
 ### Usage
 `ckms derive-key [options]`
 ### Arguments
-`--key-id [-k] <KEY_ID>` The unique identifier of the base key to derive from Mutually exclusive with --password
+`--key-id [-k] <KEY_ID>` The unique identifier of the base key to derive from Mutually exclusive with --password and --x25519
 
-`--password [-p] <PASSWORD>` UTF-8 password to use as base material for key derivation Will create a `SecretData` of type Password internally Mutually exclusive with --key-id
+`--password [-p] <PASSWORD>` UTF-8 password to use as base material for key derivation Will create a `SecretData` of type Password internally Mutually exclusive with --key-id and --x25519
 
-`--derivation-method [-m] <DERIVATION_METHOD>` The derivation method to use (PBKDF2 or HKDF)
+`--x25519 <X25519>` Perform an asymmetric X25519 ECDH key agreement instead of a symmetric (PBKDF2/HKDF) derivation. Requires --private-key-id and --peer-public-key-id. The result is always a non-extractable 256-bit `SecretData` object. Available in non-FIPS mode only. Mutually exclusive with --key-id and --password
 
-`--salt [-s] <SALT>` Salt for key derivation (in hex format)
+Possible values:  `"true", "false"`
+
+`--private-key-id <PRIVATE_KEY_ID>` The unique identifier of the local X25519 private key. Required (and only used) with --x25519
+
+`--peer-public-key-id <PEER_PUBLIC_KEY_ID>` The unique identifier of the peer's X25519 public key. Required (and only used) with --x25519
+
+`--derivation-method [-m] <DERIVATION_METHOD>` The derivation method to use (PBKDF2 or HKDF). Ignored with --x25519
+
+`--salt [-s] <SALT>` Salt for key derivation (in hex format). Required unless --x25519 is used
 
 `--iteration-count [-i] <ITERATION_COUNT>` Number of iterations for PBKDF2 derivation
 

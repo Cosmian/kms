@@ -44,7 +44,7 @@ fi
 
 if [[ "$NEEDS_REGEN" == "true" ]]; then
   echo "  [docs] regenerating documentation..."
-  mise run docs:generate --skip-cbom
+  mise run docs:generate --skip-cbom --skip-crypto
   exit $?
 fi
 
