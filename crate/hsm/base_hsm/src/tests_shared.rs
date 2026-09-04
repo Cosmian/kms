@@ -6,7 +6,7 @@
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_interfaces::{HSM, HsmObjectFilter, KeyMaterial, KeyType};
-use cosmian_logger::{debug, info, log_init, warn};
+use cosmian_logger::{debug, info, log_init, trace, warn};
 use futures::executor::block_on;
 use libloading::Library;
 use pkcs11_sys::{
@@ -169,11 +169,16 @@ pub fn destroy_all(slot: &Arc<SlotManager>) -> HResult<()> {
     let session = slot.open_session(true)?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     for object in &objects {
-        session.destroy_object(*object)?;
+        match session.destroy_object(*object) {
+            Ok(()) => {}
+            // Return code 27 is CKR_ACTION_PROHIBITED (e.g. Kryoptic pre-installed or non-destroyable objects).
+            Err(e) if e.to_string().contains("Return code: 27") => {
+                trace!("Skipping non-destroyable object {object}: {e}");
+            }
+            Err(e) => return Err(e),
+        }
     }
-    let objects = session.list_objects(HsmObjectFilter::Any)?;
-    assert_eq!(objects.len(), 0);
-    info!("Destroyed all objects");
+    info!("Destroyed all destroyable objects");
     Ok(())
 }
 
@@ -710,13 +715,19 @@ pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
     session.clear_object_handles()?;
-    let objects = session.list_objects(HsmObjectFilter::Any)?;
-    for object in &objects {
-        session.destroy_object(*object)?;
+    let initial_objects = session.list_objects(HsmObjectFilter::Any)?;
+    for object in &initial_objects {
+        match session.destroy_object(*object) {
+            Ok(()) => {}
+            Err(e) if e.to_string().contains("Return code: 27") => {
+                trace!("Skipping non-destroyable object {object}: {e}");
+            }
+            Err(e) => return Err(e),
+        }
     }
     session.clear_object_handles()?;
-    let objects = session.list_objects(HsmObjectFilter::Any)?;
-    assert_eq!(objects.len(), 0);
+    let baseline_objects = session.list_objects(HsmObjectFilter::Any)?;
+    let base_count = baseline_objects.len();
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk";
     let (_sk, _pk) = session.generate_rsa_key_pair(
@@ -727,7 +738,7 @@ pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
     )?;
     session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
-    assert_eq!(objects.len(), 2);
+    assert_eq!(objects.len(), base_count + 2);
     let objects = session.list_objects(HsmObjectFilter::RsaKey)?;
     assert_eq!(objects.len(), 2);
     let objects = session.list_objects(HsmObjectFilter::RsaPublicKey)?;
@@ -747,7 +758,7 @@ pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
     )?;
     session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
-    assert_eq!(objects.len(), 4);
+    assert_eq!(objects.len(), base_count + 4);
     let objects = session.list_objects(HsmObjectFilter::RsaKey)?;
     assert_eq!(objects.len(), 4);
     let objects = session.list_objects(HsmObjectFilter::RsaPublicKey)?;
@@ -761,7 +772,7 @@ pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
     let _key = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false)?;
     session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
-    assert_eq!(objects.len(), 5);
+    assert_eq!(objects.len(), base_count + 5);
     let objects = session.list_objects(HsmObjectFilter::AesKey)?;
     assert_eq!(objects.len(), 1);
     info!("Listed all objects");

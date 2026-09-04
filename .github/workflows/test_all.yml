@@ -227,6 +227,7 @@ jobs:
           - utimaco
           - proteccio
           - softhsm2
+          - kryoptic
           - crypt2pay
         features: [fips, non-fips]
         exclude:

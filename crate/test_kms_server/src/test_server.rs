@@ -438,34 +438,42 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
 }
 
 // ---------------------------------------------------------------------------
-// SoftHSM2 + KEK
+// HSM + KEK
 // ---------------------------------------------------------------------------
 
-pub(crate) static ONCE_SERVER_WITH_SOFTHSM2_KEK: OnceCell<TestsContext> = OnceCell::const_new();
+pub(crate) static ONCE_SERVER_WITH_HSM_KEK: OnceCell<TestsContext> = OnceCell::const_new();
 
-/// Read the `SoftHSM2` slot id from the `HSM_SLOT_ID` environment variable.
+/// Read the HSM slot id from the `HSM_SLOT_ID` environment variable.
 ///
 /// # Panics
 /// Panics if the variable is missing or not a valid `usize`.
 #[allow(clippy::expect_used, clippy::panic)]
-fn get_softhsm2_slot_id() -> usize {
-    let raw = env::var("HSM_SLOT_ID").expect(
-        "HSM_SLOT_ID environment variable must be set (by test_hsm_softhsm2.sh) to run \
-         SoftHSM2+KEK tests",
-    );
+fn get_hsm_slot_id() -> usize {
+    let raw = env::var("HSM_SLOT_ID")
+        .expect("HSM_SLOT_ID environment variable must be set to run HSM+KEK tests");
     raw.parse::<usize>().unwrap_or_else(|_| {
         panic!("HSM_SLOT_ID '{raw}' is not a valid usize");
     })
 }
 
-/// Bootstrap a KEK inside `SoftHSM2`.
+fn get_hsm_model() -> String {
+    env::var("HSM_MODEL").unwrap_or_else(|_| "softhsm2".to_owned())
+}
+
+fn get_hsm_password() -> String {
+    env::var("HSM_USER_PASSWORD").unwrap_or_else(|_| "12345678".to_owned())
+}
+
+/// Bootstrap a KEK inside the HSM.
 ///
-/// Mirrors [`create_kek_in_db`] but uses the `SoftHSM2`-specific TOML and reads
+/// Mirrors [`create_kek_in_db`] but uses generic HSM configuration and reads
 /// the slot from `HSM_SLOT_ID`.
-async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
-    let slot = get_softhsm2_slot_id();
+async fn create_hsm_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
+    let slot = get_hsm_slot_id();
+    let model = get_hsm_model();
+    let password = get_hsm_password();
     let workspace_dir = std::env::temp_dir().join(format!(
-        "kms_test_softhsm2_kek_{}_{}_{}",
+        "kms_test_hsm_kek_{}_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -477,9 +485,11 @@ async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError
 
     let workspace_clone = workspace_dir.clone();
     let ctx = start_test_server_with_patch(
-        &hsm_config_path("hsm_softhsm2_jwt.toml"),
+        &hsm_config_path("hsm_jwt.toml"),
         move |config| {
+            config.hsm.hsm_model = model;
             config.hsm.hsm_slot = vec![slot];
+            config.hsm.hsm_password = vec![password];
             config.db.sqlite_path = workspace_clone.join("sqlite-data");
             config.workspace.root_data_path = workspace_clone.join("workspace");
             config.workspace.tmp_path = workspace_clone.join("tmp");
@@ -493,7 +503,6 @@ async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError
         },
     )
     .await?;
-
     // Create the KEK in the HSM (idempotent: ignore "already exists").
     let create_request = Create {
         object_type: ObjectType::SymmetricKey,
@@ -525,52 +534,54 @@ async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError
     Ok((workspace_dir, kek_id))
 }
 
-/// With `SoftHSM2` HSM + KEK
+/// With HSM + KEK
 ///
 /// # Panics
 /// - if `HSM_SLOT_ID` is not set
 /// - if the `workspace_dir` does not exist
 /// - if the `kek_id` is empty
 #[allow(clippy::unwrap_used)]
-pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static TestsContext {
-    trace!("Starting test server with SoftHSM2 HSM and KEK");
-    let slot = get_softhsm2_slot_id();
-    Box::pin(
-        ONCE_SERVER_WITH_SOFTHSM2_KEK.get_or_try_init(|| async move {
-            let (workspace_dir, kek_id) = Box::pin(create_softhsm2_kek_in_db()).await?;
-            trace!(
-                "SoftHSM2 key encryption key created: {kek_id} in workspace {}",
-                workspace_dir.display()
-            );
-            assert!(
-                workspace_dir.exists() && !kek_id.is_empty(),
-                "workspace_dir must exist and kek_id must be non-empty"
-            );
+pub async fn start_default_test_kms_server_with_hsm_and_kek() -> &'static TestsContext {
+    trace!("Starting test server with HSM and KEK");
+    let slot = get_hsm_slot_id();
+    let model = get_hsm_model();
+    let password = get_hsm_password();
+    Box::pin(ONCE_SERVER_WITH_HSM_KEK.get_or_try_init(|| async move {
+        let (workspace_dir, kek_id) = Box::pin(create_hsm_kek_in_db()).await?;
+        trace!(
+            "HSM key encryption key created: {kek_id} in workspace {}",
+            workspace_dir.display()
+        );
+        assert!(
+            workspace_dir.exists() && !kek_id.is_empty(),
+            "workspace_dir must exist and kek_id must be non-empty"
+        );
 
-            let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
-            let (mut config, http_listener) = load_test_config_from_toml(&config_path)?;
-            config.hsm.hsm_slot = vec![slot];
-            config.db.sqlite_path = workspace_dir.join("sqlite-data");
-            config.db.clear_database = false;
-            config.workspace.root_data_path = workspace_dir.join("workspace");
-            config.workspace.tmp_path = workspace_dir.join("tmp");
-            config.key_encryption_key = Some(kek_id);
-            // Switch DB backend to match KMS_TEST_DB (postgresql/mysql/redis).
-            // `clear_database = false` above ensures the KEK persists for non-SQLite.
-            apply_test_db_override(&mut config);
-            start_server_from_config(config, &config_path, http_listener).await
-        }),
-    )
+        let config_path = hsm_config_path("hsm_kek.toml");
+        let (mut config, http_listener) = load_test_config_from_toml(&config_path)?;
+        config.hsm.hsm_model = model;
+        config.hsm.hsm_slot = vec![slot];
+        config.hsm.hsm_password = vec![password];
+        config.db.sqlite_path = workspace_dir.join("sqlite-data");
+        config.db.clear_database = false;
+        config.workspace.root_data_path = workspace_dir.join("workspace");
+        config.workspace.tmp_path = workspace_dir.join("tmp");
+        config.key_encryption_key = Some(kek_id);
+        // Switch DB backend to match KMS_TEST_DB (postgresql/mysql/redis).
+        // `clear_database = false` above ensures the KEK persists for non-SQLite.
+        apply_test_db_override(&mut config);
+        start_server_from_config(config, &config_path, http_listener).await
+    }))
     .await
     .unwrap_or_else(|e| {
-        error!("failed to start test server with softhsm2 hsm: {e}");
+        error!("failed to start test server with hsm: {e}");
         std::process::abort();
     })
 }
 
-/// Start a `SoftHSM2` + KEK test server for use by the vector runner.
+/// Start an HSM + KEK test server for use by the vector runner.
 ///
-/// Unlike [`start_default_test_kms_server_with_softhsm2_and_kek`], this function
+/// Unlike [`start_default_test_kms_server_with_hsm_and_kek`], this function
 /// returns a `Result` and does not use a global `OnceCell` — the vector runner
 /// manages its own singleton cell (`ONCE_VECTOR_HSM_KEK`).
 ///
@@ -580,12 +591,14 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static T
 /// # Panics
 /// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`, if `workspace_dir`
 /// does not exist, or if `kek_id` is empty after bootstrap.
-pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
+pub async fn start_default_test_kms_server_with_hsm_and_kek_for_vectors()
 -> Result<TestsContext, KmsClientError> {
-    let slot = get_softhsm2_slot_id();
-    let (workspace_dir, kek_id) = Box::pin(create_softhsm2_kek_in_db()).await?;
+    let slot = get_hsm_slot_id();
+    let model = get_hsm_model();
+    let password = get_hsm_password();
+    let (workspace_dir, kek_id) = Box::pin(create_hsm_kek_in_db()).await?;
     trace!(
-        "SoftHSM2 KEK (vectors): {kek_id} in workspace {}",
+        "HSM KEK (vectors): {kek_id} in workspace {}",
         workspace_dir.display()
     );
     assert!(
@@ -593,9 +606,11 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
         "workspace_dir must exist and kek_id must be non-empty"
     );
 
-    let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
+    let config_path = hsm_config_path("hsm_kek.toml");
     let (mut config, http_listener) = load_test_config_from_toml(&config_path)?;
+    config.hsm.hsm_model = model;
     config.hsm.hsm_slot = vec![slot];
+    config.hsm.hsm_password = vec![password];
     config.db.sqlite_path = workspace_dir.join("sqlite-data");
     config.db.clear_database = false;
     config.workspace.root_data_path = workspace_dir.join("workspace");
@@ -605,7 +620,6 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
     apply_test_db_override(&mut config);
     start_server_from_config(config, &config_path, http_listener).await
 }
-
 /// Remove all test-vector objects (`vec_…` keys) from the active HSM slot
 /// before test steps execute.
 ///
@@ -667,12 +681,12 @@ pub(crate) async fn cleanup_hsm_slot_objects(client: &KmsClient) {
     }
 }
 
-/// Start a `SoftHSM2` test server **without** a Key Encryption Key.
+/// Start an HSM test server **without** a Key Encryption Key.
 ///
 /// Used for test vectors that exercise HSM-resident key operations (keyset
 /// addressing, re-key guards, chain-walk semantics) without any KEK wrapping
 /// layer. The server otherwise has identical TLS and auth configuration to
-/// [`start_default_test_kms_server_with_softhsm2_and_kek_for_vectors`].
+/// [`start_default_test_kms_server_with_hsm_and_kek_for_vectors`].
 ///
 /// The vector runner owns the singleton; this function returns a fresh
 /// `TestsContext` each call.
@@ -682,9 +696,11 @@ pub(crate) async fn cleanup_hsm_slot_objects(client: &KmsClient) {
 ///
 /// # Panics
 /// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`.
-pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
+pub async fn start_default_test_kms_server_with_hsm_for_vectors()
 -> Result<TestsContext, KmsClientError> {
-    let slot = get_softhsm2_slot_id();
+    let slot = get_hsm_slot_id();
+    let model = get_hsm_model();
+    let password = get_hsm_password();
     // Use a unique directory for workspace/tmp (certs, temp files) but a
     // **stable** path for the SQLite database.  A stable DB path means that
     // records for keys created by a previous (possibly failed) test run are
@@ -693,7 +709,7 @@ pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
     // still-resident HSM object — fixing the "A secret key with this id already
     // exists" error that arises when the HSM outlives the ephemeral DB.
     let workspace_dir = std::env::temp_dir().join(format!(
-        "kms_test_softhsm2_no_kek_{}_{}_{}",
+        "kms_test_hsm_no_kek_{}_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -704,9 +720,11 @@ pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
     // Stable across runs — cleaned up by `cleanup_hsm_slot_objects` at startup.
     let stable_db_path = std::env::temp_dir().join("kms_test_hsm_vec_no_kek_sqlite");
 
-    let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
+    let config_path = hsm_config_path("hsm_kek.toml");
     let (mut config, http_listener) = load_test_config_from_toml(&config_path)?;
+    config.hsm.hsm_model = model;
     config.hsm.hsm_slot = vec![slot];
+    config.hsm.hsm_password = vec![password];
     config.db.sqlite_path = stable_db_path;
     config.db.clear_database = false;
     config.workspace.root_data_path = workspace_dir.join("workspace");
@@ -717,7 +735,7 @@ pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
     Ok(ctx)
 }
 
-/// Start a `SoftHSM2` + KEK test server where the KEK has **not** been pre-created.
+/// Start an HSM + KEK test server where the KEK has **not** been pre-created.
 ///
 /// This server type is used to reproduce the self-wrap regression (PR #968):
 /// `wrap_and_cache` must not attempt to wrap an HSM-resident key with the
@@ -732,11 +750,13 @@ pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
 ///
 /// # Panics
 /// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`.
-pub async fn start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vectors()
+pub async fn start_default_test_kms_server_with_hsm_kek_uncreated_for_vectors()
 -> Result<TestsContext, KmsClientError> {
-    let slot = get_softhsm2_slot_id();
+    let slot = get_hsm_slot_id();
+    let model = get_hsm_model();
+    let password = get_hsm_password();
     let workspace_dir = std::env::temp_dir().join(format!(
-        "kms_test_softhsm2_kek_bootstrap_{}_{}_{}",
+        "kms_test_hsm_kek_bootstrap_{}_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -749,9 +769,11 @@ pub async fn start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vecto
     // Called once inside OnceCell initialisation before any vector steps run.
     crate::test_env::set("HSM_BOOTSTRAP_KEK_ID", &kek_id);
 
-    let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
+    let config_path = hsm_config_path("hsm_kek.toml");
     let (mut config, http_listener) = load_test_config_from_toml(&config_path)?;
+    config.hsm.hsm_model = model;
     config.hsm.hsm_slot = vec![slot];
+    config.hsm.hsm_password = vec![password];
     config.db.sqlite_path = workspace_dir.join("sqlite-data");
     config.workspace.root_data_path = workspace_dir.join("workspace");
     config.workspace.tmp_path = workspace_dir.join("tmp");
