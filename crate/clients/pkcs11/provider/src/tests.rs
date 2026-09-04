@@ -22,20 +22,24 @@ use cosmian_logger::{debug, log_init};
 use cosmian_pkcs11_module::{
     pkcs11::{
         C_CloseSession, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
-        C_Initialize, C_OpenSession, SLOT_ID,
+        C_GetAttributeValue, C_Initialize, C_LoginUser, C_OpenSession, SLOT_ID,
     },
     test_decrypt, test_encrypt,
     traits::{Backend, SignatureAlgorithm},
 };
 use pkcs11_sys::{
-    CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INVALID_HANDLE, CK_OBJECT_CLASS, CK_ULONG, CKA_CLASS,
-    CKA_LABEL, CKF_SERIAL_SESSION, CKO_DATA, CKR_OK,
+    CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INTERFACE, CK_INVALID_HANDLE, CK_OBJECT_CLASS,
+    CK_PROFILE_ID, CK_ULONG, CK_USER_TYPE, CK_UTF8CHAR, CK_VERSION, CKA_CLASS, CKA_LABEL,
+    CKA_PRIVATE, CKA_PROFILE_ID, CKF_SERIAL_SESSION, CKO_DATA, CKO_PROFILE,
+    CKP_AUTHENTICATION_TOKEN, CKP_BASELINE_PROVIDER, CKP_EXTENDED_PROVIDER,
+    CKP_PUBLIC_CERTIFICATES_TOKEN, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL, CKR_OK, CKU_USER,
+    CRYPTOKI_VERSION_MAJOR,
 };
 use serial_test::serial;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
-    C_GetFunctionList,
+    C_GetFunctionList, C_GetInterface, C_GetInterfaceList,
     backend::{COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, COSMIAN_PKCS11_SSH_KEY_TAG, CliBackend},
     error::{Pkcs11Error, result::Pkcs11Result},
     kms_object::get_kms_objects_async,
@@ -584,5 +588,352 @@ fn test_ssh_key_discovery() -> Pkcs11Result<()> {
         pub_ids.contains(&ec_pk_id),
         "EC SSH public key {ec_pk_id} not found in find_all_public_keys"
     );
+    Ok(())
+}
+
+/// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): `C_GetInterfaceList` must
+/// implement the standard two-call convention and return the sole "PKCS 11" v3.0 interface;
+/// `C_GetInterface` must resolve that same interface both when `pInterfaceName`/`pVersion` are
+/// null (any interface/version accepted) and when they exactly match.
+#[test]
+#[serial]
+#[expect(unsafe_code)]
+fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
+    let _backend = initialize_backend()?;
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: `#[serial]` ensures no other thread concurrently reads or modifies the process
+    // environment, satisfying the thread-safety requirement for `set_var` (Rust 2024 edition).
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
+
+    // First call: null buffer, learn the count.
+    let mut count: CK_ULONG = 0;
+    assert_eq!(
+        // SAFETY: `pul_count` is a valid stack out-parameter; `p_interfaces_list` is
+        // intentionally null (count-query call, per the two-call convention).
+        unsafe { C_GetInterfaceList(std::ptr::null_mut(), &raw mut count) },
+        CKR_OK
+    );
+    assert_eq!(count, 1, "this module exposes exactly one interface");
+
+    // Second call: too-small buffer must report CKR_BUFFER_TOO_SMALL and the required count.
+    let mut zero_count: CK_ULONG = 0;
+    let mut interfaces = [CK_INTERFACE {
+        pInterfaceName: std::ptr::null_mut(),
+        pFunctionList: std::ptr::null_mut(),
+        flags: 0,
+    }; 1];
+    assert_eq!(
+        // SAFETY: `interfaces` is a valid 1-element buffer; `zero_count` (0) under-reports its
+        // capacity on purpose to exercise the too-small path.
+        unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut zero_count) },
+        CKR_BUFFER_TOO_SMALL
+    );
+    assert_eq!(zero_count, 1);
+
+    // Third call: correctly sized buffer must succeed and return the "PKCS 11" interface.
+    let mut full_count: CK_ULONG = 1;
+    assert_eq!(
+        // SAFETY: `interfaces` is a valid 1-element buffer, matching `full_count`.
+        unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut full_count) },
+        CKR_OK
+    );
+    assert_eq!(full_count, 1);
+    assert!(!interfaces[0].pInterfaceName.is_null());
+    // SAFETY: `pInterfaceName` was just populated by a successful `C_GetInterfaceList` call
+    // above, and is guaranteed NUL-terminated by `PKCS11_INTERFACE_NAME`.
+    let name = unsafe { std::ffi::CStr::from_ptr(interfaces[0].pInterfaceName.cast()) };
+    assert_eq!(name.to_bytes(), b"PKCS 11");
+
+    // `C_GetInterface` with null name/version must resolve to the same sole interface.
+    let mut interface_ptr: *mut CK_INTERFACE = std::ptr::null_mut();
+    assert_eq!(
+        // SAFETY: `pp_interface` is a valid stack out-parameter; name/version are
+        // intentionally null (accept-any-interface call).
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &raw mut interface_ptr,
+                0,
+            )
+        },
+        CKR_OK
+    );
+    assert!(!interface_ptr.is_null());
+
+    // `C_GetInterface` with a matching name and major version must also succeed.
+    let mut name_bytes = b"PKCS 11\0".to_vec();
+    let mut version = CK_VERSION {
+        major: CRYPTOKI_VERSION_MAJOR,
+        minor: 0,
+    };
+    assert_eq!(
+        // SAFETY: `name_bytes` is NUL-terminated and well within `MAX_INTERFACE_NAME_LEN`;
+        // `version` is a valid, properly-aligned `CK_VERSION` on the stack.
+        unsafe {
+            C_GetInterface(
+                name_bytes.as_mut_ptr().cast::<CK_UTF8CHAR>(),
+                &raw mut version,
+                &raw mut interface_ptr,
+                0,
+            )
+        },
+        CKR_OK
+    );
+    Ok(())
+}
+
+/// `C_GetInterface` must reject an unknown interface name, an unsupported major version, and any
+/// non-zero `flags` request (this module's sole interface makes no special guarantees).
+#[test]
+#[serial]
+#[expect(unsafe_code)]
+fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
+    let _backend = initialize_backend()?;
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: see other tests in this file for the `#[serial]` + `set_var` justification.
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
+
+    let mut interface_ptr: *mut CK_INTERFACE = std::ptr::null_mut();
+
+    // Unknown interface name.
+    let mut bad_name = b"NOT PKCS 11\0".to_vec();
+    assert_eq!(
+        // SAFETY: `bad_name` is NUL-terminated and within `MAX_INTERFACE_NAME_LEN`;
+        // `interface_ptr` is a valid stack out-parameter.
+        unsafe {
+            C_GetInterface(
+                bad_name.as_mut_ptr().cast::<CK_UTF8CHAR>(),
+                std::ptr::null_mut(),
+                &raw mut interface_ptr,
+                0,
+            )
+        },
+        CKR_ARGUMENTS_BAD
+    );
+
+    // Unsupported major version.
+    let mut wrong_version = CK_VERSION { major: 1, minor: 0 };
+    assert_eq!(
+        // SAFETY: `wrong_version` is a valid, properly-aligned `CK_VERSION` on the stack;
+        // `interface_ptr` is a valid stack out-parameter.
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                &raw mut wrong_version,
+                &raw mut interface_ptr,
+                0,
+            )
+        },
+        CKR_ARGUMENTS_BAD
+    );
+
+    // Non-zero flags: no interface satisfies any special guarantee.
+    assert_eq!(
+        // SAFETY: `interface_ptr` is a valid stack out-parameter; name/version are null.
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &raw mut interface_ptr,
+                1,
+            )
+        },
+        CKR_ARGUMENTS_BAD
+    );
+    Ok(())
+}
+
+/// PKCS#11 v3.1 `C_LoginUser` (issue #1153 follow-up): this module exposes a single implicit
+/// backend identity per slot, so `C_LoginUser` must succeed regardless of the supplied
+/// `pUsername`, exactly like `C_Login`, when the deployment does not use PIN-as-access-token
+/// mode (the default in tests).
+#[test]
+#[serial]
+#[expect(unsafe_code)]
+fn test_c_login_user() -> Pkcs11Result<()> {
+    let _backend = initialize_backend()?;
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: see other tests in this file for the `#[serial]` + `set_var` justification.
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
+
+    test_init();
+    assert_eq!(C_Initialize(std::ptr::null_mut()), CKR_OK);
+    let mut handle = CK_INVALID_HANDLE;
+    assert_eq!(
+        // SAFETY: `SLOT_ID` is the only valid slot; the two null/None args are optional and
+        // intentionally unused; `handle` is a properly-aligned out-parameter on the stack.
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                std::ptr::null_mut(),
+                None,
+                &raw mut handle,
+            )
+        },
+        CKR_OK
+    );
+
+    let mut username = b"alice".to_vec();
+    let user_type: CK_USER_TYPE = CKU_USER;
+    assert_eq!(
+        // SAFETY: `handle` is a valid open session; `username` is a well-formed UTF-8 buffer
+        // whose length is passed accurately; no PIN is required outside PIN-as-access-token mode.
+        unsafe {
+            C_LoginUser(
+                handle,
+                user_type,
+                std::ptr::null_mut(),
+                0,
+                username.as_mut_ptr(),
+                username.len().try_into()?,
+            )
+        },
+        CKR_OK
+    );
+
+    assert_eq!(C_CloseSession(handle), CKR_OK);
+    assert_eq!(C_Finalize(std::ptr::null_mut()), CKR_OK);
+    Ok(())
+}
+
+/// PKCS#11 Profiles v3.1 gap-fill (issue #1153 follow-up): the module must self-declare its
+/// OASIS conformance profiles via `CKO_PROFILE` objects, discoverable through `C_FindObjects`
+/// with `CKA_CLASS = CKO_PROFILE` — including on a session that has not called `C_Login`
+/// (`CKA_PRIVATE` must be `CK_FALSE`).
+#[test]
+#[serial]
+#[expect(unsafe_code)]
+fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
+    let _backend = initialize_backend()?;
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: see other tests in this file for the `#[serial]` + `set_var` justification.
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
+
+    test_init();
+    assert_eq!(C_Initialize(std::ptr::null_mut()), CKR_OK);
+    let mut handle = CK_INVALID_HANDLE;
+    assert_eq!(
+        // SAFETY: `SLOT_ID` is the only valid slot; the two null/None args are optional and
+        // intentionally unused; `handle` is a properly-aligned out-parameter on the stack.
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                std::ptr::null_mut(),
+                None,
+                &raw mut handle,
+            )
+        },
+        CKR_OK
+    );
+
+    // Search for CKO_PROFILE objects (no login performed on this session).
+    let mut class: CK_OBJECT_CLASS = CKO_PROFILE;
+    #[allow(clippy::cast_ptr_alignment)]
+    let mut template = [CK_ATTRIBUTE {
+        type_: CKA_CLASS,
+        pValue: (&raw mut class).cast::<std::ffi::c_void>(),
+        ulValueLen: std::mem::size_of::<CK_OBJECT_CLASS>().try_into()?,
+    }];
+    let template_len: CK_ULONG = template.len().try_into()?;
+    assert_eq!(
+        // SAFETY: `handle` is a valid open session; `template` is a correctly-sized,
+        // properly-aligned `CK_ATTRIBUTE` array with `template_len` elements, all alive
+        // for the duration of the call.
+        unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), template_len) },
+        CKR_OK
+    );
+    let mut obj_handles = [CK_INVALID_HANDLE; 8];
+    let mut count: CK_ULONG = 0;
+    let max_count: CK_ULONG = obj_handles.len().try_into()?;
+    assert_eq!(
+        // SAFETY: `handle` is a valid open session after a successful C_FindObjectsInit;
+        // `obj_handles` is a buffer of `max_count` elements; `count` is a valid stack
+        // out-parameter.
+        unsafe { C_FindObjects(handle, obj_handles.as_mut_ptr(), max_count, &raw mut count) },
+        CKR_OK
+    );
+    assert_eq!(C_FindObjectsFinal(handle), CKR_OK);
+
+    let count_usize = usize::try_from(count)?;
+    assert!(
+        count_usize >= 3,
+        "expected at least Baseline/Authentication Token/Public Certificates Token profiles, \
+         got {count_usize}"
+    );
+
+    // Verify each returned object really is a public (non-private), CKO_PROFILE object whose
+    // CKA_PROFILE_ID is one of the profiles this module declares support for.
+    let known_profiles: [CK_PROFILE_ID; 4] = [
+        CKP_BASELINE_PROVIDER,
+        CKP_EXTENDED_PROVIDER,
+        CKP_AUTHENTICATION_TOKEN,
+        CKP_PUBLIC_CERTIFICATES_TOKEN,
+    ];
+    let mut seen_profiles = Vec::new();
+    for &obj_handle in obj_handles.iter().take(count_usize) {
+        let mut class_value: CK_OBJECT_CLASS = 0;
+        let mut private_value: pkcs11_sys::CK_BBOOL = 0;
+        let mut profile_id_value: CK_PROFILE_ID = 0;
+        #[allow(clippy::cast_ptr_alignment)]
+        let mut attr_template = [
+            CK_ATTRIBUTE {
+                type_: CKA_CLASS,
+                pValue: (&raw mut class_value).cast::<std::ffi::c_void>(),
+                ulValueLen: std::mem::size_of::<CK_OBJECT_CLASS>().try_into()?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_PRIVATE,
+                pValue: (&raw mut private_value).cast::<std::ffi::c_void>(),
+                ulValueLen: std::mem::size_of::<pkcs11_sys::CK_BBOOL>().try_into()?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_PROFILE_ID,
+                pValue: (&raw mut profile_id_value).cast::<std::ffi::c_void>(),
+                ulValueLen: std::mem::size_of::<CK_PROFILE_ID>().try_into()?,
+            },
+        ];
+        let attr_template_len: CK_ULONG = attr_template.len().try_into()?;
+        assert_eq!(
+            // SAFETY: `handle` is a valid open session; `obj_handle` was just returned by
+            // `C_FindObjects` above; `attr_template` entries all point to valid, correctly-sized,
+            // properly-aligned stack buffers.
+            unsafe {
+                C_GetAttributeValue(
+                    handle,
+                    obj_handle,
+                    attr_template.as_mut_ptr(),
+                    attr_template_len,
+                )
+            },
+            CKR_OK
+        );
+        assert_eq!(class_value, CKO_PROFILE);
+        assert_eq!(
+            private_value, 0,
+            "profile objects must be public (CKA_PRIVATE = CK_FALSE) to be discoverable \
+             pre-login"
+        );
+        assert!(
+            known_profiles.contains(&profile_id_value),
+            "unexpected CKA_PROFILE_ID: {profile_id_value}"
+        );
+        seen_profiles.push(profile_id_value);
+    }
+    assert!(seen_profiles.contains(&CKP_BASELINE_PROVIDER));
+    assert!(seen_profiles.contains(&CKP_AUTHENTICATION_TOKEN));
+    assert!(seen_profiles.contains(&CKP_PUBLIC_CERTIFICATES_TOKEN));
+
+    assert_eq!(C_Finalize(std::ptr::null_mut()), CKR_OK);
     Ok(())
 }

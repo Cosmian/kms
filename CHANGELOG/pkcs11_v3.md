@@ -1,3 +1,48 @@
+# PKCS#11 v3.0 interfaces discovery, `C_LoginUser`, and conformance profiles
+
+## Features
+
+### HSM
+
+- Implement the Cryptoki v3.0 "interfaces" discovery entry points, `C_GetInterfaceList` and
+  `C_GetInterface`, in the `cosmian_pkcs11` provider library, in addition to the existing
+  `C_GetFunctionList`. Purely additive: v2.40-only consumers keep working unchanged
+  ([#1153](https://github.com/Cosmian/kms/issues/1153))
+- Implement `C_LoginUser` (previously unimplemented): behaves like `C_Login`, since the
+  library exposes a single implicit backend identity
+- Wire up the pre-existing `Object::Profile`/`CKO_PROFILE` mechanism so the library
+  self-declares its OASIS PKCS#11 v3.0 conformance profiles (`CKP_BASELINE_PROVIDER`,
+  `CKP_EXTENDED_PROVIDER`, `CKP_AUTHENTICATION_TOKEN`, `CKP_PUBLIC_CERTIFICATES_TOKEN`) as
+  discoverable, public (`CKA_PRIVATE = CK_FALSE`) objects via `C_FindObjects`
+- Add the 21 v3.0-only stub entry points required for a non-null `CK_FUNCTION_LIST_3_0`
+  (`C_SessionCancel` and the message-based bulk encrypt/decrypt/sign/verify family), all
+  returning `CKR_FUNCTION_NOT_SUPPORTED`
+
+## Bug Fixes
+
+### HSM
+
+- Fix `CKA_PRIVATE` on `CKO_PROFILE` objects, previously hardcoded to `CK_TRUE`: per the
+  OASIS spec, profile objects must be discoverable pre-login so a client can determine
+  supported profiles before authenticating
+
+## Documentation
+
+- Add `documentation/docs/integrations/pkcs11_provider.md` documenting the provider
+  library's Cryptoki version, interfaces discovery, conformance profiles, and supported
+  mechanisms
+
+## Tests
+
+- Add integration tests covering `C_GetInterfaceList`/`C_GetInterface` (including
+  mismatched name/version/flags rejection), `C_LoginUser`, and `CKO_PROFILE`
+  self-declaration
+
+---
+
+Addresses gaps identified in
+[#1153 (comment)](https://github.com/Cosmian/kms/issues/1153#issuecomment-5539153215)
+
 # PKCS#11 v3.0 scope decision & FFI foundation
 
 ## Features

@@ -28,8 +28,9 @@ use std::{
 
 use cosmian_logger::{debug, trace, warn};
 use pkcs11_sys::{
-    CK_BYTE_PTR, CK_FLAGS, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_ULONG,
-    CK_ULONG_PTR,
+    CK_BYTE_PTR, CK_FLAGS, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_PROFILE_ID, CK_SESSION_HANDLE,
+    CK_ULONG, CK_ULONG_PTR, CKP_AUTHENTICATION_TOKEN, CKP_BASELINE_PROVIDER, CKP_EXTENDED_PROVIDER,
+    CKP_PUBLIC_CERTIFICATES_TOKEN,
 };
 
 use crate::{
@@ -42,6 +43,28 @@ use crate::{
     objects_store::{OBJECTS_STORE, ObjectsStore},
     traits::{DecryptContext, EncryptContext, KeyAlgorithm, SearchOptions, SignContext, backend},
 };
+
+/// PKCS#11 v3.1 conformance profiles ([OASIS PKCS#11 Profiles v3.1]) that this module
+/// self-declares via `CKO_PROFILE` objects returned by `C_FindObjects`.
+///
+/// - `CKP_BASELINE_PROVIDER`: mandatory Session/Object Management plus `C_Sign`/`C_Verify`
+///   with at least one mechanism — satisfied by the existing sign/verify implementation.
+/// - `CKP_EXTENDED_PROVIDER`: Baseline plus `C_GetMechanismList`/`C_GetMechanismInfo` and
+///   `C_Login`/`C_LoginUser`/`C_Logout` — satisfied now that `C_LoginUser` is implemented.
+/// - `CKP_AUTHENTICATION_TOKEN`: Baseline plus asymmetric key pairs usable for
+///   challenge/response authentication — satisfied by the existing private/public key
+///   sign/verify support.
+/// - `CKP_PUBLIC_CERTIFICATES_TOKEN`: Baseline plus `CKO_CERTIFICATE` objects discoverable
+///   without login — satisfied by the existing certificate support.
+///
+/// `CKP_COMPLETE_PROVIDER` is intentionally NOT declared: it additionally requires
+/// `C_WrapKey`/`C_UnwrapKey`/`C_DeriveKey` and digest mechanisms that are not implemented.
+const SUPPORTED_PROFILES: [CK_PROFILE_ID; 4] = [
+    CKP_BASELINE_PROVIDER,
+    CKP_EXTENDED_PROVIDER,
+    CKP_AUTHENTICATION_TOKEN,
+    CKP_PUBLIC_CERTIFICATES_TOKEN,
+];
 
 /// Prefix used to identify Oracle Key Management (KM) encryption keys.
 /// This prefix is typically used in PKCS#11 object labels or attributes to mark
@@ -253,6 +276,16 @@ impl Session {
                             }
                         }
                         result
+                    }
+                    pkcs11_sys::CKO_PROFILE => {
+                        // Profile objects are static/local: no KMIP round-trip needed, the
+                        // module self-declares which OASIS conformance profiles it satisfies.
+                        SUPPORTED_PROFILES
+                            .into_iter()
+                            .map(|id| {
+                                self.update_find_objects_context(Arc::new(Object::Profile(id)))
+                            })
+                            .collect::<ModuleResult<Vec<_>>>()?
                     }
                     o => return Err(ModuleError::Todo(format!("Object not supported: {o}"))),
                 };
