@@ -149,4 +149,15 @@ mod tests {
         set.insert(a);
         assert!(set.contains(&b));
     }
+
+    #[test]
+    fn try_new_rejects_empty_string() {
+        assert!(UserId::try_new("").is_err());
+    }
+
+    #[test]
+    fn try_new_accepts_non_empty_string() {
+        let uid = UserId::try_new("carol@example.com").expect("non-empty string must be accepted");
+        assert_eq!(uid.as_str(), "carol@example.com");
+    }
 }

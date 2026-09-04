@@ -112,6 +112,9 @@ exclude = [
   'swagger\.io',
   # IBM docs — returns 503 Service Unavailable (Guardium CM TDE guide)
   'www\.ibm\.com',
+  # Eviden (Proteccio HSM vendor page) — returns 503 Service Unavailable to
+  # automated crawlers/CI runners
+  'eviden\.com',
 
   # Kubernetes SIG documentation site — resets connections from automated crawlers
   'secrets-store-csi-driver\.sigs\.k8s\.io',

@@ -317,7 +317,11 @@ pub(crate) async fn callback(
         return HttpResponse::InternalServerError()
             .json(serde_json::json!({ "error": "Missing email claim in id_token" }));
     };
-    if let Err(error) = reject_reserved_aws_xks_identity(&UserId::from(user_id.as_str())) {
+    let Ok(user_id) = UserId::try_new(user_id.as_str()) else {
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({ "error": "Empty email claim in id_token" }));
+    };
+    if let Err(error) = reject_reserved_aws_xks_identity(&user_id) {
         return HttpResponse::Unauthorized()
             .json(serde_json::json!({ "error": format!("Forbidden user identity: {error}") }));
     }
@@ -510,7 +514,12 @@ pub(crate) async fn login_as(
                     );
                 }
             };
-            if let Err(error) = reject_reserved_aws_xks_identity(&UserId::from(user_id.as_str())) {
+            let Ok(user_id) = UserId::try_new(user_id.as_str()) else {
+                return HttpResponse::Unauthorized().json(
+                    serde_json::json!({ "error": "Empty subject claim in Auth Verifier token" }),
+                );
+            };
+            if let Err(error) = reject_reserved_aws_xks_identity(&user_id) {
                 return HttpResponse::Unauthorized().json(
                     serde_json::json!({ "error": format!("Forbidden user identity: {error}") }),
                 );
