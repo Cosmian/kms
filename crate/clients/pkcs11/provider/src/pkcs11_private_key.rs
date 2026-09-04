@@ -1,6 +1,7 @@
 use cosmian_logger::error;
 use cosmian_pkcs11_module::{
     ModuleError, ModuleResult,
+    profiling::{self, SignPhase},
     traits::{KeyAlgorithm, PrivateKey, SearchOptions, SignatureAlgorithm, backend},
 };
 use pkcs1::{RsaPrivateKey, der::Decode};
@@ -59,7 +60,10 @@ impl PrivateKey for Pkcs11PrivateKey {
     }
 
     fn sign(&self, algorithm: &SignatureAlgorithm, data: &[u8]) -> ModuleResult<Vec<u8>> {
-        backend()?
+        let backend_lookup = profiling::phase(SignPhase::BackendLookup);
+        let backend = backend()?;
+        drop(backend_lookup);
+        backend
             .remote_sign(&self.remote_id, algorithm, data)
             .map_err(|e| {
                 error!(

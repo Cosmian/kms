@@ -19,11 +19,35 @@ use crate::{
 pub(crate) static OBJECTS_STORE: std::sync::LazyLock<sync::RwLock<ObjectsStore>> =
     std::sync::LazyLock::new(Default::default);
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct ObjectsStore {
     /// The PKCS#11 objects manipulated by this store; the key is the remote id.
     pub objects: HashMap<String, (Arc<Object>, CK_OBJECT_HANDLE)>,
     pub ids: HashMap<CK_OBJECT_HANDLE, Weak<Object>>,
+    /// Monotonically increasing counter for the next handle to assign to a *new* object.
+    ///
+    /// Must never be derived from `self.ids.len()`: under concurrent
+    /// insert/destroy (e.g. two sessions each generating and destroying an ephemeral
+    /// key), the map size can shrink between a `C_GenerateKey` and its matching
+    /// `C_DestroyObject` on another thread, causing two *simultaneously live* objects
+    /// to be assigned the same handle. Assigning that reused handle overwrites the
+    /// still-live object's `ids` entry, and a later `C_DestroyObject` for that
+    /// original handle then fails with `CKR_OBJECT_HANDLE_INVALID` because its
+    /// entry was silently replaced. A strictly increasing counter, incremented only
+    /// when a brand-new handle is minted, guarantees no two live objects ever share
+    /// a handle regardless of destroy ordering (`OBJECTS_STORE`'s single `RwLock`
+    /// already serializes each individual `upsert`/`remove_by_handle` call).
+    next_handle: CK_OBJECT_HANDLE,
+}
+
+impl Default for ObjectsStore {
+    fn default() -> Self {
+        Self {
+            objects: HashMap::new(),
+            ids: HashMap::new(),
+            next_handle: 1, // start from 1, 0 is reserved for invalid handle
+        }
+    }
 }
 
 impl ObjectsStore {
@@ -37,11 +61,8 @@ impl ObjectsStore {
             self.ids.insert(*handle, Arc::downgrade(stored));
             return *handle;
         }
-        let handle = if self.ids.is_empty() {
-            1 // start from 1, 0 is reserved for invalid handle
-        } else {
-            1 + self.ids.len() as CK_OBJECT_HANDLE
-        };
+        let handle = self.next_handle;
+        self.next_handle += 1;
         debug!("STORE: inserting new object with remote id: {id} and handle: {handle}");
         self.ids.insert(handle, Arc::downgrade(&object));
         self.objects.insert(id, (object, handle));

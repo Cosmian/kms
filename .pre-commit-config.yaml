@@ -172,6 +172,7 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
       - id: name-tests-test
+        args: [--pytest-test-first]
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
       - id: trailing-whitespace
@@ -335,9 +336,14 @@ repos:
         require_serial: true
 
       # ── Client crates ─────────────────────────────────────────────────
+      # Same ulimit bump as test-workspace-non-fips (see comment there): the
+      # ckms crate itself is the fd-heavy PQC/TLS test suite responsible for
+      # that flakiness, so it needs the same headroom when run standalone.
       - id: test-ckms
         name: cargo test ckms
-        entry: cargo test -p ckms --lib --features non-fips --quiet
+        entry: >-
+          bash -c 'ulimit -n 65536 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true;
+          cargo test -p ckms --lib --features non-fips --quiet'
         language: system
         files: ^crate/clients/ckms/
         pass_filenames: false
@@ -475,18 +481,30 @@ repos:
         require_serial: true
 
       # ── Workspace-wide fallback (Cargo.lock or root Cargo.toml changed) ─
+      # ulimit bump: the ckms integration test suite spins up many concurrent
+      # TLS-enabled actix-web test servers (PQC certificate tests, access-control
+      # tests, ...); under a low default `ulimit -n` (commonly 1024) this exhausts
+      # available file descriptors partway through the run ("Too many open files",
+      # os error 24), cascading into dozens of unrelated test failures. Raise it
+      # for this hook's process only; fall back to the hard limit if 65536 exceeds
+      # it, and never fail the hook just because ulimit itself could not be raised.
       - id: test-workspace-non-fips
         name: cargo test workspace (Cargo.lock / Cargo.toml changed)
-        entry: cargo test --lib --workspace --features non-fips --quiet
+        entry: >-
+          bash -c 'ulimit -n 65536 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true;
+          cargo test --lib --workspace --features non-fips --quiet'
         language: system
         files: ^Cargo\.(lock|toml)$
         pass_filenames: false
         require_serial: true
 
       # ── FIPS (manual) ─────────────────────────────────────────────────
+      # Same ulimit bump as test-workspace-non-fips — see comment there.
       - id: cargo-test-fips
         name: cargo test workspace (fips, manual)
-        entry: cargo test --lib --workspace --quiet
+        entry: >-
+          bash -c 'ulimit -n 65536 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true;
+          cargo test --lib --workspace --quiet'
         language: system
         types: [rust]
         pass_filenames: false
