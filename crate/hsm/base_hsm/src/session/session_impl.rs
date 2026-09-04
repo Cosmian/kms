@@ -8,8 +8,8 @@ use std::{
 };
 
 use cosmian_kms_interfaces::{
-    CryptoAlgorithm, EncryptedContent, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata,
-    KeyType,
+    CryptoAlgorithm, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent, HsmObject,
+    HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
     KeyType::{AesKey, RsaPrivateKey, RsaPublicKey},
     RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
 };
@@ -18,22 +18,27 @@ use pkcs11_sys::{
     CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_DATE, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
     CK_RSA_PKCS_OAEP_PARAMS, CK_RSA_PKCS_PSS_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG,
-    CKA_CLASS, CKA_COEFFICIENT, CKA_END_DATE, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE,
-    CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT,
-    CKA_SENSITIVE, CKA_START_DATE, CKA_VALUE, CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256,
-    CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC,
-    CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256,
-    CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_RSA_PKCS,
-    CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512, CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS,
-    CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE,
-    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKZ_DATA_SPECIFIED,
+    CKA_CLASS, CKA_COEFFICIENT, CKA_EC_PARAMS, CKA_EC_POINT, CKA_END_DATE, CKA_EXPONENT_1,
+    CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2,
+    CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_START_DATE, CKA_VALUE,
+    CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES,
+    CKK_EC, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_ECDSA_SHA256,
+    CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1,
+    CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384,
+    CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512, CKM_SHA512_RSA_PKCS,
+    CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED,
+    CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKZ_DATA_SPECIFIED,
 };
 use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
-use crate::{HError, HResult, ObjectHandlesCache, hsm_call, hsm_capabilities::HsmCapabilities};
+use crate::{
+    HError, HResult, ObjectHandlesCache, hsm_call,
+    hsm_capabilities::HsmCapabilities,
+    session::{curve_byte_size, curve_from_der_oid},
+};
 
 /// AES block size in bytes
 const AES_BLOCK_SIZE: usize = 16;
@@ -96,6 +101,13 @@ pub enum HsmSigningAlgorithm {
     RsaPssSha512 {
         salt_length: Option<u32>,
     },
+    /// `CKM_ECDSA_SHA256`. Produces a raw `r || s` signature that is re-encoded to DER to match
+    /// the software ECDSA signing convention (`ecdsa_sign` in `crate::crypto`).
+    EcdsaSha256,
+    /// `CKM_ECDSA_SHA384`.
+    EcdsaSha384,
+    /// `CKM_ECDSA_SHA512`.
+    EcdsaSha512,
 }
 
 impl From<SigningAlgorithm> for HsmSigningAlgorithm {
@@ -109,6 +121,9 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
             SigningAlgorithm::RsaPssSha256 { salt_length } => Self::RsaPssSha256 { salt_length },
             SigningAlgorithm::RsaPssSha384 { salt_length } => Self::RsaPssSha384 { salt_length },
             SigningAlgorithm::RsaPssSha512 { salt_length } => Self::RsaPssSha512 { salt_length },
+            SigningAlgorithm::EcdsaSha256 => Self::EcdsaSha256,
+            SigningAlgorithm::EcdsaSha384 => Self::EcdsaSha384,
+            SigningAlgorithm::EcdsaSha512 => Self::EcdsaSha512,
         }
     }
 }
@@ -579,6 +594,45 @@ impl Session {
                 CK_ATTRIBUTE {
                     type_: CKA_KEY_TYPE,
                     pValue: std::ptr::from_ref(&CKK_RSA)
+                        .cast::<std::ffi::c_void>()
+                        .cast_mut(),
+                    ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
+                },
+            ]),
+            HsmObjectFilter::EcKey => template.extend([CK_ATTRIBUTE {
+                type_: CKA_KEY_TYPE,
+                pValue: std::ptr::from_ref(&CKK_EC)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
+            }]),
+            HsmObjectFilter::EcPrivateKey => template.extend([
+                CK_ATTRIBUTE {
+                    type_: CKA_CLASS,
+                    pValue: std::ptr::from_ref(&CKO_PRIVATE_KEY)
+                        .cast::<std::ffi::c_void>()
+                        .cast_mut(),
+                    ulValueLen: CK_ULONG::try_from(size_of::<CK_OBJECT_CLASS>())?,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_KEY_TYPE,
+                    pValue: std::ptr::from_ref(&CKK_EC)
+                        .cast::<std::ffi::c_void>()
+                        .cast_mut(),
+                    ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
+                },
+            ]),
+            HsmObjectFilter::EcPublicKey => template.extend([
+                CK_ATTRIBUTE {
+                    type_: CKA_CLASS,
+                    pValue: std::ptr::from_ref(&CKO_PUBLIC_KEY)
+                        .cast::<std::ffi::c_void>()
+                        .cast_mut(),
+                    ulValueLen: CK_ULONG::try_from(size_of::<CK_OBJECT_CLASS>())?,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_KEY_TYPE,
+                    pValue: std::ptr::from_ref(&CKK_EC)
                         .cast::<std::ffi::c_void>()
                         .cast_mut(),
                     ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
@@ -1267,7 +1321,87 @@ impl Session {
                     Self::rsa_pkcs_pss_params(CKM_SHA512, CKG_MGF1_SHA512, 64, salt_length);
                 self.sign_with_pss_mechanism(key_handle, CKM_SHA512_RSA_PKCS_PSS, &mut params, data)
             }
+            HsmSigningAlgorithm::EcdsaSha256 => {
+                let raw = self.sign_with_simple_mechanism(key_handle, CKM_ECDSA_SHA256, data)?;
+                Self::ecdsa_raw_to_der(&raw)
+            }
+            HsmSigningAlgorithm::EcdsaSha384 => {
+                let raw = self.sign_with_simple_mechanism(key_handle, CKM_ECDSA_SHA384, data)?;
+                Self::ecdsa_raw_to_der(&raw)
+            }
+            HsmSigningAlgorithm::EcdsaSha512 => {
+                let raw = self.sign_with_simple_mechanism(key_handle, CKM_ECDSA_SHA512, data)?;
+                Self::ecdsa_raw_to_der(&raw)
+            }
         }
+    }
+
+    /// Convert a PKCS#11 raw `r || s` ECDSA signature (each half zero-padded to the curve's
+    /// field size) into a DER-encoded `ECDSA-Sig-Value` (`SEQUENCE { r INTEGER, s INTEGER }`),
+    /// matching the signature encoding produced by the software ECDSA path
+    /// (`crate::crypto::elliptic_curves::sign::ecdsa_sign`, which returns `EcdsaSig::to_der()`).
+    fn ecdsa_raw_to_der(raw: &[u8]) -> HResult<Vec<u8>> {
+        if raw.is_empty() || !raw.len().is_multiple_of(2) {
+            return Err(HError::Default(format!(
+                "ECDSA: unexpected raw signature length: {}",
+                raw.len()
+            )));
+        }
+        let half = raw.len() / 2;
+        let (r, s) = raw.split_at(half);
+        let r = Self::der_encode_unsigned_integer(r)?;
+        let s = Self::der_encode_unsigned_integer(s)?;
+        let mut content = Vec::with_capacity(r.len() + s.len());
+        content.extend_from_slice(&r);
+        content.extend_from_slice(&s);
+        let mut der = vec![0x30_u8];
+        Self::der_push_length(&mut der, content.len())?;
+        der.extend_from_slice(&content);
+        Ok(der)
+    }
+
+    /// DER-encode a big-endian unsigned integer as an ASN.1 `INTEGER` (strips leading zero
+    /// bytes, then re-adds a single `0x00` prefix byte if the high bit would otherwise make the
+    /// value look negative).
+    fn der_encode_unsigned_integer(value: &[u8]) -> HResult<Vec<u8>> {
+        let leading_zeros = value
+            .iter()
+            .take(value.len().saturating_sub(1))
+            .take_while(|&&b| b == 0)
+            .count();
+        let trimmed = value.get(leading_zeros..).unwrap_or(value);
+        let needs_zero_pad = trimmed.first().is_some_and(|b| *b & 0x80 != 0);
+        let content_len = trimmed.len() + usize::from(needs_zero_pad);
+        let mut out = vec![0x02_u8];
+        Self::der_push_length(&mut out, content_len)?;
+        if needs_zero_pad {
+            out.push(0);
+        }
+        out.extend_from_slice(trimmed);
+        Ok(out)
+    }
+
+    /// Push a DER length (short or long form) onto `out`.
+    fn der_push_length(out: &mut Vec<u8>, len: usize) -> HResult<()> {
+        if len < 0x80 {
+            out.push(u8::try_from(len).map_err(|e| {
+                HError::Default(format!("ECDSA: DER length conversion failed: {e}"))
+            })?);
+        } else {
+            let bytes = len.to_be_bytes();
+            let first_nonzero = bytes
+                .iter()
+                .position(|b| *b != 0)
+                .unwrap_or(bytes.len() - 1);
+            let len_bytes = bytes.get(first_nonzero..).unwrap_or(&bytes);
+            out.push(
+                0x80 | u8::try_from(len_bytes.len()).map_err(|e| {
+                    HError::Default(format!("ECDSA: DER length conversion failed: {e}"))
+                })?,
+            );
+            out.extend_from_slice(len_bytes);
+        }
+        Ok(())
     }
 
     /// Sign using a parameterless mechanism (raw PKCS#1 v1.5 or one of its hash-prefixed
@@ -1398,6 +1532,13 @@ impl Session {
                     KeyType::RsaPublicKey
                 }
             }
+            CKK_EC => {
+                if class == CKO_PRIVATE_KEY {
+                    KeyType::EcPrivateKey
+                } else {
+                    KeyType::EcPublicKey
+                }
+            }
             x => {
                 return Err(HError::Default(format!(
                     "Export: unsupported key type: {x}"
@@ -1409,6 +1550,8 @@ impl Session {
             KeyType::AesKey => self.export_aes_key(key_handle),
             KeyType::RsaPrivateKey => self.export_rsa_private_key(key_handle),
             KeyType::RsaPublicKey => self.export_rsa_public_key(key_handle),
+            KeyType::EcPrivateKey => self.export_ec_private_key(key_handle),
+            KeyType::EcPublicKey => self.export_ec_public_key(key_handle),
         }
     }
 
@@ -1621,6 +1764,181 @@ impl Session {
             }),
             label,
         )))
+    }
+
+    fn export_ec_private_key(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<HsmObject>> {
+        let mut template = [
+            CK_ATTRIBUTE {
+                type_: CKA_EC_PARAMS,
+                pValue: ptr::null_mut(),
+                ulValueLen: 0,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_VALUE,
+                pValue: ptr::null_mut(),
+                ulValueLen: 0,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_LABEL,
+                pValue: ptr::null_mut(),
+                ulValueLen: 0,
+            },
+        ];
+        if self
+            .call_get_attributes(key_handle, &mut template)?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        let ec_params_len = template[0].ulValueLen;
+        let value_len = template[1].ulValueLen;
+        let label_len = template[2].ulValueLen;
+        let mut ec_params: Vec<u8> = vec![0_u8; usize::try_from(ec_params_len)?];
+        let mut value: Vec<u8> = vec![0_u8; usize::try_from(value_len)?];
+        let mut label_bytes: Vec<u8> = vec![0_u8; usize::try_from(label_len)?];
+        let mut template = [
+            CK_ATTRIBUTE {
+                type_: CKA_EC_PARAMS,
+                pValue: ec_params.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulValueLen: ec_params_len,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_VALUE,
+                pValue: value.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulValueLen: value_len,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_LABEL,
+                pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulValueLen: label_len,
+            },
+        ];
+        if self
+            .call_get_attributes(key_handle, &mut template)?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        let curve = curve_from_der_oid(&ec_params)?;
+        let label = String::from_utf8(label_bytes)
+            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
+        // Left-pad the private scalar to the curve's field size, in case the token stripped
+        // leading zero bytes.
+        let byte_size = curve_byte_size(curve);
+        let mut d = vec![0_u8; byte_size.saturating_sub(value.len())];
+        d.extend_from_slice(&value);
+        Ok(Some(HsmObject::new(
+            KeyMaterial::EcPrivateKey(EcPrivateKeyMaterial {
+                curve,
+                d: Zeroizing::new(d),
+            }),
+            label,
+        )))
+    }
+
+    fn export_ec_public_key(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<HsmObject>> {
+        let mut template = [
+            CK_ATTRIBUTE {
+                type_: CKA_EC_PARAMS,
+                pValue: ptr::null_mut(),
+                ulValueLen: 0,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_EC_POINT,
+                pValue: ptr::null_mut(),
+                ulValueLen: 0,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_LABEL,
+                pValue: ptr::null_mut(),
+                ulValueLen: 0,
+            },
+        ];
+        if self
+            .call_get_attributes(key_handle, &mut template)?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        let ec_params_len = template[0].ulValueLen;
+        let ec_point_len = template[1].ulValueLen;
+        let label_len = template[2].ulValueLen;
+        let mut ec_params: Vec<u8> = vec![0_u8; usize::try_from(ec_params_len)?];
+        let mut ec_point: Vec<u8> = vec![0_u8; usize::try_from(ec_point_len)?];
+        let mut label_bytes: Vec<u8> = vec![0_u8; usize::try_from(label_len)?];
+        let mut template = [
+            CK_ATTRIBUTE {
+                type_: CKA_EC_PARAMS,
+                pValue: ec_params.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulValueLen: ec_params_len,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_EC_POINT,
+                pValue: ec_point.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulValueLen: ec_point_len,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_LABEL,
+                pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulValueLen: label_len,
+            },
+        ];
+        if self
+            .call_get_attributes(key_handle, &mut template)?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        let curve = curve_from_der_oid(&ec_params)?;
+        let mut label = String::from_utf8(label_bytes)
+            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
+        if !label.trim().ends_with("_pk") {
+            label = label.trim().to_owned().add("_pk");
+        }
+        let q = Self::der_octet_string_content(&ec_point)?;
+        Ok(Some(HsmObject::new(
+            KeyMaterial::EcPublicKey(EcPublicKeyMaterial { curve, q }),
+            label,
+        )))
+    }
+
+    /// PKCS#11's `CKA_EC_POINT` is a DER-encoded `OCTET STRING` wrapping the raw EC point
+    /// (typically uncompressed `0x04 || X || Y`). Strip the outer `OCTET STRING` tag/length to
+    /// recover the raw point bytes expected by KMIP's `TransparentECPublicKey.q_string`.
+    fn der_octet_string_content(der: &[u8]) -> HResult<Vec<u8>> {
+        let [tag, rest @ ..] = der else {
+            return Err(HError::Default("CKA_EC_POINT: empty DER value".to_owned()));
+        };
+        // 0x04 is the ASN.1 OCTET STRING tag.
+        if *tag != 0x04 {
+            // Some tokens return the raw point without DER wrapping; accept it as-is.
+            return Ok(der.to_vec());
+        }
+        let Some((&len_byte, rest)) = rest.split_first() else {
+            return Err(HError::Default(
+                "CKA_EC_POINT: truncated DER length".to_owned(),
+            ));
+        };
+        if len_byte & 0x80 == 0 {
+            let len = usize::from(len_byte);
+            return rest.get(..len).map(<[u8]>::to_vec).ok_or_else(|| {
+                HError::Default("CKA_EC_POINT: DER length exceeds buffer".to_owned())
+            });
+        }
+        let num_len_bytes = usize::from(len_byte & 0x7F);
+        let (len_bytes, rest) = rest.split_at_checked(num_len_bytes).ok_or_else(|| {
+            HError::Default("CKA_EC_POINT: truncated long-form DER length".to_owned())
+        })?;
+        let mut len: usize = 0;
+        for b in len_bytes {
+            len = len
+                .checked_shl(8)
+                .and_then(|v| v.checked_add(usize::from(*b)))
+                .ok_or_else(|| HError::Default("CKA_EC_POINT: DER length overflow".to_owned()))?;
+        }
+        rest.get(..len)
+            .map(<[u8]>::to_vec)
+            .ok_or_else(|| HError::Default("CKA_EC_POINT: DER length exceeds buffer".to_owned()))
     }
 
     fn export_aes_key(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<HsmObject>> {
@@ -2105,6 +2423,81 @@ impl Session {
                     rotate_generation,
                 }))
             }
+            KeyType::EcPrivateKey | KeyType::EcPublicKey => {
+                template.push(CK_ATTRIBUTE {
+                    type_: CKA_EC_PARAMS,
+                    pValue: ptr::null_mut(),
+                    ulValueLen: 0,
+                });
+                if self
+                    .call_get_attributes(key_handle, &mut template)?
+                    .is_none()
+                {
+                    return Ok(None);
+                }
+                let label_len = template
+                    .first()
+                    .ok_or_else(|| HError::Default("Failed to get template length".to_owned()))?
+                    .ulValueLen;
+                let mut label_bytes: Vec<u8> = vec![0_u8; usize::try_from(label_len)?];
+                let ec_params_len = template
+                    .get(1)
+                    .ok_or_else(|| HError::Default("Failed to get EC params length".to_owned()))?
+                    .ulValueLen;
+                let mut ec_params: Vec<u8> = vec![0_u8; usize::try_from(ec_params_len)?];
+                let mut sensitive: CK_BBOOL = CK_FALSE;
+                let mut template = vec![CK_ATTRIBUTE {
+                    type_: CKA_EC_PARAMS,
+                    pValue: ec_params.as_mut_ptr().cast::<std::ffi::c_void>(),
+                    ulValueLen: ec_params_len,
+                }];
+                if label_len > 0 {
+                    template.push(CK_ATTRIBUTE {
+                        type_: CKA_LABEL,
+                        pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
+                        ulValueLen: label_len,
+                    });
+                }
+                if key_type == KeyType::EcPrivateKey {
+                    template.push(CK_ATTRIBUTE {
+                        type_: CKA_SENSITIVE,
+                        pValue: (&raw mut sensitive).cast::<std::ffi::c_void>(),
+                        ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+                    });
+                }
+                if self
+                    .call_get_attributes(key_handle, &mut template)?
+                    .is_none()
+                {
+                    return Ok(None);
+                }
+                let curve = curve_from_der_oid(&ec_params)?;
+                let key_length_in_bits = curve.key_length_in_bits();
+
+                let mut label = if label_len == 0 {
+                    String::new()
+                } else {
+                    String::from_utf8(label_bytes).map_err(|e| {
+                        HError::Default(format!("Failed to convert label to string: {e}"))
+                    })?
+                };
+                if key_type == KeyType::EcPublicKey && !label.trim().ends_with("_pk") {
+                    label = label.trim().to_owned().add("_pk");
+                }
+                let sensitive = sensitive == CK_TRUE;
+                let (start_date, end_date) = self.get_key_dates(key_handle).unwrap_or((None, None));
+                let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
+                Ok(Some(KeyMetadata {
+                    key_type,
+                    key_length_in_bits,
+                    sensitive,
+                    id: label,
+                    start_date,
+                    end_date,
+                    rotate_name,
+                    rotate_generation,
+                }))
+            }
         }
     }
 
@@ -2142,6 +2535,48 @@ impl Session {
                     KeyType::RsaPrivateKey
                 } else {
                     KeyType::RsaPublicKey
+                }
+            }
+            CKK_EC => {
+                // Validate that the curve is one Cosmian KMS recognizes (CKA_EC_PARAMS
+                // decodes to a supported `EcCurve`). This rejects HSM objects using
+                // curves outside the FIPS-approved set (e.g. brainpool curves), keeping
+                // them excluded from generic searches/exports exactly like any other
+                // unsupported key type.
+                let mut len_template = [CK_ATTRIBUTE {
+                    type_: CKA_EC_PARAMS,
+                    pValue: ptr::null_mut(),
+                    ulValueLen: 0,
+                }];
+                if self
+                    .call_get_attributes(key_handle, &mut len_template)?
+                    .is_none()
+                {
+                    return Err(HError::Default(
+                        "Export: unable to read CKA_EC_PARAMS for EC key".to_owned(),
+                    ));
+                }
+                let ec_params_len = len_template[0].ulValueLen;
+                let mut ec_params = vec![0_u8; usize::try_from(ec_params_len)?];
+                let mut template = [CK_ATTRIBUTE {
+                    type_: CKA_EC_PARAMS,
+                    pValue: ec_params.as_mut_ptr().cast::<std::ffi::c_void>(),
+                    ulValueLen: ec_params_len,
+                }];
+                if self
+                    .call_get_attributes(key_handle, &mut template)?
+                    .is_none()
+                {
+                    return Err(HError::Default(
+                        "Export: unable to read CKA_EC_PARAMS for EC key".to_owned(),
+                    ));
+                }
+                // Reject unsupported/unrecognized curves.
+                curve_from_der_oid(&ec_params)?;
+                if class == CKO_PRIVATE_KEY {
+                    KeyType::EcPrivateKey
+                } else {
+                    KeyType::EcPublicKey
                 }
             }
             x => {

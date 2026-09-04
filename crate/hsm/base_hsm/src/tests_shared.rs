@@ -5,18 +5,26 @@
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
-use cosmian_kms_interfaces::{HSM, HsmObjectFilter, KeyMaterial, KeyType};
+use cosmian_kms_interfaces::{EcCurve, HSM, HsmObjectFilter, KeyMaterial, KeyType};
 use cosmian_logger::{debug, info, log_init, warn};
 use futures::executor::block_on;
 use libloading::Library;
+use openssl::{
+    bn::BigNumContext,
+    ec::{EcGroup, EcKey, EcPoint},
+    ecdsa::EcdsaSig,
+    hash::MessageDigest,
+    nid::Nid,
+};
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_C_INITIALIZE_ARGS, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_PTR, CK_OBJECT_HANDLE, CK_RV, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_DECRYPT,
     CKA_ECDSA_PARAMS, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_PRIVATE,
     CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP, CKF_OS_LOCKING_OK,
-    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS,
-    CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS,
-    CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKR_OK,
+    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512,
+    CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS,
+    CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS,
+    CKR_OK,
 };
 use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
@@ -277,6 +285,62 @@ pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     session.export_key(sk_handle).unwrap_err();
     let pk_handle = session.get_object_handle(pk_id.as_bytes())?;
     let _unused = session.export_key(pk_handle)?;
+    Ok(())
+}
+
+#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
+pub fn generate_ec_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    for (curve, expected_bits) in [
+        (EcCurve::P224, 224_usize),
+        (EcCurve::P256, 256),
+        (EcCurve::P384, 384),
+        (EcCurve::P521, 521),
+    ] {
+        let sk_id = Uuid::new_v4().to_string();
+        let pk_id = sk_id.clone() + "_pk";
+        let (sk_handle, pk_handle) =
+            session.generate_ec_key_pair(sk_id.as_bytes(), pk_id.as_bytes(), curve, false)?;
+        info!("Generated exportable EC ({curve:?}) key: sk: {sk_id}, pk: {pk_id}");
+        assert_eq!(sk_handle, session.get_object_handle(sk_id.as_bytes())?);
+        assert_eq!(pk_handle, session.get_object_handle(pk_id.as_bytes())?);
+        // public key should be exportable
+        let key = session
+            .export_key(pk_handle)?
+            .expect("Failed to find the public key");
+        assert_eq!(key.id(), pk_id.as_str());
+        match key.key_material() {
+            KeyMaterial::EcPublicKey(v) => {
+                assert_eq!(v.curve, curve);
+                // uncompressed X9.62 point: 0x04 || X || Y
+                assert_eq!(v.q.first().copied(), Some(0x04_u8));
+                assert_eq!(v.q.len(), 1 + 2 * expected_bits.div_ceil(8));
+            }
+            _ => panic!("Expected an EC public key"),
+        }
+        assert_eq!(
+            session.get_key_type(sk_handle)?,
+            Some(KeyType::EcPrivateKey)
+        );
+        assert_eq!(session.get_key_type(pk_handle)?, Some(KeyType::EcPublicKey));
+        let meta = session
+            .get_key_metadata(sk_handle)?
+            .expect("private key metadata must be present");
+        assert_eq!(meta.key_length_in_bits, expected_bits);
+
+        // sensitive keypair: private key material must not be exportable
+        let sensitive_sk_id = Uuid::new_v4().to_string();
+        let sensitive_pk_id = sensitive_sk_id.clone() + "_pk";
+        session.generate_ec_key_pair(
+            sensitive_sk_id.as_bytes(),
+            sensitive_pk_id.as_bytes(),
+            curve,
+            true,
+        )?;
+        let sensitive_sk_handle = session.get_object_handle(sensitive_sk_id.as_bytes())?;
+        session.export_key(sensitive_sk_handle).unwrap_err();
+    }
     Ok(())
 }
 
@@ -745,6 +809,136 @@ pub fn rsa_pss_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
         );
     }
     Ok(())
+}
+
+/// Signs data on the HSM with ECDSA (P-224/P-256/P-384/P-521, SHA-256/384/512) and
+/// independently verifies each signature with OpenSSL against the exported public key,
+/// proving that the DER re-encoding of the raw PKCS#11 `r || s` signature
+/// (`Session::ecdsa_raw_to_der`) is correct and interoperable with standard ECDSA
+/// verification. Also confirms ECDSA signing is randomized (two signatures over the
+/// same data must differ) and that tampering with the signed data is detected.
+#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
+pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let supported_mechanisms = slot.get_supported_mechanisms()?;
+    let session = slot.open_session(true)?;
+    let data = b"test data for ECDSA signing";
+
+    let algorithms = [
+        (
+            "EcdsaSha256",
+            HsmSigningAlgorithm::EcdsaSha256,
+            CKM_ECDSA_SHA256,
+            Nid::SHA256,
+        ),
+        (
+            "EcdsaSha384",
+            HsmSigningAlgorithm::EcdsaSha384,
+            CKM_ECDSA_SHA384,
+            Nid::SHA384,
+        ),
+        (
+            "EcdsaSha512",
+            HsmSigningAlgorithm::EcdsaSha512,
+            CKM_ECDSA_SHA512,
+            Nid::SHA512,
+        ),
+    ];
+
+    let mut tested = 0;
+    for curve in [EcCurve::P224, EcCurve::P256, EcCurve::P384, EcCurve::P521] {
+        let sk_id = Uuid::new_v4().to_string();
+        let pk_id = sk_id.clone() + "_pk";
+        let (sk, pk) =
+            session.generate_ec_key_pair(sk_id.as_bytes(), pk_id.as_bytes(), curve, true)?;
+        let exported_pk = session
+            .export_key(pk)?
+            .expect("Failed to export the EC public key");
+        let openssl_pk = match exported_pk.key_material() {
+            KeyMaterial::EcPublicKey(v) => ec_public_key_from_material(v)?,
+            _ => panic!("Expected an EC public key"),
+        };
+
+        for (name, algorithm, ckm, digest_nid) in algorithms {
+            if !supported_mechanisms.contains(&ckm) {
+                warn!("{curve:?}/{name} (CKM {ckm}) not supported by HSM, skipping");
+                continue;
+            }
+            let signature = session.sign(sk, algorithm, data)?;
+            verify_ecdsa_der_signature(&openssl_pk, digest_nid, data, &signature)?;
+            info!("Successfully signed and verified {curve:?}/{name}");
+
+            // ECDSA is randomized: two signatures over the same data must differ.
+            let signature_2 = session.sign(sk, algorithm, data)?;
+            assert_ne!(
+                signature, signature_2,
+                "ECDSA signing must be randomized ({curve:?}/{name})"
+            );
+            verify_ecdsa_der_signature(&openssl_pk, digest_nid, data, &signature_2)?;
+
+            // Tampering with the signed data must be detected.
+            let mut tampered = data.to_vec();
+            if let Some(first) = tampered.first_mut() {
+                *first ^= 0xFF;
+            }
+            assert!(
+                verify_ecdsa_der_signature(&openssl_pk, digest_nid, &tampered, &signature).is_err(),
+                "A tampered message must fail ECDSA verification ({curve:?}/{name})"
+            );
+            tested += 1;
+        }
+    }
+    assert!(
+        tested > 0,
+        "No ECDSA signing algorithms were supported by the HSM"
+    );
+    Ok(())
+}
+
+/// Build an OpenSSL `EcKey` from the raw uncompressed X9.62 point exported from the HSM.
+fn ec_public_key_from_material(
+    material: &cosmian_kms_interfaces::EcPublicKeyMaterial,
+) -> HResult<EcKey<openssl::pkey::Public>> {
+    let nid = match material.curve {
+        EcCurve::P224 => Nid::SECP224R1,
+        EcCurve::P256 => Nid::X9_62_PRIME256V1,
+        EcCurve::P384 => Nid::SECP384R1,
+        EcCurve::P521 => Nid::SECP521R1,
+    };
+    let group = EcGroup::from_curve_name(nid)
+        .map_err(|e| HError::Default(format!("OpenSSL EC group error: {e}")))?;
+    let mut ctx = BigNumContext::new()
+        .map_err(|e| HError::Default(format!("OpenSSL BigNumContext error: {e}")))?;
+    let point = EcPoint::from_bytes(&group, &material.q, &mut ctx)
+        .map_err(|e| HError::Default(format!("OpenSSL EC point decoding error: {e}")))?;
+    EcKey::from_public_key(&group, &point)
+        .map_err(|e| HError::Default(format!("OpenSSL EC key construction error: {e}")))
+}
+
+/// Verify a DER-encoded ECDSA signature (as produced by `Session::ecdsa_raw_to_der`) against
+/// `data` hashed with `digest_nid`, using the given OpenSSL public key.
+fn verify_ecdsa_der_signature(
+    public_key: &EcKey<openssl::pkey::Public>,
+    digest_nid: Nid,
+    data: &[u8],
+    der_signature: &[u8],
+) -> HResult<()> {
+    let digest = MessageDigest::from_nid(digest_nid)
+        .ok_or_else(|| HError::Default(format!("Unknown digest NID: {digest_nid:?}")))?;
+    let hash = openssl::hash::hash(digest, data)
+        .map_err(|e| HError::Default(format!("OpenSSL hash error: {e}")))?;
+    let sig = EcdsaSig::from_der(der_signature)
+        .map_err(|e| HError::Default(format!("Invalid DER ECDSA signature: {e}")))?;
+    let valid = sig
+        .verify(&hash, public_key)
+        .map_err(|e| HError::Default(format!("OpenSSL ECDSA verification error: {e}")))?;
+    if valid {
+        Ok(())
+    } else {
+        Err(HError::Default(
+            "ECDSA signature verification failed".to_owned(),
+        ))
+    }
 }
 
 pub fn multi_threaded_rsa(

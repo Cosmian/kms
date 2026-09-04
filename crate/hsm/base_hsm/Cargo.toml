@@ -29,3 +29,8 @@ thiserror = { workspace = true }
 time = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zeroize = { workspace = true }
+# Used exclusively by the shared HSM test suite (`tests_shared.rs`, always compiled into this
+# crate's public lib so vendor crates can reuse it) to independently verify HSM-signed ECDSA
+# signatures against the exported public key. Production signing/keygen code (`session/`,
+# `kms_hsm.rs`) does not depend on openssl — DER encoding there is done manually.
+openssl = { workspace = true }

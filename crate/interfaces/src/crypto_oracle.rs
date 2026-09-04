@@ -138,6 +138,12 @@ pub enum SigningAlgorithm {
     /// `CKM_SHA512_RSA_PKCS_PSS` (MGF1-SHA512). `salt_length` in bytes; `None` defaults to the
     /// digest length (64 bytes).
     RsaPssSha512 { salt_length: Option<u32> },
+    /// `CKM_ECDSA_SHA256`
+    EcdsaSha256,
+    /// `CKM_ECDSA_SHA384`
+    EcdsaSha384,
+    /// `CKM_ECDSA_SHA512`
+    EcdsaSha512,
 }
 
 impl SigningAlgorithm {
@@ -163,8 +169,26 @@ impl SigningAlgorithm {
                 DigitalSignatureAlgorithm::RSASSAPSS => {
                     Self::rsa_pss_from_hash_and_salt(params.hashing_algorithm, params.salt_length)
                 }
+                DigitalSignatureAlgorithm::ECDSAWithSHA256 => Ok(Self::EcdsaSha256),
+                DigitalSignatureAlgorithm::ECDSAWithSHA384 => Ok(Self::EcdsaSha384),
+                DigitalSignatureAlgorithm::ECDSAWithSHA512 => Ok(Self::EcdsaSha512),
                 other => Err(InterfaceError::InvalidRequest(format!(
                     "Unsupported digital signature algorithm for HSM signing: {other:?}"
+                ))),
+            };
+        }
+
+        // 2. cryptographic_algorithm + hashing_algorithm (EC/ECDSA)
+        if matches!(
+            params.cryptographic_algorithm,
+            Some(CryptographicAlgorithm::EC | CryptographicAlgorithm::ECDSA)
+        ) {
+            return match params.hashing_algorithm {
+                Some(HashingAlgorithm::SHA256) | None => Ok(Self::EcdsaSha256),
+                Some(HashingAlgorithm::SHA384) => Ok(Self::EcdsaSha384),
+                Some(HashingAlgorithm::SHA512) => Ok(Self::EcdsaSha512),
+                Some(other) => Err(InterfaceError::InvalidRequest(format!(
+                    "Unsupported hashing algorithm for ECDSA signing: {other:?}"
                 ))),
             };
         }

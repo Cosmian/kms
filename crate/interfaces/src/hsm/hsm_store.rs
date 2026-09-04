@@ -14,7 +14,7 @@ use cosmian_kmip::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType},
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
     },
 };
 use cosmian_logger::{debug, error, trace, warn};
@@ -22,11 +22,22 @@ use num_bigint_dig::{BigInt, Sign};
 use zeroize::Zeroizing;
 
 use crate::{
-    AtomicOperation, CryptoAlgorithm, CryptoOracle, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm,
-    HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMaterial, KeyType,
-    ObjectWithMetadata, ObjectsStore, SigningAlgorithm, UserId,
+    AtomicOperation, CryptoAlgorithm, CryptoOracle, EcCurve, HSM, HsmKeyAlgorithm,
+    HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMaterial,
+    KeyType, ObjectWithMetadata, ObjectsStore, SigningAlgorithm, UserId,
     crypto_oracle::{EncryptedContent, KeyMetadata},
 };
+
+/// Map an `EcCurve` (HSM interface curve enum) to the corresponding KMIP `RecommendedCurve`.
+/// Only the FIPS-approved NIST prime curves supported for HSM delegation are covered.
+const fn ec_curve_to_recommended_curve(curve: EcCurve) -> RecommendedCurve {
+    match curve {
+        EcCurve::P224 => RecommendedCurve::P224,
+        EcCurve::P256 => RecommendedCurve::P256,
+        EcCurve::P384 => RecommendedCurve::P384,
+        EcCurve::P521 => RecommendedCurve::P521,
+    }
+}
 
 /// A single adapter that wraps an `Arc<dyn HSM>` and implements both [`ObjectsStore`] and
 /// [`CryptoOracle`].  Callers can [`Clone`] the backend cheaply (only the inner `Arc` is
@@ -235,8 +246,10 @@ impl ObjectsStore for HsmStore {
         user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
-        if let Some((uid, _object, attributes, _tags)) = is_rsa_keypair_creation(operations) {
-            debug!("Creating RSA keypair with uid: {uid}");
+        if let Some((uid, _object, attributes, _tags, algorithm)) =
+            is_asymmetric_keypair_creation(operations)
+        {
+            debug!("Creating {algorithm:?} keypair with uid: {uid}");
             if !self.is_admin(user) {
                 return Err(InterfaceError::Unauthorized(
                     "Only the HSM Admin can create HSM keypairs".to_owned(),
@@ -244,15 +257,24 @@ impl ObjectsStore for HsmStore {
             }
             let (slot_id, sk_id) = parse_uid_with_prefix(&uid, &self.prefix)?;
             let pk_id = sk_id.clone() + SYSTEM_TAG_PUBLIC_KEY;
+            let default_key_length = match algorithm {
+                HsmKeypairAlgorithm::RSA => 2048,
+                HsmKeypairAlgorithm::EC => 256,
+            };
             self.hsm
                 .create_keypair(
                     slot_id,
                     sk_id.as_bytes(),
                     pk_id.as_bytes(),
-                    HsmKeypairAlgorithm::RSA,
-                    usize::try_from(attributes.cryptographic_length.unwrap_or(2048)).map_err(
-                        |e| InterfaceError::InvalidRequest(format!("Invalid key length: {e}")),
-                    )?,
+                    algorithm,
+                    usize::try_from(
+                        attributes
+                            .cryptographic_length
+                            .unwrap_or(default_key_length),
+                    )
+                    .map_err(|e| {
+                        InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
+                    })?,
                     attributes.sensitive.unwrap_or_default(),
                 )
                 .await?;
@@ -628,6 +650,12 @@ impl CryptoOracle for HsmStore {
                             })?;
                         CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
                     }
+                    KeyType::EcPrivateKey | KeyType::EcPublicKey => {
+                        return Err(InterfaceError::InvalidRequest(
+                            "EC keys cannot be used to encrypt: EC keys only support Sign/Verify"
+                                .to_owned(),
+                        ));
+                    }
                 },
             }
         };
@@ -670,6 +698,12 @@ impl CryptoOracle for HsmStore {
                             "An RSA public key cannot be used to decrypt".to_owned(),
                         ));
                     }
+                    KeyType::EcPrivateKey | KeyType::EcPublicKey => {
+                        return Err(InterfaceError::InvalidRequest(
+                            "EC keys cannot be used to decrypt: EC keys only support Sign/Verify"
+                                .to_owned(),
+                        ));
+                    }
                 },
             }
         };
@@ -699,10 +733,10 @@ impl CryptoOracle for HsmStore {
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
         let key_type = self.hsm.get_key_type(slot_id, key_id.as_bytes()).await?;
         match key_type {
-            Some(KeyType::RsaPrivateKey) => {}
+            Some(KeyType::RsaPrivateKey | KeyType::EcPrivateKey) => {}
             Some(other) => {
                 return Err(InterfaceError::InvalidRequest(format!(
-                    "Sign: key {uid} is a {other:?}, expected an RSA private key"
+                    "Sign: key {uid} is a {other:?}, expected an RSA or EC private key"
                 )));
             }
             None => {
@@ -793,6 +827,18 @@ fn build_sensitive_stub_attributes(meta: &KeyMetadata) -> Attributes {
                 | CryptographicUsageMask::WrapKey
                 | CryptographicUsageMask::Verify,
             KeyFormatType::PKCS1,
+        ),
+        KeyType::EcPrivateKey => (
+            CryptographicAlgorithm::EC,
+            ObjectType::PrivateKey,
+            CryptographicUsageMask::Sign,
+            KeyFormatType::TransparentECPrivateKey,
+        ),
+        KeyType::EcPublicKey => (
+            CryptographicAlgorithm::EC,
+            ObjectType::PublicKey,
+            CryptographicUsageMask::Verify,
+            KeyFormatType::TransparentECPublicKey,
         ),
     };
     // Reconstruct rotate_interval from CKA_START_DATE / CKA_END_DATE.
@@ -889,6 +935,37 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
                 },
             })
         }
+        // For EC sensitive keys (unusual but possible), same minimal SymmetricKey-shaped
+        // stub pattern as RSA above.
+        KeyType::EcPrivateKey | KeyType::EcPublicKey => {
+            let obj_type = if meta.key_type == KeyType::EcPrivateKey {
+                ObjectType::PrivateKey
+            } else {
+                ObjectType::PublicKey
+            };
+            let attributes = Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                cryptographic_length: Some(length),
+                object_type: Some(obj_type),
+                sensitive: Some(true),
+                ..Attributes::default()
+            };
+            Object::SymmetricKey(SymmetricKey {
+                key_block: KeyBlock {
+                    key_format_type: KeyFormatType::TransparentSymmetricKey,
+                    key_compression_type: None,
+                    key_value: Some(KeyValue::Structure {
+                        key_material: KmipKeyMaterial::TransparentSymmetricKey {
+                            key: zeroize::Zeroizing::new(vec![]),
+                        },
+                        attributes: Some(attributes),
+                    }),
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                    cryptographic_length: Some(length),
+                    key_wrapping_data: None,
+                },
+            })
+        }
     }
 }
 
@@ -921,6 +998,16 @@ fn build_find_attributes(meta: &Option<KeyMetadata>, filter: &HsmObjectFilter) -
                 attrs.object_type = Some(ObjectType::PublicKey);
                 attrs.key_format_type = Some(KeyFormatType::PKCS1);
             }
+            KeyType::EcPrivateKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::EC);
+                attrs.object_type = Some(ObjectType::PrivateKey);
+                attrs.key_format_type = Some(KeyFormatType::TransparentECPrivateKey);
+            }
+            KeyType::EcPublicKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::EC);
+                attrs.object_type = Some(ObjectType::PublicKey);
+                attrs.key_format_type = Some(KeyFormatType::TransparentECPublicKey);
+            }
         }
     } else {
         // No metadata available — infer from the filter
@@ -942,6 +1029,19 @@ fn build_find_attributes(meta: &Option<KeyMetadata>, filter: &HsmObjectFilter) -
                 attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
                 attrs.object_type = Some(ObjectType::PublicKey);
                 attrs.key_format_type = Some(KeyFormatType::PKCS1);
+            }
+            HsmObjectFilter::EcKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::EC);
+            }
+            HsmObjectFilter::EcPrivateKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::EC);
+                attrs.object_type = Some(ObjectType::PrivateKey);
+                attrs.key_format_type = Some(KeyFormatType::TransparentECPrivateKey);
+            }
+            HsmObjectFilter::EcPublicKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::EC);
+                attrs.object_type = Some(ObjectType::PublicKey);
+                attrs.key_format_type = Some(KeyFormatType::TransparentECPublicKey);
             }
             HsmObjectFilter::Any => {}
         }
@@ -1075,7 +1175,7 @@ fn check_basic_compatibility(
     Ok(())
 }
 
-/// The creation of RSA key pairs is done via 2 atomic operations,
+/// The creation of RSA/EC key pairs is done via 2 atomic operations,
 /// one to create the private key and one to generate the public key.
 /// All the information we need is contained in the atomic operation
 /// to create the private key, so we recover it here
@@ -1084,26 +1184,36 @@ fn check_basic_compatibility(
 /// - the UID of the private key
 /// - the object of the private key
 /// - the attributes of the private key
-fn is_rsa_keypair_creation(
+/// - the `HsmKeypairAlgorithm` to delegate key generation to (RSA or EC)
+fn is_asymmetric_keypair_creation(
     operations: &[AtomicOperation],
-) -> Option<(String, Object, Attributes, HashSet<String>)> {
+) -> Option<(
+    String,
+    Object,
+    Attributes,
+    HashSet<String>,
+    HsmKeypairAlgorithm,
+)> {
     operations.iter().find_map(|op| match op {
         AtomicOperation::Create((uid, _owner, object, attributes, tags)) => {
             if object.object_type() != ObjectType::PrivateKey {
                 return None;
             }
-            if !attributes
-                .cryptographic_algorithm
-                .as_ref()
-                .is_some_and(|algorithm| *algorithm == CryptographicAlgorithm::RSA)
-            {
-                return None;
-            }
+            let algorithm = match attributes.cryptographic_algorithm {
+                Some(CryptographicAlgorithm::RSA) => HsmKeypairAlgorithm::RSA,
+                Some(
+                    CryptographicAlgorithm::EC
+                    | CryptographicAlgorithm::ECDH
+                    | CryptographicAlgorithm::ECDSA,
+                ) => HsmKeypairAlgorithm::EC,
+                _ => return None,
+            };
             Some((
                 uid.clone(),
                 object.clone(),
                 attributes.clone(),
                 tags.clone(),
+                algorithm,
             ))
         }
         _ => None,
@@ -1298,6 +1408,100 @@ fn to_object_with_metadata(
                         i32::try_from(km.modulus.len()).map_err(|e| {
                             InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
                         })? * 8,
+                    ),
+                    key_wrapping_data: None,
+                },
+            });
+            Ok(ObjectWithMetadata::new(
+                uid.to_owned(),
+                object,
+                user.to_owned(),
+                State::Active,
+                attributes,
+            ))
+        }
+        KeyMaterial::EcPrivateKey(km) => {
+            let recommended_curve = ec_curve_to_recommended_curve(km.curve);
+            let mut attributes = Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                cryptographic_length: Some(i32::try_from(km.curve.key_length_in_bits()).map_err(
+                    |e| InterfaceError::InvalidRequest(format!("Invalid key length: {e}")),
+                )?),
+                object_type: Some(ObjectType::PrivateKey),
+                // EC HSM keys are Sign-only: they cannot Encrypt/Decrypt/Wrap/Unwrap.
+                cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
+                ..Attributes::default()
+            };
+            let mut tags: HashSet<String> =
+                serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
+            tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
+            attributes
+                .set_tags(vendor_id, tags)
+                .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
+            let kmip_key_material = KmipKeyMaterial::TransparentECPrivateKey {
+                recommended_curve,
+                d: Box::new(SafeBigInt::from_bytes_be(km.d.as_slice())),
+            };
+            let object = Object::PrivateKey(PrivateKey {
+                key_block: KeyBlock {
+                    key_format_type: KeyFormatType::TransparentECPrivateKey,
+                    key_compression_type: None,
+                    key_value: Some(KeyValue::Structure {
+                        key_material: kmip_key_material,
+                        attributes: Some(attributes.clone()),
+                    }),
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                    cryptographic_length: Some(
+                        i32::try_from(km.curve.key_length_in_bits()).map_err(|e| {
+                            InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
+                        })?,
+                    ),
+                    key_wrapping_data: None,
+                },
+            });
+            Ok(ObjectWithMetadata::new(
+                uid.to_owned(),
+                object,
+                user.to_owned(),
+                State::Active,
+                attributes,
+            ))
+        }
+        KeyMaterial::EcPublicKey(km) => {
+            let recommended_curve = ec_curve_to_recommended_curve(km.curve);
+            let mut attributes = Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                cryptographic_length: Some(i32::try_from(km.curve.key_length_in_bits()).map_err(
+                    |e| InterfaceError::InvalidRequest(format!("Invalid key length: {e}")),
+                )?),
+                object_type: Some(ObjectType::PublicKey),
+                // EC HSM keys are Verify-only: they cannot Encrypt/Wrap.
+                cryptographic_usage_mask: Some(CryptographicUsageMask::Verify),
+                ..Attributes::default()
+            };
+            let mut tags: HashSet<String> =
+                serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
+            tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
+            attributes
+                .set_tags(vendor_id, tags)
+                .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
+            let kmip_key_material = KmipKeyMaterial::TransparentECPublicKey {
+                recommended_curve,
+                q_string: km.q.clone(),
+            };
+            let object = Object::PublicKey(PublicKey {
+                key_block: KeyBlock {
+                    key_format_type: KeyFormatType::TransparentECPublicKey,
+                    key_compression_type: None,
+                    key_value: Some(KeyValue::Structure {
+                        key_material: kmip_key_material,
+                        attributes: Some(attributes.clone()),
+                    }),
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                    cryptographic_length: Some(
+                        i32::try_from(km.curve.key_length_in_bits()).map_err(|e| {
+                            InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
+                        })?,
                     ),
                     key_wrapping_data: None,
                 },
