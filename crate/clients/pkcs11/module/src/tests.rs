@@ -462,6 +462,11 @@ fn get_mechanism_info() {
         unsafe { C_GetMechanismInfo(SLOT_ID, SUPPORTED_SIGNATURE_MECHANISMS[0], &raw mut info,) },
         CKR_OK
     );
+    assert_eq!(
+        unsafe { C_GetMechanismInfo(SLOT_ID, CKM_EDDSA, &raw mut info) },
+        CKR_OK
+    );
+    assert_ne!(info.flags & CKF_MESSAGE_SIGN, 0);
     // Expect CKR_MECHANISM_INVALID if type is an unsupported mechanism.
     assert_eq!(
         unsafe { C_GetMechanismInfo(SLOT_ID, CKM_DSA, &raw mut info) },

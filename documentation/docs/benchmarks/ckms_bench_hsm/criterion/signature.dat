@@ -1,0 +1,10 @@
+# idx  ttlv-json/5.27.0  label
+0  6311.32  "hsm-ecdsa-p256/sign"
+1  6675.94  "hsm-ecdsa-p384/sign"
+2  7819.15  "hsm-eddsa-ed25519/sign"
+3  6917.31  "hsm-eddsa-ed448/sign"
+4  6629.77  "hsm-rsa-pkcs1v15-sha1/sign/2048"
+5  6802.01  "hsm-rsa-pkcs1v15-sha256/sign/2048"
+6  6704.02  "hsm-rsa-pkcs1v15-sha384/sign/2048"
+7  6023.43  "hsm-rsa-pkcs1v15-sha512/sign/2048"
+8  6358.68  "hsm-rsa-pss/sign/2048"

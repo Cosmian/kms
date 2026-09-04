@@ -19,7 +19,22 @@ use crate::{
 pub struct SignContext {
     pub algorithm: SignatureAlgorithm,
     pub private_key: Arc<dyn PrivateKey>,
+    pub operation: SignOperation,
     /// Payload stored for multipart `C_SignUpdate` operations.
+    pub payload: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignOperation {
+    Classic,
+    Message,
+}
+
+#[derive(Debug)]
+pub struct VerifyContext {
+    pub algorithm: SignatureAlgorithm,
+    pub public_key: Arc<dyn PublicKey>,
+    /// Payload stored for multipart `C_VerifyUpdate` operations.
     pub payload: Option<Vec<u8>>,
 }
 

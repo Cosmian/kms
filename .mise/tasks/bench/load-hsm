@@ -1,20 +1,45 @@
 #!/usr/bin/env -S usage bash
-#MISE description="Run load-test benchmark with a SoftHSM2-backed key_encryption_key"
+#MISE description="Run load-test benchmark with a SoftHSM2-backed KEK (default) or with crypto operations delegated directly to the HSM (--delegated)"
 #USAGE flag "-v --variant <v>"      env="BENCH_VARIANT"       default="non-fips"       help="FIPS variant"                              { choices "fips" "non-fips" }
 #USAGE flag "-l --link <l>"         env="BENCH_LINK"          default="static"          help="Linkage type"                              { choices "static" "dynamic" }
 #USAGE flag "-r --release"          env="BENCH_RELEASE"       default="true"            help="Build in release mode"
 #USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "key-creation" "sign-verify" "batch" }
-#USAGE flag "-P --protocol <p>"     env="BENCH_PROTOCOL"      default="all"             help="Protocol to benchmark"                     { choices "all" "ttlv-json" "ttlv-bytes" "jose" }
+#USAGE flag "-P --protocol <p>"     env="BENCH_PROTOCOL"      default="all"             help="Protocol to benchmark (jose is skipped with --delegated)" { choices "all" "ttlv-json" "ttlv-bytes" "jose" }
 #USAGE flag "-t --time <t>"         env="BENCH_TIME"          default="20"              help="Measurement time per level (seconds)"
 #USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16"  help="Comma-separated concurrency levels"
 #USAGE flag "-w --http-workers <n>" env="BENCH_HTTP_WORKERS"  default="32"              help="Number of Actix-web HTTP worker threads"
 #USAGE flag "-W --warmup <s>"       env="BENCH_WARMUP"        default="5"               help="Warmup time before the load sweep (seconds)"
 #USAGE flag "-C --cooldown <s>"     env="BENCH_COOLDOWN"      default="2"               help="Cooldown between concurrency levels (seconds)"
 #USAGE flag "-s --sanity"           env="BENCH_SANITY"                                  help="Quick sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt"
+#USAGE flag "-d --delegated"        env="BENCH_DELEGATED"                               help="Benchmark crypto operations executed DIRECTLY on the HSM (CryptoOracle), instead of a software KEK-wrap. See task docs below for the difference."
+#USAGE flag "--criterion"           env="BENCH_CRITERION"                               help="Also run Criterion micro-benchmarks before/alongside the load sweep"
+#USAGE flag "--speed <speed>"       env="BENCH_SPEED"         default="quick"           help="Criterion speed preset (with --criterion)" { choices "quick" "normal" "sanity" }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/bench_helpers.sh"
+
+# ── Two benchmark modes ──────────────────────────────────────────────────────
+# Default (no --delegated): the benchmarked keys are ordinary SOFTWARE keys,
+# wrapped by an HSM-resident key_encryption_key (KEK). Encrypt/Sign still
+# execute in KMS software; only the KEK unwrap touches the HSM. Results are
+# written to their own documentation/docs/benchmarks/ckms_bench_hsm_kek/
+# directory (mirrors the structure of bench/load's software-baseline report,
+# just with a different key-wrapping backend) so they never clobber that
+# baseline.
+#
+# --delegated: the benchmarked keys are `hsm::<slot>::<uuid>`-prefixed HSM-
+# RESIDENT keys. Both key generation and Encrypt/Sign are routed by the
+# server to the HSM's CryptoOracle (PKCS#11) — the crypto operation itself
+# executes ON the HSM, not in KMS software. Results are written to a
+# separate documentation/docs/benchmarks/ckms_bench_hsm/ directory so they
+# never clobber the other two reports.
+#
+# In total there are three independent benchmark reports, all linked from
+# the mdBook "Benchmarks" nav section:
+#   1. documentation/docs/benchmarks/ckms_bench/report.md      — bench/load (software baseline)
+#   2. documentation/docs/benchmarks/ckms_bench_hsm_kek/report.md — bench/load-hsm (this task, default)
+#   3. documentation/docs/benchmarks/ckms_bench_hsm/report.md  — bench/load-hsm --delegated
 
 # ── Resolve BENCH_ variables from usage-parsed lowercase names ──────────────────────
 BENCH_VARIANT="${usage_variant:-non-fips}"
@@ -28,14 +53,22 @@ BENCH_HTTP_WORKERS="${usage_http_workers:-32}"
 BENCH_WARMUP="${usage_warmup:-5}"
 BENCH_COOLDOWN="${usage_cooldown:-2}"
 BENCH_SANITY="${usage_sanity:-}"
+BENCH_DELEGATED="${usage_delegated:-false}"
+BENCH_CRITERION="${usage_criterion:-false}"
+BENCH_SPEED="${usage_speed:-quick}"
 
 kms_init_env "${BENCH_VARIANT}" "${BENCH_LINK}"
-print_header "Running load benchmark with HSM-backed KEK (${VARIANT_NAME})"
+if [ "${BENCH_DELEGATED}" = "true" ]; then
+  print_header "Running HSM-delegated crypto load benchmark (${VARIANT_NAME})"
+else
+  print_header "Running load benchmark with HSM-backed KEK (${VARIANT_NAME})"
+fi
 
 # ── Variables ────────────────────────────────────────────────────────────────
 TMP_DIR="$(mktemp -d /tmp/kms-bench-hsm-XXXXXX)"
 BUILD_MODE=$([ "${BENCH_RELEASE}" = "false" ] && echo debug || echo release)
 
+# Sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt.
 if [ "${BENCH_SANITY}" = "true" ]; then
   BUILD_MODE="debug"
   BENCH_TIME="2"
@@ -50,29 +83,197 @@ bench_register_cleanup
 # Build both server and ckms.
 bench_build_binaries "${BUILD_MODE}"
 
-BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
-
-# Start the server with SoftHSM2 HSM + key_encryption_key, then create the KEK.
-bench_start_server_hsm "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}"
-
 export CRITERION_HOME="${CRITERION_HOME:-${CARGO_TARGET_DIR}/criterion}"
 echo "Cleaning ${CRITERION_HOME}..."
 rm -rf "${CRITERION_HOME}"
 mkdir -p "${CRITERION_HOME}"
 
-# Pass HSM env vars to ckms for the benchmark requests (server handles HSM internally,
-# but ckms itself does not need PKCS#11 — plain HTTP to the KMS).
-"${CKMS_BIN}" \
-  --url "http://127.0.0.1:${BENCH_PORT}" \
-  bench \
-  --load \
-  --mode "${BENCH_MODE}" \
-  --protocol "${BENCH_PROTOCOL}" \
-  --time "${BENCH_TIME}" \
-  --load-concurrency "${BENCH_CONCURRENCY}" \
-  --warmup-time "${BENCH_WARMUP}" \
-  --cooldown-time "${BENCH_COOLDOWN}"
+bench_warn_cpu_scaling
 
-bench_generate_report "${BENCH_PORT}"
+if [ "${BENCH_DELEGATED}" != "true" ]; then
+  # ── KEK-wrap mode (default): one server, software crypto ──────────────────
+  BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
 
-print_success "HSM load benchmark completed (KEK: ${HSM_KEK_UID})"
+  # Start the server with SoftHSM2 HSM + key_encryption_key, then create the KEK.
+  bench_start_server_hsm "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}"
+
+  # Pass HSM env vars to ckms for the benchmark requests (server handles HSM internally,
+  # but ckms itself does not need PKCS#11 — plain HTTP to the KMS).
+  "${CKMS_BIN}" \
+    --url "http://127.0.0.1:${BENCH_PORT}" \
+    bench \
+    --load \
+    --mode "${BENCH_MODE}" \
+    --protocol "${BENCH_PROTOCOL}" \
+    --time "${BENCH_TIME}" \
+    --load-concurrency "${BENCH_CONCURRENCY}" \
+    --warmup-time "${BENCH_WARMUP}" \
+    --cooldown-time "${BENCH_COOLDOWN}"
+
+  # Optional Criterion micro-benchmarks (software crypto, same server).
+  if [ "${BENCH_CRITERION}" = "true" ]; then
+    "${CKMS_BIN}" \
+      --url "http://127.0.0.1:${BENCH_PORT}" \
+      bench \
+      --speed "${BENCH_SPEED}" \
+      --format json \
+      --mode "${BENCH_MODE}" \
+      --protocol "${BENCH_PROTOCOL}" \
+      --warmup-time "${BENCH_WARMUP}" \
+      --cooldown-time "${BENCH_COOLDOWN}"
+  fi
+
+  bench_generate_report "${BENCH_PORT}" "ckms_bench_hsm_kek" "false" "true"
+
+  print_success "HSM-backed KEK load benchmark completed (KEK: ${HSM_KEK_UID})"
+  exit 0
+fi
+
+# ── Delegated mode: crypto operations executed DIRECTLY on the HSM ──────────
+#
+# SoftHSM2 concurrency/cumulative-load caveat (found during validation):
+# concurrent RSA/EC key *generation* against a single SoftHSM2 token
+# progressively degrades that token — subsequent PKCS#11 operations, even
+# unrelated Encrypt/Sign calls against different keys, were observed to slow
+# from milliseconds to *minutes* per request after a batch of key creations
+# in the same session. This reproduced even with key-creation concurrency
+# capped at 4 (see PreparedLoadOp::max_concurrency in load.rs) — the KMS
+# itself caps concurrency, but SoftHSM2's degradation is cumulative per
+# token, not purely a function of peak concurrency. This is a SoftHSM2
+# limitation (a software simulator, not built for heavy concurrent/cumulative
+# key generation on one token), not a KMS defect.
+#
+# Fix: when running "all" modes, each mode gets its own fresh SoftHSM2 token
+# and its own server, so `key-creation`'s key generation never contaminates
+# the `encrypt`/`sign-verify` token. Results are merged into a single report
+# afterward (the load JSON format is one-object-per-line, so concatenation is
+# a valid merge). Single-mode runs (`--mode encrypt`, etc.) already only ever
+# touch one fresh token and need no such isolation.
+run_hsm_load() {
+  local port="$1" sub_mode="$2" concurrency="$3"
+  "${CKMS_BIN}" \
+    --url "http://127.0.0.1:${port}" \
+    bench \
+    --load \
+    --hsm \
+    --hsm-slot "${SOFTHSM2_HSM_SLOT_ID}" \
+    --mode "${sub_mode}" \
+    --protocol "${BENCH_PROTOCOL}" \
+    --time "${BENCH_TIME}" \
+    --load-concurrency "${concurrency}" \
+    --warmup-time "${BENCH_WARMUP}" \
+    --cooldown-time "${BENCH_COOLDOWN}"
+}
+
+run_hsm_criterion() {
+  local port="$1" sub_mode="$2"
+  "${CKMS_BIN}" \
+    --url "http://127.0.0.1:${port}" \
+    bench \
+    --hsm \
+    --hsm-slot "${SOFTHSM2_HSM_SLOT_ID}" \
+    --speed "${BENCH_SPEED}" \
+    --format json \
+    --mode "${sub_mode}" \
+    --protocol "${BENCH_PROTOCOL}" \
+    --warmup-time "${BENCH_WARMUP}" \
+    --cooldown-time "${BENCH_COOLDOWN}"
+}
+
+if [ "${BENCH_MODE}" = "all" ]; then
+  echo "-------------------------------------------------------------------------------"
+  echo "--delegated --mode all: running key-creation, encrypt, and sign-verify as three"
+  echo "separate SoftHSM2 sessions (each with its own fresh token), then merging the"
+  echo "results into one report. See the SoftHSM2 caveat comment in this task for why."
+  echo "-------------------------------------------------------------------------------"
+
+  MERGED_DIR="${TMP_DIR}/merged"
+  mkdir -p "${MERGED_DIR}"
+
+  # key-creation always runs at a capped concurrency (<=4) regardless of the
+  # requested sweep — mirrors PreparedLoadOp::max_concurrency, applied here
+  # too so the sub-server's own warmup/measurement loop stays safe even
+  # before the per-op cap kicks in inside ckms.
+  KEY_CREATION_CONCURRENCY="$(echo "${BENCH_CONCURRENCY}" | tr ',' '\n' | awk '$1<=4' | paste -sd, -)"
+  [ -z "${KEY_CREATION_CONCURRENCY}" ] && KEY_CREATION_CONCURRENCY="1"
+
+  SUB_MODES="key-creation encrypt sign-verify"
+  SUB_COUNT=$(echo "${SUB_MODES}" | wc -w)
+  SUB_INDEX=0
+  LAST_PORT=""
+  for SUB_MODE in ${SUB_MODES}; do
+    SUB_INDEX=$((SUB_INDEX + 1))
+    echo "=== [${SUB_INDEX}/${SUB_COUNT}] HSM submode: ${SUB_MODE} ==="
+    SUB_TMP="${TMP_DIR}/${SUB_MODE}"
+    mkdir -p "${SUB_TMP}"
+    SUB_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+    bench_start_server_hsm_resident "$SUB_PORT" "$SUB_TMP" "${BENCH_HTTP_WORKERS}"
+
+    SUB_CONCURRENCY="${BENCH_CONCURRENCY}"
+    [ "${SUB_MODE}" = "key-creation" ] && SUB_CONCURRENCY="${KEY_CREATION_CONCURRENCY}"
+
+    run_hsm_load "${SUB_PORT}" "${SUB_MODE}" "${SUB_CONCURRENCY}"
+
+    # Merge this submode's load JSONL output (concatenation is valid: one
+    # JSON object per line, no wrapping array to break).
+    for f in "${CRITERION_HOME}"/load_*.json; do
+      [ -f "$f" ] && cat "$f" >>"${MERGED_DIR}/$(basename "$f")"
+    done
+
+    if [ "${BENCH_CRITERION}" = "true" ]; then
+      run_hsm_criterion "${SUB_PORT}" "${SUB_MODE}"
+      [ -f "${CRITERION_HOME}/criterion.json" ] &&
+        cat "${CRITERION_HOME}/criterion.json" >>"${MERGED_DIR}/criterion.json"
+    fi
+
+    if [ "${SUB_INDEX}" -lt "${SUB_COUNT}" ]; then
+      bench_stop_server
+    else
+      # Keep the last submode's server up so bench_generate_report can query
+      # /version; the EXIT trap (bench_register_cleanup) stops it afterward.
+      LAST_PORT="${SUB_PORT}"
+    fi
+  done
+
+  # Replace CRITERION_HOME's load/criterion files with the merged ones so
+  # bench_generate_report picks up all three submodes' results together.
+  for f in "${MERGED_DIR}"/*; do
+    [ -s "$f" ] && cp "$f" "${CRITERION_HOME}/$(basename "$f")"
+  done
+
+  BENCH_PORT="${LAST_PORT}"
+else
+  # SoftHSM2 concurrency caveat still applies to a standalone key-creation
+  # run at high concurrency (see comment block above) — warn instead of
+  # silently degrading.
+  if [ "${BENCH_MODE}" = "key-creation" ] &&
+    echo "${BENCH_CONCURRENCY}" | grep -qE '(^|,)(8|16|32|64)(,|$)'; then
+    echo "-------------------------------------------------------------------------------"
+    echo "WARNING: --mode key-creation with concurrency >= 8 generates HSM keys at high"
+    echo "         concurrency. SoftHSM2 has been observed to degrade progressively as"
+    echo "         keys accumulate on a token — later requests in this same run may slow"
+    echo "         down. ckms itself caps key-creation load-test concurrency at 4"
+    echo "         (see PreparedLoadOp::max_concurrency), but consider a lower"
+    echo "         --concurrency here too if you see anomalous throughput."
+    echo "-------------------------------------------------------------------------------"
+  fi
+
+  BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+
+  # Start the server with an HSM backend registered but no key_encryption_key:
+  # hsm::<slot>:: keys are created directly ON the HSM and Encrypt/Sign
+  # against them execute via the HSM's CryptoOracle (PKCS#11), unlike the
+  # default (non-delegated) mode above, which only wraps a software KEK.
+  bench_start_server_hsm_resident "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}"
+
+  run_hsm_load "${BENCH_PORT}" "${BENCH_MODE}" "${BENCH_CONCURRENCY}"
+
+  # Optional Criterion micro-benchmarks (HSM-only groups) before the load sweep.
+  if [ "${BENCH_CRITERION}" = "true" ]; then
+    run_hsm_criterion "${BENCH_PORT}" "${BENCH_MODE}"
+  fi
+fi
+
+bench_generate_report "${BENCH_PORT}" "ckms_bench_hsm" "true"
+
+print_success "HSM-delegated crypto load benchmark completed"
