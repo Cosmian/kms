@@ -2570,6 +2570,42 @@ pub fn derive_key_ttlv_request(
 
 wasm_response_parser!(parse_derive_key_ttlv_response, DeriveKeyResponse);
 
+/// Build a KMIP `DeriveKey` TTLV request for asymmetric (X25519 ECDH) key agreement.
+///
+/// Derives a shared secret from a local X25519 private key and a peer's X25519
+/// public key. The result is always persisted as a `SecretData` object of 256
+/// bits (32 bytes); it is not usable directly as a symmetric key and should be
+/// expanded (e.g. via HKDF) before use.
+///
+/// - `private_key_id`: unique identifier of the local X25519 private key.
+/// - `peer_public_key_id`: unique identifier of the peer's X25519 public key.
+/// - `derived_key_id`: optional unique identifier for the newly derived secret data.
+#[wasm_bindgen]
+pub fn derive_key_asymmetric_ttlv_request(
+    private_key_id: &str,
+    peer_public_key_id: &str,
+    derived_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let derived_key_id = none_if_empty(derived_key_id);
+
+    let attributes = Attributes {
+        object_type: Some(ObjectType::SecretData),
+        unique_identifier: derived_key_id.map(UniqueIdentifier::TextString),
+        ..Attributes::default()
+    };
+
+    let request = DeriveKey::new_asymmetric(
+        UniqueIdentifier::TextString(private_key_id.to_owned()),
+        UniqueIdentifier::TextString(peer_public_key_id.to_owned()),
+        DerivationParameters::default(),
+        attributes,
+    );
+
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_derive_key_asymmetric_ttlv_response, DeriveKeyResponse);
+
 // ── ReKey (symmetric key rotation) ───────────────────────────────────────────
 
 /// Build a KMIP `ReKey` TTLV request for a symmetric key.
