@@ -68,7 +68,7 @@ debug_from_display!(
 /// This operation requests the server to generate a new managed cryptographic object. The request
 /// contains information about the type of object being created, and some of the attributes to be
 /// assigned to the object.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Create {
     /// Determines the type of object to be created
@@ -94,7 +94,7 @@ impl From<Create> for kmip_2_1::kmip_operations::Create {
 }
 
 /// Response to a Create request
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateResponse {
     /// Type of Object created
@@ -384,7 +384,7 @@ impl TryFrom<kmip_2_1::kmip_operations::ReKeyKeyPairResponse> for ReKeyKeyPairRe
 /// 4.6 Derive Key
 /// This operation requests the server to derive a symmetric key or secret data from a key or
 /// secret data that is already known to the key management system.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeriveKey {
     /// Unique identifiers of the object or objects to derive from.
