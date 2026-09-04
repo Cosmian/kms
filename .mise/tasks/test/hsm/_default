@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run all HSM tests (softhsm2, utimaco, proteccio, crypt2pay)"
+#MISE description="Run all HSM tests (softhsm2, kryoptic, utimaco, proteccio, crypt2pay)"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
@@ -19,6 +19,7 @@ DB="${usage_db:-sqlite}"
 print_header "Running all HSM tests (variant=${VARIANT_NAME}, db=${DB})"
 
 bash "${TASK_DIR}/hsm-softhsm2" --variant "$VARIANT" --link "$LINK" --db "$DB"
+bash "${TASK_DIR}/hsm-kryoptic" --variant "$VARIANT" --link "$LINK" --db "$DB"
 if [ "$(uname)" = "Linux" ]; then
   bash "${TASK_DIR}/hsm-utimaco" --variant "$VARIANT" --link "$LINK" --db "$DB"
   bash "${TASK_DIR}/hsm-proteccio" --variant "$VARIANT" --link "$LINK" --db "$DB"

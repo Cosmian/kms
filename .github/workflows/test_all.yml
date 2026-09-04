@@ -277,6 +277,7 @@ jobs:
         hsm-type:
           - utimaco
           - softhsm2
+          - kryoptic
         features: [fips, non-fips]
 
     steps:
