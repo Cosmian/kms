@@ -85,13 +85,13 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 #### GHSA-8mmx-f92q-2gq8 — `Extractable` and `NeverExtractable` not enforced on key export paths
 
-| Field      | Value                                                                             |
-| ---------- | --------------------------------------------------------------------------------- |
-| Severity   | High                                                                              |
-| Published  | Pending                                                                           |
-| Affected   | 5.0.0 – 5.27.1                                                                    |
-| Fixed in   | 5.28.0                                                                            |
-| Found by   | External reporter (GHSA-8mmx-f92q-2gq8)                                           |
+| Field      | Value                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------- |
+| Severity   | High                                                                                          |
+| Published  | Pending                                                                                       |
+| Affected   | 5.0.0 – 5.27.1                                                                                |
+| Fixed in   | 5.28.0                                                                                        |
+| Found by   | External reporter (GHSA-8mmx-f92q-2gq8)                                                       |
 | References | [GHSA-8mmx-f92q-2gq8](https://github.com/Cosmian/kms/security/advisories/GHSA-8mmx-f92q-2gq8) |
 
 **Summary:** The KMIP `Extractable` and `NeverExtractable` attributes were stored and echoed by the server but never evaluated on output paths (`Get`, `Export`, and PKCS#12 export). A key created or registered with `Extractable=false` could be exported in plaintext by any user holding a `Get` grant. Furthermore, client-supplied `NeverExtractable` values could contradict server-managed latch semantics, and PKCS#12 export routes did not validate that key-wrapping specifications provided non-empty password credentials for sensitive keys.
@@ -104,13 +104,13 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 #### GHSA-pvw2-jxwc-95xq — Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite
 
-| Field      | Value                                                                             |
-| ---------- | --------------------------------------------------------------------------------- |
-| Severity   | High                                                                              |
-| Published  | Pending                                                                           |
-| Affected   | 5.0.0 – 5.27.1                                                                    |
-| Fixed in   | 5.28.0                                                                            |
-| Found by   | External reporter (GHSA-pvw2-jxwc-95xq)                                           |
+| Field      | Value                                                                                                                                                                                                         |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | High                                                                                                                                                                                                          |
+| Published  | Pending                                                                                                                                                                                                       |
+| Affected   | 5.0.0 – 5.27.1                                                                                                                                                                                                |
+| Fixed in   | 5.28.0                                                                                                                                                                                                        |
+| Found by   | External reporter (GHSA-pvw2-jxwc-95xq)                                                                                                                                                                       |
 | References | [GHSA-pvw2-jxwc-95xq](https://github.com/Cosmian/kms/security/advisories/GHSA-pvw2-jxwc-95xq), [COSMIAN-2026-020](#cosmian-2026-020--get-grant-on-wildcard-uid--bypasses-the-createimport-authorization-gate) |
 
 **Summary:** The COSMIAN-2026-020 reserved UID check screened `AtomicOperation::Create` in `Database::atomic`, but did not screen `AtomicOperation::Upsert`. Operations such as `Certify` write via `Upsert` and take destination UIDs directly from requests without prior destination authorization, allowing re-creation of the reserved `"*"` UID and potential overwrite of existing objects owned by other users. In addition, MySQL lacked the `WHERE objects.owner=$5` SQL guard present in PostgreSQL and SQLite, and tag mutations were not gated on affected row counts.
@@ -123,13 +123,13 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 #### GHSA-c75c-3cmm-48h7 — `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant
 
-| Field      | Value                                                                             |
-| ---------- | --------------------------------------------------------------------------------- |
-| Severity   | High                                                                              |
-| Published  | Pending                                                                           |
-| Affected   | 5.0.0 – 5.27.1                                                                    |
-| Fixed in   | 5.28.0                                                                            |
-| Found by   | External reporter (GHSA-c75c-3cmm-48h7)                                           |
+| Field      | Value                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------- |
+| Severity   | High                                                                                          |
+| Published  | Pending                                                                                       |
+| Affected   | 5.0.0 – 5.27.1                                                                                |
+| Fixed in   | 5.28.0                                                                                        |
+| Found by   | External reporter (GHSA-c75c-3cmm-48h7)                                                       |
 | References | [GHSA-c75c-3cmm-48h7](https://github.com/Cosmian/kms/security/advisories/GHSA-c75c-3cmm-48h7) |
 
 **Summary:** `Sensitive` export enforcement prevents plaintext retrieval of keys flagged sensitive unless wrapped. However, `DeleteAttribute` permitted removal of `Sensitive` and `Extractable` attributes, and `retrieve_object_for_operation`'s permission check allowed any caller with a read-only `Get` grant to invoke `DeleteAttribute`, `SetAttribute`, `ModifyAttribute`, or `AddAttribute` on the target object. A user with read-only access to another user's sensitive key could strip `Sensitive` or toggle `Extractable` and subsequently read the plaintext key material.
@@ -142,13 +142,13 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 #### COSMIAN-2026-022 — PKCS#11 attribute buffer overflow in C_GetAttributeValue
 
-| Field      | Value                                                                 |
-| ---------- | --------------------------------------------------------------------- |
-| Severity   | High                                                                  |
-| Published  | 5 September 2026                                                      |
-| Affected   | from 5.17.0 before 5.27.0                                            |
-| Fixed in   | 5.27.0                                                                |
-| Found by   | Internal AI-assisted security review                                 |
+| Field      | Value                                                                         |
+| ---------- | ----------------------------------------------------------------------------- |
+| Severity   | High                                                                          |
+| Published  | 5 September 2026                                                              |
+| Affected   | from 5.17.0 before 5.27.0                                                     |
+| Fixed in   | 5.27.0                                                                        |
+| Found by   | Internal AI-assisted security review                                          |
 | References | [#1153](https://github.com/Cosmian/kms/issues/1153), `CHANGELOG/pkcs11_v3.md` |
 
 **Summary:** The PKCS#11 provider's `C_GetAttributeValue` implementation replaced each caller-provided `ulValueLen` capacity with the required attribute length before checking whether the destination buffer was large enough. The subsequent comparison therefore always succeeded and copied the full attribute into an undersized non-null buffer.
@@ -778,40 +778,44 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 ## Summary Table
 
-| ID               | Severity | Affected                | Fixed in | Title                                                               |
-| ---------------- | -------- | ----------------------- | -------- | ------------------------------------------------------------------- |
-| COSMIAN-2026-021 | High     | 5.0.0 – 5.26.x          | 5.27.0   | SSRF via CRL Distribution Points in KMIP Validate/Import            |
-| COSMIAN-2026-020 | Critical | 5.0.0 – 5.26.0          | 5.27.0   | `Get` grant on wildcard uid `*` bypasses Create/Import gate         |
-| COSMIAN-2026-019 | Low      | 5.0.0 – 5.22.x          | 5.23.0   | RUSTSEC-2026-0173: proc-macro-error2 via mysql_async (compile-time) |
-| COSMIAN-2026-018 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Activate uses overly permissive authorization check                 |
-| COSMIAN-2026-017 | Critical | 5.0.0 – 5.22.x          | 5.23.0   | ReKey / ReKeyKeyPair authorization bypass                           |
-| COSMIAN-2026-016 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Attribute-mutation authorization bypass via incorrect op type       |
-| COSMIAN-2026-015 | High     | 5.0.0 – 5.21.x          | 5.22.0   | KEK plaintext leak via UsageLimits persist in Decrypt/Sign          |
-| COSMIAN-2026-014 | Low      | 5.0.0 – 5.21.0          | 5.22.0   | Sensitive config values exposed in Debug output                     |
-| COSMIAN-2026-013 | Moderate | 5.0.0 – 5.21.0          | 5.22.0   | Internal error details leaked in HTTP 5xx responses                 |
-| COSMIAN-2026-012 | Low      | 5.0.0 – 5.21.0          | 5.22.0   | `/server-info` endpoint accessible without authentication           |
-| COSMIAN-2026-011 | Moderate | 5.0.0 – 5.21.0          | 5.22.0   | Non-atomic state transitions enable TOCTOU races                    |
-| COSMIAN-2026-010 | Moderate | 5.15.0 – 5.21.0         | 5.22.0   | Predictable default session cookie salt                             |
-| COSMIAN-2026-009 | High     | 5.0.0 – 5.21.0          | 5.22.0   | Google CSE rewrap SSRF via `original_kacls_url`                     |
-| COSMIAN-2026-008 | High     | 5.0.0 – 5.21.0          | 5.22.0   | Unwrap cache not invalidated on key revocation/destruction          |
-| COSMIAN-2026-007 | High     | 5.0.0 – 5.21.0          | 5.22.0   | MS DKE scope missing authentication middleware                      |
-| COSMIAN-2026-006 | High     | 5.17.0 – 5.21.0         | 5.22.0   | Server crash via tracing span misuse                                |
-| COSMIAN-2026-005 | High     | 5.17.0 – 5.20.1         | 5.21.0   | JWT race condition / algorithm confusion                            |
-| COSMIAN-2026-004 | Critical | 5.0.0+ (with HTTP OTLP) | 5.22.0   | Plaintext OTLP export leaks encryption query metadata               |
-| COSMIAN-2026-003 | Critical | 5.0.0 – 5.16.2          | 5.17.0   | Import `replace_existing` ownership bypass                          |
-| COSMIAN-2026-002 | Critical | 5.0.0 – 5.16.2          | 5.17.0   | SipHash key hardcoded to zero                                       |
-| COSMIAN-2025-012 | High     | 5.0.0 – 5.14.1          | 5.15.0   | Session cookie key randomly regenerated on restart                  |
-| COSMIAN-2025-011 | High     | 5.0.0 – 5.14.1          | 5.15.0   | RUSTSEC-2023-0071: RSA Marvin Attack timing side-channel            |
-| COSMIAN-2025-010 | High     | 5.0.0 – 5.13.0          | 5.14.0   | JWT token not forwarded to downstream services                      |
-| COSMIAN-2025-009 | Critical | 5.0.0 – 5.12.0          | 5.13.0   | HSM unwrap bypasses KMS permission checks                           |
-| COSMIAN-2025-008 | Critical | 5.0.0 – 5.7.0           | 5.8.0    | Google CSE `privilegedunwrap` unrestricted access                   |
-| COSMIAN-2025-007 | High     | 5.0.0 – 5.6.1           | 5.6.2    | OIDC silently falls back to no-auth on TLS failure                  |
-| COSMIAN-2025-006 | High     | 5.0.0 – 5.0.0           | 5.1.0    | Missing PKCE in OAuth2 authentication flow                          |
-| COSMIAN-2025-005 | High     | 5.0.0 – 5.1.0           | 5.1.1    | JWT config loop — only first OIDC provider checked                  |
-| COSMIAN-2025-004 | High     | 5.0.0 – 5.14.1          | 5.15.0   | OpenSSL 3.x CVEs (upgrade to 3.6.2)                                 |
-| COSMIAN-2025-003 | High     | 5.0.0 – 5.15.0          | 5.16.0   | glibc CVEs in container base image                                  |
-| COSMIAN-2025-002 | Moderate | 5.0.0 – 5.12.0          | 5.12.1   | Negative X.509 certificate serial numbers                           |
-| COSMIAN-2025-001 | Moderate | 5.0.0 – 5.7.0           | 5.8.0    | CSE migration key pair race condition                               |
+| ID                  | Severity | Affected                | Fixed in | Title                                                                                         |
+| ------------------- | -------- | ----------------------- | -------- | --------------------------------------------------------------------------------------------- |
+| GHSA-8mmx-f92q-2gq8 | High     | 5.0.0 – 5.27.1          | 5.28.0   | `Extractable` and `NeverExtractable` not enforced on key export paths                         |
+| GHSA-pvw2-jxwc-95xq | High     | 5.0.0 – 5.27.1          | 5.28.0   | Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite |
+| GHSA-c75c-3cmm-48h7 | High     | 5.0.0 – 5.27.1          | 5.28.0   | `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant                   |
+| COSMIAN-2026-022    | High     | 5.17.0 – 5.26.x         | 5.27.0   | PKCS#11 attribute buffer overflow in `C_GetAttributeValue`                                    |
+| COSMIAN-2026-021    | High     | 5.0.0 – 5.26.x          | 5.27.0   | SSRF via CRL Distribution Points in KMIP Validate/Import                                      |
+| COSMIAN-2026-020    | Critical | 5.0.0 – 5.26.0          | 5.27.0   | `Get` grant on wildcard uid `*` bypasses Create/Import gate                                   |
+| COSMIAN-2026-019    | Low      | 5.0.0 – 5.22.x          | 5.23.0   | RUSTSEC-2026-0173: proc-macro-error2 via mysql_async (compile-time)                           |
+| COSMIAN-2026-018    | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Activate uses overly permissive authorization check                                           |
+| COSMIAN-2026-017    | Critical | 5.0.0 – 5.22.x          | 5.23.0   | ReKey / ReKeyKeyPair authorization bypass                                                     |
+| COSMIAN-2026-016    | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Attribute-mutation authorization bypass via incorrect op type                                 |
+| COSMIAN-2026-015    | High     | 5.0.0 – 5.21.x          | 5.22.0   | KEK plaintext leak via UsageLimits persist in Decrypt/Sign                                    |
+| COSMIAN-2026-014    | Low      | 5.0.0 – 5.21.0          | 5.22.0   | Sensitive config values exposed in Debug output                                               |
+| COSMIAN-2026-013    | Moderate | 5.0.0 – 5.21.0          | 5.22.0   | Internal error details leaked in HTTP 5xx responses                                           |
+| COSMIAN-2026-012    | Low      | 5.0.0 – 5.21.0          | 5.22.0   | `/server-info` endpoint accessible without authentication                                     |
+| COSMIAN-2026-011    | Moderate | 5.0.0 – 5.21.0          | 5.22.0   | Non-atomic state transitions enable TOCTOU races                                              |
+| COSMIAN-2026-010    | Moderate | 5.15.0 – 5.21.0         | 5.22.0   | Predictable default session cookie salt                                                       |
+| COSMIAN-2026-009    | High     | 5.0.0 – 5.21.0          | 5.22.0   | Google CSE rewrap SSRF via `original_kacls_url`                                               |
+| COSMIAN-2026-008    | High     | 5.0.0 – 5.21.0          | 5.22.0   | Unwrap cache not invalidated on key revocation/destruction                                    |
+| COSMIAN-2026-007    | High     | 5.0.0 – 5.21.0          | 5.22.0   | MS DKE scope missing authentication middleware                                                |
+| COSMIAN-2026-006    | High     | 5.17.0 – 5.21.0         | 5.22.0   | Server crash via tracing span misuse                                                          |
+| COSMIAN-2026-005    | High     | 5.17.0 – 5.20.1         | 5.21.0   | JWT race condition / algorithm confusion                                                      |
+| COSMIAN-2026-004    | Critical | 5.0.0+ (with HTTP OTLP) | 5.22.0   | Plaintext OTLP export leaks encryption query metadata                                         |
+| COSMIAN-2026-003    | Critical | 5.0.0 – 5.16.2          | 5.17.0   | Import `replace_existing` ownership bypass                                                    |
+| COSMIAN-2026-002    | Critical | 5.0.0 – 5.16.2          | 5.17.0   | SipHash key hardcoded to zero                                                                 |
+| COSMIAN-2025-012    | High     | 5.0.0 – 5.14.1          | 5.15.0   | Session cookie key randomly regenerated on restart                                            |
+| COSMIAN-2025-011    | High     | 5.0.0 – 5.14.1          | 5.15.0   | RUSTSEC-2023-0071: RSA Marvin Attack timing side-channel                                      |
+| COSMIAN-2025-010    | High     | 5.0.0 – 5.13.0          | 5.14.0   | JWT token not forwarded to downstream services                                                |
+| COSMIAN-2025-009    | Critical | 5.0.0 – 5.12.0          | 5.13.0   | HSM unwrap bypasses KMS permission checks                                                     |
+| COSMIAN-2025-008    | Critical | 5.0.0 – 5.7.0           | 5.8.0    | Google CSE `privilegedunwrap` unrestricted access                                             |
+| COSMIAN-2025-007    | High     | 5.0.0 – 5.6.1           | 5.6.2    | OIDC silently falls back to no-auth on TLS failure                                            |
+| COSMIAN-2025-006    | High     | 5.0.0 – 5.0.0           | 5.1.0    | Missing PKCE in OAuth2 authentication flow                                                    |
+| COSMIAN-2025-005    | High     | 5.0.0 – 5.1.0           | 5.1.1    | JWT config loop — only first OIDC provider checked                                            |
+| COSMIAN-2025-004    | High     | 5.0.0 – 5.14.1          | 5.15.0   | OpenSSL 3.x CVEs (upgrade to 3.6.2)                                                           |
+| COSMIAN-2025-003    | High     | 5.0.0 – 5.15.0          | 5.16.0   | glibc CVEs in container base image                                                            |
+| COSMIAN-2025-002    | Moderate | 5.0.0 – 5.12.0          | 5.12.1   | Negative X.509 certificate serial numbers                                                     |
+| COSMIAN-2025-001    | Moderate | 5.0.0 – 5.7.0           | 5.8.0    | CSE migration key pair race condition                                                         |
 
 ---
 
