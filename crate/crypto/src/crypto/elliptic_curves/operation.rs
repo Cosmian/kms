@@ -25,6 +25,8 @@ use openssl::{
     nid::Nid,
     pkey::PKey,
 };
+#[cfg(feature = "non-fips")]
+use openssl::{pkey::Id, pkey_ctx::PkeyCtx};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -265,6 +267,42 @@ pub fn create_x25519_key_pair(
         private_key_attributes,
         public_key_attributes,
     )
+}
+
+/// Perform an X25519 key agreement and return the 32-byte shared secret.
+#[cfg(feature = "non-fips")]
+pub fn x25519_key_agreement(
+    private_key_bytes: &[u8],
+    peer_public_key_bytes: &[u8],
+) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+    let private_key = PKey::private_key_from_raw_bytes(private_key_bytes, Id::X25519)?;
+    let peer_public_key = PKey::public_key_from_raw_bytes(peer_public_key_bytes, Id::X25519)?;
+    let mut ctx = PkeyCtx::new(&private_key)?;
+    ctx.derive_init()?;
+    ctx.derive_set_peer(&peer_public_key).map_err(|_error| {
+        CryptoError::Derivation(
+            "X25519 key agreement failed for invalid peer public key".to_owned(),
+        )
+    })?;
+
+    let mut shared_secret = Zeroizing::new(vec![0_u8; 32]);
+    let secret_len = ctx.derive(Some(&mut shared_secret)).map_err(|_error| {
+        CryptoError::Derivation(
+            "X25519 key agreement failed for invalid peer public key".to_owned(),
+        )
+    })?;
+    if secret_len != shared_secret.len() {
+        crypto_bail!(CryptoError::Derivation(
+            "X25519 key agreement returned an unexpected shared-secret length".to_owned()
+        ));
+    }
+    if shared_secret.iter().all(|byte| *byte == 0) {
+        crypto_bail!(CryptoError::Derivation(
+            "X25519 key agreement failed for invalid peer public key".to_owned()
+        ));
+    }
+
+    Ok(shared_secret)
 }
 
 /// Generate a SEC 2 Key Pair. Not FIPS 140-3 compliant.
@@ -637,7 +675,7 @@ mod tests {
     use super::{check_ecc_mask_against_flags, check_ecc_mask_algorithm_compliance};
     use super::{create_approved_ecc_key_pair, create_ed25519_key_pair};
     #[cfg(feature = "non-fips")]
-    use super::{create_x448_key_pair, create_x25519_key_pair};
+    use super::{create_x448_key_pair, create_x25519_key_pair, x25519_key_agreement};
     #[cfg(not(feature = "non-fips"))]
     use crate::crypto::elliptic_curves::operation::create_ed448_key_pair;
     #[cfg(feature = "non-fips")]
@@ -695,6 +733,82 @@ mod tests {
             pubkey1.public_key_to_der().unwrap(),
             pubkey2.public_key_to_der().unwrap()
         );
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_x25519_key_agreement_rfc_7748_vectors() {
+        let alice_private = decode_test_hex(
+            "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a",
+            "alice private",
+        );
+        let alice_public = decode_test_hex(
+            "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a",
+            "alice public",
+        );
+        let bob_private = decode_test_hex(
+            "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb",
+            "bob private",
+        );
+        let bob_public = decode_test_hex(
+            "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f",
+            "bob public",
+        );
+        let expected_shared_secret = decode_test_hex(
+            "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742",
+            "shared secret",
+        );
+
+        let shared_ab_result = x25519_key_agreement(&alice_private, &bob_public);
+        assert!(
+            shared_ab_result.is_ok(),
+            "alice/bob derivation failed: {shared_ab_result:?}"
+        );
+        let Ok(shared_ab) = shared_ab_result else {
+            return;
+        };
+        let shared_ba_result = x25519_key_agreement(&bob_private, &alice_public);
+        assert!(
+            shared_ba_result.is_ok(),
+            "bob/alice derivation failed: {shared_ba_result:?}"
+        );
+        let Ok(shared_ba) = shared_ba_result else {
+            return;
+        };
+
+        assert_eq!(shared_ab.as_slice(), expected_shared_secret.as_slice());
+        assert_eq!(shared_ba.as_slice(), expected_shared_secret.as_slice());
+        assert_eq!(shared_ab.as_slice(), shared_ba.as_slice());
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_x25519_key_agreement_rejects_all_zero_shared_secret() {
+        let private_key = decode_test_hex(
+            "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a",
+            "private key",
+        );
+        let low_order_public_key = vec![0_u8; 32];
+
+        let agreement_result = x25519_key_agreement(&private_key, &low_order_public_key);
+        assert!(
+            agreement_result.is_err(),
+            "X25519 key agreement must reject an invalid peer public key"
+        );
+        let Err(error) = agreement_result else {
+            return;
+        };
+        assert!(
+            error.to_string().contains("invalid peer public key"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[cfg(feature = "non-fips")]
+    fn decode_test_hex(hex_value: &str, label: &str) -> Vec<u8> {
+        let decoded = hex::decode(hex_value);
+        assert!(decoded.is_ok(), "invalid {label} test vector: {decoded:?}");
+        decoded.unwrap_or_else(|_| Vec::new())
     }
 
     #[expect(clippy::expect_used, clippy::panic)]
