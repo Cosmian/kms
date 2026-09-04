@@ -257,15 +257,13 @@ echo "ASE is ready."
 echo
 echo "==> Deploying libcosmian_pkcs11.so and ckms.toml into the ASE container…"
 
-# SAP requires the PKCS#11 module to live under $SYBASE/ASE-16_x/lib.
+# SAP requires the PKCS#11 module to live under $SYBASE/ASE-16_x/lib and
+# `sp_encryption 'hsm_credential'` only accepts a bare filename in `lib=`
+# (a full path is rejected with "Extra or invalid option" — Msg 15471).
 ASE_HOME=$(docker exec "${ASE_CONTAINER_NAME}" bash -c 'ls -d /opt/sap/ASE-16_*' | head -1)
 ASE_LIB_DIR="${ASE_HOME}/lib"
 ASE_SSL_DIR="${ASE_HOME}/ssl"
 PKCS11_MODULE_NAME="cosmian_pkcs11.so"
-# `sp_encryption 'hsm_credential'` requires the full absolute path in `lib=` —
-# a bare filename is not resolved against the dataserver process's own
-# LD_LIBRARY_PATH and fails with "Cannot load PKCS#11 dynamic load libraries".
-PKCS11_MODULE_PATH="${ASE_LIB_DIR}/${PKCS11_MODULE_NAME}"
 
 # The provider loads ckms.toml alongside the library (or via CKMS_CONF).
 ASE_CKMS_CONF="${KMS_SQLITE_DIR}/ase_ckms.toml"
@@ -282,6 +280,12 @@ docker cp "${CLIENT_P12}" "${ASE_CONTAINER_NAME}:${ASE_SSL_DIR}/client.p12"
 docker cp "${ASE_CKMS_CONF}" "${ASE_CONTAINER_NAME}:${ASE_LIB_DIR}/ckms.toml"
 echo "==> PASS: PKCS#11 module and KMS client config deployed."
 
+# Diagnostic: dump the module's shared-library dependencies so a dlopen
+# failure (SAP Msg 15147 "Cannot load PKCS#11 dynamic load libraries") can be
+# root-caused from the CI log instead of guessing.
+echo "==> ldd ${ASE_LIB_DIR}/${PKCS11_MODULE_NAME} (inside ASE container):"
+docker exec "${ASE_CONTAINER_NAME}" bash -c "ldd '${ASE_LIB_DIR}/${PKCS11_MODULE_NAME}' 2>&1 || true"
+
 # ── Step 8: Configure ASE for HSM-backed encryption via PKCS#11 ──────────────
 # SAP's documented prerequisites/format for `sp_encryption 'hsm_credential'`:
 #   sp_configure 'external keystore', 0, 'HSM'
@@ -292,7 +296,7 @@ echo "==> PASS: PKCS#11 module and KMS client config deployed."
 # exists on the ASE side — everything KMIP-related lives inside the PKCS#11
 # module, invisible to ASE.
 echo
-echo "==> Configuring ASE HSM credential (lib=${PKCS11_MODULE_PATH}, slot=${PKCS11_SLOT})…"
+echo "==> Configuring ASE HSM credential (lib=${PKCS11_MODULE_NAME}, slot=${PKCS11_SLOT})…"
 
 _isql_env='
   export SYBASE=/opt/sap
@@ -307,7 +311,7 @@ ISQL=\"\${SYBASE}/\${SYBASE_OCS}/bin/isql\"
 printf \"sp_configure 'external keystore', 0, 'HSM'\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
 printf \"sp_configure 'enable encrypted columns', 1\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
 printf \"sp_encryption 'system_encr_passwd', 'MasterPass1!'\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
-printf \"sp_encryption 'hsm_credential', 'lib=${PKCS11_MODULE_PATH}; pin=${PKCS11_PIN}; slot=${PKCS11_SLOT}'\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
+printf \"sp_encryption 'hsm_credential', 'lib=${PKCS11_MODULE_NAME}; pin=${PKCS11_PIN}; slot=${PKCS11_SLOT}'\ngo\n\" | \"\${ISQL}\" -S SAPASE -U sa -P '${ASE_SA_PASSWORD}' -w 200 2>&1
 echo 'ASE_HSM_CFG_DONE'
 " 2>&1 || true)
 
