@@ -135,40 +135,8 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
             SigningAlgorithm::Sha256WithRsa => Self::Sha256WithRsa,
             SigningAlgorithm::Sha384WithRsa => Self::Sha384WithRsa,
             SigningAlgorithm::Sha512WithRsa => Self::Sha512WithRsa,
-            SigningAlgorithm::RsaPss {
-                hashing_algorithm,
-                mask_generator_hashing_algorithm,
-                salt_length,
-                prehashed,
-            } => Self::RsaPss {
-                hashing_algorithm,
-                mask_generator_hashing_algorithm,
-                salt_length,
-                prehashed,
-            },
-            SigningAlgorithm::Ecdsa {
-                hashing_algorithm,
-                prehashed,
-            } => Self::Ecdsa {
-                hashing_algorithm,
-                prehashed,
-            },
-            #[cfg(feature = "non-fips")]
-            SigningAlgorithm::Ed25519 => Self::Ed25519,
-            #[cfg(feature = "non-fips")]
-            SigningAlgorithm::Ed448 => Self::Ed448,
         }
     }
-}
-
-/// Returns `true` for return codes that indicate the requested mechanism (or its
-/// parameters) is simply not supported by the loaded PKCS#11 library — as opposed to
-/// a hard failure. Callers use this to gracefully degrade (e.g. report the mechanism
-/// as unavailable) instead of surfacing a generic HSM error, mirroring the additive,
-/// non-breaking philosophy already established for the v3.0 capability probes in
-/// `HsmLib` (issue #1153).
-const fn is_mechanism_unsupported_rv(rv: pkcs11_sys::CK_RV) -> bool {
-    rv == CKR_MECHANISM_INVALID || rv == CKR_MECHANISM_PARAM_INVALID
 }
 
 /// An active PKCS#11 session with an HSM.
