@@ -189,13 +189,17 @@ CREATE TABLE IF NOT EXISTS crypto_officer_activations (
 INSERT INTO crypto_officer_activations (sealed_record, activated_by)
         VALUES ($1, $2);
 
--- name: select-active-crypto-officer-activation
-SELECT sealed_record FROM crypto_officer_activations WHERE revoked_at IS NULL
+-- name: select-active-crypto-officer-activation-by
+SELECT sealed_record FROM crypto_officer_activations
+        WHERE activated_by = $1 AND revoked_at IS NULL
         ORDER BY activated_at DESC LIMIT 1;
+
+-- name: select-any-active-crypto-officer-activation
+SELECT COUNT(*) FROM crypto_officer_activations WHERE revoked_at IS NULL;
 
 -- name: revoke-crypto-officer-activation
 UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP, revoked_by = $1
-        WHERE revoked_at IS NULL;
+        WHERE activated_by = $2 AND revoked_at IS NULL;
 
 -- name: count-all-non-destroyed
 SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';

@@ -93,65 +93,59 @@ impl Database {
 
     /// Record that the Crypto Officer split-key ceremony has been completed.
     ///
-    /// Revokes any existing active ceremony record before inserting the new one,
-    /// ensuring at most one active record exists at any time.
+    /// **Per-user model**: multiple CO users can be simultaneously active. This call
+    /// only touches the record for `activated_by` — no other user's activation is
+    /// affected. Each CO candidate activates independently by running `JoinSplitKey`.
     pub async fn activate_crypto_officer_ceremony(
         &self,
         activated_by: &str,
         participants: &[String],
         key_hash: &str,
     ) -> DbResult<()> {
-        // Revoke any existing active record to prevent multiple active rows.
-        // Failure is expected when no prior activation exists.
-        drop(
-            self.permissions
-                .revoke_crypto_officer_activation(activated_by)
-                .await,
-        );
         let sealed =
             self.seal_ceremony_record(activated_by, participants, key_hash, "crypto_officer")?;
+        // The trait implementation performs revoke+insert in one atomic transaction,
+        // scoped to `activated_by` only — idempotent re-activation for the same user.
         Ok(self
             .permissions
-            .activate_crypto_officer_ceremony(&sealed, activated_by)
+            .activate_crypto_officer_ceremony(&sealed, activated_by, activated_by)
             .await?)
     }
 
-    /// Returns `true` if there is an active (not revoked) Crypto Officer ceremony record.
+    /// Returns `true` if **any** user currently has an active Crypto Officer ceremony record.
     pub async fn is_crypto_officer_activated(&self) -> DbResult<bool> {
-        let sealed_opt = self.permissions.get_crypto_officer_activation().await?;
+        Ok(self.permissions.is_any_crypto_officer_activated().await?)
+    }
+
+    /// Returns `true` if `user` has their own active Crypto Officer ceremony record.
+    ///
+    /// Other users in `crypto_officer_users` may simultaneously be active COs with
+    /// their own independent activation records.
+    pub async fn is_crypto_officer_activated_by(&self, user: &str) -> DbResult<bool> {
+        let sealed_opt = self
+            .permissions
+            .get_crypto_officer_activation_by(user)
+            .await?;
         self.verify_ceremony_record(sealed_opt, "crypto_officer")
     }
 
-    /// Returns `true` if there is an active Crypto Officer ceremony record **and** the
-    /// `activated_by` field of that record equals `user`.
+    /// Revoke `activated_by`'s active Crypto Officer ceremony record.
     ///
-    /// This ensures that only the specific user who ran `JoinSplitKey` is granted the
-    /// `CryptoOfficer` role — other users in `crypto_officer_users` remain Operators until
-    /// they complete their own ceremony.
-    pub async fn is_crypto_officer_activated_by(&self, user: &str) -> DbResult<bool> {
-        let sealed_opt = self.permissions.get_crypto_officer_activation().await?;
-        match sealed_opt {
-            None => Ok(false),
-            Some(sealed) => {
-                let keys = self.ceremony_keys.as_ref().ok_or_else(|| {
-                    DbError::DatabaseError(
-                        "ceremony_secret not configured: cannot verify ceremony record".to_owned(),
-                    )
-                })?;
-                let payload = keys.unseal(&sealed, "crypto_officer")?;
-                Ok(payload.activated_by == user)
-            }
-        }
-    }
-
-    /// Revoke the active Crypto Officer ceremony record (set `revoked_at` to now).
-    pub async fn revoke_crypto_officer_activation(&self, revoked_by: &str) -> DbResult<()> {
+    /// `revoked_by` is stored in the audit column (who issued the revocation).
+    /// Only `activated_by`'s record is touched — all other users' records remain active.
+    pub async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> DbResult<()> {
         Ok(self
             .permissions
-            .revoke_crypto_officer_activation(revoked_by)
+            .revoke_crypto_officer_activation(revoked_by, activated_by)
             .await?)
     }
+}
 
+impl Database {
     // ── CRL persistence ─────────────────────────────────────────────────────
 
     /// Persist (or replace) the most recently generated CRL for `issuer_id`.

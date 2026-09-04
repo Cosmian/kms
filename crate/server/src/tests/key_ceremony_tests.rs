@@ -915,7 +915,7 @@ async fn test_full_four_phase_ceremony_with_production_users() -> KResult<()> {
 
     // ── Phase 4: Disable ceremony ─────────────────────────────────────────────
     kms.database
-        .revoke_crypto_officer_activation(user_co)
+        .revoke_crypto_officer_activation(user_co, user_co)
         .await?;
 
     assert!(
@@ -965,7 +965,9 @@ async fn test_revoke_and_reactivate_ceremony() -> KResult<()> {
     );
 
     // ── Revoke ────────────────────────────────────────────────────────────────
-    kms.database.revoke_crypto_officer_activation(alice).await?;
+    kms.database
+        .revoke_crypto_officer_activation(alice, alice)
+        .await?;
     assert!(
         !kms.is_crypto_officer(&UserId::from(alice)).await?,
         "Alice must be Operator after revoke"
@@ -1033,7 +1035,9 @@ async fn test_post_revocation_co_is_demoted_to_operator() -> KResult<()> {
     assert!(kms.is_crypto_officer(&UserId::from(alice)).await?);
 
     // Revoke.
-    kms.database.revoke_crypto_officer_activation(alice).await?;
+    kms.database
+        .revoke_crypto_officer_activation(alice, alice)
+        .await?;
 
     // Alice is now Operator — must not be CO.
     assert!(
@@ -1043,17 +1047,17 @@ async fn test_post_revocation_co_is_demoted_to_operator() -> KResult<()> {
     Ok(())
 }
 
-// ─── Test 17: 3-CO case — sequential activation (single-active-CO design) ────
+// ─── Test 17: 3-CO case — simultaneous activation (per-user design) ─────────
 
-/// The DB supports ONE global active CO at a time (the most recently activated user).
-/// With 3 CO candidates, each can activate in sequence. When B activates after A,
-/// only B is CO; A is no longer CO.  This reflects the current single-record design.
+/// Per-user model: each CO candidate activates independently. Multiple CO users
+/// can be simultaneously active. When Carol activates after Alice, Alice remains
+/// an active CO — Carol's activation does NOT demote Alice.
 ///
-/// Sequence: alice activates → alice is CO; bob activates → bob is CO, alice is not;
-/// alice revokes bob's activation and re-activates → alice is CO again.
+/// Sequence: alice activates → alice is CO; carol activates → carol AND alice are
+/// both CO simultaneously; bob never activates → bob is still Operator.
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn test_three_co_sequential_activation_single_record_design() -> KResult<()> {
+async fn test_multiple_co_simultaneous_activation() -> KResult<()> {
     let alice = "alice@example.com";
     let bob = "bob@example.com";
     let carol = "carol@example.com";
@@ -1083,14 +1087,14 @@ async fn test_three_co_sequential_activation_single_record_design() -> KResult<(
     perform_crypto_officer_ceremony_activation(&kms, &shares_a, &UserId::from(alice)).await?;
     assert!(
         kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be CO after first activation"
+        "Alice must be CO after her activation"
     );
     assert!(
         !kms.is_crypto_officer(&UserId::from(carol)).await?,
-        "Carol must still be Operator"
+        "Carol must still be Operator before her own ceremony"
     );
 
-    // ── Carol activates (new ceremony) → she becomes the active CO; alice is no longer CO ──
+    // ── Carol activates her own ceremony → she becomes CO; Alice stays CO ─────
     let key_c = create_key(&kms, provisioner).await?;
     let shares_c = Box::pin(split_key(&kms, provisioner, &key_c, n)).await?;
     // Shares auto-assigned round-robin: shares_c[0] → alice, shares_c[1] → bob,
@@ -1110,20 +1114,33 @@ async fn test_three_co_sequential_activation_single_record_design() -> KResult<(
         )
         .await?;
     perform_crypto_officer_ceremony_activation(&kms, &shares_c, &UserId::from(carol)).await?;
-    // Single-record design: only carol is now CO.
+
+    // Per-user model: both Alice and Carol are now simultaneously active COs.
     assert!(
         kms.is_crypto_officer(&UserId::from(carol)).await?,
         "Carol must be CO after her activation"
     );
     assert!(
-        !kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice is NOT CO — single-record design: only the last activator is CO"
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
+        "Alice must STILL be CO — her activation was not affected by Carol's"
     );
 
-    // ── Verify bob (in the CO list, but never activated) is still not CO ─────
+    // Bob never activated — still an Operator.
     assert!(
         !kms.is_crypto_officer(&UserId::from(bob)).await?,
         "Bob must remain Operator until he runs his own ceremony"
+    );
+
+    // Peer-revoke Carol: Alice (active CO) revokes Carol.
+    kms.disable_crypto_officer_ceremony(&UserId::from(alice), Some(&UserId::from(carol)))
+        .await?;
+    assert!(
+        !kms.is_crypto_officer(&UserId::from(carol)).await?,
+        "Carol must be demoted after Alice peer-revokes her"
+    );
+    assert!(
+        kms.is_crypto_officer(&UserId::from(alice)).await?,
+        "Alice must remain CO — only Carol's record was revoked"
     );
     Ok(())
 }
@@ -2133,6 +2150,62 @@ async fn test_ceremony_not_blocked_by_opa_enforcing_mode() -> KResult<()> {
         !bob_can_get_alice,
         "CO candidate bob must NOT be able to GET alice's key without an explicit grant \
          (legacy gate must still apply for CO candidates)"
+    );
+
+    Ok(())
+}
+
+/// Regression test for GitHub issue #909: a non-CO user granted only `Get` on the
+/// wildcard object identifier `*` tries to bypass the Create/Import authorization gate.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn repro_issue_909_get_on_star_bypasses_import_gate() -> KResult<()> {
+    let admin = "admin@example.com"; // Crypto Officer
+    let bob = "bob@example.com"; // plain, non-CO user
+    let kms = config_only_co_kms(vec![admin.to_owned()]).await?;
+
+    // Bob is not a Crypto Officer.
+    assert!(!kms.is_crypto_officer(&UserId::from(bob)).await?);
+
+    // Precondition: with a CO configured, Bob is blocked from Create/Import.
+    assert!(
+        kms.enforce_create_permission(&UserId::from(bob))
+            .await
+            .is_err(),
+        "precondition: Bob must be blocked from Create/Import before any grant"
+    );
+
+    // Admin attempts to create an object whose UID is the literal "*".
+    // This must now be rejected: "*" is reserved as the internal sentinel for the
+    // global Create-right grant, so it can never back a real, ownable object.
+    let no_tags: &[&str] = &[];
+    let create_star = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        Some(UniqueIdentifier::TextString("*".to_owned())),
+        256,
+        CryptographicAlgorithm::AES,
+        no_tags,
+        false,
+        None,
+    )?;
+    let result = kms.create(create_star, &UserId::from(admin)).await;
+    assert!(
+        result.is_err(),
+        "issue #909 fix regressed: object with reserved uid '*' was created"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("reserved"),
+        "expected a reserved-identifier error, got: {err}"
+    );
+
+    // Since "*" can never be a real, owned object, Bob's Create/Import gate remains
+    // closed — there's no path to a Get-on-"*" grant to escalate through anymore.
+    assert!(
+        kms.enforce_create_permission(&UserId::from(bob))
+            .await
+            .is_err(),
+        "Bob must still be blocked from Create/Import"
     );
 
     Ok(())

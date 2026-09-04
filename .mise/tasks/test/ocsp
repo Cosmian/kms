@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+#MISE description="OCSP responder (RFC 6960) external-customer black-box test suite"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+
+# Drives the KMS purely through tooling a real customer/integrator has on hand
+# (the `ckms` CLI to provision a PKI, then the standard `openssl ocsp` client and
+# `curl`) against `GET /ocsp/{b64url}` and `POST /ocsp/`. Never calls internal
+# APIs directly — this is a black-box acceptance test, not a unit test.
+#
+# Each scenario group below starts a short-lived KMS server with the exact
+# `--ocsp-*` flags it needs (nonce policy, delegated signer, archive-cutoff,
+# ...) since those are read once at startup and cannot be changed at runtime.
+
+set -euo pipefail
+
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+require_cmd cargo
+require_cmd openssl "openssl (with its 'ocsp' client) is required"
+require_cmd curl
+
+print_header "Step 1: Build KMS server + ckms CLI (${VARIANT_NAME})"
+kms_build_all
+
+WORKDIR="$(mktemp -d /tmp/kms-ocsp-test-XXXXXX)"
+CKMS_BIN="$(get_ckms_bin)"
+
+cleanup() {
+  kms_stop
+  rm -rf "${WORKDIR}"
+}
+trap cleanup EXIT
+
+# ── Extension files (RFC 6960 §4.2.2.2 delegated responder needs OCSPSigning EKU) ──
+CA_EXT_FILE="${WORKDIR}/ca.ext"
+cat >"${CA_EXT_FILE}" <<'EOF'
+[ v3_ca ]
+basicConstraints=critical,CA:TRUE
+keyUsage=critical,keyCertSign,crlSign
+EOF
+
+DELEGATE_EXT_FILE="${WORKDIR}/delegate.ext"
+cat >"${DELEGATE_EXT_FILE}" <<'EOF'
+[ v3_ca ]
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature
+extendedKeyUsage=OCSPSigning
+EOF
+
+# ── Small helpers ─────────────────────────────────────────────────────────────
+
+# Start a fresh KMS server with the given extra `[ocsp]` TOML lines.
+# Usage: start_kms_ocsp <extra_ocsp_toml_line>...
+start_kms_ocsp() {
+  local port sqlite_dir
+  port="$(kms_pick_free_port)"
+  sqlite_dir="$(mktemp -d /tmp/kms-ocsp-db-XXXXXX)"
+  kms_write_config "${port}" "${sqlite_dir}" "[ocsp]" "$@"
+  kms_start_from_bin "$(get_kms_bin)"
+  kms_write_ckms_conf >/dev/null
+}
+
+ckms() { "${CKMS_BIN}" --conf-path "${KMS_CKMS_CONF}" "$@"; }
+
+# Issue a self-signed CA certificate. Usage: issue_ca <cert-id>
+issue_ca() {
+  ckms certificates certify --certificate-id "$1" --generate-key-pair \
+    --algorithm nist-p256 --subject-name "CN=OCSP Test CA,O=Cosmian Test,C=FR" \
+    --days 3650 --certificate-extensions "${CA_EXT_FILE}" >/dev/null
+}
+
+# Issue a leaf certificate signed by a CA. Usage: issue_leaf <cert-id> <issuer-ca-id>
+issue_leaf() {
+  ckms certificates certify --certificate-id "$1" --generate-key-pair \
+    --algorithm nist-p256 --subject-name "CN=$1,O=Cosmian Test,C=FR" \
+    --issuer-certificate-id "$2" --days 365 >/dev/null
+}
+
+# Issue a delegated OCSP-signing certificate. Usage: issue_delegate <cert-id> <issuer-ca-id>
+issue_delegate() {
+  ckms certificates certify --certificate-id "$1" --generate-key-pair \
+    --algorithm nist-p256 --subject-name "CN=$1,O=Cosmian Test,C=FR" \
+    --issuer-certificate-id "$2" --days 365 \
+    --certificate-extensions "${DELEGATE_EXT_FILE}" >/dev/null
+}
+
+# Export a certificate to PEM. Usage: export_pem <cert-id> <out-file>
+export_pem() { ckms certificates export "$2" --certificate-id "$1" --format pem >/dev/null; }
+
+# Assert that $1 (haystack) contains $2 (needle, extended-regex); else fail with $3.
+assert_contains() {
+  if ! grep -Eqi "$2" <<<"$1"; then
+    echo "----- unexpected output -----" >&2
+    echo "$1" >&2
+    echo "------------------------------" >&2
+    print_error "FAIL: $3 (expected to match: $2)"
+  fi
+  print_success "PASS: $3"
+}
+
+print_header "Step 2: OCSP disabled by default → 404"
+start_kms_ocsp "ocsp_enabled = false"
+GET_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" "${KMS_URL}/ocsp/AAA=")
+POST_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -X POST \
+  -H "Content-Type: application/ocsp-request" --data-binary "x" "${KMS_URL}/ocsp/")
+[ "${GET_STATUS}" = "404" ] || print_error "FAIL: GET /ocsp/ expected 404 when disabled, got ${GET_STATUS}"
+[ "${POST_STATUS}" = "404" ] || print_error "FAIL: POST /ocsp/ expected 404 when disabled, got ${POST_STATUS}"
+print_success "PASS: OCSP routes return 404 when ocsp_enabled=false (default)"
+kms_stop
+
+print_header "Step 3: Core status scenarios (good / revoked / unknown, GET+POST, nonce, caching)"
+start_kms_ocsp "ocsp_enabled = true" "ocsp_ca_uid = \"ocsp-ca\""
+issue_ca "ocsp-ca"
+issue_leaf "ocsp-leaf-good" "ocsp-ca"
+issue_leaf "ocsp-leaf-revoked" "ocsp-ca"
+export_pem "ocsp-ca" "${WORKDIR}/ca.pem"
+export_pem "ocsp-leaf-good" "${WORKDIR}/leaf-good.pem"
+export_pem "ocsp-leaf-revoked" "${WORKDIR}/leaf-revoked.pem"
+
+# Scenario: POST transport, active cert → good, nonce echoed, response verified against CA.
+OUT=$(openssl ocsp -issuer "${WORKDIR}/ca.pem" -cert "${WORKDIR}/leaf-good.pem" \
+  -CAfile "${WORKDIR}/ca.pem" -url "${KMS_URL}/ocsp/" -resp_text 2>&1)
+assert_contains "${OUT}" "leaf-good\.pem: good" "POST /ocsp/: active leaf cert reports 'good'"
+assert_contains "${OUT}" "Response verify OK" "POST /ocsp/: response signature verifies against the CA"
+assert_contains "${OUT}" "Nonce" "POST /ocsp/: nonce is echoed back (default policy=optional)"
+
+# Scenario: GET transport (RFC 6960 §A.1 — base64url DER in the path), same cert.
+openssl ocsp -issuer "${WORKDIR}/ca.pem" -cert "${WORKDIR}/leaf-good.pem" \
+  -no_nonce -reqout "${WORKDIR}/req.der" >/dev/null 2>&1
+B64URL=$(openssl base64 -in "${WORKDIR}/req.der" -A | tr '+/' '-_' | tr -d '=')
+HEADERS=$(curl -sS -D - -o "${WORKDIR}/get-resp.der" "${KMS_URL}/ocsp/${B64URL}")
+assert_contains "${HEADERS}" "200" "GET /ocsp/{b64url}: HTTP 200"
+assert_contains "${HEADERS}" "application/ocsp-response" "GET /ocsp/{b64url}: correct Content-Type"
+assert_contains "${HEADERS}" "cache-control" "GET /ocsp/{b64url}: RFC 5019 Cache-Control header present"
+assert_contains "${HEADERS}" "last-modified" "GET /ocsp/{b64url}: RFC 5019 Last-Modified header present"
+assert_contains "${HEADERS}" "etag" "GET /ocsp/{b64url}: RFC 5019 ETag header present"
+
+# Scenario: revoke the second leaf, expect 'revoked' + keyCompromise + revocationTime.
+ckms certificates revoke "compromised for OCSP testing" --certificate-id ocsp-leaf-revoked \
+  --reason-code key-compromise >/dev/null
+OUT=$(openssl ocsp -issuer "${WORKDIR}/ca.pem" -cert "${WORKDIR}/leaf-revoked.pem" \
+  -CAfile "${WORKDIR}/ca.pem" -url "${KMS_URL}/ocsp/" -resp_text 2>&1)
+assert_contains "${OUT}" "leaf-revoked\.pem: revoked" "Revoked leaf cert reports 'revoked'"
+assert_contains "${OUT}" "Reason: keyCompromise" "Revoked leaf cert carries CRLReason=keyCompromise"
+assert_contains "${OUT}" "Revocation Time:" "Revoked leaf cert carries a revocationTime"
+
+# Scenario: a serial number this CA never issued → unknown.
+OUT=$(openssl ocsp -issuer "${WORKDIR}/ca.pem" -serial 0x7F7F7F7F7F7F7F7F \
+  -CAfile "${WORKDIR}/ca.pem" -url "${KMS_URL}/ocsp/" -resp_text 2>&1)
+assert_contains "${OUT}" ": unknown" "Never-issued serial number reports 'unknown'"
+
+# Scenario: malformed POST body must not crash the server (no 5xx).
+MALFORMED_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -X POST \
+  -H "Content-Type: application/ocsp-request" --data-binary "not-a-valid-ocsp-der-request" \
+  "${KMS_URL}/ocsp/")
+[[ "${MALFORMED_STATUS}" != 5* ]] ||
+  print_error "FAIL: malformed OCSP request caused a 5xx (${MALFORMED_STATUS})"
+print_success "PASS: malformed OCSP request handled gracefully (HTTP ${MALFORMED_STATUS}, not 5xx)"
+kms_stop
+
+print_header "Step 4: Nonce policy = required — request without a nonce is rejected"
+start_kms_ocsp "ocsp_enabled = true" "ocsp_ca_uid = \"ocsp-ca\"" "ocsp_nonce_policy = \"required\""
+issue_ca "ocsp-ca"
+issue_leaf "ocsp-leaf" "ocsp-ca"
+export_pem "ocsp-ca" "${WORKDIR}/ca.pem"
+export_pem "ocsp-leaf" "${WORKDIR}/leaf.pem"
+OUT=$(openssl ocsp -issuer "${WORKDIR}/ca.pem" -cert "${WORKDIR}/leaf.pem" -no_nonce \
+  -CAfile "${WORKDIR}/ca.pem" -url "${KMS_URL}/ocsp/" -resp_text 2>&1 || true)
+assert_contains "${OUT}" "malformedrequest" "nonce-policy=required rejects a request with no nonce"
+OUT=$(openssl ocsp -issuer "${WORKDIR}/ca.pem" -cert "${WORKDIR}/leaf.pem" \
+  -CAfile "${WORKDIR}/ca.pem" -url "${KMS_URL}/ocsp/" -resp_text 2>&1)
+assert_contains "${OUT}" ": good" "nonce-policy=required accepts a request that does carry a nonce"
+kms_stop
+
+print_header "Step 5: Nonce policy = ignore — response never carries a nonce"
+start_kms_ocsp "ocsp_enabled = true" "ocsp_ca_uid = \"ocsp-ca\"" "ocsp_nonce_policy = \"ignore\""
+issue_ca "ocsp-ca"
+issue_leaf "ocsp-leaf" "ocsp-ca"
+export_pem "ocsp-ca" "${WORKDIR}/ca.pem"
+export_pem "ocsp-leaf" "${WORKDIR}/leaf.pem"
+OUT=$(openssl ocsp -issuer "${WORKDIR}/ca.pem" -cert "${WORKDIR}/leaf.pem" \
+  -CAfile "${WORKDIR}/ca.pem" -url "${KMS_URL}/ocsp/" -resp_text 2>&1)
+# NOTE: when the request carries a nonce but the response has none, `openssl ocsp`
+# itself prints "WARNING: no nonce in response" — a false positive for a naive
+# substring match on "nonce". Only an actual "OCSP Nonce:" extension line in the
+# parsed response text indicates the server echoed one back.
+if grep -q "OCSP Nonce:" <<<"${OUT}"; then
+  print_error "FAIL: nonce-policy=ignore must never include a nonce in the response"
+fi
+print_success "PASS: nonce-policy=ignore never echoes a nonce"
+
+# Scenario: cache hit. The in-memory response cache is only ever consulted when
+# nonce_policy=ignore — with any other policy a request might carry a nonce, so
+# caching is conservatively disabled to guarantee nonces are never served stale.
+openssl ocsp -issuer "${WORKDIR}/ca.pem" -cert "${WORKDIR}/leaf.pem" \
+  -no_nonce -reqout "${WORKDIR}/req-ignore.der" >/dev/null 2>&1
+B64URL_IGNORE=$(openssl base64 -in "${WORKDIR}/req-ignore.der" -A | tr '+/' '-_' | tr -d '=')
+curl -sS -o "${WORKDIR}/cache1.der" "${KMS_URL}/ocsp/${B64URL_IGNORE}"
+curl -sS -o "${WORKDIR}/cache2.der" "${KMS_URL}/ocsp/${B64URL_IGNORE}"
+cmp -s "${WORKDIR}/cache1.der" "${WORKDIR}/cache2.der" ||
+  print_error "FAIL: repeated request under nonce-policy=ignore was not served from cache"
+print_success "PASS: repeated request under nonce-policy=ignore is served from the in-memory cache"
+kms_stop
+
+print_header "Step 6: Delegated OCSP-signing certificate + archive-cutoff extension"
+start_kms_ocsp "ocsp_enabled = true" "ocsp_ca_uid = \"ocsp-ca\"" \
+  "ocsp_responder_cert_uid = \"ocsp-delegate\"" "ocsp_include_cert_chain = true" \
+  "ocsp_archive_cutoff_secs = 86400"
+issue_ca "ocsp-ca"
+issue_leaf "ocsp-leaf" "ocsp-ca"
+issue_delegate "ocsp-delegate" "ocsp-ca"
+export_pem "ocsp-ca" "${WORKDIR}/ca.pem"
+export_pem "ocsp-leaf" "${WORKDIR}/leaf.pem"
+export_pem "ocsp-delegate" "${WORKDIR}/delegate.pem"
+OUT=$(openssl ocsp -issuer "${WORKDIR}/ca.pem" -cert "${WORKDIR}/leaf.pem" \
+  -CAfile "${WORKDIR}/ca.pem" -url "${KMS_URL}/ocsp/" -resp_text 2>&1)
+assert_contains "${OUT}" "Response verify OK" "Delegated responder signature verifies via the embedded chain"
+assert_contains "${OUT}" "Archive Cutoff" "Archive-cutoff extension present (--ocsp-archive-cutoff-secs)"
+DELEGATE_SUBJECT_HASH=$(openssl x509 -in "${WORKDIR}/delegate.pem" -noout -subject_hash)
+RESPONDER_HASH=$(openssl ocsp -issuer "${WORKDIR}/ca.pem" -cert "${WORKDIR}/leaf.pem" \
+  -CAfile "${WORKDIR}/ca.pem" -url "${KMS_URL}/ocsp/" -noverify -resp_text 2>&1 |
+  grep -A1 "Responder Id" | grep -o '[0-9A-Fa-f]\{8\}' | head -1 || true)
+print_info "Delegated signer subject hash: ${DELEGATE_SUBJECT_HASH} (responder id snippet: ${RESPONDER_HASH:-n/a})"
+kms_stop
+
+print_header "Step 7: CA key-compromise cascade (RFC 6960 §2.7)"
+start_kms_ocsp "ocsp_enabled = true" "ocsp_ca_uid = \"ocsp-ca\""
+issue_ca "ocsp-ca"
+issue_leaf "ocsp-leaf" "ocsp-ca"
+export_pem "ocsp-ca" "${WORKDIR}/ca.pem"
+export_pem "ocsp-leaf" "${WORKDIR}/leaf.pem"
+# Sanity: leaf is still 'good' before the CA is compromised.
+OUT=$(openssl ocsp -issuer "${WORKDIR}/ca.pem" -cert "${WORKDIR}/leaf.pem" \
+  -CAfile "${WORKDIR}/ca.pem" -url "${KMS_URL}/ocsp/" -resp_text 2>&1)
+assert_contains "${OUT}" ": good" "Leaf cert is 'good' before the CA is compromised"
+ckms certificates revoke "CA key compromise" --certificate-id ocsp-ca \
+  --reason-code ca-compromise >/dev/null
+OUT=$(openssl ocsp -issuer "${WORKDIR}/ca.pem" -cert "${WORKDIR}/leaf.pem" \
+  -CAfile "${WORKDIR}/ca.pem" -url "${KMS_URL}/ocsp/" -noverify -resp_text 2>&1)
+assert_contains "${OUT}" ": revoked" "All leaf certs report 'revoked' after CA compromise (cascade)"
+assert_contains "${OUT}" "Reason: cACompromise" "Cascaded revocation carries CRLReason=cACompromise"
+kms_stop
+
+print_header "OCSP responder external-customer test suite complete"
+print_success "All scenarios passed (${VARIANT_NAME})"

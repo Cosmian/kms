@@ -1348,42 +1348,82 @@ impl PermissionsStore for PgPool {
         &self,
         sealed_record: &str,
         activated_by: &str,
+        revoked_by: &str,
     ) -> InterfaceResult<()> {
-        pg_retry!(self.pool, |client| {
-            let stmt = client
+        let sealed = sealed_record.to_owned();
+        let activated_by_s = activated_by.to_owned();
+        let revoked_by_s = revoked_by.to_owned();
+        pg_retry_tx!(self.pool, |tx| {
+            // Revoke only this user's prior active record, then insert the new one.
+            let revoke_stmt = tx
+                .prepare(get_pgsql_query!("revoke-crypto-officer-activation"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            tx.execute(
+                &revoke_stmt,
+                &[&revoked_by_s.as_str(), &activated_by_s.as_str()],
+            )
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let insert_stmt = tx
                 .prepare(get_pgsql_query!("insert-crypto-officer-activation"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            client
-                .execute(&stmt, &[&sealed_record, &activated_by])
+            tx.execute(&insert_stmt, &[&sealed.as_str(), &activated_by_s.as_str()])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            Ok(())
+            Ok::<(), InterfaceError>(())
         })
     }
 
-    async fn get_crypto_officer_activation(&self) -> InterfaceResult<Option<String>> {
+    async fn get_crypto_officer_activation_by(
+        &self,
+        user: &str,
+    ) -> InterfaceResult<Option<String>> {
         pg_retry!(self.pool, |client| {
             let stmt = client
-                .prepare(get_pgsql_query!("select-active-crypto-officer-activation"))
+                .prepare(get_pgsql_query!(
+                    "select-active-crypto-officer-activation-by"
+                ))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let rows = client
-                .query(&stmt, &[])
+                .query(&stmt, &[&user])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(rows.first().map(|row| row.get(0)))
         })
     }
 
-    async fn revoke_crypto_officer_activation(&self, revoked_by: &str) -> InterfaceResult<()> {
+    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!(
+                    "select-any-active-crypto-officer-activation"
+                ))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let count: i64 = rows.first().map_or(0, |row| row.get(0));
+            Ok(count > 0)
+        })
+    }
+
+    async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
         pg_retry!(self.pool, |client| {
             let stmt = client
                 .prepare(get_pgsql_query!("revoke-crypto-officer-activation"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             client
-                .execute(&stmt, &[&revoked_by])
+                .execute(&stmt, &[&revoked_by, &activated_by])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(())
@@ -1655,5 +1695,55 @@ mod tests {
         assert!(!is_pg_retryable_error("syntax error"));
         assert!(!is_pg_retryable_error("permission denied"));
         assert!(!is_pg_retryable_error(""));
+    }
+
+    // Regression test for issue #1027: the pooled connection must be released
+    // before sleeping through the retry back-off, not held across it.
+    //
+    // A size-1 pool is pinned to a single connection. One task keeps failing
+    // a retryable transaction (a forced "deadlock detected" error) for all
+    // `PG_MAX_RETRIES` attempts, which spends ~3.15s sleeping across back-offs.
+    // Meanwhile we sample `pool.status().available`: if the connection is
+    // held during the sleeps, the pool never reports itself idle.
+    #[ignore = "Requires a running PostgreSQL instance"]
+    #[tokio::test]
+    async fn pg_connection_released_during_backoff() -> DbResult<()> {
+        let postgres_url =
+            option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
+        let pg = PgPool::instantiate(postgres_url, true, Some(1)).await?;
+
+        let pool_for_task = pg.pool.clone();
+        let handle: tokio::task::JoinHandle<InterfaceResult<()>> = tokio::spawn(async move {
+            pg_retry_tx!(pool_for_task, |tx| {
+                tx.batch_execute(
+                    "DO $$ BEGIN RAISE EXCEPTION 'simulated deadlock detected' USING \
+                     ERRCODE = '40001'; END $$;",
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))
+            })
+        });
+
+        let mut idle_samples = 0_usize;
+        let mut total_samples = 0_usize;
+        while !handle.is_finished() {
+            total_samples += 1;
+            if pg.pool.status().available >= 1 {
+                idle_samples += 1;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        // Exhausts all retries and ends in an error — expected, only the
+        // connection-holding behavior along the way is under test here.
+        drop(handle.await);
+
+        if idle_samples <= total_samples / 2 {
+            return Err(DbError::DatabaseError(format!(
+                "pool reported idle in only {idle_samples}/{total_samples} samples — \
+                 connection appears held during back-off sleep"
+            )));
+        }
+
+        Ok(())
     }
 }

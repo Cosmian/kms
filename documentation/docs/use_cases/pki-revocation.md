@@ -147,6 +147,11 @@ is stored in the database.
     on server restart, so the public endpoint continues to serve the last signed CRL
     without requiring a manual `generate-crl` call after each restart.
 
+!!! note "OCSP responder"
+    The KMS also includes a built-in OCSP responder (RFC 6960) for real-time,
+    per-certificate revocation status — see
+    [OCSP Responder](pki-ocsp.md).
+
 ## Authority Information Access (AIA)
 
 The AIA extension (`authorityInfoAccess`, OID `1.3.6.1.5.5.7.1.1`) can be added
@@ -157,11 +162,6 @@ the CA issuer certificate:
 [ v3_ext ]
 authorityInfoAccess=OCSP;URI:http://ocsp.example.com/,caIssuers;URI:http://ca.example.com/ca.crt
 ```
-
-!!! note "OCSP responder not built in"
-    The KMS does not embed an OCSP responder. The AIA extension can reference an
-    external OCSP service. CRL-based revocation is fully supported; OCSP is a
-    future enhancement.
 
 ## No Revocation Available (`id-ce-noRevAvail`, RFC 9608)
 

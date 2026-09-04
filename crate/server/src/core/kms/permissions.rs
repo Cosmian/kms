@@ -480,7 +480,7 @@ impl KMS {
         }
 
         self.database
-            .revoke_crypto_officer_activation(victim)
+            .revoke_crypto_officer_activation(caller, victim)
             .await?;
 
         tracing::error!(

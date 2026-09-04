@@ -966,41 +966,75 @@ impl PermissionsStore for MySqlPool {
         &self,
         sealed_record: &str,
         activated_by: &str,
+        revoked_by: &str,
     ) -> InterfaceResult<()> {
-        let sql = get_mysql_query!("insert-crypto-officer-activation");
         let mut conn = self
             .pool
             .get_conn()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        conn.exec_drop(sql, (sealed_record, activated_by))
+        let mut tx: Transaction<'_> = conn
+            .start_transaction(mysql_async::TxOpts::default())
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        // Revoke only this user's prior active record.
+        let revoke_sql = get_mysql_query!("revoke-crypto-officer-activation");
+        tx.exec_drop(revoke_sql, (revoked_by, activated_by))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let insert_sql = get_mysql_query!("insert-crypto-officer-activation");
+        tx.exec_drop(insert_sql, (sealed_record, activated_by))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        tx.commit()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(())
     }
 
-    async fn get_crypto_officer_activation(&self) -> InterfaceResult<Option<String>> {
-        let sql = get_mysql_query!("select-active-crypto-officer-activation");
+    async fn get_crypto_officer_activation_by(
+        &self,
+        user: &str,
+    ) -> InterfaceResult<Option<String>> {
+        let sql = get_mysql_query!("select-active-crypto-officer-activation-by");
         let mut conn = self
             .pool
             .get_conn()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let result: Option<String> = conn
-            .exec_first(sql, ())
+            .exec_first(sql, (user,))
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(result)
     }
 
-    async fn revoke_crypto_officer_activation(&self, revoked_by: &str) -> InterfaceResult<()> {
+    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
+        let sql = get_mysql_query!("select-any-active-crypto-officer-activation");
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let count: Option<i64> = conn
+            .exec_first(sql, ())
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(count.unwrap_or(0) > 0)
+    }
+
+    async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
         let sql = get_mysql_query!("revoke-crypto-officer-activation");
         let mut conn = self
             .pool
             .get_conn()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        conn.exec_drop(sql, (revoked_by,))
+        conn.exec_drop(sql, (revoked_by, activated_by))
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(())

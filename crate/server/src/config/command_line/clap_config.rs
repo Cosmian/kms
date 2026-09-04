@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     AuthVerifierConfig, CrlConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig,
-    JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, OpaConfig, RolesConfig, WorkspaceConfig,
-    logging::LoggingConfig, secret_backends::SecretBackendConfig, ui_config::UiConfig,
-    vault_config::VaultConfig,
+    JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, OcspConfig, OpaConfig, RolesConfig,
+    WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
+    ui_config::UiConfig, vault_config::VaultConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -81,6 +81,7 @@ impl Default for ClapConfig {
             secret_backends: SecretBackendConfig::default(),
             vault: VaultConfig::default(),
             crl: CrlConfig::default(),
+            ocsp: OcspConfig::default(),
         }
     }
 }
@@ -284,6 +285,11 @@ pub struct ClapConfig {
     #[command(flatten)]
     #[serde(default)]
     pub crl: CrlConfig,
+
+    /// OCSP (Online Certificate Status Protocol) responder settings.
+    #[command(flatten)]
+    #[serde(default)]
+    pub ocsp: OcspConfig,
 }
 
 impl ClapConfig {

@@ -8,7 +8,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
         kmip_2_1::{
             KmipOperation,
-            kmip_objects::ObjectType,
+            kmip_objects::{Certificate, Object, ObjectType},
             kmip_operations::{Revoke, RevokeResponse},
             kmip_types::{LinkType, UniqueIdentifier},
         },
@@ -17,6 +17,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
 use cosmian_logger::{debug, info, trace, warn};
+use openssl::x509::X509;
 use time::OffsetDateTime;
 
 #[cfg(feature = "non-fips")]
@@ -196,6 +197,12 @@ pub(crate) async fn recursively_revoke_key(
                     .or_else(|| Some(owm.attributes()))
                     .and_then(|attrs| attrs.get_link(LinkType::CertificateLink))
                     .map(|l| l.to_string());
+                // Extract the serial number (before `owm` is consumed below) so the
+                // OCSP response cache entry for this exact certificate can be
+                // evicted once revoked — otherwise a relying party polling OCSP
+                // with no nonce could keep receiving a stale cached `good`
+                // response until `ocsp_cache_ttl_secs` naturally expires.
+                let serial_hex = extract_serial_hex_for_ocsp_cache(owm.object());
 
                 Box::pin(revoke_key_core(
                     owm,
@@ -205,13 +212,17 @@ pub(crate) async fn recursively_revoke_key(
                 ))
                 .await?;
 
+                if let (Some(issuer_id), Some(serial_hex)) = (issuer_id.clone(), serial_hex) {
+                    crate::routes::ocsp::evict_ocsp_cache_entry(&issuer_id, &serial_hex).await;
+                }
+
                 // Fire-and-forget CRL regeneration: when the server knows its own
                 // public URL, immediately refresh the CRL so the CDP endpoint serves
                 // an up-to-date list without requiring a manual generate-crl call.
                 // Errors here must never fail the Revoke operation.
                 if kms.params.kms_public_url.is_some() {
                     if let Some(issuer_id) = issuer_id {
-                        trigger_crl_regeneration(kms, &issuer_id).await;
+                        trigger_crl_regeneration(kms, &issuer_id, user).await;
                     }
                 }
             }
@@ -372,20 +383,41 @@ const fn revocation_target_state(reason: &RevocationReason) -> State {
     }
 }
 
+/// Extract a certificate's serial number as an upper-case hex string, in the exact
+/// format the OCSP responder uses as part of its cache key (`"{ca_uid}:{serial_hex}"`,
+/// see `crate::routes::ocsp::handler`). Returns `None` for anything that is not a
+/// parseable certificate (should not happen for an object already matched as
+/// `ObjectType::Certificate`, but this must never fail the parent `Revoke`).
+fn extract_serial_hex_for_ocsp_cache(object: &Object) -> Option<String> {
+    let Object::Certificate(Certificate {
+        certificate_value, ..
+    }) = object
+    else {
+        return None;
+    };
+    let x509 = X509::from_der(certificate_value).ok()?;
+    let serial_bytes = x509.serial_number().to_bn().ok()?.to_vec();
+    Some(hex::encode_upper(serial_bytes))
+}
+
 /// Trigger CRL regeneration for `issuer_id` after a certificate revocation.
 ///
 /// CRL content is public information (RFC 5280 §3) so no special role is required.
-/// Uses `default_username` as the signer identity so the function can always run,
-/// regardless of CO configuration.
+/// The signer is the first active Crypto Officer when one exists, because
+/// `generate_crl` gates the `find_all` bypass on the CO role whenever
+/// `crypto_officer.users` is configured. When no CO is configured (or none has
+/// completed the ceremony) the `revoking_user` identity is used instead: that user
+/// has already proven they can access the CA chain (owner or explicit `Revoke`
+/// grant), so they can also read the CA certificate and its private key to sign the
+/// CRL. Using `default_username` caused a silent permission failure when the CA
+/// objects were owned by a different user.
 ///
 /// Errors are logged at `warn` level and never propagated — this must not fail
 /// the parent `Revoke` operation.
-async fn trigger_crl_regeneration(kms: &KMS, issuer_id: &str) {
-    // Prefer the first active Crypto Officer as signer; fall back to the server
-    // default user when no CO is configured or none has completed the ceremony.
+async fn trigger_crl_regeneration(kms: &KMS, issuer_id: &str, revoking_user: &UserId) {
     let signer = match kms.find_active_co().await {
         Ok(Some(co)) => co,
-        _ => UserId::from(kms.params.default_username.as_str()),
+        _ => revoking_user.clone(),
     };
 
     info!(

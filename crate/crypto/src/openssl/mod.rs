@@ -1,6 +1,8 @@
 mod certificate;
 pub mod crl;
 mod hashing;
+pub mod ocsp;
+pub(crate) mod ocsp_ffi;
 mod private_key;
 mod public_key;
 pub mod x509_extensions;

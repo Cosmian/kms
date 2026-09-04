@@ -7,11 +7,11 @@ accept = [200, 204, 301, 302]
 # Root directory for resolving relative links
 root_dir = "documentation/docs"
 
-# Exclude SUMMARY.md — it uses mdBook's [Title]() syntax for section headers
+# Exclude SUMMARY.md (mdBook section headers) and .mise/ (shell scripts, not docs)
 # Exclude Rust source files — lychee is only meant to check documentation;
 # code comments may contain URL-like strings (e.g. multi-host connection strings)
 # that are not real hyperlinks and would produce false-positive parse errors.
-exclude_path = ["documentation/docs/SUMMARY.md", "crate"]
+exclude_path = ["documentation/docs/SUMMARY.md", ".mise/", "crate"]
 
 # Check links to files on disk
 include_verbatim = false
@@ -69,11 +69,14 @@ exclude = [
   'cosmian\.com',
   'package\.cosmian\.com',
   'www\.mysql\.com',
+  # Percona docs refuses connections from automated link checkers
+  'docs\.percona\.com',
   'crates\.io',
   'support\.google\.com',
   'admin\.google\.com',
   'github\.com/sfackler',
   'jwt\.io',
+  'manpages\.ubuntu\.com',
   'webstore\.ansi\.org',
   # ETSI — returns 503 to automated crawlers
   'www\.etsi\.org',
@@ -110,16 +113,6 @@ exclude = [
   # IBM docs — returns 503 Service Unavailable (Guardium CM TDE guide)
   'www\.ibm\.com',
 
-  # IBM documentation — occasionally returns 503 to automated crawlers
-  'ibm\.com',
-
-  # Shell variable references in workflow files parsed as URLs by lychee
-  'file://\$dest',
-
-  # `file://` URIs are local-filesystem examples in Rust doc comments
-  # (e.g. `path_to_file_uri`) — never real web links to check.
-  'file://',
-
   # Kubernetes SIG documentation site — resets connections from automated crawlers
   'secrets-store-csi-driver\.sigs\.k8s\.io',
   # kubernetes.io — connection failures from CI runners
@@ -143,6 +136,9 @@ exclude = [
   'get--export',
   'not-possible',
   'wrapped-by-an-hsm-key',
+
+  # Example/template registries in deny.toml — commented-out placeholder URL
+  'sekretz\.com',
   # Local IP addresses used in test scripts
   '127\.0\.0\.1',
   # cargo-deny registry entries in deny.toml (internal/self-hosted)

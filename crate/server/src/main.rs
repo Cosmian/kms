@@ -379,6 +379,7 @@ mod tests {
             keyset_warn_depth: 5,
             vault: cosmian_kms_server::config::VaultConfig::default(),
             crl: CrlConfig::default(),
+            ocsp: cosmian_kms_server::config::OcspConfig::default(),
         };
 
         let toml_string = r#"
@@ -501,6 +502,13 @@ vault_token_cache_ttl_secs = 0
 crl_default_validity_days = 7
 crl_refresh_check_hours = 1
 crl_refresh_overlap_hours = 24
+
+[ocsp]
+ocsp_enabled = false
+ocsp_cache_ttl_secs = 86400
+ocsp_nonce_policy = "optional"
+ocsp_include_cert_chain = true
+ocsp_archive_cutoff_secs = 0
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

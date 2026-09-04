@@ -43,6 +43,8 @@ jobs:
           - spire
           - kmip-go
           - opa_rbac
+          - ocsp
+          - pki-revocation
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
