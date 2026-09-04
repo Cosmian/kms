@@ -47,7 +47,7 @@ use crate::{
     kms_object::get_kms_objects_async,
 };
 
-fn save_pkcs11_client_config() -> String {
+pub(crate) fn save_pkcs11_client_config() -> String {
     // Start or get the shared test KMS server context
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     let ctx = rt.block_on(async { start_default_test_kms_server().await });
@@ -72,7 +72,7 @@ fn save_pkcs11_client_config() -> String {
     owner_file_path
 }
 
-fn initialize_backend() -> Result<CliBackend, Pkcs11Error> {
+pub(crate) fn initialize_backend() -> Result<CliBackend, Pkcs11Error> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
     let owner_client_conf = rt.block_on(async {
@@ -280,7 +280,7 @@ fn test_get_function_list_rejects_null_output() {
 }
 
 #[expect(unsafe_code)]
-fn test_init() {
+pub(crate) fn test_init() {
     // export RUST_LOG="cosmian_pkcs11=trace,ckms=trace,cosmian_config_utils=trace"
     log_init(None);
 
@@ -450,7 +450,10 @@ fn test_veracrypt_cko_data_find() -> Pkcs11Result<()> {
 
 // ── SSH integration tests ────────────────────────────────────────────────────
 
-async fn create_rsa_ssh_keypair(kms_rest_client: &KmsClient, bits: usize) -> (String, String) {
+pub(crate) async fn create_rsa_ssh_keypair(
+    kms_rest_client: &KmsClient,
+    bits: usize,
+) -> (String, String) {
     let req = create_rsa_key_pair_request(
         VENDOR_ID_COSMIAN,
         None,
@@ -470,7 +473,7 @@ async fn create_rsa_ssh_keypair(kms_rest_client: &KmsClient, bits: usize) -> (St
     )
 }
 
-async fn create_ec_ssh_keypair(
+pub(crate) async fn create_ec_ssh_keypair(
     kms_rest_client: &KmsClient,
     curve: RecommendedCurve,
 ) -> (String, String) {
@@ -545,6 +548,21 @@ fn test_ssh_ecdsa_p256_sign() -> Pkcs11Result<()> {
     );
     Ok(())
 }
+
+// ── HSM-KEK PKCS#11 mandatory conformance tests ─────────────────────────────
+//
+// The 3 tests below exercise real PKCS#11 signing requests
+// (`CliBackend::remote_sign`, the same code path used by `C_Sign`) against a
+// KMS server backed by SoftHSM2 with a Key-Encryption-Key (HSM-KEK): every
+// created key is transparently AES-wrapped by an HSM-resident KEK before
+// being persisted, so these tests validate the full HSM-backed storage path,
+// not just in-memory/software-only signing.
+//
+// Unlike the SSH-focused tests above (which only assert the signature is
+// non-empty), each test here also calls the KMIP `SignatureVerify` operation
+// against the freshly created public key, so a wrong signature format,
+// wrong digest, or wrong curve handling would make the test fail loudly
+// instead of silently passing on a shape-only check.
 
 /// Test that SSH-tagged keypairs are returned by the backend's key-discovery
 /// methods. The test creates one RSA-2048 and one EC P-256 keypair under the
