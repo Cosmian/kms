@@ -32,8 +32,8 @@ use pkcs11_sys::{
     CKA_LABEL, CKA_MODIFIABLE, CKA_MODULUS, CKA_MODULUS_BITS, CKA_NEVER_EXTRACTABLE, CKA_PRIME_1,
     CKA_PRIME_2, CKA_PRIVATE, CKA_PRIVATE_EXPONENT, CKA_PROFILE_ID, CKA_PUBLIC_EXPONENT,
     CKA_SENSITIVE, CKA_SERIAL_NUMBER, CKA_SIGN, CKA_SIGN_RECOVER, CKA_SUBJECT, CKA_TOKEN,
-    CKA_TRUSTED, CKA_UNWRAP, CKA_VALUE, CKA_VALUE_LEN, CKA_VERIFY, CKA_VERIFY_RECOVER, CKA_WRAP,
-    CKC_X_509,
+    CKA_TRUSTED, CKA_UNIQUE_ID, CKA_UNWRAP, CKA_VALUE, CKA_VALUE_LEN, CKA_VERIFY,
+    CKA_VERIFY_RECOVER, CKA_WRAP, CKC_X_509,
 };
 use strum_macros::Display;
 
@@ -77,6 +77,7 @@ pub enum AttributeType {
     Subject,
     Token,
     Trusted,
+    UniqueId,
     Unwrap,
     Value,
     ValueLen,
@@ -124,6 +125,7 @@ impl TryFrom<CK_ATTRIBUTE_TYPE> for AttributeType {
             CKA_SUBJECT => Ok(Self::Subject),
             CKA_TOKEN => Ok(Self::Token),
             CKA_TRUSTED => Ok(Self::Trusted),
+            CKA_UNIQUE_ID => Ok(Self::UniqueId),
             CKA_UNWRAP => Ok(Self::Unwrap),
             CKA_VALUE => Ok(Self::Value),
             CKA_VALUE_LEN => Ok(Self::ValueLen),
@@ -174,6 +176,7 @@ pub enum Attribute {
     Subject(Vec<u8>),
     Token(bool),
     Trusted(bool),
+    UniqueId(Vec<u8>),
     Unwrap(bool),
     Value(Vec<u8>),
     ValueLen(CK_ULONG),
@@ -221,6 +224,7 @@ impl Attribute {
             Self::Subject(_) => AttributeType::Subject,
             Self::Token(_) => AttributeType::Token,
             Self::Trusted(_) => AttributeType::Trusted,
+            Self::UniqueId(_) => AttributeType::UniqueId,
             Self::Unwrap(_) => AttributeType::Unwrap,
             Self::Value(_) => AttributeType::Value,
             Self::ValueLen(_) => AttributeType::ValueLen,
@@ -273,6 +277,7 @@ impl Attribute {
             | Self::SerialNumber(bytes)
             | Self::Subject(bytes)
             | Self::Id(bytes)
+            | Self::UniqueId(bytes)
             | Self::Value(bytes)
             | Self::Application(bytes) => bytes.clone(),
             Self::Label(string) => string.as_bytes().to_vec(),
@@ -350,6 +355,7 @@ impl TryFrom<CK_ATTRIBUTE> for Attribute {
             AttributeType::SignRecover => Ok(Self::SignRecover(try_u8_into_bool(val)?)),
             AttributeType::Token => Ok(Self::Token(try_u8_into_bool(val)?)),
             AttributeType::Trusted => Ok(Self::Trusted(try_u8_into_bool(val)?)),
+            AttributeType::UniqueId => Ok(Self::UniqueId(val.to_vec())),
             AttributeType::Unwrap => Ok(Self::Unwrap(try_u8_into_bool(val)?)),
             AttributeType::Value => Ok(Self::Value(val.to_vec())),
             AttributeType::ValueLen => Ok(Self::ValueLen(CK_ULONG::from_ne_bytes(val.try_into()?))),

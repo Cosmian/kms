@@ -721,15 +721,35 @@ impl CryptoOracle for HsmStore {
     async fn signature_verify(
         &self,
         uid: &str,
-        _data: &[u8],
-        _signature: &[u8],
-        _cryptographic_parameters: Option<
+        data: &[u8],
+        signature: &[u8],
+        cryptographic_parameters: Option<
             &cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters,
         >,
     ) -> InterfaceResult<bool> {
-        Err(InterfaceError::NotSupported(format!(
-            "SignatureVerify via HSM is not yet implemented for key: {uid}"
-        )))
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        let key_type = self.hsm.get_key_type(slot_id, key_id.as_bytes()).await?;
+        match key_type {
+            // Accept both public and private keys, mirroring the KMIP `SignatureVerify`
+            // operation's `is_key_eligible` acceptance (imported keys may lack a paired
+            // public key object).
+            Some(KeyType::RsaPublicKey | KeyType::RsaPrivateKey) => {}
+            Some(other) => {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "SignatureVerify: key {uid} is a {other:?}, expected an RSA key"
+                )));
+            }
+            None => {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "SignatureVerify: key {uid} not found on the HSM"
+                )));
+            }
+        }
+        let algorithm = SigningAlgorithm::from_kmip(cryptographic_parameters)?;
+        debug!("signature_verify: using algorithm {algorithm:?} for key {uid}");
+        self.hsm
+            .verify(slot_id, key_id.as_bytes(), algorithm, data, signature)
+            .await
     }
 
     async fn mac(
@@ -1326,9 +1346,9 @@ mod tests {
 
     use super::check_basic_compatibility;
     use crate::{
-        CryptoAlgorithm, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-        InterfaceError, InterfaceResult, KeyMetadata, KeyType, ObjectsStore, SigningAlgorithm,
-        crypto_oracle::EncryptedContent, hsm::HsmStore,
+        CryptoAlgorithm, CryptoOracle, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
+        HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType, ObjectsStore,
+        SigningAlgorithm, crypto_oracle::EncryptedContent, hsm::HsmStore,
     };
 
     // ── mockall-generated test double for HSM ─────────────────────────────────
@@ -1406,6 +1426,14 @@ mod tests {
                 algorithm: SigningAlgorithm,
                 data: &[u8],
             ) -> InterfaceResult<Vec<u8>>;
+            async fn verify(
+                &self,
+                slot_id: usize,
+                key_id: &[u8],
+                algorithm: SigningAlgorithm,
+                data: &[u8],
+                signature: &[u8],
+            ) -> InterfaceResult<bool>;
             async fn generate_random(
                 &self,
                 slot_id: usize,
@@ -1499,6 +1527,53 @@ mod tests {
             return Err(InterfaceError::Default(format!(
                 "count_all_non_destroyed ({via_all}) must equal count_non_destroyed_keys \
                  ({via_keys}) for HsmStore"
+            )));
+        }
+        Ok(())
+    }
+
+    /// `CryptoOracle::signature_verify` must delegate to `HSM::verify` for an RSA
+    /// public key, closing the previously-unconditional
+    /// `InterfaceError::NotSupported` gap.
+    #[tokio::test]
+    async fn test_signature_verify_delegates_to_hsm_verify() -> InterfaceResult<()> {
+        let mut mock = MockHsm::new();
+        mock.expect_get_key_type()
+            .returning(|_slot_id, _key_id| Ok(Some(KeyType::RsaPublicKey)));
+        mock.expect_verify()
+            .returning(|_slot_id, _key_id, _algorithm, _data, _signature| Ok(true));
+
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+
+        let valid = store
+            .signature_verify("hsm::0::key1", b"data", b"signature", None)
+            .await?;
+
+        if !valid {
+            return Err(InterfaceError::Default(
+                "expected signature_verify to report a valid signature".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// `CryptoOracle::signature_verify` must reject a non-RSA key type before ever
+    /// calling `HSM::verify`, mirroring `sign`'s existing key-type guard.
+    #[tokio::test]
+    async fn test_signature_verify_rejects_non_rsa_key_type() -> InterfaceResult<()> {
+        let mut mock = MockHsm::new();
+        mock.expect_get_key_type()
+            .returning(|_slot_id, _key_id| Ok(Some(KeyType::AesKey)));
+
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+
+        let result = store
+            .signature_verify("hsm::0::key1", b"data", b"signature", None)
+            .await;
+
+        if !matches!(result, Err(InterfaceError::InvalidRequest(_))) {
+            return Err(InterfaceError::Default(format!(
+                "expected an InvalidRequest error for a non-RSA key type, got: {result:?}"
             )));
         }
         Ok(())

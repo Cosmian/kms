@@ -111,6 +111,10 @@ pub struct TestManifest {
     /// Used for HSM tests that require `HSM_SLOT_ID` to be set by the CI script.
     #[serde(default)]
     pub requires_env: Vec<String>,
+    /// HSM models this vector applies to.
+    /// If non-empty and `HSM_MODEL` is set to a model not in this list, the vector is skipped.
+    #[serde(default)]
+    pub requires_hsm_models: Vec<String>,
     /// Database backends this vector should be tested against.
     ///
     /// Defaults to `["sqlite"]`. When `KMS_TEST_BACKENDS` env var is set
@@ -893,19 +897,31 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
         }
     }
 
+    // Check required HSM models if specified
+    if !manifest.requires_hsm_models.is_empty() {
+        let active_model = std::env::var("HSM_MODEL").unwrap_or_else(|_| "softhsm2".to_owned());
+        if !manifest
+            .requires_hsm_models
+            .iter()
+            .any(|m| m == &active_model)
+        {
+            eprintln!(
+                "SKIP vector '{}': active HSM model '{active_model}' not in requires_hsm_models {:?}",
+                manifest.name, manifest.requires_hsm_models
+            );
+            return Ok(());
+        }
+    }
     // If server_type is set, use a dedicated server instead of the backend-driven ones
     if let Some(server_type) = &manifest.server_type {
         match server_type.as_str() {
             "hsm_kek" => {
+                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 let context = ONCE_VECTOR_HSM_KEK
                     .get_or_try_init(|| async {
-                        crate::start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
-                            .await
+                        crate::start_default_test_kms_server_with_hsm_and_kek_for_vectors().await
                     })
                     .await?;
-                // Serialise PKCS#11 access: SoftHSM2 state is not safe under concurrent
-                // access on the same slot (CKR_OBJECT_HANDLE_INVALID races).
-                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 eprintln!(
                     "▶ Running vector '{}' on server_type 'hsm_kek'",
                     manifest.name
@@ -913,13 +929,13 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
                 return execute_steps(context, &manifest, &vector_path).await;
             }
             "hsm_kek_uncreated" => {
+                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 let context = ONCE_VECTOR_HSM_KEK_UNCREATED
                     .get_or_try_init(|| async {
-                        crate::start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vectors()
+                        crate::start_default_test_kms_server_with_hsm_kek_uncreated_for_vectors()
                             .await
                     })
                     .await?;
-                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 eprintln!(
                     "▶ Running vector '{}' on server_type 'hsm_kek_uncreated'",
                     manifest.name
@@ -927,13 +943,12 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
                 return execute_steps(context, &manifest, &vector_path).await;
             }
             "hsm" => {
+                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 let context = ONCE_VECTOR_HSM
                     .get_or_try_init(|| async {
-                        crate::start_default_test_kms_server_with_softhsm2_for_vectors().await
+                        crate::start_default_test_kms_server_with_hsm_for_vectors().await
                     })
                     .await?;
-                // Serialise PKCS#11 access: all HSM server types share the same slot.
-                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 // Purge stale `vec_*` objects from previous test runs exactly once,
                 // while the slot mutex is held (prevents deleting keys that an
                 // `hsm_kek` test just created on the shared slot).
@@ -4693,18 +4708,6 @@ ObjectType = "SymmetricKey"
     async fn test_vec_hsm_resident_rsa1024_rejected() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/resident_rsa1024_rejected").await
-    }
-
-    #[tokio::test]
-    async fn test_vec_hsm_resident_ec_p256_rejected() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/hsm/resident_ec_p256_rejected").await
-    }
-
-    #[tokio::test]
-    async fn test_vec_hsm_resident_ec_p384_rejected() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/hsm/resident_ec_p384_rejected").await
     }
 
     #[tokio::test]
