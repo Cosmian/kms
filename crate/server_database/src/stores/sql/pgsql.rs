@@ -1702,13 +1702,8 @@ mod tests {
 
     // Regression test for issue #1027: the pooled connection must be released
     // before sleeping through the retry back-off, not held across it.
-    //
-    // A size-1 pool is pinned to a single connection. One task keeps failing
-    // a retryable transaction (a forced "deadlock detected" error) for all
-    // `PG_MAX_RETRIES` attempts, which spends ~1.55s sleeping across back-offs
-    // (50+100+200+400+800ms; the last attempt does not sleep).
-    // Meanwhile we sample `pool.status().available`: if the connection is
-    // held during the sleeps, the pool never reports itself idle.
+    // A size-1 pool pins to one connection, so if `pool.status().available`
+    // never reports idle while a retryable transaction backs off, it's held.
     #[ignore = "Requires a running PostgreSQL instance"]
     #[tokio::test]
     async fn pg_connection_released_during_backoff() -> DbResult<()> {
@@ -1741,12 +1736,12 @@ mod tests {
         // connection-holding behavior along the way is under test here.
         drop(handle.await);
 
-        let idle_fraction = idle_samples as f64 / total_samples.max(1) as f64;
-        assert!(
-            idle_fraction > 0.5,
-            "pool reported idle in only {idle_samples}/{total_samples} samples \
-             ({idle_fraction:.2}) — connection appears held during back-off sleep"
-        );
+        if idle_samples * 2 <= total_samples.max(1) {
+            return Err(DbError::DatabaseError(format!(
+                "pool reported idle in only {idle_samples}/{total_samples} samples — \
+                 connection appears held during back-off sleep"
+            )));
+        }
 
         Ok(())
     }
