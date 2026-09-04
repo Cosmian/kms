@@ -1,0 +1,94 @@
+# ===========================================================================
+# Cosmian KMS — OPA RBAC demo stack
+#
+# Services:
+#   - OPA  (Open Policy Agent — standalone policy evaluation server for
+#            external inspection / debugging on port 8181)
+#   - KMS  (Cosmian KMS — uses the same Rego policy bundle via its embedded
+#            Regorus engine; SQLite backend for simplicity)
+#
+# Usage:
+#   docker compose up -d
+#   # KMS HTTP API
+#   curl http://localhost:9998/health
+#   # OPA policy evaluation
+#   curl -s -X POST http://localhost:8181/v1/data/cosmian/kms/rbac/allow \
+#        -H "Content-Type: application/json" \
+#        -d '{"input":{"subject":{"roles":["admin"]},"action":{"operation":"create"}}}'
+#
+# RBAC notes:
+#   - Policy bundle: ./opa/policy/default_rbac.rego + data.json
+#   - Roles: admin | operator | auditor | readonly
+#   - KMS_FORCE_DEFAULT_USERNAME=true lets the default "admin" identity work
+#     without an IdP; add JWT/mTLS auth for production.
+# ===========================================================================
+name: cosmian-kms-opa
+
+networks:
+  kms-net:
+    driver: bridge
+
+volumes:
+  kms-data:
+
+services:
+  # ===========================================================================
+  # OPA (Open Policy Agent — standalone REST policy server)
+  # ===========================================================================
+  opa:
+    image: ${OPA_IMAGE:-openpolicyagent/opa:0.68.0}
+    hostname: opa
+    networks:
+      - kms-net
+    ports:
+      - "8181:8181"
+    command:
+      - run
+      - --server
+      - --addr=0.0.0.0:8181
+      - --log-level=debug
+      - --disable-telemetry
+      - /policies/default_rbac.rego
+      - /policies/data.json
+    volumes:
+      - ./opa/policy/default_rbac.rego:/policies/default_rbac.rego:ro
+      - ./opa/policy/data.json:/policies/data.json:ro
+    healthcheck:
+      test: ["CMD", "/opa", "eval", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ===========================================================================
+  # Cosmian KMS Server
+  # ===========================================================================
+  kms:
+    image: ${KMS_IMAGE:-ghcr.io/cosmian/kms:latest}
+    hostname: kms
+    networks:
+      - kms-net
+    ports:
+      - "${KMS_PORT:-9998}:9998"
+    environment:
+      # SQLite backend — no external database required
+      - KMS_DATABASE_TYPE=sqlite
+      - KMS_SQLITE_PATH=/tmp/kms-data
+      # RBAC — use the same Rego bundle as the OPA container above
+      - KMS_RBAC_ENABLED=true
+      - KMS_RBAC_BUNDLE_PATH=/policies
+      # Allow the built-in "admin" identity when no IdP is configured
+      - KMS_FORCE_DEFAULT_USERNAME=true
+      - RUST_LOG=${KMS_LOG_LEVEL:-info,cosmian_kms=debug}
+    volumes:
+      - ./opa/policy:/policies:ro
+      - kms-data:/tmp/kms-data
+    depends_on:
+      opa:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/9998"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
