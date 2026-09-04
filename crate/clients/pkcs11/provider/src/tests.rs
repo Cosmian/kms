@@ -271,7 +271,16 @@ static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 #[test]
 #[expect(unsafe_code)]
-pub(crate) fn test_init() {
+fn test_get_function_list_rejects_null_output() {
+    // SAFETY: passing null intentionally verifies the required argument validation.
+    assert_eq!(
+        unsafe { C_GetFunctionList(std::ptr::null_mut()) },
+        CKR_ARGUMENTS_BAD
+    );
+}
+
+#[expect(unsafe_code)]
+fn test_init() {
     // export RUST_LOG="cosmian_pkcs11=trace,ckms=trace,cosmian_config_utils=trace"
     log_init(None);
 
