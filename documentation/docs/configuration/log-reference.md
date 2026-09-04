@@ -764,6 +764,7 @@ Crate path: `crate/server_database`
 | `warn` | `wrapping_key_id backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object {id} that failed to                          deserialize: {e}` | `src/stores/sql/mysql.rs` | `id`, `e` | - |
 | `debug` | `[redis-scan-wrapped] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
+| `debug` | `PostgreSQL error` | `src/error/db_error.rs` | `code`: SQLSTATE code<br>`message`: raw driver error message | Internal only — never surfaced via `SqlError` (which carries just the code) to avoid leaking table/constraint names to clients. |
 
 ### `cosmian_kms_crypto`
 
