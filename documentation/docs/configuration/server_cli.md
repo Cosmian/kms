@@ -829,7 +829,7 @@ Options:
           the default 24-hour refresh-overlap condition immediately after creation,
           causing the hourly scheduler to continuously re-sign it.
 
-          Valid range: 1–365 when set via the CLI flag or an environment variable.
+          Valid range: 1–365 when set via the CLI flag.
           Default: 7.
 
           This range is enforced by clap's argument parser only; it is not
