@@ -88,8 +88,15 @@ pub struct DeriveKeyAction {
     pub initialization_vector: Option<String>,
 
     /// Digest algorithm for derivation
-    #[clap(long, short = 'd', default_value = "SHA256")]
+    #[clap(long, short = 'd', default_value = "sha256")]
     pub digest_algorithm: CHashingAlgorithm,
+
+    /// Context/info for HKDF derivation (in hex format). Ignored for PBKDF2.
+    /// Two calls with the same base key, salt, and info produce the same
+    /// derived key. Defaults to empty (RFC 5869 permits an empty info).
+    #[clap(long , short = 'n',
+        value_parser = |s: &str| hex::decode(s).map(|_| s.to_string()).map_err(|e| format!("Invalid hex format: {}", e)))]
+    pub info: Option<String>,
 
     /// The algorithm
     #[clap(
@@ -130,7 +137,7 @@ impl DeriveKeyAction {
         }
 
         let base_key_id = self.resolve_base_key_id(kms_rest_client).await?;
-        let derivation_parameters = self.build_derivation_params(&base_key_id)?;
+        let derivation_parameters = self.build_derivation_params()?;
 
         let (cryptographic_length, _, algorithm) =
             prepare_sym_key_elements(Some(self.cryptographic_length), &None, self.algorithm)
@@ -259,7 +266,7 @@ impl DeriveKeyAction {
     }
 
     /// Build the `DerivationParameters` from the CLI arguments.
-    fn build_derivation_params(&self, base_key_id: &str) -> KmsCliResult<DerivationParameters> {
+    fn build_derivation_params(&self) -> KmsCliResult<DerivationParameters> {
         let salt_hex = self
             .salt
             .as_ref()
@@ -275,15 +282,17 @@ impl DeriveKeyAction {
             None
         };
 
+        // HKDF's info/context: explicit and caller-controlled via --info, so
+        // that two independent calls with the same base key, salt, and info
+        // derive the same key. Defaults to empty, which RFC 5869 §2.3
+        // permits, rather than to a value that differs on every call.
         let derivation_data = if self.derivation_method.to_uppercase() == "HKDF" {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            let timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos();
-            let random_id = uuid::Uuid::new_v4();
-            let context = format!("CLI-HKDF-{base_key_id}-{timestamp}-{random_id}");
-            Some(Zeroizing::new(context.into_bytes()))
+            let info = match &self.info {
+                Some(info_hex) => hex::decode(info_hex)
+                    .map_err(|e| KmsCliError::Default(format!("Invalid info hex format: {e}")))?,
+                None => Vec::new(),
+            };
+            Some(Zeroizing::new(info))
         } else {
             None
         };

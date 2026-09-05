@@ -2548,7 +2548,9 @@ Possible values:  `"true", "false"`
 
 `--digest-algorithm [-d] <DIGEST_ALGORITHM>` Digest algorithm for derivation
 
-Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"` [default: `"SHA256"`]
+Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"` [default: `"sha256"`]
+
+`--info [-n] <INFO>` Context/info for HKDF derivation (in hex format). Ignored for PBKDF2. Two calls with the same base key, salt, and info produce the same derived key. Defaults to empty (RFC 5869 permits an empty info)
 
 `--algorithm [-a] <ALGORITHM>` The algorithm
 
