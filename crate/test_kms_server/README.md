@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**649 vectors** across 16 categories (including KAT):
+**650 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -490,6 +490,7 @@ replays the steps sequentially.
 | non-FIPS / Poly1305 | `non-fips/chacha20_poly1305_with_explicit_nonce` | Creates a ChaCha20-Poly1305 key, encrypts with a client-provided 12-byte nonce using AEAD mode, then decrypts and verifies the plaintext | 3 |
 | non-FIPS / ChaCha20 | `non-fips/chacha20_server_generated_nonce` | Creates a ChaCha20 key, encrypts without specifying a nonce (server generates an 8-byte nonce), captures the nonce from the response, then decrypts and verifies the plaintext | 3 |
 | non-FIPS / ChaCha20 | `non-fips/chacha20_with_explicit_cryptographic_params` | Creates a ChaCha20 key, encrypts with an explicit CryptographicParameters block specifying the ChaCha20 algorithm and a client-provided 8-byte nonce, then decrypts and verifies the plaintext | 3 |
+| non-FIPS | `non-fips/derive_key_x25519` | Creates two X25519 key pairs, derives a non-exportable shared secret with DeriveKey, and verifies the stored SecretData attributes | 9 |
 | **Keyset Resolution** | | | |
 | Keyset | `keyset_chain_skips_expired_window` | Creates a symmetric key (gen-0), sets a rotate_name, encrypts with the gen-0 UID, then performs a ReKey to create gen-1.  Sets ProtectStopDate in the past on gen-1 (the newest key in the chain).  Decrypts with the bare keyset name. | 9 |
 | Keyset / Decrypt | `keyset_decrypt_at_first` | Creates a symmetric key, assigns a rotate_name, encrypts with the original key UID, performs a ReKey, then decrypts using name@first. Verifies that @first resolves to gen-0 for decryption. | 8 |

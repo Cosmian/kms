@@ -4205,6 +4205,13 @@ ObjectType = "SymmetricKey"
 
     #[cfg(feature = "non-fips")]
     #[tokio::test]
+    async fn test_vec_derive_key_x25519() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/non-fips/derive_key_x25519").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
     async fn test_vec_rekey_keypair_secp256k1() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/non-fips/rekey_keypair_secp256k1").await
