@@ -1425,6 +1425,7 @@ dependencies = [
  "futures",
  "libloading",
  "lru",
+ "openssl",
  "pkcs11-sys",
  "rand 0.10.2",
  "thiserror 2.0.19",

@@ -33,8 +33,9 @@
 //! - Zero-copy cleanup for sensitive data using `Zeroizing`
 use async_trait::async_trait;
 use cosmian_kms_interfaces::{
-    CryptoAlgorithm, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
-    HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType, SigningAlgorithm,
+    CryptoAlgorithm, EcCurve, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm,
+    HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
+    SigningAlgorithm,
 };
 use cosmian_logger::debug;
 use zeroize::Zeroizing;
@@ -111,22 +112,42 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
             ));
         }
 
-        let key_length_in_bits = match key_length_in_bits {
-            1024 => RsaKeySize::Rsa1024,
-            2048 => RsaKeySize::Rsa2048,
-            3072 => RsaKeySize::Rsa3072,
-            4096 => RsaKeySize::Rsa4096,
-            x => {
-                return Err(InterfaceError::Default(format!(
-                    "Invalid key length: {x} bits, for and HSM RSA key (valid values are 1024, \
-                     2048, 3072, 4096)"
-                )));
-            }
-        };
-
         match algorithm {
             HsmKeypairAlgorithm::RSA => {
+                let key_length_in_bits = match key_length_in_bits {
+                    1024 => RsaKeySize::Rsa1024,
+                    2048 => RsaKeySize::Rsa2048,
+                    3072 => RsaKeySize::Rsa3072,
+                    4096 => RsaKeySize::Rsa4096,
+                    x => {
+                        return Err(InterfaceError::Default(format!(
+                            "Invalid key length: {x} bits, for and HSM RSA key (valid values \
+                             are 1024, 2048, 3072, 4096)"
+                        )));
+                    }
+                };
                 session.generate_rsa_key_pair(sk_id, pk_id, key_length_in_bits, sensitive)?;
+                Ok(())
+            }
+            HsmKeypairAlgorithm::EC => {
+                let curve = EcCurve::from_key_length_in_bits(key_length_in_bits)
+                    .map_err(|e| InterfaceError::Default(e.to_string()))?;
+                session.generate_ec_key_pair(sk_id, pk_id, curve, sensitive)?;
+                Ok(())
+            }
+            #[cfg(feature = "non-fips")]
+            HsmKeypairAlgorithm::Ed25519 => {
+                session.generate_ec_key_pair(sk_id, pk_id, EcCurve::Ed25519, sensitive)?;
+                Ok(())
+            }
+            #[cfg(feature = "non-fips")]
+            HsmKeypairAlgorithm::Ed448 => {
+                session.generate_ec_key_pair(sk_id, pk_id, EcCurve::Ed448, sensitive)?;
+                Ok(())
+            }
+            #[cfg(feature = "non-fips")]
+            HsmKeypairAlgorithm::X25519 => {
+                session.generate_ec_key_pair(sk_id, pk_id, EcCurve::X25519, sensitive)?;
                 Ok(())
             }
         }

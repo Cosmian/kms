@@ -497,8 +497,8 @@ async fn guard_hsm_key_type(
         Ok(Some(actual_key_type)) => {
             let actual_object_type = match actual_key_type {
                 KeyType::AesKey => ObjectType::SymmetricKey,
-                KeyType::RsaPrivateKey => ObjectType::PrivateKey,
-                KeyType::RsaPublicKey => ObjectType::PublicKey,
+                KeyType::RsaPrivateKey | KeyType::EcPrivateKey => ObjectType::PrivateKey,
+                KeyType::RsaPublicKey | KeyType::EcPublicKey => ObjectType::PublicKey,
             };
             if actual_object_type != *expected_type {
                 return Err(KmsError::Kmip21Error(

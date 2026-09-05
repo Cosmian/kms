@@ -293,6 +293,25 @@ The symmetric key was successfully generated.
    Unique identifier: hsm::4::my_aes_key
 ```
 
+!!! info HSM-delegated EC key generation
+    Elliptic curve key pairs can also be created directly on the HSM, using the same `ec keys
+    create` CLI command as for software keys. The four NIST curves supported by the HSM
+    integration are P-224, P-256 (default), P-384, and P-521 — the same curves accepted by
+    `--curve nist-p224/nist-p256/nist-p384/nist-p521`. With the `non-fips` build feature,
+    Ed25519 and Ed448 (for `EdDSA` signing) and X25519 (for ECDH key agreement) are also
+    supported — see [HSM-delegated `EdDSA` signing](#sign) below. X448 and the non-FIPS NIST
+    curves (secp256k1, secp224k1) remain unsupported by the HSM delegation and are
+    software-only.
+
+Create an EC P-384 key pair on HSM slot 4, with the KMS CLI:
+
+```shell
+❯ ckms ec keys create --curve nist-p384 hsm::4::my_ec_key
+The EC key pair has been created.
+      Public key unique identifier: hsm::4::my_ec_key_pk
+      Private key unique identifier: hsm::4::my_ec_key
+```
+
 HSM keys are always created with `CKA_SENSITIVE=true` (private/symmetric key material cannot be
 exported). Pass `--sensitive false` explicitly only if you intentionally need an extractable key.
 
@@ -488,6 +507,94 @@ To decrypt a message using AES GCM with the symmetric key `hsm::4::my_aes_key`, 
 The decrypted file is available at "/tmp/secret.recovered.txt"
 ```
 
+### Sign
+
+RSA and EC private keys can be used to sign data. Only HSM admin users, or a user granted the
+`Sign` operation by an HSM admin, can sign data with keys stored in the HSM.
+
+Two families of RSA signing mechanisms are supported:
+
+- **PKCS#1 v1.5** (`CKM_SHA{1,256,384,512}_RSA_PKCS`): deterministic, the classic RSA signature
+  scheme.
+- **RSASSA-PSS** (`CKM_SHA{256,384,512}_RSA_PKCS_PSS`): the probabilistic scheme recommended by
+  current standards (e.g. FIPS 186-5, RFC 8017). The salt length defaults to the digest length in
+  bytes (32 for SHA-256, 48 for SHA-384, 64 for SHA-512) and can be overridden via the KMIP
+  `CryptographicParameters.salt_length` field; `salt_length: 0` produces a deterministic PSS
+  signature.
+
+The `ckms rsa sign` CLI command always uses RSASSA-PSS with SHA-256, matching the KMS software
+signing path. To sign a file with the HSM-resident private key `hsm::4::my_rsa_key`, the following
+command can be used:
+
+```shell
+❯ ckms rsa sign --key-id hsm::4::my_rsa_key -o /tmp/secret.sig /tmp/secret.txt
+The signature is available at "/tmp/secret.sig"
+```
+
+!!! info HSM-delegated RSA-PSS signing
+    RSA-PSS signing over HSM-resident keys is delegated end-to-end to the PKCS#11 device: the
+    private key never leaves the HSM, and the PSS mechanism parameters (hash algorithm, MGF1
+    hash algorithm, salt length) are built from the KMIP request and passed directly to
+    `C_Sign` via `CK_RSA_PKCS_PSS_PARAMS`. This is purely additive: existing PKCS#1 v1.5 and
+    OAEP mechanisms, key types, and HSM vendor loaders are unaffected. See
+    [ADR-2026-09-05](../adr/2026-09-05-hsm-track-a-rsa-pss-scope-decision.md) for the scope
+    decision.
+
+ECDSA signing over an HSM-resident EC private key uses the same `ec sign` CLI command as the
+software signing path. The hashing algorithm (SHA-256/384/512) is selected from the KMIP request
+and dispatched to `C_Sign` with `CKM_ECDSA_SHA{256,384,512}`.
+
+To sign a file with the HSM-resident EC private key `hsm::4::my_ec_key`, the following command
+can be used:
+
+```shell
+❯ ckms ec sign --key-id hsm::4::my_ec_key -o /tmp/secret.sig /tmp/secret.txt
+The signature is available at "/tmp/secret.sig"
+```
+
+!!! info HSM-delegated ECDSA signing
+    ECDSA signing over HSM-resident EC keys is delegated end-to-end to the PKCS#11 device: the
+    private key never leaves the HSM. PKCS#11 ECDSA signatures are the raw, fixed-length `r‖s`
+    concatenation; the KMS converts this to the DER `SEQUENCE { r, s }` encoding expected
+    elsewhere in the codebase before returning the signature. ECDSA is a randomized scheme:
+    signing the same data twice with the same key produces two different, independently
+    verifiable signatures. This is purely additive: existing RSA signing mechanisms, key types,
+    and HSM vendor loaders are unaffected. See
+    [ADR-2026-09-06](../adr/2026-09-06-hsm-track-a-ec-ecdsa-completion-pbkdf2-deferral.md) for
+    implementation details and the PBKDF2 deferral rationale (SoftHSM2, the only backend
+    available for end-to-end validation in this environment, does not implement
+    `CKM_PKCS5_PBKD2`).
+
+`EdDSA` signing (Ed25519/Ed448) over an HSM-resident Edwards-curve private key is available with
+the `non-fips` build feature, using the same `ec sign` CLI command as ECDSA above. Unlike ECDSA,
+`EdDSA` is a pure, un-hashed signature scheme (RFC 8032): the raw message is passed directly to
+`C_Sign` with `CKM_EDDSA`, with no digest step and no DER re-encoding.
+
+```shell
+❯ ckms ec keys create --curve ed25519 hsm::4::my_ed25519_key
+The EC key pair has been created.
+      Public key unique identifier: hsm::4::my_ed25519_key_pk
+      Private key unique identifier: hsm::4::my_ed25519_key
+
+❯ ckms ec sign --key-id hsm::4::my_ed25519_key -o /tmp/secret.sig /tmp/secret.txt
+The signature is available at "/tmp/secret.sig"
+```
+
+!!! info HSM-delegated `EdDSA` signing (Ed25519/Ed448)
+    `EdDSA` signing over HSM-resident Ed25519/Ed448 keys is delegated end-to-end to the PKCS#11
+    device via `CKM_EC_EDWARDS_KEY_PAIR_GEN` (key generation) and `CKM_EDDSA` (signing). Unlike
+    ECDSA, `EdDSA` is deterministic: signing the same data twice with the same key always
+    produces the same signature. Gated behind the `non-fips` build feature, mirroring the
+    existing software `EdDSA` gating in `crate::crypto::elliptic_curves::sign` — HKDF and SP
+    800-108 KDF are NIST-approved and not affected by this flag. Validated live against a
+    `SoftHSM2` 2.6.1 token. HSM-delegated X25519 key generation
+    (`CKM_EC_MONTGOMERY_KEY_PAIR_GEN`) is also implemented, but X25519 ECDH key agreement
+    (`DeriveKey`), HKDF/SP 800-108 key derivation, and message-based AEAD are **not yet**
+    implemented — no PKCS#11 backend available in this environment (`SoftHSM2`, the Utimaco
+    CryptoServer simulator) exposes the required mechanisms for end-to-end validation. This
+    remains open, tracked on
+    [issue #1157](https://github.com/Cosmian/kms/issues/1157).
+
 ## PKCS#11 protocol version compatibility
 
 Eviden KMS talks to HSMs over Cryptoki (PKCS#11) **v2.40** on the consumer side (`crate/hsm/base_hsm`
@@ -502,10 +609,14 @@ v3.0.
     Eviden KMS can optionally detect whether the loaded PKCS#11 library also exposes the v3.0
     interfaces discovery entry point (`C_GetInterfaceList`), without changing how any function is
     resolved or called. This is a **read-only capability probe** for diagnostics and future v3.0
-    feature adoption — it does not yet enable any v3.0-only mechanism (EdDSA, X25519, HKDF,
-    message-based AEAD, etc.), which is tracked as separate follow-up work. A v2.40-only library
-    (e.g. SoftHSM2) simply does not export `C_GetInterfaceList`, so the probe reports "not
-    supported" and nothing else changes; a v3.0-capable library additionally reports the list of
-    interfaces it exposes (e.g. `"PKCS 11"`). See
+    feature adoption, independent of the v3.0 *mechanism* constants (`CKM_EDDSA`,
+    `CKM_EC_EDWARDS_KEY_PAIR_GEN`, ...), which the vendored `pkcs11-sys` bindings already expose
+    and which HSM-delegated `EdDSA`/X25519 key generation (above) already uses directly by
+    stable symbol name — no v3.0 interface discovery is required for those. X25519 ECDH key
+    agreement, HKDF/SP 800-108 key derivation, and message-based AEAD remain unimplemented
+    (tracked on [issue #1157](https://github.com/Cosmian/kms/issues/1157)). A v2.40-only
+    library (e.g. SoftHSM2) simply does not export `C_GetInterfaceList`, so the probe reports
+    "not supported" and nothing else changes; a v3.0-capable library additionally reports the
+    list of interfaces it exposes (e.g. `"PKCS 11"`). See
     [ADR-2026-09-03](../adr/2026-09-03-pkcs11-v3-scope-decision-ffi-foundation.md) for the full
     scope decision and rationale.

@@ -129,6 +129,28 @@ pub enum SigningAlgorithm {
     Sha384WithRsa,
     /// `CKM_SHA512_RSA_PKCS`
     Sha512WithRsa,
+    /// `CKM_SHA256_RSA_PKCS_PSS` (MGF1-SHA256). `salt_length` in bytes; `None` defaults to the
+    /// digest length (32 bytes), matching the software RSASSA-PSS default.
+    RsaPssSha256 { salt_length: Option<u32> },
+    /// `CKM_SHA384_RSA_PKCS_PSS` (MGF1-SHA384). `salt_length` in bytes; `None` defaults to the
+    /// digest length (48 bytes).
+    RsaPssSha384 { salt_length: Option<u32> },
+    /// `CKM_SHA512_RSA_PKCS_PSS` (MGF1-SHA512). `salt_length` in bytes; `None` defaults to the
+    /// digest length (64 bytes).
+    RsaPssSha512 { salt_length: Option<u32> },
+    /// `CKM_ECDSA_SHA256`
+    EcdsaSha256,
+    /// `CKM_ECDSA_SHA384`
+    EcdsaSha384,
+    /// `CKM_ECDSA_SHA512`
+    EcdsaSha512,
+    /// `CKM_EDDSA` over an Ed25519 private key (pure `EdDSA`, no pre-hashing). Non-FIPS: mirrors
+    /// the gating of `Ed25519` signing in `crate::crypto::elliptic_curves::sign` (issue #1157).
+    #[cfg(feature = "non-fips")]
+    Ed25519,
+    /// `CKM_EDDSA` over an Ed448 private key. Non-FIPS: see `Ed25519` above.
+    #[cfg(feature = "non-fips")]
+    Ed448,
 }
 
 impl SigningAlgorithm {
@@ -136,7 +158,7 @@ impl SigningAlgorithm {
     ///
     /// Resolution order:
     /// 1. `digital_signature_algorithm` (most explicit)
-    /// 2. `cryptographic_algorithm` + `hashing_algorithm`
+    /// 2. `cryptographic_algorithm` + `padding_method` + `hashing_algorithm`
     /// 3. fallback to `Sha256WithRsa` when only RSA is specified
     pub fn from_kmip(params: Option<&CryptographicParameters>) -> Result<Self, InterfaceError> {
         let Some(params) = params else {
@@ -151,14 +173,55 @@ impl SigningAlgorithm {
                 | DigitalSignatureAlgorithm::SHA256WithRSAEncryption => Ok(Self::Sha256WithRsa),
                 DigitalSignatureAlgorithm::SHA384WithRSAEncryption => Ok(Self::Sha384WithRsa),
                 DigitalSignatureAlgorithm::SHA512WithRSAEncryption => Ok(Self::Sha512WithRsa),
+                DigitalSignatureAlgorithm::RSASSAPSS => {
+                    Self::rsa_pss_from_hash_and_salt(params.hashing_algorithm, params.salt_length)
+                }
+                DigitalSignatureAlgorithm::ECDSAWithSHA256 => Ok(Self::EcdsaSha256),
+                DigitalSignatureAlgorithm::ECDSAWithSHA384 => Ok(Self::EcdsaSha384),
+                DigitalSignatureAlgorithm::ECDSAWithSHA512 => Ok(Self::EcdsaSha512),
                 other => Err(InterfaceError::InvalidRequest(format!(
                     "Unsupported digital signature algorithm for HSM signing: {other:?}"
                 ))),
             };
         }
 
-        // 2. cryptographic_algorithm + hashing_algorithm
+        // 2. cryptographic_algorithm alone (EdDSA — KMIP has no DigitalSignatureAlgorithm
+        // variant for Ed25519/Ed448; the algorithm is carried directly by
+        // CryptographicAlgorithm, and `EdDSA` never takes a separate hashing_algorithm or
+        // padding_method). Non-FIPS: mirrors the software `EdDSA` signing gating (issue #1157).
+        #[cfg(feature = "non-fips")]
+        {
+            if params.cryptographic_algorithm == Some(CryptographicAlgorithm::Ed25519) {
+                return Ok(Self::Ed25519);
+            }
+            if params.cryptographic_algorithm == Some(CryptographicAlgorithm::Ed448) {
+                return Ok(Self::Ed448);
+            }
+        }
+
+        // 3. cryptographic_algorithm + hashing_algorithm (EC/ECDSA)
+        if matches!(
+            params.cryptographic_algorithm,
+            Some(CryptographicAlgorithm::EC | CryptographicAlgorithm::ECDSA)
+        ) {
+            return match params.hashing_algorithm {
+                Some(HashingAlgorithm::SHA256) | None => Ok(Self::EcdsaSha256),
+                Some(HashingAlgorithm::SHA384) => Ok(Self::EcdsaSha384),
+                Some(HashingAlgorithm::SHA512) => Ok(Self::EcdsaSha512),
+                Some(other) => Err(InterfaceError::InvalidRequest(format!(
+                    "Unsupported hashing algorithm for ECDSA signing: {other:?}"
+                ))),
+            };
+        }
+
+        // 2. cryptographic_algorithm + padding_method + hashing_algorithm
         if params.cryptographic_algorithm == Some(CryptographicAlgorithm::RSA) {
+            if params.padding_method == Some(PaddingMethod::PSS) {
+                return Self::rsa_pss_from_hash_and_salt(
+                    params.hashing_algorithm,
+                    params.salt_length,
+                );
+            }
             return match params.hashing_algorithm {
                 Some(HashingAlgorithm::SHA1) => Ok(Self::Sha1WithRsa),
                 Some(HashingAlgorithm::SHA256) | None => Ok(Self::Sha256WithRsa),
@@ -172,6 +235,29 @@ impl SigningAlgorithm {
 
         // Default
         Ok(Self::Sha256WithRsa)
+    }
+
+    /// Resolve an RSASSA-PSS `SigningAlgorithm` variant from an optional KMIP hashing algorithm
+    /// (defaulting to SHA-256, matching the software RSASSA-PSS default) and an optional,
+    /// KMIP-signed salt length (rejecting negative values, which are meaningless for PKCS#11's
+    /// unsigned `CK_ULONG` salt-length parameter).
+    fn rsa_pss_from_hash_and_salt(
+        hashing_algorithm: Option<HashingAlgorithm>,
+        salt_length: Option<i32>,
+    ) -> Result<Self, InterfaceError> {
+        let salt_length = salt_length.map(u32::try_from).transpose().map_err(|_e| {
+            InterfaceError::InvalidRequest(
+                "RSASSA-PSS: salt_length must not be negative".to_owned(),
+            )
+        })?;
+        match hashing_algorithm {
+            Some(HashingAlgorithm::SHA384) => Ok(Self::RsaPssSha384 { salt_length }),
+            Some(HashingAlgorithm::SHA512) => Ok(Self::RsaPssSha512 { salt_length }),
+            Some(HashingAlgorithm::SHA256) | None => Ok(Self::RsaPssSha256 { salt_length }),
+            Some(other) => Err(InterfaceError::InvalidRequest(format!(
+                "Unsupported hashing algorithm for RSASSA-PSS signing: {other:?}"
+            ))),
+        }
     }
 }
 
@@ -295,4 +381,184 @@ pub trait CryptoOracle: Send + Sync {
         mac_data: &[u8],
         cryptographic_parameters: Option<&CryptographicParameters>,
     ) -> InterfaceResult<bool>;
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+
+    use super::*;
+
+    fn params_with(
+        digital_signature_algorithm: Option<DigitalSignatureAlgorithm>,
+        cryptographic_algorithm: Option<CryptographicAlgorithm>,
+        hashing_algorithm: Option<HashingAlgorithm>,
+        padding_method: Option<PaddingMethod>,
+        salt_length: Option<i32>,
+    ) -> CryptographicParameters {
+        CryptographicParameters {
+            digital_signature_algorithm,
+            cryptographic_algorithm,
+            hashing_algorithm,
+            padding_method,
+            salt_length,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn from_kmip_none_defaults_to_sha256_with_rsa() {
+        assert_eq!(
+            SigningAlgorithm::from_kmip(None).expect("should resolve"),
+            SigningAlgorithm::Sha256WithRsa
+        );
+    }
+
+    #[test]
+    fn from_kmip_explicit_rsassa_pss_resolves_hash_and_defaults_salt_to_none() {
+        for (hash, expected) in [
+            (
+                HashingAlgorithm::SHA256,
+                SigningAlgorithm::RsaPssSha256 { salt_length: None },
+            ),
+            (
+                HashingAlgorithm::SHA384,
+                SigningAlgorithm::RsaPssSha384 { salt_length: None },
+            ),
+            (
+                HashingAlgorithm::SHA512,
+                SigningAlgorithm::RsaPssSha512 { salt_length: None },
+            ),
+        ] {
+            let params = params_with(
+                Some(DigitalSignatureAlgorithm::RSASSAPSS),
+                None,
+                Some(hash),
+                None,
+                None,
+            );
+            assert_eq!(
+                SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
+                expected,
+                "hash: {hash:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn from_kmip_rsassa_pss_no_hash_defaults_to_sha256() {
+        let params = params_with(
+            Some(DigitalSignatureAlgorithm::RSASSAPSS),
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(
+            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
+            SigningAlgorithm::RsaPssSha256 { salt_length: None }
+        );
+    }
+
+    #[test]
+    fn from_kmip_rsassa_pss_honors_explicit_salt_length() {
+        let params = params_with(
+            Some(DigitalSignatureAlgorithm::RSASSAPSS),
+            None,
+            Some(HashingAlgorithm::SHA256),
+            None,
+            Some(0),
+        );
+        assert_eq!(
+            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
+            SigningAlgorithm::RsaPssSha256 {
+                salt_length: Some(0)
+            }
+        );
+    }
+
+    #[test]
+    fn from_kmip_rsassa_pss_rejects_negative_salt_length() {
+        let params = params_with(
+            Some(DigitalSignatureAlgorithm::RSASSAPSS),
+            None,
+            Some(HashingAlgorithm::SHA256),
+            None,
+            Some(-1),
+        );
+        let err = SigningAlgorithm::from_kmip(Some(&params)).expect_err("must reject");
+        assert!(matches!(err, InterfaceError::InvalidRequest(_)));
+    }
+
+    #[test]
+    fn from_kmip_rsassa_pss_rejects_unsupported_hash() {
+        let params = params_with(
+            Some(DigitalSignatureAlgorithm::RSASSAPSS),
+            None,
+            Some(HashingAlgorithm::SHA1),
+            None,
+            None,
+        );
+        let err = SigningAlgorithm::from_kmip(Some(&params)).expect_err("must reject");
+        assert!(matches!(err, InterfaceError::InvalidRequest(_)));
+    }
+
+    #[test]
+    fn from_kmip_rsa_padding_method_pss_resolves_pss_variant() {
+        let params = params_with(
+            None,
+            Some(CryptographicAlgorithm::RSA),
+            Some(HashingAlgorithm::SHA384),
+            Some(PaddingMethod::PSS),
+            None,
+        );
+        assert_eq!(
+            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
+            SigningAlgorithm::RsaPssSha384 { salt_length: None }
+        );
+    }
+
+    #[test]
+    fn from_kmip_rsa_pkcs1v15_still_resolves_as_before() {
+        let params = params_with(
+            None,
+            Some(CryptographicAlgorithm::RSA),
+            Some(HashingAlgorithm::SHA384),
+            None,
+            None,
+        );
+        assert_eq!(
+            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
+            SigningAlgorithm::Sha384WithRsa
+        );
+    }
+
+    /// HSM-delegated `EdDSA` signing (issue #1157). `EdDSA` has no `DigitalSignatureAlgorithm`
+    /// variant in KMIP 2.1: it is resolved from `CryptographicAlgorithm::Ed25519`/`Ed448` alone,
+    /// with no accompanying `hashing_algorithm`/`padding_method` (unlike RSA/ECDSA above).
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn from_kmip_ed25519_resolves_via_cryptographic_algorithm_alone() {
+        let params = params_with(
+            None,
+            Some(CryptographicAlgorithm::Ed25519),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(
+            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
+            SigningAlgorithm::Ed25519
+        );
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn from_kmip_ed448_resolves_via_cryptographic_algorithm_alone() {
+        let params = params_with(None, Some(CryptographicAlgorithm::Ed448), None, None, None);
+        assert_eq!(
+            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
+            SigningAlgorithm::Ed448
+        );
+    }
 }

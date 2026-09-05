@@ -54,6 +54,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     shared::destroy_all(&slot)?;
     shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
+    shared::generate_ec_keypair(&slot)?;
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA1)?;
     shared::rsa_pkcs_encrypt(&slot)?;
     shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA1)?;
@@ -63,6 +64,10 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     shared::rsa_pkcs_v15_sign(&slot)?;
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
+    shared::rsa_pss_sign_all_algorithms(&slot)?;
+    shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
+    #[cfg(feature = "non-fips")]
+    shared::eddsa_sign_all_curves(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA1, cfg.threads)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
@@ -92,21 +97,30 @@ fn test_hsm_softhsm2_low_level_test() -> HResult<()> {
     Ok(())
 }
 
-/// Additive PKCS#11 v3.0 capability probe (issue #1153): `SoftHSM2` only implements
-/// Cryptoki v2.40, so it must not export `C_GetInterfaceList`. This asserts that the
-/// probe correctly reports "not supported" and that it never breaks the existing
-/// v2.40 workflow (instantiation, `C_GetInfo`, etc. still succeed as before).
+/// Additive PKCS#11 v3.0 capability probe (issue #1153): regardless of the
+/// `cryptoki_version` a given `SoftHSM2` build reports via `C_GetInfo` (some
+/// distributions report `2.40`, others report a later `3.x` header value even
+/// though the shared library never actually exports `C_GetInterfaceList`),
+/// the probe must correctly report "not supported" and must never break the
+/// existing v2.40-style workflow (instantiation, `C_GetInfo`, etc. still
+/// succeed as before).
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_pkcs11_v3_capability_probe_is_additive() -> HResult<()> {
     let cfg = cfg()?;
     let hsm = shared::instantiate::<SofthsmCapabilityProvider>(&cfg)?;
 
-    // Existing v2.40 behavior must be entirely unaffected.
+    // Existing v2.40 workflow must be entirely unaffected: `C_GetInfo` still
+    // succeeds and reports a plausible Cryptoki major version.
     let info = hsm.hsm_lib().get_info_struct()?;
-    assert_eq!(info.cryptoki_version.0, 2);
+    assert!(
+        info.cryptoki_version.0 == 2 || info.cryptoki_version.0 == 3,
+        "unexpected Cryptoki major version reported by SoftHSM2: {}",
+        info.cryptoki_version.0
+    );
 
-    // SoftHSM2 (v2.40) does not export `C_GetInterfaceList`.
+    // SoftHSM2 never exports `C_GetInterfaceList`, regardless of the
+    // `cryptoki_version` it reports in `C_GetInfo`.
     assert!(!hsm.hsm_lib().supports_pkcs11_v3_interfaces());
     assert!(hsm.hsm_lib().list_pkcs11_v3_interfaces()?.is_none());
 
@@ -207,6 +221,48 @@ fn test_hsm_softhsm2_rsa_sha256_sign() -> HResult<()> {
 fn test_hsm_softhsm2_rsa_sign_all_algorithms() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
     shared::rsa_sign_all_algorithms(&slot)
+}
+
+/// HSM-delegated RSA-PSS signing (issue #1154). Additive: exercises only the new
+/// `HsmSigningAlgorithm::RsaPssSha{256,384,512}` variants without touching any of the
+/// pre-existing PKCS#1 v1.5 signing coverage above.
+#[test]
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_rsa_pss_sign_all_algorithms() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::rsa_pss_sign_all_algorithms(&slot)
+}
+
+/// HSM-delegated EC key generation (issue #1154). Additive: exercises the new
+/// `HsmKeypairAlgorithm::EC` keygen path for all 4 FIPS-approved NIST curves
+/// (P-224/P-256/P-384/P-521), for both exportable and sensitive (non-extractable) keys.
+#[test]
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_generate_ec_keypair() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::generate_ec_keypair(&slot)
+}
+
+/// HSM-delegated ECDSA signing (issue #1154). Additive: exercises the new
+/// `HsmSigningAlgorithm::EcdsaSha{256,384,512}` variants across all 4 FIPS-approved NIST
+/// curves, verifying each HSM-produced DER signature independently with OpenSSL.
+#[test]
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_ecdsa_sign_all_curves_and_hashes() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::ecdsa_sign_all_curves_and_hashes(&slot)
+}
+
+/// HSM-delegated `EdDSA` signing (issue #1157, "HSM delegation Track B"). Additive: exercises
+/// only the new `CKM_EC_EDWARDS_KEY_PAIR_GEN`/`CKM_EDDSA` mechanisms without touching any of
+/// the pre-existing ECDSA/RSA signing coverage above. `SoftHSM2` 2.6.1 was verified (via
+/// `pkcs11-tool -M`) to support both mechanisms; run with `--features non-fips,softhsm2`.
+#[cfg(feature = "non-fips")]
+#[test]
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_eddsa_sign_all_curves() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::eddsa_sign_all_curves(&slot)
 }
 
 #[test]
