@@ -94,8 +94,8 @@ test.describe("Derive Key – X25519 ECDH", () => {
         // Switch to the X25519 ECDH derivation method
         await page.locator('[data-testid="derivation-method-x25519"]').click();
 
-        await page.fill('input[placeholder="Enter local private key ID"]', alice.privKeyId);
-        await page.fill('input[placeholder="Enter peer public key ID"]', bob.pubKeyId);
+        await page.getByTestId("x25519-private-key-id").fill(alice.privKeyId);
+        await page.getByTestId("x25519-peer-public-key-id").fill(bob.pubKeyId);
 
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/derived key created with id/i);
@@ -111,9 +111,9 @@ test.describe("Derive Key – X25519 ECDH", () => {
 
         await page.locator('[data-testid="derivation-method-x25519"]').click();
 
-        await page.fill('input[placeholder="Enter local private key ID"]', alice.privKeyId);
-        await page.fill('input[placeholder="Enter peer public key ID"]', bob.pubKeyId);
-        await page.fill('input[placeholder*="Optional: enter desired key ID"]', desiredId);
+        await page.getByTestId("x25519-private-key-id").fill(alice.privKeyId);
+        await page.getByTestId("x25519-peer-public-key-id").fill(bob.pubKeyId);
+        await page.getByTestId("x25519-derived-key-id").fill(desiredId);
 
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/derived key created with id/i);

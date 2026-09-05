@@ -69,7 +69,9 @@ const DeriveKeyForm: React.FC = () => {
     // X25519 ECDH derivation is not supported in FIPS mode: the server rejects
     // `derive_key_asymmetric` with `NotSupported`. Query `/server-info` once to hide/disable
     // the option so users are never directed toward a request that can never succeed.
-    const [isFips, setIsFips] = useState(false);
+    // Default to FIPS (option hidden/disabled) until the check succeeds — fail closed,
+    // since silently allowing a doomed request is worse than a false-positive hide.
+    const [isFips, setIsFips] = useState(true);
     useEffect(() => {
         let cancelled = false;
         const checkFips = async () => {
@@ -77,7 +79,8 @@ const DeriveKeyForm: React.FC = () => {
                 const info = await getNoTTLVRequest("/server-info", serverUrl);
                 if (!cancelled) setIsFips(Boolean((info as { fips_mode?: boolean })?.fips_mode));
             } catch {
-                // Server info unavailable: default to non-FIPS (option remains visible).
+                // Server info unavailable: stay fail-closed (assume FIPS, option stays hidden/disabled).
+                if (!cancelled) setIsFips(true);
             }
         };
         void checkFips();
@@ -215,6 +218,7 @@ const DeriveKeyForm: React.FC = () => {
                                 objectType="PrivateKey"
                                 rules={[{ required: true, message: t("deriveKey.pleaseEnterPrivateKeyId") }]}
                                 placeholder={t("deriveKey.enterPrivateKeyId")}
+                                data-testid="x25519-private-key-id"
                             />
 
                             <KeyIdInput
@@ -225,10 +229,11 @@ const DeriveKeyForm: React.FC = () => {
                                 objectType="PublicKey"
                                 rules={[{ required: true, message: t("deriveKey.pleaseEnterPeerPublicKeyId") }]}
                                 placeholder={t("deriveKey.enterPeerPublicKeyId")}
+                                data-testid="x25519-peer-public-key-id"
                             />
 
                             <Form.Item name="derivedKeyId" label={t("deriveKey.derivedKeyId")} help={t("deriveKey.derivedKeyIdHelp")}>
-                                <Input placeholder={t("deriveKey.derivedKeyIdPlaceholder")} />
+                                <Input placeholder={t("deriveKey.derivedKeyIdPlaceholder")} data-testid="x25519-derived-key-id" />
                             </Form.Item>
                         </Card>
                     ) : (
