@@ -857,7 +857,7 @@ Options:
           [default: 24]
 
       --ocsp-enabled
-          Enable the OCSP responder endpoint at `GET/POST /ocsp/`.
+          Enable the OCSP responder endpoint at `GET /ocsp/{encoded_request}` and `POST /ocsp/`.
 
           When `false` (default) all `/ocsp/` routes return 404.
 
