@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 
 /// Configuration for the OCSP (Online Certificate Status Protocol) responder.
 ///
-/// When `ocsp_enabled = true` the KMS exposes a public `GET/POST /ocsp/` endpoint
-/// that relying parties can query for real-time certificate revocation status,
+/// When `ocsp_enabled = true` the KMS exposes public `GET /ocsp/{encoded_request}`
+/// and `POST /ocsp/` endpoints that relying parties can query for real-time
+/// certificate revocation status,
 /// fully compliant with RFC 6960, RFC 9654 (nonce), and RFC 5019 (HTTP caching).
 ///
 /// In `kms.toml` these keys live under a flat top-level section:
@@ -24,7 +25,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Args, Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct OcspConfig {
-    /// Enable the OCSP responder endpoint at `GET/POST /ocsp/`.
+    /// Enable the OCSP responder endpoint at `GET /ocsp/{encoded_request}` and `POST /ocsp/`.
     ///
     /// When `false` (default) all `/ocsp/` routes return 404.
     #[clap(long, default_value = "false", verbatim_doc_comment)]
@@ -55,8 +56,10 @@ pub struct OcspConfig {
     /// The `OCSPSigning` requirement is enforced at request time: the server rejects
     /// the delegated certificate (and refuses to sign) if it is missing.
     ///
-    /// The referenced key may be backed by an HSM via the existing PKCS#11 routing —
-    /// no additional configuration is required.
+    /// The referenced key is loaded into an in-process OpenSSL key for signing;
+    /// this path does not currently dispatch to `kms.crypto_oracles`, so a
+    /// non-extractable HSM-resident key will fail here while an extractable key
+    /// is exported from the HSM to sign.
     ///
     /// When unset, the CA's own private key is used (acceptable for small deployments;
     /// not recommended for production CAs where the signing key must stay offline).
@@ -84,11 +87,15 @@ pub struct OcspConfig {
     #[clap(long, default_value = "optional", verbatim_doc_comment)]
     pub ocsp_nonce_policy: NoncePolicyConfig,
 
-    /// Include the signing certificate chain in OCSP `BasicResponse`s.
+    /// Include the signing certificate in OCSP `BasicResponse`s.
     ///
+    /// Only the signer certificate itself is embedded — not its issuing chain.
     /// Set to `true` (default) when `ocsp_responder_cert_uid` is configured so that
-    /// clients can verify the delegated responder's authorization without additional
-    /// fetches.  Safe to set `false` when the CA signs responses directly.
+    /// clients can verify the delegated responder's own certificate without an
+    /// additional fetch; delegated responders whose signer chain includes
+    /// intermediates the client does not already trust must distribute those
+    /// intermediates out of band. Safe to set `false` when the CA signs responses
+    /// directly.
     #[clap(long, default_value = "true", verbatim_doc_comment)]
     pub ocsp_include_cert_chain: bool,
 

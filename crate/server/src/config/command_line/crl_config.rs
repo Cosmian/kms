@@ -25,8 +25,11 @@ pub struct CrlConfig {
     /// When a CRL is generated without an explicit validity override (e.g., via
     /// `GET /certificates/{id}/crl?validity_days=N`), this value is used.
     ///
-    /// Production CAs often use 1–24 h for short-lived CRLs (code-signing,
-    /// high-security); enterprise PKIs commonly use 7–28 days.
+    /// This value is in whole days (minimum 1 day / 24 h); enterprise PKIs commonly
+    /// use 7–28 days. Avoid the practical minimum of 1 day unless
+    /// `crl_refresh_overlap_hours` is also lowered below 24: a 1-day CRL satisfies
+    /// the default 24-hour refresh-overlap condition immediately after creation,
+    /// causing the hourly scheduler to continuously re-sign it.
     ///
     /// Valid range: 1–365. Default: 7.
     #[clap(
@@ -42,6 +45,11 @@ pub struct CrlConfig {
     ///
     /// Set to 0 to disable the background scheduler entirely.
     /// When disabled, CRLs are only refreshed on certificate revocation events.
+    ///
+    /// The scheduler is only spawned when `kms_public_url` is ALSO configured
+    /// (the CDP endpoint must be active); with `kms_public_url` unset, this
+    /// setting has no effect and CRLs are only refreshed on revocation events,
+    /// which can allow an expired CRL to be served in the meantime.
     ///
     /// Default: 1 (wake up hourly).
     #[clap(long, default_value = "1", verbatim_doc_comment)]
