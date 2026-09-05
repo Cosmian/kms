@@ -2557,13 +2557,13 @@ pub fn derive_key_ttlv_request(
         ..Attributes::default()
     };
 
-    let request = DeriveKey {
-        object_type: ObjectType::SymmetricKey,
-        object_unique_identifier: UniqueIdentifier::TextString(base_key_id.to_owned()),
-        derivation_method: method,
+    let request = DeriveKey::new_single_base(
+        ObjectType::SymmetricKey,
+        UniqueIdentifier::TextString(base_key_id.to_owned()),
+        method,
         derivation_parameters,
         attributes,
-    };
+    );
 
     to_wasm_ttlv(&request)
 }

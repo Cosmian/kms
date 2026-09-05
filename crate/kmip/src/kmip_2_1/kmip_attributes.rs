@@ -615,6 +615,21 @@ impl Attributes {
             .map(|l| l.linked_object_identifier.clone())
     }
 
+    /// Get all links of a given type.
+    #[must_use]
+    pub fn get_links(&self, link_type: LinkType) -> Vec<LinkedObjectIdentifier> {
+        self.link
+            .as_ref()
+            .map(|links| {
+                links
+                    .iter()
+                    .filter(|link| link.link_type == link_type)
+                    .map(|link| link.linked_object_identifier.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// Remove the link from the attributes
     pub fn remove_link(&mut self, link_type: LinkType) {
         if let Some(links) = self.link.as_mut() {
@@ -640,6 +655,19 @@ impl Attributes {
         linked_object_identifier: LinkedObjectIdentifier,
     ) {
         self.remove_link(link_type);
+        let links = self.link.get_or_insert_with(Vec::new);
+        links.push(Link {
+            link_type,
+            linked_object_identifier,
+        });
+    }
+
+    /// Add a link to an object without removing existing links of the same type.
+    pub fn add_link(
+        &mut self,
+        link_type: LinkType,
+        linked_object_identifier: LinkedObjectIdentifier,
+    ) {
         let links = self.link.get_or_insert_with(Vec::new);
         links.push(Link {
             link_type,
