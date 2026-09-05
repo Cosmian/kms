@@ -19,7 +19,8 @@
 
 pub use backend::{
     Backend, DecryptContext, EncryptContext, SignContext, backend, clear_backend, invoke_login_fn,
-    register_backend, register_login_fn, register_pin_mode, use_pin_as_access_token,
+    register_backend, register_backend_if_absent, register_login_fn, register_pin_mode,
+    use_pin_as_access_token,
 };
 pub use certificate::Certificate;
 pub use data_object::DataObject;
@@ -75,6 +76,8 @@ pub enum SearchOptions {
     /// The PKCS#11 `CKA_ID` converted to UTF-8 at the point of construction,
     /// so consumers never need to call `String::from_utf8` themselves.
     Id(String),
+    /// The PKCS#11 v3 profile identifier requested through `CKA_PROFILE_ID`.
+    ProfileId(pkcs11_sys::CK_PROFILE_ID),
 }
 
 impl TryFrom<&Attributes> for SearchOptions {
@@ -84,7 +87,9 @@ impl TryFrom<&Attributes> for SearchOptions {
         if attributes.is_empty() {
             return Ok(Self::All);
         }
-        if let Some(Attribute::Id(id)) = attributes.get(AttributeType::Id) {
+        if let Some(Attribute::ProfileId(id)) = attributes.get(AttributeType::ProfileId) {
+            Ok(Self::ProfileId(*id))
+        } else if let Some(Attribute::Id(id)) = attributes.get(AttributeType::Id) {
             Ok(Self::Id(String::from_utf8(id.clone())?))
         } else {
             Ok(Self::All)

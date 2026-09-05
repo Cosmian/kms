@@ -28,16 +28,17 @@ use std::{
 use cosmian_logger::{debug, error, info, trace};
 use pkcs11_sys::{
     CK_ATTRIBUTE_PTR, CK_BBOOL, CK_BYTE_PTR, CK_C_INITIALIZE_ARGS_PTR, CK_FLAGS, CK_FUNCTION_LIST,
-    CK_INFO, CK_INFO_PTR, CK_MECHANISM_INFO, CK_MECHANISM_INFO_PTR, CK_MECHANISM_PTR,
-    CK_MECHANISM_TYPE, CK_MECHANISM_TYPE_PTR, CK_NOTIFY, CK_OBJECT_HANDLE, CK_OBJECT_HANDLE_PTR,
-    CK_RV, CK_SESSION_HANDLE, CK_SESSION_HANDLE_PTR, CK_SESSION_INFO, CK_SESSION_INFO_PTR,
-    CK_SLOT_ID, CK_SLOT_ID_PTR, CK_SLOT_INFO, CK_SLOT_INFO_PTR, CK_TOKEN_INFO, CK_TOKEN_INFO_PTR,
-    CK_ULONG, CK_ULONG_PTR, CK_UNAVAILABLE_INFORMATION, CK_USER_TYPE, CK_UTF8CHAR_PTR, CK_VERSION,
-    CK_VOID_PTR, CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT,
+    CK_FUNCTION_LIST_3_0, CK_INFO, CK_INFO_PTR, CK_INTERFACE, CK_MECHANISM_INFO,
+    CK_MECHANISM_INFO_PTR, CK_MECHANISM_PTR, CK_MECHANISM_TYPE, CK_MECHANISM_TYPE_PTR, CK_NOTIFY,
+    CK_OBJECT_HANDLE, CK_OBJECT_HANDLE_PTR, CK_RV, CK_SESSION_HANDLE, CK_SESSION_HANDLE_PTR,
+    CK_SESSION_INFO, CK_SESSION_INFO_PTR, CK_SLOT_ID, CK_SLOT_ID_PTR, CK_SLOT_INFO,
+    CK_SLOT_INFO_PTR, CK_TOKEN_INFO, CK_TOKEN_INFO_PTR, CK_ULONG, CK_ULONG_PTR,
+    CK_UNAVAILABLE_INFORMATION, CK_USER_TYPE, CK_UTF8CHAR_PTR, CK_VERSION, CK_VOID_PTR,
+    CKA_UNIQUE_ID, CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT,
     CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN,
     CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_USER_PIN_INITIALIZED, CKM_AES_CBC,
     CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKR_OK, CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS,
-    CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
+    CKU_CONTEXT_SPECIFIC, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 use rand::Rng;
 
@@ -208,6 +209,133 @@ pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
     C_GetFunctionStatus: Some(C_GetFunctionStatus),
     C_CancelFunction: Some(C_CancelFunction),
     C_WaitForSlotEvent: Some(C_WaitForSlotEvent),
+};
+
+/// PKCS#11 v3.1 Interfaces API gap-fill (issue #1153 follow-up): the sole `CK_FUNCTION_LIST_3_0`
+/// returned via the "PKCS 11" v3.0 interface (see `PKCS11_INTERFACE` below). It carries every
+/// v2.x function pointer already exposed via `FUNC_LIST` above, plus the new v3.0-only
+/// functions. Per the PKCS#11 v3.0 spec, unimplemented v3.0 functions must be non-null stubs
+/// returning `CKR_FUNCTION_NOT_SUPPORTED` (never a null pointer) — see the
+/// `cryptoki_fn_not_supported!` stubs near the end of this file for `C_SessionCancel` and the
+/// "message-based" bulk encrypt/decrypt/sign/verify functions (this module does not implement
+/// PKCS#11 v3.0 message operations). `C_LoginUser` is fully implemented (see above), unlike the
+/// message-based functions. `C_GetFunctionList`, `C_GetInterfaceList`, and `C_GetInterface` are
+/// patched at runtime by the `cosmian_pkcs11` provider crate (mirroring how
+/// `FUNC_LIST.C_GetFunctionList` is patched above), since their real implementations must
+/// perform KMS backend/config initialization that only the provider crate knows how to do.
+pub static mut FUNC_LIST_3_0: CK_FUNCTION_LIST_3_0 = CK_FUNCTION_LIST_3_0 {
+    version: CK_VERSION {
+        major: CRYPTOKI_VERSION_MAJOR,
+        minor: CRYPTOKI_VERSION_MINOR,
+    },
+    C_Initialize: Some(C_Initialize),
+    C_Finalize: Some(C_Finalize),
+    C_GetInfo: Some(C_GetInfo),
+    C_GetFunctionList: None,
+    C_GetSlotList: Some(C_GetSlotList),
+    C_GetSlotInfo: Some(C_GetSlotInfo),
+    C_GetTokenInfo: Some(C_GetTokenInfo),
+    C_GetMechanismList: Some(C_GetMechanismList),
+    C_GetMechanismInfo: Some(C_GetMechanismInfo),
+    C_InitToken: Some(C_InitToken),
+    C_InitPIN: Some(C_InitPIN),
+    C_SetPIN: Some(C_SetPIN),
+    C_OpenSession: Some(C_OpenSession),
+    C_CloseSession: Some(C_CloseSession),
+    C_CloseAllSessions: Some(C_CloseAllSessions),
+    C_GetSessionInfo: Some(C_GetSessionInfo),
+    C_GetOperationState: Some(C_GetOperationState),
+    C_SetOperationState: Some(C_SetOperationState),
+    C_Login: Some(C_Login),
+    C_Logout: Some(C_Logout),
+    C_CreateObject: Some(C_CreateObject),
+    C_CopyObject: Some(C_CopyObject),
+    C_DestroyObject: Some(C_DestroyObject),
+    C_GetObjectSize: Some(C_GetObjectSize),
+    C_GetAttributeValue: Some(C_GetAttributeValue),
+    C_SetAttributeValue: Some(C_SetAttributeValue),
+    C_FindObjectsInit: Some(C_FindObjectsInit),
+    C_FindObjects: Some(C_FindObjects),
+    C_FindObjectsFinal: Some(C_FindObjectsFinal),
+    C_EncryptInit: Some(C_EncryptInit),
+    C_Encrypt: Some(C_Encrypt),
+    C_EncryptUpdate: Some(C_EncryptUpdate),
+    C_EncryptFinal: Some(C_EncryptFinal),
+    C_DecryptInit: Some(C_DecryptInit),
+    C_Decrypt: Some(C_Decrypt),
+    C_DecryptUpdate: Some(C_DecryptUpdate),
+    C_DecryptFinal: Some(C_DecryptFinal),
+    C_DigestInit: Some(C_DigestInit),
+    C_Digest: Some(C_Digest),
+    C_DigestUpdate: Some(C_DigestUpdate),
+    C_DigestKey: Some(C_DigestKey),
+    C_DigestFinal: Some(C_DigestFinal),
+    C_SignInit: Some(C_SignInit),
+    C_Sign: Some(C_Sign),
+    C_SignUpdate: Some(C_SignUpdate),
+    C_SignFinal: Some(C_SignFinal),
+    C_SignRecoverInit: Some(C_SignRecoverInit),
+    C_SignRecover: Some(C_SignRecover),
+    C_VerifyInit: Some(C_VerifyInit),
+    C_Verify: Some(C_Verify),
+    C_VerifyUpdate: Some(C_VerifyUpdate),
+    C_VerifyFinal: Some(C_VerifyFinal),
+    C_VerifyRecoverInit: Some(C_VerifyRecoverInit),
+    C_VerifyRecover: Some(C_VerifyRecover),
+    C_DigestEncryptUpdate: Some(C_DigestEncryptUpdate),
+    C_DecryptDigestUpdate: Some(C_DecryptDigestUpdate),
+    C_SignEncryptUpdate: Some(C_SignEncryptUpdate),
+    C_DecryptVerifyUpdate: Some(C_DecryptVerifyUpdate),
+    C_GenerateKey: Some(C_GenerateKey),
+    C_GenerateKeyPair: Some(C_GenerateKeyPair),
+    C_WrapKey: Some(C_WrapKey),
+    C_UnwrapKey: Some(C_UnwrapKey),
+    C_DeriveKey: Some(C_DeriveKey),
+    C_SeedRandom: Some(C_SeedRandom),
+    C_GenerateRandom: Some(C_GenerateRandom),
+    C_GetFunctionStatus: Some(C_GetFunctionStatus),
+    C_CancelFunction: Some(C_CancelFunction),
+    C_WaitForSlotEvent: Some(C_WaitForSlotEvent),
+    C_GetInterfaceList: None,
+    C_GetInterface: None,
+    C_LoginUser: Some(C_LoginUser),
+    C_SessionCancel: Some(C_SessionCancel),
+    C_MessageEncryptInit: Some(C_MessageEncryptInit),
+    C_EncryptMessage: Some(C_EncryptMessage),
+    C_EncryptMessageBegin: Some(C_EncryptMessageBegin),
+    C_EncryptMessageNext: Some(C_EncryptMessageNext),
+    C_MessageEncryptFinal: Some(C_MessageEncryptFinal),
+    C_MessageDecryptInit: Some(C_MessageDecryptInit),
+    C_DecryptMessage: Some(C_DecryptMessage),
+    C_DecryptMessageBegin: Some(C_DecryptMessageBegin),
+    C_DecryptMessageNext: Some(C_DecryptMessageNext),
+    C_MessageDecryptFinal: Some(C_MessageDecryptFinal),
+    C_MessageSignInit: Some(C_MessageSignInit),
+    C_SignMessage: Some(C_SignMessage),
+    C_SignMessageBegin: Some(C_SignMessageBegin),
+    C_SignMessageNext: Some(C_SignMessageNext),
+    C_MessageSignFinal: Some(C_MessageSignFinal),
+    C_MessageVerifyInit: Some(C_MessageVerifyInit),
+    C_VerifyMessage: Some(C_VerifyMessage),
+    C_VerifyMessageBegin: Some(C_VerifyMessageBegin),
+    C_VerifyMessageNext: Some(C_VerifyMessageNext),
+    C_MessageVerifyFinal: Some(C_MessageVerifyFinal),
+};
+
+/// ASCII name of the sole interface this module exposes, as required by the PKCS#11 v3.0 spec
+/// (§5.2). NUL-terminated so that `C_GetInterface` can compare it safely without trusting an
+/// externally supplied length (the spec's `pInterfaceName` parameter carries none).
+pub const PKCS11_INTERFACE_NAME: &[u8] = b"PKCS 11\0";
+
+/// The sole `CK_INTERFACE` this module exposes through `C_GetInterfaceList`/`C_GetInterface`: the
+/// standard "PKCS 11" v3.0 interface, backed by `FUNC_LIST_3_0`. `pFunctionList` points at a
+/// `static mut`, so its target may be patched at runtime (see the provider crate), but the pointer
+/// value itself never changes. `static mut` (rather than `static`) is required here because
+/// `CK_INTERFACE` contains raw pointers, which are not `Sync`.
+pub static mut PKCS11_INTERFACE: CK_INTERFACE = CK_INTERFACE {
+    pInterfaceName: PKCS11_INTERFACE_NAME.as_ptr().cast_mut(),
+    pFunctionList: (&raw mut FUNC_LIST_3_0).cast::<std::ffi::c_void>(),
+    flags: 0,
 };
 
 cryptoki_fn!(
@@ -540,20 +668,79 @@ cryptoki_fn!(
     ) {
         initialized!();
         valid_session!(hSession);
-        if use_pin_as_access_token() {
-            if pPin.is_null() || ulPinLen == 0 {
-                return Err(ModuleError::PinRequired);
-            }
-            // Safety: caller guarantees pPin points to ulPinLen valid UTF-8 bytes.
-            let pin_bytes = unsafe { slice::from_raw_parts(pPin, ulPinLen as usize) };
-            let token = std::str::from_utf8(pin_bytes).map_err(|e| {
-                ModuleError::BadArguments(format!("C_Login: pPin is not valid UTF-8: {e}"))
-            })?;
-            invoke_login_fn(token)?;
-        }
+        validate_login_user_type(hSession, userType)?;
+        login_with_pin(pPin, ulPinLen, "C_Login")?;
         Ok(())
     }
 );
+
+cryptoki_fn!(
+    // PKCS#11 v3.1 §5.6 `C_LoginUser` — only reachable through the v3.0 `CK_FUNCTION_LIST_3_0`
+    // interface (the legacy `CK_FUNCTION_LIST` stays frozen at version 2.4).
+    //
+    // This module exposes a single implicit backend identity per slot (unlike multi-user
+    // tokens): `pUsername`/`ulUsernameLen` do not select among several identities, they are
+    // only used here for diagnostics.
+    unsafe fn C_LoginUser(
+        hSession: CK_SESSION_HANDLE,
+        userType: CK_USER_TYPE,
+        pPin: CK_UTF8CHAR_PTR,
+        ulPinLen: CK_ULONG,
+        pUsername: CK_UTF8CHAR_PTR,
+        ulUsernameLen: CK_ULONG,
+    ) {
+        initialized!();
+        valid_session!(hSession);
+        validate_login_user_type(hSession, userType)?;
+        parse_utf8_argument(pUsername, ulUsernameLen, "C_LoginUser: pUsername")?;
+        login_with_pin(pPin, ulPinLen, "C_LoginUser")?;
+        Ok(())
+    }
+);
+
+const fn validate_login_user_type(
+    session: CK_SESSION_HANDLE,
+    user_type: CK_USER_TYPE,
+) -> ModuleResult<()> {
+    match user_type {
+        CKU_USER => Ok(()),
+        CKU_CONTEXT_SPECIFIC => Err(ModuleError::OperationNotInitialized(session)),
+        _ => Err(ModuleError::UserTypeInvalid),
+    }
+}
+
+fn parse_utf8_argument(
+    ptr: CK_UTF8CHAR_PTR,
+    len: CK_ULONG,
+    name: &str,
+) -> ModuleResult<Option<String>> {
+    if len == 0 {
+        return Ok(None);
+    }
+    if ptr.is_null() {
+        return Err(ModuleError::BadArguments(format!("{name} is null")));
+    }
+    let len = usize::try_from(len)?;
+    // SAFETY: PKCS#11 requires callers to provide `len` readable bytes when `ptr` is non-null.
+    #[expect(unsafe_code)]
+    let bytes = unsafe { slice::from_raw_parts(ptr, len) };
+    std::str::from_utf8(bytes)
+        .map(|value| Some(value.to_owned()))
+        .map_err(|e| ModuleError::BadArguments(format!("{name} is not valid UTF-8: {e}")))
+}
+
+fn login_with_pin(pin: CK_UTF8CHAR_PTR, pin_len: CK_ULONG, function: &str) -> ModuleResult<()> {
+    let token = parse_utf8_argument(pin, pin_len, &format!("{function}: pPin"))?;
+    if use_pin_as_access_token() {
+        invoke_login_fn(
+            token
+                .as_deref()
+                .filter(|value| !value.is_empty())
+                .ok_or(ModuleError::PinRequired)?,
+        )?;
+    }
+    Ok(())
+}
 
 cryptoki_fn!(
     fn C_Logout(hSession: CK_SESSION_HANDLE) {
@@ -584,6 +771,9 @@ cryptoki_fn!(
         );
         let attributes = Attributes::try_from((pTemplate, ulCount))
             .context("C_CreateObject: attributes conversion failed")?;
+        if attributes.get(AttributeType::UniqueId).is_some() {
+            return Err(ModuleError::AttributeReadOnly);
+        }
 
         sessions::session(hSession, |_session| -> ModuleResult<()> {
             unsafe {
@@ -655,6 +845,7 @@ cryptoki_fn!(
             } else {
                 &mut []
             };
+            let mut buffer_too_small = false;
             for attribute in template.iter_mut() {
                 let type_: AttributeType = attribute.type_.try_into().map_err(|e| {
                     let attribute_type = attribute.type_;
@@ -675,11 +866,13 @@ cryptoki_fn!(
                 );
                 if let Some(value) = object.attribute(type_)? {
                     let value = value.as_raw_value();
-                    attribute.ulValueLen = value.len() as CK_ULONG;
+                    let capacity = usize::try_from(attribute.ulValueLen)?;
+                    attribute.ulValueLen = CK_ULONG::try_from(value.len())?;
                     if attribute.pValue.is_null() {
                         continue;
                     }
-                    if (usize::try_from(attribute.ulValueLen)?) < value.len() {
+                    if capacity < value.len() {
+                        buffer_too_small = true;
                         continue;
                     }
                     unsafe {
@@ -690,17 +883,38 @@ cryptoki_fn!(
                     attribute.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                 }
             }
-            Ok(())
+            if buffer_too_small {
+                Err(ModuleError::BufferTooSmall)
+            } else {
+                Ok(())
+            }
         })
     }
 );
 
-cryptoki_fn_not_supported!(
-    C_SetAttributeValue,
-    hSession: CK_SESSION_HANDLE,
-    hObject: CK_OBJECT_HANDLE,
-    pTemplate: CK_ATTRIBUTE_PTR,
-    ulCount: CK_ULONG
+cryptoki_fn!(
+    unsafe fn C_SetAttributeValue(
+        hSession: CK_SESSION_HANDLE,
+        hObject: CK_OBJECT_HANDLE,
+        pTemplate: CK_ATTRIBUTE_PTR,
+        ulCount: CK_ULONG,
+    ) {
+        initialized!();
+        valid_session!(hSession);
+        if ulCount > 0 {
+            not_null!(pTemplate, "C_SetAttributeValue: pTemplate");
+            // SAFETY: PKCS#11 requires `pTemplate` to contain `ulCount` readable entries.
+            let template = unsafe { slice::from_raw_parts(pTemplate, usize::try_from(ulCount)?) };
+            if template
+                .iter()
+                .any(|attribute| attribute.type_ == CKA_UNIQUE_ID)
+            {
+                return Err(ModuleError::AttributeReadOnly);
+            }
+        }
+        let _ = hObject;
+        Err(ModuleError::FunctionNotSupported)
+    }
 );
 
 cryptoki_fn!(
@@ -1397,3 +1611,174 @@ cryptoki_fn_not_supported!(
     pSlot: CK_SLOT_ID_PTR,
     pReserved: CK_VOID_PTR
 );
+
+// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): the v3.0-only functions below
+// (other than `C_LoginUser`, fully implemented above) must exist as non-null stubs to populate
+// `FUNC_LIST_3_0` above — a null function pointer in `CK_FUNCTION_LIST_3_0` would violate the
+// spec. This module does not implement PKCS#11 v3.0 "message-based" bulk crypto operations
+// (`C_MessageEncryptInit` and friends), so each stub simply returns `CKR_FUNCTION_NOT_SUPPORTED`,
+// exactly like the pre-existing v2.x stubs above (e.g. `C_CopyObject`).
+
+cryptoki_fn_not_supported!(C_SessionCancel, hSession: CK_SESSION_HANDLE, flags: CK_FLAGS);
+
+cryptoki_fn_not_supported!(
+    C_MessageEncryptInit,
+    hSession: CK_SESSION_HANDLE,
+    pMechanism: CK_MECHANISM_PTR,
+    hKey: CK_OBJECT_HANDLE
+);
+
+cryptoki_fn_not_supported!(
+    C_EncryptMessage,
+    hSession: CK_SESSION_HANDLE,
+    pParameter: CK_VOID_PTR,
+    ulParameterLen: CK_ULONG,
+    pAssociatedData: CK_BYTE_PTR,
+    ulAssociatedDataLen: CK_ULONG,
+    pPlaintext: CK_BYTE_PTR,
+    ulPlaintextLen: CK_ULONG,
+    pCiphertext: CK_BYTE_PTR,
+    pulCiphertextLen: CK_ULONG_PTR
+);
+
+cryptoki_fn_not_supported!(
+    C_EncryptMessageBegin,
+    hSession: CK_SESSION_HANDLE,
+    pParameter: CK_VOID_PTR,
+    ulParameterLen: CK_ULONG,
+    pAssociatedData: CK_BYTE_PTR,
+    ulAssociatedDataLen: CK_ULONG
+);
+
+cryptoki_fn_not_supported!(
+    C_EncryptMessageNext,
+    hSession: CK_SESSION_HANDLE,
+    pParameter: CK_VOID_PTR,
+    ulParameterLen: CK_ULONG,
+    pPlaintextPart: CK_BYTE_PTR,
+    ulPlaintextPartLen: CK_ULONG,
+    pCiphertextPart: CK_BYTE_PTR,
+    pulCiphertextPartLen: CK_ULONG_PTR,
+    flags: CK_FLAGS
+);
+
+cryptoki_fn_not_supported!(C_MessageEncryptFinal, hSession: CK_SESSION_HANDLE);
+
+cryptoki_fn_not_supported!(
+    C_MessageDecryptInit,
+    hSession: CK_SESSION_HANDLE,
+    pMechanism: CK_MECHANISM_PTR,
+    hKey: CK_OBJECT_HANDLE
+);
+
+cryptoki_fn_not_supported!(
+    C_DecryptMessage,
+    hSession: CK_SESSION_HANDLE,
+    pParameter: CK_VOID_PTR,
+    ulParameterLen: CK_ULONG,
+    pAssociatedData: CK_BYTE_PTR,
+    ulAssociatedDataLen: CK_ULONG,
+    pCiphertext: CK_BYTE_PTR,
+    ulCiphertextLen: CK_ULONG,
+    pPlaintext: CK_BYTE_PTR,
+    pulPlaintextLen: CK_ULONG_PTR
+);
+
+cryptoki_fn_not_supported!(
+    C_DecryptMessageBegin,
+    hSession: CK_SESSION_HANDLE,
+    pParameter: CK_VOID_PTR,
+    ulParameterLen: CK_ULONG,
+    pAssociatedData: CK_BYTE_PTR,
+    ulAssociatedDataLen: CK_ULONG
+);
+
+cryptoki_fn_not_supported!(
+    C_DecryptMessageNext,
+    hSession: CK_SESSION_HANDLE,
+    pParameter: CK_VOID_PTR,
+    ulParameterLen: CK_ULONG,
+    pCiphertextPart: CK_BYTE_PTR,
+    ulCiphertextPartLen: CK_ULONG,
+    pPlaintextPart: CK_BYTE_PTR,
+    pulPlaintextPartLen: CK_ULONG_PTR,
+    flags: CK_FLAGS
+);
+
+cryptoki_fn_not_supported!(C_MessageDecryptFinal, hSession: CK_SESSION_HANDLE);
+
+cryptoki_fn_not_supported!(
+    C_MessageSignInit,
+    hSession: CK_SESSION_HANDLE,
+    pMechanism: CK_MECHANISM_PTR,
+    hKey: CK_OBJECT_HANDLE
+);
+
+cryptoki_fn_not_supported!(
+    C_SignMessage,
+    hSession: CK_SESSION_HANDLE,
+    pParameter: CK_VOID_PTR,
+    ulParameterLen: CK_ULONG,
+    pData: CK_BYTE_PTR,
+    ulDataLen: CK_ULONG,
+    pSignature: CK_BYTE_PTR,
+    pulSignatureLen: CK_ULONG_PTR
+);
+
+cryptoki_fn_not_supported!(
+    C_SignMessageBegin,
+    hSession: CK_SESSION_HANDLE,
+    pParameter: CK_VOID_PTR,
+    ulParameterLen: CK_ULONG
+);
+
+cryptoki_fn_not_supported!(
+    C_SignMessageNext,
+    hSession: CK_SESSION_HANDLE,
+    pParameter: CK_VOID_PTR,
+    ulParameterLen: CK_ULONG,
+    pData: CK_BYTE_PTR,
+    ulDataLen: CK_ULONG,
+    pSignature: CK_BYTE_PTR,
+    pulSignatureLen: CK_ULONG_PTR
+);
+
+cryptoki_fn_not_supported!(C_MessageSignFinal, hSession: CK_SESSION_HANDLE);
+
+cryptoki_fn_not_supported!(
+    C_MessageVerifyInit,
+    hSession: CK_SESSION_HANDLE,
+    pMechanism: CK_MECHANISM_PTR,
+    hKey: CK_OBJECT_HANDLE
+);
+
+cryptoki_fn_not_supported!(
+    C_VerifyMessage,
+    hSession: CK_SESSION_HANDLE,
+    pParameter: CK_VOID_PTR,
+    ulParameterLen: CK_ULONG,
+    pData: CK_BYTE_PTR,
+    ulDataLen: CK_ULONG,
+    pSignature: CK_BYTE_PTR,
+    ulSignatureLen: CK_ULONG
+);
+
+cryptoki_fn_not_supported!(
+    C_VerifyMessageBegin,
+    hSession: CK_SESSION_HANDLE,
+    pParameter: CK_VOID_PTR,
+    ulParameterLen: CK_ULONG
+);
+
+cryptoki_fn_not_supported!(
+    C_VerifyMessageNext,
+    hSession: CK_SESSION_HANDLE,
+    pParameter: CK_VOID_PTR,
+    ulParameterLen: CK_ULONG,
+    pData: CK_BYTE_PTR,
+    ulDataLen: CK_ULONG,
+    pSignature: CK_BYTE_PTR,
+    ulSignatureLen: CK_ULONG
+);
+
+cryptoki_fn_not_supported!(C_MessageVerifyFinal, hSession: CK_SESSION_HANDLE);

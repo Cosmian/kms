@@ -131,6 +131,8 @@ exclude = [
 
   # Fortinet documentation — returns 503 to automated crawlers
   'docs\.fortinet\.com',
+  # Eviden product page — returns 503 Service Unavailable to automated crawlers
+  'eviden\.com',
 
   # Fragment/anchor patterns that are not real URLs
   'get--export',
