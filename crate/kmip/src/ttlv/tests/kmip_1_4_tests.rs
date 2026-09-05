@@ -484,6 +484,99 @@ fn test_create_split_key_1_4_no_uid_conversion() {
 /// Test that KMIP 1.4 `JoinSplitKey` round-trips through TTLV and that the 1.4→2.1
 /// `From` conversion preserves all UIDs and the object type.
 #[test]
+fn test_derive_key_1_4_single_identifier_round_trip() {
+    use crate::{
+        kmip_0::kmip_types::HashingAlgorithm,
+        kmip_1_4::{
+            kmip_attributes::Attribute,
+            kmip_data_structures::{
+                CryptographicParameters, DerivationParameters, TemplateAttribute,
+            },
+            kmip_operations::DeriveKey,
+            kmip_types::{DerivationMethod, ObjectType},
+        },
+        ttlv::{from_ttlv, to_ttlv},
+    };
+
+    let request = DeriveKey::new_single_base(
+        "base-key",
+        DerivationMethod::PBKDF2,
+        Some(DerivationParameters {
+            cryptographic_parameters: Some(CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..CryptographicParameters::default()
+            }),
+            salt: Some(b"salt".to_vec()),
+            iteration_count: Some(10_000),
+            ..DerivationParameters::default()
+        }),
+        Some(TemplateAttribute {
+            attribute: Some(vec![
+                Attribute::ObjectType(ObjectType::SecretData),
+                Attribute::CryptographicLength(256),
+            ]),
+        }),
+    );
+
+    let ttlv = to_ttlv(&request).expect("DeriveKey 1.4 TTLV serialization failed");
+    let ttlv_roundtrip: DeriveKey =
+        from_ttlv(ttlv).expect("DeriveKey 1.4 TTLV deserialization failed");
+    assert_eq!(ttlv_roundtrip, request);
+
+    let json = serde_json::to_string_pretty(&request).expect("DeriveKey 1.4 JSON serialization");
+    let json_roundtrip: DeriveKey =
+        serde_json::from_str(&json).expect("DeriveKey 1.4 JSON deserialization");
+    assert_eq!(json_roundtrip, request);
+
+    let request_2_1: crate::kmip_2_1::kmip_operations::DeriveKey = request.into();
+    assert_eq!(request_2_1.object_unique_identifier.len(), 1);
+}
+
+#[test]
+fn test_derive_key_1_4_repeated_identifiers_round_trip_and_conversion_order() {
+    use crate::{
+        kmip_1_4::{
+            kmip_attributes::Attribute, kmip_data_structures::TemplateAttribute,
+            kmip_operations::DeriveKey, kmip_types::ObjectType,
+        },
+        ttlv::{from_ttlv, to_ttlv},
+    };
+
+    let request = DeriveKey::new_asymmetric(
+        "private-key",
+        "peer-public-key",
+        None,
+        Some(TemplateAttribute {
+            attribute: Some(vec![
+                Attribute::ObjectType(ObjectType::SecretData),
+                Attribute::CryptographicLength(256),
+            ]),
+        }),
+    );
+
+    let ttlv = to_ttlv(&request).expect("DeriveKey 1.4 TTLV serialization failed");
+    let ttlv_roundtrip: DeriveKey =
+        from_ttlv(ttlv).expect("DeriveKey 1.4 TTLV deserialization failed");
+    assert_eq!(ttlv_roundtrip.unique_identifier, request.unique_identifier);
+
+    let json = serde_json::to_string_pretty(&request).expect("DeriveKey 1.4 JSON serialization");
+    let json_roundtrip: DeriveKey =
+        serde_json::from_str(&json).expect("DeriveKey 1.4 JSON deserialization");
+    assert_eq!(json_roundtrip.unique_identifier, request.unique_identifier);
+
+    let request_2_1: crate::kmip_2_1::kmip_operations::DeriveKey = request.into();
+    assert_eq!(request_2_1.object_unique_identifier.len(), 2);
+    assert_eq!(
+        request_2_1.object_unique_identifier[0].to_string(),
+        "private-key".to_owned()
+    );
+    assert_eq!(
+        request_2_1.object_unique_identifier[1].to_string(),
+        "peer-public-key".to_owned()
+    );
+}
+
+#[test]
 fn test_join_split_key_1_4_serialization_and_conversion() {
     use crate::kmip_1_4::{kmip_operations::JoinSplitKey, kmip_types::ObjectType};
 
