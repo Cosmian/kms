@@ -307,12 +307,14 @@ async fn derive_key_asymmetric(
             "DeriveKey: asymmetric derivation requires exactly two identifiers".to_owned()
         ));
     }
-    if request.object_type == ObjectType::SymmetricKey {
+    if request.object_type != ObjectType::SecretData {
         kms_bail!(KmsError::InvalidRequest(
             "DeriveKey: asymmetric derivation must create a SecretData object".to_owned()
         ));
     }
-    if request.attributes.object_type == Some(ObjectType::SymmetricKey) {
+    if let Some(attr_object_type) = request.attributes.object_type
+        && attr_object_type != ObjectType::SecretData
+    {
         kms_bail!(KmsError::InvalidRequest(
             "DeriveKey: asymmetric derivation must create a SecretData object".to_owned()
         ));
