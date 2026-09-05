@@ -941,6 +941,10 @@ Options:
           intermediates out of band. Safe to set `false` when the CA signs responses
           directly.
 
+          This is a bare CLI switch: passing `--ocsp-include-cert-chain` only ever
+          sets it to `true` (already the default). To set it to `false`, use the
+          `ocsp_include_cert_chain = false` key in the TOML config file instead.
+
       --ocsp-archive-cutoff-secs <OCSP_ARCHIVE_CUTOFF_SECS>
           Archive-cutoff extension value in seconds (RFC 6960 §4.4.4).
 
