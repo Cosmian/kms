@@ -193,24 +193,25 @@ fn object_to_jwk(
     let usage_mask = attributes.cryptographic_usage_mask;
 
     match pkey.id() {
-        Id::RSA => rsa_to_jwk(uid, &pkey).map(|jwk| Some(to_json_value(uid, &jwk))),
-        Id::EC => Ok(ec_to_jwk(uid, &pkey, usage_mask)?.map(|jwk| to_json_value(uid, &jwk))),
+        Id::RSA => rsa_to_jwk(uid, &pkey).map(|jwk| to_json_value(uid, &jwk)),
+        Id::EC => Ok(ec_to_jwk(uid, &pkey, usage_mask)?.and_then(|jwk| to_json_value(uid, &jwk))),
         #[cfg(feature = "non-fips")]
-        Id::ED25519 => Ok(eddsa_to_jwk(uid, &pkey)?.map(|jwk| to_json_value(uid, &jwk))),
+        Id::ED25519 => Ok(eddsa_to_jwk(uid, &pkey)?.and_then(|jwk| to_json_value(uid, &jwk))),
         #[cfg(feature = "non-fips")]
         Id::X25519 => x25519_to_jwk(uid, &pkey),
         _ => Ok(None),
     }
 }
 
-/// Serialize a typed [`Jwk`] to a raw [`serde_json::Value`], logging (but not
-/// propagating) any serialization failure since `Jwk` serialization cannot
-/// realistically fail for the field combinations this module produces.
-fn to_json_value(uid: &str, jwk: &Jwk) -> serde_json::Value {
-    serde_json::to_value(jwk).unwrap_or_else(|e| {
-        warn!("JWK serialization failed uid={uid}: {e}");
-        serde_json::Value::Null
-    })
+/// Serialize a typed [`Jwk`] to a raw [`serde_json::Value`].
+///
+/// Returns `None` (logging the failure, but not propagating it) if
+/// serialization fails, so the caller can skip the key entirely rather than
+/// emit an invalid `null` entry in the JWKS `keys` array.
+fn to_json_value(uid: &str, jwk: &Jwk) -> Option<serde_json::Value> {
+    serde_json::to_value(jwk)
+        .inspect_err(|e| warn!("JWK serialization failed uid={uid}: {e}"))
+        .ok()
 }
 
 /// Serialize an RSA public key to JWK.
