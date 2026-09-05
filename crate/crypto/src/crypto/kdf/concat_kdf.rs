@@ -48,9 +48,12 @@ fn build_other_info(
 /// NIST SP 800-56A Concatenation KDF (SHA-256), as profiled by RFC 7518 Appendix C for
 /// `ECDH-ES`/`ECDH-ES+A128KW`/`ECDH-ES+A256KW`.
 ///
-/// `algorithm_id` is the JOSE `alg` (bare `ECDH-ES`) or key-wrap `alg` (`A128KW`/`A256KW`)
-/// value as ASCII bytes; `party_u_info`/`party_v_info` are the base64url-decoded `apu`/`apv`
-/// header values (empty slices when absent).
+/// `algorithm_id` is the Concat KDF `AlgorithmID` per RFC 7518 §4.6: for direct
+/// agreement (`alg=ECDH-ES`) this is the `enc` value (the derived key is used
+/// directly as the CEK); for the key-wrap variants (`alg=ECDH-ES+A128KW` /
+/// `ECDH-ES+A256KW`) this is the `alg` value itself (the derived key is a KEK
+/// used to unwrap the CEK). `party_u_info`/`party_v_info` are the
+/// base64url-decoded `apu`/`apv` header values (empty slices when absent).
 pub fn concat_kdf(
     z: &[u8],
     key_data_len_bits: u32,
