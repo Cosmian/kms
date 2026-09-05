@@ -305,7 +305,7 @@ The following table shows operation support across all KMIP versions.
 | Check                  |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Create                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Create Key Pair        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Create Split Key       |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Create Split Key       |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |
 | Decrypt                |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Delete Attribute       |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | DeriveKey              |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
@@ -426,7 +426,7 @@ The following table shows transparent key structure support across all KMIP vers
 | EC Public Key            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | ECDSA Private Key        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
 | ECDSA Public Key         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
-| ECDH Private Key         |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
+| ECDH Private Key         |    ❌    |    ❌    |    ❌    |    ❌    |    ✅    |   N/A   |   N/A   |
 | ECDH Public Key          |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
 | ECMQV Private Key        |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
 | ECMQV Public Key         |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |

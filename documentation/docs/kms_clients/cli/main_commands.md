@@ -4710,9 +4710,7 @@ Split an existing symmetric key into multiple shares using XOR-based split knowl
 
 `--method [-m] <METHOD>` The splitting method. Accepted value: `xor` (XOR n-of-n, all shares required)
 
-`--ceremony <CEREMONY>` Stamp the `x-cosmian-crypto-officer-ceremony` vendor attribute on the key before splitting. The server will distribute shares to different Crypto Officer candidates instead of assigning them all to the caller
-
-Possible values:  `"true", "false"` [default: `"false"`]
+`--ceremony` Stamp the `x-cosmian-crypto-officer-ceremony` vendor attribute on the key before splitting. The server will distribute shares to different Crypto Officer candidates instead of assigning them all to the caller
 
 
 

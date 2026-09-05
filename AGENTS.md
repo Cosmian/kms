@@ -275,10 +275,17 @@ CLI/UI changes for the same feature into one commit or one PR:
    though `cli-ui-sync.instructions.md` requires them to stay functionally in sync.
 4. **Cascade/stack the PRs.** When server, CLI, and UI branches must exist before the
    server PR merges, stack them: each subsequent branch is based on the previous one's
-   branch (not `main`), so the PRs form a dependency chain. Use the `gh stack` extension
-   (`gh stack view` / `gh stack submit` / `gh stack sync`) to manage this chain. Rebase the
-   chain forward as earlier PRs merge; do not squash unrelated layers together to avoid
-   stacking.
+   branch (not `main`), so the PRs form a dependency chain. Use `gh stack view` /
+   `gh stack submit` to inspect and open the chain. **Do not use `gh stack sync`** (or any
+   equivalent rebase-then-force-push tool) to update already-pushed downstream branches —
+   it rewrites history and force-pushes with `--force-with-lease`, which the force-push
+   prohibition below strictly forbids. Instead, when an earlier PR in the chain merges or
+   gains new commits, update each downstream branch with a regular **merge** (not a
+   rebase): `git checkout <downstream-branch> && git merge origin/<upstream-branch>`,
+   resolve any conflicts in the merge commit, then a normal fast-forward
+   `git push origin <downstream-branch>`. This keeps every branch's history append-only
+   and preserves already-pushed commits and their review state. Do not squash unrelated
+   layers together to avoid stacking.
 5. Do not skip this ordering for "small" broad features — if a change touches both
    `crate/server/` (or `crate/kmip/`) and either `crate/clients/` or `ui/`, split it.
 
@@ -552,7 +559,12 @@ GH_PAGER=cat gh pr checks <number> --repo Cosmian/kms
 GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --log-failed
 ```
 
-For chained/stacked branches, the `gh stack` extension (`github/gh-stack`) manages the stack — `gh stack view`, `gh stack checkout`, `gh stack submit`, `gh stack sync`.
+For chained/stacked branches, use `gh stack view` / `gh stack checkout` / `gh stack submit`
+(`github/gh-stack`) to inspect, check out, and open PRs for the stack. **Do not run
+`gh stack sync`** — it rebases and force-pushes downstream branches, which the
+force-push prohibition (§4) forbids. To update a downstream branch after its upstream
+changes, merge instead: `git merge origin/<upstream-branch>` then a regular
+`git push origin <downstream-branch>`.
 
 ### 8.6 Nix packaging
 

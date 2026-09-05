@@ -1,7 +1,7 @@
-import { Button, Card, Form, Input, InputNumber, Radio, Select, Space } from "antd";
-import React from "react";
+import { Button, Card, Form, Input, InputNumber, Radio, Select, Space, Tag } from "antd";
+import React, { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { sendKmipRequest } from "../../utils/utils";
+import { getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import {
     create_secret_data_ttlv_request,
     derive_key_asymmetric_ttlv_request,
@@ -66,6 +66,28 @@ const DeriveKeyForm: React.FC = () => {
     const sourceType = Form.useWatch("sourceType", form);
     const derivationMethod = Form.useWatch("derivationMethod", form);
     const isAsymmetric = derivationMethod === "X25519";
+    // X25519 ECDH derivation is not supported in FIPS mode: the server rejects
+    // `derive_key_asymmetric` with `NotSupported`. Query `/server-info` once to hide/disable
+    // the option so users are never directed toward a request that can never succeed.
+    // Default to FIPS (option hidden/disabled) until the check succeeds — fail closed,
+    // since silently allowing a doomed request is worse than a false-positive hide.
+    const [isFips, setIsFips] = useState(true);
+    useEffect(() => {
+        let cancelled = false;
+        const checkFips = async () => {
+            try {
+                const info = await getNoTTLVRequest("/server-info", serverUrl);
+                if (!cancelled) setIsFips(Boolean((info as { fips_mode?: boolean })?.fips_mode));
+            } catch {
+                // Server info unavailable: stay fail-closed (assume FIPS, option stays hidden/disabled).
+                if (!cancelled) setIsFips(true);
+            }
+        };
+        void checkFips();
+        return () => {
+            cancelled = true;
+        };
+    }, [serverUrl]);
 
     const onFinish = async (values: DeriveKeyFormData) => {
         await execute(async () => {
@@ -172,8 +194,13 @@ const DeriveKeyForm: React.FC = () => {
                                 <Radio value="HKDF" data-testid="derivation-method-hkdf">
                                     HKDF
                                 </Radio>
-                                <Radio value="X25519" data-testid="derivation-method-x25519">
+                                <Radio value="X25519" data-testid="derivation-method-x25519" disabled={isFips}>
                                     {t("deriveKey.x25519Method")}
+                                    {isFips && (
+                                        <Tag color="orange" style={{ marginLeft: 8 }}>
+                                            {t("deriveKey.nonFipsOnly")}
+                                        </Tag>
+                                    )}
                                 </Radio>
                             </Radio.Group>
                         </Form.Item>
@@ -191,6 +218,7 @@ const DeriveKeyForm: React.FC = () => {
                                 objectType="PrivateKey"
                                 rules={[{ required: true, message: t("deriveKey.pleaseEnterPrivateKeyId") }]}
                                 placeholder={t("deriveKey.enterPrivateKeyId")}
+                                data-testid="x25519-private-key-id"
                             />
 
                             <KeyIdInput
@@ -201,10 +229,11 @@ const DeriveKeyForm: React.FC = () => {
                                 objectType="PublicKey"
                                 rules={[{ required: true, message: t("deriveKey.pleaseEnterPeerPublicKeyId") }]}
                                 placeholder={t("deriveKey.enterPeerPublicKeyId")}
+                                data-testid="x25519-peer-public-key-id"
                             />
 
                             <Form.Item name="derivedKeyId" label={t("deriveKey.derivedKeyId")} help={t("deriveKey.derivedKeyIdHelp")}>
-                                <Input placeholder={t("deriveKey.derivedKeyIdPlaceholder")} />
+                                <Input placeholder={t("deriveKey.derivedKeyIdPlaceholder")} data-testid="x25519-derived-key-id" />
                             </Form.Item>
                         </Card>
                     ) : (
