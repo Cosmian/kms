@@ -88,6 +88,21 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 - All public items require `///` doc comments.
 - Minimal, focused commits — never refactor unrelated code alongside a bug fix.
 
+## Feature rollout order & PR cascade
+
+For any feature spanning server + CLI/UI: implement and PR the **server** side first
+(`crate/server/`, `crate/kmip/`), then the **CLI** (`crate/clients/`) in its own PR, then
+the **Web UI** (`ui/`) in its own PR. Never bundle server and CLI/UI changes for the same
+feature in one PR. When branches must exist before the server PR merges, stack them
+(each branch based on the previous one) using the `gh stack` extension.
+
+## Force-push prohibition
+
+Agents must **never** force-push, under any circumstance — no `git push --force`/
+`--force-with-lease`, no delete-and-recreate of a remote branch, and no rewriting a
+remote ref via the GitHub web UI or REST/GraphQL API. If history diverges, merge or
+branch again; never rewrite shared history. Applies to every branch.
+
 ---
 
 ## Skills (slash commands in Copilot Chat)
