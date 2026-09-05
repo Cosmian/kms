@@ -245,7 +245,7 @@ pub async fn handle_google_cse_rsa_keypair(
 ///
 /// Returns a [`KmsError`] if listing tagged objects or granting access fails.
 pub(crate) async fn migrate_aws_xks_key_access(kms_server: &Arc<KMS>) -> KResult<()> {
-    let default_username = &kms_server.params.default_username;
+    let default_username = kms_server.params.default_username.as_str();
     // Defensive: an operator could have configured `default_username` to the reserved name.
     // `grant_access` refuses to let an owner grant themselves, and the owner already has
     // every right, so there is nothing to do.
@@ -1954,6 +1954,7 @@ fn validate_jwks_uris_are_https(uris: &[String]) -> KResult<()> {
 #[allow(clippy::assertions_on_result_states)]
 mod tests {
     use super::*;
+    use crate::tests::test_utils::https_clap_config;
 
     #[test]
     fn test_derive_session_key_deterministic() {
@@ -2141,5 +2142,28 @@ mod tests {
             .push(AWS_XKS_SERVICE_USER.to_owned());
 
         assert!(validate_aws_xks_reserved_identity_config(&params).is_ok());
+    }
+
+    #[tokio::test]
+    async fn aws_xks_migration_allows_empty_default_username() {
+        let mut clap_config = https_clap_config();
+        clap_config.default_username.clear();
+        clap_config.aws_xks_config.aws_xks_enable = true;
+        clap_config.aws_xks_config.aws_xks_region = Some("eu-west-3".to_owned());
+        clap_config.aws_xks_config.aws_xks_service = Some("kms".to_owned());
+        clap_config.aws_xks_config.aws_xks_sigv4_access_key_id = Some("access-key".to_owned());
+        clap_config.aws_xks_config.aws_xks_sigv4_secret_access_key = Some("secret-key".to_owned());
+
+        let params = ServerParams::try_from(clap_config)
+            .expect("server params with empty default_username must be accepted");
+        let kms = Arc::new(
+            KMS::instantiate(Arc::new(params))
+                .await
+                .expect("KMS instantiation with empty default_username must succeed"),
+        );
+
+        migrate_aws_xks_key_access(&kms)
+            .await
+            .expect("AWS XKS migration must not panic or fail for empty default_username");
     }
 }
