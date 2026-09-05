@@ -87,19 +87,30 @@ fn nid_for_crv(crv: &str) -> Nid {
     }
 }
 
+/// The receiver's static EC key material used to build an ECDH-ES sender
+/// simulation (bundles what would otherwise be four separate arguments).
+struct StaticEcKey<'a> {
+    kid: &'a str,
+    crv: &'a str,
+    x_b64: &'a str,
+    y_b64: &'a str,
+}
+
 /// Build the JWE flattened-JSON decrypt request body (as `serde_json::Value`) for an
 /// EC ECDH-ES sender simulation, and return it alongside the plaintext for assertion.
-#[expect(clippy::too_many_arguments)]
 fn build_ec_ecdh_es_request(
-    kid: &str,
+    static_key: &StaticEcKey<'_>,
     alg: &str,
     enc: &str,
-    crv: &str,
-    static_x_b64: &str,
-    static_y_b64: &str,
     plaintext: &[u8],
     aad: Option<&[u8]>,
 ) -> Value {
+    let StaticEcKey {
+        kid,
+        crv,
+        x_b64: static_x_b64,
+        y_b64: static_y_b64,
+    } = *static_key;
     let nid = nid_for_crv(crv);
     let (ephemeral_scalar, epk_x, epk_y) = generate_ephemeral_ec(nid);
 
@@ -175,12 +186,14 @@ async fn ecdh_es_round_trip(crv: &str, alg: &str, enc: &str) -> KResult<()> {
 
     let plaintext = format!("ECDH-ES round trip: crv={crv} alg={alg} enc={enc}");
     let req_body = build_ec_ecdh_es_request(
-        &kid_priv,
+        &StaticEcKey {
+            kid: &kid_priv,
+            crv,
+            x_b64: &x_b64,
+            y_b64: &y_b64,
+        },
         alg,
         enc,
-        crv,
-        &x_b64,
-        &y_b64,
         plaintext.as_bytes(),
         None,
     );
@@ -246,7 +259,16 @@ async fn test_ecdh_es_decrypt_via_public_kid() -> KResult<()> {
 
     let plaintext = b"decrypt resolved via public key kid";
     let req_body = build_ec_ecdh_es_request(
-        &kid_pub, "ECDH-ES", "A128GCM", "P-256", &x_b64, &y_b64, plaintext, None,
+        &StaticEcKey {
+            kid: &kid_pub,
+            crv: "P-256",
+            x_b64: &x_b64,
+            y_b64: &y_b64,
+        },
+        "ECDH-ES",
+        "A128GCM",
+        plaintext,
+        None,
     );
 
     let dec_resp: Value =
@@ -269,12 +291,14 @@ async fn test_ecdh_es_aad_binding() -> KResult<()> {
         super::common::create_ecdh_ec_key_pair_rest(&app, "P-256", "ECDH-ES").await?;
 
     let mut req_body = build_ec_ecdh_es_request(
-        &kid_priv,
+        &StaticEcKey {
+            kid: &kid_priv,
+            crv: "P-256",
+            x_b64: &x_b64,
+            y_b64: &y_b64,
+        },
         "ECDH-ES",
         "A128GCM",
-        "P-256",
-        &x_b64,
-        &y_b64,
         b"secret payload",
         Some(b"associated-data"),
     );
@@ -310,12 +334,14 @@ async fn test_ecdh_es_a128kw_missing_encrypted_key_rejected() -> KResult<()> {
         super::common::create_ecdh_ec_key_pair_rest(&app, "P-256", "ECDH-ES+A128KW").await?;
 
     let mut req_body = build_ec_ecdh_es_request(
-        &kid_priv,
+        &StaticEcKey {
+            kid: &kid_priv,
+            crv: "P-256",
+            x_b64: &x_b64,
+            y_b64: &y_b64,
+        },
         "ECDH-ES+A128KW",
         "A128GCM",
-        "P-256",
-        &x_b64,
-        &y_b64,
         b"payload",
         None,
     );
@@ -349,7 +375,16 @@ async fn test_ecdh_es_direct_rejects_encrypted_key() -> KResult<()> {
         super::common::create_ecdh_ec_key_pair_rest(&app, "P-256", "ECDH-ES").await?;
 
     let mut req_body = build_ec_ecdh_es_request(
-        &kid_priv, "ECDH-ES", "A128GCM", "P-256", &x_b64, &y_b64, b"payload", None,
+        &StaticEcKey {
+            kid: &kid_priv,
+            crv: "P-256",
+            x_b64: &x_b64,
+            y_b64: &y_b64,
+        },
+        "ECDH-ES",
+        "A128GCM",
+        b"payload",
+        None,
     );
     req_body["encrypted_key"] = json!(URL_SAFE_NO_PAD.encode(b"unexpected-wrapped-key-bytes!!"));
 
