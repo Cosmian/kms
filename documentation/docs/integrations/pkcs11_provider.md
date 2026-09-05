@@ -13,23 +13,24 @@ integration-specific setup steps.
 ## Cryptoki version and interfaces discovery
 
 The library implements the Cryptoki v2.40 function list (`C_GetFunctionList`) and additionally
-implements the Cryptoki v3.0 "interfaces" discovery entry points, `C_GetInterfaceList` and
+implements the Cryptoki v3.x "interfaces" discovery entry points, `C_GetInterfaceList` and
 `C_GetInterface`.
 
 This is purely **additive**: every consumer that only knows about `C_GetFunctionList` (the previous
-behavior of this library) keeps working unchanged. A v3.0-aware consumer may instead discover the
+behavior of this library) keeps working unchanged. A v3-aware consumer may instead discover the
 library's single `"PKCS 11"` interface via `C_GetInterfaceList`/`C_GetInterface` and obtain the same
-v2.x function pointers plus a small set of v3.0-only entry points.
+v2.x function pointers plus a small set of v3-only entry points.
 
 - `C_GetInterfaceList(NULL, &count)` reports `count = 1` (the library exposes a single interface).
 - `C_GetInterface(NULL, NULL, &pInterface, 0)` returns that interface unconditionally; a caller may
-  instead pass the explicit name `"PKCS 11"` and/or an explicit major version (only major version 3
-  is matched) — any other name, an unsupported major version, or non-zero `flags` is rejected with
-  `CKR_ARGUMENTS_BAD`.
+  instead pass the explicit name `"PKCS 11"` and/or the exact version 3.1. Any other name,
+  version (including 3.0 or 3.2), or non-zero `flags` is rejected with `CKR_ARGUMENTS_BAD`.
 - `C_LoginUser` is implemented: it behaves like `C_Login` (the library exposes a single implicit
   backend identity, so `pUsername`/`ulUsernameLen` are validated as well-formed UTF-8 but otherwise
-  ignored).
-- v3.0 functions that this library does not natively implement (`C_SessionCancel`, and the
+  ignored). `CKU_USER` is accepted. `CKU_SO` and other unsupported user types return
+  `CKR_USER_TYPE_INVALID`, while `CKU_CONTEXT_SPECIFIC` returns `CKR_OPERATION_NOT_INITIALIZED`
+  because contextual authentication is not implemented.
+- v3 functions that this library does not natively implement (`C_SessionCancel`, and the
   message-based bulk encrypt/decrypt/sign/verify family — `C_Message*Init`/`C_*MessageBegin`/
   `C_*MessageNext`/`C_Message*Final`) are present in the v3.0 function list as required by the
   specification (a v3.0 function list must not contain null pointers), but return
@@ -39,10 +40,12 @@ v2.x function pointers plus a small set of v3.0-only entry points.
 
 ## Conformance profiles (`CKO_PROFILE`)
 
-Per the OASIS PKCS#11 v3.0 profiles specification, the library self-declares the conformance
+Per the OASIS PKCS#11 v3.1 profiles specification, the library self-declares the conformance
 profiles it implements as `CKO_PROFILE` objects, discoverable via `C_FindObjectsInit`/
 `C_FindObjects` with a `CKA_CLASS = CKO_PROFILE` template — including on a session that has not
 called `C_Login`/`C_LoginUser` yet, since profile objects are public (`CKA_PRIVATE = CK_FALSE`).
+Each profile object also has a stable, class-namespaced `CKA_UNIQUE_ID` and can be selected
+directly with a `CKA_PROFILE_ID` search template, with or without `CKA_CLASS`.
 
 The library currently declares:
 
@@ -70,7 +73,7 @@ implemented by this library.
 
 No configuration change and no code change are required to keep using the PKCS#11 provider library
 as before: existing v2.40-only consumers keep calling `C_GetFunctionList` exactly as they always
-have, and every previously-supported mechanism is unchanged. The v3.0 interfaces discovery entry
+have, and every previously-supported mechanism is unchanged. The v3 interfaces discovery entry
 points, `C_LoginUser`, and the self-declared `CKO_PROFILE` objects are new, optional capabilities.
 
 ## Logging

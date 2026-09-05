@@ -22,18 +22,20 @@ use cosmian_logger::{debug, log_init};
 use cosmian_pkcs11_module::{
     pkcs11::{
         C_CloseSession, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
-        C_GetAttributeValue, C_Initialize, C_LoginUser, C_OpenSession, SLOT_ID,
+        C_GetAttributeValue, C_Initialize, C_Login, C_LoginUser, C_OpenSession,
+        C_SetAttributeValue, SLOT_ID,
     },
     test_decrypt, test_encrypt,
-    traits::{Backend, SignatureAlgorithm},
+    traits::{Backend, SignatureAlgorithm, backend as registered_backend},
 };
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INTERFACE, CK_INVALID_HANDLE, CK_OBJECT_CLASS,
     CK_PROFILE_ID, CK_ULONG, CK_USER_TYPE, CK_UTF8CHAR, CK_VERSION, CKA_CLASS, CKA_LABEL,
-    CKA_PRIVATE, CKA_PROFILE_ID, CKF_SERIAL_SESSION, CKO_DATA, CKO_PROFILE,
+    CKA_PRIVATE, CKA_PROFILE_ID, CKA_UNIQUE_ID, CKF_SERIAL_SESSION, CKO_DATA, CKO_PROFILE,
     CKP_AUTHENTICATION_TOKEN, CKP_BASELINE_PROVIDER, CKP_EXTENDED_PROVIDER,
-    CKP_PUBLIC_CERTIFICATES_TOKEN, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL, CKR_OK, CKU_USER,
-    CRYPTOKI_VERSION_MAJOR,
+    CKP_PUBLIC_CERTIFICATES_TOKEN, CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_READ_ONLY,
+    CKR_BUFFER_TOO_SMALL, CKR_OK, CKR_OPERATION_NOT_INITIALIZED, CKR_USER_TYPE_INVALID,
+    CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 use serial_test::serial;
 use test_kms_server::start_default_test_kms_server;
@@ -266,6 +268,16 @@ fn test_kms_client_and_backend() -> Result<(), Pkcs11Error> {
 }
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+#[test]
+#[expect(unsafe_code)]
+fn test_get_function_list_rejects_null_output() {
+    // SAFETY: passing null intentionally verifies the required argument validation.
+    assert_eq!(
+        unsafe { C_GetFunctionList(std::ptr::null_mut()) },
+        CKR_ARGUMENTS_BAD
+    );
+}
 
 #[expect(unsafe_code)]
 fn test_init() {
@@ -606,6 +618,8 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
     unsafe {
         std::env::set_var(CKMS_CONF_ENV, &conf_path);
     }
+    test_init();
+    let backend_before_discovery = registered_backend()?;
 
     // First call: null buffer, learn the count.
     let mut count: CK_ULONG = 0;
@@ -667,7 +681,7 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
     let mut name_bytes = b"PKCS 11\0".to_vec();
     let mut version = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
-        minor: 0,
+        minor: CRYPTOKI_VERSION_MINOR,
     };
     assert_eq!(
         // SAFETY: `name_bytes` is NUL-terminated and well within `MAX_INTERFACE_NAME_LEN`;
@@ -681,6 +695,11 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
             )
         },
         CKR_OK
+    );
+    let backend_after_discovery = registered_backend()?;
+    assert!(
+        std::sync::Arc::ptr_eq(&backend_before_discovery, &backend_after_discovery),
+        "interface discovery must not replace an already authenticated backend"
     );
     Ok(())
 }
@@ -732,6 +751,25 @@ fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
         CKR_ARGUMENTS_BAD
     );
 
+    for minor in [0, CRYPTOKI_VERSION_MINOR.saturating_add(1)] {
+        let mut wrong_minor = CK_VERSION {
+            major: CRYPTOKI_VERSION_MAJOR,
+            minor,
+        };
+        assert_eq!(
+            // SAFETY: `wrong_minor` and `interface_ptr` are valid stack values.
+            unsafe {
+                C_GetInterface(
+                    std::ptr::null_mut(),
+                    &raw mut wrong_minor,
+                    &raw mut interface_ptr,
+                    0,
+                )
+            },
+            CKR_ARGUMENTS_BAD
+        );
+    }
+
     // Non-zero flags: no interface satisfies any special guarantee.
     assert_eq!(
         // SAFETY: `interface_ptr` is a valid stack out-parameter; name/version are null.
@@ -779,6 +817,50 @@ fn test_c_login_user() -> Pkcs11Result<()> {
             )
         },
         CKR_OK
+    );
+
+    assert_eq!(
+        // SAFETY: all optional byte buffers are null with zero lengths; `handle` is valid.
+        unsafe {
+            C_LoginUser(
+                handle,
+                CKU_CONTEXT_SPECIFIC,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                0,
+            )
+        },
+        CKR_OPERATION_NOT_INITIALIZED
+    );
+    assert_eq!(
+        // SAFETY: all optional byte buffers are null with zero lengths; `handle` is valid.
+        unsafe {
+            C_LoginUser(
+                handle,
+                CK_USER_TYPE::MAX,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                0,
+            )
+        },
+        CKR_USER_TYPE_INVALID
+    );
+    assert_eq!(
+        // SAFETY: the PIN buffer is optional outside PIN-as-access-token mode.
+        unsafe { C_Login(handle, CKU_CONTEXT_SPECIFIC, std::ptr::null_mut(), 0) },
+        CKR_OPERATION_NOT_INITIALIZED
+    );
+    assert_eq!(
+        // SAFETY: the PIN buffer is optional outside PIN-as-access-token mode.
+        unsafe { C_Login(handle, CK_USER_TYPE::MAX, std::ptr::null_mut(), 0) },
+        CKR_USER_TYPE_INVALID
+    );
+    assert_eq!(
+        // SAFETY: the PIN buffer is optional outside PIN-as-access-token mode.
+        unsafe { C_Login(handle, CKU_SO, std::ptr::null_mut(), 0) },
+        CKR_USER_TYPE_INVALID
     );
 
     let mut username = b"alice".to_vec();
@@ -881,10 +963,32 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
         CKP_PUBLIC_CERTIFICATES_TOKEN,
     ];
     let mut seen_profiles = Vec::new();
+    let mut seen_unique_ids = std::collections::HashSet::new();
     for &obj_handle in obj_handles.iter().take(count_usize) {
+        let mut sentinel = 0xA5_u8;
+        let mut undersized = [CK_ATTRIBUTE {
+            type_: CKA_UNIQUE_ID,
+            pValue: (&raw mut sentinel).cast::<std::ffi::c_void>(),
+            ulValueLen: 1,
+        }];
+        assert_eq!(
+            // SAFETY: the one-byte output is valid; the call must report the required
+            // size without writing beyond or modifying this undersized buffer.
+            unsafe { C_GetAttributeValue(handle, obj_handle, undersized.as_mut_ptr(), 1) },
+            CKR_BUFFER_TOO_SMALL
+        );
+        assert!(undersized[0].ulValueLen > 1);
+        assert_eq!(sentinel, 0xA5);
+        assert_eq!(
+            // SAFETY: the template contains one valid attribute and `obj_handle` is live.
+            unsafe { C_SetAttributeValue(handle, obj_handle, undersized.as_mut_ptr(), 1) },
+            CKR_ATTRIBUTE_READ_ONLY
+        );
+
         let mut class_value: CK_OBJECT_CLASS = 0;
         let mut private_value: pkcs11_sys::CK_BBOOL = 0;
         let mut profile_id_value: CK_PROFILE_ID = 0;
+        let mut unique_id_value = [0_u8; 64];
         #[allow(clippy::cast_ptr_alignment)]
         let mut attr_template = [
             CK_ATTRIBUTE {
@@ -901,6 +1005,11 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
                 type_: CKA_PROFILE_ID,
                 pValue: (&raw mut profile_id_value).cast::<std::ffi::c_void>(),
                 ulValueLen: std::mem::size_of::<CK_PROFILE_ID>().try_into()?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_UNIQUE_ID,
+                pValue: unique_id_value.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulValueLen: unique_id_value.len().try_into()?,
             },
         ];
         let attr_template_len: CK_ULONG = attr_template.len().try_into()?;
@@ -928,12 +1037,63 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
             known_profiles.contains(&profile_id_value),
             "unexpected CKA_PROFILE_ID: {profile_id_value}"
         );
+        let unique_id_len = usize::try_from(attr_template[3].ulValueLen)?;
+        let unique_id_bytes = unique_id_value.get(..unique_id_len).ok_or_else(|| {
+            Pkcs11Error::Conversion(format!(
+                "CKA_UNIQUE_ID length {unique_id_len} exceeds the test buffer"
+            ))
+        })?;
+        let unique_id = std::str::from_utf8(unique_id_bytes)
+            .map_err(|e| Pkcs11Error::Default(e.to_string()))?;
+        assert!(unique_id.starts_with("pkcs11-profile:"));
+        assert!(seen_unique_ids.insert(unique_id.to_owned()));
         seen_profiles.push(profile_id_value);
     }
     assert!(seen_profiles.contains(&CKP_BASELINE_PROVIDER));
     assert!(seen_profiles.contains(&CKP_AUTHENTICATION_TOKEN));
     assert!(seen_profiles.contains(&CKP_PUBLIC_CERTIFICATES_TOKEN));
 
+    assert_eq!(
+        find_profile_count(handle, CKP_BASELINE_PROVIDER)?,
+        1,
+        "CKA_PROFILE_ID must select exactly one declared profile"
+    );
+    assert_eq!(
+        find_profile_count(handle, CK_PROFILE_ID::MAX)?,
+        0,
+        "an unknown CKA_PROFILE_ID must select no profiles"
+    );
+
+    assert_eq!(C_CloseSession(handle), CKR_OK);
     assert_eq!(C_Finalize(std::ptr::null_mut()), CKR_OK);
     Ok(())
+}
+
+#[expect(unsafe_code)]
+fn find_profile_count(
+    session: pkcs11_sys::CK_SESSION_HANDLE,
+    requested_profile: CK_PROFILE_ID,
+) -> Pkcs11Result<CK_ULONG> {
+    let mut profile = requested_profile;
+    let mut template = [CK_ATTRIBUTE {
+        type_: CKA_PROFILE_ID,
+        pValue: (&raw mut profile).cast::<std::ffi::c_void>(),
+        ulValueLen: std::mem::size_of::<CK_PROFILE_ID>().try_into()?,
+    }];
+    let template_len = template.len().try_into()?;
+    // SAFETY: `session` is open and the template references valid stack values.
+    assert_eq!(
+        unsafe { C_FindObjectsInit(session, template.as_mut_ptr(), template_len) },
+        CKR_OK
+    );
+    let mut handles = [CK_INVALID_HANDLE; 4];
+    let mut count = 0;
+    let max_count = handles.len().try_into()?;
+    // SAFETY: output buffers are valid for the supplied lengths.
+    assert_eq!(
+        unsafe { C_FindObjects(session, handles.as_mut_ptr(), max_count, &raw mut count) },
+        CKR_OK
+    );
+    assert_eq!(C_FindObjectsFinal(session), CKR_OK);
+    Ok(count)
 }

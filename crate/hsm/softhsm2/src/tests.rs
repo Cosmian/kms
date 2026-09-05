@@ -92,23 +92,29 @@ fn test_hsm_softhsm2_low_level_test() -> HResult<()> {
     Ok(())
 }
 
-/// Additive PKCS#11 v3.0 capability probe (issue #1153): `SoftHSM2` only implements
-/// Cryptoki v2.40, so it must not export `C_GetInterfaceList`. This asserts that the
-/// probe correctly reports "not supported" and that it never breaks the existing
-/// v2.40 workflow (instantiation, `C_GetInfo`, etc. still succeed as before).
+/// Additive PKCS#11 v3 capability probe (issue #1153).
+///
+/// `SoftHSM` releases differ in the Cryptoki version they expose. The probe must preserve
+/// ordinary PKCS#11 operation and consistently report either no v3 discovery symbol or
+/// the interfaces returned by that symbol.
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_pkcs11_v3_capability_probe_is_additive() -> HResult<()> {
     let cfg = cfg()?;
     let hsm = shared::instantiate::<SofthsmCapabilityProvider>(&cfg)?;
 
-    // Existing v2.40 behavior must be entirely unaffected.
-    let info = hsm.hsm_lib().get_info_struct()?;
-    assert_eq!(info.cryptoki_version.0, 2);
-
-    // SoftHSM2 (v2.40) does not export `C_GetInterfaceList`.
-    assert!(!hsm.hsm_lib().supports_pkcs11_v3_interfaces());
-    assert!(hsm.hsm_lib().list_pkcs11_v3_interfaces()?.is_none());
+    drop(hsm.hsm_lib().get_info_struct()?);
+    let supports_interfaces = hsm.hsm_lib().supports_pkcs11_v3_interfaces();
+    let interfaces = hsm.hsm_lib().list_pkcs11_v3_interfaces()?;
+    assert_eq!(supports_interfaces, interfaces.is_some());
+    if let Some(interfaces) = interfaces {
+        assert!(!interfaces.is_empty());
+        assert!(
+            interfaces
+                .iter()
+                .all(|interface| !interface.name.is_empty())
+        );
+    }
 
     Ok(())
 }

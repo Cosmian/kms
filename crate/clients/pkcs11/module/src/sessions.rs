@@ -47,13 +47,12 @@ use crate::{
 /// PKCS#11 v3.1 conformance profiles ([OASIS PKCS#11 Profiles v3.1]) that this module
 /// self-declares via `CKO_PROFILE` objects returned by `C_FindObjects`.
 ///
-/// - `CKP_BASELINE_PROVIDER`: mandatory Session/Object Management plus `C_Sign`/`C_Verify`
-///   with at least one mechanism — satisfied by the existing sign/verify implementation.
+/// - `CKP_BASELINE_PROVIDER`: mandatory Session and Object Management functions.
 /// - `CKP_EXTENDED_PROVIDER`: Baseline plus `C_GetMechanismList`/`C_GetMechanismInfo` and
 ///   `C_Login`/`C_LoginUser`/`C_Logout` — satisfied now that `C_LoginUser` is implemented.
 /// - `CKP_AUTHENTICATION_TOKEN`: Baseline plus asymmetric key pairs usable for
-///   challenge/response authentication — satisfied by the existing private/public key
-///   sign/verify support.
+///   challenge/response authentication — satisfied by the existing private-key signing
+///   support.
 /// - `CKP_PUBLIC_CERTIFICATES_TOKEN`: Baseline plus `CKO_CERTIFICATE` objects discoverable
 ///   without login — satisfied by the existing certificate support.
 ///
@@ -156,6 +155,12 @@ impl Session {
             return Err(ModuleError::BadArguments(
                 "load_find_context: empty attributes".to_owned(),
             ));
+        }
+        if attributes
+            .get(crate::core::attribute::AttributeType::ProfileId)
+            .is_some()
+        {
+            return self.load_find_context_by_class(attributes, pkcs11_sys::CKO_PROFILE);
         }
         // Find all objects
         for object in backend()?.find_all_objects()? {
@@ -390,6 +395,12 @@ impl Session {
                         );
                         self.clear_find_objects_ctx();
                     }
+                }
+            }
+            SearchOptions::ProfileId(id) => {
+                self.clear_find_objects_ctx();
+                if search_class == pkcs11_sys::CKO_PROFILE && SUPPORTED_PROFILES.contains(&id) {
+                    self.update_find_objects_context(Arc::new(Object::Profile(id)))?;
                 }
             }
         }

@@ -1,53 +1,20 @@
-//! Minimal, hand-written PKCS#11 v3.0 additions.
+//! Safe wrappers around the PKCS#11 v3.0 interface-discovery bindings.
 //!
-//! The vendored `pkcs11-sys` crate (v0.2.25) only binds the Cryptoki v2.40 header
-//! surface: it has no `CK_INTERFACE`, no `C_GetInterfaceList`/`C_GetInterface`, and
-//! none of the v3.0 mechanism constants. Forking/regenerating `pkcs11-sys` in full is
-//! out of scope for this change (see issue #1153); instead this module hand-writes
-//! only the small additional FFI surface required to *detect* whether a loaded
-//! PKCS#11 library exposes the v3.0 "interfaces" discovery mechanism.
+//! `pkcs11-sys` v0.2.25 already provides the Cryptoki v3.0 ABI types used here.
+//! This module adds only the owned representation needed by [`HsmLib`](crate::HsmLib)
+//! to report interfaces without exposing native pointers.
 //!
 //! This is a **capability probe only**: it is purely additive and optional.
 //! `HsmLib` keeps resolving every Cryptoki function by stable per-symbol name as it
-//! always has (see `hsm_lib.rs`), so v2.x-only HSMs (e.g. `SoftHSM2`, which only
-//! implements Cryptoki v2.40) are completely unaffected — `C_GetInterfaceList` is
+//! always has (see `hsm_lib.rs`), so v2.x-only HSMs are completely unaffected —
+//! `C_GetInterfaceList` is
 //! simply absent from the library and the probe reports "not supported".
 use std::{ffi::CStr, os::raw::c_char};
 
-use pkcs11_sys::{CK_CHAR_PTR, CK_FLAGS, CK_RV, CK_ULONG_PTR, CK_VOID_PTR};
+use pkcs11_sys::{CK_C_GetInterfaceList, CK_INTERFACE};
 
-/// Mirrors the PKCS#11 v3.0 `CK_INTERFACE` structure (OASIS Cryptoki v3.0 §3.2).
-///
-/// The layout must match the native C struct exactly: it is populated in place by
-/// `C_GetInterfaceList`.
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct CkInterface {
-    pub(crate) p_interface_name: CK_CHAR_PTR,
-    pub(crate) p_function_list: CK_VOID_PTR,
-    pub(crate) flags: CK_FLAGS,
-}
-
-impl Default for CkInterface {
-    fn default() -> Self {
-        Self {
-            p_interface_name: std::ptr::null_mut(),
-            p_function_list: std::ptr::null_mut(),
-            flags: 0,
-        }
-    }
-}
-
-pub(crate) type CkInterfacePtr = *mut CkInterface;
-
-/// `CK_RV C_GetInterfaceList(CK_INTERFACE_PTR pInterfacesList, CK_ULONG_PTR pulCount);`
-///
-/// Per the OASIS Cryptoki v3.0 spec, this follows the same two-call convention as the
-/// pre-existing `C_GetMechanismList`/`C_FindObjects` usage in this crate: call once with
-/// a `NULL` buffer to obtain the count, then again with an allocated buffer of that size.
-pub(crate) type CkCGetInterfaceList = Option<
-    unsafe extern "C" fn(p_interfaces_list: CkInterfacePtr, pul_count: CK_ULONG_PTR) -> CK_RV,
->;
+pub(crate) type CkInterface = CK_INTERFACE;
+pub(crate) type CkCGetInterfaceList = CK_C_GetInterfaceList;
 
 /// A capability-probe-only description of a PKCS#11 v3.0 interface entry.
 ///
@@ -73,14 +40,14 @@ pub struct InterfaceDescriptor {
 pub(crate) fn parse_interfaces(raw: &[CkInterface]) -> Vec<InterfaceDescriptor> {
     raw.iter()
         .map(|entry| {
-            let name = if entry.p_interface_name.is_null() {
+            let name = if entry.pInterfaceName.is_null() {
                 String::new()
             } else {
-                // SAFETY: `p_interface_name` is guaranteed by the PKCS#11 v3.0 spec to
+                // SAFETY: `pInterfaceName` is guaranteed by the PKCS#11 v3.0 spec to
                 // point to a NUL-terminated string for the duration of this call.
                 #[expect(unsafe_code)]
                 unsafe {
-                    CStr::from_ptr(entry.p_interface_name.cast::<c_char>())
+                    CStr::from_ptr(entry.pInterfaceName.cast::<c_char>())
                         .to_string_lossy()
                         .into_owned()
                 }
@@ -98,9 +65,7 @@ pub(crate) fn parse_interfaces(raw: &[CkInterface]) -> Vec<InterfaceDescriptor> 
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::CString;
-
-    use super::{CkInterface, parse_interfaces};
+    use super::{CkInterface, InterfaceDescriptor, parse_interfaces};
 
     #[test]
     fn parse_interfaces_empty() {
@@ -108,31 +73,31 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::expect_used)]
     fn parse_interfaces_null_name() {
         let raw = [CkInterface::default()];
-        let parsed = parse_interfaces(&raw);
-        assert_eq!(parsed.len(), 1);
-        let entry = parsed.first().expect("one entry expected");
-        assert_eq!(entry.name, "");
-        assert_eq!(entry.flags, 0);
+        assert_eq!(
+            parse_interfaces(&raw),
+            vec![InterfaceDescriptor {
+                name: String::new(),
+                flags: 0,
+            }]
+        );
     }
 
     #[test]
-    #[allow(clippy::expect_used, clippy::unreachable)]
     fn parse_interfaces_named() {
-        let Ok(name) = CString::new("PKCS 11") else {
-            unreachable!("literal without NUL bytes is always a valid C string")
-        };
+        let name = c"PKCS 11";
         let raw = [CkInterface {
-            p_interface_name: name.as_ptr().cast_mut().cast(),
-            p_function_list: std::ptr::null_mut(),
+            pInterfaceName: name.as_ptr().cast_mut().cast(),
+            pFunctionList: std::ptr::null_mut(),
             flags: 3,
         }];
-        let parsed = parse_interfaces(&raw);
-        assert_eq!(parsed.len(), 1);
-        let entry = parsed.first().expect("one entry expected");
-        assert_eq!(entry.name, "PKCS 11");
-        assert_eq!(entry.flags, 3);
+        assert_eq!(
+            parse_interfaces(&raw),
+            vec![InterfaceDescriptor {
+                name: "PKCS 11".to_owned(),
+                flags: 3,
+            }]
+        );
     }
 }
