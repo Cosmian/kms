@@ -488,7 +488,12 @@ crypto_officer_require_ceremony = false
 # the default 24-hour refresh-overlap condition immediately after creation,
 # causing the hourly scheduler to continuously re-sign it.
 #
-# Valid range: 1–365. Default: 7.
+# Valid range: 1–365 when set via the CLI flag or an environment variable.
+# Default: 7.
+#
+# This range is enforced by clap's argument parser only; it is not
+# currently re-validated when the value comes from a TOML config file, so
+# a value outside 1–365 in `kms.toml` is silently accepted.
 crl_default_validity_days = 7
 # How often (in hours) the background CRL refresh scheduler wakes up to
 # check whether any stored CRL needs to be regenerated.
@@ -522,6 +527,37 @@ crl_refresh_overlap_hours = 24
 #
 # When `false` (default) all `/ocsp/` routes return 404.
 ocsp_enabled = false
+# UID of the CA certificate object in the KMS.
+#
+# Used to verify that incoming OCSP requests are for certificates issued by
+# this CA (by comparing issuer name hash and key hash), and to retrieve
+# certificate states for revocation lookup.
+#
+# Must be set when `ocsp_enabled = true`.
+# ocsp_ca_uid = "<CA certificate UID>"
+# UID of the dedicated OCSP signing certificate (RFC 6960 §4.2.2.2 authorized responder).
+#
+# When set, OCSP responses are signed by this delegated key+certificate rather
+# than the CA's own private key.  The referenced certificate MUST have:
+# - `extKeyUsage: OCSPSigning` (OID 1.3.6.1.5.5.7.3.9)
+#
+# It SHOULD also have the `id-pkix-ocsp-nocheck` extension (OID
+# 1.3.6.1.5.5.7.48.1.5, RFC 6960 §4.2.2.2.1) — this is only one of three
+# RFC-sanctioned ways to let relying parties check the responder certificate's
+# own revocation status (the others being a CDP/AIA pointer, or local policy), so
+# its absence is not required, only logged as a warning.
+#
+# The `OCSPSigning` requirement is enforced at request time: the server rejects
+# the delegated certificate (and refuses to sign) if it is missing.
+#
+# The referenced key is loaded into an in-process OpenSSL key for signing;
+# this path does not currently dispatch to `kms.crypto_oracles`, so a
+# non-extractable HSM-resident key will fail here while an extractable key
+# is exported from the HSM to sign.
+#
+# When unset, the CA's own private key is used (acceptable for small deployments;
+# not recommended for production CAs where the signing key must stay offline).
+# ocsp_responder_cert_uid = "<OCSP signing certificate UID>"
 # OCSP response validity period in seconds (`thisUpdate` → `nextUpdate`).
 #
 # Determines how long a signed response may be cached by relying parties and
