@@ -77,11 +77,15 @@ impl CreateSecretDataAction {
         let unique_identifier = if let Some(value) = &self.secret_value {
             let secret_bytes = Zeroizing::from(value.as_bytes().to_vec());
 
+            let attributes = Attributes {
+                sensitive: self.sensitive.then_some(true),
+                ..Attributes::default()
+            };
             let mut object = create_secret_data_kmip_object(
                 vendor_id,
                 secret_bytes.as_slice(),
                 secret_data_type,
-                &Attributes::default(),
+                &attributes,
             )?;
             if let Some(wrapping_key_id) = &self.wrapping_key_id {
                 let attributes = object.attributes_mut()?;

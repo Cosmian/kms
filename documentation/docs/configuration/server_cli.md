@@ -550,10 +550,10 @@ Options:
           [env: KMS_ANSI_COLORS=]
 
       --crypto-officer-users <CRYPTO_OFFICER_USERS>
-          Users with the Crypto Officer role (ISO/IEC 19790 "Crypto Officer" / PKCS#11 `CKU_SO`).
+          Users with the Crypto Officer role.
 
           May manage key lifecycle (create, import, certify, rekey, activate, revoke, destroy)
-          and access raw key material (get, export — "key output" per ISO/IEC 19790 §7.4.3).
+          and access raw key material.
           When active, gains ownership bypass on all Managed Objects.
           When set, only listed users (plus those explicitly granted the `Create` right) can
           create and import objects.
@@ -563,8 +563,7 @@ Options:
 
           When `true`, users listed in `crypto_officer_users` are candidates only —
           the role is inactive until a KMIP `JoinSplitKey` with all shares tagged
-          `x-cosmian-crypto-officer-ceremony` completes
-          (NIST SP 800-57 Part 2 Rev 1 §4.6 split knowledge, XOR n-of-n).
+          `x-cosmian-crypto-officer-ceremony` completes.
 
       --ceremony-secret <CEREMONY_SECRET>
           Hex-encoded 32-byte secret for ceremony record encryption.
@@ -817,6 +816,146 @@ Options:
 
           [env: KMS_VAULT_TOKEN_CACHE_TTL_SECS=]
           [default: 30]
+
+      --crl-default-validity-days <CRL_DEFAULT_VALIDITY_DAYS>
+          Default CRL validity period in days for CA certificates managed by this server.
+
+          When a CRL is generated without an explicit validity override (e.g., via
+          `GET /certificates/{id}/crl?validity_days=N`), this value is used.
+
+          This value is in whole days (minimum 1 day / 24 h); enterprise PKIs commonly
+          use 7–28 days. Avoid the practical minimum of 1 day unless
+          `crl_refresh_overlap_hours` is also lowered below 24: a 1-day CRL satisfies
+          the default 24-hour refresh-overlap condition immediately after creation,
+          causing the hourly scheduler to continuously re-sign it.
+
+          Valid range: 1–365 when set via the CLI flag.
+          Default: 7.
+
+          This range is enforced by clap's argument parser only; it is not
+          currently re-validated when the value comes from a TOML config file, so
+          a value outside 1–365 in `kms.toml` is silently accepted.
+
+          [default: 7]
+
+      --crl-refresh-check-hours <CRL_REFRESH_CHECK_HOURS>
+          How often (in hours) the background CRL refresh scheduler wakes up to
+          check whether any stored CRL needs to be regenerated.
+
+          Set to 0 to disable the background scheduler entirely.
+          When disabled, CRLs are only refreshed on certificate revocation events.
+
+          The scheduler is only spawned when `kms_public_url` is ALSO configured
+          (the CDP endpoint must be active); with `kms_public_url` unset, this
+          setting has no effect and CRLs are only refreshed on revocation events,
+          which can allow an expired CRL to be served in the meantime.
+
+          Default: 1 (wake up hourly).
+
+          [default: 1]
+
+      --crl-refresh-overlap-hours <CRL_REFRESH_OVERLAP_HOURS>
+          CRL overlap window in hours.
+
+          The background scheduler regenerates a CRL when its `nextUpdate` timestamp
+          is within this many hours of the current time.  This prevents relying parties
+          from seeing an expired CRL during the window between expiry and the next
+          revocation-triggered regeneration.
+
+          Analogy: EJBCA "CRL Overlap Time" (default 10 % of validity); AWS PCA uses
+          a 1-day overlap by default.
+
+          Default: 24 (regenerate 24 hours before expiry).
+
+          [default: 24]
+
+      --ocsp-enabled
+          Enable the OCSP responder endpoint at `GET /ocsp/{encoded_request}` and `POST /ocsp/`.
+
+          When `false` (default) all `/ocsp/` routes return 404.
+
+      --ocsp-ca-uid <OCSP_CA_UID>
+          UID of the CA certificate object in the KMS.
+
+          Used to verify that incoming OCSP requests are for certificates issued by
+          this CA (by comparing issuer name hash and key hash), and to retrieve
+          certificate states for revocation lookup.
+
+          Must be set when `ocsp_enabled = true`.
+
+      --ocsp-responder-cert-uid <OCSP_RESPONDER_CERT_UID>
+          UID of the dedicated OCSP signing certificate (RFC 6960 §4.2.2.2 authorized responder).
+
+          When set, OCSP responses are signed by this delegated key+certificate rather
+          than the CA's own private key.  The referenced certificate MUST have:
+          - `extKeyUsage: OCSPSigning` (OID 1.3.6.1.5.5.7.3.9)
+
+          It SHOULD also have the `id-pkix-ocsp-nocheck` extension (OID
+          1.3.6.1.5.5.7.48.1.5, RFC 6960 §4.2.2.2.1) — this is only one of three
+          RFC-sanctioned ways to let relying parties check the responder certificate's
+          own revocation status (the others being a CDP/AIA pointer, or local policy), so
+          its absence is not required, only logged as a warning.
+
+          The `OCSPSigning` requirement is enforced at request time: the server rejects
+          the delegated certificate (and refuses to sign) if it is missing.
+
+          The referenced key is loaded into an in-process OpenSSL key for signing;
+          this path does not currently dispatch to `kms.crypto_oracles`, so a
+          non-extractable HSM-resident key will fail here while an extractable key
+          is exported from the HSM to sign.
+
+          When unset, the CA's own private key is used (acceptable for small deployments;
+          not recommended for production CAs where the signing key must stay offline).
+
+      --ocsp-cache-ttl-secs <OCSP_CACHE_TTL_SECS>
+          OCSP response validity period in seconds (`thisUpdate` → `nextUpdate`).
+
+          Determines how long a signed response may be cached by relying parties and
+          CDN/proxy intermediaries per RFC 5019 §5.  Shorter values increase freshness;
+          longer values reduce load on the KMS (and HSM) signing key.
+
+          Default: 86400 (24 hours).
+
+          [default: 86400]
+
+      --ocsp-nonce-policy <OCSP_NONCE_POLICY>
+          Nonce handling policy for OCSP responses (RFC 9654 §2.1).
+
+          - `optional` (default): echo the nonce if present, proceed without one if absent.
+          - `required`: reject requests that carry no nonce (returns `malformedRequest`).
+          - `ignore`: never include a nonce in responses (suitable for pre-produced/cached responses).
+
+          Per RFC 9654 §2.1, the responder MUST accept nonces of 16–128 octets and echo
+          them verbatim.  Nonces shorter than 16 octets are silently ignored.
+
+          [default: optional]
+
+      --ocsp-include-cert-chain
+          Include the signing certificate in OCSP `BasicResponse`s.
+
+          Only the signer certificate itself is embedded — not its issuing chain.
+          Set to `true` (default) when `ocsp_responder_cert_uid` is configured so that
+          clients can verify the delegated responder's own certificate without an
+          additional fetch; delegated responders whose signer chain includes
+          intermediates the client does not already trust must distribute those
+          intermediates out of band. Safe to set `false` when the CA signs responses
+          directly.
+
+          This is a bare CLI switch: passing `--ocsp-include-cert-chain` only ever
+          sets it to `true` (already the default). To set it to `false`, use the
+          `ocsp_include_cert_chain = false` key in the TOML config file instead.
+
+      --ocsp-archive-cutoff-secs <OCSP_ARCHIVE_CUTOFF_SECS>
+          Archive-cutoff extension value in seconds (RFC 6960 §4.4.4).
+
+          When non-zero, the `id-pkix-ocsp-archive-cutoff` extension is added to each
+          `BasicResponse` with value = now − `ocsp_archive_cutoff_secs`. This tells clients
+          how far back the responder maintains revocation records.
+
+          Set to 0 (default) to disable the extension.
+          Typical values: 365 days = 31536000.
+
+          [default: 0]
 
   -h, --help
           Print help (see a summary with '-h')

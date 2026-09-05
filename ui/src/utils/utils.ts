@@ -7,8 +7,7 @@ export const DOCS_BASE_URL = "https://docs.cosmian.com";
  * Build a link into the KMS mdBook docs site from a `documentation/docs/` file path
  * (no `.md`, no leading/trailing slash — e.g. `configuration/authorization/key_ceremony`).
  */
-export const docsUrl = (path: string, hash?: string): string =>
-    `${DOCS_BASE_URL}/key_management_system/${path}/${hash ? `#${hash}` : ""}`;
+export const docsUrl = (path: string, hash?: string): string => `${DOCS_BASE_URL}/key_management_system/${path}/${hash ? `#${hash}` : ""}`;
 
 /** Strip HTML tags from error responses (server may return HTML error pages). */
 const stripHtml = (text: string): string =>

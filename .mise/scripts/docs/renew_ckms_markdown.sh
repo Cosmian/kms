@@ -14,6 +14,12 @@ cargo build -p ckms --features non-fips
 "${REPO_ROOT}/target/debug/ckms" markdown \
   "${REPO_ROOT}/documentation/docs/kms_clients/cli/main_commands.md"
 
+# Strip trailing whitespace the generator may emit for subcommands with an
+# empty help string (e.g. `fpe keys create`), to keep the trailing-whitespace
+# pre-commit hook idempotent.
+sed -i.bak 's/[[:space:]]*$//' "${REPO_ROOT}/documentation/docs/kms_clients/cli/main_commands.md"
+rm -f "${REPO_ROOT}/documentation/docs/kms_clients/cli/main_commands.md.bak"
+
 # Regenerate the top-level usage overview from `ckms --help`.
 USAGE_MD="${REPO_ROOT}/documentation/docs/kms_clients/usage.md"
 {
