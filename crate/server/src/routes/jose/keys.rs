@@ -361,9 +361,30 @@ async fn generate_okp_key_pair(
     } else {
         &[]
     };
-    let create_req =
+    let mut create_req =
         create_ec_key_pair_request(kms.vendor_id(), None, tags, recommended_curve, false, None)
             .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    // `create_ec_key_pair_request` assigns CryptographicUsageMask::Unrestricted to
+    // both keys on the non-FIPS path (see build_mask_from_curve), which would leave
+    // a generated X25519 key authorized for arbitrary operations (e.g. generic
+    // encrypt/decrypt) even though the validation above only permits it to be used
+    // for ECDH-ES key agreement. Restrict it to KeyAgreement explicitly.
+    if crv == "X25519" {
+        if let Some(alg) = alg {
+            let key_agreement_mask = usage_mask_from_alg(alg);
+            for attrs in [
+                create_req.common_attributes.as_mut(),
+                create_req.private_key_attributes.as_mut(),
+                create_req.public_key_attributes.as_mut(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                attrs.cryptographic_usage_mask = Some(key_agreement_mask);
+            }
+        }
+    }
 
     let resp = kms
         .create_key_pair(create_req, user)
