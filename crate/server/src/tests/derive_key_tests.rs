@@ -1177,6 +1177,41 @@ async fn test_derive_key_x25519_validation_failures_create_no_object() -> KResul
             .is_none()
     );
 
+    // Regression test: a mismatched top-level `ObjectType` (e.g. `PrivateKey`) must be
+    // rejected rather than silently persisting a `SecretData` object under a misleading
+    // response type.
+    let mismatched_object_type = DeriveKey {
+        object_type: ObjectType::PrivateKey,
+        object_unique_identifier: vec![
+            UniqueIdentifier::TextString("validation-private".to_owned()),
+            UniqueIdentifier::TextString("validation-public".to_owned()),
+        ],
+        derivation_method: DerivationMethod::Asymmetric_Key,
+        derivation_parameters: DerivationParameters::default(),
+        attributes: Attributes {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                "x25519-mismatched-type".to_owned(),
+            )),
+            cryptographic_length: Some(256),
+            ..Attributes::default()
+        },
+    };
+    let error = kms
+        .derive_key(mismatched_object_type, &owner)
+        .await
+        .expect_err("mismatched object type");
+    assert!(
+        error
+            .to_string()
+            .contains("asymmetric derivation must create a SecretData object")
+    );
+    assert!(
+        kms.database
+            .retrieve_object("x25519-mismatched-type")
+            .await?
+            .is_none()
+    );
+
     let symmetric_base = kms
         .create(create_base_symmetric_key_request(), &owner)
         .await?;
