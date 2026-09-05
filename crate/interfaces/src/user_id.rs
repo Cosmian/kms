@@ -122,6 +122,8 @@ impl PartialEq<UserId> for String {
 }
 
 #[cfg(test)]
+// Test-only: `expect()` and `assert!` on result states are idiomatic in unit tests.
+#[allow(clippy::expect_used, clippy::assertions_on_result_states)]
 mod tests {
     use super::*;
 
@@ -148,5 +150,16 @@ mod tests {
         let mut set = HashSet::new();
         set.insert(a);
         assert!(set.contains(&b));
+    }
+
+    #[test]
+    fn try_new_rejects_empty_string() {
+        assert!(UserId::try_new("").is_err());
+    }
+
+    #[test]
+    fn try_new_accepts_non_empty_string() {
+        let uid = UserId::try_new("carol@example.com").expect("non-empty string must be accepted");
+        assert_eq!(uid.as_str(), "carol@example.com");
     }
 }

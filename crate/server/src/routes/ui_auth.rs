@@ -9,7 +9,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
 
-use crate::config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig};
+use crate::{
+    config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig},
+    middlewares::{UserId, reject_reserved_aws_xks_identity},
+};
 
 fn random_b64url(len_bytes: usize) -> Result<String, ()> {
     let mut buf = vec![0_u8; len_bytes];
@@ -314,6 +317,14 @@ pub(crate) async fn callback(
         return HttpResponse::InternalServerError()
             .json(serde_json::json!({ "error": "Missing email claim in id_token" }));
     };
+    let Ok(user_id) = UserId::try_new(user_id.as_str()) else {
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({ "error": "Empty email claim in id_token" }));
+    };
+    if let Err(error) = reject_reserved_aws_xks_identity(&user_id) {
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({ "error": format!("Forbidden user identity: {error}") }));
+    }
 
     if session.insert("user_id", &user_id).is_err() {
         return HttpResponse::InternalServerError()
@@ -503,6 +514,16 @@ pub(crate) async fn login_as(
                     );
                 }
             };
+            let Ok(user_id) = UserId::try_new(user_id.as_str()) else {
+                return HttpResponse::Unauthorized().json(
+                    serde_json::json!({ "error": "Empty subject claim in Auth Verifier token" }),
+                );
+            };
+            if let Err(error) = reject_reserved_aws_xks_identity(&user_id) {
+                return HttpResponse::Unauthorized().json(
+                    serde_json::json!({ "error": format!("Forbidden user identity: {error}") }),
+                );
+            }
 
             if session.insert("user_id", &user_id).is_err() {
                 return HttpResponse::InternalServerError()
