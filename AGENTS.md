@@ -251,10 +251,58 @@ Use `--features non-fips` to enable all non-approved algorithms.
 - **Pre-commit hooks**: must pass before every commit — never use `--no-verify`.
 - **Commit scope**: minimal, focused changes — don't refactor surrounding code alongside a bug fix.
 - **Live DB tests**: `docker compose up -d <service>` before running tests that need a backend (postgres :5432, mysql :3306, redis :6379, etc.).
+- **Broad feature rollout order**: for any feature that spans server + CLI/UI, implement and PR the server side first, then CLI/UI separately — see "Feature rollout order & PR cascade" below.
+- **Force-push is strictly forbidden**: agents must never force-push, under any circumstance — see "Force-push prohibition" below.
 
 For full Rust design patterns, naming, function-length rules, and idiomatic Rust → run `/rust-patterns`.
 For TypeScript/React/Tailwind/WASM conventions → run `/react-ant-patterns`.
 For FIPS feature-flag gating discipline, multi-standard algorithm compliance, and key lifecycle → run `/cryptography-review`.
+
+### Feature rollout order & PR cascade
+
+For any feature broad enough to touch both the server and its clients (CLI and/or Web UI),
+development **must** be split and sequenced as follows — never bundle server and
+CLI/UI changes for the same feature into one commit or one PR:
+
+1. **Server first.** Implement the server-side change in full (KMIP operation, REST route,
+   core logic, database changes) and open a dedicated PR for it. Run the full section 5
+   workflow (tests, clippy, sync rules, changelog) on that PR before moving on.
+2. **CLI next.** Once the server change exists (merged, or at minimum stacked on top of
+   its branch), implement the CLI change (`crate/clients/clap/`, `crate/clients/ckms/`)
+   in its own, separate PR.
+3. **Web UI last.** Implement the Web UI change (`ui/src/`) in its own, separate PR, stacked
+   after (or on top of) the CLI PR. CLI and UI may be split into two independent PRs even
+   though `cli-ui-sync.instructions.md` requires them to stay functionally in sync.
+4. **Cascade/stack the PRs.** When server, CLI, and UI branches must exist before the
+   server PR merges, stack them: each subsequent branch is based on the previous one's
+   branch (not `main`), so the PRs form a dependency chain. Use `gh stack view` /
+   `gh stack submit` to inspect and open the chain. **Do not use `gh stack sync`** (or any
+   equivalent rebase-then-force-push tool) to update already-pushed downstream branches —
+   it rewrites history and force-pushes with `--force-with-lease`, which the force-push
+   prohibition below strictly forbids. Instead, when an earlier PR in the chain merges or
+   gains new commits, update each downstream branch with a regular **merge** (not a
+   rebase): `git checkout <downstream-branch> && git merge origin/<upstream-branch>`,
+   resolve any conflicts in the merge commit, then a normal fast-forward
+   `git push origin <downstream-branch>`. This keeps every branch's history append-only
+   and preserves already-pushed commits and their review state. Do not squash unrelated
+   layers together to avoid stacking.
+5. Do not skip this ordering for "small" broad features — if a change touches both
+   `crate/server/` (or `crate/kmip/`) and either `crate/clients/` or `ui/`, split it.
+
+### Force-push prohibition
+
+Agents must **never** force-push, under any circumstance, including:
+
+- `git push --force` or `git push --force-with-lease` (or any alias/shortcut for it).
+- Deleting and recreating a remote branch to simulate a force-push.
+- Rewriting a remote branch/ref via the GitHub web UI or the GitHub REST/GraphQL API
+  (e.g. updating a ref non-fast-forward, or using `gh api` to force-update a ref).
+- Any other mechanism that rewrites already-pushed remote history.
+
+If local and remote history diverge, merge the remote branch or open a new branch —
+never rewrite shared history. This applies to every branch, not just default/protected
+branches. Regular (fast-forward) `git push` remains the only permitted way to publish
+commits.
 
 ---
 
@@ -511,7 +559,12 @@ GH_PAGER=cat gh pr checks <number> --repo Cosmian/kms
 GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --log-failed
 ```
 
-For chained/stacked branches, the `gh stack` extension (`github/gh-stack`) manages the stack — `gh stack view`, `gh stack checkout`, `gh stack submit`, `gh stack sync`.
+For chained/stacked branches, use `gh stack view` / `gh stack checkout` / `gh stack submit`
+(`github/gh-stack`) to inspect, check out, and open PRs for the stack. **Do not run
+`gh stack sync`** — it rebases and force-pushes downstream branches, which the
+force-push prohibition (§4) forbids. To update a downstream branch after its upstream
+changes, merge instead: `git merge origin/<upstream-branch>` then a regular
+`git push origin <downstream-branch>`.
 
 ### 8.6 Nix packaging
 

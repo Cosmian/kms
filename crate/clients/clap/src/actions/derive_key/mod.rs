@@ -29,24 +29,54 @@ use crate::{
 #[clap(verbatim_doc_comment)]
 pub struct DeriveKeyAction {
     /// The unique identifier of the base key to derive from
-    /// Mutually exclusive with --password
-    #[clap(long, short = 'k', conflicts_with = "password")]
+    /// Mutually exclusive with --password and --x25519
+    #[clap(long, short = 'k')]
+    #[cfg_attr(feature = "non-fips", clap(conflicts_with_all = ["password", "x25519"]))]
+    #[cfg_attr(not(feature = "non-fips"), clap(conflicts_with = "password"))]
     pub key_id: Option<String>,
 
     /// UTF-8 password to use as base material for key derivation
     /// Will create a `SecretData` of type Password internally
-    /// Mutually exclusive with --key-id
-    #[clap(long, short = 'p', conflicts_with = "key_id")]
+    /// Mutually exclusive with --key-id and --x25519
+    #[clap(long, short = 'p')]
+    #[cfg_attr(feature = "non-fips", clap(conflicts_with_all = ["key_id", "x25519"]))]
+    #[cfg_attr(not(feature = "non-fips"), clap(conflicts_with = "key_id"))]
     pub password: Option<String>,
 
-    /// The derivation method to use (PBKDF2 or HKDF)
+    /// Perform an asymmetric X25519 ECDH key agreement instead of a
+    /// symmetric (PBKDF2/HKDF) derivation. Requires --private-key-id and
+    /// --peer-public-key-id. The result is always a non-extractable 256-bit
+    /// `SecretData` object. Available in non-FIPS mode only.
+    /// Mutually exclusive with --key-id and --password
+    #[cfg(feature = "non-fips")]
+    #[clap(
+        long,
+        conflicts_with_all = ["key_id", "password"],
+        requires_all = ["private_key_id", "peer_public_key_id"]
+    )]
+    pub x25519: bool,
+
+    /// The unique identifier of the local X25519 private key.
+    /// Required (and only used) with --x25519
+    #[cfg(feature = "non-fips")]
+    #[clap(long)]
+    pub private_key_id: Option<String>,
+
+    /// The unique identifier of the peer's X25519 public key.
+    /// Required (and only used) with --x25519
+    #[cfg(feature = "non-fips")]
+    #[clap(long)]
+    pub peer_public_key_id: Option<String>,
+
+    /// The derivation method to use (PBKDF2 or HKDF). Ignored with --x25519
     #[clap(long, short = 'm', default_value = "PBKDF2")]
     pub derivation_method: String,
 
-    /// Salt for key derivation (in hex format)
+    /// Salt for key derivation (in hex format).
+    /// Required unless --x25519 is used
     #[clap(long , short = 's',
         value_parser = |s: &str| hex::decode(s).map(|_| s.to_string()).map_err(|e| format!("Invalid hex format: {}", e)))]
-    pub salt: String,
+    pub salt: Option<String>,
 
     /// Number of iterations for PBKDF2 derivation
     #[clap(long, short = 'i', default_value = "4096")]
@@ -58,8 +88,15 @@ pub struct DeriveKeyAction {
     pub initialization_vector: Option<String>,
 
     /// Digest algorithm for derivation
-    #[clap(long, short = 'd', default_value = "SHA256")]
+    #[clap(long, short = 'd', default_value = "sha256")]
     pub digest_algorithm: CHashingAlgorithm,
+
+    /// Context/info for HKDF derivation (in hex format). Ignored for PBKDF2.
+    /// Two calls with the same base key, salt, and info produce the same
+    /// derived key. Defaults to empty (RFC 5869 permits an empty info).
+    #[clap(long , short = 'n',
+        value_parser = |s: &str| hex::decode(s).map(|_| s.to_string()).map_err(|e| format!("Invalid hex format: {}", e)))]
+    pub info: Option<String>,
 
     /// The algorithm
     #[clap(
@@ -81,6 +118,11 @@ pub struct DeriveKeyAction {
 
 impl DeriveKeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> KmsCliResult<()> {
+        #[cfg(feature = "non-fips")]
+        if self.x25519 {
+            return self.run_x25519(kms_rest_client).await;
+        }
+
         // Validate that either key_id or password is provided
         if self.key_id.is_none() && self.password.is_none() {
             return Err(KmsCliError::Default(
@@ -88,8 +130,14 @@ impl DeriveKeyAction {
             ));
         }
 
+        if self.salt.is_none() {
+            return Err(KmsCliError::Default(
+                "--salt is required for PBKDF2/HKDF derivation".to_owned(),
+            ));
+        }
+
         let base_key_id = self.resolve_base_key_id(kms_rest_client).await?;
-        let derivation_parameters = self.build_derivation_params(&base_key_id)?;
+        let derivation_parameters = self.build_derivation_params()?;
 
         let (cryptographic_length, _, algorithm) =
             prepare_sym_key_elements(Some(self.cryptographic_length), &None, self.algorithm)
@@ -118,6 +166,46 @@ impl DeriveKeyAction {
             UniqueIdentifier::TextString(base_key_id),
             self.parse_derivation_method()?,
             derivation_parameters,
+            attributes,
+        );
+
+        let response = kms_rest_client.derive_key(derive_request).await?;
+
+        console::Stdout::new(&format!(
+            "DeriveKey operation successful. Derived key ID: {}",
+            response.unique_identifier
+        ))
+        .write()?;
+
+        Ok(())
+    }
+
+    /// Derive a non-exportable X25519 ECDH shared secret from a local private
+    /// key and a peer public key. Always produces a fixed 256-bit `SecretData`
+    /// object; server access control requires only Derive Key permission on
+    /// both referenced keys (no cryptographic usage mask check).
+    #[cfg(feature = "non-fips")]
+    async fn run_x25519(&self, kms_rest_client: &KmsClient) -> KmsCliResult<()> {
+        let private_key_id = self.private_key_id.as_ref().ok_or_else(|| {
+            KmsCliError::Default("--private-key-id is required with --x25519".to_owned())
+        })?;
+        let peer_public_key_id = self.peer_public_key_id.as_ref().ok_or_else(|| {
+            KmsCliError::Default("--peer-public-key-id is required with --x25519".to_owned())
+        })?;
+
+        let mut attributes = KmipAttributes {
+            object_type: Some(ObjectType::SecretData),
+            ..Default::default()
+        };
+        if let Some(ref derived_key_id) = self.derived_key_id {
+            attributes.unique_identifier =
+                Some(UniqueIdentifier::TextString(derived_key_id.clone()));
+        }
+
+        let derive_request = DeriveKey::new_asymmetric(
+            UniqueIdentifier::TextString(private_key_id.clone()),
+            UniqueIdentifier::TextString(peer_public_key_id.clone()),
+            DerivationParameters::default(),
             attributes,
         );
 
@@ -178,8 +266,12 @@ impl DeriveKeyAction {
     }
 
     /// Build the `DerivationParameters` from the CLI arguments.
-    fn build_derivation_params(&self, base_key_id: &str) -> KmsCliResult<DerivationParameters> {
-        let salt = hex::decode(&self.salt)
+    fn build_derivation_params(&self) -> KmsCliResult<DerivationParameters> {
+        let salt_hex = self
+            .salt
+            .as_ref()
+            .ok_or_else(|| KmsCliError::Default("--salt is required".to_owned()))?;
+        let salt = hex::decode(salt_hex)
             .map_err(|e| KmsCliError::Default(format!("Invalid salt hex format: {e}")))?;
 
         let initialization_vector = if let Some(iv_hex) = &self.initialization_vector {
@@ -190,15 +282,17 @@ impl DeriveKeyAction {
             None
         };
 
+        // HKDF's info/context: explicit and caller-controlled via --info, so
+        // that two independent calls with the same base key, salt, and info
+        // derive the same key. Defaults to empty, which RFC 5869 §2.3
+        // permits, rather than to a value that differs on every call.
         let derivation_data = if self.derivation_method.to_uppercase() == "HKDF" {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            let timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos();
-            let random_id = uuid::Uuid::new_v4();
-            let context = format!("CLI-HKDF-{base_key_id}-{timestamp}-{random_id}");
-            Some(Zeroizing::new(context.into_bytes()))
+            let info = match &self.info {
+                Some(info_hex) => hex::decode(info_hex)
+                    .map_err(|e| KmsCliError::Default(format!("Invalid info hex format: {e}")))?,
+                None => Vec::new(),
+            };
+            Some(Zeroizing::new(info))
         } else {
             None
         };

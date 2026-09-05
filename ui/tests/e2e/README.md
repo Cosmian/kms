@@ -536,12 +536,18 @@ graph LR
     B --> C[PBKDF2 derive → check UUID in response]
     A --> D[PBKDF2 with custom output key ID]
     A --> E[HKDF derive → check UUID in response]
+    F[Create two X25519 key pairs] --> B
+    B --> G[X25519 ECDH derive → check UUID in response]
+    F --> H[X25519 ECDH with custom output key ID]
 ```
 
 Tests create the base key directly via the KMIP API (with `CryptographicUsageMask:
 DeriveKey = 0x200`) because the standard key-creation UI form does not expose
-that mask. All three derivation paths (basic PBKDF2, PBKDF2 with custom output ID,
-and HKDF) are exercised.
+that mask. All three symmetric derivation paths (basic PBKDF2, PBKDF2 with
+custom output ID, and HKDF) are exercised, plus the asymmetric X25519 ECDH
+key-agreement path (non-FIPS only): two X25519 key pairs are created via the
+EC key create page, then the local private key ID and the peer's public key
+ID are used to derive a shared secret (persisted as a Secret Data object).
 
 ## Other Flows
 

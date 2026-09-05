@@ -4,6 +4,7 @@
 #USAGE   choices "all" "server-docs" "ckms-docs" "kmip-tables" "crypto-inventory" "cbom" "log-index"
 #USAGE }
 #USAGE flag "--skip-cbom" help="Skip CBOM generation"
+#USAGE flag "--skip-crypto" help="Skip cryptographic inventory generation"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 
@@ -17,6 +18,9 @@ if [ "${usage_task:-all}" != "all" ]; then
 fi
 if [ "${usage_skip_cbom:-false}" = "true" ]; then
   ARGS+=(--skip-cbom)
+fi
+if [ "${usage_skip_crypto:-false}" = "true" ]; then
+  ARGS+=(--skip-crypto)
 fi
 
 bash "${REPO_ROOT}/.mise/scripts/docs/generate_docs.sh" "${ARGS[@]}"

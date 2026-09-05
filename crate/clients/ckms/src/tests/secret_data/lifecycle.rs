@@ -1,4 +1,3 @@
-
 use cosmian_kms_cli_actions::{
     actions::secret_data::create_secret::CreateSecretDataAction,
     reexport::cosmian_kms_client::{
@@ -10,11 +9,13 @@ use cosmian_kms_cli_actions::{
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
-use crate::tests::utils::{ckms_bin, owner_config};
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{PROG_NAME, secret_data::create_secret::create_secret_data, utils::recover_cmd_logs},
+    tests::{
+        secret_data::create_secret::create_secret_data,
+        utils::{ckms_bin, owner_config, recover_cmd_logs},
+    },
 };
 
 fn destroy_secret_data(cli_conf_path: &str, secret_id: &str, remove: bool) -> CosmianResult<()> {
@@ -202,6 +203,38 @@ async fn test_export_secret_data() -> CosmianResult<()> {
             &secret_id,
             bad_export_file.to_str().unwrap(),
             Some(ExportKeyFormat::Pkcs1Pem),
+        )
+        .is_err()
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_secret_data_value_sensitive_blocks_export() -> CosmianResult<()> {
+    let ctx = start_default_test_kms_server().await;
+    let owner_client_conf_path = owner_config(ctx);
+
+    // A secret data created with an inline --value AND --sensitive must be
+    // non-exportable, exactly like one created without an inline value.
+    let secret_id = create_secret_data(
+        &owner_client_conf_path,
+        &CreateSecretDataAction {
+            secret_value: Some("super-secret-material".to_owned()),
+            sensitive: true,
+            tags: vec!["sensitive-value-secret".to_owned()],
+            ..Default::default()
+        },
+    )?;
+
+    let tmp_dir = TempDir::new()?;
+    let export_file = tmp_dir.path().join("output.export");
+    assert!(
+        export_secret_data(
+            &owner_client_conf_path,
+            &secret_id,
+            export_file.to_str().unwrap(),
+            None,
         )
         .is_err()
     );

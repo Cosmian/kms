@@ -51,19 +51,33 @@ pub(crate) fn derive_key(cli_conf_path: &str, action: DeriveKeyAction) -> Cosmia
         action.cryptographic_length.to_string(),
         "--derivation-method".to_owned(),
         action.derivation_method.clone(),
-        "--salt".to_owned(),
-        action.salt,
         "--iteration-count".to_owned(),
         action.iteration_count.to_string(),
         "--digest-algorithm".to_owned(),
         action.digest_algorithm.to_string(),
     ];
 
+    if let Some(salt) = action.salt {
+        args.extend(vec!["--salt".to_owned(), salt]);
+    }
+
     if let Some(k) = action.key_id {
         args.extend(vec!["--key-id".to_owned(), k]);
     }
     if let Some(pw) = action.password {
         args.extend(vec!["--password".to_owned(), pw]);
+    }
+    #[cfg(feature = "non-fips")]
+    if action.x25519 {
+        args.push("--x25519".to_owned());
+    }
+    #[cfg(feature = "non-fips")]
+    if let Some(private_key_id) = action.private_key_id {
+        args.extend(vec!["--private-key-id".to_owned(), private_key_id]);
+    }
+    #[cfg(feature = "non-fips")]
+    if let Some(peer_public_key_id) = action.peer_public_key_id {
+        args.extend(vec!["--peer-public-key-id".to_owned(), peer_public_key_id]);
     }
     if let Some(iv) = action.initialization_vector {
         args.extend(vec!["--initialization-vector".to_owned(), iv]);
@@ -155,14 +169,21 @@ pub(crate) async fn test_derive_symmetric_key_pbkdf2() -> CosmianResult<()> {
         DeriveKeyAction {
             key_id: Some(base_key_id),
             password: None,
+            #[cfg(feature = "non-fips")]
+            x25519: false,
+            #[cfg(feature = "non-fips")]
+            private_key_id: None,
+            #[cfg(feature = "non-fips")]
+            peer_public_key_id: None,
             derivation_method: "PBKDF2".to_owned(),
-            salt: "0123456789abcdef".to_owned(),
+            salt: Some("0123456789abcdef".to_owned()),
             iteration_count: 4096,
             initialization_vector: None,
             digest_algorithm: CHashingAlgorithm::SHA256,
             algorithm: SymmetricAlgorithm::default(),
             cryptographic_length: 256,
             derived_key_id: Some("test-derived-symmetric-pbkdf2".to_owned()),
+            info: None,
         },
     )?;
 
@@ -192,19 +213,25 @@ pub(crate) async fn test_derive_symmetric_key_hkdf() -> CosmianResult<()> {
         DeriveKeyAction {
             key_id: Some(base_key_id),
             password: None,
+            #[cfg(feature = "non-fips")]
+            x25519: false,
+            #[cfg(feature = "non-fips")]
+            private_key_id: None,
+            #[cfg(feature = "non-fips")]
+            peer_public_key_id: None,
             derivation_method: "HKDF".to_owned(),
-            salt: "fedcba9876543210".to_owned(),
+            salt: Some("fedcba9876543210".to_owned()),
             iteration_count: 4096,
             initialization_vector: Some("1122334455667788".to_owned()),
             digest_algorithm: CHashingAlgorithm::SHA256,
             algorithm: SymmetricAlgorithm::default(),
             cryptographic_length: 512,
             derived_key_id: Some("test-derived-symmetric-hkdf".to_owned()),
+            info: None,
         },
     )?;
 
-    // Check that we got a valid derived key ID
-    assert!(!derived_key_id.is_empty());
+    // The server honors the caller-supplied derived_key_id when present.
     assert_eq!(derived_key_id, "test-derived-symmetric-hkdf");
     Ok(())
 }
@@ -233,19 +260,25 @@ pub(crate) async fn test_derive_symmetric_key_different_lengths() -> CosmianResu
             DeriveKeyAction {
                 key_id: Some(base_key_id.clone()),
                 password: None,
+                #[cfg(feature = "non-fips")]
+                x25519: false,
+                #[cfg(feature = "non-fips")]
+                private_key_id: None,
+                #[cfg(feature = "non-fips")]
+                peer_public_key_id: None,
                 derivation_method: "PBKDF2".to_owned(),
-                salt: "0123456789abcdef".to_owned(),
+                salt: Some("0123456789abcdef".to_owned()),
                 iteration_count: 4096,
                 initialization_vector: None,
                 digest_algorithm: CHashingAlgorithm::SHA256,
                 algorithm: SymmetricAlgorithm::default(),
                 cryptographic_length: length,
                 derived_key_id: Some(format!("test-derived-symmetric-{length}-bits")),
+                info: None,
             },
         )?;
 
-        // Check that we got a valid derived key ID
-        assert!(!derived_key_id.is_empty());
+        // The server honors the caller-supplied derived_key_id when present.
         assert_eq!(
             derived_key_id,
             format!("test-derived-symmetric-{length}-bits")
@@ -277,19 +310,25 @@ pub(crate) async fn test_derive_from_secret_data() -> CosmianResult<()> {
         DeriveKeyAction {
             key_id: Some(secret_data_id),
             password: None,
+            #[cfg(feature = "non-fips")]
+            x25519: false,
+            #[cfg(feature = "non-fips")]
+            private_key_id: None,
+            #[cfg(feature = "non-fips")]
+            peer_public_key_id: None,
             derivation_method: "PBKDF2".to_owned(),
-            salt: "0123456789abcdef".to_owned(),
+            salt: Some("0123456789abcdef".to_owned()),
             iteration_count: 4096,
             initialization_vector: None,
             digest_algorithm: CHashingAlgorithm::SHA256,
             algorithm: SymmetricAlgorithm::default(),
             cryptographic_length: 256,
             derived_key_id: Some("test-derived-from-secret".to_owned()),
+            info: None,
         },
     )?;
 
-    // Check that we got a valid derived key ID
-    assert!(!derived_key_id.is_empty());
+    // The server honors the caller-supplied derived_key_id when present.
     assert_eq!(derived_key_id, "test-derived-from-secret");
 
     Ok(())
@@ -323,19 +362,25 @@ pub(crate) async fn test_derive_key_different_algorithms() -> CosmianResult<()> 
             DeriveKeyAction {
                 key_id: Some(base_key_id.clone()),
                 password: None,
+                #[cfg(feature = "non-fips")]
+                x25519: false,
+                #[cfg(feature = "non-fips")]
+                private_key_id: None,
+                #[cfg(feature = "non-fips")]
+                peer_public_key_id: None,
                 derivation_method: method.to_owned(),
-                salt: "0123456789abcdef".to_owned(),
+                salt: Some("0123456789abcdef".to_owned()),
                 iteration_count: 4096,
                 initialization_vector: None,
                 digest_algorithm: digest.clone(),
                 algorithm: SymmetricAlgorithm::default(),
                 cryptographic_length: 256,
                 derived_key_id: Some(format!("test-derived-{method}-{digest:?}")),
+                info: None,
             },
         )?;
 
-        // Check that we got a valid derived key ID
-        assert!(!derived_key_id.is_empty());
+        // The server honors the caller-supplied derived_key_id when present.
         assert_eq!(derived_key_id, format!("test-derived-{method}-{digest:?}"));
     }
 
@@ -355,19 +400,25 @@ pub(crate) async fn test_derive_key_from_password() -> CosmianResult<()> {
         DeriveKeyAction {
             key_id: None,
             password: Some("my-secure-password-123".to_owned()),
+            #[cfg(feature = "non-fips")]
+            x25519: false,
+            #[cfg(feature = "non-fips")]
+            private_key_id: None,
+            #[cfg(feature = "non-fips")]
+            peer_public_key_id: None,
             derivation_method: "PBKDF2".to_owned(),
-            salt: "0123456789abcdef".to_owned(),
+            salt: Some("0123456789abcdef".to_owned()),
             iteration_count: 4096,
             initialization_vector: None,
             digest_algorithm: CHashingAlgorithm::SHA256,
             algorithm: SymmetricAlgorithm::default(),
             cryptographic_length: 256,
             derived_key_id: Some("test-derived-from-password".to_owned()),
+            info: None,
         },
     )?;
 
-    // Check that we got a valid derived key ID
-    assert!(!derived_key_id.is_empty());
+    // The server honors the caller-supplied derived_key_id when present.
     assert_eq!(derived_key_id, "test-derived-from-password");
 
     Ok(())
@@ -386,20 +437,93 @@ pub(crate) async fn test_derive_key_from_unicode_password() -> CosmianResult<()>
         DeriveKeyAction {
             key_id: None,
             password: Some("мой-пароль-🔐-密码-123".to_owned()), // my password
+            #[cfg(feature = "non-fips")]
+            x25519: false,
+            #[cfg(feature = "non-fips")]
+            private_key_id: None,
+            #[cfg(feature = "non-fips")]
+            peer_public_key_id: None,
             derivation_method: "HKDF".to_owned(),
-            salt: "fedcba9876543210".to_owned(),
+            salt: Some("fedcba9876543210".to_owned()),
             iteration_count: 4096,
             initialization_vector: Some("1122334455667788".to_owned()),
             digest_algorithm: CHashingAlgorithm::SHA512,
             algorithm: SymmetricAlgorithm::default(),
             cryptographic_length: 384,
             derived_key_id: Some("test-derived-from-unicode-password".to_owned()),
+            info: None,
         },
     )?;
 
-    // Check that we got a valid derived key ID
-    assert!(!derived_key_id.is_empty());
+    // The server honors the caller-supplied derived_key_id when present.
     assert_eq!(derived_key_id, "test-derived-from-unicode-password");
+
+    Ok(())
+}
+
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+pub(crate) async fn test_derive_key_x25519() -> CosmianResult<()> {
+    use crate::tests::{
+        elliptic_curve::create_key_pair::create_ec_key_pair, utils::run_ckms_expect_error,
+    };
+
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let owner_client_conf_path = owner_config(ctx);
+
+    // Create two independent X25519 key pairs to simulate two parties.
+    let (alice_private_key_id, _alice_public_key_id) =
+        create_ec_key_pair(&owner_client_conf_path, "x25519", &[], false)?;
+    let (_bob_private_key_id, bob_public_key_id) =
+        create_ec_key_pair(&owner_client_conf_path, "x25519", &[], false)?;
+
+    // Derive a shared secret from Alice's private key and Bob's public key.
+    let derived_key_id = derive_key(
+        &owner_client_conf_path,
+        DeriveKeyAction {
+            key_id: None,
+            password: None,
+            x25519: true,
+            private_key_id: Some(alice_private_key_id.clone()),
+            peer_public_key_id: Some(bob_public_key_id),
+            derivation_method: "PBKDF2".to_owned(),
+            salt: None,
+            iteration_count: 4096,
+            initialization_vector: None,
+            digest_algorithm: CHashingAlgorithm::SHA256,
+            algorithm: SymmetricAlgorithm::default(),
+            cryptographic_length: 256,
+            derived_key_id: Some("test-derived-x25519-shared-secret".to_owned()),
+            info: None,
+        },
+    )?;
+
+    assert!(!derived_key_id.is_empty());
+    // Unlike the symmetric path, asymmetric derivation honors the
+    // client-supplied `--derived-key-id`.
+    assert_eq!(derived_key_id, "test-derived-x25519-shared-secret");
+
+    // Missing --peer-public-key-id must be rejected by clap ("requires").
+    let stderr = run_ckms_expect_error(
+        &owner_client_conf_path,
+        &[
+            "derive-key",
+            "--x25519",
+            "--private-key-id",
+            &alice_private_key_id,
+            "--algorithm",
+            "aes",
+            "--length",
+            "256",
+            "--digest-algorithm",
+            "sha256",
+        ],
+    )?;
+    assert!(
+        stderr.contains("private-key-id") || stderr.contains("required"),
+        "unexpected error: {stderr}"
+    );
 
     Ok(())
 }

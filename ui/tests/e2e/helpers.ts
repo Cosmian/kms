@@ -360,10 +360,13 @@ export async function createRsaKeyPair(page: Page): Promise<{ privKeyId: string;
 }
 
 /**
- * Create a fresh EC key pair (NIST P-256) and return both key IDs.
+ * Create a fresh EC key pair and return both key IDs.
+ *
+ * @param page The Playwright page.
+ * @param curve Visible label in the curve dropdown, e.g. "NIST P-256" (default) or "X25519".
  */
-export async function createEcKeyPair(page: Page): Promise<{ privKeyId: string; pubKeyId: string }> {
-    const setup = async (p: Page) => selectOption(p, "ec-curve-select", "NIST P-256");
+export async function createEcKeyPair(page: Page, curve = "NIST P-256"): Promise<{ privKeyId: string; pubKeyId: string }> {
+    const setup = async (p: Page) => selectOption(p, "ec-curve-select", curve);
     await gotoAndWait(page, "/ui/ec/keys/create");
     await setup(page);
     const text = await submitWithFetchRetry(page, "/ui/ec/keys/create", setup);
