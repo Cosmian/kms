@@ -207,7 +207,7 @@ async fn generate_ec_key_pair(
     } else {
         &[]
     };
-    let create_req = create_ec_key_pair_request(
+    let mut create_req = create_ec_key_pair_request(
         kms.vendor_id(),
         None, // auto-generate UID
         tags,
@@ -216,6 +216,29 @@ async fn generate_ec_key_pair(
         None,  // no wrapping key
     )
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    // `create_ec_key_pair_request` defaults P-curve keys to a combined
+    // Sign|Verify|ECDH usage mask (suitable for the ES256/384/512 signature
+    // algorithms). For ECDH-ES* key-agreement algorithms this is wrong: it
+    // would let JWKS publishing treat the key as a signature key (`use=sig`,
+    // `alg=ES256/384`) instead of a pure encryption/key-agreement key. Override
+    // the usage mask on every attribute set to the KeyAgreement-only mask in
+    // that case.
+    if let Some(alg) = alg {
+        if matches!(alg, "ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW") {
+            let key_agreement_mask = usage_mask_from_alg(alg);
+            for attrs in [
+                create_req.common_attributes.as_mut(),
+                create_req.private_key_attributes.as_mut(),
+                create_req.public_key_attributes.as_mut(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                attrs.cryptographic_usage_mask = Some(key_agreement_mask);
+            }
+        }
+    }
 
     let resp = kms
         .create_key_pair(create_req, user)
@@ -319,6 +342,15 @@ async fn generate_okp_key_pair(
             "Field 'alg' must be one of ECDH-ES, ECDH-ES+A128KW, ECDH-ES+A256KW for X25519 OKP \
              keys."
                 .to_owned(),
+        ));
+    }
+    // Conversely, Ed25519 is a signature-only curve: it cannot perform ECDH key
+    // agreement, so generating it with an ECDH-ES* `alg` would silently create a
+    // KeyAgreement-usage key that the decrypt path (which only accepts stored
+    // X25519 keys) can never actually use.
+    if crv == "Ed25519" && matches!(alg, Some("ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW")) {
+        return Err(CryptoApiError::BadRequest(
+            "ECDH-ES algorithms require X25519 OKP keys, not Ed25519.".to_owned(),
         ));
     }
 
@@ -939,6 +971,15 @@ async fn import_okp_key(
             "Field 'alg' must be one of ECDH-ES, ECDH-ES+A128KW, ECDH-ES+A256KW for X25519 OKP \
              keys."
                 .to_owned(),
+        ));
+    }
+    // Conversely, Ed25519 is a signature-only curve: it cannot perform ECDH key
+    // agreement, so importing it with an ECDH-ES* `alg` would silently create a
+    // KeyAgreement-usage key that the decrypt path (which only accepts stored
+    // X25519 keys) can never actually use.
+    if crv == "Ed25519" && matches!(alg, Some("ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW")) {
+        return Err(CryptoApiError::BadRequest(
+            "ECDH-ES algorithms require X25519 OKP keys, not Ed25519.".to_owned(),
         ));
     }
     let pkey = PKey::private_key_from_raw_bytes(&d_bytes, okp_id)
