@@ -94,7 +94,9 @@ For any feature spanning server + CLI/UI: implement and PR the **server** side f
 (`crate/server/`, `crate/kmip/`), then the **CLI** (`crate/clients/`) in its own PR, then
 the **Web UI** (`ui/`) in its own PR. Never bundle server and CLI/UI changes for the same
 feature in one PR. When branches must exist before the server PR merges, stack them
-(each branch based on the previous one) using the `gh stack` extension.
+(each branch based on the previous one); use `gh stack view`/`gh stack submit` to manage
+the stack, but never `gh stack sync` (or any rebase-then-force-push flow) — update
+downstream branches with a regular merge instead, per the force-push prohibition below.
 
 ## Force-push prohibition
 
