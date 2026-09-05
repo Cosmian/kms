@@ -720,6 +720,7 @@ Crate path: `crate/server`
 | `debug` | `OCSP: all serials served from cache` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP GET request path exceeds MAX_OCSP_GET_ENCODED_LEN` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `DeriveKey asymmetric operation completed successfully` | `src/core/operations/derive_key.rs` | - | Emitted after a non-FIPS X25519 ECDH `DeriveKey` request has validated both referenced keys, derived the shared secret, and persisted the resulting `SecretData` object. |
+| `warn` | `JWK serialization failed uid={uid}: {e}` | `src/routes/jwks.rs` | `uid`: unique identifier of the key object being published in the JWKS; `e`: the `serde_json` serialization error | Emitted when a typed `Jwk` fails to serialize to JSON; the affected key is skipped and omitted from the JWKS `keys` array rather than emitting an invalid `null` entry. |
 
 ### `cosmian_kms_server_database`
 

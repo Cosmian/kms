@@ -11,7 +11,7 @@ use actix_web::{HttpRequest, HttpResponse, get, web::Data};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::State,
+        kmip_0::kmip_types::{CryptographicUsageMask, State},
         kmip_2_1::{
             kmip_attributes::Attributes,
             kmip_objects::{Object, ObjectType},
@@ -22,12 +22,13 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{info, trace, warn};
 use jsonwebtoken::jwk::{
     AlgorithmParameters, CommonParameters, EllipticCurve, EllipticCurveKeyParameters,
-    EllipticCurveKeyType, Jwk, JwkSet, KeyAlgorithm, PublicKeyUse, RSAKeyParameters, RSAKeyType,
+    EllipticCurveKeyType, Jwk, KeyAlgorithm, PublicKeyUse, RSAKeyParameters, RSAKeyType,
 };
 use openssl::{
     bn::{BigNum, BigNumContext},
     pkey::{Id, PKey, Public},
 };
+use serde::Serialize;
 
 use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
@@ -37,6 +38,18 @@ use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 /// `--jwks-endpoint-auto-tag=false` (`KMS_JWKS_ENDPOINT_AUTO_TAG=false`).
 /// Remove this tag from an individual key to opt it out.
 pub(crate) const JWKS_TAG: &str = "jwks";
+
+/// JSON Web Key Set envelope (RFC 7517 §5).
+///
+/// Built from raw [`serde_json::Value`] entries rather than the `jsonwebtoken`
+/// crate's typed `JwkSet` because that crate's `EllipticCurve` enum has no
+/// `X25519` variant — an OKP/X25519 key-agreement JWK must be hand-built as
+/// raw JSON (see [`x25519_to_jwk`]). Typed entries (RSA/EC/Ed25519) are
+/// converted via `serde_json::to_value`, so the wire format is unaffected.
+#[derive(Serialize)]
+struct RawJwkSet {
+    keys: Vec<serde_json::Value>,
+}
 
 /// `GET /.well-known/jwks.json` — RFC 7517 public key endpoint.
 ///
@@ -87,17 +100,17 @@ pub(crate) async fn get_jwks(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<H
 }
 
 /// Build the JWK Set and a boolean indicating whether the result was truncated.
-async fn build_jwk_set(kms: &KMS) -> KResult<(JwkSet, bool)> {
+async fn build_jwk_set(kms: &KMS) -> KResult<(RawJwkSet, bool)> {
     let objects = Box::pin(discover_eligible_public_keys(kms)).await?;
     let max_keys = kms.params.jwks_endpoint.jwks_endpoint_max_keys;
     let truncated = objects.len() > max_keys;
 
     let mut keys = Vec::with_capacity(objects.len().min(max_keys));
-    for (uid, object) in objects.into_iter().take(max_keys) {
-        match object_to_jwk(&uid, &object) {
+    for (uid, object, attributes) in objects.into_iter().take(max_keys) {
+        match object_to_jwk(&uid, &object, &attributes) {
             Ok(Some(jwk)) => keys.push(jwk),
             Ok(None) => {
-                // Unsupported key type — silently skip (e.g., X25519, Ed448).
+                // Unsupported key type — silently skip (e.g., Ed448).
             }
             Err(e) => {
                 // One bad key must not poison the entire JWKS.
@@ -105,7 +118,7 @@ async fn build_jwk_set(kms: &KMS) -> KResult<(JwkSet, bool)> {
             }
         }
     }
-    Ok((JwkSet { keys }, truncated))
+    Ok((RawJwkSet { keys }, truncated))
 }
 
 /// Query the database for all public keys eligible for JWKS inclusion.
@@ -119,7 +132,7 @@ async fn build_jwk_set(kms: &KMS) -> KResult<(JwkSet, bool)> {
 /// The order is stable within a session but is not guaranteed to be stable across
 /// server restarts or across different database backends (`PostgreSQL`, `MySQL`).
 /// JWKS consumers **must not** rely on position — always match keys by `kid`.
-async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object)>> {
+async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object, Attributes)>> {
     let mut filter = Attributes {
         object_type: Some(ObjectType::PublicKey),
         ..Default::default()
@@ -147,7 +160,7 @@ async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object
             continue;
         }
         match kms.database.retrieve_object(&uid).await? {
-            Some(owm) => objects.push((uid, owm.object().clone())),
+            Some(owm) => objects.push((uid, owm.object().clone(), owm.attributes().clone())),
             None => {
                 warn!("Key uid={uid} found by Locate but missing on retrieve — skipping");
             }
@@ -161,25 +174,44 @@ async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object
     Ok(objects)
 }
 
-/// Convert a KMIP `PublicKey` object to a [`Jwk`].
+/// Convert a KMIP `PublicKey` object to a JWK, serialized as raw JSON.
 ///
 /// Returns `Ok(None)` for key types not representable in RFC 7517
-/// (e.g., X25519/X448 ECDH keys, Ed448 which is absent from the
-/// `jsonwebtoken` crate's `EllipticCurve` enum).
-fn object_to_jwk(uid: &str, object: &Object) -> KResult<Option<Jwk>> {
+/// (e.g., Ed448, which is absent from the `jsonwebtoken` crate's
+/// `EllipticCurve` enum).
+fn object_to_jwk(
+    uid: &str,
+    object: &Object,
+    attributes: &Attributes,
+) -> KResult<Option<serde_json::Value>> {
     let pkey = kmip_public_key_to_openssl(object).map_err(|e| {
         KmsError::ServerError(format!(
             "Failed to convert public key uid={uid} to OpenSSL: {e}"
         ))
     })?;
 
+    let usage_mask = attributes.cryptographic_usage_mask;
+
     match pkey.id() {
-        Id::RSA => Ok(Some(rsa_to_jwk(uid, &pkey)?)),
-        Id::EC => ec_to_jwk(uid, &pkey),
+        Id::RSA => rsa_to_jwk(uid, &pkey).map(|jwk| to_json_value(uid, &jwk)),
+        Id::EC => Ok(ec_to_jwk(uid, &pkey, usage_mask)?.and_then(|jwk| to_json_value(uid, &jwk))),
         #[cfg(feature = "non-fips")]
-        Id::ED25519 => eddsa_to_jwk(uid, &pkey),
+        Id::ED25519 => Ok(eddsa_to_jwk(uid, &pkey)?.and_then(|jwk| to_json_value(uid, &jwk))),
+        #[cfg(feature = "non-fips")]
+        Id::X25519 => x25519_to_jwk(uid, &pkey),
         _ => Ok(None),
     }
+}
+
+/// Serialize a typed [`Jwk`] to a raw [`serde_json::Value`].
+///
+/// Returns `None` (logging the failure, but not propagating it) if
+/// serialization fails, so the caller can skip the key entirely rather than
+/// emit an invalid `null` entry in the JWKS `keys` array.
+fn to_json_value(uid: &str, jwk: &Jwk) -> Option<serde_json::Value> {
+    serde_json::to_value(jwk)
+        .inspect_err(|e| warn!("JWK serialization failed uid={uid}: {e}"))
+        .ok()
 }
 
 /// Serialize an RSA public key to JWK.
@@ -233,8 +265,20 @@ fn rsa_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Jwk> {
 /// Supported NIST curves: P-256 (`ES256`), P-384 (`ES384`), P-521 (no `alg`
 /// because `ES512` is absent from the `jsonwebtoken` crate's [`KeyAlgorithm`]).
 ///
+/// `use`/`alg` are derived from the key's actual `CryptographicUsageMask`
+/// (this function operates on the *public* key, so signature usage is denoted
+/// by `Verify`, not `Sign`, which only appears on the private-key mask):
+/// - `KeyAgreement` (and not `Verify`) → `use=enc`, no `alg` (no ECDH-ES variant
+///   exists in the `jsonwebtoken` crate's `KeyAlgorithm` enum either).
+/// - Otherwise (default / `Verify`) → `use=sig`, `alg=ES256/ES384` (unchanged
+///   pre-existing behavior).
+///
 /// Returns `Ok(None)` for any other curve (e.g., secp256k1).
-fn ec_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Option<Jwk>> {
+fn ec_to_jwk(
+    uid: &str,
+    pkey: &PKey<Public>,
+    usage_mask: Option<CryptographicUsageMask>,
+) -> KResult<Option<Jwk>> {
     let ec_key = pkey
         .ec_key()
         .map_err(|e| KmsError::ServerError(format!("Failed to extract EC key uid={uid}: {e}")))?;
@@ -244,7 +288,16 @@ fn ec_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Option<Jwk>> {
         .curve_name()
         .ok_or_else(|| KmsError::ServerError(format!("EC key uid={uid} has no named curve")))?;
 
-    let (curve, coord_len, alg) = match nid {
+    // Key-agreement-only keys (ECDH-ES) never carry a signature `alg`, regardless
+    // of curve, since `jsonwebtoken::KeyAlgorithm` has no ECDH-ES variant.
+    // NOTE: this function operates on the *public* key, whose signature usage is
+    // denoted by `Verify` (not `Sign`, which only appears on the private-key mask).
+    let is_key_agreement_only = usage_mask.is_some_and(|mask| {
+        mask.contains(CryptographicUsageMask::KeyAgreement)
+            && !mask.contains(CryptographicUsageMask::Verify)
+    });
+
+    let (curve, coord_len, sig_alg) = match nid {
         openssl::nid::Nid::X9_62_PRIME256V1 => {
             (EllipticCurve::P256, 32_usize, Some(KeyAlgorithm::ES256))
         }
@@ -252,6 +305,12 @@ fn ec_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Option<Jwk>> {
         // ES512 does not exist in KeyAlgorithm — omit `alg` per RFC 7517 §4.4.
         openssl::nid::Nid::SECP521R1 => (EllipticCurve::P521, 66_usize, None),
         _ => return Ok(None),
+    };
+
+    let (public_key_use, alg) = if is_key_agreement_only {
+        (Some(PublicKeyUse::Encryption), None)
+    } else {
+        (Some(PublicKeyUse::Signature), sig_alg)
     };
 
     let mut ctx = BigNumContext::new().map_err(|e| {
@@ -284,7 +343,7 @@ fn ec_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Option<Jwk>> {
 
     Ok(Some(Jwk {
         common: CommonParameters {
-            public_key_use: Some(PublicKeyUse::Signature),
+            public_key_use,
             key_algorithm: alg,
             key_id: Some(uid.to_owned()),
             ..Default::default()
@@ -326,4 +385,29 @@ fn eddsa_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Option<Jwk>> {
             x: URL_SAFE_NO_PAD.encode(&x_bytes),
         }),
     }))
+}
+
+/// Serialize an X25519 static public key to a raw JWK JSON object (OKP,
+/// non-FIPS only, ECDH-ES key agreement).
+///
+/// Hand-built as raw JSON because `jsonwebtoken` v10's `EllipticCurve` enum
+/// has no `X25519` variant — the typed `Jwk`/`AlgorithmParameters::OctetKeyPair`
+/// structs cannot represent this curve. Format per RFC 8037 §2: raw 32-byte
+/// public point, base64url-encoded, no `alg` (ECDH-ES has no registered
+/// `jsonwebtoken` equivalent either way).
+#[cfg(feature = "non-fips")]
+fn x25519_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Option<serde_json::Value>> {
+    let x_bytes = pkey.raw_public_key().map_err(|e| {
+        KmsError::ServerError(format!(
+            "Failed to extract X25519 raw public key uid={uid}: {e}"
+        ))
+    })?;
+
+    Ok(Some(serde_json::json!({
+        "kty": "OKP",
+        "crv": "X25519",
+        "use": "enc",
+        "kid": uid,
+        "x": URL_SAFE_NO_PAD.encode(&x_bytes),
+    })))
 }
