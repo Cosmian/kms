@@ -48,6 +48,18 @@ pub fn register_backend(backend: Box<dyn Backend>) {
     }
 }
 
+/// Stores `backend` only when no backend is currently registered.
+///
+/// This keeps interface discovery from replacing a backend installed concurrently
+/// by an authenticated login.
+pub fn register_backend_if_absent(backend: Box<dyn Backend>) {
+    if let Ok(mut guard) = BACKEND.write()
+        && guard.is_none()
+    {
+        *guard = Some(Arc::from(backend));
+    }
+}
+
 /// Clears the registered backend. Called by `C_Logout` when OIDC-pin mode is active.
 pub fn clear_backend() {
     if let Ok(mut guard) = BACKEND.write() {

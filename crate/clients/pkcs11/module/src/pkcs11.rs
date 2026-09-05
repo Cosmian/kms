@@ -34,11 +34,11 @@ use pkcs11_sys::{
     CK_SESSION_INFO, CK_SESSION_INFO_PTR, CK_SLOT_ID, CK_SLOT_ID_PTR, CK_SLOT_INFO,
     CK_SLOT_INFO_PTR, CK_TOKEN_INFO, CK_TOKEN_INFO_PTR, CK_ULONG, CK_ULONG_PTR,
     CK_UNAVAILABLE_INFORMATION, CK_USER_TYPE, CK_UTF8CHAR_PTR, CK_VERSION, CK_VOID_PTR,
-    CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT, CKF_PROTECTED_AUTHENTICATION_PATH,
-    CKF_RNG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN, CKF_TOKEN_INITIALIZED,
-    CKF_TOKEN_PRESENT, CKF_USER_PIN_INITIALIZED, CKM_AES_CBC, CKM_AES_CBC_PAD, CKM_AES_KEY_GEN,
-    CKR_OK, CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS, CRYPTOKI_VERSION_MAJOR,
-    CRYPTOKI_VERSION_MINOR,
+    CKA_UNIQUE_ID, CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT,
+    CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN,
+    CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_USER_PIN_INITIALIZED, CKM_AES_CBC,
+    CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKR_OK, CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS,
+    CKU_CONTEXT_SPECIFIC, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 use rand::Rng;
 
@@ -668,17 +668,8 @@ cryptoki_fn!(
     ) {
         initialized!();
         valid_session!(hSession);
-        if use_pin_as_access_token() {
-            if pPin.is_null() || ulPinLen == 0 {
-                return Err(ModuleError::PinRequired);
-            }
-            // Safety: caller guarantees pPin points to ulPinLen valid UTF-8 bytes.
-            let pin_bytes = unsafe { slice::from_raw_parts(pPin, ulPinLen as usize) };
-            let token = std::str::from_utf8(pin_bytes).map_err(|e| {
-                ModuleError::BadArguments(format!("C_Login: pPin is not valid UTF-8: {e}"))
-            })?;
-            invoke_login_fn(token)?;
-        }
+        validate_login_user_type(hSession, userType)?;
+        login_with_pin(pPin, ulPinLen, "C_Login")?;
         Ok(())
     }
 );
@@ -700,35 +691,56 @@ cryptoki_fn!(
     ) {
         initialized!();
         valid_session!(hSession);
-        if !pPin.is_null() && ulPinLen > 0 {
-            // Safety: caller guarantees pPin points to ulPinLen valid UTF-8 bytes.
-            let pin_bytes = unsafe { slice::from_raw_parts(pPin, ulPinLen as usize) };
-            std::str::from_utf8(pin_bytes).map_err(|e| {
-                ModuleError::BadArguments(format!("C_LoginUser: pPin is not valid UTF-8: {e}"))
-            })?;
-        }
-        if !pUsername.is_null() && ulUsernameLen > 0 {
-            // Safety: caller guarantees pUsername points to ulUsernameLen valid UTF-8 bytes.
-            let username_bytes =
-                unsafe { slice::from_raw_parts(pUsername, ulUsernameLen as usize) };
-            std::str::from_utf8(username_bytes).map_err(|e| {
-                ModuleError::BadArguments(format!("C_LoginUser: pUsername is not valid UTF-8: {e}"))
-            })?;
-        }
-        if use_pin_as_access_token() {
-            if pPin.is_null() || ulPinLen == 0 {
-                return Err(ModuleError::PinRequired);
-            }
-            // Safety: caller guarantees pPin points to ulPinLen valid UTF-8 bytes.
-            let pin_bytes = unsafe { slice::from_raw_parts(pPin, ulPinLen as usize) };
-            let token = std::str::from_utf8(pin_bytes).map_err(|e| {
-                ModuleError::BadArguments(format!("C_LoginUser: pPin is not valid UTF-8: {e}"))
-            })?;
-            invoke_login_fn(token)?;
-        }
+        validate_login_user_type(hSession, userType)?;
+        parse_utf8_argument(pUsername, ulUsernameLen, "C_LoginUser: pUsername")?;
+        login_with_pin(pPin, ulPinLen, "C_LoginUser")?;
         Ok(())
     }
 );
+
+const fn validate_login_user_type(
+    session: CK_SESSION_HANDLE,
+    user_type: CK_USER_TYPE,
+) -> ModuleResult<()> {
+    match user_type {
+        CKU_USER => Ok(()),
+        CKU_CONTEXT_SPECIFIC => Err(ModuleError::OperationNotInitialized(session)),
+        _ => Err(ModuleError::UserTypeInvalid),
+    }
+}
+
+fn parse_utf8_argument(
+    ptr: CK_UTF8CHAR_PTR,
+    len: CK_ULONG,
+    name: &str,
+) -> ModuleResult<Option<String>> {
+    if len == 0 {
+        return Ok(None);
+    }
+    if ptr.is_null() {
+        return Err(ModuleError::BadArguments(format!("{name} is null")));
+    }
+    let len = usize::try_from(len)?;
+    // SAFETY: PKCS#11 requires callers to provide `len` readable bytes when `ptr` is non-null.
+    #[expect(unsafe_code)]
+    let bytes = unsafe { slice::from_raw_parts(ptr, len) };
+    std::str::from_utf8(bytes)
+        .map(|value| Some(value.to_owned()))
+        .map_err(|e| ModuleError::BadArguments(format!("{name} is not valid UTF-8: {e}")))
+}
+
+fn login_with_pin(pin: CK_UTF8CHAR_PTR, pin_len: CK_ULONG, function: &str) -> ModuleResult<()> {
+    let token = parse_utf8_argument(pin, pin_len, &format!("{function}: pPin"))?;
+    if use_pin_as_access_token() {
+        invoke_login_fn(
+            token
+                .as_deref()
+                .filter(|value| !value.is_empty())
+                .ok_or(ModuleError::PinRequired)?,
+        )?;
+    }
+    Ok(())
+}
 
 cryptoki_fn!(
     fn C_Logout(hSession: CK_SESSION_HANDLE) {
@@ -759,6 +771,9 @@ cryptoki_fn!(
         );
         let attributes = Attributes::try_from((pTemplate, ulCount))
             .context("C_CreateObject: attributes conversion failed")?;
+        if attributes.get(AttributeType::UniqueId).is_some() {
+            return Err(ModuleError::AttributeReadOnly);
+        }
 
         sessions::session(hSession, |_session| -> ModuleResult<()> {
             unsafe {
@@ -830,6 +845,7 @@ cryptoki_fn!(
             } else {
                 &mut []
             };
+            let mut buffer_too_small = false;
             for attribute in template.iter_mut() {
                 let type_: AttributeType = attribute.type_.try_into().map_err(|e| {
                     let attribute_type = attribute.type_;
@@ -850,11 +866,13 @@ cryptoki_fn!(
                 );
                 if let Some(value) = object.attribute(type_)? {
                     let value = value.as_raw_value();
-                    attribute.ulValueLen = value.len() as CK_ULONG;
+                    let capacity = usize::try_from(attribute.ulValueLen)?;
+                    attribute.ulValueLen = CK_ULONG::try_from(value.len())?;
                     if attribute.pValue.is_null() {
                         continue;
                     }
-                    if (usize::try_from(attribute.ulValueLen)?) < value.len() {
+                    if capacity < value.len() {
+                        buffer_too_small = true;
                         continue;
                     }
                     unsafe {
@@ -865,17 +883,38 @@ cryptoki_fn!(
                     attribute.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                 }
             }
-            Ok(())
+            if buffer_too_small {
+                Err(ModuleError::BufferTooSmall)
+            } else {
+                Ok(())
+            }
         })
     }
 );
 
-cryptoki_fn_not_supported!(
-    C_SetAttributeValue,
-    hSession: CK_SESSION_HANDLE,
-    hObject: CK_OBJECT_HANDLE,
-    pTemplate: CK_ATTRIBUTE_PTR,
-    ulCount: CK_ULONG
+cryptoki_fn!(
+    unsafe fn C_SetAttributeValue(
+        hSession: CK_SESSION_HANDLE,
+        hObject: CK_OBJECT_HANDLE,
+        pTemplate: CK_ATTRIBUTE_PTR,
+        ulCount: CK_ULONG,
+    ) {
+        initialized!();
+        valid_session!(hSession);
+        if ulCount > 0 {
+            not_null!(pTemplate, "C_SetAttributeValue: pTemplate");
+            // SAFETY: PKCS#11 requires `pTemplate` to contain `ulCount` readable entries.
+            let template = unsafe { slice::from_raw_parts(pTemplate, usize::try_from(ulCount)?) };
+            if template
+                .iter()
+                .any(|attribute| attribute.type_ == CKA_UNIQUE_ID)
+            {
+                return Err(ModuleError::AttributeReadOnly);
+            }
+        }
+        let _ = hObject;
+        Err(ModuleError::FunctionNotSupported)
+    }
 );
 
 cryptoki_fn!(

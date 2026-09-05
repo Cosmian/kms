@@ -20,13 +20,13 @@ use std::sync::{PoisonError, RwLockReadGuard, RwLockWriteGuard};
 // limitations under the License.
 use pkcs11_sys::{
     CK_ATTRIBUTE_TYPE, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID,
-    CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_TYPE_INVALID, CKR_ATTRIBUTE_VALUE_INVALID,
-    CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED,
-    CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED, CKR_GENERAL_ERROR,
-    CKR_KEY_HANDLE_INVALID, CKR_MECHANISM_INVALID, CKR_NEED_TO_CREATE_THREADS,
+    CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_READ_ONLY, CKR_ATTRIBUTE_TYPE_INVALID,
+    CKR_ATTRIBUTE_VALUE_INVALID, CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED,
+    CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED,
+    CKR_GENERAL_ERROR, CKR_KEY_HANDLE_INVALID, CKR_MECHANISM_INVALID, CKR_NEED_TO_CREATE_THREADS,
     CKR_OBJECT_HANDLE_INVALID, CKR_OPERATION_NOT_INITIALIZED, CKR_PIN_INCORRECT, CKR_RANDOM_NO_RNG,
     CKR_SESSION_HANDLE_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
-    CKR_TOKEN_WRITE_PROTECTED, CKR_USER_NOT_LOGGED_IN,
+    CKR_TOKEN_WRITE_PROTECTED, CKR_USER_NOT_LOGGED_IN, CKR_USER_TYPE_INVALID,
 };
 use thiserror::Error;
 
@@ -51,6 +51,8 @@ pub enum ModuleError {
     BadArguments(String),
     #[error("{0} is not a valid attribute type")]
     AttributeTypeInvalid(CK_ATTRIBUTE_TYPE),
+    #[error("attribute is read-only")]
+    AttributeReadOnly,
     #[error("the value for attribute {0} is invalid")]
     AttributeValueInvalid(AttributeType),
     #[error("buffer too small")]
@@ -87,6 +89,8 @@ pub enum ModuleError {
     PinRequired,
     #[error("user not logged in")]
     UserNotLoggedIn,
+    #[error("user type is invalid")]
+    UserTypeInvalid,
     // Other errors.
     #[error(transparent)]
     FromUtf8(#[from] std::string::FromUtf8Error),
@@ -129,6 +133,7 @@ impl From<ModuleError> for CK_RV {
             ModuleError::Context { source, .. } => (*source).into(),
             ModuleError::BadArguments(_) => CKR_ARGUMENTS_BAD,
             ModuleError::AttributeTypeInvalid(_) => CKR_ATTRIBUTE_TYPE_INVALID,
+            ModuleError::AttributeReadOnly => CKR_ATTRIBUTE_READ_ONLY,
             ModuleError::AttributeValueInvalid(_) => CKR_ATTRIBUTE_VALUE_INVALID,
             ModuleError::BufferTooSmall => CKR_BUFFER_TOO_SMALL,
             ModuleError::CryptokiAlreadyInitialized => CKR_CRYPTOKI_ALREADY_INITIALIZED,
@@ -147,6 +152,7 @@ impl From<ModuleError> for CK_RV {
             ModuleError::TokenWriteProtected => CKR_TOKEN_WRITE_PROTECTED,
             ModuleError::PinRequired => CKR_PIN_INCORRECT,
             ModuleError::UserNotLoggedIn => CKR_USER_NOT_LOGGED_IN,
+            ModuleError::UserTypeInvalid => CKR_USER_TYPE_INVALID,
 
             ModuleError::Backend(_)
             | ModuleError::AlgorithmNotSupported(_)
