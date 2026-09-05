@@ -187,6 +187,85 @@ where
     Ok(resp.unique_identifier.to_string())
 }
 
+/// Generate an EC key pair for ECDH-ES via `POST /v1/crypto/keys` and return
+/// `(kid_private, kid_public, x_b64, y_b64)`.
+///
+/// The key pair is auto-tagged for JWKS inclusion (default server config), so the
+/// static public key coordinates are recovered by fetching `/.well-known/jwks.json`
+/// rather than via a dedicated key-export endpoint (none exists for `/v1/crypto`).
+pub(super) async fn create_ecdh_ec_key_pair_rest<S, B>(
+    app: &S,
+    crv: &str,
+    alg: &str,
+) -> KResult<(String, String, String, String)>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: actix_web::body::MessageBody,
+{
+    let resp: Value = test_utils::post_json_with_uri(
+        app,
+        json!({"kty": "EC", "crv": crv, "alg": alg}),
+        "/v1/crypto/keys",
+    )
+    .await?;
+
+    let kid = resp["kid"].as_str().expect("missing kid").to_owned();
+    let kid_public = resp["kid_public"]
+        .as_str()
+        .expect("EC key generation must return 'kid_public'")
+        .to_owned();
+
+    let jwks: Value = test_utils::get_json_with_uri(app, "/.well-known/jwks.json").await?;
+    let jwk = jwks["keys"]
+        .as_array()
+        .expect("jwks 'keys' must be an array")
+        .iter()
+        .find(|k| k["kid"].as_str() == Some(kid_public.as_str()))
+        .unwrap_or_else(|| panic!("public key {kid_public} not found in JWKS"));
+
+    let x = jwk["x"].as_str().expect("JWK missing 'x'").to_owned();
+    let y = jwk["y"].as_str().expect("JWK missing 'y'").to_owned();
+
+    Ok((kid, kid_public, x, y))
+}
+
+/// Generate an X25519 OKP key pair for ECDH-ES (non-FIPS) via `POST /v1/crypto/keys`
+/// and return `(kid_private, kid_public, x_b64)`.
+#[cfg(feature = "non-fips")]
+pub(super) async fn create_ecdh_x25519_key_pair_rest<S, B>(
+    app: &S,
+    alg: &str,
+) -> KResult<(String, String, String)>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: actix_web::body::MessageBody,
+{
+    let resp: Value = test_utils::post_json_with_uri(
+        app,
+        json!({"kty": "OKP", "crv": "X25519", "alg": alg}),
+        "/v1/crypto/keys",
+    )
+    .await?;
+
+    let kid = resp["kid"].as_str().expect("missing kid").to_owned();
+    let kid_public = resp["kid_public"]
+        .as_str()
+        .expect("X25519 key generation must return 'kid_public'")
+        .to_owned();
+
+    let jwks: Value = test_utils::get_json_with_uri(app, "/.well-known/jwks.json").await?;
+    let jwk = jwks["keys"]
+        .as_array()
+        .expect("jwks 'keys' must be an array")
+        .iter()
+        .find(|k| k["kid"].as_str() == Some(kid_public.as_str()))
+        .unwrap_or_else(|| panic!("public key {kid_public} not found in JWKS"));
+
+    let x = jwk["x"].as_str().expect("JWK missing 'x'").to_owned();
+
+    Ok((kid, kid_public, x))
+}
+
 /// Generate an RSA key pair via `POST /v1/crypto/keys` and return `(kid_private, kid_public)`.
 ///
 /// Uses the REST endpoint (dogfoods `/v1/crypto/keys`) rather than the KMIP pipeline directly.
