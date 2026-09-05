@@ -24,7 +24,7 @@ The test vector `test_data/vectors/non-fips/derive_key_x25519/step1_create_alice
             {"tag": "RecommendedCurve", "type": "Enumeration", "value": "CURVE25519"}
           ]
         },
-        {"tag": "CryptographicUsageMask", "type": "Integer", "value": 524300}
+        {"tag": "CryptographicUsageMask", "type": "Integer", "value": 2560}
       ]
     }
   ]
@@ -77,9 +77,11 @@ This keeps the raw X25519 shared secret separate from the symmetric key that per
 
 Use the derived symmetric key with the existing `Encrypt` and `Decrypt` operations.
 
+Activate each HKDF-derived key with `Activate` before using it for encryption or decryption — keys derived by `DeriveKey` are created in the `PreActive` state, and `Encrypt`/`Decrypt` require an `Active` key.
+
 The current path already supports `ChaCha20Poly1305`, so no new symmetric algorithm is required for this workflow.
 
-Use a 12-byte `IVCounterNonce` for `ChaCha20Poly1305`.
+Use a unique 12-byte `IVCounterNonce` for every encryption under a given sealing key, backed by a persisted monotonic counter or another collision-free per-key construction. Reusing a nonce across two encryptions under the same key breaks ChaCha20-Poly1305's keystream and one-time authentication key, exposing plaintext relationships and weakening authentication.
 
 When you build a share-sealing protocol on top of the KMS, put protocol context in `AuthenticatedEncryptionAdditionalData`.
 
