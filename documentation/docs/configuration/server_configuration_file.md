@@ -568,8 +568,11 @@ crypto_officer_require_ceremony = false
 # When a CRL is generated without an explicit validity override (e.g., via
 # `GET /certificates/{id}/crl?validity_days=N`), this value is used.
 #
-# Production CAs often use 1–24 h for short-lived CRLs (code-signing,
-# high-security); enterprise PKIs commonly use 7–28 days.
+# This value is in whole days (minimum 1 day / 24 h); enterprise PKIs commonly
+# use 7–28 days. Avoid the practical minimum of 1 day unless
+# `crl_refresh_overlap_hours` is also lowered below 24: a 1-day CRL satisfies
+# the default 24-hour refresh-overlap condition immediately after creation,
+# causing the hourly scheduler to continuously re-sign it.
 #
 # Valid range: 1–365. Default: 7.
 crl_default_validity_days = 7
@@ -578,6 +581,11 @@ crl_default_validity_days = 7
 #
 # Set to 0 to disable the background scheduler entirely.
 # When disabled, CRLs are only refreshed on certificate revocation events.
+#
+# The scheduler is only spawned when `kms_public_url` is ALSO configured
+# (the CDP endpoint must be active); with `kms_public_url` unset, this
+# setting has no effect and CRLs are only refreshed on revocation events,
+# which can allow an expired CRL to be served in the meantime.
 #
 # Default: 1 (wake up hourly).
 crl_refresh_check_hours = 1
@@ -596,7 +604,7 @@ crl_refresh_overlap_hours = 24
 
 
 [ocsp]
-# Enable the OCSP responder endpoint at `GET/POST /ocsp/`.
+# Enable the OCSP responder endpoint at `GET /ocsp/{encoded_request}` and `POST /ocsp/`.
 #
 # When `false` (default) all `/ocsp/` routes return 404.
 ocsp_enabled = false
@@ -617,11 +625,15 @@ ocsp_cache_ttl_secs = 86400
 # Per RFC 9654 §2.1, the responder MUST accept nonces of 16–128 octets and echo
 # them verbatim.  Nonces shorter than 16 octets are silently ignored.
 ocsp_nonce_policy = "optional"
-# Include the signing certificate chain in OCSP `BasicResponse`s.
+# Include the signing certificate in OCSP `BasicResponse`s.
 #
+# Only the signer certificate itself is embedded — not its issuing chain.
 # Set to `true` (default) when `ocsp_responder_cert_uid` is configured so that
-# clients can verify the delegated responder's authorization without additional
-# fetches.  Safe to set `false` when the CA signs responses directly.
+# clients can verify the delegated responder's own certificate without an
+# additional fetch; delegated responders whose signer chain includes
+# intermediates the client does not already trust must distribute those
+# intermediates out of band. Safe to set `false` when the CA signs responses
+# directly.
 ocsp_include_cert_chain = true
 # Archive-cutoff extension value in seconds (RFC 6960 §4.4.4).
 #
