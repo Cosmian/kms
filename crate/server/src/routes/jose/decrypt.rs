@@ -521,18 +521,36 @@ async fn decrypt_ecdh_es(
     };
 
     // Party U/V info (RFC 7518 §4.6.1) — optional, default to empty per Concat KDF.
-    let apu = header_json
-        .get("apu")
-        .and_then(|v| v.as_str())
-        .map(|s| b64_decode("apu", s))
-        .transpose()?
-        .unwrap_or_default();
-    let apv = header_json
-        .get("apv")
-        .and_then(|v| v.as_str())
-        .map(|s| b64_decode("apv", s))
-        .transpose()?
-        .unwrap_or_default();
+    // Per RFC 7159/7518, if present these header members MUST be base64url-encoded
+    // strings; a present-but-non-string value (e.g. a number or boolean) is a
+    // malformed header and must be rejected rather than silently treated as absent.
+    let apu = match header_json.get("apu") {
+        None | Some(serde_json::Value::Null) => Vec::new(),
+        Some(serde_json::Value::String(s)) => b64_decode("apu", s)?,
+        Some(_) => {
+            return Err(CryptoApiError::BadRequest(
+                "'apu' must be a base64url-encoded string".to_owned(),
+            ));
+        }
+    };
+    let apv = match header_json.get("apv") {
+        None | Some(serde_json::Value::Null) => Vec::new(),
+        Some(serde_json::Value::String(s)) => b64_decode("apv", s)?,
+        Some(_) => {
+            return Err(CryptoApiError::BadRequest(
+                "'apv' must be a base64url-encoded string".to_owned(),
+            ));
+        }
+    };
+    // RFC 7518 §4.6.2: PartyUInfo and PartyVInfo, when both present, are
+    // expected to identify the two parties and therefore must be distinct;
+    // accepting equal, non-empty values would allow a degenerate/replayable
+    // KDF input.
+    if !apu.is_empty() && !apv.is_empty() && apu == apv {
+        return Err(CryptoApiError::BadRequest(
+            "'apu' and 'apv' must not be equal when both are present".to_owned(),
+        ));
+    }
 
     let cek: Zeroizing<Vec<u8>> = match alg {
         JoseAlgorithm::EcdhEs => {
