@@ -519,7 +519,8 @@ components:
       type: object
       required: [kty]
       description: |
-        Generate a new key. Import is not yet supported (returns 400).
+        Generate a new key, or import an existing one by supplying its private
+        key material (e.g. `k`, `d`, or `p`/`q` depending on `kty`).
 
         For ECDH-ES key agreement (RFC 7518 §4.6), set `alg` to `ECDH-ES`,
         `ECDH-ES+A128KW`, or `ECDH-ES+A256KW`:
