@@ -304,6 +304,9 @@ components:
         - dir
         - RSA-OAEP
         - RSA-OAEP-256
+        - ECDH-ES
+        - ECDH-ES+A128KW
+        - ECDH-ES+A256KW
         - RS256
         - RS384
         - RS512
@@ -379,7 +382,17 @@ components:
     DecryptRequest:
       type: object
       required: [protected, iv, ciphertext, tag]
-      description: JWE Flattened JSON Serialization (RFC 7516 §7.2.2) — the `kid` is read from the protected header
+      description: |
+        JWE Flattened JSON Serialization (RFC 7516 §7.2.2) — the `kid` is read from the
+        protected header.
+
+        For `alg: "ECDH-ES"` / `"ECDH-ES+A128KW"` / `"ECDH-ES+A256KW"` (RFC 7518 §4.6), the
+        protected header must additionally contain `epk` (the sender's ephemeral public key
+        JWK: `kty=EC` with `crv`/`x`/`y`, or non-FIPS `kty=OKP` with `crv=X25519`/`x`), and may
+        contain `apu`/`apv` (PartyUInfo/PartyVInfo, base64url). `kid` must reference an EC
+        (P-256/P-384/P-521, FIPS-available) or non-FIPS X25519 key authorized for
+        `KeyAgreement` usage. `encrypted_key` must be absent/empty for bare `ECDH-ES`, and
+        present/non-empty for the `+A128KW`/`+A256KW` variants.
       properties:
         protected:
           type: string
@@ -505,7 +518,13 @@ components:
     KeyCreateRequest:
       type: object
       required: [kty]
-      description: Generate a new key. Import is not yet supported (returns 400).
+      description: |
+        Generate a new key. Import is not yet supported (returns 400).
+
+        For ECDH-ES key agreement (RFC 7518 §4.6), set `alg` to `ECDH-ES`,
+        `ECDH-ES+A128KW`, or `ECDH-ES+A256KW`:
+        - `kty: EC` with `crv: P-256`, `P-384`, or `P-521` (FIPS-available).
+        - `kty: OKP` with `crv: X25519` (non-FIPS builds only).
       properties:
         kty:
           type: string
@@ -513,11 +532,13 @@ components:
           enum: [oct, EC, RSA, OKP]
         alg:
           type: string
-          description: JOSE algorithm this key will be used for (infers key_ops if omitted)
+          description: >
+            JOSE algorithm this key will be used for (infers key_ops if omitted).
+            For key-agreement keys, one of `ECDH-ES`, `ECDH-ES+A128KW`, `ECDH-ES+A256KW`.
         crv:
           type: string
           description: Elliptic curve or OKP curve name
-          enum: [P-256, P-384, P-521, Ed25519]
+          enum: [P-256, P-384, P-521, Ed25519, X25519]
         bits:
           type: integer
           description: RSA key size in bits (default 2048)
@@ -537,6 +558,12 @@ components:
         rsa_2048:
           summary: RSA-2048 key for RS256 signing
           value: {kty: RSA, bits: 2048, alg: RS256}
+        ec_p256_ecdh_es:
+          summary: EC P-256 key for ECDH-ES key agreement (FIPS-available)
+          value: {kty: EC, crv: P-256, alg: ECDH-ES}
+        okp_x25519_ecdh_es:
+          summary: OKP X25519 key for ECDH-ES+A256KW key agreement (non-FIPS only)
+          value: {kty: OKP, crv: X25519, alg: ECDH-ES+A256KW}
 
     KeyCreateResponse:
       type: object
