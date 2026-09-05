@@ -96,6 +96,10 @@ pub struct OcspConfig {
     /// intermediates the client does not already trust must distribute those
     /// intermediates out of band. Safe to set `false` when the CA signs responses
     /// directly.
+    ///
+    /// This is a bare CLI switch: passing `--ocsp-include-cert-chain` only ever
+    /// sets it to `true` (already the default). To set it to `false`, use the
+    /// `ocsp_include_cert_chain = false` key in the TOML config file instead.
     #[clap(long, default_value = "true", verbatim_doc_comment)]
     pub ocsp_include_cert_chain: bool,
 

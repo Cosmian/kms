@@ -584,6 +584,10 @@ ocsp_nonce_policy = "optional"
 # intermediates the client does not already trust must distribute those
 # intermediates out of band. Safe to set `false` when the CA signs responses
 # directly.
+#
+# This is a bare CLI switch: passing `--ocsp-include-cert-chain` only ever
+# sets it to `true` (already the default). To set it to `false`, use the
+# `ocsp_include_cert_chain = false` key in the TOML config file instead.
 ocsp_include_cert_chain = true
 # Archive-cutoff extension value in seconds (RFC 6960 §4.4.4).
 #
