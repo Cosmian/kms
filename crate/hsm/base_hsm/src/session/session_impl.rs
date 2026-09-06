@@ -2793,23 +2793,26 @@ mod tests {
     #[test]
     fn rsa_pkcs_pss_params_defaults_salt_length_to_digest_length() {
         let params = Session::rsa_pkcs_pss_params(CKM_SHA256, CKG_MGF1_SHA256, 32, None);
-        assert_eq!(params.hashAlg, CKM_SHA256);
-        assert_eq!(params.mgf, CKG_MGF1_SHA256);
-        assert_eq!(params.sLen, 32);
+        let (hash_alg, mgf, salt_len) = (params.hashAlg, params.mgf, params.sLen);
+        assert_eq!(hash_alg, CKM_SHA256);
+        assert_eq!(mgf, CKG_MGF1_SHA256);
+        assert_eq!(salt_len, 32);
     }
 
     #[test]
     fn rsa_pkcs_pss_params_honors_explicit_salt_length() {
         let params = Session::rsa_pkcs_pss_params(CKM_SHA384, CKG_MGF1_SHA384, 48, Some(0));
-        assert_eq!(params.hashAlg, CKM_SHA384);
-        assert_eq!(params.mgf, CKG_MGF1_SHA384);
-        assert_eq!(params.sLen, 0);
+        let (hash_alg, mgf, salt_len) = (params.hashAlg, params.mgf, params.sLen);
+        assert_eq!(hash_alg, CKM_SHA384);
+        assert_eq!(mgf, CKG_MGF1_SHA384);
+        assert_eq!(salt_len, 0);
     }
 
     #[test]
     fn rsa_pkcs_pss_params_sha512_digest_length_default() {
         let params = Session::rsa_pkcs_pss_params(CKM_SHA512, CKG_MGF1_SHA512, 64, None);
-        assert_eq!(params.sLen, 64);
+        let salt_len = params.sLen;
+        assert_eq!(salt_len, 64);
     }
 
     #[test]
