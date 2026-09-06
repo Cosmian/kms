@@ -284,9 +284,11 @@ pub unsafe extern "C" fn C_GetInterfaceList(
 
 /// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): standard v3.0 interface-lookup
 /// entry point. This module exposes exactly one interface — the standard "PKCS 11" interface,
-/// version 3.1 — so `pInterfaceName` (if non-null) must match that name and `pVersion` (if
-/// non-null) must request version 3.1; `flags` must be 0 (this interface makes no special
-/// guarantees, e.g. no fork-safety claim).
+/// implemented at version 3.1 — so `pInterfaceName` (if non-null) must match that name; `pVersion`
+/// (if non-null) must request the same major version (3) with a minor version no greater than
+/// the implemented one (3.1), since a v3.1 implementation is backward-compatible with v3.0
+/// consumers requesting exactly `{major: 3, minor: 0}`; `flags` must be 0 (this interface makes
+/// no special guarantees, e.g. no fork-safety claim).
 ///
 /// # Safety
 /// `ppInterface` must be non-null and writable. If non-null, `pInterfaceName` must point to a
@@ -322,7 +324,11 @@ pub unsafe extern "C" fn C_GetInterface(
         // SAFETY: caller guarantees p_version points to a valid CK_VERSION per this function's
         // safety contract.
         let version = unsafe { *p_version };
-        if version.major != CRYPTOKI_VERSION_MAJOR || version.minor != CRYPTOKI_VERSION_MINOR {
+        // Accept any requested minor version up to the one actually implemented: a v3.1
+        // implementation is a superset of v3.0, so a consumer explicitly requesting
+        // `{major: 3, minor: 0}` must still receive this interface rather than being
+        // rejected by an overly strict exact-version-match check.
+        if version.major != CRYPTOKI_VERSION_MAJOR || version.minor > CRYPTOKI_VERSION_MINOR {
             return CKR_ARGUMENTS_BAD;
         }
     }
