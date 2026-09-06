@@ -146,10 +146,10 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
                 Ok(())
             }
             #[cfg(feature = "non-fips")]
-            HsmKeypairAlgorithm::X25519 => {
-                session.generate_ec_key_pair(sk_id, pk_id, EcCurve::X25519, sensitive)?;
-                Ok(())
-            }
+            HsmKeypairAlgorithm::X25519 => Err(InterfaceError::NotSupported(
+                "X25519 HSM key creation is disabled until DeriveKey support is implemented"
+                    .to_owned(),
+            )),
         }
     }
 

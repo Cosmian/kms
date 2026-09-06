@@ -21,6 +21,8 @@ pub struct KeyMetadata {
     pub key_length_in_bits: usize,
     pub sensitive: bool,
     pub id: String,
+    /// Curve metadata for EC-family keys, including Edwards/Montgomery curves when enabled.
+    pub curve: Option<crate::EcCurve>,
     /// PKCS#11 `CKA_START_DATE` — when the key became active.
     pub start_date: Option<time::Date>,
     /// PKCS#11 `CKA_END_DATE` — when the key is due for rotation.

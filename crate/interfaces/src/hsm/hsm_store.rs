@@ -14,7 +14,9 @@ use cosmian_kmip::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType, RecommendedCurve,
+        },
     },
 };
 use cosmian_logger::{debug, error, trace, warn};
@@ -43,6 +45,55 @@ const fn ec_curve_to_recommended_curve(curve: EcCurve) -> RecommendedCurve {
         EcCurve::Ed448 => RecommendedCurve::CURVEED448,
         #[cfg(feature = "non-fips")]
         EcCurve::X25519 => RecommendedCurve::CURVE25519,
+    }
+}
+
+const fn ec_curve_to_algorithm(curve: EcCurve) -> CryptographicAlgorithm {
+    match curve {
+        EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 => CryptographicAlgorithm::EC,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Ed25519 => CryptographicAlgorithm::Ed25519,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Ed448 => CryptographicAlgorithm::Ed448,
+        #[cfg(feature = "non-fips")]
+        EcCurve::X25519 => CryptographicAlgorithm::ECDH,
+    }
+}
+
+fn ec_curve_to_usage_mask(
+    curve: Option<EcCurve>,
+    object_type: ObjectType,
+) -> CryptographicUsageMask {
+    #[cfg(feature = "non-fips")]
+    if matches!(curve, Some(EcCurve::X25519)) {
+        return CryptographicUsageMask::DeriveKey;
+    }
+    #[cfg(not(feature = "non-fips"))]
+    let _ = curve;
+
+    if object_type == ObjectType::PublicKey {
+        CryptographicUsageMask::Verify
+    } else {
+        CryptographicUsageMask::Sign
+    }
+}
+
+fn ec_domain_parameters_for_curve(curve: EcCurve) -> CryptographicDomainParameters {
+    CryptographicDomainParameters {
+        recommended_curve: Some(ec_curve_to_recommended_curve(curve)),
+        ..CryptographicDomainParameters::default()
+    }
+}
+
+fn ec_algorithm(curve: Option<EcCurve>) -> CryptographicAlgorithm {
+    curve.map_or(CryptographicAlgorithm::EC, ec_curve_to_algorithm)
+}
+
+fn ec_key_format_type(object_type: ObjectType) -> KeyFormatType {
+    if object_type == ObjectType::PublicKey {
+        KeyFormatType::TransparentECPublicKey
+    } else {
+        KeyFormatType::TransparentECPrivateKey
     }
 }
 
@@ -840,16 +891,16 @@ fn build_sensitive_stub_attributes(meta: &KeyMetadata) -> Attributes {
             KeyFormatType::PKCS1,
         ),
         KeyType::EcPrivateKey => (
-            CryptographicAlgorithm::EC,
+            ec_algorithm(meta.curve),
             ObjectType::PrivateKey,
-            CryptographicUsageMask::Sign,
-            KeyFormatType::TransparentECPrivateKey,
+            ec_curve_to_usage_mask(meta.curve, ObjectType::PrivateKey),
+            ec_key_format_type(ObjectType::PrivateKey),
         ),
         KeyType::EcPublicKey => (
-            CryptographicAlgorithm::EC,
+            ec_algorithm(meta.curve),
             ObjectType::PublicKey,
-            CryptographicUsageMask::Verify,
-            KeyFormatType::TransparentECPublicKey,
+            ec_curve_to_usage_mask(meta.curve, ObjectType::PublicKey),
+            ec_key_format_type(ObjectType::PublicKey),
         ),
     };
     // Reconstruct rotate_interval from CKA_START_DATE / CKA_END_DATE.
@@ -872,7 +923,8 @@ fn build_sensitive_stub_attributes(meta: &KeyMetadata) -> Attributes {
         object_type: Some(obj_type),
         cryptographic_usage_mask: Some(usage_mask),
         key_format_type: Some(key_format_type),
-        sensitive: Some(true),
+        cryptographic_domain_parameters: meta.curve.map(ec_domain_parameters_for_curve),
+        sensitive: Some(meta.sensitive),
         rotate_name: meta.rotate_name.clone(),
         rotate_generation: meta.rotate_generation,
         rotate_interval,
@@ -893,7 +945,7 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 cryptographic_length: Some(length),
                 object_type: Some(ObjectType::SymmetricKey),
-                sensitive: Some(true),
+                sensitive: Some(meta.sensitive),
                 ..Attributes::default()
             };
             Object::SymmetricKey(SymmetricKey {
@@ -925,7 +977,7 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length: Some(length),
                 object_type: Some(obj_type),
-                sensitive: Some(true),
+                sensitive: Some(meta.sensitive),
                 ..Attributes::default()
             };
             // Return a SymmetricKey wrapper — the key material is empty and the
@@ -946,36 +998,59 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
                 },
             })
         }
-        // For EC sensitive keys (unusual but possible), same minimal SymmetricKey-shaped
-        // stub pattern as RSA above.
         KeyType::EcPrivateKey | KeyType::EcPublicKey => {
             let obj_type = if meta.key_type == KeyType::EcPrivateKey {
                 ObjectType::PrivateKey
             } else {
                 ObjectType::PublicKey
             };
+            let algorithm = ec_algorithm(meta.curve);
+            let recommended_curve =
+                ec_curve_to_recommended_curve(meta.curve.unwrap_or(EcCurve::P256));
             let attributes = Attributes {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                cryptographic_algorithm: Some(algorithm),
                 cryptographic_length: Some(length),
                 object_type: Some(obj_type),
-                sensitive: Some(true),
+                key_format_type: Some(ec_key_format_type(obj_type)),
+                cryptographic_domain_parameters: meta.curve.map(ec_domain_parameters_for_curve),
+                sensitive: Some(meta.sensitive),
                 ..Attributes::default()
             };
-            Object::SymmetricKey(SymmetricKey {
-                key_block: KeyBlock {
-                    key_format_type: KeyFormatType::TransparentSymmetricKey,
-                    key_compression_type: None,
-                    key_value: Some(KeyValue::Structure {
-                        key_material: KmipKeyMaterial::TransparentSymmetricKey {
-                            key: zeroize::Zeroizing::new(vec![]),
-                        },
-                        attributes: Some(attributes),
-                    }),
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
-                    cryptographic_length: Some(length),
-                    key_wrapping_data: None,
-                },
-            })
+            if obj_type == ObjectType::PrivateKey {
+                Object::PrivateKey(PrivateKey {
+                    key_block: KeyBlock {
+                        key_format_type: KeyFormatType::TransparentECPrivateKey,
+                        key_compression_type: None,
+                        key_value: Some(KeyValue::Structure {
+                            key_material: KmipKeyMaterial::TransparentECPrivateKey {
+                                recommended_curve,
+                                d: Box::new(SafeBigInt::from_bytes_be(&[])),
+                            },
+                            attributes: Some(attributes),
+                        }),
+                        cryptographic_algorithm: Some(algorithm),
+                        cryptographic_length: Some(length),
+                        key_wrapping_data: None,
+                    },
+                })
+            } else {
+                Object::PublicKey(PublicKey {
+                    key_block: KeyBlock {
+                        key_format_type: KeyFormatType::TransparentECPublicKey,
+                        key_compression_type: None,
+                        key_value: Some(KeyValue::Structure {
+                            key_material: KmipKeyMaterial::TransparentECPublicKey {
+                                recommended_curve,
+                                q_string: vec![],
+                            },
+                            attributes: Some(attributes),
+                        }),
+                        cryptographic_algorithm: Some(algorithm),
+                        cryptographic_length: Some(length),
+                        key_wrapping_data: None,
+                    },
+                })
+            }
         }
     }
 }
@@ -1010,14 +1085,16 @@ fn build_find_attributes(meta: &Option<KeyMetadata>, filter: &HsmObjectFilter) -
                 attrs.key_format_type = Some(KeyFormatType::PKCS1);
             }
             KeyType::EcPrivateKey => {
-                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::EC);
+                attrs.cryptographic_algorithm = Some(ec_algorithm(m.curve));
                 attrs.object_type = Some(ObjectType::PrivateKey);
-                attrs.key_format_type = Some(KeyFormatType::TransparentECPrivateKey);
+                attrs.key_format_type = Some(ec_key_format_type(ObjectType::PrivateKey));
+                attrs.cryptographic_domain_parameters = m.curve.map(ec_domain_parameters_for_curve);
             }
             KeyType::EcPublicKey => {
-                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::EC);
+                attrs.cryptographic_algorithm = Some(ec_algorithm(m.curve));
                 attrs.object_type = Some(ObjectType::PublicKey);
-                attrs.key_format_type = Some(KeyFormatType::TransparentECPublicKey);
+                attrs.key_format_type = Some(ec_key_format_type(ObjectType::PublicKey));
+                attrs.cryptographic_domain_parameters = m.curve.map(ec_domain_parameters_for_curve);
             }
         }
     } else {
@@ -1452,14 +1529,19 @@ fn to_object_with_metadata(
         }
         KeyMaterial::EcPrivateKey(km) => {
             let recommended_curve = ec_curve_to_recommended_curve(km.curve);
+            let algorithm = ec_curve_to_algorithm(km.curve);
             let mut attributes = Attributes {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                cryptographic_algorithm: Some(algorithm),
                 cryptographic_length: Some(i32::try_from(km.curve.key_length_in_bits()).map_err(
                     |e| InterfaceError::InvalidRequest(format!("Invalid key length: {e}")),
                 )?),
                 object_type: Some(ObjectType::PrivateKey),
-                // EC HSM keys are Sign-only: they cannot Encrypt/Decrypt/Wrap/Unwrap.
-                cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
+                cryptographic_usage_mask: Some(ec_curve_to_usage_mask(
+                    Some(km.curve),
+                    ObjectType::PrivateKey,
+                )),
+                key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
+                cryptographic_domain_parameters: Some(ec_domain_parameters_for_curve(km.curve)),
                 ..Attributes::default()
             };
             let mut tags: HashSet<String> =
@@ -1480,7 +1562,7 @@ fn to_object_with_metadata(
                         key_material: kmip_key_material,
                         attributes: Some(attributes.clone()),
                     }),
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                    cryptographic_algorithm: Some(algorithm),
                     cryptographic_length: Some(
                         i32::try_from(km.curve.key_length_in_bits()).map_err(|e| {
                             InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
@@ -1499,14 +1581,19 @@ fn to_object_with_metadata(
         }
         KeyMaterial::EcPublicKey(km) => {
             let recommended_curve = ec_curve_to_recommended_curve(km.curve);
+            let algorithm = ec_curve_to_algorithm(km.curve);
             let mut attributes = Attributes {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                cryptographic_algorithm: Some(algorithm),
                 cryptographic_length: Some(i32::try_from(km.curve.key_length_in_bits()).map_err(
                     |e| InterfaceError::InvalidRequest(format!("Invalid key length: {e}")),
                 )?),
                 object_type: Some(ObjectType::PublicKey),
-                // EC HSM keys are Verify-only: they cannot Encrypt/Wrap.
-                cryptographic_usage_mask: Some(CryptographicUsageMask::Verify),
+                cryptographic_usage_mask: Some(ec_curve_to_usage_mask(
+                    Some(km.curve),
+                    ObjectType::PublicKey,
+                )),
+                key_format_type: Some(KeyFormatType::TransparentECPublicKey),
+                cryptographic_domain_parameters: Some(ec_domain_parameters_for_curve(km.curve)),
                 ..Attributes::default()
             };
             let mut tags: HashSet<String> =
@@ -1527,7 +1614,7 @@ fn to_object_with_metadata(
                         key_material: kmip_key_material,
                         attributes: Some(attributes.clone()),
                     }),
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                    cryptographic_algorithm: Some(algorithm),
                     cryptographic_length: Some(
                         i32::try_from(km.curve.key_length_in_bits()).map_err(|e| {
                             InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
@@ -1552,18 +1639,33 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
+    #[cfg(feature = "non-fips")]
+    use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
     use cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attributes,
-        kmip_types::{Name, NameType},
+        kmip_objects::ObjectType,
+        kmip_types::{CryptographicAlgorithm, Name, NameType},
+    };
+    #[cfg(feature = "non-fips")]
+    use cosmian_kmip::kmip_2_1::{
+        kmip_data_structures::{KeyMaterial as KmipKeyMaterial, KeyValue},
+        kmip_objects::Object,
+        kmip_types::{KeyFormatType, RecommendedCurve},
     };
     use zeroize::Zeroizing;
 
     use super::check_basic_compatibility;
+    #[cfg(feature = "non-fips")]
+    use super::{
+        build_sensitive_stub_attributes, build_sensitive_stub_object, to_object_with_metadata,
+    };
     use crate::{
         CryptoAlgorithm, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
         InterfaceError, InterfaceResult, KeyMetadata, KeyType, ObjectsStore, SigningAlgorithm,
         crypto_oracle::EncryptedContent, hsm::HsmStore,
     };
+    #[cfg(feature = "non-fips")]
+    use crate::{EcCurve, EcPrivateKeyMaterial, KeyMaterial};
 
     // ── mockall-generated test double for HSM ─────────────────────────────────
 
@@ -1736,5 +1838,128 @@ mod tests {
             )));
         }
         Ok(())
+    }
+
+    #[test]
+    fn test_hsm_object_filter_accepts_ecdh_filters() {
+        let attrs = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+            object_type: Some(ObjectType::PublicKey),
+            ..Default::default()
+        };
+
+        assert!(matches!(
+            HsmObjectFilter::try_from(&attrs),
+            Ok(HsmObjectFilter::EcPublicKey)
+        ));
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_hsm_object_filter_accepts_eddsa_filters() {
+        for algorithm in [
+            CryptographicAlgorithm::Ed25519,
+            CryptographicAlgorithm::Ed448,
+        ] {
+            let attrs = Attributes {
+                cryptographic_algorithm: Some(algorithm),
+                object_type: Some(ObjectType::PrivateKey),
+                ..Default::default()
+            };
+
+            assert!(matches!(
+                HsmObjectFilter::try_from(&attrs),
+                Ok(HsmObjectFilter::EcPrivateKey)
+            ));
+        }
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_sensitive_x25519_stub_preserves_ecdh_metadata() {
+        let meta = KeyMetadata {
+            key_type: KeyType::EcPrivateKey,
+            key_length_in_bits: 256,
+            sensitive: true,
+            id: "x25519".to_owned(),
+            curve: Some(EcCurve::X25519),
+            start_date: None,
+            end_date: None,
+            rotate_name: None,
+            rotate_generation: None,
+        };
+
+        let attrs = build_sensitive_stub_attributes(&meta);
+        assert_eq!(
+            attrs.cryptographic_algorithm,
+            Some(CryptographicAlgorithm::ECDH)
+        );
+        assert_eq!(
+            attrs.cryptographic_usage_mask,
+            Some(CryptographicUsageMask::DeriveKey)
+        );
+        assert_eq!(
+            attrs.key_format_type,
+            Some(KeyFormatType::TransparentECPrivateKey)
+        );
+        assert_eq!(
+            attrs
+                .cryptographic_domain_parameters
+                .and_then(|params| params.recommended_curve),
+            Some(RecommendedCurve::CURVE25519)
+        );
+        let object = build_sensitive_stub_object(&meta);
+        assert!(matches!(object, Object::PrivateKey(_)));
+        let Object::PrivateKey(private_key) = object else {
+            return;
+        };
+        assert_eq!(
+            private_key.key_block.cryptographic_algorithm,
+            Some(CryptographicAlgorithm::ECDH)
+        );
+        assert!(matches!(
+            private_key.key_block.key_value.as_ref(),
+            Some(KeyValue::Structure {
+                key_material: KmipKeyMaterial::TransparentECPrivateKey {
+                    recommended_curve: RecommendedCurve::CURVE25519,
+                    ..
+                },
+                ..
+            })
+        ));
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_to_object_with_metadata_preserves_eddsa_algorithm() {
+        let hsm_object = HsmObject::new(
+            KeyMaterial::EcPrivateKey(EcPrivateKeyMaterial {
+                curve: EcCurve::Ed25519,
+                d: Zeroizing::new(vec![1; 32]),
+            }),
+            "[]".to_owned(),
+        );
+        let owm_result =
+            to_object_with_metadata(&hsm_object, "hsm::1::ed25519", "admin", "cosmian");
+        assert!(owm_result.is_ok());
+        let Ok(owm) = owm_result else {
+            return;
+        };
+        let attrs = owm.attributes();
+        assert_eq!(
+            attrs.cryptographic_algorithm,
+            Some(CryptographicAlgorithm::Ed25519)
+        );
+        assert_eq!(
+            attrs.key_format_type,
+            Some(KeyFormatType::TransparentECPrivateKey)
+        );
+        assert_eq!(
+            attrs
+                .cryptographic_domain_parameters
+                .as_ref()
+                .and_then(|params| params.recommended_curve),
+            Some(RecommendedCurve::CURVEED25519)
+        );
     }
 }
