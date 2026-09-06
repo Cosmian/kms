@@ -46,10 +46,9 @@ pub(crate) const COSMIAN_PKCS11_SSH_KEY_TAG: &str = "ssh-auth";
 fn require_id(query: SearchOptions, caller: &str) -> ModuleResult<String> {
     match query {
         SearchOptions::Id(id) => Ok(id),
-        SearchOptions::All => Err(ModuleError::Backend(Box::new(pkcs11_error!(
-            "{}: find must be made using an ID",
-            caller
-        )))),
+        SearchOptions::All | SearchOptions::ProfileId(_) => Err(ModuleError::Backend(Box::new(
+            pkcs11_error!("{}: find must be made using an ID", caller),
+        ))),
     }
 }
 

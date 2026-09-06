@@ -605,8 +605,9 @@ never through the PKCS#11 v3.0 "interfaces" discovery mechanism
 the box, and this behavior is unaffected regardless of whether the library also happens to support
 v3.0.
 
-!!! info Additive PKCS#11 v3.0 capability detection
-    Eviden KMS can optionally detect whether the loaded PKCS#11 library also exposes the v3.0
+!!! info Additive PKCS#11 v3 capability detection
+    Eviden KMS uses the canonical v3 bindings supplied by `pkcs11-sys` to optionally detect
+    whether the loaded PKCS#11 library exposes the v3
     interfaces discovery entry point (`C_GetInterfaceList`), without changing how any function is
     resolved or called. This is a **read-only capability probe** for diagnostics and future v3.0
     feature adoption, independent of the v3.0 *mechanism* constants (`CKM_EDDSA`,

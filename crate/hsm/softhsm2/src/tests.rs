@@ -97,21 +97,17 @@ fn test_hsm_softhsm2_low_level_test() -> HResult<()> {
     Ok(())
 }
 
-/// Additive PKCS#11 v3.0 capability probe (issue #1153): regardless of the
-/// `cryptoki_version` a given `SoftHSM2` build reports via `C_GetInfo` (some
-/// distributions report `2.40`, others report a later `3.x` header value even
-/// though the shared library never actually exports `C_GetInterfaceList`),
-/// the probe must correctly report "not supported" and must never break the
-/// existing v2.40-style workflow (instantiation, `C_GetInfo`, etc. still
-/// succeed as before).
+/// Additive PKCS#11 v3 capability probe (issue #1153).
+///
+/// `SoftHSM` releases differ in the Cryptoki version they expose. The probe must preserve
+/// ordinary PKCS#11 operation and consistently report either no v3 discovery symbol or
+/// the interfaces returned by that symbol.
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_pkcs11_v3_capability_probe_is_additive() -> HResult<()> {
     let cfg = cfg()?;
     let hsm = shared::instantiate::<SofthsmCapabilityProvider>(&cfg)?;
 
-    // Existing v2.40 workflow must be entirely unaffected: `C_GetInfo` still
-    // succeeds and reports a plausible Cryptoki major version.
     let info = hsm.hsm_lib().get_info_struct()?;
     assert!(
         info.cryptoki_version.0 == 2 || info.cryptoki_version.0 == 3,
@@ -119,10 +115,17 @@ fn test_hsm_softhsm2_pkcs11_v3_capability_probe_is_additive() -> HResult<()> {
         info.cryptoki_version.0
     );
 
-    // SoftHSM2 never exports `C_GetInterfaceList`, regardless of the
-    // `cryptoki_version` it reports in `C_GetInfo`.
-    assert!(!hsm.hsm_lib().supports_pkcs11_v3_interfaces());
-    assert!(hsm.hsm_lib().list_pkcs11_v3_interfaces()?.is_none());
+    let supports_interfaces = hsm.hsm_lib().supports_pkcs11_v3_interfaces();
+    let interfaces = hsm.hsm_lib().list_pkcs11_v3_interfaces()?;
+    assert_eq!(supports_interfaces, interfaces.is_some());
+    if let Some(interfaces) = interfaces {
+        assert!(!interfaces.is_empty());
+        assert!(
+            interfaces
+                .iter()
+                .all(|interface| !interface.name.is_empty())
+        );
+    }
 
     Ok(())
 }
