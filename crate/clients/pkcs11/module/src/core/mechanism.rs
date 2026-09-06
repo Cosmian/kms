@@ -139,8 +139,11 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
             }
             // SAFETY: `parameter_ptr` was just checked non-null and the pointed-to buffer was
             // checked above to be exactly `size_of::<CK_GCM_PARAMS>()` bytes, as required by the
-            // PKCS#11 v3.0 spec for `CKM_AES_GCM`.
-            let params: CK_GCM_PARAMS = unsafe { parameter_ptr.cast::<CK_GCM_PARAMS>().read() };
+            // PKCS#11 v3.0 spec for `CKM_AES_GCM`. `read_unaligned` is used (rather than `read`)
+            // because PKCS#11 callers are C code and may pass a pointer with no alignment
+            // guarantee; `read` on an unaligned pointer is undefined behavior.
+            let params: CK_GCM_PARAMS =
+                unsafe { parameter_ptr.cast::<CK_GCM_PARAMS>().read_unaligned() };
 
             if params.ulTagBits != AES_GCM_TAG_BITS {
                 error!(
@@ -207,9 +210,14 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
                 );
                 return Err(ModuleError::MechanismInvalid(mechanism_type));
             }
-            //  TODO(kcking): check alignment as well?
-            let params: CK_RSA_PKCS_PSS_PARAMS =
-                unsafe { parameter_ptr.cast::<CK_RSA_PKCS_PSS_PARAMS>().read() };
+            //  Bind to locals to prevent unaligned reads https://github.com/rust-lang/rust/issues/82523
+            // `read_unaligned` is used instead of `read` because PKCS#11 callers are C code and
+            // may pass a pointer with no alignment guarantee.
+            let params: CK_RSA_PKCS_PSS_PARAMS = unsafe {
+                parameter_ptr
+                    .cast::<CK_RSA_PKCS_PSS_PARAMS>()
+                    .read_unaligned()
+            };
             let mgf = params.mgf;
             let hash_alg = params.hashAlg;
             let salt_len = params.sLen;
