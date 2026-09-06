@@ -833,7 +833,10 @@ pub(crate) async fn kms_decrypt_async(
     let (ciphertext, authenticated_encryption_tag) =
         if matches!(decrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
             if data.len() < AES_GCM_TAG_LENGTH {
-                return Err(Pkcs11Error::ServerError(format!(
+                // Too-short ciphertext is a caller/input error, not a server-side failure —
+                // use the dedicated `Pkcs11` variant rather than `ServerError` so it is not
+                // misclassified as a KMS backend fault.
+                return Err(Pkcs11Error::Pkcs11(format!(
                     "AES-GCM ciphertext too short: {} bytes, expected at least {} (tag length)",
                     data.len(),
                     AES_GCM_TAG_LENGTH
