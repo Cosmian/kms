@@ -79,7 +79,7 @@ impl Object {
             Self::Certificate(cert) => cert.remote_id().to_owned(),
             Self::PrivateKey(private_key) => private_key.remote_id().to_owned(),
             Self::SymmetricKey(symmetric_key) => symmetric_key.remote_id().to_owned(),
-            Self::Profile(id) => id.to_string(),
+            Self::Profile(id) => format!("pkcs11-profile:{id}"),
             Self::PublicKey(public_key) => public_key.remote_id().to_owned(),
             Self::DataObject(data) => data.remote_id().to_owned(),
         }
@@ -99,6 +99,17 @@ impl Object {
     }
 
     pub fn attribute(&self, type_: AttributeType) -> ModuleResult<Option<Attribute>> {
+        if type_ == AttributeType::UniqueId {
+            let unique_id = match self {
+                Self::Certificate(cert) => format!("pkcs11-certificate:{}", cert.remote_id()),
+                Self::PrivateKey(key) => format!("pkcs11-private-key:{}", key.remote_id()),
+                Self::Profile(id) => format!("pkcs11-profile:{id}"),
+                Self::PublicKey(key) => format!("pkcs11-public-key:{}", key.remote_id()),
+                Self::DataObject(data) => format!("pkcs11-data:{}", data.remote_id()),
+                Self::SymmetricKey(key) => format!("pkcs11-secret-key:{}", key.remote_id()),
+            };
+            return Ok(Some(Attribute::UniqueId(unique_id.into_bytes())));
+        }
         let attribute = match self {
             Self::Certificate(cert) => certificate_attribute(cert.as_ref(), type_)?,
             Self::SymmetricKey(sym_key) => sym_key_attribute(sym_key.as_ref(), type_)?,
@@ -263,7 +274,10 @@ fn profile_attribute(id: CK_PROFILE_ID, type_: AttributeType) -> Option<Attribut
         AttributeType::Class => Some(Attribute::Class(CKO_PROFILE)),
         AttributeType::ProfileId => Some(Attribute::ProfileId(id)),
         AttributeType::Token => Some(Attribute::Token(true)),
-        AttributeType::Private => Some(Attribute::Private(true)),
+        // Profile objects self-declare the module's conformance profiles (OASIS PKCS#11
+        // Profiles v3.1 §Object Model). They must be discoverable by `C_FindObjects` even
+        // on a session that has not called `C_Login`, so `CKA_PRIVATE` MUST be `CK_FALSE`.
+        AttributeType::Private => Some(Attribute::Private(false)),
         _ => {
             error!("profile: type_ unimplemented: {type_:?}");
             None

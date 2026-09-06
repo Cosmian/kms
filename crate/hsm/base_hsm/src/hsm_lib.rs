@@ -13,7 +13,15 @@ use pkcs11_sys::{
     CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_OK,
 };
 
-use crate::{HResult, hsm_call};
+use crate::{
+    HResult, hsm_call,
+    pkcs11_v3::{self, CkInterface, InterfaceDescriptor},
+};
+
+/// Defense-in-depth cap on the PKCS#11 v3.0 interface count reported by
+/// `C_GetInterfaceList` before allocating a buffer for it (see threat-model finding
+/// T-101). No conformant library is expected to exceed this by orders of magnitude.
+const MAX_PLAUSIBLE_PKCS11_V3_INTERFACES: pkcs11_sys::CK_ULONG = 4096;
 
 /// A struct representing a Hardware Security Module (HSM) library interface using PKCS#11.
 ///
@@ -100,6 +108,14 @@ pub struct HsmLib {
 
     pub(crate) C_SignInit: CK_C_SignInit,
     pub(crate) C_Sign: CK_C_Sign,
+
+    /// PKCS#11 v3.0 interfaces discovery entry point (OASIS Cryptoki v3.0 §3.2).
+    ///
+    /// This is `None` for any v2.40-only library, which is the
+    /// normal, fully-supported case: resolution is best-effort and never fails
+    /// `instantiate`. See `supports_pkcs11_v3_interfaces` and
+    /// `list_pkcs11_v3_interfaces` (additive capability probe, issue #1153).
+    pub(crate) C_GetInterfaceList: pkcs11_v3::CkCGetInterfaceList,
 }
 
 impl HsmLib {
@@ -142,6 +158,9 @@ impl HsmLib {
                 C_UnwrapKey: Some(*library.get(b"C_UnwrapKey")?),
                 C_SignInit: Some(*library.get(b"C_SignInit")?),
                 C_Sign: Some(*library.get(b"C_Sign")?),
+                // PKCS#11 v3.0 capability probe: resolved best-effort. Missing on any
+                // v2.40-only library (the common case), which must never fail loading.
+                C_GetInterfaceList: library.get(b"C_GetInterfaceList").ok().map(|s| *s),
                 // we need to keep the library alive
                 _library: library,
             };
@@ -234,6 +253,87 @@ impl HsmLib {
         let mut info = CK_INFO::default();
         hsm_call!(self, "Failed getting HSM info", C_GetInfo, &raw mut info);
         Ok(info.into())
+    }
+
+    /// Returns `true` if the loaded PKCS#11 library exposes the v3.0 interfaces
+    /// discovery entry point (`C_GetInterfaceList`).
+    ///
+    /// This is a pure capability probe: it does not change how any Cryptoki function
+    /// is resolved or invoked. v2.40-only libraries (e.g. `SoftHSM2`) simply do not
+    /// export this symbol and are reported as `false`, which is expected and fully
+    /// supported. See issue #1153 ("PKCS#11 v3.0: scope decision & FFI foundation").
+    #[must_use]
+    pub fn supports_pkcs11_v3_interfaces(&self) -> bool {
+        self.C_GetInterfaceList.is_some()
+    }
+
+    /// Lists the PKCS#11 v3.0 interfaces exposed by the loaded library, if any.
+    ///
+    /// Returns `Ok(None)` when the library does not export `C_GetInterfaceList`
+    /// (i.e. a v2.40-only library — the common case today). Returns `Ok(Some(list))`,
+    /// possibly empty, when the library does support v3.0 interface discovery.
+    ///
+    /// This is an additive, read-only capability probe: it never affects the
+    /// per-symbol function resolution used everywhere else in this crate, so
+    /// existing v2.x HSM integrations are entirely unaffected (see issue #1153).
+    pub fn list_pkcs11_v3_interfaces(&self) -> HResult<Option<Vec<InterfaceDescriptor>>> {
+        let Some(get_interface_list) = self.C_GetInterfaceList else {
+            return Ok(None);
+        };
+
+        // First call: pass a NULL buffer to obtain the interface count, mirroring the
+        // existing two-call convention already used for `C_GetMechanismList` elsewhere
+        // in this crate.
+        let mut count: pkcs11_sys::CK_ULONG = 0;
+        #[expect(unsafe_code)]
+        // SAFETY: `get_interface_list` was resolved from the loaded library and matches
+        // the documented `C_GetInterfaceList` signature. Passing a null buffer pointer
+        // with a valid `&mut count` out-parameter is the standard PKCS#11 two-call
+        // idiom for querying the required buffer size.
+        let rv = unsafe { get_interface_list(ptr::null_mut(), &raw mut count) };
+        if rv != CKR_OK {
+            return Err(crate::HError::Default(format!(
+                "Failed to query the PKCS#11 v3.0 interface count. Return code: {rv}"
+            )));
+        }
+        if count == 0 {
+            return Ok(Some(Vec::new()));
+        }
+        // Defense-in-depth against a misbehaving/malicious native library reporting an
+        // absurd interface count: no conformant PKCS#11 v3.0 library exposes more than a
+        // handful of interfaces (e.g. "PKCS 11", vendor extensions), so cap well above any
+        // plausible legitimate value before allocating (threat-model finding T-101).
+        if count > MAX_PLAUSIBLE_PKCS11_V3_INTERFACES {
+            return Err(crate::HError::Default(format!(
+                "PKCS#11 v3.0 interface count {count} exceeds the plausible maximum of \
+                 {MAX_PLAUSIBLE_PKCS11_V3_INTERFACES}; refusing to allocate (possible \
+                 misbehaving library)"
+            )));
+        }
+        let count_usize = usize::try_from(count).map_err(|e| {
+            crate::HError::Default(format!(
+                "PKCS#11 v3.0 interface count {count} does not fit in `usize`: {e}"
+            ))
+        })?;
+
+        let mut buffer = vec![CkInterface::default(); count_usize];
+        #[expect(unsafe_code)]
+        // SAFETY: `buffer` was allocated using the exact count returned by the first
+        // call, as required by the PKCS#11 v3.0 specification for `C_GetInterfaceList`.
+        let rv = unsafe { get_interface_list(buffer.as_mut_ptr(), &raw mut count) };
+        if rv != CKR_OK {
+            return Err(crate::HError::Default(format!(
+                "Failed to retrieve the PKCS#11 v3.0 interface list. Return code: {rv}"
+            )));
+        }
+        // Defensive clamp: some libraries may report a smaller final count than the
+        // buffer they were given (never larger, per spec — but never trust native
+        // input for a slice length).
+        let final_len = usize::try_from(count)
+            .unwrap_or(count_usize)
+            .min(buffer.len());
+        buffer.truncate(final_len);
+        Ok(Some(pkcs11_v3::parse_interfaces(&buffer)))
     }
 }
 

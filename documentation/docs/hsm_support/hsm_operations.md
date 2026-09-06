@@ -487,3 +487,26 @@ To decrypt a message using AES GCM with the symmetric key `hsm::4::my_aes_key`, 
   --output-file /tmp/secret.recovered.txt /tmp/secret.enc
 The decrypted file is available at "/tmp/secret.recovered.txt"
 ```
+
+## PKCS#11 protocol version compatibility
+
+Eviden KMS talks to HSMs over Cryptoki (PKCS#11) **v2.40** on the consumer side (`crate/hsm/base_hsm`
+and its vendor loaders: SoftHSM2, Utimaco, Proteccio, Crypt2Pay, SmartCard HSM). Every Cryptoki
+function (`C_Initialize`, `C_GetInfo`, `C_Encrypt`, ...) is resolved by its stable C symbol name,
+never through the PKCS#11 v3.0 "interfaces" discovery mechanism
+(`C_GetInterfaceList`/`C_GetInterface`). This means any v2.40-compliant HSM library works out of
+the box, and this behavior is unaffected regardless of whether the library also happens to support
+v3.0.
+
+!!! info Additive PKCS#11 v3 capability detection
+    Eviden KMS uses the canonical v3 bindings supplied by `pkcs11-sys` to optionally detect
+    whether the loaded PKCS#11 library exposes the v3
+    interfaces discovery entry point (`C_GetInterfaceList`), without changing how any function is
+    resolved or called. This is a **read-only capability probe** for diagnostics and future v3.0
+    feature adoption — it does not yet enable any v3.0-only mechanism (EdDSA, X25519, HKDF,
+    message-based AEAD, etc.), which is tracked as separate follow-up work. A v2.40-only library
+    simply does not export `C_GetInterfaceList`, so the probe reports "not
+    supported" and nothing else changes; a v3-capable library additionally reports the list of
+    interfaces it exposes (e.g. `"PKCS 11"`). See
+    [ADR-2026-09-03](../adr/2026-09-03-pkcs11-v3-scope-decision-ffi-foundation.md) for the full
+    scope decision and rationale.
