@@ -44,6 +44,7 @@ use crate::{
     },
     error::KmsError,
     kms_ensure,
+    middlewares::UserId,
     result::KResult,
     routes::google_cse::{
         build_google_cse_url,
@@ -221,7 +222,12 @@ pub async fn display_rsa_public_key(
         key_compression_type: None,
         key_wrapping_specification: None,
     };
-    let resp = kms.get(get_request, &kms.params.default_username).await?;
+    let resp = kms
+        .get(
+            get_request,
+            &UserId::from(kms.params.default_username.as_str()),
+        )
+        .await?;
     if resp.object_type == ObjectType::PublicKey {
         match &resp.object.key_block()?.key_value {
             Some(KeyValue::Structure { key_material, .. }) => match key_material {
@@ -723,7 +729,7 @@ pub async fn privileged_wrap(
         &request.authentication,
         cse_config,
         &google_cse_kacls_url,
-        &kms.params.default_username,
+        &UserId::from(kms.params.default_username.as_str()),
         None,
     )
     .await?;
@@ -774,7 +780,7 @@ pub async fn privileged_unwrap(
             &request.authentication,
             cse_config,
             &google_cse_kacls_url,
-            &kms.params.default_username,
+            &UserId::from(kms.params.default_username.as_str()),
             Some(request.resource_name.clone()),
         )
         .await?
@@ -842,7 +848,7 @@ pub async fn privileged_private_key_decrypt(
         &request.authentication,
         cse_config,
         &google_cse_kacls_url,
-        &kms.params.default_username,
+        &UserId::from(kms.params.default_username.as_str()),
         None,
     )
     .await?;
@@ -1044,7 +1050,12 @@ pub async fn rewrap(
         key_wrapping_specification: None,
     };
 
-    let response = kms.get(get_request, &kms.params.default_username).await?;
+    let response = kms
+        .get(
+            get_request,
+            &UserId::from(kms.params.default_username.as_str()),
+        )
+        .await?;
 
     let private_key_bytes = match response.object_type {
         ObjectType::PrivateKey => match &response.object.key_block()?.key_value {
@@ -1178,7 +1189,7 @@ async fn cse_wrapped_key_decrypt(
         authenticated_encryption_additional_data: resource_name,
         authenticated_encryption_tag: Some(authenticated_tag.to_vec()),
     };
-    let key = decrypt(kms, decryption_request, &user).await?;
+    let key = decrypt(kms, decryption_request, &UserId::from(user.as_str())).await?;
 
     let data = key.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_owned())
@@ -1216,7 +1227,7 @@ async fn cse_key_encrypt(
         final_indicator: None,
         authenticated_encryption_additional_data: resource_name,
     };
-    let dek = encrypt(kms, encryption_request, &user).await?;
+    let dek = encrypt(kms, encryption_request, &UserId::from(user.as_str())).await?;
 
     // re-extract the bytes from the key
     let data = dek.data.ok_or_else(|| {

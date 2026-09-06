@@ -15,9 +15,10 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
-    result::{KResult, KResultHelper},
+    middlewares::UserId,
+    result::KResult,
 };
 
 /// KMIP 2.1 `ModifyAttribute` operation.
@@ -36,16 +37,11 @@ use crate::{
 pub(crate) async fn modify_attribute(
     kms: &KMS,
     request: ModifyAttribute,
-    user: &str,
+    user: &UserId,
 ) -> KResult<ModifyAttributeResponse> {
     debug!("{request}");
 
-    let uid_or_tags = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?
-        .as_str()
-        .context("ModifyAttribute: the unique identifier must be a string")?;
+    let object_handle = from_request(request.unique_identifier.as_ref(), "ModifyAttribute")?;
 
     // Read-only guard — must be checked before the DB round-trip.
     //
@@ -99,7 +95,7 @@ pub(crate) async fn modify_attribute(
     }
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
-        uid_or_tags,
+        object_handle,
         KmipOperation::ModifyAttribute,
         kms,
         user,
@@ -250,7 +246,9 @@ pub(crate) async fn modify_attribute(
             Attribute::State(_state) => {
                 return Err(KmsError::Kmip21Error(
                     ErrorReason::Attribute_Read_Only,
-                    "ModifyAttribute: State is read-only".to_owned(),
+                    "ModifyAttribute: State is a server-managed attribute and cannot be \
+                     modified directly. Use Revoke and Destroy to change the object state."
+                        .to_owned(),
                 ));
             }
         }

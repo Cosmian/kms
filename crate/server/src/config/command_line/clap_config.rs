@@ -9,12 +9,13 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::taggin
 use serde::{Deserialize, Serialize};
 
 use super::{
-    GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig,
-    MainDBConfig, WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
-    ui_config::UiConfig, vault_config::VaultConfig,
+    AuthVerifierConfig, CrlConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig,
+    JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, OcspConfig, RolesConfig, WorkspaceConfig,
+    logging::LoggingConfig, secret_backends::SecretBackendConfig, ui_config::UiConfig,
+    vault_config::VaultConfig,
 };
 use crate::{
-    config::{AuthVerifierConfig, AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
+    config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
     routes::aws_xks::AwsXksConfig,
@@ -68,6 +69,7 @@ impl Default for ClapConfig {
             key_encryption_key: None,
             default_unwrap_type: None,
             non_revocable_key_id: None,
+            roles: RolesConfig::default(),
             privileged_users: None,
             aws_xks_config: AwsXksConfig::default(),
             kmip_policy: KmipPolicyConfig::default(),
@@ -77,6 +79,8 @@ impl Default for ClapConfig {
             jwks_endpoint: JwksEndpointConfig::default(),
             secret_backends: SecretBackendConfig::default(),
             vault: VaultConfig::default(),
+            crl: CrlConfig::default(),
+            ocsp: OcspConfig::default(),
         }
     }
 }
@@ -84,6 +88,7 @@ impl Default for ClapConfig {
 #[derive(Parser, Serialize, Deserialize)]
 #[clap(version, about, long_about = None)]
 #[serde(default)]
+#[allow(clippy::struct_excessive_bools)] // CLI config structs legitimately have many boolean flags
 pub struct ClapConfig {
     /// Explicit configuration file path provided via -c / --config.
     /// When set, this file takes precedence over the `COSMIAN_KMS_CONF` environment variable
@@ -127,7 +132,7 @@ pub struct ClapConfig {
     /// Legacy single-HSM configuration (flat CLI flags / top-level TOML fields).
     /// Keys use the old prefix convention: `hsm::<slot_id>::<key_id>`.
     /// Kept for backward compatibility; prefer `[[hsm_instances]]` for new deployments.
-    #[command(flatten)]
+    #[clap(flatten)]
     #[serde(flatten)]
     pub hsm: HsmConfig,
 
@@ -162,52 +167,71 @@ pub struct ClapConfig {
     #[clap(verbatim_doc_comment, long, env = "KMS_PUBLIC_URL")]
     pub kms_public_url: Option<String>,
 
-    #[command(flatten)]
+    #[clap(flatten)]
     pub db: MainDBConfig,
 
-    #[command(flatten)]
+    #[clap(flatten)]
     pub socket_server: SocketServerConfig,
 
-    #[command(flatten)]
+    #[clap(flatten)]
     pub tls: TlsConfig,
 
-    #[command(flatten)]
+    #[clap(flatten)]
     pub http: HttpConfig,
 
-    #[command(flatten)]
+    #[clap(flatten)]
     pub proxy: ProxyConfig,
 
-    #[command(flatten)]
+    #[clap(flatten)]
     pub idp_auth: IdpAuthConfig,
 
-    #[clap(flatten)]
+    /// Auth Verifier server configuration (`[auth_verifier]` TOML section).
+    ///
+    /// When configured, the KMS validates bearer tokens issued by the Cosmian
+    /// Authentication Verifier server. The Web UI login form is enabled when both
+    /// `auth_verifier_url` and `auth_verifier_realm` are set.
+    ///
+    /// See `AuthVerifierConfig` for available fields.
+    #[clap(skip)]
+    #[serde(default, rename = "auth_verifier")]
     pub auth_verifier: AuthVerifierConfig,
 
-    #[command(flatten)]
+    #[clap(flatten)]
     pub ui_config: UiConfig,
 
-    #[command(flatten)]
+    #[clap(flatten)]
     pub google_cse_config: GoogleCseConfig,
 
-    #[command(flatten)]
+    #[clap(flatten)]
     pub azure_ekm_config: AzureEkmConfig,
 
-    #[command(flatten)]
+    #[clap(flatten)]
     pub workspace: WorkspaceConfig,
 
-    #[command(flatten)]
+    #[clap(flatten)]
     pub logging: LoggingConfig,
 
     /// The non-revocable key ID used for demo purposes
     #[clap(long, hide = true)]
     pub non_revocable_key_id: Option<Vec<String>>,
 
-    /// List of users who have the right to create and import Objects
-    /// and grant access rights for Create Kmip Operation.
-    #[clap(long, verbatim_doc_comment)]
+    /// **Deprecated** — use `--crypto-officer-users` (under `[roles]`) instead.
+    ///
+    /// List of users who have the right to create and import objects and grant
+    /// the `Create` access right to other users. Kept for backward compatibility;
+    /// if set and `[roles] crypto_officer_users` is not configured, these users
+    /// are promoted to the `CryptoOfficer` role automatically on startup.
+    #[clap(long, hide = true, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
 
-    #[command(flatten)]
+    /// RBAC role assignments (`CryptoOfficer`).
+    /// Users not listed in any role default to `Operator` (minimum privilege).
+    /// In TOML these fields live under the `[roles]` section.
+    #[clap(flatten)]
+    #[serde(default, rename = "roles")]
+    pub roles: RolesConfig,
+
+    #[clap(flatten)]
     pub aws_xks_config: AwsXksConfig,
 
     /// KMIP algorithm policy.
@@ -220,7 +244,7 @@ pub struct ClapConfig {
     ///
     /// The `DEFAULT` policy enforces built-in conservative allowlists (aligned with ANSSI/NIST/FIPS
     /// recommendations).
-    #[command(flatten)]
+    #[clap(flatten)]
     #[serde(rename = "kmip")]
     pub kmip_policy: KmipPolicyConfig,
 
@@ -241,7 +265,7 @@ pub struct ClapConfig {
     ///
     /// These are provided via CLI flags or environment variables only —
     /// never stored in the TOML config file.
-    #[command(flatten)]
+    #[clap(flatten)]
     #[serde(skip)]
     pub secret_backends: SecretBackendConfig,
 
@@ -252,6 +276,16 @@ pub struct ClapConfig {
     #[command(flatten)]
     #[serde(default)]
     pub vault: VaultConfig,
+
+    /// CRL (Certificate Revocation List) lifecycle settings.
+    #[command(flatten)]
+    #[serde(default)]
+    pub crl: CrlConfig,
+
+    /// OCSP (Online Certificate Status Protocol) responder settings.
+    #[command(flatten)]
+    #[serde(default)]
+    pub ocsp: OcspConfig,
 }
 
 impl ClapConfig {
@@ -465,7 +499,7 @@ impl ClapConfig {
         //  3. Resolve `secret://` URIs in string leaves via the selected backend.
         //  4. Deserialize into `ClapConfig`, collecting any unknown fields as errors.
         //     `serde_ignored` wraps the deserializer and calls the callback for every
-        //     field the target type does not recognise — including fields that bubble up
+        //     field the target type does not recognize — including fields that bubble up
         //     via `#[serde(flatten)]` (e.g. `HsmConfig`), where `deny_unknown_fields`
         //     would conflict with the flatten and cannot be used directly.
         let load_file = |p: &PathBuf| -> KResult<Self> {
@@ -481,7 +515,6 @@ impl ClapConfig {
                     p.display()
                 ))
             })?;
-
             super::secret_backends::resolve_config(
                 &mut config_value,
                 &preliminary.secret_backends,
@@ -709,7 +742,8 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("key wrapping key", &self.key_encryption_key);
         let x = x.field("default unwrap type", &self.default_unwrap_type);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
-        let x = x.field("privileged_users", &self.privileged_users);
+        let x = x.field("privileged_users (deprecated)", &self.privileged_users);
+        let x = x.field("roles", &self.roles);
 
         let x = x.field("aws_xks_config", &self.aws_xks_config);
         let x = if self.aws_xks_config.aws_xks_enable {
@@ -733,11 +767,6 @@ impl fmt::Debug for ClapConfig {
             &self.auto_rotation_check_interval_secs,
         );
         let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
-        let x = if self.auth_verifier.is_enabled() {
-            x.field("auth_verifier_url", &self.auth_verifier.auth_verifier_url)
-        } else {
-            x
-        };
 
         x.finish()
     }

@@ -3,11 +3,12 @@
   "build": {
     "variant": "non-fips",
     "derivation": "kms-cli-non-fips-dynamic-openssl",
-    "output_path": "/nix/store/x9gm4f2g9i79hwlrm494al9bdbxn57yj-cosmian-kms-cli-dynamic-5.26.0",
-    "timestamp": "2026-08-08T10:10:45Z",
+    "output_path": "/nix/store/69fkrby04l050q0b2l832lh2frl1sb3j-cosmian-kms-cli-dynamic-5.27.0",
+    "sbomnix_target": "/nix/store/69fkrby04l050q0b2l832lh2frl1sb3j-cosmian-kms-cli-dynamic-5.27.0",
+    "timestamp": "2026-09-06T11:22:21Z",
     "generator": {
       "tool": "sbomnix",
-      "version": "v1.7.4"
+      "version": "v1.8.0"
     }
   },
   "component_count": 1,
@@ -15,6 +16,7 @@
   "notes": [
     "OpenSSL is dynamically linked in the binary",
     "All dependencies are from Nix store with pinned versions",
-    "SBOM reflects the exact Nix build output (derivation closure)"
+    "SBOM reflects the exact Nix build output (derivation closure)",
+    "sbomnix used store-path target with --exclude-meta; heuristic CPE matching retained; full CPE coverage via enrich_cpe.py"
   ]
 }

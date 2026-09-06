@@ -7,6 +7,43 @@ supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
 For autonomous agent work, full instructions are in `AGENTS.md`.
 For the skills index, see `.github/skills/README.md`. Skills live in `.github/skills/`.
 
+Per-file coding rules are in `.github/instructions/` and are applied automatically by
+agents when editing matching file types (`applyTo` in each file's YAML frontmatter):
+
+| Instruction file | Applies to |
+|-----------------|------------|
+| `rust.instructions.md` | All `*.rs` files |
+| `rust-server.instructions.md` | `crate/server/**/*.rs` |
+| `rust-crypto.instructions.md` | `crate/crypto/**/*.rs` |
+| `rust-kmip.instructions.md` | `crate/kmip/**/*.rs` |
+| `rust-database.instructions.md` | `crate/server_database/**/*.rs` |
+| `database-tables.instructions.md` | `crate/server_database/src/stores/sql/*.sql` |
+| `ui-routes.instructions.md` | `ui/src/App.tsx`, `ui/src/menuItems.tsx`, `ui/src/actions/**/*.tsx`, `ui/src/pages/**/*.tsx` |
+| `routes.instructions.md` | `crate/server/src/routes/**/*.rs`, `crate/server/documentation/openapi.yaml` |
+| `kmip-operations.instructions.md` | `crate/kmip/src/**/*.rs`, `crate/server/src/core/operations/**/*.rs` |
+| `cli-ui-sync.instructions.md` | `crate/clients/clap/**/*.rs`, `crate/clients/ckms/**/*.rs`, `ui/src/actions/**/*.ts`, `ui/src/actions/**/*.tsx` |
+| `wasm.instructions.md` | `crate/clients/wasm/**/*.rs` |
+| `server-config.instructions.md` | `crate/server/src/config/**/*.rs` |
+| `middlewares.instructions.md` | `crate/server/src/middlewares/**/*.rs`, `crate/server/src/config/wizard/auth_wizard.rs` |
+| `test-vectors.instructions.md` | `test_data/vectors/**`, `crate/test_kms_server/**/*.rs` |
+| `lockfile-hashes.instructions.md` | `Cargo.lock`, `ui/pnpm-lock.yaml` |
+| `cloud-providers.instructions.md` | `crate/server/src/routes/{aws_xks,azure_ekm,google_cse,ms_dke}/**` |
+| `hsm.instructions.md` | `crate/hsm/**/*.rs` |
+| `openssl-build.instructions.md` | `crate/crypto/build.rs` |
+| `rust-cli.instructions.md` | `crate/clients/**/*.rs` |
+| `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` |
+| `i18n.instructions.md` | `ui/src/i18n/**/*.{ts,json}` |
+| `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` |
+| `bash.instructions.md` | `**/*.sh` |
+| `mise.instructions.md` | `.mise/**, scripts/**, .github/reusable_scripts/**` |
+| `github-actions.instructions.md` | `.github/workflows/**, .github/actions/**` |
+| `toml.instructions.md` | `**/*.toml` |
+| `python.instructions.md` | `**/*.py` |
+| `markdown.instructions.md` | `**/*.md` |
+| `docs.instructions.md` | `documentation/**/*.md`, `README.md` |
+| `nix.instructions.md` | `nix/**/*.nix` |
+| `docker.instructions.md` | `nix/docker.nix, nix/k8s-images.nix, .mise/scripts/docker-compose.yml, charts/cosmian-kms/**/*` |
+
 ---
 
 ## Key directories
@@ -15,7 +52,7 @@ For the skills index, see `.github/skills/README.md`. Skills live in `.github/sk
 |------|----------|
 | `crate/server/` | Server binary and library (main codebase) |
 | `crate/kmip/` | KMIP 2.1 protocol types |
-| `crate/crypto/` | Crypto primitives; `build.rs` builds OpenSSL 3.6.0 |
+| `crate/crypto/` | Crypto primitives; `build.rs` builds OpenSSL 3.6.2 |
 | `crate/clients/clap/` | CLI actions (clap commands) |
 | `crate/clients/ckms/` | CLI binary entry point |
 | `crate/server_database/` | DB backends (SQLite, PostgreSQL, Redis-findex) |
@@ -37,7 +74,7 @@ cargo test-fips                      # full FIPS workspace test suite
 cargo test-non-fips                  # full non-FIPS workspace test suite
 ```
 
-No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds OpenSSL 3.6.0.
+No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds OpenSSL 3.6.2.
 
 ---
 
@@ -58,6 +95,8 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 | Command | When to use |
 |---------|-------------|
 | `/kms-sync-rules` | After every code change — auto-detects changed files |
+| `/rust-review-all` | **Full Rust quality gate** — all review skills + reports in `./review/` |
+| `/rust-panic-audit` | Scan for panics, `.unwrap()`, `process::exit`, brutal exits |
 | `/meta-security` | **Comprehensive security audit** — orchestrates all 4 security skills |
 | `/security-review` | Before any PR |
 | `/cryptography-review` | When touching `crate/crypto/` or algorithm selection |
@@ -65,6 +104,8 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 | `/kmip-compliance` | When adding/modifying a KMIP operation |
 | `/rust-patterns` | Rust design patterns for this codebase |
 | `/rust-simplify` | Find simplification opportunities in Rust code |
+| `/rust-error-propagation` | Audit `Result` propagation chains |
 | `/react-ant-patterns` | UI coding conventions |
+| `/ckms-subcommand-test` | **After adding a `ckms` subcommand or flag** — write + run integration tests |
 | `/kms-changelog` | Writing the branch CHANGELOG entry |
 | `/threat-model` | STRIDE-A threat model |

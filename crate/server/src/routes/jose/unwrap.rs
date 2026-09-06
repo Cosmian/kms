@@ -28,7 +28,7 @@ use super::{
     CryptoApiError, CryptoResult, JoseAlgorithm, JoseEncAlgorithm, KeyUnwrapRequest,
     KeyUnwrapResponse, b64_decode, cek_size_bytes, jose_oaep_hashes,
 };
-use crate::core::{KMS, retrieve_object_utils::retrieve_object_for_operation};
+use crate::core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation};
 
 /// `POST /v1/crypto/keys/unwrap` — import a wrapped symmetric key (CEK) without
 /// ever exposing it to the caller.
@@ -48,7 +48,7 @@ pub(crate) async fn unwrap_key(
     let user = kms.get_user(&req);
     let body = body.into_inner();
 
-    trace!(user = user, "POST /v1/crypto/keys/unwrap");
+    trace!(user = user.as_str(), "POST /v1/crypto/keys/unwrap");
 
     // Parse the protected header
     let header_bytes = b64_decode("protected", &body.protected)?;
@@ -105,7 +105,7 @@ pub(crate) async fn unwrap_key(
 
     // Resolve the private key
     let owm = Box::pin(retrieve_object_for_operation(
-        &kid,
+        ObjectHandle::from(&kid),
         KmipOperation::Decrypt,
         kms.as_ref(),
         &user,
@@ -125,7 +125,7 @@ pub(crate) async fn unwrap_key(
                     )
                 })?;
             Box::pin(retrieve_object_for_operation(
-                &priv_key_uid.to_string(),
+                ObjectHandle::from(&priv_key_uid.to_string()),
                 KmipOperation::Decrypt,
                 kms.as_ref(),
                 &user,

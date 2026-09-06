@@ -19,13 +19,18 @@ use crate::{
     core::{KMS, operations::key_ops::ObjectLifecycleExt},
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
 /// Certify a certificate.
 /// This operation is used to issue a certificate based on a public key, a CSR or a key pair.
 /// The certificate can be self-signed or signed by another certificate.
-pub(crate) async fn certify(kms: &KMS, request: Certify, user: &str) -> KResult<CertifyResponse> {
+pub(crate) async fn certify(
+    kms: &KMS,
+    request: Certify,
+    user: &UserId,
+) -> KResult<CertifyResponse> {
     trace!("{}", serde_json::to_string(&request)?);
     if request.protection_storage_masks.is_some() {
         kms_bail!(KmsError::UnsupportedPlaceholder)
@@ -39,8 +44,13 @@ pub(crate) async fn certify(kms: &KMS, request: Certify, user: &str) -> KResult<
     trace!("Subject name: {:?}", subject.subject_name());
     let issuer = Box::pin(get_issuer(&subject, kms, &request, user)).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());
-    let (certificate, tags, attributes) =
-        build_and_sign_certificate(kms.vendor_id(), &issuer, &subject, request)?;
+    let (certificate, tags, attributes) = build_and_sign_certificate(
+        kms.vendor_id(),
+        &issuer,
+        &subject,
+        request,
+        kms.params.kms_public_url.as_deref(),
+    )?;
 
     let (operations, unique_identifier) = match subject {
         Subject::X509Req(unique_identifier, _) | Subject::Certificate(unique_identifier, _, _) => {

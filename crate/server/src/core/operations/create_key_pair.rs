@@ -31,8 +31,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 use cosmian_logger::warn;
 use cosmian_logger::{debug, info, trace};
 use uuid::Uuid;
+use crate::middlewares::UserId;
 use crate::{
-    core::{KMS, uid_utils::has_prefix, wrapping::wrap_and_cache},
+    core::{KMS, uid_utils::ObjectHandle, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -42,7 +43,7 @@ use super::key_ops::ObjectLifecycleExt;
 pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
-    owner: &str,
+    owner: &UserId,
 ) -> KResult<CreateKeyPairResponse> {
     debug!("Create key pair: {request}");
 
@@ -73,7 +74,7 @@ pub(crate) async fn create_key_pair(
         .or(request.common_attributes.as_ref())
         .and_then(|attrs| attrs.rotate_name.clone());
     if let Some(ref rotate_name) = sk_rotate_name {
-        if has_prefix(&sk_uid).is_none() && rotate_name.as_str() != sk_uid {
+        if !ObjectHandle::from(&sk_uid).is_hsm() && rotate_name.as_str() != sk_uid {
             return Err(KmsError::InvalidRequest(format!(
                 "CreateKeyPair: rotate_name ('{rotate_name}') must equal the private key's UID \
                  ('{sk_uid}') — set the private key ID to the keyset name at creation time"
@@ -119,7 +120,7 @@ pub(crate) async fn create_key_pair(
         object_attributes.always_sensitive = private_key_attributes.always_sensitive;
     }
     // Initialise keyset metadata for gen-0 on SQL key pairs only.
-    if sk_rotate_name.is_some() && has_prefix(&sk_uid).is_none() {
+    if sk_rotate_name.is_some() && !ObjectHandle::from(&sk_uid).is_hsm() {
         private_key_attributes.rotate_generation = Some(0);
         private_key_attributes.rotate_latest = Some(true);
     }
@@ -168,12 +169,14 @@ pub(crate) async fn create_key_pair(
     let operations = vec![
         AtomicOperation::Create((
             sk_uid.clone(),
+            owner.to_owned(),
             private_key.clone(),
             private_key_attributes,
             private_key_tags,
         )),
         AtomicOperation::Create((
             pk_uid.clone(),
+            owner.to_owned(),
             public_key.clone(),
             public_key_attributes,
             public_key_tags,
@@ -190,7 +193,7 @@ pub(crate) async fn create_key_pair(
 
     info!(
         uid = sk_uid,
-        user = owner,
+        user = owner.as_str(),
         "Created Key Pair with cryptographic algorithm {:?}",
         cryptographic_algorithm
     );

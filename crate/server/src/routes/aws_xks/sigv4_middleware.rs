@@ -39,6 +39,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::KMS,
+    middlewares::UserId,
     routes::aws_xks::error::{XksErrorName, XksErrorReply},
 };
 
@@ -272,14 +273,9 @@ fn to_http_request(
             http_request_builder.header(header_name.as_str(), header_value.as_bytes());
     }
     if !host_header_available {
-        debug!(
-            "Sigv4 Middleware - Adding missing HOST header: {}",
-            actix_req.connection_info().host()
-        );
-        http_request_builder = http_request_builder.header(
-            http::header::HOST,
-            actix_req.connection_info().host().as_bytes(),
-        );
+        let host = actix_req.connection_info().host().to_owned();
+        debug!("Sigv4 Middleware - Adding missing HOST header: {}", host);
+        http_request_builder = http_request_builder.header(http::header::HOST, host.as_bytes());
     }
     // http_request_builder =
     //     http_request_builder.header(http::header::HOST, "localhost:9998".as_bytes());
@@ -309,7 +305,7 @@ async fn get_aws_key(
                 key_format_type: Some(KeyFormatType::Raw),
                 ..Default::default()
             },
-            sigv4_access_key_user,
+            &UserId::from(sigv4_access_key_user),
         )
         .await
         .map_err(|e| {

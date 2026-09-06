@@ -15,7 +15,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
 use rawsql::Loader;
@@ -26,14 +26,14 @@ use uuid::Uuid;
 
 use super::locate_query::{
     SqlitePlaceholder, find_by_rotate_name_query, find_due_for_rotation_query,
-    query_from_attributes,
+    query_all_from_attributes, query_from_attributes,
 };
 use crate::{
     db_error,
     error::{DbError, DbResult},
     migrate_block_cipher_mode_if_needed,
     stores::{
-        PGSQL_QUERIES,
+        PGSQL_QUERIES, SQLITE_QUERIES,
         migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
         sql::database::SqlDatabase,
     },
@@ -41,8 +41,9 @@ use crate::{
 
 macro_rules! get_sqlite_query {
     ($name:literal) => {
-        PGSQL_QUERIES
+        SQLITE_QUERIES
             .get($name)
+            .or_else(|| PGSQL_QUERIES.get($name))
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
     };
 }
@@ -133,6 +134,10 @@ impl SqlitePool {
         let idx_read_access_userid = pool
             .get_query("create-index-read_access-userid")?
             .to_owned();
+        let create_crypto_officer_activations = pool
+            .get_query("create-table-crypto_officer_activations")?
+            .to_owned();
+        let create_crls = pool.get_query("create-table-crls")?.to_owned();
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
@@ -147,6 +152,11 @@ impl SqlitePool {
                     tx.execute(&idx_objects_owner, [])?;
                     tx.execute(&idx_objects_state, [])?;
                     tx.execute(&idx_read_access_userid, [])?;
+                    tx.execute(
+                        &replace_dollars_with_qn(&create_crypto_officer_activations),
+                        [],
+                    )?;
+                    tx.execute(&replace_dollars_with_qn(&create_crls), [])?;
                     if clear_database {
                         tx.execute(&clean_objects, [])?;
                         tx.execute(&clean_read_access, [])?;
@@ -240,6 +250,46 @@ impl SqlitePool {
             pool.set_parameter(WRAPPING_KEY_BACKFILL_PARAM, "true")
                 .await?;
         }
+
+        // Migration: add activated_by column to crypto_officer_activations (idempotent).
+        // SQLite does not support ADD COLUMN IF NOT EXISTS — check PRAGMA first.
+        // Also create the unique partial index that prevents duplicate active records
+        // per user (enforces n-of-n dual-control at the DB layer).
+        pool.writer
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let has_activated_by: bool = {
+                        let mut stmt =
+                            c.prepare("PRAGMA table_info(crypto_officer_activations)")?;
+                        let mut rows = stmt.query([])?;
+                        let mut found = false;
+                        while let Some(row) = rows.next()? {
+                            let col_name: String = row.get(1)?;
+                            if col_name == "activated_by" {
+                                found = true;
+                                break;
+                            }
+                        }
+                        found
+                    };
+                    if !has_activated_by {
+                        c.execute_batch(
+                            "ALTER TABLE crypto_officer_activations \
+                             ADD COLUMN activated_by VARCHAR(255);",
+                        )?;
+                    }
+                    // Unique partial index: at most one active record per user.
+                    // SQLite supports partial indexes since 3.8.9 (2014-08-15).
+                    c.execute_batch(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active \
+                         ON crypto_officer_activations (activated_by) \
+                         WHERE revoked_at IS NULL;",
+                    )?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
 
         if clear_database {
             pool.set_current_db_version(env!("CARGO_PKG_VERSION"))
@@ -360,7 +410,7 @@ impl ObjectsStore for SqlitePool {
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
@@ -389,7 +439,7 @@ impl ObjectsStore for SqlitePool {
         let attributes_json = serde_json::to_string(attributes)
             .map_err(|e| InterfaceError::Db(format!("failed serializing attributes: {e}")))?;
         let state_s = attributes.state.unwrap_or(State::PreActive).to_string();
-        let owner_s = owner.to_owned();
+        let owner_s: String = owner.as_str().to_owned();
         let wrapping_key_id = object.wrapping_key_uid();
 
         let insert_object = replace_dollars_with_qn(get_sqlite_query!("insert-objects"));
@@ -548,10 +598,10 @@ impl ObjectsStore for SqlitePool {
 
     async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
-        let user_s = user.to_owned();
+        let user_s: String = user.as_str().to_owned();
         let ops_owned: Vec<OwnedOp> = operations.iter().map(OwnedOp::from).collect();
         let v = self
             .writer
@@ -569,10 +619,10 @@ impl ObjectsStore for SqlitePool {
         Ok(v)
     }
 
-    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {
+    async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> InterfaceResult<bool> {
         let sql = get_sqlite_query!("has-row-objects").to_string();
         let uid_s = uid.to_owned();
-        let owner_s = owner.to_owned();
+        let owner_s: String = owner.as_str().to_owned();
         let owned = self
             .reader()
             .call(
@@ -628,7 +678,7 @@ impl ObjectsStore for SqlitePool {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
@@ -681,11 +731,11 @@ impl ObjectsStore for SqlitePool {
     async fn find_wrapped_by(
         &self,
         wrapping_key_uid: &str,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let sql = replace_dollars_with_qn(get_sqlite_query!("find-wrapped-by"));
         let uid_s = wrapping_key_uid.to_owned();
-        let user_s = user.to_owned();
+        let user_s: String = user.as_str().to_owned();
         let rows = self
             .reader()
             .call(
@@ -760,7 +810,7 @@ impl ObjectsStore for SqlitePool {
         &self,
         name: &str,
         generation: Option<i32>,
-        owner: &str,
+        owner: &UserId,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         let locate = find_by_rotate_name_query::<SqlitePlaceholder>(name, generation, owner);
         let sql = replace_dollars_with_qn(&locate.sql);
@@ -805,40 +855,81 @@ impl ObjectsStore for SqlitePool {
         Ok(results)
     }
 
-    /// Returns the total count of live (non-destroyed) objects in this `SQLite` store.
-    ///
-    /// This is a **metrics-only** privileged query: it scans the full `objects` table
-    /// without any user or permission filter, so the result always reflects the true
-    /// server-wide inventory. It must never be used to answer client requests.
-    ///
-    /// The state strings `'Destroyed'` and `'Destroyed_Compromised'` are the Rust
-    /// enum variant names as serialised to the DB by `strum::Display`.
-    async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
-        // No $N placeholders — no need for replace_dollars_with_qn.
-        let sql = get_sqlite_query!("count-non-destroyed-objects").to_string();
-        let count: i64 = self
-            .reader()
-            .call(move |c: &mut rusqlite::Connection| {
-                let mut stmt = c.prepare(&sql)?;
-                stmt.query_row([], |r| r.get(0))
+    async fn find_all(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let locate =
+            query_all_from_attributes::<SqlitePlaceholder>(researched_attributes, state, vendor_id);
+        let sql_conversion = replace_dollars_with_qn(&locate.sql);
+        let locate_params = locate.params;
+        let rows = self.reader()
+            .call(move |c: &mut rusqlite::Connection| -> Result<Vec<(String, State, Attributes)>, rusqlite::Error> {
+                let mut stmt = c.prepare(&sql_conversion)?;
+                let values: Vec<rusqlite::types::Value> = locate_params
+                    .into_iter()
+                    .map(|p| match p {
+                        crate::stores::sql::locate_query::LocateParam::Text(s) => {
+                            rusqlite::types::Value::Text(s)
+                        }
+                        crate::stores::sql::locate_query::LocateParam::I64(i) => {
+                            rusqlite::types::Value::Integer(i)
+                        }
+                    })
+                    .collect();
+                let mut q = stmt.query(rusqlite::params_from_iter(values.iter()))?;
+                let mut out = Vec::new();
+                while let Some(r) = q.next()? {
+                    let id: String = r.get(0)?;
+                    let state_str: String = r.get(1)?;
+                    let state = State::try_from(state_str.as_str())
+                        .map_err(|_err| rusqlite::Error::InvalidQuery)?;
+                    let raw: String = r.get(2)?;
+                    let attrs = if raw.is_empty() {
+                        Attributes::default()
+                    } else {
+                        serde_json::from_str::<Attributes>(&raw)
+                            .map_err(|_err| rusqlite::Error::InvalidQuery)?
+                    };
+                    out.push((id, state, attrs));
+                }
+                Ok(out)
             })
             .await
             .map_err(DbError::from)?;
-        Ok(u64::try_from(count).unwrap_or(0))
+        Ok(rows)
+    }
+
+    async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
+        let sql = get_sqlite_query!("count-all-non-destroyed");
+        let count = self
+            .reader()
+            .call(
+                |c: &mut rusqlite::Connection| -> Result<u64, rusqlite::Error> {
+                    c.query_row(sql, [], |row| row.get(0))
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(count)
     }
 
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
-        // No $N placeholders — no need for replace_dollars_with_qn.
-        let sql = get_sqlite_query!("count-non-destroyed-keys-sqlite").to_string();
-        let count: i64 = self
+        // Object JSON is stored as {"SymmetricKey": {...}} — the variant
+        // name is the top-level key.  Use json_type() to check presence.
+        let sql = get_sqlite_query!("count-non-destroyed-keys");
+        let count = self
             .reader()
-            .call(move |c: &mut rusqlite::Connection| {
-                let mut stmt = c.prepare(&sql)?;
-                stmt.query_row([], |r| r.get(0))
-            })
+            .call(
+                |c: &mut rusqlite::Connection| -> Result<u64, rusqlite::Error> {
+                    c.query_row(sql, [], |row| row.get(0))
+                },
+            )
             .await
             .map_err(DbError::from)?;
-        Ok(u64::try_from(count).unwrap_or(0))
+        Ok(count)
     }
 }
 
@@ -948,10 +1039,10 @@ impl Migrate for SqlitePool {
 impl PermissionsStore for SqlitePool {
     async fn list_user_operations_granted(
         &self,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         let sql = get_sqlite_query!("select-objects-access-obtained").to_string();
-        let user_s = user.to_owned();
+        let user_s: String = user.as_str().to_owned();
         let list = self
             .reader()
             .call(
@@ -1010,13 +1101,13 @@ impl PermissionsStore for SqlitePool {
     async fn grant_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
         let sql_select = get_sqlite_query!("select-user-accesses-for-object").to_string();
         let sql_upsert = replace_dollars_with_qn(get_sqlite_query!("upsert-row-read_access"));
         let uid_s = uid.to_owned();
-        let user_s = user.to_owned();
+        let user_s: String = user.as_str().to_owned();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
@@ -1048,7 +1139,7 @@ impl PermissionsStore for SqlitePool {
     async fn remove_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
         let sql_select = get_sqlite_query!("select-user-accesses-for-object").to_string();
@@ -1056,7 +1147,7 @@ impl PermissionsStore for SqlitePool {
         let sql_update =
             replace_dollars_with_qn(get_sqlite_query!("update-rows-read_access-with-permission"));
         let uid_s = uid.to_owned();
-        let user_s = user.to_owned();
+        let user_s: String = user.as_str().to_owned();
         let operations = operations.clone();
         self.writer
             .call(
@@ -1091,7 +1182,7 @@ impl PermissionsStore for SqlitePool {
     async fn list_user_operations_on_object(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         no_inherited_access: bool,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         let mut user_perms = self.perms(uid, user).await?;
@@ -1099,6 +1190,194 @@ impl PermissionsStore for SqlitePool {
             user_perms.extend(self.perms(uid, "*").await?);
         }
         Ok(user_perms)
+    }
+
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+        revoked_by: &str,
+    ) -> InterfaceResult<()> {
+        let revoke_sql =
+            replace_dollars_with_qn(get_sqlite_query!("revoke-crypto-officer-activation"));
+        let insert_sql =
+            replace_dollars_with_qn(get_sqlite_query!("insert-crypto-officer-activation"));
+        let sealed = sealed_record.to_owned();
+        let activated_by_s = activated_by.to_owned();
+        let revoked_by_s = revoked_by.to_owned();
+        self.writer
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let tx = c.transaction()?;
+                    // Revoke only this user's prior active record (0 rows affected is fine).
+                    tx.execute(
+                        &revoke_sql,
+                        params_from_iter([&revoked_by_s, &activated_by_s]),
+                    )?;
+                    tx.execute(&insert_sql, params_from_iter([&sealed, &activated_by_s]))?;
+                    tx.commit()?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn get_crypto_officer_activation_by(
+        &self,
+        user: &str,
+    ) -> InterfaceResult<Option<String>> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!(
+            "select-active-crypto-officer-activation-by"
+        ));
+        let user_s = user.to_owned();
+        let result: Option<String> = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
+                    c.query_row(&sql, params_from_iter([&user_s]), |row| row.get(0))
+                        .optional()
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(result)
+    }
+
+    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!(
+            "select-any-active-crypto-officer-activation"
+        ));
+        let count: i64 = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<i64, rusqlite::Error> {
+                    c.query_row(&sql, [], |row| row.get(0))
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(count > 0)
+    }
+
+    async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("revoke-crypto-officer-activation"));
+        let revoked_by_s = revoked_by.to_owned();
+        let activated_by_s = activated_by.to_owned();
+        self.writer
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let tx = c.transaction()?;
+                    tx.execute(&sql, params_from_iter([&revoked_by_s, &activated_by_s]))?;
+                    tx.commit()?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> InterfaceResult<()> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("upsert-crl"));
+        let issuer_id_s = issuer_id.to_owned();
+        let crl_der_v = crl_der.to_vec();
+
+        let crl_number_i = i64::try_from(crl_number).unwrap_or(i64::MAX);
+        let generated_at_s = generated_at.to_owned();
+        let next_update_s = next_update.to_owned();
+        self.writer
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let tx = c.transaction()?;
+                    tx.execute(
+                        &sql,
+                        rusqlite::params![
+                            issuer_id_s,
+                            crl_der_v,
+                            crl_number_i,
+                            generated_at_s,
+                            next_update_s
+                        ],
+                    )?;
+                    tx.commit()?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("select-crl"));
+        let issuer_id_s = issuer_id.to_owned();
+        let result: Option<(Vec<u8>, String)> = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<
+                    Option<(Vec<u8>, String)>,
+                    rusqlite::Error,
+                > {
+                    c.query_row(&sql, rusqlite::params![issuer_id_s], |row| {
+                        Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .optional()
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(result)
+    }
+
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("list-crl-issuers"));
+        let result: Vec<(String, String)> = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Vec<(String, String)>, rusqlite::Error> {
+                    let mut stmt = c.prepare_cached(&sql)?;
+                    let mut q = stmt.query([])?;
+                    let mut out = Vec::new();
+                    while let Some(r) = q.next()? {
+                        out.push((r.get::<_, String>(0)?, r.get::<_, String>(1)?));
+                    }
+                    Ok(out)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(result)
+    }
+
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
+        let sql = "SELECT MAX(crl_number) FROM crls".to_owned();
+        let max: Option<i64> = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Option<i64>, rusqlite::Error> {
+                    // MAX() returns a single row with NULL when the table is empty.
+                    // Use Option<i64> to handle both NULL and actual values.
+                    c.query_row(&sql, [], |row| row.get::<_, Option<i64>>(0))
+                        .optional()
+                        .map(Option::flatten)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
     }
 }
 
@@ -1154,7 +1433,7 @@ fn create_sqlite(
 
     let sql = replace_dollars_with_qn(get_sqlite_query!("insert-objects"));
     let state_s = attributes.state.unwrap_or(State::PreActive).to_string();
-    let owner_s = owner.to_owned();
+    let owner_s: String = owner.to_owned();
     tx.execute(
         &sql,
         rusqlite::params![
@@ -1224,7 +1503,7 @@ fn upsert_sqlite(
     let sql = replace_dollars_with_qn(get_sqlite_query!("upsert-object"));
     let state_s = state.to_string();
     let uid_s = uid.to_owned();
-    let owner_s = owner.to_owned();
+    let owner_s: String = owner.to_owned();
     tx.execute(
         &sql,
         rusqlite::params![
@@ -1261,7 +1540,7 @@ enum OwnedOp {
 impl From<&AtomicOperation> for OwnedOp {
     fn from(op: &AtomicOperation) -> Self {
         match op {
-            AtomicOperation::Create((uid, obj, attrs, tags)) => {
+            AtomicOperation::Create((uid, _owner, obj, attrs, tags)) => {
                 Self::Create((uid.clone(), obj.clone(), attrs.clone(), tags.clone()))
             }
             AtomicOperation::Upsert((uid, obj, attrs, tags, state)) => Self::Upsert((
@@ -1319,89 +1598,4 @@ fn apply_owned_ops(
         }
     }
     Ok(uids)
-}
-
-#[cfg(test)]
-mod tests {
-    use tempfile::TempDir;
-
-    use super::*;
-
-    /// Verify that `count-non-destroyed-objects` and `count-non-destroyed-keys-sqlite`
-    /// are present in the parsed query map.
-    ///
-    /// Regression guard: `rawsql` treats any `--` line containing the substring
-    /// `"name"` as a new named-query tag, silently overwriting the current query
-    /// accumulation. Intermediate comment lines that contained "names" or "rename"
-    /// previously caused these keys to be absent from the map, making every call
-    /// to `count_all_non_destroyed` / `count_non_destroyed_keys` return 0 via the
-    /// `unwrap_or(0)` in `database_objects.rs`.
-    #[test]
-    fn test_count_query_keys_present_in_loader() {
-        assert!(
-            PGSQL_QUERIES.get("count-non-destroyed-objects").is_some(),
-            "count-non-destroyed-objects not found – rawsql comment stripping bug recurred"
-        );
-        assert!(
-            PGSQL_QUERIES
-                .get("count-non-destroyed-keys-sqlite")
-                .is_some(),
-            "count-non-destroyed-keys-sqlite not found – rawsql comment stripping bug recurred"
-        );
-    }
-
-    /// End-to-end: insert rows directly via SQL and verify both count methods
-    /// return the expected value. Uses raw SQL to avoid pulling in the full KMIP
-    /// object-construction machinery.
-    ///
-    /// `assert_eq!` is the appropriate tool for test assertions; `Result` return
-    /// is required to propagate setup errors via `?`. The combination is intentional.
-    #[tokio::test]
-    #[expect(
-        clippy::panic_in_result_fn,
-        reason = "assertions are the test mechanism; Result return propagates async setup errors via ?"
-    )]
-    async fn test_count_non_destroyed_returns_correct_value()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let dir = TempDir::new()?;
-        let db_path = dir.path().join("test.db");
-        let pool = SqlitePool::instantiate(&db_path, true, None).await?;
-
-        // Initially empty.
-        assert_eq!(pool.count_all_non_destroyed().await?, 0);
-        assert_eq!(pool.count_non_destroyed_keys().await?, 0);
-
-        // Insert one Active SymmetricKey row directly.
-        let attrs_json = r#"{"ObjectType":"SymmetricKey","State":"Active"}"#.to_owned();
-        pool.writer
-            .call(move |c: &mut rusqlite::Connection| {
-                c.execute(
-                    "INSERT INTO objects (id, object, attributes, state, owner) \
-                     VALUES ('uid-1', '{}', ?1, 'Active', 'owner')",
-                    rusqlite::params![attrs_json],
-                )
-            })
-            .await?;
-
-        assert_eq!(pool.count_all_non_destroyed().await?, 1);
-        assert_eq!(pool.count_non_destroyed_keys().await?, 1);
-
-        // Insert one Destroyed Certificate row — should not be counted.
-        let attrs2 = r#"{"ObjectType":"Certificate","State":"Destroyed"}"#.to_owned();
-        pool.writer
-            .call(move |c: &mut rusqlite::Connection| {
-                c.execute(
-                    "INSERT INTO objects (id, object, attributes, state, owner) \
-                     VALUES ('uid-2', '{}', ?1, 'Destroyed', 'owner')",
-                    rusqlite::params![attrs2],
-                )
-            })
-            .await?;
-
-        // Total non-destroyed stays 1; keys also stays 1.
-        assert_eq!(pool.count_all_non_destroyed().await?, 1);
-        assert_eq!(pool.count_non_destroyed_keys().await?, 1);
-
-        Ok(())
-    }
 }

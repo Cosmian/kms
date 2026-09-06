@@ -84,8 +84,10 @@ jobs:
       - name: Generate SBOM (server + ckms)
         if: matrix.runner == 'ubuntu-24.04'
         run: |
-          mise run sbom:generate --target server --variant ${{ matrix.features }} --link ${{ matrix.link }}
-          mise run sbom:generate --target ckms --variant ${{ matrix.features }} --link ${{ matrix.link }}
+          mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target openssl_3_1_2
+          mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target openssl_3_6_2
+          mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target server
+          mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target ckms
 
       - name: Upload SBOM artifact
         if: matrix.runner == 'ubuntu-24.04'

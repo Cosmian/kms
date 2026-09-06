@@ -24,3 +24,5 @@ ANF = "ANF"
 tme = "tme"
 # Plural of PNG (image format)
 PNGs = "PNGs"
+# Base64url fragment inside an example JWK "y" coordinate in openapi.yaml.
+Stik = "Stik"

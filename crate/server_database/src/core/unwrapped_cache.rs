@@ -213,6 +213,7 @@ mod tests {
         CsRng,
         reexport::rand_core::{RngCore, SeedableRng},
     };
+    use cosmian_kms_interfaces::UserId;
     use cosmian_logger::log_init;
     use tempfile::TempDir;
     use uuid::Uuid;
@@ -232,9 +233,10 @@ mod tests {
             HashMap::new(),
             Duration::from_millis(100),
             NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
-            None,
+            None,  // cache_max_ttl
+            false, // disable_unwrapped_cache
+            None,  // recorder
+            None,  // ceremony_keys
         )
         .await?;
 
@@ -259,7 +261,7 @@ mod tests {
         let uid_ = database
             .create(
                 Some(uid.clone()),
-                owner,
+                &UserId::from(owner),
                 &symmetric_key,
                 symmetric_key.attributes()?,
                 &HashSet::new(),

@@ -116,7 +116,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     // ── Plain HTTP, no auth ────────────────────────────────────────────────
     info!("==> Testing server with no auth");
     let ctx = start_test_server(
-        &test_config_path("auth_plain.toml"),
+        &test_config_path("auth/plain.toml"),
         TestClientOptions::default(),
     )
     .await?;
@@ -129,7 +129,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     // ── Plain HTTP, JWT auth ─────────────────────────────────────────────
     info!("==> Testing server with JWT token over HTTP");
     let ctx = start_test_server(
-        &test_config_path("auth_plain_jwt.toml"),
+        &test_config_path("auth/plain_jwt.toml"),
         TestClientOptions {
             send_jwt: true,
             ..Default::default()
@@ -143,7 +143,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     // ── HTTPS + Client CA + JWT ──────────────────────────────────────────
     info!("==> Testing server with JWT token auth over HTTPS");
     let ctx = start_test_server(
-        &test_config_path("auth_https_jwt.toml"),
+        &test_config_path("auth/tls_client_ca_jwt.toml"),
         TestClientOptions {
             send_jwt: true,
             ..Default::default()
@@ -157,7 +157,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     // ── Client Certificate auth (PKCS#12) ────────────────────────────────
     info!("==> Testing server with Client Certificate auth (PKCS#12)");
     let ctx = start_test_server(
-        &test_config_path("auth_https_client_ca.toml"),
+        &test_config_path("auth/tls_client_ca.toml"),
         TestClientOptions::default(),
     )
     .await?;
@@ -177,7 +177,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
         .canonicalize()
         .expect("owner PEM key must exist in test_data");
     let ctx = start_test_server(
-        &test_config_path("auth_https_client_ca.toml"),
+        &test_config_path("auth/tls_client_ca.toml"),
         TestClientOptions {
             http: HttpClientConfig {
                 tls_client_pem_cert_path: Some(pem_cert.to_string_lossy().into_owned()),
@@ -197,7 +197,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
         "==> Testing server with both Client Certificates and JWT auth - User sends JWT token only"
     );
     let ctx = start_test_server(
-        &test_config_path("auth_https_jwt.toml"),
+        &test_config_path("auth/tls_client_ca_jwt.toml"),
         TestClientOptions {
             send_client_cert: false,
             send_jwt: true,
@@ -217,7 +217,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     let api_token_clone = api_token.clone();
     let api_token_id_clone = api_token_id.clone();
     let ctx = start_test_server_with_patch(
-        &test_config_path("auth_https_client_ca.toml"),
+        &test_config_path("auth/tls_client_ca.toml"),
         move |config| {
             config.http.api_token_id = Some(api_token_id_clone);
         },
@@ -241,7 +241,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     let api_token_clone = api_token.clone();
     let api_token_id_clone = api_token_id.clone();
     let ctx = start_test_server_with_patch(
-        &test_config_path("auth_https_jwt.toml"),
+        &test_config_path("auth/tls_client_ca_jwt.toml"),
         move |config| {
             config.http.api_token_id = Some(api_token_id_clone);
         },
@@ -263,7 +263,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     // ── SCENARIO 4: JWT required, no token (failure) ─────────────────────
     info!("==> Testing server with JWT auth - User does not send the token (should fail)");
     let ctx = start_test_server(
-        &test_config_path("auth_plain_jwt.toml"),
+        &test_config_path("auth/plain_jwt.toml"),
         TestClientOptions {
             send_jwt: false,
             send_api_token: false,
@@ -278,7 +278,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     // ── SCENARIO 5: Client Cert required, no cert (failure) ──────────────
     info!("==> Testing server with Client Certificate auth - missing certificate (should fail)");
     let ctx = start_test_server(
-        &test_config_path("auth_https_client_ca.toml"),
+        &test_config_path("auth/tls_client_ca.toml"),
         TestClientOptions {
             send_client_cert: false,
             send_jwt: false,
@@ -295,7 +295,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     info!("==> Testing server with API token auth - missing token (should fail)");
     let api_token_id_clone = api_token_id.clone();
     let ctx = start_test_server_with_patch(
-        &test_config_path("auth_https.toml"),
+        &test_config_path("auth/tls.toml"),
         move |config| {
             config.http.api_token_id = Some(api_token_id_clone);
         },
@@ -314,7 +314,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     // ── SCENARIO 7: JWT required, no JWT sent (failure) ──────────────────
     info!("===> Testing server with JWT auth - but no JWT token sent (should fail)");
     let ctx = start_test_server(
-        &test_config_path("auth_plain_jwt.toml"),
+        &test_config_path("auth/plain_jwt.toml"),
         TestClientOptions {
             send_jwt: false,
             send_api_token: false,
@@ -329,7 +329,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     // ── Bad API token but JWT auth succeeds ──────────────────────────────
     info!("==> Testing server with bad API token auth but JWT auth used at first");
     let ctx = start_test_server(
-        &test_config_path("auth_plain_jwt.toml"),
+        &test_config_path("auth/plain_jwt.toml"),
         TestClientOptions {
             send_jwt: true,
             ..Default::default()
@@ -343,7 +343,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     // ── Bad API token but cert auth succeeds ─────────────────────────────
     info!("==> Testing server with bad API token auth but cert auth used at first");
     let ctx = start_test_server_with_patch(
-        &test_config_path("auth_https_client_ca.toml"),
+        &test_config_path("auth/tls_client_ca.toml"),
         |config| {
             config.http.api_token_id = Some("my_bad_token_id".to_owned());
         },
@@ -360,7 +360,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
          at first"
     );
     let ctx = start_test_server_with_patch(
-        &test_config_path("auth_https_jwt.toml"),
+        &test_config_path("auth/tls_client_ca_jwt.toml"),
         |config| {
             config.http.api_token_id = Some("my_bad_token_id".to_owned());
         },

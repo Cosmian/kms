@@ -524,7 +524,7 @@ rust_log = "error"
 - [Configuration file reference](server_configuration_file.md) - Complete parameter documentation
 - [Command line arguments](server_cli.md) - CLI options reference
 - [Authentication](authentication.md) - Detailed authentication setup
-- [Database configuration](database.md) - Database backend options
+- [Database configuration](database/configuration.md) - Database backend options
 - [TLS configuration](tls.md) - TLS and certificate setup
 - [Logging](logging.md) - Logging and monitoring options
 - [Monitoring](monitoring-setup.md) - Monitoring and dashboarding

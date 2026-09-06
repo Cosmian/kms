@@ -69,3 +69,9 @@ vcpkg_installed/
 perf.data
 perf.data.old
 target/flamegraphs/
+
+/scripts/
+
+# Review
+/threat-model*
+/review*

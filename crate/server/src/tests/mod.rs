@@ -2,6 +2,7 @@ mod azure_ekm;
 mod bulk_encrypt_decrypt_tests;
 #[cfg(feature = "non-fips")]
 mod cover_crypt_tests;
+mod crl_tests;
 #[cfg(feature = "non-fips")]
 mod curve_25519_tests;
 mod derive_key_tests;
@@ -10,6 +11,8 @@ mod health_endpoint;
 mod hsm;
 mod jose;
 mod jwks_endpoint;
+#[cfg(feature = "non-fips")]
+mod key_ceremony_tests;
 mod kmip_endpoints;
 #[cfg(feature = "non-fips")]
 mod kmip_messages;

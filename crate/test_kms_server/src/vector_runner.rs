@@ -1,6 +1,8 @@
 use std::{
     collections::HashMap,
+    fmt::Write as _,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use cosmian_kms_client::{
@@ -28,6 +30,9 @@ static ONCE_VECTOR_REDIS_FINDEX: OnceCell<TestsContext> = OnceCell::const_new();
 static ONCE_VECTOR_CERT_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests requiring server-only TLS (`auth_https.toml`).
 static ONCE_VECTOR_AUTH_HTTPS: OnceCell<TestsContext> = OnceCell::const_new();
+/// Singleton server for Operator/CryptoOfficer test vectors (`cert_auth_operator_and_crypto_officer.toml`).
+static ONCE_VECTOR_CERT_AUTH_OPERATOR_CRYPTO_OFFICER: OnceCell<TestsContext> =
+    OnceCell::const_new();
 /// Singleton server for vector tests requiring `SoftHSM2` + KEK.
 static ONCE_VECTOR_HSM_KEK: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests where the HSM KEK is configured but **not yet created**.
@@ -62,7 +67,7 @@ static HSM_CLEANUP_DONE: OnceCell<()> = OnceCell::const_new();
 /// ```toml
 /// name = "AES Create, Encrypt, Decrypt"
 /// description = "Full lifecycle of an AES-256 symmetric key"
-/// server_config = "test_data/configs/server/auth_plain.toml"
+/// server_config = "test_data/configs/server/auth/plain.toml"
 ///
 /// [[steps]]
 /// operation = "Create"
@@ -90,7 +95,7 @@ pub struct TestManifest {
     /// Optional description
     pub description: Option<String>,
     /// Path to a TOML server config file (relative to the repo root).
-    /// If omitted, defaults to `test_data/configs/server/auth_plain.toml`.
+    /// If omitted, defaults to `test_data/configs/server/auth/plain.toml`.
     pub server_config: Option<String>,
     /// Server type to use for this vector.
     ///
@@ -115,10 +120,10 @@ pub struct TestManifest {
     /// Supported values: `"sqlite"`, `"postgresql"`, `"mysql"`, `"redis-findex"`.
     ///
     /// Each backend maps to a config TOML override:
-    /// - `sqlite` → default (`auth_plain.toml` or `server_config`)
-    /// - `postgresql` → `test_data/configs/server/postgres.toml`
-    /// - `mysql` → `test_data/configs/server/mysql.toml`
-    /// - `redis-findex` → `test_data/configs/server/redis_findex.toml`
+    /// - `sqlite` → default (`auth/plain.toml` or `server_config`)
+    /// - `postgresql` → `test_data/configs/server/db/postgres.toml`
+    /// - `mysql` → `test_data/configs/server/db/mysql.toml`
+    /// - `redis-findex` → `test_data/configs/server/db/redis_findex.toml`
     #[serde(default = "default_backends")]
     pub backends: Vec<String>,
     /// Wire format: `"json"` (default) or `"binary"`.
@@ -165,6 +170,25 @@ pub struct IdentityConfig {
     pub client_cert: String,
     /// Path to the PEM client private key
     pub client_key: String,
+}
+
+/// Captures the Nth occurrence of a repeated TTLV tag from a response.
+///
+/// Used with `capture_nth` in a manifest step to capture individual share UIDs from
+/// `CreateSplitKeyResponse`, which returns N `UniqueIdentifier` tags (one per share).
+///
+/// Example:
+/// ```toml
+/// [steps.capture_nth.share2_id]
+/// tag   = "UniqueIdentifier"
+/// index = 1
+/// ```
+#[derive(Debug, Deserialize)]
+pub struct CaptureNthEntry {
+    /// TTLV tag name to search for in the response.
+    pub tag: String,
+    /// Zero-based index into all occurrences of the tag.
+    pub index: usize,
 }
 
 /// A single request–response step in a test vector.
@@ -250,6 +274,20 @@ pub struct TestStep {
     /// a key that may not exist from a prior run).
     #[serde(default)]
     pub allow_failure: bool,
+    /// Capture the Nth occurrence of a repeated TTLV tag into named variables.
+    ///
+    /// Complements `capture` (which always takes the first occurrence) for responses
+    /// that emit multiple values under the same tag, e.g. `CreateSplitKeyResponse`
+    /// which returns one `UniqueIdentifier` per share.
+    ///
+    /// Example:
+    /// ```toml
+    /// [steps.capture_nth.share2_id]
+    /// tag   = "UniqueIdentifier"
+    /// index = 1
+    /// ```
+    #[serde(default)]
+    pub capture_nth: HashMap<String, CaptureNthEntry>,
 }
 
 const fn default_true() -> bool {
@@ -468,9 +506,29 @@ fn load_request_json(
         );
     }
 
-    // Substitute all {{variable}} placeholders (captured values)
+    // Substitute {{hex:variable}} placeholders (hex-encode captured values)
     for (name, value) in captures {
-        content = content.replace(&format!("{{{{{name}}}}}"), value);
+        let hex_placeholder = format!("{{{{hex:{name}}}}}");
+        if content.contains(&hex_placeholder) {
+            let hex_value = hex::encode(value.as_bytes());
+            content = content.replace(&hex_placeholder, &hex_value);
+        }
+    }
+
+    // Substitute all {{variable}} placeholders (captured values).
+    // Values are embedded verbatim inside JSON string literals, so characters
+    // that are special in JSON (backslash, double-quote, and ASCII control
+    // characters) must be escaped.  This is critical on Windows where file
+    // paths contain backslashes (e.g. "C:\Users\…\kms_vector_0.pem") that
+    // would otherwise produce invalid JSON escape sequences.
+    for (name, value) in captures {
+        let json_escaped = value
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t");
+        content = content.replace(&format!("{{{{{name}}}}}"), &json_escaped);
     }
 
     serde_json::from_str(&content).map_err(|e| {
@@ -758,14 +816,18 @@ async fn get_or_init_vector_server(backend: &str) -> Result<&'static TestsContex
 
     let root = repo_root()?;
     let (cell, toml, env_var) = match backend {
-        "postgresql" => (&ONCE_VECTOR_POSTGRESQL, "postgres.toml", "KMS_POSTGRES_URL"),
-        "mysql" => (&ONCE_VECTOR_MYSQL, "mysql.toml", "KMS_MYSQL_URL"),
+        "postgresql" => (
+            &ONCE_VECTOR_POSTGRESQL,
+            "db/postgres.toml",
+            "KMS_POSTGRES_URL",
+        ),
+        "mysql" => (&ONCE_VECTOR_MYSQL, "db/mysql.toml", "KMS_MYSQL_URL"),
         "redis-findex" => (
             &ONCE_VECTOR_REDIS_FINDEX,
-            "redis_findex.toml",
+            "db/redis_findex.toml",
             "KMS_REDIS_URL",
         ),
-        _ => (&ONCE_VECTOR_SQLITE, "auth_plain.toml", ""),
+        _ => (&ONCE_VECTOR_SQLITE, "auth/plain.toml", ""),
     };
     let p = root.join("test_data/configs/server").join(toml);
     // Override the database URL from the environment when set (e.g. MariaDB on
@@ -934,19 +996,24 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
 
         // Manifests with a custom server_config use a per-config singleton server.
         // Each config file gets its own OnceCell to prevent race conditions where a
-        // different config (e.g. auth_https.toml without mTLS) could poison the
+        // different config (e.g. auth/tls.toml without mTLS) could poison the
         // ONCE_VECTOR_CERT_AUTH cell and cause all cert-auth tests to run against
         // the wrong server (reproduces non-deterministically on slower runners like ARM).
         if let Some(server_config) = &manifest.server_config {
             let config_path = root.join(server_config);
             let context = match server_config.as_str() {
-                "test_data/configs/server/auth_https.toml" => {
+                "test_data/configs/server/auth/tls.toml" => {
                     ONCE_VECTOR_AUTH_HTTPS
                         .get_or_try_init(|| crate::start_test_server_from_toml(&config_path))
                         .await?
                 }
+                "test_data/configs/server/auth/cert_roles.toml" => {
+                    ONCE_VECTOR_CERT_AUTH_OPERATOR_CRYPTO_OFFICER
+                        .get_or_try_init(|| crate::start_test_server_from_toml(&config_path))
+                        .await?
+                }
                 _ => {
-                    // Default: cert_auth.toml and any future mTLS configs
+                    // Default: auth/cert.toml and any future mTLS configs
                     ONCE_VECTOR_CERT_AUTH
                         .get_or_try_init(|| crate::start_test_server_from_toml(&config_path))
                         .await?
@@ -1008,6 +1075,195 @@ async fn execute_access_step(
                     i, step.operation
                 )));
             }
+        }
+        Err(e) => {
+            if step.allow_failure {
+                // Best-effort step — ignore the error
+            } else if step.assert_success {
+                return Err(KmsClientError::UnexpectedError(format!(
+                    "Step {} '{}': expected success, got error: {e}",
+                    i, step.operation
+                )));
+            } else if let Some(substr) = &step.assert_error_contains {
+                let msg = e.to_string();
+                if !msg.contains(substr.as_str()) {
+                    return Err(KmsClientError::UnexpectedError(format!(
+                        "Step {} '{}': expected error containing '{}', got: {e}",
+                        i, step.operation, substr
+                    )));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Counter for unique temp file paths in vector tests.
+static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Convert a filesystem path to a valid `file://` URI suitable for use in
+/// X.509 certificate extensions (`crlDistributionPoints`, etc.).
+///
+/// The standard form is `file:///absolute/path`. On Windows, the drive letter
+/// is preserved and backslashes are converted to forward slashes:
+/// `C:\foo\bar` → `file:///C:/foo/bar`.
+/// On Unix, `/foo/bar` → `file:///foo/bar` (the leading `/` provides the third
+/// slash after `file://`).
+pub(crate) fn path_to_file_uri(path: &Path) -> String {
+    #[cfg(windows)]
+    {
+        // Replace backslashes with forward slashes and prepend three slashes so
+        // the drive letter is part of the path component, not the authority.
+        format!("file:///{}", path.to_string_lossy().replace('\\', "/"))
+    }
+    #[cfg(not(windows))]
+    {
+        // On POSIX the path already starts with '/', giving the third slash.
+        format!("file://{}", path.to_string_lossy())
+    }
+}
+
+/// Execute an `AllocTempFile` pseudo-step.
+///
+/// The request JSON must have: `{ "capture_as": "variable_name", "extension": "pem" }`
+/// Optionally: `"additional_captures": { "name": "template with {{var}}" }`
+///
+/// This does not create the file — it just allocates a unique path and captures
+/// it so subsequent steps can reference it via `{{variable_name}}`.
+/// Additional captures allow deriving new variables from the allocated path.
+fn execute_alloc_temp_file_step(
+    request_json: &serde_json::Value,
+    step: &TestStep,
+    i: usize,
+    captures: &mut HashMap<String, String>,
+) -> Result<(), KmsClientError> {
+    let capture_as = request_json
+        .get("capture_as")
+        .and_then(|v| v.as_str())
+        .unwrap_or("temp_file_path");
+    let extension = request_json
+        .get("extension")
+        .and_then(|v| v.as_str())
+        .unwrap_or("tmp");
+
+    let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "kms_vector_{counter}_{}.{extension}",
+        std::process::id()
+    ));
+
+    captures.insert(capture_as.to_owned(), path.to_string_lossy().into_owned());
+    // Also expose a valid file:// URI form under "<capture_as>_url" so that
+    // manifest templates can use it directly in certificate extension strings
+    // (the raw Windows path "C:\..." is not a valid file:// URI).
+    captures.insert(format!("{capture_as}_url"), path_to_file_uri(&path));
+
+    // Resolve additional_captures templates against the current captures
+    if let Some(additional) = request_json
+        .get("additional_captures")
+        .and_then(|v| v.as_object())
+    {
+        for (name, template_val) in additional {
+            if let Some(template) = template_val.as_str() {
+                let mut resolved = template.to_owned();
+                for (var_name, var_value) in captures.iter() {
+                    resolved = resolved.replace(&format!("{{{{{var_name}}}}}"), var_value);
+                }
+                captures.insert(name.clone(), resolved);
+            }
+        }
+    }
+
+    if !step.assert_success && !step.allow_failure {
+        return Err(KmsClientError::UnexpectedError(format!(
+            "Step {} '{}': AllocTempFile always succeeds but assert_success=false",
+            i, step.operation
+        )));
+    }
+    Ok(())
+}
+
+/// Execute a `GenerateCrl` step via the Cosmian REST API.
+///
+/// The request JSON must have: `{ "issuer_id": "{{cert_id}}" }`
+/// Optionally: `"format": "pem"|"der"`, `"validity_days": N`, `"output_path": "{{var}}"`
+///
+/// If `output_path` is provided, the CRL is written there (supports variable
+/// substitution). Otherwise a unique temp file is allocated.
+/// The file path is always captured as `crl_file_path`.
+async fn execute_generate_crl_step(
+    client: &KmsClient,
+    request_json: &serde_json::Value,
+    step: &TestStep,
+    i: usize,
+    captures: &mut HashMap<String, String>,
+) -> Result<(), KmsClientError> {
+    let issuer_id = request_json
+        .get("issuer_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            KmsClientError::UnexpectedError(format!(
+                "Step {} '{}': GenerateCrl request must have 'issuer_id' field",
+                i, step.operation
+            ))
+        })?;
+    let format = request_json
+        .get("format")
+        .and_then(|v| v.as_str())
+        .unwrap_or("pem");
+    let validity_days = request_json
+        .get("validity_days")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|v| u32::try_from(v).ok());
+    let output_path = request_json
+        .get("output_path")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
+
+    let mut endpoint = format!("/certificates/{issuer_id}/crl?format={format}");
+    if let Some(days) = validity_days {
+        write!(endpoint, "&validity_days={days}").map_err(|e| {
+            KmsClientError::UnexpectedError(format!(
+                "Step {i} '{}': failed to format endpoint: {e}",
+                step.operation
+            ))
+        })?;
+    }
+
+    let result: Result<Vec<u8>, _> = client.get_bytes::<()>(&endpoint, None).await;
+
+    match result {
+        Ok(bytes) => {
+            if !step.assert_success && !step.allow_failure {
+                return Err(KmsClientError::UnexpectedError(format!(
+                    "Step {} '{}': expected failure but got success",
+                    i, step.operation
+                )));
+            }
+            // Determine output path
+            let crl_path = output_path.map_or_else(
+                || {
+                    let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+                    std::env::temp_dir().join(format!(
+                        "kms_vector_crl_{counter}_{}.{format}",
+                        std::process::id()
+                    ))
+                },
+                PathBuf::from,
+            );
+            std::fs::write(&crl_path, &bytes).map_err(|e| {
+                KmsClientError::UnexpectedError(format!(
+                    "Step {} '{}': failed to write CRL to {}: {e}",
+                    i,
+                    step.operation,
+                    crl_path.display()
+                ))
+            })?;
+            // Capture the file path for use in subsequent steps
+            captures.insert(
+                "crl_file_path".to_owned(),
+                crl_path.to_string_lossy().into_owned(),
+            );
         }
         Err(e) => {
             if step.allow_failure {
@@ -1100,6 +1356,18 @@ async fn execute_steps(
         // GrantAccess and RevokeAccess use the Cosmian REST API rather than TTLV.
         if matches!(step.operation.as_str(), "GrantAccess" | "RevokeAccess") {
             execute_access_step(&client, &request_json, step, i).await?;
+            continue;
+        }
+
+        // GenerateCrl calls the REST endpoint and writes CRL to a temp file.
+        if step.operation == "GenerateCrl" {
+            execute_generate_crl_step(&client, &request_json, step, i, &mut captures).await?;
+            continue;
+        }
+
+        // AllocTempFile allocates a unique path and captures it as a variable.
+        if step.operation == "AllocTempFile" {
+            execute_alloc_temp_file_step(&request_json, step, i, &mut captures)?;
             continue;
         }
 
@@ -1335,6 +1603,40 @@ async fn execute_steps(
                 &mut captures,
                 &step.operation,
             )?;
+        }
+
+        // Capture the Nth occurrence of a repeated tag (e.g. share UIDs from CreateSplitKeyResponse)
+        for (var_name, rule) in &step.capture_nth {
+            let all = find_all_fields_in_json(&response_json, &rule.tag);
+            let value = all.get(rule.index).ok_or_else(|| {
+                KmsClientError::UnexpectedError(format!(
+                    "Step {} '{}': capture_nth '{var_name}': tag '{}' has only {} occurrence(s), \
+                     but index {} was requested",
+                    i,
+                    step.operation,
+                    rule.tag,
+                    all.len(),
+                    rule.index
+                ))
+            })?;
+            captures.insert(var_name.clone(), value.clone());
+        }
+
+        // Capture the Nth occurrence of a repeated tag (e.g. share UIDs from CreateSplitKeyResponse)
+        for (var_name, rule) in &step.capture_nth {
+            let all = find_all_fields_in_json(&response_json, &rule.tag);
+            let value = all.get(rule.index).ok_or_else(|| {
+                KmsClientError::UnexpectedError(format!(
+                    "Step {} '{}': capture_nth '{var_name}': tag '{}' has only {} occurrence(s), \
+                     but index {} was requested",
+                    i,
+                    step.operation,
+                    rule.tag,
+                    all.len(),
+                    rule.index
+                ))
+            })?;
+            captures.insert(var_name.clone(), value.clone());
         }
     }
 
@@ -2204,6 +2506,22 @@ ObjectType = "SymmetricKey"
     async fn test_vec_ml_kem_1024_encap_decap() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/ml_kem_1024_encap_decap").await
+    }
+
+    // ── PQC: Export as Raw ──────────────────────────────────────────────
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_ml_dsa_44_export_raw() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/asymmetric/ml_dsa_44_export_raw").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_ml_kem_768_export_raw() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/asymmetric/ml_kem_768_export_raw").await
     }
 
     #[cfg(feature = "non-fips")]
@@ -3579,9 +3897,6 @@ ObjectType = "SymmetricKey"
     }
 
     // ── Negative tests: ReCertify ───────────────────────────────────────
-    // ReCertify is not yet implemented (KMIP 1.4 only); these tests verify the
-    // server correctly rejects the operation. Enable positive recertify tests
-    // above once the operation is dispatched.
 
     #[tokio::test]
     async fn test_neg_recertify_missing_uid() -> Result<(), KmsClientError> {
@@ -3918,6 +4233,13 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/fips/kmip_operations/certify_revoke_validate").await
     }
 
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_crl_validation_lifecycle() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/crl_validation_lifecycle").await
+    }
+
     // ── KMIP operations: ReCertify ──────────────────────────────────────
 
     #[cfg(feature = "non-fips")]
@@ -4044,6 +4366,61 @@ ObjectType = "SymmetricKey"
             "test_data/vectors/access_control/privilege_escalation_activate_without_permission",
         )
         .await
+    }
+
+    // ── Role separation vectors ───────────────────────────────────────────
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
+    async fn test_vec_access_operator_role_blocked_lifecycle() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/operator_role_blocked_lifecycle").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
+    async fn test_vec_access_crypto_officer_role_allowed_ops() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/crypto_officer_role_allowed_ops").await
+    }
+
+    // ── Split-key (XOR) round-trip vectors ──────────────────────────
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
+    async fn test_vec_create_split_key_sss() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/create_split_key_sss").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
+    async fn test_vec_create_split_key_xor() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/create_split_key_xor").await
+    }
+
+    // ── Split-key negative vectors ────────────────────────────────────────
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
+    async fn test_vec_create_split_key_threshold_too_low() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create_split_key_threshold_too_low").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
+    async fn test_vec_create_split_key_parts_less_than_threshold() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create_split_key_parts_less_than_threshold")
+            .await
     }
 
     // ── HSM + KEK vectors ─────────────────────────────────────────────────

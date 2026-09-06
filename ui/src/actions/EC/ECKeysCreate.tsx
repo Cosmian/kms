@@ -1,9 +1,11 @@
 import { Button, Card, Checkbox, Divider, Form, Input, InputNumber, Select, Space } from "antd";
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface ECKeyCreateFormData {
     privateKeyId?: string;
@@ -24,6 +26,7 @@ type CreateKeyPairResponse = {
 const ECKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<ECKeyCreateFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
     const [curveOptions, setCurveOptions] = useState<{ value: string; label: string }[]>([]);
 
     useEffect(() => {
@@ -77,21 +80,24 @@ const ECKeyCreateForm: React.FC = () => {
                     }
                 }
 
-                return `Key pair has been created. Private key Id: ${skId} - Public key Id: ${result.PublicKeyUniqueIdentifier}`;
+                return t("ecKeysCreate.success", {
+                    privateKeyId: skId,
+                    publicKeyId: result.PublicKeyUniqueIdentifier,
+                });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Create an EC key pair</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("ecKeysCreate.title")}</h1>
             <div className="mb-8 space-y-2">
-                <p>Create a new Elliptic Curve key pair:</p>
+                <p>{t("ecKeysCreate.intro")}</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    <li>The public key is used to encrypt or verify a signature and can be safely shared.</li>
-                    <li>The private key is used to decrypt or sign and must be kept secret.</li>
+                    <li>{t("ecKeysCreate.introPublicKey")}</li>
+                    <li>{t("ecKeysCreate.introPrivateKey")}</li>
                 </ul>
-                <p>When creating a key pair with a specified tag, the tag is applied to both keys.</p>
+                <p>{t("ecKeysCreate.introTags")}</p>
             </div>
 
             <Form
@@ -109,47 +115,40 @@ const ECKeyCreateForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="curve"
-                            label="Curve"
-                            help="Select the elliptic curve to use"
-                            rules={[{ required: true, message: "Please select a curve" }]}
+                            label={t("ecKeysCreate.curve")}
+                            help={t("ecKeysCreate.curveHelp")}
+                            rules={[{ required: true, message: t("ecKeysCreate.pleaseSelectCurve") }]}
                         >
                             <Select options={curveOptions} data-testid="ec-curve-select" />
                         </Form.Item>
 
-                        <Form.Item
-                            name="privateKeyId"
-                            label="Private Key ID"
-                            help="Optional: a random UUID will be generated if not specified"
-                        >
-                            <Input placeholder="Enter private key ID" />
+                        <Form.Item name="privateKeyId" label={t("ecKeysCreate.privateKeyId")} help={t("ecKeysCreate.privateKeyIdHelp")}>
+                            <Input placeholder={t("ecKeysCreate.enterPrivateKeyId")} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Optional: Add tags to help retrieve the keys later">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("ecKeysCreate.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
-                        <Form.Item
-                            name="wrappingKeyId"
-                            label="Wrapping Key ID"
-                            help="Optional: ID of the key to wrap this new keypair with"
-                        >
-                            <Input placeholder="Enter wrapping key ID" />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="wrappingKeyId"
+                            label={t("ecKeysCreate.wrappingKeyId")}
+                            help={t("ecKeysCreate.wrappingKeyIdHelp")}
+                            placeholder={t("ecKeysCreate.enterWrappingKeyId")}
+                            objectType="SymmetricKey"
+                        />
 
-                        <Form.Item name="sensitive" valuePropName="checked" help="If set, the private key will not be exportable">
-                            <Checkbox>Sensitive</Checkbox>
+                        <Form.Item name="sensitive" valuePropName="checked" help={t("ecKeysCreate.sensitiveHelp")}>
+                            <Checkbox>{t("ecKeysCreate.sensitive")}</Checkbox>
                         </Form.Item>
 
                         <Divider orientation="left" plain>
-                            Rotation Policy (optional)
+                            {t("ecKeysCreate.rotationPolicy")}
                         </Divider>
 
-                        <Form.Item
-                            name="enrollKeyset"
-                            valuePropName="checked"
-                            help="When checked, the rotation name is set to the private key ID so this key pair can be addressed via name@latest, name@first, name@N"
-                        >
-                            <Checkbox data-testid="ec-enroll-keyset">Enroll in keyset (rotation name = private key ID)</Checkbox>
+                        <Form.Item name="enrollKeyset" valuePropName="checked" help={t("ecKeysCreate.enrollKeysetHelp")}>
+                            <Checkbox data-testid="ec-enroll-keyset">{t("ecKeysCreate.enrollKeyset")}</Checkbox>
                         </Form.Item>
 
                         <Form.Item noStyle shouldUpdate={(prev, curr) => prev.enrollKeyset !== curr.enrollKeyset}>
@@ -158,26 +157,26 @@ const ECKeyCreateForm: React.FC = () => {
                                     <>
                                         <Form.Item
                                             name="rotateInterval"
-                                            label="Rotation Interval (seconds)"
-                                            help="Auto-rotate the key pair every N seconds. Set 0 to disable."
+                                            label={t("ecKeysCreate.rotateInterval")}
+                                            help={t("ecKeysCreate.rotateIntervalHelp")}
                                         >
                                             <InputNumber
                                                 className="w-[200px]"
                                                 min={0}
-                                                placeholder="e.g. 86400"
+                                                placeholder={t("ecKeysCreate.rotateIntervalPlaceholder")}
                                                 data-testid="ec-rotation-interval"
                                             />
                                         </Form.Item>
 
                                         <Form.Item
                                             name="rotateOffset"
-                                            label="Rotation Offset (seconds)"
-                                            help="Delay before the first rotation occurs."
+                                            label={t("ecKeysCreate.rotateOffset")}
+                                            help={t("ecKeysCreate.rotateOffsetHelp")}
                                         >
                                             <InputNumber
                                                 className="w-[200px]"
                                                 min={0}
-                                                placeholder="e.g. 3600"
+                                                placeholder={t("ecKeysCreate.rotateOffsetPlaceholder")}
                                                 data-testid="ec-rotation-offset"
                                             />
                                         </Form.Item>
@@ -195,12 +194,12 @@ const ECKeyCreateForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Create EC Keypair
+                            {t("ecKeysCreate.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="EC key pair creation response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("ecKeysCreate.responseTitle")} />
         </div>
     );
 };

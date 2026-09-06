@@ -1,8 +1,11 @@
-import { Button, Card, Form, Input, Select, Space } from "antd";
+import { Button, Card, Form, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { ActionResponse } from "../../components/common/ActionResponse";
 import { useActionState } from "../../hooks/useActionState";
 import { sendKmipRequest } from "../../utils/utils";
+import KeyIdInput from "../../components/common/KeyIdInput";
 import {
     parse_rekey_keypair_ttlv_response,
     parse_rekey_ttlv_response,
@@ -28,66 +31,56 @@ interface ReKeySymmetricResponse {
 }
 
 interface ReKeyConfig {
-    title: string;
-    description: string;
-    bullets: string[];
-    keyLabel: string;
+    titleKey: string;
+    descriptionKey: string;
+    bulletKeys: string[];
+    keyLabelKey: string;
     isKeyPair: boolean;
 }
 
 const REKEY_CONFIG: Record<ReKeyType, ReKeyConfig> = {
     symmetric: {
-        title: "Re-Key a symmetric key",
-        description: "Refresh an existing symmetric key, generating a new key value.",
-        bullets: [
-            "The old key is deactivated and a new key is created as its replacement.",
-            "The rotation generation counter is incremented on the new key.",
-        ],
-        keyLabel: "Key ID",
+        titleKey: "titleSymmetric",
+        descriptionKey: "descSymmetric",
+        bulletKeys: ["bulletSym1", "bulletSym2"],
+        keyLabelKey: "keyLabelKeyId",
         isKeyPair: false,
     },
     rsa: {
-        title: "Re-Key an RSA key pair",
-        description: "Rotate an existing RSA key pair, generating new key material.",
-        bullets: [
-            "A new private key and public key are created with the same algorithm and key size.",
-            "The old key pair is linked to the new one via replacement links.",
-            "The rotation generation counter is incremented on the new key.",
-        ],
-        keyLabel: "Private Key ID",
+        titleKey: "titleRsa",
+        descriptionKey: "descRsa",
+        bulletKeys: ["bulletRsa1", "bulletRsa2", "bulletRsa3"],
+        keyLabelKey: "keyLabelPrivateKeyId",
         isKeyPair: true,
     },
     ec: {
-        title: "Re-Key an Elliptic Curve key pair",
-        description: "Rotate an existing EC key pair, generating new key material.",
-        bullets: [
-            "A new private key and public key are created with the same curve.",
-            "The old key pair is linked to the new one via replacement links.",
-            "The rotation generation counter is incremented on the new key.",
-        ],
-        keyLabel: "Private Key ID",
+        titleKey: "titleEc",
+        descriptionKey: "descEc",
+        bulletKeys: ["bulletEc1", "bulletEc2", "bulletEc3"],
+        keyLabelKey: "keyLabelPrivateKeyId",
         isKeyPair: true,
     },
     pqc: {
-        title: "Re-Key a Post-Quantum key pair",
-        description: "Rotate an existing post-quantum key pair (ML-KEM, ML-DSA), generating new key material.",
-        bullets: [
-            "A new private key and public key are created with the same algorithm.",
-            "The old key pair is linked to the new one via replacement links.",
-            "The rotation generation counter is incremented on the new key.",
-        ],
-        keyLabel: "Private Key ID",
+        titleKey: "titlePqc",
+        descriptionKey: "descPqc",
+        bulletKeys: ["bulletPqc1", "bulletPqc2", "bulletPqc3"],
+        keyLabelKey: "keyLabelPrivateKeyId",
         isKeyPair: true,
     },
 };
 
-function buildSuccessMessage(keyType: ReKeyType, response: ReKeySymmetricResponse | ReKeyKeyPairResponse): string {
+function buildSuccessMessage(keyType: ReKeyType, response: ReKeySymmetricResponse | ReKeyKeyPairResponse, t: TFunction): string {
     if (keyType === "symmetric") {
-        return `The symmetric key was successfully refreshed. New key: ${(response as ReKeySymmetricResponse).UniqueIdentifier}`;
+        return t("objectsReKey.successSymmetric", { newKey: (response as ReKeySymmetricResponse).UniqueIdentifier });
     }
     const kpResponse = response as ReKeyKeyPairResponse;
-    const typeLabel = keyType === "rsa" ? "RSA" : keyType === "ec" ? "EC" : "post-quantum";
-    return `The ${typeLabel} key pair was successfully rotated.\nNew private key: ${kpResponse.PrivateKeyUniqueIdentifier}\nNew public key: ${kpResponse.PublicKeyUniqueIdentifier}`;
+    const typeLabel =
+        keyType === "rsa" ? t("objectsReKey.typeRsa") : keyType === "ec" ? t("objectsReKey.typeEc") : t("objectsReKey.typePqc");
+    return t("objectsReKey.successKeyPair", {
+        typeLabel,
+        privateKey: kpResponse.PrivateKeyUniqueIdentifier,
+        publicKey: kpResponse.PublicKeyUniqueIdentifier,
+    });
 }
 
 interface ObjectsReKeyProps {
@@ -103,28 +96,33 @@ interface ObjectsReKeyProps {
 const ObjectsReKeyForm: React.FC<ObjectsReKeyProps> = ({ keyType }) => {
     const [form] = Form.useForm<ReKeyFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const config = REKEY_CONFIG[keyType];
+    const title = t(`objectsReKey.${config.titleKey}`);
+    const description = t(`objectsReKey.${config.descriptionKey}`);
+    const bullets = config.bulletKeys.map((k) => t(`objectsReKey.${k}`));
+    const keyLabel = t(`objectsReKey.${config.keyLabelKey}`);
 
     const onFinish = async (values: ReKeyFormData) => {
         const id = values.keyId || (values.tags?.length ? JSON.stringify(values.tags) : undefined);
         await execute(async () => {
             if (!id) {
-                throw new Error(`Please provide a ${config.keyLabel.toLowerCase()} or at least one tag.`);
+                throw new Error(t("objectsReKey.missingIdentifier", { keyLabel }));
             }
             if (config.isKeyPair) {
                 const request = rekey_keypair_ttlv_request(id);
                 const resultStr = await sendKmipRequest(request, serverUrl);
                 if (resultStr) {
                     const result = parse_rekey_keypair_ttlv_response(resultStr) as ReKeyKeyPairResponse;
-                    return buildSuccessMessage(keyType, result);
+                    return buildSuccessMessage(keyType, result, t);
                 }
             } else {
                 const request = rekey_ttlv_request(id);
                 const resultStr = await sendKmipRequest(request, serverUrl);
                 if (resultStr) {
                     const result = parse_rekey_ttlv_response(resultStr) as ReKeySymmetricResponse;
-                    return buildSuccessMessage(keyType, result);
+                    return buildSuccessMessage(keyType, result, t);
                 }
             }
         });
@@ -132,12 +130,12 @@ const ObjectsReKeyForm: React.FC<ObjectsReKeyProps> = ({ keyType }) => {
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">{config.title}</h1>
+            <h1 className="text-2xl font-bold mb-6">{title}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>{config.description}</p>
+                <p>{description}</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    {config.bullets.map((bullet) => (
+                    {bullets.map((bullet) => (
                         <li key={bullet}>{bullet}</li>
                     ))}
                 </ul>
@@ -146,18 +144,21 @@ const ObjectsReKeyForm: React.FC<ObjectsReKeyProps> = ({ keyType }) => {
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item
-                            name="keyId"
-                            label={config.keyLabel}
-                            help={`The unique identifier of the ${config.keyLabel.toLowerCase()} to re-key`}
-                        >
-                            <Input
-                                placeholder={`Enter the unique identifier of the ${config.keyLabel.toLowerCase()} to re-key`}
-                                data-testid="rekey-key-id"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={keyLabel}
+                            help={t("objectsReKey.keyIdHelp", { keyLabel })}
+                            placeholder={t("objectsReKey.keyIdPlaceholder", { keyLabel })}
+                            data-testid="rekey-key-id"
+                        />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("objectsReKey.tagsHelp", { keyLabel })}>
+                            <Select
+                                mode="tags"
+                                placeholder={t("objectsReKey.enterKeyId", { keyLabel })}
+                                open={false}
+                                data-testid="rekey-tags"
                             />
-                        </Form.Item>
-                        <Form.Item name="tags" label="Tags" help={`Alternative to ${config.keyLabel}: specify tags to identify the key`}>
-                            <Select mode="tags" placeholder="Enter tags" open={false} data-testid="rekey-tags" />
                         </Form.Item>
                     </Card>
 
@@ -169,11 +170,11 @@ const ObjectsReKeyForm: React.FC<ObjectsReKeyProps> = ({ keyType }) => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Re-Key
+                            {t("objectsReKey.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
-                <ActionResponse res={res} responseRef={responseRef} title="Re-Key response" />
+                <ActionResponse res={res} responseRef={responseRef} title={t("objectsReKey.responseTitle")} />
             </Form>
         </div>
     );

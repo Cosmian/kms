@@ -28,6 +28,32 @@ function Invoke-NativeCommand {
 
 function BuildProject {
     # -------------------------------------------------------------------------
+    # Environment setup: pin volumes to workspace drive
+    # -------------------------------------------------------------------------
+    # GitHub Actions Windows runners may have workspace on D: while CARGO_HOME
+    # defaults to C: (via HOME).  C: has limited free space (~14 GB total, ~2 GB
+    # free) and cargo-packager downloads NSIS (~3 MB base + plugins) into the
+    # cargo cache.  Pinning CARGO_HOME to the workspace volume avoids filling up
+    # the system drive and makes the build work regardless of whether
+    # GITHUB_WORKSPACE is on C: or D:.
+    $workspaceDrive = (Get-Location).Drive.Name
+    $env:CARGO_HOME = "${workspaceDrive}:\cargo_home"
+    # Ensure cargo-installed binaries (cargo-packager) are on PATH
+    $env:PATH = "$env:CARGO_HOME\bin;$env:PATH"
+    Write-Host "CARGO_HOME=$env:CARGO_HOME"
+
+    # Fix TMP/TEMP to valid Windows paths.  The GHA runner shell (Git Bash)
+    # sets TMP=TEMP=/tmp, which PowerShell and native Windows tools (incl.
+    # cargo-packager via GetTempPathW) cannot resolve to a real directory.
+    $windowsTemp = "${workspaceDrive}:\Temp"
+    if (-not (Test-Path $windowsTemp)) {
+        New-Item -ItemType Directory -Path $windowsTemp -Force | Out-Null
+    }
+    $env:TMP = $windowsTemp
+    $env:TEMP = $windowsTemp
+    Write-Host "TMP=$env:TMP TEMP=$env:TEMP"
+
+    # -------------------------------------------------------------------------
     # Toolchain
     # -------------------------------------------------------------------------
 
@@ -118,7 +144,7 @@ function BuildProject {
 
     # 2. Fallback: search under the standard VS 2022 install path
     if (-not $dumpbin) {
-        $dumpbin = Get-ChildItem -Recurse "C:\Program Files\Microsoft Visual Studio\2022" `
+        $dumpbin = Get-ChildItem -Recurse "$env:ProgramFiles\Microsoft Visual Studio\2022" `
             -Filter "dumpbin.exe" -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -like "*HostX64\x64*" } |
         Select-Object -First 1 -ExpandProperty FullName

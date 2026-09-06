@@ -1,10 +1,12 @@
-import { Button, Card, Form, Input, Select, Space, Typography } from "antd";
+import { Button, Card, Form, Select, Space, Typography } from "antd";
 import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import HashMapDisplay from "../../components/common/HashMapDisplay";
 import { sendKmipRequest } from "../../utils/utils";
 import { get_attributes_ttlv_request, parse_get_attributes_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { ATTRIBUTE_REGISTRY } from "./attributeRegistry";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -21,6 +23,8 @@ const AttributeGetForm: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
+    const { t } = useTranslation("actions");
+    const attrLabel = (value: string, fallback: string) => t(`attribute.${value}`, { defaultValue: fallback });
 
     useEffect(() => {
         if (res && responseRef.current) {
@@ -34,17 +38,17 @@ const AttributeGetForm: React.FC = () => {
         const id = values.id ? values.id : values.tags ? JSON.stringify(values.tags) : undefined;
         try {
             if (id == undefined) {
-                setRes("Missing object identifier.");
+                setRes(t("attributeGet.missingObjectId"));
                 throw Error("Missing object identifier");
             }
             const request = get_attributes_ttlv_request(id);
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = parse_get_attributes_ttlv_response(result_str, values.selected_attributes);
-                setRes(response.size ? response : "Empty result");
+                setRes(response.size ? response : t("attributeGet.emptyResult"));
             }
         } catch (e) {
-            setRes(`Error getting attributes: ${e}`);
+            setRes(t("attributeGet.error", { error: String(e) }));
             console.error("Error getting attributes:", e);
         } finally {
             setIsLoading(false);
@@ -52,13 +56,10 @@ const AttributeGetForm: React.FC = () => {
     };
     return (
         <div className="p-6">
-            <Title level={2}>Get KMIP Object Attributes</Title>
+            <Title level={2}>{t("attributeGet.title")}</Title>
             <div className="mb-8 space-y-2">
-                <div>Retrieve attributes for a KMIP object by specifying either the object ID or tags.</div>
-                <div className="text-sm text-yellow-600">
-                    When using tags to retrieve the object, rather than the object id, an error is returned if multiple objects matching the
-                    tags are found.
-                </div>
+                <div>{t("attributeGet.intro")}</div>
+                <div className="text-sm text-yellow-600 dark:text-yellow-400">{t("attributeGet.introWarning")}</div>
             </div>
 
             <Form
@@ -70,33 +71,33 @@ const AttributeGetForm: React.FC = () => {
                 }}
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
-                    <Card title="Object Identification">
-                        <div className="mb-5">Specify either the Object ID or one or more tags to identify the object.</div>
+                    <Card title={t("form.objectIdentification")}>
+                        <div className="mb-5">{t("form.identifyHint")}</div>
 
-                        <Form.Item name="id" label="Object ID" help="The unique identifier of the cryptographic object">
-                            <Input placeholder="Enter object ID" />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="id"
+                            label={t("common:objectId")}
+                            help={t("common:objectIdHelp")}
+                            placeholder={t("common:enterObjectId")}
+                        />
 
-                        <Form.Item name="tags" label="Tags" help="Tags to use to retrieve the key when no key ID is specified">
-                            <Select mode="tags" style={{ width: "100%" }} placeholder="Enter tags" tokenSeparators={[","]} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("common:tagsHelp")}>
+                            <Select mode="tags" style={{ width: "100%" }} placeholder={t("common:enterTags")} tokenSeparators={[","]} />
                         </Form.Item>
                     </Card>
 
-                    <Card title="Attribute Selection">
-                        <Form.Item
-                            name="selected_attributes"
-                            label="Attribute Names"
-                            help="The attributes or KMIP-tags to retrieve (all attributes will be returned if none specified)"
-                        >
+                    <Card title={t("attributeGet.cardSelection")}>
+                        <Form.Item name="selected_attributes" label={t("form.attributeNames")} help={t("form.attributeNamesHelp")}>
                             <Select
                                 mode="multiple"
                                 data-testid="attribute-name-select"
                                 style={{ width: "100%" }}
-                                placeholder="Select attribute"
+                                placeholder={t("form.selectAttribute")}
                             >
                                 {ATTRIBUTE_REGISTRY.map((attribute) => (
                                     <Option key={attribute.value} value={attribute.value}>
-                                        {attribute.label}
+                                        {attrLabel(attribute.value, attribute.label)}
                                     </Option>
                                 ))}
                             </Select>
@@ -111,7 +112,7 @@ const AttributeGetForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Get Attributes
+                            {t("form.getAttributes")}
                         </Button>
                     </Form.Item>
                 </Space>

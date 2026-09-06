@@ -70,16 +70,19 @@ clap = { workspace = true, features = [
   "cargo",
 ] }
 clap-config-fallback = { workspace = true }
-cosmian_kms_access = { path = "../access", version = "5.26.0" }
-cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.26.0" }
-cosmian_kms_server_database = { path = "../server_database", version = "5.26.0" }
+cosmian_kms_access = { path = "../access", version = "5.27.0" }
+cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.27.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.25.0" }
+cosmian_kms_server_database = { path = "../server_database", version = "5.27.0" }
 cosmian_logger = { workspace = true }
-crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.26.0" }
+crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.27.0" }
 dashmap = { workspace = true }
 dialoguer = { workspace = true }
 dotenvy = { workspace = true }
 futures = { workspace = true }
 governor = { version = "0.10", features = ["std"] }
+rand = { workspace = true }
+rand_chacha = "0.10"
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 jsonwebtoken = { workspace = true }
@@ -95,7 +98,7 @@ opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 pem = { workspace = true }
-proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.26.0" }
+proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.27.0" }
 reqwest = { workspace = true, features = [ # Remove "default" which includes rustls
   "json",
   "native-tls",
@@ -106,8 +109,8 @@ serde = { workspace = true }
 serde_ignored = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
-smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.26.0" }
-softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.26.0" }
+smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.27.0" }
+softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.27.0" }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 subtle = { workspace = true }
 thiserror = { workspace = true }
@@ -116,7 +119,7 @@ tokio = { workspace = true, features = ["full"] }
 toml = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.26.0" }
+utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.27.0" }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
@@ -126,8 +129,8 @@ windows-service = "0.8"
 
 [dev-dependencies]
 actix-http = { workspace = true }
-cosmian_kms_client_utils = { path = "../clients/client_utils", version = "5.26.0" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.26.0" }
+cosmian_kms_client_utils = { path = "../clients/client_utils", version = "5.27.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.27.0" }
 native-tls = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 pem = { workspace = true }

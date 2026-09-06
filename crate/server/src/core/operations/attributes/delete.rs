@@ -11,28 +11,24 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::trace;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
-    result::{KResult, KResultHelper},
+    middlewares::UserId,
+    result::KResult,
 };
 
 pub(crate) async fn delete_attribute(
     kms: &KMS,
     request: DeleteAttribute,
-    user: &str,
+    user: &UserId,
 ) -> KResult<DeleteAttributeResponse> {
     trace!("{}", serde_json::to_string(&request)?);
 
     // there must be an identifier
-    let uid_or_tags = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?
-        .as_str()
-        .context("Delete Attribute: the unique identifier must be a string")?;
+    let object_handle = from_request(request.unique_identifier.as_ref(), "Delete Attribute")?;
 
     let mut owm = Box::pin(retrieve_object_for_operation(
-        uid_or_tags,
+        object_handle,
         KmipOperation::DeleteAttribute,
         kms,
         user,

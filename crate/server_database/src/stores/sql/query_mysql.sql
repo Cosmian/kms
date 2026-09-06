@@ -45,6 +45,12 @@ SHOW COLUMNS FROM objects LIKE 'wrapping_key_id';
 -- name: add-column-wrapping-key-id
 ALTER TABLE objects ADD COLUMN wrapping_key_id VARCHAR(128);
 
+-- name: has-column-co-activated-by
+SHOW COLUMNS FROM crypto_officer_activations LIKE 'activated_by';
+
+-- name: add-column-co-activated-by
+ALTER TABLE crypto_officer_activations ADD COLUMN activated_by VARCHAR(255);
+
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access
 (
@@ -74,26 +80,6 @@ FROM read_access;
 DELETE
 FROM tags;
 
-
--- name: count-non-destroyed-objects
--- Privileged metrics-only query: counts ALL objects regardless of owner.
--- Called exclusively by the OTEL metrics layer for kms.objects.total.
--- State strings correspond to Rust enum variant names via strum::Display:
---   Destroyed           = the object was explicitly destroyed
---   Destroyed_Compromised = the object was destroyed after being compromised
--- All other states (PreActive, Active, Deactivated, Compromised) are live objects.
-SELECT COUNT(*) FROM objects
-WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised');
-
--- name: count-non-destroyed-keys
--- Privileged metrics-only query: counts non-destroyed key objects (MySQL).
--- ObjectType is stored as a JSON field inside the 'attributes' column
--- (serialised via serde with rename_all = "PascalCase").
--- Key object types: SymmetricKey, PrivateKey, PublicKey, SplitKey.
--- All states except Destroyed / Destroyed_Compromised are counted.
-SELECT COUNT(*) FROM objects
-WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
-AND JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.ObjectType')) IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
 
 -- name: insert-objects
 INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id)
@@ -243,3 +229,69 @@ CREATE INDEX idx_read_access_userid ON read_access (userid);
 
 -- name: create-index-objects-wrapping-key-id
 CREATE INDEX idx_objects_wrapping_key_id ON objects (wrapping_key_id);
+
+-- name: create-table-crypto_officer_activations
+CREATE TABLE IF NOT EXISTS crypto_officer_activations (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        activated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        activated_by VARCHAR(255),
+        sealed_record TEXT NOT NULL,
+        revoked_at TIMESTAMP NULL DEFAULT NULL,
+        revoked_by VARCHAR(255)
+);
+
+-- name: insert-crypto-officer-activation
+INSERT INTO crypto_officer_activations (sealed_record, activated_by)
+        VALUES (?, ?);
+
+-- name: select-active-crypto-officer-activation-by
+SELECT sealed_record FROM crypto_officer_activations
+        WHERE activated_by = ? AND revoked_at IS NULL
+        ORDER BY activated_at DESC LIMIT 1;
+
+-- name: select-any-active-crypto-officer-activation
+SELECT COUNT(*) FROM crypto_officer_activations WHERE revoked_at IS NULL;
+
+-- name: revoke-crypto-officer-activation
+UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP, revoked_by = ?
+        WHERE activated_by = ? AND revoked_at IS NULL;
+
+-- name: count-all-non-destroyed
+SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';
+
+-- name: count-non-destroyed-keys
+SELECT COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
+AND (
+    JSON_TYPE(JSON_EXTRACT(object, '$.SymmetricKey')) IS NOT NULL OR
+    JSON_TYPE(JSON_EXTRACT(object, '$.PrivateKey'))   IS NOT NULL OR
+    JSON_TYPE(JSON_EXTRACT(object, '$.PublicKey'))    IS NOT NULL OR
+    JSON_TYPE(JSON_EXTRACT(object, '$.SplitKey'))     IS NOT NULL
+);
+
+-- ── CRL persistence (MySQL-specific) ─────────────────────────────────────────
+-- MySQL uses LONGBLOB for binary data and REPLACE INTO for upsert.
+
+-- name: create-table-crls
+CREATE TABLE IF NOT EXISTS crls (
+    issuer_id    VARCHAR(128) NOT NULL PRIMARY KEY,
+    crl_der      LONGBLOB     NOT NULL,
+    crl_number   BIGINT       NOT NULL,
+    generated_at VARCHAR(32)  NOT NULL,
+    next_update  VARCHAR(32)  NOT NULL
+);
+
+-- name: upsert-crl
+INSERT INTO crls (issuer_id, crl_der, crl_number, generated_at, next_update)
+    VALUES (?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+        crl_der      = VALUES(crl_der),
+        crl_number   = VALUES(crl_number),
+        generated_at = VALUES(generated_at),
+        next_update  = VALUES(next_update);
+
+-- name: select-crl
+SELECT crl_der, generated_at FROM crls WHERE issuer_id = ?;
+
+-- name: list-crl-issuers
+SELECT issuer_id, next_update FROM crls ORDER BY issuer_id;

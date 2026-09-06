@@ -202,7 +202,7 @@ pub fn parse_v3_ca(
             "extendedKeyUsage" => {
                 let mut eku = ExtendedKeyUsage::new();
                 value.trim().split(',').try_for_each(|value| {
-                    match value {
+                    match value.trim() {
                         "critical" => eku.critical(),
                         "serverAuth" => eku.server_auth(),
                         "clientAuth" => eku.client_auth(),

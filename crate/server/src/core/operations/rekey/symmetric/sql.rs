@@ -19,9 +19,9 @@ use cosmian_kms_server_database::reexport::{
 
 use super::super::common::{RekeyOperation, ReplacementObject, RotationCandidate, reject_hsm_uid};
 use crate::{
-    core::{KMS, operations::key_ops::KeySelectionSpec},
-    error::KmsError,
-    result::{KResult, KResultHelper},
+    core::{KMS, operations::key_ops::KeySelectionSpec, uid_utils::from_request},
+    middlewares::UserId,
+    result::KResult,
 };
 
 /// Implementor of [`RekeyOperation`] for KMIP `ReKey` (KMIP 2.1 §6.1.46) on SQL-backed
@@ -59,29 +59,24 @@ impl RekeyOperation for SqlSymmetricRekeyer {
         &self,
         kms: &KMS,
         request: &ReKey,
-        user: &str,
+        user: &UserId,
     ) -> KResult<[RotationCandidate; 1]> {
         KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 
         kms.enforce_create_permission(user).await?;
 
-        let uid_or_tags = request
-            .unique_identifier
-            .as_ref()
-            .ok_or(KmsError::UnsupportedPlaceholder)?
-            .as_str()
-            .context("Rekey: the symmetric key unique identifier must be a string")?;
+        let object_handle = from_request(request.unique_identifier.as_ref(), "ReKey")?;
 
         // HSM-managed keys cannot be re-keyed via the SQL pipeline: they have no KMIP
         // attribute storage and are often non-extractable (CKA_EXTRACTABLE = false).
-        reject_hsm_uid(uid_or_tags, "Re-Key")?;
+        reject_hsm_uid(object_handle, "Re-Key")?;
 
         let candidates = kms
-            .retrieve_eligible_keys(uid_or_tags, ObjectType::SymmetricKey)
+            .retrieve_eligible_keys(object_handle, ObjectType::SymmetricKey)
             .await?;
 
         let owm = kms
-            .select_unique_key::<Self, _>(candidates, uid_or_tags, user, |owm| {
+            .select_unique_key::<Self, _>(candidates, object_handle.as_str(), user, |owm| {
                 // Reject requests that attempt to change crypto parameters
                 owm.attributes()
                     .validate_no_crypto_param_change([request.attributes.as_ref()], "ReKey")?;

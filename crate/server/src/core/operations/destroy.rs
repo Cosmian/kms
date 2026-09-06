@@ -23,10 +23,11 @@ use crate::core::cover_crypt::destroy_user_decryption_keys;
 use crate::{
     core::{
         KMS,
-        uid_utils::{has_prefix, uids_from_unique_identifier},
+        uid_utils::{ObjectHandle, resolve_uids},
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
@@ -34,7 +35,7 @@ use crate::{
 pub(crate) async fn destroy_operation(
     kms: &KMS,
     request: Destroy,
-    user: &str,
+    user: &UserId,
 ) -> KResult<DestroyResponse> {
     trace!("{request}");
     // there must be an identifier
@@ -42,18 +43,16 @@ pub(crate) async fn destroy_operation(
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
+    let object_handle = ObjectHandle::try_from(unique_identifier)?;
 
     // Issue #763: for HSM keys, validate the key type via a PKCS#11 roundtrip
     // before committing to destroy. This prevents accidentally destroying an AES
     // key with `rsa keys destroy` (or vice versa) when both share the same label.
     if let Some(expected_type) = &request.expected_object_type {
-        let uid_str = unique_identifier
-            .as_str()
-            .context("Destroy: unique identifier must be a string")?;
-        if let Some(prefix) = has_prefix(uid_str) {
+        if let ObjectHandle::Hsm { prefix, .. } = object_handle {
             let oracles = kms.crypto_oracles.read().await;
             if let Some(oracle) = oracles.get(prefix) {
-                guard_hsm_key_type(uid_str, expected_type, oracle.as_ref()).await?;
+                guard_hsm_key_type(object_handle, expected_type, oracle.as_ref()).await?;
             }
         }
     }
@@ -81,7 +80,7 @@ pub(crate) async fn recursively_destroy_object(
     remove: bool,
     cascade: bool,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
     // keys that should be skipped
     mut ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
@@ -89,7 +88,7 @@ pub(crate) async fn recursively_destroy_object(
         "uid={} remove={} cascade={}",
         unique_identifier, remove, cascade
     );
-    let uids = uids_from_unique_identifier(unique_identifier, kms)
+    let uids = resolve_uids(ObjectHandle::try_from(unique_identifier)?, kms)
         .await
         .context("Destroy")?;
     let op_start = std::time::Instant::now();
@@ -98,7 +97,10 @@ pub(crate) async fn recursively_destroy_object(
     for uid in uids {
         // If the object has a prefix (external object store),
         // destroy all the objects with this prefix
-        if let Some(_prefix) = has_prefix(&uid) {
+        if let ObjectHandle::Hsm {
+            prefix: _prefix, ..
+        } = ObjectHandle::from(&uid)
+        {
             // HSM keys: only HSM admins can destroy — Destroy cannot be delegated
             if !kms.database.is_object_owned_by(&uid, user).await? {
                 kms_bail!(KmsError::Unauthorized(format!(
@@ -107,7 +109,7 @@ pub(crate) async fn recursively_destroy_object(
             }
             kms.database.delete(&uid).await?;
             count += 1;
-            info!(uid = uid, user = user, "Destroyed object");
+            info!(uid = uid, user = user.as_str(), "Destroyed object");
             continue;
         }
 
@@ -116,8 +118,12 @@ pub(crate) async fn recursively_destroy_object(
             continue;
         };
 
-        // Check if the object is owned by the user
-        // If the object is not owned by the user, check if the user has destroy permissions
+        // Check ownership/grants, including the CryptoOfficer ownership bypass.
+        // `user_can_perform_operation` returns `true` for active COs on non-HSM objects.
+        // On failure we `continue` (skip silently) rather than returning `Unauthorized`,
+        // which means Destroy returns 200 with the object absent from the result — as
+        // opposed to Revoke which returns an error. This is intentional KMIP batch
+        // semantics: Destroy is best-effort on a set of UIDs.
         if !kms
             .user_can_perform_operation(&owm, user, &KmipOperation::Destroy)
             .await?
@@ -155,7 +161,8 @@ pub(crate) async fn recursively_destroy_object(
                 && object_type != ObjectType::Certificate
                 && object_type != ObjectType::SecretData
                 && object_type != ObjectType::PublicKey
-                && object_type != ObjectType::OpaqueObject)
+                && object_type != ObjectType::OpaqueObject
+                && object_type != ObjectType::SplitKey)
         {
             continue;
         }
@@ -186,6 +193,7 @@ pub(crate) async fn recursively_destroy_object(
                     | ObjectType::Certificate
                     | ObjectType::PrivateKey
                     | ObjectType::PublicKey
+                    | ObjectType::SplitKey
             )
             // Only objects that were explicitly activated (Create -> Activate flow) require revocation
             // Objects that were registered (Register -> already Active) can be destroyed directly
@@ -218,11 +226,19 @@ pub(crate) async fn recursively_destroy_object(
             ObjectType::SymmetricKey
             | ObjectType::Certificate
             | ObjectType::SecretData
-            | ObjectType::OpaqueObject => {
+            | ObjectType::OpaqueObject
+            | ObjectType::SplitKey => {
                 // destroy the key
                 let id = owm.id().to_owned();
                 let state = effective_state;
-                destroy_core(&id, remove, owm.object_mut(), state, kms).await?;
+                destroy_core(
+                    ObjectHandle::from(&id),
+                    remove,
+                    owm.object_mut(),
+                    state,
+                    kms,
+                )
+                .await?;
             }
             ObjectType::PrivateKey => {
                 // add this key to the ids to skip
@@ -270,7 +286,14 @@ pub(crate) async fn recursively_destroy_object(
                 // destroy the private key
                 let id = owm.id().to_owned();
                 let state = effective_state;
-                destroy_core(&id, remove, owm.object_mut(), state, kms).await?;
+                destroy_core(
+                    ObjectHandle::from(&id),
+                    remove,
+                    owm.object_mut(),
+                    state,
+                    kms,
+                )
+                .await?;
             }
             ObjectType::PublicKey => {
                 ids_to_skip.insert(owm.id().to_owned());
@@ -328,7 +351,14 @@ pub(crate) async fn recursively_destroy_object(
                 // Destroy the public key
                 let id = owm.id().to_owned();
                 let state = effective_state;
-                destroy_core(&id, remove, owm.object_mut(), state, kms).await?;
+                destroy_core(
+                    ObjectHandle::from(&id),
+                    remove,
+                    owm.object_mut(),
+                    state,
+                    kms,
+                )
+                .await?;
             }
             x => kms_bail!(KmsError::NotSupported(format!(
                 "destroy operation is not supported for object type {x:?}"
@@ -355,36 +385,36 @@ pub(crate) async fn recursively_destroy_object(
 
 /// Destroy an Object, knowing the object and state
 async fn destroy_core(
-    unique_identifier: &str,
+    handle: ObjectHandle<'_>,
     remove: bool,
     object: &mut Object,
     state: State,
     kms: &KMS,
 ) -> KResult<()> {
     if remove {
-        remove_from_database(unique_identifier, state, kms).await
+        remove_from_database(handle, state, kms).await
     } else {
-        update_as_destroyed(unique_identifier, object, state, kms).await
+        update_as_destroyed(handle, object, state, kms).await
     }
 }
 
 /// Remove an Object from the database
 /// This is a Cosmian specific operation
-async fn remove_from_database(unique_identifier: &str, state: State, kms: &KMS) -> KResult<()> {
+async fn remove_from_database(handle: ObjectHandle<'_>, state: State, kms: &KMS) -> KResult<()> {
     if state == State::Active {
         return Err(KmsError::InvalidRequest(format!(
-            "Object with unique identifier: {unique_identifier} is active. It must be revoked \
+            "Object with unique identifier: {handle} is active. It must be revoked \
              first"
         )));
     }
-    kms.database.delete(unique_identifier).await?;
+    kms.database.delete(handle.as_str()).await?;
     Ok(())
 }
 
 /// Destroy an Object, knowing the object and state
 /// This is the standard KMIP Destroy operation
 async fn update_as_destroyed(
-    unique_identifier: &str,
+    handle: ObjectHandle<'_>,
     object: &mut Object,
     state: State,
     kms: &KMS,
@@ -402,19 +432,19 @@ async fn update_as_destroyed(
     // (OpaqueObject) we instead zero the opaque_data_value. Certificates are handled by clearing
     // attributes to defaults.
     trace!(
-        "[destroy-core] uid={unique_identifier} type={:?} pre-state={:?} object={object}",
+        "[destroy-core] uid={handle} type={:?} pre-state={:?} object={object}",
         object.object_type(),
         state
     );
     let attributes = match object {
         Object::Certificate { .. } => {
-            trace!("[destroy-core] certificate zeroization uid={unique_identifier}");
+            trace!("[destroy-core] certificate zeroization uid={handle}");
             Attributes::default()
         }
         Object::OpaqueObject(_) => {
             if let Object::OpaqueObject(inner) = object {
                 trace!(
-                    "[destroy-core] opaque object zeroization uid={unique_identifier} len={} ",
+                    "[destroy-core] opaque object zeroization uid={handle} len={} ",
                     inner.opaque_data_value.len()
                 );
                 inner.opaque_data_value.clear();
@@ -436,17 +466,14 @@ async fn update_as_destroyed(
     };
 
     kms.database
-        .update_object(unique_identifier, object, &attributes, None)
+        .update_object(handle.as_str(), object, &attributes, None)
         .await?;
 
     kms.database
-        .update_state(unique_identifier, new_state)
+        .update_state(handle.as_str(), new_state)
         .await?;
 
-    debug!(
-        "Object with unique identifier: {} destroyed",
-        unique_identifier
-    );
+    debug!("Object with unique identifier: {handle} destroyed");
 
     Ok(())
 }
@@ -462,11 +489,11 @@ async fn update_as_destroyed(
 /// the key is unreachable.  A missing key (`Ok(None)`) is also allowed through
 /// for the same reason.
 async fn guard_hsm_key_type(
-    uid: &str,
+    handle: ObjectHandle<'_>,
     expected_type: &ObjectType,
     oracle: &dyn CryptoOracle,
 ) -> KResult<()> {
-    match oracle.get_key_type(uid).await {
+    match oracle.get_key_type(handle.as_str()).await {
         Ok(Some(actual_key_type)) => {
             let actual_object_type = match actual_key_type {
                 KeyType::AesKey => ObjectType::SymmetricKey,
@@ -477,7 +504,7 @@ async fn guard_hsm_key_type(
                 return Err(KmsError::Kmip21Error(
                     ErrorReason::Invalid_Object_Type,
                     format!(
-                        "HSM key type mismatch for '{uid}': PKCS#11 reports this key is \
+                        "HSM key type mismatch for '{handle}': PKCS#11 reports this key is \
                          {actual_object_type:?}, but the destroy command expected \
                          {expected_type:?}. Use the correct subcommand to destroy this key."
                     ),
@@ -487,7 +514,7 @@ async fn guard_hsm_key_type(
         }
         Ok(None) => Ok(()), // key not found in HSM — let the delete handle it
         Err(e) => {
-            trace!("HSM get_key_type probe for '{uid}' failed: {e}; proceeding with destroy");
+            trace!("HSM get_key_type probe for '{handle}' failed: {e}; proceeding with destroy");
             Ok(()) // don't block on PKCS#11 probe errors
         }
     }

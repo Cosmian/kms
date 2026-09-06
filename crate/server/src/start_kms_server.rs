@@ -56,21 +56,21 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache, api_token_middleware,
-        ensure_auth_middleware, extract_peer_certificate, jwt_auth_middleware,
-        otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
+        AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache, UserId,
+        api_token_middleware, ensure_auth_middleware, extract_peer_certificate,
+        jwt_auth_middleware, otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
         vault_token_optional_middleware,
     },
     result::{KResult, KResultHelper},
     routes::{
         access,
         aws_xks::{self},
-        azure_ekm, cli_archive_download, cli_archive_exists, get_hsm_status, get_server_info,
+        azure_ekm, cli_archive_download, cli_archive_exists, crl, get_hsm_status, get_server_info,
         get_version,
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, root_redirect,
+        ms_dke, ocsp, root_redirect,
         spire::{
             auth_proxy::proxy_auth_request,
             pki::sign_intermediate,
@@ -130,7 +130,7 @@ pub async fn handle_google_cse_rsa_keypair(
                 unique_identifier: Some(UniqueIdentifier::TextString(uid_sk.clone())),
                 attribute_reference: None,
             },
-            &server_params.default_username,
+            &UserId::from(server_params.default_username.as_str()),
         )
         .await
     {
@@ -162,7 +162,10 @@ pub async fn handle_google_cse_rsa_keypair(
                 None,
             )?;
             kms_server
-                .create_key_pair(create_request, &server_params.default_username)
+                .create_key_pair(
+                    create_request,
+                    &UserId::from(server_params.default_username.as_str()),
+                )
                 .await
                 .map(|cr| {
                     (
@@ -188,7 +191,7 @@ pub async fn handle_google_cse_rsa_keypair(
                     unique_identifier: Some(UniqueIdentifier::TextString(uid_sk)),
                     attribute_reference: None,
                 },
-                &server_params.default_username,
+                &UserId::from(server_params.default_username.as_str()),
             )
             .await
         {
@@ -305,6 +308,7 @@ async fn import_cse_migration_key(
     );
 
     // Import PrivateKey
+    let default_user = UserId::from(server_params.default_username.as_str());
     let import_sk_fut = {
         let import_request_sk = import_object_request::<Vec<String>>(
             server_params.vendor_identification.as_str(),
@@ -315,7 +319,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(import_request_sk, &server_params.default_username)
+        kms_server.import(import_request_sk, &default_user)
     };
     let import_pk_fut = {
         // Import PublicKey
@@ -328,7 +332,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(import_request_pk, &server_params.default_username)
+        kms_server.import(import_request_pk, &default_user)
     };
 
     try_join!(import_sk_fut, import_pk_fut)
@@ -346,7 +350,12 @@ async fn import_cse_migration_key(
 /// # Arguments
 ///
 /// * `server_params` - An instance of `ServerParams` containing the server's settings.
-/// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
+/// * `kms_server_handle_tx` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
+/// * `pre_bound_http_listener` - An optional pre-bound TCP listener for the HTTP port.
+///   When provided, the server uses [`HttpServer::listen()`] / [`HttpServer::listen_openssl()`]
+///   instead of [`HttpServer::bind()`], which eliminates the TOCTOU race that occurs between
+///   probing a free port and re-binding it later. Tests pass a listener from
+///   `allocate_dynamic_port`; production callers pass `None`.
 ///
 /// # Errors
 ///
@@ -354,6 +363,7 @@ async fn import_cse_migration_key(
 pub async fn start_kms_server(
     server_params: Arc<ServerParams>,
     kms_server_handle_tx: Option<mpsc::Sender<ServerHandle>>,
+    pre_bound_http_listener: Option<std::net::TcpListener>,
 ) -> KResult<()> {
     // OpenSSL is loaded now, so that tests can use the correct provider(s)
 
@@ -385,6 +395,17 @@ pub async fn start_kms_server(
         None
     };
 
+    // Spawn background CRL refresh cron thread and retain shutdown signal.
+    // Only spawned when kms_public_url is set (CDP endpoint is active) and
+    // crl_refresh_check_hours > 0.
+    let crl_refresh_shutdown_tx = if kms_server.params.kms_public_url.is_some()
+        && kms_server.params.crl_refresh_check_hours > 0
+    {
+        Some(cron::spawn_crl_refresh_cron(kms_server.clone()))
+    } else {
+        None
+    };
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.google_cse_enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
@@ -404,13 +425,22 @@ pub async fn start_kms_server(
 
     // Log the server configuration
     info!("KMS Server configuration: {server_params:#?}");
-    let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
+    let res = start_http_kms_server(
+        kms_server.clone(),
+        kms_server_handle_tx,
+        pre_bound_http_listener,
+    )
+    .await;
     // Signal the metrics cron thread to stop
     if let Some(tx) = metrics_shutdown_tx {
         let _ = tx.send(());
     }
     // Signal the auto-rotation cron thread to stop
     if let Some(tx) = auto_rotation_shutdown_tx {
+        let _ = tx.send(());
+    }
+    // Signal the CRL refresh cron thread to stop
+    if let Some(tx) = crl_refresh_shutdown_tx {
         let _ = tx.send(());
     }
     if let Some(ss_command_tx) = ss_command_tx {
@@ -450,7 +480,7 @@ fn start_socket_server(
             // tokio: run async code in the current thread
             tokio_handle.block_on(async {
                 // Handle the TTLV bytes
-                handle_ttlv_bytes(username, request, &kms_server).await
+                handle_ttlv_bytes(&UserId::from(username), request, &kms_server).await
             })
         },
         command_receiver,
@@ -472,9 +502,10 @@ fn start_socket_server(
 async fn start_http_kms_server(
     kms_server: Arc<KMS>,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
+    pre_bound_http_listener: Option<std::net::TcpListener>,
 ) -> KResult<()> {
     // Instantiate and prepare the KMS server
-    let server = prepare_kms_server(kms_server).await?;
+    let server = prepare_kms_server(kms_server, pre_bound_http_listener).await?;
 
     // send the server handle to the caller
     if let Some(tx) = &server_handle_transmitter {
@@ -701,10 +732,13 @@ async fn build_oidc_runtime_config(
 /// cannot occur in practice since the URL is syntactically valid. This URL is only
 /// constructed when `vault_api_enabled = false` or `vault_auth_verifier_url` is
 /// absent, and is never invoked (guarded by `Condition::new(false, …)`).
-pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev::Server> {
+pub async fn prepare_kms_server(
+    kms_server: Arc<KMS>,
+    pre_bound_http_listener: Option<std::net::TcpListener>,
+) -> KResult<actix_web::dev::Server> {
     // ── Startup security guards ──────────────────────────────────────────────
 
-    // F-001: Warn loudly if the `insecure` feature flag is compiled in.
+    // Warn loudly if the `insecure` feature flag is compiled in.
     #[cfg(feature = "insecure")]
     {
         cosmian_logger::error!(
@@ -714,7 +748,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
-    // F-002: Warn if accept_invalid_certs is enabled for auth-verifier or vault connections.
+    // Warn if accept_invalid_certs is enabled for auth-verifier or vault connections.
     if kms_server
         .params
         .auth_verifier_config
@@ -733,7 +767,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
-    // F-003: Warn when Vault API is enabled but rate limiting is disabled.
+    // Warn when Vault API is enabled but rate limiting is disabled.
     // The auth proxy at /v1/auth/* is unauthenticated and can be used to flood
     // the auth-verifier. The global rate limiter (if configured) mitigates this.
     if kms_server.params.vault_api_enabled && kms_server.params.rate_limit_per_second.is_none() {
@@ -744,7 +778,21 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
-    // F-008: Validate session salt entropy when UI is enabled.
+    // Warn when Crypto Officer is configured but the global rate limiter is disabled.
+    // The ceremony activation and disable endpoints perform crypto operations and DB writes
+    // on every call; without rate limiting they can be used for DoS or DB flooding.
+    if !kms_server.params.crypto_officer.users.is_empty()
+        && kms_server.params.rate_limit_per_second.is_none()
+    {
+        cosmian_logger::warn!(
+            "SECURITY: Crypto Officer is configured but rate_limit_per_second is not set. \
+             The ceremony activation endpoint performs crypto operations on every request. \
+             Set rate_limit_per_second in the server config to protect against abuse in \
+             production deployments."
+        );
+    }
+
+    // Validate session salt entropy when UI is enabled.
     if kms_server.params.ui_enable {
         if let Some(ref salt) = kms_server.params.ui_session_salt {
             if salt.len() < 32 {
@@ -1400,21 +1448,30 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     |arc| arc.as_ref().clone(),
                 );
 
-            let auth_type: Option<String> = if use_jwt_auth {
-                Some("JWT".to_owned())
-            } else if use_cert_auth {
-                Some("CERT".to_owned())
-            } else if use_auth_verifier
+            // Ordered list of UI login methods, highest priority first. The Web UI
+            // renders the first entry as the primary login action and the rest as
+            // secondary actions (a button when a single alternative exists, a
+            // dropdown when several do). Priority is JWT > AUTH_VERIFIER > CERT:
+            // the interactive, per-user methods come before the ambient client
+            // certificate probe. AUTH_VERIFIER is only offered when its UI login is
+            // enabled. The singular `auth_method` served by `get_auth_method` is
+            // derived as the first entry for backward compatibility.
+            let mut auth_methods: Vec<String> = Vec::new();
+            if use_jwt_auth {
+                auth_methods.push("JWT".to_owned());
+            }
+            if use_auth_verifier
                 && kms_server_for_http
                     .params
                     .auth_verifier_config
                     .as_ref()
                     .is_some_and(AuthVerifierConfig::ui_login_enabled)
             {
-                Some("AUTH_VERIFIER".to_owned())
-            } else {
-                None
-            };
+                auth_methods.push("AUTH_VERIFIER".to_owned());
+            }
+            if use_cert_auth {
+                auth_methods.push("CERT".to_owned());
+            }
 
             // BFF runtime config for the Auth Verifier server Web UI login
             // (`/ui/login_as`). Reuses the JWKS manager already built above for the
@@ -1460,7 +1517,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .app_data(Data::new(auth_verifier_runtime_config))
                 .app_data(Data::new(kms_public_url.clone()))
                 .app_data(Data::new(ui_index_folder.clone()))
-                .app_data(Data::new(auth_type))
+                .app_data(Data::new(auth_methods))
                 .wrap(Cors::permissive())
                 .configure(configure_auth_routes);
             // Add all SPA routes
@@ -1498,6 +1555,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(root_redirect::root_redirect_to_ui)
             .service(health::get_health)
             .service(get_version)
+            // Public CRL distribution point (no authentication, RFC 5280 §3).
+            // Registered directly on the app (not in a scope) so it takes priority over
+            // the default catch-all scope without interfering with other routes.
+            .service(crl::get_crl_public)
+            // Public OCSP responder (no authentication, RFC 6960 §2 — public information).
+            .service(ocsp::get_ocsp)
+            .service(ocsp::post_ocsp)
             .service(swagger::get_openapi_yaml)
             .service(swagger::get_swagger_ui)
             .service(swagger::get_swagger_ui_js)
@@ -1637,6 +1701,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
+            .service(crl::get_crl)
+            .service(access::get_crypto_officer_status)
+            .service(access::disable_crypto_officer)
+            .service(access::activate_crypto_officer_ceremony)
             .service(
                 web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))
@@ -1683,18 +1751,29 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         Some(ssl_acceptor) => {
             if use_cert_auth {
                 trace!("Using Client Certificate Authentication with OpenSSL");
-                // Start an HTTPS server with PKCS#12 with client cert auth
-                server
-                    .on_connect(extract_peer_certificate)
-                    .bind_openssl(address, ssl_acceptor)?
-                    .run()
+                let s = server.on_connect(extract_peer_certificate);
+                if let Some(lst) = pre_bound_http_listener {
+                    s.listen_openssl(lst, ssl_acceptor)?
+                } else {
+                    s.bind_openssl(address, ssl_acceptor)?
+                }
+                .run()
             } else {
                 trace!("Not using Client Certificate Authentication with OpenSSL");
-                // Start an HTTPS server with PKCS#12 but not client cert auth
-                server.bind_openssl(address, ssl_acceptor)?.run()
+                if let Some(lst) = pre_bound_http_listener {
+                    server.listen_openssl(lst, ssl_acceptor)?
+                } else {
+                    server.bind_openssl(address, ssl_acceptor)?
+                }
+                .run()
             }
         }
-        _ => server.bind(address)?.run(),
+        _ => if let Some(lst) = pre_bound_http_listener {
+            server.listen(lst)?
+        } else {
+            server.bind(address)?
+        }
+        .run(),
     })
 }
 

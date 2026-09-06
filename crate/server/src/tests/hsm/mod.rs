@@ -36,6 +36,7 @@ use crate::{
     config::ClapConfig,
     core::KMS,
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
     tests::{
         hsm::test_helpers::{get_hsm_model, get_hsm_password, get_hsm_slot_id},
@@ -61,7 +62,7 @@ pub(crate) mod test_helpers;
 async fn test_hsm_all() {
     log_init(option_env!("RUST_LOG"));
     info!("HSM: find");
-    search::test_object_search().await.unwrap();
+    Box::pin(search::test_object_search()).await.unwrap();
 
     info!("HSM: wrapped_symmetric_dek");
     // Box::pin are needed to conform to clippy::large_futures lint
@@ -255,7 +256,7 @@ async fn import_object(
         object: object.clone(),
     };
 
-    let create_response = kms.import(import_request, owner).await?;
+    let create_response = kms.import(import_request, &UserId::from(owner)).await?;
     Ok(create_response.unique_identifier)
 }
 
@@ -268,7 +269,7 @@ async fn export_object(kms: &Arc<KMS>, owner: &str, object_id: &str) -> KResult<
         key_wrapping_specification: None,
     };
 
-    let export_response = kms.export(export_request, owner).await?;
+    let export_response = kms.export(export_request, &UserId::from(owner)).await?;
     Ok(export_response.object)
 }
 
@@ -355,7 +356,7 @@ async fn send_message(
             .collect(),
     };
 
-    let response = kms.message(request, owner).await?;
+    let response = kms.message(request, &UserId::from(owner)).await?;
     assert_eq!(response.response_header.batch_count, num_ops);
 
     response

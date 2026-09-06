@@ -1,9 +1,11 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { ActionResponse } from "../../components/common/ActionResponse";
 import { useActionState } from "../../hooks/useActionState";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface CertificateReCertifyFormData {
     certificateIdToReCertify: string;
@@ -16,6 +18,7 @@ interface CertificateReCertifyFormData {
 const CertificateReCertifyForm: React.FC = () => {
     const [form] = Form.useForm<CertificateReCertifyFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: CertificateReCertifyFormData) => {
         const normalize = (v?: string) => (v?.trim() ? v.trim() : undefined);
@@ -30,21 +33,17 @@ const CertificateReCertifyForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await wasm.parse_re_certify_ttlv_response(result_str);
-                return `Certificate successfully re-certified with new ID: ${response.UniqueIdentifier}`;
+                return t("certificateReCertify.success", { newCertId: response.UniqueIdentifier });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Re-certify a Certificate</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("certificateReCertify.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>
-                    Creates a <strong>new certificate</strong> from an existing one using the KMIP <code>ReCertify</code> operation. The old
-                    and new certificates are linked via <em>ReplacedObjectLink</em> / <em>ReplacementObjectLink</em> attributes. The
-                    original certificate is preserved and the new one is returned with a fresh unique identifier.
-                </p>
+                <Trans ns="actions" i18nKey="certificateReCertify.intro" components={{ strong: <strong />, code: <code />, em: <em /> }} />
             </div>
 
             <Form
@@ -58,51 +57,55 @@ const CertificateReCertifyForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Certificate to Re-certify</h3>
-                        <Form.Item
-                            name="certificateIdToReCertify"
-                            label="Certificate ID"
-                            rules={[{ required: true, message: "Please enter the certificate ID to re-certify" }]}
-                            help="Unique identifier of the existing certificate to renew"
-                        >
-                            <Input placeholder="Enter certificate ID" data-testid="certificate-id-input" />
-                        </Form.Item>
+                        <h3 className="text-m font-bold mb-4">{t("certificateReCertify.certificateToReCertify")}</h3>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="certificateIdToReCertify"
+                            label={t("certificateReCertify.certificateId")}
+                            help={t("certificateReCertify.certificateIdHelp")}
+                            rules={[{ required: true, message: t("certificateReCertify.pleaseEnterCertificateId") }]}
+                            placeholder={t("certificateReCertify.enterCertificateId")}
+                            data-testid="certificate-id-input"
+                            objectType="Certificate"
+                        />
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Issuer Information</h3>
-                        <p className="text-sm mb-4">If no issuer is provided, the certificate will be self-signed.</p>
+                        <h3 className="text-m font-bold mb-4">{t("certificateReCertify.issuerInformation")}</h3>
+                        <p className="text-sm mb-4">{t("certificateReCertify.issuerHint")}</p>
 
-                        <Form.Item
-                            name="issuerPrivateKeyId"
-                            label="Issuer Private Key ID"
-                            help="The unique identifier of the private key of the issuer"
-                        >
-                            <Input placeholder="Enter issuer private key ID" />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="issuerPrivateKeyId"
+                            label={t("certificateReCertify.issuerPrivateKeyId")}
+                            help={t("certificateReCertify.issuerPrivateKeyIdHelp")}
+                            placeholder={t("certificateReCertify.enterIssuerPrivateKeyId")}
+                            objectType="PrivateKey"
+                        />
 
-                        <Form.Item
-                            name="issuerCertificateId"
-                            label="Issuer Certificate ID"
-                            help="The unique identifier of the certificate of the issuer"
-                        >
-                            <Input placeholder="Enter issuer certificate ID" />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="issuerCertificateId"
+                            label={t("certificateReCertify.issuerCertificateId")}
+                            help={t("certificateReCertify.issuerCertificateIdHelp")}
+                            placeholder={t("certificateReCertify.enterIssuerCertificateId")}
+                            objectType="Certificate"
+                        />
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Certificate Options</h3>
+                        <h3 className="text-m font-bold mb-4">{t("certificateReCertify.certificateOptions")}</h3>
                         <Form.Item
                             name="numberOfDays"
-                            label="Validity Period (days)"
-                            rules={[{ required: true, message: "Please enter number of days" }]}
-                            help="The requested number of validity days (server may grant a different value)"
+                            label={t("certificateReCertify.validityPeriod")}
+                            rules={[{ required: true, message: t("certificateReCertify.pleaseEnterDays") }]}
+                            help={t("certificateReCertify.validityPeriodHelp")}
                         >
                             <Input type="number" min={1} data-testid="number-of-days-input" />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Tags to associate with the new certificate (optional)">
-                            <Select mode="tags" placeholder="Enter tags" open={false} data-testid="tags-select" />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("certificateReCertify.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} data-testid="tags-select" />
                         </Form.Item>
                     </Card>
 
@@ -114,12 +117,12 @@ const CertificateReCertifyForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Re-certify
+                            {t("certificateReCertify.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="ReCertify Response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("certificateReCertify.responseTitle")} />
         </div>
     );
 };

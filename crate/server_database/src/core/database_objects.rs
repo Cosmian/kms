@@ -9,13 +9,32 @@ use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
-use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, ObjectsStore};
+use cosmian_kms_interfaces::{
+    AtomicOperation, ObjectHandle, ObjectWithMetadata, ObjectsStore, UserId,
+};
 use time::Date;
+use x509_parser::prelude::{FromDer as _, X509Certificate};
 
 use crate::{
     Database,
     error::{DbError, DbResult},
 };
+
+/// Object unique identifiers that can never be assigned to a user-created object.
+///
+/// `"*"` is the internal sentinel under which the global `Create` right is stored
+/// (see `KMS::grant_access`).
+const RESERVED_UIDS: &[&str] = &["*"];
+
+/// Reject `uid` if it is a reserved identifier (see [`RESERVED_UIDS`]).
+fn reject_reserved_uid(uid: &str) -> DbResult<()> {
+    if RESERVED_UIDS.contains(&uid) {
+        return Err(DbError::InvalidRequest(format!(
+            "'{uid}' is a reserved identifier and cannot be used as an object unique identifier"
+        )));
+    }
+    Ok(())
+}
 
 /// Struct representing the database and providing methods to manipulate objects within it.
 ///
@@ -39,6 +58,26 @@ use crate::{
 /// - `atomic`: Performs an atomic set of operations on the database.
 /// - `get_unwrapped`: Unwraps the object (if needed) and returns the unwrapped object.
 impl Database {
+    /// Execute an async operation and, when a recorder is configured, measure its
+    /// wall-clock duration and outcome (`"success"` / `"error"`).
+    ///
+    /// When no recorder is present the future is awaited directly with no overhead.
+    pub(super) async fn record<T, Fut>(&self, operation: &str, fut: Fut) -> DbResult<T>
+    where
+        Fut: Future<Output = DbResult<T>>,
+    {
+        if self.recorder.is_none() {
+            return fut.await;
+        }
+        let start = Instant::now();
+        let result = fut.await;
+        if let Some(ref rec) = self.recorder {
+            let outcome = if result.is_ok() { "success" } else { "error" };
+            rec.record_operation(operation, self.kind, outcome, start.elapsed().as_secs_f64());
+        }
+        result
+    }
+
     #[allow(dead_code)]
     /// Register an Objects store for Objects `uid` starting with `<prefix>::`.
     ///
@@ -140,35 +179,6 @@ impl Database {
             .map(Arc::clone)
     }
 
-    /// Centralises metrics instrumentation boilerplate so that public methods
-    /// stay focused on their core logic.
-    ///
-    /// Accepts a future representing the database operation (not yet polled),
-    /// awaits it, then records the operation name, backend, outcome, and elapsed
-    /// duration to the injected [`DbMetricsRecorder`] (if any).
-    ///
-    /// # Important
-    ///
-    /// Every new operation added to the `Database` facade must be wrapped with
-    /// this method to be accounted for by the metrics recorder.
-    pub(crate) async fn record<T>(
-        &self,
-        operation: &str,
-        fut: impl Future<Output = DbResult<T>>,
-    ) -> DbResult<T> {
-        let start = Instant::now();
-        let result = fut.await;
-        if let Some(ref rec) = self.recorder {
-            rec.record_operation(
-                operation,
-                self.kind,
-                if result.is_ok() { "success" } else { "error" },
-                start.elapsed().as_secs_f64(),
-            );
-        }
-        result
-    }
-
     /// Create the given Object in the database.
     /// A new UUID will be created if none is supplier.
     /// This method will fail if an ` uid ` is supplied
@@ -180,7 +190,7 @@ impl Database {
     /// # Arguments
     ///
     /// * `uid` - An optional string representing the unique identifier of the object.
-    /// * `owner` - A string slice representing the owner of the object.
+    /// * `owner` - A `UserId` representing the owner of the object.
     /// * `object` - A reference to the `Object` to be created.
     /// * `attributes` - A reference to the `Attributes` of the object.
     /// * `tags` - A reference to a `HashSet` of tags associated with the object.
@@ -192,16 +202,18 @@ impl Database {
     pub async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
     ) -> DbResult<String> {
+        if let Some(ref uid) = uid {
+            reject_reserved_uid(uid)?;
+        }
         self.record("create", async move {
             let db = self
                 .get_object_store(uid.as_deref().unwrap_or_default())
                 .await?;
-            // New objects never have a cache entry; nothing to invalidate.
             Ok(db.create(uid, owner, object, attributes, tags).await?)
         })
         .await
@@ -209,38 +221,30 @@ impl Database {
 
     /// Retrieve objects from the database.
     ///
-    /// The `uid_or_tags` parameter can be either a `uid` or a JSON array of tags.
-    ///
-    /// The `user_filter` parameter allows filtering based on user permissions.
-    ///
-    /// The `state_filter` parameter allows filtering based on the state of the objects.
-    ///
-    /// The `params` parameter allows passing additional parameters for the database query.
+    /// The `object_handle` classifies the request identifier: an [`ObjectHandle::Tags`]
+    /// expands to every object carrying all of the requested tags, while any other variant
+    /// resolves to the single UID it wraps.
     ///
     /// Returns a `DbResult` containing a `HashMap` where the keys are the `uid`s and the values are the `ObjectWithMetadata`.
     ///
     /// # Arguments
     ///
-    /// * `uid_or_tags` - A string representing either a `uid` or a JSON array of tags.
-    /// * `user` - A string representing the user requesting the objects.
-    /// * `user_filter` - A `UserFilter` enum to filter objects based on user permissions.
-    /// * `state_filter` - A `StateFilter` enum to filter objects based on their state.
-    /// * `params` - An optional reference to `ExtraStoreParams` for additional query parameters.
+    /// * `object_handle` - the classified request identifier (a UID or a tag-array).
     ///
     /// # Returns
     ///
     /// * `DbResult<HashMap<String, ObjectWithMetadata>>` - A result containing a map of `uid`s to `ObjectWithMetadata`.
     pub async fn retrieve_objects(
         &self,
-        uid_or_tags: &str,
+        object_handle: ObjectHandle<'_>,
     ) -> DbResult<HashMap<String, ObjectWithMetadata>> {
         Box::pin(self.record("retrieve_objects", async move {
-            let uids = if uid_or_tags.starts_with('[') {
-                // tags
-                let tags: HashSet<String> = serde_json::from_str(uid_or_tags)?;
-                self.list_uids_for_tags(&tags).await?
-            } else {
-                HashSet::from([uid_or_tags.to_owned()])
+            let uids = match object_handle {
+                ObjectHandle::Tags(json) => {
+                    let tags: HashSet<String> = serde_json::from_str(json)?;
+                    self.list_uids_for_tags(&tags).await?
+                }
+                handle => HashSet::from([handle.as_str().to_owned()]),
             };
             let mut results: HashMap<String, ObjectWithMetadata> = HashMap::new();
             for uid in &uids {
@@ -406,7 +410,7 @@ impl Database {
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
-    pub async fn is_object_owned_by(&self, uid: &str, owner: &str) -> DbResult<bool> {
+    pub async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> DbResult<bool> {
         self.record("is_object_owned_by", async move {
             let db = self.get_object_store(uid).await?;
             Ok(db.is_object_owned_by(uid, owner).await?)
@@ -432,36 +436,171 @@ impl Database {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> DbResult<Vec<(String, State, Attributes)>> {
-        self.record("find", async move {
-            let map = self.objects.read().await;
-            let mut results: Vec<(String, State, Attributes)> = Vec::new();
-            for db in map.values() {
-                results.extend(
-                    db.find(
-                        researched_attributes,
-                        state,
-                        user,
-                        user_must_be_owner,
-                        vendor_id,
-                    )
+        let start = Instant::now();
+        let map = self.objects.read().await;
+        let mut results: Vec<(String, State, Attributes)> = Vec::new();
+        for db in map.values() {
+            results.extend(
+                db.find(
+                    researched_attributes,
+                    state,
+                    user,
+                    user_must_be_owner,
+                    vendor_id,
+                )
+                .await
+                .unwrap_or(vec![]),
+            );
+        }
+        if let Some(ref rec) = self.recorder {
+            rec.record_operation("find", self.kind, "success", start.elapsed().as_secs_f64());
+        }
+        Ok(results)
+    }
+
+    /// Return uid, state and attributes of ALL objects (bypasses all user filtering).
+    ///
+    /// Only called from the Administrator/CryptoOfficer Locate path.
+    /// Callers must have already verified the requesting user has the required role.
+    pub async fn find_all(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+    ) -> DbResult<Vec<(String, State, Attributes)>> {
+        let map = self.objects.read().await;
+        let mut results: Vec<(String, State, Attributes)> = Vec::new();
+        for db in map.values() {
+            results.extend(
+                db.find_all(researched_attributes, state, vendor_id)
                     .await
-                    .unwrap_or(vec![]),
-                );
+                    .unwrap_or_default(),
+            );
+        }
+        Ok(results)
+    }
+
+    /// Find a certificate object by its X.509 serial number.
+    ///
+    /// Searches across all states so OCSP responses correctly distinguish
+    /// `good` (Active/PreActive), `revoked` (Compromised/Deactivated/Destroyed/DestroyedCompromised),
+    /// and `unknown` (not found).
+    ///
+    /// Returns `(uid, state)` for the first match or `None` if not found.
+    pub async fn find_certificate_by_serial(
+        &self,
+        issuer_certificate_uid: &str,
+        serial_hex: &str,
+        vendor_id: &str,
+    ) -> DbResult<Option<(String, cosmian_kmip::kmip_0::kmip_types::State)>> {
+        use cosmian_kmip::kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_objects::ObjectType,
+            kmip_types::{LinkType, LinkedObjectIdentifier},
+        };
+
+        // Build search filter: certificate objects linked to the given issuer.
+        let mut search_attrs = Attributes {
+            object_type: Some(ObjectType::Certificate),
+            ..Attributes::default()
+        };
+        search_attrs.link = Some(vec![cosmian_kmip::kmip_2_1::kmip_types::Link {
+            link_type: LinkType::CertificateLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(
+                issuer_certificate_uid.to_owned(),
+            ),
+        }]);
+
+        // Search every lifecycle state so OCSP can report accurate status.
+        for state in [
+            cosmian_kmip::kmip_0::kmip_types::State::Active,
+            cosmian_kmip::kmip_0::kmip_types::State::PreActive,
+            cosmian_kmip::kmip_0::kmip_types::State::Compromised,
+            cosmian_kmip::kmip_0::kmip_types::State::Deactivated,
+            cosmian_kmip::kmip_0::kmip_types::State::Destroyed,
+            cosmian_kmip::kmip_0::kmip_types::State::Destroyed_Compromised,
+        ] {
+            let candidates = self
+                .find_all(Some(&search_attrs), Some(state), vendor_id)
+                .await?;
+
+            for (uid, obj_state, _attrs) in candidates {
+                if let Some(owm) = self.retrieve_object(&uid).await? {
+                    let found_serial = extract_serial_hex_from_object(owm.object());
+                    if let Some(s) = found_serial {
+                        if s.eq_ignore_ascii_case(serial_hex) {
+                            return Ok(Some((uid, obj_state)));
+                        }
+                    }
+                }
             }
-            Ok(results)
-        })
-        .await
+        }
+
+        Ok(None)
+    }
+
+    /// Find a certificate object by an exact match on its DER-encoded bytes.
+    ///
+    /// Unlike [`Self::find_certificate_by_serial`], this does **not** require a known
+    /// issuer UID: it scans every certificate object across all lifecycle states and
+    /// compares `certificate_value` byte-for-byte against `der_bytes`. This lets
+    /// callers determine whether an *externally supplied* certificate (e.g. raw DER
+    /// bytes in a KMIP `Validate` request, with no `UniqueIdentifier` reference)
+    /// happens to be one the KMS already tracks, and if so, its current state.
+    ///
+    /// Returns `(uid, state)` for the first match or `None` if no certificate object
+    /// in the KMS has identical DER bytes.
+    pub async fn find_certificate_state_by_der(
+        &self,
+        der_bytes: &[u8],
+        vendor_id: &str,
+    ) -> DbResult<Option<(String, cosmian_kmip::kmip_0::kmip_types::State)>> {
+        use cosmian_kmip::kmip_2_1::{kmip_attributes::Attributes, kmip_objects::ObjectType};
+
+        let search_attrs = Attributes {
+            object_type: Some(ObjectType::Certificate),
+            ..Attributes::default()
+        };
+
+        // Search every lifecycle state so the caller can distinguish an
+        // Active/PreActive certificate from a Compromised/Deactivated/Destroyed one.
+        for state in [
+            cosmian_kmip::kmip_0::kmip_types::State::Active,
+            cosmian_kmip::kmip_0::kmip_types::State::PreActive,
+            cosmian_kmip::kmip_0::kmip_types::State::Compromised,
+            cosmian_kmip::kmip_0::kmip_types::State::Deactivated,
+            cosmian_kmip::kmip_0::kmip_types::State::Destroyed,
+            cosmian_kmip::kmip_0::kmip_types::State::Destroyed_Compromised,
+        ] {
+            let candidates = self
+                .find_all(Some(&search_attrs), Some(state), vendor_id)
+                .await?;
+
+            for (uid, obj_state, _attrs) in candidates {
+                if let Some(owm) = self.retrieve_object(&uid).await? {
+                    if let cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(cert) =
+                        owm.object()
+                    {
+                        if cert.certificate_value.as_slice() == der_bytes {
+                            return Ok(Some((uid, obj_state)));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(None)
     }
 
     /// Return (uid, state, attributes) for every object wrapped by the given wrapping key.
     pub async fn find_wrapped_by(
         &self,
         wrapping_key_uid: &str,
-        user: &str,
+        user: &UserId,
     ) -> DbResult<Vec<(String, State, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, State, Attributes)> = Vec::new();
@@ -496,7 +635,7 @@ impl Database {
         &self,
         name: &str,
         generation: Option<i32>,
-        owner: &str,
+        owner: &UserId,
     ) -> DbResult<Vec<(String, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, Attributes)> = Vec::new();
@@ -541,7 +680,7 @@ impl Database {
     ///
     /// # Arguments
     ///
-    /// * `user` - A string slice representing the user performing the operations.
+    /// * `user` - A `UserId` representing the user performing the operations.
     /// * `operations` - A slice of `AtomicOperation` representing the operations to be performed.
     /// * `params` - An optional reference to `ExtraStoreParams` for additional parameters.
     ///
@@ -555,11 +694,16 @@ impl Database {
     /// cannot be accessed.
     pub async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
     ) -> DbResult<Vec<String>> {
         if operations.is_empty() {
             return Ok(vec![]);
+        }
+        for op in operations {
+            if let AtomicOperation::Create((uid, ..)) = op {
+                reject_reserved_uid(uid)?;
+            }
         }
         #[expect(clippy::indexing_slicing)]
         let first_op = &operations[0];
@@ -573,8 +717,11 @@ impl Database {
         // invalidate of clear cache for all operations
         for op in operations {
             match op {
-                AtomicOperation::Create((uid, object, ..))
-                | AtomicOperation::UpdateObject((uid, object, ..))
+                AtomicOperation::Create((uid, _owner, object, ..)) => {
+                    self.object_cache.invalidate(uid).await;
+                    self.unwrapped_cache.validate_cache(uid, object).await?;
+                }
+                AtomicOperation::UpdateObject((uid, object, ..))
                 | AtomicOperation::Upsert((uid, object, ..)) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.validate_cache(uid, object).await?;
@@ -594,20 +741,156 @@ impl Database {
     }
 }
 
+/// Extract the X.509 serial number as an uppercase hex string from a KMS `Object`.
+///
+/// Returns `None` if the object is not a certificate or DER parsing fails.
+///
+/// The output **must** exactly match the hex string the OCSP crypto layer computes
+/// for the same certificate (`extract_serial_hex` in `cosmian_kms_crypto::openssl::ocsp`,
+/// which converts the request's `ASN1_INTEGER` via `BN_bn2hex`), or `find_certificate_by_serial`
+/// silently fails to match and OCSP incorrectly reports `unknown` for a real, issued
+/// certificate. `BN_bn2hex` strips whole leading zero *bytes* (already true of
+/// `to_bytes_be()`'s minimal big-endian output) but always prints both hex digits of
+/// the remaining most-significant byte — so a serial such as `0x0A…` renders as `"0A…"`,
+/// not `"A…"`. Do **not** strip leading zero *characters* here: about 1-in-16 randomly
+/// generated serial numbers have a leading nibble of `0`, and naively trimming all
+/// leading `'0'` characters (rather than only whole zero bytes) desynchronises this
+/// hex string from the OCSP layer's for exactly those certificates.
+fn extract_serial_hex_from_object(object: &Object) -> Option<String> {
+    const UPPER_HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
+
+    let cert_bytes = match object {
+        Object::Certificate(c) => &c.certificate_value,
+        _ => return None,
+    };
+    // Use x509-parser to extract the serial number without depending on openssl here.
+    let (_, parsed) = X509Certificate::from_der(cert_bytes).ok()?;
+    // `to_bytes_be()` already yields the minimal big-endian representation (no leading
+    // zero bytes), matching the canonical form OpenSSL's BIGNUM uses internally.
+    let serial_bytes = parsed.serial.to_bytes_be();
+    serial_bytes.iter().try_fold(
+        String::with_capacity(serial_bytes.len().saturating_mul(2)),
+        |mut output, byte| {
+            let upper = UPPER_HEX_DIGITS.get(usize::from(*byte >> 4)).copied()?;
+            let lower = UPPER_HEX_DIGITS.get(usize::from(*byte & 0x0F)).copied()?;
+            output.push(char::from(upper));
+            output.push(char::from(lower));
+            Some(output)
+        },
+    )
+}
+
 #[cfg(test)]
 #[expect(clippy::expect_used, clippy::panic)]
 mod tests {
     use std::{
-        collections::HashMap,
+        collections::{HashMap, HashSet},
         num::NonZeroUsize,
         sync::{Arc, Mutex},
         time::Duration,
     };
 
+    use cosmian_kmip::{
+        kmip_0::kmip_types::CertificateType,
+        kmip_2_1::{
+            extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+            kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+        },
+    };
+    use cosmian_kms_interfaces::{AtomicOperation, UserId};
     use tempfile::TempDir;
 
-    use super::Database;
-    use crate::core::{DbMetricsRecorder, MainDbKind, MainDbParams};
+    use super::{Database, Object, extract_serial_hex_from_object};
+    use crate::core::{
+        DbMetricsRecorder, MainDbKind, MainDbParams, database_objects::reject_reserved_uid,
+    };
+
+    async fn test_db() -> Database {
+        let tmp = TempDir::new().expect("Failed to create temp dir");
+        Database::instantiate(
+            &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
+            false,
+            HashMap::new(),
+            Duration::from_secs(1),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to instantiate in-memory database")
+    }
+
+    /// Direct unit coverage of the reserved-uid check (issue #909).
+    #[test]
+    fn test_reject_reserved_uid_direct() {
+        assert!(reject_reserved_uid("*").is_err());
+        reject_reserved_uid("some-real-uid").expect("real uid must be accepted");
+    }
+
+    fn test_key() -> Object {
+        create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &[0_u8; 32],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )
+        .expect("failed to build test key object")
+    }
+
+    /// `Database::create` must refuse to create an object with the reserved uid `"*"`.
+    ///
+    /// See `repro_issue_909_get_on_star_bypasses_import_gate` for the end-to-end
+    /// escalation this prevents: a real object at uid `"*"` collides with the
+    /// internal sentinel used to store the global `Create` right.
+    #[tokio::test]
+    async fn test_create_rejects_reserved_uid() {
+        let db = test_db().await;
+        let owner = UserId::from("owner@example.com");
+        let key = test_key();
+        let attributes = key.attributes().expect("key has attributes").clone();
+
+        let result = db
+            .create(
+                Some("*".to_owned()),
+                &owner,
+                &key,
+                &attributes,
+                &HashSet::new(),
+            )
+            .await;
+        let err = result.expect_err("creating an object with uid '*' must fail");
+        assert!(
+            err.to_string().contains("reserved"),
+            "expected a reserved-identifier error, got: {err}"
+        );
+    }
+
+    /// `Database::atomic` must refuse a `Create` operation targeting the reserved uid `"*"`.
+    #[tokio::test]
+    async fn test_atomic_rejects_reserved_uid() {
+        let db = test_db().await;
+        let owner = UserId::from("owner@example.com");
+        let key = test_key();
+        let attributes = key.attributes().expect("key has attributes").clone();
+
+        let operations = vec![AtomicOperation::Create((
+            "*".to_owned(),
+            owner.clone(),
+            key,
+            attributes,
+            HashSet::new(),
+        ))];
+        let result = db.atomic(&owner, &operations).await;
+        let err = result.expect_err("atomic Create with uid '*' must fail");
+        assert!(
+            err.to_string().contains("reserved"),
+            "expected a reserved-identifier error, got: {err}"
+        );
+    }
 
     /// Verify that a UID with an HSM prefix is rejected when no HSM store is registered.
     #[tokio::test]
@@ -619,9 +902,10 @@ mod tests {
             HashMap::new(), // no HSM stores registered
             Duration::from_secs(1),
             NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
-            None,
+            None,  // cache_max_ttl
+            false, // disable_unwrapped_cache
+            None,  // recorder
+            None,  // ceremony_keys
         )
         .await
         .expect("Failed to instantiate in-memory database");
@@ -681,18 +965,25 @@ mod tests {
             None,
             false,
             Some(recorder_arc),
+            None,
         )
         .await
         .expect("Failed to instantiate database with mock recorder");
 
         // list_user_operations_granted: exercises the permissions facade path.
-        drop(db.list_user_operations_granted("test_user").await);
+        drop(
+            db.list_user_operations_granted(&UserId::from("test_user"))
+                .await,
+        );
 
         // retrieve_object on a non-existent uid → Ok(None) → outcome "success"
         drop(db.retrieve_object("non-existent-uid-xyz").await);
 
         // find with no filters → Ok([]) → outcome "success"
-        drop(db.find(None, None, "test_user", false, "").await);
+        drop(
+            db.find(None, None, &UserId::from("test_user"), false, "")
+                .await,
+        );
 
         let recorded = calls.lock().expect("mutex poisoned").clone();
 
@@ -724,6 +1015,140 @@ mod tests {
         assert!(
             op_names.contains(&"find"),
             "recorder missing 'find' op; got: {op_names:?}"
+        );
+    }
+
+    /// Build a minimal self-signed X.509 certificate DER with an explicit serial number.
+    fn cert_der_with_serial(serial_bytes: &[u8]) -> Vec<u8> {
+        use openssl::{
+            asn1::Asn1Integer,
+            bn::BigNum,
+            hash::MessageDigest,
+            pkey::PKey,
+            x509::{X509Builder, X509NameBuilder},
+        };
+
+        let rsa = openssl::rsa::Rsa::generate(2048).expect("RSA keygen");
+        let pkey = PKey::from_rsa(rsa).expect("PKey");
+        let mut nb = X509NameBuilder::new().expect("X509NameBuilder");
+        nb.append_entry_by_text("CN", "serial-hex-test")
+            .expect("CN");
+        let name = nb.build();
+
+        let mut b = X509Builder::new().expect("X509Builder");
+        b.set_subject_name(&name).expect("subject");
+        b.set_issuer_name(&name).expect("issuer");
+        b.set_pubkey(&pkey).expect("pubkey");
+        let not_before = openssl::asn1::Asn1Time::days_from_now(0).expect("not_before");
+        let not_after = openssl::asn1::Asn1Time::days_from_now(365).expect("not_after");
+        b.set_not_before(&not_before).expect("set_not_before");
+        b.set_not_after(&not_after).expect("set_not_after");
+        let serial = Asn1Integer::from_bn(BigNum::from_slice(serial_bytes).expect("bn").as_ref())
+            .expect("serial");
+        b.set_serial_number(&serial).expect("set_serial");
+        b.sign(&pkey, MessageDigest::sha256()).expect("sign");
+        b.build().to_der().expect("to_der")
+    }
+
+    /// Regression test: `extract_serial_hex_from_object` must produce the exact same
+    /// hex string as the OCSP crypto layer's `extract_serial_hex` (which goes through
+    /// OpenSSL's `ASN1_INTEGER_to_BN` + `BN_bn2hex`). `BN_bn2hex` strips whole leading
+    /// zero *bytes* but always prints both hex digits of the remaining most-significant
+    /// byte, so a serial number whose leading byte is e.g. `0x0A` must render as `"0A…"`,
+    /// not `"A…"`. Naively trimming all leading `'0'` characters previously desynced
+    /// this from the OCSP layer for ~1-in-16 randomly generated serial numbers, making
+    /// `find_certificate_by_serial` (and therefore OCSP) intermittently report a
+    /// perfectly valid, just-issued certificate as `unknown`.
+    #[test]
+    fn test_extract_serial_hex_preserves_leading_zero_nibble() {
+        let der = cert_der_with_serial(&[0x0A, 0xBB, 0xCC, 0xDD, 0xEE]);
+        let object = Object::Certificate(cosmian_kmip::kmip_2_1::kmip_objects::Certificate {
+            certificate_type: CertificateType::X509,
+            certificate_value: der,
+        });
+        let hex = extract_serial_hex_from_object(&object).expect("extract serial hex");
+        assert_eq!(
+            hex, "0ABBCCDDEE",
+            "leading zero nibble of the most-significant byte must be preserved"
+        );
+    }
+
+    /// Sanity check: a serial with no leading zero nibble round-trips unchanged.
+    #[test]
+    fn test_extract_serial_hex_no_leading_zero() {
+        let der = cert_der_with_serial(&[0x7A, 0xBB, 0xCC, 0xDD, 0xEE]);
+        let object = Object::Certificate(cosmian_kmip::kmip_2_1::kmip_objects::Certificate {
+            certificate_type: CertificateType::X509,
+            certificate_value: der,
+        });
+        let hex = extract_serial_hex_from_object(&object).expect("extract serial hex");
+        assert_eq!(hex, "7ABBCCDDEE");
+    }
+
+    /// `find_certificate_state_by_der` must locate a certificate object by exact DER
+    /// bytes alone — no issuer UID needed — and report its current lifecycle state.
+    /// This is the lookup used by the KMIP `Validate` operation for certificates
+    /// supplied as raw bytes (no `UniqueIdentifier` reference in the request).
+    #[tokio::test]
+    async fn test_find_certificate_state_by_der_finds_known_certificate() {
+        use cosmian_kmip::kmip_2_1::kmip_objects::{Certificate, ObjectType};
+
+        let db = test_db().await;
+        let owner = UserId::from("owner@example.com");
+        let der = cert_der_with_serial(&[0x11, 0x22, 0x33, 0x44]);
+        let cert_object = Object::Certificate(Certificate {
+            certificate_type: CertificateType::X509,
+            certificate_value: der.clone(),
+        });
+        let attributes = Attributes {
+            object_type: Some(ObjectType::Certificate),
+            ..Default::default()
+        };
+        let uid = db
+            .create(None, &owner, &cert_object, &attributes, &HashSet::new())
+            .await
+            .expect("failed to create certificate object");
+
+        let found = Box::pin(db.find_certificate_state_by_der(&der, VENDOR_ID_COSMIAN))
+            .await
+            .expect("find_certificate_state_by_der must not error");
+        let (found_uid, found_state) = found.expect("certificate must be found by exact DER match");
+        assert_eq!(found_uid, uid);
+        assert_eq!(
+            found_state,
+            cosmian_kmip::kmip_0::kmip_types::State::PreActive,
+            "freshly created certificate defaults to PreActive"
+        );
+    }
+
+    /// A certificate never stored in the KMS must not match any existing record,
+    /// even when other certificates are present.
+    #[tokio::test]
+    async fn test_find_certificate_state_by_der_returns_none_for_unknown_certificate() {
+        use cosmian_kmip::kmip_2_1::kmip_objects::{Certificate, ObjectType};
+
+        let db = test_db().await;
+        let owner = UserId::from("owner@example.com");
+        let known_der = cert_der_with_serial(&[0x55, 0x66, 0x77, 0x88]);
+        let cert_object = Object::Certificate(Certificate {
+            certificate_type: CertificateType::X509,
+            certificate_value: known_der,
+        });
+        let attributes = Attributes {
+            object_type: Some(ObjectType::Certificate),
+            ..Default::default()
+        };
+        db.create(None, &owner, &cert_object, &attributes, &HashSet::new())
+            .await
+            .expect("failed to create certificate object");
+
+        let unknown_der = cert_der_with_serial(&[0x99, 0xAA, 0xBB, 0xCC]);
+        let found = Box::pin(db.find_certificate_state_by_der(&unknown_der, VENDOR_ID_COSMIAN))
+            .await
+            .expect("find_certificate_state_by_der must not error");
+        assert!(
+            found.is_none(),
+            "a never-stored certificate must not match any KMS record"
         );
     }
 }

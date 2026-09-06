@@ -52,7 +52,6 @@ Crate path: `crate/server`
 | `warn` | `Activate: object {} is already Active, rejecting` | `src/core/operations/activate.rs` | - | - |
 | `warn` | `AWS XKS create: key {uid} already exists (ignoring creation).` | `src/routes/aws_xks/key_metadata.rs` | `uid`: KMIP object UID | - |
 | `warn` | `Azure EKM client authentication is disabled, this should only be done in tests, and won't work for production environments.` | `src/start_kms_server.rs` | - | - |
-| `warn` | `Could not insert: certificate: AKI: {}, SKI: {}` | `src/core/operations/validate.rs` | - | - |
 | `warn` | `Failed to persist auto-activation of object {}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
 | `warn` | `Fetch JWKS: {e}` | `src/middlewares/jwt/jwks.rs` | `e`: caught error | - |
 | `warn` | `SigV4 failure: {signature_error}` | `src/routes/aws_xks/sigv4_middleware.rs` | `signature_error`: SigV4 signature validation error | - |
@@ -142,7 +141,6 @@ Crate path: `crate/server`
 | `debug` | `Activate: object {} current state = {:?}` | `src/core/operations/activate.rs` | - | - |
 | `debug` | `Add Attribute: {}` | `src/core/operations/attributes/add.rs` | - | - |
 | `debug` | `AES-GCM decryption failed (expected for implicit rejection): {e}` | `src/routes/jose/aes_gcm.rs` | `e`: caught error | - |
-| `debug` | `after getting CRL: url: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `algorithm: {ca:?}, ciphertext length: {}` | `src/core/operations/encrypt.rs` | `ca`: cryptographic algorithm | - |
 | `debug` | `allocation_size: {allocation_size}` | `src/routes/google_cse/operations.rs` | `allocation_size`: allocated buffer size | ×2 in this file |
 | `debug` | `API token authentication failed: {e:?}` | `src/middlewares/api_token/api_token_middleware.rs` | `e`: caught error | - |
@@ -157,8 +155,6 @@ Crate path: `crate/server`
 | `debug` | `Created secret data with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
 | `debug` | `Created symmetric key with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
 | `debug` | `Creating SecretData object` | `src/core/operations/derive_key.rs` | - | - |
-| `debug` | `CRL list already contains key: {path}` | `src/core/operations/validate.rs` | `path`: filesystem path | - |
-| `debug` | `CRL list already contains key: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `CSE Error: {:?}` | `src/routes/google_cse/mod.rs` | - | - |
 | `debug` | `decode encrypted_dek` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `decrypt private key` | `src/routes/google_cse/operations.rs` | - | - |
@@ -212,14 +208,12 @@ Crate path: `crate/server`
 | `debug` | `Number of certificates in chain: {certificates_number}` | `src/core/operations/validate.rs` | `certificates_number`: number of certificates in chain | - |
 | `debug` | `object is not wrapped, no need to unwrap` | `src/core/wrapping/unwrap.rs` | - | - |
 | `debug` | `Object type: {}, with unique identifier: {}, destroyed by user {}` | `src/core/operations/destroy.rs` | - | - |
-| `debug` | `Object with unique identifier: {} destroyed` | `src/core/operations/destroy.rs` | - | - |
 | `debug` | `Object with unique identifier: {} revoked` | `src/core/operations/revoke.rs` | - | - |
 | `debug` | `Object with unique identifier: {} revoked by user {}` | `src/core/operations/revoke.rs` | - | - |
 | `debug` | `OpenSSL Extensions: {}` | `src/core/operations/certify/build_certificate.rs` | - | - |
 | `debug` | `Parent CRL verification: revocation status: {res:?}` | `src/core/operations/validate.rs` | `res`: result (debug display) | - |
 | `debug` | `proxy_config: {config:#?}` | `src/config/params/proxy_params.rs` | `config`: configuration (debug display) | - |
 | `debug` | `re-wrapping key with current KMS` | `src/routes/google_cse/operations.rs` | - | - |
-| `debug` | `reading full bytes of CRL: url: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `Register: activation_date={:?} <= now, setting state to Active` | `src/core/operations/register.rs` | - | - |
 | `debug` | `Register: no activation_date or future date, setting state to PreActive` | `src/core/operations/register.rs` | - | - |
 | `debug` | `Registered object with uid: {}` | `src/core/operations/register.rs` | - | - |
@@ -238,7 +232,6 @@ Crate path: `crate/server`
 | `debug` | `Signature verification result: {validity_indicator:?}` | `src/core/operations/signature_verify.rs` | `validity_indicator`: signature validity result | - |
 | `debug` | `signature_verify: effective CP => alg={:?} pad={:?} hash={:?} dsa={:?} mgf1_hash={:?}` | `src/core/operations/signature_verify.rs` | - | - |
 | `debug` | `Sigv4 Middleware - Adding missing HOST header: {}` | `src/routes/aws_xks/sigv4_middleware.rs` | - | - |
-| `debug` | `Skipping non-HTTP CRL URI: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `Socket server received stop signal: {result:?}` | `src/socket_server.rs` | `result`: operation result | - |
 | `debug` | `socket server: client connected from {}` | `src/socket_server.rs` | - | - |
 | `debug` | `socket server: client {} disconnected` | `src/socket_server.rs` | - | - |
@@ -266,9 +259,6 @@ Crate path: `crate/server`
 | `trace` | `: {:?}` | `src/core/operations/attributes/dispatch_macros.rs` | — | — |
 | `trace` | `[api_token_auth] Authorization header received (length: {} chars)` | `src/middlewares/api_token/api_token_auth.rs` | — | — |
 | `trace` | `[api_token_auth] comparing client token ({} chars) with server token` | `src/middlewares/api_token/api_token_auth.rs` | — | — |
-| `trace` | `[destroy-core] certificate zeroization uid={unique_identifier}` | `src/core/operations/destroy.rs` | `unique_identifier` — … | — |
-| `trace` | `[destroy-core] opaque object zeroization uid={unique_identifier} len={}` | `src/core/operations/destroy.rs` | `unique_identifier` — … | — |
-| `trace` | `[destroy-core] uid={unique_identifier} type={:?} pre-state={:?} object={object}` | `src/core/operations/destroy.rs` | `unique_identifier` — …<br>`object` — … | — |
 | `trace` | `[destroy] DENY revoke-before-destroy (explicitly activated) uid={} type={:?} state={:?} activation_date={:?} initial_date={:?}` | `src/core/operations/destroy.rs` | — | — |
 | `trace` | `[destroy] Failed to destroy linked private key {}: {:?}. Continuing with public key destruction.` | `src/core/operations/destroy.rs` | — | — |
 | `trace` | `[destroy] policy-eval uid={} type={:?} db_state={:?} attr_state={:?} effective_state={:?} activation_date={:?} policy_state={:?} remove={}` | `src/core/operations/destroy.rs` | — | — |
@@ -338,7 +328,6 @@ Crate path: `crate/server`
 | `trace` | `get_crl_bytes: entering: uri_list: {uri_list:?}` | `src/core/operations/validate.rs` | `uri_list` — … | — |
 | `trace` | `got key bytes of length: {}, aead: {:?}. Proceeding to get the nonce...` | `src/core/operations/decrypt.rs` | — | — |
 | `trace` | `HMAC computed: {} bytes` | `src/core/operations/mac.rs` | — | — |
-| `trace` | `HSM get_key_type probe for '{uid}' failed: {e}; proceeding with destroy` | `src/core/operations/destroy.rs` | `uid` — …<br>`e` — … | — |
 | `trace` | `Ignoring tag {x:?} which does not match to an attribute` | `src/core/operations/attributes/get.rs` | `x` — … | — |
 | `trace` | `import opaque_object: uid={}` | `src/core/operations/import.rs` | — | — |
 | `trace` | `import secret_data: uid={}` | `src/core/operations/import.rs` | — | — |
@@ -415,7 +404,6 @@ Crate path: `crate/server`
 | `trace` | `Retrieved object for: {}` | `src/core/operations/attributes/delete.rs` | — | — |
 | `trace` | `Retrieving certificate for private key: {}` | `src/core/certificate/find.rs` | — | — |
 | `trace` | `Retrieving issuer private key and certificate: private_key_id: {:?}, certificate_id: {:?}` | `src/core/certificate/find.rs` | — | — |
-| `trace` | `Retrieving private key for certificate: certificate_uid_or_tags: {:?}` | `src/core/certificate/find.rs` | — | — |
 | `trace` | `RNGRetrieve: {}` | `src/core/operations/rng_retrieve.rs` | — | — |
 | `trace` | `Root and possibly leaf removed from initial certificate list. Left: {}` | `src/core/operations/validate.rs` | — | — |
 | `trace` | `Sensitive: {:?}` | `src/core/operations/attributes/add.rs` | — | — |
@@ -483,7 +471,6 @@ Crate path: `crate/server`
 | `error` | `OpenSSL does not appear to be available (version number is 0).              Please verify that OpenSSL is correctly installed and accessible.` | `src/main.rs` | — | — |
 | `warn` | `An Edwards Keypair on curve 25519 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `An Edwards Keypair on curve 448 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
-| `warn` | `CRL signature could not be verified against chain issuers; issuer: {:?}.                          Continuing with status checks.` | `src/core/operations/validate.rs` | — | — |
 | `warn` | `Import: CRL check could not be completed ({e}),                              proceeding with {desired_state:?} state` | `src/core/operations/import.rs` | `e`, `desired_state` | — |
 | `warn` | `The UI index HTML folder does not contain an index.html file:                  {ui_index_html_folder:#?}` | `src/config/params/server_params.rs` | `ui_index_html_folder` | — |
 | `warn` | `Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated                                  Encryption Tag will NOT be extracted.` | `src/routes/kmip.rs` | `x` | — |
@@ -512,7 +499,6 @@ Crate path: `crate/server`
 | `trace` | `Certify PublicKeyAndSubjectName:{unique_identifier}: public key:                  {from_public_key}` | `src/core/operations/certify/certify_op.rs` | `unique_identifier`, `from_public_key` | — |
 | `trace` | `ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: {aad:?}, tag: {tag:?},              padding_method: {padding_method:?}` | `src/core/operations/decrypt.rs` | `ciphertext`, `nonce`, `aad`, `tag`, `padding_method` | — |
 | `trace` | `enter export_get op={:?} req={}` | `src/core/operations/export_get.rs` | — | ×2 in this file |
-| `trace` | `get_attribute_list uid={} refs=[{}]` | `src/core/operations/attributes/get_list.rs` | — | — |
 | `trace` | `post-process symmetric key uid={} final_format={:?}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `process_symmetric_key enter uid={} requested_format={:?} wrap_type={:?}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `process_symmetric_key exit uid={} final_format={:?}` | `src/core/operations/export_get.rs` | — | — |
@@ -524,7 +510,6 @@ Crate path: `crate/server`
 | `trace` | `Request Message: {request_message}` | `src/routes/kmip.rs` | `request_message` | — |
 | `trace` | `Response Message: {response_message}` | `src/routes/kmip.rs` | `response_message` | — |
 | `trace` | `retrieved object uid={} type={:?} state={:?} key_fmt={:?}` | `src/core/operations/export_get.rs` | — | — |
-| `trace` | `uid_or_tags: {uid_or_tags:?}, user: {user},          operation_type: {operation_type:?}` | `src/core/retrieve_object_utils.rs` | `uid_or_tags`, `user`, `operation_type` | — |
 | `error` | `Failed to convert Response TTLV to bytes: {}: TTLV:\n{:#?}` | `src/routes/kmip.rs` | — | — |
 | `warn` | `Failed to process request:\n{response_message}` | `src/routes/kmip.rs` | `response_message` | — |
 | `info` | `\n{:?}` | `src/routes/kmip.rs` | — | — |
@@ -608,35 +593,56 @@ Crate path: `crate/server`
 | `trace` | `GET /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
 | `trace` | `` JWKS key order is database insertion order — not stable across restarts or backends.          Returning {} eligible key(s); consumers must match by `kid`, not position. `` | `src/routes/jwks.rs` | - | - |
 | `trace` | `POST /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
+| `warn` | `CRYPTO_OFFICER_ACCESS: crypto officer {user} bypassed normal permission check on {id} for {operation_type:?}` | `src/core/retrieve_object_utils.rs` | `user`, `id`, `operation_type` | - |
+| `info` | `GET /access/crypto_officer/status {user}` | `src/routes/access.rs` | `user` | - |
+| `trace` | `{request}` | `src/core/operations/create_split_key.rs` | `request` | - |
 | `error` | `Failed to serialize response to JSON: {e}` | `src/routes/kmip.rs` | `e` | - |
-| `info` | `http_workers not configured; defaulting to total core count ({total})` | `src/start_kms_server.rs` | `total` | - |
-| `info` | `KMS HTTP server configured with {http_workers} worker thread(s)` | `src/start_kms_server.rs` | `http_workers` | - |
-| `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
-| `debug` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
-| `debug` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
 | `warn` | `JOSE CEK cache insert error for {uid}: {e}` | `src/routes/jose/cek_cache.rs` | `uid`, `e` | - |
 | `warn` | `JOSE CEK cache peek error for {uid}: {e}` | `src/routes/jose/cek_cache.rs` | `uid`, `e` | - |
 | `warn` | `JOSE CEK cache: failed to construct KMIP SymmetricKey: {e}` | `src/routes/jose/cek_cache.rs` | `e` | - |
 | `warn` | `JOSE CEK cache: unexpected CEK length {other} bytes — not an AES-128/192/256 key` | `src/routes/jose/cek_cache.rs` | `other` | - |
 | `warn` | `JOSE CEK cache: unexpected object type for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
+| `info` | `http_workers not configured; defaulting to total core count ({total})` | `src/start_kms_server.rs` | `total` | - |
+| `info` | `KMS HTTP server configured with {http_workers} worker thread(s)` | `src/start_kms_server.rs` | `http_workers` | - |
 | `debug` | `JOSE CEK cache hit for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `JOSE CEK cached for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `TLS: an authenticated user was already present; skipping certificate check` | `src/middlewares/tls_auth.rs` | - | - |
+| `trace` | `get_attribute_list uid={uid} refs=[{}]` | `src/core/operations/attributes/get_list.rs` | `uid` | - |
+| `debug` | `Object with unique identifier: {handle} destroyed` | `src/core/operations/destroy.rs` | `handle` | - |
+| `trace` | `[destroy-core] certificate zeroization uid={handle}` | `src/core/operations/destroy.rs` | `handle` | - |
+| `trace` | `[destroy-core] opaque object zeroization uid={handle} len={}` | `src/core/operations/destroy.rs` | `handle` | - |
+| `trace` | `[destroy-core] uid={handle} type={:?} pre-state={:?} object={object}` | `src/core/operations/destroy.rs` | `handle`, `object` | - |
+| `trace` | `HSM get_key_type probe for '{handle}' failed: {e}; proceeding with destroy` | `src/core/operations/destroy.rs` | `handle`, `e` | - |
+| `trace` | `object_handle: {object_handle}, user: {user},          operation_type: {operation_type:?}` | `src/core/retrieve_object_utils.rs` | `object_handle`, `user`, `operation_type` | - |
+| `trace` | `Retrieving private key for certificate: certificate_handle: {:?}` | `src/core/certificate/find.rs` | - | - |
+| `error` | `SECURITY: KMS compiled with 'insecure' feature — ALL JWT and Auth Verifier signature              validation is DISABLED. Any syntactically valid token is accepted without signature              verification. This binary MUST NOT be used in production.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `OIDC: discovery document at {discovery_url} is missing required fields` | `src/start_kms_server.rs` | `discovery_url` | - |
 | `warn` | `OIDC: failed to build HTTP client for discovery: {e}` | `src/start_kms_server.rs` | `e` | - |
 | `warn` | `OIDC: failed to build JwksManager for UI OIDC: {e}` | `src/start_kms_server.rs` | `e` | - |
 | `warn` | `OIDC: failed to fetch discovery document from {discovery_url}: {e}` | `src/start_kms_server.rs` | `discovery_url`, `e` | - |
 | `warn` | `OIDC: failed to parse discovery document from {discovery_url}: {e}` | `src/start_kms_server.rs` | `discovery_url`, `e` | - |
+| `warn` | `SECURITY: auth_verifier_accept_invalid_certs is TRUE — TLS certificate verification              is DISABLED for Auth Verifier JWKS fetches. Only use in dev/test environments.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `SECURITY: vault_api_enabled is true but rate_limit_per_second is not set. The              unauthenticated auth proxy at /v1/auth/* can be used as a DoS amplifier. Set              rate_limit_per_second in the server config for production deployments.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `SECURITY: vault_auth_verifier_accept_invalid_certs is TRUE — TLS certificate              verification is DISABLED for Vault auth-verifier connections. Only use in dev/test.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `Session: failed to read user_id from session: {e:?}` | `src/middlewares/session_auth.rs` | `e` | - |
+| `warn` | `SPIRE API internal error: {m}` | `src/routes/spire/error.rs` | `m` | - |
+| `warn` | `SPIRE auth proxy: rejected path traversal attempt: {path}` | `src/routes/spire/auth_proxy.rs` | `path` | - |
+| `warn` | `UI is enabled but ui_session_salt is not set. A random salt will be generated                  per process, which invalidates existing sessions on restart. Set a persistent                  salt for production use.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `vault auth proxy: auth-verifier unreachable: {e}` | `src/routes/spire/auth_proxy.rs` | `e` | - |
+| `warn` | `vault auth proxy: failed to read auth-verifier response body: {e}` | `src/routes/spire/auth_proxy.rs` | `e` | - |
+| `warn` | `vault_api_enabled = true but vault_auth_verifier_url is not set —                      Vault-compatible API will NOT be registered.                      Set vault_auth_verifier_url in the server config.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `{log_prefix}: validation failed: {e}; rejecting request` | `src/middlewares/spire_token.rs` | `log_prefix`, `e` | - |
 | `info` | `OIDC: discovered endpoints from {discovery_url}` | `src/start_kms_server.rs` | `discovery_url` | - |
+| `info` | `Vault-compatible API enabled: transit at {transit_scope_path}, PKI at {pki_scope_path}, auth proxy at /v1/auth` | `src/start_kms_server.rs` | `transit_scope_path`, `pki_scope_path` | - |
+| `debug` | `AuthVerifier Middleware: an authenticated user was already found; skipping.` | `src/middlewares/auth_verifier/middleware.rs` | - | - |
+| `debug` | `` AuthVerifier Middleware: authenticated user `{}` `` | `src/middlewares/auth_verifier/middleware.rs` | - | - |
+| `debug` | `AuthVerifier Middleware: authentication failed: {e:?}` | `src/middlewares/auth_verifier/middleware.rs` | `e` | - |
 | `debug` | `OIDC: authorization_endpoint={authorization_endpoint}` | `src/start_kms_server.rs` | `authorization_endpoint` | - |
 | `debug` | `OIDC: jwks_uri={jwks_uri}` | `src/start_kms_server.rs` | `jwks_uri` | - |
 | `debug` | `OIDC: token_endpoint={token_endpoint}` | `src/start_kms_server.rs` | `token_endpoint` | - |
 | `debug` | `Session: authenticated user '{user_id}'` | `src/middlewares/session_auth.rs` | `user_id` | - |
 | `debug` | `Session: request already authenticated, skipping` | `src/middlewares/session_auth.rs` | - | - |
-| `trace` | `Session Authentication...` | `src/middlewares/session_auth.rs` | - | - |
-| `trace` | `Session: no user_id in session, passing through` | `src/middlewares/session_auth.rs` | - | - |
-| `warn` | `vault_api_enabled = true but vault_auth_verifier_url is not set —                      Vault-compatible API will NOT be registered.                      Set vault_auth_verifier_url in the server config.` | `src/start_kms_server.rs` | - | - |
+| `debug` | `SPIRE auth proxy → {target}` | `src/routes/spire/auth_proxy.rs` | `target` | - |
 | `debug` | `vault pki sign-intermediate: requested_validity_days={days} (from ttl='{ttl_str}')` | `src/routes/spire/pki.rs` | `days`, `ttl_str` | - |
 | `debug` | `vault pki: signed intermediate certificate uid={cert_uid}` | `src/routes/spire/pki.rs` | `cert_uid` | - |
 | `debug` | `vault pki: using CA private key uid={ca_private_key_uid}` | `src/routes/spire/pki.rs` | `ca_private_key_uid` | - |
@@ -644,34 +650,78 @@ Crate path: `crate/server`
 | `debug` | `vault transit: created ML-DSA-65 key '{name}'` | `src/routes/spire/transit.rs` | `name` | - |
 | `debug` | `vault transit: created RSA key '{name}' bits={bits}` | `src/routes/spire/transit.rs` | `name`, `bits` | - |
 | `debug` | `vault transit: deleted key '{name}'` | `src/routes/spire/transit.rs` | `name` | - |
-| `trace` | `POST vault transit keys/{}/config (no-op)` | `src/routes/spire/transit.rs` | - | - |
-| `trace` | `POST/PUT vault pki root/sign-intermediate` | `src/routes/spire/pki.rs` | - | - |
-| `warn` | `vault auth proxy: auth-verifier unreachable: {e}` | `src/routes/spire/auth_proxy.rs` | `e`: reqwest error detail | Raised when KMS cannot reach auth-verifier to forward a `/v1/auth/*` request; SPIRE will fail to authenticate |
-| `warn` | `SPIRE API internal error: {m}` | `src/routes/spire/error.rs` | `m` | - |
-| `debug` | `SPIRE auth proxy → {target}` | `src/routes/spire/auth_proxy.rs` | `target` | - |
-| `warn` | `SPIRE auth proxy: rejected path traversal attempt: {path}` | `src/routes/spire/auth_proxy.rs` | `path` — the offending request path (with `/v1` stripped) that contained a `.`/`..` segment | Security: emitted when the unauthenticated `/v1/auth/*` proxy blocks a path-traversal attempt (HTTP 400). Repeated occurrences may indicate probing of internal auth-verifier endpoints. |
-| `trace` | `{} vault transit keys/{name} type={}` | `src/routes/spire/transit.rs` | `name` | - |
-| `trace` | `{} vault transit sign/{name}/{hash_alg_path}` | `src/routes/spire/transit.rs` | `name`, `hash_alg_path` | - |
-| `warn` | `vault auth proxy: failed to read auth-verifier response body: {e}` | `src/routes/spire/auth_proxy.rs` | `e` | - |
-| `info` | `Vault-compatible API enabled: transit at {transit_scope_path}, PKI at {pki_scope_path}, auth proxy at /v1/auth` | `src/start_kms_server.rs` | `transit_scope_path`, `pki_scope_path` | - |
-| `warn` | `{log_prefix}: validation failed: {e}; rejecting request` | `src/middlewares/spire_token.rs` | `log_prefix`, `e` | - |
 | `debug` | `{log_prefix}: non-ASCII X-Vault-Token header; rejecting` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `debug` | `{log_prefix}: validated entity={}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `trace` | `force_refresh: cooldown active, skipping` | `src/middlewares/jwt/jwks.rs` | - | - |
+| `trace` | `POST vault transit keys/{}/config (no-op)` | `src/routes/spire/transit.rs` | - | - |
+| `trace` | `POST/PUT vault pki root/sign-intermediate` | `src/routes/spire/pki.rs` | - | - |
+| `trace` | `Session Authentication...` | `src/middlewares/session_auth.rs` | - | - |
+| `trace` | `Session: no user_id in session, passing through` | `src/middlewares/session_auth.rs` | - | - |
 | `trace` | `{log_prefix}: missing X-Vault-Token header` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `trace` | `{log_prefix}: no X-Vault-Token; deferring to native auth` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
-| `debug` | `AuthVerifier Middleware: an authenticated user was already found; skipping.` | `src/middlewares/auth_verifier/middleware.rs` | - | - |
-| `debug` | `` AuthVerifier Middleware: authenticated user `{}` `` | `src/middlewares/auth_verifier/middleware.rs` | - | - |
-| `debug` | `AuthVerifier Middleware: authentication failed: {e:?}` | `src/middlewares/auth_verifier/middleware.rs` | `e` | - |
-| `error` | `SECURITY: KMS compiled with 'insecure' feature — ALL JWT and Auth Verifier signature              validation is DISABLED. Any syntactically valid token is accepted without signature              verification. This binary MUST NOT be used in production.` | `src/start_kms_server.rs` | - | Emitted at startup when the `insecure` Cargo feature is enabled. This disables all JWT signature verification. **Never ship this binary to production.** |
-| `warn` | `SECURITY: auth_verifier_accept_invalid_certs is TRUE — TLS certificate verification              is DISABLED for Auth Verifier JWKS fetches. Only use in dev/test environments.` | `src/start_kms_server.rs` | - | Emitted when `auth_verifier_accept_invalid_certs = true`. Disables TLS cert verification for Auth Verifier JWKS fetches. Dev/test only; set to `false` (default) in production. |
-| `warn` | `SECURITY: vault_api_enabled is true but rate_limit_per_second is not set. The              unauthenticated auth proxy at /v1/auth/* can be used as a DoS amplifier. Set              rate_limit_per_second in the server config for production deployments.` | `src/start_kms_server.rs` | - | Emitted when Vault API proxy is enabled without a rate limit. The unauthenticated `/v1/auth/*` endpoint can be DoS-amplified. Set `rate_limit_per_second` in `[server]` config. |
-| `warn` | `SECURITY: vault_auth_verifier_accept_invalid_certs is TRUE — TLS certificate              verification is DISABLED for Vault auth-verifier connections. Only use in dev/test.` | `src/start_kms_server.rs` | - | Emitted when `vault_auth_verifier_accept_invalid_certs = true`. Disables TLS cert verification for Vault auth-verifier connections. Dev/test only; set to `false` (default) in production. |
-| `warn` | `UI is enabled but ui_session_salt is not set. A random salt will be generated                  per process, which invalidates existing sessions on restart. Set a persistent                  salt for production use.` | `src/start_kms_server.rs` | - | Emitted when the web UI is enabled but `ui_session_salt` (or `KMS_UI_SESSION_SALT`) is not configured. Sessions will not survive server restarts. Set a stable secret value for production. |
-| `trace` | `force_refresh: cooldown active, skipping` | `src/middlewares/jwt/jwks.rs` | - | JWKS cache force-refresh was requested but the cooldown window has not elapsed; the refresh is skipped to prevent DoS via repeated JWKS fetches. |
+| `trace` | `{} vault transit keys/{name} type={}` | `src/routes/spire/transit.rs` | `name` | - |
+| `trace` | `{} vault transit sign/{name}/{hash_alg_path}` | `src/routes/spire/transit.rs` | `name`, `hash_alg_path` | - |
 | `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
+| `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
-| `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
+| `warn` | `` `privileged_users` is deprecated; please migrate to                              `[roles] crypto_officer_users` in kms.toml `` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `ceremony check DB error for user {user}: {e};                      falling back to Operator role` | `src/core/operations/dispatch.rs` | `user`, `e` | - |
+| `warn` | `ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment                              variable is used in production to avoid persisting the secret to disk.                              If loaded from a config file, ensure it has restrictive permissions                              (0600) and is not committed to version control.` | `src/config/params/server_params.rs` | - | - |
+| `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `debug` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `debug` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `warn` | `CreateSplitKey: partial failure — {} share(s) already stored                          but remaining shares could not be created. Manual cleanup required.` | `src/core/operations/create_split_key.rs` | - | - |
+| `trace` | `CreateSplitKey: overriding total_parts from {total_parts} to {n_co_i32}                  (matches crypto_officer_users count)` | `src/core/operations/create_split_key.rs` | `total_parts`, `n_co_i32` | - |
+| `warn` | `CreateSplitKey: ceremony source key could not be destroyed after split                      — key material may still be accessible. Manual destruction required.` | `src/core/operations/create_split_key.rs` | - | - |
+| `error` | `CRYPTO_OFFICER_ACCESS: crypto officer bypassed ownership check` | `src/core/kms/permissions.rs` | - | - |
+| `error` | `CRYPTO_OFFICER_CEREMONY_ACTIVATED: Crypto Officer ceremony completed` | `src/core/operations/join_split_key.rs` | - | - |
+| `error` | `CRYPTO_OFFICER_DISABLED: Crypto Officer ceremony activation revoked` | `src/core/kms/permissions.rs` | - | - |
+| `warn` | `` SECURITY: Crypto Officer is active in config-only mode                          (require_ceremony = false). Any user listed in                          `crypto_officer_users` is a permanent super-admin with no                          runtime activation gate. Consider enabling                          `crypto_officer_require_ceremony = true` in production                          deployments. `` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `SECURITY: Crypto Officer is configured but rate_limit_per_second is not set.              The ceremony activation endpoint performs crypto operations on every request.              Set rate_limit_per_second in the server config to protect against abuse in              production deployments.` | `src/start_kms_server.rs` | - | - |
+| `debug` | `CreateSplitKey: resolved ceremony parameters` | `src/core/operations/create_split_key.rs` | - | - |
+| `info` | `POST /access/crypto_officer/disable` | `src/routes/access.rs` | - | - |
+| `info` | `JoinSplitKey: CO ceremony auto-activated via reconstructed key` | `src/core/operations/join_split_key.rs` | - | - |
+| `info` | `PEER_REVOCATION_CLEANUP: revoked victim GET access on caller's share` | `src/core/kms/permissions.rs` | - | - |
+| `debug` | `JoinSplitKey: shares reconstructed` | `src/core/operations/join_split_key.rs` | - | - |
+| `error` | `CreateSplitKey: ceremony source key destroyed after successful split` | `src/core/operations/create_split_key.rs` | `uid` (source key UID), `user`, `session_id` | Audit — ceremony source key destroyed; split shares are now the only copies |
+| `error` | `CreateSplitKey: split-key share stored` | `src/core/operations/create_split_key.rs` | `uid` (share UID), `part`, `total`, `source` (source key UID), `owner`, `user`, `session_id` | Audit — ceremony share created; `session_id` correlates all shares from one CreateSplitKey call |
+| `error` | `JoinSplitKey: reconstructed key stored` | `src/core/operations/join_split_key.rs` | `uid` (reconstructed key UID), `shares` (count), `user`, `session_id` | Audit — key reconstructed from split-key shares |
+| `error` | `JoinSplitKey: CO ceremony activation failed — rolling back                      reconstructed key from DB` | `src/core/operations/join_split_key.rs` | `uid` (reconstructed key UID), `user`, `session_id`, `error` (activation error) | Audit — compensating delete triggered; activation failure made the ceremony invalid; key is being removed |
+| `error` | `JoinSplitKey: CRITICAL — reconstructed key rollback failed;                          orphaned key remains in DB, manual cleanup required` | `src/core/operations/join_split_key.rs` | `uid` (orphaned key UID), `user`, `session_id`, `rollback_error` (delete error) | CRITICAL audit — DB is in inconsistent state; manual deletion of the `uid` object is required; alert SIEM |
+| `warn` | `` `force_default_username = true` combined with `privileged_users` is                      deprecated and will become an error in a future release. All requests run                      under the same identity, making Crypto Officer dual-control meaningless.                      Please migrate to `[roles] crypto_officer_users` and remove                      `force_default_username`. `` | `src/config/params/server_params.rs` | - | - |
+| `info` | `ceremony sealing key loaded from object store` | `src/core/kms/mod.rs` | - | - |
+| `warn` | `[{idx}] CRL distribution point unreachable for '{:?}', skipping                          revocation check: {e}` | `src/core/operations/validate.rs` | `idx`, `e` | - |
+| `warn` | `CRL signature could not be verified against chain issuers;                          issuer: {crl_issuer:?}, path: {crl_path}.                          Continuing (trusted local delivery).` | `src/core/operations/validate.rs` | `crl_issuer`, `crl_path` | - |
+| `warn` | `CRL validation failed: {crl_err}` | `src/core/operations/validate.rs` | `crl_err` | - |
+| `info` | `GET /certificates/{}/crl` | `src/routes/crl.rs` | - | - |
+| `info` | `GET /public/certificates/{}/crl (unauthenticated)` | `src/routes/crl.rs` | - | - |
+| `debug` | `Auto-injecting CRL Distribution Point: {crl_url}` | `src/core/operations/certify/build_certificate.rs` | `crl_url` | - |
+| `debug` | `CRL cache hit: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
+| `debug` | `CRL fetched: uri={uri} size={}` | `src/core/operations/validate.rs` | `uri` | - |
+| `debug` | `CRL generated successfully for issuer '{}': {} entries, validity {} days` | `src/core/operations/generate_crl.rs` | - | - |
+| `debug` | `CRL response received: uri={uri} status={}` | `src/core/operations/validate.rs` | `uri` | - |
+| `debug` | `Generating CRL for issuer certificate: {}` | `src/core/operations/generate_crl.rs` | - | - |
+| `error` (audit) | `CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)` | `src/core/operations/generate_crl.rs` | `user`, `issuer_id` | Emitted every time a CO generates a CRL; always visible regardless of `RUST_LOG`. |
+| `info` | `Auto-CRL: triggered CRL regeneration for issuer '{issuer_id}' after certificate revocation` | `src/core/operations/revoke.rs` | `issuer_id`, `user` | Emitted on every successful auto-regen trigger. |
+| `warn` | `Auto-CRL: CRL regeneration failed for issuer '{issuer_id}': {e}` | `src/core/operations/revoke.rs` | `issuer_id`, `e` | Signing or DB error during auto-regen; Revoke still succeeds. |
+| `trace` | `Found {} revoked certificate(s) for issuer '{}'` | `src/core/operations/generate_crl.rs` | - | - |
+| `trace` | `Skipping certificate '{}': cannot parse DER: {e}` | `src/core/operations/generate_crl.rs` | `e` | - |
+| `warn` | `Failed to load CRL from database for issuer '{issuer_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_id`, `e` | - |
+| `warn` | `Failed to persist CRL to database for issuer '{issuer_certificate_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_certificate_id`, `e` | - |
+| `warn` | `[crl-refresh-cron] CRL refresh failed for '{issuer_id}': {e}` | `src/cron.rs` | `issuer_id`, `e` | - |
+| `warn` | `[crl-refresh-cron] Failed to build runtime: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[crl-refresh-cron] Failed to list CRL issuers from DB: {e}` | `src/cron.rs` | `e` | - |
+| `info` | `[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}'              (expires within {overlap_hours}h)` | `src/cron.rs` | `issuer_id`, `overlap_hours` | - |
+| `debug` | `[crl-refresh-cron] Running scheduled CRL refresh check` | `src/cron.rs` | - | - |
+| `debug` | `[crl-refresh-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
+| `debug` | `[kms-init] Failed to read max CRL number from DB: {e};                          using unix timestamp as CRL counter seed` | `src/core/kms/mod.rs` | `e` | - |
+| `trace` | `Sorted candidate mismatch: cert AKI={}, SKI={}, sorted SKI={}, AKI={}` | `src/core/operations/validate.rs` | - | - |
+| `info` | `GET /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
+| `info` | `POST /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
+| `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
+| `debug` | `OCSP: all serials served from cache` | `src/routes/ocsp/handler.rs` | - | - |
+| `debug` | `OCSP GET request path exceeds MAX_OCSP_GET_ENCODED_LEN` | `src/routes/ocsp/handler.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -707,10 +757,14 @@ Crate path: `crate/server_database`
 | `warn` | `PostgreSQL pool error — retrying` | `src/stores/sql/pgsql.rs` | `attempt`, `delay_ms`, `error` | - |
 | `warn` | `PostgreSQL retryable error — retrying` | `src/stores/sql/pgsql.rs` | `attempt`, `delay_ms`, `error` | - |
 | `warn` | `PostgreSQL transaction body failed — retrying` | `src/stores/sql/pgsql.rs` | `attempt`, `delay_ms`, `error` | - |
+| `debug` | `[redis-scan-all] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
+| `debug` | `PG find_all query: {}` | `src/stores/sql/pgsql.rs` | - | - |
+| `trace` | `find_all_: {:?}` | `src/stores/sql/mysql.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object that failed to                                      deserialize` | `src/stores/sql/sqlite.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object {id} that failed to                          deserialize: {e}` | `src/stores/sql/mysql.rs` | `id`, `e` | - |
 | `debug` | `[redis-scan-wrapped] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
+| `debug` | `PostgreSQL error` | `src/error/db_error.rs` | `code`: SQLSTATE code<br>`message`: raw driver error message | Internal only — never surfaced via `SqlError` (which carries just the code) to avoid leaking table/constraint names to clients. |
 
 ### `cosmian_kms_crypto`
 
@@ -778,6 +832,7 @@ Crate path: `crate/crypto`
 | `trace` | `encrypt: sym_cipher: {sym_cipher:?}, key length: {}, nonce length: {}, aad length: {},          plaintext length: {}, padding_method: {padding_method:?}`                                                                             | `src/crypto/symmetric/symmetric_ciphers.rs`         | `sym_cipher`, `padding_method`                                                    | —               |
 | `warn` | `` ignored `basicConstraints` extension's value: {value} `` | `src/openssl/x509_extensions.rs` | `value` | - |
 | `info` | `` RFC 3394 is deprecated in favor of RFC 5649 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `. `` | `src/crypto/symmetric/symmetric_ciphers.rs` | - | ×2 in this file |
+| `warn` | `` Delegated OCSP responder certificate does not carry the `id-pkix-ocsp-nocheck`              extension (OID 1.3.6.1.5.5.7.48.1.5, RFC 6960 §4.2.2.2.1). Relying parties may              attempt to recursively check this certificate's own revocation status via CDP,              AIA, or local policy instead. `` | `src/openssl/ocsp.rs` | - | - |
 
 ### `cosmian_kmip`
 
@@ -1055,7 +1110,7 @@ Crate path: `crate/clients/client`
 
 | Level | Message | File | Variables | Notes |
 |---|---|---|---|---|
-| `info` | `GET {server_url}` | `src/kms_rest_client.rs` | `server_url`: full URL of the GET request being sent | - |
+| `info` | `GET {server_url}` | `src/kms_rest_client.rs` | `server_url`: full URL of the GET request being sent | ×2 in this file |
 | `info` | `The decrypted file is available at {output_file}` | `src/file_utils.rs` | `output_file`: path to the decrypted output file | ×2 in this file |
 | `info` | `The encrypted file is available at {output_file}` | `src/file_utils.rs` | `output_file`: path to the encrypted output file | ×2 in this file |
 | `info` | `Using server URL: {}` | `src/http_client/client.rs` | — | — |
@@ -1069,7 +1124,7 @@ Crate path: `crate/clients/client`
 | `debug` | `CONNECT tunnel: {proxy_addr} → {target_host}:{target_port}` | `src/http_client/proxy.rs` | `proxy_addr`, `target_host`, `target_port` | — |
 | `trace` | `Error response on {endpoint}: status={status}, body={text}` | `src/kms_rest_client.rs` | `endpoint`, `status`, `text` | — |
 | `warn` | `` ckms config: `{}` is deprecated — rename it to `{}` in your                          ckms.toml to silence this warning. `` | `src/http_client/client.rs` | - | - |
-| `debug` | `Stale connection from pool, retrying (is_connect): {e}` | `src/http_client/client.rs` | `e` | - |
+| `debug` | `Connection error, retrying with backoff (is_connect): {e}` | `src/http_client/client.rs` | `e` | - |
 
 ---
 
@@ -1224,6 +1279,8 @@ Crate path: `crate/clients/pkcs11/module`
 | `debug` | `load_find_context_by_class: search by id: {} -> handle:                                          {} -> certificate: {}:{}` | `src/sessions.rs` | — | — |
 | `warn` | `load_find_context_by_class: no {search_class:?} object found for id                              {id}` | `src/sessions.rs` | `search_class`, `id` | - |
 | `debug` | `load_find_context_by_class: search by id: {} -> handle: {} ->                              object: {}:{}` | `src/sessions.rs` | - | - |
+| `warn` | `load_find_context_by_class: no {search_class:?} object found for                                  id {id}` | `src/sessions.rs` | `search_class`, `id` | - |
+| `debug` | `load_find_context_by_class: backend fallback — search by id: {}                                  -> handle: {} -> object: {}:{}` | `src/sessions.rs` | - | - |
 
 ---
 
@@ -1289,7 +1346,6 @@ Crate path: `ui/src/`
 
 | Level   | Message                                                  | File                                              | Variables                                                     | Notes           |
 | ------- | -------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------- | --------------- |
-| `warn`  | `revoke_ttlv_request not available in WASM package`      | `components/common/Locate.tsx`                    | -                                                             | -               |
 | `info`  | `[KMS] vendor_id set to "{vendorId}"`                    | `App.tsx`                                         | `vendorId`: vendor identifier string received from the server | -               |
 | `error` | `Aggregate date error:`                                  | `actions/Tokenize/TokenizeAggregateDate.tsx`      | —                                                             | —               |
 | `error` | `Aggregate number error:`                                | `actions/Tokenize/TokenizeAggregateNumber.tsx`    | —                                                             | —               |
@@ -1330,7 +1386,6 @@ Crate path: `ui/src/`
 | `debug` | `ECVerify: dataBuf len`                                  | `actions/EC/ECVerify.tsx`                         | —                                                             | —               |
 | `debug` | `RsaSign: signature length`                              | `actions/RSA/RsaSign.tsx`                         | —                                                             | —               |
 | `debug` | `RsaVerify: dataBuf len`                                 | `actions/RSA/RsaVerify.tsx`                       | —                                                             | —               |
-| `error` | `Session fallback failed:` | `App.tsx` | - | - |
 | `error` | `Auth Verifier login failed:` | `pages/LoginPage.tsx` | - | - |
 
 ---

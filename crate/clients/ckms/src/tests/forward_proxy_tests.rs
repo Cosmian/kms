@@ -39,7 +39,7 @@ const PROXY_PASSWORD: &str = "mypwd";
 #[tokio::test]
 pub(crate) async fn test_server_version_using_forward_proxy() {
     let ctx = start_test_server(
-        &test_config_path("auth_plain.toml"),
+        &test_config_path("auth/plain.toml"),
         TestClientOptions::default(),
     )
     .await

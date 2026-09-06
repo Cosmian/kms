@@ -18,9 +18,14 @@ use time::OffsetDateTime;
 const SECS_PER_DAY_MINUS_ONE: i64 = SECS_PER_DAY - 1;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::has_prefix},
+    core::{
+        KMS,
+        retrieve_object_utils::retrieve_object_for_operation,
+        uid_utils::{ObjectHandle, from_request},
+    },
     error::KmsError,
-    result::{KResult, KResultHelper},
+    middlewares::UserId,
+    result::KResult,
 };
 
 /// Extract the PKCS#11 `key_id` from an HSM UID of the form
@@ -28,11 +33,11 @@ use crate::{
 ///
 /// Returns `None` if the UID cannot be parsed.
 fn extract_hsm_key_id(uid: &str) -> Option<&str> {
-    let prefix = has_prefix(uid)?;
-    // Strip "hsm::<model>::" to get "<slot_id>::<key_id>"
-    let rest = uid.strip_prefix(&format!("{prefix}::"))?;
-    // Skip the slot_id segment
-    rest.split_once("::").map(|(_, key_id)| key_id)
+    let ObjectHandle::Hsm { .. } = ObjectHandle::from(uid) else {
+        return None;
+    };
+    // key_id is always the last "::"-delimited segment of an HSM UID.
+    uid.rsplit("::").next()
 }
 
 /// Compute the full base UID for an HSM key: `hsm::<prefix>::<slot>::<key_id_without_@N>`.
@@ -40,31 +45,21 @@ fn extract_hsm_key_id(uid: &str) -> Option<&str> {
 /// This is the canonical `rotate_name` for HSM-resident keys — it embeds the slot ID
 /// and is therefore unique across HSM slots.
 fn hsm_base_uid(uid: &str) -> Option<String> {
-    let prefix = has_prefix(uid)?;
-    let rest = uid.strip_prefix(&format!("{prefix}::"))?;
-    let (slot_str, key_id) = rest.split_once("::")?;
-    // Strip any @N generation suffix to get the stable base key_id.
-    let base_key_id = key_id
-        .rsplit_once('@')
-        .and_then(|(base, suffix)| suffix.parse::<i32>().ok().map(|_| base))
-        .unwrap_or(key_id);
-    Some(format!("{prefix}::{slot_str}::{base_key_id}"))
+    ObjectHandle::from(uid)
+        .hsm_parts()
+        .ok()
+        .map(|p| p.full_base_uid())
 }
 
 pub(crate) async fn set_attribute(
     kms: &KMS,
     request: SetAttribute,
-    user: &str,
+    user: &UserId,
 ) -> KResult<SetAttributeResponse> {
     debug!("{request}");
 
     // there must be an identifier
-    let uid_or_tags = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?
-        .as_str()
-        .context("Set Attribute: the unique identifier must be a string")?;
+    let object_handle = from_request(request.unique_identifier.as_ref(), "Set Attribute")?;
 
     // Read-only guard — must be checked before the DB round-trip.
     match &request.new_attribute {
@@ -88,7 +83,7 @@ pub(crate) async fn set_attribute(
     }
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
-        uid_or_tags,
+        object_handle,
         KmipOperation::SetAttribute,
         kms,
         user,
@@ -98,7 +93,7 @@ pub(crate) async fn set_attribute(
 
     // For SQL objects (non-HSM): rotate_name must equal the object's UID.
     // This enforces the gen-0 UID = keyset name invariant for deterministic @N addressing.
-    if has_prefix(owm.id()).is_none() {
+    if !ObjectHandle::from(owm.id()).is_hsm() {
         if let Attribute::RotateName(name) = &request.new_attribute {
             let object_uid = owm.id();
             if name.as_str() != object_uid {
@@ -113,7 +108,7 @@ pub(crate) async fn set_attribute(
     // For HSM keys: rotate_name must be the key's full base UID (hsm::slot::key_id without
     // any @N suffix).  The slot ID in the UID guarantees uniqueness across HSM slots,
     // preventing keyset name collisions when multiple slots host keys with the same name.
-    if has_prefix(owm.id()).is_some() {
+    if ObjectHandle::from(owm.id()).is_hsm() {
         if let Attribute::RotateName(name) = &request.new_attribute {
             let expected = hsm_base_uid(owm.id()).ok_or_else(|| {
                 KmsError::InvalidRequest(format!(
@@ -133,7 +128,7 @@ pub(crate) async fn set_attribute(
     // Capture HSM-rotation values before the `match_set_attribute!` macro may
     // partially move `request.new_attribute`.  We do this here — after object
     // retrieval — so we can inspect `owm.id()` to confirm it is an HSM key.
-    let (hsm_rotate_name, hsm_rotate_interval_secs) = if has_prefix(owm.id()).is_some() {
+    let (hsm_rotate_name, hsm_rotate_interval_secs) = if ObjectHandle::from(owm.id()).is_hsm() {
         match &request.new_attribute {
             Attribute::RotateOffset(_) => {
                 return Err(KmsError::NotSupported(
@@ -152,12 +147,12 @@ pub(crate) async fn set_attribute(
 
     // Capture before the macro runs (which may partially move request.new_attribute).
     let is_setting_rotate_name_on_sql = matches!(&request.new_attribute, Attribute::RotateName(_))
-        && has_prefix(owm.id()).is_none();
+        && !ObjectHandle::from(owm.id()).is_hsm();
     // Detect a positive RotateInterval being set on a SQL (non-HSM) key.  Used below to
     // implicitly enable `rotate_automatic` so the scheduler's `find_due_for_rotation` query
     // picks up keys where the client only set the schedule (interval/offset) but not the flag.
     let is_setting_positive_rotate_interval_on_sql = matches!(&request.new_attribute, Attribute::RotateInterval(v) if *v > 0)
-        && has_prefix(owm.id()).is_none();
+        && !ObjectHandle::from(owm.id()).is_hsm();
 
     // Check if the attribute is allowed to be set
     match_set_attribute! {

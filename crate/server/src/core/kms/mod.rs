@@ -2,13 +2,20 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{Resource, metrics::PeriodicReader};
 mod kmip;
 mod other_kms_methods;
-mod permissions;
+pub(crate) mod permissions;
 
-use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
+use std::{
+    collections::HashMap,
+    num::NonZeroUsize,
+    sync::{Arc, atomic::AtomicU64},
+};
 
 use cosmian_kms_server_database::{
-    Database, DbMetricsRecorder,
-    reexport::cosmian_kms_interfaces::{CryptoOracle, HSM, HsmStore, ObjectsStore},
+    CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
+    reexport::{
+        cosmian_kmip::kmip_2_1::kmip_objects::Object,
+        cosmian_kms_interfaces::{CryptoOracle, HSM, HsmStore, ObjectsStore},
+    },
 };
 use cosmian_logger::trace;
 // Proprietary HSMs (Proteccio, Utimaco, Crypt2pay) ship Linux x86_64-only PKCS#11 libs.
@@ -94,6 +101,14 @@ pub struct KMS {
     /// Optional HSM instance for PKCS#11 operations.
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
     pub(crate) hsm: Option<Arc<dyn HSM + Send + Sync>>,
+
+    /// Monotonically increasing CRL sequence counter (RFC 5280 §5.2.3).
+    ///
+    /// Seeded on startup from `max(unix_timestamp, db_max_crl_number + 1)` so
+    /// that CRL Numbers are strictly greater than any previously issued number
+    /// across server restarts.  The `fetch_add` ensures uniqueness even when
+    /// two CRLs are generated within the same second.
+    pub(crate) crl_counter: Arc<AtomicU64>,
 }
 
 impl KMS {
@@ -152,7 +167,7 @@ impl KMS {
                     "unwrapped_cache_max_size must be greater than 0".to_owned(),
                 )
             })?;
-        let database = Database::instantiate(
+        let mut database = Database::instantiate(
             main_db_params,
             server_params.clear_db_on_start,
             object_stores,
@@ -161,8 +176,63 @@ impl KMS {
             server_params.unwrapped_cache_max_ttl,
             server_params.disable_unwrapped_cache,
             db_otel_recorder,
+            server_params.ceremony_keys.clone(),
         )
         .await?;
+
+        // Resolve ceremony_key_id: fetch the AES-256 key from the object store and derive
+        // CeremonyKeys from its raw bytes. This takes precedence over ceremony_secret when set.
+        if let Some(ref key_id) = server_params.ceremony_key_id {
+            let owm = database
+                .retrieve_object(key_id)
+                .await
+                .map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "ceremony_key_id '{key_id}': failed to retrieve from database: {e}"
+                    ))
+                })?
+                .ok_or_else(|| {
+                    KmsError::ServerError(format!(
+                        "ceremony_key_id '{key_id}' not found in the database. \
+                         Create the sealing key before enabling ceremony mode: \
+                         ckms sym keys create --id {key_id} --number-of-bits 256"
+                    ))
+                })?;
+
+            let raw_bytes = match owm.object() {
+                Object::SymmetricKey(sk) => sk.key_block.key_bytes().map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "ceremony_key_id '{key_id}': failed to extract key bytes: {e}"
+                    ))
+                })?,
+                other => {
+                    return Err(KmsError::ServerError(format!(
+                        "ceremony_key_id '{key_id}' must be a SymmetricKey (AES-256), \
+                         got {:?}",
+                        other.object_type()
+                    )));
+                }
+            };
+
+            if raw_bytes.len() != CEREMONY_SECRET_LENGTH {
+                return Err(KmsError::ServerError(format!(
+                    "ceremony_key_id '{key_id}' must be an AES-256 key ({} bytes), \
+                     got {} bytes",
+                    CEREMONY_SECRET_LENGTH,
+                    raw_bytes.len(),
+                )));
+            }
+
+            let mut secret = [0_u8; CEREMONY_SECRET_LENGTH];
+            secret.copy_from_slice(&raw_bytes);
+            let keys = Arc::new(CeremonyKeys::derive(&secret));
+            secret.fill(0);
+            database.set_ceremony_keys(keys);
+            tracing::info!(
+                ceremony_key_id = %key_id,
+                "ceremony sealing key loaded from object store"
+            );
+        }
 
         // Seed the kms.objects.total gauge from the real DB count on startup.
         //
@@ -192,6 +262,29 @@ impl KMS {
             }
         }
 
+        // Seed the CRL sequence counter (RFC 5280 §5.2.3 — monotonically increasing).
+        //
+        // The counter must be strictly greater than any CRL Number previously stored in the
+        // DB, so that relying-party caches never see a CRL with a lower sequence number
+        // after a server restart.  The seed is max(unix_timestamp, db_max + 1).
+        let crl_counter = {
+            let ts_seed =
+                u64::try_from(time::OffsetDateTime::now_utc().unix_timestamp()).unwrap_or(1);
+            let db_max = match database.get_max_crl_number().await {
+                Ok(Some(max)) => max,
+                Ok(None) => 0,
+                Err(e) => {
+                    // Non-fatal: fall back to timestamp seed only.
+                    cosmian_logger::debug!(
+                        "[kms-init] Failed to read max CRL number from DB: {e}; \
+                         using unix timestamp as CRL counter seed"
+                    );
+                    0
+                }
+            };
+            Arc::new(AtomicU64::new(ts_seed.max(db_max + 1)))
+        };
+
         Ok(Self {
             params: server_params.clone(),
             database,
@@ -199,6 +292,7 @@ impl KMS {
             // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
             hsm: hsm_instances.into_iter().next(),
             metrics,
+            crl_counter,
         })
     }
 

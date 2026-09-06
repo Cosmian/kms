@@ -60,7 +60,7 @@ use crate::{
     config::ServerParams,
     core::KMS,
     error::KmsError,
-    middlewares::{JwksManager, JwtConfig},
+    middlewares::{JwksManager, JwtConfig, UserId},
     result::{KResult, KResultHelper},
     routes::google_cse::{
         GoogleCseConfig,
@@ -367,7 +367,7 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     // Create google_cse key
     let google_cse_object =
@@ -392,7 +392,7 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
                 attributes: google_cse_attributes,
                 object: google_cse_object,
             },
-            owner,
+            &owner,
         )
         .await?;
 
@@ -407,7 +407,7 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
                 false,
                 None,
             )?,
-            owner,
+            &owner,
         )
         .await?;
 
@@ -432,7 +432,7 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
                 }),
                 None,
             ),
-            owner,
+            &owner,
         )
         .await?
         .object
@@ -465,7 +465,7 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
         attributes,
         object: private_key,
     };
-    let intermediate_cert = kms.import(import_request, owner).await?;
+    let intermediate_cert = kms.import(import_request, &owner).await?;
 
     // Certify the public key: sign created public key with issuer private key
     let attributes = Attributes {
@@ -493,8 +493,10 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
         ..Certify::default()
     };
 
-    let certificate_unique_identifier =
-        kms.certify(certify_request, owner).await?.unique_identifier;
+    let certificate_unique_identifier = kms
+        .certify(certify_request, &owner)
+        .await?
+        .unique_identifier;
 
     // Export the certificate and chain in PKCS7 format (just checking that it works)
     let pkcs7 = kms
@@ -505,7 +507,7 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
                 None,
                 Some(KeyFormatType::PKCS7),
             ),
-            owner,
+            &owner,
         )
         .await?;
 
@@ -528,7 +530,7 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
                 None,
                 None,
             ),
-            owner,
+            &owner,
         )
         .await?;
 

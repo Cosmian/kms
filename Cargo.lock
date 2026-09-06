@@ -59,9 +59,9 @@ dependencies = [
 
 [[package]]
 name = "actix-http"
-version = "3.13.1"
+version = "3.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48e2faa3e7418ed780cca54829d32782a4008a077230f67457caa063415e99c2"
+checksum = "11004b0e9b44b4eb3d15e0c3132b96fb178c7e50a74758b2f17bb9cc9a7fb4f6"
 dependencies = [
  "actix-codec",
  "actix-rt",
@@ -1033,7 +1033,7 @@ dependencies = [
 
 [[package]]
 name = "ckms"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "assert_cmd",
  "base64 0.22.1",
@@ -1298,7 +1298,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "cosmian_cng"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "base64 0.22.1",
  "bitflags",
@@ -1382,7 +1382,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "base64 0.22.1",
  "bitflags",
@@ -1409,7 +1409,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_access"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "cosmian_kmip",
  "serde",
@@ -1417,14 +1417,14 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_base_hsm"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",
  "cosmian_logger",
  "futures",
  "libloading",
- "lru 0.16.4",
+ "lru",
  "pkcs11-sys",
  "rand 0.10.2",
  "thiserror 2.0.19",
@@ -1435,7 +1435,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli_actions"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "assert_cmd",
  "base64 0.22.1",
@@ -1477,7 +1477,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "actix-web",
  "base64 0.22.1",
@@ -1508,7 +1508,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_utils"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -1527,7 +1527,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_wasm"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "base64 0.22.1",
  "console_error_panic_hook",
@@ -1546,7 +1546,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_crypto"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "aes-gcm-siv",
  "aes-kw",
@@ -1558,6 +1558,7 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_logger",
  "ctor",
+ "foreign-types",
  "hex",
  "itertools 0.10.5",
  "k256",
@@ -1569,6 +1570,7 @@ dependencies = [
  "p256",
  "rand 0.10.2",
  "rand_chacha 0.10.0",
+ "rand_core 0.10.1",
  "rand_distr",
  "regex",
  "rust-ini",
@@ -1577,6 +1579,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.19",
+ "time",
  "tokio",
  "uuid",
  "x509-parser",
@@ -1585,7 +1588,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_csi_provider"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "clap",
  "cosmian_kms_client",
@@ -1606,13 +1609,15 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_interfaces"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
  "cosmian_logger",
  "mockall",
  "num-bigint-dig",
+ "openssl",
+ "serde",
  "serde_json",
  "thiserror 2.0.19",
  "time",
@@ -1622,7 +1627,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_k8s_operator"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "axum 0.8.9",
  "axum-server",
@@ -1651,7 +1656,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_k8s_plugin"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "clap",
  "cosmian_kms_client",
@@ -1673,7 +1678,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -1712,6 +1717,8 @@ dependencies = [
  "opentelemetry_sdk",
  "pem",
  "proteccio_pkcs11_loader",
+ "rand 0.10.2",
+ "rand_chacha 0.10.0",
  "reqwest 0.12.28",
  "scratchstack-aws-signature",
  "serde",
@@ -1738,9 +1745,10 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server_database"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "cosmian_findex",
  "cosmian_kmip",
  "cosmian_kms_crypto",
@@ -1748,6 +1756,7 @@ dependencies = [
  "cosmian_logger",
  "cosmian_sse_memories",
  "deadpool-postgres",
+ "hex",
  "moka",
  "mysql_async",
  "openssl",
@@ -1766,6 +1775,7 @@ dependencies = [
  "tokio-rusqlite",
  "url",
  "uuid",
+ "x509-parser",
  "zeroize",
 ]
 
@@ -1801,7 +1811,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_pkcs11"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "ckms",
  "cosmian_config_utils",
@@ -1826,7 +1836,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_pkcs11_module"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "const-oid 0.9.6",
  "cosmian_logger",
@@ -1971,7 +1981,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
 name = "crypt2pay_pkcs11_loader"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "cosmian_kms_base_hsm",
 ]
@@ -2545,7 +2555,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2965,9 +2975,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.15"
+version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cb093c84e8bd9b188d4c4a8cb6579fc016968d14c99882163cd3ff402a4f155"
+checksum = "a9f37a958b41b3b19ee2707c06439c0e9e547e847223eb791ecb0cb821c65e27"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -3235,7 +3245,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-core",
- "h2 0.4.15",
+ "h2 0.4.16",
  "http 1.5.0",
  "http-body",
  "httparse",
@@ -3349,7 +3359,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -3728,7 +3738,7 @@ dependencies = [
 
 [[package]]
 name = "kmip-derive"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "quote",
  "syn 2.0.119",
@@ -3977,18 +3987,9 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
 name = "lru"
-version = "0.16.4"
+version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f66e8d5d03f609abc3a39e6f08e4164ebf1447a732906d39eb9b99b7919ef39"
-dependencies = [
- "hashbrown 0.16.1",
-]
-
-[[package]]
-name = "lru"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b6180140927ee907000b0aa540091f6ea512ead4447c92b8fc35bc72788a5a6"
+checksum = "5d2f2f9b4ba7e6b24d95e7e899329d35be83bcded72c8540cdd5368932d1d90a"
 dependencies = [
  "hashbrown 0.17.1",
 ]
@@ -4163,7 +4164,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "keyed_priority_queue",
- "lru 0.18.1",
+ "lru",
  "mysql_common",
  "native-tls",
  "pem",
@@ -4991,7 +4992,7 @@ dependencies = [
 
 [[package]]
 name = "proteccio_pkcs11_loader"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "cosmian_kms_base_hsm",
 ]
@@ -5056,7 +5057,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.19",
  "tokio",
  "tracing",
@@ -5094,9 +5095,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5524,7 +5525,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6046,7 +6047,7 @@ checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 
 [[package]]
 name = "smartcardhsm_pkcs11_loader"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "libloading",
@@ -6075,7 +6076,7 @@ dependencies = [
 
 [[package]]
 name = "softhsm2_pkcs11_loader"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "libloading",
@@ -6256,10 +6257,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6270,14 +6271,16 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test_kms_server"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "actix-server",
  "cosmian_kms_client",
  "cosmian_kms_server",
+ "cosmian_kms_server_database",
  "cosmian_logger",
  "criterion",
  "futures",
+ "hex",
  "openssl",
  "reqwest 0.12.28",
  "serde",
@@ -6285,6 +6288,7 @@ dependencies = [
  "time",
  "tokio",
  "toml 0.9.12+spec-1.1.0",
+ "x509-parser",
  "zeroize",
 ]
 
@@ -6638,7 +6642,7 @@ dependencies = [
  "axum 0.7.9",
  "base64 0.22.1",
  "bytes",
- "h2 0.4.15",
+ "h2 0.4.16",
  "http 1.5.0",
  "http-body",
  "http-body-util",
@@ -7044,7 +7048,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "utimaco_pkcs11_loader"
-version = "5.26.0"
+version = "5.27.0"
 dependencies = [
  "cosmian_kms_base_hsm",
 ]
@@ -7311,7 +7315,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

@@ -24,7 +24,7 @@ use zeroize::Zeroizing;
 use crate::{
     AtomicOperation, CryptoAlgorithm, CryptoOracle, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm,
     HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMaterial, KeyType,
-    ObjectWithMetadata, ObjectsStore, SigningAlgorithm,
+    ObjectWithMetadata, ObjectsStore, SigningAlgorithm, UserId,
     crypto_oracle::{EncryptedContent, KeyMetadata},
 };
 
@@ -80,7 +80,7 @@ impl ObjectsStore for HsmStore {
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         _tags: &HashSet<String>,
@@ -232,7 +232,7 @@ impl ObjectsStore for HsmStore {
 
     async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
         if let Some((uid, _object, attributes, _tags)) = is_rsa_keypair_creation(operations) {
@@ -283,7 +283,7 @@ impl ObjectsStore for HsmStore {
         ))
     }
 
-    async fn is_object_owned_by(&self, _uid: &str, owner: &str) -> InterfaceResult<bool> {
+    async fn is_object_owned_by(&self, _uid: &str, owner: &UserId) -> InterfaceResult<bool> {
         let is_admin = self.is_admin(owner);
         debug!("Is {owner} an HSM admin? {}", is_admin);
         Ok(is_admin)
@@ -301,7 +301,7 @@ impl ObjectsStore for HsmStore {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
@@ -449,7 +449,7 @@ impl ObjectsStore for HsmStore {
         // to a given HSM instance (each deployment's HSM is dedicated to one server).
         // The `owner` parameter is intentionally unused here; the SQL implementation
         // (which is multi-tenant) does filter by owner.
-        _owner: &str,
+        _owner: &UserId,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         let slot_ids = self.hsm.get_available_slot_list().await?;
         let mut results = Vec::new();
@@ -559,9 +559,22 @@ impl ObjectsStore for HsmStore {
     async fn find_wrapped_by(
         &self,
         _wrapping_key_uid: &str,
-        _user: &str,
+        _user: &UserId,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         Ok(vec![])
+    }
+
+    async fn find_all(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        // HSM objects have no concept of user ownership — delegate to `find` with the HSM admin
+        // user, which will return all HSM objects that match the filter.
+        let owner = UserId::from(self.owner_name());
+        self.find(researched_attributes, state, &owner, false, vendor_id)
+            .await
     }
 }
 
@@ -1075,7 +1088,7 @@ fn is_rsa_keypair_creation(
     operations: &[AtomicOperation],
 ) -> Option<(String, Object, Attributes, HashSet<String>)> {
     operations.iter().find_map(|op| match op {
-        AtomicOperation::Create((uid, object, attributes, tags)) => {
+        AtomicOperation::Create((uid, _owner, object, attributes, tags)) => {
             if object.object_type() != ObjectType::PrivateKey {
                 return None;
             }

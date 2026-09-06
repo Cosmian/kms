@@ -24,11 +24,14 @@ KMIP_GO_REPO_ROOT=$(git rev-parse --show-toplevel) go test -v -count=1 ./...
 
 | File | Purpose |
 |------|---------|
-| `helpers_test.go` | `newClient(t, version)`, `createAES256`, `cleanupKey`, `getAttrList` |
+| `helpers_test.go` | `newClient`, `tctx`, `versionName`, `allVersions`, `pre14Versions`, `createAES256`, `activateKey`, `cleanupKey`, `getAttrList`, `hasAttr`, `sanitiseName` |
 | `compliance_test.go` | Core lifecycle (AES-256 for all KMIP 1.0–1.4), Query, Batch |
+| `lifecycle_test.go` | Key state transitions, usage-mask enforcement |
 | `version_compliance_test.go` | Version-gating: assert KMIP 1.4+ attrs absent/present by version |
 | `attributes_test.go` | All 49 attributes: decodability, TTLV wire types, Attribute Rules (read-only / writable), custom attributes, Locate |
 | `crypto_test.go` | AES-GCM encrypt/decrypt, RSA-PSS sign/verify, EC key pair |
+| `locate_test.go` | Locate operation: empty-result, name-filter, pagination |
+| `operations_test.go` | ReKey, Import, Register, Hash, Export, multi-operation Batch |
 
 ## Key assertion: version-gating of KMIP 1.4+ attributes
 
@@ -56,6 +59,10 @@ and `Cryptographic Length`. See the full documentation for the complete list.
 - New attribute introduced after KMIP 1.0 → add it to `attributeMinorVersion()`.
 - Attribute marked `Modifiable by client: No` → add it to `readOnlyAttrs`.
 - Attribute marked `Modifiable by client: Yes` → add it to `writableAttrs`.
+- New KMIP operation not yet in the `payloads` package → define local payload
+  structs implementing `kmip.OperationPayload`, register them in `init()` with
+  `kmip.RegisterOperationPayload`, then use `client.Request(ctx, &MyPayload{})`.
+  See `operations_test.go` for a worked example of registering custom payloads.
 
 Always cite the specification section (e.g. `KMIP 1.4 §3.20`) in the test message;
 the spec HTML files live under `kmip/` in this repository.

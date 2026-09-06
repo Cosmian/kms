@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**632 vectors** across 16 categories (including KAT):
+**649 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -138,6 +138,8 @@ replays the steps sequentially.
 | KMIP Operations | `certify_revoke_validate` | Creates a self-signed certificate, validates it (valid), revokes it, then re-validates (invalid) | 10 |
 | KMIP Operations | `certify_validate` | Creates an EC key pair, self-signs a certificate, validates it, then cleans up | 8 |
 | KMIP Operations | `check` | Creates a key, checks its usage mask, activates it, checks again | 4 |
+| KMIP Operations | `create_split_key_sss` | Creates an AES-256 symmetric key, splits it into 2 shares using XOR-based split knowledge | 14 |
+| KMIP Operations | `create_split_key_xor` | Creates an AES-256 symmetric key, splits it into 2 shares using XOR splitting (both shares | 12 |
 | KMIP Operations | `crl_validation_lifecycle` | Full CRL validation: create CA+EE cert chain, generate empty CRL (valid), revoke EE cert, regenerate CRL, validate again (invalid due to revocation in CRL) | 16 |
 | KMIP Operations | `derive_key_hkdf` | Creates a base symmetric key, derives a new AES-128 key using HKDF-SHA256 | 3 |
 | KMIP Operations | `derive_key_pbkdf2` | Creates a base symmetric key, derives a new AES-128 key using PBKDF2-SHA256, retrieves the derived key | 3 |
@@ -238,8 +240,10 @@ replays the steps sequentially.
 | **K8s Plugin** | | | |
 | K8s Plugin | `dek_wrap_unwrap` | Simulates the exact sequence performed by kubernetes-kms-plugin when kube-apiserver | 5 |
 | **Access Control** | | | |
+| Access Control | `crypto_officer_role_allowed_ops` | CryptoOfficer can perform lifecycle operations: Create, Locate, GetAttributes, Destroy. | 4 |
 | Access Control | `grant_access_aes` | Owner creates AES key, grants user access, user can Get/Encrypt/Decrypt, owner destroys key | 7 |
 | Access Control | `grant_partial_permissions` | Owner grants only Get; user Get succeeds and Encrypt is denied | 6 |
+| Access Control | `operator_role_blocked_lifecycle` | Operator role cannot perform lifecycle operations (Create, CreateKeyPair) without explicit Create grant. | 2 |
 | Access Control | `owner_full_permissions` | Owner performs Get/Encrypt/Decrypt/Revoke/Destroy without grants | 6 |
 | Access Control | `privilege_escalation_activate_without_permission` | Owner creates a PreActive AES key, grants user only Encrypt. User's Activate attempt is denied because Encrypt grant does not imply Activate permission. | 6 |
 | Access Control | `privilege_escalation_destroy_without_permission` | Owner creates AES key, grants user only Get. Get acts as wildcard for crypto ops but NOT for Destroy — user's Destroy attempt is denied. | 7 |
@@ -344,13 +348,24 @@ replays the steps sequentially.
 | **OPA Policy Engine** | | | |
 | OPA | `opa/mode_disabled` | OPA not configured; KMS legacy permission logic applies. Creates an AES key, retrieves it, and destroys it. | 3 |
 | OPA | `opa/mode_enforcing_allowed` | OPA enforcing mode; JWT with CryptoOfficer role from auth server; Create then Get allowed by is_owner=true (OPA + KMS both pass). | 3 |
+| OPA | `opa/mode_enforcing_auditor_create_denied` | OPA enforcing mode. A user holding the `Auditor` role attempts to create a | 1 |
+| OPA | `opa/mode_enforcing_co_get_attributes_allowed` | OPA enforcing mode. A `CryptoOfficer` in realm `kms-opa-test` (the default owner / JWT | 3 |
 | OPA | `opa/mode_enforcing_denied` | OPA enforcing mode; owner (mTLS cert) creates AES key; ungranted user (different cert, no roles) is denied Get. | 3 |
+| OPA | `opa/mode_enforcing_empty_roles_denied` | OPA enforcing mode. A bearer token with an empty `roles` claim (and no domain) | 1 |
+| OPA | `opa/mode_enforcing_native_co_cert_allowed` | OPA enforcing mode. A client authenticated via mTLS (cert CN = <owner.client@acme.com>) | 2 |
+| OPA | `opa/mode_enforcing_unknown_role_denied` | OPA enforcing mode. A bearer token carrying an unrecognised role `Hacker` | 1 |
+| OPA | `opa/mode_enforcing_wrong_domain` | OPA enforcing (dual-gate) mode — multi-tenant isolation. | 3 |
 | OPA | `opa/mode_exclusive_allowed` | OPA exclusive mode; JWT with CryptoOfficer role from auth server; Create then Get allowed by is_owner=true. | 3 |
 | OPA | `opa/mode_exclusive_auditor_destroy_denied` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
 | OPA | `opa/mode_exclusive_auditor_get_attributes_allowed` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
+| OPA | `opa/mode_exclusive_auditor_wrong_domain` | OPA exclusive mode — multi-tenant isolation. | 3 |
 | OPA | `opa/mode_exclusive_denied` | OPA exclusive mode; owner (mTLS cert) creates AES key; ungranted user (different cert, no roles) is denied Get. | 3 |
 | OPA | `opa/mode_exclusive_domain_admin_wrong_domain` | OPA exclusive mode. The CryptoOfficer from realm `kms-opa-test` (default JWT client, | 3 |
+| OPA | `opa/mode_exclusive_native_co_cert_denied` | OPA exclusive mode. A client authenticated via mTLS (cert CN = <owner.client@acme.com>) | 1 |
+| OPA | `opa/mode_exclusive_other_domain_allowed` | OPA exclusive mode. A CryptoOfficer from realm `kms-opa-other` (domain=kms-opa-other) | 3 |
+| OPA | `opa/mode_exclusive_super_admin_cross_domain` | OPA exclusive mode — SuperAdmin cross-domain positive test. | 3 |
 | OPA | `opa/mode_exclusive_user_role_denied` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
+| OPA | `opa/mode_exclusive_user_wrong_domain` | OPA exclusive mode — multi-tenant isolation. | 3 |
 | OPA | `opa/mode_exclusive_wrong_domain` | OPA exclusive mode. The CryptoOfficer from realm `kms-opa-test` (default JWT client, | 3 |
 | **Negative** | | | |
 | Negative / Activate | `negative/activate/item_not_found` | Tests that Activate returns Item_Not_Found error as per KMIP spec | 1 |
@@ -368,6 +383,8 @@ replays the steps sequentially.
 | Negative / CreateKeyPair | `negative/create_key_pair/invalid_attribute` | Tests that Create Key Pair returns Invalid_Attribute error as per KMIP spec | 1 |
 | Negative / CreateKeyPair | `negative/create_key_pair/invalid_attribute_value` | Tests that Create Key Pair returns Invalid_Attribute_Value error as per KMIP spec | 1 |
 | Negative / CreateKeyPair | `negative/create_key_pair/invalid_message` | Tests that Create Key Pair returns Invalid_Message error as per KMIP spec | 1 |
+| Negative / Protocol | `negative/create_split_key_parts_less_than_threshold` | A CreateSplitKey request where split_key_parts < split_key_threshold must be rejected. | 3 |
+| Negative / Protocol | `negative/create_split_key_threshold_too_low` | A CreateSplitKey request with split_key_threshold = 1 must be rejected by the server. | 3 |
 | Negative / CryptoParams | `negative/crypto_params/decrypt_wrong_mode` | Tests that decryption fails when using CBC mode to decrypt data that was encrypted with GCM | 3 |
 | Negative / CryptoParams | `negative/crypto_params/encrypt_chacha20_with_gcm_mode` | Documents that ChaCha20Poly1305 key with BlockCipherMode GCM succeeds — server routes to AES-256-GCM since GCM mode overrides the key's algorithm | 2 |
 | Negative / CryptoParams | `negative/crypto_params/encrypt_gcm_invalid_tag_length` | Tests that AES-GCM encryption fails with an invalid authentication tag length | 2 |

@@ -18,7 +18,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use zeroize::Zeroizing;
 
 use crate::{
-    config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
+    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
+    tests::test_utils::https_clap_config,
 };
 
 /// Helper: create a KMS instance for tests
@@ -40,7 +41,7 @@ async fn create_aes_key(kms: &KMS, user: &str) -> KResult<UniqueIdentifier> {
         None,
     )
     .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
-    let response = kms.create(request, user).await?;
+    let response = kms.create(request, &UserId::from(user)).await?;
     Ok(response.unique_identifier)
 }
 
@@ -71,7 +72,9 @@ async fn test_encrypt_no_plaintext_in_traces() -> KResult<()> {
     };
 
     // Operation must succeed (regression: trace changes didn't break functionality)
-    let response = kms.encrypt(encrypt_request, "test_user").await?;
+    let response = kms
+        .encrypt(encrypt_request, &UserId::from("test_user"))
+        .await?;
     assert!(response.data.is_some(), "Encrypt must return ciphertext");
     assert_ne!(
         response.data.as_ref().unwrap().as_slice(),
@@ -108,7 +111,7 @@ async fn test_decrypt_no_ciphertext_in_traces() -> KResult<()> {
                 data: Some(Zeroizing::new(plaintext.to_vec())),
                 ..Default::default()
             },
-            "test_user",
+            &UserId::from("test_user"),
         )
         .await?;
 
@@ -128,7 +131,9 @@ async fn test_decrypt_no_ciphertext_in_traces() -> KResult<()> {
         ..Default::default()
     };
 
-    let response = kms.decrypt(decrypt_request, "test_user").await?;
+    let response = kms
+        .decrypt(decrypt_request, &UserId::from("test_user"))
+        .await?;
     assert_eq!(
         response.data.as_ref().map(|d| d.as_slice()),
         Some(plaintext.as_slice()),
@@ -162,7 +167,7 @@ async fn test_hash_no_data_in_traces() -> KResult<()> {
         final_indicator: None,
     };
 
-    let response = kms.hash(hash_request, "test_user").await?;
+    let response = kms.hash(hash_request, &UserId::from("test_user")).await?;
     assert!(response.data.is_some(), "Hash must return a digest");
     assert_eq!(
         response.data.as_ref().unwrap().len(),
@@ -195,7 +200,10 @@ async fn test_mac_no_hmac_value_in_traces() -> KResult<()> {
         None,
     )
     .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
-    let key_id = kms.create(request, "test_user").await?.unique_identifier;
+    let key_id = kms
+        .create(request, &UserId::from("test_user"))
+        .await?
+        .unique_identifier;
 
     let message = b"MESSAGE_WHOSE_MAC_MUST_NOT_BE_LOGGED_IN_FULL";
 
@@ -211,7 +219,7 @@ async fn test_mac_no_hmac_value_in_traces() -> KResult<()> {
         final_indicator: None,
     };
 
-    let response = kms.mac(mac_request, "test_user").await?;
+    let response = kms.mac(mac_request, &UserId::from("test_user")).await?;
     assert!(response.mac_data.is_some(), "MAC must return a value");
 
     Ok(())
@@ -236,7 +244,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
     let clap_config = https_clap_config();
     let sqlite_path = clap_config.db.sqlite_path.clone();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_kek_wrapping_regression@example.com";
+    let owner = UserId::from("test_kek_wrapping_regression@example.com");
 
     let kek_request = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
@@ -248,7 +256,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
         None,
     )
     .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
-    let kek_id = kms.create(kek_request, owner).await?.unique_identifier;
+    let kek_id = kms.create(kek_request, &owner).await?.unique_identifier;
     drop(kms);
 
     // Phase 2: re-instantiate KMS with KEK configured
@@ -273,7 +281,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
         usage_limits_count: None,
         usage_limits_total: 100,
     });
-    let dek_id = kms.create(dek_request, owner).await?.unique_identifier;
+    let dek_id = kms.create(dek_request, &owner).await?.unique_identifier;
 
     // Verify the DEK is stored wrapped
     let raw_object_before = kms
@@ -319,7 +327,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
                 data: Some(Zeroizing::new(plaintext.to_vec())),
                 ..Default::default()
             },
-            owner,
+            &owner,
         )
         .await?;
 
@@ -337,7 +345,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
                 authenticated_encryption_tag: encrypt_response.authenticated_encryption_tag,
                 ..Default::default()
             },
-            owner,
+            &owner,
         )
         .await?;
     assert_eq!(
@@ -382,7 +390,7 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
     let clap_config = https_clap_config();
     let sqlite_path = clap_config.db.sqlite_path.clone();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_kek_sign_regression@example.com";
+    let owner = UserId::from("test_kek_sign_regression@example.com");
 
     let kek_request = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
@@ -394,7 +402,7 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
         None,
     )
     .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
-    let kek_id = kms.create(kek_request, owner).await?.unique_identifier;
+    let kek_id = kms.create(kek_request, &owner).await?.unique_identifier;
     drop(kms);
 
     // Phase 2: re-instantiate KMS with KEK
@@ -421,7 +429,7 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
             usage_limits_total: 100,
         });
     }
-    let create_response = kms.create_key_pair(create_request, owner).await?;
+    let create_response = kms.create_key_pair(create_request, &owner).await?;
     let private_key_id = create_response.private_key_unique_identifier;
 
     // Verify the private key is stored wrapped
@@ -452,7 +460,7 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
                 init_indicator: None,
                 final_indicator: None,
             },
-            owner,
+            &owner,
         )
         .await?;
     assert!(

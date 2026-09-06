@@ -8,7 +8,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
         kmip_2_1::{
             KmipOperation,
-            kmip_objects::ObjectType,
+            kmip_objects::{Certificate, Object, ObjectType},
             kmip_operations::{Revoke, RevokeResponse},
             kmip_types::{LinkType, UniqueIdentifier},
         },
@@ -16,7 +16,8 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
-use cosmian_logger::{debug, info, trace};
+use cosmian_logger::{debug, info, trace, warn};
+use openssl::x509::X509;
 use time::OffsetDateTime;
 
 #[cfg(feature = "non-fips")]
@@ -24,17 +25,18 @@ use crate::core::cover_crypt::revoke_user_decryption_keys;
 use crate::{
     core::{
         KMS,
-        uid_utils::{has_prefix, uids_from_unique_identifier},
+        uid_utils::{ObjectHandle, resolve_uids},
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
 pub(crate) async fn revoke_operation(
     kms: &KMS,
     request: Revoke,
-    user: &str,
+    user: &UserId,
 ) -> KResult<RevokeResponse> {
     trace!("{request}");
     // there must be an identifier
@@ -43,7 +45,6 @@ pub(crate) async fn revoke_operation(
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
-    // TODO   Reasons should be kept in the database
     let revocation_reason = request.revocation_reason.clone();
     let compromise_occurrence_date = request.compromise_occurrence_date;
 
@@ -82,11 +83,11 @@ pub(crate) async fn recursively_revoke_key(
     compromise_occurrence_date: Option<OffsetDateTime>,
     cascade: bool,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
     // keys that should be skipped
     mut ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
-    let uids = uids_from_unique_identifier(unique_identifier, kms)
+    let uids = resolve_uids(ObjectHandle::try_from(unique_identifier)?, kms)
         .await
         .context("Revoke")?;
     let op_start = std::time::Instant::now();
@@ -95,7 +96,7 @@ pub(crate) async fn recursively_revoke_key(
     for uid in uids {
         // Revoke does not apply to prefixed objects
         // TODO: this should probably be a setting on the Objects Store, i.e. whether the store supports objects states
-        if let Some(prefix) = has_prefix(&uid) {
+        if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(&uid) {
             // ensure user can revoke
             if !kms.database.is_object_owned_by(&uid, user).await? {
                 let ops = kms
@@ -172,6 +173,7 @@ pub(crate) async fn recursively_revoke_key(
                 | ObjectType::PublicKey
                 | ObjectType::SecretData
                 | ObjectType::OpaqueObject
+                | ObjectType::SplitKey
         ) {
             continue;
         }
@@ -185,10 +187,55 @@ pub(crate) async fn recursively_revoke_key(
         count += 1;
         // Perform the chain of revoke operations depending on the type of object
         match object_type {
+            ObjectType::Certificate => {
+                // Read the issuer link before the object is mutated, so we can
+                // trigger background CRL regeneration after the state change.
+                let issuer_id = owm
+                    .object()
+                    .attributes()
+                    .ok()
+                    .or_else(|| Some(owm.attributes()))
+                    .and_then(|attrs| attrs.get_link(LinkType::CertificateLink))
+                    .map(|l| l.to_string());
+                // Extract the serial number (before `owm` is consumed below) so the
+                // OCSP response cache entry for this exact certificate can be
+                // evicted once revoked — otherwise a relying party polling OCSP
+                // with no nonce could keep receiving a stale cached `good`
+                // response until `ocsp_cache_ttl_secs` naturally expires.
+                let serial_hex = extract_serial_hex_for_ocsp_cache(owm.object());
+
+                Box::pin(revoke_key_core(
+                    owm,
+                    revocation_reason.clone(),
+                    compromise_occurrence_date,
+                    kms,
+                ))
+                .await?;
+
+                if let (Some(issuer_id), Some(serial_hex)) = (issuer_id.clone(), serial_hex) {
+                    crate::routes::ocsp::evict_ocsp_cache_entry(&issuer_id, &serial_hex).await;
+                }
+
+                // Fire-and-forget CRL regeneration: when the server knows its own
+                // public URL, immediately refresh the CRL so the CDP endpoint serves
+                // an up-to-date list without requiring a manual generate-crl call.
+                // Errors here must never fail the Revoke operation.
+                //
+                // Pass the actual revoking user, not `default_username`: the revoking
+                // user already proved they can access the CA chain (they own or have
+                // Revoke rights on the cert), so they can also read the CA cert and its
+                // private key to sign the CRL.  Using `default_username` caused a silent
+                // permission failure because that user does not own the CA objects.
+                if kms.params.kms_public_url.is_some() {
+                    if let Some(issuer_id) = issuer_id {
+                        trigger_crl_regeneration(kms, &issuer_id, user).await;
+                    }
+                }
+            }
             ObjectType::SymmetricKey
-            | ObjectType::Certificate
             | ObjectType::SecretData
-            | ObjectType::OpaqueObject => {
+            | ObjectType::OpaqueObject
+            | ObjectType::SplitKey => {
                 // revoke the key
                 Box::pin(revoke_key_core(
                     owm,
@@ -261,7 +308,7 @@ pub(crate) async fn recursively_revoke_key(
 
         info!(
             uid = uid,
-            user = user,
+            user = user.as_str(),
             "Revoked object type: {}",
             object_type,
         );
@@ -295,6 +342,8 @@ async fn revoke_key_core(
         if let Some(date) = compromise_occurrence_date {
             object_attributes.compromise_occurrence_date = Some(date);
         }
+        // persist the revocation reason (needed for CRL generation per RFC 5280 §5.3.1)
+        object_attributes.revocation_reason = Some(revocation_reason.clone());
     }
     // Update the state in the "external" attributes
     owm.attributes_mut().state = Some(state);
@@ -304,10 +353,12 @@ async fn revoke_key_core(
     if let Some(date) = compromise_occurrence_date {
         owm.attributes_mut().compromise_occurrence_date = Some(date);
     }
+    // Persist the revocation reason in the "external" attributes
+    owm.attributes_mut().revocation_reason = Some(revocation_reason);
 
     kms.database
         .atomic(
-            &kms.params.default_username,
+            &UserId::from(kms.params.default_username.as_str()),
             &[
                 AtomicOperation::UpdateObject((
                     owm.id().to_owned(),
@@ -335,5 +386,50 @@ const fn revocation_target_state(reason: &RevocationReason) -> State {
             State::Compromised
         }
         _ => State::Deactivated,
+    }
+}
+
+/// Extract a certificate's serial number as an upper-case hex string, in the exact
+/// format the OCSP responder uses as part of its cache key (`"{ca_uid}:{serial_hex}"`,
+/// see `crate::routes::ocsp::handler`). Returns `None` for anything that is not a
+/// parseable certificate (should not happen for an object already matched as
+/// `ObjectType::Certificate`, but this must never fail the parent `Revoke`).
+fn extract_serial_hex_for_ocsp_cache(object: &Object) -> Option<String> {
+    let Object::Certificate(Certificate {
+        certificate_value, ..
+    }) = object
+    else {
+        return None;
+    };
+    let x509 = X509::from_der(certificate_value).ok()?;
+    let serial_bytes = x509.serial_number().to_bn().ok()?.to_vec();
+    Some(hex::encode_upper(serial_bytes))
+}
+
+/// Trigger CRL regeneration for `issuer_id` after a certificate revocation.
+///
+/// CRL content is public information (RFC 5280 §3) so no special role is required.
+/// Uses the `revoking_user` identity — the user who just performed the Revoke — because
+/// they have already proven they can access the CA chain (owner or explicit `Revoke`
+/// grant), and therefore have the necessary permissions to read the CA certificate and
+/// its private key for CRL signing.  Using `default_username` caused a silent
+/// permission failure when the CA objects were owned by a different user (e.g., CO).
+///
+/// Errors are logged at `warn` level and never propagated — this must not fail
+/// the parent `Revoke` operation.
+async fn trigger_crl_regeneration(kms: &KMS, issuer_id: &str, revoking_user: &UserId) {
+    info!(
+        issuer_id = issuer_id,
+        "Auto-CRL: triggered CRL regeneration for issuer '{issuer_id}' after certificate revocation"
+    );
+
+    if let Err(e) =
+        crate::core::operations::generate_crl::generate_crl(kms, issuer_id, None, revoking_user)
+            .await
+    {
+        warn!(
+            issuer_id = issuer_id,
+            "Auto-CRL: CRL regeneration failed for issuer '{issuer_id}': {e}"
+        );
     }
 }

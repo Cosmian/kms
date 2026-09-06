@@ -1,7 +1,8 @@
-use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, time::Duration};
+use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
+use cosmian_kms_access::access::CryptoOfficerConfig;
 use cosmian_kms_server_database::{
-    MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
+    CeremonyKeys, MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
 };
 use cosmian_logger::{debug, warn};
 
@@ -148,9 +149,22 @@ pub struct ServerParams {
     /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
 
-    /// Users who have initial rights to create and grant access rights for Create Kmip Operation
-    /// If None, all users can create and grant create access rights.
-    pub privileged_users: Option<Vec<String>>,
+    /// Crypto Officer role configuration (role-based access control).
+    pub crypto_officer: CryptoOfficerConfig,
+
+    /// Ceremony record encryption keys.
+    ///
+    /// Derived from `ceremony_secret` at startup, or resolved from the object
+    /// store when `ceremony_key_id` is set. `None` when no role requires a ceremony.
+    /// When `Some`, all ceremony activation records are AES-256-GCM sealed before storage
+    /// and verified on read — preventing forgery and protecting participant identities.
+    pub ceremony_keys: Option<Arc<CeremonyKeys>>,
+
+    /// UID of the KMS symmetric key used as the ceremony record sealing key.
+    ///
+    /// When set, `ceremony_key_id` takes precedence over `ceremony_secret`.
+    /// The key is fetched from the object store after database initialization.
+    pub ceremony_key_id: Option<String>,
 
     /// AWS XKS parameters, if any
     pub aws_xks_params: Option<AwsXksParams>,
@@ -170,8 +184,8 @@ pub struct ServerParams {
     pub http_workers: Option<usize>,
 
     /// Extra origins allowed to make cross-origin requests to the KMIP API.
-    /// Empty in production (same-origin only). Set to `["http://127.0.0.1:5173"]` in
-    /// UI E2E tests where the Vite dev server runs on a different port.
+    /// Empty in production (same-origin only). Set to `["http://127.0.0.1:5173"]`
+    /// in UI E2E tests where the Vite dev server runs on port 5173.
     pub cors_allowed_origins: Vec<String>,
 
     /// Maximum number of objects returned by a single Locate operation.
@@ -236,6 +250,50 @@ pub struct ServerParams {
     /// When set, the KMS validates bearer tokens issued by the Auth Verifier server.
     /// The `sub` claim is used as the user identity.
     pub auth_verifier_config: Option<AuthVerifierConfig>,
+
+    // ── CRL lifecycle ─────────────────────────────────────────────────────────
+    /// Default CRL validity period in days.
+    ///
+    /// Applied when a CRL is generated without an explicit `validity_days` override.
+    /// Valid range: 1–365. Default: 7.
+    pub crl_default_validity_days: u32,
+
+    /// Background CRL refresh check interval in hours. 0 = disabled.
+    ///
+    /// When non-zero, the CRL scheduler wakes up every N hours and regenerates any
+    /// stored CRL whose `nextUpdate` is within `crl_refresh_overlap_hours` of the
+    /// current time.
+    pub crl_refresh_check_hours: u32,
+
+    /// CRL overlap window in hours.
+    ///
+    /// The scheduler pre-generates a new CRL this many hours before the current one
+    /// expires, preventing relying parties from seeing a stale CRL.
+    pub crl_refresh_overlap_hours: u32,
+
+    // ── OCSP responder ────────────────────────────────────────────────────────────
+    /// Enable the OCSP responder at `GET/POST /ocsp/`.
+    pub ocsp_enabled: bool,
+
+    /// UID of the CA certificate used for issuer hash verification and status lookup.
+    pub ocsp_ca_uid: Option<String>,
+
+    /// UID of the delegated OCSP signing certificate (RFC 6960 §4.2.2.2).
+    ///
+    /// When set, responses are signed with this key; when `None` the CA key is used.
+    pub ocsp_responder_cert_uid: Option<String>,
+
+    /// Response validity period in seconds (`thisUpdate` → `nextUpdate`).
+    pub ocsp_cache_ttl_secs: u64,
+
+    /// Nonce handling policy (RFC 9654 §3): optional / required / ignore.
+    pub ocsp_nonce_policy: crate::config::command_line::NoncePolicyConfig,
+
+    /// Include the signing certificate chain in `BasicResponse`s.
+    pub ocsp_include_cert_chain: bool,
+
+    /// Archive-cutoff extension retention in seconds (0 = disabled, RFC 6960 §4.4.4).
+    pub ocsp_archive_cutoff_secs: u64,
 }
 
 /// Represents the server parameters.
@@ -309,6 +367,17 @@ impl ServerParams {
         } else {
             "http"
         };
+
+        // Capture kms_public_url before the struct literal moves it, so we can also
+        // include it in the CORS allow-list when cors_allowed_origins is not configured.
+        let public_url_for_cors = conf.kms_public_url.clone();
+
+        // Determine whether CO users will come from the deprecated `privileged_users` path.
+        // Used after `res` is built to preserve v5.26.0 behaviour: if the operator had
+        // `force_default_username = true` AND `privileged_users = [...]` (nonsensical but
+        // tolerated before), only warn instead of hard-erroring.
+        let co_from_deprecated_path =
+            conf.roles.crypto_officer_users.is_none() && conf.privileged_users.is_some();
 
         let res = Self {
             identity_provider_configurations: {
@@ -389,7 +458,93 @@ impl ServerParams {
                 None
             },
             non_revocable_key_id: conf.non_revocable_key_id,
-            privileged_users: conf.privileged_users,
+            crypto_officer: {
+                // Backward compat: if the deprecated `privileged_users` field is set and
+                // `[roles] crypto_officer_users` is not configured, promote those users to
+                // the CryptoOfficer role automatically.
+                let co_users = match (conf.roles.crypto_officer_users, conf.privileged_users) {
+                    (Some(co), _) => co,
+                    (None, Some(priv_users)) => {
+                        tracing::warn!(
+                            "`privileged_users` is deprecated; please migrate to \
+                             `[roles] crypto_officer_users` in kms.toml"
+                        );
+                        priv_users
+                    }
+                    (None, None) => vec![],
+                };
+                let co = CryptoOfficerConfig {
+                    users: co_users,
+                    require_ceremony: conf.roles.crypto_officer_require_ceremony,
+                    ceremony_wrapping_key_id: conf.roles.ceremony_wrapping_key_id,
+                };
+                co.validate()
+                    .map_err(|e| KmsError::ServerError(format!("Role configuration error: {e}")))?;
+                // Warn operators that config-only CO mode is permanent super-admin —
+                // there is no runtime gate, so a config compromise equals privilege escalation.
+                if !co.users.is_empty() && !co.require_ceremony {
+                    tracing::warn!(
+                        "SECURITY: Crypto Officer is active in config-only mode \
+                         (require_ceremony = false). Any user listed in \
+                         `crypto_officer_users` is a permanent super-admin with no \
+                         runtime activation gate. Consider enabling \
+                         `crypto_officer_require_ceremony = true` in production \
+                         deployments."
+                    );
+                }
+                co
+            },
+            ceremony_keys: {
+                let any_ceremony_required = conf.roles.crypto_officer_require_ceremony;
+                match (
+                    &conf.roles.ceremony_key_id,
+                    &conf.roles.ceremony_secret,
+                    any_ceremony_required,
+                ) {
+                    // ceremony_key_id takes precedence — keys resolved after DB init;
+                    // or neither provided and ceremony is not required.
+                    (Some(_), _, _) | (None, None, false) => None,
+                    // Only ceremony_secret provided — derive keys now
+                    (None, Some(hex_secret), _) => {
+                        let bytes = hex::decode(hex_secret).map_err(|e| {
+                            KmsError::ServerError(format!(
+                                "ceremony_secret: invalid hex encoding: {e}"
+                            ))
+                        })?;
+                        if bytes.len() != cosmian_kms_server_database::CEREMONY_SECRET_LENGTH {
+                            return Err(KmsError::ServerError(format!(
+                                "ceremony_secret must be exactly {} bytes ({} hex chars), got {} bytes",
+                                cosmian_kms_server_database::CEREMONY_SECRET_LENGTH,
+                                cosmian_kms_server_database::CEREMONY_SECRET_LENGTH * 2,
+                                bytes.len(),
+                            )));
+                        }
+                        let mut secret =
+                            [0_u8; cosmian_kms_server_database::CEREMONY_SECRET_LENGTH];
+                        secret.copy_from_slice(&bytes);
+                        let keys = CeremonyKeys::derive(&secret);
+                        // Zeroize the local copy
+                        secret.fill(0);
+                        tracing::warn!(
+                            "ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment \
+                             variable is used in production to avoid persisting the secret to disk. \
+                             If loaded from a config file, ensure it has restrictive permissions \
+                             (0600) and is not committed to version control."
+                        );
+                        Some(Arc::new(keys))
+                    }
+                    // Neither provided but ceremony required
+                    (None, None, true) => {
+                        return Err(KmsError::ServerError(
+                            "ceremony_secret or ceremony_key_id is required when any role has \
+                             require_ceremony = true. Set ceremony_key_id to an existing AES-256 \
+                             symmetric key UID, or generate a secret with: openssl rand -hex 32"
+                                .to_owned(),
+                        ));
+                    }
+                }
+            },
+            ceremony_key_id: conf.roles.ceremony_key_id.clone(),
             ui_session_salt: conf.ui_config.ui_session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
@@ -420,7 +575,17 @@ impl ServerParams {
             rate_limit_per_second: conf.http.rate_limit_per_second,
             http_workers: conf.http.http_workers,
             cors_allowed_origins: conf.http.cors_allowed_origins.unwrap_or_else(|| {
-                crate::config::default_cors_origins(cors_scheme, conf.http.port)
+                let mut origins = crate::config::default_cors_origins(cors_scheme, conf.http.port);
+                // When kms_public_url is set and cors_allowed_origins was not explicitly
+                // configured, include the public URL automatically so that browsers
+                // accessing the KMS via its canonical address can reach the API without
+                // an explicit cors_allowed_origins configuration entry.
+                if let Some(ref url) = public_url_for_cors {
+                    if !origins.iter().any(|o| o == url) {
+                        origins.push(url.clone());
+                    }
+                }
+                origins
             }),
             max_locate_items: 1000,
             auto_rotation_check_interval_secs: {
@@ -459,12 +624,45 @@ impl ServerParams {
             vault_pki_mount: conf.vault.vault_pki_mount,
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
-            auth_verifier_config: if conf.auth_verifier.is_enabled() {
-                Some(conf.auth_verifier)
-            } else {
-                None
-            },
+            auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
+            crl_default_validity_days: conf.crl.crl_default_validity_days,
+            crl_refresh_check_hours: conf.crl.crl_refresh_check_hours,
+            crl_refresh_overlap_hours: conf.crl.crl_refresh_overlap_hours,
+            ocsp_enabled: conf.ocsp.ocsp_enabled,
+            ocsp_ca_uid: conf.ocsp.ocsp_ca_uid,
+            ocsp_responder_cert_uid: conf.ocsp.ocsp_responder_cert_uid,
+            ocsp_cache_ttl_secs: conf.ocsp.ocsp_cache_ttl_secs,
+            ocsp_nonce_policy: conf.ocsp.ocsp_nonce_policy,
+            ocsp_include_cert_chain: conf.ocsp.ocsp_include_cert_chain,
+            ocsp_archive_cutoff_secs: conf.ocsp.ocsp_archive_cutoff_secs,
         };
+
+        // Cross-field validation: force_default_username=true collapses all identities to a
+        // single user, defeating the Crypto Officer dual-control guarantee.
+        //
+        // When CO users came from the new `[roles] crypto_officer_users` key, reject at startup.
+        // When they came only from the deprecated `privileged_users` key, preserve the v5.26.0
+        // behaviour (silently tolerated, though meaningless) and warn instead, so existing
+        // configurations upgrading from v5.26.0 are not broken.
+        if res.force_default_username && !res.crypto_officer.users.is_empty() {
+            if co_from_deprecated_path {
+                tracing::warn!(
+                    "`force_default_username = true` combined with `privileged_users` is \
+                     deprecated and will become an error in a future release. All requests run \
+                     under the same identity, making Crypto Officer dual-control meaningless. \
+                     Please migrate to `[roles] crypto_officer_users` and remove \
+                     `force_default_username`."
+                );
+            } else {
+                return Err(KmsError::ServerError(
+                    "`force_default_username = true` is incompatible with `crypto_officer_users`. \
+                     All requests would run under the same identity, making Crypto Officer \
+                     dual-control and ceremony audit logs meaningless. \
+                     Disable `force_default_username` or remove `crypto_officer_users`."
+                        .to_owned(),
+                ));
+            }
+        }
 
         debug!("{res:#?}");
 
@@ -775,8 +973,8 @@ impl fmt::Debug for ServerParams {
             ),
         );
 
-        if let Some(ref users) = self.privileged_users {
-            debug_struct.field("privileged_users", users);
+        if !self.crypto_officer.users.is_empty() {
+            debug_struct.field("crypto_officer_users", &self.crypto_officer.users);
         }
 
         // Mask the session salt for security (it's a secret)
@@ -853,6 +1051,123 @@ impl fmt::Debug for ServerParams {
             }
         }
 
-        debug_struct.finish()
+        debug_struct.field(
+            "ceremony_keys",
+            &self.ceremony_keys.as_ref().map(|_| "<configured>"),
+        );
+        debug_struct.field("ceremony_key_id", &self.ceremony_key_id);
+
+        debug_struct.field("crl_default_validity_days", &self.crl_default_validity_days);
+        if self.crl_refresh_check_hours > 0 {
+            debug_struct.field("crl_refresh_check_hours", &self.crl_refresh_check_hours);
+            debug_struct.field("crl_refresh_overlap_hours", &self.crl_refresh_overlap_hours);
+        }
+
+        debug_struct.finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use tempfile::TempDir;
+
+    use crate::config::{ClapConfig, HttpConfig, command_line::MainDBConfig};
+
+    /// Build a minimal [`ClapConfig`] that uses a `SQLite` database in `tmp_dir`.
+    fn minimal_config(tmp_dir: &TempDir) -> ClapConfig {
+        ClapConfig {
+            db: MainDBConfig {
+                sqlite_path: tmp_dir.path().to_path_buf(),
+                ..MainDBConfig::default()
+            },
+            http: HttpConfig {
+                cors_allowed_origins: None,
+                ..HttpConfig::default()
+            },
+            ..ClapConfig::default()
+        }
+    }
+
+    /// When `kms_public_url` is set and `cors_allowed_origins` is absent, the
+    /// resolved `ServerParams::cors_allowed_origins` must include `kms_public_url`.
+    #[test]
+    fn cors_includes_public_url_when_not_explicitly_configured() {
+        let tmp = TempDir::new().unwrap();
+        let mut conf = minimal_config(&tmp);
+        conf.kms_public_url = Some("https://kms.example.com".to_owned());
+
+        let params = super::ServerParams::try_from(conf).unwrap();
+
+        assert!(
+            params
+                .cors_allowed_origins
+                .contains(&"https://kms.example.com".to_owned()),
+            "cors_allowed_origins should contain kms_public_url when not explicitly set; got: {:?}",
+            params.cors_allowed_origins
+        );
+    }
+
+    /// When `cors_allowed_origins` is explicitly set, `kms_public_url` must
+    /// **not** be injected — the explicit list is used verbatim.
+    #[test]
+    fn cors_explicit_list_not_augmented_with_public_url() {
+        let tmp = TempDir::new().unwrap();
+        let mut conf = minimal_config(&tmp);
+        conf.kms_public_url = Some("https://kms.example.com".to_owned());
+        conf.http.cors_allowed_origins = Some(vec!["https://explicit.example.com".to_owned()]);
+
+        let params = super::ServerParams::try_from(conf).unwrap();
+
+        assert_eq!(
+            params.cors_allowed_origins,
+            vec!["https://explicit.example.com".to_owned()],
+            "explicit cors_allowed_origins must be used verbatim; kms_public_url must not be appended"
+        );
+    }
+
+    /// When `kms_public_url` is absent and `cors_allowed_origins` is unset, the
+    /// defaults must be the standard loopback origins only (no phantom entry).
+    #[test]
+    fn cors_defaults_when_no_public_url() {
+        let tmp = TempDir::new().unwrap();
+        let conf = minimal_config(&tmp);
+
+        let params = super::ServerParams::try_from(conf).unwrap();
+
+        // No kms_public_url → defaults should not contain any non-loopback origin.
+        for origin in &params.cors_allowed_origins {
+            assert!(
+                origin.contains("localhost")
+                    || origin.contains("127.0.0.1")
+                    || origin.contains("0.0.0.0")
+                    || origin.contains("[::1]")
+                    || origin.contains("[::]"),
+                "default cors_allowed_origins should only contain loopback addresses; found unexpected: {origin}"
+            );
+        }
+    }
+
+    /// `kms_public_url` that already appears in the explicit list must not be
+    /// duplicated (dedup guard inside the `unwrap_or_else` closure).
+    #[test]
+    fn cors_public_url_not_duplicated_in_defaults() {
+        let tmp = TempDir::new().unwrap();
+        let mut conf = minimal_config(&tmp);
+        conf.kms_public_url = Some("https://kms.example.com".to_owned());
+        // Do NOT set cors_allowed_origins — rely on the auto-default path
+
+        let params = super::ServerParams::try_from(conf).unwrap();
+
+        let count = params
+            .cors_allowed_origins
+            .iter()
+            .filter(|o| o.as_str() == "https://kms.example.com")
+            .count();
+        assert_eq!(
+            count, 1,
+            "kms_public_url must appear exactly once; got: {:?}",
+            params.cors_allowed_origins
+        );
     }
 }

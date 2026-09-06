@@ -32,7 +32,7 @@ fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> O
 /// The main entry point of the program.
 ///
 /// This function sets up the necessary environment variables and logging options,
-/// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
+/// then parses the command line arguments using `ClapConfig::parse()`.
 ///
 /// On Windows, if the process was launched by the Service Control Manager, it
 /// dispatches to the Windows service entry point instead.
@@ -145,7 +145,7 @@ async fn run() -> KResult<()> {
             .logging
             .rolling_log_name
             .clone()
-            .unwrap_or_else(|| "cosmian_kms".to_owned());
+            .unwrap_or_else(|| "kms".to_owned());
         Some((dir, name))
     });
 
@@ -219,6 +219,7 @@ async fn run() -> KResult<()> {
     Box::pin(cosmian_kms_server::start_kms_server::start_kms_server(
         server_params,
         None,
+        None,
     ))
     .await?;
 
@@ -233,9 +234,10 @@ mod tests {
 
     use cosmian_kms_server::{
         config::{
-            AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig,
-            JwksEndpointConfig, KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig,
-            ProxyConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+            AuthVerifierConfig, AzureEkmConfig, ClapConfig, CrlConfig, GoogleCseConfig, HttpConfig,
+            IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig, LoggingConfig, MainDBConfig,
+            OidcConfig, ProxyConfig, RolesConfig, SocketServerConfig, TlsConfig, UiConfig,
+            WorkspaceConfig,
         },
         routes::aws_xks::AwsXksConfig,
     };
@@ -294,6 +296,7 @@ mod tests {
                     "jwt issuer uri 2,jwks uri 2,jwt audience 2".to_owned(),
                 ]),
             },
+            auth_verifier: AuthVerifierConfig::default(),
             ui_config: UiConfig {
                 enable: true,
                 ui_index_html_folder: Some("[ui index html folder]".to_owned()),
@@ -368,12 +371,14 @@ mod tests {
             default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
-            secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
-            auth_verifier: cosmian_kms_server::config::AuthVerifierConfig::default(),
+            roles: RolesConfig::default(),
             print_default_config: false,
+            secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
             auto_rotation_check_interval_secs: 0,
             keyset_warn_depth: 5,
             vault: cosmian_kms_server::config::VaultConfig::default(),
+            crl: CrlConfig::default(),
+            ocsp: cosmian_kms_server::config::OcspConfig::default(),
         };
 
         let toml_string = r#"
@@ -464,6 +469,9 @@ enable_metering = false
 environment = "development"
 ansi_colors = false
 
+[roles]
+crypto_officer_require_ceremony = false
+
 [aws_xks_config]
 aws_xks_enable = true
 aws_xks_region = "us-east-1"
@@ -485,6 +493,18 @@ vault_transit_mount = ""
 vault_pki_mount = ""
 vault_pki_ca_key_label = ""
 vault_token_cache_ttl_secs = 0
+
+[crl]
+crl_default_validity_days = 7
+crl_refresh_check_hours = 1
+crl_refresh_overlap_hours = 24
+
+[ocsp]
+ocsp_enabled = false
+ocsp_cache_ttl_secs = 86400
+ocsp_nonce_policy = "optional"
+ocsp_include_cert_chain = true
+ocsp_archive_cutoff_secs = 0
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

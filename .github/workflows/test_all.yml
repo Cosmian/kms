@@ -42,6 +42,8 @@ jobs:
           - secret_cosmian_kms
           - spire
           - kmip-go
+          - ocsp
+          - pki-revocation
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -196,7 +198,7 @@ jobs:
           - utimaco
           # - proteccio # on July 2026, Proteccio test-HSM is unavailable
           - softhsm2
-          - crypt2pay
+          # - crypt2pay # on August 2026, Crypt2Pay test-HSM is unavailable
         features: [fips, non-fips]
         exclude:
           # parallel connections on proteccio is not supported

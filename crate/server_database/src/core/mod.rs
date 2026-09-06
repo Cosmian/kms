@@ -14,7 +14,7 @@ pub use db_metrics::DbMetricsRecorder;
 use redis::AsyncCommands;
 use tokio::sync::RwLock;
 
-use crate::error::DbResult;
+use crate::{CeremonyKeys, error::DbResult};
 
 mod main_db_params;
 pub use main_db_params::{AdditionalObjectStoresParams, MainDbParams};
@@ -60,6 +60,12 @@ pub struct Database {
     /// The concrete implementation lives in the `server` crate to avoid a
     /// dependency cycle.
     recorder: Option<Arc<dyn DbMetricsRecorder>>,
+
+    /// Ceremony record encryption keys (derived from `ceremony_secret`).
+    ///
+    /// When `Some`, ceremony records are AES-256-GCM sealed before storage and
+    /// verified on read. When `None`, ceremony operations will fail if attempted.
+    pub(crate) ceremony_keys: Option<Arc<CeremonyKeys>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -111,12 +117,14 @@ impl Database {
         cache_max_ttl: Option<Duration>,
         disable_unwrapped_cache: bool,
         recorder: Option<Arc<dyn DbMetricsRecorder>>,
+        ceremony_keys: Option<Arc<CeremonyKeys>>,
     ) -> DbResult<Self> {
         // main/default database
         let mut db = Self::instantiate_main_database(
             main_db_params,
             clear_db_on_start,
             cache_max_age,
+            ceremony_keys,
             cache_max_size,
             cache_max_ttl,
             disable_unwrapped_cache,
@@ -133,6 +141,7 @@ impl Database {
         main_db_params: &MainDbParams,
         clear_db_on_start: bool,
         cache_max_age: Duration,
+        ceremony_keys: Option<Arc<CeremonyKeys>>,
         cache_max_size: NonZeroUsize,
         cache_max_ttl: Option<Duration>,
         disable_unwrapped_cache: bool,
@@ -156,6 +165,7 @@ impl Database {
                     disable_unwrapped_cache,
                     MainDbKind::Sqlite,
                     health,
+                    ceremony_keys,
                 ))
             }
             MainDbParams::Postgres(url, max_conns) => {
@@ -170,6 +180,7 @@ impl Database {
                     disable_unwrapped_cache,
                     MainDbKind::Postgres,
                     health,
+                    ceremony_keys,
                 ))
             }
             MainDbParams::Mysql(url, max_conns) => {
@@ -186,6 +197,7 @@ impl Database {
                     disable_unwrapped_cache,
                     MainDbKind::Mysql,
                     health,
+                    ceremony_keys,
                 ))
             }
             #[cfg(feature = "non-fips")]
@@ -217,6 +229,7 @@ impl Database {
                     disable_unwrapped_cache,
                     MainDbKind::RedisFindex,
                     health,
+                    ceremony_keys,
                 ))
             }
         }
@@ -251,6 +264,7 @@ impl Database {
         disable_unwrapped_cache: bool,
         kind: MainDbKind,
         health: Arc<dyn DatabaseHealth + Sync + Send>,
+        ceremony_keys: Option<Arc<CeremonyKeys>>,
     ) -> Self {
         Self {
             objects: RwLock::new(HashMap::from([(String::new(), default_objects_database)])),
@@ -265,12 +279,23 @@ impl Database {
             kind,
             health,
             recorder: None,
+            ceremony_keys,
         }
     }
 
     #[must_use]
     pub const fn main_db_kind(&self) -> MainDbKind {
         self.kind
+    }
+
+    /// Replace the ceremony encryption keys after post-init resolution.
+    ///
+    /// Used when `ceremony_key_id` is set: the raw AES key is fetched from the
+    /// object store after the database is initialized, and the derived
+    /// `CeremonyKeys` are installed here before the server starts handling
+    /// requests.
+    pub fn set_ceremony_keys(&mut self, keys: Arc<CeremonyKeys>) {
+        self.ceremony_keys = Some(keys);
     }
 
     pub async fn health_check(&self) -> Result<(), String> {

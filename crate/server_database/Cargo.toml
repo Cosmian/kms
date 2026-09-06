@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_server_database"
-version = "5.26.0"
+version = "5.27.0"
 authors.workspace = true
 categories.workspace = true
 edition.workspace = true
@@ -30,13 +30,15 @@ interop = ["cosmian_kmip/interop"]
 
 [dependencies]
 async-trait = { workspace = true }
+base64 = { workspace = true }
 cosmian_findex = { version = "8.0.2", optional = true }
-cosmian_kmip = { path = "../kmip", version = "5.26.0" }
-cosmian_kms_crypto = { path = "../crypto", version = "5.26.0" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.26.0" }
+cosmian_kmip = { path = "../kmip", version = "5.27.0" }
+cosmian_kms_crypto = { path = "../crypto", version = "5.27.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.27.0" }
 cosmian_logger = { workspace = true }
 cosmian_sse_memories = { version = "8.0.2", optional = true }
 deadpool-postgres = "0.14"
+hex = { workspace = true }
 moka = { workspace = true }
 mysql_async = { version = "0.37", default-features = false, features = [
   "native-tls-tls",
@@ -45,6 +47,7 @@ mysql_async = { version = "0.37", default-features = false, features = [
 
 openssl = "0.10"
 postgres-openssl = "0.5"
+x509-parser = { workspace = true }
 rawsql = "0.1"
 redis = { version = "0.32", features = [
   "aio",

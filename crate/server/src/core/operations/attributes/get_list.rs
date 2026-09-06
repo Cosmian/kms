@@ -9,9 +9,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::trace;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
-    error::KmsError,
-    result::{KResult, KResultHelper},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
+    middlewares::UserId,
+    result::KResult,
 };
 
 /// Standard attribute tags advertised by `GetAttributeList` for the TL profile, in the
@@ -53,7 +53,7 @@ const TL_PROFILE_ATTRIBUTES: [(Tag, i32); 20] = [
 pub(crate) async fn get_attribute_list(
     kms: &KMS,
     request: GetAttributeList,
-    user: &str,
+    user: &UserId,
 ) -> KResult<GetAttributeListResponse> {
     get_attribute_list_with_protocol_version(kms, request, user, None).await
 }
@@ -61,7 +61,7 @@ pub(crate) async fn get_attribute_list(
 pub(crate) async fn get_attribute_list_with_protocol_version(
     kms: &KMS,
     request: GetAttributeList,
-    user: &str,
+    user: &UserId,
     protocol_version: Option<ProtocolVersion>,
 ) -> KResult<GetAttributeListResponse> {
     // KMIP 1.x clients MUST NOT be told about attributes their protocol version does not
@@ -72,12 +72,7 @@ pub(crate) async fn get_attribute_list_with_protocol_version(
         .filter(|pv| pv.protocol_version_major == 1)
         .map_or(i32::MAX, |pv| pv.protocol_version_minor);
 
-    let uid = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?
-        .as_str()
-        .context("GetAttributeList: unique identifier must be a string")?;
+    let uid = from_request(request.unique_identifier.as_ref(), "GetAttributeList")?;
 
     // Permission / existence check (reuses GetAttributes gating). We ignore the
     // actual attributes for the minimal implementation but still verify access.
@@ -128,8 +123,7 @@ pub(crate) async fn get_attribute_list_with_protocol_version(
     if let Some(refs) = &attribute_references {
         trace!(
             target: "kmip",
-            "get_attribute_list uid={} refs=[{}]",
-            uid,
+            "get_attribute_list uid={uid} refs=[{}]",
             refs
                 .iter()
                 .map(|r| match r {
@@ -142,7 +136,7 @@ pub(crate) async fn get_attribute_list_with_protocol_version(
     }
 
     Ok(GetAttributeListResponse {
-        unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+        unique_identifier: UniqueIdentifier::TextString(uid.as_str().to_owned()),
         attribute_references,
     })
 }

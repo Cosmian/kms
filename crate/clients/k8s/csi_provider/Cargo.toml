@@ -30,7 +30,7 @@ clap = { workspace = true, features = [
   "derive",
   "cargo",
 ] }
-cosmian_kms_client = { path = "../../client", version = "5.25.0" }
+cosmian_kms_client = { path = "../../client", version = "5.27.0" }
 cosmian_logger = { workspace = true }
 prost = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

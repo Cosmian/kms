@@ -5,7 +5,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         extra::tagging::VENDOR_ATTR_TAG,
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyMaterial, KeyValue},
-        kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SymmetricKey},
+        kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey},
         kmip_operations::{GetAttributes, GetAttributesResponse},
         kmip_types::{
             AttributeReference, CryptographicAlgorithm, KeyFormatType, LinkType,
@@ -21,15 +21,20 @@ use strum::IntoEnumIterator;
 use time::OffsetDateTime;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{
+        KMS,
+        retrieve_object_utils::retrieve_object_for_operation,
+        uid_utils::{ObjectHandle, from_request},
+    },
     error::KmsError,
-    result::{KResult, KResultHelper},
+    middlewares::UserId,
+    result::KResult,
 };
 
 pub(crate) async fn get_attributes(
     kms: &KMS,
     request: GetAttributes,
-    user: &str,
+    user: &UserId,
 ) -> KResult<GetAttributesResponse> {
     trace!("{request}");
 
@@ -38,15 +43,18 @@ pub(crate) async fn get_attributes(
     // In that case, fallback to the most recently created accessible object for the user.
     let mut implicit_uid_buf: Option<String> = None; // preferred owned by user
     let implicit_uid_any_buf: Option<String> = None; // fallback if ownership not matched
-    let uid_or_tags: &str = if let Some(uid) = request.unique_identifier.as_ref() {
-        uid.as_str()
-            .context("Get Attributes: the unique identifier must be a string")?
+    let object_handle: ObjectHandle<'_> = if let Some(uid) = request.unique_identifier.as_ref() {
+        from_request(Some(uid), "Get Attributes")?
     } else {
         // Fallback: retrieve objects and deterministically pick the most recently touched object
         // (prefer owned by user). This aligns with vector semantics when UIDs are omitted.
         let mut best_user: Option<(String, Option<OffsetDateTime>)> = None;
         let mut best_any: Option<(String, Option<OffsetDateTime>)> = None;
-        for (id, owm) in kms.database.retrieve_objects("*").await? {
+        for (id, owm) in kms
+            .database
+            .retrieve_objects(ObjectHandle::from("*"))
+            .await?
+        {
             let attrs = owm.attributes();
             let ts = attrs
                 .last_change_date
@@ -87,7 +95,7 @@ pub(crate) async fn get_attributes(
         if let Some(id) = chosen {
             implicit_uid_buf = Some(id);
         }
-        implicit_uid_buf
+        let s = implicit_uid_buf
             .as_deref()
             .or(implicit_uid_any_buf.as_deref())
             .ok_or_else(|| {
@@ -95,11 +103,12 @@ pub(crate) async fn get_attributes(
                     ErrorReason::Item_Not_Found,
                     "Get Attributes: no objects available for implicit selection".to_owned(),
                 )
-            })?
+            })?;
+        ObjectHandle::from(s)
     };
 
     let owm = Box::pin(retrieve_object_for_operation(
-        uid_or_tags,
+        object_handle,
         KmipOperation::GetAttributes,
         kms,
         user,
@@ -152,9 +161,39 @@ pub(crate) async fn get_attributes(
                 a
             }
         }
-        Object::CertificateRequest { .. } | Object::PGPKey { .. } | Object::SplitKey { .. } => {
+        // Defensive overlay: SplitKey crypto metadata (algorithm, length, format type) IS stored
+        // in the Attributes table at creation time (see create_split_key.rs). However, as a
+        // fallback for imported SplitKey objects or attributes cleared by DeleteAttribute, we
+        // read the values from the key_block when the stored Attributes are missing them.
+        // This ensures the KMIP contract — Managed Objects SHALL have CryptographicAlgorithm and
+        // CryptographicLength as server-set attributes — is always fulfilled.
+        Object::SplitKey(SplitKey { key_block, .. }) => {
+            let mut a = owm.attributes().to_owned();
+            // Overlay key_block crypto metadata if not already in stored attrs.
+            if a.cryptographic_algorithm.is_none() {
+                a.cryptographic_algorithm = key_block.cryptographic_algorithm;
+            }
+            if a.cryptographic_length.is_none() {
+                a.cryptographic_length = key_block.cryptographic_length;
+            }
+            if a.key_format_type.is_none() {
+                a.key_format_type = Some(key_block.key_format_type);
+            }
+            // Strip internal tag vendor attribute before returning.
+            if let Some(vendor_attributes) = a.vendor_attributes.as_mut() {
+                vendor_attributes.retain(|va| {
+                    !(va.vendor_identification == kms.vendor_id()
+                        && va.attribute_name == VENDOR_ATTR_TAG)
+                });
+                if vendor_attributes.is_empty() {
+                    a.vendor_attributes = None;
+                }
+            }
+            a
+        }
+        Object::CertificateRequest { .. } | Object::PGPKey { .. } => {
             return Err(KmsError::InvalidRequest(format!(
-                "get: unsupported object type for {uid_or_tags}",
+                "get: unsupported object type for {object_handle}"
             )));
         }
     };

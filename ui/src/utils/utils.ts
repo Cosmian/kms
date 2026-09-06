@@ -1,5 +1,15 @@
 export type AuthMethod = "None" | "JWT" | "CERT" | "AUTH_VERIFIER" | undefined;
 
+/** Root of the Cosmian docs site (not the KMS-specific book — see `docsUrl`). */
+export const DOCS_BASE_URL = "https://docs.cosmian.com";
+
+/**
+ * Build a link into the KMS mdBook docs site from a `documentation/docs/` file path
+ * (no `.md`, no leading/trailing slash — e.g. `configuration/authorization/key_ceremony`).
+ */
+export const docsUrl = (path: string, hash?: string): string =>
+    `${DOCS_BASE_URL}/key_management_system/${path}/${hash ? `#${hash}` : ""}`;
+
 /** Strip HTML tags from error responses (server may return HTML error pages). */
 const stripHtml = (text: string): string =>
     text
@@ -53,6 +63,51 @@ export const fetchAuthMethod = async (serverUrl: string): Promise<AuthMethod> =>
 
         const data: { auth_method: AuthMethod } = await response.json();
         return data.auth_method;
+    } catch (error) {
+        console.error(error);
+        return undefined;
+    }
+};
+
+/**
+ * Fetch the ordered list of configured UI login methods (primary first).
+ *
+ * Reads the `auth_methods` array from `GET /ui/auth_method`. Falls back to the
+ * singular `auth_method` field for older servers that don't yet return the array.
+ * Returns an empty array when authentication is disabled ("None") and `undefined`
+ * on network/parse failure (so callers can distinguish "no methods" from
+ * "server unreachable").
+ */
+/**
+ * True only when CERT is the sole configured method, so auto-login via the
+ * ambient client certificate does not preempt the user's method choice when
+ * multiple methods are configured.
+ */
+export const shouldAutoLoginWithCert = (methods: AuthMethod[]): boolean => methods.length === 1 && methods[0] === "CERT";
+
+export const fetchAuthMethods = async (serverUrl: string): Promise<AuthMethod[] | undefined> => {
+    // Skip the fetch in dev mode to avoid unnecessary friction (no auth enforced).
+    if (import.meta.env.VITE_DEV_MODE === "true") {
+        return [];
+    }
+    try {
+        const kmsUrl = serverUrl + "/ui/auth_method";
+        const response = await fetch(kmsUrl, {
+            method: "GET",
+            credentials: "include",
+        });
+        if (!response.ok) throw new Error("Failed to fetch auth methods");
+
+        const data: { auth_method?: AuthMethod; auth_methods?: AuthMethod[] } = await response.json();
+        if (Array.isArray(data.auth_methods)) {
+            // Filter out the "None" sentinel: an empty array means no auth configured.
+            return data.auth_methods.filter((m): m is AuthMethod => m !== undefined && m !== "None");
+        }
+        // Backward-compatibility: older servers only return the singular field.
+        if (data.auth_method && data.auth_method !== "None") {
+            return [data.auth_method];
+        }
+        return [];
     } catch (error) {
         console.error(error);
         return undefined;
@@ -253,13 +308,14 @@ export const getMimeType = (fileName: string): string => {
     return mimeTypes[extension] || "application/octet-stream";
 };
 
-export type ObjectType = "rsa" | "ec" | "symmetric" | "covercrypt" | "pqc" | "certificate" | "secret-data" | "opaque-object";
+export type ObjectType = "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "certificate" | "secret-data" | "opaque-object";
 
 export const getObjectLabel = (type: ObjectType): string => {
     switch (type) {
         case "rsa":
         case "ec":
         case "symmetric":
+        case "fpe":
         case "covercrypt":
         case "pqc":
             return "key";
@@ -271,28 +327,5 @@ export const getObjectLabel = (type: ObjectType): string => {
             return "opaque object";
         default:
             return "object";
-    }
-};
-
-export const getTypeString = (type: ObjectType): string => {
-    switch (type) {
-        case "rsa":
-            return "an RSA";
-        case "ec":
-            return "an EC";
-        case "covercrypt":
-            return "a CoverCrypt";
-        case "symmetric":
-            return "a symmetric";
-        case "pqc":
-            return "a PQC";
-        case "certificate":
-            return "a";
-        case "secret-data":
-            return "a";
-        case "opaque-object":
-            return "an";
-        default:
-            return "a";
     }
 };

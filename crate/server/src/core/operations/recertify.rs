@@ -33,9 +33,11 @@ use crate::{
         KMS,
         operations::certify::{build_and_sign_certificate, get_issuer, get_subject},
         retrieve_object_utils::retrieve_object_for_operation,
+        uid_utils::{ObjectHandle, from_request},
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -60,7 +62,7 @@ pub(crate) struct CertificateRekey {
 pub(crate) async fn recertify(
     kms: &KMS,
     request: ReCertify,
-    owner: &str,
+    owner: &UserId,
 ) -> KResult<ReCertifyResponse> {
     trace!("ReCertify: {}", serde_json::to_string(&request)?);
     let (issuer_cert_id, issuer_private_key_id) =
@@ -96,27 +98,13 @@ impl RekeyOperation for CertificateRekey {
         &self,
         kms: &KMS,
         request: &ReCertify,
-        user: &str,
+        user: &UserId,
     ) -> KResult<[RotationCandidate; 1]> {
         KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 
         kms.enforce_create_permission(user).await?;
 
-        let uid = request
-            .unique_identifier
-            .as_ref()
-            .ok_or_else(|| {
-                KmsError::InvalidRequest(
-                    "ReCertify: unique_identifier of the certificate to rotate is required"
-                        .to_owned(),
-                )
-            })?
-            .as_str()
-            .ok_or_else(|| {
-                KmsError::InvalidRequest(
-                    "ReCertify: unique_identifier must be a text string".to_owned(),
-                )
-            })?;
+        let uid = from_request(request.unique_identifier.as_ref(), "ReCertify")?;
 
         let owm = Box::pin(retrieve_object_for_operation(
             uid,
@@ -142,7 +130,7 @@ impl RekeyOperation for CertificateRekey {
 
         Ok([RotationCandidate {
             owm,
-            uid: uid.to_owned(),
+            uid: uid.as_str().to_owned(),
         }])
     }
 
@@ -201,13 +189,18 @@ impl RekeyOperation for CertificateRekey {
         };
 
         // Resolve subject (will produce Subject::Certificate from existing cert)
-        let owner = candidate.owm.owner();
+        let owner = candidate.owm.owner_id();
         let subject = Box::pin(get_subject(kms, &certify_request, owner)).await?;
         // Resolve issuer from the old certificate's attributes
         let issuer = Box::pin(get_issuer(&subject, kms, &certify_request, owner)).await?;
         // Build and sign the new certificate
-        let (certificate_object, tags, attributes) =
-            build_and_sign_certificate(kms.vendor_id(), &issuer, &subject, certify_request)?;
+        let (certificate_object, tags, attributes) = build_and_sign_certificate(
+            kms.vendor_id(),
+            &issuer,
+            &subject,
+            certify_request,
+            kms.params.kms_public_url.as_deref(),
+        )?;
 
         Ok([ReplacementObject {
             new_uid,
@@ -275,7 +268,7 @@ impl RekeyOperation for CertificateRekey {
     async fn rewrap_new_objects(
         &self,
         _kms: &KMS,
-        _user: &str,
+        _user: &UserId,
         _replacements: &mut [ReplacementObject; 1],
         _wrap_specs: &[Option<KeyWrappingSpecification>],
     ) -> KResult<()> {
@@ -286,7 +279,7 @@ impl RekeyOperation for CertificateRekey {
     async fn finalize_dependants(
         &self,
         kms: &KMS,
-        user: &str,
+        user: &UserId,
         candidates: &[RotationCandidate; 1],
         replacements: &[ReplacementObject; 1],
     ) -> KResult<()> {
@@ -319,9 +312,9 @@ impl RekeyOperation for CertificateRekey {
         relink_keys_to_new_certificate(
             kms,
             user,
-            &candidate.uid,
+            ObjectHandle::from(&candidate.uid),
             candidate.owm.attributes(),
-            &replacement.new_uid,
+            ObjectHandle::from(&replacement.new_uid),
             &mut operations,
         )
         .await?;
@@ -343,9 +336,9 @@ impl RekeyOperation for CertificateRekey {
 async fn relink_keys_to_new_certificate(
     kms: &KMS,
     _user: &str,
-    old_cert_uid: &str,
+    old_cert: ObjectHandle<'_>,
     old_cert_attrs: &Attributes,
-    new_cert_uid: &str,
+    new_cert: ObjectHandle<'_>,
     operations: &mut Vec<AtomicOperation>,
 ) -> KResult<()> {
     // Collect key UIDs linked from the old certificate
@@ -355,7 +348,9 @@ async fn relink_keys_to_new_certificate(
         .collect();
 
     for key_uid in key_uids {
-        if let Some(op) = relink_single_key(kms, &key_uid, old_cert_uid, new_cert_uid).await? {
+        if let Some(op) =
+            relink_single_key(kms, ObjectHandle::from(&key_uid), old_cert, new_cert).await?
+        {
             operations.push(op);
         }
     }
@@ -365,23 +360,24 @@ async fn relink_keys_to_new_certificate(
 /// Update a single key's `CertificateLink` if it points to the old certificate.
 async fn relink_single_key(
     kms: &KMS,
-    key_uid: &str,
-    old_cert_uid: &str,
-    new_cert_uid: &str,
+    key: ObjectHandle<'_>,
+    old_cert: ObjectHandle<'_>,
+    new_cert: ObjectHandle<'_>,
 ) -> KResult<Option<AtomicOperation>> {
+    let key_uid = key.as_str();
     let Some(key_owm) = kms.database.retrieve_object(key_uid).await? else {
         return Ok(None);
     };
     let Some(cert_link) = key_owm.attributes().get_link(LinkType::CertificateLink) else {
         return Ok(None);
     };
-    if cert_link.to_string() != old_cert_uid {
+    if cert_link.to_string() != old_cert.as_str() {
         return Ok(None);
     }
 
     let mut key_object = key_owm.object().clone();
     let mut key_attrs = key_owm.attributes().clone();
-    let new_link = LinkedObjectIdentifier::TextString(new_cert_uid.to_owned());
+    let new_link = LinkedObjectIdentifier::TextString(new_cert.as_str().to_owned());
     key_attrs.set_link(LinkType::CertificateLink, new_link.clone());
     if let Ok(obj_attrs) = key_object.attributes_mut() {
         obj_attrs.set_link(LinkType::CertificateLink, new_link);

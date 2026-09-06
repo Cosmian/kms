@@ -8,12 +8,12 @@ use cosmian_kmip::{
 use cosmian_logger::warn;
 use time::OffsetDateTime;
 
-use crate::{InterfaceResult, ObjectWithMetadata};
+use crate::{InterfaceResult, ObjectWithMetadata, UserId};
 
 /// An atomic operation on the objects database
 pub enum AtomicOperation {
-    /// Create (uid, object, attributes, tags) - the state will be active
-    Create((String, Object, Attributes, HashSet<String>)),
+    /// Create (uid, owner, object, attributes, tags) - the state will be active
+    Create((String, UserId, Object, Attributes, HashSet<String>)),
     /// Upsert (uid, object, attributes, tags, state) - the state be updated
     Upsert((String, Object, Attributes, Option<HashSet<String>>, State)),
     /// Update the object (uid, object, attributes, tags) - the state will be not be updated
@@ -28,11 +28,21 @@ impl AtomicOperation {
     #[must_use]
     pub fn get_object_uid(&self) -> &str {
         match self {
-            Self::Create((uid, _, _, _))
+            Self::Create((uid, _, _, _, _))
             | Self::Upsert((uid, _, _, _, _))
             | Self::UpdateObject((uid, _, _, _))
             | Self::UpdateState((uid, _))
             | Self::Delete(uid) => uid,
+        }
+    }
+
+    /// Return the owner of a `Create` operation, or `None` for other variants.
+    #[must_use]
+    pub const fn get_owner(&self) -> Option<&UserId> {
+        if let Self::Create((_, owner, _, _, _)) = self {
+            Some(owner)
+        } else {
+            None
         }
     }
 }
@@ -48,7 +58,7 @@ pub trait ObjectsStore {
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
@@ -84,12 +94,12 @@ pub trait ObjectsStore {
     /// The list objects uid that operations were performed on
     async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>>;
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
-    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool>;
+    async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> InterfaceResult<bool>;
 
     /// List the `uid` of all the objects that have the given `tags`
     async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>>;
@@ -100,7 +110,7 @@ pub trait ObjectsStore {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
@@ -116,7 +126,7 @@ pub trait ObjectsStore {
     async fn find_wrapped_by(
         &self,
         _wrapping_key_uid: &str,
-        _user: &str,
+        _user: &UserId,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
 
     /// Return UIDs of all Active objects that have a `rotate_interval > 0` and whose
@@ -147,7 +157,7 @@ pub trait ObjectsStore {
         &self,
         _name: &str,
         _generation: Option<i32>,
-        _owner: &str,
+        _owner: &UserId,
     ) -> InterfaceResult<Vec<(String, Attributes)>>;
 
     /// Set the human-readable label on a key object.
@@ -229,4 +239,111 @@ pub trait ObjectsStore {
     async fn reconcile_counts(&self) -> InterfaceResult<()> {
         Ok(())
     }
+
+    /// Return uid, state and attributes of ALL objects (bypasses all user filtering).
+    ///
+    /// This method is **only** called from the Administrator Locate path.
+    /// Callers are responsible for ensuring the requesting user is an Administrator
+    /// before invoking this method.
+    async fn find_all(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
+
+    /// Find a certificate by its X.509 serial number and issuer UID.
+    ///
+    /// Returns `Some((uid, state))` for the first certificate whose DER-encoded
+    /// serial number (converted to uppercase hex) matches `serial_hex` **and** whose
+    /// `CertificateLink` points to `issuer_certificate_uid`.
+    ///
+    /// Returns `None` if no matching certificate exists.
+    ///
+    /// # Arguments
+    /// * `issuer_certificate_uid` — UID of the CA certificate object in the KMS.
+    /// * `serial_hex` — Uppercase (or lowercase) hex serial number extracted from
+    ///   the OCSP `CertId` (e.g. `"0A1B2C3D"`). Must NOT have a `0x` prefix.
+    /// * `vendor_id` — Vendor ID for attribute filtering.
+    ///
+    /// # Default implementation
+    /// The default traverses all certificate objects linked to the issuer via
+    /// `find_all` and compares serial numbers in-process.  SQL backends should
+    /// override this with an indexed query for performance.
+    ///
+    /// # OCSP mapping
+    /// - `State::Active | State::PreActive` → OCSP `good`
+    /// - `State::Compromised | State::DestroyedCompromised` → OCSP `revoked / keyCompromise`
+    /// - `State::Deactivated | State::Destroyed` → OCSP `revoked / cessationOfOperation`
+    /// - Not found → OCSP `unknown`
+    async fn find_certificate_by_serial(
+        &self,
+        issuer_certificate_uid: &str,
+        serial_hex: &str,
+        vendor_id: &str,
+    ) -> InterfaceResult<Option<(String, State)>> {
+        use cosmian_kmip::kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_objects::ObjectType,
+            kmip_types::{LinkType, LinkedObjectIdentifier},
+        };
+
+        // Build a search filter: certificate objects linked to the given issuer.
+        let mut search_attrs = Attributes {
+            object_type: Some(ObjectType::Certificate),
+            ..Attributes::default()
+        };
+        search_attrs.link = Some(vec![cosmian_kmip::kmip_2_1::kmip_types::Link {
+            link_type: LinkType::CertificateLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(
+                issuer_certificate_uid.to_owned(),
+            ),
+        }]);
+
+        // Search across all states — OCSP must distinguish good/revoked/unknown.
+        for state in [
+            State::Active,
+            State::PreActive,
+            State::Compromised,
+            State::Deactivated,
+            State::Destroyed,
+            State::Destroyed_Compromised,
+        ] {
+            let candidates = self
+                .find_all(Some(&search_attrs), Some(state), vendor_id)
+                .await?;
+
+            for (uid, obj_state, _attrs) in candidates {
+                // Retrieve the full object to access DER bytes.
+                if let Some(owm) = self.retrieve(&uid).await? {
+                    let serial = extract_serial_hex_from_object(owm.object());
+                    if let Some(s) = serial {
+                        if s.eq_ignore_ascii_case(serial_hex) {
+                            return Ok(Some((uid, obj_state)));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(None)
+    }
+}
+
+/// Extract the X.509 serial number as an uppercase hex string from a KMS `Object`.
+///
+/// Returns `None` if the object is not a certificate or parsing fails.
+fn extract_serial_hex_from_object(object: &Object) -> Option<String> {
+    use cosmian_kmip::kmip_2_1::kmip_objects::Object;
+
+    let cert_bytes = match object {
+        Object::Certificate(c) => &c.certificate_value,
+        _ => return None,
+    };
+
+    // Parse with openssl.
+    let x509 = openssl::x509::X509::from_der(cert_bytes).ok()?;
+    let serial = x509.serial_number();
+    let bn = serial.to_bn().ok()?;
+    Some(bn.to_hex_str().ok()?.to_ascii_uppercase())
 }

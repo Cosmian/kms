@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Form, Input, InputNumber, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import { postNoTTLVRequest } from "../../utils/utils";
 
@@ -12,17 +13,17 @@ interface ScaleNumberFormData {
     translate: number;
 }
 
-const DATA_TYPES = [
-    { label: "Float", value: "float" },
-    { label: "Integer", value: "integer" },
-];
-
 const TokenizeScaleNumberForm: React.FC = () => {
     const [form] = Form.useForm<ScaleNumberFormData>();
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const { serverUrl } = useAuth();
+    const { t } = useTranslation("actions");
     const responseRef = useRef<HTMLDivElement>(null);
+    const DATA_TYPES = [
+        { label: t("tokenizeScaleNumber.dataTypeFloat"), value: "float" },
+        { label: t("tokenizeScaleNumber.dataTypeInteger"), value: "integer" },
+    ];
 
     useEffect(() => {
         if (res && responseRef.current) {
@@ -49,12 +50,12 @@ const TokenizeScaleNumberForm: React.FC = () => {
             );
             const typed = response as { result?: unknown; code?: number; message?: string };
             if (typed.result !== undefined) {
-                setRes(`Result: ${JSON.stringify(typed.result)}`);
+                setRes(t("tokenizeScaleNumber.resultPrefix", { value: JSON.stringify(typed.result) }));
             } else {
-                setRes(`Error: ${typed.message ?? "Unknown error"}`);
+                setRes(`${t("common:errorPrefix")}${typed.message ?? t("tokenizeScaleNumber.unknownError")}`);
             }
         } catch (e) {
-            setRes(`Error: ${e}`);
+            setRes(`${t("common:errorPrefix")}${e}`);
             console.error("Scale number error:", e);
         } finally {
             setIsLoading(false);
@@ -63,12 +64,12 @@ const TokenizeScaleNumberForm: React.FC = () => {
 
     return (
         <div className="rounded-lg p-6 m-4">
-            <h1 className="text-2xl font-bold mb-6">Anonymize — Scale Number</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("tokenizeScaleNumber.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Normalize a number using z-score standardization, then apply a linear scale and translation.</p>
+                <p>{t("tokenizeScaleNumber.intro")}</p>
                 <p>
-                    The transformation is: <code>((x − mean) / std_deviation) × scale + translate</code>.
+                    <Trans ns="actions" i18nKey="tokenizeScaleNumber.introFormula" components={{ code: <code /> }} />
                 </p>
             </div>
 
@@ -80,62 +81,66 @@ const TokenizeScaleNumberForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item name="data_type" label="Data type" rules={[{ required: true, message: "Please select a data type" }]}>
+                        <Form.Item
+                            name="data_type"
+                            label={t("tokenizeScaleNumber.dataType")}
+                            rules={[{ required: true, message: t("tokenizeScaleNumber.pleaseSelectDataType") }]}
+                        >
                             <Select data-testid="scalenumber-datatype-select" options={DATA_TYPES} />
                         </Form.Item>
 
                         <Form.Item
                             name="data"
-                            label="Input number"
-                            rules={[{ required: true, message: "Please enter a number" }]}
-                            help="Number to normalize and scale"
+                            label={t("tokenizeScaleNumber.inputNumber")}
+                            rules={[{ required: true, message: t("tokenizeScaleNumber.pleaseEnterNumber") }]}
+                            help={t("tokenizeScaleNumber.inputNumberHelp")}
                         >
-                            <Input placeholder="e.g. 150.0" />
+                            <Input placeholder={t("tokenizeScaleNumber.inputNumberPlaceholder")} />
                         </Form.Item>
                     </Card>
 
-                    <Card title="Distribution parameters">
+                    <Card title={t("tokenizeScaleNumber.distributionParams")}>
                         <Form.Item
                             name="mean"
-                            label="Mean (μ)"
-                            rules={[{ required: true, message: "Please enter the mean" }]}
-                            help="Mean of the original data distribution"
+                            label={t("tokenizeScaleNumber.mean")}
+                            rules={[{ required: true, message: t("tokenizeScaleNumber.pleaseEnterMean") }]}
+                            help={t("tokenizeScaleNumber.meanHelp")}
                         >
-                            <InputNumber style={{ width: "100%" }} placeholder="e.g. 0" />
+                            <InputNumber style={{ width: "100%" }} placeholder={t("tokenizeScaleNumber.meanPlaceholder")} />
                         </Form.Item>
 
                         <Form.Item
                             name="std_deviation"
-                            label="Standard deviation (σ)"
-                            rules={[{ required: true, message: "Please enter the standard deviation" }]}
-                            help="Standard deviation of the original data (must be non-zero)"
+                            label={t("tokenizeScaleNumber.stdDev")}
+                            rules={[{ required: true, message: t("tokenizeScaleNumber.pleaseEnterStdDev") }]}
+                            help={t("tokenizeScaleNumber.stdDevHelp")}
                         >
-                            <InputNumber style={{ width: "100%" }} placeholder="e.g. 1" />
+                            <InputNumber style={{ width: "100%" }} placeholder={t("tokenizeScaleNumber.stdDevPlaceholder")} />
                         </Form.Item>
                     </Card>
 
-                    <Card title="Scaling parameters">
+                    <Card title={t("tokenizeScaleNumber.scalingParams")}>
                         <Form.Item
                             name="scale"
-                            label="Scale factor"
-                            rules={[{ required: true, message: "Please enter the scale factor" }]}
-                            help="Multiplier applied after z-score normalization"
+                            label={t("tokenizeScaleNumber.scale")}
+                            rules={[{ required: true, message: t("tokenizeScaleNumber.pleaseEnterScale") }]}
+                            help={t("tokenizeScaleNumber.scaleHelp")}
                         >
-                            <InputNumber style={{ width: "100%" }} placeholder="e.g. 1" />
+                            <InputNumber style={{ width: "100%" }} placeholder={t("tokenizeScaleNumber.scalePlaceholder")} />
                         </Form.Item>
 
                         <Form.Item
                             name="translate"
-                            label="Translation factor"
-                            rules={[{ required: true, message: "Please enter the translation factor" }]}
-                            help="Offset added after scaling"
+                            label={t("tokenizeScaleNumber.translate")}
+                            rules={[{ required: true, message: t("tokenizeScaleNumber.pleaseEnterTranslate") }]}
+                            help={t("tokenizeScaleNumber.translateHelp")}
                         >
-                            <InputNumber style={{ width: "100%" }} placeholder="e.g. 0" />
+                            <InputNumber style={{ width: "100%" }} placeholder={t("tokenizeScaleNumber.translatePlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Button type="primary" htmlType="submit" loading={isLoading} data-testid="submit-btn">
-                        Scale Number
+                        {t("tokenizeScaleNumber.submit")}
                     </Button>
                 </Space>
             </Form>
@@ -143,13 +148,13 @@ const TokenizeScaleNumberForm: React.FC = () => {
             {res && (
                 <div ref={responseRef} className="mt-6">
                     <Alert
-                        message={res.startsWith("Error") ? "Error" : "Success"}
+                        message={res.startsWith(t("common:errorPrefix")) ? t("common:error") : t("tokenizeScaleNumber.success")}
                         description={
                             <div data-testid="response-output" className="break-all font-mono text-sm whitespace-pre-wrap">
                                 {res}
                             </div>
                         }
-                        type={res.startsWith("Error") ? "error" : "success"}
+                        type={res.startsWith(t("common:errorPrefix")) ? "error" : "success"}
                         showIcon
                     />
                 </div>

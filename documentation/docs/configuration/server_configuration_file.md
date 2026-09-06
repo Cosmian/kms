@@ -48,7 +48,7 @@ complete PKI under the chosen output directory (default `/etc/cosmian/`):
 | `client.key` | Client private key (PKCS#8 PEM)                                       |
 
 Distribute `client.crt` and `client.key` to any client that must authenticate
-with mutual TLS.  You can verify the chain at any time with:
+with mutual TLS. You can verify the chain at any time with:
 
 ```bash
 openssl verify -CAfile /etc/cosmian/ca.crt /etc/cosmian/server.crt
@@ -70,20 +70,20 @@ Configuration file loading precedence:
 > command-line arguments are also provided, the server exits with an error. This prevents silently
 > ignoring arguments the user intended to take effect. To use a different configuration, point
 > explicitly to it with `-c/--config <FILE>`.
-Examples:
+> Examples:
 
 ```bash
 # Explicit configuration file
-./cosmian-kms -c ./test_data/configs/server/jwt_auth.toml
+./cosmian-kms -c ./test_data/configs/server/auth/jwt.toml
 
 # Using an environment variable
-export COSMIAN_KMS_CONF=./test_data/configs/server/jwt_auth.toml
+export COSMIAN_KMS_CONF=./test_data/configs/server/auth/jwt.toml
 ./cosmian-kms
 ```
 
 The file should be a TOML file with the following structure:
 
-```toml
+````toml
 # The default username to use when no authentication method is provided
 default_username = "admin"
 
@@ -171,8 +171,12 @@ info = false
 # ```
 # default_unwrap_type = ["SecretData", "SymmetricKey"]
 
-# List of users who have the right to create and import Objects
-# and grant access rights for Create Kmip Operation.
+# **Deprecated** — use `--crypto-officer-users` (under `[roles]`) instead.
+#
+# List of users who have the right to create and import objects and grant
+# the `Create` access right to other users. Kept for backward compatibility;
+# if set and `[roles] crypto_officer_users` is not configured, these users
+# are promoted to the `CryptoOfficer` role automatically on startup.
 # privileged_users = ["<user_id_1>", "<user_id_2>"]
 
 # Check the database configuration documentation pages for more information
@@ -487,6 +491,147 @@ vault_pki_ca_key_label = ""
 # for this duration to reduce round-trips on every transit/PKI request.
 # Set to `0` to disable caching. Defaults to `30`.
 vault_token_cache_ttl_secs = 0
+
+[roles]
+# Require a split-key ceremony to activate the Crypto Officer role.
+#
+# When `true`, users listed in `crypto_officer_users` are candidates only —
+# the role is inactive until a KMIP `JoinSplitKey` with all shares tagged
+# `x-cosmian-crypto-officer-ceremony` completes.
+crypto_officer_require_ceremony = false
+
+# Users with the Crypto Officer role.
+#
+# May manage key lifecycle (create, import, certify, rekey, activate, revoke, destroy)
+# and access raw key material.
+# When active, gains ownership bypass on all Managed Objects.
+# When set, only listed users (plus those explicitly granted the `Create` right) can
+# create and import objects.
+# crypto_officer_users = ["alice@example.com", "bob@example.com"]
+
+# Hex-encoded 32-byte secret for ceremony record encryption.
+#
+# Required when any role has `require_ceremony = true`.
+# All ceremony activation records are AES-256-GCM encrypted with keys
+# derived from this secret, preventing forgery via direct database writes
+# and protecting participant identities at rest.
+#
+# Generate with: `openssl rand -hex 32`
+# ceremony_secret = ""
+
+# UID of a KMS symmetric key to use as the ceremony record sealing key.
+#
+# When set, key material is fetched from the KMS object store after database
+# initialization and used in place of `ceremony_secret`. This enables:
+#   - Key rotation via standard KMIP `ReKey` / `Rotate` operations.
+#   - HSM-backed sealing when the referenced key is HSM-resident.
+#   - Audit trail: each retrieval of the ceremony key is logged.
+#
+# If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+#
+# **Bootstrap constraint**: the ceremony sealing key must be created before
+# enabling `crypto_officer_require_ceremony = true`. Create it while the server
+# is in config-only CO mode (no ceremony required), then enable ceremony mode:
+#
+# ```bash
+# # 1. Start server with require_ceremony = false
+# # 2. Create the sealing key:
+# ckms sym keys create --id ceremony-seal-2026 --number-of-bits 256
+# # 3. Set ceremony_key_id = "ceremony-seal-2026" in kms.toml
+# # 4. Enable require_ceremony = true and restart
+# ```
+# ceremony_key_id = ""
+
+# UID of a KMS symmetric key to use for AES-KW (RFC 5649) wrapping of split-key shares.
+#
+# When set, `CreateSplitKey` encrypts each share's raw bytes with this key (AES-128/192/256-KWP)
+# before storing in the database.  `JoinSplitKey` automatically detects the
+# `x-cosmian-share-wrapping-key` vendor attribute on each share and unwraps the bytes before
+# XOR reconstruction.
+#
+# The wrapping key must already exist in the KMS object store and must be an AES symmetric key.
+# When the KMS is HSM-backed, this key can be HSM-resident, providing hardware boundary
+# protection equivalent to purpose-built HSM split-key solutions.
+#
+# Generate a suitable key before enabling ceremony mode:
+# ```bash
+# ckms sym keys create --id ceremony-wrap-2026 --number-of-bits 256
+# ```
+#
+# Rotate by creating a new key, updating this value, and re-running the ceremony
+# (existing wrapped shares require the original key; re-ceremony is mandatory on rotation).
+# ceremony_wrapping_key_id = "ceremony-wrap-key"
+
+[crl]
+# Default CRL validity period in days for CA certificates managed by this server.
+#
+# When a CRL is generated without an explicit validity override (e.g., via
+# `GET /certificates/{id}/crl?validity_days=N`), this value is used.
+#
+# Production CAs often use 1–24 h for short-lived CRLs (code-signing,
+# high-security); enterprise PKIs commonly use 7–28 days.
+#
+# Valid range: 1–365. Default: 7.
+crl_default_validity_days = 7
+# How often (in hours) the background CRL refresh scheduler wakes up to
+# check whether any stored CRL needs to be regenerated.
+#
+# Set to 0 to disable the background scheduler entirely.
+# When disabled, CRLs are only refreshed on certificate revocation events.
+#
+# Default: 1 (wake up hourly).
+crl_refresh_check_hours = 1
+# CRL overlap window in hours.
+#
+# The background scheduler regenerates a CRL when its `nextUpdate` timestamp
+# is within this many hours of the current time.  This prevents relying parties
+# from seeing an expired CRL during the window between expiry and the next
+# revocation-triggered regeneration.
+#
+# Analogy: EJBCA "CRL Overlap Time" (default 10 % of validity); AWS PCA uses
+# a 1-day overlap by default.
+#
+# Default: 24 (regenerate 24 hours before expiry).
+crl_refresh_overlap_hours = 24
+
+
+[ocsp]
+# Enable the OCSP responder endpoint at `GET/POST /ocsp/`.
+#
+# When `false` (default) all `/ocsp/` routes return 404.
+ocsp_enabled = false
+# OCSP response validity period in seconds (`thisUpdate` → `nextUpdate`).
+#
+# Determines how long a signed response may be cached by relying parties and
+# CDN/proxy intermediaries per RFC 5019 §5.  Shorter values increase freshness;
+# longer values reduce load on the KMS (and HSM) signing key.
+#
+# Default: 86400 (24 hours).
+ocsp_cache_ttl_secs = 86400
+# Nonce handling policy for OCSP responses (RFC 9654 §2.1).
+#
+# - `optional` (default): echo the nonce if present, proceed without one if absent.
+# - `required`: reject requests that carry no nonce (returns `malformedRequest`).
+# - `ignore`: never include a nonce in responses (suitable for pre-produced/cached responses).
+#
+# Per RFC 9654 §2.1, the responder MUST accept nonces of 16–128 octets and echo
+# them verbatim.  Nonces shorter than 16 octets are silently ignored.
+ocsp_nonce_policy = "optional"
+# Include the signing certificate chain in OCSP `BasicResponse`s.
+#
+# Set to `true` (default) when `ocsp_responder_cert_uid` is configured so that
+# clients can verify the delegated responder's authorization without additional
+# fetches.  Safe to set `false` when the CA signs responses directly.
+ocsp_include_cert_chain = true
+# Archive-cutoff extension value in seconds (RFC 6960 §4.4.4).
+#
+# When non-zero, the `id-pkix-ocsp-archive-cutoff` extension is added to each
+# `BasicResponse` with value = now − `ocsp_archive_cutoff_secs`. This tells clients
+# how far back the responder maintains revocation records.
+#
+# Set to 0 (default) to disable the extension.
+# Typical values: 365 days = 31536000.
+ocsp_archive_cutoff_secs = 0
 ```
 
 ---
@@ -496,23 +641,31 @@ vault_token_cache_ttl_secs = 0
 Cross-Origin Resource Sharing (CORS) controls which browser origins are allowed
 to make requests to the KMS HTTP API.
 
-**You must configure `cors_allowed_origins` for any Web UI deployment
-that uses a hostname other than localhost.**
+When `cors_allowed_origins` is **not** set in the configuration file, CLI, or
+environment, the server builds the allowed-origins list automatically:
 
-When `cors_allowed_origins` is not set in the configuration file, CLI, or
-environment, the binary defaults to loopback origins matching the configured
-scheme (HTTP or HTTPS) and port. This covers `localhost`, `127.0.0.1`,
-`0.0.0.0`, `[::1]`, and `[::]` so the bundled Web UI works out-of-the-box
-without any explicit configuration.
+1. The standard loopback addresses (`localhost`, `127.0.0.1`, `0.0.0.0`,
+   `[::1]`, `[::]`) on the configured port and scheme (HTTP or HTTPS) are
+   always included so the bundled Web UI works out-of-the-box when accessed
+   from the same machine.
+2. If `kms_public_url` is set, its value is **automatically appended** to the
+   default list.  This means that in the common deployment scenario where
+   `kms_public_url` is configured (e.g. `https://kms.example.com`), the Web
+   UI is accessible at that URL without any additional `cors_allowed_origins`
+   entry.
+
+When `cors_allowed_origins` **is** set explicitly, the automatic defaults
+(including `kms_public_url`) are **not** merged in — the explicit list is used
+verbatim.  This lets operators lock down the allow-list precisely.
 
 Although the KMS serves its own Web UI from the same host and port, the
 browser's Fetch API sends an `Origin` header on every non-GET/HEAD request
-(including `POST`) — even when the request originates from the same page.  The
+(including `POST`) — even when the request originates from the same page. The
 actix-cors middleware compares this header against the explicit allow-list and
-returns HTTP 400 if the value is not present.  There is no DNS resolution or
+returns HTTP 400 if the value is not present. There is no DNS resolution or
 network-interface expansion: the comparison is a byte-for-byte string match.
 
-This means `cors_allowed_origins` must contain the **exact URL** the user
+This means the origins in the allow-list must contain the **exact URL** the user
 types in the browser's address bar — scheme, hostname, and port all included.
 Configuring `0.0.0.0` (the bind address) or the server's IP address does **not**
 match a hostname-based origin such as `http://kms.example.com:9998`, and vice
@@ -520,7 +673,7 @@ versa.
 
 The binary automatically provides loopback addresses
 (`localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, `[::]` on the configured port) so that
-browser access from the same machine works out-of-the-box.  Any other hostname,
+browser access from the same machine works out-of-the-box. Any other hostname,
 IP address, or port must be added explicitly.
 
 CLI clients (`ckms`, scripts, curl) do not send an `Origin` header and are
@@ -537,9 +690,9 @@ The same list can be provided via the environment variable
 `--cors-allowed-origins`.
 
 !!! warning "Security implications"
-    Every origin in `cors_allowed_origins` can issue **authenticated**
-    cross-origin requests to the KMS — session cookies and credentials are
-    forwarded for each listed origin.
+Every origin in `cors_allowed_origins` can issue **authenticated**
+cross-origin requests to the KMS — session cookies and credentials are
+forwarded for each listed origin.
 
     - **Only add origins you fully control and trust.**  A compromised or
       malicious site listed here can read and manage all cryptographic objects

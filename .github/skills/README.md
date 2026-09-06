@@ -44,27 +44,32 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | Skill | Command | Description |
 |-------|---------|-------------|
 | **CI Fix Loop** | `/ci-fix` | **Monitor CI, fix all failures, push, repeat until green.** Polls GitHub workflow runs, fetches logs, categorizes failures (fmt / clippy / compile / test / Nix hash / deps), applies fixes, and loops. Aborts after 3 identical failures. |
-| **KMS Sync Rules** | `/kms-sync-rules` | **Run after every code change.** Auto-detects changed files via `git diff` and emits only the applicable sync sub-rules checklist (rule 4.1–4.17). |
+| **KMS Sync Rules** | `/kms-sync-rules` | **Run after every code change.** Auto-detects changed files via `git diff` and maps them to the applicable sync rule numbers (4.1–4.18), pointing to the normative checklist in `.github/instructions/*.instructions.md` for each (auto-applied via `applyTo` when editing a matching file). Only rule 4.8 (non-FIPS gating) has no instruction file and is checked in full by this skill. |
 | KMS Test Vector | `/kms-test-vector` | Walk through the full test vector workflow: directory, `manifest.toml`, TTLV steps, `vector_runner.rs` registration, README count update. |
 | KMS Changelog | `/kms-changelog` | Create or update `CHANGELOG/<branch>.md` with correct sections, component grouping, and PR/issue links. |
 | OpenAPI Endpoint | `/openapi-endpoint` | Implement a new REST endpoint: handler → `routes/mod.rs` → `start_kms_server.rs` (LIFO middleware) → `openapi.yaml` → validation tests. |
+| **ckms Subcommand Tests** | `/ckms-subcommand-test` | **Run after adding any new `ckms` subcommand or flag.** Generates the test file, writes helper functions, covers happy path + error cases + CO-gating, registers the module in `mod.rs`, and runs `cargo test -p ckms`. |
 
 ### Code Quality
 
 | Skill | Command | Description |
 |-------|---------|-------------|
 | **Code Quality** | `/code-quality [path]` | **Orchestrates** `/rust-refactor`, `/rust-patterns`, Clippy hygiene, and `/ci-efficiency`. Produces a ranked report of blocking items and high-impact improvements. |
+| **Rust Review All** | `/rust-review-all [path]` | **Hardcore Rust quality gate.** Runs all 10 review phases (panic audit, error propagation, async, simplify, refactor, patterns, security, crypto, standards, Clippy). Each phase writes to `./review/`. Produces `./review/SUMMARY.md` with a go/no-go verdict. |
+| **Rust Panic Audit** | `/rust-panic-audit [path]` | Scan for every panic/brutal-exit: `panic!`, `todo!`, `unimplemented!`, `unreachable!`, `.unwrap()`, `.expect()`, `process::exit/abort`, unchecked indexing, integer overflow. Ranked findings with patches. Report: `./review/rust-panic-audit.md`. |
 | Refactor Plan | `/refactor-plan` | Investigate a refactor, produce a phased plan with cargo verification steps. Wait for confirmation before implementing. |
 | Rust Refactor | `/rust-refactor` | Find duplication in Rust code and consolidate with Traits, Generics, macros. Ranked impact/risk plan before touching code. |
 | Rust Simplify | `/rust-simplify [path]` | Find simplification opportunities: nested control flow, long functions, dead code, bool param traps, iterator anti-patterns, and Clippy-flagged complexity. Ranked list before touching code. |
 | Rust Patterns | `/rust-patterns` | KMS-specific Rust design patterns: newtype, builder, command, trait abstraction, key lifecycle state machine. |
+| Rust Error Propagation | `/rust-error-propagation [path]` | Analyze `Result` propagation chains: find missed `?` opportunities, `.map_err(|e| e.to_string())` anti-patterns, lost error context. Report: `./review/rust-error-propagation.md`. |
+| Rust Async Refactor | `/rust-async-refactor [path]` | Detect sequential `.await` chains parallelizable with `tokio::join!`, blocking calls on async paths, unnecessary `Arc/Box::pin`. Report: `./review/rust-async-refactor.md`. |
 | CI Efficiency | `/ci-efficiency` | Audit GitHub Actions workflows for waste (missing caches, over-broad triggers, no concurrency cancellation). |
 
 ### Documentation
 
 | Skill | Command | Description |
 |-------|---------|-------------|
-| Docs Writer | `/docs-writer` | Diátaxis expert: Tutorial / How-To / Reference / Explanation. Adapted to `documentation/docs/` + MkDocs nav. |
+| Docs Writer | `/docs-writer` | Diátaxis expert: Tutorial / How-To / Reference / Explanation. Adapted to `documentation/docs/` + mdBook nav (`SUMMARY.md` + `nav.yml`). |
 | ADR | `/adr` | Create an Architectural Decision Record under `documentation/docs/adr/`. |
 
 ### UI / Frontend
@@ -87,6 +92,15 @@ Team-wide GitHub Copilot skills for the KMS repository.
 # 2. /kms-test-vector                   ← create test vectors
 # 3. /kms-sync-rules                    ← check what else needs updating
 # 4. /kms-changelog                     ← write the changelog entry
+
+# Full Rust quality gate before any significant PR (writes all reports to ./review/):
+# /rust-review-all
+
+# Quick panic/brutal-exit scan only:
+# /rust-panic-audit crate/server/src/core/
+
+# Error propagation audit:
+# /rust-error-propagation crate/server/src/
 
 # Security review before PR:
 # /security-review crate/server/src/core/operations/

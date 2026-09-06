@@ -1049,3 +1049,250 @@ fn find_private_key_by_unknown_id_returns_empty() {
     assert_eq!(C_CloseSession(session), CKR_OK);
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
 }
+
+// ── Regression tests for issue #1111 ──────────────────────────────────────
+// When `find_all_objects` (single system tags) misses the private key, a
+// `CKO_PRIVATE_KEY` search by `CKA_ID` must fall back to the backend's
+// `find_all_private_keys` (user-scoped combined tags like `["ssh-auth", "_sk"]`)
+// rather than silently returning zero objects.
+
+/// Test backend that returns a single named private key from
+/// `find_all_private_keys`, with everything else empty. Used to simulate the
+/// scenario where the KMS locate by system tags (`["_sk"]`) misses a key but
+/// the user-tag-based locate (`["ssh-auth", "_sk"]`) succeeds.
+struct FallbackBackend {
+    private_key_id: String,
+}
+
+impl Backend for FallbackBackend {
+    fn token_label(&self) -> [u8; 32] {
+        *b"Fallback test token             "
+    }
+
+    fn token_manufacturer_id(&self) -> [u8; 32] {
+        *b"Test manufacturer               "
+    }
+
+    fn token_model(&self) -> [u8; 16] {
+        *b"test model      "
+    }
+
+    fn token_serial_number(&self) -> [u8; 16] {
+        *b"1234567890abcdef"
+    }
+
+    fn library_description(&self) -> [u8; 32] {
+        *b"Fallback test library           "
+    }
+
+    fn library_version(&self) -> Version {
+        Version { major: 1, minor: 0 }
+    }
+
+    fn find_certificate(
+        &self,
+        _query: SearchOptions,
+    ) -> ModuleResult<Option<Arc<dyn Certificate>>> {
+        Ok(None)
+    }
+
+    fn find_all_certificates(&self) -> ModuleResult<Vec<Arc<dyn Certificate>>> {
+        Ok(vec![])
+    }
+
+    fn find_private_key(&self, _query: SearchOptions) -> ModuleResult<Arc<dyn PrivateKey>> {
+        Err(ModuleError::FunctionNotSupported)
+    }
+
+    fn find_all_private_keys(&self) -> ModuleResult<Vec<Arc<dyn PrivateKey>>> {
+        Ok(vec![Arc::new(DummyPrivateKey {
+            remote_id: self.private_key_id.clone(),
+        })])
+    }
+
+    fn find_public_key(&self, _query: SearchOptions) -> ModuleResult<Arc<dyn PublicKey>> {
+        Err(ModuleError::FunctionNotSupported)
+    }
+
+    fn find_all_public_keys(&self) -> ModuleResult<Vec<Arc<dyn PublicKey>>> {
+        Ok(vec![])
+    }
+
+    fn find_data_object(&self, _query: SearchOptions) -> ModuleResult<Option<Arc<dyn DataObject>>> {
+        Ok(None)
+    }
+
+    fn find_all_data_objects(&self) -> ModuleResult<Vec<Arc<dyn DataObject>>> {
+        Ok(vec![])
+    }
+
+    fn find_symmetric_key(&self, _query: SearchOptions) -> ModuleResult<Arc<dyn SymmetricKey>> {
+        Err(ModuleError::FunctionNotSupported)
+    }
+
+    fn find_all_symmetric_keys(&self) -> ModuleResult<Vec<Arc<dyn SymmetricKey>>> {
+        Ok(vec![])
+    }
+
+    fn find_all_objects(&self) -> ModuleResult<Vec<Arc<Object>>> {
+        Ok(vec![])
+    }
+
+    fn generate_key(
+        &self,
+        _algorithm: KeyAlgorithm,
+        _key_length: usize,
+        _sensitive: bool,
+        _label: Option<&str>,
+    ) -> ModuleResult<Arc<dyn SymmetricKey>> {
+        Ok(Arc::new(DummySymKey {}))
+    }
+
+    fn create_object(&self, label: &str, data: &[u8]) -> ModuleResult<Arc<dyn DataObject>> {
+        Ok(Arc::new(DummyDataObject::new(label, data)))
+    }
+
+    fn revoke_object(&self, _remote_id: &str) -> ModuleResult<()> {
+        Ok(())
+    }
+
+    fn destroy_object(&self, _remote_id: &str) -> ModuleResult<()> {
+        Ok(())
+    }
+
+    fn encrypt(&self, _encrypt_ctx: &EncryptContext, cleartext: Vec<u8>) -> ModuleResult<Vec<u8>> {
+        Ok(vec![0; cleartext.len() + AES_IV_SIZE])
+    }
+
+    fn decrypt(
+        &self,
+        _decrypt_ctx: &DecryptContext,
+        _data: Vec<u8>,
+    ) -> ModuleResult<Zeroizing<Vec<u8>>> {
+        Ok(Zeroizing::new(vec![0; 32]))
+    }
+
+    fn remote_sign(
+        &self,
+        _remote_id: &str,
+        _algorithm: &SignatureAlgorithm,
+        _data: &[u8],
+    ) -> ModuleResult<Vec<u8>> {
+        Err(ModuleError::FunctionNotSupported)
+    }
+}
+
+/// Register a backend whose `find_all_private_keys` returns the given key id
+/// and whose other `find_all_*` methods return empty sets.
+fn register_fallback_backend(key_id: &str) {
+    register_backend(Box::new(FallbackBackend {
+        private_key_id: key_id.to_owned(),
+    }));
+}
+
+/// Issue #1111 — happy path: the store is empty after `find_all_objects`
+/// (single system tags missed the key) but the backend fallback
+/// (`find_all_private_keys` → user-scoped combined tags) finds the private
+/// key.  A `CKO_PRIVATE_KEY` search by the *public* key's `CKA_ID`
+/// (`<base>_pk`) — the exact pattern OpenSSH uses — must resolve to the
+/// private key handle, and `C_SignInit` must accept it.
+#[test]
+#[serial]
+fn fallback_finds_private_key_by_public_key_id() {
+    test_init();
+    register_fallback_backend("fb1_sk");
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    let session = open_test_session();
+
+    // Search with the public key's CKA_ID — has _pk suffix.
+    let handles = find_by_class_and_id(session, CKO_PRIVATE_KEY, b"fb1_sk_pk");
+    assert_eq!(
+        handles.len(),
+        1,
+        "fallback should find the private key via _pk suffix stripping"
+    );
+    assert_is_private_key(handles[0]);
+
+    // C_SignInit must accept the handle resolved via the fallback.
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_ECDSA,
+        pParameter: ptr::null_mut(),
+        ulParameterLen: 0,
+    };
+    assert_eq!(
+        unsafe { C_SignInit(session, &raw mut mechanism, handles[0]) },
+        CKR_OK
+    );
+
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// Issue #1111 — a `CKO_PRIVATE_KEY` search by the private key's **own**
+/// (base) id also succeeds through the fallback when the initial store
+/// lookup fails.
+#[test]
+#[serial]
+fn fallback_finds_private_key_by_own_id() {
+    test_init();
+    register_fallback_backend("fb2_sk");
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    let session = open_test_session();
+
+    // Search with the exact base id — no _pk suffix.
+    let handles = find_by_class_and_id(session, CKO_PRIVATE_KEY, b"fb2_sk");
+    assert_eq!(
+        handles.len(),
+        1,
+        "fallback should find the private key by exact base id"
+    );
+    assert_is_private_key(handles[0]);
+
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// Issue #1111 — when BOTH the initial store lookup and the backend fallback
+/// return nothing, a `CKO_PRIVATE_KEY` search returns zero objects (not an
+/// error).  This is the graceful-degradation path.
+#[test]
+#[serial]
+fn fallback_returns_zero_when_backend_also_empty() {
+    test_init();
+    // Use the default TestBackend which returns empty for everything.
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    let session = open_test_session();
+
+    let handles = find_by_class_and_id(session, CKO_PRIVATE_KEY, b"no_such_key_pk");
+    assert!(
+        handles.is_empty(),
+        "search for non-existent key must return 0 objects, got {handles:?}",
+    );
+
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// Issue #1111 — the fallback is only triggered for `CKO_PRIVATE_KEY` searches.
+/// A `CKO_PUBLIC_KEY` search by id must NOT trigger the fallback (the fallback
+/// guard is `search_class == CKO_PRIVATE_KEY`), so a missing public key still
+/// returns zero objects.
+#[test]
+#[serial]
+fn no_fallback_for_non_private_key_class() {
+    test_init();
+    // Register a fallback backend to confirm it is NOT consulted for
+    // CKO_PUBLIC_KEY searches.
+    register_fallback_backend("fb3_sk");
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    let session = open_test_session();
+
+    let handles = find_by_class_and_id(session, CKO_PUBLIC_KEY, b"fb3_sk_pk");
+    assert!(
+        handles.is_empty(),
+        "CKO_PUBLIC_KEY search must not trigger the CKO_PRIVATE_KEY-only fallback"
+    );
+
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}

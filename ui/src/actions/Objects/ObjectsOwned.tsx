@@ -1,5 +1,6 @@
 import { Button, Card, Space, Table, Tag } from "antd";
 import React, { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import { getNoTTLVRequest } from "../../utils/utils";
 
@@ -15,21 +16,22 @@ const ObjectsOwnedList: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [objects, setObjects] = useState<OwnedObject[]>([]);
     const [res, setRes] = useState<string | undefined>(undefined);
+    const { t } = useTranslation("actions");
     const { serverUrl } = useAuth();
 
     const columns = [
         {
-            title: "Object UID",
+            title: t("objectsOwned.colUid"),
             dataIndex: "object_id",
             key: "object_id",
         },
         {
-            title: "Type",
+            title: t("objectsOwned.colType"),
             key: "attributes.ObjectType",
             render: (record: OwnedObject) => record.attributes?.ObjectType || "N/A",
         },
         {
-            title: "State",
+            title: t("objectsOwned.colState"),
             dataIndex: "state",
             key: "state",
             render: (state: string) => <Tag color={state === "Active" ? "green" : "orange"}>{state}</Tag>,
@@ -45,15 +47,15 @@ const ObjectsOwnedList: React.FC = () => {
             if (response.length) {
                 setObjects(response);
             } else {
-                setRes("Empty result - no object owned.");
+                setRes(t("objectsOwned.emptyResult"));
             }
         } catch (e) {
-            setRes(`Error listing objects: ${e}`);
+            setRes(t("objectsOwned.errorListing", { error: String(e) }));
             console.error("Error listing objects:", e);
         } finally {
             setIsLoading(false);
         }
-    }, [serverUrl]);
+    }, [serverUrl, t]);
 
     useEffect(() => {
         fetchOwnedObjects();
@@ -62,15 +64,15 @@ const ObjectsOwnedList: React.FC = () => {
     return (
         <div className="p-6">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold">Objects owned</h1>
+                <h1 className="text-2xl font-bold">{t("objectsOwned.title")}</h1>
                 <Button type="primary" onClick={fetchOwnedObjects} loading={isLoading} className="bg-black-500 hover:bg-blue-700 border-0">
-                    Refresh
+                    {t("objectsOwned.refresh")}
                 </Button>
             </div>
 
             <div className="mb-8 space-y-2">
-                <p>List of objects you own. </p>
-                <p>As an owner, you can perform any operation on these objects and grant access rights to other users.</p>
+                <p>{t("objectsOwned.intro")}</p>
+                <p>{t("objectsOwned.intro2")}</p>
             </div>
             <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                 <Card>
@@ -88,7 +90,7 @@ const ObjectsOwnedList: React.FC = () => {
                     />
                 </Card>
             </Space>
-            {res && <Card title="Owned objects response">{res}</Card>}
+            {res && <Card title={t("objectsOwned.responseTitle")}>{res}</Card>}
         </div>
     );
 };

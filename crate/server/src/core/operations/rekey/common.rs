@@ -35,9 +35,11 @@ use crate::{
     core::{
         KMS,
         operations::key_ops::ObjectLifecycleExt,
+        uid_utils::ObjectHandle,
         wrapping::{unwrap_object, wrap_and_cache, wrap_object},
     },
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -53,11 +55,11 @@ impl KMS {
     /// skipping. For tag-based queries, ineligible keys are filtered out.
     pub(crate) async fn retrieve_eligible_keys(
         &self,
-        uid_or_tags: &str,
+        object_handle: ObjectHandle<'_>,
         object_type: ObjectType,
     ) -> KResult<Vec<ObjectWithMetadata>> {
-        let is_tag_query = uid_or_tags.starts_with('[');
-        let objects = self.database.retrieve_objects(uid_or_tags).await?;
+        let is_tag_query = matches!(object_handle, ObjectHandle::Tags(_));
+        let objects = self.database.retrieve_objects(object_handle).await?;
         let mut eligible = Vec::new();
 
         for owm in objects.into_values() {
@@ -89,7 +91,7 @@ impl KMS {
         &self,
         uid: &str,
         attrs: &Attributes,
-        user: &str,
+        user: &UserId,
     ) -> KResult<bool> {
         let Some(name) = attrs.rotate_name.as_deref() else {
             return Ok(true);
@@ -109,7 +111,7 @@ impl KMS {
         &self,
         uid: &str,
         attrs: &Attributes,
-        user: &str,
+        user: &UserId,
         op_name: &str,
     ) -> KResult<()> {
         if !self.is_keyset_latest(uid, attrs, user).await? {
@@ -124,7 +126,7 @@ impl KMS {
     /// Default implementation for [`RekeyOperation::finalize_dependants`].
     pub(crate) async fn default_finalize_dependants(
         &self,
-        user: &str,
+        user: &UserId,
         candidates: &[RotationCandidate],
         replacements: &[ReplacementObject],
     ) -> KResult<()> {
@@ -146,8 +148,8 @@ impl KMS {
             if let Some(ref new_wrapping_uid) = r.rewrap_to {
                 Box::pin(self.rewrap_dependants(
                     user,
-                    c.owm.id(),
-                    new_wrapping_uid,
+                    ObjectHandle::from(c.owm.id()),
+                    ObjectHandle::from(new_wrapping_uid),
                     &mut operations,
                 ))
                 .await?;
@@ -168,7 +170,7 @@ impl KMS {
     /// Default implementation for [`RekeyOperation::rewrap_new_objects`].
     pub(crate) async fn default_rewrap_new_objects(
         &self,
-        user: &str,
+        user: &UserId,
         replacements: &mut [ReplacementObject],
         wrap_specs: &[Option<KeyWrappingSpecification>],
     ) -> KResult<()> {
@@ -218,11 +220,13 @@ impl KMS {
     /// Re-wrap all keys that were wrapped by the old wrapping key.
     pub(crate) async fn rewrap_dependants(
         &self,
-        owner: &str,
-        old_uid: &str,
-        new_uid: &str,
+        owner: &UserId,
+        old_handle: ObjectHandle<'_>,
+        new_handle: ObjectHandle<'_>,
         operations: &mut Vec<AtomicOperation>,
     ) -> KResult<()> {
+        let old_uid = old_handle.as_str();
+        let new_uid = new_handle.as_str();
         let wrapped_dependants = match self.database.find_wrapped_by(old_uid, owner).await {
             Ok(deps) => deps,
             Err(e) => {
@@ -259,7 +263,7 @@ impl KMS {
     /// Unwrap and re-wrap a single dependant object with the new wrapping key.
     async fn rewrap_single_dependant(
         &self,
-        owner: &str,
+        owner: &UserId,
         dep_uid: &str,
         dep_object: &mut Object,
         mut dep_attrs: Attributes,
@@ -427,7 +431,7 @@ pub(crate) trait RekeyOperation {
         &self,
         kms: &KMS,
         request: &Self::Request,
-        user: &str,
+        user: &UserId,
     ) -> impl std::future::Future<Output = KResult<Self::Candidates>>;
 
     /// Step 3: Generate replacement material (new key/cert + fresh UIDs).
@@ -457,7 +461,7 @@ pub(crate) trait RekeyOperation {
     fn rewrap_new_objects(
         &self,
         kms: &KMS,
-        user: &str,
+        user: &UserId,
         replacements: &mut Self::Replacements,
         wrap_specs: &[Option<KeyWrappingSpecification>],
     ) -> impl std::future::Future<Output = KResult<()>> {
@@ -474,7 +478,7 @@ pub(crate) trait RekeyOperation {
     fn finalize_dependants(
         &self,
         kms: &KMS,
-        user: &str,
+        user: &UserId,
         candidates: &Self::Candidates,
         replacements: &Self::Replacements,
     ) -> impl std::future::Future<Output = KResult<()>> {
@@ -493,7 +497,7 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
     op: &T,
     kms: &KMS,
     request: &T::Request,
-    user: &str,
+    user: &UserId,
 ) -> KResult<T::Response> {
     let candidates = op.validate(kms, request, user).await?;
     let wrap_specs: Vec<_> = candidates
@@ -511,6 +515,7 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
         .map(|r| {
             AtomicOperation::Create((
                 r.new_uid.clone(),
+                user.to_owned(),
                 r.object.clone(),
                 r.attributes.clone(),
                 r.tags.clone(),
@@ -561,8 +566,11 @@ pub(crate) fn setup_new_key(
 ///
 /// HSM-managed keys have no KMIP attribute storage and are often non-extractable
 /// (`CKA_EXTRACTABLE = false`) — they must be managed via the HSM's own tools.
-pub(in crate::core::operations::rekey) fn reject_hsm_uid(uid: &str, op_name: &str) -> KResult<()> {
-    if uid.starts_with("hsm::") {
+pub(in crate::core::operations::rekey) fn reject_hsm_uid(
+    uid: ObjectHandle<'_>,
+    op_name: &str,
+) -> KResult<()> {
+    if uid.is_hsm() {
         return Err(KmsError::NotSupported(format!(
             "{op_name} is not supported for HSM-managed keys. \
              Use PKCS#11 vendor tools or the HSM administration console \

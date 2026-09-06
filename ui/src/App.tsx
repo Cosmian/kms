@@ -1,10 +1,12 @@
 import { ConfigProvider, Result, theme } from "antd";
+import type { ThemeConfig } from "antd";
 import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AccessGrantForm from "./actions/Access/AccessGrant";
 import AccessListForm from "./actions/Access/AccessList";
 import AccessObtainedList from "./actions/Access/AccessObtained";
 import AccessRevokeForm from "./actions/Access/AccessRevoke";
+import CryptoOfficerRole from "./actions/Access/CryptoOfficerRole";
 import AttributeDeleteForm from "./actions/Attributes/AttributeDelete";
 import AttributeGetForm from "./actions/Attributes/AttributeGet";
 import AttributeModifyForm from "./actions/Attributes/AttributeModify";
@@ -13,6 +15,7 @@ import CertificateCertifyForm from "./actions/Certificates/CertificateCertify";
 import CertificateDecryptForm from "./actions/Certificates/CertificateDecrypt";
 import CertificateEncryptForm from "./actions/Certificates/CertificateEncrypt";
 import CertificateExportForm from "./actions/Certificates/CertificateExport";
+import CertificateGenerateCrlForm from "./actions/Certificates/CertificateGenerateCrl";
 import CertificateImportForm from "./actions/Certificates/CertificateImport";
 import CertificateReCertifyForm from "./actions/Certificates/CertificateReCertify";
 import CertificateValidateForm from "./actions/Certificates/CertificateValidate";
@@ -36,6 +39,8 @@ import CseInfo from "./actions/Keys/CseInfo";
 import DeriveKeyForm from "./actions/Keys/DeriveKey";
 import KeyExportForm from "./actions/Keys/KeysExport";
 import KeyImportForm from "./actions/Keys/KeysImport";
+import JoinSplitKeyForm from "./actions/Keys/JoinSplitKey";
+import SplitKeyForm from "./actions/Keys/SplitKey";
 import SymKeyCreateForm from "./actions/Keys/SymKeysCreate";
 import MacComputeForm from "./actions/MAC/MacCompute";
 import MacVerifyForm from "./actions/MAC/MacVerify";
@@ -73,9 +78,10 @@ import LocateForm from "./components/common/Locate";
 import MainLayout from "./components/layout/MainLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { useBranding } from "./contexts/useBranding";
+import { useAppLocale } from "./i18n/useAppLocale";
 import LoginPage from "./pages/LoginPage";
 import NotFoundPage from "./pages/NotFoundPage";
-import { AuthMethod, fetchAuthMethod, fetchWhoAmI, getNoTTLVRequest } from "./utils/utils";
+import { AuthMethod, fetchAuthMethods, fetchWhoAmI, getNoTTLVRequest, shouldAutoLoginWithCert } from "./utils/utils";
 import init, * as wasmModule from "./wasm/pkg";
 
 type AppContentProps = {
@@ -120,6 +126,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isAuthLoading, setIsAuthLoading] = useState(true);
     const [authMethod, setAuthMethod] = useState<AuthMethod>(undefined);
+    const [configuredMethods, setConfiguredMethods] = useState<AuthMethod[]>([]);
     const [loginError, setLoginError] = useState<string | undefined>(undefined);
 
     useEffect(() => {
@@ -159,50 +166,71 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
         void syncVendorId();
 
         const fetchUser = async () => {
-            const authMethod = await fetchAuthMethod(location);
-            setAuthMethod(authMethod);
-            if (authMethod == "JWT" || authMethod === "AUTH_VERIFIER") {
+            const methods = await fetchAuthMethods(location);
+            // `undefined` means the server was unreachable or the response could not
+            // be parsed: leave `authMethod` undefined so the error UI is shown.
+            if (methods === undefined) {
+                setIsAuthLoading(false);
+                return;
+            }
+            setConfiguredMethods(methods);
+
+            // No authentication configured: render the app directly (MainLayout shows
+            // the "authentication disabled" banner).
+            if (methods.length === 0) {
+                setAuthMethod("None");
+                setIsAuthLoading(false);
+                return;
+            }
+
+            const primary = methods[0];
+
+            // Resolve the active method for an already-authenticated returning user.
+            // Session first: a plain cookie check that never triggers a client
+            // certificate prompt. Only if there is no session do we probe the cert.
+            const sessionMethod: AuthMethod = methods.includes("JWT")
+                ? "JWT"
+                : methods.includes("AUTH_VERIFIER")
+                  ? "AUTH_VERIFIER"
+                  : undefined;
+
+            if (sessionMethod) {
                 const data = await fetchWhoAmI(location);
                 if (data) {
                     try {
                         const version = await getNoTTLVRequest("/version", location);
                         if (version) {
                             setUserId(data.user_id);
+                            setAuthMethod(sessionMethod);
                             setIsAuthenticated(true);
                             setLoginError(undefined);
+                            setIsAuthLoading(false);
+                            return;
                         }
                     } catch (error) {
                         setLoginError(`An error occurred while fetching server information: ${String(error)}`);
                     }
                 }
-            } else if (authMethod === "CERT") {
+            }
+
+            // Auto-probe only when CERT is the sole method; with multiple methods the
+            // user must choose explicitly so the cert cannot preempt OIDC or auth-verifier.
+            if (shouldAutoLoginWithCert(methods)) {
                 try {
                     // /version succeeds without a cert; /access/create returns 401 without one
                     await getNoTTLVRequest("/access/create", location);
+                    setAuthMethod("CERT");
                     setIsAuthenticated(true);
+                    setIsAuthLoading(false);
+                    return;
                 } catch {
-                    // Cert failed — try session fallback (both may be configured)
-                    const data = await fetchWhoAmI(location);
-                    if (data) {
-                        try {
-                            const version = await getNoTTLVRequest("/version", location);
-                            if (version) {
-                                // Valid session found — switch to JWT mode
-                                setAuthMethod("JWT");
-                                setUserId(data.user_id);
-                                setIsAuthenticated(true);
-                                setLoginError(undefined);
-                            }
-                        } catch (error) {
-                            console.error("Session fallback failed:", error);
-                            setIsAuthenticated(false);
-                        }
-                    } else {
-                        // No cert, no session — block access
-                        setIsAuthenticated(false);
-                    }
+                    // No valid cert — fall through to the login page.
                 }
             }
+
+            // Not authenticated: show the login page with the configured methods.
+            setAuthMethod(primary);
+            setIsAuthenticated(false);
             setIsAuthLoading(false);
         };
         setIsAuthLoading(true);
@@ -211,13 +239,21 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    const handleCertLogout =
+        authMethod === "CERT" && configuredMethods.length > 1
+            ? () => {
+                  setAuthMethod(configuredMethods[0]);
+                  setIsAuthenticated(false);
+              }
+            : undefined;
+
     if (isAuthLoading) {
         return <></>;
     }
     // Error: couldn't reach server or determine auth method
     if (authMethod === undefined) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-800">
                 <Result
                     status="error"
                     title={
@@ -238,9 +274,22 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
 
     return (
         <Routes>
-            {!isAuthenticated && (authMethod === "JWT" || authMethod === "CERT" || authMethod === "AUTH_VERIFIER") ? (
+            {!isAuthenticated && configuredMethods.length > 0 ? (
                 <>
-                    <Route path="/login" element={<LoginPage auth={authMethod === "JWT"} authMethod={authMethod} error={loginError} />} />
+                    <Route
+                        path="/login"
+                        element={
+                            <LoginPage
+                                auth={configuredMethods[0] === "JWT"}
+                                authMethods={configuredMethods}
+                                error={loginError}
+                                onCertAuthenticated={() => {
+                                    setAuthMethod("CERT");
+                                    setIsAuthenticated(true);
+                                }}
+                            />
+                        }
+                    />
                     <Route path="*" element={<Navigate to="/login" replace />} />
                 </>
             ) : (
@@ -255,12 +304,15 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                                 setIsDarkMode={setIsDarkMode}
                                 authMethod={authMethod}
                                 wasmError={wasmError}
+                                onCertLogout={handleCertLogout}
                             />
                         }
                     >
                         <Route path="locate" element={<LocateForm />} />
                         <Route path="sym">
                             <Route path="keys/create" element={<SymKeyCreateForm />} />
+                            <Route path="keys/split" element={<SplitKeyForm />} />
+                            <Route path="keys/join" element={<JoinSplitKeyForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"symmetric"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="symmetric" />} />
                             <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="symmetric" />} />
@@ -330,10 +382,10 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                         </Route>
                         <Route path="fpe">
                             <Route path="keys/create" element={<FpeKeyCreateForm />} />
-                            <Route path="keys/export" element={<KeyExportForm key_type={"symmetric"} />} />
-                            <Route path="keys/import" element={<KeyImportForm key_type="symmetric" />} />
-                            <Route path="keys/revoke" element={<RevokeForm objectType="symmetric" />} />
-                            <Route path="keys/destroy" element={<DestroyForm objectType="symmetric" />} />
+                            <Route path="keys/export" element={<KeyExportForm key_type={"fpe"} />} />
+                            <Route path="keys/import" element={<KeyImportForm key_type="fpe" />} />
+                            <Route path="keys/revoke" element={<RevokeForm objectType="fpe" />} />
+                            <Route path="keys/destroy" element={<DestroyForm objectType="fpe" />} />
                             <Route path="encrypt" element={<FpeEncryptForm />} />
                             <Route path="decrypt" element={<FpeDecryptForm />} />
                         </Route>
@@ -370,6 +422,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="list" element={<AccessListForm />} />
                             <Route path="owned" element={<ObjectsOwnedList />} />
                             <Route path="obtained" element={<AccessObtainedList />} />
+                            <Route path="crypto-officer" element={<CryptoOfficerRole />} />
                         </Route>
                         <Route path="hsm-status" element={<HsmStatus />} />
                         <Route path="certificates">
@@ -378,6 +431,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="certs/revoke" element={<RevokeForm objectType="certificate" />} />
                             <Route path="certs/destroy" element={<DestroyForm objectType="certificate" />} />
                             <Route path="certs/validate" element={<CertificateValidateForm />} />
+                            <Route path="certs/generate-crl" element={<CertificateGenerateCrlForm />} />
                             <Route path="encrypt" element={<CertificateEncryptForm />} />
                             <Route path="decrypt" element={<CertificateDecryptForm />} />
                             <Route path="certs/certify" element={<CertificateCertifyForm />} />
@@ -421,6 +475,7 @@ function App() {
     const [isWasmReady, setIsWasmReady] = useState(false);
     const [wasmError, setWasmError] = useState(false);
     const branding = useBranding();
+    const { antdLocale } = useAppLocale();
 
     useEffect(() => {
         async function loadWasm() {
@@ -439,19 +494,31 @@ function App() {
         loadWasm();
     }, []);
 
+    // Keep the <html> element's `.dark` class (drives Tailwind `dark:` variants)
+    // and the CSS `color-scheme` in sync with the app's theme switch, so dark mode
+    // is consistent across AntD components and raw utility classes.
+    useEffect(() => {
+        document.documentElement.classList.toggle("dark", isDarkMode);
+    }, [isDarkMode]);
+
     if (!isWasmReady) {
         return null;
     }
 
-    const lightTheme = {
+    const lightTheme: ThemeConfig = {
+        algorithm: theme.defaultAlgorithm,
         token: {
-            colorPrimary: "#e34319",
-            colorText: "#292f52",
+            colorPrimary: "#c73f1b" /* Cosmian brand orange — eviden.css --cosmian-accent-dark (>= 4.5:1 on white) */,
+            colorText: "#1a1a1a" /* Eviden brand ink — matches eviden.css --cosmian-dark */,
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         },
         components: {
             Layout: {
                 headerBg: "#ffffff",
                 footerPadding: "5px 50px",
+                /* Sider collapse trigger: transparent (matches sidebar bg) + accessible dark icon (≥4.5:1) */
+                triggerBg: "#fafafa",
+                triggerColor: "#595959",
             },
             Card: {
                 colorBgContainer: "#ffffff",
@@ -465,64 +532,59 @@ function App() {
                 handleSize: 28,
             },
             Button: {
-                defaultHoverBorderColor: "#6e31e8",
-                defaultHoverColor: "#6e31e8",
+                defaultHoverBorderColor: "#50767a" /* darkened teal (>= 4.5:1 on white) */,
+                defaultHoverColor: "#50767a",
             },
         },
     };
 
-    const darkTheme = {
+    const darkTheme: ThemeConfig = {
+        algorithm: theme.darkAlgorithm,
         token: {
-            colorPrimary: "#9e6eff",
-            colorText: "#e4dddd",
-            colorBgBase: "#2a2d30",
-            colorTextPlaceholder: "#b9b9b9",
-            colorError: "#e23030",
-            colorBorder: "#4d4b4b",
-            colorSplit: "#4d4b4b",
-            colorBorderSecondary: "#4d4b4b",
+            colorPrimary: "#f14611" /* Cosmian primary orange — eviden.css --cosmian-accent (bright accent on dark) */,
+            colorInfo: "#4fa8d8" /* mdBook dark-theme link blue — ≥ 4.5:1 on #161923 (WCAG AA) */,
+            colorTextBase: "#bcbdd0" /* mdBook navy --fg */,
+            colorTextSecondary: "#9fa0b8" /* explicit — prevents algorithm deriving ~#666979 (only 2.84:1 on card bg) */,
+            colorBgBase: "#161923" /* mdBook navy --bg hsl(226,23%,11%) — black background */,
+            colorBgLayout: "#161923",
+            colorBgContainer: "#1f2432" /* elevated card surface */,
+            colorBgElevated: "#282d3f" /* mdBook navy --sidebar-bg */,
+            colorBorder: "#5a6278",
+            colorSplit: "#3a4155",
+            colorError: "#ff6b6b" /* light red (>= 4.5:1 on #161923) */,
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         },
         components: {
             Layout: {
-                headerBg: "#272d33",
+                headerBg: "#161923",
                 footerPadding: "5px 50px",
+                /* Sider collapse trigger: matches sidebar surface with readable icon (≥4.5:1 on #282d3f) */
+                triggerBg: "#282d3f",
+                triggerColor: "#c8c9db",
             },
             Menu: {
-                itemSelectedBg: "#393E46",
-                itemSelectedColor: "#9e6eff",
-                itemHoverBg: "#2e3238",
-                itemActiveBg: "#393E46",
-                itemActiveColor: "#9e6eff",
+                darkItemBg: "#282d3f" /* mdBook navy --sidebar-bg */,
+                darkItemColor: "#c8c9db" /* mdBook navy --sidebar-fg */,
+                darkItemHoverBg: "#2d334f",
+                darkItemHoverColor: "#f14611",
+                darkItemSelectedBg: "#3a4155",
+                darkItemSelectedColor: "#f97850" /* lighter orange for contrast on selected bg */,
+                darkSubMenuItemBg: "#1f2432",
             },
             Form: {
-                colorError: "#FD7014",
-                colorTextDescription: "#b9b9b9",
                 itemMarginBottom: 40,
             },
             Button: {
-                primaryShadow: "None",
-                dangerShadow: "None,",
-                defaultBorderColor: "#e4dddd",
+                primaryShadow: "none",
+                dangerShadow: "none",
             },
             Select: {
-                selectorBg: "#2f3239",
-                colorBorder: "#34383f",
-                optionActiveBg: "#9e6eff",
-                optionActiveColor: "#2a2d30",
-                optionSelectedBg: "#9e6eff",
-                optionSelectedColor: "#2a2d30",
-                colorIcon: "#9e6eff",
-            },
-            Input: {
-                selectorBg: "#2f3239",
-                colorBorder: "#34383f",
-            },
-            InputNumber: {
-                colorIcon: "#9e6eff",
-                colorBorder: "#9e6eff",
+                optionSelectedBg: "#f14611",
+                optionSelectedColor: "#161923" /* dark ink on bright orange (>= 4.5:1) */,
+                colorIcon: "#f14611",
             },
             Card: {
-                colorBgContainer: "#393E46",
+                colorBgContainer: "#1f2432",
                 borderRadiusLG: 8,
             },
             Switch: {
@@ -535,8 +597,8 @@ function App() {
     return (
         <BrowserRouter basename="/ui">
             <ConfigProvider
+                locale={antdLocale}
                 theme={{
-                    ...theme.defaultConfig,
                     ...(isDarkMode ? darkTheme : lightTheme),
                     token: {
                         ...((isDarkMode ? darkTheme : lightTheme).token ?? {}),

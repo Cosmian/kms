@@ -24,9 +24,10 @@ use crate::{
     core::{
         KMS,
         operations::{create_key_pair::generate_key_pair, key_ops::KeySelectionSpec},
+        uid_utils::from_request,
     },
-    error::KmsError,
-    result::{KResult, KResultHelper},
+    middlewares::UserId,
+    result::KResult,
 };
 
 /// Implementor of [`RekeyOperation`] for KMIP `ReKeyKeyPair` (KMIP 1.4 §4.5 / KMIP 2.1
@@ -74,7 +75,7 @@ impl RekeyOperation for SqlKeypairRekeyer {
         &self,
         kms: &KMS,
         request: &ReKeyKeyPair,
-        user: &str,
+        user: &UserId,
     ) -> KResult<[RotationCandidate; 2]> {
         KMS::reject_protection_storage_masks(
             request.common_protection_storage_masks.is_some()
@@ -84,23 +85,21 @@ impl RekeyOperation for SqlKeypairRekeyer {
 
         kms.enforce_create_permission(user).await?;
 
-        let uid_or_tags = request
-            .private_key_unique_identifier
-            .as_ref()
-            .ok_or(KmsError::UnsupportedPlaceholder)?
-            .as_str()
-            .context("ReKeyKeyPair: the private key unique identifier must be a string")?;
+        let object_handle = from_request(
+            request.private_key_unique_identifier.as_ref(),
+            "ReKeyKeyPair",
+        )?;
 
         // HSM-managed keys cannot be re-keyed via the SQL pipeline: they have no KMIP
         // attribute storage and are often non-extractable (CKA_EXTRACTABLE = false).
-        reject_hsm_uid(uid_or_tags, "Re-Key Key Pair")?;
+        reject_hsm_uid(object_handle, "Re-Key Key Pair")?;
 
         let candidates = kms
-            .retrieve_eligible_keys(uid_or_tags, ObjectType::PrivateKey)
+            .retrieve_eligible_keys(object_handle, ObjectType::PrivateKey)
             .await?;
 
         let owm = kms
-            .select_unique_key::<Self, _>(candidates, uid_or_tags, user, |owm| {
+            .select_unique_key::<Self, _>(candidates, object_handle.as_str(), user, |owm| {
                 // Validate no crypto param changes
                 owm.attributes().validate_no_crypto_param_change(
                     [

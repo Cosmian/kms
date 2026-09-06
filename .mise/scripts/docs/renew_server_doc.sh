@@ -23,7 +23,7 @@ cargo build -p cosmian_kms_server --features non-fips
 
 # ── 1. Regenerate documentation/docs/configuration/server_cli.md ────────────────────
 "${REPO_ROOT}/target/debug/cosmian_kms" --help | tail -n +2 | sed 's/[[:space:]]*$//' | {
-  printf '```text\n'
+  printf '# Server CLI\n\n```text\n'
   cat
   printf '```\n'
 } >"${REPO_ROOT}/documentation/docs/configuration/server_cli.md"

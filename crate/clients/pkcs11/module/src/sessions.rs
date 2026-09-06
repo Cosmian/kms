@@ -314,6 +314,40 @@ impl Session {
                         );
                         self.clear_find_objects_ctx();
                         self.add_to_find_objects_ctx(handle);
+                    } else if search_class == pkcs11_sys::CKO_PRIVATE_KEY {
+                        // The initial store lookup failed. `find_all_objects` (called
+                        // from `load_find_context`) may have silently missed private
+                        // keys because it uses single system tags. Fall back to the
+                        // backend's `find_all_private_keys` which uses user-scoped
+                        // combined tags (e.g. `["ssh-auth", "_sk"]`), retrying the
+                        // store lookup afterwards.
+                        drop(find_ctx);
+                        if let Ok(private_keys) = backend()?.find_all_private_keys() {
+                            for pk in private_keys {
+                                self.update_find_objects_context(Arc::new(Object::PrivateKey(pk)))?;
+                            }
+                        }
+                        let find_ctx = OBJECTS_STORE.read()?;
+                        if let Some((object, handle)) =
+                            Self::resolve_object_by_class(&find_ctx, &id, search_class)
+                        {
+                            debug!(
+                                "load_find_context_by_class: backend fallback — search by id: {} \
+                                 -> handle: {} -> object: {}:{}",
+                                id,
+                                handle,
+                                object.name(),
+                                object.remote_id()
+                            );
+                            self.clear_find_objects_ctx();
+                            self.add_to_find_objects_ctx(handle);
+                        } else {
+                            warn!(
+                                "load_find_context_by_class: no {search_class:?} object found for \
+                                 id {id}"
+                            );
+                            self.clear_find_objects_ctx();
+                        }
                     } else {
                         // A search that matches no object is valid PKCS#11 behavior:
                         // `C_FindObjects` simply returns zero objects.

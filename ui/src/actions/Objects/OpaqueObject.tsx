@@ -1,9 +1,11 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React, { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import { create_opaque_object_ttlv_request, parse_import_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface OpaqueObjectFormData {
     objectId?: string;
@@ -21,6 +23,7 @@ type ImportResponse = {
 const OpaqueObjectForm: React.FC = () => {
     const [form] = Form.useForm<OpaqueObjectFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
     const objectValue = Form.useWatch("objectValue", form);
 
     useEffect(() => {
@@ -41,21 +44,21 @@ const OpaqueObjectForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: ImportResponse = await parse_import_ttlv_response(result_str);
-                return `${result.UniqueIdentifier} has been created.`;
+                return t("opaqueObject.success", { objectId: result.UniqueIdentifier });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Create a new opaque object</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("opaqueObject.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Create a new opaque object:</p>
+                <p>{t("opaqueObject.intro")}</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    <li>When a value is specified, the object will be created from the provided bytes (UTF-8 string).</li>
-                    <li>Otherwise, an empty opaque object will be created.</li>
-                    <li>Tags can later be used to retrieve the object. Tags are optional.</li>
+                    <li>{t("opaqueObject.introValue")}</li>
+                    <li>{t("opaqueObject.introEmpty")}</li>
+                    <li>{t("opaqueObject.introTags")}</li>
                 </ul>
             </div>
 
@@ -71,43 +74,40 @@ const OpaqueObjectForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item
-                            name="objectValue"
-                            label="Opaque Data"
-                            help="Optional opaque data string, UTF-8 encoded. If not provided, an empty object is created."
-                        >
-                            <Input.TextArea placeholder="Enter opaque data" rows={2} />
+                        <Form.Item name="objectValue" label={t("opaqueObject.opaqueData")} help={t("opaqueObject.opaqueDataHelp")}>
+                            <Input.TextArea placeholder={t("opaqueObject.enterOpaqueData")} rows={2} />
                         </Form.Item>
 
                         <Form.Item
                             name="objectType"
-                            label="Object Type"
-                            help="Opaque object type is fixed."
-                            rules={[{ required: true, message: "Please confirm object type" }]}
+                            label={t("common:objectType")}
+                            help={t("opaqueObject.objectTypeHelp")}
+                            rules={[{ required: true, message: t("opaqueObject.pleaseConfirmObjectType") }]}
                         >
                             <Select disabled>
                                 <Select.Option value="Opaque">Opaque</Select.Option>
                             </Select>
                         </Form.Item>
 
-                        <Form.Item name="objectId" label="Object ID" help="Optional: a random UUID will be generated if not specified">
-                            <Input placeholder="Enter object ID" />
+                        <Form.Item name="objectId" label={t("common:objectId")} help={t("opaqueObject.objectIdHelp")}>
+                            <Input placeholder={t("common:enterObjectId")} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Optional: Add tags to help retrieve the object later">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("opaqueObject.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
-                        <Form.Item
-                            name="wrappingKeyId"
-                            label="Wrapping Key ID"
-                            help="Optional: ID of the key to wrap this new opaque object with"
-                        >
-                            <Input placeholder="Enter wrapping key ID" />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="wrappingKeyId"
+                            label={t("opaqueObject.wrappingKeyId")}
+                            help={t("opaqueObject.wrappingKeyIdHelp")}
+                            placeholder={t("opaqueObject.enterWrappingKeyId")}
+                            objectType="SymmetricKey"
+                        />
 
-                        <Form.Item name="sensitive" valuePropName="checked" help="If set, the object will not be exportable">
-                            <Checkbox>Sensitive</Checkbox>
+                        <Form.Item name="sensitive" valuePropName="checked" help={t("opaqueObject.sensitiveHelp")}>
+                            <Checkbox>{t("opaqueObject.sensitive")}</Checkbox>
                         </Form.Item>
                     </Card>
 
@@ -119,11 +119,11 @@ const OpaqueObjectForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Create Opaque Object
+                            {t("opaqueObject.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
-                <ActionResponse res={res} responseRef={responseRef} title="Opaque object creation response" />
+                <ActionResponse res={res} responseRef={responseRef} title={t("opaqueObject.responseTitle")} />
             </Form>
         </div>
     );

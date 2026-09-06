@@ -1,4 +1,5 @@
 mod tls_auth;
+pub(crate) use cosmian_kms_interfaces::UserId;
 pub(crate) use tls_auth::{extract_peer_certificate, tls_auth_fn};
 
 mod api_token;
@@ -86,7 +87,7 @@ pub(crate) enum AuthMethod {
 #[derive(Debug, Clone)]
 pub(crate) struct AuthenticatedUser {
     /// The authenticated username
-    pub username: String,
+    pub username: UserId,
     /// Which authentication method was used
     pub auth_method: AuthMethod,
 }

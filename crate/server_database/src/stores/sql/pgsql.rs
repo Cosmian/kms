@@ -7,7 +7,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
 use deadpool_postgres::{Config as PgConfig, GenericClient, ManagerConfig, Pool, RecyclingMethod};
@@ -138,6 +138,8 @@ macro_rules! pg_retry {
                                     error = %e,
                                     "PostgreSQL retryable error — retrying"
                                 );
+                                // Release the connection before sleeping through the back-off.
+                                drop($client);
                                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms))
                                     .await;
                                 last_err = Some(e);
@@ -178,67 +180,70 @@ macro_rules! pg_retry {
 /// `pool.get()` time, guaranteeing a live connection for every retry.
 macro_rules! pg_retry_tx {
     ($pool:expr, | $tx:ident | $body:expr) => {{
-        for attempt in 0..PG_MAX_RETRIES {
-            let mut client = match pg_get_client_for_tx(&$pool, attempt).await {
-                Ok(c) => c,
-                Err(e) => {
-                    if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
-                        continue;
-                    }
-                    return Err(InterfaceError::from(e));
-                }
-            };
-            let $tx = match client.transaction().await {
-                Ok(tx) => tx,
-                Err(e) => {
-                    if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
-                        let delay_ms = pg_retry_backoff_ms(attempt);
-                        tracing::warn!(
-                            attempt,
-                            delay_ms,
-                            error = %e,
-                            "PostgreSQL BEGIN failed — retrying"
-                        );
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                        continue;
-                    }
-                    return Err(InterfaceError::from(DbError::from(e)));
-                }
-            };
-            match (async { $body }).await {
-                Ok(v) => match $tx.commit().await {
-                    Ok(()) => return Ok(v),
+        'retry: for attempt in 0..PG_MAX_RETRIES {
+            // `client` (and `$tx`, when bound) live only inside this block, so both
+            // are dropped — and the connection returned to the pool — before the
+            // `sleep` below runs, instead of being held across the back-off.
+            let delay_ms: u64 = 'release_connection: {
+                let mut client = match pg_get_client_for_tx(&$pool, attempt).await {
+                    Ok(c) => c,
                     Err(e) => {
-                        let msg = e.to_string();
-                        if is_pg_retryable_error(&msg) && attempt + 1 < PG_MAX_RETRIES {
+                        if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
+                            continue 'retry; // pg_get_client_for_tx already slept; no client to release
+                        }
+                        return Err(InterfaceError::from(e)); // bail out of the whole function
+                    }
+                };
+                let $tx = match client.transaction().await {
+                    Ok(tx) => tx,
+                    Err(e) => {
+                        if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
                             let delay_ms = pg_retry_backoff_ms(attempt);
                             tracing::warn!(
                                 attempt,
                                 delay_ms,
-                                error = %msg,
-                                "PostgreSQL COMMIT failed — retrying"
+                                error = %e,
+                                "PostgreSQL BEGIN failed — retrying"
                             );
-                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                            continue;
+                            break 'release_connection delay_ms; // <-- here
                         }
                         return Err(InterfaceError::from(DbError::from(e)));
                     }
-                },
-                Err(e) => {
-                    if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
-                        let delay_ms = pg_retry_backoff_ms(attempt);
-                        tracing::warn!(
-                            attempt,
-                            delay_ms,
-                            error = %e,
-                            "PostgreSQL transaction body failed — retrying"
-                        );
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                        continue;
+                };
+                match (async { $body }).await {
+                    Ok(v) => match $tx.commit().await {
+                        Ok(()) => return Ok(v), // success: return straight out
+                        Err(e) => {
+                            let msg = e.to_string();
+                            if is_pg_retryable_error(&msg) && attempt + 1 < PG_MAX_RETRIES {
+                                let delay_ms = pg_retry_backoff_ms(attempt);
+                                tracing::warn!(
+                                    attempt,
+                                    delay_ms,
+                                    error = %msg,
+                                    "PostgreSQL COMMIT failed — retrying"
+                                );
+                                break 'release_connection delay_ms; // <-- here too
+                            }
+                            return Err(InterfaceError::from(DbError::from(e)));
+                        }
+                    },
+                    Err(e) => {
+                        if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
+                            let delay_ms = pg_retry_backoff_ms(attempt);
+                            tracing::warn!(
+                                attempt,
+                                delay_ms,
+                                error = %e,
+                                "PostgreSQL transaction body failed — retrying"
+                            );
+                            break 'release_connection delay_ms; // <-- and here
+                        }
+                        return Err(InterfaceError::from(e));
                     }
-                    return Err(InterfaceError::from(e));
                 }
-            }
+            };
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
         }
         Err(InterfaceError::from(DbError::DatabaseError(
             "too much contention: too many attempts".to_owned(),
@@ -267,7 +272,7 @@ impl PgPool {
     ) -> DbResult<Self> {
         // Extract query parameters manually instead of using Url::parse(),
         // which cannot handle multi-host PostgreSQL connection strings
-        // (e.g. "postgresql://user:pass@host1:5432,host2:5432/db?target_session_attrs=read-write").
+        // (e.g. "host1:5432,host2:5432/db?target_session_attrs=read-write").
         let query_params = extract_query_params(connection_url);
 
         // Build a URL that strips only SSL-related params (handled via MakeTlsConnector)
@@ -371,6 +376,8 @@ impl PgPool {
             "create-table-objects",
             "create-table-read_access",
             "create-table-tags",
+            "create-table-crypto_officer_activations",
+            "create-table-crls",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -386,6 +393,25 @@ impl PgPool {
         client
             .batch_execute(
                 "ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);",
+            )
+            .await
+            .map_err(DbError::from)?;
+        // Add activated_by column to crypto_officer_activations (idempotent).
+        // PostgreSQL supports ADD COLUMN IF NOT EXISTS since 9.6.
+        client
+            .batch_execute(
+                "ALTER TABLE crypto_officer_activations \
+                 ADD COLUMN IF NOT EXISTS activated_by VARCHAR(255);",
+            )
+            .await
+            .map_err(DbError::from)?;
+        // Unique partial index: at most one active activation record per user.
+        // Prevents duplicate active records even under concurrent JoinSplitKey requests.
+        client
+            .batch_execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active \
+                 ON crypto_officer_activations (activated_by) \
+                 WHERE revoked_at IS NULL;",
             )
             .await
             .map_err(DbError::from)?;
@@ -461,6 +487,10 @@ impl PgPool {
                 let sql = tmp_loader.get_query(name)?;
                 client.batch_execute(sql).await.map_err(DbError::from)?;
             }
+            // Release the connection before requesting another one below — with a
+            // pool sized to a single connection, holding `client` here would
+            // self-deadlock the following `pg_get_client` calls.
+            drop(client);
             let tmp = Self { pool: pool.clone() };
             tmp.set_current_db_version(env!("CARGO_PKG_VERSION"))
                 .await?;
@@ -494,7 +524,7 @@ impl ObjectsStore for PgPool {
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
@@ -685,7 +715,7 @@ impl ObjectsStore for PgPool {
 
     async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
         async fn transact(
@@ -696,7 +726,7 @@ impl ObjectsStore for PgPool {
             let mut uids = Vec::with_capacity(operations.len());
             for op in operations {
                 match op {
-                    AtomicOperation::Create((uid, object, attributes, tags)) => {
+                    AtomicOperation::Create((uid, owner, object, attributes, tags)) => {
                         // inline create within same transaction
                         let object_json = serde_json::to_string(object).map_err(DbError::from)?;
                         let attributes_json =
@@ -708,6 +738,7 @@ impl ObjectsStore for PgPool {
                             .await
                             .map_err(DbError::from)?;
                         let attrs_param = Json(&attributes_json);
+                        let owner_s: &str = owner;
                         tx.execute(
                             &stmt,
                             &[
@@ -715,7 +746,7 @@ impl ObjectsStore for PgPool {
                                 &object_json,
                                 &attrs_param,
                                 &state,
-                                &user,
+                                &owner_s,
                                 &wrapping_key_id,
                             ],
                         )
@@ -848,14 +879,15 @@ impl ObjectsStore for PgPool {
         pg_retry_tx!(self.pool, |tx| transact(&tx, user, operations).await)
     }
 
-    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {
+    async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> InterfaceResult<bool> {
+        let owner_s: &str = owner;
         pg_retry!(self.pool, |client| {
             let stmt = client
                 .prepare_cached(get_pgsql_query!("has-row-objects"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let row = client
-                .query_opt(&stmt, &[&uid, &owner])
+                .query_opt(&stmt, &[&uid, &owner_s])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(row.is_some())
@@ -889,7 +921,7 @@ impl ObjectsStore for PgPool {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
@@ -943,12 +975,13 @@ impl ObjectsStore for PgPool {
     async fn find_wrapped_by(
         &self,
         wrapping_key_uid: &str,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let user_s: &str = user;
         pg_retry!(self.pool, |client| {
             let sql = get_pgsql_query!("find-wrapped-by");
             let rows = client
-                .query(sql, &[&wrapping_key_uid, &user])
+                .query(sql, &[&wrapping_key_uid, &user_s])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let mut out = Vec::new();
@@ -996,7 +1029,7 @@ impl ObjectsStore for PgPool {
         &self,
         name: &str,
         generation: Option<i32>,
-        owner: &str,
+        owner: &UserId,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         let name = name.to_owned();
         let owner = owner.to_owned();
@@ -1036,40 +1069,75 @@ impl ObjectsStore for PgPool {
         })
     }
 
-    /// Returns the total count of live (non-destroyed) objects in this `PostgreSQL` store.
-    ///
-    /// This is a **metrics-only** privileged query: it scans the full `objects` table
-    /// without any user or permission filter, so the result always reflects the true
-    /// server-wide inventory. It must never be used to answer client requests.
-    ///
-    /// The state strings `'Destroyed'` and `'Destroyed_Compromised'` are the Rust
-    /// enum variant names as serialised to the DB by `strum::Display`.
+    async fn find_all(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        pg_retry!(self.pool, |client| {
+            let locate = crate::stores::sql::locate_query::query_all_from_attributes::<
+                crate::stores::sql::locate_query::PgSqlPlaceholder,
+            >(researched_attributes, state, vendor_id);
+            cosmian_logger::debug!("PG find_all query: {}", locate.sql);
+            let stmt = client
+                .prepare(&locate.sql)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut owned: Vec<Box<dyn ToSql + Sync>> = Vec::with_capacity(locate.params.len());
+            for p in locate.params {
+                match p {
+                    crate::stores::sql::locate_query::LocateParam::Text(s) => {
+                        owned.push(Box::new(s));
+                    }
+                    crate::stores::sql::locate_query::LocateParam::I64(i) => {
+                        owned.push(Box::new(i));
+                    }
+                }
+            }
+            let params: Vec<&(dyn ToSql + Sync)> =
+                owned.iter().map(std::convert::AsRef::as_ref).collect();
+            let rows = client
+                .query(&stmt, &params)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut out = Vec::new();
+            for row in rows {
+                let uid: String = row.get(0);
+                let state_str: String = row.get(1);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let attrs_val: Value = row.get(2);
+                let attrs: Attributes = serde_json::from_value(attrs_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                out.push((uid, state, attrs));
+            }
+            Ok(out)
+        })
+    }
+
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
-        let sql = get_pgsql_query!("count-non-destroyed-objects");
-        let client = pg_get_client(&self.pool)
-            .await
-            .map_err(InterfaceError::from)?;
-        let row = client
-            .query_one(sql, &[])
-            .await
-            .map_err(DbError::from)
-            .map_err(InterfaceError::from)?;
-        let count: i64 = row.get(0);
-        Ok(u64::try_from(count).unwrap_or(0))
+        pg_retry!(self.pool, |client| {
+            let row = client
+                .query_one(get_pgsql_query!("count-all-non-destroyed"), &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let count: i64 = row.get(0);
+            Ok(u64::try_from(count).unwrap_or(0))
+        })
     }
 
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
-        let sql = get_pgsql_query!("count-non-destroyed-keys-pg");
-        let client = pg_get_client(&self.pool)
-            .await
-            .map_err(InterfaceError::from)?;
-        let row = client
-            .query_one(sql, &[])
-            .await
-            .map_err(DbError::from)
-            .map_err(InterfaceError::from)?;
-        let count: i64 = row.get(0);
-        Ok(u64::try_from(count).unwrap_or(0))
+        pg_retry!(self.pool, |client| {
+            // Object JSON is stored as {"SymmetricKey": {...}} — use the JSONB ?
+            // operator to check for key presence.
+            let row = client
+                .query_one(get_pgsql_query!("count-non-destroyed-keys"), &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let count: i64 = row.get(0);
+            Ok(u64::try_from(count).unwrap_or(0))
+        })
     }
 }
 
@@ -1126,15 +1194,16 @@ impl Migrate for PgPool {
 impl PermissionsStore for PgPool {
     async fn list_user_operations_granted(
         &self,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
+        let user_s: &str = user;
         pg_retry!(self.pool, |client| {
             let stmt = client
                 .prepare_cached(get_pgsql_query!("select-objects-access-obtained"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let rows = client
-                .query(&stmt, &[&user])
+                .query(&stmt, &[&user_s])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let mut map = HashMap::with_capacity(rows.len());
@@ -1181,9 +1250,10 @@ impl PermissionsStore for PgPool {
     async fn grant_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
+        let user_s: &str = user;
         // Merge with existing permissions (this read is itself retried)
         let existing = self.list_user_operations_on_object(uid, user, true).await?;
         let mut combined = existing;
@@ -1196,7 +1266,7 @@ impl PermissionsStore for PgPool {
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             client
-                .execute(&stmt, &[&uid, &user, &json])
+                .execute(&stmt, &[&uid, &user_s, &json])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(())
@@ -1206,9 +1276,10 @@ impl PermissionsStore for PgPool {
     async fn remove_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
+        let user_s: &str = user;
         let current = self.list_user_operations_on_object(uid, user, true).await?;
         let remaining: HashSet<KmipOperation> = current.difference(&operations).copied().collect();
         pg_retry!(self.pool, |client| {
@@ -1218,7 +1289,7 @@ impl PermissionsStore for PgPool {
                     .await
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 client
-                    .execute(&d, &[&uid, &user])
+                    .execute(&d, &[&uid, &user_s])
                     .await
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 return Ok(());
@@ -1230,7 +1301,7 @@ impl PermissionsStore for PgPool {
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             client
-                .execute(&u, &[&uid, &user, &json])
+                .execute(&u, &[&uid, &user_s, &json])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(())
@@ -1240,16 +1311,17 @@ impl PermissionsStore for PgPool {
     async fn list_user_operations_on_object(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         no_inherited_access: bool,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
+        let user_s: &str = user;
         pg_retry!(self.pool, |client| {
             let stmt = client
                 .prepare_cached(get_pgsql_query!("select-user-accesses-for-object"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let mut perms: HashSet<KmipOperation> = match client
-                .query_opt(&stmt, &[&uid, &user])
+                .query_opt(&stmt, &[&uid, &user_s])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?
             {
@@ -1272,6 +1344,174 @@ impl PermissionsStore for PgPool {
                 }
             }
             Ok(perms)
+        })
+    }
+
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+        revoked_by: &str,
+    ) -> InterfaceResult<()> {
+        let sealed = sealed_record.to_owned();
+        let activated_by_s = activated_by.to_owned();
+        let revoked_by_s = revoked_by.to_owned();
+        pg_retry_tx!(self.pool, |tx| {
+            // Revoke only this user's prior active record, then insert the new one.
+            let revoke_stmt = tx
+                .prepare(get_pgsql_query!("revoke-crypto-officer-activation"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            tx.execute(
+                &revoke_stmt,
+                &[&revoked_by_s.as_str(), &activated_by_s.as_str()],
+            )
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let insert_stmt = tx
+                .prepare(get_pgsql_query!("insert-crypto-officer-activation"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            tx.execute(&insert_stmt, &[&sealed.as_str(), &activated_by_s.as_str()])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok::<(), InterfaceError>(())
+        })
+    }
+
+    async fn get_crypto_officer_activation_by(
+        &self,
+        user: &str,
+    ) -> InterfaceResult<Option<String>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!(
+                    "select-active-crypto-officer-activation-by"
+                ))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&user])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows.first().map(|row| row.get(0)))
+        })
+    }
+
+    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!(
+                    "select-any-active-crypto-officer-activation"
+                ))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let count: i64 = rows.first().map_or(0, |row| row.get(0));
+            Ok(count > 0)
+        })
+    }
+
+    async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("revoke-crypto-officer-activation"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&stmt, &[&revoked_by, &activated_by])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> InterfaceResult<()> {
+        let crl_number_i = i64::try_from(crl_number).unwrap_or(i64::MAX);
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("upsert-crl"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(
+                    &stmt,
+                    &[
+                        &issuer_id,
+                        &crl_der,
+                        &crl_number_i,
+                        &generated_at,
+                        &next_update,
+                    ],
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-crl"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&issuer_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows.first().map(|row| {
+                let der: Vec<u8> = row.get(0);
+                let generated_at: String = row.get(1);
+                (der, generated_at)
+            }))
+        })
+    }
+
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("list-crl-issuers"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows
+                .iter()
+                .map(|row| {
+                    let issuer_id: String = row.get(0);
+                    let next_update: String = row.get(1);
+                    (issuer_id, next_update)
+                })
+                .collect())
+        })
+    }
+
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
+        pg_retry!(self.pool, |client| {
+            let rows = client
+                .query("SELECT MAX(crl_number) FROM crls", &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            // MAX() returns one row; the value is NULL when the table is empty.
+            let max: Option<i64> = rows.first().and_then(|row| row.get::<_, Option<i64>>(0));
+            Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
         })
     }
 }
@@ -1321,7 +1561,7 @@ mod tests {
 
     #[test]
     fn test_extract_query_params_single_host() {
-        let url = "postgresql://kms:kms@localhost:5432/kms?sslmode=require";
+        let url = "localhost:5432/kms?sslmode=require";
         let params = extract_query_params(url);
         assert_eq!(params.get("sslmode"), Some(&"require".to_owned()));
         assert_eq!(params.len(), 1);
@@ -1329,7 +1569,7 @@ mod tests {
 
     #[test]
     fn test_extract_query_params_multi_host() {
-        let url = "postgresql://kms:kms@host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require";
+        let url = "host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require";
         let params = extract_query_params(url);
         assert_eq!(
             params.get("target_session_attrs"),
@@ -1341,44 +1581,45 @@ mod tests {
 
     #[test]
     fn test_extract_query_params_no_params() {
-        let url = "postgresql://kms:kms@localhost:5432/kms";
+        let url = "localhost:5432/kms";
         let params = extract_query_params(url);
         assert!(params.is_empty());
     }
 
     #[test]
     fn test_rebuild_url_strips_only_ssl_params() {
-        let url = "postgresql://kms:kms@host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require&sslrootcert=/path/ca.pem";
+        let url = "host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require&sslrootcert=/path/ca.pem";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
         assert_eq!(
             clean,
-            "postgresql://kms:kms@host1:5432,host2:5432/kms?target_session_attrs=read-write"
+            "host1:5432,host2:5432/kms?target_session_attrs=read-write"
         );
     }
 
     #[test]
     fn test_rebuild_url_all_ssl_params_stripped() {
-        let url = "postgresql://kms:kms@localhost:5432/kms?sslmode=require&sslcert=/c.pem&sslkey=/k.pem&sslrootcert=/ca.pem";
+        let url =
+            "localhost:5432/kms?sslmode=require&sslcert=/c.pem&sslkey=/k.pem&sslrootcert=/ca.pem";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
-        assert_eq!(clean, "postgresql://kms:kms@localhost:5432/kms");
+        assert_eq!(clean, "localhost:5432/kms");
     }
 
     #[test]
     fn test_rebuild_url_preserves_non_ssl_params() {
-        let url = "postgresql://kms:kms@localhost:5432/kms?target_session_attrs=read-write&application_name=cosmian_kms";
+        let url = "localhost:5432/kms?target_session_attrs=read-write&application_name=cosmian_kms";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
         // Both non-SSL params should be preserved (order may vary)
         assert!(clean.contains("target_session_attrs=read-write"));
         assert!(clean.contains("application_name=cosmian_kms"));
-        assert!(clean.starts_with("postgresql://kms:kms@localhost:5432/kms?"));
+        assert!(clean.starts_with("localhost:5432/kms?"));
     }
 
     #[test]
     fn test_rebuild_url_no_params() {
-        let url = "postgresql://kms:kms@localhost:5432/kms";
+        let url = "localhost:5432/kms";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
         assert_eq!(clean, url);
@@ -1386,7 +1627,7 @@ mod tests {
 
     #[test]
     fn test_multi_host_url_preserved_in_rebuild() {
-        let url = "postgresql://kms:kms@host1:5432,host2:5433,host3:5434/kms?target_session_attrs=read-write";
+        let url = "host1:5432,host2:5433,host3:5434/kms?target_session_attrs=read-write";
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
         assert_eq!(clean, url);
@@ -1457,5 +1698,51 @@ mod tests {
         assert!(!is_pg_retryable_error("syntax error"));
         assert!(!is_pg_retryable_error("permission denied"));
         assert!(!is_pg_retryable_error(""));
+    }
+
+    // Regression test for issue #1027: the pooled connection must be released
+    // before sleeping through the retry back-off, not held across it.
+    // A size-1 pool pins to one connection, so if `pool.status().available`
+    // never reports idle while a retryable transaction backs off, it's held.
+    #[ignore = "Requires a running PostgreSQL instance"]
+    #[tokio::test]
+    async fn pg_connection_released_during_backoff() -> DbResult<()> {
+        let postgres_url =
+            option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
+        let pg = PgPool::instantiate(postgres_url, true, Some(1)).await?;
+
+        let pool_for_task = pg.pool.clone();
+        let handle: tokio::task::JoinHandle<InterfaceResult<()>> = tokio::spawn(async move {
+            pg_retry_tx!(pool_for_task, |tx| {
+                tx.batch_execute(
+                    "DO $$ BEGIN RAISE EXCEPTION 'simulated deadlock detected' USING \
+                     ERRCODE = '40001'; END $$;",
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))
+            })
+        });
+
+        let mut idle_samples = 0_usize;
+        let mut total_samples = 0_usize;
+        while !handle.is_finished() {
+            total_samples += 1;
+            if pg.pool.status().available >= 1 {
+                idle_samples += 1;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        // Exhausts all retries and ends in an error — expected, only the
+        // connection-holding behavior along the way is under test here.
+        drop(handle.await);
+
+        if idle_samples * 2 <= total_samples.max(1) {
+            return Err(DbError::DatabaseError(format!(
+                "pool reported idle in only {idle_samples}/{total_samples} samples — \
+                 connection appears held during back-off sleep"
+            )));
+        }
+
+        Ok(())
     }
 }

@@ -19,7 +19,7 @@ use cosmian_kms_crypto::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    PermissionsStore, UserId,
 };
 use cosmian_logger::{debug, trace};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
@@ -43,7 +43,7 @@ use crate::{
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
             objects_db::RedisOperation,
-            permissions::{ObjectUid, UserId},
+            permissions::{FindexUserId, ObjectUid},
         },
     },
 };
@@ -120,6 +120,11 @@ pub(crate) struct RedisWithFindex {
     objects_db: Arc<ObjectsDB>,
     permission_db: PermissionDB,
     findex: Arc<FindexRedis>,
+    /// 32-byte key used to derive per-user obfuscated ceremony Redis key names.
+    ceremony_derivation_key: [u8; 32],
+    /// Obfuscated Redis SET key tracking the set of currently-active CO usernames.
+    /// Used for efficient `is_any_crypto_officer_activated` without scanning all keys.
+    ceremony_active_cos_key: String,
 }
 
 impl RedisWithFindex {
@@ -158,11 +163,24 @@ impl RedisWithFindex {
             .map_err(|e| DbError::DatabaseError(format!("Failed to get Redis DB size: {e}")))?;
         trace!("Redis DB size: {count}");
 
+        // Derive ceremony key material from the master key.
+        // Per-user ceremony record keys are computed at call time using this derivation key.
+        // The `ceremony_active_cos_key` is a SET key that tracks active CO usernames.
+        let mut ceremony_derivation_key = [0_u8; 32];
+        kdf256!(
+            &mut ceremony_derivation_key,
+            &*master_key,
+            b"ceremony_key_derivation"
+        );
+        let ceremony_active_cos_key =
+            Self::derive_ceremony_key_name(&master_key, b"active_cos_set");
         let redis_with_findex = Self {
             mgr,
             objects_db,
             permission_db,
             findex,
+            ceremony_derivation_key,
+            ceremony_active_cos_key,
         };
 
         if count == 0 {
@@ -390,6 +408,110 @@ impl RedisWithFindex {
         // The state is not indexed, so no Findex updates needed
         Ok(db_object)
     }
+
+    // ── Ceremony helpers ────────────────────────────────────────────────────
+
+    /// Derive an obfuscated Redis key name for a ceremony role using SHAKE-256.
+    fn derive_ceremony_key_name(
+        master_key: &Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
+        role: &[u8],
+    ) -> String {
+        let mut hash = [0_u8; 8]; // 8 bytes → 16 hex chars
+        kdf256!(&mut hash, &**master_key, b"ceremony_key_name", role);
+        format!("c:{}", hex::encode(hash))
+    }
+
+    /// Derive an obfuscated Redis key name for a per-user ceremony record.
+    fn derive_per_user_ceremony_key_name(&self, role: &str, user: &str) -> String {
+        let mut hash = [0_u8; 8];
+        let input = format!("{role}:{user}");
+        kdf256!(&mut hash, &self.ceremony_derivation_key, input.as_bytes());
+        format!("c:{}", hex::encode(hash))
+    }
+
+    /// Store a sealed ceremony record under the given Redis key.
+    ///
+    /// The record is a JSON object `{ "sealed": "<base64>", "revoked_at": null, "revoked_by": null }`.
+    async fn store_ceremony_record(
+        &self,
+        redis_key: &str,
+        sealed_record: &str,
+    ) -> InterfaceResult<()> {
+        let json = serde_json::json!({
+            "sealed": sealed_record,
+            "revoked_at": null,
+            "revoked_by": null,
+        });
+        let value = serde_json::to_string(&json)
+            .map_err(|e| InterfaceError::Default(format!("Failed to serialize ceremony: {e}")))?;
+        redis::cmd("SET")
+            .arg(redis_key)
+            .arg(value)
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to store ceremony: {e}")))?;
+        Ok(())
+    }
+
+    /// Retrieve the sealed ceremony record from Redis, returning `None` if absent or revoked.
+    async fn load_ceremony_record(&self, redis_key: &str) -> InterfaceResult<Option<String>> {
+        let raw: Option<String> = redis::cmd("GET")
+            .arg(redis_key)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to read ceremony: {e}")))?;
+        match raw {
+            None => Ok(None),
+            Some(json_str) => {
+                let v: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+                    InterfaceError::Default(format!("Failed to parse ceremony record: {e}"))
+                })?;
+                // If revoked_at is set, treat as non-existent (revoked).
+                if v.get("revoked_at").and_then(|v| v.as_str()).is_some() {
+                    return Ok(None);
+                }
+                Ok(v.get("sealed").and_then(|s| s.as_str()).map(String::from))
+            }
+        }
+    }
+
+    /// Revoke the ceremony record at `redis_key` by setting `revoked_at` and `revoked_by`.
+    async fn revoke_ceremony_record(
+        &self,
+        redis_key: &str,
+        revoked_by: &str,
+    ) -> InterfaceResult<()> {
+        let raw: Option<String> = redis::cmd("GET")
+            .arg(redis_key)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to read ceremony: {e}")))?;
+        if let Some(json_str) = raw {
+            let mut v: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+                InterfaceError::Default(format!("Failed to parse ceremony record: {e}"))
+            })?;
+            if let Some(obj) = v.as_object_mut() {
+                obj.insert(
+                    "revoked_at".to_owned(),
+                    serde_json::Value::String("revoked".to_owned()),
+                );
+                obj.insert(
+                    "revoked_by".to_owned(),
+                    serde_json::Value::String(revoked_by.to_owned()),
+                );
+            }
+            let updated = serde_json::to_string(&v).map_err(|e| {
+                InterfaceError::Default(format!("Failed to serialize ceremony record: {e}"))
+            })?;
+            redis::cmd("SET")
+                .arg(redis_key)
+                .arg(updated)
+                .query_async::<()>(&mut self.mgr.clone())
+                .await
+                .map_err(|e| InterfaceError::Default(format!("Failed to update ceremony: {e}")))?;
+        }
+        Ok(())
+    }
 }
 
 #[async_trait(?Send)]
@@ -402,15 +524,16 @@ impl ObjectsStore for RedisWithFindex {
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
     ) -> InterfaceResult<String> {
         let (uid, db_object) = self
-            .prepare_object_for_create(uid, owner, object, attributes, tags)
+            .prepare_object_for_create(uid, owner.as_str(), object, attributes, tags)
             .await?;
 
+        // create the object
         self.objects_db.object_create(&uid, &db_object).await?;
         // New objects are always PreActive (live) — increment unconditionally.
         self.objects_db.adjust_live_count(1).await?;
@@ -424,7 +547,7 @@ impl ObjectsStore for RedisWithFindex {
 
     /// Retrieve objects from the database.
     ///
-    /// The `uid_or_tags` parameter can be either a `uid` or a comma-separated list of tags
+    /// The `uid` parameter can be either a `uid` or a comma-separated list of tags
     /// in a JSON array.
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         Ok(self.objects_db.object_get(uid).await.map(|o| {
@@ -522,7 +645,7 @@ impl ObjectsStore for RedisWithFindex {
 
     async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
         // Track pending objects so that multiple operations on the same UID
@@ -559,7 +682,7 @@ impl ObjectsStore for RedisWithFindex {
                     let db_object = self
                         .prepare_object_for_insert(
                             uid,
-                            user,
+                            user.as_str(),
                             object,
                             attributes,
                             tags.as_ref(),
@@ -582,14 +705,14 @@ impl ObjectsStore for RedisWithFindex {
                     pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
-                AtomicOperation::Create((uid, object, attributes, tags)) => {
+                AtomicOperation::Create((uid, _owner, object, attributes, tags)) => {
                     // New objects are always live.
                     live_delta += 1;
 
                     let (uid, db_object) = self
                         .prepare_object_for_create(
                             Some(uid.clone()),
-                            user,
+                            user.as_str(),
                             object,
                             attributes,
                             tags,
@@ -682,13 +805,13 @@ impl ObjectsStore for RedisWithFindex {
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
-    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {
+    async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> InterfaceResult<bool> {
         let object = self
             .objects_db
             .object_get(uid)
             .await?
             .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?;
-        Ok(object.owner == owner)
+        Ok(object.owner == *owner)
     }
 
     async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
@@ -731,7 +854,7 @@ impl ObjectsStore for RedisWithFindex {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
@@ -789,7 +912,7 @@ impl ObjectsStore for RedisWithFindex {
             HashMap::new()
         } else {
             self.permission_db
-                .list_user_permissions(&UserId(user.to_owned()))
+                .list_user_permissions(&FindexUserId(user.as_str().to_owned()))
                 .await?
                 .into_iter()
                 .map(|(k, v)| (k.0, v))
@@ -802,7 +925,7 @@ impl ObjectsStore for RedisWithFindex {
             .into_iter()
             .filter(|(uid, redis_db_object)| {
                 state.is_none_or(|state| redis_db_object.state == state)
-                    && (if redis_db_object.owner == user {
+                    && (if redis_db_object.owner == *user {
                         true
                     } else {
                         permissions.contains_key(uid)
@@ -825,11 +948,89 @@ impl ObjectsStore for RedisWithFindex {
             .collect())
     }
 
+    async fn find_all(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        // Redis does not support a bypass-all-user-filtering scan via Findex.
+        // Fall back to a full SCAN of the object store and filter by attributes/state.
+        let all_objects = self.objects_db.scan_all_objects().await?;
+        let results = all_objects
+            .into_iter()
+            .filter(|(_uid, obj)| {
+                if state.is_some_and(|s| obj.state != s) {
+                    return false;
+                }
+                if let Some(attrs) = researched_attributes {
+                    // Filter by object_type if specified.
+                    if let Some(required_type) = attrs.object_type {
+                        if obj.object_type != required_type {
+                            return false;
+                        }
+                    }
+
+                    // Filter by tags if specified.
+                    let tags = attrs.get_tags(vendor_id);
+                    if !tags.is_empty() {
+                        let obj_tags = obj
+                            .object
+                            .attributes()
+                            .map(|a| a.get_tags(vendor_id))
+                            .unwrap_or_default();
+                        if !tags.iter().all(|t| obj_tags.contains(t)) {
+                            return false;
+                        }
+                    }
+
+                    // Filter by link attributes if specified — each required link must
+                    // appear in the object's own link list (matched by type and identifier).
+                    // Use the dedicated `attributes` field (covers Certificate objects
+                    // which have no key block and would return an error from
+                    // `obj.object.attributes()`).
+                    if let Some(required_links) = &attrs.link {
+                        if !required_links.is_empty() {
+                            let obj_links = obj
+                                .attributes
+                                .as_ref()
+                                .and_then(|a| a.link.as_deref())
+                                .unwrap_or(&[]);
+                            for req in required_links {
+                                let found = obj_links.iter().any(|l| {
+                                    l.link_type == req.link_type
+                                        && l.linked_object_identifier
+                                            == req.linked_object_identifier
+                                });
+                                if !found {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                }
+                true
+            })
+            .map(|(uid, obj)| {
+                let attrs = obj
+                    .object
+                    .attributes()
+                    .cloned()
+                    .unwrap_or_else(|_| Attributes {
+                        object_type: Some(obj.object.object_type()),
+                        ..Default::default()
+                    });
+                (uid, obj.state, attrs)
+            })
+            .collect();
+        Ok(results)
+    }
+
     async fn find_by_rotate_name(
         &self,
         name: &str,
         generation: Option<i32>,
-        owner: &str,
+        owner: &UserId,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         // Search Findex for objects indexed under this rotate_name keyword
         let keyword = Keyword::from(format!("rotate_name::{name}").as_bytes());
@@ -853,7 +1054,7 @@ impl ObjectsStore for RedisWithFindex {
         // Filter by owner, generation, and latest flag
         let mut results = Vec::new();
         for (uid, dbo) in redis_db_objects {
-            if dbo.owner != owner {
+            if dbo.owner != *owner {
                 continue;
             }
             let attrs = dbo.attributes.unwrap_or_default();
@@ -871,7 +1072,7 @@ impl ObjectsStore for RedisWithFindex {
     async fn find_wrapped_by(
         &self,
         wrapping_key_uid: &str,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         // Search Findex for objects indexed under this wrapping key
         let keyword = Keyword::from(format!("wrapped_by::{wrapping_key_uid}").as_bytes());
@@ -895,12 +1096,13 @@ impl ObjectsStore for RedisWithFindex {
         // Filter by access: user must own the object or have permissions on it
         let permissions = self
             .permission_db
-            .list_user_permissions(&UserId(user.to_owned()))
+            .list_user_permissions(&FindexUserId(user.as_str().to_owned()))
             .await?;
 
         let mut out = Vec::new();
         for (uid, dbo) in redis_db_objects {
-            let has_access = dbo.owner == user || permissions.contains_key(&ObjectUid(uid.clone()));
+            let has_access =
+                dbo.owner == *user || permissions.contains_key(&ObjectUid(uid.clone()));
             if !has_access {
                 continue;
             }
@@ -1005,11 +1207,11 @@ impl ObjectsStore for RedisWithFindex {
 impl PermissionsStore for RedisWithFindex {
     async fn list_user_operations_granted(
         &self,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         let permissions = self
             .permission_db
-            .list_user_permissions(&UserId(user.to_owned()))
+            .list_user_permissions(&FindexUserId(user.as_str().to_owned()))
             .await?;
         let redis_db_objects = self
             .objects_db
@@ -1056,14 +1258,14 @@ impl PermissionsStore for RedisWithFindex {
     async fn grant_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
         for operation in &operations {
             self.permission_db
                 .add(
                     &ObjectUid(uid.to_owned()),
-                    &UserId(user.to_owned()),
+                    &FindexUserId(user.as_str().to_owned()),
                     *operation,
                 )
                 .await?;
@@ -1076,14 +1278,14 @@ impl PermissionsStore for RedisWithFindex {
     async fn remove_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
         for operation in &operations {
             self.permission_db
                 .remove(
                     &ObjectUid(uid.to_owned()),
-                    &UserId(user.to_owned()),
+                    &FindexUserId(user.as_str().to_owned()),
                     *operation,
                 )
                 .await?;
@@ -1094,20 +1296,210 @@ impl PermissionsStore for RedisWithFindex {
     async fn list_user_operations_on_object(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         no_inherited_access: bool,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(self
             .permission_db
             .get(
                 &ObjectUid(uid.to_owned()),
-                &UserId(user.to_owned()),
+                &FindexUserId(user.as_str().to_owned()),
                 no_inherited_access,
             )
             .await
             .unwrap_or_default()
             .into_iter()
             .collect())
+    }
+
+    async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> InterfaceResult<()> {
+        // Store as a JSON blob keyed by "crl:<issuer_id>".
+        let key = format!("crl:{issuer_id}");
+        let json = serde_json::json!({
+            "crl_der": crl_der,
+            "crl_number": crl_number,
+            "generated_at": generated_at,
+            "next_update": next_update,
+        });
+        let value = serde_json::to_string(&json).map_err(|e| {
+            InterfaceError::Default(format!("Failed to serialize CRL for Redis: {e}"))
+        })?;
+        redis::cmd("SET")
+            .arg(&key)
+            .arg(value)
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to store CRL in Redis: {e}")))?;
+        Ok(())
+    }
+
+    async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>> {
+        let key = format!("crl:{issuer_id}");
+        let raw: Option<String> = redis::cmd("GET")
+            .arg(&key)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to read CRL from Redis: {e}")))?;
+        let Some(json_str) = raw else {
+            return Ok(None);
+        };
+        let v: serde_json::Value = serde_json::from_str(&json_str)
+            .map_err(|e| InterfaceError::Default(format!("Failed to parse CRL from Redis: {e}")))?;
+        let der = v
+            .get("crl_der")
+            .and_then(|v| serde_json::from_value::<Vec<u8>>(v.clone()).ok());
+        let generated_at = v
+            .get("generated_at")
+            .and_then(|s| s.as_str())
+            .map(String::from);
+        match (der, generated_at) {
+            (Some(der), Some(generated_at)) => Ok(Some((der, generated_at))),
+            _ => Ok(None),
+        }
+    }
+
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
+        // Scan for all keys matching the `crl:*` pattern.
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg("crl:*")
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to list CRL keys from Redis: {e}"))
+            })?;
+
+        let mut result = Vec::with_capacity(keys.len());
+        for key in keys {
+            let raw: Option<String> = redis::cmd("GET")
+                .arg(&key)
+                .query_async(&mut self.mgr.clone())
+                .await
+                .map_err(|e| {
+                    InterfaceError::Default(format!("Failed to read CRL key '{key}': {e}"))
+                })?;
+            let Some(json_str) = raw else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_str) else {
+                continue;
+            };
+            let Some(next_update) = v
+                .get("next_update")
+                .and_then(|s| s.as_str())
+                .map(String::from)
+            else {
+                continue;
+            };
+            // Strip the "crl:" prefix to get the issuer_id.
+            let issuer_id = key.strip_prefix("crl:").unwrap_or(&key).to_owned();
+            result.push((issuer_id, next_update));
+        }
+        result.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(result)
+    }
+
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
+        // Scan all CRL keys and return the maximum stored crl_number.
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg("crl:*")
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!(
+                    "Failed to list CRL keys from Redis for max_crl_number: {e}"
+                ))
+            })?;
+
+        let mut max_number: Option<u64> = None;
+        for key in keys {
+            let raw: Option<String> = redis::cmd("GET")
+                .arg(&key)
+                .query_async(&mut self.mgr.clone())
+                .await
+                .map_err(|e| {
+                    InterfaceError::Default(format!("Failed to read CRL key '{key}': {e}"))
+                })?;
+            let Some(json_str) = raw else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_str) else {
+                continue;
+            };
+            let Some(n) = v.get("crl_number").and_then(serde_json::Value::as_u64) else {
+                continue;
+            };
+            max_number = Some(max_number.map_or(n, |prev| prev.max(n)));
+        }
+        Ok(max_number)
+    }
+
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+        revoked_by: &str,
+    ) -> InterfaceResult<()> {
+        // For Redis, per-user ceremony records use a per-user obfuscated key.
+        // `SET` is atomic — it replaces any prior record for this user, so the
+        // revoke of the same user's prior record and the new insert are one operation.
+        let user_key = self.derive_per_user_ceremony_key_name("crypto_officer", activated_by);
+        // Revoke any prior record for this user.
+        self.revoke_ceremony_record(&user_key, revoked_by).await?;
+        // Store the new sealed record.
+        self.store_ceremony_record(&user_key, sealed_record).await?;
+        // Add to the active-COs set.
+        redis::cmd("SADD")
+            .arg(&self.ceremony_active_cos_key)
+            .arg(activated_by)
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to add to active COs set: {e}"))
+            })?;
+        Ok(())
+    }
+
+    async fn get_crypto_officer_activation_by(
+        &self,
+        user: &str,
+    ) -> InterfaceResult<Option<String>> {
+        let user_key = self.derive_per_user_ceremony_key_name("crypto_officer", user);
+        self.load_ceremony_record(&user_key).await
+    }
+
+    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
+        let count: i64 = redis::cmd("SCARD")
+            .arg(&self.ceremony_active_cos_key)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to read active COs set: {e}")))?;
+        Ok(count > 0)
+    }
+
+    async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
+        let user_key = self.derive_per_user_ceremony_key_name("crypto_officer", activated_by);
+        self.revoke_ceremony_record(&user_key, revoked_by).await?;
+        // Remove from the active-COs set.
+        redis::cmd("SREM")
+            .arg(&self.ceremony_active_cos_key)
+            .arg(activated_by)
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to remove from active COs set: {e}"))
+            })?;
+        Ok(())
     }
 }
 

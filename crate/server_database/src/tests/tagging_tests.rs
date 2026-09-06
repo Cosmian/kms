@@ -14,7 +14,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
+use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, UserId};
 use uuid::Uuid;
 
 use crate::{db_error, error::DbResult};
@@ -26,7 +26,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     cosmian_logger::log_init(None);
     let mut rng = CsRng::from_entropy();
 
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
     let uid = Uuid::new_v4().to_string();
     // create a symmetric key with tags
     let mut symmetric_key_bytes = vec![0; 32];
@@ -47,7 +47,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     let uid_ = db
         .create(
             Some(uid.clone()),
-            owner,
+            &owner,
             &symmetric_key,
             symmetric_key.attributes()?,
             &HashSet::from(["tag1".to_owned(), "tag2".to_owned()]),
@@ -96,7 +96,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(owm.id(), uid);
-    assert_eq!(owm.owner(), owner);
+    assert_eq!(owm.owner(), owner.as_str());
     if verify_attributes {
         assert_eq!(owm.attributes(), &expected_attributes);
     }
@@ -116,7 +116,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(owm.id(), uid);
-    assert_eq!(owm.owner(), owner);
+    assert_eq!(owm.owner(), owner.as_str());
     if verify_attributes {
         assert_eq!(owm.attributes(), &expected_attributes);
     }
@@ -135,7 +135,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(owm.id(), uid);
-    assert_eq!(owm.owner(), owner);
+    assert_eq!(owm.owner(), owner.as_str());
     if verify_attributes {
         assert_eq!(owm.attributes(), &expected_attributes);
     }

@@ -25,6 +25,7 @@ pub mod password_derivation;
 pub mod pqc;
 pub mod rsa;
 pub mod secret;
+pub mod split_key;
 pub mod symmetric;
 pub mod wrap;
 

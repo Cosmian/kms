@@ -82,20 +82,6 @@ INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id) VALU
         DO UPDATE SET object=$2, attributes=$3, state=$4, owner=$5, wrapping_key_id=$6
         WHERE objects.owner=$5;
 
--- name: count-non-destroyed-objects
-SELECT COUNT(*) FROM objects
-WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised');
-
--- name: count-non-destroyed-keys-sqlite
-SELECT COUNT(*) FROM objects
-WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
-AND json_extract(attributes, '$.ObjectType') IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
-
--- name: count-non-destroyed-keys-pg
-SELECT COUNT(*) FROM objects
-WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
-AND attributes->>'ObjectType' IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
-
 -- name: select-user-accesses-for-object
 SELECT permissions
         FROM read_access
@@ -184,3 +170,68 @@ SELECT id, object FROM objects WHERE wrapping_key_id IS NULL;
 
 -- name: update-wrapping-key-id
 UPDATE objects SET wrapping_key_id = $1 WHERE id = $2;
+
+-- name: create-table-crypto_officer_activations
+CREATE TABLE IF NOT EXISTS crypto_officer_activations (
+        activated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        activated_by VARCHAR(255),
+        sealed_record TEXT NOT NULL,
+        revoked_at TIMESTAMP,
+        revoked_by VARCHAR(255)
+);
+
+-- name: insert-crypto-officer-activation
+INSERT INTO crypto_officer_activations (sealed_record, activated_by)
+        VALUES ($1, $2);
+
+-- name: select-active-crypto-officer-activation-by
+SELECT sealed_record FROM crypto_officer_activations
+        WHERE activated_by = $1 AND revoked_at IS NULL
+        ORDER BY activated_at DESC LIMIT 1;
+
+-- name: select-any-active-crypto-officer-activation
+SELECT COUNT(*) FROM crypto_officer_activations WHERE revoked_at IS NULL;
+
+-- name: revoke-crypto-officer-activation
+UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP, revoked_by = $1
+        WHERE activated_by = $2 AND revoked_at IS NULL;
+
+-- name: count-all-non-destroyed
+SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';
+
+-- name: count-non-destroyed-keys
+SELECT COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
+AND (object ? 'SymmetricKey' OR
+     object ? 'PrivateKey'   OR
+     object ? 'PublicKey'    OR
+     object ? 'SplitKey');
+
+-- ── CRL persistence (RFC 5280 §5) ─────────────────────────────────────────────
+-- One row per CA issuer. On regeneration the row is replaced in-place so that
+-- the public CDP endpoint can resume serving the last signed CRL after restart.
+
+-- name: create-table-crls
+CREATE TABLE IF NOT EXISTS crls (
+    issuer_id    VARCHAR(128) NOT NULL PRIMARY KEY,
+    crl_der      BYTEA        NOT NULL,
+    crl_number   BIGINT       NOT NULL,
+    generated_at VARCHAR(32)  NOT NULL,
+    next_update  VARCHAR(32)  NOT NULL
+);
+
+-- name: upsert-crl
+INSERT INTO crls (issuer_id, crl_der, crl_number, generated_at, next_update)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (issuer_id)
+    DO UPDATE SET
+        crl_der      = EXCLUDED.crl_der,
+        crl_number   = EXCLUDED.crl_number,
+        generated_at = EXCLUDED.generated_at,
+        next_update  = EXCLUDED.next_update;
+
+-- name: select-crl
+SELECT crl_der, generated_at FROM crls WHERE issuer_id = $1;
+
+-- name: list-crl-issuers
+SELECT issuer_id, next_update FROM crls ORDER BY issuer_id;

@@ -11,13 +11,14 @@ use uuid::Uuid;
 
 use super::key_ops::ObjectLifecycleExt;
 use crate::{
-    core::{KMS, uid_utils::has_prefix, wrapping::wrap_and_cache},
+    core::{KMS, uid_utils::ObjectHandle, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
-pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<CreateResponse> {
+pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResult<CreateResponse> {
     trace!("{request}");
     KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
     kms.enforce_create_permission(owner).await?;
@@ -78,24 +79,23 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<C
         let uid_str = unique_identifier.as_str().ok_or_else(|| {
             KmsError::InvalidRequest("Create: unique_identifier must be a TextString".to_owned())
         })?;
-        if has_prefix(uid_str).is_none() && rotate_name.as_str() != uid_str {
+        if !ObjectHandle::from(uid_str).is_hsm() && rotate_name.as_str() != uid_str {
             return Err(KmsError::InvalidRequest(format!(
                 "Create: rotate_name ('{rotate_name}') must equal the key's unique_identifier \
                  ('{uid_str}') — set the key ID to the keyset name at creation time"
             )));
         }
         // Initialise keyset metadata for SQL keys: generation 0, the current (only) member.
-        if has_prefix(uid_str).is_none() {
+        if !ObjectHandle::from(uid_str).is_hsm() {
             attributes.rotate_generation = Some(0);
             attributes.rotate_latest = Some(true);
         }
     }
 
+    let object_type = object.object_type();
     trace!(
         "Creating object of type {:?} with UID {} and attributes {}",
-        &object.object_type(),
-        &unique_identifier,
-        &attributes,
+        &object_type, &unique_identifier, &attributes,
     );
     // Wrap the object if requested by the user or on the server params
     Box::pin(wrap_and_cache(kms, owner, &unique_identifier, &mut object)).await?;
@@ -116,9 +116,9 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<C
         .await?;
     info!(
         uid = uid,
-        user = owner,
+        user = owner.as_str(),
         "Created Object of type {:?}",
-        &object.object_type(),
+        &object_type,
     );
 
     Ok(CreateResponse {

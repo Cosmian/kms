@@ -22,6 +22,7 @@ use crate::{
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
@@ -52,7 +53,7 @@ impl CryptoOpSpec for MacOp {
         _kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
-        _user: &str,
+        _user: &UserId,
     ) -> KResult<Self::Response> {
         // Determine hashing algorithm: if explicit cryptographic_parameters supplied use them,
         // otherwise infer from the key's registered CryptographicAlgorithm or its attributes.
@@ -144,7 +145,7 @@ impl CryptoOpSpec for MacVerifyOp {
         _kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
-        _user: &str,
+        _user: &UserId,
     ) -> KResult<Self::Response> {
         let key_block = owm.object().key_block()?;
         let key_bytes = key_block.key_bytes().context("mac_verify")?;
@@ -203,7 +204,7 @@ impl CryptoOpSpec for MacVerifyOp {
     }
 }
 
-pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACResponse> {
+pub(crate) async fn mac(kms: &KMS, request: MAC, user: &UserId) -> KResult<MACResponse> {
     trace!("uid={:?}", request.unique_identifier);
     Box::pin(kms.perform_crypto_operation::<MacOp>(request, user)).await
 }
@@ -211,7 +212,7 @@ pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACRespo
 pub(crate) async fn mac_verify(
     kms: &KMS,
     request: MACVerify,
-    user: &str,
+    user: &UserId,
 ) -> KResult<MACVerifyResponse> {
     trace!("uid={}", request.unique_identifier);
     Box::pin(kms.perform_crypto_operation::<MacVerifyOp>(request, user)).await
@@ -305,6 +306,7 @@ mod tests {
     use crate::{
         config::ServerParams,
         core::{KMS, operations::mac::compute_hmac},
+        middlewares::UserId,
         result::KResult,
         tests::test_utils::https_clap_config,
     };
@@ -376,7 +378,7 @@ mod tests {
                     false,
                     None,
                 )?,
-                "user",
+                &UserId::from("user"),
             )
             .await?
             .unique_identifier,
@@ -393,7 +395,7 @@ mod tests {
             init_indicator: None,
             final_indicator: None,
         };
-        let response = kms.mac(request, "user").await?;
+        let response = kms.mac(request, &UserId::from("user")).await?;
         assert_eq!(response.mac_data.unwrap().len(), 32);
         assert_eq!(response.correlation_value, None);
 
@@ -409,7 +411,7 @@ mod tests {
             init_indicator: Some(true),
             final_indicator: None,
         };
-        let response = kms.mac(request, "user").await?;
+        let response = kms.mac(request, &UserId::from("user")).await?;
         assert_eq!(response.mac_data, None);
         assert_eq!(response.correlation_value.clone().unwrap().len(), 32);
 
@@ -425,7 +427,7 @@ mod tests {
             init_indicator: None,
             final_indicator: Some(true),
         };
-        let response = kms.mac(request, "user").await?;
+        let response = kms.mac(request, &UserId::from("user")).await?;
         assert_eq!(response.mac_data.unwrap().len(), 32);
         assert_eq!(response.correlation_value, None);
         Ok(())

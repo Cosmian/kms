@@ -12,9 +12,9 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 source "$SCRIPT_DIR/../common.sh"
 
 # sbomnix version to use — fetched directly from GitHub via Nix flakes so it
-# is independent of the global nixpkgs pin.  v1.7.4 is the first version that
+# is independent of the global nixpkgs pin.  v1.8.0 is the first version that
 # ships both --impure and --include-vulns for sbomnix.
-SBOMNIX_VERSION="v1.7.4"
+SBOMNIX_VERSION="v1.8.0"
 
 # Nix experimental features needed for `nix run` (flake-based tool invocation)
 export NIX_CONFIG="experimental-features = nix-command flakes"
@@ -329,22 +329,24 @@ fi
 echo ""
 
 # Generate CycloneDX SBOM (JSON format - industry standard)
-# Note: "Failed reading nix meta information" warning is expected when scanning store paths
-# The SBOM still includes all package information, just without Nixpkgs-specific metadata
+# --exclude-meta skips the nixpkgs metadata enrichment step entirely (no INFO
+# warnings about missing nixpkgs metadata for store-path targets) while keeping
+# heuristic CPE matching.  Full CPE coverage for cargo/npm components is handled
+# by enrich_cpe.py (step 2 of the post-processing pipeline below).
 echo "Generating CycloneDX SBOM..."
-(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --include-vulns --cdx="$OUTPUT_DIR/bom.cdx.json") 2>&1 | grep -v "Failed reading nix meta" || true
+(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --exclude-meta --include-vulns --cdx="$OUTPUT_DIR/bom.cdx.json")
 echo "  ✓ bom.cdx.json"
 echo ""
 
 # Generate SPDX SBOM (JSON format - ISO standard)
 echo "Generating SPDX SBOM..."
-(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --include-vulns --spdx="$OUTPUT_DIR/bom.spdx.json") 2>&1 | grep -v "Failed reading nix meta" || true
+(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --exclude-meta --include-vulns --spdx="$OUTPUT_DIR/bom.spdx.json")
 echo "  ✓ bom.spdx.json"
 echo ""
 
 # Generate CSV format
 echo "Generating CSV report..."
-(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --include-vulns --csv="$OUTPUT_DIR/sbom.csv") 2>&1 | grep -v "Failed reading nix meta" || true
+(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --exclude-meta --include-vulns --csv="$OUTPUT_DIR/sbom.csv")
 echo "  ✓ sbom.csv"
 echo ""
 
@@ -407,6 +409,7 @@ cat >"$OUTPUT_DIR/meta.json" <<EOF
     "variant": "$VARIANT",
     "derivation": "$DERIVATION",
     "output_path": "$(readlink -f "$NIX_RESULT")",
+    "sbomnix_target": "$(readlink -f "$NIX_RESULT")",
     "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
     "generator": {
       "tool": "sbomnix",
@@ -418,7 +421,8 @@ cat >"$OUTPUT_DIR/meta.json" <<EOF
   "notes": [
     "$OPENSSL_NOTE",
     "All dependencies are from Nix store with pinned versions",
-    "SBOM reflects the exact Nix build output (derivation closure)"
+    "SBOM reflects the exact Nix build output (derivation closure)",
+    "sbomnix used store-path target with --exclude-meta; heuristic CPE matching retained; full CPE coverage via enrich_cpe.py"
   ]
 }
 EOF
@@ -450,20 +454,84 @@ if [ "$TARGET" != "server" ] && [ "$TARGET" != "ckms" ]; then
   ENRICH_OPTS="$ENRICH_OPTS --no-rust --no-npm"
 fi
 
-if [ -f "$ENRICH_SCRIPT" ] && command -v python3 >/dev/null 2>&1; then
-  echo "Running author/supplier enrichment..."
-  # In CI / release builds, set SBOM_API_LIMIT=500 in the environment to also
-  # query crates.io + npm registry for the ~100 crates/packages whose Cargo.toml
-  # or package.json does not carry an authors field.
-  # Default (offline): local cargo registry cache only (~83% Rust coverage).
-  SBOM_API_LIMIT="${SBOM_API_LIMIT:-0}"
-  # Use --in-place to overwrite bom.*.json directly so downstream consumers
-  # always get enriched files at the canonical paths.
-  python3 "$ENRICH_SCRIPT" $ENRICH_OPTS --in-place --api-limit "$SBOM_API_LIMIT"
+# ── Pre-populate caches for enrichment ◀─────────────────────────────────────
+# The enrichment script reads author/supplier metadata from:
+#   • ~/.cargo/registry/src/  — Cargo.toml files for Rust crate author fields
+#   • ui/node_modules/         — package.json files for npm package author fields
+# In Nix-based CI builds neither cache exists; cargo fetch + pnpm install
+# populate them so enrichment gets author data without hitting remote APIs.
+if [ "$TARGET" = "server" ] || [ "$TARGET" = "ckms" ]; then
+  if command -v cargo >/dev/null 2>&1 && [ -f "$REPO_ROOT/Cargo.toml" ]; then
+    echo "Populating cargo registry cache for SBOM enrichment..."
+    if ! cargo fetch --manifest-path "$REPO_ROOT/Cargo.toml" --quiet; then
+      echo "  ⚠ cargo fetch failed; enrichment will lack crate author data" >&2
+    fi
+  fi
+  if command -v pnpm >/dev/null 2>&1 && [ -f "$REPO_ROOT/ui/pnpm-lock.yaml" ]; then
+    echo "Installing UI dependencies for SBOM enrichment..."
+    if ! (cd "$REPO_ROOT/ui" && pnpm install --frozen-lockfile >/dev/null 2>&1); then
+      echo "  ⚠ pnpm install failed; enrichment will lack npm author data" >&2
+    fi
+  fi
   echo ""
-else
-  echo "⚠  Skipping enrichment: python3 or $ENRICH_SCRIPT not available" >&2
 fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "Error: python3 is required for SBOM enrichment but was not found in PATH" >&2
+  exit 1
+fi
+if [ ! -f "$ENRICH_SCRIPT" ]; then
+  echo "Error: author/supplier enrichment script not found: $ENRICH_SCRIPT" >&2
+  exit 1
+fi
+echo "Running author/supplier enrichment..."
+# In CI / release builds, set SBOM_API_LIMIT=500 in the environment to also
+# query crates.io + npm registry for the ~100 crates/packages whose Cargo.toml
+# or package.json does not carry an authors field.
+# Default (offline): local cargo registry cache only (~83% Rust coverage).
+SBOM_API_LIMIT="${SBOM_API_LIMIT:-0}"
+# Use --in-place to overwrite bom.*.json directly so downstream consumers
+# always get enriched files at the canonical paths.
+# shellcheck disable=SC2086
+python3 "$ENRICH_SCRIPT" $ENRICH_OPTS --in-place --api-limit "$SBOM_API_LIMIT"
+echo ""
+
+# ---------------------------------------------------------------------------
+# CPE 2.3 enrichment (Eviden PSIRT compliance)
+# ---------------------------------------------------------------------------
+# Adds NVD NIST CPE 2.3 identifiers to every component in bom.cdx.json that
+# lacks one.  Required by the Eviden PSIRT tooling service for vulnerability
+# profiling.  Uses cargo-sbom to extract GitHub VCS URLs and author fields for
+# accurate vendor derivation (priority: cpe_overrides.json → GitHub org from
+# VCS URL → author name → component name fallback).
+CPE_SCRIPT="$SCRIPT_DIR/enrich_cpe.py"
+# python3 was already verified above for author enrichment
+if [ ! -f "$CPE_SCRIPT" ]; then
+  echo "Error: CPE enrichment script not found: $CPE_SCRIPT" >&2
+  exit 1
+fi
+echo "Running CPE 2.3 enrichment..."
+
+# Use cargo-sbom to obtain rich VCS/author metadata for vendor derivation.
+# cargo-sbom emits GitHub VCS URLs for ~99% of Rust crates and author fields
+# for ~83%.  The output is passed to enrich_cpe.py via a temporary file and
+# discarded afterwards — it is never committed.
+CARGO_SBOM_JSON="$(mktemp /tmp/cosmian-kms-cargo-sbom-XXXXXX.json)"
+# shellcheck disable=SC2064
+trap "rm -f '$CARGO_SBOM_JSON'; $(trap -p EXIT | sed 's/trap -- //;s/ EXIT//')" EXIT
+if command -v cargo-sbom >/dev/null 2>&1 && [ -f "$REPO_ROOT/Cargo.toml" ]; then
+  echo "  → Collecting VCS/author metadata via cargo-sbom..."
+  cargo-sbom --output-format cyclone_dx_json_1_6 \
+    --project-directory "$REPO_ROOT" \
+    >"$CARGO_SBOM_JSON" 2>/dev/null || true
+fi
+
+python3 "$CPE_SCRIPT" \
+  --sbom-dir "$OUTPUT_DIR" \
+  --cargo-sbom-json "$CARGO_SBOM_JSON" \
+  --in-place
+rm -f "$CARGO_SBOM_JSON"
+echo ""
 
 # Summary
 echo "========================================="
@@ -477,6 +545,7 @@ echo ""
 echo "Standards compliance:"
 echo "  ✓ CycloneDX 1.5 (OWASP)"
 echo "  ✓ SPDX 2.3 (ISO/IEC 5962:2021)"
+echo "  ✓ NVD NIST CPE 2.3 (NISTIR 7695) — all components enriched"
 echo ""
 echo "Next steps:"
 echo "  - Review: cat $REPO_ROOT/sbom/README.md"

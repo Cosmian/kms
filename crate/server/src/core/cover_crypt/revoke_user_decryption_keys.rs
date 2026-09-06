@@ -9,6 +9,7 @@ use time::OffsetDateTime;
 use super::locate_usk;
 use crate::{
     core::{KMS, operations::recursively_revoke_key},
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -18,7 +19,7 @@ pub(crate) async fn revoke_user_decryption_keys(
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<OffsetDateTime>,
     kms: &KMS,
-    owner: &str,
+    owner: &UserId,
     ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
     if let Some(ids) =

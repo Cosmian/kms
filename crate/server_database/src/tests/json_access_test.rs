@@ -14,7 +14,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
+use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, UserId};
 use uuid::Uuid;
 
 use crate::{
@@ -26,7 +26,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
     cosmian_logger::log_init(None);
 
     let mut rng = CsRng::from_entropy();
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
@@ -43,7 +43,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
 
     db.create(
         Some(uid.clone()),
-        owner,
+        &owner,
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::new(),
@@ -52,7 +52,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
     .context("create")?;
 
     assert!(
-        db.is_object_owned_by(&uid, owner)
+        db.is_object_owned_by(&uid, &owner)
             .await
             .context("is_object_owned_by")?
     );
@@ -77,7 +77,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
             VENDOR_ID_COSMIAN,
         )
@@ -97,7 +97,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
             VENDOR_ID_COSMIAN,
         )
@@ -118,7 +118,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
             VENDOR_ID_COSMIAN,
         )
@@ -138,7 +138,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
             VENDOR_ID_COSMIAN,
         )
@@ -161,7 +161,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
             VENDOR_ID_COSMIAN,
         )
@@ -181,7 +181,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
             VENDOR_ID_COSMIAN,
         )
@@ -200,7 +200,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
             VENDOR_ID_COSMIAN,
         )

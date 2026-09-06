@@ -34,40 +34,46 @@ The **Eviden KMS** is a high-performance, [**source available**](https://github.
 ## Integrations
 
 - **Cloud integrations**:
-  - [Azure BYOK](./integrations/cloud_providers/azure/byok.md)
-  - [GCP CSEK](./integrations/cloud_providers/google_gcp/csek.md) and [Google CMEK](./integrations/cloud_providers/google_gcp/cmek.md)
-  - [AWS BYOK](./integrations/cloud_providers/aws/byok.md) and [AWS Fargate](./integrations/cloud_providers/aws/fargate.md)
-  - ...
+    - [Azure BYOK](./integrations/cloud_providers/azure/byok.md)
+    - [GCP CSEK](./integrations/cloud_providers/google_gcp/csek.md) and [Google CMEK](./integrations/cloud_providers/google_gcp/cmek.md)
+    - [AWS BYOK](./integrations/cloud_providers/aws/byok.md) and [AWS Fargate](./integrations/cloud_providers/aws/fargate.md)
+    - ...
+    - [Azure BYOK](./integrations/cloud_providers/azure/byok.md)
+    - [GCP CSEK](./integrations/cloud_providers/google_gcp/csek.md) and [Google CMEK](./integrations/cloud_providers/google_gcp/cmek.md)
+    - [AWS BYOK](./integrations/cloud_providers/aws/byok.md) and [AWS Fargate](./integrations/cloud_providers/aws/fargate.md)
+    - ...
 - **Workplace security**:
-  - [Google Workspace Client Side Encryption (CSE)](./integrations/cloud_providers/google_workspace_client_side_encryption_cse/getting_started/index.md)
-  - [Microsoft 365 Double Key Encryption (DKE)](./integrations/cloud_providers/microsoft_365_double_key_encryption_dke/index.md)
+    - [Google Workspace Client Side Encryption (CSE)](./integrations/cloud_providers/google_workspace_client_side_encryption_cse/getting_started/index.md)
+    - [Microsoft 365 Double Key Encryption (DKE)](./integrations/cloud_providers/microsoft_365_double_key_encryption_dke/index.md)
 - **Transparent data encryption**:
-  - [Oracle Database TDE](./integrations/databases/oracle_tde.md)
-  - [MongoDB](./integrations/databases/mongodb.md)
-  - [Mysql Enterprise](./integrations/databases/mysql.md)
-  - [Microsoft SQL Server External (EKM)](./integrations/databases/ms_sql_server.md)
-  - [PostgreSQL](./integrations/databases/percona.md)
-    - and more
+    - [Oracle Database TDE](./integrations/databases/oracle_tde.md)
+    - [MongoDB](./integrations/databases/mongodb.md)
+    - [Mysql Enterprise](./integrations/databases/mysql.md)
+    - [Microsoft SQL Server External (EKM)](./integrations/databases/ms_sql_server.md)
+    - [PostgreSQL](./integrations/databases/percona.md)
+        - and more
 - **Disk encryption**:
-  - [Veracrypt](./integrations/disk_encryption/veracrypt.md)
-  - [LUKS](./integrations/disk_encryption/luks.md)
-  - [Cryhod](./integrations/disk_encryption/cryhod.md)
+    - [Veracrypt](./integrations/disk_encryption/veracrypt.md)
+    - [LUKS](./integrations/disk_encryption/luks.md)
+    - [Cryhod](./integrations/disk_encryption/cryhod.md)
 - **Storage encryption**:
-  - [VMware](./integrations/storage/vcenter.md)
-  - [Veeam Backup & Replication](./integrations/storage/veeam.md)
-  - [Synology DSM](./integrations/storage/synology_dsm.md)
+    - [VMware](./integrations/storage/vcenter.md)
+    - [Veeam Backup & Replication](./integrations/storage/veeam.md)
+    - [Synology DSM](./integrations/storage/synology_dsm.md)
 - **Big Data**:
-  - [Snowflake](./integrations/big_data/snowflake_native_app/index.md)
-  - [Databricks, Spark,.. UDFs](./integrations/big_data/user_defined_function_for_pyspark_databricks_in_python/index.md)
+    - [Snowflake](./integrations/big_data/snowflake_native_app/index.md)
+    - [Databricks, Spark,.. UDFs](./integrations/big_data/user_defined_function_for_pyspark_databricks_in_python/index.md)
+- **Infrastructure as Code**:
+    - [Terraform / OpenTofu Provider](./integrations/terraform.md) — manage keys, certificates, and access rights as code ([Terraform Registry](https://registry.terraform.io/providers/Cosmian/kms))
 - **Other integrations**:
-  - [FortiGate / FortiOS](./integrations/fortigate.md)
-  - [S/MIME email encryption](./integrations/smime.md)
-  - [OpenSSH](./integrations/openssh.md)
-  - [SPIRE / SPIFFE (Zero-Trust M2M)](./integrations/spire_spiffe.md)
+    - [FortiGate / FortiOS](./integrations/fortigate.md)
+    - [S/MIME email encryption](./integrations/smime.md)
+    - [OpenSSH](./integrations/openssh.md)
+    - [SPIRE / SPIFFE (Zero-Trust M2M)](./integrations/spire_spiffe.md)
 - **HSM integrations**:
-  - [Trustway Proteccio](./hsm_support/proteccio.md) and [Crypt2Pay](./hsm_support/crypt2pay.md)
-  - [Utimaco](./hsm_support/utimaco.md)
-  - [Nitrokey HSM 2 / SmartCard HSMs](./hsm_support/sc_hsm.md)
+    - [Trustway Proteccio](./hsm_support/proteccio.md) and [Crypt2Pay](./hsm_support/crypt2pay.md)
+    - [Utimaco](./hsm_support/utimaco.md)
+    - [Nitrokey HSM 2 / SmartCard HSMs](./hsm_support/sc_hsm.md)
 
 ## Three-in-one: Key lifecycle management + Encryption oracle + Public key infrastructure
 
@@ -86,9 +92,9 @@ See the complete [supported algorithms list](./certifications_and_compliance/cry
 
 The **Eviden KMS** is available as:
 
-- Linux packages: [Debian](https://package.cosmian.com/kms/5.26.0/deb/) or [RPM](https://package.cosmian.com/kms/5.26.0/rpm/)
-- Windows installer: [Windows](https://package.cosmian.com/kms/5.26.0/windows/)
-- macOS installer: [macOS](https://package.cosmian.com/kms/5.26.0/dmg/)
+- Linux packages: [Debian](https://package.cosmian.com/kms/5.27.0/deb/) or [RPM](https://package.cosmian.com/kms/5.27.0/rpm/)
+- Windows installer: [Windows](https://package.cosmian.com/kms/5.27.0/windows/)
+- macOS installer: [macOS](https://package.cosmian.com/kms/5.27.0/dmg/)
 - Docker: [Standard image](https://github.com/Cosmian/kms/pkgs/container/kms) and [FIPS image](https://github.com/Cosmian/kms/pkgs/container/kms)
 
 ## User Interface
@@ -106,5 +112,5 @@ The [KMS CLI](kms_clients/index.md) provides a powerful command-line interface f
 
 The **[KMS CLI](kms_clients/index.md)** is packaged as:
 
-- [Debian](https://package.cosmian.com/kms/5.26.0/deb/) or [RPM](https://package.cosmian.com/kms/5.26.0/rpm/) package
+- [Debian](https://package.cosmian.com/kms/5.27.0/deb/) or [RPM](https://package.cosmian.com/kms/5.27.0/rpm/) package
 - [Pre-built binaries](https://package.cosmian.com/kms/) for Linux, Windows, and macOS

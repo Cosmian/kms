@@ -1,3 +1,5 @@
+#[cfg(feature = "non-fips")]
+use std::path::Path;
 use std::path::PathBuf;
 
 use clap::ValueEnum;
@@ -242,6 +244,54 @@ pub(crate) fn import_root_and_intermediate(
     Ok((root_ca_id, intermediate_ca_id, intermediate_private_key_id))
 }
 
+/// Convert a filesystem path to a `file://` URI suitable for a
+/// `crlDistributionPoints` certificate extension.
+///
+/// On POSIX the path already starts with `/`, giving the required third slash:
+/// `/tmp/foo.pem` → `file:///tmp/foo.pem`. On Windows, backslashes are
+/// converted to forward slashes and the drive letter is preserved:
+/// `C:\foo\bar` → `file:///C:/foo/bar`.
+#[cfg(feature = "non-fips")]
+fn path_to_file_uri(path: &Path) -> String {
+    #[cfg(windows)]
+    {
+        format!("file:///{}", path.to_string_lossy().replace('\\', "/"))
+    }
+    #[cfg(not(windows))]
+    {
+        format!("file://{}", path.to_string_lossy())
+    }
+}
+
+/// Generate a CRL for a CA certificate via the KMS and write it to `output_file`
+/// in PEM format, so it can be referenced locally through a `file://` URI.
+#[cfg(feature = "non-fips")]
+fn generate_crl(
+    owner_client_conf_path: &str,
+    issuer_certificate_id: &str,
+    output_file: &Path,
+) -> CosmianResult<()> {
+    let mut cmd = ckms_bin();
+    cmd.env(CKMS_CONF_ENV, owner_client_conf_path);
+    cmd.arg("certificates")
+        .arg("generate-crl")
+        .arg("--certificate-id")
+        .arg(issuer_certificate_id)
+        .arg("--validity-days")
+        .arg("30")
+        .arg("--output-format")
+        .arg("pem")
+        .arg("--output-file")
+        .arg(output_file);
+    let output = recover_cmd_logs(&mut cmd);
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(CosmianError::Default(
+        std::str::from_utf8(&output.stderr)?.to_owned(),
+    ))
+}
+
 /// Fetch a certificate and return its Object, attributes and DER bytes
 fn fetch_certificate(
     owner_client_conf_path: &str,
@@ -331,7 +381,7 @@ fn check_certificate_chain(
 }
 
 #[cfg(feature = "non-fips")]
-fn check_certificate_added_extensions(cert_x509_der: &[u8]) {
+fn check_certificate_added_extensions(cert_x509_der: &[u8], expected_crl_dp: &str) {
     // check X509 extensions
     let (_, cert_x509) = X509Certificate::from_der(cert_x509_der).unwrap();
     let exts_with_x509_parser = cert_x509.extensions();
@@ -397,7 +447,7 @@ fn check_certificate_added_extensions(cert_x509_der: &[u8]) {
         &ParsedExtension::CRLDistributionPoints(CRLDistributionPoints {
             points: vec![CRLDistributionPoint {
                 distribution_point: Some(DistributionPointName::FullName(vec![GeneralName::URI(
-                    "https://package.cosmian.com/kms/crl_tests/intermediate.crl.pem"
+                    expected_crl_dp
                 )])),
                 reasons: None,
                 crl_issuer: None
@@ -523,6 +573,23 @@ async fn test_certify_a_csr_with_extensions() -> CosmianResult<()> {
     let (root_id, intermediate_id, issuer_private_key_id) =
         import_root_and_intermediate(&owner_client_conf_path)?;
 
+    // Generate a CRL for the intermediate CA and reference it through a local file,
+    // so validation does not depend on a remote (and possibly expired) CRL.
+    let tmp_dir = TempDir::new().map_err(|e| CosmianError::Default(e.to_string()))?;
+    let crl_file = tmp_dir.path().join("intermediate.crl.pem");
+    generate_crl(&owner_client_conf_path, &intermediate_id, &crl_file)?;
+    let crl_uri = path_to_file_uri(&crl_file);
+
+    // Build an extension config whose crlDistributionPoints points to the local CRL.
+    let ext_file = tmp_dir.path().join("ext.cnf");
+    std::fs::write(
+        &ext_file,
+        format!(
+            "[v3_ca]\nbasicConstraints=CA:FALSE,pathlen:0\nkeyUsage=keyCertSign,digitalSignature\nextendedKeyUsage=emailProtection\ncrlDistributionPoints=URI:{crl_uri}\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid:always,issuer\n"
+        ),
+    )
+    .map_err(|e| CosmianError::Default(e.to_string()))?;
+
     // Certify the CSR with the intermediate CA
     let certificate_id = certify(
         &owner_client_conf_path,
@@ -530,9 +597,7 @@ async fn test_certify_a_csr_with_extensions() -> CosmianResult<()> {
             csr_file: Some("../../../test_data/certificates/csr/leaf.csr".to_owned()),
             issuer_private_key_id: Some(issuer_private_key_id.clone()),
             tags: Some(vec!["certify_a_csr_test".to_owned()]),
-            certificate_extensions: Some(PathBuf::from(
-                "../../../test_data/certificates/openssl/ext.cnf",
-            )),
+            certificate_extensions: Some(ext_file),
             ..Default::default()
         },
     )?;
@@ -545,7 +610,7 @@ async fn test_certify_a_csr_with_extensions() -> CosmianResult<()> {
     );
 
     // check the added extensions
-    check_certificate_added_extensions(&cert_x509_der);
+    check_certificate_added_extensions(&cert_x509_der, &crl_uri);
 
     let validation = validate::validate_certificate(
         &owner_client_conf_path,
@@ -622,6 +687,23 @@ async fn test_certify_a_public_key_test_with_extensions() -> CosmianResult<()> {
     let (_private_key_id, public_key_id) =
         create_rsa_key_pair(&owner_client_conf_path, &RsaKeyPairOptions::default())?;
 
+    // Generate a CRL for the intermediate CA and reference it through a local file,
+    // so validation does not depend on a remote (and possibly expired) CRL.
+    let tmp_dir = TempDir::new().map_err(|e| CosmianError::Default(e.to_string()))?;
+    let crl_file = tmp_dir.path().join("intermediate.crl.pem");
+    generate_crl(&owner_client_conf_path, &intermediate_id, &crl_file)?;
+    let crl_uri = path_to_file_uri(&crl_file);
+
+    // Build an extension config whose crlDistributionPoints points to the local CRL.
+    let ext_file = tmp_dir.path().join("ext.cnf");
+    std::fs::write(
+        &ext_file,
+        format!(
+            "[v3_ca]\nbasicConstraints=CA:FALSE,pathlen:0\nkeyUsage=keyCertSign,digitalSignature\nextendedKeyUsage=emailProtection\ncrlDistributionPoints=URI:{crl_uri}\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid:always,issuer\n"
+        ),
+    )
+    .map_err(|e| CosmianError::Default(e.to_string()))?;
+
     // Certify the public key with the intermediate CA
     let certificate_id = certify(
         &owner_client_conf_path,
@@ -631,9 +713,7 @@ async fn test_certify_a_public_key_test_with_extensions() -> CosmianResult<()> {
             subject_name: Some(
                 "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
-            certificate_extensions: Some(PathBuf::from(
-                "../../../test_data/certificates/openssl/ext.cnf",
-            )),
+            certificate_extensions: Some(ext_file),
             ..Default::default()
         },
     )?;
@@ -646,7 +726,7 @@ async fn test_certify_a_public_key_test_with_extensions() -> CosmianResult<()> {
     );
 
     // check the added extensions
-    check_certificate_added_extensions(&cert_x509_der);
+    check_certificate_added_extensions(&cert_x509_der, &crl_uri);
 
     // check links to public key
     check_certificate_and_public_key_linked(&owner_client_conf_path, &certificate_id, &attributes);
