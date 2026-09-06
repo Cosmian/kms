@@ -177,6 +177,33 @@ impl SigningAlgorithm {
 
         // 1. explicit digital_signature_algorithm
         if let Some(dsa) = &params.digital_signature_algorithm {
+            // Reject up-front any explicit algorithm family that does not match the actual key
+            // type: without this check an RSA key requested with an ECDSA algorithm (or vice
+            // versa) would fall through to the HSM, which rejects the mismatched mechanism with
+            // an opaque low-level PKCS#11 return code instead of a clear KMIP error.
+            let is_rsa_dsa = matches!(
+                dsa,
+                DigitalSignatureAlgorithm::SHA1WithRSAEncryption
+                    | DigitalSignatureAlgorithm::SHA224WithRSAEncryption
+                    | DigitalSignatureAlgorithm::SHA256WithRSAEncryption
+                    | DigitalSignatureAlgorithm::SHA384WithRSAEncryption
+                    | DigitalSignatureAlgorithm::SHA512WithRSAEncryption
+                    | DigitalSignatureAlgorithm::RSASSAPSS
+            );
+            let is_ecdsa = matches!(
+                dsa,
+                DigitalSignatureAlgorithm::ECDSAWithSHA256
+                    | DigitalSignatureAlgorithm::ECDSAWithSHA384
+                    | DigitalSignatureAlgorithm::ECDSAWithSHA512
+            );
+            if (is_rsa_dsa && key_type != KeyType::RsaPrivateKey)
+                || (is_ecdsa && key_type != KeyType::EcPrivateKey)
+            {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "Unsupported digital signature algorithm for HSM signing: {dsa:?}"
+                )));
+            }
+
             return match dsa {
                 DigitalSignatureAlgorithm::SHA1WithRSAEncryption => {
                     Self::rsa_pkcs1_from_hash(HashingAlgorithm::SHA1, input_is_digest)
@@ -826,6 +853,49 @@ mod tests {
                 hashing_algorithm: HashingAlgorithm::SHA512,
                 prehashed: true,
             }
+        );
+    }
+
+    #[test]
+    /// Regression test: requesting `ECDSAWithSHA256` against an RSA key must be rejected early
+    /// with a friendly `InvalidRequest` error instead of silently resolving to
+    /// `SigningAlgorithm::Ecdsa`, which would otherwise reach the HSM and fail with an opaque,
+    /// low-level PKCS#11 return code (see PR #1169 CI failure
+    /// `test_vec_hsm_resident_rsa2048_sign_ecdsa_rejected`).
+    fn from_kmip_rejects_ecdsa_algorithm_for_rsa_key() {
+        let params = params_with(
+            Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            Some(CryptographicAlgorithm::RSA),
+            Some(HashingAlgorithm::SHA256),
+            None,
+            None,
+        );
+        let err =
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false, 32)
+                .expect_err("should be rejected");
+        assert!(
+            err.to_string()
+                .contains("Unsupported digital signature algorithm for HSM signing")
+        );
+    }
+
+    #[test]
+    /// Symmetric regression test: requesting an RSA-family algorithm against an EC key must
+    /// also be rejected early.
+    fn from_kmip_rejects_rsa_algorithm_for_ec_key() {
+        let params = params_with(
+            Some(DigitalSignatureAlgorithm::SHA256WithRSAEncryption),
+            Some(CryptographicAlgorithm::EC),
+            Some(HashingAlgorithm::SHA256),
+            None,
+            None,
+        );
+        let err =
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::EcPrivateKey, None, false, 32)
+                .expect_err("should be rejected");
+        assert!(
+            err.to_string()
+                .contains("Unsupported digital signature algorithm for HSM signing")
         );
     }
 
