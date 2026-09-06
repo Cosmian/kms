@@ -131,21 +131,21 @@ pub enum SigningAlgorithm {
     Sha384WithRsa,
     /// `CKM_SHA512_RSA_PKCS`
     Sha512WithRsa,
-    /// `CKM_SHA256_RSA_PKCS_PSS` (MGF1-SHA256). `salt_length` in bytes; `None` defaults to the
-    /// digest length (32 bytes), matching the software RSASSA-PSS default.
-    RsaPssSha256 { salt_length: Option<u32> },
-    /// `CKM_SHA384_RSA_PKCS_PSS` (MGF1-SHA384). `salt_length` in bytes; `None` defaults to the
-    /// digest length (48 bytes).
-    RsaPssSha384 { salt_length: Option<u32> },
-    /// `CKM_SHA512_RSA_PKCS_PSS` (MGF1-SHA512). `salt_length` in bytes; `None` defaults to the
-    /// digest length (64 bytes).
-    RsaPssSha512 { salt_length: Option<u32> },
-    /// `CKM_ECDSA_SHA256`
-    EcdsaSha256,
-    /// `CKM_ECDSA_SHA384`
-    EcdsaSha384,
-    /// `CKM_ECDSA_SHA512`
-    EcdsaSha512,
+    /// RSA-PSS signing. When `prehashed` is true the caller already supplied the digest, so HSM
+    /// backends must use a raw pre-hash mechanism (e.g. `CKM_RSA_PKCS_PSS`) instead of a
+    /// hashing mechanism such as `CKM_SHA256_RSA_PKCS_PSS`.
+    RsaPss {
+        hashing_algorithm: HashingAlgorithm,
+        mask_generator_hashing_algorithm: HashingAlgorithm,
+        salt_length: Option<u32>,
+        prehashed: bool,
+    },
+    /// ECDSA signing. When `prehashed` is true the caller already supplied the digest, so HSM
+    /// backends must use raw `CKM_ECDSA` instead of `CKM_ECDSA_SHA*`.
+    Ecdsa {
+        hashing_algorithm: HashingAlgorithm,
+        prehashed: bool,
+    },
     /// `CKM_EDDSA` over an Ed25519 private key (pure `EdDSA`, no pre-hashing). Non-FIPS: mirrors
     /// the gating of `Ed25519` signing in `crate::crypto::elliptic_curves::sign` (issue #1157).
     #[cfg(feature = "non-fips")]
@@ -161,10 +161,15 @@ impl SigningAlgorithm {
     /// Resolution order:
     /// 1. `digital_signature_algorithm` (most explicit)
     /// 2. `cryptographic_algorithm` + `padding_method` + `hashing_algorithm`
-    /// 3. fallback to `Sha256WithRsa` when only RSA is specified
-    pub fn from_kmip(params: Option<&CryptographicParameters>) -> Result<Self, InterfaceError> {
+    /// 3. fallback to the key's stored algorithm when request parameters are absent
+    pub fn from_kmip(
+        params: Option<&CryptographicParameters>,
+        key_type: KeyType,
+        curve: Option<crate::EcCurve>,
+        input_is_digest: bool,
+    ) -> Result<Self, InterfaceError> {
         let Some(params) = params else {
-            return Ok(Self::Sha256WithRsa);
+            return Self::default_for_key(key_type, curve, input_is_digest);
         };
 
         // 1. explicit digital_signature_algorithm
@@ -175,12 +180,24 @@ impl SigningAlgorithm {
                 | DigitalSignatureAlgorithm::SHA256WithRSAEncryption => Ok(Self::Sha256WithRsa),
                 DigitalSignatureAlgorithm::SHA384WithRSAEncryption => Ok(Self::Sha384WithRsa),
                 DigitalSignatureAlgorithm::SHA512WithRSAEncryption => Ok(Self::Sha512WithRsa),
-                DigitalSignatureAlgorithm::RSASSAPSS => {
-                    Self::rsa_pss_from_hash_and_salt(params.hashing_algorithm, params.salt_length)
-                }
-                DigitalSignatureAlgorithm::ECDSAWithSHA256 => Ok(Self::EcdsaSha256),
-                DigitalSignatureAlgorithm::ECDSAWithSHA384 => Ok(Self::EcdsaSha384),
-                DigitalSignatureAlgorithm::ECDSAWithSHA512 => Ok(Self::EcdsaSha512),
+                DigitalSignatureAlgorithm::RSASSAPSS => Self::rsa_pss_from_params(
+                    params.hashing_algorithm,
+                    params.mask_generator_hashing_algorithm,
+                    params.salt_length,
+                    input_is_digest,
+                ),
+                DigitalSignatureAlgorithm::ECDSAWithSHA256 => Ok(Self::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: input_is_digest,
+                }),
+                DigitalSignatureAlgorithm::ECDSAWithSHA384 => Ok(Self::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA384,
+                    prehashed: input_is_digest,
+                }),
+                DigitalSignatureAlgorithm::ECDSAWithSHA512 => Ok(Self::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA512,
+                    prehashed: input_is_digest,
+                }),
                 other => Err(InterfaceError::InvalidRequest(format!(
                     "Unsupported digital signature algorithm for HSM signing: {other:?}"
                 ))),
@@ -207,9 +224,18 @@ impl SigningAlgorithm {
             Some(CryptographicAlgorithm::EC | CryptographicAlgorithm::ECDSA)
         ) {
             return match params.hashing_algorithm {
-                Some(HashingAlgorithm::SHA256) | None => Ok(Self::EcdsaSha256),
-                Some(HashingAlgorithm::SHA384) => Ok(Self::EcdsaSha384),
-                Some(HashingAlgorithm::SHA512) => Ok(Self::EcdsaSha512),
+                Some(HashingAlgorithm::SHA256) | None => Ok(Self::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: input_is_digest,
+                }),
+                Some(HashingAlgorithm::SHA384) => Ok(Self::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA384,
+                    prehashed: input_is_digest,
+                }),
+                Some(HashingAlgorithm::SHA512) => Ok(Self::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA512,
+                    prehashed: input_is_digest,
+                }),
                 Some(other) => Err(InterfaceError::InvalidRequest(format!(
                     "Unsupported hashing algorithm for ECDSA signing: {other:?}"
                 ))),
@@ -219,9 +245,11 @@ impl SigningAlgorithm {
         // 2. cryptographic_algorithm + padding_method + hashing_algorithm
         if params.cryptographic_algorithm == Some(CryptographicAlgorithm::RSA) {
             if params.padding_method == Some(PaddingMethod::PSS) {
-                return Self::rsa_pss_from_hash_and_salt(
+                return Self::rsa_pss_from_params(
                     params.hashing_algorithm,
+                    params.mask_generator_hashing_algorithm,
                     params.salt_length,
+                    input_is_digest,
                 );
             }
             return match params.hashing_algorithm {
@@ -235,28 +263,84 @@ impl SigningAlgorithm {
             };
         }
 
-        // Default
-        Ok(Self::Sha256WithRsa)
+        Self::default_for_key(key_type, curve, input_is_digest)
+    }
+
+    fn default_for_key(
+        key_type: KeyType,
+        curve: Option<crate::EcCurve>,
+        input_is_digest: bool,
+    ) -> Result<Self, InterfaceError> {
+        match key_type {
+            KeyType::RsaPrivateKey => Ok(Self::Sha256WithRsa),
+            KeyType::EcPrivateKey => match curve {
+                Some(crate::EcCurve::P384) => Ok(Self::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA384,
+                    prehashed: input_is_digest,
+                }),
+                Some(crate::EcCurve::P521) => Ok(Self::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA512,
+                    prehashed: input_is_digest,
+                }),
+                #[cfg(feature = "non-fips")]
+                Some(crate::EcCurve::Ed25519) => Ok(Self::Ed25519),
+                #[cfg(feature = "non-fips")]
+                Some(crate::EcCurve::Ed448) => Ok(Self::Ed448),
+                #[cfg(feature = "non-fips")]
+                Some(crate::EcCurve::X25519) => Err(InterfaceError::InvalidRequest(
+                    "X25519 keys support key agreement, not signing".to_owned(),
+                )),
+                Some(crate::EcCurve::P224 | crate::EcCurve::P256) | None => Ok(Self::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: input_is_digest,
+                }),
+            },
+            other => Err(InterfaceError::InvalidRequest(format!(
+                "Unsupported private key type for HSM signing: {other:?}"
+            ))),
+        }
     }
 
     /// Resolve an RSASSA-PSS `SigningAlgorithm` variant from an optional KMIP hashing algorithm
-    /// (defaulting to SHA-256, matching the software RSASSA-PSS default) and an optional,
-    /// KMIP-signed salt length (rejecting negative values, which are meaningless for PKCS#11's
-    /// unsigned `CK_ULONG` salt-length parameter).
-    fn rsa_pss_from_hash_and_salt(
+    /// (defaulting to SHA-256, matching the software RSASSA-PSS default), an optional explicit
+    /// MGF1 hash (defaulting to the signature hash when omitted), and an optional signed salt
+    /// length (rejecting negative values, which are meaningless for PKCS#11's unsigned
+    /// `CK_ULONG` salt-length parameter).
+    fn rsa_pss_from_params(
         hashing_algorithm: Option<HashingAlgorithm>,
+        mask_generator_hashing_algorithm: Option<HashingAlgorithm>,
         salt_length: Option<i32>,
+        prehashed: bool,
     ) -> Result<Self, InterfaceError> {
         let salt_length = salt_length.map(u32::try_from).transpose().map_err(|_e| {
             InterfaceError::InvalidRequest(
                 "RSASSA-PSS: salt_length must not be negative".to_owned(),
             )
         })?;
+        let hashing_algorithm = hashing_algorithm.unwrap_or(HashingAlgorithm::SHA256);
         match hashing_algorithm {
-            Some(HashingAlgorithm::SHA384) => Ok(Self::RsaPssSha384 { salt_length }),
-            Some(HashingAlgorithm::SHA512) => Ok(Self::RsaPssSha512 { salt_length }),
-            Some(HashingAlgorithm::SHA256) | None => Ok(Self::RsaPssSha256 { salt_length }),
-            Some(other) => Err(InterfaceError::InvalidRequest(format!(
+            HashingAlgorithm::SHA384 => Ok(Self::RsaPss {
+                hashing_algorithm,
+                mask_generator_hashing_algorithm: mask_generator_hashing_algorithm
+                    .unwrap_or(HashingAlgorithm::SHA384),
+                salt_length,
+                prehashed,
+            }),
+            HashingAlgorithm::SHA512 => Ok(Self::RsaPss {
+                hashing_algorithm,
+                mask_generator_hashing_algorithm: mask_generator_hashing_algorithm
+                    .unwrap_or(HashingAlgorithm::SHA512),
+                salt_length,
+                prehashed,
+            }),
+            HashingAlgorithm::SHA256 => Ok(Self::RsaPss {
+                hashing_algorithm,
+                mask_generator_hashing_algorithm: mask_generator_hashing_algorithm
+                    .unwrap_or(HashingAlgorithm::SHA256),
+                salt_length,
+                prehashed,
+            }),
+            other => Err(InterfaceError::InvalidRequest(format!(
                 "Unsupported hashing algorithm for RSASSA-PSS signing: {other:?}"
             ))),
         }
@@ -333,6 +417,7 @@ pub trait CryptoOracle: Send + Sync {
         uid: &str,
         data: &[u8],
         cryptographic_parameters: Option<&CryptographicParameters>,
+        input_is_digest: bool,
     ) -> InterfaceResult<Vec<u8>>;
 
     /// Verify a signature using the key identified by `uid`.
@@ -411,8 +496,26 @@ mod tests {
     #[test]
     fn from_kmip_none_defaults_to_sha256_with_rsa() {
         assert_eq!(
-            SigningAlgorithm::from_kmip(None).expect("should resolve"),
+            SigningAlgorithm::from_kmip(None, KeyType::RsaPrivateKey, None, false)
+                .expect("should resolve"),
             SigningAlgorithm::Sha256WithRsa
+        );
+    }
+
+    #[test]
+    fn from_kmip_none_defaults_to_curve_appropriate_ecdsa() {
+        assert_eq!(
+            SigningAlgorithm::from_kmip(
+                None,
+                KeyType::EcPrivateKey,
+                Some(crate::EcCurve::P384),
+                true
+            )
+            .expect("should resolve"),
+            SigningAlgorithm::Ecdsa {
+                hashing_algorithm: HashingAlgorithm::SHA384,
+                prehashed: true,
+            }
         );
     }
 
@@ -421,15 +524,30 @@ mod tests {
         for (hash, expected) in [
             (
                 HashingAlgorithm::SHA256,
-                SigningAlgorithm::RsaPssSha256 { salt_length: None },
+                SigningAlgorithm::RsaPss {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
+                    salt_length: None,
+                    prehashed: false,
+                },
             ),
             (
                 HashingAlgorithm::SHA384,
-                SigningAlgorithm::RsaPssSha384 { salt_length: None },
+                SigningAlgorithm::RsaPss {
+                    hashing_algorithm: HashingAlgorithm::SHA384,
+                    mask_generator_hashing_algorithm: HashingAlgorithm::SHA384,
+                    salt_length: None,
+                    prehashed: false,
+                },
             ),
             (
                 HashingAlgorithm::SHA512,
-                SigningAlgorithm::RsaPssSha512 { salt_length: None },
+                SigningAlgorithm::RsaPss {
+                    hashing_algorithm: HashingAlgorithm::SHA512,
+                    mask_generator_hashing_algorithm: HashingAlgorithm::SHA512,
+                    salt_length: None,
+                    prehashed: false,
+                },
             ),
         ] {
             let params = params_with(
@@ -440,7 +558,8 @@ mod tests {
                 None,
             );
             assert_eq!(
-                SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
+                SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false)
+                    .expect("should resolve"),
                 expected,
                 "hash: {hash:?}"
             );
@@ -457,8 +576,14 @@ mod tests {
             None,
         );
         assert_eq!(
-            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
-            SigningAlgorithm::RsaPssSha256 { salt_length: None }
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false)
+                .expect("should resolve"),
+            SigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
+                salt_length: None,
+                prehashed: false,
+            }
         );
     }
 
@@ -472,9 +597,35 @@ mod tests {
             Some(0),
         );
         assert_eq!(
-            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
-            SigningAlgorithm::RsaPssSha256 {
-                salt_length: Some(0)
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, true)
+                .expect("should resolve"),
+            SigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
+                salt_length: Some(0),
+                prehashed: true,
+            }
+        );
+    }
+
+    #[test]
+    fn from_kmip_rsassa_pss_honors_explicit_mgf_hash() {
+        let mut params = params_with(
+            Some(DigitalSignatureAlgorithm::RSASSAPSS),
+            None,
+            Some(HashingAlgorithm::SHA256),
+            None,
+            None,
+        );
+        params.mask_generator_hashing_algorithm = Some(HashingAlgorithm::SHA384);
+        assert_eq!(
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, true)
+                .expect("should resolve"),
+            SigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA384,
+                salt_length: None,
+                prehashed: true,
             }
         );
     }
@@ -488,7 +639,8 @@ mod tests {
             None,
             Some(-1),
         );
-        let err = SigningAlgorithm::from_kmip(Some(&params)).expect_err("must reject");
+        let err = SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false)
+            .expect_err("must reject");
         assert!(matches!(err, InterfaceError::InvalidRequest(_)));
     }
 
@@ -501,7 +653,8 @@ mod tests {
             None,
             None,
         );
-        let err = SigningAlgorithm::from_kmip(Some(&params)).expect_err("must reject");
+        let err = SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false)
+            .expect_err("must reject");
         assert!(matches!(err, InterfaceError::InvalidRequest(_)));
     }
 
@@ -515,8 +668,14 @@ mod tests {
             None,
         );
         assert_eq!(
-            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
-            SigningAlgorithm::RsaPssSha384 { salt_length: None }
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false)
+                .expect("should resolve"),
+            SigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA384,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA384,
+                salt_length: None,
+                prehashed: false,
+            }
         );
     }
 
@@ -530,8 +689,28 @@ mod tests {
             None,
         );
         assert_eq!(
-            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false)
+                .expect("should resolve"),
             SigningAlgorithm::Sha384WithRsa
+        );
+    }
+
+    #[test]
+    fn from_kmip_prehashed_ecdsa_uses_raw_ecdsa_variant() {
+        let params = params_with(
+            Some(DigitalSignatureAlgorithm::ECDSAWithSHA512),
+            Some(CryptographicAlgorithm::EC),
+            Some(HashingAlgorithm::SHA512),
+            None,
+            None,
+        );
+        assert_eq!(
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::EcPrivateKey, None, true)
+                .expect("should resolve"),
+            SigningAlgorithm::Ecdsa {
+                hashing_algorithm: HashingAlgorithm::SHA512,
+                prehashed: true,
+            }
         );
     }
 
@@ -549,7 +728,13 @@ mod tests {
             None,
         );
         assert_eq!(
-            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
+            SigningAlgorithm::from_kmip(
+                Some(&params),
+                KeyType::EcPrivateKey,
+                Some(crate::EcCurve::Ed25519),
+                false,
+            )
+            .expect("should resolve"),
             SigningAlgorithm::Ed25519
         );
     }
@@ -559,8 +744,29 @@ mod tests {
     fn from_kmip_ed448_resolves_via_cryptographic_algorithm_alone() {
         let params = params_with(None, Some(CryptographicAlgorithm::Ed448), None, None, None);
         assert_eq!(
-            SigningAlgorithm::from_kmip(Some(&params)).expect("should resolve"),
+            SigningAlgorithm::from_kmip(
+                Some(&params),
+                KeyType::EcPrivateKey,
+                Some(crate::EcCurve::Ed448),
+                false,
+            )
+            .expect("should resolve"),
             SigningAlgorithm::Ed448
+        );
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn from_kmip_none_defaults_to_eddsa_for_ed25519_keys() {
+        assert_eq!(
+            SigningAlgorithm::from_kmip(
+                None,
+                KeyType::EcPrivateKey,
+                Some(crate::EcCurve::Ed25519),
+                false,
+            )
+            .expect("should resolve"),
+            SigningAlgorithm::Ed25519
         );
     }
 }

@@ -8,8 +8,8 @@ use std::{
 };
 
 use cosmian_kms_interfaces::{
-    CryptoAlgorithm, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent, HsmObject,
-    HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
+    CryptoAlgorithm, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent, HashingAlgorithm,
+    HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
     KeyType::{AesKey, RsaPrivateKey, RsaPublicKey},
     RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
 };
@@ -25,12 +25,12 @@ use pkcs11_sys::{
     CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_START_DATE, CKA_VALUE,
     CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES,
     CKK_EC, CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC,
-    CKM_AES_GCM, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_RSA_PKCS,
-    CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS,
-    CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512,
-    CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
-    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
-    CKZ_DATA_SPECIFIED,
+    CKM_AES_GCM, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_RSA_PKCS,
+    CKM_RSA_PKCS_OAEP, CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256,
+    CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_RSA_PKCS,
+    CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512, CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS,
+    CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE,
+    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKZ_DATA_SPECIFIED,
 };
 use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
@@ -89,28 +89,21 @@ pub enum HsmSigningAlgorithm {
     Sha256WithRsa,
     Sha384WithRsa,
     Sha512WithRsa,
-    /// `CKM_SHA256_RSA_PKCS_PSS`. `salt_length` in bytes; `None` defaults to the SHA-256 digest
-    /// length (32 bytes).
-    RsaPssSha256 {
+    /// RSA-PSS signing. When `prehashed` is true, use raw `CKM_RSA_PKCS_PSS`; otherwise use the
+    /// corresponding hashing mechanism `CKM_SHA*_RSA_PKCS_PSS`.
+    RsaPss {
+        hashing_algorithm: HashingAlgorithm,
+        mask_generator_hashing_algorithm: HashingAlgorithm,
         salt_length: Option<u32>,
+        prehashed: bool,
     },
-    /// `CKM_SHA384_RSA_PKCS_PSS`. `salt_length` in bytes; `None` defaults to the SHA-384 digest
-    /// length (48 bytes).
-    RsaPssSha384 {
-        salt_length: Option<u32>,
+    /// ECDSA signing. When `prehashed` is true, use raw `CKM_ECDSA`; otherwise use
+    /// `CKM_ECDSA_SHA*`. PKCS#11 returns raw `r || s`, which is re-encoded to DER to match the
+    /// software ECDSA signing convention (`ecdsa_sign` in `crate::crypto`).
+    Ecdsa {
+        hashing_algorithm: HashingAlgorithm,
+        prehashed: bool,
     },
-    /// `CKM_SHA512_RSA_PKCS_PSS`. `salt_length` in bytes; `None` defaults to the SHA-512 digest
-    /// length (64 bytes).
-    RsaPssSha512 {
-        salt_length: Option<u32>,
-    },
-    /// `CKM_ECDSA_SHA256`. Produces a raw `r || s` signature that is re-encoded to DER to match
-    /// the software ECDSA signing convention (`ecdsa_sign` in `crate::crypto`).
-    EcdsaSha256,
-    /// `CKM_ECDSA_SHA384`.
-    EcdsaSha384,
-    /// `CKM_ECDSA_SHA512`.
-    EcdsaSha512,
     /// `CKM_EDDSA` over an Ed25519 private key (pure `EdDSA`, un-hashed input). Non-FIPS: see
     /// `crate::crypto::elliptic_curves::sign` for the equivalent software gating (issue #1157).
     #[cfg(feature = "non-fips")]
@@ -128,12 +121,24 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
             SigningAlgorithm::Sha256WithRsa => Self::Sha256WithRsa,
             SigningAlgorithm::Sha384WithRsa => Self::Sha384WithRsa,
             SigningAlgorithm::Sha512WithRsa => Self::Sha512WithRsa,
-            SigningAlgorithm::RsaPssSha256 { salt_length } => Self::RsaPssSha256 { salt_length },
-            SigningAlgorithm::RsaPssSha384 { salt_length } => Self::RsaPssSha384 { salt_length },
-            SigningAlgorithm::RsaPssSha512 { salt_length } => Self::RsaPssSha512 { salt_length },
-            SigningAlgorithm::EcdsaSha256 => Self::EcdsaSha256,
-            SigningAlgorithm::EcdsaSha384 => Self::EcdsaSha384,
-            SigningAlgorithm::EcdsaSha512 => Self::EcdsaSha512,
+            SigningAlgorithm::RsaPss {
+                hashing_algorithm,
+                mask_generator_hashing_algorithm,
+                salt_length,
+                prehashed,
+            } => Self::RsaPss {
+                hashing_algorithm,
+                mask_generator_hashing_algorithm,
+                salt_length,
+                prehashed,
+            },
+            SigningAlgorithm::Ecdsa {
+                hashing_algorithm,
+                prehashed,
+            } => Self::Ecdsa {
+                hashing_algorithm,
+                prehashed,
+            },
             #[cfg(feature = "non-fips")]
             SigningAlgorithm::Ed25519 => Self::Ed25519,
             #[cfg(feature = "non-fips")]
@@ -1314,31 +1319,34 @@ impl Session {
             HsmSigningAlgorithm::Sha512WithRsa => {
                 self.sign_with_simple_mechanism(key_handle, CKM_SHA512_RSA_PKCS, data)
             }
-            HsmSigningAlgorithm::RsaPssSha256 { salt_length } => {
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm,
+                mask_generator_hashing_algorithm,
+                salt_length,
+                prehashed,
+            } => {
+                let (hash_alg, digest_len_bytes, mechanism_type) =
+                    Self::pkcs11_pss_hash_params(hashing_algorithm)?;
+                let mgf = Self::pkcs11_pss_mgf(mask_generator_hashing_algorithm)?;
                 let mut params =
-                    Self::rsa_pkcs_pss_params(CKM_SHA256, CKG_MGF1_SHA256, 32, salt_length);
-                self.sign_with_pss_mechanism(key_handle, CKM_SHA256_RSA_PKCS_PSS, &mut params, data)
+                    Self::rsa_pkcs_pss_params(hash_alg, mgf, digest_len_bytes, salt_length);
+                let mechanism_type = if prehashed {
+                    CKM_RSA_PKCS_PSS
+                } else {
+                    mechanism_type
+                };
+                self.sign_with_pss_mechanism(key_handle, mechanism_type, &mut params, data)
             }
-            HsmSigningAlgorithm::RsaPssSha384 { salt_length } => {
-                let mut params =
-                    Self::rsa_pkcs_pss_params(CKM_SHA384, CKG_MGF1_SHA384, 48, salt_length);
-                self.sign_with_pss_mechanism(key_handle, CKM_SHA384_RSA_PKCS_PSS, &mut params, data)
-            }
-            HsmSigningAlgorithm::RsaPssSha512 { salt_length } => {
-                let mut params =
-                    Self::rsa_pkcs_pss_params(CKM_SHA512, CKG_MGF1_SHA512, 64, salt_length);
-                self.sign_with_pss_mechanism(key_handle, CKM_SHA512_RSA_PKCS_PSS, &mut params, data)
-            }
-            HsmSigningAlgorithm::EcdsaSha256 => {
-                let raw = self.sign_with_simple_mechanism(key_handle, CKM_ECDSA_SHA256, data)?;
-                Self::ecdsa_raw_to_der(&raw)
-            }
-            HsmSigningAlgorithm::EcdsaSha384 => {
-                let raw = self.sign_with_simple_mechanism(key_handle, CKM_ECDSA_SHA384, data)?;
-                Self::ecdsa_raw_to_der(&raw)
-            }
-            HsmSigningAlgorithm::EcdsaSha512 => {
-                let raw = self.sign_with_simple_mechanism(key_handle, CKM_ECDSA_SHA512, data)?;
+            HsmSigningAlgorithm::Ecdsa {
+                hashing_algorithm,
+                prehashed,
+            } => {
+                let mechanism = if prehashed {
+                    CKM_ECDSA
+                } else {
+                    Self::pkcs11_ecdsa_mechanism(hashing_algorithm)?
+                };
+                let raw = self.sign_with_simple_mechanism(key_handle, mechanism, data)?;
                 Self::ecdsa_raw_to_der(&raw)
             }
             // EdDSA (Ed25519/Ed448) is a pure, un-hashed signature scheme (RFC 8032): the raw
@@ -1468,6 +1476,44 @@ impl Session {
             hashAlg: hash_alg,
             mgf,
             sLen: CK_ULONG::from(salt_len),
+        }
+    }
+
+    fn pkcs11_pss_hash_params(
+        hashing_algorithm: HashingAlgorithm,
+    ) -> HResult<(CK_MECHANISM_TYPE, u32, CK_MECHANISM_TYPE)> {
+        match hashing_algorithm {
+            HashingAlgorithm::SHA256 => Ok((CKM_SHA256, 32, CKM_SHA256_RSA_PKCS_PSS)),
+            HashingAlgorithm::SHA384 => Ok((CKM_SHA384, 48, CKM_SHA384_RSA_PKCS_PSS)),
+            HashingAlgorithm::SHA512 => Ok((CKM_SHA512, 64, CKM_SHA512_RSA_PKCS_PSS)),
+            other => Err(HError::Default(format!(
+                "Unsupported RSASSA-PSS hashing algorithm: {other:?}"
+            ))),
+        }
+    }
+
+    fn pkcs11_pss_mgf(
+        mask_generator_hashing_algorithm: HashingAlgorithm,
+    ) -> HResult<CK_RSA_PKCS_MGF_TYPE> {
+        match mask_generator_hashing_algorithm {
+            HashingAlgorithm::SHA1 => Ok(CKG_MGF1_SHA1),
+            HashingAlgorithm::SHA256 => Ok(CKG_MGF1_SHA256),
+            HashingAlgorithm::SHA384 => Ok(CKG_MGF1_SHA384),
+            HashingAlgorithm::SHA512 => Ok(CKG_MGF1_SHA512),
+            other => Err(HError::Default(format!(
+                "Unsupported RSASSA-PSS MGF1 hashing algorithm: {other:?}"
+            ))),
+        }
+    }
+
+    fn pkcs11_ecdsa_mechanism(hashing_algorithm: HashingAlgorithm) -> HResult<CK_MECHANISM_TYPE> {
+        match hashing_algorithm {
+            HashingAlgorithm::SHA256 => Ok(CKM_ECDSA_SHA256),
+            HashingAlgorithm::SHA384 => Ok(CKM_ECDSA_SHA384),
+            HashingAlgorithm::SHA512 => Ok(CKM_ECDSA_SHA512),
+            other => Err(HError::Default(format!(
+                "Unsupported ECDSA hashing algorithm: {other:?}"
+            ))),
         }
     }
 
@@ -2705,15 +2751,21 @@ mod tests {
     }
 
     #[test]
-    fn hsm_signing_algorithm_from_signing_algorithm_preserves_pss_salt_length() {
-        let algo: HsmSigningAlgorithm = SigningAlgorithm::RsaPssSha256 {
+    fn hsm_signing_algorithm_from_signing_algorithm_preserves_pss_parameters() {
+        let algo: HsmSigningAlgorithm = SigningAlgorithm::RsaPss {
+            hashing_algorithm: HashingAlgorithm::SHA256,
+            mask_generator_hashing_algorithm: HashingAlgorithm::SHA384,
             salt_length: Some(16),
+            prehashed: true,
         }
         .into();
         assert!(matches!(
             algo,
-            HsmSigningAlgorithm::RsaPssSha256 {
-                salt_length: Some(16)
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA384,
+                salt_length: Some(16),
+                prehashed: true,
             }
         ));
     }

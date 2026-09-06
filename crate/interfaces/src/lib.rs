@@ -5,6 +5,7 @@ mod object_handle;
 mod stores;
 mod user_id;
 
+pub use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
 pub use crypto_oracle::{
     CryptoAlgorithm, CryptoOracle, EncryptedContent, KeyMetadata, SigningAlgorithm,
 };

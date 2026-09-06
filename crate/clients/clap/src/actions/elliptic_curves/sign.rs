@@ -1,6 +1,12 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+#[cfg(feature = "non-fips")]
+use cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
+use cosmian_kmip::{
+    kmip_0::kmip_types::HashingAlgorithm,
+    kmip_2_1::kmip_types::{CryptographicParameters, DigitalSignatureAlgorithm},
+};
 use cosmian_kms_client::{KmsClient, reexport::cosmian_kms_client_utils::create_utils::Curve};
 
 use crate::{
@@ -41,13 +47,58 @@ pub struct SignAction {
 
 impl SignAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
+        let cryptographic_parameters = Some(match self.curve {
+            Curve::NistP256 => CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..CryptographicParameters::default()
+            },
+            Curve::NistP384 => CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA384),
+                hashing_algorithm: Some(HashingAlgorithm::SHA384),
+                ..CryptographicParameters::default()
+            },
+            Curve::NistP521 => CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA512),
+                hashing_algorithm: Some(HashingAlgorithm::SHA512),
+                ..CryptographicParameters::default()
+            },
+            #[cfg(feature = "non-fips")]
+            Curve::Ed25519 => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
+                ..CryptographicParameters::default()
+            },
+            #[cfg(feature = "non-fips")]
+            Curve::Ed448 => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::Ed448),
+                ..CryptographicParameters::default()
+            },
+            #[cfg(feature = "non-fips")]
+            Curve::X25519 | Curve::X448 => {
+                return Err(crate::error::KmsCliError::Default(
+                    "X25519/X448 cannot be used for signing".to_owned(),
+                ));
+            }
+            #[cfg(feature = "non-fips")]
+            Curve::Secp256k1 => CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..CryptographicParameters::default()
+            },
+            #[cfg(feature = "non-fips")]
+            Curve::Secp224k1 => CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..CryptographicParameters::default()
+            },
+        });
         run_sign(
             kms_rest_client,
             self.input_file.clone(),
             self.key_id.clone(),
             self.tags.clone(),
             self.output_file.clone(),
-            None,
+            cryptographic_parameters,
             self.digested,
         )
         .await

@@ -93,7 +93,12 @@ impl CryptoOpSpec for SignOp {
                 )
             })?;
         let signature = crypto_oracle
-            .sign(uid, data, request.cryptographic_parameters.as_ref())
+            .sign(
+                uid,
+                data,
+                request.cryptographic_parameters.as_ref(),
+                request.digested_data.is_some(),
+            )
             .await
             .map_err(|e| KmsError::InvalidRequest(format!("Sign: crypto oracle error: {e}")))?;
         debug!("user signed data via crypto oracle using: {uid}");

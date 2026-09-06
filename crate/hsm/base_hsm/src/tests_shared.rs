@@ -5,7 +5,9 @@
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
-use cosmian_kms_interfaces::{EcCurve, HSM, HsmObjectFilter, KeyMaterial, KeyType};
+use cosmian_kms_interfaces::{
+    EcCurve, HSM, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
+};
 use cosmian_logger::{debug, info, log_init, warn};
 use futures::executor::block_on;
 use libloading::Library;
@@ -754,24 +756,42 @@ pub fn rsa_pss_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
     let algorithms = [
         (
             "RsaPssSha256 (default salt)",
-            HsmSigningAlgorithm::RsaPssSha256 { salt_length: None },
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
+                salt_length: None,
+                prehashed: false,
+            },
             CKM_SHA256_RSA_PKCS_PSS,
         ),
         (
             "RsaPssSha256 (salt=0, deterministic)",
-            HsmSigningAlgorithm::RsaPssSha256 {
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
                 salt_length: Some(0),
+                prehashed: false,
             },
             CKM_SHA256_RSA_PKCS_PSS,
         ),
         (
             "RsaPssSha384 (default salt)",
-            HsmSigningAlgorithm::RsaPssSha384 { salt_length: None },
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA384,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA384,
+                salt_length: None,
+                prehashed: false,
+            },
             CKM_SHA384_RSA_PKCS_PSS,
         ),
         (
             "RsaPssSha512 (default salt)",
-            HsmSigningAlgorithm::RsaPssSha512 { salt_length: None },
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA512,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA512,
+                salt_length: None,
+                prehashed: false,
+            },
             CKM_SHA512_RSA_PKCS_PSS,
         ),
     ];
@@ -800,12 +820,22 @@ pub fn rsa_pss_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
     if supported_mechanisms.contains(&CKM_SHA256_RSA_PKCS_PSS) {
         let sig_a = session.sign(
             sk,
-            HsmSigningAlgorithm::RsaPssSha256 { salt_length: None },
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
+                salt_length: None,
+                prehashed: false,
+            },
             data,
         )?;
         let sig_b = session.sign(
             sk,
-            HsmSigningAlgorithm::RsaPssSha256 { salt_length: None },
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
+                salt_length: None,
+                prehashed: false,
+            },
             data,
         )?;
         assert_ne!(
@@ -832,19 +862,28 @@ pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> 
     let algorithms = [
         (
             "EcdsaSha256",
-            HsmSigningAlgorithm::EcdsaSha256,
+            HsmSigningAlgorithm::Ecdsa {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                prehashed: false,
+            },
             CKM_ECDSA_SHA256,
             Nid::SHA256,
         ),
         (
             "EcdsaSha384",
-            HsmSigningAlgorithm::EcdsaSha384,
+            HsmSigningAlgorithm::Ecdsa {
+                hashing_algorithm: HashingAlgorithm::SHA384,
+                prehashed: false,
+            },
             CKM_ECDSA_SHA384,
             Nid::SHA384,
         ),
         (
             "EcdsaSha512",
-            HsmSigningAlgorithm::EcdsaSha512,
+            HsmSigningAlgorithm::Ecdsa {
+                hashing_algorithm: HashingAlgorithm::SHA512,
+                prehashed: false,
+            },
             CKM_ECDSA_SHA512,
             Nid::SHA512,
         ),
