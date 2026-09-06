@@ -884,8 +884,12 @@ fn test_get_mechanism_info_aes_gcm_reports_encrypt_decrypt() -> Pkcs11Result<()>
         unsafe { C_GetMechanismInfo(SLOT_ID, CKM_AES_GCM, &raw mut info) },
         CKR_OK
     );
+    // `CK_MECHANISM_INFO` is a packed struct on Windows; bind the field to a local before
+    // referencing it in `assert_eq!`'s format args to avoid E0793 (unaligned packed-field
+    // reference).
+    let flags = info.flags;
     assert_eq!(
-        info.flags,
+        flags,
         CKF_ENCRYPT | CKF_DECRYPT,
         "CKM_AES_GCM must report CKF_ENCRYPT | CKF_DECRYPT, not the CKF_SIGN default"
     );
