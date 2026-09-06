@@ -822,6 +822,7 @@ impl CryptoOracle for HsmStore {
             key_type,
             curve,
             input_is_digest,
+            data.len(),
         )?;
         debug!("sign: using algorithm {algorithm:?} for key {uid}");
         self.hsm
