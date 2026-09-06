@@ -41,7 +41,10 @@ use crate::{
         object::{Object, ObjectType},
     },
     objects_store::{OBJECTS_STORE, ObjectsStore},
-    traits::{DecryptContext, EncryptContext, KeyAlgorithm, SearchOptions, SignContext, backend},
+    traits::{
+        DecryptContext, EncryptContext, KeyAlgorithm, SearchOptions, SignContext, backend,
+        use_pin_as_access_token,
+    },
 };
 
 /// PKCS#11 v3.1 conformance profiles ([OASIS PKCS#11 Profiles v3.1]) that this module
@@ -54,16 +57,26 @@ use crate::{
 ///   challenge/response authentication — satisfied by the existing private-key signing
 ///   support.
 /// - `CKP_PUBLIC_CERTIFICATES_TOKEN`: Baseline plus `CKO_CERTIFICATE` objects discoverable
-///   without login — satisfied by the existing certificate support.
+///   without login — satisfied by the existing certificate support, **except** in
+///   OIDC-pin-as-access-token mode: there, `C_Logout` clears the registered backend (see
+///   `traits::backend::clear_backend`), so `find_all_certificates()` starts returning
+///   `UserNotLoggedIn` for the remainder of the session and the "discoverable without
+///   login" guarantee would no longer hold. This profile is therefore omitted while that
+///   mode is active.
 ///
 /// `CKP_COMPLETE_PROVIDER` is intentionally NOT declared: it additionally requires
 /// `C_WrapKey`/`C_UnwrapKey`/`C_DeriveKey` and digest mechanisms that are not implemented.
-const SUPPORTED_PROFILES: [CK_PROFILE_ID; 4] = [
-    CKP_BASELINE_PROVIDER,
-    CKP_EXTENDED_PROVIDER,
-    CKP_AUTHENTICATION_TOKEN,
-    CKP_PUBLIC_CERTIFICATES_TOKEN,
-];
+fn supported_profiles() -> Vec<CK_PROFILE_ID> {
+    let mut profiles = vec![
+        CKP_BASELINE_PROVIDER,
+        CKP_EXTENDED_PROVIDER,
+        CKP_AUTHENTICATION_TOKEN,
+    ];
+    if !use_pin_as_access_token() {
+        profiles.push(CKP_PUBLIC_CERTIFICATES_TOKEN);
+    }
+    profiles
+}
 
 /// Prefix used to identify Oracle Key Management (KM) encryption keys.
 /// This prefix is typically used in PKCS#11 object labels or attributes to mark
@@ -160,7 +173,22 @@ impl Session {
             .get(crate::core::attribute::AttributeType::ProfileId)
             .is_some()
         {
-            return self.load_find_context_by_class(attributes, pkcs11_sys::CKO_PROFILE);
+            // A template combining `CKA_PROFILE_ID` with an explicit, *different*
+            // `CKA_CLASS` (e.g. `CKO_PRIVATE_KEY`) asks for an object that is
+            // simultaneously a profile object and something else: no object in this
+            // module's model ever satisfies both (profile objects carry no other
+            // class-identifying attributes, and non-profile objects never carry
+            // `CKA_PROFILE_ID`), so it correctly yields no matches instead of being
+            // incorrectly routed to the profile-only fast path below, which would
+            // otherwise ignore the requested class and any other template attributes
+            // entirely.
+            match attributes.get_class() {
+                Ok(class) if class != pkcs11_sys::CKO_PROFILE => {
+                    self.clear_find_objects_ctx();
+                    return Ok(());
+                }
+                _ => return self.load_find_context_by_class(attributes, pkcs11_sys::CKO_PROFILE),
+            }
         }
         // Find all objects
         for object in backend()?.find_all_objects()? {
@@ -285,7 +313,7 @@ impl Session {
                     pkcs11_sys::CKO_PROFILE => {
                         // Profile objects are static/local: no KMIP round-trip needed, the
                         // module self-declares which OASIS conformance profiles it satisfies.
-                        SUPPORTED_PROFILES
+                        supported_profiles()
                             .into_iter()
                             .map(|id| {
                                 self.update_find_objects_context(Arc::new(Object::Profile(id)))
@@ -399,7 +427,7 @@ impl Session {
             }
             SearchOptions::ProfileId(id) => {
                 self.clear_find_objects_ctx();
-                if search_class == pkcs11_sys::CKO_PROFILE && SUPPORTED_PROFILES.contains(&id) {
+                if search_class == pkcs11_sys::CKO_PROFILE && supported_profiles().contains(&id) {
                     self.update_find_objects_context(Arc::new(Object::Profile(id)))?;
                 }
             }
