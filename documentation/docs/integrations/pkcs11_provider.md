@@ -23,8 +23,11 @@ v2.x function pointers plus a small set of v3-only entry points.
 
 - `C_GetInterfaceList(NULL, &count)` reports `count = 1` (the library exposes a single interface).
 - `C_GetInterface(NULL, NULL, &pInterface, 0)` returns that interface unconditionally; a caller may
-  instead pass the explicit name `"PKCS 11"` and/or the exact version 3.1. Any other name,
-  version (including 3.0 or 3.2), or non-zero `flags` is rejected with `CKR_ARGUMENTS_BAD`.
+  instead pass the explicit name `"PKCS 11"` and/or a version. Since this library implements v3.1,
+  a version request is accepted when it has major version `3` and minor version `0` or `1`
+  (a v3.1 implementation is backward-compatible with v3.0 consumers). Any other name, an
+  unsupported version (e.g. `1.x`, `2.x`, or `3.2`), or non-zero `flags` is rejected with
+  `CKR_ARGUMENTS_BAD`.
 - `C_LoginUser` is implemented: it behaves like `C_Login` (the library exposes a single implicit
   backend identity, so `pUsername`/`ulUsernameLen` are validated as well-formed UTF-8 but otherwise
   ignored). `CKU_USER` is accepted. `CKU_SO` and other unsupported user types return
@@ -66,8 +69,10 @@ implemented by this library.
 |-----------|---------|-------|
 | `CKM_AES_KEY_GEN` | AES key generation | Generates AES-256 keys |
 | `CKM_AES_CBC`, `CKM_AES_CBC_PAD` | AES-CBC encryption/decryption | — |
-| `CKM_DSA` | DSA signing | — |
+| `CKM_RSA_PKCS`, `CKM_SHA1_RSA_PKCS`, `CKM_SHA256_RSA_PKCS`, `CKM_SHA384_RSA_PKCS`, `CKM_SHA512_RSA_PKCS` | RSA PKCS#1 v1.5 signing | — |
+| `CKM_RSA_PKCS_PSS` | RSA-PSS signing | — |
 | `CKM_ECDSA` | ECDSA signing | — |
+| `CKM_EDDSA` | EdDSA signing (Ed25519) | — |
 
 ## Backward compatibility
 
@@ -78,6 +83,8 @@ points, `C_LoginUser`, and the self-declared `CKO_PROFILE` objects are new, opti
 
 ## Logging
 
-The PKCS#11 module logs to the `cosmian-pkcs11.log` file in the `.cosmian` subdirectory of the
-configuration file. The `COSMIAN_PKCS11_LOGGING_LEVEL` environment variable controls the logging
-level (`trace`, `debug`, `info`, `warn`, or `error`; defaults to `info`).
+The PKCS#11 module logs to the `<log_name>.log` file in the `.cosmian` subdirectory of the
+configuration file by default. On Linux, if the `COSMIAN_PKCS11_LOGGING_FOLDER` environment
+variable is set, its value is used as the log directory instead. The
+`COSMIAN_PKCS11_LOGGING_LEVEL` environment variable controls the logging level (`trace`, `debug`,
+`info`, `warn`, or `error`; defaults to `info`).
