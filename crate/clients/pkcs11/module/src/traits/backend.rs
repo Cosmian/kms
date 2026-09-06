@@ -56,8 +56,12 @@ static LOGGED_OUT: AtomicBool = AtomicBool::new(false);
 pub fn register_backend(backend: Box<dyn Backend>) {
     if let Ok(mut guard) = BACKEND.write() {
         *guard = Some(Arc::from(backend));
+        // Mutate LOGGED_OUT while still holding the BACKEND write lock so a concurrent
+        // clear_backend() (C_Logout) cannot interleave between the guard update and the
+        // flag update and leave the two states inconsistent (e.g. BACKEND == Some(..) but
+        // LOGGED_OUT == true, or vice-versa).
+        LOGGED_OUT.store(false, Ordering::SeqCst);
     }
-    LOGGED_OUT.store(false, Ordering::SeqCst);
 }
 
 /// Stores `backend` only when no backend is currently registered and the module has not
@@ -67,11 +71,13 @@ pub fn register_backend(backend: Box<dyn Backend>) {
 /// by an authenticated login, and from resurrecting a backend that `C_Logout`
 /// deliberately cleared.
 pub fn register_backend_if_absent(backend: Box<dyn Backend>) {
-    if LOGGED_OUT.load(Ordering::SeqCst) {
-        return;
-    }
     if let Ok(mut guard) = BACKEND.write()
         && guard.is_none()
+        // Checked while still holding the write lock (instead of a separate, earlier
+        // `LOGGED_OUT.load()`) so a concurrent clear_backend() cannot flip LOGGED_OUT to
+        // true right after this check passes and have this function still install the
+        // backend, resurrecting a just-logged-out session.
+        && !LOGGED_OUT.load(Ordering::SeqCst)
     {
         *guard = Some(Arc::from(backend));
     }
@@ -81,8 +87,9 @@ pub fn register_backend_if_absent(backend: Box<dyn Backend>) {
 pub fn clear_backend() {
     if let Ok(mut guard) = BACKEND.write() {
         *guard = None;
+        // See register_backend(): mutate LOGGED_OUT while still holding the write lock.
+        LOGGED_OUT.store(true, Ordering::SeqCst);
     }
-    LOGGED_OUT.store(true, Ordering::SeqCst);
 }
 
 /// Returns the currently registered backend.
