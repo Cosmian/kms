@@ -25,20 +25,22 @@ use cosmian_logger::{debug, log_init};
 use cosmian_pkcs11_module::{
     pkcs11::{
         C_CloseSession, C_Decrypt, C_DecryptInit, C_Encrypt, C_EncryptInit, C_Finalize,
-        C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit, C_GetAttributeValue, C_Initialize,
-        C_Login, C_LoginUser, C_OpenSession, C_SetAttributeValue, SLOT_ID,
+        C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit, C_GetAttributeValue,
+        C_GetMechanismInfo, C_Initialize, C_Login, C_LoginUser, C_OpenSession, C_SetAttributeValue,
+        SLOT_ID,
     },
     test_decrypt, test_encrypt,
     traits::{Backend, SignatureAlgorithm, backend as registered_backend},
 };
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_GCM_PARAMS, CK_INTERFACE, CK_INVALID_HANDLE, CK_MECHANISM,
-    CK_OBJECT_CLASS, CK_PROFILE_ID, CK_ULONG, CK_USER_TYPE, CK_UTF8CHAR, CK_VERSION, CKA_CLASS,
-    CKA_LABEL, CKA_PRIVATE, CKA_PROFILE_ID, CKA_UNIQUE_ID, CKF_SERIAL_SESSION, CKM_AES_GCM,
-    CKO_DATA, CKO_PROFILE, CKP_AUTHENTICATION_TOKEN, CKP_BASELINE_PROVIDER, CKP_EXTENDED_PROVIDER,
-    CKP_PUBLIC_CERTIFICATES_TOKEN, CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_READ_ONLY,
-    CKR_BUFFER_TOO_SMALL, CKR_OK, CKR_OPERATION_NOT_INITIALIZED, CKR_USER_TYPE_INVALID,
-    CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
+    CK_MECHANISM_INFO, CK_OBJECT_CLASS, CK_PROFILE_ID, CK_ULONG, CK_USER_TYPE, CK_UTF8CHAR,
+    CK_VERSION, CKA_CLASS, CKA_LABEL, CKA_PRIVATE, CKA_PROFILE_ID, CKA_UNIQUE_ID, CKF_DECRYPT,
+    CKF_ENCRYPT, CKF_SERIAL_SESSION, CKM_AES_GCM, CKO_DATA, CKO_PROFILE, CKP_AUTHENTICATION_TOKEN,
+    CKP_BASELINE_PROVIDER, CKP_EXTENDED_PROVIDER, CKP_PUBLIC_CERTIFICATES_TOKEN, CKR_ARGUMENTS_BAD,
+    CKR_ATTRIBUTE_READ_ONLY, CKR_BUFFER_TOO_SMALL, CKR_OK, CKR_OPERATION_NOT_INITIALIZED,
+    CKR_USER_TYPE_INVALID, CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR,
+    CRYPTOKI_VERSION_MINOR,
 };
 use serial_test::serial;
 use test_kms_server::start_default_test_kms_server;
@@ -271,6 +273,10 @@ fn test_kms_client_and_backend() -> Result<(), Pkcs11Error> {
 }
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+/// Sentinel byte used by `test_aes_gcm_encrypt_rejects_undersized_output_buffer` to detect
+/// out-of-bounds writes past a caller-declared buffer capacity.
+const UNDERSIZED_BUFFER_GUARD: u8 = 0xAA;
 
 #[test]
 #[expect(unsafe_code)]
@@ -728,6 +734,162 @@ fn test_aes_gcm_encrypt_decrypt_roundtrip() -> Pkcs11Result<()> {
     assert_eq!(decrypted, plaintext);
 
     assert_eq!(C_CloseSession(handle), CKR_OK);
+    assert_eq!(C_Finalize(std::ptr::null_mut()), CKR_OK);
+    Ok(())
+}
+
+/// Regression test for a security-review finding: `Session::encrypt` used to overwrite
+/// `*pulEncryptedDataLen` with the ciphertext length *before* checking it against the caller's
+/// original buffer capacity, so the too-small-buffer check always compared the freshly
+/// overwritten value against itself and never actually caught anything — the caller would
+/// then write `plaintext_len + 16` (AES-GCM tag) bytes into a `plaintext_len`-sized buffer,
+/// silently corrupting adjacent heap memory instead of returning `CKR_BUFFER_TOO_SMALL`.
+#[test]
+#[serial]
+#[expect(unsafe_code)]
+fn test_aes_gcm_encrypt_rejects_undersized_output_buffer() -> Pkcs11Result<()> {
+    let _backend = initialize_backend()?;
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: `#[serial]` ensures no other thread concurrently reads or modifies the process
+    // environment, satisfying the thread-safety requirement for `set_var` (Rust 2024 edition).
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
+
+    test_init();
+    assert_eq!(C_Initialize(std::ptr::null_mut()), CKR_OK);
+    let mut handle = CK_INVALID_HANDLE;
+    assert_eq!(
+        // SAFETY: `SLOT_ID` is the only valid slot; the two null/None args are optional and
+        // intentionally unused; `handle` is a properly-aligned out-parameter on the stack.
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                std::ptr::null_mut(),
+                None,
+                &raw mut handle,
+            )
+        },
+        CKR_OK
+    );
+
+    let mut label_bytes = b"vol1".to_vec();
+    let label_len: CK_ULONG = label_bytes.len().try_into()?;
+    #[allow(clippy::cast_ptr_alignment)]
+    let mut template = [CK_ATTRIBUTE {
+        type_: CKA_LABEL,
+        pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
+        ulValueLen: label_len,
+    }];
+    let template_len: CK_ULONG = template.len().try_into()?;
+    assert_eq!(
+        unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), template_len) },
+        CKR_OK
+    );
+    let mut obj_handles = [CK_INVALID_HANDLE; 4];
+    let mut count: CK_ULONG = 0;
+    let max_count: CK_ULONG = obj_handles.len().try_into()?;
+    assert_eq!(
+        unsafe { C_FindObjects(handle, obj_handles.as_mut_ptr(), max_count, &raw mut count) },
+        CKR_OK
+    );
+    assert_eq!(C_FindObjectsFinal(handle), CKR_OK);
+    assert!(count > 0);
+    let key_handle = obj_handles[0];
+
+    let mut iv = [0x22_u8; 12];
+    let mut aad: Vec<u8> = Vec::new();
+    let mut gcm_params = CK_GCM_PARAMS {
+        pIv: iv.as_mut_ptr(),
+        ulIvLen: iv.len().try_into()?,
+        ulIvBits: 0,
+        pAAD: aad.as_mut_ptr(),
+        ulAADLen: 0,
+        ulTagBits: 128,
+    };
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_AES_GCM,
+        pParameter: (&raw mut gcm_params).cast::<std::ffi::c_void>(),
+        ulParameterLen: size_of::<CK_GCM_PARAMS>().try_into()?,
+    };
+
+    let mut plaintext = b"undersized-output-buffer-regression".to_vec();
+    assert_eq!(
+        unsafe { C_EncryptInit(handle, &raw mut mechanism, key_handle) },
+        CKR_OK
+    );
+    // Deliberately too small: exactly `plaintext.len()`, i.e. missing room for the 16-byte
+    // AES-GCM tag that `C_Encrypt` appends. Guard bytes surround the buffer so an
+    // out-of-bounds write (the pre-fix bug) would corrupt a detectable sentinel instead of
+    // undefined process memory.
+    let mut guarded_buffer = vec![UNDERSIZED_BUFFER_GUARD; plaintext.len() + 16];
+    let undersized_len: CK_ULONG = plaintext.len().try_into()?;
+    let mut ciphertext_len: CK_ULONG = undersized_len;
+    let rv = unsafe {
+        C_Encrypt(
+            handle,
+            plaintext.as_mut_ptr(),
+            plaintext.len().try_into()?,
+            guarded_buffer.as_mut_ptr(),
+            &raw mut ciphertext_len,
+        )
+    };
+    assert_eq!(
+        rv, CKR_BUFFER_TOO_SMALL,
+        "an output buffer too small to hold ciphertext+tag must be rejected, not silently \
+         overflowed"
+    );
+    // The required length must still be reported so a retry with a correctly-sized buffer
+    // can succeed, per the PKCS#11 spec's two-call convention.
+    assert_eq!(usize::try_from(ciphertext_len)?, plaintext.len() + 16);
+    // The guard bytes past `undersized_len` must be untouched — proves no out-of-bounds write
+    // occurred.
+    assert!(
+        guarded_buffer
+            .get(usize::try_from(undersized_len)?..)
+            .expect("undersized_len is within guarded_buffer's bounds by construction")
+            .iter()
+            .all(|&b| b == UNDERSIZED_BUFFER_GUARD),
+        "C_Encrypt must not write past the caller-declared buffer capacity on \
+         CKR_BUFFER_TOO_SMALL"
+    );
+
+    assert_eq!(C_CloseSession(handle), CKR_OK);
+    assert_eq!(C_Finalize(std::ptr::null_mut()), CKR_OK);
+    Ok(())
+}
+
+/// Regression test for a security-review finding: `C_GetMechanismInfo` used to report
+/// `CKM_AES_GCM` with the `CKF_SIGN` flag (the catch-all default for signature mechanisms)
+/// instead of `CKF_ENCRYPT | CKF_DECRYPT`, which would cause PKCS#11 clients that check
+/// mechanism capability flags before use to incorrectly reject AES-GCM encryption/decryption.
+#[test]
+#[serial]
+#[expect(unsafe_code)]
+fn test_get_mechanism_info_aes_gcm_reports_encrypt_decrypt() -> Pkcs11Result<()> {
+    let _backend = initialize_backend()?;
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: `#[serial]` ensures no other thread concurrently reads or modifies the process
+    // environment, satisfying the thread-safety requirement for `set_var` (Rust 2024 edition).
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
+    test_init();
+    assert_eq!(C_Initialize(std::ptr::null_mut()), CKR_OK);
+
+    let mut info = CK_MECHANISM_INFO::default();
+    assert_eq!(
+        // SAFETY: `SLOT_ID` is the only valid slot; `info` is a properly-aligned out-parameter.
+        unsafe { C_GetMechanismInfo(SLOT_ID, CKM_AES_GCM, &raw mut info) },
+        CKR_OK
+    );
+    assert_eq!(
+        info.flags,
+        CKF_ENCRYPT | CKF_DECRYPT,
+        "CKM_AES_GCM must report CKF_ENCRYPT | CKF_DECRYPT, not the CKF_SIGN default"
+    );
+
     assert_eq!(C_Finalize(std::ptr::null_mut()), CKR_OK);
     Ok(())
 }
