@@ -26,7 +26,7 @@ actix-web = { workspace = true, features = ["macros"] }
 base64 = { workspace = true }
 bytes = "1"
 cosmian_crypto_core = { workspace = true }
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.26.0" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.27.0" }
 cosmian_logger = { workspace = true }
 der = { workspace = true, features = ["std"] }
 http = { workspace = true }

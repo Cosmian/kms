@@ -206,7 +206,11 @@ Query or manage the Crypto Officer role
 
 **`status`** [[1.6.1]](#161-ckms-access-rights-crypto-officer-status)  Print the current Crypto Officer role configuration and ceremony activation status
 
-**`disable`** [[1.6.2]](#162-ckms-access-rights-crypto-officer-disable)  Disable an active Crypto Officer ceremony (requires active Crypto Officer privileges)
+**`create-split-key`** [[1.6.2]](#162-ckms-access-rights-crypto-officer-create-split-key)  Create a ceremony split key (one share per configured CO) and distribute shares
+
+**`activate`** [[1.6.3]](#163-ckms-access-rights-crypto-officer-activate)  Activate the Crypto Officer role via a split-key ceremony
+
+**`disable`** [[1.6.4]](#164-ckms-access-rights-crypto-officer-disable)  Disable an active Crypto Officer ceremony (requires active Crypto Officer privileges)
 
 ---
 
@@ -220,12 +224,42 @@ Print the current Crypto Officer role configuration and ceremony activation stat
 
 ---
 
-## 1.6.2 ckms access-rights crypto-officer disable
+## 1.6.2 ckms access-rights crypto-officer create-split-key
+
+Create a ceremony split key (one share per configured CO) and distribute shares
+
+### Usage
+`ckms access-rights crypto-officer create-split-key [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` Optional custom base UID for the ceremony key. Shares will be named `<uid>#1`, `<uid>#2`, … for human-friendly lookup. If omitted, the server assigns a UUID automatically
+
+
+
+---
+
+## 1.6.3 ckms access-rights crypto-officer activate
+
+Activate the Crypto Officer role via a split-key ceremony
+
+### Usage
+`ckms access-rights crypto-officer activate [options] <SHARE_IDS>...
+`
+### Arguments
+` <SHARE_IDS>` UIDs of all n split-key shares (all shares from the ceremony key must be provided)
+
+
+
+---
+
+## 1.6.4 ckms access-rights crypto-officer disable
 
 Disable an active Crypto Officer ceremony (requires active Crypto Officer privileges)
 
 ### Usage
-`ckms access-rights crypto-officer disable`
+`ckms access-rights crypto-officer disable [options]`
+### Arguments
+`--target-user <EMAIL>` The email of the active CO to revoke. If omitted, the caller self-revokes
+
 
 
 
@@ -1201,7 +1235,7 @@ Create, destroy, import, and export FPE keys
 
 ### Subcommands
 
-**`create`** [[7.1.1]](#711-ckms-fpe-keys-create)
+**`create`** [[7.1.1]](#711-ckms-fpe-keys-create) 
 **`export`** [[7.1.2]](#712-ckms-fpe-keys-export)  Export a key or secret data from the KMS
 
 **`import`** [[7.1.3]](#713-ckms-fpe-keys-import)  Import a secret data or a key in the KMS.
@@ -2098,20 +2132,22 @@ Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt dat
 
 **`export`** [[10.5]](#105-ckms-certificates-export)  Export a certificate from the KMS
 
-**`import`** [[10.6]](#106-ckms-certificates-import)  Import one of the following:
+**`generate-crl`** [[10.6]](#106-ckms-certificates-generate-crl)  Generate a Certificate Revocation List (CRL) for a CA certificate.
+
+**`import`** [[10.7]](#107-ckms-certificates-import)  Import one of the following:
 
 - a certificate: formatted as a X509 PEM (pem), X509 DER (der) or JSON TTLV (json-ttlv)
 - a certificate chain as a PEM-stack (chain)
 - a PKCS12 file containing a certificate, a private key and possibly a chain (pkcs12)
 - the Mozilla Common CA Database (CCADB - fetched by the CLI before import) (ccadb)
 
-**`revoke`** [[10.7]](#107-ckms-certificates-revoke)  Revoke a certificate
+**`revoke`** [[10.8]](#108-ckms-certificates-revoke)  Revoke a certificate
 
-**`destroy`** [[10.8]](#108-ckms-certificates-destroy)  Destroy a certificate
+**`destroy`** [[10.9]](#109-ckms-certificates-destroy)  Destroy a certificate
 
-**`set-rotation-policy`** [[10.9]](#109-ckms-certificates-set-rotation-policy)  Set the automatic rotation policy on a certificate (interval, offset, keyset name)
+**`set-rotation-policy`** [[10.10]](#1010-ckms-certificates-set-rotation-policy)  Set the automatic rotation policy on a certificate (interval, offset, keyset name)
 
-**`validate`** [[10.10]](#1010-ckms-certificates-validate)  Validate a certificate
+**`validate`** [[10.11]](#1011-ckms-certificates-validate)  Validate a certificate
 
 ---
 
@@ -2263,7 +2299,26 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 10.6 ckms certificates import
+## 10.6 ckms certificates generate-crl
+
+Generate a Certificate Revocation List (CRL) for a CA certificate.
+
+### Usage
+`ckms certificates generate-crl [options]`
+### Arguments
+`--certificate-id [-c] <ISSUER_CERTIFICATE_ID>` The unique identifier of the issuer (CA) certificate
+
+`--validity-days [-d] <VALIDITY_DAYS>` CRL validity period in days (default: 7)
+
+`--output-file [-o] <OUTPUT_FILE>` The output file path for the generated CRL
+
+`--output-format [-f] <OUTPUT_FORMAT>` Output format: `der` (default) or `pem`
+
+
+
+---
+
+## 10.7 ckms certificates import
 
 Import one of the following:
 
@@ -2309,7 +2364,7 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 10.7 ckms certificates revoke
+## 10.8 ckms certificates revoke
 
 Revoke a certificate
 
@@ -2329,7 +2384,7 @@ Revoke a certificate
 
 ---
 
-## 10.8 ckms certificates destroy
+## 10.9 ckms certificates destroy
 
 Destroy a certificate
 
@@ -2351,7 +2406,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 10.9 ckms certificates set-rotation-policy
+## 10.10 ckms certificates set-rotation-policy
 
 Set the automatic rotation policy on a certificate (interval, offset, keyset name)
 
@@ -2370,7 +2425,7 @@ Set the automatic rotation policy on a certificate (interval, offset, keyset nam
 
 ---
 
-## 10.10 ckms certificates validate
+## 10.11 ckms certificates validate
 
 Validate a certificate
 
@@ -4641,9 +4696,13 @@ Split an existing symmetric key into multiple shares using XOR-based split knowl
 ### Arguments
 `--key-id [-k] <KEY_ID>` The unique identifier of the key to split
 
-`--total-parts [-p] <TOTAL_PARTS>` Total number of share objects to create (n >= 2). All shares are required to reconstruct the key (XOR n-of-n, no configurable threshold)
+`--total-parts [-p] <TOTAL_PARTS>` Total number of share objects to create (n >= 2). All shares are required to reconstruct the key (XOR n-of-n, no configurable threshold). Ignored when `--ceremony` is set (share count is auto-determined by the server)
 
 `--method [-m] <METHOD>` The splitting method. Accepted value: `xor` (XOR n-of-n, all shares required)
+
+`--ceremony <CEREMONY>` Stamp the `x-cosmian-crypto-officer-ceremony` vendor attribute on the key before splitting. The server will distribute shares to different Crypto Officer candidates instead of assigning them all to the caller
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 
@@ -4658,8 +4717,6 @@ Reconstruct a key from split-key shares using XOR-based split knowledge.
 `
 ### Arguments
 ` <SHARE_IDS>` The unique identifiers of the split key shares to join. At least `threshold` shares must be specified
-
-`--method [-m] <METHOD>` The splitting method that was used when the key was originally split. Must match the method used during `create-split-key`
 
 `--object-type [-o] <OBJECT_TYPE>` The type of object to reconstruct
 
@@ -5201,3 +5258,6 @@ Configure the KMS CLI (create ckms.toml)
 
 ### Usage
 `ckms configure`
+
+
+

@@ -17,7 +17,7 @@ By leveraging KMS CLI, users can seamlessly integrate advanced cryptographic fun
 !!! info Download cosmian
 
     Please download the latest versions for your Operating System from
-    the [Cosmian public packages repository](https://package.cosmian.com/kms/5.26.0/)
+    the [Cosmian public packages repository](https://package.cosmian.com/kms/5.27.0/)
     See below for installation instructions.
 
 <!-- Warning: this doc is merged in the repository `public_documentation`. -->

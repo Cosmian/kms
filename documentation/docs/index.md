@@ -92,9 +92,9 @@ See the complete [supported algorithms list](./certifications_and_compliance/cry
 
 The **Eviden KMS** is available as:
 
-- Linux packages: [Debian](https://package.cosmian.com/kms/5.26.0/deb/) or [RPM](https://package.cosmian.com/kms/5.26.0/rpm/)
-- Windows installer: [Windows](https://package.cosmian.com/kms/5.26.0/windows/)
-- macOS installer: [macOS](https://package.cosmian.com/kms/5.26.0/dmg/)
+- Linux packages: [Debian](https://package.cosmian.com/kms/5.27.0/deb/) or [RPM](https://package.cosmian.com/kms/5.27.0/rpm/)
+- Windows installer: [Windows](https://package.cosmian.com/kms/5.27.0/windows/)
+- macOS installer: [macOS](https://package.cosmian.com/kms/5.27.0/dmg/)
 - Docker: [Standard image](https://github.com/Cosmian/kms/pkgs/container/kms) and [FIPS image](https://github.com/Cosmian/kms/pkgs/container/kms)
 
 ## User Interface
@@ -112,5 +112,5 @@ The [KMS CLI](kms_clients/index.md) provides a powerful command-line interface f
 
 The **[KMS CLI](kms_clients/index.md)** is packaged as:
 
-- [Debian](https://package.cosmian.com/kms/5.26.0/deb/) or [RPM](https://package.cosmian.com/kms/5.26.0/rpm/) package
+- [Debian](https://package.cosmian.com/kms/5.27.0/deb/) or [RPM](https://package.cosmian.com/kms/5.27.0/rpm/) package
 - [Pre-built binaries](https://package.cosmian.com/kms/) for Linux, Windows, and macOS

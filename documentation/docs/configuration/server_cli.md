@@ -469,7 +469,7 @@ Options:
           Product Name and Version of the EKMS to report in the /info endpoint
 
           [env: KMS_AZURE_EKM_PRODUCT=]
-          [default: "Cosmian KMS v5.26.0"]
+          [default: "Cosmian KMS v5.27.0"]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory
@@ -550,10 +550,10 @@ Options:
           [env: KMS_ANSI_COLORS=]
 
       --crypto-officer-users <CRYPTO_OFFICER_USERS>
-          Users with the Crypto Officer role (ISO/IEC 19790 "Crypto Officer" / PKCS#11 `CKU_SO`).
+          Users with the Crypto Officer role.
 
           May manage key lifecycle (create, import, certify, rekey, activate, revoke, destroy)
-          and access raw key material (get, export — "key output" per ISO/IEC 19790 §7.4.3).
+          and access raw key material.
           When active, gains ownership bypass on all Managed Objects.
           When set, only listed users (plus those explicitly granted the `Create` right) can
           create and import objects.
@@ -563,8 +563,7 @@ Options:
 
           When `true`, users listed in `crypto_officer_users` are candidates only —
           the role is inactive until a KMIP `JoinSplitKey` with all shares tagged
-          `x-cosmian-crypto-officer-ceremony` completes
-          (NIST SP 800-57 Part 2 Rev 1 §4.6 split knowledge, XOR n-of-n).
+          `x-cosmian-crypto-officer-ceremony` completes.
 
       --ceremony-secret <CEREMONY_SECRET>
           Hex-encoded 32-byte secret for ceremony record encryption.
@@ -817,6 +816,123 @@ Options:
 
           [env: KMS_VAULT_TOKEN_CACHE_TTL_SECS=]
           [default: 30]
+
+      --crl-default-validity-days <CRL_DEFAULT_VALIDITY_DAYS>
+          Default CRL validity period in days for CA certificates managed by this server.
+
+          When a CRL is generated without an explicit validity override (e.g., via
+          `GET /certificates/{id}/crl?validity_days=N`), this value is used.
+
+          Production CAs often use 1–24 h for short-lived CRLs (code-signing,
+          high-security); enterprise PKIs commonly use 7–28 days.
+
+          Valid range: 1–365. Default: 7.
+
+          [default: 7]
+
+      --crl-refresh-check-hours <CRL_REFRESH_CHECK_HOURS>
+          How often (in hours) the background CRL refresh scheduler wakes up to
+          check whether any stored CRL needs to be regenerated.
+
+          Set to 0 to disable the background scheduler entirely.
+          When disabled, CRLs are only refreshed on certificate revocation events.
+
+          Default: 1 (wake up hourly).
+
+          [default: 1]
+
+      --crl-refresh-overlap-hours <CRL_REFRESH_OVERLAP_HOURS>
+          CRL overlap window in hours.
+
+          The background scheduler regenerates a CRL when its `nextUpdate` timestamp
+          is within this many hours of the current time.  This prevents relying parties
+          from seeing an expired CRL during the window between expiry and the next
+          revocation-triggered regeneration.
+
+          Analogy: EJBCA "CRL Overlap Time" (default 10 % of validity); AWS PCA uses
+          a 1-day overlap by default.
+
+          Default: 24 (regenerate 24 hours before expiry).
+
+          [default: 24]
+
+      --ocsp-enabled
+          Enable the OCSP responder endpoint at `GET/POST /ocsp/`.
+
+          When `false` (default) all `/ocsp/` routes return 404.
+
+      --ocsp-ca-uid <OCSP_CA_UID>
+          UID of the CA certificate object in the KMS.
+
+          Used to verify that incoming OCSP requests are for certificates issued by
+          this CA (by comparing issuer name hash and key hash), and to retrieve
+          certificate states for revocation lookup.
+
+          Must be set when `ocsp_enabled = true`.
+
+      --ocsp-responder-cert-uid <OCSP_RESPONDER_CERT_UID>
+          UID of the dedicated OCSP signing certificate (RFC 6960 §4.2.2.2 authorized responder).
+
+          When set, OCSP responses are signed by this delegated key+certificate rather
+          than the CA's own private key.  The referenced certificate MUST have:
+          - `extKeyUsage: OCSPSigning` (OID 1.3.6.1.5.5.7.3.9)
+
+          It SHOULD also have the `id-pkix-ocsp-nocheck` extension (OID
+          1.3.6.1.5.5.7.48.1.5, RFC 6960 §4.2.2.2.1) — this is only one of three
+          RFC-sanctioned ways to let relying parties check the responder certificate's
+          own revocation status (the others being a CDP/AIA pointer, or local policy), so
+          its absence is not required, only logged as a warning.
+
+          The `OCSPSigning` requirement is enforced at request time: the server rejects
+          the delegated certificate (and refuses to sign) if it is missing.
+
+          The referenced key may be backed by an HSM via the existing PKCS#11 routing —
+          no additional configuration is required.
+
+          When unset, the CA's own private key is used (acceptable for small deployments;
+          not recommended for production CAs where the signing key must stay offline).
+
+      --ocsp-cache-ttl-secs <OCSP_CACHE_TTL_SECS>
+          OCSP response validity period in seconds (`thisUpdate` → `nextUpdate`).
+
+          Determines how long a signed response may be cached by relying parties and
+          CDN/proxy intermediaries per RFC 5019 §5.  Shorter values increase freshness;
+          longer values reduce load on the KMS (and HSM) signing key.
+
+          Default: 86400 (24 hours).
+
+          [default: 86400]
+
+      --ocsp-nonce-policy <OCSP_NONCE_POLICY>
+          Nonce handling policy for OCSP responses (RFC 9654 §2.1).
+
+          - `optional` (default): echo the nonce if present, proceed without one if absent.
+          - `required`: reject requests that carry no nonce (returns `malformedRequest`).
+          - `ignore`: never include a nonce in responses (suitable for pre-produced/cached responses).
+
+          Per RFC 9654 §2.1, the responder MUST accept nonces of 16–128 octets and echo
+          them verbatim.  Nonces shorter than 16 octets are silently ignored.
+
+          [default: optional]
+
+      --ocsp-include-cert-chain
+          Include the signing certificate chain in OCSP `BasicResponse`s.
+
+          Set to `true` (default) when `ocsp_responder_cert_uid` is configured so that
+          clients can verify the delegated responder's authorization without additional
+          fetches.  Safe to set `false` when the CA signs responses directly.
+
+      --ocsp-archive-cutoff-secs <OCSP_ARCHIVE_CUTOFF_SECS>
+          Archive-cutoff extension value in seconds (RFC 6960 §4.4.4).
+
+          When non-zero, the `id-pkix-ocsp-archive-cutoff` extension is added to each
+          `BasicResponse` with value = now − `ocsp_archive_cutoff_secs`. This tells clients
+          how far back the responder maintains revocation records.
+
+          Set to 0 (default) to disable the extension.
+          Typical values: 365 days = 31536000.
+
+          [default: 0]
 
   -h, --help
           Print help (see a summary with '-h')

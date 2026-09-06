@@ -36,7 +36,7 @@ The **Cosmian KMS** has extensive online [documentation](https://docs.cosmian.co
 
 ## 🚀 Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.26.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.27.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
 
 Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, run the following command:
 
