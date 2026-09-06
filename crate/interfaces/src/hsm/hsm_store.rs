@@ -791,11 +791,12 @@ impl CryptoOracle for HsmStore {
         cryptographic_parameters: Option<
             &cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters,
         >,
+        input_is_digest: bool,
     ) -> InterfaceResult<Vec<u8>> {
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
-        let key_type = self.hsm.get_key_type(slot_id, key_id.as_bytes()).await?;
-        match key_type {
-            Some(KeyType::RsaPrivateKey | KeyType::EcPrivateKey) => {}
+        let key_type = match self.hsm.get_key_type(slot_id, key_id.as_bytes()).await? {
+            Some(KeyType::RsaPrivateKey) => KeyType::RsaPrivateKey,
+            Some(KeyType::EcPrivateKey) => KeyType::EcPrivateKey,
             Some(other) => {
                 return Err(InterfaceError::InvalidRequest(format!(
                     "Sign: key {uid} is a {other:?}, expected an RSA or EC private key"
@@ -806,8 +807,18 @@ impl CryptoOracle for HsmStore {
                     "Sign: key {uid} not found on the HSM"
                 )));
             }
-        }
-        let algorithm = SigningAlgorithm::from_kmip(cryptographic_parameters)?;
+        };
+        let curve = self
+            .hsm
+            .get_key_metadata(slot_id, key_id.as_bytes())
+            .await?
+            .and_then(|metadata| metadata.curve);
+        let algorithm = SigningAlgorithm::from_kmip(
+            cryptographic_parameters,
+            key_type,
+            curve,
+            input_is_digest,
+        )?;
         debug!("sign: using algorithm {algorithm:?} for key {uid}");
         self.hsm
             .sign(slot_id, key_id.as_bytes(), algorithm, data)
