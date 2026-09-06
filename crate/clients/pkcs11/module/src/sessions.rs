@@ -573,13 +573,19 @@ impl Session {
             .ok_or_else(|| ModuleError::OperationNotInitialized(0))?;
         let ciphertext = backend()?.encrypt(encrypt_ctx, cleartext)?;
         unsafe {
-            *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
-            if !pEncryptedData.is_null() {
+            if pEncryptedData.is_null() {
+                *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
+            } else {
                 if (usize::try_from(*pulEncryptedDataLen)?) < ciphertext.len() {
+                    // Per the PKCS#11 spec, the caller's output-length variable must still be
+                    // updated with the required size on `CKR_BUFFER_TOO_SMALL` so a retry with a
+                    // correctly-sized buffer can succeed.
+                    *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
                     return Err(ModuleError::BufferTooSmall);
                 }
                 std::slice::from_raw_parts_mut(pEncryptedData, ciphertext.len())
                     .copy_from_slice(&ciphertext);
+                *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
                 self.encrypt_ctx = None;
             }
         }
