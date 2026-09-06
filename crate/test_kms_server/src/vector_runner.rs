@@ -4696,6 +4696,14 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    #[cfg(not(feature = "non-fips"))]
+    async fn test_vec_hsm_resident_ed25519_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_ed25519_rejected").await
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "non-fips")]
     async fn test_vec_hsm_resident_ed25519_created() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/resident_ed25519_created").await
