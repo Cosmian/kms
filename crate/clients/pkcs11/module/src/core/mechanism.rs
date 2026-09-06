@@ -144,11 +144,15 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
             // guarantee; `read` on an unaligned pointer is undefined behavior.
             let params: CK_GCM_PARAMS =
                 unsafe { parameter_ptr.cast::<CK_GCM_PARAMS>().read_unaligned() };
+            // Bind to a local to avoid taking a reference to a packed struct field (which is
+            // itself unaligned and undefined behavior even if never dereferenced), per
+            // https://github.com/rust-lang/rust/issues/82523.
+            let tag_bits = params.ulTagBits;
 
-            if params.ulTagBits != AES_GCM_TAG_BITS {
+            if tag_bits != AES_GCM_TAG_BITS {
                 error!(
                     "CKM_AES_GCM: unsupported ulTagBits {} (only {} is supported)",
-                    params.ulTagBits, AES_GCM_TAG_BITS
+                    tag_bits, AES_GCM_TAG_BITS
                 );
                 return Err(ModuleError::MechanismInvalid(mechanism_type));
             }
