@@ -653,6 +653,17 @@ impl Session {
         let mut objects_store = OBJECTS_STORE.write()?;
         match objects_store.get_using_handle(handle) {
             Some(object) => {
+                // Profile objects are synthetic, module-local objects that self-declare the
+                // module's conformance profiles (OASIS PKCS#11 Profiles v3.1 §Object Model).
+                // They are not backed by any real KMS object, and their `remote_id()` (e.g.
+                // "pkcs11-profile:<id>") is only a local namespacing convention, not a
+                // cryptographically-guaranteed-unique identifier. Forwarding a destroy/revoke
+                // request for that fake id to the backend could accidentally hit an unrelated
+                // real KMS object whose unique identifier happens to collide with it. Reject
+                // destruction of such synthetic objects instead of ever calling the backend.
+                if matches!(object.as_ref(), Object::Profile(_)) {
+                    return Err(ModuleError::ActionProhibited(handle));
+                }
                 backend()?.revoke_object(&object.remote_id())?;
                 backend()?.destroy_object(&object.remote_id())?;
             }
