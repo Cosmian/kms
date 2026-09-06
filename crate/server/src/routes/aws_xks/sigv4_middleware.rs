@@ -187,13 +187,6 @@ where
                 access_key: access_key_for_svc,
             };
 
-            let server_timestamp = Utc::now();
-
-            // `scratchstack-aws-signature` 0.11.4 hard-codes a 15-minute SigV4 timestamp skew
-            // and exposes no public override. Keep the previous 5-minute XKS anti-replay window
-            // here to avoid CWE-294 replay-window widening until upstream provides a tunable API.
-            enforce_sigv4_request_freshness(&http_request, server_timestamp)?;
-
             // Canonicalization and body hashing inside `sigv4_validate_request` run synchronously
             // and scale with the request body size (up to 64 MB for XKS), so running them
             // directly on the Actix worker would let a burst of large concurrent requests starve
@@ -206,6 +199,14 @@ where
             // unauthenticated caller could otherwise submit an unbounded number of large signed
             // (or invalid) requests and exhaust CPU/blocking-pool capacity even though each
             // individual task is offloaded (CWE-400).
+            //
+            // Acquire the permit *before* capturing `server_timestamp`: a request queued behind
+            // the semaphore under load could otherwise be freshness-checked and signature-
+            // validated against a timestamp captured well before its turn to run, letting it pass
+            // the 5-minute anti-replay window using stale wall-clock time (CWE-367-style
+            // time-of-check/time-of-use gap that weakens the replay control). Capturing the
+            // timestamp only after the permit is granted ties both checks to the actual
+            // processing time.
             let permit = SIGV4_VERIFICATION_PERMITS
                 .acquire()
                 .await
@@ -214,6 +215,14 @@ where
                         "SigV4 verification semaphore unexpectedly closed: {error}"
                     ))
                 })?;
+
+            let server_timestamp = Utc::now();
+
+            // `scratchstack-aws-signature` 0.11.4 hard-codes a 15-minute SigV4 timestamp skew
+            // and exposes no public override. Keep the previous 5-minute XKS anti-replay window
+            // here to avoid CWE-294 replay-window widening until upstream provides a tunable API.
+            enforce_sigv4_request_freshness(&http_request, server_timestamp)?;
+
             let region = params.region.clone();
             let service_name = params.service.clone();
             let runtime_handle = tokio::runtime::Handle::current();
