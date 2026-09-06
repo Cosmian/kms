@@ -29,3 +29,15 @@ thiserror = { workspace = true }
 time = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zeroize = { workspace = true }
+# Used exclusively by the shared HSM test suite (`tests_shared.rs`, always compiled into this
+# crate's public lib so vendor crates can reuse it) to independently verify HSM-signed ECDSA
+# signatures against the exported public key. Production signing/keygen code (`session/`,
+# `kms_hsm.rs`) does not depend on openssl — DER encoding there is done manually.
+openssl = { workspace = true }
+
+[features]
+# Enables HSM-delegated EdDSA (Ed25519/Ed448) signing and X25519 ECDH key generation, mirroring
+# the software crypto path gating in `crate/crypto/src/crypto/elliptic_curves/sign.rs`. HKDF
+# (`CKM_HKDF_DERIVE`) is NIST-approved regardless of transport and is therefore NOT gated here.
+# See issue #1157 ("HSM delegation Track B").
+non-fips = ["cosmian_kms_interfaces/non-fips"]

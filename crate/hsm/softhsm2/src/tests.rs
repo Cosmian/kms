@@ -54,6 +54,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     shared::destroy_all(&slot)?;
     shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
+    shared::generate_ec_keypair(&slot)?;
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA1)?;
     shared::rsa_pkcs_encrypt(&slot)?;
     shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA1)?;
@@ -63,6 +64,10 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     shared::rsa_pkcs_v15_sign(&slot)?;
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
+    shared::rsa_pss_sign_all_algorithms(&slot)?;
+    shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
+    #[cfg(feature = "non-fips")]
+    shared::eddsa_sign_all_curves(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA1, cfg.threads)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
@@ -103,7 +108,13 @@ fn test_hsm_softhsm2_pkcs11_v3_capability_probe_is_additive() -> HResult<()> {
     let cfg = cfg()?;
     let hsm = shared::instantiate::<SofthsmCapabilityProvider>(&cfg)?;
 
-    drop(hsm.hsm_lib().get_info_struct()?);
+    let info = hsm.hsm_lib().get_info_struct()?;
+    assert!(
+        info.cryptoki_version.0 == 2 || info.cryptoki_version.0 == 3,
+        "unexpected Cryptoki major version reported by SoftHSM2: {}",
+        info.cryptoki_version.0
+    );
+
     let supports_interfaces = hsm.hsm_lib().supports_pkcs11_v3_interfaces();
     let interfaces = hsm.hsm_lib().list_pkcs11_v3_interfaces()?;
     assert_eq!(supports_interfaces, interfaces.is_some());
@@ -213,6 +224,48 @@ fn test_hsm_softhsm2_rsa_sha256_sign() -> HResult<()> {
 fn test_hsm_softhsm2_rsa_sign_all_algorithms() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
     shared::rsa_sign_all_algorithms(&slot)
+}
+
+/// HSM-delegated RSA-PSS signing (issue #1154). Additive: exercises only the new
+/// `HsmSigningAlgorithm::RsaPssSha{256,384,512}` variants without touching any of the
+/// pre-existing PKCS#1 v1.5 signing coverage above.
+#[test]
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_rsa_pss_sign_all_algorithms() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::rsa_pss_sign_all_algorithms(&slot)
+}
+
+/// HSM-delegated EC key generation (issue #1154). Additive: exercises the new
+/// `HsmKeypairAlgorithm::EC` keygen path for all 4 FIPS-approved NIST curves
+/// (P-224/P-256/P-384/P-521), for both exportable and sensitive (non-extractable) keys.
+#[test]
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_generate_ec_keypair() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::generate_ec_keypair(&slot)
+}
+
+/// HSM-delegated ECDSA signing (issue #1154). Additive: exercises the new
+/// `HsmSigningAlgorithm::EcdsaSha{256,384,512}` variants across all 4 FIPS-approved NIST
+/// curves, verifying each HSM-produced DER signature independently with OpenSSL.
+#[test]
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_ecdsa_sign_all_curves_and_hashes() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::ecdsa_sign_all_curves_and_hashes(&slot)
+}
+
+/// HSM-delegated `EdDSA` signing (issue #1157, "HSM delegation Track B"). Additive: exercises
+/// only the new `CKM_EC_EDWARDS_KEY_PAIR_GEN`/`CKM_EDDSA` mechanisms without touching any of
+/// the pre-existing ECDSA/RSA signing coverage above. `SoftHSM2` 2.6.1 was verified (via
+/// `pkcs11-tool -M`) to support both mechanisms; run with `--features non-fips,softhsm2`.
+#[cfg(feature = "non-fips")]
+#[test]
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_eddsa_sign_all_curves() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::eddsa_sign_all_curves(&slot)
 }
 
 #[test]

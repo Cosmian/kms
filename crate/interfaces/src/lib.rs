@@ -5,13 +5,14 @@ mod object_handle;
 mod stores;
 mod user_id;
 
+pub use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
 pub use crypto_oracle::{
     CryptoAlgorithm, CryptoOracle, EncryptedContent, KeyMetadata, SigningAlgorithm,
 };
 pub use error::{InterfaceError, InterfaceResult};
 pub use hsm::{
-    HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, HsmStore, KeyMaterial,
-    RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
+    EcCurve, EcPrivateKeyMaterial, EcPublicKeyMaterial, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm,
+    HsmObject, HsmObjectFilter, HsmStore, KeyMaterial, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
 pub use object_handle::{HsmUidParts, ObjectHandle};
 pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore};
@@ -27,6 +28,8 @@ pub enum KeyType {
     AesKey,
     RsaPrivateKey,
     RsaPublicKey,
+    EcPrivateKey,
+    EcPublicKey,
 }
 
 #[macro_export]
