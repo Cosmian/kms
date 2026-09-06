@@ -26,7 +26,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use url::Url;
 
-use super::{AuthMethod, AuthenticatedUser};
+use super::{AuthMethod, AuthenticatedUser, reject_reserved_aws_xks_identity};
 
 /// The `X-Vault-Token` header name (wire protocol used by the SPIRE vault plugin).
 pub(crate) const VAULT_TOKEN_HEADER: &str = "X-Vault-Token";
@@ -292,8 +292,18 @@ where
     match check_vault_token(&req, cache, auth_verifier_url, client, default_username).await {
         VaultTokenResult::Valid(user) => {
             debug!("{log_prefix}: validated entity={}", user.entity);
+            let username = user.entity.clone().into();
+            if let Err(error) = reject_reserved_aws_xks_identity(&username) {
+                warn!(
+                    "{log_prefix}: rejecting reserved AWS XKS service identity in SPIRE auth: \
+                     {error}"
+                );
+                return Ok(req
+                    .into_response(forbidden_json("permission denied"))
+                    .map_into_boxed_body());
+            }
             req.extensions_mut().insert(AuthenticatedUser {
-                username: user.entity.clone().into(),
+                username,
                 auth_method: AuthMethod::SpireToken,
             });
             req.extensions_mut().insert(user);

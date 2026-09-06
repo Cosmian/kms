@@ -20,7 +20,7 @@ use openssl::{nid::Nid, x509::X509};
 use crate::{
     error::KmsError,
     kms_bail,
-    middlewares::{AuthMethod, AuthenticatedUser, UserId},
+    middlewares::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_aws_xks_identity},
     result::KResult,
 };
 
@@ -105,8 +105,10 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
                     );
                 }
                 trace!("Client certificate common name: {}", username);
+                let username = UserId::from(trimmed);
+                reject_reserved_aws_xks_identity(&username)?;
                 Ok(AuthenticatedUser {
-                    username: UserId::from(trimmed),
+                    username,
                     auth_method: AuthMethod::Mtls,
                 })
             }
