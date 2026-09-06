@@ -1,16 +1,16 @@
 ---
 title: "ADR-2026-09-05: HSM delegation Track A — RSA-PSS scope decision"
-status: "Accepted"
+status: "Superseded"
 date: "2026-09-05"
 authors: "HSM integration contributors"
 tags: ["architecture", "decision", "hsm", "pkcs11", "signing", "backward-compatibility"]
 supersedes: ""
-superseded_by: ""
+superseded_by: "2026-09-06-hsm-track-a-ec-ecdsa-completion-pbkdf2-deferral"
 ---
 
 ## Status
 
-Accepted
+Superseded by [ADR-2026-09-06](2026-09-06-hsm-track-a-ec-ecdsa-completion-pbkdf2-deferral.md)
 
 ## Context
 

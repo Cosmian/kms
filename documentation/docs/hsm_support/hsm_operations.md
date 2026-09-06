@@ -295,9 +295,9 @@ The symmetric key was successfully generated.
 
 !!! info HSM-delegated EC key generation
     Elliptic curve key pairs can also be created directly on the HSM, using the same `ec keys
-    create` CLI command as for software keys. The four NIST curves supported by the HSM
-    integration are P-224, P-256 (default), P-384, and P-521 — the same curves accepted by
-    `--curve nist-p224/nist-p256/nist-p384/nist-p521`. With the `non-fips` build feature,
+    create` CLI command as for software keys. The FIPS-approved NIST curves supported by the HSM
+    integration are P-256 (default), P-384, and P-521 — the same curves accepted by
+    `--curve nist-p256/nist-p384/nist-p521`. With the `non-fips` build feature,
     Ed25519 and Ed448 (for `EdDSA` signing) and X25519 (for ECDH key agreement) are also
     supported — see [HSM-delegated `EdDSA` signing](#sign) below. X448 and the non-FIPS NIST
     curves (secp256k1, secp224k1) remain unsupported by the HSM delegation and are
@@ -535,14 +535,19 @@ The signature is available at "/tmp/secret.sig"
     RSA-PSS signing over HSM-resident keys is delegated end-to-end to the PKCS#11 device: the
     private key never leaves the HSM, and the PSS mechanism parameters (hash algorithm, MGF1
     hash algorithm, salt length) are built from the KMIP request and passed directly to
-    `C_Sign` via `CK_RSA_PKCS_PSS_PARAMS`. This is purely additive: existing PKCS#1 v1.5 and
-    OAEP mechanisms, key types, and HSM vendor loaders are unaffected. See
+    `C_Sign` via `CK_RSA_PKCS_PSS_PARAMS`. When the KMIP request carries `digested_data`, the KMS
+    uses raw `CKM_RSA_PKCS_PSS` so the supplied digest is signed directly; otherwise it uses the
+    matching `CKM_SHA{256,384,512}_RSA_PKCS_PSS` mechanism. This is purely additive: existing
+    PKCS#1 v1.5 and OAEP mechanisms, key types, and HSM vendor loaders are unaffected. See
     [ADR-2026-09-05](../adr/2026-09-05-hsm-track-a-rsa-pss-scope-decision.md) for the scope
     decision.
 
 ECDSA signing over an HSM-resident EC private key uses the same `ec sign` CLI command as the
-software signing path. The hashing algorithm (SHA-256/384/512) is selected from the KMIP request
-and dispatched to `C_Sign` with `CKM_ECDSA_SHA{256,384,512}`.
+software signing path. The CLI now sends curve-appropriate KMIP `CryptographicParameters`
+automatically (`P-256 → ECDSAWithSHA256`, `P-384 → ECDSAWithSHA384`, `P-521 → ECDSAWithSHA512`),
+and the HSM path dispatches them to `C_Sign` with `CKM_ECDSA_SHA{256,384,512}`. When `--digested`
+is used, the server switches to raw `CKM_ECDSA` so the supplied digest is signed directly instead
+of being hashed a second time.
 
 To sign a file with the HSM-resident EC private key `hsm::4::my_ec_key`, the following command
 can be used:
@@ -556,10 +561,10 @@ The signature is available at "/tmp/secret.sig"
     ECDSA signing over HSM-resident EC keys is delegated end-to-end to the PKCS#11 device: the
     private key never leaves the HSM. PKCS#11 ECDSA signatures are the raw, fixed-length `r‖s`
     concatenation; the KMS converts this to the DER `SEQUENCE { r, s }` encoding expected
-    elsewhere in the codebase before returning the signature. ECDSA is a randomized scheme:
-    signing the same data twice with the same key produces two different, independently
-    verifiable signatures. This is purely additive: existing RSA signing mechanisms, key types,
-    and HSM vendor loaders are unaffected. See
+    elsewhere in the codebase before returning the signature. Depending on the HSM and mechanism
+    implementation, ECDSA signatures may be randomized or deterministic (for example RFC 6979);
+    both behaviors are valid as long as the returned signature verifies. This is purely additive:
+    existing RSA signing mechanisms, key types, and HSM vendor loaders are unaffected. See
     [ADR-2026-09-06](../adr/2026-09-06-hsm-track-a-ec-ecdsa-completion-pbkdf2-deferral.md) for
     implementation details and the PBKDF2 deferral rationale (SoftHSM2, the only backend
     available for end-to-end validation in this environment, does not implement
