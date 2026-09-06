@@ -281,9 +281,13 @@ pub(crate) async fn migrate_aws_xks_key_access(kms_server: &Arc<KMS>) -> KResult
         // Skip keys that already carry the grant so that a steady-state restart performs no
         // writes and logs nothing.
         let xks_service_user = UserId::from(AWS_XKS_SERVICE_USER);
+        // Query direct (non-inherited) permissions only: a wildcard (`*`) grant covering the
+        // required operations must not be mistaken for the durable service-identity grant, or
+        // this migration would skip granting it — later revoking the wildcard would then break
+        // XKS access for keys that were never actually granted to `AWS_XKS_SERVICE_USER`.
         let granted = kms_server
             .database
-            .list_user_operations_on_object(&uid, &xks_service_user, false)
+            .list_user_operations_on_object(&uid, &xks_service_user, true)
             .await?;
         if required.iter().all(|op| granted.contains(op)) {
             continue;
@@ -1096,8 +1100,38 @@ pub async fn prepare_kms_server(
     if enable_aws_xks {
         validate_aws_xks_reserved_identity_config(&kms_server.params)?;
         // Grant the reserved XKS service identity usage on XKS keys created by earlier
-        // versions. See `migrate_aws_xks_key_access`.
-        migrate_aws_xks_key_access(&kms_server).await?;
+        // versions. Run on a dedicated background thread with its own current-thread
+        // runtime instead of blocking HTTP server startup: the migration has no durable
+        // completion marker and scans every tagged key serially, so an installation with
+        // many XKS keys would otherwise incur a repeated, unbounded startup delay on every
+        // restart. A dedicated thread is required because the store traits are `?Send`
+        // (see `PermissionsStore`/`ObjectsStore`), so the migration future cannot be
+        // spawned onto the main multi-threaded runtime. The migration is additive and
+        // idempotent (see `migrate_aws_xks_key_access`), so running it concurrently with
+        // request serving is safe.
+        let migration_kms_server = kms_server.clone();
+        if let Err(error) = std::thread::Builder::new()
+            .name("aws-xks-key-migration".to_owned())
+            .spawn(move || {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        error!("AWS XKS: failed to start key access migration runtime: {error}");
+                        return;
+                    }
+                };
+                if let Err(error) =
+                    runtime.block_on(migrate_aws_xks_key_access(&migration_kms_server))
+                {
+                    error!("AWS XKS: pre-existing key access migration failed: {error}");
+                }
+            })
+        {
+            error!("AWS XKS: failed to spawn key access migration thread: {error}");
+        }
     }
 
     // Should we enable the Azure EKM API ?
