@@ -159,3 +159,48 @@ validated live; X25519 key generation is implemented but unvalidated
 end-to-end (no available HSM simulator supports its key-pair-gen mechanism);
 X25519 ECDH derive, HKDF/SP 800-108 KDF, and message-based AEAD remain open,
 tracked as remaining scope on #1157.
+
+## Bug Fixes
+
+### HSM
+
+- Preserve EC-family HSM metadata when reconstructing KMIP objects: Ed25519/Ed448
+  keys now retain their correct signing algorithm, X25519 keys are exposed as
+  `ECDH` with `DeriveKey`, sensitive EC keys remain typed as EC keys, and
+  `GetAttributes` now includes `key_format_type` plus curve domain parameters so
+  downstream policy checks still enforce the configured curve whitelist
+  ([#1169](https://github.com/Cosmian/kms/pull/1169))
+- Reject HSM-backed X25519 key-pair creation from the public `HSM` trait until a
+  matching key-agreement / `DeriveKey` path exists, avoiding persistence of
+  derive-only keys that the current API cannot use
+  ([#1169](https://github.com/Cosmian/kms/pull/1169))
+- Include Edwards and Montgomery PKCS#11 key types in EC list/retrieve flows,
+  accept alternate DER-OID encodings for Ed25519/Ed448/X25519 `CKA_EC_PARAMS`,
+  preserve raw uncompressed `CKA_EC_POINT` values, propagate `CKA_START_DATE` /
+  `CKA_END_DATE` read failures instead of silently dropping rotation metadata,
+  and make sensitive EC private keys non-extractable when `CKA_SENSITIVE=true`
+  ([#1169](https://github.com/Cosmian/kms/pull/1169))
+- Fix delegated signing mechanism selection for HSM-backed keys: pre-digested
+  ECDSA now uses raw `CKM_ECDSA`, pre-digested RSA-PSS now uses raw
+  `CKM_RSA_PKCS_PSS`, explicit MGF1 hash choices are preserved, and missing
+  request parameters now fall back to key-aware defaults instead of incorrectly
+  assuming RSA/SHA-256 for EC or EdDSA keys
+  ([#1169](https://github.com/Cosmian/kms/pull/1169))
+
+### CLI
+
+- Make `ckms ec sign` send curve-appropriate KMIP `CryptographicParameters`
+  automatically for HSM-delegated ECDSA / EdDSA signing, keeping the command
+  behavior aligned with the server-side delegated signing path and rejecting
+  non-signing curves such as X25519/X448
+  ([#1169](https://github.com/Cosmian/kms/pull/1169))
+
+## Documentation
+
+### Docs
+
+- Align the HSM operations guide with actual server-enforced curve policy
+  (P-256/P-384/P-521 for FIPS EC key generation), document the pre-hashed
+  delegated signing behavior for ECDSA and RSA-PSS, and mark
+  `ADR-2026-09-05-hsm-track-a-rsa-pss-scope-decision` as superseded by the
+  later EC/ECDSA completion ADR ([#1169](https://github.com/Cosmian/kms/pull/1169))
