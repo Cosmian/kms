@@ -92,6 +92,13 @@ impl SignAction {
                 ..CryptographicParameters::default()
             },
         });
+        #[cfg(feature = "non-fips")]
+        if self.digested && matches!(self.curve, Curve::Ed25519 | Curve::Ed448) {
+            return Err(crate::error::KmsCliError::Default(
+                "Ed25519/Ed448 signing expects the raw message; --digested is not supported"
+                    .to_owned(),
+            ));
+        }
         run_sign(
             kms_rest_client,
             self.input_file.clone(),

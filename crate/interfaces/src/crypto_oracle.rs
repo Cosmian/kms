@@ -123,6 +123,8 @@ impl CryptoAlgorithm {
 pub enum SigningAlgorithm {
     /// `CKM_RSA_PKCS` (raw PKCS#1 v1.5 — caller hashes)
     RsaPkcsV15,
+    /// `CKM_RSA_PKCS` over a caller-supplied digest, wrapped as a PKCS#1 v1.5 `DigestInfo`.
+    RsaPkcsV15Digest { hashing_algorithm: HashingAlgorithm },
     /// `CKM_SHA1_RSA_PKCS`
     Sha1WithRsa,
     /// `CKM_SHA256_RSA_PKCS`
@@ -167,19 +169,28 @@ impl SigningAlgorithm {
         key_type: KeyType,
         curve: Option<crate::EcCurve>,
         input_is_digest: bool,
+        input_len: usize,
     ) -> Result<Self, InterfaceError> {
         let Some(params) = params else {
-            return Self::default_for_key(key_type, curve, input_is_digest);
+            return Self::default_for_key(key_type, curve, input_is_digest, input_len);
         };
 
         // 1. explicit digital_signature_algorithm
         if let Some(dsa) = &params.digital_signature_algorithm {
             return match dsa {
-                DigitalSignatureAlgorithm::SHA1WithRSAEncryption => Ok(Self::Sha1WithRsa),
+                DigitalSignatureAlgorithm::SHA1WithRSAEncryption => {
+                    Self::rsa_pkcs1_from_hash(HashingAlgorithm::SHA1, input_is_digest)
+                }
                 DigitalSignatureAlgorithm::SHA224WithRSAEncryption
-                | DigitalSignatureAlgorithm::SHA256WithRSAEncryption => Ok(Self::Sha256WithRsa),
-                DigitalSignatureAlgorithm::SHA384WithRSAEncryption => Ok(Self::Sha384WithRsa),
-                DigitalSignatureAlgorithm::SHA512WithRSAEncryption => Ok(Self::Sha512WithRsa),
+                | DigitalSignatureAlgorithm::SHA256WithRSAEncryption => {
+                    Self::rsa_pkcs1_from_hash(HashingAlgorithm::SHA256, input_is_digest)
+                }
+                DigitalSignatureAlgorithm::SHA384WithRSAEncryption => {
+                    Self::rsa_pkcs1_from_hash(HashingAlgorithm::SHA384, input_is_digest)
+                }
+                DigitalSignatureAlgorithm::SHA512WithRSAEncryption => {
+                    Self::rsa_pkcs1_from_hash(HashingAlgorithm::SHA512, input_is_digest)
+                }
                 DigitalSignatureAlgorithm::RSASSAPSS => Self::rsa_pss_from_params(
                     params.hashing_algorithm,
                     params.mask_generator_hashing_algorithm,
@@ -211,9 +222,21 @@ impl SigningAlgorithm {
         #[cfg(feature = "non-fips")]
         {
             if params.cryptographic_algorithm == Some(CryptographicAlgorithm::Ed25519) {
+                if input_is_digest {
+                    return Err(InterfaceError::InvalidRequest(
+                        "Ed25519 does not support KMIP digested_data signing via CKM_EDDSA"
+                            .to_owned(),
+                    ));
+                }
                 return Ok(Self::Ed25519);
             }
             if params.cryptographic_algorithm == Some(CryptographicAlgorithm::Ed448) {
+                if input_is_digest {
+                    return Err(InterfaceError::InvalidRequest(
+                        "Ed448 does not support KMIP digested_data signing via CKM_EDDSA"
+                            .to_owned(),
+                    ));
+                }
                 return Ok(Self::Ed448);
             }
         }
@@ -253,26 +276,43 @@ impl SigningAlgorithm {
                 );
             }
             return match params.hashing_algorithm {
-                Some(HashingAlgorithm::SHA1) => Ok(Self::Sha1WithRsa),
-                Some(HashingAlgorithm::SHA256) | None => Ok(Self::Sha256WithRsa),
-                Some(HashingAlgorithm::SHA384) => Ok(Self::Sha384WithRsa),
-                Some(HashingAlgorithm::SHA512) => Ok(Self::Sha512WithRsa),
+                Some(HashingAlgorithm::SHA1) => {
+                    Self::rsa_pkcs1_from_hash(HashingAlgorithm::SHA1, input_is_digest)
+                }
+                Some(HashingAlgorithm::SHA256) | None => {
+                    let hash = params
+                        .hashing_algorithm
+                        .or_else(|| Self::infer_hash_from_digest_len(input_len))
+                        .unwrap_or(HashingAlgorithm::SHA256);
+                    Self::rsa_pkcs1_from_hash(hash, input_is_digest)
+                }
+                Some(HashingAlgorithm::SHA384) => {
+                    Self::rsa_pkcs1_from_hash(HashingAlgorithm::SHA384, input_is_digest)
+                }
+                Some(HashingAlgorithm::SHA512) => {
+                    Self::rsa_pkcs1_from_hash(HashingAlgorithm::SHA512, input_is_digest)
+                }
                 Some(other) => Err(InterfaceError::InvalidRequest(format!(
                     "Unsupported hashing algorithm for RSA signing: {other:?}"
                 ))),
             };
         }
 
-        Self::default_for_key(key_type, curve, input_is_digest)
+        Self::default_for_key(key_type, curve, input_is_digest, input_len)
     }
 
     fn default_for_key(
         key_type: KeyType,
         curve: Option<crate::EcCurve>,
         input_is_digest: bool,
+        input_len: usize,
     ) -> Result<Self, InterfaceError> {
         match key_type {
-            KeyType::RsaPrivateKey => Ok(Self::Sha256WithRsa),
+            KeyType::RsaPrivateKey => {
+                let hash =
+                    Self::infer_hash_from_digest_len(input_len).unwrap_or(HashingAlgorithm::SHA256);
+                Self::rsa_pkcs1_from_hash(hash, input_is_digest)
+            }
             KeyType::EcPrivateKey => match curve {
                 Some(crate::EcCurve::P384) => Ok(Self::Ecdsa {
                     hashing_algorithm: HashingAlgorithm::SHA384,
@@ -283,9 +323,27 @@ impl SigningAlgorithm {
                     prehashed: input_is_digest,
                 }),
                 #[cfg(feature = "non-fips")]
-                Some(crate::EcCurve::Ed25519) => Ok(Self::Ed25519),
+                Some(crate::EcCurve::Ed25519) => {
+                    if input_is_digest {
+                        Err(InterfaceError::InvalidRequest(
+                            "Ed25519 does not support KMIP digested_data signing via CKM_EDDSA"
+                                .to_owned(),
+                        ))
+                    } else {
+                        Ok(Self::Ed25519)
+                    }
+                }
                 #[cfg(feature = "non-fips")]
-                Some(crate::EcCurve::Ed448) => Ok(Self::Ed448),
+                Some(crate::EcCurve::Ed448) => {
+                    if input_is_digest {
+                        Err(InterfaceError::InvalidRequest(
+                            "Ed448 does not support KMIP digested_data signing via CKM_EDDSA"
+                                .to_owned(),
+                        ))
+                    } else {
+                        Ok(Self::Ed448)
+                    }
+                }
                 #[cfg(feature = "non-fips")]
                 Some(crate::EcCurve::X25519) => Err(InterfaceError::InvalidRequest(
                     "X25519 keys support key agreement, not signing".to_owned(),
@@ -298,6 +356,42 @@ impl SigningAlgorithm {
             other => Err(InterfaceError::InvalidRequest(format!(
                 "Unsupported private key type for HSM signing: {other:?}"
             ))),
+        }
+    }
+
+    fn rsa_pkcs1_from_hash(
+        hashing_algorithm: HashingAlgorithm,
+        input_is_digest: bool,
+    ) -> Result<Self, InterfaceError> {
+        if input_is_digest {
+            return match hashing_algorithm {
+                HashingAlgorithm::SHA1
+                | HashingAlgorithm::SHA256
+                | HashingAlgorithm::SHA384
+                | HashingAlgorithm::SHA512 => Ok(Self::RsaPkcsV15Digest { hashing_algorithm }),
+                other => Err(InterfaceError::InvalidRequest(format!(
+                    "Unsupported hashing algorithm for RSA PKCS#1 v1.5 signing: {other:?}"
+                ))),
+            };
+        }
+        match hashing_algorithm {
+            HashingAlgorithm::SHA1 => Ok(Self::Sha1WithRsa),
+            HashingAlgorithm::SHA256 => Ok(Self::Sha256WithRsa),
+            HashingAlgorithm::SHA384 => Ok(Self::Sha384WithRsa),
+            HashingAlgorithm::SHA512 => Ok(Self::Sha512WithRsa),
+            other => Err(InterfaceError::InvalidRequest(format!(
+                "Unsupported hashing algorithm for RSA PKCS#1 v1.5 signing: {other:?}"
+            ))),
+        }
+    }
+
+    const fn infer_hash_from_digest_len(input_len: usize) -> Option<HashingAlgorithm> {
+        match input_len {
+            20 => Some(HashingAlgorithm::SHA1),
+            32 => Some(HashingAlgorithm::SHA256),
+            48 => Some(HashingAlgorithm::SHA384),
+            64 => Some(HashingAlgorithm::SHA512),
+            _ => None,
         }
     }
 
@@ -496,7 +590,7 @@ mod tests {
     #[test]
     fn from_kmip_none_defaults_to_sha256_with_rsa() {
         assert_eq!(
-            SigningAlgorithm::from_kmip(None, KeyType::RsaPrivateKey, None, false)
+            SigningAlgorithm::from_kmip(None, KeyType::RsaPrivateKey, None, false, 0)
                 .expect("should resolve"),
             SigningAlgorithm::Sha256WithRsa
         );
@@ -509,7 +603,8 @@ mod tests {
                 None,
                 KeyType::EcPrivateKey,
                 Some(crate::EcCurve::P384),
-                true
+                true,
+                48,
             )
             .expect("should resolve"),
             SigningAlgorithm::Ecdsa {
@@ -558,7 +653,7 @@ mod tests {
                 None,
             );
             assert_eq!(
-                SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false)
+                SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false, 0,)
                     .expect("should resolve"),
                 expected,
                 "hash: {hash:?}"
@@ -576,7 +671,7 @@ mod tests {
             None,
         );
         assert_eq!(
-            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false)
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false, 0)
                 .expect("should resolve"),
             SigningAlgorithm::RsaPss {
                 hashing_algorithm: HashingAlgorithm::SHA256,
@@ -597,7 +692,7 @@ mod tests {
             Some(0),
         );
         assert_eq!(
-            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, true)
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, true, 32)
                 .expect("should resolve"),
             SigningAlgorithm::RsaPss {
                 hashing_algorithm: HashingAlgorithm::SHA256,
@@ -619,7 +714,7 @@ mod tests {
         );
         params.mask_generator_hashing_algorithm = Some(HashingAlgorithm::SHA384);
         assert_eq!(
-            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, true)
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, true, 32)
                 .expect("should resolve"),
             SigningAlgorithm::RsaPss {
                 hashing_algorithm: HashingAlgorithm::SHA256,
@@ -639,8 +734,9 @@ mod tests {
             None,
             Some(-1),
         );
-        let err = SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false)
-            .expect_err("must reject");
+        let err =
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false, 0)
+                .expect_err("must reject");
         assert!(matches!(err, InterfaceError::InvalidRequest(_)));
     }
 
@@ -653,8 +749,9 @@ mod tests {
             None,
             None,
         );
-        let err = SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false)
-            .expect_err("must reject");
+        let err =
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false, 0)
+                .expect_err("must reject");
         assert!(matches!(err, InterfaceError::InvalidRequest(_)));
     }
 
@@ -668,7 +765,7 @@ mod tests {
             None,
         );
         assert_eq!(
-            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false)
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false, 0)
                 .expect("should resolve"),
             SigningAlgorithm::RsaPss {
                 hashing_algorithm: HashingAlgorithm::SHA384,
@@ -689,9 +786,27 @@ mod tests {
             None,
         );
         assert_eq!(
-            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false)
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, false, 0)
                 .expect("should resolve"),
             SigningAlgorithm::Sha384WithRsa
+        );
+    }
+
+    #[test]
+    fn from_kmip_prehashed_rsa_pkcs1_uses_digest_variant() {
+        let params = params_with(
+            Some(DigitalSignatureAlgorithm::SHA384WithRSAEncryption),
+            Some(CryptographicAlgorithm::RSA),
+            Some(HashingAlgorithm::SHA384),
+            None,
+            None,
+        );
+        assert_eq!(
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::RsaPrivateKey, None, true, 48)
+                .expect("should resolve"),
+            SigningAlgorithm::RsaPkcsV15Digest {
+                hashing_algorithm: HashingAlgorithm::SHA384,
+            }
         );
     }
 
@@ -705,7 +820,7 @@ mod tests {
             None,
         );
         assert_eq!(
-            SigningAlgorithm::from_kmip(Some(&params), KeyType::EcPrivateKey, None, true)
+            SigningAlgorithm::from_kmip(Some(&params), KeyType::EcPrivateKey, None, true, 64)
                 .expect("should resolve"),
             SigningAlgorithm::Ecdsa {
                 hashing_algorithm: HashingAlgorithm::SHA512,
@@ -733,6 +848,7 @@ mod tests {
                 KeyType::EcPrivateKey,
                 Some(crate::EcCurve::Ed25519),
                 false,
+                0,
             )
             .expect("should resolve"),
             SigningAlgorithm::Ed25519
@@ -749,10 +865,32 @@ mod tests {
                 KeyType::EcPrivateKey,
                 Some(crate::EcCurve::Ed448),
                 false,
+                0,
             )
             .expect("should resolve"),
             SigningAlgorithm::Ed448
         );
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn from_kmip_rejects_prehashed_eddsa() {
+        let params = params_with(
+            None,
+            Some(CryptographicAlgorithm::Ed25519),
+            None,
+            None,
+            None,
+        );
+        let err = SigningAlgorithm::from_kmip(
+            Some(&params),
+            KeyType::EcPrivateKey,
+            Some(crate::EcCurve::Ed25519),
+            true,
+            32,
+        )
+        .expect_err("must reject");
+        assert!(matches!(err, InterfaceError::InvalidRequest(_)));
     }
 
     #[cfg(feature = "non-fips")]
@@ -764,6 +902,7 @@ mod tests {
                 KeyType::EcPrivateKey,
                 Some(crate::EcCurve::Ed25519),
                 false,
+                0,
             )
             .expect("should resolve"),
             SigningAlgorithm::Ed25519

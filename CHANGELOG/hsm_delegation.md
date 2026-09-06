@@ -186,6 +186,13 @@ tracked as remaining scope on #1157.
   request parameters now fall back to key-aware defaults instead of incorrectly
   assuming RSA/SHA-256 for EC or EdDSA keys
   ([#1169](https://github.com/Cosmian/kms/pull/1169))
+- Harden delegated-signing edge cases for HSM-backed keys: pre-digested
+  RSA PKCS#1 v1.5 now wraps the caller-supplied digest as the correct
+  `DigestInfo` and signs it with raw `CKM_RSA_PKCS` instead of hashing again,
+  KMIP `Sign` now rejects requests that set both `data` and `digested_data`,
+  and Ed25519/Ed448 reject unsupported pre-hashed signing requests instead of
+  treating digest bytes as raw messages
+  ([#1169](https://github.com/Cosmian/kms/pull/1169))
 
 ### CLI
 
@@ -193,6 +200,9 @@ tracked as remaining scope on #1157.
   automatically for HSM-delegated ECDSA / EdDSA signing, keeping the command
   behavior aligned with the server-side delegated signing path and rejecting
   non-signing curves such as X25519/X448
+  ([#1169](https://github.com/Cosmian/kms/pull/1169))
+- Reject `ckms ec sign --digested` for Ed25519/Ed448 so the CLI cannot issue
+  delegated-signing requests that PKCS#11 `CKM_EDDSA` cannot represent safely
   ([#1169](https://github.com/Cosmian/kms/pull/1169))
 
 ## Documentation

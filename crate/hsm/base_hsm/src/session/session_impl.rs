@@ -85,6 +85,11 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
 #[derive(Debug, Clone, Copy)]
 pub enum HsmSigningAlgorithm {
     RsaPkcsV15,
+    /// Raw PKCS#1 v1.5 signing over a caller-supplied digest that must first be wrapped in a DER
+    /// `DigestInfo` matching the declared hash algorithm.
+    RsaPkcsV15Digest {
+        hashing_algorithm: HashingAlgorithm,
+    },
     Sha1WithRsa,
     Sha256WithRsa,
     Sha384WithRsa,
@@ -117,6 +122,9 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
     fn from(algorithm: SigningAlgorithm) -> Self {
         match algorithm {
             SigningAlgorithm::RsaPkcsV15 => Self::RsaPkcsV15,
+            SigningAlgorithm::RsaPkcsV15Digest { hashing_algorithm } => {
+                Self::RsaPkcsV15Digest { hashing_algorithm }
+            }
             SigningAlgorithm::Sha1WithRsa => Self::Sha1WithRsa,
             SigningAlgorithm::Sha256WithRsa => Self::Sha256WithRsa,
             SigningAlgorithm::Sha384WithRsa => Self::Sha384WithRsa,
@@ -1310,6 +1318,10 @@ impl Session {
             HsmSigningAlgorithm::RsaPkcsV15 => {
                 self.sign_with_simple_mechanism(key_handle, CKM_RSA_PKCS, data)
             }
+            HsmSigningAlgorithm::RsaPkcsV15Digest { hashing_algorithm } => {
+                let digest_info = Self::rsa_pkcs1_digest_info(hashing_algorithm, data)?;
+                self.sign_with_simple_mechanism(key_handle, CKM_RSA_PKCS, &digest_info)
+            }
             HsmSigningAlgorithm::Sha1WithRsa => {
                 self.sign_with_simple_mechanism(key_handle, CKM_SHA1_RSA_PKCS, data)
             }
@@ -1480,6 +1492,53 @@ impl Session {
             mgf,
             sLen: CK_ULONG::from(salt_len),
         }
+    }
+
+    fn rsa_pkcs1_digest_info(
+        hashing_algorithm: HashingAlgorithm,
+        digest: &[u8],
+    ) -> HResult<Vec<u8>> {
+        let prefix: &[u8] = match hashing_algorithm {
+            HashingAlgorithm::SHA1 => &[
+                0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04,
+                0x14,
+            ],
+            HashingAlgorithm::SHA256 => &[
+                0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
+                0x01, 0x05, 0x00, 0x04, 0x20,
+            ],
+            HashingAlgorithm::SHA384 => &[
+                0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
+                0x02, 0x05, 0x00, 0x04, 0x30,
+            ],
+            HashingAlgorithm::SHA512 => &[
+                0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
+                0x03, 0x05, 0x00, 0x04, 0x40,
+            ],
+            other => {
+                return Err(HError::Default(format!(
+                    "Unsupported RSA PKCS#1 v1.5 hashing algorithm: {other:?}"
+                )));
+            }
+        };
+        let expected_len = match hashing_algorithm {
+            HashingAlgorithm::SHA1 => 20,
+            HashingAlgorithm::SHA256 => 32,
+            HashingAlgorithm::SHA384 => 48,
+            HashingAlgorithm::SHA512 => 64,
+            _ => 0,
+        };
+        if digest.len() != expected_len {
+            return Err(HError::Default(format!(
+                "RSA PKCS#1 v1.5 digest length mismatch for {hashing_algorithm:?}: expected \
+                 {expected_len}, got {}",
+                digest.len()
+            )));
+        }
+        let mut digest_info = Vec::with_capacity(prefix.len() + digest.len());
+        digest_info.extend_from_slice(prefix);
+        digest_info.extend_from_slice(digest);
+        Ok(digest_info)
     }
 
     fn pkcs11_pss_hash_params(
@@ -2771,6 +2830,33 @@ mod tests {
                 prehashed: true,
             }
         ));
+    }
+
+    #[test]
+    fn hsm_signing_algorithm_from_signing_algorithm_preserves_pkcs1_digest_mode() {
+        let algo: HsmSigningAlgorithm = SigningAlgorithm::RsaPkcsV15Digest {
+            hashing_algorithm: HashingAlgorithm::SHA384,
+        }
+        .into();
+        assert!(matches!(
+            algo,
+            HsmSigningAlgorithm::RsaPkcsV15Digest {
+                hashing_algorithm: HashingAlgorithm::SHA384
+            }
+        ));
+    }
+
+    #[test]
+    fn rsa_pkcs1_digest_info_wraps_sha256_digest() {
+        let digest = [0x5a; 32];
+        let digest_info =
+            Session::rsa_pkcs1_digest_info(HashingAlgorithm::SHA256, &digest).unwrap_or_default();
+        assert_eq!(digest_info.len(), 19 + digest.len());
+        assert!(digest_info.starts_with(&[
+            0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
+            0x01, 0x05, 0x00, 0x04, 0x20,
+        ]));
+        assert_eq!(digest_info.get(19..), Some(digest.as_slice()));
     }
 
     #[test]
