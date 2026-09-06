@@ -159,15 +159,16 @@ fn iv_and_aad_from_mechanism(mechanism: &Mechanism) -> ModuleResult<IvAndAad> {
 }
 
 pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
-    // PKCS#11 v3.0 rollout (issue #1156): the reported version is bumped to 3.1 (matching
-    // `CRYPTOKI_VERSION_MAJOR`/`CRYPTOKI_VERSION_MINOR`, already used by `C_GetInfo` below) now
-    // that this module also implements the v3.0 `C_GetInterfaceList`/`C_GetInterface` entry
-    // points (see `FUNC_LIST_3_0` below). Per the PKCS#11 v3.0 spec, `C_GetFunctionList` must
-    // keep working for legacy (v2.x-only) callers regardless of the reported version — this
-    // struct's shape and every v2.x function pointer are unchanged, so this bump is additive.
+    // PKCS#11 v3.0 rollout (issue #1156): this legacy `C_GetFunctionList` table must keep
+    // reporting version 2.40, matching the PKCS#11 v2.40 spec, even though the module also
+    // implements the v3.0 `C_GetInterfaceList`/`C_GetInterface` entry points (see `FUNC_LIST_3_0`
+    // below, which correctly reports 3.1). Some v2.40-only consumers validate
+    // `CK_FUNCTION_LIST.version` and reject the module if it does not read exactly 2.40, so this
+    // field must NOT be bumped even though every v2.x function pointer here is unchanged and the
+    // v3.0 entry points are purely additive.
     version: CK_VERSION {
-        major: CRYPTOKI_VERSION_MAJOR,
-        minor: CRYPTOKI_VERSION_MINOR,
+        major: 2,
+        minor: 40,
     },
     C_Initialize: Some(C_Initialize),
     C_Finalize: Some(C_Finalize),
