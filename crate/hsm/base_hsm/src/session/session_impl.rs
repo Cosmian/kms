@@ -613,47 +613,41 @@ impl Session {
                     ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
                 },
             ]),
-            HsmObjectFilter::EcKey => template.extend([CK_ATTRIBUTE {
+            HsmObjectFilter::EcKey => return self.list_ec_objects(None),
+            HsmObjectFilter::EcPrivateKey => return self.list_ec_objects(Some(CKO_PRIVATE_KEY)),
+            HsmObjectFilter::EcPublicKey => return self.list_ec_objects(Some(CKO_PUBLIC_KEY)),
+        }
+        let object_handles = self.find_object_handles(template)?;
+        Ok(object_handles)
+    }
+
+    fn list_ec_objects(&self, class: Option<CK_OBJECT_CLASS>) -> HResult<Vec<CK_OBJECT_HANDLE>> {
+        #[cfg(not(feature = "non-fips"))]
+        let ec_key_types = [CKK_EC];
+        #[cfg(feature = "non-fips")]
+        let ec_key_types = [CKK_EC, CKK_EC_EDWARDS, CKK_EC_MONTGOMERY];
+
+        let mut object_handles = Vec::new();
+        for key_type in ec_key_types {
+            let mut template = Vec::new();
+            if let Some(class) = class {
+                template.push(CK_ATTRIBUTE {
+                    type_: CKA_CLASS,
+                    pValue: std::ptr::from_ref(&class)
+                        .cast::<std::ffi::c_void>()
+                        .cast_mut(),
+                    ulValueLen: CK_ULONG::try_from(size_of::<CK_OBJECT_CLASS>())?,
+                });
+            }
+            template.push(CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
-                pValue: std::ptr::from_ref(&CKK_EC)
+                pValue: std::ptr::from_ref(&key_type)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
-            }]),
-            HsmObjectFilter::EcPrivateKey => template.extend([
-                CK_ATTRIBUTE {
-                    type_: CKA_CLASS,
-                    pValue: std::ptr::from_ref(&CKO_PRIVATE_KEY)
-                        .cast::<std::ffi::c_void>()
-                        .cast_mut(),
-                    ulValueLen: CK_ULONG::try_from(size_of::<CK_OBJECT_CLASS>())?,
-                },
-                CK_ATTRIBUTE {
-                    type_: CKA_KEY_TYPE,
-                    pValue: std::ptr::from_ref(&CKK_EC)
-                        .cast::<std::ffi::c_void>()
-                        .cast_mut(),
-                    ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
-                },
-            ]),
-            HsmObjectFilter::EcPublicKey => template.extend([
-                CK_ATTRIBUTE {
-                    type_: CKA_CLASS,
-                    pValue: std::ptr::from_ref(&CKO_PUBLIC_KEY)
-                        .cast::<std::ffi::c_void>()
-                        .cast_mut(),
-                    ulValueLen: CK_ULONG::try_from(size_of::<CK_OBJECT_CLASS>())?,
-                },
-                CK_ATTRIBUTE {
-                    type_: CKA_KEY_TYPE,
-                    pValue: std::ptr::from_ref(&CKK_EC)
-                        .cast::<std::ffi::c_void>()
-                        .cast_mut(),
-                    ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
-                },
-            ]),
+            });
+            object_handles.extend(self.find_object_handles(template)?);
         }
-        let object_handles = self.find_object_handles(template)?;
         Ok(object_handles)
     }
 
@@ -1930,36 +1924,45 @@ impl Session {
         let [tag, rest @ ..] = der else {
             return Err(HError::Default("CKA_EC_POINT: empty DER value".to_owned()));
         };
-        // 0x04 is the ASN.1 OCTET STRING tag.
         if *tag != 0x04 {
-            // Some tokens return the raw point without DER wrapping; accept it as-is.
             return Ok(der.to_vec());
         }
+
         let Some((&len_byte, rest)) = rest.split_first() else {
-            return Err(HError::Default(
-                "CKA_EC_POINT: truncated DER length".to_owned(),
-            ));
+            return Ok(der.to_vec());
         };
-        if len_byte & 0x80 == 0 {
+        let (content, trailing) = if len_byte & 0x80 == 0 {
             let len = usize::from(len_byte);
-            return rest.get(..len).map(<[u8]>::to_vec).ok_or_else(|| {
-                HError::Default("CKA_EC_POINT: DER length exceeds buffer".to_owned())
-            });
+            match rest.split_at_checked(len) {
+                Some(parts) => parts,
+                None => return Ok(der.to_vec()),
+            }
+        } else {
+            let num_len_bytes = usize::from(len_byte & 0x7F);
+            let Some((len_bytes, content_with_trailing)) = rest.split_at_checked(num_len_bytes)
+            else {
+                return Ok(der.to_vec());
+            };
+            let mut len: usize = 0;
+            for b in len_bytes {
+                len = len
+                    .checked_shl(8)
+                    .and_then(|v| v.checked_add(usize::from(*b)))
+                    .ok_or_else(|| {
+                        HError::Default("CKA_EC_POINT: DER length overflow".to_owned())
+                    })?;
+            }
+            match content_with_trailing.split_at_checked(len) {
+                Some(parts) => parts,
+                None => return Ok(der.to_vec()),
+            }
+        };
+
+        if trailing.is_empty() && content.first() == Some(&0x04) {
+            Ok(content.to_vec())
+        } else {
+            Ok(der.to_vec())
         }
-        let num_len_bytes = usize::from(len_byte & 0x7F);
-        let (len_bytes, rest) = rest.split_at_checked(num_len_bytes).ok_or_else(|| {
-            HError::Default("CKA_EC_POINT: truncated long-form DER length".to_owned())
-        })?;
-        let mut len: usize = 0;
-        for b in len_bytes {
-            len = len
-                .checked_shl(8)
-                .and_then(|v| v.checked_add(usize::from(*b)))
-                .ok_or_else(|| HError::Default("CKA_EC_POINT: DER length overflow".to_owned()))?;
-        }
-        rest.get(..len)
-            .map(<[u8]>::to_vec)
-            .ok_or_else(|| HError::Default("CKA_EC_POINT: DER length exceeds buffer".to_owned()))
     }
 
     fn export_aes_key(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<HsmObject>> {
@@ -2355,7 +2358,7 @@ impl Session {
                         HError::Default(format!("Failed to convert label to string: {e}"))
                     })?
                 };
-                let (start_date, end_date) = self.get_key_dates(key_handle).unwrap_or((None, None));
+                let (start_date, end_date) = self.get_key_dates(key_handle)?;
                 let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
                 Ok(Some(KeyMetadata {
                     key_type,
@@ -2431,7 +2434,7 @@ impl Session {
                     label = label.trim().to_owned().add("_pk");
                 }
                 let sensitive = sensitive == CK_TRUE;
-                let (start_date, end_date) = self.get_key_dates(key_handle).unwrap_or((None, None));
+                let (start_date, end_date) = self.get_key_dates(key_handle)?;
                 let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
                 Ok(Some(KeyMetadata {
                     key_type,
@@ -2506,7 +2509,7 @@ impl Session {
                     label = label.trim().to_owned().add("_pk");
                 }
                 let sensitive = sensitive == CK_TRUE;
-                let (start_date, end_date) = self.get_key_dates(key_handle).unwrap_or((None, None));
+                let (start_date, end_date) = self.get_key_dates(key_handle)?;
                 let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
                 Ok(Some(KeyMetadata {
                     key_type,
@@ -2710,5 +2713,29 @@ mod tests {
                 salt_length: Some(16)
             }
         ));
+    }
+
+    #[test]
+    fn der_octet_string_content_accepts_raw_uncompressed_points() {
+        let raw_point = [0x04, 0xAA, 0xBB, 0xCC];
+        assert!(
+            matches!(
+                Session::der_octet_string_content(&raw_point).as_deref(),
+                Ok(point) if point == raw_point
+            ),
+            "raw point must be preserved"
+        );
+    }
+
+    #[test]
+    fn der_octet_string_content_strips_outer_der_wrapper() {
+        let der_wrapped = [0x04, 0x04, 0x04, 0xAA, 0xBB, 0xCC];
+        assert!(
+            matches!(
+                Session::der_octet_string_content(&der_wrapped).as_deref(),
+                Ok(point) if point == [0x04, 0xAA, 0xBB, 0xCC]
+            ),
+            "DER wrapper must be removed"
+        );
     }
 }

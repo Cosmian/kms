@@ -52,6 +52,22 @@ pub(crate) const fn curve_der_oid(curve: EcCurve) -> &'static [u8] {
     }
 }
 
+/// Some PKCS#11 tokens store Edwards/Montgomery `CKA_EC_PARAMS` as a DER `OBJECT IDENTIFIER`
+/// instead of the printable-string form used during key generation on `SoftHSM2`.
+#[cfg(feature = "non-fips")]
+#[must_use]
+const fn curve_der_named_curve_oid(curve: EcCurve) -> Option<&'static [u8]> {
+    match curve {
+        EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 => None,
+        // id-X25519 (1.3.101.110)
+        EcCurve::X25519 => Some(&[0x06, 0x03, 0x2B, 0x65, 0x6E]),
+        // id-Ed25519 (1.3.101.112)
+        EcCurve::Ed25519 => Some(&[0x06, 0x03, 0x2B, 0x65, 0x70]),
+        // id-Ed448 (1.3.101.113)
+        EcCurve::Ed448 => Some(&[0x06, 0x03, 0x2B, 0x65, 0x71]),
+    }
+}
+
 /// The `CK_MECHANISM_TYPE` used by `C_GenerateKeyPair` to create a key pair on `curve`.
 /// FIPS-approved NIST prime curves use the generic `CKM_EC_KEY_PAIR_GEN`; Edwards curves
 /// (`Ed25519`/`Ed448`) use `CKM_EC_EDWARDS_KEY_PAIR_GEN`; the Montgomery curve (`X25519`) uses
@@ -98,6 +114,10 @@ pub(crate) fn curve_from_der_oid(oid: &[u8]) -> HResult<EcCurve> {
     ];
     for curve in curves {
         if curve_der_oid(curve) == oid {
+            return Ok(curve);
+        }
+        #[cfg(feature = "non-fips")]
+        if curve_der_named_curve_oid(curve).is_some_and(|candidate| candidate == oid) {
             return Ok(curve);
         }
     }
@@ -165,6 +185,11 @@ impl Session {
         let ec_params = curve_der_oid(curve);
         let key_type = curve_key_type(curve);
         let sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
+        let extractable = if sensitive == CK_TRUE {
+            CK_FALSE
+        } else {
+            CK_TRUE
+        };
         // Montgomery curves (X25519) are derive-only: CKA_DERIVE replaces CKA_SIGN/CKA_VERIFY.
         let is_montgomery = curve_is_montgomery(curve);
         let usage_attribute_type = if is_montgomery {
@@ -262,7 +287,7 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_EXTRACTABLE,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&extractable)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
@@ -363,6 +388,20 @@ mod non_fips_tests {
             let oid = curve_der_oid(curve);
             assert_eq!(
                 curve_from_der_oid(oid).expect("must recognize a curve it just encoded"),
+                curve
+            );
+        }
+    }
+
+    #[test]
+    fn edwards_and_montgomery_named_curve_oids_round_trip() {
+        for (curve, oid) in [
+            (EcCurve::Ed25519, [0x06, 0x03, 0x2B, 0x65, 0x70]),
+            (EcCurve::Ed448, [0x06, 0x03, 0x2B, 0x65, 0x71]),
+            (EcCurve::X25519, [0x06, 0x03, 0x2B, 0x65, 0x6E]),
+        ] {
+            assert_eq!(
+                curve_from_der_oid(&oid).expect("must accept named-curve OID form"),
                 curve
             );
         }
