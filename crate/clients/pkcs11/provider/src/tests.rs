@@ -879,8 +879,12 @@ fn test_c_login_user() -> Pkcs11Result<()> {
     );
     assert_eq!(
         // SAFETY: the PIN buffer is optional outside PIN-as-access-token mode.
+        // This module exposes a single implicit identity per slot (no separate Security
+        // Officer role), so the standard `CKU_SO` user type is accepted like `CKU_USER`
+        // rather than rejected -- real-world clients such as `pkcs11-tool --login-type so`
+        // rely on this.
         unsafe { C_Login(handle, CKU_SO, std::ptr::null_mut(), 0) },
-        CKR_USER_TYPE_INVALID
+        CKR_OK
     );
 
     let mut username = b"alice".to_vec();
