@@ -45,11 +45,46 @@ pub struct EncryptContext {
 
 static BACKEND: LazyLock<RwLock<Option<Arc<dyn Backend>>>> = LazyLock::new(|| RwLock::new(None));
 
+/// Set by `clear_backend()` (OIDC-pin mode `C_Logout`) and cleared again by
+/// `register_backend()`. Distinguishes an *explicit logout* from the initial
+/// pre-login state, both of which otherwise look identical (`BACKEND` is `None`).
+/// Without this, `register_backend_if_absent` — called by interface discovery
+/// (`C_GetInterfaceList`/`C_GetInterface`), which can run at any time, including
+/// right after logout — would treat the logged-out backend as merely "not yet
+/// registered" and silently re-instantiate it from the static `ckms.toml`
+/// configuration, undoing the logout and using credentials that logout was
+/// meant to revoke access to.
+static LOGGED_OUT: AtomicBool = AtomicBool::new(false);
+
 /// Stores (or replaces) the backend used by all PKCS#11 operations.
 /// Called by the provider at `C_GetFunctionList` (modes 0/1) or at
 /// `C_Login` time when OIDC-pin mode is active (mode 2).
 pub fn register_backend(backend: Box<dyn Backend>) {
     if let Ok(mut guard) = BACKEND.write() {
+        *guard = Some(Arc::from(backend));
+        // Mutate LOGGED_OUT while still holding the BACKEND write lock so a concurrent
+        // clear_backend() (C_Logout) cannot interleave between the guard update and the
+        // flag update and leave the two states inconsistent (e.g. BACKEND == Some(..) but
+        // LOGGED_OUT == true, or vice-versa).
+        LOGGED_OUT.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Stores `backend` only when no backend is currently registered and the module has not
+/// been explicitly logged out since the last registration.
+///
+/// This keeps interface discovery from replacing a backend installed concurrently
+/// by an authenticated login, and from resurrecting a backend that `C_Logout`
+/// deliberately cleared.
+pub fn register_backend_if_absent(backend: Box<dyn Backend>) {
+    if let Ok(mut guard) = BACKEND.write()
+        && guard.is_none()
+        // Checked while still holding the write lock (instead of a separate, earlier
+        // `LOGGED_OUT.load()`) so a concurrent clear_backend() cannot flip LOGGED_OUT to
+        // true right after this check passes and have this function still install the
+        // backend, resurrecting a just-logged-out session.
+        && !LOGGED_OUT.load(Ordering::SeqCst)
+    {
         *guard = Some(Arc::from(backend));
     }
 }
@@ -58,6 +93,8 @@ pub fn register_backend(backend: Box<dyn Backend>) {
 pub fn clear_backend() {
     if let Ok(mut guard) = BACKEND.write() {
         *guard = None;
+        // See register_backend(): mutate LOGGED_OUT while still holding the write lock.
+        LOGGED_OUT.store(true, Ordering::SeqCst);
     }
 }
 

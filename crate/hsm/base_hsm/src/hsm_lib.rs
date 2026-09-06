@@ -111,7 +111,7 @@ pub struct HsmLib {
 
     /// PKCS#11 v3.0 interfaces discovery entry point (OASIS Cryptoki v3.0 §3.2).
     ///
-    /// This is `None` for any v2.40-only library (e.g. `SoftHSM2`), which is the
+    /// This is `None` for any v2.40-only library, which is the
     /// normal, fully-supported case: resolution is best-effort and never fails
     /// `instantiate`. See `supports_pkcs11_v3_interfaces` and
     /// `list_pkcs11_v3_interfaces` (additive capability probe, issue #1153).

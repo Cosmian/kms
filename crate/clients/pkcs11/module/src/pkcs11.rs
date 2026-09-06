@@ -34,11 +34,11 @@ use pkcs11_sys::{
     CK_SESSION_INFO, CK_SESSION_INFO_PTR, CK_SLOT_ID, CK_SLOT_ID_PTR, CK_SLOT_INFO,
     CK_SLOT_INFO_PTR, CK_TOKEN_INFO, CK_TOKEN_INFO_PTR, CK_ULONG, CK_ULONG_PTR,
     CK_UNAVAILABLE_INFORMATION, CK_USER_TYPE, CK_UTF8CHAR_PTR, CK_VERSION, CK_VOID_PTR,
-    CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT, CKF_PROTECTED_AUTHENTICATION_PATH,
-    CKF_RNG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN, CKF_TOKEN_INITIALIZED,
-    CKF_TOKEN_PRESENT, CKF_USER_PIN_INITIALIZED, CKM_AES_CBC, CKM_AES_CBC_PAD, CKM_AES_KEY_GEN,
-    CKR_OK, CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS, CRYPTOKI_VERSION_MAJOR,
-    CRYPTOKI_VERSION_MINOR,
+    CKA_UNIQUE_ID, CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT,
+    CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN,
+    CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_USER_PIN_INITIALIZED, CKM_AES_CBC,
+    CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKR_OK, CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS,
+    CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 use rand::Rng;
 
@@ -239,17 +239,18 @@ pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
     C_WaitForSlotEvent: Some(C_WaitForSlotEvent),
 };
 
-/// PKCS#11 v3.0 rollout (issue #1156): the sole `CK_FUNCTION_LIST_3_0` returned via the "PKCS 11"
-/// v3.0 interface (see `PKCS11_INTERFACE` below). It carries every v2.x function pointer already
-/// exposed via `FUNC_LIST` above, plus the new v3.0-only functions. Per the PKCS#11 v3.0 spec,
-/// unimplemented v3.0 functions must be non-null stubs returning `CKR_FUNCTION_NOT_SUPPORTED`
-/// (never a null pointer) — see the `cryptoki_fn_not_supported!` stubs near the end of this file
-/// for `C_LoginUser`, `C_SessionCancel`, and the "message-based" bulk encrypt/decrypt/sign/verify
-/// functions (this module does not implement PKCS#11 v3.0 message operations). `C_GetFunctionList`,
-/// `C_GetInterfaceList`, and `C_GetInterface` are patched at runtime by the `cosmian_pkcs11`
-/// provider crate (mirroring how `FUNC_LIST.C_GetFunctionList` is patched above), since their real
-/// implementations must perform KMS backend/config initialization that only the provider crate
-/// knows how to do.
+/// PKCS#11 v3.1 Interfaces API gap-fill (issue #1153 follow-up): the sole `CK_FUNCTION_LIST_3_0`
+/// returned via the "PKCS 11" v3.0 interface (see `PKCS11_INTERFACE` below). It carries every
+/// v2.x function pointer already exposed via `FUNC_LIST` above, plus the new v3.0-only
+/// functions. Per the PKCS#11 v3.0 spec, unimplemented v3.0 functions must be non-null stubs
+/// returning `CKR_FUNCTION_NOT_SUPPORTED` (never a null pointer) — see the
+/// `cryptoki_fn_not_supported!` stubs near the end of this file for `C_SessionCancel` and the
+/// "message-based" bulk encrypt/decrypt/sign/verify functions (this module does not implement
+/// PKCS#11 v3.0 message operations). `C_LoginUser` is fully implemented (see above), unlike the
+/// message-based functions. `C_GetFunctionList`, `C_GetInterfaceList`, and `C_GetInterface` are
+/// patched at runtime by the `cosmian_pkcs11` provider crate (mirroring how
+/// `FUNC_LIST.C_GetFunctionList` is patched above), since their real implementations must
+/// perform KMS backend/config initialization that only the provider crate knows how to do.
 pub static mut FUNC_LIST_3_0: CK_FUNCTION_LIST_3_0 = CK_FUNCTION_LIST_3_0 {
     version: CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
@@ -695,20 +696,97 @@ cryptoki_fn!(
     ) {
         initialized!();
         valid_session!(hSession);
-        if use_pin_as_access_token() {
-            if pPin.is_null() || ulPinLen == 0 {
-                return Err(ModuleError::PinRequired);
-            }
-            // Safety: caller guarantees pPin points to ulPinLen valid UTF-8 bytes.
-            let pin_bytes = unsafe { slice::from_raw_parts(pPin, ulPinLen as usize) };
-            let token = std::str::from_utf8(pin_bytes).map_err(|e| {
-                ModuleError::BadArguments(format!("C_Login: pPin is not valid UTF-8: {e}"))
-            })?;
-            invoke_login_fn(token)?;
-        }
+        validate_login_user_type(hSession, userType)?;
+        login_with_pin(pPin, ulPinLen, "C_Login")?;
         Ok(())
     }
 );
+
+cryptoki_fn!(
+    // PKCS#11 v3.1 §5.6 `C_LoginUser` — only reachable through the v3.0 `CK_FUNCTION_LIST_3_0`
+    // interface (the legacy `CK_FUNCTION_LIST` stays frozen at version 2.4).
+    //
+    // This module exposes a single implicit backend identity per slot (unlike multi-user
+    // tokens): `pUsername`/`ulUsernameLen` do not select among several identities, they are
+    // only used here for diagnostics.
+    unsafe fn C_LoginUser(
+        hSession: CK_SESSION_HANDLE,
+        userType: CK_USER_TYPE,
+        pPin: CK_UTF8CHAR_PTR,
+        ulPinLen: CK_ULONG,
+        pUsername: CK_UTF8CHAR_PTR,
+        ulUsernameLen: CK_ULONG,
+    ) {
+        initialized!();
+        valid_session!(hSession);
+        validate_login_user_type(hSession, userType)?;
+        parse_utf8_argument(pUsername, ulUsernameLen, "C_LoginUser: pUsername")?;
+        login_with_pin(pPin, ulPinLen, "C_LoginUser")?;
+        Ok(())
+    }
+);
+
+const fn validate_login_user_type(
+    session: CK_SESSION_HANDLE,
+    user_type: CK_USER_TYPE,
+) -> ModuleResult<()> {
+    match user_type {
+        // This module exposes a single implicit backend identity per slot: there is no
+        // separate Security Officer role, so `CKU_SO` and `CKU_USER` are treated
+        // identically (matches real-world clients such as `pkcs11-tool --login-type so`,
+        // which is a standard, spec-defined user type and must not be rejected as invalid).
+        CKU_USER | CKU_SO => Ok(()),
+        CKU_CONTEXT_SPECIFIC => Err(ModuleError::OperationNotInitialized(session)),
+        _ => Err(ModuleError::UserTypeInvalid),
+    }
+}
+
+/// Defense-in-depth cap on `pPin`/`pUsername` argument lengths accepted by
+/// `C_Login`/`C_LoginUser`: no legitimate PIN or username is anywhere near this size, so a
+/// caller-supplied `ulPinLen`/`ulUsernameLen` far larger than this is refused before any
+/// allocation or `slice::from_raw_parts` call, rather than trusting an arbitrarily large
+/// native `CK_ULONG` and exhausting process memory (threat-model finding: FFI argument-length
+/// denial of service).
+const MAX_UTF8_ARGUMENT_LEN: usize = 4096;
+
+fn parse_utf8_argument(
+    ptr: CK_UTF8CHAR_PTR,
+    len: CK_ULONG,
+    name: &str,
+) -> ModuleResult<Option<String>> {
+    if len == 0 {
+        return Ok(None);
+    }
+    if ptr.is_null() {
+        return Err(ModuleError::BadArguments(format!("{name} is null")));
+    }
+    let len = usize::try_from(len)?;
+    if len > MAX_UTF8_ARGUMENT_LEN {
+        return Err(ModuleError::BadArguments(format!(
+            "{name} length {len} exceeds the plausible maximum of {MAX_UTF8_ARGUMENT_LEN} \
+             bytes; refusing to allocate (possible misbehaving or malicious caller)"
+        )));
+    }
+    // SAFETY: PKCS#11 requires callers to provide `len` readable bytes when `ptr` is non-null.
+    #[expect(unsafe_code)]
+    let bytes = unsafe { slice::from_raw_parts(ptr, len) };
+    std::str::from_utf8(bytes)
+        .map(|value| Some(value.to_owned()))
+        .map_err(|e| ModuleError::BadArguments(format!("{name} is not valid UTF-8: {e}")))
+}
+
+fn login_with_pin(pin: CK_UTF8CHAR_PTR, pin_len: CK_ULONG, function: &str) -> ModuleResult<()> {
+    let token = parse_utf8_argument(pin, pin_len, &format!("{function}: pPin"))?;
+    if use_pin_as_access_token() {
+        invoke_login_fn(
+            token
+                .as_deref()
+                .filter(|value| !value.is_empty())
+                .ok_or(ModuleError::PinRequired)?,
+        )?;
+    }
+    Ok(())
+}
 
 cryptoki_fn!(
     fn C_Logout(hSession: CK_SESSION_HANDLE) {
@@ -739,6 +817,9 @@ cryptoki_fn!(
         );
         let attributes = Attributes::try_from((pTemplate, ulCount))
             .context("C_CreateObject: attributes conversion failed")?;
+        if attributes.get(AttributeType::UniqueId).is_some() {
+            return Err(ModuleError::AttributeReadOnly);
+        }
 
         sessions::session(hSession, |_session| -> ModuleResult<()> {
             unsafe {
@@ -810,6 +891,7 @@ cryptoki_fn!(
             } else {
                 &mut []
             };
+            let mut buffer_too_small = false;
             for attribute in template.iter_mut() {
                 let type_: AttributeType = attribute.type_.try_into().map_err(|e| {
                     let attribute_type = attribute.type_;
@@ -830,11 +912,13 @@ cryptoki_fn!(
                 );
                 if let Some(value) = object.attribute(type_)? {
                     let value = value.as_raw_value();
-                    attribute.ulValueLen = value.len() as CK_ULONG;
+                    let capacity = usize::try_from(attribute.ulValueLen)?;
+                    attribute.ulValueLen = CK_ULONG::try_from(value.len())?;
                     if attribute.pValue.is_null() {
                         continue;
                     }
-                    if (usize::try_from(attribute.ulValueLen)?) < value.len() {
+                    if capacity < value.len() {
+                        buffer_too_small = true;
                         continue;
                     }
                     unsafe {
@@ -845,17 +929,38 @@ cryptoki_fn!(
                     attribute.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                 }
             }
-            Ok(())
+            if buffer_too_small {
+                Err(ModuleError::BufferTooSmall)
+            } else {
+                Ok(())
+            }
         })
     }
 );
 
-cryptoki_fn_not_supported!(
-    C_SetAttributeValue,
-    hSession: CK_SESSION_HANDLE,
-    hObject: CK_OBJECT_HANDLE,
-    pTemplate: CK_ATTRIBUTE_PTR,
-    ulCount: CK_ULONG
+cryptoki_fn!(
+    unsafe fn C_SetAttributeValue(
+        hSession: CK_SESSION_HANDLE,
+        hObject: CK_OBJECT_HANDLE,
+        pTemplate: CK_ATTRIBUTE_PTR,
+        ulCount: CK_ULONG,
+    ) {
+        initialized!();
+        valid_session!(hSession);
+        if ulCount > 0 {
+            not_null!(pTemplate, "C_SetAttributeValue: pTemplate");
+            // SAFETY: PKCS#11 requires `pTemplate` to contain `ulCount` readable entries.
+            let template = unsafe { slice::from_raw_parts(pTemplate, usize::try_from(ulCount)?) };
+            if template
+                .iter()
+                .any(|attribute| attribute.type_ == CKA_UNIQUE_ID)
+            {
+                return Err(ModuleError::AttributeReadOnly);
+            }
+        }
+        let _ = hObject;
+        Err(ModuleError::FunctionNotSupported)
+    }
 );
 
 cryptoki_fn!(
@@ -1531,23 +1636,12 @@ cryptoki_fn_not_supported!(
     pReserved: CK_VOID_PTR
 );
 
-// PKCS#11 v3.0 rollout (issue #1156): v3.0-only functions stubbed out below. Per the PKCS#11
-// v3.0 spec, `CK_FUNCTION_LIST_3_0` must never contain a null function pointer — every function
-// slot must resolve to a real function, even if unimplemented, so it returns
-// `CKR_FUNCTION_NOT_SUPPORTED` instead of crashing a naive caller that does not null-check before
-// calling. This module does not implement user-PIN dual-login, cooperative cancellation, or the
-// v3.0 "message" bulk encrypt/decrypt/sign/verify operations (an optional, more efficient variant
-// of the classic init/update/final flow this module already implements).
-
-cryptoki_fn_not_supported!(
-    C_LoginUser,
-    hSession: CK_SESSION_HANDLE,
-    userType: CK_USER_TYPE,
-    pPin: CK_UTF8CHAR_PTR,
-    ulPinLen: CK_ULONG,
-    pUsername: CK_UTF8CHAR_PTR,
-    ulUsernameLen: CK_ULONG
-);
+// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): the v3.0-only functions below
+// (other than `C_LoginUser`, fully implemented above) must exist as non-null stubs to populate
+// `FUNC_LIST_3_0` above — a null function pointer in `CK_FUNCTION_LIST_3_0` would violate the
+// spec. This module does not implement PKCS#11 v3.0 "message-based" bulk crypto operations
+// (`C_MessageEncryptInit` and friends), so each stub simply returns `CKR_FUNCTION_NOT_SUPPORTED`,
+// exactly like the pre-existing v2.x stubs above (e.g. `C_CopyObject`).
 
 cryptoki_fn_not_supported!(C_SessionCancel, hSession: CK_SESSION_HANDLE, flags: CK_FLAGS);
 

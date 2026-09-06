@@ -114,6 +114,7 @@ nav:
           - Secrets Store CSI Driver: integrations/kubernetes/csi-provider.md
           - Kubernetes Operator: integrations/kubernetes/operator.md
       - Other:
+          - PKCS#11 provider module: integrations/pkcs11_provider.md
           - FortiGate / FortiOS: integrations/fortigate.md
           - OpenSSH: integrations/openssh.md
           - PyKMIP: integrations/pykmip.md

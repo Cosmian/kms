@@ -14,12 +14,12 @@ use cosmian_logger::reexport::tracing::Level;
 use cosmian_pkcs11_module::{
     ModuleError,
     pkcs11::{FUNC_LIST, FUNC_LIST_3_0, PKCS11_INTERFACE, PKCS11_INTERFACE_NAME},
-    traits::{register_backend, register_login_fn, register_pin_mode},
+    traits::{register_backend, register_backend_if_absent, register_login_fn, register_pin_mode},
 };
 use pkcs11_sys::{
     CK_FLAGS, CK_FUNCTION_LIST_PTR_PTR, CK_INTERFACE_PTR, CK_INTERFACE_PTR_PTR, CK_RV,
     CK_ULONG_PTR, CK_UTF8CHAR_PTR, CK_VERSION_PTR, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
-    CKR_FUNCTION_FAILED, CKR_OK, CRYPTOKI_VERSION_MAJOR,
+    CKR_FUNCTION_FAILED, CKR_OK, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 
 use crate::{kms_object::get_kms_config, logging::initialize_logging};
@@ -34,12 +34,27 @@ const MAX_INTERFACE_NAME_LEN: usize = 64;
 /// Guards the one-time population of the v3.0 `FUNC_LIST_3_0` function-pointer table. Both
 /// `C_GetInterfaceList` and `C_GetInterface` write the same constant function pointers into
 /// this `static mut`; without synchronization, concurrent calls from different threads would
-/// be a data race under Rust's memory model (see security review, issue #1156). `Once` ensures
-/// the writes happen at most once, mirroring the existing `initialize_logging` pattern.
+/// be a data race under Rust's memory model (see the #1156 security review, which fixed the
+/// same class of issue for the sibling `pkcs11_v3_rollout` branch). `Once` ensures the writes
+/// happen at most once, mirroring the existing `initialize_logging` pattern.
 static FUNC_LIST_3_0_INIT: Once = Once::new();
 
-/// PKCS#11 v3.0 rollout (issue #1156): populates `FUNC_LIST_3_0` exactly once, regardless of how
-/// many threads call `C_GetInterfaceList`/`C_GetInterface` concurrently.
+#[derive(Clone, Copy)]
+enum BackendRegistration {
+    Replace,
+    PreserveExisting,
+}
+
+fn register_client(client: KmsClient, registration: BackendRegistration) {
+    let backend = Box::new(backend::CliBackend::instantiate(client));
+    match registration {
+        BackendRegistration::Replace => register_backend(backend),
+        BackendRegistration::PreserveExisting => register_backend_if_absent(backend),
+    }
+}
+
+/// PKCS#11 v3.0 Interfaces API gap-fill: populates `FUNC_LIST_3_0` exactly once, regardless of
+/// how many threads call `C_GetInterfaceList`/`C_GetInterface` concurrently.
 fn ensure_func_list_3_0_registered() {
     FUNC_LIST_3_0_INIT.call_once(|| {
         // SAFETY: guarded by `Once::call_once`, so this write can only ever execute on a single
@@ -111,20 +126,19 @@ fn dll_directory() -> Option<PathBuf> {
     None
 }
 
-/// This function performs the KMS backend/config initialization that `C_GetFunctionList` is the
-/// first PKCS#11 entry point to trigger. Returns `Err(CKR_FUNCTION_FAILED)` if the KMS client
-/// cannot be instantiated (e.g. missing or invalid configuration), rather than panicking — a Rust
-/// panic across an `extern "C"` boundary is UB and crashes the host process (ORA-07445 on
-/// Oracle).
+/// Performs the KMS backend/config initialization that `C_GetFunctionList` used to do inline.
+/// Returns `Err(CKR_FUNCTION_FAILED)` if the KMS client cannot be instantiated (e.g. missing or
+/// invalid configuration), rather than panicking — a Rust panic across an `extern "C"` boundary
+/// is UB and crashes the host process (ORA-07445 on Oracle).
 ///
-/// PKCS#11 v3.0 rollout (issue #1156): the KMS backend/config initialization performed here is
-/// shared with `C_GetInterfaceList`/`C_GetInterface` below via [`ensure_backend_registered`], so
-/// that a v3.0-aware caller that skips `C_GetFunctionList` entirely (using only the new v3.0
-/// entry points instead, as the spec allows) still gets a working, fully configured backend.
-/// Idempotent: safe to call multiple times (e.g. if an application calls more than one of these
-/// three entry points), since `register_backend`/`register_pin_mode`/`register_login_fn` simply
-/// overwrite the previous registration and `initialize_logging` is guarded by a `std::sync::Once`.
-fn ensure_backend_registered() -> Result<(), CK_RV> {
+/// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): this initialization is shared
+/// with `C_GetInterfaceList`/`C_GetInterface` below, so that a v3.0-aware caller that skips
+/// `C_GetFunctionList` entirely (using only the new v3.0 entry points instead, as the spec
+/// allows) still gets a working, fully configured backend. Idempotent: safe to call multiple
+/// times (e.g. if an application calls more than one of these three entry points), since
+/// `register_backend`/`register_pin_mode`/`register_login_fn` simply overwrite the previous
+/// registration and `initialize_logging` is guarded by a `std::sync::Once`.
+fn ensure_backend_registered(registration: BackendRegistration) -> Result<(), CK_RV> {
     let debug_level =
         std::env::var("COSMIAN_PKCS11_LOGGING_LEVEL").unwrap_or_else(|_| "info".to_owned());
 
@@ -186,7 +200,7 @@ fn ensure_backend_registered() -> Result<(), CK_RV> {
                 return Err(CKR_FUNCTION_FAILED);
             }
         };
-        register_backend(Box::new(backend::CliBackend::instantiate(base_client)));
+        register_client(base_client, registration);
         register_pin_mode(true);
         register_login_fn(Box::new(move |token: &str| {
             let mut cfg = config.clone();
@@ -211,17 +225,25 @@ fn ensure_backend_registered() -> Result<(), CK_RV> {
                 return Err(CKR_FUNCTION_FAILED);
             }
         };
-        register_backend(Box::new(backend::CliBackend::instantiate(kms_client)));
+        register_client(kms_client, registration);
     }
     Ok(())
 }
 
+/// # Safety
+/// This function is the first one called by the PKCS#11 library client
+/// to get the PKCS#11 functions list.
+/// Returns `CKR_FUNCTION_FAILED` if the KMS client cannot be instantiated
+/// (e.g. missing or invalid configuration), rather than panicking — a Rust
+/// panic across an `extern "C"` boundary is UB and crashes the host process
+/// (ORA-07445 on Oracle).
 #[unsafe(no_mangle)]
 #[expect(unsafe_code)]
-/// # Safety
-/// `pp_function_list` must be non-null and writable.
 pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PTR_PTR) -> CK_RV {
-    if let Err(rv) = ensure_backend_registered() {
+    if pp_function_list.is_null() {
+        return CKR_ARGUMENTS_BAD;
+    }
+    if let Err(rv) = ensure_backend_registered(BackendRegistration::Replace) {
         return rv;
     }
     unsafe {
@@ -231,10 +253,10 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
     CKR_OK
 }
 
-/// PKCS#11 v3.0 rollout (issue #1156): standard v3.0 interface-discovery entry point.
-/// Two-call convention (mirrors `C_GetSlotList`/`C_GetMechanismList` in the module crate):
-/// called once with `pInterfacesList` null to learn the count, then again with a
-/// caller-allocated buffer of at least that size.
+/// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): standard v3.0
+/// interface-discovery entry point. Two-call convention (mirrors `C_GetSlotList`/
+/// `C_GetMechanismList` in the module crate): called once with `pInterfacesList` null to learn
+/// the count, then again with a caller-allocated buffer of at least that size.
 ///
 /// # Safety
 /// `pulCount` must be non-null. If non-null, `pInterfacesList` must point to an array of at
@@ -248,7 +270,7 @@ pub unsafe extern "C" fn C_GetInterfaceList(
     if pul_count.is_null() {
         return CKR_ARGUMENTS_BAD;
     }
-    if let Err(rv) = ensure_backend_registered() {
+    if let Err(rv) = ensure_backend_registered(BackendRegistration::PreserveExisting) {
         return rv;
     }
     ensure_func_list_3_0_registered();
@@ -267,11 +289,13 @@ pub unsafe extern "C" fn C_GetInterfaceList(
     CKR_OK
 }
 
-/// PKCS#11 v3.0 rollout (issue #1156): standard v3.0 interface-lookup entry point. This module
-/// exposes exactly one interface — the standard "PKCS 11" interface, major version 3 — so
-/// `pInterfaceName` (if non-null) must match that name and `pVersion` (if non-null) must request
-/// major version 3; `flags` must be 0 (this interface makes no special guarantees, e.g. no
-/// fork-safety claim).
+/// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): standard v3.0 interface-lookup
+/// entry point. This module exposes exactly one interface — the standard "PKCS 11" interface,
+/// implemented at version 3.1 — so `pInterfaceName` (if non-null) must match that name; `pVersion`
+/// (if non-null) must request the same major version (3) with a minor version no greater than
+/// the implemented one (3.1), since a v3.1 implementation is backward-compatible with v3.0
+/// consumers requesting exactly `{major: 3, minor: 0}`; `flags` must be 0 (this interface makes
+/// no special guarantees, e.g. no fork-safety claim).
 ///
 /// # Safety
 /// `ppInterface` must be non-null and writable. If non-null, `pInterfaceName` must point to a
@@ -322,11 +346,15 @@ pub unsafe extern "C" fn C_GetInterface(
         // SAFETY: caller guarantees p_version points to a valid CK_VERSION per this function's
         // safety contract.
         let version = unsafe { *p_version };
-        if version.major != CRYPTOKI_VERSION_MAJOR {
+        // Accept any requested minor version up to the one actually implemented: a v3.1
+        // implementation is a superset of v3.0, so a consumer explicitly requesting
+        // `{major: 3, minor: 0}` must still receive this interface rather than being
+        // rejected by an overly strict exact-version-match check.
+        if version.major != CRYPTOKI_VERSION_MAJOR || version.minor > CRYPTOKI_VERSION_MINOR {
             return CKR_ARGUMENTS_BAD;
         }
     }
-    if let Err(rv) = ensure_backend_registered() {
+    if let Err(rv) = ensure_backend_registered(BackendRegistration::PreserveExisting) {
         return rv;
     }
     ensure_func_list_3_0_registered();
