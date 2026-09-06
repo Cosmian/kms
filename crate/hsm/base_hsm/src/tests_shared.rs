@@ -15,7 +15,7 @@ use openssl::{
     bn::BigNumContext,
     ec::{EcGroup, EcKey, EcPoint},
     ecdsa::EcdsaSig,
-    hash::MessageDigest,
+    hash::{MessageDigest, hash},
     nid::Nid,
 };
 #[cfg(feature = "non-fips")]
@@ -28,10 +28,10 @@ use pkcs11_sys::{
     CK_MECHANISM_PTR, CK_OBJECT_HANDLE, CK_RV, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_DECRYPT,
     CKA_ECDSA_PARAMS, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_PRIVATE,
     CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP, CKF_OS_LOCKING_OK,
-    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512,
-    CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS,
-    CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS,
-    CKR_OK,
+    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384,
+    CKM_ECDSA_SHA512, CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS, CKM_SHA256_RSA_PKCS,
+    CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512_RSA_PKCS,
+    CKM_SHA512_RSA_PKCS_PSS, CKR_OK,
 };
 use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
@@ -904,15 +904,48 @@ pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> 
         };
 
         for (name, algorithm, ckm, digest_nid) in algorithms {
-            if !supported_mechanisms.contains(&ckm) {
-                warn!("{curve:?}/{name} (CKM {ckm}) not supported by HSM, skipping");
-                continue;
-            }
-            let signature = session.sign(sk, algorithm, data)?;
+            // Some PKCS#11 implementations (e.g. SoftHSM2) do not implement the
+            // combined hash-and-sign mechanisms (CKM_ECDSA_SHA*), only the raw
+            // CKM_ECDSA mechanism operating on a pre-computed digest. Fall back to
+            // hashing in software and signing with `prehashed: true` in that case,
+            // so this coverage does not silently no-op against such HSMs.
+            let (sign_algorithm, signing_input): (_, std::borrow::Cow<'_, [u8]>) =
+                if supported_mechanisms.contains(&ckm) {
+                    (algorithm, data.as_slice().into())
+                } else if supported_mechanisms.contains(&CKM_ECDSA) {
+                    let digest = MessageDigest::from_nid(digest_nid).ok_or_else(|| {
+                        HError::Default(format!("Unknown digest NID: {digest_nid:?}"))
+                    })?;
+                    let hashed = hash(digest, data)
+                        .map_err(|e| HError::Default(format!("OpenSSL hash error: {e}")))?;
+                    let HsmSigningAlgorithm::Ecdsa {
+                        hashing_algorithm, ..
+                    } = algorithm
+                    else {
+                        return Err(HError::Default(
+                            "algorithm is always HsmSigningAlgorithm::Ecdsa here".to_owned(),
+                        ));
+                    };
+                    (
+                        HsmSigningAlgorithm::Ecdsa {
+                            hashing_algorithm,
+                            prehashed: true,
+                        },
+                        hashed.to_vec().into(),
+                    )
+                } else {
+                    warn!(
+                        "{curve:?}/{name} (CKM {ckm} or raw CKM_ECDSA) not supported by HSM, \
+                         skipping"
+                    );
+                    continue;
+                };
+
+            let signature = session.sign(sk, sign_algorithm, &signing_input)?;
             verify_ecdsa_der_signature(&openssl_pk, digest_nid, data, &signature)?;
             info!("Successfully signed and verified {curve:?}/{name}");
 
-            let signature_2 = session.sign(sk, algorithm, data)?;
+            let signature_2 = session.sign(sk, sign_algorithm, &signing_input)?;
             verify_ecdsa_der_signature(&openssl_pk, digest_nid, data, &signature_2)?;
 
             // Tampering with the signed data must be detected.
