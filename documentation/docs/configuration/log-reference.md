@@ -1281,6 +1281,9 @@ Crate path: `crate/clients/pkcs11/module`
 | `debug` | `load_find_context_by_class: search by id: {} -> handle: {} ->                              object: {}:{}` | `src/sessions.rs` | - | - |
 | `warn` | `load_find_context_by_class: no {search_class:?} object found for                                  id {id}` | `src/sessions.rs` | `search_class`, `id` | - |
 | `debug` | `load_find_context_by_class: backend fallback — search by id: {}                                  -> handle: {} -> object: {}:{}` | `src/sessions.rs` | - | - |
+| `error` | `CKM_AES_GCM pParameter incorrect size: {} != {}` | `src/core/mechanism.rs` | actual size in bytes, expected `CK_GCM_PARAMS` size in bytes | Caller passed a mechanism parameter buffer of the wrong size for `CKM_AES_GCM`; request is rejected before any unaligned/OOB read. |
+| `error` | `CKM_AES_GCM: unsupported ulTagBits {} (only {} is supported)` | `src/core/mechanism.rs` | requested tag length in bits, only supported tag length in bits (128) | The module only implements the standard 128-bit GCM authentication tag; any other `ulTagBits` value is rejected. |
+| `debug` | `parse_mechanism: CKM_AES_GCM iv_len: {}, aad_len: {}` | `src/core/mechanism.rs` | IV length in bytes, AAD length in bytes | Diagnostic trace emitted after successfully parsing a `CK_GCM_PARAMS` mechanism parameter (read via `read_unaligned` for C-caller safety). No sensitive key material is logged. |
 
 ---
 

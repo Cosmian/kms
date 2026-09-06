@@ -28,6 +28,9 @@ pub struct DecryptContext {
     pub remote_object_id: String,
     pub algorithm: EncryptionAlgorithm,
     pub iv: Option<Vec<u8>>,
+    /// Additional Authenticated Data (AAD), used by `CKM_AES_GCM` (PKCS#11 v3.0).
+    /// Always `None` for non-AEAD mechanisms.
+    pub aad: Option<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -35,6 +38,9 @@ pub struct EncryptContext {
     pub remote_object_id: String,
     pub algorithm: EncryptionAlgorithm,
     pub iv: Option<Vec<u8>>,
+    /// Additional Authenticated Data (AAD), used by `CKM_AES_GCM` (PKCS#11 v3.0).
+    /// Always `None` for non-AEAD mechanisms.
+    pub aad: Option<Vec<u8>>,
 }
 
 static BACKEND: LazyLock<RwLock<Option<Arc<dyn Backend>>>> = LazyLock::new(|| RwLock::new(None));

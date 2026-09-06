@@ -37,8 +37,9 @@ use pkcs11_sys::{
     CKA_UNIQUE_ID, CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT,
     CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN,
     CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_USER_PIN_INITIALIZED, CKM_AES_CBC,
-    CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKR_OK, CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS,
-    CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
+    CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKR_OK, CKS_RO_USER_FUNCTIONS,
+    CKS_RW_USER_FUNCTIONS, CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR,
+    CRYPTOKI_VERSION_MINOR,
 };
 use rand::Rng;
 
@@ -137,10 +138,39 @@ macro_rules! valid_slot {
     };
 }
 
+/// The `(iv, aad)` pair carried by an AES mechanism.
+type IvAndAad = (Option<Vec<u8>>, Option<Vec<u8>>);
+
+/// Extract the `(iv, aad)` pair carried by an AES mechanism (`CKM_AES_CBC`,
+/// `CKM_AES_CBC_PAD`, or `CKM_AES_GCM`). `aad` is always `None` for the two
+/// non-AEAD CBC mechanisms. Returns an error for any other mechanism.
+fn iv_and_aad_from_mechanism(mechanism: &Mechanism) -> ModuleResult<IvAndAad> {
+    match mechanism {
+        Mechanism::AesCbcPad { iv } | Mechanism::AesCbc { iv } => Ok((Some(iv.to_vec()), None)),
+        Mechanism::AesGcm { iv, aad } => Ok((
+            Some(iv.clone()),
+            if aad.is_empty() {
+                None
+            } else {
+                Some(aad.clone())
+            },
+        )),
+        mech => Err(ModuleError::MechanismInvalid(CK_MECHANISM_TYPE::from(mech))),
+    }
+}
+
 pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
-    // In this structure 'version' is the cryptoki specification version number. The major and minor
-    // versions must be set to 0x02 and 0x28 indicating a version 2.40 compatible structure.
-    version: CK_VERSION { major: 2, minor: 4 },
+    // PKCS#11 v3.0 rollout (issue #1156): this legacy `C_GetFunctionList` table must keep
+    // reporting version 2.40, matching the PKCS#11 v2.40 spec, even though the module also
+    // implements the v3.0 `C_GetInterfaceList`/`C_GetInterface` entry points (see `FUNC_LIST_3_0`
+    // below, which correctly reports 3.1). Some v2.40-only consumers validate
+    // `CK_FUNCTION_LIST.version` and reject the module if it does not read exactly 2.40, so this
+    // field must NOT be bumped even though every v2.x function pointer here is unchanged and the
+    // v3.0 entry points are purely additive.
+    version: CK_VERSION {
+        major: 2,
+        minor: 40,
+    },
     C_Initialize: Some(C_Initialize),
     C_Finalize: Some(C_Finalize),
     C_GetInfo: Some(C_GetInfo),
@@ -520,7 +550,7 @@ cryptoki_fn!(
         }
         let flags = match mechType {
             CKM_AES_KEY_GEN => CKF_GENERATE,
-            CKM_AES_CBC | CKM_AES_CBC_PAD => CKF_ENCRYPT | CKF_DECRYPT,
+            CKM_AES_CBC | CKM_AES_CBC_PAD | CKM_AES_GCM => CKF_ENCRYPT | CKF_DECRYPT,
             _ => CKF_SIGN,
         };
         let info = CK_MECHANISM_INFO {
@@ -1043,38 +1073,27 @@ cryptoki_fn!(
                         remote_object_id: pk.remote_id().to_owned(),
                         algorithm: mechanism.try_into()?,
                         iv: None,
+                        aad: None,
                     });
                     Ok(())
                 }
                 Some(Object::SymmetricKey(sk)) => {
-                    let iv = match &mechanism {
-                        Mechanism::AesCbcPad { iv } | Mechanism::AesCbc { iv } => Some(iv.to_vec()),
-                        mech => {
-                            return Err(ModuleError::MechanismInvalid(CK_MECHANISM_TYPE::from(
-                                mech,
-                            )));
-                        }
-                    };
+                    let (iv, aad) = iv_and_aad_from_mechanism(&mechanism)?;
                     session.encrypt_ctx = Some(EncryptContext {
                         remote_object_id: sk.remote_id().to_owned(),
                         algorithm: EncryptionAlgorithm::try_from(mechanism)?,
                         iv,
+                        aad,
                     });
                     Ok(())
                 }
                 Some(Object::DataObject(data)) => {
-                    let iv = match &mechanism {
-                        Mechanism::AesCbcPad { iv } | Mechanism::AesCbc { iv } => Some(iv.to_vec()),
-                        mech => {
-                            return Err(ModuleError::MechanismInvalid(CK_MECHANISM_TYPE::from(
-                                mech,
-                            )));
-                        }
-                    };
+                    let (iv, aad) = iv_and_aad_from_mechanism(&mechanism)?;
                     session.encrypt_ctx = Some(EncryptContext {
                         remote_object_id: data.remote_id().to_owned(),
                         algorithm: EncryptionAlgorithm::try_from(mechanism)?,
                         iv,
+                        aad,
                     });
                     Ok(())
                 }
@@ -1164,39 +1183,28 @@ cryptoki_fn!(
                         remote_object_id: sk.remote_id().to_owned(),
                         algorithm: mechanism.try_into()?,
                         iv: None,
+                        aad: None,
                     });
                     Ok(())
                 }
                 Some(Object::SymmetricKey(sk)) => {
-                    let iv = match &mechanism {
-                        Mechanism::AesCbcPad { iv } | Mechanism::AesCbc { iv } => Some(iv.to_vec()),
-                        mech => {
-                            return Err(ModuleError::MechanismInvalid(CK_MECHANISM_TYPE::from(
-                                mech,
-                            )));
-                        }
-                    };
+                    let (iv, aad) = iv_and_aad_from_mechanism(&mechanism)?;
 
                     session.decrypt_ctx = Some(DecryptContext {
                         remote_object_id: sk.remote_id().to_owned(),
                         algorithm: mechanism.try_into()?,
                         iv,
+                        aad,
                     });
                     Ok(())
                 }
                 Some(Object::DataObject(data)) => {
-                    let iv = match &mechanism {
-                        Mechanism::AesCbcPad { iv } | Mechanism::AesCbc { iv } => Some(iv.to_vec()),
-                        mech => {
-                            return Err(ModuleError::MechanismInvalid(CK_MECHANISM_TYPE::from(
-                                mech,
-                            )));
-                        }
-                    };
+                    let (iv, aad) = iv_and_aad_from_mechanism(&mechanism)?;
                     session.decrypt_ctx = Some(DecryptContext {
                         remote_object_id: data.remote_id().to_owned(),
                         algorithm: mechanism.try_into()?,
                         iv,
+                        aad,
                     });
                     Ok(())
                 }

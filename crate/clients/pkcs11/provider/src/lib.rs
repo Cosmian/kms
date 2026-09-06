@@ -7,7 +7,7 @@
     clippy::redundant_pub_crate
 )]
 
-use std::{path::PathBuf, ptr::addr_of_mut, str::FromStr, sync::Once};
+use std::{path::PathBuf, ptr::addr_of_mut, slice, str::FromStr, sync::Once};
 
 use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClient;
 use cosmian_logger::reexport::tracing::Level;
@@ -23,6 +23,13 @@ use pkcs11_sys::{
 };
 
 use crate::{kms_object::get_kms_config, logging::initialize_logging};
+
+/// PKCS#11 v3.0 rollout (issue #1156): upper bound on how many bytes `C_GetInterface` will scan
+/// looking for the NUL terminator of a caller-supplied `pInterfaceName`. The spec's "PKCS 11"
+/// name is 7 bytes; this generous bound (64) keeps the scan bounded (never reads past it, so an
+/// unterminated/malicious buffer cannot cause an out-of-bounds read) while comfortably covering
+/// any real interface name.
+const MAX_INTERFACE_NAME_LEN: usize = 64;
 
 /// Guards the one-time population of the v3.0 `FUNC_LIST_3_0` function-pointer table. Both
 /// `C_GetInterfaceList` and `C_GetInterface` write the same constant function pointers into
@@ -292,7 +299,7 @@ pub unsafe extern "C" fn C_GetInterfaceList(
 ///
 /// # Safety
 /// `ppInterface` must be non-null and writable. If non-null, `pInterfaceName` must point to a
-/// exact NUL-terminated string `"PKCS 11"`; if
+/// NUL-terminated string no longer than [`MAX_INTERFACE_NAME_LEN`] bytes (excluding the NUL); if
 /// non-null, `pVersion` must point to a valid `CK_VERSION`.
 #[unsafe(no_mangle)]
 #[expect(unsafe_code)]
@@ -311,10 +318,25 @@ pub unsafe extern "C" fn C_GetInterface(
         return CKR_ARGUMENTS_BAD;
     }
     if !p_interface_name.is_null() {
-        // SAFETY: PKCS#11 requires `pInterfaceName` to reference a valid NUL-terminated string.
+        // SAFETY: the spec's `pInterfaceName` carries no explicit length, so we bound the scan
+        // to `MAX_INTERFACE_NAME_LEN` bytes and never read past a NUL terminator found within
+        // that bound. A name that does not match within the bound is simply treated as "no such
+        // interface" (CKR_ARGUMENTS_BAD), so an unbounded/malicious buffer cannot cause an
+        // out-of-bounds read: at most `MAX_INTERFACE_NAME_LEN` bytes are ever inspected.
         let matches = unsafe {
-            std::ffi::CStr::from_ptr(p_interface_name.cast()).to_bytes_with_nul()
-                == PKCS11_INTERFACE_NAME
+            let mut matched = false;
+            for len in 0..=MAX_INTERFACE_NAME_LEN {
+                let byte = *p_interface_name.add(len);
+                if byte == 0 {
+                    let candidate = slice::from_raw_parts(p_interface_name, len);
+                    let expected = PKCS11_INTERFACE_NAME
+                        .get(..PKCS11_INTERFACE_NAME.len().saturating_sub(1))
+                        .unwrap_or(&[]);
+                    matched = candidate == expected;
+                    break;
+                }
+            }
+            matched
         };
         if !matches {
             return CKR_ARGUMENTS_BAD;

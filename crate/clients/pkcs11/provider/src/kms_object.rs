@@ -42,6 +42,13 @@ use zeroize::Zeroizing;
 
 use crate::error::{Pkcs11Error, result::Pkcs11Result};
 
+/// The GCM authentication tag length (in bytes) used by the KMS's AES-GCM backend
+/// (`AES_128_GCM_MAC_LENGTH`/`AES_192_GCM_MAC_LENGTH`/`AES_256_GCM_MAC_LENGTH` in
+/// `crate/crypto` are all 16 bytes / 128 bits). `CKM_AES_GCM` mechanism parsing on the
+/// module side (`cosmian_pkcs11_module`) rejects any other `ulTagBits` value, so this
+/// constant is always correct for data reaching this function.
+const AES_GCM_TAG_LENGTH: usize = 16;
+
 /// Shared Tokio runtime — created once, reused for every blocking KMS call.
 /// Avoids the overhead (and potential `io::Error`) of spinning up a runtime per call.
 static RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> = std::sync::LazyLock::new(|| {
@@ -737,6 +744,11 @@ pub(crate) async fn kms_encrypt_async(
             padding_method: Some(PaddingMethod::None),
             ..Default::default()
         },
+        EncryptionAlgorithm::AesGcm => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(BlockCipherMode::GCM),
+            ..Default::default()
+        },
         EncryptionAlgorithm::RsaPkcs1v15 => CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             padding_method: Some(PaddingMethod::PKCS1v15),
@@ -750,12 +762,25 @@ pub(crate) async fn kms_encrypt_async(
         cryptographic_parameters: Some(cryptographic_parameters),
         data: Some(Zeroizing::new(data)),
         i_v_counter_nonce: encrypt_ctx.iv.clone(),
+        authenticated_encryption_additional_data: encrypt_ctx.aad.clone(),
         ..Default::default()
     };
     let response = kms_rest_client.encrypt(encryption_request).await?;
-    let ciphertext = response.data.ok_or_else(|| {
+    let mut ciphertext = response.data.ok_or_else(|| {
         Pkcs11Error::ServerError("Encryption response does not contain data".to_owned())
     })?;
+
+    // `CKM_AES_GCM` (PKCS#11 v3.0): the caller expects a single output buffer of
+    // ciphertext followed by the authentication tag (per the PKCS#11 spec's
+    // "ciphertext = C || T" convention for AEAD mechanisms without separate tag output).
+    if matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
+        let tag = response.authenticated_encryption_tag.ok_or_else(|| {
+            Pkcs11Error::ServerError(
+                "AES-GCM encryption response does not contain an authentication tag".to_owned(),
+            )
+        })?;
+        ciphertext.extend_from_slice(&tag);
+    }
 
     debug!(
         "kms_encrypt_async: ciphertext: {}",
@@ -790,19 +815,50 @@ pub(crate) async fn kms_decrypt_async(
             padding_method: Some(PaddingMethod::None),
             ..Default::default()
         },
+        EncryptionAlgorithm::AesGcm => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(BlockCipherMode::GCM),
+            ..Default::default()
+        },
         EncryptionAlgorithm::RsaPkcs1v15 => CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             padding_method: Some(PaddingMethod::PKCS1v15),
             ..Default::default()
         },
     };
+
+    // `CKM_AES_GCM` (PKCS#11 v3.0): the caller supplies a single input buffer of
+    // ciphertext followed by the authentication tag ("C || T"); split it back apart
+    // before sending the KMIP Decrypt request, which expects them as separate fields.
+    let (ciphertext, authenticated_encryption_tag) =
+        if matches!(decrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
+            if data.len() < AES_GCM_TAG_LENGTH {
+                // Too-short ciphertext is a caller/input error, not a server-side failure —
+                // use the dedicated `Pkcs11` variant rather than `ServerError` so it is not
+                // misclassified as a KMS backend fault.
+                return Err(Pkcs11Error::Pkcs11(format!(
+                    "AES-GCM ciphertext too short: {} bytes, expected at least {} (tag length)",
+                    data.len(),
+                    AES_GCM_TAG_LENGTH
+                )));
+            }
+            let split_at = data.len() - AES_GCM_TAG_LENGTH;
+            let mut data = data;
+            let tag = data.split_off(split_at);
+            (data, Some(tag))
+        } else {
+            (data, None)
+        };
+
     let decryption_request = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(
             decrypt_ctx.remote_object_id.clone(),
         )),
         cryptographic_parameters: Some(cryptographic_parameters),
-        data: Some(data),
+        data: Some(ciphertext),
         i_v_counter_nonce: decrypt_ctx.iv.clone(),
+        authenticated_encryption_additional_data: decrypt_ctx.aad.clone(),
+        authenticated_encryption_tag,
         ..Default::default()
     };
     let response = kms_rest_client.decrypt(decryption_request).await?;

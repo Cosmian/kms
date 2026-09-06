@@ -4,6 +4,9 @@ The Eviden KMS PKCS#11 provider enables OpenSSH to use SSH keys stored in the KM
 authentication. The **private key never leaves the KMS**: every signing operation is performed
 server-side and only the signature is returned to the SSH client.
 
+See the [PKCS#11 provider module](pkcs11_provider.md) reference page for the mechanisms and
+Cryptoki versions supported by the library.
+
 ---
 
 ## How it works

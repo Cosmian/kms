@@ -1,8 +1,9 @@
 # PKCS#11 provider module
 
-The Eviden KMS ships a PKCS#11 provider library, `libcosmian_pkcs11` (`.so` on Linux, `.dylib`
-on macOS, `.dll` on Windows), which exposes KMS-managed keys as a Cryptoki token to any PKCS#11-aware
-application.
+The Eviden KMS ships a PKCS#11 provider library, `cosmian_pkcs11` (`libcosmian_pkcs11.so` on Linux,
+`libcosmian_pkcs11.dylib` on macOS, `cosmian_pkcs11.dll` on Windows — note the Windows build does
+**not** carry the `lib` prefix, per the platform's native `cdylib` naming convention), which exposes
+KMS-managed keys as a Cryptoki token to any PKCS#11-aware application.
 
 This page documents capabilities of the provider library itself. It is shared by every integration
 that loads the library, including [Veracrypt](disk_encryption/veracrypt.md),
@@ -13,8 +14,9 @@ integration-specific setup steps.
 ## Cryptoki version and interfaces discovery
 
 The library implements the Cryptoki v2.40 function list (`C_GetFunctionList`) and additionally
+The library implements the Cryptoki v2.40 function list (`C_GetFunctionList`) and additionally
 implements the Cryptoki v3.x "interfaces" discovery entry points, `C_GetInterfaceList` and
-`C_GetInterface`.
+`C_GetInterface` (`CK_INFO.cryptokiVersion` is reported as 3.1).
 
 This is purely **additive**: every consumer that only knows about `C_GetFunctionList` (the previous
 behavior of this library) keeps working unchanged. A v3-aware consumer may instead discover the
@@ -30,9 +32,10 @@ v2.x function pointers plus a small set of v3-only entry points.
   `CKR_ARGUMENTS_BAD`.
 - `C_LoginUser` is implemented: it behaves like `C_Login` (the library exposes a single implicit
   backend identity, so `pUsername`/`ulUsernameLen` are validated as well-formed UTF-8 but otherwise
-  ignored). `CKU_USER` is accepted. `CKU_SO` and other unsupported user types return
-  `CKR_USER_TYPE_INVALID`, while `CKU_CONTEXT_SPECIFIC` returns `CKR_OPERATION_NOT_INITIALIZED`
-  because contextual authentication is not implemented.
+  ignored). Both `CKU_USER` and `CKU_SO` are accepted (there is no distinct Security Officer role;
+  this keeps interoperability with tools such as `pkcs11-tool --login-type so`). Other unsupported
+  user types return `CKR_USER_TYPE_INVALID`, while `CKU_CONTEXT_SPECIFIC` returns
+  `CKR_OPERATION_NOT_INITIALIZED` because contextual authentication is not implemented.
 - v3 functions that this library does not natively implement (`C_SessionCancel`, and the
   message-based bulk encrypt/decrypt/sign/verify family — `C_Message*Init`/`C_*MessageBegin`/
   `C_*MessageNext`/`C_Message*Final`) are present in the v3.0 function list as required by the
@@ -69,22 +72,55 @@ implemented by this library.
 |-----------|---------|-------|
 | `CKM_AES_KEY_GEN` | AES key generation | Generates AES-256 keys |
 | `CKM_AES_CBC`, `CKM_AES_CBC_PAD` | AES-CBC encryption/decryption | — |
+| `CKM_AES_GCM` | AES-GCM authenticated encryption/decryption | See below |
 | `CKM_RSA_PKCS`, `CKM_SHA1_RSA_PKCS`, `CKM_SHA256_RSA_PKCS`, `CKM_SHA384_RSA_PKCS`, `CKM_SHA512_RSA_PKCS` | RSA PKCS#1 v1.5 signing | — |
 | `CKM_RSA_PKCS_PSS` | RSA-PSS signing | — |
 | `CKM_ECDSA` | ECDSA signing | — |
-| `CKM_EDDSA` | EdDSA signing (Ed25519) | — |
+| `CKM_EDDSA` | EdDSA signing (Ed25519) | Cryptoki v3.0 mechanism, already supported |
+
+### `CKM_AES_GCM`
+
+`CKM_AES_GCM` performs AES-GCM authenticated encryption/decryption through the KMS, using the
+`CK_GCM_PARAMS` structure to carry the initialization vector (IV), optional additional
+authenticated data (AAD), and tag length:
+
+- `pIv`/`ulIvLen`: IV, 1 to 128 bytes (a 12-byte/96-bit IV is the recommended default).
+- `pAAD`/`ulAADLen`: optional AAD, 0 to 1 MiB (`pAAD` may be `NULL` when `ulAADLen` is 0).
+- `ulTagBits`: must be exactly `128` — the KMS's AES-GCM backend always produces/verifies a
+  128-bit (16-byte) authentication tag; any other value is rejected with `CKR_MECHANISM_INVALID`.
+
+`C_Encrypt` returns `ciphertext || tag` (the 16-byte tag appended after the ciphertext), and
+`C_Decrypt` expects that same `ciphertext || tag` layout as input — this matches the convention
+used by OpenSSL's and most other PKCS#11 AES-GCM implementations.
+
+```c
+CK_BYTE iv[12] = { /* random IV */ };
+CK_BYTE aad[]  = "context-binding-data";
+CK_GCM_PARAMS gcm_params = {
+    .pIv = iv, .ulIvLen = sizeof(iv), .ulIvBits = 0,
+    .pAAD = aad, .ulAADLen = sizeof(aad) - 1,
+    .ulTagBits = 128,
+};
+CK_MECHANISM mechanism = { CKM_AES_GCM, &gcm_params, sizeof(gcm_params) };
+
+C_EncryptInit(session, &mechanism, key_handle);
+/* ciphertext buffer must be at least plaintext_len + 16 bytes (for the appended tag) */
+C_Encrypt(session, plaintext, plaintext_len, ciphertext, &ciphertext_len);
+```
 
 ## Backward compatibility
 
 No configuration change and no code change are required to keep using the PKCS#11 provider library
 as before: existing v2.40-only consumers keep calling `C_GetFunctionList` exactly as they always
-have, and every previously-supported mechanism is unchanged. The v3 interfaces discovery entry
-points, `C_LoginUser`, and the self-declared `CKO_PROFILE` objects are new, optional capabilities.
+have, and every previously-supported mechanism (`CKM_AES_CBC`, `CKM_RSA_PKCS`, `CKM_ECDSA`,
+`CKM_EDDSA`, etc.) is unchanged. `CKM_AES_GCM`, the v3 interfaces discovery entry points,
+`C_LoginUser`, and the self-declared `CKO_PROFILE` objects are new, optional capabilities.
 
 ## Logging
 
-The PKCS#11 module logs to the `<log_name>.log` file in the `.cosmian` subdirectory of the
-configuration file by default. On Linux, if the `COSMIAN_PKCS11_LOGGING_FOLDER` environment
-variable is set, its value is used as the log directory instead. The
-`COSMIAN_PKCS11_LOGGING_LEVEL` environment variable controls the logging level (`trace`, `debug`,
-`info`, `warn`, or `error`; defaults to `info`).
+By default the PKCS#11 module logs to `cosmian-pkcs11.log` in `~/.cosmian/`, except on Windows
+where it logs next to the loaded DLL instead (the Oracle Database TDE external-table service
+account, for instance, has no writable home directory). On Linux, if the
+`COSMIAN_PKCS11_LOGGING_FOLDER` environment variable is set, its value is used as the log
+directory instead of `~/.cosmian/`. The `COSMIAN_PKCS11_LOGGING_LEVEL` environment variable
+controls the logging level (`trace`, `debug`, `info`, `warn`, or `error`; defaults to `info`).
