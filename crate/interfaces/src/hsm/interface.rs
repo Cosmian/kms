@@ -124,7 +124,11 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
             match cryptographic_algorithm {
                 CryptographicAlgorithm::AES => Self::AesKey,
                 CryptographicAlgorithm::RSA => Self::RsaKey,
-                CryptographicAlgorithm::EC | CryptographicAlgorithm::ECDSA => Self::EcKey,
+                CryptographicAlgorithm::EC
+                | CryptographicAlgorithm::ECDSA
+                | CryptographicAlgorithm::ECDH => Self::EcKey,
+                #[cfg(feature = "non-fips")]
+                CryptographicAlgorithm::Ed25519 | CryptographicAlgorithm::Ed448 => Self::EcKey,
                 _ => {
                     return Err(InterfaceError::Default(format!(
                         "Unsupported cryptographic algorithm for HSMs: {cryptographic_algorithm}"
