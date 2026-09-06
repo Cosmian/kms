@@ -751,24 +751,44 @@ fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
         CKR_ARGUMENTS_BAD
     );
 
-    for minor in [0, CRYPTOKI_VERSION_MINOR.saturating_add(1)] {
-        let mut wrong_minor = CK_VERSION {
-            major: CRYPTOKI_VERSION_MAJOR,
-            minor,
-        };
-        assert_eq!(
-            // SAFETY: `wrong_minor` and `interface_ptr` are valid stack values.
-            unsafe {
-                C_GetInterface(
-                    std::ptr::null_mut(),
-                    &raw mut wrong_minor,
-                    &raw mut interface_ptr,
-                    0,
-                )
-            },
-            CKR_ARGUMENTS_BAD
-        );
-    }
+    // A minor version *below* the implemented one (e.g. a v3.0 request against this v3.1
+    // implementation) is backward-compatible and must be accepted, not rejected — a v3.1
+    // interface is a superset of v3.0. Only a minor version *above* the implemented one is
+    // truly unsupported.
+    let mut compatible_minor = CK_VERSION {
+        major: CRYPTOKI_VERSION_MAJOR,
+        minor: 0,
+    };
+    assert_eq!(
+        // SAFETY: `compatible_minor` and `interface_ptr` are valid stack values.
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                &raw mut compatible_minor,
+                &raw mut interface_ptr,
+                0,
+            )
+        },
+        CKR_OK
+    );
+    assert!(!interface_ptr.is_null());
+
+    let mut unsupported_minor = CK_VERSION {
+        major: CRYPTOKI_VERSION_MAJOR,
+        minor: CRYPTOKI_VERSION_MINOR.saturating_add(1),
+    };
+    assert_eq!(
+        // SAFETY: `unsupported_minor` and `interface_ptr` are valid stack values.
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                &raw mut unsupported_minor,
+                &raw mut interface_ptr,
+                0,
+            )
+        },
+        CKR_ARGUMENTS_BAD
+    );
 
     // Non-zero flags: no interface satisfies any special guarantee.
     assert_eq!(
