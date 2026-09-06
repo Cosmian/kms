@@ -86,6 +86,9 @@ new, optional capabilities.
 
 ## Logging
 
-The PKCS#11 module logs to the `cosmian-pkcs11.log` file in the `.cosmian` subdirectory of the
-configuration file. The `COSMIAN_PKCS11_LOGGING_LEVEL` environment variable controls the logging
-level (`trace`, `debug`, `info`, `warn`, or `error`; defaults to `info`).
+By default the PKCS#11 module logs to `cosmian-pkcs11.log` in `~/.cosmian/`, except on Windows
+where it logs next to the loaded DLL instead (the Oracle Database TDE external-table service
+account, for instance, has no writable home directory). On Linux, if the
+`COSMIAN_PKCS11_LOGGING_FOLDER` environment variable is set, its value is used as the log
+directory instead of `~/.cosmian/`. The `COSMIAN_PKCS11_LOGGING_LEVEL` environment variable
+controls the logging level (`trace`, `debug`, `info`, `warn`, or `error`; defaults to `info`).
