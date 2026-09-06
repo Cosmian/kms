@@ -709,6 +709,14 @@ const fn validate_login_user_type(
     }
 }
 
+/// Defense-in-depth cap on `pPin`/`pUsername` argument lengths accepted by
+/// `C_Login`/`C_LoginUser`: no legitimate PIN or username is anywhere near this size, so a
+/// caller-supplied `ulPinLen`/`ulUsernameLen` far larger than this is refused before any
+/// allocation or `slice::from_raw_parts` call, rather than trusting an arbitrarily large
+/// native `CK_ULONG` and exhausting process memory (threat-model finding: FFI argument-length
+/// denial of service).
+const MAX_UTF8_ARGUMENT_LEN: usize = 4096;
+
 fn parse_utf8_argument(
     ptr: CK_UTF8CHAR_PTR,
     len: CK_ULONG,
@@ -721,6 +729,12 @@ fn parse_utf8_argument(
         return Err(ModuleError::BadArguments(format!("{name} is null")));
     }
     let len = usize::try_from(len)?;
+    if len > MAX_UTF8_ARGUMENT_LEN {
+        return Err(ModuleError::BadArguments(format!(
+            "{name} length {len} exceeds the plausible maximum of {MAX_UTF8_ARGUMENT_LEN} \
+             bytes; refusing to allocate (possible misbehaving or malicious caller)"
+        )));
+    }
     // SAFETY: PKCS#11 requires callers to provide `len` readable bytes when `ptr` is non-null.
     #[expect(unsafe_code)]
     let bytes = unsafe { slice::from_raw_parts(ptr, len) };
