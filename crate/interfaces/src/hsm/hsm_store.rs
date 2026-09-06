@@ -78,10 +78,10 @@ fn ec_curve_to_usage_mask(
     }
 }
 
-fn ec_domain_parameters_for_curve(curve: EcCurve) -> CryptographicDomainParameters {
+const fn ec_domain_parameters_for_curve(curve: EcCurve) -> CryptographicDomainParameters {
     CryptographicDomainParameters {
+        qlength: None,
         recommended_curve: Some(ec_curve_to_recommended_curve(curve)),
-        ..CryptographicDomainParameters::default()
     }
 }
 
@@ -248,15 +248,19 @@ impl ObjectsStore for HsmStore {
                 let Some(meta) = meta else {
                     return Ok(None);
                 };
-                let attrs = build_sensitive_stub_attributes(&meta);
-                let object = build_sensitive_stub_object(&meta);
-                Ok(Some(ObjectWithMetadata::new(
-                    uid.to_owned(),
-                    object,
-                    self.owner_name().to_owned(),
-                    State::Active,
-                    attrs,
-                )))
+                if meta.sensitive {
+                    let attrs = build_sensitive_stub_attributes(&meta);
+                    let object = build_sensitive_stub_object(&meta);
+                    Ok(Some(ObjectWithMetadata::new(
+                        uid.to_owned(),
+                        object,
+                        self.owner_name().to_owned(),
+                        State::Active,
+                        attrs,
+                    )))
+                } else {
+                    Err(e)
+                }
             }
         }
     }
@@ -1655,13 +1659,13 @@ mod tests {
     use cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_types::{CryptographicAlgorithm, Name, NameType},
+        kmip_types::{CryptographicAlgorithm, Name, NameType, RecommendedCurve},
     };
     #[cfg(feature = "non-fips")]
     use cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyMaterial as KmipKeyMaterial, KeyValue},
         kmip_objects::Object,
-        kmip_types::{KeyFormatType, RecommendedCurve},
+        kmip_types::KeyFormatType,
     };
     use zeroize::Zeroizing;
 
@@ -1671,12 +1675,12 @@ mod tests {
         build_sensitive_stub_attributes, build_sensitive_stub_object, to_object_with_metadata,
     };
     use crate::{
-        CryptoAlgorithm, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-        InterfaceError, InterfaceResult, KeyMetadata, KeyType, ObjectsStore, SigningAlgorithm,
-        crypto_oracle::EncryptedContent, hsm::HsmStore,
+        CryptoAlgorithm, EcCurve, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
+        HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType, ObjectsStore,
+        SigningAlgorithm, crypto_oracle::EncryptedContent, hsm::HsmStore,
     };
     #[cfg(feature = "non-fips")]
-    use crate::{EcCurve, EcPrivateKeyMaterial, KeyMaterial};
+    use crate::{EcPrivateKeyMaterial, KeyMaterial};
 
     // ── mockall-generated test double for HSM ─────────────────────────────────
 
@@ -1863,6 +1867,75 @@ mod tests {
             HsmObjectFilter::try_from(&attrs),
             Ok(HsmObjectFilter::EcPublicKey)
         ));
+    }
+
+    #[test]
+    fn test_ec_domain_parameters_leave_qlength_unset() {
+        let params = super::ec_domain_parameters_for_curve(EcCurve::P384);
+        assert_eq!(params.qlength, None);
+        assert_eq!(params.recommended_curve, Some(RecommendedCurve::P384));
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_non_sensitive_export_error_is_propagated() {
+        let mut mock = MockHsm::new();
+        mock.expect_export()
+            .return_once(|_, _| Err(InterfaceError::Default("export failed".to_owned())));
+        mock.expect_get_key_metadata().return_once(|_, _| {
+            Ok(Some(KeyMetadata {
+                key_type: KeyType::EcPrivateKey,
+                key_length_in_bits: 256,
+                sensitive: false,
+                id: "key".to_owned(),
+                curve: Some(EcCurve::P256),
+                start_date: None,
+                end_date: None,
+                rotate_name: None,
+                rotate_generation: None,
+            }))
+        });
+
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        let result = store.retrieve("hsm::1::key").await;
+
+        assert!(matches!(
+            result,
+            Err(InterfaceError::Default(ref msg)) if msg == "export failed"
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_sensitive_export_error_falls_back_to_stub() {
+        let mut mock = MockHsm::new();
+        mock.expect_export()
+            .return_once(|_, _| Err(InterfaceError::Default("sensitive".to_owned())));
+        mock.expect_get_key_metadata().return_once(|_, _| {
+            Ok(Some(KeyMetadata {
+                key_type: KeyType::EcPrivateKey,
+                key_length_in_bits: 256,
+                sensitive: true,
+                id: "key".to_owned(),
+                curve: Some(EcCurve::P256),
+                start_date: None,
+                end_date: None,
+                rotate_name: None,
+                rotate_generation: None,
+            }))
+        });
+
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        let result = store.retrieve("hsm::1::key").await;
+        assert!(result.is_ok());
+        let Ok(result) = result else {
+            return;
+        };
+        assert!(result.is_some());
+        let Some(owm) = result else {
+            return;
+        };
+
+        assert_eq!(owm.attributes().sensitive, Some(true));
+        assert_eq!(owm.attributes().object_type, Some(ObjectType::PrivateKey));
     }
 
     #[cfg(feature = "non-fips")]

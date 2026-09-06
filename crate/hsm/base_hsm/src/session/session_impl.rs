@@ -10,7 +10,7 @@ use std::{
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent, HashingAlgorithm,
     HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
-    KeyType::{AesKey, RsaPrivateKey, RsaPublicKey},
+    KeyType::{AesKey, EcPrivateKey, EcPublicKey, RsaPrivateKey, RsaPublicKey},
     RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
 };
 use cosmian_logger::{debug, trace};
@@ -442,18 +442,21 @@ impl Session {
                 };
                 if object_id.ends_with(b"_pk") {
                     // We are looking for a public key. Check if the results contain one.
-                    if object_type == RsaPublicKey {
+                    if object_type == RsaPublicKey || object_type == EcPublicKey {
                         if matched_type_count > 0 {
                             let label = std::str::from_utf8(object_id).unwrap_or("<non-utf8>");
                             return Err(HError::Default(format!(
-                                "Multiple RSA public keys with label '{label}' found in the HSM slot. \
+                                "Multiple public keys with label '{label}' found in the HSM slot. \
                                  Labels must be unique per key type."
                             )));
                         }
                         object_handle = handle;
                         matched_type_count += 1;
                     }
-                } else if object_type == AesKey || object_type == RsaPrivateKey {
+                } else if object_type == AesKey
+                    || object_type == RsaPrivateKey
+                    || object_type == EcPrivateKey
+                {
                     if matched_type_count > 0 {
                         let label = std::str::from_utf8(object_id).unwrap_or("<non-utf8>");
                         return Err(HError::Default(format!(
@@ -1855,7 +1858,7 @@ impl Session {
         let value_len = template[1].ulValueLen;
         let label_len = template[2].ulValueLen;
         let mut ec_params: Vec<u8> = vec![0_u8; usize::try_from(ec_params_len)?];
-        let mut value: Vec<u8> = vec![0_u8; usize::try_from(value_len)?];
+        let mut value = Zeroizing::new(vec![0_u8; usize::try_from(value_len)?]);
         let mut label_bytes: Vec<u8> = vec![0_u8; usize::try_from(label_len)?];
         let mut template = [
             CK_ATTRIBUTE {
@@ -1887,7 +1890,7 @@ impl Session {
         // leading zero bytes.
         let byte_size = curve_byte_size(curve);
         let mut d = vec![0_u8; byte_size.saturating_sub(value.len())];
-        d.extend_from_slice(&value);
+        d.extend_from_slice(value.as_slice());
         Ok(Some(HsmObject::new(
             KeyMaterial::EcPrivateKey(EcPrivateKeyMaterial {
                 curve,
