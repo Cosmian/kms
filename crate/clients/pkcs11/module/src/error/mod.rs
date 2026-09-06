@@ -20,7 +20,7 @@ use std::sync::{PoisonError, RwLockReadGuard, RwLockWriteGuard};
 // limitations under the License.
 use pkcs11_sys::{
     CK_ATTRIBUTE_TYPE, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID,
-    CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_READ_ONLY, CKR_ATTRIBUTE_TYPE_INVALID,
+    CKR_ACTION_PROHIBITED, CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_READ_ONLY, CKR_ATTRIBUTE_TYPE_INVALID,
     CKR_ATTRIBUTE_VALUE_INVALID, CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED,
     CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED,
     CKR_GENERAL_ERROR, CKR_KEY_HANDLE_INVALID, CKR_MECHANISM_INVALID, CKR_NEED_TO_CREATE_THREADS,
@@ -91,6 +91,8 @@ pub enum ModuleError {
     UserNotLoggedIn,
     #[error("user type is invalid")]
     UserTypeInvalid,
+    #[error("action prohibited on object {0}: self-declared profile objects are read-only")]
+    ActionProhibited(CK_OBJECT_HANDLE),
     // Other errors.
     #[error(transparent)]
     FromUtf8(#[from] std::string::FromUtf8Error),
@@ -153,6 +155,7 @@ impl From<ModuleError> for CK_RV {
             ModuleError::PinRequired => CKR_PIN_INCORRECT,
             ModuleError::UserNotLoggedIn => CKR_USER_NOT_LOGGED_IN,
             ModuleError::UserTypeInvalid => CKR_USER_TYPE_INVALID,
+            ModuleError::ActionProhibited(_) => CKR_ACTION_PROHIBITED,
 
             ModuleError::Backend(_)
             | ModuleError::AlgorithmNotSupported(_)
