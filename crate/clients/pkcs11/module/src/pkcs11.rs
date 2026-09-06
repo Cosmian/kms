@@ -38,7 +38,7 @@ use pkcs11_sys::{
     CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN,
     CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_USER_PIN_INITIALIZED, CKM_AES_CBC,
     CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKR_OK, CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS,
-    CKU_CONTEXT_SPECIFIC, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
+    CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 use rand::Rng;
 
@@ -703,7 +703,11 @@ const fn validate_login_user_type(
     user_type: CK_USER_TYPE,
 ) -> ModuleResult<()> {
     match user_type {
-        CKU_USER => Ok(()),
+        // This module exposes a single implicit backend identity per slot: there is no
+        // separate Security Officer role, so `CKU_SO` and `CKU_USER` are treated
+        // identically (matches real-world clients such as `pkcs11-tool --login-type so`,
+        // which is a standard, spec-defined user type and must not be rejected as invalid).
+        CKU_USER | CKU_SO => Ok(()),
         CKU_CONTEXT_SPECIFIC => Err(ModuleError::OperationNotInitialized(session)),
         _ => Err(ModuleError::UserTypeInvalid),
     }
