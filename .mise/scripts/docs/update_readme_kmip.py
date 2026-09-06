@@ -16,7 +16,10 @@ Usage:
   python scripts/update_readme_kmip.py
 
 Requirements:
-  pip install beautifulsoup4 lxml
+  pip install -r .mise/scripts/docs/requirements.txt
+  (beautifulsoup4 — REQUIRED, not optional: without it, this script silently
+  falls back to a hardcoded, less accurate dataset, producing flaky/inconsistent
+  KMIP support tables depending on the running environment)
 """
 from __future__ import annotations
 
@@ -1337,7 +1340,7 @@ The following table shows managed object support across all KMIP versions.
         'Symmetric Key': True,
         'Public Key': True,
         'Private Key': True,
-        'Split Key': False,
+        'Split Key': True,
         'Template': False,  # Deprecated
         'Secret Data': True,
         'Opaque Data': True,

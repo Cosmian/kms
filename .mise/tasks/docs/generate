@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Regenerate all documentation (server help, ckms markdown, KMIP tables, CBOM)"
 #USAGE arg "[task]" help="Documentation task to run (default: all)" default="all" {
-#USAGE   choices "all" "server-docs" "ckms-docs" "kmip-tables" "crypto-inventory" "cbom" "log-index"
+#USAGE   choices "all" "server-docs" "ckms-docs" "kmip-tables" "cbom" "log-index"
 #USAGE }
 #USAGE flag "--skip-cbom" help="Skip CBOM generation"
 set -euo pipefail
@@ -10,6 +10,14 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 print_header "Generating documentation"
 
 REPO_ROOT="$(get_repo_root)"
+
+# The kmip-tables step (update_readme_kmip.py) silently falls back to a less
+# accurate, hardcoded dataset when beautifulsoup4 is missing, producing flaky
+# KMIP support tables depending on the running environment. Install it
+# whenever the kmip-tables step will actually run.
+if [ "${usage_task:-all}" = "all" ] || [ "${usage_task:-all}" = "kmip-tables" ]; then
+  pip install --quiet -r "${REPO_ROOT}/.mise/scripts/docs/requirements.txt"
+fi
 
 ARGS=()
 if [ "${usage_task:-all}" != "all" ]; then
