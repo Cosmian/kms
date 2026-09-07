@@ -729,6 +729,7 @@ Crate path: `crate/server`
 | `error` | `AWS XKS: failed to spawn key access migration thread: {error}` | `src/start_kms_server.rs` | `error` | - |
 | `error` | `AWS XKS: failed to start key access migration runtime: {error}` | `src/start_kms_server.rs` | `error` | - |
 | `error` | `AWS XKS: pre-existing key access migration failed: {error}` | `src/start_kms_server.rs` | `error` | - |
+| `warn` | `` AWS XKS is enabled but `crypto_officer.users` is empty: no Crypto Officer is              configured to monitor, rotate, revoke, or destroy XKS keys. AWS never triggers              these operations on your behalf — configure a Crypto Officer identity backed by a              real credential (TLS certificate CN / OIDC subject matching `default_username`) so              XKS keys remain manageable. See crate/server/src/routes/aws_xks/README.md. `` | `src/start_kms_server.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
