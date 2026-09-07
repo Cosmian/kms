@@ -26,7 +26,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         KmipOperation,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_operations::{Create, Destroy, Get, Revoke},
+        kmip_operations::{Create, Destroy, Get, GetAttributes, Revoke},
         kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
     },
 };
@@ -333,24 +333,57 @@ async fn create_key_rejects_existing_non_xks_symmetric_key() -> KResult<()> {
 #[tokio::test]
 async fn operator_retains_administrative_control() -> KResult<()> {
     // Regression guard: XKS keys must stay administrable. If the reserved identity owned
-    // them, no operator could list, revoke, destroy, or export XKS keys, because the
+    // them, no operator could monitor, revoke, destroy, or export XKS keys, because the
     // authorization model grants nothing to non-owners without an explicit grant.
+    //
+    // This is the identity that a designated Crypto Officer must hold a real credential
+    // for (TLS certificate CN / OIDC subject matching `default_username`) in order to
+    // monitor and manage the lifecycle of XKS keys — AWS never triggers any of this itself
+    // (the XKS proxy spec has no list/rotate/delete endpoint), so it must be reachable
+    // through the normal `ckms`/Web UI surface. See `README.md` and
+    // `documentation/docs/integrations/cloud_providers/aws/xks.md`.
     let kms = test_kms().await?;
     let key_id = "xks-key-admin-control";
     provision_xks_key(&kms, key_id, "arn:aws:iam::1:role/Creator").await?;
     let operator = kms.params.default_username.clone();
     let operator_id = UserId::from(operator.clone());
 
-    // The operator sees the key among the objects they own.
+    // Monitor: the operator sees the key among the objects they own (equivalent to `Locate`
+    // by tag through `ckms`/Web UI) and can read its attributes.
     let owned = kms.list_owned_objects(&operator_id).await?;
     assert!(
         owned.iter().any(|o| o.object_id.to_string() == key_id),
         "operator must still see XKS keys in their owned objects"
     );
+    kms.get_attributes(
+        GetAttributes {
+            unique_identifier: Some(UniqueIdentifier::TextString(key_id.to_owned())),
+            attribute_reference: None,
+        },
+        &operator_id,
+    )
+    .await?;
 
-    // And can perform the full administrative lifecycle on it.
+    // Manage: the operator can perform the full administrative lifecycle on it.
     kms.revoke(revoke_request(key_id), &operator_id).await?;
     kms.destroy(destroy_request(key_id), &operator_id).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn reserved_xks_identity_cannot_be_used_as_the_monitoring_operator() -> KResult<()> {
+    // The Crypto Officer responsible for monitoring/managing XKS keys must never be the
+    // reserved `AWS_XKS_SERVICE_USER` delegate: that identity is intentionally unreachable
+    // through any real credential (TLS/OIDC/SPIRE/UI session — see
+    // `reject_reserved_aws_xks_identity` in `middlewares/mod.rs`), and even if it were
+    // reachable, it only holds Encrypt/Decrypt/GetAttributes, never Revoke/Destroy/Get.
+    use crate::middlewares::reject_reserved_aws_xks_identity;
+
+    assert!(
+        reject_reserved_aws_xks_identity(&UserId::from(AWS_XKS_SERVICE_USER)).is_err(),
+        "the reserved AWS XKS service identity must stay unreachable through any \
+         externally-authenticated path, including for monitoring purposes"
+    );
     Ok(())
 }
 
