@@ -104,6 +104,7 @@ impl Base64Display for Option<Vec<Vec<u8>>> {
 /// impl_display!(StructName, "DisplayName", {
 ///     req field_name,       // required field (always displayed)
 ///     opt field_name,       // optional field (displayed only if Some)
+///     req_debug field_name, // required field displayed with Debug
 ///     req_b64 field_name,   // required field displayed as base64
 ///     opt_b64 field_name,   // optional field displayed as base64 (skipped if None)
 /// });
@@ -125,6 +126,9 @@ macro_rules! impl_display {
         if let Some(v) = &$self.$field {
             write!($f, concat!("  ", stringify!($field), ": {}"), v)?;
         }
+    };
+    (@field $f:ident, $self:ident, req_debug, $field:ident) => {
+        write!($f, concat!("  ", stringify!($field), ": {:?}"), $self.$field)?;
     };
     (@field $f:ident, $self:ident, req_b64, $field:ident) => {
         write!($f, concat!("  ", stringify!($field), ": {}"), $self.$field.to_base64())?;
@@ -1480,7 +1484,8 @@ pub struct DeriveKey {
     /// Determines the object or objects to be used to derive a new key. Note
     /// that the current value of the ID Placeholder SHALL NOT be used in place
     /// of a Unique Identifier in this operation.
-    pub object_unique_identifier: UniqueIdentifier,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub object_unique_identifier: Vec<UniqueIdentifier>,
     /// An Enumeration object specifying the method to be used to derive the new
     /// key.
     pub derivation_method: DerivationMethod,
@@ -1493,9 +1498,46 @@ pub struct DeriveKey {
     pub attributes: Attributes,
 }
 
+impl DeriveKey {
+    /// Build a `DeriveKey` request from a single base object identifier.
+    #[must_use]
+    pub fn new_single_base(
+        object_type: ObjectType,
+        object_unique_identifier: UniqueIdentifier,
+        derivation_method: DerivationMethod,
+        derivation_parameters: DerivationParameters,
+        attributes: Attributes,
+    ) -> Self {
+        Self {
+            object_type,
+            object_unique_identifier: vec![object_unique_identifier],
+            derivation_method,
+            derivation_parameters,
+            attributes,
+        }
+    }
+
+    /// Build an asymmetric `DeriveKey` request using a private/base key and a peer public key.
+    #[must_use]
+    pub fn new_asymmetric(
+        private_key_identifier: UniqueIdentifier,
+        peer_public_key_identifier: UniqueIdentifier,
+        derivation_parameters: DerivationParameters,
+        attributes: Attributes,
+    ) -> Self {
+        Self {
+            object_type: ObjectType::SecretData,
+            object_unique_identifier: vec![private_key_identifier, peer_public_key_identifier],
+            derivation_method: DerivationMethod::Asymmetric_Key,
+            derivation_parameters,
+            attributes,
+        }
+    }
+}
+
 impl_display!(DeriveKey, "DeriveKey", {
     req object_type,
-    req object_unique_identifier,
+    req_debug object_unique_identifier,
     req derivation_method,
     req derivation_parameters,
     req attributes,

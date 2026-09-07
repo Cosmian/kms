@@ -6,6 +6,7 @@
   - [Encrypting and decrypting at scale](use_cases/encrypting_and_decrypting_at_scale.md)
   - [Client-side and application-level encryption](use_cases/client_side_and_application_level_encryption.md)
   - [Anonymization](use_cases/anonymization.md)
+  - [X25519 key agreement for share sealing](use_cases/x25519_key_agreement_for_share_sealing.md)
 - [PKI Support]()
   - [Introduction](use_cases/pki.md)
   - [Revocation & CRL Distribution](use_cases/pki-revocation.md)

@@ -113,13 +113,13 @@ impl DeriveKeyAction {
         }
 
         // Create and send the DeriveKey request
-        let derive_request = DeriveKey {
-            object_type: ObjectType::SymmetricKey,
-            object_unique_identifier: UniqueIdentifier::TextString(base_key_id),
-            derivation_method: self.parse_derivation_method()?,
+        let derive_request = DeriveKey::new_single_base(
+            ObjectType::SymmetricKey,
+            UniqueIdentifier::TextString(base_key_id),
+            self.parse_derivation_method()?,
             derivation_parameters,
             attributes,
-        };
+        );
 
         let response = kms_rest_client.derive_key(derive_request).await?;
 

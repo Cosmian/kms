@@ -166,10 +166,8 @@ pub(crate) async fn test_derive_symmetric_key_pbkdf2() -> CosmianResult<()> {
         },
     )?;
 
-    // Note: The KMS server currently generates its own ID regardless of the provided derived_key_id
-    // So we just check that we got a valid ID back
-    assert!(!derived_key_id.is_empty());
-    assert!(derived_key_id.starts_with("derived-"));
+    // The server honors the caller-supplied derived_key_id when present.
+    assert_eq!(derived_key_id, "test-derived-symmetric-pbkdf2");
     Ok(())
 }
 
@@ -207,7 +205,7 @@ pub(crate) async fn test_derive_symmetric_key_hkdf() -> CosmianResult<()> {
 
     // Check that we got a valid derived key ID
     assert!(!derived_key_id.is_empty());
-    assert!(derived_key_id.starts_with("derived-"));
+    assert_eq!(derived_key_id, "test-derived-symmetric-hkdf");
     Ok(())
 }
 
@@ -248,7 +246,10 @@ pub(crate) async fn test_derive_symmetric_key_different_lengths() -> CosmianResu
 
         // Check that we got a valid derived key ID
         assert!(!derived_key_id.is_empty());
-        assert!(derived_key_id.starts_with("derived-"));
+        assert_eq!(
+            derived_key_id,
+            format!("test-derived-symmetric-{length}-bits")
+        );
     }
 
     Ok(())
@@ -289,7 +290,7 @@ pub(crate) async fn test_derive_from_secret_data() -> CosmianResult<()> {
 
     // Check that we got a valid derived key ID
     assert!(!derived_key_id.is_empty());
-    assert!(derived_key_id.starts_with("derived-"));
+    assert_eq!(derived_key_id, "test-derived-from-secret");
 
     Ok(())
 }
@@ -335,7 +336,7 @@ pub(crate) async fn test_derive_key_different_algorithms() -> CosmianResult<()> 
 
         // Check that we got a valid derived key ID
         assert!(!derived_key_id.is_empty());
-        assert!(derived_key_id.starts_with("derived-"));
+        assert_eq!(derived_key_id, format!("test-derived-{method}-{digest:?}"));
     }
 
     Ok(())
@@ -367,7 +368,7 @@ pub(crate) async fn test_derive_key_from_password() -> CosmianResult<()> {
 
     // Check that we got a valid derived key ID
     assert!(!derived_key_id.is_empty());
-    assert!(derived_key_id.starts_with("derived-"));
+    assert_eq!(derived_key_id, "test-derived-from-password");
 
     Ok(())
 }
@@ -398,7 +399,7 @@ pub(crate) async fn test_derive_key_from_unicode_password() -> CosmianResult<()>
 
     // Check that we got a valid derived key ID
     assert!(!derived_key_id.is_empty());
-    assert!(derived_key_id.starts_with("derived-"));
+    assert_eq!(derived_key_id, "test-derived-from-unicode-password");
 
     Ok(())
 }

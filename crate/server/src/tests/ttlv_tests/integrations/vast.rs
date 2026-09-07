@@ -571,7 +571,7 @@ fn test_vast_derive_key_request_parsed() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::DeriveKey(DeriveKey {
-                    unique_identifier: base_uid.clone(),
+                    unique_identifier: vec![base_uid.clone()],
                     derivation_method: DerivationMethod::HMAC,
                     derivation_parameters: Some(DerivationParameters {
                         derivation_data: Some(b"context-label".to_vec()),

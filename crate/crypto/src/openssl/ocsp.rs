@@ -17,6 +17,7 @@ use std::{
     ptr,
 };
 
+use cosmian_logger::warn;
 use foreign_types::ForeignTypeRef;
 use openssl::{
     pkey::{PKeyRef, Private},
@@ -35,7 +36,6 @@ use super::ocsp_ffi::{
     V_OCSP_CERTSTATUS_REVOKED, V_OCSP_CERTSTATUS_UNKNOWN,
 };
 use crate::error::CryptoError;
-use cosmian_logger::warn;
 
 /// Maximum number of `SingleRequest`/`CertID` entries accepted in a single
 /// `OCSPRequest`. RFC 5019 (the lightweight OCSP profile most CDN/proxy
