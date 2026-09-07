@@ -339,6 +339,24 @@ fn validate_aws_xks_reserved_identity_config(server_params: &ServerParams) -> KR
         )));
     }
 
+    // AWS never calls back into the XKS proxy to list, rotate, revoke, or destroy key
+    // material (the XKS proxy API spec only defines GetKeyMetadata/Encrypt/Decrypt/
+    // GetHealthStatus) — lifecycle management of XKS keys is entirely this operator's
+    // responsibility, exercised as the real, credentialed `default_username` identity
+    // (never as the reserved, unreachable-by-design `AWS_XKS_SERVICE_USER`). Warn loudly
+    // when no Crypto Officer is configured, since that is the intended identity for this
+    // responsibility and an empty list very likely means no one can currently reach these
+    // keys through `ckms`/the Web UI.
+    if server_params.crypto_officer.users.is_empty() {
+        warn!(
+            "AWS XKS is enabled but `crypto_officer.users` is empty: no Crypto Officer is \
+             configured to monitor, rotate, revoke, or destroy XKS keys. AWS never triggers \
+             these operations on your behalf — configure a Crypto Officer identity backed by a \
+             real credential (TLS certificate CN / OIDC subject matching `default_username`) so \
+             XKS keys remain manageable. See crate/server/src/routes/aws_xks/README.md."
+        );
+    }
+
     Ok(())
 }
 
