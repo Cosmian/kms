@@ -1623,6 +1623,7 @@ version = "5.28.0"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
+ "cosmian_kms_access",
  "cosmian_logger",
  "mockall",
  "num-bigint-dig",
