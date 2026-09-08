@@ -70,6 +70,7 @@ ignore = [
   # "a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
   # { crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
   { id = "RUSTSEC-2023-0071", reason = "Marvin Attack: potential key recovery through timing sidechannels. KMS depends now on jsonwebtoken that has 2 crypto backends (rust_crypto and aws-lc). aws-lc not being Windows compatible, we must choose rust_crypto" },
+  { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is unmaintained but pulled transitively by axum-server; no safe upgrade available" },
   # h2 0.3.x (used by actix-http 3.x) accepts unbounded empty DATA frames, potentially causing OOM or panic.
   # The fix is in h2 >=0.4.16, but actix-http 3.x (and its master branch as of 2026-08) is hardcoded to h2 ^0.3
   # and there is no actix-http 4.x / actix-web 5.x release yet. No upstream upgrade path exists.
