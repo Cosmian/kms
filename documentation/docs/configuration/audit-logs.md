@@ -41,8 +41,9 @@ When `audit.file.path` is omitted the file defaults to `<root-data-path>/audit.j
     The audit file backend is designed for **one writer per file**. If you run multiple KMS
     instances (horizontal scaling, Kubernetes replicas), each one needs its **own** audit file —
     never point several instances at the same path on a shared volume. Only one instance will ever hold the
-    lock and write, so the others' events are effectively never recorded. A centralized,
-    multi-writer-safe audit trail is planned via a PostgreSQL backend.
+    lock and write, so the others' events are effectively never recorded. For a centralized,
+    multi-writer-safe audit trail across a fleet, use the [PostgreSQL backend](#postgresql-backend)
+    instead.
 
 ---
 
@@ -269,6 +270,124 @@ id=0  2026-05-06T20:31:15Z  Create   chain=ok
 id=1  2026-05-06T20:31:15Z  Encrypt  chain=ok
 ...
 ```
+
+---
+
+## PostgreSQL backend
+
+For a centralized, multi-writer-safe audit trail across a fleet of KMS instances, use the
+`PostgreSQL` backend instead of the JSONL file. Each KMS instance still owns an independent hash
+chain, scoped by an `instance_id` — but all chains live in one shared, append-only database that
+every instance, and every auditor, can read.
+
+=== "TOML configuration file"
+
+    ```toml
+    [audit]
+    enabled = true
+
+    [audit.postgres]
+    url = "postgresql://kms_audit:password@db-host:5432/kms_audit"
+    instance_id = "kms-eu-west-1a"
+    ```
+
+=== "Command line"
+
+    ```bash
+    cosmian_kms --audit-enable \
+      --audit-postgres-url postgresql://kms_audit:password@db-host:5432/kms_audit \
+      --audit-instance-id kms-eu-west-1a
+    ```
+
+=== "Environment variables"
+
+    ```bash
+    export KMS_AUDIT_ENABLE=true
+    export KMS_AUDIT_POSTGRES_URL=postgresql://kms_audit:password@db-host:5432/kms_audit
+    export KMS_AUDIT_INSTANCE_ID=kms-eu-west-1a
+    cosmian_kms
+    ```
+
+Backend selection is config-time only: setting `audit.postgres.url` (or
+`--audit-postgres-url`/`KMS_AUDIT_POSTGRES_URL`) selects the `PostgreSQL` backend instead of the
+file backend. There is no runtime fallback between the two.
+
+| CLI flag                 | Environment variable      | Required | Description                                                                                                                                       |
+| ------------------------- | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--audit-postgres-url`    | `KMS_AUDIT_POSTGRES_URL`   | Yes\*    | `PostgreSQL` connection URL for the audit database. Must be a **different database** than `--database-url` — the server refuses to start otherwise. |
+| `--audit-instance-id`     | `KMS_AUDIT_INSTANCE_ID`    | Yes\*    | Identifies this KMS instance's chain. Must be stable across restarts and unique per instance sharing the database. **No default** — set explicitly. |
+
+<small>\* Required only when `--audit-postgres-url` is set (i.e. when using this backend).</small>
+
+!!! warning "The audit database must not be the main object-storage database"
+    Sharing one database between `--database-url` and `--audit-postgres-url` would let the
+    KMS's own object-store role bypass the audit database's append-only grants, defeating the
+    tamper-evidence guarantee. The server validates this at startup (a structural host/port/
+    database-name comparison, ignoring credentials and query parameters) and refuses to start
+    if they resolve to the same database.
+
+### Startup behavior differs from the file backend
+
+Unlike the file backend (which always starts immediately and self-heals recovery in the
+background), the `PostgreSQL` backend connects, acquires its instance lock, and verifies the
+**entire** existing chain synchronously **before** the KMS starts serving traffic. If any of
+this fails — the database is unreachable, another instance already holds the `instance_id`'s
+lock, or the chain fails verification — **server startup is aborted**. An audit backend that
+cannot be trusted must not silently leave the KMS running unaudited.
+
+### Multi-writer safety
+
+Two independent mechanisms prevent two KMS instances from sharing an `instance_id` and
+corrupting each other's chain:
+
+1. **Advisory lock** (primary defense): the server acquires a session-level `PostgreSQL`
+   advisory lock keyed by `instance_id`, held for as long as the server runs. A second instance
+   configured with the same `instance_id` fails to start.
+2. **Composite primary key** (defense in depth): every row's primary key is
+   `(instance_id, id)`, making a genuine chain fork structurally impossible — a lost
+   write-acknowledgement retry (same writer, same row) is distinguished from a genuine second
+   writer (same slot, different content) by comparing the stored row's hash.
+
+### Schema
+
+The KMS creates and maintains the `kms_audit_events` table automatically on first connection,
+including append-only triggers that reject any `UPDATE`/`DELETE`/`TRUNCATE` — even by the table
+owner. Schema creation/migration runs on every boot and is fully idempotent (safe to run
+repeatedly), so upgrading the KMS to a version with a newer schema self-heals an older table
+automatically.
+
+For a hardened production deployment where the KMS role should only have `INSERT`/`SELECT`
+rights (not schema-modification rights) on a table provisioned separately by a database
+administrator, run the setup SQL below once as a privileged role, then grant the KMS role
+`INSERT, SELECT` only:
+
+```sql
+-- See crate/server_database/src/stores/audit/audit.sql for the exact, versioned DDL.
+CREATE TABLE kms_audit_events ( ... );
+CREATE TRIGGER kms_audit_no_update BEFORE UPDATE ON kms_audit_events
+  EXECUTE FUNCTION kms_audit_reject_mutation();
+CREATE TRIGGER kms_audit_no_delete BEFORE DELETE ON kms_audit_events
+  EXECUTE FUNCTION kms_audit_reject_mutation();
+REVOKE UPDATE, DELETE, TRUNCATE ON kms_audit_events FROM PUBLIC;
+
+GRANT INSERT, SELECT ON kms_audit_events TO kms_audit_role;
+```
+
+The KMS detects a permission-denied error on the schema-migration attempt and falls back to a
+read-only check that every required column is present, rather than failing startup.
+
+### Verify and export
+
+`ckms audit verify`/`ckms audit export` accept `--audit-postgres-url` as an alternative to
+`--path`. Omit `--audit-instance-id` to verify/export every instance's chain in the database:
+
+```bash
+ckms audit verify --audit-postgres-url postgresql://kms_audit:password@db-host:5432/kms_audit
+ckms audit export --audit-postgres-url postgresql://kms_audit:password@db-host:5432/kms_audit \
+  --audit-instance-id kms-eu-west-1a --format cef
+```
+
+See [ckms audit](../kms_clients/audit.md) for the full CLI reference.
 
 ---
 
