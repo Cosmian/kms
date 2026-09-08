@@ -38,7 +38,7 @@
 mod core;
 pub use core::{
     AdditionalObjectStoresParams, CachedObject, Database, DbMetricsRecorder, MainDbKind,
-    MainDbParams, ObjectCache, UnwrappedCache,
+    MainDbParams, ObjectCache, UnwrappedCache, redact_connection_string,
 };
 pub mod ceremony_keys;
 pub use ceremony_keys::{CEREMONY_SECRET_LENGTH, CeremonyKeys, CeremonyPayload};

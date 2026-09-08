@@ -1,7 +1,20 @@
-//! Non-blocking handle to the file audit writer.
+//! `AuditStore`: a cheaply cloneable handle to the audit writer task.
 //!
-//! One task owns the sink and chain head. Producers communicate through a bounded
-//! channel; overflowed events are dropped and counted.
+//! * `AuditStore` is a cheaply cloneable handle (wraps a channel `Sender`) shared by
+//!   every backend — File (`start_with_max_size`) and `PostgreSQL` (`start_postgres`).
+//! * A single background tokio task is the **sole owner** of the sink (see
+//!   `file_sink::FileSink` / `cosmian_kms_server_database::PgAuditSink`), the monotonic
+//!   event counter, and the previous-row hash. This design avoids any mutex around the
+//!   sink and guarantees write order under concurrent requests.
+//! * Initialization policy intentionally differs per backend: the File backend always
+//!   starts immediately (`start_with_max_size()` returns synchronously; recovery and lock
+//!   acquisition happen inside the spawned task, self-healing in the background — see
+//!   `FileSink::resume`). The `PostgreSQL` backend connects, acquires its advisory lock,
+//!   and verifies the chain SYNCHRONOUSLY inside `start_postgres()` — a failure there
+//!   propagates up and aborts server startup, matching its documented fail-fast policy.
+//! * The middleware calls `enqueue()` which is a non-blocking `try_send`.  If the
+//!   channel is full (beyond the configured capacity) the draft is silently dropped
+//!   and an error is logged — we never block the request path.
 
 use std::{
     path::Path,
@@ -38,7 +51,7 @@ pub(super) enum WriterMsg {
 
 /// Cloneable handle to the file audit writer task.
 #[derive(Clone)]
-pub(crate) struct AuditFileStore {
+pub(crate) struct AuditStore {
     sender: mpsc::Sender<WriterMsg>,
     /// Counts events dropped because the channel was full.
     /// Checked by the writer loop to emit a sentinel event before the next real event.
@@ -47,9 +60,19 @@ pub(crate) struct AuditFileStore {
     write_state: Arc<AuditWriteState>,
 }
 
-impl AuditFileStore {
-    /// Spawns the writer and returns without waiting for file recovery.
-    /// `max_size_bytes = None` disables the size limit.
+impl AuditStore {
+    /// Initialises the audit file store and spawns the background writer task.
+    ///
+    /// Returns immediately: the channel is created and handed back synchronously so the
+    /// middleware can start enqueueing events right away, even before the writer has
+    /// acquired the lock or opened the file. `channel_capacity` is the number of events
+    /// that can be buffered before new events are dropped. Must be ≥ 1.
+    ///
+    /// `max_size_bytes`, when `Some`, stops all writes once the file reaches that many
+    /// bytes — see `AuditFileConfig::audit_file_max_size_bytes`. `None` is unlimited.
+    ///
+    /// Recovery, locking, and opening all happen inside `FileSink::resume`, awaited by
+    /// the spawned writer task. This call never blocks on file I/O or lock contention.
     ///
     /// # Errors
     /// Returns an error if `channel_capacity` is zero.
@@ -91,6 +114,68 @@ impl AuditFileStore {
                     );
                 }
             }
+        });
+
+        Ok(Self {
+            sender: tx,
+            dropped_count,
+            write_state,
+        })
+    }
+
+    /// Connects to the `PostgreSQL` audit backend, acquires `instance_id`'s advisory
+    /// lock, ensures the schema is current, and verifies the entire existing chain —
+    /// all SYNCHRONOUSLY, before returning. Unlike [`Self::start_with_max_size`] (File),
+    /// a failure at any of these steps propagates as an error here and is expected to
+    /// abort server startup: an audit backend that cannot be trusted must not silently
+    /// leave the KMS running unaudited.
+    ///
+    /// `channel_capacity` is the number of events that can be buffered before new events
+    /// are dropped once steady-state writing begins. Must be ≥ 1.
+    ///
+    /// # Errors
+    /// Returns an error if `channel_capacity` is 0, the connection/advisory
+    /// lock/schema-validation fails, or the existing chain fails full verification.
+    pub(crate) async fn start_postgres(
+        url: &str,
+        instance_id: &str,
+        channel_capacity: usize,
+    ) -> KResult<Self> {
+        if channel_capacity == 0 {
+            return Err(KmsError::ServerError(
+                "audit: channel_capacity must be at least 1".to_owned(),
+            ));
+        }
+
+        let mut sink = cosmian_kms_server_database::PgAuditSink::connect(url, instance_id)
+            .await
+            .map_err(|e| {
+                KmsError::ServerError(format!(
+                    "audit: cannot connect to the PostgreSQL audit backend: {e}"
+                ))
+            })?;
+        let chain_head = sink.resume().await.map_err(|e| {
+            KmsError::ServerError(format!(
+                "audit: cannot resume the PostgreSQL audit chain: {e}"
+            ))
+        })?;
+
+        let (tx, rx) = mpsc::channel::<WriterMsg>(channel_capacity);
+        let dropped_count = Arc::new(AtomicU64::new(0));
+        let dropped_count_for_writer = Arc::clone(&dropped_count);
+        // The PostgreSQL backend has no size-cap concept; `AuditWriteState::default()`
+        // (`max_size_bytes: None`) makes `enqueue()`'s fast pre-check a permanent no-op.
+        let write_state = Arc::new(AuditWriteState::default());
+
+        tokio::spawn(async move {
+            writer_loop(
+                sink,
+                chain_head.next_id,
+                chain_head.prev_hash,
+                rx,
+                dropped_count_for_writer,
+            )
+            .await;
         });
 
         Ok(Self {
@@ -157,9 +242,9 @@ impl AuditFileStore {
     }
 }
 
-/// Test-only constructors on `AuditFileStore`.
+/// Test-only constructors on `AuditStore`.
 #[cfg(test)]
-impl AuditFileStore {
+impl AuditStore {
     /// Same as [`Self::start_with_max_size`] with no file-size cap (unlimited, the
     /// current/default behavior). Only production code goes through
     /// `start_with_max_size` directly (it always has an `Option<u64>` cap to pass,
@@ -204,7 +289,7 @@ mod tests {
     use time::OffsetDateTime;
     use tokio::sync::mpsc;
 
-    use super::{AuditFileStore, WriterMsg};
+    use super::{AuditStore, WriterMsg};
     use crate::core::audit::{file_sink::lock_file_path, writer::writer_loop};
 
     /// Small channel capacity used in all tests.  Large enough for the ≤5-event
@@ -271,7 +356,7 @@ mod tests {
         let path = temp_path("capacity");
         std::fs::remove_file(&path).ok();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+        let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
         for _ in 0..(TEST_CAPACITY * 2) {
             store.enqueue(std::iter::once(make_draft()));
         }
@@ -306,7 +391,7 @@ mod tests {
         let path = temp_path("sentinel");
         std::fs::remove_file(&path).ok();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+        let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
         // Saturate: send 2× capacity so the second half is dropped.
         for _ in 0..(TEST_CAPACITY * 2) {
             store.enqueue(std::iter::once(make_draft()));
@@ -347,7 +432,7 @@ mod tests {
 
         // Phase 1: write 3 events
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             for _ in 0..3 {
                 store.enqueue(std::iter::once(make_draft()));
             }
@@ -356,7 +441,7 @@ mod tests {
 
         // Phase 2: resume from the same file, write 2 more
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             for _ in 0..2 {
                 store.enqueue(std::iter::once(make_draft()));
             }
@@ -385,7 +470,7 @@ mod tests {
         let path = temp_path("no_advance");
         std::fs::remove_file(&path).ok();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+        let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
         for _ in 0..5 {
             store.enqueue(std::iter::once(make_draft()));
         }
@@ -413,7 +498,7 @@ mod tests {
 
         // Write 2 valid events
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             store.enqueue(std::iter::once(make_draft()));
             store.enqueue(std::iter::once(make_draft()));
             store.flush().await;
@@ -427,7 +512,7 @@ mod tests {
         *lines.last_mut().unwrap() = serde_json::to_string(&last_ev).unwrap();
         std::fs::write(&path, lines.join("\n") + "\n").unwrap();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+        let store = AuditStore::start(&path, TEST_CAPACITY)
             .expect("start() must always succeed, even on a tampered log tail");
         store.flush().await;
         drop(store);
@@ -471,7 +556,7 @@ mod tests {
         std::fs::remove_file(&path).ok();
 
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             store.enqueue(std::iter::once(make_draft()));
             store.enqueue(std::iter::once(make_draft()));
             store.flush().await;
@@ -486,7 +571,7 @@ mod tests {
         lines[last_index] = serde_json::to_string(&last_event).unwrap();
         std::fs::write(&path, lines.join("\n") + "\n").unwrap();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+        let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
         store.flush().await;
         drop(store);
 
@@ -516,7 +601,7 @@ mod tests {
         // `blocker` is a file, so treating it as a parent directory fails until removed.
         let bogus_path = blocker.join("audit.jsonl");
 
-        let store = AuditFileStore::start(&bogus_path, TEST_CAPACITY)
+        let store = AuditStore::start(&bogus_path, TEST_CAPACITY)
             .expect("start() must always succeed, even for an unwritable path");
 
         // While broken, enqueued events are dropped (logged), never causing a panic.
@@ -569,7 +654,7 @@ mod tests {
             .unwrap();
         fs4::fs_std::FileExt::try_lock_exclusive(&held).unwrap();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+        let store = AuditStore::start(&path, TEST_CAPACITY)
             .expect("start() must always succeed even when the lock is held by a peer");
 
         store.enqueue(std::iter::once(make_draft()));
@@ -603,7 +688,7 @@ mod tests {
         let path = temp_path("zero_capacity");
         std::fs::remove_file(&path).ok();
 
-        let result = AuditFileStore::start(&path, 0);
+        let result = AuditStore::start(&path, 0);
         assert!(result.is_err(), "start() must reject channel_capacity == 0");
         let err = result.err().unwrap().to_string();
         assert!(
@@ -623,7 +708,7 @@ mod tests {
         std::fs::remove_file(&path).ok();
         std::fs::write(&path, b"{not valid json at all\n").unwrap();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+        let store = AuditStore::start(&path, TEST_CAPACITY)
             .expect("start() must always succeed, even on structural garbage");
         store.flush().await;
         drop(store);
@@ -650,7 +735,7 @@ mod tests {
         std::fs::remove_file(&path).ok();
 
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             for _ in 0..3 {
                 store.enqueue(std::iter::once(make_draft()));
             }
@@ -666,7 +751,7 @@ mod tests {
         lines[0] = serde_json::to_string(&row0).unwrap();
         std::fs::write(&path, lines.join("\n") + "\n").unwrap();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+        let store = AuditStore::start(&path, TEST_CAPACITY)
             .expect("start() must always succeed, even on a mid-chain tamper");
         store.flush().await;
         drop(store);
@@ -710,7 +795,7 @@ mod tests {
         std::fs::remove_file(&path).ok();
 
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             store.enqueue(std::iter::once(make_draft()));
             store.enqueue(std::iter::once(make_draft()));
             store.flush().await;
@@ -728,7 +813,7 @@ mod tests {
             write!(f, "{{\"id\":2,\"timestamp\":\"broken-mid-write").unwrap();
         }
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+        let store = AuditStore::start(&path, TEST_CAPACITY)
             .expect("start() must always succeed, even after a torn write");
         store.flush().await;
         drop(store);
@@ -764,7 +849,7 @@ mod tests {
         std::fs::remove_file(&path).ok();
 
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             store.enqueue(std::iter::once(make_draft()));
             store.enqueue(std::iter::once(make_draft()));
             store.flush().await;
@@ -775,7 +860,7 @@ mod tests {
         std::fs::write(&path, content.trim_end_matches('\n')).unwrap();
 
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY)
+            let store = AuditStore::start(&path, TEST_CAPACITY)
                 .expect("start() must always succeed on a missing trailing newline");
             store.enqueue(std::iter::once(make_draft()));
             store.flush().await;
@@ -802,7 +887,7 @@ mod tests {
         let path = temp_path("size_cap_none");
         std::fs::remove_file(&path).ok();
 
-        let store = AuditFileStore::start_with_max_size(&path, TEST_CAPACITY, None).unwrap();
+        let store = AuditStore::start_with_max_size(&path, TEST_CAPACITY, None).unwrap();
         for _ in 0..5 {
             store.enqueue(std::iter::once(make_draft()));
         }
@@ -826,7 +911,7 @@ mod tests {
 
         // Baseline: 2 valid events, unbounded.
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             store.enqueue(std::iter::once(make_draft()));
             store.enqueue(std::iter::once(make_draft()));
             store.flush().await;
@@ -836,7 +921,7 @@ mod tests {
         let cap = std::fs::metadata(&path).unwrap().len();
 
         // Cap set to exactly the current file length: already at (>=) the cap.
-        let store = AuditFileStore::start_with_max_size(&path, TEST_CAPACITY, Some(cap)).unwrap();
+        let store = AuditStore::start_with_max_size(&path, TEST_CAPACITY, Some(cap)).unwrap();
         // Synchronize on the writer having performed its startup cap check.
         store.flush().await;
 
@@ -869,7 +954,7 @@ mod tests {
 
         // Baseline: 3 valid events, unbounded.
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             for _ in 0..3 {
                 store.enqueue(std::iter::once(make_draft()));
             }
@@ -882,7 +967,7 @@ mod tests {
         let cap = len_before + 1;
 
         // `len_before < cap`: the writer must not be capped on startup.
-        let store = AuditFileStore::start_with_max_size(&path, TEST_CAPACITY, Some(cap)).unwrap();
+        let store = AuditStore::start_with_max_size(&path, TEST_CAPACITY, Some(cap)).unwrap();
         store.enqueue(std::iter::once(make_draft()));
         store.flush().await;
 
