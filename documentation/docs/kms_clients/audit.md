@@ -1,9 +1,11 @@
 # ckms audit
 
-Manage the KMS audit log file offline.
+Inspect and verify the KMS audit trail, reading directly from its storage backend — the
+JSONL file or a `PostgreSQL` database. No running KMS server is required.
 
-All `ckms audit` commands work **directly on a JSONL file** — no running KMS server is required.
-The subcommands are suitable for scripts, cron jobs, and SIEM export pipelines.
+All `ckms audit` commands work **directly on the audit storage** — no running KMS server
+connection needed. The subcommands are suitable for scripts, cron jobs, and SIEM export
+pipelines.
 
 ## Usage
 
@@ -27,8 +29,15 @@ Export events from the audit log to stdout. Supports JSON (default) and CEF outp
 
 ### Arguments
 
-`--path [-p] <FILE>` Path to the JSONL audit log file.
-_Required._ Can also be set via `KMS_AUDIT_FILE_PATH`.
+`--path [-p] <FILE>` Path to the JSONL audit log file. Alternative to `--audit-postgres-url` —
+exactly one is required. Can also be set via `KMS_AUDIT_FILE_PATH`.
+
+`--audit-postgres-url <URL>` `PostgreSQL` connection URL for the audit database, as an
+alternative to `--path`. Can also be set via `KMS_AUDIT_POSTGRES_URL`.
+
+`--audit-instance-id <ID>` With `--audit-postgres-url`, restricts the export to a single KMS
+instance's chain. Omit to export every instance present in the database. Can also be set via
+`KMS_AUDIT_INSTANCE_ID`.
 
 `--since <RFC3339>` Export only events whose `timestamp` is greater than or equal to this value.
 The value must be an RFC 3339 timestamp, e.g. `2026-05-01T00:00:00Z`.
@@ -88,19 +97,29 @@ ckms audit export \
   | nc -u splunk-host 514
 ```
 
+Export a single instance's events from a `PostgreSQL` audit database:
+
+```bash
+ckms audit export \
+  --audit-postgres-url postgresql://kms_audit:password@db-host:5432/kms_audit \
+  --audit-instance-id kms-eu-west-1a
+```
+
 ---
 
 ## ckms audit verify
 
-Verify the SHA-256 hash chain of a JSONL audit log file, or every JSONL file in a directory.
+Verify the SHA-256 hash chain of the audit trail — a JSONL file (or directory of files), or
+every instance's chain in a `PostgreSQL` audit database.
 
 Checks that:
 
 1. Each event's `row_hash` matches a freshly computed hash of its fields.
 2. Each event's `prev_hash` matches the `row_hash` of the previous event (or is all-zeros for the first event).
-3. Every `audit:reanchor` event's sealed evidence file still exists next to the log and its
-   SHA-256 still matches the digest recorded in the event — this is what makes deleting or
-   altering sealed evidence after the fact detectable.
+3. (File source only) every `audit:reanchor` event's sealed evidence file still exists next to
+   the log and its SHA-256 still matches the digest recorded in the event — this is what makes
+   deleting or altering sealed evidence after the fact detectable. The `PostgreSQL` backend has
+   no equivalent: its writes are atomic, so it has no torn-write/reanchor recovery path.
 
 Exits with code **0** when every chain is intact, or **1** when a broken link, tampered event, or
 altered/missing sealed-evidence file is detected.
@@ -108,6 +127,7 @@ altered/missing sealed-evidence file is detected.
 ### Usage
 
 `ckms audit verify --path <FILE|DIRECTORY> [options]`
+`ckms audit verify --audit-postgres-url <URL> [--audit-instance-id <ID>] [options]`
 
 #### Arguments
 
@@ -115,7 +135,16 @@ altered/missing sealed-evidence file is detected.
 more. A directory is scanned for every non-sealed `*.jsonl` file, each verified as its own
 **independent** chain. Sealed `*.corrupt.jsonl` evidence files are intentionally not verified
 as chains — their corruption is why they were sealed — but are SHA-256 checked through the live
-log's `audit:reanchor` record. _Required._ Can also be set via `KMS_AUDIT_FILE_PATH`.
+log's `audit:reanchor` record. Alternative to `--audit-postgres-url` — exactly one is required.
+Can also be set via `KMS_AUDIT_FILE_PATH`.
+
+`--audit-postgres-url <URL>` `PostgreSQL` connection URL for the audit database, as an
+alternative to `--path`. Verifies every instance's chain in the database, each as its own
+independent chain, unless `--audit-instance-id` restricts it to one. Can also be set via
+`KMS_AUDIT_POSTGRES_URL`.
+
+`--audit-instance-id <ID>` With `--audit-postgres-url`, restricts verification to a single KMS
+instance's chain. Can also be set via `KMS_AUDIT_INSTANCE_ID`.
 
 `--verbose` Print a summary line for every event even when the chain is valid.
 _Default: false._
@@ -146,6 +175,19 @@ Missing sealed evidence (a `seal-and-roll` recovery's corrupted file was deleted
 ```text
 MISSING EVIDENCE: /var/log/cosmian-kms/audit.jsonl: reanchor event id=0 references sealed file
 audit.20260814T140233Z.9f3ac1b2.corrupt.jsonl which no longer exists
+```
+
+PostgreSQL source (one section per instance in the database):
+
+```bash
+ckms audit verify --audit-postgres-url postgresql://kms_audit:password@db-host:5432/kms_audit
+```
+
+```text
+== instance_id: kms-eu-west-1a ==
+instance_id=kms-eu-west-1a: chain OK: 128 events verified
+== instance_id: kms-eu-west-1b ==
+instance_id=kms-eu-west-1b: chain OK: 96 events verified
 ```
 
 Verbose mode:

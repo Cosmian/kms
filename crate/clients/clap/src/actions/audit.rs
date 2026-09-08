@@ -174,15 +174,9 @@ impl ExportAuditAction {
         let since = self.parse_since()?;
         match self.source.resolve()? {
             AuditSource::File(path) => self.export_file(&path, since, out),
-            AuditSource::Postgres { url, instance_id } => {
-                tokio::runtime::Runtime::new()
-                    .map_err(|e| {
-                        crate::error::KmsCliError::Default(format!(
-                            "cannot start async runtime: {e}"
-                        ))
-                    })?
-                    .block_on(self.export_postgres(&url, instance_id.as_deref(), since, out))
-            }
+            AuditSource::Postgres { url, instance_id } => block_on_audit_source(
+                self.export_postgres(&url, instance_id.as_deref(), since, out),
+            ),
         }
     }
 
@@ -355,11 +349,9 @@ impl VerifyAuditAction {
     pub(crate) fn run_with_writer<W: Write>(&self, out: &mut W) -> KmsCliResult<()> {
         match self.source.resolve()? {
             AuditSource::File(path) => self.verify_file_source(&path, out),
-            AuditSource::Postgres { url, instance_id } => tokio::runtime::Runtime::new()
-                .map_err(|e| {
-                    crate::error::KmsCliError::Default(format!("cannot start async runtime: {e}"))
-                })?
-                .block_on(self.verify_postgres(&url, instance_id.as_deref(), out)),
+            AuditSource::Postgres { url, instance_id } => {
+                block_on_audit_source(self.verify_postgres(&url, instance_id.as_deref(), out))
+            }
         }
     }
 
@@ -665,6 +657,27 @@ fn is_sealed_audit_evidence_file(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.contains(".corrupt."))
+}
+
+/// Runs `fut` to completion, reusing the ambient tokio runtime if one is already driving
+/// the current thread (e.g. `ckms`'s own multi-threaded runtime), or spinning up a
+/// throwaway one otherwise (e.g. a plain, non-async `#[test]`).
+///
+/// A bare `Runtime::new().block_on(fut)` panics with "Cannot start a runtime from within
+/// a runtime" when `ckms`'s own binary — which already runs everything inside a
+/// multi-threaded tokio runtime — calls into this sync CLI action.
+fn block_on_audit_source<F: std::future::Future<Output = KmsCliResult<()>>>(
+    fut: F,
+) -> KmsCliResult<()> {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(fut)),
+        Err(_) => match tokio::runtime::Runtime::new() {
+            Ok(rt) => rt.block_on(fut),
+            Err(e) => Err(crate::error::KmsCliError::Default(format!(
+                "cannot start async runtime: {e}"
+            ))),
+        },
+    }
 }
 
 #[cfg(test)]
@@ -1088,7 +1101,10 @@ mod tests {
     fn source_resolve_rejects_neither_path_nor_postgres_url() {
         let args = AuditSourceArgs::default();
         let err = args.resolve().unwrap_err();
-        assert!(err.to_string().contains("one of --path or --audit-postgres-url"));
+        assert!(
+            err.to_string()
+                .contains("one of --path or --audit-postgres-url")
+        );
     }
 
     #[test]
@@ -1108,7 +1124,7 @@ mod tests {
             path: Some(PathBuf::from("/tmp/audit.jsonl")),
             ..Default::default()
         };
-        assert!(args.resolve().is_ok());
+        args.resolve().unwrap();
     }
 
     #[test]
@@ -1117,21 +1133,23 @@ mod tests {
             audit_postgres_url: Some("postgresql://host/db".to_owned()),
             ..Default::default()
         };
-        assert!(args.resolve().is_ok());
+        args.resolve().unwrap();
     }
 
     // ── PostgreSQL source (requires a live database) ─────────────────────────
 
     fn audit_pg_url() -> String {
         option_env!("KMS_AUDIT_POSTGRES_URL")
-            .unwrap_or("postgresql://kms_audit:kms_audit@127.0.0.1:5437/kms_audit?sslmode=disable")
+            .unwrap_or("postgresql://kms_audit:kms_audit@127.0.0.1:5436/kms_audit?sslmode=disable")
             .to_owned()
     }
 
     /// Seeds a fresh instance with `n` events via `PgAuditSink`, returning its
     /// `instance_id`.
     async fn seed_postgres_chain(url: &str, n: i64) -> String {
-        use cosmian_kms_server_database::{PgAuditSink, reexport::cosmian_kms_interfaces::AuditSink as _};
+        use cosmian_kms_server_database::{
+            PgAuditSink, reexport::cosmian_kms_interfaces::AuditSink as _,
+        };
 
         let instance_id = format!("cli-test-{}", uuid::Uuid::new_v4());
         let mut sink = PgAuditSink::connect(url, &instance_id).await.unwrap();
