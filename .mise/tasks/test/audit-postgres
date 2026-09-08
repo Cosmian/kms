@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+#MISE description="Run PostgreSQL audit backend tests (unit + e2e, live database)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+# Starts a dedicated `postgres-audit` container (docker-compose.yml), provisions the
+# restricted `kms_audit_writer` role used by the no-DDL-rights fallback test, runs the
+# #[ignore]-gated live unit tests in crate/server_database and crate/clients/clap, then
+# the full end-to-end integration test (real KMS server + ckms CLI against PostgreSQL).
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/test_slots.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+REPO_ROOT="$(get_repo_root)"
+
+print_header "PostgreSQL audit backend tests (${VARIANT_NAME})"
+
+print_status "Starting postgres-audit container (port ${KMS_SLOT_AUDIT_POSTGRES_PORT})..."
+docker compose --project-directory "${REPO_ROOT}" up -d postgres-audit
+
+cleanup() {
+  docker compose --project-directory "${REPO_ROOT}" stop postgres-audit 2>/dev/null || true
+}
+trap cleanup EXIT
+
+if ! _wait_for_port 127.0.0.1 "${KMS_SLOT_AUDIT_POSTGRES_PORT}" 30; then
+  print_error "postgres-audit (port ${KMS_SLOT_AUDIT_POSTGRES_PORT}) did not become reachable"
+fi
+
+print_status "Waiting for the kms_audit database to accept connections..."
+for _i in $(seq 1 30); do
+  if docker compose --project-directory "${REPO_ROOT}" exec -T postgres-audit \
+    pg_isready -U kms_audit -d kms_audit -q 2>/dev/null; then
+    break
+  fi
+  sleep 1
+done
+
+print_status "Provisioning the restricted kms_audit_writer role (no-DDL-rights fallback test)..."
+docker compose --project-directory "${REPO_ROOT}" exec -T postgres-audit \
+  psql -U kms_audit -d kms_audit -v ON_ERROR_STOP=0 -c "
+    CREATE ROLE kms_audit_writer LOGIN PASSWORD 'writer_pw';
+  " >/dev/null 2>&1 || true
+
+# Bootstraps the kms_audit_events schema (via the owner role) before granting the
+# restricted role rights on it — the table must exist before GRANT can target it.
+print_status "Bootstrapping the audit schema..."
+cargo test -p cosmian_kms_server_database --lib \
+  stores::audit::pgsql::live_tests::pg_chain_resumes_across_restart "${FEATURES_FLAG[@]}" \
+  -- --ignored --test-threads=1
+
+docker compose --project-directory "${REPO_ROOT}" exec -T postgres-audit \
+  psql -U kms_audit -d kms_audit -c "
+    GRANT INSERT, SELECT ON kms_audit_events TO kms_audit_writer;
+  " >/dev/null
+
+print_status "Running live unit tests: cosmian_kms_server_database..."
+cargo test -p cosmian_kms_server_database --lib stores::audit "${FEATURES_FLAG[@]}" \
+  -- --ignored --test-threads=1
+
+print_status "Running live unit tests: cosmian_kms_cli_actions..."
+cargo test -p cosmian_kms_cli_actions --lib actions::audit "${FEATURES_FLAG[@]}" \
+  -- --ignored --test-threads=1
+
+print_status "Running end-to-end integration test (KMS server + ckms CLI)..."
+bash "${REPO_ROOT}/.mise/scripts/test/test_audit_postgres_log.sh" --variant "${VARIANT}"
+
+print_success "PostgreSQL audit backend tests completed"
