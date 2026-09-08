@@ -29,7 +29,7 @@ use futures::{
     future::{Ready, ok},
 };
 
-use crate::middlewares::{AuthMethod, AuthenticatedUser};
+use crate::middlewares::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_aws_xks_identity};
 
 /// Middleware factory — registered unconditionally on all UI-facing scopes.
 pub(crate) struct SessionAuth;
@@ -85,11 +85,23 @@ where
         let session = req.get_session();
         match session.get::<String>("user_id") {
             Ok(Some(user_id)) => {
-                debug!("Session: authenticated user '{user_id}'");
-                req.extensions_mut().insert(AuthenticatedUser {
-                    username: user_id.into(),
-                    auth_method: AuthMethod::Session,
-                });
+                let username = UserId::from(user_id.as_str());
+                match reject_reserved_aws_xks_identity(&username) {
+                    Ok(()) => {
+                        debug!("Session: authenticated user '{user_id}'");
+                        req.extensions_mut().insert(AuthenticatedUser {
+                            username,
+                            auth_method: AuthMethod::Session,
+                        });
+                    }
+                    Err(error) => {
+                        warn!(
+                            "Session: rejecting reserved AWS XKS service identity from stored \
+                             session user_id: {error}"
+                        );
+                        session.purge();
+                    }
+                }
             }
             Ok(None) => {
                 trace!("Session: no user_id in session, passing through");
