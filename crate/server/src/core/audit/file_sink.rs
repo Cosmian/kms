@@ -604,7 +604,7 @@ pub(crate) struct FileSink {
 
 impl FileSink {
     /// Builds a not-yet-resumed file sink for `path`. `write_state` is shared with the
-    /// `AuditFileStore` handle so `enqueue()`'s fast pre-check and this sink's own
+    /// `AuditStore` handle so `enqueue()`'s fast pre-check and this sink's own
     /// post-write cap update observe the same flag.
     pub(super) const fn new(path: PathBuf, write_state: Arc<AuditWriteState>) -> Self {
         Self {

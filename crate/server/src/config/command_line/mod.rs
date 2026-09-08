@@ -21,7 +21,7 @@ mod ui_config;
 mod vault_config;
 mod workspace;
 
-pub use audit_config::{AuditConfig, AuditFailureMode, AuditFileConfig};
+pub use audit_config::{AuditConfig, AuditFailureMode, AuditFileConfig, AuditPostgresConfig};
 pub use auth_verifier_config::AuthVerifierConfig;
 pub use azure_ekm_config::AzureEkmConfig;
 #[cfg(not(target_os = "windows"))]

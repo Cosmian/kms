@@ -29,7 +29,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     config::AuditFailureMode,
-    core::{ObjectHandle, audit::AuditFileStore},
+    core::{ObjectHandle, audit::AuditStore},
     result::KResult,
     tests::test_utils::{self, post_2_1, post_kmip_binary, post_kmip_json},
 };
@@ -60,7 +60,7 @@ async fn audit_records_create_encrypt_failure_and_batch() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
     let path = temp_path("e2e_chain");
-    let store = AuditFileStore::start(&path, 128).expect("cannot start audit store");
+    let store = AuditStore::start(&path, 128).expect("cannot start audit store");
     let (app, _kms) =
         test_utils::test_app_with_audit(store.clone(), AuditFailureMode::default()).await;
     let fut = async {
@@ -372,7 +372,7 @@ async fn audit_records_binary_create_encrypt_failure_and_batch() -> KResult<()> 
     log_init(option_env!("RUST_LOG"));
 
     let path = temp_path("e2e_chain_binary");
-    let store = AuditFileStore::start(&path, 128).expect("cannot start audit store");
+    let store = AuditStore::start(&path, 128).expect("cannot start audit store");
     let (app, _kms) =
         test_utils::test_app_with_audit(store.clone(), AuditFailureMode::default()).await;
     let fut = async {
@@ -648,7 +648,7 @@ async fn audit_records_401_unauthenticated() -> KResult<()> {
 /// (bypassing HTTP, since every further request would also be rejected by this
 /// permanently-disconnected store) so the distinction cannot silently regress.
 ///
-/// Uses `AuditFileStore::new_disconnected()` so `try_send` always returns
+/// Uses `AuditStore::new_disconnected()` so `try_send` always returns
 /// `TrySendError::Closed` — no race with a live writer draining the channel.
 #[tokio::test]
 async fn reject_mode_returns_503_when_audit_unavailable() -> KResult<()> {
@@ -656,7 +656,7 @@ async fn reject_mode_returns_503_when_audit_unavailable() -> KResult<()> {
 
     log_init(option_env!("RUST_LOG"));
 
-    let store = AuditFileStore::new_disconnected();
+    let store = AuditStore::new_disconnected();
     let (app, kms) = test_utils::test_app_with_audit(store, AuditFailureMode::Reject).await;
 
     let create_req = symmetric_key_create_request(
@@ -702,7 +702,7 @@ async fn reject_mode_returns_503_when_audit_unavailable() -> KResult<()> {
 async fn continue_mode_succeeds_when_audit_unavailable() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let store = AuditFileStore::new_disconnected();
+    let store = AuditStore::new_disconnected();
     let (app, _kms) = test_utils::test_app_with_audit(store, AuditFailureMode::Continue).await;
 
     let create_req = symmetric_key_create_request(
@@ -736,7 +736,7 @@ async fn reject_mode_passes_through_when_audit_works() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
     let path = temp_path("reject_passthrough");
-    let store = AuditFileStore::start(&path, 128).expect("cannot start audit store");
+    let store = AuditStore::start(&path, 128).expect("cannot start audit store");
     let (app, _kms) =
         test_utils::test_app_with_audit(store.clone(), AuditFailureMode::Reject).await;
 
@@ -796,7 +796,7 @@ async fn reject_mode_returns_503_after_size_cap_reached() -> KResult<()> {
     let path = temp_path("reject_size_cap");
     // A 1-byte cap: the very first audit event already exceeds it once written.
     let store =
-        AuditFileStore::start_with_max_size(&path, 128, Some(1)).expect("cannot start audit store");
+        AuditStore::start_with_max_size(&path, 128, Some(1)).expect("cannot start audit store");
     let (app, _kms) =
         test_utils::test_app_with_audit(store.clone(), AuditFailureMode::Reject).await;
 
@@ -869,7 +869,7 @@ async fn continue_mode_succeeds_after_size_cap_reached_without_new_audit_row() -
 
     let path = temp_path("continue_size_cap");
     let store =
-        AuditFileStore::start_with_max_size(&path, 128, Some(1)).expect("cannot start audit store");
+        AuditStore::start_with_max_size(&path, 128, Some(1)).expect("cannot start audit store");
     let (app, _kms) =
         test_utils::test_app_with_audit(store.clone(), AuditFailureMode::Continue).await;
 
