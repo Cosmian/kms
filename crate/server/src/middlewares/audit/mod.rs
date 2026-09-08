@@ -52,15 +52,13 @@ use futures::{
 use ipnet::IpNet;
 use uuid::Uuid;
 
-use crate::{
-    config::AuditFailureMode, core::audit::AuditFileStore, middlewares::AuthenticatedUser,
-};
+use crate::{config::AuditFailureMode, core::audit::AuditStore, middlewares::AuthenticatedUser};
 
 const UNAUTHENTICATED: &str = "unauthenticated";
 
 #[derive(Clone)]
 pub(crate) struct AuditMiddleware {
-    store: Option<AuditFileStore>,
+    store: Option<AuditStore>,
     failure_mode: AuditFailureMode,
     /// Only used when parsing `X-Forwarded-For`. Empty means always use peer address.
     trusted_proxies: Vec<IpNet>,
@@ -74,7 +72,7 @@ impl AuditMiddleware {
     /// are trusted; an empty list disables XFF processing entirely.
     #[must_use]
     pub(crate) const fn new(
-        store: Option<AuditFileStore>,
+        store: Option<AuditStore>,
         trusted_proxies: Vec<IpNet>,
         failure_mode: AuditFailureMode,
     ) -> Self {
@@ -110,7 +108,7 @@ where
 
 pub(crate) struct AuditService<S> {
     service: Rc<S>,
-    store: Option<AuditFileStore>,
+    store: Option<AuditStore>,
     trusted_proxies: Vec<IpNet>,
     failure_mode: AuditFailureMode,
 }
