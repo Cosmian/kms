@@ -219,7 +219,7 @@ hmac = { version = "0.12", features = ["std"] }
 http = "1.4"
 jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
 k8s-openapi = "0.24"
-kube = "0.98"
+kube = "0.99"
 lazy_static = "1.5"
 leb128 = "0.2"
 libloading = "0.8"
