@@ -1,20 +1,22 @@
 //! The background audit writer task: sole owner of the sink, the id counter, and
 //! `prev_hash`. Designed not to panic — errors are logged and the loop continues.
+//! Generic over [`AuditSink`] so every backend shares this exact steady-state loop;
+//! only initialization (see `AuditSink::resume`) differs per backend.
 
-use std::{
-    path::Path,
-    sync::{Arc, atomic::AtomicU64},
-};
+use std::sync::{Arc, atomic::AtomicU64};
 
-use cosmian_kms_access::audit::{AuditEvent, AuditEventDraft, AuditResult, compute_row_hash};
+use cosmian_kms_access::audit::{AuditEventDraft, AuditResult};
+use cosmian_kms_interfaces::AuditSink;
 use cosmian_logger::{debug, error};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
-use super::{
-    file_sink::{AuditSink, AuditWriteState, CAPPED_DEBUG_LOG_INTERVAL, enforce_size_cap},
-    store::WriterMsg,
-};
+use super::store::WriterMsg;
+
+/// Minimum interval between "sink at capacity" debug log lines while blocked events keep
+/// arriving — avoids flooding the log once a backend-specific cap (e.g. the file
+/// backend's `max_size_bytes`) is reached.
+const CAPPED_DEBUG_LOG_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// The background writer task.  Sole owner of the sink, the id counter, and
 /// `prev_hash`.  Designed not to panic — errors are logged and the loop
@@ -27,10 +29,7 @@ pub(super) async fn writer_loop<S: AuditSink>(
     mut prev_hash: [u8; 32],
     mut rx: mpsc::Receiver<WriterMsg>,
     dropped_count: Arc<AtomicU64>,
-    write_state: Arc<AuditWriteState>,
-    path: &Path,
 ) -> S {
-    enforce_size_cap(&sink, &write_state, path);
     let mut last_capped_log: Option<std::time::Instant> = None;
 
     while let Some(msg) = rx.recv().await {
@@ -44,17 +43,14 @@ pub(super) async fn writer_loop<S: AuditSink>(
             }
         };
 
-        if write_state
-            .size_limit_reached
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
+        if sink.is_write_capacity_exceeded() {
             let now = std::time::Instant::now();
             let should_log = last_capped_log
                 .is_none_or(|logged_at| now.duration_since(logged_at) >= CAPPED_DEBUG_LOG_INTERVAL);
             if should_log {
                 debug!(
-                    "AuditFileStore: audit log {} is at its max_size_bytes cap — event dropped",
-                    path.display()
+                    "AuditFileStore: sink '{}' is at capacity — event dropped",
+                    sink.name()
                 );
                 last_capped_log = Some(now);
             }
@@ -65,26 +61,21 @@ pub(super) async fn writer_loop<S: AuditSink>(
         let n_dropped = dropped_count.swap(0, std::sync::atomic::Ordering::Relaxed);
         if n_dropped > 0 {
             let sentinel = make_eviction_sentinel(n_dropped);
-            next_id = write_draft_to_chain(&mut sink, sentinel, next_id, &mut prev_hash);
-            enforce_size_cap(&sink, &write_state, path);
+            next_id = write_draft_to_chain(&mut sink, sentinel, next_id, &mut prev_hash).await;
         }
-        if write_state
-            .size_limit_reached
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
+        if sink.is_write_capacity_exceeded() {
             // The sentinel write alone just crossed the cap: writing the real draft too
             // would overshoot the documented "one final event may cross" rule by a
             // second event. Count it as dropped so a future sentinel reports it.
             dropped_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         } else {
-            next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut prev_hash);
-            enforce_size_cap(&sink, &write_state, path);
+            next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut prev_hash).await;
         }
     }
 
     // Channel closed (sender dropped on graceful shutdown): ensure all written
     // events are durable before the task exits.
-    if let Err(e) = sink.final_sync() {
+    if let Err(e) = sink.final_sync().await {
         error!("AuditFileStore: final sync failed: {e}");
     }
     debug!("AuditFileStore: writer loop exited (channel closed)");
@@ -93,32 +84,17 @@ pub(super) async fn writer_loop<S: AuditSink>(
 
 /// Finalises and writes a single `AuditEventDraft` into the chain, advancing
 /// `next_id` and `prev_hash` on success.  Returns the new `next_id`.
-pub(super) fn write_draft_to_chain<S: AuditSink>(
+pub(super) async fn write_draft_to_chain<S: AuditSink>(
     sink: &mut S,
     draft: AuditEventDraft,
     next_id: i64,
     prev_hash: &mut [u8; 32],
 ) -> i64 {
-    let mut ev = AuditEvent {
-        id: next_id,
-        timestamp: draft.timestamp,
-        operation: draft.operation,
-        user: draft.user,
-        object_uid: draft.object_uid,
-        algorithm: draft.algorithm,
-        client_ip: draft.client_ip,
-        result: draft.result,
-        duration_ms: draft.duration_ms,
-        request_id: draft.request_id,
-        details: draft.details,
-        prev_hash: *prev_hash,
-        row_hash: [0_u8; 32],
-    };
-    ev.row_hash = compute_row_hash(&ev);
+    let event = draft.finalize(next_id, *prev_hash);
 
-    match sink.write_event(&ev) {
+    match sink.write_event_atomic(&event).await {
         Ok(()) => {
-            *prev_hash = ev.row_hash;
+            *prev_hash = event.row_hash;
             next_id.checked_add(1).unwrap_or_else(|| {
                 error!(
                     "AuditFileStore: id counter overflow at i64::MAX — \
@@ -130,7 +106,7 @@ pub(super) fn write_draft_to_chain<S: AuditSink>(
         Err(e) => {
             error!(
                 "AuditFileStore: failed to write event id={}: {e} — event dropped",
-                ev.id
+                event.id
             );
             // Do NOT advance id or prev_hash — the next event will reuse
             // the same slot, preserving chain continuity.

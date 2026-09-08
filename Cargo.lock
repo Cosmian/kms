@@ -1686,6 +1686,7 @@ dependencies = [
  "actix-tls",
  "actix-web",
  "async-recursion",
+ "async-trait",
  "base64 0.22.1",
  "chrono",
  "clap",
