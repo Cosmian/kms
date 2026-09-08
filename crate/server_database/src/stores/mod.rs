@@ -1,3 +1,4 @@
+mod audit;
 mod migrate;
 #[cfg(feature = "non-fips")]
 mod redis;
@@ -5,6 +6,7 @@ mod sql;
 
 use std::sync::LazyLock;
 
+pub use audit::{PgAuditReader, PgAuditSink};
 use rawsql::Loader;
 #[cfg(all(test, feature = "non-fips"))]
 pub(crate) use redis::additional_redis_findex_tests;

@@ -1753,6 +1753,7 @@ dependencies = [
  "base64 0.22.1",
  "cosmian_findex",
  "cosmian_kmip",
+ "cosmian_kms_access",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
  "cosmian_logger",
@@ -4889,6 +4890,7 @@ dependencies = [
  "postgres-protocol",
  "serde_core",
  "serde_json",
+ "time",
  "uuid",
 ]
 

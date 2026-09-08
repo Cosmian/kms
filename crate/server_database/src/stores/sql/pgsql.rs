@@ -34,9 +34,9 @@ use crate::{
 
 // Retry parameters for transient PostgreSQL errors (deadlocks, serialization,
 // and connection failures during failover).
-const PG_MAX_RETRIES: u32 = 6;
+pub(crate) const PG_MAX_RETRIES: u32 = 6;
 
-fn is_pg_retryable_error(msg: &str) -> bool {
+pub(crate) fn is_pg_retryable_error(msg: &str) -> bool {
     let lower = msg.to_ascii_lowercase();
     // Deadlock / serialization (SQLSTATE 40P01, 40001)
     lower.contains("deadlock detected")
@@ -60,7 +60,7 @@ fn is_pg_retryable_error(msg: &str) -> bool {
         || lower.contains("57p03") // SQLSTATE cannot_connect_now
 }
 
-fn pg_retry_backoff_ms(attempt: u32) -> u64 {
+pub(crate) fn pg_retry_backoff_ms(attempt: u32) -> u64 {
     let cap = attempt.min(PG_MAX_RETRIES);
     50_u64 * (1_u64 << cap)
 }
@@ -1526,7 +1526,7 @@ const SSL_PARAMS: &[&str] = &["sslmode", "sslrootcert", "sslcert", "sslkey"];
 
 /// Extract query parameters from a `PostgreSQL` connection URL by splitting on `?`/`&`.
 /// This avoids `Url::parse()` which cannot handle multi-host connection strings.
-fn extract_query_params(url: &str) -> HashMap<String, String> {
+pub(crate) fn extract_query_params(url: &str) -> HashMap<String, String> {
     let mut params = HashMap::new();
     if let Some(query_start) = url.find('?') {
         let query = &url[query_start + 1..];
@@ -1541,7 +1541,10 @@ fn extract_query_params(url: &str) -> HashMap<String, String> {
 
 /// Rebuild the connection URL, removing only SSL-related query parameters.
 /// Other parameters like `target_session_attrs` are preserved for `tokio-postgres`.
-fn rebuild_url_without_ssl_params(url: &str, params: &HashMap<String, String>) -> String {
+pub(crate) fn rebuild_url_without_ssl_params(
+    url: &str,
+    params: &HashMap<String, String>,
+) -> String {
     let base = url.split('?').next().unwrap_or(url);
     let non_ssl_params: Vec<String> = params
         .iter()
