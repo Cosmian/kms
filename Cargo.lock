@@ -1441,6 +1441,7 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
+ "cosmian_kms_server_database",
  "cosmian_logger",
  "criterion",
  "der",
