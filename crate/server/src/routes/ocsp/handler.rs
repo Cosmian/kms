@@ -32,7 +32,10 @@ use actix_web::{
     HttpRequest, HttpResponse, get, post,
     web::{Bytes, Data, Path},
 };
-use base64::{Engine as _, engine::general_purpose::URL_SAFE};
+use base64::{
+    Engine as _, alphabet,
+    engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig},
+};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::kmip_types::LinkType},
     cosmian_kms_crypto::openssl::{
@@ -67,6 +70,22 @@ const CT_OCSP_RESPONSE: &str = "application/ocsp-response";
 /// 4096 is generous headroom over any legitimate lightweight-profile request
 /// while bounding the cost of decoding an attacker-controlled path segment.
 const MAX_OCSP_GET_ENCODED_LEN: usize = 4096;
+
+/// Base64url engine used to decode the `GET /ocsp/{encoded_request}` path
+/// segment.
+///
+/// RFC 6960 Appendix A does not mandate whether the base64url encoding is
+/// padded with `=`, and real-world OCSP clients disagree (e.g. `openssl ocsp`
+/// and this project's own black-box test suite emit unpadded requests, while
+/// other libraries emit padded ones). `DecodePaddingMode::Indifferent`
+/// accepts both forms instead of rejecting well-formed requests with a
+/// spurious 422 depending on the caller's padding choice.
+static OCSP_GET_PATH_ENGINE: GeneralPurpose = GeneralPurpose::new(
+    &alphabet::URL_SAFE,
+    GeneralPurposeConfig::new()
+        .with_encode_padding(false)
+        .with_decode_padding_mode(DecodePaddingMode::Indifferent),
+);
 
 /// Returns `true` if a base64url-encoded GET path segment of the given length
 /// exceeds [`MAX_OCSP_GET_ENCODED_LEN`] and must be rejected before decoding.
@@ -140,9 +159,11 @@ pub(crate) async fn get_ocsp(
         return Ok(build_malformed_request_response());
     }
 
-    let request_der = URL_SAFE.decode(encoded.as_bytes()).map_err(|e| {
-        KmsError::InvalidRequest(format!("Invalid base64url in OCSP GET path: {e}"))
-    })?;
+    let request_der = OCSP_GET_PATH_ENGINE
+        .decode(encoded.as_bytes())
+        .map_err(|e| {
+            KmsError::InvalidRequest(format!("Invalid base64url in OCSP GET path: {e}"))
+        })?;
     info!("GET /ocsp/ ({} bytes)", request_der.len());
     handle_ocsp_request(&kms, &request_der).await
 }

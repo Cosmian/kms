@@ -8,6 +8,7 @@
 //! - Setting up routes and middleware
 
 use std::{
+    collections::HashSet,
     path::PathBuf,
     sync::{Arc, mpsc},
 };
@@ -23,8 +24,10 @@ use actix_web::{
     middleware::{Condition, DefaultHeaders, from_fn},
     web::{self, Data, JsonConfig, PayloadConfig},
 };
+use cosmian_kms_access::access::Access;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
+        KmipOperation,
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -64,7 +67,7 @@ use crate::{
     result::{KResult, KResultHelper},
     routes::{
         access,
-        aws_xks::{self},
+        aws_xks::{self, AWS_XKS_SERVICE_USER},
         azure_ekm, cli_archive_download, cli_archive_exists, crl, get_hsm_status, get_server_info,
         get_version,
         google_cse::{self, GoogleCseConfig},
@@ -218,6 +221,141 @@ pub async fn handle_google_cse_rsa_keypair(
     }
 
     info!("RSA Keypair for Google CSE created.");
+
+    Ok(())
+}
+
+/// One-time, idempotent migration that grants the reserved AWS XKS service identity access
+/// to XKS keys created by earlier KMS versions.
+///
+/// Before the fix for issue #1093, XKS keys were created with `default_username` as owner
+/// and their `Encrypt`/`Decrypt` grant bound to the transient caller ARN — so only the
+/// creating principal could use the key. XKS operations now run under the reserved
+/// [`AWS_XKS_SERVICE_USER`] identity, so already-shipped keys carrying the `aws-xks` tag
+/// must be granted to that identity. The migration now performs that grant on behalf of
+/// each key's actual owner rather than assuming the current `default_username`, which also
+/// fixes the later limitation where rotating `default_username` stranded legacy XKS keys
+/// without the reserved identity grant. Ownership is deliberately left untouched:
+/// operators keep full administrative control of the keys.
+///
+/// The grant is additive and safe to re-run on every startup: `CreateKey` applies the same
+/// grant for new keys, and re-granting existing permissions is a no-op.
+///
+/// # Errors
+///
+/// Returns a [`KmsError`] if listing tagged objects or granting access fails.
+pub(crate) async fn migrate_aws_xks_key_access(kms_server: &Arc<KMS>) -> KResult<()> {
+    let default_username = kms_server.params.default_username.as_str();
+    // Defensive: an operator could have configured `default_username` to the reserved name.
+    // `grant_access` refuses to let an owner grant themselves, and the owner already has
+    // every right, so there is nothing to do.
+    if default_username == AWS_XKS_SERVICE_USER {
+        return Ok(());
+    }
+
+    let required = [
+        KmipOperation::Encrypt,
+        KmipOperation::Decrypt,
+        KmipOperation::GetAttributes,
+    ];
+    let tags = HashSet::from(["aws-xks".to_owned()]);
+    let uids = kms_server.database.list_uids_for_tags(&tags).await?;
+
+    let mut migrated = 0_usize;
+    for uid in uids {
+        let owner = match kms_server.database.retrieve_object(&uid).await {
+            Ok(Some(owm)) => owm.owner_id().to_owned(),
+            Ok(None) => {
+                warn!(
+                    "AWS XKS: skipping migration for key `{uid}` because its owner could not be \
+                     determined (object missing)"
+                );
+                continue;
+            }
+            Err(error) => return Err(error.into()),
+        };
+
+        if owner == *AWS_XKS_SERVICE_USER {
+            continue;
+        }
+        // Skip keys that already carry the grant so that a steady-state restart performs no
+        // writes and logs nothing.
+        let xks_service_user = UserId::from(AWS_XKS_SERVICE_USER);
+        // Query direct (non-inherited) permissions only: a wildcard (`*`) grant covering the
+        // required operations must not be mistaken for the durable service-identity grant, or
+        // this migration would skip granting it — later revoking the wildcard would then break
+        // XKS access for keys that were never actually granted to `AWS_XKS_SERVICE_USER`.
+        let granted = kms_server
+            .database
+            .list_user_operations_on_object(&uid, &xks_service_user, true)
+            .await?;
+        if required.iter().all(|op| granted.contains(op)) {
+            continue;
+        }
+        kms_server
+            .grant_access(
+                &Access {
+                    unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                    user_id: AWS_XKS_SERVICE_USER.to_owned(),
+                    operation_types: required.to_vec(),
+                },
+                &owner,
+            )
+            .await?;
+        migrated += 1;
+    }
+
+    if migrated > 0 {
+        info!(
+            "AWS XKS: granted usage on {migrated} pre-existing key(s) to the reserved service \
+             identity `{AWS_XKS_SERVICE_USER}`"
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_aws_xks_reserved_identity_config(server_params: &ServerParams) -> KResult<()> {
+    if server_params.aws_xks_params.is_none() {
+        return Ok(());
+    }
+
+    if server_params.default_username == AWS_XKS_SERVICE_USER {
+        return Err(KmsError::ServerError(format!(
+            "AWS XKS is enabled: `default_username` must not equal the reserved AWS XKS service \
+             identity `{AWS_XKS_SERVICE_USER}`"
+        )));
+    }
+
+    if server_params
+        .crypto_officer
+        .users
+        .iter()
+        .any(|username| username == AWS_XKS_SERVICE_USER)
+    {
+        return Err(KmsError::ServerError(format!(
+            "AWS XKS is enabled: `crypto_officer.users` must not contain the reserved AWS XKS \
+             service identity `{AWS_XKS_SERVICE_USER}`"
+        )));
+    }
+
+    // AWS never calls back into the XKS proxy to list, rotate, revoke, or destroy key
+    // material (the XKS proxy API spec only defines GetKeyMetadata/Encrypt/Decrypt/
+    // GetHealthStatus) — lifecycle management of XKS keys is entirely this operator's
+    // responsibility, exercised as the real, credentialed `default_username` identity
+    // (never as the reserved, unreachable-by-design `AWS_XKS_SERVICE_USER`). Warn loudly
+    // when no Crypto Officer is configured, since that is the intended identity for this
+    // responsibility and an empty list very likely means no one can currently reach these
+    // keys through `ckms`/the Web UI.
+    if server_params.crypto_officer.users.is_empty() {
+        warn!(
+            "AWS XKS is enabled but `crypto_officer.users` is empty: no Crypto Officer is \
+             configured to monitor, rotate, revoke, or destroy XKS keys. AWS never triggers \
+             these operations on your behalf — configure a Crypto Officer identity backed by a \
+             real credential (TLS certificate CN / OIDC subject matching `default_username`) so \
+             XKS keys remain manageable. See crate/server/src/routes/aws_xks/README.md."
+        );
+    }
 
     Ok(())
 }
@@ -977,6 +1115,42 @@ pub async fn prepare_kms_server(
 
     // Should we enable the AWS XKS Service?
     let enable_aws_xks = kms_server.params.aws_xks_params.is_some();
+    if enable_aws_xks {
+        validate_aws_xks_reserved_identity_config(&kms_server.params)?;
+        // Grant the reserved XKS service identity usage on XKS keys created by earlier
+        // versions. Run on a dedicated background thread with its own current-thread
+        // runtime instead of blocking HTTP server startup: the migration has no durable
+        // completion marker and scans every tagged key serially, so an installation with
+        // many XKS keys would otherwise incur a repeated, unbounded startup delay on every
+        // restart. A dedicated thread is required because the store traits are `?Send`
+        // (see `PermissionsStore`/`ObjectsStore`), so the migration future cannot be
+        // spawned onto the main multi-threaded runtime. The migration is additive and
+        // idempotent (see `migrate_aws_xks_key_access`), so running it concurrently with
+        // request serving is safe.
+        let migration_kms_server = kms_server.clone();
+        if let Err(error) = std::thread::Builder::new()
+            .name("aws-xks-key-migration".to_owned())
+            .spawn(move || {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        error!("AWS XKS: failed to start key access migration runtime: {error}");
+                        return;
+                    }
+                };
+                if let Err(error) =
+                    runtime.block_on(migrate_aws_xks_key_access(&migration_kms_server))
+                {
+                    error!("AWS XKS: pre-existing key access migration failed: {error}");
+                }
+            })
+        {
+            error!("AWS XKS: failed to spawn key access migration thread: {error}");
+        }
+    }
 
     // Should we enable the Azure EKM API ?
     let enable_azure_ekm = kms_server.params.azure_ekm.azure_ekm_enable;
@@ -1832,6 +2006,7 @@ fn validate_jwks_uris_are_https(uris: &[String]) -> KResult<()> {
 #[allow(clippy::assertions_on_result_states)]
 mod tests {
     use super::*;
+    use crate::tests::test_utils::https_clap_config;
 
     #[test]
     fn test_derive_session_key_deterministic() {
@@ -1964,5 +2139,83 @@ mod tests {
                 "Error message must identify the offending URI, got: {msg}"
             );
         }
+    }
+
+    fn sample_aws_xks_params() -> aws_xks::AwsXksParams {
+        aws_xks::AwsXksParams {
+            region: "eu-west-3".to_owned(),
+            service: "kms".to_owned(),
+            sigv4_access_key_id: "access-key".to_owned(),
+            sigv4_secret_access_key: "secret-key".to_owned(),
+        }
+    }
+
+    #[test]
+    fn aws_xks_reserved_identity_rejects_default_username() {
+        let params = ServerParams {
+            aws_xks_params: Some(sample_aws_xks_params()),
+            default_username: AWS_XKS_SERVICE_USER.to_owned(),
+            ..ServerParams::default()
+        };
+
+        let error = validate_aws_xks_reserved_identity_config(&params)
+            .expect_err("reserved default_username must be rejected when AWS XKS is enabled");
+
+        assert!(error.to_string().contains("default_username"));
+    }
+
+    #[test]
+    fn aws_xks_reserved_identity_rejects_crypto_officer_user() {
+        let mut params = ServerParams {
+            aws_xks_params: Some(sample_aws_xks_params()),
+            ..ServerParams::default()
+        };
+        params
+            .crypto_officer
+            .users
+            .push(AWS_XKS_SERVICE_USER.to_owned());
+
+        let error = validate_aws_xks_reserved_identity_config(&params).expect_err(
+            "reserved AWS XKS service identity must be rejected in crypto_officer.users",
+        );
+
+        assert!(error.to_string().contains("crypto_officer.users"));
+    }
+
+    #[test]
+    fn aws_xks_reserved_identity_validation_is_skipped_when_xks_disabled() {
+        let mut params = ServerParams {
+            default_username: AWS_XKS_SERVICE_USER.to_owned(),
+            ..ServerParams::default()
+        };
+        params
+            .crypto_officer
+            .users
+            .push(AWS_XKS_SERVICE_USER.to_owned());
+
+        assert!(validate_aws_xks_reserved_identity_config(&params).is_ok());
+    }
+
+    #[tokio::test]
+    async fn aws_xks_migration_allows_empty_default_username() {
+        let mut clap_config = https_clap_config();
+        clap_config.default_username.clear();
+        clap_config.aws_xks_config.aws_xks_enable = true;
+        clap_config.aws_xks_config.aws_xks_region = Some("eu-west-3".to_owned());
+        clap_config.aws_xks_config.aws_xks_service = Some("kms".to_owned());
+        clap_config.aws_xks_config.aws_xks_sigv4_access_key_id = Some("access-key".to_owned());
+        clap_config.aws_xks_config.aws_xks_sigv4_secret_access_key = Some("secret-key".to_owned());
+
+        let params = ServerParams::try_from(clap_config)
+            .expect("server params with empty default_username must be accepted");
+        let kms = Arc::new(
+            KMS::instantiate(Arc::new(params))
+                .await
+                .expect("KMS instantiation with empty default_username must succeed"),
+        );
+
+        migrate_aws_xks_key_access(&kms)
+            .await
+            .expect("AWS XKS migration must not panic or fail for empty default_username");
     }
 }

@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
   "version": 1,
-  "serialNumber": "urn:uuid:632c43f2-0eb8-4737-a700-65c4adb69edb",
+  "serialNumber": "urn:uuid:cb66b7e4-e6bc-4c7d-b8bb-570225bf5c90",
   "metadata": {
-    "timestamp": "2026-09-06T11:24:35.012446+00:00",
+    "timestamp": "2026-09-08T12:52:29.131536+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,19 +24,19 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/491bxah1acbjxmnml32xc82njw2h6kdp-cosmian-kms-server-5.27.0.drv",
+      "bom-ref": "/nix/store/v683alhxfrfk66hgf9sv9h52wy865r8c-cosmian-kms-server-5.27.1.drv",
       "name": "cosmian-kms-server",
-      "version": "5.27.0",
-      "purl": "pkg:nix/cosmian-kms-server@5.27.0",
-      "cpe": "cpe:2.3:a:cosmian-kms-server:cosmian-kms-server:5.27.0:*:*:*:*:*:*:*",
+      "version": "5.27.1",
+      "purl": "pkg:nix/cosmian-kms-server@5.27.1",
+      "cpe": "cpe:2.3:a:cosmian-kms-server:cosmian-kms-server:5.27.1:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/knmc9jcsv6jf25vf53q7r3aks1lk44ld-cosmian-kms-server-5.27.0"
+          "value": "/nix/store/1vvbzd5z8470c7v197f3xbqqzw9srk4i-cosmian-kms-server-5.27.1"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/491bxah1acbjxmnml32xc82njw2h6kdp-cosmian-kms-server-5.27.0.drv"
+          "value": "/nix/store/v683alhxfrfk66hgf9sv9h52wy865r8c-cosmian-kms-server-5.27.1.drv"
         }
       ]
     }
@@ -2132,10 +2132,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/chacha20@0.10.1",
+      "bom-ref": "pkg:cargo/chacha20@0.10.2",
       "name": "chacha20",
-      "version": "0.10.1",
-      "purl": "pkg:cargo/chacha20@0.10.1",
+      "version": "0.10.2",
+      "purl": "pkg:cargo/chacha20@0.10.2",
       "licenses": [
         {
           "license": {
@@ -2152,7 +2152,7 @@
           "url": "https://github.com/RustCrypto/stream-ciphers"
         }
       ],
-      "cpe": "cpe:2.3:a:chacha20:chacha20:0.10.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:chacha20:chacha20:0.10.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -3799,6 +3799,81 @@
         }
       ],
       "cpe": "cpe:2.3:a:deranged:deranged:0.5.8:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/derive_builder@0.20.2",
+      "name": "derive_builder",
+      "version": "0.20.2",
+      "purl": "pkg:cargo/derive_builder@0.20.2",
+      "description": "Rust macro to automatically implement the builder pattern for arbitrary structs.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Colin Kiegel, Pascal Hertleif, Jan-Erik Rediger, Ted Driggs"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/colin-kiegel/rust-derive-builder"
+        }
+      ],
+      "cpe": "cpe:2.3:a:derive_builder:derive_builder:0.20.2:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/derive_builder_core@0.20.2",
+      "name": "derive_builder_core",
+      "version": "0.20.2",
+      "purl": "pkg:cargo/derive_builder_core@0.20.2",
+      "description": "Internal helper library for the derive_builder crate.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Colin Kiegel, Pascal Hertleif, Jan-Erik Rediger, Ted Driggs"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/colin-kiegel/rust-derive-builder"
+        }
+      ],
+      "cpe": "cpe:2.3:a:derive_builder_core:derive_builder_core:0.20.2:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/derive_builder_macro@0.20.2",
+      "name": "derive_builder_macro",
+      "version": "0.20.2",
+      "purl": "pkg:cargo/derive_builder_macro@0.20.2",
+      "description": "Rust macro to automatically implement the builder pattern for arbitrary structs.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Colin Kiegel, Pascal Hertleif, Jan-Erik Rediger, Ted Driggs"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/colin-kiegel/rust-derive-builder"
+        }
+      ],
+      "cpe": "cpe:2.3:a:derive_builder_macro:derive_builder_macro:0.20.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -8163,10 +8238,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/mysql_async@0.37.0",
+      "bom-ref": "pkg:cargo/mysql_async@0.37.1",
       "name": "mysql_async",
-      "version": "0.37.0",
-      "purl": "pkg:cargo/mysql_async@0.37.0",
+      "version": "0.37.1",
+      "purl": "pkg:cargo/mysql_async@0.37.1",
       "description": "Tokio based asynchronous MySql client library.",
       "licenses": [
         {
@@ -8184,7 +8259,7 @@
           "url": "https://github.com/blackbeam/mysql_async"
         }
       ],
-      "cpe": "cpe:2.3:a:mysql_async:mysql_async:0.37.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:mysql_async:mysql_async:0.37.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -10089,6 +10164,31 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/qualifier_attr@0.2.2",
+      "name": "qualifier_attr",
+      "version": "0.2.2",
+      "purl": "pkg:cargo/qualifier_attr@0.2.2",
+      "description": "Procedural macro attributes for adding \\",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Dmitrii Demenev"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/JohnScience/qualifier_attr"
+        }
+      ],
+      "cpe": "cpe:2.3:a:qualifier_attr:qualifier_attr:0.2.2:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/quanta@0.12.6",
       "name": "quanta",
       "version": "0.12.6",
@@ -10878,24 +10978,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/ring@0.16.20",
-      "name": "ring",
-      "version": "0.16.20",
-      "purl": "pkg:cargo/ring@0.16.20",
-      "description": "Safe, fast, small crypto using Rust.",
-      "supplier": {
-        "name": "Brian Smith"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/briansmith/ring"
-        }
-      ],
-      "cpe": "cpe:2.3:a:ring:ring:0.16.20:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/ring@0.17.14",
       "name": "ring",
       "version": "0.17.14",
@@ -11448,40 +11530,65 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/scratchstack-aws-principal@0.3.4",
+      "bom-ref": "pkg:cargo/scratchstack-arn@0.4.9",
+      "name": "scratchstack-arn",
+      "version": "0.4.9",
+      "purl": "pkg:cargo/scratchstack-arn@0.4.9",
+      "description": "Basic Amazon Resource Name (ARN) type",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "David Cuthbert <dacut@kanga.org"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/dacut/scratchstack-core"
+        }
+      ],
+      "cpe": "cpe:2.3:a:scratchstack-arn:scratchstack-arn:0.4.9:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/scratchstack-aws-principal@0.4.9",
       "name": "scratchstack-aws-principal",
-      "version": "0.3.4",
-      "purl": "pkg:cargo/scratchstack-aws-principal@0.3.4",
+      "version": "0.4.9",
+      "purl": "pkg:cargo/scratchstack-aws-principal@0.4.9",
       "description": "Principal types for AWS/AWS-like services",
       "licenses": [
         {
           "license": {
-            "id": "MIT OR Apache-2.0"
+            "id": "MIT"
           }
         }
       ],
       "supplier": {
-        "name": "David Cuthbert"
+        "name": "David Cuthbert <dacut@kanga.org"
       },
       "externalReferences": [
         {
           "type": "vcs",
-          "url": "https://github.com/dacut/scratchstack-aws-principal"
+          "url": "https://github.com/dacut/scratchstack-core"
         }
       ],
-      "cpe": "cpe:2.3:a:scratchstack-aws-principal:scratchstack-aws-principal:0.3.4:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:scratchstack-aws-principal:scratchstack-aws-principal:0.4.9:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/scratchstack-aws-signature@0.10.6",
+      "bom-ref": "pkg:cargo/scratchstack-aws-signature@0.11.4",
       "name": "scratchstack-aws-signature",
-      "version": "0.10.6",
-      "purl": "pkg:cargo/scratchstack-aws-signature@0.10.6",
+      "version": "0.11.4",
+      "purl": "pkg:cargo/scratchstack-aws-signature@0.11.4",
       "description": "AWS SigV4 signature verification",
       "licenses": [
         {
           "license": {
-            "id": "MIT OR Apache-2.0"
+            "id": "MIT"
           }
         }
       ],
@@ -11491,10 +11598,35 @@
       "externalReferences": [
         {
           "type": "vcs",
-          "url": "https://github.com/dacut/scratchstack-aws-signature.git"
+          "url": "https://github.com/dacut/scratchstack-aws-signature"
         }
       ],
-      "cpe": "cpe:2.3:a:scratchstack-aws-signature:scratchstack-aws-signature:0.10.6:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:scratchstack-aws-signature:scratchstack-aws-signature:0.11.4:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/scratchstack-errors@0.4.9",
+      "name": "scratchstack-errors",
+      "version": "0.4.9",
+      "purl": "pkg:cargo/scratchstack-errors@0.4.9",
+      "description": "Error trait for AWS/AWS-like services",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "David Cuthbert <dacut@kanga.org"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/dacut/scratchstack-core"
+        }
+      ],
+      "cpe": "cpe:2.3:a:scratchstack-errors:scratchstack-errors:0.4.9:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -12406,31 +12538,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:socket2:socket2:0.6.5:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/spin@0.5.2",
-      "name": "spin",
-      "version": "0.5.2",
-      "purl": "pkg:cargo/spin@0.5.2",
-      "description": "Synchronization primitives based on spinning.\\nThey may contain data, are usable without `std`,\\nand static initializers",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Mathijs van de Nes, John Ericson"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/mvdnes/spin-rs.git"
-        }
-      ],
-      "cpe": "cpe:2.3:a:spin:spin:0.5.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -14482,31 +14589,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:unsafe-libyaml:unsafe-libyaml:0.2.11:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/untrusted@0.7.1",
-      "name": "untrusted",
-      "version": "0.7.1",
-      "purl": "pkg:cargo/untrusted@0.7.1",
-      "description": "Safe, fast, zero-panic, zero-crashing, zero-allocation parsing of untrusted inputs in Rust.",
-      "licenses": [
-        {
-          "license": {
-            "id": "ISC"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Brian Smith"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/briansmith/untrusted"
-        }
-      ],
-      "cpe": "cpe:2.3:a:untrusted:untrusted:0.7.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -19588,7 +19670,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/491bxah1acbjxmnml32xc82njw2h6kdp-cosmian-kms-server-5.27.0.drv",
+      "ref": "/nix/store/v683alhxfrfk66hgf9sv9h52wy865r8c-cosmian-kms-server-5.27.1.drv",
       "dependsOn": [
         "/nix/store/0jj6dx87n24aqbrj4pmh1mgwa4kkak5r-openssl-3.6.2.drv"
       ]
