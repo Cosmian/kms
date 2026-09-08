@@ -1699,6 +1699,7 @@ dependencies = [
  "actix-tls",
  "actix-web",
  "async-recursion",
+ "async-trait",
  "aws_cloudhsm_pkcs11_loader",
  "base64 0.22.1",
  "chrono",
