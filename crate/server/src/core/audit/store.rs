@@ -1,15 +1,15 @@
 //! `AuditFileStore`: a cheaply cloneable handle to the audit writer task.
 //!
 //! * `AuditFileStore` is a cheaply cloneable handle (wraps a channel `Sender`).
-//! * A single background tokio task (`writer_supervisor`, in `file_sink`) is the **sole
-//!   owner** of the audit file, the monotonic event counter, and the previous-row hash.
+//! * A single background tokio task is the **sole owner** of the sink (see
+//!   `file_sink::FileSink`), the monotonic event counter, and the previous-row hash.
 //!   This design avoids any mutex around the file and guarantees write order under
 //!   concurrent requests.
 //! * The KMS always starts: `start_with_max_size()` returns synchronously and never
 //!   blocks on file I/O or lock contention. Recovery, exclusive-lock acquisition, and
-//!   opening the file all happen inside the writer task, retrying in the background on
-//!   failure. Events enqueued in the meantime are genuinely queued (not dropped) up to
-//!   the channel's bounded capacity — see `file_sink::writer_supervisor`.
+//!   opening the file all happen inside `FileSink::resume`, awaited by the spawned task,
+//!   never by the caller. Events enqueued in the meantime are genuinely queued (not
+//!   dropped) up to the channel's bounded capacity.
 //! * The middleware calls `enqueue()` which is a non-blocking `try_send`.  If the
 //!   channel is full (beyond the configured capacity) the draft is silently dropped
 //!   and an error is logged — we never block the request path.
@@ -23,10 +23,14 @@ use std::{
 };
 
 use cosmian_kms_access::audit::AuditEventDraft;
+use cosmian_kms_interfaces::AuditSink;
 use cosmian_logger::error;
 use tokio::sync::{mpsc, oneshot};
 
-use super::file_sink::{AuditWriteState, writer_supervisor};
+use super::{
+    file_sink::{AuditWriteState, FileSink},
+    writer::writer_loop,
+};
 use crate::{error::KmsError, result::KResult};
 
 /// Message sent to the writer task over the channel.
@@ -69,15 +73,13 @@ impl AuditFileStore {
     /// `max_size_bytes`, when `Some`, stops all writes once the file reaches that many
     /// bytes — see `AuditFileConfig::audit_file_max_size_bytes`. `None` is unlimited.
     ///
-    /// Recovery, locking, and opening all happen inside the spawned writer task — see
-    /// `file_sink::writer_supervisor`. This call never blocks on file I/O or lock
-    /// contention.
+    /// Recovery, locking, and opening all happen inside `FileSink::resume`, awaited by
+    /// the spawned writer task. This call never blocks on file I/O or lock contention.
     ///
     /// # Errors
     /// Returns an error only if `channel_capacity` is 0 — a pure configuration mistake,
     /// not a runtime condition. Every other fault (I/O, lock contention, log corruption)
-    /// is handled inside the writer task without aborting startup; see
-    /// `file_sink::writer_supervisor`.
+    /// is handled inside `FileSink::resume` without aborting startup — see its docs.
     pub(crate) fn start_with_max_size(
         path: &Path,
         channel_capacity: usize,
@@ -97,7 +99,25 @@ impl AuditFileStore {
         let path = path.to_path_buf();
 
         tokio::spawn(async move {
-            writer_supervisor(path, rx, dropped_count_for_writer, write_state_for_writer).await;
+            let mut sink = FileSink::new(path, write_state_for_writer);
+            match sink.resume().await {
+                Ok(chain_head) => {
+                    writer_loop(
+                        sink,
+                        chain_head.next_id,
+                        chain_head.prev_hash,
+                        rx,
+                        dropped_count_for_writer,
+                    )
+                    .await;
+                }
+                Err(e) => {
+                    error!(
+                        "AuditFileStore: audit sink failed to resume ({e}) — audit logging is \
+                         disabled for this process"
+                    );
+                }
+            }
         });
 
         Ok(Self {
@@ -203,17 +223,16 @@ mod tests {
         sync::{Arc, atomic::AtomicU64},
     };
 
+    use async_trait::async_trait;
     use cosmian_kms_access::audit::{
         AuditEvent, AuditEventDraft, AuditResult, compute_row_hash, verify_event,
     };
+    use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult};
     use time::OffsetDateTime;
     use tokio::sync::mpsc;
 
-    use super::{AuditFileStore, AuditWriteState, WriterMsg};
-    use crate::core::audit::{
-        file_sink::{AuditSink, lock_file_path},
-        writer::writer_loop,
-    };
+    use super::{AuditFileStore, WriterMsg};
+    use crate::core::audit::{file_sink::lock_file_path, writer::writer_loop};
 
     /// Small channel capacity used in all tests.  Large enough for the ≤5-event
     /// functional tests; small enough to fill quickly in the saturation test.
@@ -923,7 +942,7 @@ mod tests {
 
     // ── Fault injection on the write path ────────────────────────────────
 
-    /// A mock `AuditSink` that fails `write_event` for calls whose 0-based
+    /// A mock `AuditSink` that fails `write_event_atomic` for calls whose 0-based
     /// index satisfies `should_fail`, allowing precise control over exactly
     /// which write in a sequence fails.
     struct FaultySink {
@@ -942,12 +961,23 @@ mod tests {
         }
     }
 
+    #[async_trait]
     impl AuditSink for FaultySink {
-        fn write_event(&mut self, event: &AuditEvent) -> std::io::Result<()> {
+        fn name(&self) -> &'static str {
+            "faulty"
+        }
+
+        async fn resume(&mut self) -> InterfaceResult<ChainHead> {
+            Ok(ChainHead::EMPTY)
+        }
+
+        async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<()> {
             let idx = self.call_count;
             self.call_count += 1;
             if (self.should_fail)(idx) {
-                return Err(std::io::Error::other("simulated write failure"));
+                return Err(InterfaceError::Default(
+                    "simulated write failure".to_owned(),
+                ));
             }
             self.events.push(event.clone());
             Ok(())
@@ -965,18 +995,8 @@ mod tests {
         // Fail exactly the 3rd write call (0-based index 2).
         let sink = FaultySink::new(|idx| idx == 2);
 
-        let handle = tokio::spawn(async move {
-            writer_loop(
-                sink,
-                0,
-                [0_u8; 32],
-                rx,
-                dropped_count,
-                Arc::new(AuditWriteState::default()),
-                Path::new("faulty_sink_test"),
-            )
-            .await
-        });
+        let handle =
+            tokio::spawn(async move { writer_loop(sink, 0, [0_u8; 32], rx, dropped_count).await });
 
         for _ in 0..5 {
             tx.send(WriterMsg::Event(Box::new(make_draft())))
@@ -1009,18 +1029,8 @@ mod tests {
         let dropped_count = Arc::new(AtomicU64::new(0));
         let sink = FaultySink::new(|_| true);
 
-        let handle = tokio::spawn(async move {
-            writer_loop(
-                sink,
-                0,
-                [0_u8; 32],
-                rx,
-                dropped_count,
-                Arc::new(AuditWriteState::default()),
-                Path::new("faulty_sink_test"),
-            )
-            .await
-        });
+        let handle =
+            tokio::spawn(async move { writer_loop(sink, 0, [0_u8; 32], rx, dropped_count).await });
 
         for _ in 0..3 {
             tx.send(WriterMsg::Event(Box::new(make_draft())))

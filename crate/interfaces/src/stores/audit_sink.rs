@@ -81,6 +81,20 @@ pub trait AuditSink: Send {
         true
     }
 
+    /// Whether the sink is currently refusing new writes — e.g. a configured on-disk
+    /// size cap has been reached. Checked by the writer loop **before** every write; when
+    /// `true` the event is silently skipped without ever calling [`Self::write_event_atomic`],
+    /// exactly like a channel-capacity drop.
+    ///
+    /// Defaults to `false`: most backends have no such concept. A backend that does
+    /// (only the file backend, today) updates its own internal state after each write
+    /// and reports it here instead of returning an error from `write_event_atomic` — an error
+    /// there would be logged per rejected event; this path is a silent, rate-limited
+    /// skip owned entirely by the sink.
+    fn is_write_capacity_exceeded(&self) -> bool {
+        false
+    }
+
     /// Called once when the writer loop exits (channel closed on graceful shutdown).
     ///
     /// # Errors
