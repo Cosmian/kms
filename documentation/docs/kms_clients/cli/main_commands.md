@@ -124,7 +124,11 @@ Export audit events to stdout (JSON lines or CEF v27 format)
 ### Usage
 `ckms audit export [options]`
 ### Arguments
-`--path [-p] <PATH>` Path to the JSONL audit log file
+`--path [-p] <PATH>` Path to a JSONL audit log file (`export`), or a file or directory (`verify`)
+
+`--audit-postgres-url <AUDIT_POSTGRES_URL>` `PostgreSQL` connection URL for the audit database, as an alternative to `--path`
+
+`--audit-instance-id <AUDIT_INSTANCE_ID>` Restrict a `--audit-postgres-url` source to a single KMS instance's chain. Omit to read every instance present in the database
 
 `--since <SINCE>` Only export events at or after this RFC 3339 timestamp (e.g. `2024-01-15T00:00:00Z`)
 
@@ -145,7 +149,11 @@ Verify the SHA-256 hash chain of the audit file
 ### Usage
 `ckms audit verify [options]`
 ### Arguments
-`--path [-p] <PATH>` Path to a JSONL audit log file, or a directory containing one or more
+`--path [-p] <PATH>` Path to a JSONL audit log file (`export`), or a file or directory (`verify`)
+
+`--audit-postgres-url <AUDIT_POSTGRES_URL>` `PostgreSQL` connection URL for the audit database, as an alternative to `--path`
+
+`--audit-instance-id <AUDIT_INSTANCE_ID>` Restrict a `--audit-postgres-url` source to a single KMS instance's chain. Omit to read every instance present in the database
 
 `--verbose <VERBOSE>` Print a summary line for every event even when the chain is valid
 
