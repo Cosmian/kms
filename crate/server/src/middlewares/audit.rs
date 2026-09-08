@@ -69,20 +69,19 @@ use actix_web::{
     body::{BoxBody, EitherBody},
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
 };
-use cosmian_kms_access::audit::{AuditEventDraft, AuditResult};
+use cosmian_kms_access::audit::{
+    AuditEventDraft, AuditResult, OperationAuditContext, RequestAuditContext, audit_now,
+};
 use cosmian_logger::error;
 use futures::{
     Future,
     future::{Ready, ok},
 };
 use ipnet::IpNet;
-use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    config::AuditFailureMode,
-    core::audit::{AuditFileStore, make_failure_draft, make_success_draft},
-    middlewares::AuthenticatedUser,
+    config::AuditFailureMode, core::audit::AuditFileStore, middlewares::AuthenticatedUser,
 };
 
 const UNAUTHENTICATED: &str = "unauthenticated";
@@ -175,7 +174,7 @@ where
         let failure_mode = self.failure_mode.clone();
 
         let start = Instant::now();
-        let timestamp = OffsetDateTime::now_utc();
+        let timestamp = audit_now();
         let svc = self.service.clone();
 
         Box::pin(async move {
@@ -193,7 +192,15 @@ where
                 .get::<AuthenticatedUser>()
                 .map_or_else(|| UNAUTHENTICATED.to_owned(), |u| u.username.to_string());
 
-            // Batch path: fan out one draft per BatchItem
+            let req_ctx = RequestAuditContext {
+                timestamp,
+                user: final_user,
+                client_ip,
+                duration_ms,
+                request_id: Some(request_id),
+            };
+
+            // Batch path: fan out one draft per BatchItem, all sharing `req_ctx`.
             let batch_drafts: Option<Vec<AuditEventDraft>> = res
                 .request()
                 .extensions()
@@ -214,18 +221,15 @@ where
                                     ))
                                 }
                             });
-                            AuditEventDraft {
-                                timestamp,
-                                operation: ctx.operation.clone(),
-                                user: final_user.clone(),
-                                object_uid: ctx.object_uid.clone(),
-                                algorithm: ctx.algorithm.clone(),
-                                client_ip: client_ip.clone(),
-                                result: item_result,
-                                duration_ms,
-                                request_id: Some(request_id),
-                                details: None,
-                            }
+                            AuditEventDraft::build(
+                                &req_ctx,
+                                OperationAuditContext {
+                                    operation: ctx.operation.clone(),
+                                    object_uid: ctx.object_uid.clone(),
+                                    algorithm: ctx.algorithm.clone(),
+                                },
+                                item_result,
+                            )
                         })
                         .collect()
                 });
@@ -263,34 +267,21 @@ where
                 .get::<KmipAlgorithm>()
                 .map(|k| k.0.clone());
 
-            let mut draft: AuditEventDraft = if status.is_success() || status.is_redirection() {
-                make_success_draft(
-                    timestamp,
-                    final_operation,
-                    final_user,
-                    object_uid,
-                    algorithm,
-                    client_ip,
-                    duration_ms,
-                )
+            let op_ctx = OperationAuditContext {
+                operation: final_operation,
+                object_uid,
+                algorithm,
+            };
+            let result = if status.is_success() || status.is_redirection() {
+                AuditResult::Success
             } else {
-                let reason = format!(
+                AuditResult::Failure(format!(
                     "{} {}",
                     status.as_u16(),
                     status.canonical_reason().unwrap_or("Unknown")
-                );
-                make_failure_draft(
-                    timestamp,
-                    final_operation,
-                    final_user,
-                    object_uid,
-                    algorithm,
-                    client_ip,
-                    duration_ms,
-                    reason,
-                )
+                ))
             };
-            draft.request_id = Some(request_id);
+            let draft = AuditEventDraft::build(&req_ctx, op_ctx, result);
 
             let all_queued = store.enqueue(std::iter::once(draft));
             if !all_queued && failure_mode == AuditFailureMode::Reject {
@@ -371,24 +362,27 @@ mod tests {
     }
 
     #[test]
-    fn make_success_draft_all_attributes() {
-        use cosmian_kms_access::audit::AuditResult;
+    fn build_success_draft_all_attributes() {
+        use cosmian_kms_access::audit::{AuditResult, OperationAuditContext, RequestAuditContext};
         use time::OffsetDateTime;
 
-        use crate::core::audit::make_success_draft;
-
-        let ts = OffsetDateTime::now_utc();
-
-        let draft = make_success_draft(
-            ts,
-            "Encrypt",
-            "alice",
-            Some("key-42".to_owned()),
-            Some("AES-256".to_owned()),
-            Some("192.168.1.1".to_owned()),
-            42,
+        let req = RequestAuditContext {
+            timestamp: OffsetDateTime::now_utc(),
+            user: "alice".to_owned(),
+            client_ip: Some("192.168.1.1".to_owned()),
+            duration_ms: 42,
+            request_id: None,
+        };
+        let draft = AuditEventDraft::build(
+            &req,
+            OperationAuditContext {
+                operation: "Encrypt".to_owned(),
+                object_uid: Some("key-42".to_owned()),
+                algorithm: Some("AES-256".to_owned()),
+            },
+            AuditResult::Success,
         );
-        assert_eq!(draft.timestamp, ts);
+        assert_eq!(draft.timestamp, req.timestamp);
         assert_eq!(draft.operation, "Encrypt");
         assert_eq!(draft.user, "alice");
         assert_eq!(draft.object_uid.as_deref(), Some("key-42"));
@@ -397,36 +391,48 @@ mod tests {
         assert_eq!(draft.duration_ms, 42);
         assert!(matches!(draft.result, AuditResult::Success));
 
-        let draft = make_success_draft(ts, "Get", "bob", None, None, None, 7);
+        let draft = AuditEventDraft::build(
+            &RequestAuditContext {
+                user: "bob".to_owned(),
+                client_ip: None,
+                ..req
+            },
+            OperationAuditContext {
+                operation: "Get".to_owned(),
+                ..Default::default()
+            },
+            AuditResult::Success,
+        );
         assert_eq!(draft.operation, "Get");
         assert_eq!(draft.user, "bob");
         assert!(draft.object_uid.is_none());
         assert!(draft.algorithm.is_none());
         assert!(draft.client_ip.is_none());
-        assert_eq!(draft.duration_ms, 7);
         assert!(matches!(draft.result, AuditResult::Success));
     }
 
     #[test]
-    fn make_failure_draft_all_attributes() {
-        use cosmian_kms_access::audit::AuditResult;
+    fn build_failure_draft_all_attributes() {
+        use cosmian_kms_access::audit::{AuditResult, OperationAuditContext, RequestAuditContext};
         use time::OffsetDateTime;
 
-        use crate::core::audit::make_failure_draft;
-
-        let ts = OffsetDateTime::now_utc();
-
-        let draft = make_failure_draft(
-            ts,
-            "Decrypt",
-            "charlie",
-            Some("obj-99".to_owned()),
-            Some("RSA-3072".to_owned()),
-            Some("10.0.0.5".to_owned()),
-            123,
-            "403 Forbidden",
+        let req = RequestAuditContext {
+            timestamp: OffsetDateTime::now_utc(),
+            user: "charlie".to_owned(),
+            client_ip: Some("10.0.0.5".to_owned()),
+            duration_ms: 123,
+            request_id: None,
+        };
+        let draft = AuditEventDraft::build(
+            &req,
+            OperationAuditContext {
+                operation: "Decrypt".to_owned(),
+                object_uid: Some("obj-99".to_owned()),
+                algorithm: Some("RSA-3072".to_owned()),
+            },
+            AuditResult::Failure("403 Forbidden".to_owned()),
         );
-        assert_eq!(draft.timestamp, ts);
+        assert_eq!(draft.timestamp, req.timestamp);
         assert_eq!(draft.operation, "Decrypt");
         assert_eq!(draft.user, "charlie");
         assert_eq!(draft.object_uid.as_deref(), Some("obj-99"));
@@ -438,15 +444,18 @@ mod tests {
             AuditResult::Failure(reason) if reason == "403 Forbidden"
         ));
 
-        let draft = make_failure_draft(
-            ts,
-            "Create",
-            "dave",
-            None,
-            None,
-            None,
-            15,
-            "401 Unauthorized",
+        let draft = AuditEventDraft::build(
+            &RequestAuditContext {
+                user: "dave".to_owned(),
+                client_ip: None,
+                duration_ms: 15,
+                ..req
+            },
+            OperationAuditContext {
+                operation: "Create".to_owned(),
+                ..Default::default()
+            },
+            AuditResult::Failure("401 Unauthorized".to_owned()),
         );
         assert_eq!(draft.operation, "Create");
         assert_eq!(draft.user, "dave");

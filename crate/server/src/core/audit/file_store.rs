@@ -1218,61 +1218,6 @@ fn open_append(path: &Path) -> std::io::Result<std::fs::File> {
         .open(path)
 }
 
-/// Builds an `AuditEventDraft` for a successful KMIP operation.
-// Each parameter maps 1-to-1 to an `AuditEventDraft` field; a wrapper struct
-// would not reduce the count and would require updating all call sites.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn make_success_draft(
-    timestamp: OffsetDateTime,
-    operation: impl Into<String>,
-    user: impl Into<String>,
-    object_uid: Option<String>,
-    algorithm: Option<String>,
-    client_ip: Option<String>,
-    duration_ms: u64,
-) -> AuditEventDraft {
-    AuditEventDraft {
-        timestamp,
-        operation: operation.into(),
-        user: user.into(),
-        object_uid,
-        algorithm,
-        client_ip,
-        result: AuditResult::Success,
-        duration_ms,
-        request_id: None,
-        details: None,
-    }
-}
-
-/// Builds an `AuditEventDraft` for a failed KMIP operation.
-// Each parameter maps 1-to-1 to an `AuditEventDraft` field plus a `reason`
-// string; a wrapper struct would not reduce the count.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn make_failure_draft(
-    timestamp: OffsetDateTime,
-    operation: impl Into<String>,
-    user: impl Into<String>,
-    object_uid: Option<String>,
-    algorithm: Option<String>,
-    client_ip: Option<String>,
-    duration_ms: u64,
-    reason: impl Into<String>,
-) -> AuditEventDraft {
-    AuditEventDraft {
-        timestamp,
-        operation: operation.into(),
-        user: user.into(),
-        object_uid,
-        algorithm,
-        client_ip,
-        result: AuditResult::Failure(reason.into()),
-        duration_ms,
-        request_id: None,
-        details: None,
-    }
-}
-
 /// Test-only constructors on `AuditFileStore`.
 #[cfg(test)]
 impl AuditFileStore {
@@ -1312,13 +1257,14 @@ mod tests {
         sync::{Arc, atomic::AtomicU64},
     };
 
-    use cosmian_kms_access::audit::{AuditEvent, AuditEventDraft, compute_row_hash, verify_event};
+    use cosmian_kms_access::audit::{
+        AuditEvent, AuditEventDraft, AuditResult, compute_row_hash, verify_event,
+    };
     use time::OffsetDateTime;
     use tokio::sync::mpsc;
 
     use super::{
-        AuditFileStore, AuditSink, AuditWriteState, WriterMsg, lock_file_path, make_success_draft,
-        writer_loop,
+        AuditFileStore, AuditSink, AuditWriteState, WriterMsg, lock_file_path, writer_loop,
     };
 
     /// Small channel capacity used in all tests.  Large enough for the ≤5-event
@@ -1333,15 +1279,18 @@ mod tests {
     }
 
     fn make_draft() -> AuditEventDraft {
-        make_success_draft(
-            OffsetDateTime::now_utc(),
-            "Encrypt",
-            "alice",
-            Some("obj-1".to_owned()),
-            Some("AES-256-GCM".to_owned()),
-            Some("127.0.0.1".to_owned()),
-            5,
-        )
+        AuditEventDraft {
+            timestamp: OffsetDateTime::now_utc(),
+            operation: "Encrypt".to_owned(),
+            user: "alice".to_owned(),
+            object_uid: Some("obj-1".to_owned()),
+            algorithm: Some("AES-256-GCM".to_owned()),
+            client_ip: Some("127.0.0.1".to_owned()),
+            result: AuditResult::Success,
+            duration_ms: 5,
+            request_id: None,
+            details: None,
+        }
     }
 
     fn read_events(path: &Path) -> Vec<AuditEvent> {
