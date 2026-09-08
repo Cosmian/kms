@@ -11,6 +11,7 @@
 //! - `pgsql`: Contains the implementation for `PostgreSQL` database.
 //! - `redis`: Contains the implementation for Redis database.
 //! - `sqlite`: Contains the implementation for `SQLite` database.
+//! - `audit`: Contains the `PostgreSQL` audit backend (`PgAuditSink`/`PgAuditReader`).
 //! - `locate_query`: Contains utility functions for locating queries.
 //! - `migrate`: Contains functions for database migration.
 //! - `retrieve_object_utils`: Contains utility functions for retrieving objects.
@@ -46,6 +47,7 @@ pub use error::DbError;
 mod stores;
 #[cfg(feature = "non-fips")]
 pub use stores::redis_master_key_from_password;
+pub use stores::{PgAuditReader, PgAuditSink};
 #[cfg(test)]
 mod tests;
 
