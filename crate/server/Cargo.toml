@@ -58,6 +58,7 @@ actix-session = { workspace = true, features = ["cookie-session"] }
 actix-tls = { workspace = true }
 actix-web = { workspace = true, features = ["macros", "openssl"] }
 async-recursion = { workspace = true }
+async-trait = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = [

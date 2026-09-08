@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::audit::hash::compute_row_hash;
+
 /// The finalised, persisted audit event including its hash-chain fields.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEvent {
@@ -144,6 +146,33 @@ impl AuditEventDraft {
             details: None,
         }
     }
+
+    /// Assigns the hash-chain fields to turn this draft into a persistable [`AuditEvent`],
+    /// computing `row_hash` over the canonical bytes (including `prev_hash`).
+    ///
+    /// Shared by every backend's writer so the same draft, `id`, and `prev_hash` always
+    /// yield byte-identical canonical hashes regardless of which sink persists it — see
+    /// `audit_now`'s microsecond truncation, which this depends on.
+    #[must_use]
+    pub fn finalize(self, id: i64, prev_hash: [u8; 32]) -> AuditEvent {
+        let mut event = AuditEvent {
+            id,
+            timestamp: self.timestamp,
+            operation: self.operation,
+            user: self.user,
+            object_uid: self.object_uid,
+            algorithm: self.algorithm,
+            client_ip: self.client_ip,
+            result: self.result,
+            duration_ms: self.duration_ms,
+            request_id: self.request_id,
+            details: self.details,
+            prev_hash,
+            row_hash: [0_u8; 32],
+        };
+        event.row_hash = compute_row_hash(&event);
+        event
+    }
 }
 
 /// Current UTC time truncated to **microsecond** resolution.
@@ -167,6 +196,7 @@ mod tests {
     use super::{
         AuditEventDraft, AuditResult, OperationAuditContext, RequestAuditContext, audit_now,
     };
+    use crate::audit::hash::verify_event;
 
     #[test]
     fn canonical_str_success() {
@@ -282,5 +312,53 @@ mod tests {
     fn audit_now_truncates_to_microseconds() {
         let ts = audit_now();
         assert_eq!(ts.nanosecond() % 1_000, 0);
+    }
+
+    #[test]
+    fn finalize_assigns_chain_fields_and_verifies() {
+        let draft = AuditEventDraft {
+            timestamp: audit_now(),
+            operation: "Encrypt".to_owned(),
+            user: "alice@example.com".to_owned(),
+            object_uid: Some("obj-1234".to_owned()),
+            algorithm: Some("AES-256-GCM".to_owned()),
+            client_ip: Some("127.0.0.1".to_owned()),
+            result: AuditResult::Success,
+            duration_ms: 5,
+            request_id: None,
+            details: None,
+        };
+        let prev_hash = [0xAB_u8; 32];
+        let event = draft.finalize(7, prev_hash);
+
+        assert_eq!(event.id, 7);
+        assert_eq!(event.prev_hash, prev_hash);
+        assert_eq!(event.operation, "Encrypt");
+        assert!(
+            verify_event(&event),
+            "finalize() must produce a self-consistent row_hash"
+        );
+    }
+
+    #[test]
+    fn finalize_is_deterministic_for_identical_input() {
+        let draft = AuditEventDraft {
+            timestamp: audit_now(),
+            operation: "Decrypt".to_owned(),
+            user: "bob@example.com".to_owned(),
+            object_uid: None,
+            algorithm: None,
+            client_ip: None,
+            result: AuditResult::Success,
+            duration_ms: 1,
+            request_id: None,
+            details: None,
+        };
+        let a = draft.clone().finalize(0, [0_u8; 32]);
+        let b = draft.finalize(0, [0_u8; 32]);
+        assert_eq!(
+            a.row_hash, b.row_hash,
+            "same draft/id/prev_hash must yield the same canonical row_hash across backends"
+        );
     }
 }
