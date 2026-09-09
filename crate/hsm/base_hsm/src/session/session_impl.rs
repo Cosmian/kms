@@ -15,17 +15,20 @@ use cosmian_kms_interfaces::{
 };
 use cosmian_logger::{debug, trace};
 use pkcs11_sys::{
-    CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_DATE, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
-    CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
+    CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_DATE, CK_FALSE, CK_HKDF_PARAMS, CK_KEY_TYPE,
+    CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
     CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CKA_CLASS, CKA_COEFFICIENT,
-    CKA_END_DATE, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS,
-    CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE,
-    CKA_START_DATE, CKA_VALUE, CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384,
-    CKG_MGF1_SHA512, CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS,
-    CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384,
-    CKM_SHA384_RSA_PKCS, CKM_SHA512, CKM_SHA512_RSA_PKCS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
-    CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
-    CKZ_DATA_SPECIFIED,
+    CKA_DERIVE, CKA_END_DATE, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE, CKA_LABEL,
+    CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT,
+    CKA_SENSITIVE, CKA_START_DATE, CKA_TOKEN, CKA_VALUE, CKA_VALUE_LEN, CKF_HKDF_SALT_DATA,
+    CKF_HKDF_SALT_NULL, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES,
+    CKK_GENERIC_SECRET, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_EDDSA,
+    CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1,
+    CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384, CKM_SHA384_RSA_PKCS,
+    CKM_SHA512, CKM_SHA512_RSA_PKCS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
+    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_MECHANISM_INVALID,
+    CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID,
+    CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
 };
 use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
@@ -80,6 +83,11 @@ pub enum HsmSigningAlgorithm {
     Sha256WithRsa,
     Sha384WithRsa,
     Sha512WithRsa,
+    /// `CKM_EDDSA` — pure Ed25519 (OASIS Cryptoki v3.0 §2.3.9). Not (yet) reachable
+    /// through `SigningAlgorithm::from`/KMIP (Phase 2); only constructed directly by
+    /// `base_hsm`-internal callers and tests until the KMIP integration phase wires it
+    /// up. Requires a key generated with `Session::generate_eddsa_key_pair`.
+    Eddsa,
 }
 
 impl From<SigningAlgorithm> for HsmSigningAlgorithm {
@@ -92,6 +100,16 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
             SigningAlgorithm::Sha512WithRsa => Self::Sha512WithRsa,
         }
     }
+}
+
+/// Returns `true` for return codes that indicate the requested mechanism (or its
+/// parameters) is simply not supported by the loaded PKCS#11 library — as opposed to
+/// a hard failure. Callers use this to gracefully degrade (e.g. report the mechanism
+/// as unavailable) instead of surfacing a generic HSM error, mirroring the additive,
+/// non-breaking philosophy already established for the v3.0 capability probes in
+/// `HsmLib` (issue #1153).
+const fn is_mechanism_unsupported_rv(rv: pkcs11_sys::CK_RV) -> bool {
+    rv == CKR_MECHANISM_INVALID || rv == CKR_MECHANISM_PARAM_INVALID
 }
 
 /// An active PKCS#11 session with an HSM.
@@ -1217,12 +1235,35 @@ impl Session {
         algorithm: HsmSigningAlgorithm,
         data: &[u8],
     ) -> HResult<Vec<u8>> {
+        if matches!(algorithm, HsmSigningAlgorithm::Eddsa) {
+            // `CKM_EDDSA` (OASIS Cryptoki v3.0 §2.3.9): per the spec, `pParameter`
+            // is OPTIONAL — omitting it (`pParameter = NULL`, `ulParameterLen = 0`)
+            // requests the pure, non-prehashed, no-context-string Ed25519 variant
+            // (RFC 8032 `Ed25519`). Explicitly sending a `CK_EDDSA_PARAMS` with
+            // `phFlag = CK_FALSE` and an empty context is *not* equivalent: per
+            // RFC 8032 that selects the distinct `Ed25519ctx` variant (a different
+            // domain separator, even with a zero-length context), which not every
+            // conformant library implements — do not pass params unless a context
+            // string or the prehash flag is actually required.
+            let mut mechanism = CK_MECHANISM {
+                mechanism: CKM_EDDSA,
+                pParameter: ptr::null_mut(),
+                ulParameterLen: 0,
+            };
+            return self.sign_with_mechanism(key_handle, &mut mechanism, data);
+        }
         let mechanism_type = match algorithm {
             HsmSigningAlgorithm::RsaPkcsV15 => CKM_RSA_PKCS,
             HsmSigningAlgorithm::Sha1WithRsa => CKM_SHA1_RSA_PKCS,
             HsmSigningAlgorithm::Sha256WithRsa => CKM_SHA256_RSA_PKCS,
             HsmSigningAlgorithm::Sha384WithRsa => CKM_SHA384_RSA_PKCS,
             HsmSigningAlgorithm::Sha512WithRsa => CKM_SHA512_RSA_PKCS,
+            HsmSigningAlgorithm::Eddsa => {
+                return Err(HError::Default(
+                    "internal error: EdDSA must be handled by the early-return branch above"
+                        .to_owned(),
+                ));
+            }
         };
         let mut mechanism = CK_MECHANISM {
             mechanism: mechanism_type,
@@ -1239,14 +1280,31 @@ impl Session {
         data: &[u8],
     ) -> HResult<Vec<u8>> {
         let mut data = data.to_vec();
-        hsm_call!(
-            self.hsm,
-            "Failed to initialize signing",
-            C_SignInit,
-            self.handle,
-            mechanism,
-            key_handle
-        );
+        #[expect(unsafe_code)]
+        // SAFETY: `mechanism` is a valid, live `&mut CK_MECHANISM` for the duration
+        // of this call; `self.handle` and `key_handle` are opaque PKCS#11 handles
+        // passed through unchanged.
+        let init_rv = match self.hsm.C_SignInit {
+            Some(func) => unsafe { func(self.handle, mechanism, key_handle) },
+            None => {
+                return Err(HError::Default(
+                    "C_SignInit not available on library".to_owned(),
+                ));
+            }
+        };
+        if init_rv != CKR_OK {
+            return if is_mechanism_unsupported_rv(init_rv) {
+                Err(HError::Default(format!(
+                    "The loaded PKCS#11 library does not support mechanism {}. Return code: \
+                     {init_rv}",
+                    mechanism.mechanism
+                )))
+            } else {
+                Err(HError::Default(format!(
+                    "Failed to initialize signing. Return code: {init_rv}"
+                )))
+            };
+        }
 
         let mut signature_len: CK_ULONG = 0;
         hsm_call!(
@@ -1279,6 +1337,371 @@ impl Session {
             )));
         }
         Ok(signature)
+    }
+
+    /// Verify a signature using the specified key and algorithm.
+    ///
+    /// Returns `Ok(false)` for a cryptographically invalid signature (`CKR_SIGNATURE_INVALID`
+    /// / `CKR_SIGNATURE_LEN_RANGE`), and `Err` for any other failure — including
+    /// `CKR_MECHANISM_INVALID`/`CKR_MECHANISM_PARAM_INVALID` when the loaded library does
+    /// not support the requested mechanism (e.g. `CKM_EDDSA` on a v2.40-only library),
+    /// so callers can distinguish "signature is wrong" from "mechanism unsupported".
+    ///
+    /// Requires the loaded library to expose the classic `C_VerifyInit`/`C_Verify`
+    /// functions; virtually every conformant PKCS#11 library (v2.01+) does.
+    pub fn verify(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        algorithm: HsmSigningAlgorithm,
+        data: &[u8],
+        signature: &[u8],
+    ) -> HResult<bool> {
+        if matches!(algorithm, HsmSigningAlgorithm::Eddsa) {
+            // See the matching comment in `sign()`: omit `CK_EDDSA_PARAMS` to
+            // request the pure Ed25519 variant (RFC 8032), not `Ed25519ctx`.
+            let mut mechanism = CK_MECHANISM {
+                mechanism: CKM_EDDSA,
+                pParameter: ptr::null_mut(),
+                ulParameterLen: 0,
+            };
+            return self.verify_with_mechanism(key_handle, &mut mechanism, data, signature);
+        }
+        let mechanism_type = match algorithm {
+            HsmSigningAlgorithm::RsaPkcsV15 => CKM_RSA_PKCS,
+            HsmSigningAlgorithm::Sha1WithRsa => CKM_SHA1_RSA_PKCS,
+            HsmSigningAlgorithm::Sha256WithRsa => CKM_SHA256_RSA_PKCS,
+            HsmSigningAlgorithm::Sha384WithRsa => CKM_SHA384_RSA_PKCS,
+            HsmSigningAlgorithm::Sha512WithRsa => CKM_SHA512_RSA_PKCS,
+            HsmSigningAlgorithm::Eddsa => {
+                return Err(HError::Default(
+                    "internal error: EdDSA must be handled by the early-return branch above"
+                        .to_owned(),
+                ));
+            }
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: mechanism_type,
+            pParameter: std::ptr::null_mut(),
+            ulParameterLen: 0,
+        };
+        self.verify_with_mechanism(key_handle, &mut mechanism, data, signature)
+    }
+
+    fn verify_with_mechanism(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        mechanism: &mut CK_MECHANISM,
+        data: &[u8],
+        signature: &[u8],
+    ) -> HResult<bool> {
+        let mut data = data.to_vec();
+        let mut signature = signature.to_vec();
+
+        #[expect(unsafe_code)]
+        // SAFETY: `mechanism` is a valid, live `&mut CK_MECHANISM` for the duration
+        // of this call; `self.handle` and `key_handle` are opaque PKCS#11 handles
+        // passed through unchanged.
+        let init_rv = match self.hsm.C_VerifyInit {
+            Some(func) => unsafe { func(self.handle, mechanism, key_handle) },
+            None => {
+                return Err(HError::Default(
+                    "C_VerifyInit not available on library".to_owned(),
+                ));
+            }
+        };
+        if init_rv != CKR_OK {
+            return if is_mechanism_unsupported_rv(init_rv) {
+                Err(HError::Default(format!(
+                    "The loaded PKCS#11 library does not support mechanism {}. Return code: \
+                     {init_rv}",
+                    mechanism.mechanism
+                )))
+            } else {
+                Err(HError::Default(format!(
+                    "Failed to initialize verification. Return code: {init_rv}"
+                )))
+            };
+        }
+
+        #[expect(unsafe_code)]
+        let rv = match self.hsm.C_Verify {
+            Some(func) => unsafe {
+                func(
+                    self.handle,
+                    data.as_mut_ptr(),
+                    CK_ULONG::try_from(data.len())?,
+                    signature.as_mut_ptr(),
+                    CK_ULONG::try_from(signature.len())?,
+                )
+            },
+            None => {
+                return Err(HError::Default(
+                    "C_Verify not available on library".to_owned(),
+                ));
+            }
+        };
+
+        if rv == CKR_OK {
+            Ok(true)
+        } else if rv == CKR_SIGNATURE_INVALID || rv == CKR_SIGNATURE_LEN_RANGE {
+            Ok(false)
+        } else if is_mechanism_unsupported_rv(rv) {
+            Err(HError::Default(format!(
+                "The loaded PKCS#11 library does not support mechanism {}. Return code: {rv}",
+                mechanism.mechanism
+            )))
+        } else {
+            Err(HError::Default(format!(
+                "Failed to verify signature. Return code: {rv}"
+            )))
+        }
+    }
+
+    /// Derive a new AES key from a base secret key using HKDF (`CKM_HKDF_DERIVE`,
+    /// OASIS Cryptoki v3.0 §2.3.11 / RFC 5869).
+    ///
+    /// Performs the standard HKDF Extract-then-Expand construction in a single
+    /// `C_DeriveKey` call: `prf_hash` selects the underlying HMAC hash (e.g.
+    /// `CKM_SHA256`), `salt` is the optional HKDF salt (`None` uses the all-zero
+    /// salt per RFC 5869 §2.2, i.e. `CKF_HKDF_SALT_NULL`), and `info` is the HKDF
+    /// context/application-specific info string.
+    ///
+    /// Returns `Err` — with a message identifying an unsupported-mechanism return
+    /// code (`CKR_MECHANISM_INVALID`/`CKR_MECHANISM_PARAM_INVALID`) — when the
+    /// loaded library does not implement `CKM_HKDF_DERIVE` (e.g. any v2.40-only
+    /// library, or a v3.0 library that does not implement this optional mechanism).
+    /// Callers wanting to proactively check support beforehand should query
+    /// `SlotManager::get_supported_mechanisms`/`get_mechanism_info` for
+    /// `CKM_HKDF_DERIVE`.
+    ///
+    /// # Arguments
+    /// * `base_key_handle` - handle of the secret key to derive from (the HKDF "IKM").
+    /// * `prf_hash` - the HMAC hash mechanism to use as the HKDF PRF (e.g. `CKM_SHA256`).
+    /// * `salt` - optional HKDF salt bytes.
+    /// * `info` - HKDF "info" context bytes.
+    /// * `derived_key_len_bytes` - length in bytes of the derived AES key (16 or 32).
+    /// * `derived_key_id` - the `CKA_ID`/`CKA_LABEL` to assign to the derived key.
+    /// * `sensitive` - if `true`, the derived key is marked non-extractable.
+    #[expect(clippy::too_many_arguments)]
+    pub fn derive_hkdf_key(
+        &self,
+        base_key_handle: CK_OBJECT_HANDLE,
+        prf_hash: CK_MECHANISM_TYPE,
+        salt: Option<&[u8]>,
+        info: &[u8],
+        derived_key_len_bytes: usize,
+        derived_key_id: &[u8],
+        sensitive: bool,
+    ) -> HResult<CK_OBJECT_HANDLE> {
+        let mut salt_bytes = salt.unwrap_or(&[]).to_vec();
+        let mut info_bytes = info.to_vec();
+        let mut hkdf_params = CK_HKDF_PARAMS {
+            bExtract: CK_TRUE,
+            bExpand: CK_TRUE,
+            prfHashMechanism: prf_hash,
+            ulSaltType: if salt.is_some() {
+                CKF_HKDF_SALT_DATA
+            } else {
+                CKF_HKDF_SALT_NULL
+            },
+            pSalt: salt_bytes.as_mut_ptr(),
+            ulSaltLen: CK_ULONG::try_from(salt_bytes.len())?,
+            hSaltKey: 0,
+            pInfo: info_bytes.as_mut_ptr(),
+            ulInfoLen: CK_ULONG::try_from(info_bytes.len())?,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_HKDF_DERIVE,
+            pParameter: (&raw mut hkdf_params).cast::<std::ffi::c_void>(),
+            ulParameterLen: CK_ULONG::try_from(size_of::<CK_HKDF_PARAMS>())?,
+        };
+
+        let is_sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
+        let derived_key_len = CK_ULONG::try_from(derived_key_len_bytes)?;
+        let mut template = [
+            CK_ATTRIBUTE {
+                type_: CKA_CLASS,
+                pValue: std::ptr::from_ref(&CKO_SECRET_KEY)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_OBJECT_CLASS>())?,
+            },
+            CK_ATTRIBUTE {
+                // `CKK_GENERIC_SECRET` (not `CKK_AES`): per OASIS Cryptoki v3.0
+                // §2.5, `CKM_HKDF_DERIVE` output is arbitrary derived key
+                // material — several conformant libraries (e.g. `kryoptic`)
+                // reject any other `CKA_KEY_TYPE` on the derived object with
+                // `CKR_KEY_TYPE_INCONSISTENT`. Callers needing an AES-typed key
+                // from HKDF output must re-wrap/re-import the raw bytes.
+                type_: CKA_KEY_TYPE,
+                pValue: std::ptr::from_ref(&CKK_GENERIC_SECRET)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_VALUE_LEN,
+                pValue: std::ptr::from_ref(&derived_key_len)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_ULONG>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_TOKEN,
+                pValue: std::ptr::from_ref(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_LABEL,
+                pValue: derived_key_id
+                    .as_ptr()
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(derived_key_id.len())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_ID,
+                pValue: derived_key_id
+                    .as_ptr()
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(derived_key_id.len())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_SENSITIVE,
+                pValue: std::ptr::from_ref(&is_sensitive)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+            },
+        ];
+
+        let mut derived_key_handle = CK_OBJECT_HANDLE::default();
+        #[expect(unsafe_code)]
+        let rv = match self.hsm.C_DeriveKey {
+            Some(func) => unsafe {
+                func(
+                    self.handle,
+                    &raw mut mechanism,
+                    base_key_handle,
+                    template.as_mut_ptr(),
+                    CK_ULONG::try_from(template.len())?,
+                    &raw mut derived_key_handle,
+                )
+            },
+            None => {
+                return Err(HError::Default(
+                    "C_DeriveKey not available on library".to_owned(),
+                ));
+            }
+        };
+        if is_mechanism_unsupported_rv(rv) {
+            return Err(HError::Default(format!(
+                "The loaded PKCS#11 library does not support CKM_HKDF_DERIVE. Return code: {rv}"
+            )));
+        } else if rv != CKR_OK {
+            return Err(HError::Default(format!(
+                "Failed to derive HKDF key. Return code: {rv}"
+            )));
+        }
+
+        self.object_handles_cache()
+            .insert(derived_key_id.to_vec(), derived_key_handle)?;
+        Ok(derived_key_handle)
+    }
+
+    /// Generate a `CKK_GENERIC_SECRET` key suitable as HKDF input key material.
+    ///
+    /// `CKM_HKDF_DERIVE` (OASIS Cryptoki v3.0 §2.5) restricts its input key
+    /// object to `CKK_GENERIC_SECRET`/`CKK_HKDF` with `CKA_DERIVE` set — a
+    /// `CKK_AES` key (e.g. from [`Self::generate_aes_key`]) is rejected by
+    /// conformant libraries with `CKR_KEY_TYPE_INCONSISTENT`. Use this to
+    /// generate a compliant base key for [`Self::derive_hkdf_key`].
+    pub fn generate_generic_secret_key(
+        &self,
+        id: &[u8],
+        len_bytes: usize,
+        sensitive: bool,
+    ) -> HResult<CK_OBJECT_HANDLE> {
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_GENERIC_SECRET_KEY_GEN,
+            pParameter: ptr::null_mut(),
+            ulParameterLen: 0,
+        };
+        let is_sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
+        let value_len = CK_ULONG::try_from(len_bytes)?;
+        let mut template = [
+            CK_ATTRIBUTE {
+                type_: CKA_CLASS,
+                pValue: std::ptr::from_ref(&CKO_SECRET_KEY)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_OBJECT_CLASS>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_KEY_TYPE,
+                pValue: std::ptr::from_ref(&CKK_GENERIC_SECRET)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_VALUE_LEN,
+                pValue: std::ptr::from_ref(&value_len)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_ULONG>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_TOKEN,
+                pValue: std::ptr::from_ref(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_DERIVE,
+                pValue: std::ptr::from_ref(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_LABEL,
+                pValue: id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: CK_ULONG::try_from(id.len())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_ID,
+                pValue: id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: CK_ULONG::try_from(id.len())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_SENSITIVE,
+                pValue: std::ptr::from_ref(&is_sensitive)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+            },
+        ];
+
+        let mut key_handle = CK_OBJECT_HANDLE::default();
+        hsm_call!(
+            self.hsm,
+            "Failed to generate the generic secret key",
+            C_GenerateKey,
+            self.handle,
+            &raw mut mechanism,
+            template.as_mut_ptr(),
+            CK_ULONG::try_from(template.len())?,
+            &raw mut key_handle
+        );
+
+        self.object_handles_cache()
+            .insert(id.to_vec(), key_handle)?;
+        Ok(key_handle)
     }
 
     /// Export a key from the HSM

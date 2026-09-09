@@ -1,3 +1,84 @@
+# PKCS#11 v3.0 consumer-side mechanisms (EdDSA, HKDF, message-AEAD) and Kryoptic conformance suite
+
+## Features
+
+### HSM
+
+- Extend `HsmLib` to additively resolve the v3.0-only message-based bulk
+  encrypt/decrypt entry points (`C_MessageEncryptInit`/`C_EncryptMessage`/...),
+  degrading gracefully to `CKR_MECHANISM_INVALID`/`CKR_MECHANISM_PARAM_INVALID` when a
+  loaded library does not support them, exactly like the existing v2.40 fallback
+  ([#1153](https://github.com/Cosmian/kms/issues/1153))
+- Add EdDSA (`CKM_EDDSA`, pure Ed25519 per RFC 8032) sign/verify to `Session`
+- Add HKDF key derivation (`CKM_HKDF_DERIVE`) to `Session` via `derive_hkdf_key()`
+- Add message-based AES-GCM encrypt/decrypt to `Session`
+- Add `Session::generate_generic_secret_key()`: generates a `CKK_GENERIC_SECRET` key
+  with `CKA_DERIVE = true` via `CKM_GENERIC_SECRET_KEY_GEN` — the spec-compliant way to
+  produce HKDF input key material (no existing helper could do this)
+- Wire RSA `SignatureVerify` through to the HSM backend (`HSM::verify`/`BaseHsm`),
+  closing a pre-existing gap where it was unconditionally `NotSupported`
+
+## Bug Fixes
+
+### HSM
+
+- Fix `Session::sign()`/`verify()` for EdDSA: previously sent an explicit, empty
+  `CK_EDDSA_PARAMS`, which per RFC 8032 selects the distinct `Ed25519ctx` variant
+  (different domain separator) rather than plain Ed25519 — not every conformant
+  library implements `Ed25519ctx`. Now omits `CK_EDDSA_PARAMS` entirely
+  (`pParameter = NULL`) to request the pure, spec-default Ed25519 variant
+- Fix `derive_hkdf_key()`'s derived-key template: was typed `CKA_KEY_TYPE = CKK_AES`,
+  which `CKM_HKDF_DERIVE` (OASIS Cryptoki v3.0 §2.5) rejects — conformant libraries
+  require the output key type to be `CKK_GENERIC_SECRET`/`CKK_HKDF`. Now typed
+  `CKK_GENERIC_SECRET`
+- Fix `get_v3_function_list()` requesting the "PKCS 11" interface from
+  `C_GetInterface` with a hardcoded `pVersion = {major: 3, minor: 0}` (an exact-match
+  request per OASIS Cryptoki v3.1 §5.2). This rejected any strictly conformant
+  library whose "PKCS 11" interface is versioned 3.1 or 3.2 rather than exactly 3.0,
+  causing `HsmLib` to wrongly report *no* v3.0 support at all for a fully
+  v3.1/v3.2-capable library. Now requests `pVersion = NULL_PTR` (any version, per
+  spec) and validates the returned interface's major version is `3` before treating
+  `pFunctionList` as a `CK_FUNCTION_LIST_3_0`
+
+## Testing
+
+- Add an opt-in, dev-only PKCS#11 v3.0 conformance test suite
+  (`crate/hsm/base_hsm/tests/kryoptic_conformance.rs`) built against
+  [`kryoptic`](https://github.com/latchset/kryoptic), a Rust PKCS#11 v3.0
+  software token maintained by Red Hat's identity team (`latchset`). Used purely as a
+  conformance-test oracle (not a supported production HSM backend — no wizard/model
+  entry): fetched and built out-of-tree from its published crates.io release to avoid a
+  `rusqlite` version conflict with `crate/server_database`. The fetch/build step lives
+  entirely in `.mise/lib/kryoptic.sh::kryoptic_build_cdylib` (mirroring
+  `.mise/lib/softhsm2.sh`), which exports the built cdylib path as `KRYOPTIC_PKCS11_LIB`;
+  the test reads it from the environment exactly like `SOFTHSM2_PKCS11_LIB` — no Rust
+  code in `cosmian_kms_base_hsm` builds `kryoptic`. Bootstraps a fresh token
+  (`C_InitToken`/`C_InitPIN`) via the v3.0 `CK_FUNCTION_LIST` (Kryoptic exports only
+  `C_GetFunctionList`, not per-symbol names) and validates, against real v3.0 crypto: a
+  populated `C_GetInterfaceList`, an EdDSA sign/verify round trip, an HKDF derive, and a
+  message-based AES-GCM round trip. Gated purely behind `#[ignore]`, like every other
+  vendor HSM suite (no Cargo feature — `kryoptic` is never a real dependency). Run via
+  `mise run test:hsm-kryoptic-conformance`
+- Add the `kryoptic-conformance` CI job in `.github/workflows/test_all.yml`, separate
+  from the vendor HSM matrix (no hardware/secrets required)
+
+## Documentation
+
+- Document the new v3.0 mechanisms and the Kryoptic conformance suite in
+  `documentation/docs/hsm_support/hsm_operations.md`
+- Amend ADR-2026-09-03 recording that native v3.0 mechanism wiring and a concrete
+  conformance oracle (Kryoptic) have landed, and that Craton HSM
+  (`craton-co/craton-hsm-core`) was evaluated and rejected as a conformance oracle for
+  now (too immature: ~5 months old, small maintainer group, no independent security
+  review)
+
+---
+
+KMIP-level reachability remains RSA-only (`SignatureVerify`); EdDSA/HKDF/message-AEAD
+are implemented and tested at the `base_hsm` layer but not yet reachable through a KMIP
+operation end-to-end, pending a `KeyType`/`HsmKeypairAlgorithm` enum expansion — tracked
+separately in [#1182](https://github.com/Cosmian/kms/issues/1182).
+
 # PKCS#11 v3 interfaces discovery, `C_LoginUser`, and conformance profiles
 
 ## Features

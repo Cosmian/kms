@@ -84,3 +84,34 @@ hard acceptance criterion for the whole "PKCS#11 v3.0" milestone.
   `pkcs11_v3.rs` with the `CK_FUNCTION_LIST_3_0` layout and `C_GetInterface` binding to
   actually invoke v3.0-only mechanisms, still behind the same additive fallback
   pattern established here.
+
+## Amendment (native v3.0 mechanism wiring + conformance oracle)
+
+The follow-up anticipated above has since landed:
+
+- `HsmLib` now additionally resolves the v3.0-only message-based AEAD entry points
+  (`C_MessageEncryptInit`/`C_EncryptMessage`/...) and `Session` gained EdDSA
+  (`CKM_EDDSA`) sign/verify, HKDF (`CKM_HKDF_DERIVE`) key derivation, and message-based
+  AES-GCM encrypt/decrypt — all resolved/attempted best-effort, degrading gracefully
+  (treated as "unsupported" rather than a hard error) on `CKR_MECHANISM_INVALID`/
+  `CKR_MECHANISM_PARAM_INVALID`, preserving the additive guarantee from the original
+  decision. No existing vendor loader's behavior changed.
+- A concrete v3.0 target for validation was selected: **Kryoptic**
+  (`latchset/kryoptic`), used exclusively as a dev/test conformance oracle (not a
+  production HSM backend — no wizard/model-enum entry), built out-of-tree to avoid a
+  `rusqlite` version conflict with `crate/server_database`. See
+  `crate/hsm/base_hsm/tests/kryoptic_conformance.rs` and the "PKCS#11 v3.0 mechanisms"
+  section of [`hsm_operations.md`](../hsm_support/hsm_operations.md).
+- Validating against Kryoptic surfaced and fixed two genuine spec-conformance bugs in
+  the first implementation: the EdDSA branch sent an explicit, empty `CK_EDDSA_PARAMS`
+  (selecting RFC 8032 `Ed25519ctx` instead of plain `Ed25519`), and
+  `derive_hkdf_key()`'s output template typed the derived key `CKK_AES` instead of the
+  spec-mandated `CKK_GENERIC_SECRET`/`CKK_HKDF`. Both are fixed.
+- KMIP-level reachability remains RSA-only (`SignatureVerify`); EdDSA/HKDF/message-AEAD
+  are implemented and tested at the `base_hsm` layer but not yet reachable through a
+  KMIP operation, pending a `KeyType`/`HsmKeypairAlgorithm` enum expansion, tracked
+  separately in issue [#1182](https://github.com/Cosmian/kms/issues/1182).
+- Craton HSM (`craton-co/craton-hsm-core`) was evaluated as an alternative conformance
+  oracle and rejected for now: too immature (~5 months old, single/small maintainer
+  group, no independent security review) to serve as a trusted test reference in a
+  FIPS-140-3-oriented KMS.

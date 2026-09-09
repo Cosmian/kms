@@ -1411,6 +1411,7 @@ name = "cosmian_kms_base_hsm"
 version = "5.27.1"
 dependencies = [
  "async-trait",
+ "cc",
  "cosmian_kms_interfaces",
  "cosmian_logger",
  "futures",

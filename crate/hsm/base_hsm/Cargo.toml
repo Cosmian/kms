@@ -29,3 +29,17 @@ thiserror = { workspace = true }
 time = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zeroize = { workspace = true }
+
+[dev-dependencies]
+# Goal: regression-test `HsmLib`'s PKCS#11 v3.1 §5.4.4/§5.4.6 function-table
+# fallback — a library that exports *only* `C_GetFunctionList`/`C_GetInterface`
+# (no individual `C_XXX` symbols, as Kryoptic and other strictly conformant v3
+# libraries do) must still load and resolve a working interface. `cc` compiles
+# `tests/fixtures/minimal_pkcs11.c`, a tiny shim exporting exactly that shape,
+# into a real loadable shared library at test time (see
+# `hsm_lib::function_table_fallback_tests`), so this dispatch logic is
+# regression-tested on every `cargo test -p cosmian_kms_base_hsm --lib` run —
+# fast, deterministic, and offline — without depending on Kryoptic itself
+# (which is a separate, opt-in, out-of-tree conformance suite; see the NOTE
+# below).
+cc = { workspace = true }

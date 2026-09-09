@@ -502,11 +502,82 @@ v3.0.
     Eviden KMS uses the canonical v3 bindings supplied by `pkcs11-sys` to optionally detect
     whether the loaded PKCS#11 library exposes the v3
     interfaces discovery entry point (`C_GetInterfaceList`), without changing how any function is
-    resolved or called. This is a **read-only capability probe** for diagnostics and future v3.0
-    feature adoption — it does not yet enable any v3.0-only mechanism (EdDSA, X25519, HKDF,
-    message-based AEAD, etc.), which is tracked as separate follow-up work. A v2.40-only library
-    simply does not export `C_GetInterfaceList`, so the probe reports "not
+    resolved or called. This is a **read-only capability probe** for diagnostics — a v2.40-only
+    library simply does not export `C_GetInterfaceList`, so the probe reports "not
     supported" and nothing else changes; a v3-capable library additionally reports the list of
     interfaces it exposes (e.g. `"PKCS 11"`). See
     [ADR-2026-09-03](../adr/2026-09-03-pkcs11-v3-scope-decision-ffi-foundation.md) for the full
     scope decision and rationale.
+
+### PKCS#11 v3.0 mechanisms (conditional, capability-gated)
+
+Beyond the discovery probe above, `crate/hsm/base_hsm` also implements a set of PKCS#11
+v3.0-only **mechanisms**, always attempted best-effort and never assumed present:
+
+- **EdDSA sign/verify** (`CKM_EDDSA`, OASIS Cryptoki v3.0 §2.3.9) — pure Ed25519 (RFC 8032),
+  requested with `pParameter = NULL`/`ulParameterLen = 0` (omitting `CK_EDDSA_PARAMS`
+  entirely selects the plain Ed25519 variant; an explicit, even empty-context, params
+  struct instead selects the distinct `Ed25519ctx` variant, which not every conformant
+  library implements).
+- **HKDF key derivation** (`CKM_HKDF_DERIVE`, OASIS Cryptoki v3.0 §2.5) — input key
+  material must be a `CKK_GENERIC_SECRET`/`CKK_HKDF` secret key with `CKA_DERIVE=true`
+  (produced via `Session::generate_generic_secret_key`); the derived key is likewise
+  typed `CKK_GENERIC_SECRET`.
+- **Message-based AEAD** (`C_MessageEncryptInit`/`C_EncryptMessage`/...) for AES-GCM.
+
+Every one of these calls degrades gracefully: if the loaded library reports
+`CKR_MECHANISM_INVALID` or `CKR_MECHANISM_PARAM_INVALID`, the KMS treats the mechanism as
+simply unavailable on that library rather than surfacing a hard error, mirroring the
+additive philosophy of the capability probe. **KMIP reachability is currently limited to
+RSA `SignatureVerify`** — EdDSA/HKDF/message-AEAD are implemented and unit-tested at the
+`base_hsm` layer but not yet exposed through a KMIP operation end-to-end, since that
+requires expanding the `KeyType`/`HsmKeypairAlgorithm` enums (today limited to
+AES/RSA) — tracked as a dedicated follow-up ([#1182](https://github.com/Cosmian/kms/issues/1182)).
+
+#### Validating v3.0 mechanisms: the Kryoptic conformance suite
+
+No vendor HSM currently supported by Eviden KMS (SoftHSM2, Utimaco, Proteccio, Crypt2Pay,
+SmartCard HSM) implements PKCS#11 v3.0, so none of them can exercise the mechanisms above —
+SoftHSM2's own v3 probe test only confirms the "not supported" degrade path.
+
+To actually validate this code against a real v3.0 implementation, `crate/hsm/base_hsm`
+includes an opt-in, dev-only test suite (`tests/kryoptic_conformance.rs`) built against
+[`kryoptic`](https://github.com/latchset/kryoptic) — a Rust PKCS#11 v3.0 software token
+maintained by Red Hat's identity team (`latchset`), used here purely as a **conformance-test
+oracle**, not as a supported production HSM backend (no wizard step, no `HSM_MODEL` entry).
+`kryoptic` is fetched and built out-of-tree from its published crates.io release, in its own
+isolated build/lockfile — it is never added to this workspace's dependency graph (its
+`rusqlite` pin conflicts with `crate/server_database`'s; see the `NOTE` in
+`crate/hsm/base_hsm/Cargo.toml`). The fetch/build step is owned entirely by
+`.mise/lib/kryoptic.sh::kryoptic_build_cdylib` (mirroring how `.mise/lib/softhsm2.sh` builds
+and locates the SoftHSM2 library) — no Rust code in this crate builds `kryoptic`. The mise
+task exports the resulting cdylib path as `KRYOPTIC_PKCS11_LIB`, which the test reads directly
+from the environment, exactly like `SOFTHSM2_PKCS11_LIB`. Like every other vendor HSM suite in
+this workspace (SoftHSM2/Utimaco/Proteccio/Crypt2Pay), the test always compiles and is opt-in
+purely via `#[ignore]` — no Cargo feature is needed since `kryoptic` is never a real
+dependency.
+
+Run it locally with:
+
+```shell
+mise run test:hsm-kryoptic-conformance
+```
+
+or, once `KRYOPTIC_PKCS11_LIB` has been built and exported (e.g. by sourcing
+`.mise/lib/kryoptic.sh` and calling `kryoptic_build_cdylib` yourself), directly:
+
+```shell
+cargo test -p cosmian_kms_base_hsm --test kryoptic_conformance -- --ignored
+```
+
+This suite provisions a fresh Kryoptic token (`C_InitToken`/`C_InitPIN`) and exercises, against
+real v3.0 crypto: a populated `C_GetInterfaceList` result, an EdDSA sign/verify round trip, an
+HKDF key derivation, and a message-based AES-GCM round trip. It runs in CI as the
+`kryoptic-conformance` job in `.github/workflows/test_all.yml`, separate from the vendor HSM
+matrix (no hardware/secrets required).
+
+Craton HSM (`craton-co/craton-hsm-core`) was also evaluated as a candidate v3.0 conformance
+oracle: it is a pure-Rust PKCS#11 v3.0 library with post-quantum algorithm support, but as of
+this writing it is ~5 months old, has a single/small maintainer group, and has not undergone
+independent security review — not yet a suitable trust anchor for protocol-conformance testing
+in a FIPS-140-3-oriented KMS. It may be reconsidered once it matures.
