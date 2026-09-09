@@ -42,6 +42,21 @@ typedef struct CkVersion {
   unsigned char minor;
 } CkVersion;
 
+/* pkcs11-sys 0.2.25 declares `CK_INTERFACE`/`CK_FUNCTION_LIST_3_0` as
+ * `#[repr(C, packed)]` on Windows (mirroring the official Cryptoki headers'
+ * `#pragma pack(push, cryptoki, 1)`), but as plain `#[repr(C)]` (natural
+ * alignment) on Unix. Without matching that, MSVC inserts 6 bytes of padding
+ * after the 2-byte `CkVersion` header to 8-byte-align the first function
+ * pointer, while the Rust side expects it packed at offset 2 -- every field
+ * read through the struct is then misaligned/garbage, and calling through
+ * one of those bogus function pointers is what produced the
+ * `STATUS_ACCESS_VIOLATION` crash on Windows CI. Push 1-byte packing for
+ * these two structs on Windows only; Unix already matches natural alignment
+ * with no pragma needed. */
+#if defined(_WIN32)
+#pragma pack(push, 1)
+#endif
+
 typedef struct CkInterface {
   CK_UTF8CHAR_PTR pInterfaceName;
   CK_VOID_PTR pFunctionList;
@@ -151,6 +166,10 @@ typedef struct CkFunctionList30 {
   CkGenericFn C_MessageVerifyFinal;
 } CkFunctionList30;
 
+#if defined(_WIN32)
+#pragma pack(pop)
+#endif
+
 static CK_RV stub_ok(void) { return CKR_OK; }
 
 /* PKCS#11 v3.1 mechanism/return-code constants needed by the mechanism-aware
@@ -164,12 +183,25 @@ typedef unsigned long CK_OBJECT_HANDLE;
 #define CKR_MECHANISM_INVALID 112UL
 
 /* Layout mirrors pkcs11-sys's `CK_MECHANISM` exactly: a mechanism type followed
- * by an opaque parameter pointer/length pair. */
+ * by an opaque parameter pointer/length pair. Like `CK_FUNCTION_LIST_3_0`
+ * above, `CK_MECHANISM` is `#[repr(C, packed)]` on Windows only, so this must
+ * be packed there too or `pMechanism->mechanism` reads the wrong bytes
+ * (`mechanism` is 4 bytes, `pParameter` needs 8-byte alignment, so MSVC's
+ * natural layout inserts 4 bytes of padding that the packed Rust caller never
+ * wrote). */
+#if defined(_WIN32)
+#pragma pack(push, 1)
+#endif
+
 typedef struct CkMechanism {
   CK_MECHANISM_TYPE mechanism;
   CK_VOID_PTR pParameter;
   CK_ULONG ulParameterLen;
 } CkMechanism;
+
+#if defined(_WIN32)
+#pragma pack(pop)
+#endif
 
 /* `C_SignInit`/`C_VerifyInit` share the same (session, mechanism, key)
  * signature. Real conformant v2.40-only libraries reject v3.0-only mechanisms

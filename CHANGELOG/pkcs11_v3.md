@@ -54,6 +54,19 @@
   (`C1083: ... Permission denied`), sometimes producing a corrupted/partial `.dll`
   that later crashed the test binary with `STATUS_ACCESS_VIOLATION`. Now serializes
   the compiler invocation across the module's tests with a `Mutex`
+- Fix the real cause of the `STATUS_ACCESS_VIOLATION` crash that persisted on
+  Windows CI even after serializing the compiler invocation above:
+  `minimal_pkcs11.c`'s `CkFunctionList30`/`CkInterface`/`CkMechanism` structs used
+  MSVC's natural field alignment, but `pkcs11-sys` 0.2.25 declares
+  `CK_FUNCTION_LIST_3_0`/`CK_INTERFACE`/`CK_MECHANISM` as `#[repr(C, packed)]` on
+  Windows specifically (mirroring the official Cryptoki header's
+  `#pragma pack(push, cryptoki, 1)`), while using plain `#[repr(C)]` (natural
+  alignment, matching our fixture) on Unix — which is why this only ever broke on
+  Windows. The 6 bytes of MSVC padding after the 2-byte `CkVersion` header shifted
+  every subsequent function-pointer field by 6 bytes relative to what `HsmLib`
+  (reading the packed Rust layout) expected, so it ended up calling through
+  garbage/misaligned pointers. Wrapped these three structs in
+  `#pragma pack(push, 1)` / `#pragma pack(pop)` on `_WIN32` only
 
 ## Testing
 
