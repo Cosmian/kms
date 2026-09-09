@@ -66,12 +66,16 @@
   message-based AES-GCM round trip. Gated purely behind `#[ignore]`, like every other
   vendor HSM suite (no Cargo feature — `kryoptic` is never a real dependency). Run via
   `mise run test:hsm-kryoptic-conformance`
-- Add the `kryoptic-conformance` CI job in `.github/workflows/test_all.yml`, separate
-  from the vendor HSM matrix (no hardware/secrets required)
+- Add the `hsm-kryoptic-conformance` entry to the `test-nix` job's matrix in
+  `.github/workflows/test_all.yml` (fips only, no hardware/secrets required — does not
+  need the concurrency-limited vendor HSM matrix), reusing the same
+  `mise run test:<type> --variant <features>` pattern as every other `test-nix` entry
+  instead of a standalone job with duplicated scaffolding
+  (checkout/cleanup-runner/setup-nix/install-mise)
 
 ## Bug Fixes (Testing)
 
-- Fix `kryoptic-conformance` CI job failing on runners with an older system OpenSSL
+- Fix the Kryoptic conformance CI entry failing on runners with an older system OpenSSL
   (e.g. Ubuntu 22.04/24.04 ship 3.0.x): `kryoptic`'s `standard` feature requires OpenSSL
   >= 3.2.0 via `ossl/dynamic`'s `pkg-config` probe, which picked up whichever OpenSSL
   happened to be installed system-wide. `kryoptic_build_cdylib` now first builds this

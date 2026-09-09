@@ -581,8 +581,9 @@ cargo test -p cosmian_kms_base_hsm --test kryoptic_conformance -- --ignored
 This suite provisions a fresh Kryoptic token (`C_InitToken`/`C_InitPIN`) and exercises, against
 real v3.0 crypto: a populated `C_GetInterfaceList` result, an EdDSA sign/verify round trip, an
 HKDF key derivation, and a message-based AES-GCM round trip. It runs in CI as the
-`kryoptic-conformance` job in `.github/workflows/test_all.yml`, separate from the vendor HSM
-matrix (no hardware/secrets required).
+`hsm-kryoptic-conformance` entry of the `test-nix` job's matrix in
+`.github/workflows/test_all.yml` (fips only — no hardware/secrets required, so it does not need
+the `hsm` job's concurrency-limited vendor matrix).
 
 Craton HSM (`craton-co/craton-hsm-core`) was also evaluated as a candidate v3.0 conformance
 oracle: it is a pure-Rust PKCS#11 v3.0 library with post-quantum algorithm support, but as of

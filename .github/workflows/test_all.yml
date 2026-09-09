@@ -44,8 +44,19 @@ jobs:
           - kmip-go
           - ocsp
           - pki-revocation
+          # Not a vendor HSM backend: `kryoptic` is a PKCS#11 v3.0 software token used
+          # purely as a conformance-test oracle for crate/hsm/base_hsm's v3.0 mechanism
+          # support (EdDSA, HKDF, message-based AEAD, populated interface list). No
+          # hardware/secrets required, so it runs here rather than in the `hsm` job's
+          # concurrency-limited vendor matrix below. Gated purely behind `#[ignore]`
+          # like every other vendor HSM suite (no Cargo feature — `kryoptic` is
+          # fetched/built out-of-tree, never a real dependency).
+          - hsm-kryoptic-conformance
         features: [fips, non-fips]
         exclude:
+          # kryoptic-conformance only needs to be validated once (fips)
+          - type: hsm-kryoptic-conformance
+            features: non-fips
           # redis is exclusively for non-fips
           - type: redis
             features: fips
@@ -236,32 +247,6 @@ jobs:
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
-  # Not part of the vendor HSM matrix above: `kryoptic` is a PKCS#11 v3.0 software
-  # token used purely as a conformance-test oracle for crate/hsm/base_hsm's v3.0
-  # mechanism support (EdDSA, HKDF, message-based AEAD, populated interface list).
-  # No hardware/secrets required, so it runs on every push/PR without concurrency
-  # limits, gated purely behind `#[ignore]` like every other vendor HSM suite (no
-  # Cargo feature — `kryoptic` is fetched/built out-of-tree, never a real dependency).
-  kryoptic-conformance:
-    name: Kryoptic PKCS#11 v3.0 conformance
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-
-      - uses: ./.github/actions/cleanup-runner
-
-      - uses: ./.github/actions/setup-nix
-
-      - uses: ./.github/actions/install-mise
-
-      - name: Test
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          mise run test:hsm-kryoptic-conformance --variant fips
-
   helm:
     name: Helm chart E2E (minikube)
     runs-on: ubuntu-latest
@@ -302,7 +287,6 @@ jobs:
     needs:
       - test-nix
       - hsm
-      - kryoptic-conformance
       - helm
     uses: ./.github/workflows/cargo-publish.yml
     with:
