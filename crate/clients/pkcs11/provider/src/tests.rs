@@ -31,7 +31,7 @@ use cosmian_pkcs11_module::{
         SLOT_ID,
     },
     test_decrypt, test_encrypt,
-    traits::{Backend, SignatureAlgorithm, backend as registered_backend},
+    traits::{Backend, KeyAlgorithm, SignatureAlgorithm, backend as registered_backend},
 };
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_GCM_PARAMS, CK_INTERFACE, CK_INVALID_HANDLE, CK_MECHANISM,
@@ -52,7 +52,7 @@ use crate::{
     C_GetFunctionList, C_GetInterface, C_GetInterfaceList,
     backend::{COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, COSMIAN_PKCS11_SSH_KEY_TAG, CliBackend},
     error::{Pkcs11Error, result::Pkcs11Result},
-    kms_object::get_kms_objects_async,
+    kms_object::{get_kms_objects_async, key_algorithm_from_attributes},
 };
 
 fn save_pkcs11_client_config() -> String {
@@ -785,6 +785,79 @@ fn test_ssh_key_discovery() -> Pkcs11Result<()> {
     assert!(
         pub_ids.contains(&ec_pk_id),
         "EC SSH public key {ec_pk_id} not found in find_all_public_keys"
+    );
+    Ok(())
+}
+
+/// Regression test for issue #1183: `key_algorithm_from_attributes` must resolve
+/// Ed25519/Ed448 keys directly from the bare `CryptographicAlgorithm` value, as
+/// produced by `ckms ec keys create --curve ed25519/ed448`, without requiring
+/// `CryptographicDomainParameters`/`RecommendedCurve` to be present.
+#[test]
+fn test_key_algorithm_from_attributes_eddsa_bare_algorithm() {
+    let ed25519_attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
+        ..Default::default()
+    };
+    assert_eq!(
+        key_algorithm_from_attributes(&ed25519_attributes)
+            .expect("Ed25519 key algorithm must resolve without cryptographic domain parameters"),
+        KeyAlgorithm::Ed25519
+    );
+
+    let ed448_attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::Ed448),
+        ..Default::default()
+    };
+    assert_eq!(
+        key_algorithm_from_attributes(&ed448_attributes)
+            .expect("Ed448 key algorithm must resolve without cryptographic domain parameters"),
+        KeyAlgorithm::Ed448
+    );
+
+    // Genuinely unsupported algorithms must still be rejected (no regression).
+    let unsupported_attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::DES),
+        ..Default::default()
+    };
+    assert!(
+        key_algorithm_from_attributes(&unsupported_attributes).is_err(),
+        "DES must still be rejected as an unsupported cryptographic algorithm"
+    );
+}
+
+/// Regression test for issue #1183: an Ed25519 keypair created via the standard
+/// KMIP/REST path (mirroring `ckms ec keys create --curve ed25519`) must be
+/// discoverable through the PKCS#11 backend, exactly like RSA/EC P-256 SSH keys
+/// in `test_ssh_key_discovery`. Before the fix, such keys were silently skipped
+/// by `key_algorithm_from_attributes` (`Unsupported cryptographic algorithm: Ed25519`),
+/// so `find_all_private_keys`/`find_all_public_keys` (and therefore
+/// `C_FindObjectsInit`/`C_FindObjects`) never returned them.
+#[test]
+#[serial]
+fn test_ed25519_key_discovery() -> Pkcs11Result<()> {
+    log_init(None);
+    let rt = tokio::runtime::Runtime::new()?;
+    let (owner_client_conf, ed25519_sk_id, ed25519_pk_id) = rt.block_on(async {
+        let ctx = start_default_test_kms_server().await;
+        let kms_rest_client = ctx.get_owner_client();
+        let (sk_id, pk_id) =
+            create_ec_ssh_keypair(&kms_rest_client, RecommendedCurve::CURVEED25519).await;
+        (ctx.owner_client_config.clone(), sk_id, pk_id)
+    });
+
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+
+    let private_keys = backend.find_all_private_keys()?;
+    assert!(
+        private_keys.iter().any(|k| k.remote_id() == ed25519_sk_id),
+        "Ed25519 private key {ed25519_sk_id} not found in find_all_private_keys"
+    );
+
+    let public_keys = backend.find_all_public_keys()?;
+    assert!(
+        public_keys.iter().any(|k| k.remote_id() == ed25519_pk_id),
+        "Ed25519 public key {ed25519_pk_id} not found in find_all_public_keys"
     );
     Ok(())
 }

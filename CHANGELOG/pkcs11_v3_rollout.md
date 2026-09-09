@@ -31,6 +31,7 @@
   - `key_algorithm_from_attributes()` now recognises KMIP's dedicated
     `CryptographicAlgorithm::Ed25519`/`Ed448` values (previously only `EC`/`ECDH` were
     handled, so every Ed25519/Ed448 key object load failed server-side)
+    ([#1183](https://github.com/Cosmian/kms/issues/1183))
   - NIST/SECG curves (P-256/P-384/P-521/secp256k1/secp224k1) are unaffected and keep
     reporting `CKK_EC`, preserving backward compatibility with existing consumers
     (OpenSSH, Veracrypt, LUKS)
@@ -108,6 +109,14 @@
     end-to-end through real `pkcs11-tool --sign` calls, verified via `ckms ec
     sign-verify`
 
+- Add a unit test asserting `key_algorithm_from_attributes` resolves Ed25519/Ed448 from
+  the bare `CryptographicAlgorithm` (no domain parameters) and still rejects genuinely
+  unsupported algorithms
+- Add a live-KMS integration test (`test_ed25519_key_discovery`) creating an Ed25519
+  keypair via the standard KMIP/REST path and asserting it is returned by
+  `find_all_private_keys`/`find_all_public_keys`, directly reproducing the discovery
+  failure reported in ([#1183](https://github.com/Cosmian/kms/issues/1183))
+
 ---
 
-Closes #1156
+Closes #1156, #1183
