@@ -50,6 +50,76 @@ _kryoptic_cdylib_filename() {
   esac
 }
 
+# Builds this workspace's own OpenSSL (see crate/crypto/build.rs, pinned to
+# 3.6.2) if not already built, and points `kryoptic`'s OpenSSL discovery at it
+# via `PKG_CONFIG_PATH`, instead of letting it silently pick up whatever
+# OpenSSL happens to be installed system-wide.
+#
+# Why this matters: `kryoptic-lib`'s default feature set enables `ossl/dynamic`
+# (`pkg_config::Config::new().probe("openssl")`), and the `standard` feature
+# pulls in `eddsa`, which requires `ossl/ossl320` — i.e. kryoptic itself
+# hard-requires OpenSSL >= 3.2.0. Ubuntu 22.04/24.04 CI runners (and some
+# local dev machines) ship an older system OpenSSL (e.g. 3.0.x), which fails
+# this check with "OpenSSL 3.2.0 or later is required" even though this exact
+# workspace already builds a conformant OpenSSL 3.6.2 for its own crates.
+# Uniformizing on that same build removes the dependency on the ambient
+# system OpenSSL version entirely, making this suite reproducible across
+# local machines and CI.
+_kryoptic_ensure_repo_openssl() {
+  require_cmd cargo
+  require_cmd pkg-config
+
+  local repo_root target_dir
+  repo_root="$(get_repo_root "${MISE_CONFIG_ROOT:-.}")"
+  target_dir="${CARGO_TARGET_DIR:-${repo_root}/target}"
+
+  # `FEATURES_FLAG` is normally set by `kms_init_env` (empty array for fips,
+  # `(--features non-fips)` for non-fips). Default to empty under `set -u` if
+  # this function is ever invoked without it having run first.
+  local -a features_flag=()
+  if [ "${FEATURES_FLAG+set}" = "set" ]; then
+    features_flag=("${FEATURES_FLAG[@]}")
+  fi
+
+  print_status "Building this workspace's OpenSSL 3.6.2 (cargo build -p cosmian_kms_crypto), \
+if not already built"
+  (cd "$repo_root" && cargo build -p cosmian_kms_crypto "${features_flag[@]}")
+
+  # Mirrors crate/crypto/build.rs's prefix naming: `openssl-<version>-<os>-<arch>`
+  # for FIPS, `openssl-non-fips-<version>-<os>-<arch>` for non-FIPS. Globbed
+  # rather than reconstructed from `uname`, so this does not need to track the
+  # pinned OpenSSL version or the os/arch string conventions independently.
+  local prefix glob_desc candidates
+  local glob_pattern
+  if [ "${VARIANT:-fips}" = "non-fips" ]; then
+    glob_desc="${target_dir}/openssl-non-fips-*"
+    candidates=("${target_dir}"/openssl-non-fips-*)
+  else
+    glob_desc="${target_dir}/openssl-[0-9]*"
+    glob_pattern="${target_dir}/openssl-[0-9]*"
+    # shellcheck disable=SC2206 # intentional glob expansion of a version-numbered prefix
+    candidates=($glob_pattern)
+  fi
+  prefix="${candidates[0]:-}"
+  if [ -z "$prefix" ] || [ ! -d "$prefix" ]; then
+    print_error "Could not locate this workspace's built OpenSSL prefix under ${target_dir} \
+(expected a directory matching ${glob_desc})"
+  fi
+  if [ ! -f "${prefix}/lib/pkgconfig/openssl.pc" ]; then
+    print_error "No openssl.pc found under ${prefix}/lib/pkgconfig; this workspace's OpenSSL \
+build layout may have changed (see crate/crypto/build.rs)"
+  fi
+
+  # Our OpenSSL is built `no-shared` (static only, see crate/crypto/build.rs), so
+  # request static linking explicitly — the `pkg-config` crate honors
+  # `OPENSSL_STATIC` the same way `openssl-sys` does.
+  PKG_CONFIG_PATH="${prefix}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+  export PKG_CONFIG_PATH
+  OPENSSL_STATIC=1
+  export OPENSSL_STATIC
+  print_status "kryoptic will build against this workspace's OpenSSL at ${prefix}"
+}
+
 # Download (if needed), build, and locate the `kryoptic` cdylib artifact.
 # Usage: kryoptic_build_cdylib
 # Sets: KRYOPTIC_PKCS11_LIB (exported) — absolute path to the built
@@ -61,6 +131,8 @@ kryoptic_build_cdylib() {
   require_cmd curl
   require_cmd tar
   require_cmd cargo
+
+  _kryoptic_ensure_repo_openssl
 
   local root="${TMPDIR:-/tmp}/cosmian-kms-kryoptic-conformance"
   local src_dir="${root}/kryoptic-${KRYOPTIC_VERSION}"
@@ -80,7 +152,10 @@ kryoptic_build_cdylib() {
   # (incl. hkdf) + rsa + hotp — i.e. every v3.0 mechanism family exercised by
   # the conformance tests. This build is fully isolated (its own Cargo.lock),
   # so the `rusqlite` conflict that blocks a normal workspace dependency does
-  # not apply here.
+  # not apply here. `PKG_CONFIG_PATH`/`OPENSSL_STATIC` (set by
+  # `_kryoptic_ensure_repo_openssl` above) steer `ossl/dynamic`'s pkg-config
+  # probe at this workspace's own OpenSSL 3.6.2 instead of the ambient system
+  # one.
   print_status "Building kryoptic cdylib (cargo build --release --features standard)"
   (cd "$src_dir" && cargo build --release --features standard)
 

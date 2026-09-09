@@ -62,6 +62,16 @@
 - Add the `kryoptic-conformance` CI job in `.github/workflows/test_all.yml`, separate
   from the vendor HSM matrix (no hardware/secrets required)
 
+## Bug Fixes (Testing)
+
+- Fix `kryoptic-conformance` CI job failing on runners with an older system OpenSSL
+  (e.g. Ubuntu 22.04/24.04 ship 3.0.x): `kryoptic`'s `standard` feature requires OpenSSL
+  >= 3.2.0 via `ossl/dynamic`'s `pkg-config` probe, which picked up whichever OpenSSL
+  happened to be installed system-wide. `kryoptic_build_cdylib` now first builds this
+  workspace's own OpenSSL 3.6.2 (`crate/crypto/build.rs`, reused if already built) and
+  points the probe at it via `PKG_CONFIG_PATH`, uniformizing the OpenSSL version used by
+  the conformance suite with the rest of the workspace on every machine, local or CI
+
 ## Documentation
 
 - Document the new v3.0 mechanisms and the Kryoptic conformance suite in

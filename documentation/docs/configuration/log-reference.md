@@ -1015,6 +1015,7 @@ Crate path: `crate/interfaces`
 | `debug` | `encrypt: an RSA private key {uid} was specified. Trying to use                              public key {pk_uid} for encryption`                                        | `src/hsm/hsm_store.rs`        | `uid`, `pk_uid`                                                | —                                                                                        |
 | `debug` | `HSM count_non_destroyed_keys: slot {slot_id} query failed: {e}`                                                                                                        | `src/hsm/hsm_store.rs`        | `slot_id`, `e`                                                 | —                                                                                        |
 | `debug` | `HSM key {uid} export failed ({e}); falling back to metadata-only stub for                      attribute operations`                                                   | `src/hsm/hsm_store.rs`        | `uid`, `e`                                                     | —                                                                                        |
+| `debug` | `signature_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 
 ### `cosmian_kms_access`
 

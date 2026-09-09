@@ -21,7 +21,10 @@ print_header "Running Kryoptic PKCS#11 v3.0 conformance suite (${VARIANT_NAME})"
 # (network access required to pull the published crate from crates.io on first run)
 # — never added to the workspace dependency graph (see .mise/lib/kryoptic.sh and the
 # NOTE in crate/hsm/base_hsm/Cargo.toml explaining the rusqlite version conflict this
-# avoids).
+# avoids). `kryoptic_build_cdylib` also builds this workspace's own OpenSSL 3.6.2 (if
+# not already built) and points kryoptic's OpenSSL discovery at it via
+# `PKG_CONFIG_PATH`, so the suite does not depend on — and is not broken by — an older
+# system-installed OpenSSL (kryoptic's `standard` feature requires OpenSSL >= 3.2.0).
 kryoptic_build_cdylib
 
 env \
