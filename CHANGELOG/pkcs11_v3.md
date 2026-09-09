@@ -90,16 +90,25 @@
   workspace's own OpenSSL 3.6.2 (`crate/crypto/build.rs`, reused if already built) and
   points the probe at it via `PKG_CONFIG_PATH`, uniformizing the OpenSSL version used by
   the conformance suite with the rest of the workspace on every machine, local or CI
-- Fix two stale test-vector registrations left over from a `test_data` submodule
-  update: `vector_runner.rs` still called `test_vec_hsm_resident_ec_p256_rejected`/
+- Fix two dangling test-vector registrations left over from a `test_data` submodule
+  update shared with the (still separate) `hsm_delegation` branch:
+  `vector_runner.rs` called `test_vec_hsm_resident_ec_p256_rejected`/
   `..._ec_p384_rejected`, pointing at
   `test_data/vectors/hsm/resident_ec_p{256,384}_rejected`, directories that no longer
-  exist — they were renamed upstream to `resident_ec_p{256,384}_created` when HSM
-  EC keypair creation became supported (PR hsm_delegation), which made the CI job
-  fail with `Cannot read test vector manifest ... No such file or directory`. Renamed
-  the tests to `test_vec_hsm_resident_ec_p{256,384}_created`, moved them out of the
-  "Negative tests" section (they no longer expect rejection) next to
-  `resident_rsa4096_create_sign`, and updated `README.md`'s vector table accordingly
+  exist in the bumped `test_data` submodule — they were renamed upstream to
+  `resident_ec_p{256,384}_created` for `hsm_delegation`, which adds HSM-resident EC
+  keypair creation. That feature has **not** landed on `pkcs11_v3`: `BaseHsm` here
+  still rejects non-RSA atomic keypair creation
+  (`"HSM atomic operations only support RSA keypair creations for now"`), so simply
+  renaming the tests to `..._created` (first attempt) made them fail for real against
+  softhsm2 instead of hitting a missing-manifest error. Since neither the old
+  `_rejected` fixtures nor the `_created` semantics are valid on this branch, removed
+  the two test registrations entirely from `pkcs11_v3` (and the corresponding
+  `README.md` rows/vector count) — this EC-resident-creation coverage belongs
+  exclusively to `hsm_delegation`, which already registers
+  `test_vec_hsm_resident_ec_p{256,384}_created` against the matching fixtures, so the
+  two branches don't end up with divergent/duplicated expectations for the same
+  `test_data` fixture names
 
 ## Documentation
 

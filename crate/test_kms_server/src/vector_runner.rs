@@ -4616,18 +4616,6 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/hsm/resident_rsa4096_create_sign").await
     }
 
-    #[tokio::test]
-    async fn test_vec_hsm_resident_ec_p256_created() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/hsm/resident_ec_p256_created").await
-    }
-
-    #[tokio::test]
-    async fn test_vec_hsm_resident_ec_p384_created() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/hsm/resident_ec_p384_created").await
-    }
-
     // ── HSM Resident: Encryption ─────────────────────────────────────────
 
     #[tokio::test]
