@@ -46,6 +46,14 @@
   directly in an error message implicitly took a reference into the packed struct —
   undefined behavior, rejected by rustc only on the Windows target. Now copies the
   field into a local variable before formatting it
+- Fix a Windows-only CI flake in `hsm_lib::function_table_fallback_tests`: several
+  `#[test]`s compile the `minimal_pkcs11.c` test fixture concurrently via `cl.exe`,
+  which (unlike GCC/Clang) does not honor `-o` for the intermediate `.obj` file and
+  always writes it to a single fixed name relative to the working directory —
+  concurrent test threads raced on that shared `.obj`
+  (`C1083: ... Permission denied`), sometimes producing a corrupted/partial `.dll`
+  that later crashed the test binary with `STATUS_ACCESS_VIOLATION`. Now serializes
+  the compiler invocation across the module's tests with a `Mutex`
 
 ## Testing
 

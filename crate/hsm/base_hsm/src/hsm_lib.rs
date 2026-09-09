@@ -639,7 +639,10 @@ mod function_table_fallback_tests {
     use std::{
         path::PathBuf,
         process::Command,
-        sync::atomic::{AtomicU64, Ordering},
+        sync::{
+            Mutex,
+            atomic::{AtomicU64, Ordering},
+        },
     };
 
     use super::HsmLib;
@@ -653,6 +656,22 @@ mod function_table_fallback_tests {
     /// under another test's concurrent `dlopen`, causing sporadic "no such file"
     /// failures.
     static NEXT_FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
+
+    /// Serializes invocations of the C compiler across the concurrently-running
+    /// tests in this module. Unlike GCC/Clang (`-o <unique>.{so,dylib}`, no
+    /// leftover intermediate file), MSVC's `cl.exe` does not honor `-o` as an
+    /// object-output path (only accepts it as a deprecated legacy alias — see the
+    /// `D9035` compiler warning) and always writes an intermediate
+    /// `minimal_pkcs11.obj` at a fixed location relative to the current
+    /// directory, regardless of the requested (unique) `.dll` output path.
+    /// Concurrent `cargo test` threads invoking `cl.exe` at the same time
+    /// therefore race on that single shared `.obj` file (`C1083: Cannot open
+    /// compiler generated file ... Permission denied`, then a
+    /// corrupted/partially-linked `.dll` causing a later access violation on
+    /// load) — observed only on Windows CI. Serializing the compiler invocation
+    /// itself (not just the final output filename) avoids the race on every
+    /// platform, at the cost of a little test time.
+    static COMPILE_LOCK: Mutex<()> = Mutex::new(());
 
     /// Returns the current Rust host target triple (e.g.
     /// `aarch64-apple-darwin`), needed because `cc::Build` requires `TARGET`/`HOST`
@@ -739,6 +758,14 @@ mod function_table_fallback_tests {
         cmd.arg(&source);
         cmd.arg("-o").arg(&output);
 
+        // See `COMPILE_LOCK`'s doc comment: on Windows, `cl.exe` writes a
+        // fixed-name intermediate `.obj` shared by every concurrent invocation,
+        // so the compiler must be invoked one test at a time. `PoisonError` is
+        // ignored (`unwrap_or_else`) so a prior test panicking while holding the
+        // lock cannot spuriously fail every subsequent test in this module.
+        let _guard = COMPILE_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let status = cmd.status().map_err(|e| {
             HError::Default(format!(
                 "failed to invoke the C compiler for the test fixture: {e}"
