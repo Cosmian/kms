@@ -1293,11 +1293,16 @@ impl Session {
             }
         };
         if init_rv != CKR_OK {
+            // Copy the field out of the (possibly unaligned, `#[repr(packed)]`)
+            // `CK_MECHANISM` before formatting it: `format!` captures its arguments
+            // by reference, and a reference directly into a packed struct field is
+            // undefined behavior (rejected by rustc as `E0793` on targets where the
+            // field's natural alignment exceeds the struct's 1-byte packing).
+            let mechanism_type = mechanism.mechanism;
             return if is_mechanism_unsupported_rv(init_rv) {
                 Err(HError::Default(format!(
-                    "The loaded PKCS#11 library does not support mechanism {}. Return code: \
-                     {init_rv}",
-                    mechanism.mechanism
+                    "The loaded PKCS#11 library does not support mechanism {mechanism_type}. \
+                     Return code: {init_rv}"
                 )))
             } else {
                 Err(HError::Default(format!(
@@ -1410,11 +1415,13 @@ impl Session {
             }
         };
         if init_rv != CKR_OK {
+            // See the identical comment in `sign_with_mechanism` above: copy the
+            // field out of the packed `CK_MECHANISM` before formatting it.
+            let mechanism_type = mechanism.mechanism;
             return if is_mechanism_unsupported_rv(init_rv) {
                 Err(HError::Default(format!(
-                    "The loaded PKCS#11 library does not support mechanism {}. Return code: \
-                     {init_rv}",
-                    mechanism.mechanism
+                    "The loaded PKCS#11 library does not support mechanism {mechanism_type}. \
+                     Return code: {init_rv}"
                 )))
             } else {
                 Err(HError::Default(format!(
@@ -1446,9 +1453,12 @@ impl Session {
         } else if rv == CKR_SIGNATURE_INVALID || rv == CKR_SIGNATURE_LEN_RANGE {
             Ok(false)
         } else if is_mechanism_unsupported_rv(rv) {
+            // See the identical comment in `sign_with_mechanism` above: copy the
+            // field out of the packed `CK_MECHANISM` before formatting it.
+            let mechanism_type = mechanism.mechanism;
             Err(HError::Default(format!(
-                "The loaded PKCS#11 library does not support mechanism {}. Return code: {rv}",
-                mechanism.mechanism
+                "The loaded PKCS#11 library does not support mechanism {mechanism_type}. Return \
+                 code: {rv}"
             )))
         } else {
             Err(HError::Default(format!(

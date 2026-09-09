@@ -39,6 +39,13 @@
   v3.1/v3.2-capable library. Now requests `pVersion = NULL_PTR` (any version, per
   spec) and validates the returned interface's major version is `3` before treating
   `pFunctionList` as a `CK_FUNCTION_LIST_3_0`
+- Fix a Windows-only build failure (`E0793: reference to field of packed struct is
+  unaligned`) in `Session::sign_with_mechanism()`/`verify_with_mechanism()`: `pkcs11-sys`
+  defines `CK_MECHANISM` as `#[repr(C, packed)]` on Windows (matching the Cryptoki
+  header's `pragma pack(1)`) but not on Unix, so `mechanism.mechanism` formatted
+  directly in an error message implicitly took a reference into the packed struct —
+  undefined behavior, rejected by rustc only on the Windows target. Now copies the
+  field into a local variable before formatting it
 
 ## Testing
 
