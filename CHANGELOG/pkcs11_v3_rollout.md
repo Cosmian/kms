@@ -36,6 +36,20 @@
     reporting `CKK_EC`, preserving backward compatibility with existing consumers
     (OpenSSH, Veracrypt, LUKS)
 
+### Nix dev environment
+
+- Fix `shell.nix`'s `WITH_HSM=1` runtime `LD_LIBRARY_PATH` (both FIPS and non-FIPS
+  branches) dropping `${pkgs.stdenv.cc.cc.lib}/lib`/`${pkgs.gcc.cc.lib}/lib` (the gcc
+  runtime lib path providing `libstdc++.so.6`). Because the KMS server binary built
+  inside the Nix shell carries an `RUNPATH` pointing at Nix store paths, any HSM
+  PKCS#11 module dlopen'd at runtime (SoftHSM2's `libsofthsm2.so`, nix-built or the
+  system apt package) — being a C++ shared object — failed to load with
+  `libstdc++.so.6: cannot open shared object file: No such file or directory`,
+  breaking every `WITH_HSM=1` task (`test:hsm-softhsm2`, `test:hsm-pkcs11-tool`, HSM
+  vector tests) whenever the gcc lib path wasn't already on the ambient
+  `LD_LIBRARY_PATH`. Found while re-running `mise run test:hsm-pkcs11-tool --variant
+  non-fips` for the #1183 fix
+
 ## Documentation
 
 - Add a new "PKCS#11 provider module" reference page documenting the v3.0 interfaces
