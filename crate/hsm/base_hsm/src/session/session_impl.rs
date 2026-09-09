@@ -8,16 +8,30 @@ use std::{
 };
 
 use cosmian_kms_interfaces::{
-    CryptoAlgorithm, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent, HashingAlgorithm,
-    HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
+    CryptoAlgorithm, EcCurve, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent,
+    HashingAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
     KeyType::{AesKey, EcPrivateKey, EcPublicKey, RsaPrivateKey, RsaPublicKey},
     RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
 };
 use cosmian_logger::{debug, trace};
-#[cfg(feature = "non-fips")]
-use pkcs11_sys::CKM_EDDSA;
 use pkcs11_sys::{
-    CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_DATE, CK_FALSE, CK_HKDF_PARAMS, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE, CK_RSA_PKCS_OAEP_PARAMS, CK_RSA_PKCS_PSS_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CKA_CLASS, CKA_COEFFICIENT, CKA_DERIVE, CKA_EC_PARAMS, CKA_EC_POINT, CKA_END_DATE, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_START_DATE, CKA_TOKEN, CKA_VALUE, CKA_VALUE_LEN, CKF_HKDF_SALT_DATA, CKF_HKDF_SALT_NULL, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_EC, CKK_GENERIC_SECRET, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_EDDSA, CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512, CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
+    CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_DATE, CK_FALSE, CK_HKDF_PARAMS, CK_KEY_TYPE,
+    CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
+    CK_RSA_PKCS_OAEP_PARAMS, CK_RSA_PKCS_PSS_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG,
+    CKA_CLASS, CKA_COEFFICIENT, CKA_DERIVE, CKA_EC_PARAMS, CKA_EC_POINT, CKA_END_DATE,
+    CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1,
+    CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_START_DATE,
+    CKA_TOKEN, CKA_VALUE, CKA_VALUE_LEN, CKF_HKDF_SALT_DATA, CKF_HKDF_SALT_NULL, CKG_MGF1_SHA1,
+    CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_EC, CKK_EC_EDWARDS,
+    CKK_EC_MONTGOMERY, CKK_GENERIC_SECRET, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM,
+    CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_EDDSA,
+    CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_RSA_PKCS_PSS,
+    CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS,
+    CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512, CKM_SHA512_RSA_PKCS,
+    CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED,
+    CKR_ATTRIBUTE_SENSITIVE, CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID,
+    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE,
+    CKZ_DATA_SPECIFIED,
 };
 use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
@@ -1388,7 +1402,7 @@ impl Session {
                     pParameter: ptr::null_mut(),
                     ulParameterLen: 0,
                 };
-                return self.sign_with_mechanism(key_handle, &mut mechanism, data);
+                self.sign_with_mechanism(key_handle, &mut mechanism, data)
             }
         }
     }
@@ -1690,6 +1704,10 @@ impl Session {
             HsmSigningAlgorithm::RsaPkcsV15 => {
                 self.verify_with_simple_mechanism(key_handle, CKM_RSA_PKCS, data, signature)
             }
+            HsmSigningAlgorithm::RsaPkcsV15Digest { hashing_algorithm } => {
+                let digest_info = Self::rsa_pkcs1_digest_info(hashing_algorithm, data)?;
+                self.verify_with_simple_mechanism(key_handle, CKM_RSA_PKCS, &digest_info, signature)
+            }
             HsmSigningAlgorithm::Sha1WithRsa => {
                 self.verify_with_simple_mechanism(key_handle, CKM_SHA1_RSA_PKCS, data, signature)
             }
@@ -1702,38 +1720,53 @@ impl Session {
             HsmSigningAlgorithm::Sha512WithRsa => {
                 self.verify_with_simple_mechanism(key_handle, CKM_SHA512_RSA_PKCS, data, signature)
             }
-            HsmSigningAlgorithm::RsaPssSha256 { salt_length } => {
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm,
+                mask_generator_hashing_algorithm,
+                salt_length,
+                prehashed,
+            } => {
+                let (hash_alg, digest_len_bytes, mechanism_type) =
+                    Self::pkcs11_pss_hash_params(hashing_algorithm)?;
+                let mgf = Self::pkcs11_pss_mgf(mask_generator_hashing_algorithm)?;
                 let mut params =
-                    Self::rsa_pkcs_pss_params(CKM_SHA256, CKG_MGF1_SHA256, 32, salt_length);
+                    Self::rsa_pkcs_pss_params(hash_alg, mgf, digest_len_bytes, salt_length);
+                let mechanism_type = if prehashed {
+                    CKM_RSA_PKCS_PSS
+                } else {
+                    mechanism_type
+                };
                 self.verify_with_pss_mechanism(
                     key_handle,
-                    CKM_SHA256_RSA_PKCS_PSS,
+                    mechanism_type,
                     &mut params,
                     data,
                     signature,
                 )
             }
-            HsmSigningAlgorithm::RsaPssSha384 { salt_length } => {
-                let mut params =
-                    Self::rsa_pkcs_pss_params(CKM_SHA384, CKG_MGF1_SHA384, 48, salt_length);
-                self.verify_with_pss_mechanism(
-                    key_handle,
-                    CKM_SHA384_RSA_PKCS_PSS,
-                    &mut params,
-                    data,
-                    signature,
-                )
+            HsmSigningAlgorithm::Ecdsa {
+                hashing_algorithm,
+                prehashed,
+            } => {
+                let mechanism = if prehashed {
+                    CKM_ECDSA
+                } else {
+                    Self::pkcs11_ecdsa_mechanism(hashing_algorithm)?
+                };
+                // `C_Verify` for `CKM_ECDSA`/`CKM_ECDSA_SHA*` expects the raw `r || s`
+                // signature format (OASIS Cryptoki v3.0 §2.3.1), each half zero-padded
+                // to the curve's field size — but `signature` here is DER-encoded
+                // (matching the software ECDSA verify convention). Convert it back,
+                // using the key's own `CKA_EC_PARAMS` to determine the field size.
+                let curve = self.ec_curve_for_key(key_handle)?;
+                let raw_signature = Self::ecdsa_der_to_raw(signature, curve_byte_size(curve))?;
+                self.verify_with_simple_mechanism(key_handle, mechanism, data, &raw_signature)
             }
-            HsmSigningAlgorithm::RsaPssSha512 { salt_length } => {
-                let mut params =
-                    Self::rsa_pkcs_pss_params(CKM_SHA512, CKG_MGF1_SHA512, 64, salt_length);
-                self.verify_with_pss_mechanism(
-                    key_handle,
-                    CKM_SHA512_RSA_PKCS_PSS,
-                    &mut params,
-                    data,
-                    signature,
-                )
+            // EdDSA (Ed25519/Ed448) is a pure, un-hashed signature scheme (RFC 8032): the raw
+            // message and signature are passed directly to CKM_EDDSA, matching `sign()` above.
+            #[cfg(feature = "non-fips")]
+            HsmSigningAlgorithm::Ed25519 | HsmSigningAlgorithm::Ed448 => {
+                self.verify_with_simple_mechanism(key_handle, CKM_EDDSA, data, signature)
             }
             HsmSigningAlgorithm::Eddsa => {
                 // See the matching comment in `sign()`: omit `CK_EDDSA_PARAMS` to
@@ -1745,10 +1778,142 @@ impl Session {
                 };
                 self.verify_with_mechanism(key_handle, &mut mechanism, data, signature)
             }
-            HsmSigningAlgorithm::EcdsaSha256 => todo!(),
-            HsmSigningAlgorithm::EcdsaSha384 => todo!(),
-            HsmSigningAlgorithm::EcdsaSha512 => todo!(),
         }
+    }
+
+    /// Read `CKA_EC_PARAMS` for `key_handle` and decode it to the corresponding `EcCurve`
+    /// (used to determine the field size for DER <-> raw ECDSA signature conversion).
+    fn ec_curve_for_key(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<EcCurve> {
+        let mut len_template = [CK_ATTRIBUTE {
+            type_: CKA_EC_PARAMS,
+            pValue: ptr::null_mut(),
+            ulValueLen: 0,
+        }];
+        if self
+            .call_get_attributes(key_handle, &mut len_template)?
+            .is_none()
+        {
+            return Err(HError::Default(
+                "ECDSA verify: unable to read CKA_EC_PARAMS for EC key".to_owned(),
+            ));
+        }
+        let ec_params_len = len_template[0].ulValueLen;
+        let mut ec_params = vec![0_u8; usize::try_from(ec_params_len)?];
+        let mut template = [CK_ATTRIBUTE {
+            type_: CKA_EC_PARAMS,
+            pValue: ec_params.as_mut_ptr().cast::<std::ffi::c_void>(),
+            ulValueLen: ec_params_len,
+        }];
+        if self
+            .call_get_attributes(key_handle, &mut template)?
+            .is_none()
+        {
+            return Err(HError::Default(
+                "ECDSA verify: unable to read CKA_EC_PARAMS for EC key".to_owned(),
+            ));
+        }
+        curve_from_der_oid(&ec_params)
+    }
+
+    /// Convert a DER-encoded `ECDSA-Sig-Value` (`SEQUENCE { r INTEGER, s INTEGER }`, the format
+    /// produced by `ecdsa_raw_to_der` and expected by the software ECDSA verify path) into the
+    /// raw `r || s` format required by PKCS#11's `C_Verify` for `CKM_ECDSA`/`CKM_ECDSA_SHA*`
+    /// (OASIS Cryptoki v3.0 §2.3.1): each half zero-padded to `byte_size` (the curve's field
+    /// size in bytes).
+    fn ecdsa_der_to_raw(der: &[u8], byte_size: usize) -> HResult<Vec<u8>> {
+        let (tag, rest) = der.split_first().ok_or_else(|| {
+            HError::Default("ECDSA: DER signature: unexpected end of input".to_owned())
+        })?;
+        if *tag != 0x30 {
+            return Err(HError::Default(format!(
+                "ECDSA: DER signature: expected SEQUENCE tag (0x30), found {tag:#04x}"
+            )));
+        }
+        let (seq_len, rest) = Self::der_parse_length(rest)?;
+        let content = rest.get(..seq_len).ok_or_else(|| {
+            HError::Default("ECDSA: DER signature: truncated SEQUENCE content".to_owned())
+        })?;
+        let (r, content) = Self::der_parse_unsigned_integer(content)?;
+        let (s, _) = Self::der_parse_unsigned_integer(content)?;
+        if r.len() > byte_size || s.len() > byte_size {
+            return Err(HError::Default(format!(
+                "ECDSA: DER signature component larger than curve field size ({byte_size} bytes)"
+            )));
+        }
+        let mut raw = vec![0_u8; 2 * byte_size];
+        let r_start = byte_size.checked_sub(r.len()).ok_or_else(|| {
+            HError::Default("ECDSA: DER signature: `r` longer than field size".to_owned())
+        })?;
+        raw.get_mut(r_start..byte_size)
+            .ok_or_else(|| {
+                HError::Default("ECDSA: DER signature: `r` slice out of bounds".to_owned())
+            })?
+            .copy_from_slice(r);
+        let s_start = (2 * byte_size).checked_sub(s.len()).ok_or_else(|| {
+            HError::Default("ECDSA: DER signature: `s` longer than field size".to_owned())
+        })?;
+        raw.get_mut(s_start..)
+            .ok_or_else(|| {
+                HError::Default("ECDSA: DER signature: `s` slice out of bounds".to_owned())
+            })?
+            .copy_from_slice(s);
+        Ok(raw)
+    }
+
+    /// Parse a single DER-encoded `INTEGER` TLV at the start of `input`, returning its raw
+    /// big-endian content bytes (with a single leading sign-padding `0x00` byte stripped, if
+    /// present) and the remaining unparsed input.
+    fn der_parse_unsigned_integer(input: &[u8]) -> HResult<(&[u8], &[u8])> {
+        let (tag, rest) = input.split_first().ok_or_else(|| {
+            HError::Default("ECDSA: DER signature: unexpected end of input".to_owned())
+        })?;
+        if *tag != 0x02 {
+            return Err(HError::Default(format!(
+                "ECDSA: DER signature: expected INTEGER tag (0x02), found {tag:#04x}"
+            )));
+        }
+        let (len, rest) = Self::der_parse_length(rest)?;
+        let (content, rest) = if rest.len() >= len {
+            rest.split_at(len)
+        } else {
+            return Err(HError::Default(
+                "ECDSA: DER signature: truncated INTEGER content".to_owned(),
+            ));
+        };
+        // Strip a single leading 0x00 sign-padding byte (present when the high bit of the
+        // first significant byte would otherwise be mistaken for a negative sign).
+        let content = if content.len() > 1 && content.first() == Some(&0) {
+            content.get(1..).unwrap_or(content)
+        } else {
+            content
+        };
+        Ok((content, rest))
+    }
+
+    /// Parse a DER length (short or long form) at the start of `input`, returning the decoded
+    /// length and the remaining unparsed input.
+    fn der_parse_length(input: &[u8]) -> HResult<(usize, &[u8])> {
+        let (first, rest) = input.split_first().ok_or_else(|| {
+            HError::Default("ECDSA: DER signature: unexpected end of input".to_owned())
+        })?;
+        if *first & 0x80 == 0 {
+            return Ok((usize::from(*first), rest));
+        }
+        let num_bytes = usize::from(*first & 0x7F);
+        if num_bytes == 0 || num_bytes > size_of::<usize>() || rest.len() < num_bytes {
+            return Err(HError::Default(
+                "ECDSA: DER signature: invalid long-form length".to_owned(),
+            ));
+        }
+        let (len_bytes, rest) = rest.split_at(num_bytes);
+        let mut buf = [0_u8; size_of::<usize>()];
+        let pad = size_of::<usize>().saturating_sub(num_bytes);
+        buf.get_mut(pad..)
+            .ok_or_else(|| {
+                HError::Default("ECDSA: DER signature: invalid length encoding".to_owned())
+            })?
+            .copy_from_slice(len_bytes);
+        Ok((usize::from_be_bytes(buf), rest))
     }
 
     /// Verify using a mechanism with no parameters (`pParameter = NULL`).

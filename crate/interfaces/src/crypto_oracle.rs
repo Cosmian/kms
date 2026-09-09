@@ -196,9 +196,12 @@ impl SigningAlgorithm {
                     | DigitalSignatureAlgorithm::ECDSAWithSHA384
                     | DigitalSignatureAlgorithm::ECDSAWithSHA512
             );
-            if (is_rsa_dsa && key_type != KeyType::RsaPrivateKey)
-                || (is_ecdsa && key_type != KeyType::EcPrivateKey)
-            {
+            // Accept both the private key (signing) and the public key (verification): this
+            // guard is shared by `sign` and `signature_verify` (the latter passes either key
+            // type depending on whether the paired key was imported).
+            let is_rsa_key = matches!(key_type, KeyType::RsaPrivateKey | KeyType::RsaPublicKey);
+            let is_ec_key = matches!(key_type, KeyType::EcPrivateKey | KeyType::EcPublicKey);
+            if (is_rsa_dsa && !is_rsa_key) || (is_ecdsa && !is_ec_key) {
                 return Err(InterfaceError::InvalidRequest(format!(
                     "Unsupported digital signature algorithm for HSM signing: {dsa:?}"
                 )));
@@ -335,12 +338,16 @@ impl SigningAlgorithm {
         input_len: usize,
     ) -> Result<Self, InterfaceError> {
         match key_type {
-            KeyType::RsaPrivateKey => {
+            // Both the private key (signing) and the public key (verification) use the same
+            // default mechanism selection: `signature_verify` has no `input_is_digest`
+            // parameter of its own, so this also covers the `SignatureVerify` KMIP operation
+            // delegating to a public/private key with no explicit algorithm requested.
+            KeyType::RsaPrivateKey | KeyType::RsaPublicKey => {
                 let hash =
                     Self::infer_hash_from_digest_len(input_len).unwrap_or(HashingAlgorithm::SHA256);
                 Self::rsa_pkcs1_from_hash(hash, input_is_digest)
             }
-            KeyType::EcPrivateKey => match curve {
+            KeyType::EcPrivateKey | KeyType::EcPublicKey => match curve {
                 Some(crate::EcCurve::P384) => Ok(Self::Ecdsa {
                     hashing_algorithm: HashingAlgorithm::SHA384,
                     prehashed: input_is_digest,
@@ -380,8 +387,8 @@ impl SigningAlgorithm {
                     prehashed: input_is_digest,
                 }),
             },
-            other => Err(InterfaceError::InvalidRequest(format!(
-                "Unsupported private key type for HSM signing: {other:?}"
+            other @ KeyType::AesKey => Err(InterfaceError::InvalidRequest(format!(
+                "Unsupported key type for HSM sign/verify: {other:?}"
             ))),
         }
     }

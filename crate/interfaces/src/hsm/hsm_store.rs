@@ -840,15 +840,19 @@ impl CryptoOracle for HsmStore {
         >,
     ) -> InterfaceResult<bool> {
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
-        let key_type = self.hsm.get_key_type(slot_id, key_id.as_bytes()).await?;
-        match key_type {
+        let key_type = match self.hsm.get_key_type(slot_id, key_id.as_bytes()).await? {
             // Accept both public and private keys, mirroring the KMIP `SignatureVerify`
             // operation's `is_key_eligible` acceptance (imported keys may lack a paired
             // public key object).
-            Some(KeyType::RsaPublicKey | KeyType::RsaPrivateKey) => {}
+            Some(
+                key_type @ (KeyType::RsaPublicKey
+                | KeyType::RsaPrivateKey
+                | KeyType::EcPublicKey
+                | KeyType::EcPrivateKey),
+            ) => key_type,
             Some(other) => {
                 return Err(InterfaceError::InvalidRequest(format!(
-                    "SignatureVerify: key {uid} is a {other:?}, expected an RSA key"
+                    "SignatureVerify: key {uid} is a {other:?}, expected an RSA or EC key"
                 )));
             }
             None => {
@@ -856,8 +860,21 @@ impl CryptoOracle for HsmStore {
                     "SignatureVerify: key {uid} not found on the HSM"
                 )));
             }
-        }
-        let algorithm = SigningAlgorithm::from_kmip(cryptographic_parameters)?;
+        };
+        let curve = self
+            .hsm
+            .get_key_metadata(slot_id, key_id.as_bytes())
+            .await?
+            .and_then(|metadata| metadata.curve);
+        // `SignatureVerify` has no KMIP `digested_data` flag (unlike `Sign`): the data passed
+        // here is always the original signed message, never a caller-supplied digest.
+        let algorithm = SigningAlgorithm::from_kmip(
+            cryptographic_parameters,
+            key_type,
+            curve,
+            false,
+            data.len(),
+        )?;
         debug!("signature_verify: using algorithm {algorithm:?} for key {uid}");
         self.hsm
             .verify(slot_id, key_id.as_bytes(), algorithm, data, signature)
@@ -1696,9 +1713,9 @@ mod tests {
         build_sensitive_stub_attributes, build_sensitive_stub_object, to_object_with_metadata,
     };
     use crate::{
-        CryptoAlgorithm, CryptoOracle, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
-        HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType, ObjectsStore,
-        SigningAlgorithm, crypto_oracle::EncryptedContent, hsm::HsmStore,
+        CryptoAlgorithm, CryptoOracle, EcCurve, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm,
+        HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
+        ObjectsStore, SigningAlgorithm, crypto_oracle::EncryptedContent, hsm::HsmStore,
     };
     #[cfg(feature = "non-fips")]
     use crate::{EcPrivateKeyMaterial, KeyMaterial};
@@ -2084,6 +2101,19 @@ mod tests {
         let mut mock = MockHsm::new();
         mock.expect_get_key_type()
             .returning(|_slot_id, _key_id| Ok(Some(KeyType::RsaPublicKey)));
+        mock.expect_get_key_metadata().returning(|_, _| {
+            Ok(Some(KeyMetadata {
+                key_type: KeyType::RsaPublicKey,
+                key_length_in_bits: 2048,
+                sensitive: false,
+                id: "key1".to_owned(),
+                curve: None,
+                start_date: None,
+                end_date: None,
+                rotate_name: None,
+                rotate_generation: None,
+            }))
+        });
         mock.expect_verify()
             .returning(|_slot_id, _key_id, _algorithm, _data, _signature| Ok(true));
 
