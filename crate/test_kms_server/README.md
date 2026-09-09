@@ -281,8 +281,8 @@ replays the steps sequentially.
 | HSM / Resident Encrypt | `hsm/resident_aes256_create_encrypt` | Creates an AES-256 key directly on the HSM (key material lives in the HSM token). | 5 |
 | HSM / Resident Encrypt | `hsm/resident_aes256_encrypt_cbc` | Creates an AES-256 key on the HSM, then encrypts and decrypts with AES-CBC mode. | 5 |
 | HSM / Resident Negative | `hsm/resident_aes256_encrypt_ecb_rejected` | Creates an AES-256 key on the HSM, then attempts to encrypt with ECB mode. | 4 |
-| HSM / Resident Negative | `hsm/resident_ec_p256_rejected` | Attempts to create an EC P-256 keypair with an HSM-resident UID. | 1 |
-| HSM / Resident Negative | `hsm/resident_ec_p384_rejected` | Attempts to create an EC P-384 keypair with an HSM-resident UID. | 1 |
+| HSM / Resident Sign | `hsm/resident_ec_p256_created` | Creates an EC P-256 keypair with an HSM-resident UID (now supported since PR hsm_delegation). | 5 |
+| HSM / Resident Sign | `hsm/resident_ec_p384_created` | Creates an EC P-384 keypair with an HSM-resident UID (now supported since PR hsm_delegation). | 5 |
 | HSM / Resident Negative | `hsm/resident_ed25519_rejected` | Attempts to create an Ed25519 keypair with an HSM-resident UID. | 1 |
 | HSM / Resident Keyset | `hsm/resident_keyset_double_rotation` | Tests HSM keyset traversal across a 3-generation chain: | 12 |
 | HSM / Resident Keyset | `hsm/resident_keyset_full_lifecycle` | Full HSM keyset lifecycle test covering all three decrypt-addressing variants: | 12 |
