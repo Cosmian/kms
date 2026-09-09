@@ -1020,6 +1020,13 @@ pub(crate) fn key_algorithm_from_attributes(attributes: &Attributes) -> Pkcs11Re
     })? {
         CryptographicAlgorithm::AES => KeyAlgorithm::Aes256,
         CryptographicAlgorithm::RSA => KeyAlgorithm::Rsa,
+        // KMIP 2.1 assigns Ed25519/Ed448 their own dedicated CryptographicAlgorithm
+        // values (distinct from the generic EC/ECDH used for NIST/SECG curves) — see
+        // crate/kmip/src/kmip_2_1/requests/create_key_pair.rs::build_algorithm_from_curve.
+        // The curve itself is unambiguous from the algorithm alone, so no domain
+        // parameters lookup is needed here (unlike the EC/ECDH branch below).
+        CryptographicAlgorithm::Ed25519 => KeyAlgorithm::Ed25519,
+        CryptographicAlgorithm::Ed448 => KeyAlgorithm::Ed448,
         CryptographicAlgorithm::ECDH | CryptographicAlgorithm::EC => {
             let curve = attributes
                 .cryptographic_domain_parameters

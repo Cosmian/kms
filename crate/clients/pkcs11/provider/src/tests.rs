@@ -8,7 +8,11 @@ use ckms::{
             kmip_attributes::Attributes,
             kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
             kmip_objects::{Object, PrivateKey},
-            kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+            kmip_operations::SignatureVerify,
+            kmip_types::{
+                CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
+                KeyFormatType, RecommendedCurve, UniqueIdentifier, ValidityIndicator,
+            },
             requests::{
                 self, create_ec_key_pair_request, create_rsa_key_pair_request,
                 create_symmetric_key_kmip_object, import_object_request,
@@ -40,7 +44,9 @@ use pkcs11_sys::{
     CRYPTOKI_VERSION_MINOR,
 };
 use serial_test::serial;
-use test_kms_server::start_default_test_kms_server;
+use test_kms_server::{
+    start_default_test_kms_server, start_default_test_kms_server_with_softhsm2_and_kek,
+};
 
 use crate::{
     C_GetFunctionList, C_GetInterface, C_GetInterfaceList,
@@ -549,6 +555,180 @@ fn test_ssh_ecdsa_p256_sign() -> Pkcs11Result<()> {
         !signature.is_empty(),
         "ECDSA P-256 signature must not be empty"
     );
+    Ok(())
+}
+
+// ── HSM-KEK PKCS#11 mandatory conformance tests ─────────────────────────────
+//
+// The 3 tests below exercise real PKCS#11 signing requests
+// (`CliBackend::remote_sign`, the same code path used by `C_Sign`) against a
+// KMS server backed by SoftHSM2 with a Key-Encryption-Key (HSM-KEK): every
+// created key is transparently AES-wrapped by an HSM-resident KEK before
+// being persisted, so these tests validate the full HSM-backed storage path,
+// not just in-memory/software-only signing.
+//
+// Unlike the SSH-focused tests above (which only assert the signature is
+// non-empty), each test here also calls the KMIP `SignatureVerify` operation
+// against the freshly created public key, so a wrong signature format,
+// wrong digest, or wrong curve handling would make the test fail loudly
+// instead of silently passing on a shape-only check.
+
+/// Verify a signature server-side via the KMIP `SignatureVerify` operation
+/// and assert it is cryptographically valid.
+async fn assert_signature_valid(
+    kms_rest_client: &KmsClient,
+    pk_id: &str,
+    cryptographic_parameters: Option<CryptographicParameters>,
+    data: Option<Vec<u8>>,
+    digested_data: Option<Vec<u8>>,
+    signature: Vec<u8>,
+) {
+    let request = SignatureVerify {
+        unique_identifier: Some(UniqueIdentifier::TextString(pk_id.to_owned())),
+        cryptographic_parameters,
+        data,
+        digested_data,
+        signature_data: Some(signature),
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+    let response = kms_rest_client
+        .signature_verify(request)
+        .await
+        .expect("SignatureVerify request failed");
+    assert_eq!(
+        response.validity_indicator,
+        Some(ValidityIndicator::Valid),
+        "signature must be cryptographically valid"
+    );
+}
+
+/// MANDATORY test: a PKCS#11 request for `ECDSA` P-256, addressed to a KMS
+/// server that uses an HSM-KEK (SoftHSM2-backed Key-Encryption-Key).
+///
+/// The private key is created (and transparently wrapped by the HSM-resident
+/// KEK), a signature is produced via `CliBackend::remote_sign` on a
+/// pre-computed 32-byte SHA-256 digest (matching `CKM_ECDSA` convention), and
+/// the signature is verified server-side against the public key.
+#[test]
+#[serial]
+#[ignore = "Requires softhsm2 — set up and invoked by mise run test:hsm-softhsm2"]
+fn test_hsm_kek_ecdsa_p256_sign() -> Pkcs11Result<()> {
+    log_init(None);
+    let rt = tokio::runtime::Runtime::new()?;
+    let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
+        let ctx = start_default_test_kms_server_with_softhsm2_and_kek().await;
+        let kms_rest_client = ctx.get_owner_client();
+        let (sk_id, pk_id) = create_ec_ssh_keypair(&kms_rest_client, RecommendedCurve::P256).await;
+        (ctx.owner_client_config.clone(), sk_id, pk_id)
+    });
+
+    let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
+    let backend = CliBackend::instantiate(kms_rest_client.clone());
+    // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
+    let prehash = [0x42_u8; 32];
+    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash)?;
+    assert!(
+        !signature.is_empty(),
+        "ECDSA P-256 signature must not be empty"
+    );
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(assert_signature_valid(
+        &kms_rest_client,
+        &pk_id,
+        Some(CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            ..Default::default()
+        }),
+        None,
+        Some(prehash.to_vec()),
+        signature,
+    ));
+    Ok(())
+}
+
+/// MANDATORY test: a PKCS#11 request for `ECDSA` secp256k1, addressed to a
+/// KMS server that uses an HSM-KEK (SoftHSM2-backed Key-Encryption-Key).
+///
+/// `secp256k1` is not a FIPS-approved curve (`algorithm_policy::validate_curve`
+/// only allow-lists it under the `non-fips` feature); this whole test module
+/// is already gated behind `#[cfg(feature = "non-fips")]` in `lib.rs`, which
+/// is what allows this test to run at all.
+#[test]
+#[serial]
+#[ignore = "Requires softhsm2 — set up and invoked by mise run test:hsm-softhsm2"]
+fn test_hsm_kek_ecdsa_secp256k1_sign() -> Pkcs11Result<()> {
+    log_init(None);
+    let rt = tokio::runtime::Runtime::new()?;
+    let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
+        let ctx = start_default_test_kms_server_with_softhsm2_and_kek().await;
+        let kms_rest_client = ctx.get_owner_client();
+        let (sk_id, pk_id) =
+            create_ec_ssh_keypair(&kms_rest_client, RecommendedCurve::SECP256K1).await;
+        (ctx.owner_client_config.clone(), sk_id, pk_id)
+    });
+
+    let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
+    let backend = CliBackend::instantiate(kms_rest_client.clone());
+    // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
+    let prehash = [0x24_u8; 32];
+    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash)?;
+    assert!(
+        !signature.is_empty(),
+        "ECDSA secp256k1 signature must not be empty"
+    );
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(assert_signature_valid(
+        &kms_rest_client,
+        &pk_id,
+        Some(CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            ..Default::default()
+        }),
+        None,
+        Some(prehash.to_vec()),
+        signature,
+    ));
+    Ok(())
+}
+
+/// MANDATORY test: a PKCS#11 request for `EdDSA` Ed25519, addressed to a KMS
+/// server that uses an HSM-KEK (SoftHSM2-backed Key-Encryption-Key).
+///
+/// `CKM_EDDSA` passes the raw message (Ed25519 hashes internally) rather than
+/// a pre-computed digest, unlike the ECDSA tests above.
+#[test]
+#[serial]
+#[ignore = "Requires softhsm2 — set up and invoked by mise run test:hsm-softhsm2"]
+fn test_hsm_kek_eddsa_ed25519_sign() -> Pkcs11Result<()> {
+    log_init(None);
+    let rt = tokio::runtime::Runtime::new()?;
+    let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
+        let ctx = start_default_test_kms_server_with_softhsm2_and_kek().await;
+        let kms_rest_client = ctx.get_owner_client();
+        let (sk_id, pk_id) =
+            create_ec_ssh_keypair(&kms_rest_client, RecommendedCurve::CURVEED25519).await;
+        (ctx.owner_client_config.clone(), sk_id, pk_id)
+    });
+
+    let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
+    let backend = CliBackend::instantiate(kms_rest_client.clone());
+    let data = b"hello HSM-KEK world, this is a test message for Ed25519 signing".to_vec();
+    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::EdDsa, &data)?;
+    assert_eq!(signature.len(), 64, "Ed25519 signature must be 64 bytes");
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(assert_signature_valid(
+        &kms_rest_client,
+        &pk_id,
+        None,
+        Some(data),
+        None,
+        signature,
+    ));
     Ok(())
 }
 
