@@ -129,9 +129,3 @@ mod tests {
         ));
     }
 }
-
-/// KMIP-specific operation name injected by the KMIP route handlers
-/// so the audit middleware records the exact operation ("Encrypt", "Create", …)
-/// instead of the coarse path-derived grouping ("KMIP").
-#[derive(Debug, Clone)]
-pub(crate) struct KmipOperationName(pub String);
