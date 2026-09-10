@@ -25,6 +25,7 @@ use cosmian_logger::{debug, error, trace, warn};
 use time::OffsetDateTime;
 use tracing::Instrument;
 
+use super::audit::{inject_audit_request, inject_response_uid};
 use crate::{
     core::{
         KMS,
@@ -160,7 +161,11 @@ pub(crate) async fn kmip_2_1_json(
     let auth_method = kms.get_auth_method(&req_http);
     debug!(target: "kmip", user = user.as_str(), ?auth_method, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
+    let op_name = inject_audit_request(&req_http, &ttlv);
+
     let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1)).await?;
+
+    inject_response_uid(&req_http, &ttlv, &op_name);
 
     // Pre-allocate buffer to avoid repeated reallocations during JSON serialization.
     // Typical KMIP responses are 300-800 bytes; 512 avoids reallocs for most responses.
@@ -260,7 +265,6 @@ pub(crate) async fn kmip_json(
 
 /// Handle KMIP requests with JSON content type
 async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>) -> KResult<TTLV> {
-    // Recover the user from the request
     let user = kms.get_user(&req_http);
 
     // Deserialize the body directly to TTLV (avoiding intermediate Vec + Value allocations)
@@ -268,7 +272,6 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
         std::str::from_utf8(&body).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
     let ttlv: TTLV = serde_json::from_str(body_str)?;
 
-    // Check the KMIP version
     let (major, minor) = get_kmip_version(&ttlv)?;
 
     debug!(
@@ -278,11 +281,17 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
         "POST /kmip {}.{} JSON. Request: {:?} {}", major ,minor, ttlv.tag.as_str(), user
     );
 
+    let op_name = inject_audit_request(&req_http, &ttlv);
+
     if (major == 2 && minor == 1) || (major == 1 && minor == 4) {
         let span = tracing::info_span!("kmip", user = user.as_str(), tag = ttlv.tag.as_str());
-        handle_ttlv(&kms, ttlv, &user, major, minor)
+        let response_ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor))
             .instrument(span)
-            .await
+            .await?;
+
+        inject_response_uid(&req_http, &response_ttlv, &op_name);
+
+        Ok(response_ttlv)
     } else {
         Err(KmsError::InvalidRequest(
             "The /kmip endpoint only accepts KMIP 2.1 or 1.4 requests".to_owned(),
@@ -296,13 +305,32 @@ pub(crate) async fn kmip_binary(
     body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    // Recover the user from the request
     let user = kms.get_user(&req_http);
 
-    // Handle the TTLV bytes request
+    // Best-effort: peek at the request TTLV to record the operation name, and
+    // remember the flavor so the response can be re-parsed for `inject_response_uid`
+    // below (`handle_ttlv_bytes` only returns bytes, not the response TTLV).
+    let mut flavor = KmipFlavor::Kmip2;
+    let mut op_name = None;
+    if let Ok((major, _minor)) = TTLV::find_version(body.as_ref()) {
+        flavor = if major == 1 {
+            KmipFlavor::Kmip1
+        } else {
+            KmipFlavor::Kmip2
+        };
+        if let Ok(ttlv) = TTLV::from_bytes(body.as_ref(), flavor) {
+            op_name = Some(inject_audit_request(&req_http, &ttlv));
+        }
+    }
+
     let response_bytes = handle_ttlv_bytes(&user, body.as_ref(), &kms).await;
 
-    // Send the response
+    if let Some(op_name) = op_name {
+        if let Ok(response_ttlv) = TTLV::from_bytes(&response_bytes, flavor) {
+            inject_response_uid(&req_http, &response_ttlv, &op_name);
+        }
+    }
+
     HttpResponse::Ok()
         .content_type("application/octet-stream")
         .body(response_bytes)
@@ -321,12 +349,10 @@ pub(crate) async fn handle_ttlv_bytes(user: &UserId, ttlv_bytes: &[u8], kms: &Ar
         .unwrap_or_else(|e| {
             let response_message = invalid_response_message(major, minor, e.to_string());
             warn!(target: "kmip", "Failed to process request:\n{response_message}");
-            // convert to TTLV
             let response_ttlv = to_ttlv(&response_message).unwrap_or_else(|e| {
                 error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
                 error_response_ttlv(major, minor, e.to_string().as_str())
             });
-            // convert to bytes
             TTLV::to_bytes(&response_ttlv, KmipFlavor::Kmip2).unwrap_or_else(|e| {
                 error!(target: "kmip", "Failed to convert Response TTLV to bytes: {}: TTLV:\n{:#?}", e,response_ttlv);
                 TTLV_ERROR_RESPONSE.to_vec()
@@ -351,7 +377,6 @@ async fn handle_ttlv_bytes_inner(
         )));
     };
 
-    // log the request bytes
     debug!(
         target: "kmip",
         user = user.as_str(),
@@ -359,7 +384,6 @@ async fn handle_ttlv_bytes_inner(
         hex::encode(ttlv_bytes)
     );
 
-    // parse the TTLV bytes
     let ttlv = TTLV::from_bytes(ttlv_bytes, kmip_flavor).context("Failed to parse TTLV")?;
     let tag = ttlv.tag.clone();
     debug!(
@@ -375,13 +399,11 @@ async fn handle_ttlv_bytes_inner(
         "Request TTLV: {ttlv:#?}"
     );
 
-    // parse the Request Message
     let mut request_message = from_ttlv::<RequestMessage>(ttlv)
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to parse RequestMessage: {e}")))?;
 
     perform_request_tweaks(&mut request_message, major, minor);
 
-    // log the request
     trace!(
         target: "kmip",
         user = user.as_str(),
@@ -391,10 +413,8 @@ async fn handle_ttlv_bytes_inner(
 
     let mut response_message = message(kms, request_message, user).await?;
 
-    // Perform 1.1 and 1.2 Response Tweaks to ensure compatibility
     perform_response_tweaks(&mut response_message, major, minor);
 
-    // log the response
     trace!(
         target: "kmip",
         user = user.as_str(),
@@ -402,7 +422,6 @@ async fn handle_ttlv_bytes_inner(
         "Response Message: {response_message}"
     );
 
-    // serialize the response to TTLV
     let response_ttlv = to_ttlv(&response_message)
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to serialize response: {e}")))?;
 
@@ -413,7 +432,6 @@ async fn handle_ttlv_bytes_inner(
         "Response Message TTLV: {response_ttlv:#?}"
     );
 
-    // convert the TTLV to bytes
     let response_bytes = TTLV::to_bytes(&response_ttlv, kmip_flavor)
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to convert TTLV to bytes: {e}")))?;
 
@@ -536,12 +554,11 @@ mod local_tests {
         ttlv::{KmipFlavor, TTLV, from_ttlv},
     };
 
-    use crate::routes::kmip::TTLV_ERROR_RESPONSE;
+    use super::TTLV_ERROR_RESPONSE;
 
     #[test]
     fn test_error_response_message_ttlv() {
         let ttlv = super::error_response_ttlv(2, 1, "error message");
-        // make sure we can parse the TTLV
         let _response: ResponseMessage = from_ttlv(ttlv).expect("Failed to parse response");
     }
 
@@ -549,7 +566,6 @@ mod local_tests {
     fn test_error_response_message_binary() {
         let ttlv = TTLV::from_bytes(&TTLV_ERROR_RESPONSE, KmipFlavor::Kmip1)
             .expect("Failed to parse response");
-        // make sure we can parse the TTLV
         let _response: ResponseMessage = from_ttlv(ttlv).expect("Failed to parse response");
     }
 }
@@ -732,21 +748,14 @@ fn retain_kmip1_response_attributes(
 
 /// Perform response tweaks for KMIP 1.1 and 1.2 since we only support structures for KMIP 1.4 and 2.1
 fn perform_request_tweaks(response: &mut RequestMessage, major: i32, minor: i32) {
-    // KMIP 1.1 and 1.2 Response Tweaks
     if major == 1 && minor <= 2 {
-        // Decrypt we request does not have the Authenticated Encryption Tag,
-        // so we must extract it from the data field when the encryption algorithm is an authenticated encryption algorithm
         for batch_item in &mut response.batch_item {
             let RequestMessageBatchItemVersioned::V14(item) = batch_item else {
-                continue; // Skip if not V14
+                continue;
             };
-            // If the operation is Encrypt and the response payload is present,
-            // we need to extract the Authenticated Encryption Tag from the Data field
-            // when the encryption algorithm is an authenticated encryption algorithm
             if let cosmian_kmip::kmip_1_4::kmip_operations::Operation::Decrypt(decrypt) =
                 &mut item.request_payload
             {
-                // Check if the encryption algorithm is an authenticated encryption algorithm
                 let cryptographic_parameters =
                     decrypt.cryptographic_parameters.clone().unwrap_or_else(|| {
                         cosmian_kmip::kmip_1_4::kmip_data_structures::CryptographicParameters {
@@ -777,9 +786,7 @@ fn perform_request_tweaks(response: &mut RequestMessage, major: i32, minor: i32)
                         }
                     };
                     if len > 0 {
-                        // Extract the Authenticated Encryption Tag from the Data field
                         if let Some(data) = &mut decrypt.data {
-                            // Assuming the last `len` bytes are the Authenticated Encryption Tag
                             if data.len() >= len {
                                 debug!(
                                     "This is a {major}.{minor} Decrypt message. Extracting \

@@ -17,6 +17,7 @@ use crate::{
     actions::{
         access::AccessAction,
         attributes::AttributesCommands,
+        audit::AuditCommands,
         aws::AwsCommands,
         azure::AzureCommands,
         bench::BenchAction,
@@ -88,6 +89,9 @@ pub enum ServerCommands {
 
 #[derive(Subcommand)]
 pub enum KmsActions {
+    #[command(subcommand)]
+    /// Inspect and verify the tamper-evident KMS audit log.
+    Audit(AuditCommands),
     #[command(subcommand)]
     AccessRights(AccessAction),
     #[command(subcommand)]
@@ -161,6 +165,9 @@ impl KmsActions {
         let mut new_config = kms_rest_client.config.clone();
 
         match self {
+            Self::Audit(action) => {
+                action.process()?;
+            }
             Self::AccessRights(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Attributes(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Aws(action) => Box::pin(action.process(kms_rest_client)).await?,

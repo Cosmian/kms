@@ -17,7 +17,7 @@ use actix_web::{
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_messages::{RequestMessage, ResponseMessage},
     kmip_2_1::{kmip_operations::LocateResponse, kmip_types::UniqueIdentifier},
-    ttlv::{TTLV, from_ttlv, to_ttlv},
+    ttlv::{KmipFlavor, TTLV, from_ttlv, to_ttlv},
 };
 use cosmian_logger::info;
 use serde::{Serialize, de::DeserializeOwned};
@@ -26,11 +26,12 @@ use time::{OffsetDateTime, format_description::well_known::Iso8601};
 use super::google_cse::utils::google_cse_auth;
 use crate::{
     config::{
-        ClapConfig, GoogleCseConfig, HttpConfig, MainDBConfig, ServerParams, SocketServerConfig,
-        TlsConfig,
+        AuditFailureMode, ClapConfig, GoogleCseConfig, HttpConfig, MainDBConfig, ServerParams,
+        SocketServerConfig, TlsConfig,
     },
-    core::KMS,
+    core::{KMS, audit::AuditFileStore},
     kms_bail,
+    middlewares::{AuditMiddleware, ensure_auth_middleware},
     result::KResult,
     routes,
     start_kms_server::handle_google_cse_rsa_keypair,
@@ -370,6 +371,133 @@ pub(crate) async fn test_app_with_clap_config(
     test::init_service(app).await
 }
 
+/// Creates a test application that records every KMIP request to an audit file.
+///
+/// Returns the initialised Actix service **and** the `AuditFileStore` handle.
+/// After the test sends its requests, drop the service then
+/// `tokio::time::sleep(Duration::from_millis(200)).await` to let the background
+/// writer flush — the same pattern used in `core::audit::file_store` tests.
+pub(crate) async fn test_app_with_audit(
+    audit_path: &std::path::Path,
+) -> (
+    impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
+    AuditFileStore,
+) {
+    let clap_config = https_clap_config();
+    let server_params =
+        Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
+
+    let kms_server = Arc::new(
+        KMS::instantiate(server_params.clone())
+            .await
+            .expect("cannot instantiate KMS server"),
+    );
+
+    if server_params.google_cse.google_cse_enable {
+        handle_google_cse_rsa_keypair(&kms_server, &server_params)
+            .await
+            .expect("start KMS server: failed managing Google CSE RSA Keypair");
+    }
+
+    let store = AuditFileStore::start(audit_path, 128).expect("cannot start audit store");
+
+    let mut app = App::new()
+        .app_data(Data::new(kms_server.clone()))
+        .wrap(AuditMiddleware::new(
+            Some(store.clone()),
+            vec![],
+            AuditFailureMode::default(),
+        ))
+        .service(routes::root_redirect::root_redirect_to_ui)
+        .service(routes::health::get_health)
+        .service(web::scope("/.well-known").service(routes::jwks::get_jwks))
+        .service(routes::get_version)
+        .service(routes::kmip::kmip_2_1_json)
+        .service(routes::kmip::kmip)
+        .service(routes::access::list_owned_objects)
+        .service(routes::access::list_access_rights_obtained)
+        .service(routes::access::list_accesses)
+        .service(routes::access::grant_access)
+        .service(routes::access::revoke_access)
+        .service(routes::access::get_create_access)
+        .service(routes::access::get_privileged_access);
+
+    let google_cse_jwt_config = google_cse_auth(None)
+        .await
+        .expect("cannot setup Google CSE auth");
+
+    let google_cse_scope = web::scope("/google_cse")
+        .app_data(Data::new(Some(google_cse_jwt_config)))
+        .service(routes::google_cse::get_status)
+        .service(routes::google_cse::wrap)
+        .service(routes::google_cse::unwrap)
+        .service(routes::google_cse::private_key_sign)
+        .service(routes::google_cse::private_key_decrypt)
+        .service(routes::google_cse::privileged_wrap)
+        .service(routes::google_cse::privileged_unwrap)
+        .service(routes::google_cse::privileged_private_key_decrypt)
+        .service(routes::google_cse::digest)
+        .service(routes::google_cse::certs)
+        .service(routes::google_cse::rewrap)
+        .service(routes::google_cse::delegate);
+
+    app = app.service(google_cse_scope);
+
+    let crypto_scope = web::scope("/v1/crypto")
+        .service(routes::jose::encrypt_handler)
+        .service(routes::jose::decrypt_handler)
+        .service(routes::jose::sign_handler)
+        .service(routes::jose::verify_handler)
+        .service(routes::jose::mac_handler)
+        .service(routes::jose::create_key_handler)
+        .service(routes::jose::delete_key_handler)
+        .service(routes::jose::unwrap_key_handler)
+        .service(routes::jose::add_tags_handler)
+        .service(routes::jose::remove_tags_handler)
+        .service(routes::jose::list_tags_handler);
+    app = app.service(crypto_scope);
+
+    (test::init_service(app).await, store)
+}
+
+/// Creates a test application that records every KMIP request to an audit file,
+/// with `ensure_auth_middleware` enforcing authentication (`auth_is_configured = true`).
+/// No JWT/API-token/cert middleware is wired in, so every request lacks an
+/// `AuthenticatedUser` and is rejected with 401 — used to test that `AuditMiddleware`
+/// (wrapped outside `ensure_auth_middleware`, mirroring the production order in
+/// `start_kms_server.rs`) still records the failed attempt.
+pub(crate) async fn test_app_with_audit_and_auth(
+    audit_path: &std::path::Path,
+) -> (
+    impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
+    AuditFileStore,
+) {
+    let clap_config = https_clap_config();
+    let server_params =
+        Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
+
+    let kms_server = Arc::new(
+        KMS::instantiate(server_params.clone())
+            .await
+            .expect("cannot instantiate KMS server"),
+    );
+
+    let store = AuditFileStore::start(audit_path, 128).expect("cannot start audit store");
+
+    let app = App::new()
+        .app_data(Data::new(kms_server.clone()))
+        .service(routes::kmip::kmip_2_1_json)
+        .service(routes::kmip::kmip)
+        .wrap(ensure_auth_middleware(kms_server.clone(), true))
+        .wrap(AuditMiddleware::new(
+            Some(store.clone()),
+            vec![],
+            AuditFailureMode::default(),
+        ));
+
+    (test::init_service(app).await, store)
+}
+
 pub(crate) async fn post_2_1<B, O, R, S>(app: &S, operation: O) -> KResult<R>
 where
     O: Serialize,
@@ -432,6 +560,38 @@ where
     }
     let body = read_body(res).await;
     let ttlv: TTLV = serde_json::from_slice(&body)?;
+    Ok(from_ttlv(ttlv)?)
+}
+
+/// Post a full `RequestMessage` as binary TTLV (`application/octet-stream`) to `/kmip`
+/// and return the parsed `ResponseMessage`. Exercises `kmip_binary`, the wire format
+/// used by native KMIP clients (HSMs, other vendors' libraries), as opposed to
+/// `post_kmip_json`'s JSON transport.
+pub(crate) async fn post_kmip_binary<B, S>(
+    app: &S,
+    request_message: &RequestMessage,
+    flavor: KmipFlavor,
+) -> KResult<ResponseMessage>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let ttlv = to_ttlv(request_message)?;
+    let request_bytes = ttlv.to_bytes(flavor)?;
+    let req = test::TestRequest::post()
+        .uri("/kmip")
+        .insert_header(("Content-Type", "application/octet-stream"))
+        .set_payload(request_bytes)
+        .to_request();
+    let res = call_service(app, req).await;
+    if res.status() != StatusCode::OK {
+        kms_bail!(
+            "{}",
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_owned())
+        );
+    }
+    let body = read_body(res).await;
+    let ttlv = TTLV::from_bytes(&body, flavor)?;
     Ok(from_ttlv(ttlv)?)
 }
 

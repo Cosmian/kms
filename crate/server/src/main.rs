@@ -234,7 +234,7 @@ mod tests {
 
     use cosmian_kms_server::{
         config::{
-            AuthVerifierConfig, AzureEkmConfig, ClapConfig, CrlConfig, GoogleCseConfig, HttpConfig,
+            AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig,
             IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig, LoggingConfig, MainDBConfig,
             OidcConfig, ProxyConfig, RolesConfig, SocketServerConfig, TlsConfig, UiConfig,
             WorkspaceConfig,
@@ -373,12 +373,7 @@ mod tests {
             privileged_users: None,
             roles: RolesConfig::default(),
             print_default_config: false,
-            secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
-            auto_rotation_check_interval_secs: 0,
-            keyset_warn_depth: 5,
-            vault: cosmian_kms_server::config::VaultConfig::default(),
-            crl: CrlConfig::default(),
-            ocsp: cosmian_kms_server::config::OcspConfig::default(),
+            ..ClapConfig::default()
         };
 
         let toml_string = r#"
@@ -493,6 +488,14 @@ vault_transit_mount = ""
 vault_pki_mount = ""
 vault_pki_ca_key_label = ""
 vault_token_cache_ttl_secs = 0
+
+[audit]
+enabled = false
+channel_capacity = 0
+trusted_proxy_cidrs = []
+failure_mode = "continue"
+
+[audit.file]
 
 [crl]
 crl_default_validity_days = 7
