@@ -1117,11 +1117,15 @@ impl fmt::Debug for ServerParams {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use tempfile::TempDir;
 
-    use crate::config::{ClapConfig, HttpConfig, command_line::MainDBConfig};
+    use super::ServerParams;
+    use crate::{
+        config::{ClapConfig, HttpConfig, command_line::MainDBConfig},
+        tests::test_utils::https_clap_config,
+    };
 
     /// Build a minimal [`ClapConfig`] that uses a `SQLite` database in `tmp_dir`.
     fn minimal_config(tmp_dir: &TempDir) -> ClapConfig {
@@ -1219,13 +1223,6 @@ mod tests {
             params.cors_allowed_origins
         );
     }
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::ServerParams;
-    use crate::tests::test_utils::https_clap_config;
 
     /// `max_size_bytes = 0` is a configuration mistake (it would mean either
     /// "unlimited" or "block everything", ambiguously), so it must be rejected
