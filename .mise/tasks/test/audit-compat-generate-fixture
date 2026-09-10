@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Generate a live KMS JSONL audit fixture (non-fips) for the SIEM compat checks"
+#USAGE flag "-o --output <output>" env="AUDIT_OUTPUT" help="Path to write the generated JSONL audit file" default="/tmp/kms-audit-compat-live.jsonl"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+REPO_ROOT="$(get_repo_root)"
+OUTPUT="${usage_output:-/tmp/kms-audit-compat-live.jsonl}"
+
+bash "${REPO_ROOT}/.mise/scripts/test/generate_live_audit_fixture.sh" --output "${OUTPUT}"
+
+print_success "Live audit fixture ready at ${OUTPUT}"

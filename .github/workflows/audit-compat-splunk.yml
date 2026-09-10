@@ -5,10 +5,14 @@ on:
   pull_request:
     paths:
       - .mise/scripts/test/validate_audit_compat.py
+      - .mise/scripts/test/generate_live_audit_fixture.sh
       - .mise/scripts/test/requirements-audit-compat.txt
       - .mise/scripts/test/fixtures/**
       - schemas/kms-audit-*.json
       - .mise/tasks/test/audit-compat-splunk
+      - .mise/tasks/test/audit-compat-generate-fixture
+      - crate/access/src/audit/**
+      - crate/server/src/middlewares/audit.rs
       - .github/workflows/audit-compat-splunk.yml
   workflow_dispatch:
 
@@ -16,7 +20,7 @@ jobs:
   splunk-compat:
     name: Splunk HEC ingestion compatibility
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
     env:
@@ -28,5 +32,17 @@ jobs:
       - name: Install mise
         uses: jdx/mise-action@v2
 
+      - name: Cache Cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-audit-compat-1.97.0-${{ hashFiles('Cargo.lock') }}
+
+      - name: Generate a live KMS JSONL audit fixture
+        run: mise run test:audit-compat-generate-fixture --output /tmp/kms-audit-live.jsonl
+
       - name: Run Splunk audit JSONL compatibility test
-        run: mise run test:audit-compat-splunk
+        run: mise run test:audit-compat-splunk --file /tmp/kms-audit-live.jsonl
