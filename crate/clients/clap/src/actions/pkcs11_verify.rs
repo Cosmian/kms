@@ -550,15 +550,18 @@ fn call_verify_mechanisms(func_list: &CK_FUNCTION_LIST, slot_id: CK_SLOT_ID) -> 
         let mut info = CK_MECHANISM_INFO::default();
         let rv = unsafe { c_get_mechanism_info(slot_id, mechanism, &raw mut info) };
         check_rv(rv, &format!("C_GetMechanismInfo({name})"))?;
+        // `CK_MECHANISM_INFO` is a packed struct: copy `flags` to a local variable before use
+        // to avoid creating an unaligned reference (UB), which `#[deny(unaligned_references)]`
+        // / E0793 forbids even for reads that are never dereferenced as references.
+        let flags = info.flags;
 
-        if info.flags & expected_flags != expected_flags {
+        if flags & expected_flags != expected_flags {
             return Err(KmsCliError::Default(format!(
                 "FAIL [C_GetMechanismInfo({name})]: expected flags 0x{expected_flags:08X}, got \
-                 0x{:08X}",
-                info.flags
+                 0x{flags:08X}"
             )));
         }
-        println!("  {name}: flags=0x{:08X}", info.flags);
+        println!("  {name}: flags=0x{flags:08X}");
     }
 
     Ok(())
