@@ -670,9 +670,6 @@ Crate path: `crate/server`
 | `warn` | `` `privileged_users` is deprecated; please migrate to `[roles] crypto_officer_users` in kms.toml `` | `src/config/params/server_params.rs` | - | - |
 | `warn` | `ceremony check DB error for user {user}: {e}; falling back to Operator role` | `src/core/operations/dispatch.rs` | `user`, `e` | - |
 | `warn` | `ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment variable is used in production to avoid persisting the secret to disk. If loaded from a config file, ensure it has restrictive permissions (0600) and is not committed to version control.` | `src/config/params/server_params.rs` | - | - |
-| `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip/handlers.rs` | - | - |
-| `debug` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip/handlers.rs` | - | - |
-| `debug` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip/handlers.rs` | - | - |
 | `warn` | `CreateSplitKey: partial failure — {} share(s) already stored but remaining shares could not be created. Manual cleanup required.` | `src/core/operations/create_split_key.rs` | - | - |
 | `trace` | `CreateSplitKey: overriding total_parts from {total_parts} to {n_co_i32} (matches crypto_officer_users count)` | `src/core/operations/create_split_key.rs` | `total_parts`, `n_co_i32` | - |
 | `warn` | `CreateSplitKey: ceremony source key could not be destroyed after split — key material may still be accessible. Manual destruction required.` | `src/core/operations/create_split_key.rs` | - | - |
