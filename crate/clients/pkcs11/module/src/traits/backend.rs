@@ -24,6 +24,14 @@ pub struct SignContext {
 }
 
 #[derive(Debug)]
+pub struct VerifyContext {
+    pub algorithm: SignatureAlgorithm,
+    pub public_key: Arc<dyn PublicKey>,
+    /// Payload stored for multipart `C_VerifyUpdate` operations.
+    pub payload: Option<Vec<u8>>,
+}
+
+#[derive(Debug)]
 pub struct DecryptContext {
     pub remote_object_id: String,
     pub algorithm: EncryptionAlgorithm,
@@ -219,4 +227,17 @@ pub trait Backend: Send + Sync {
         algorithm: &SignatureAlgorithm,
         data: &[u8],
     ) -> ModuleResult<Vec<u8>>;
+
+    /// Verifies `signature` over `data` for the remote public key identified by `remote_id`,
+    /// via a KMIP `SignatureVerify` round trip through the KMS. Returns `Ok(())` when the
+    /// KMS reports `ValidityIndicator::Valid`, and `Err(ModuleError::SignatureInvalid)` when
+    /// it reports `Invalid`/`Unknown` — callers (`C_Verify`/`C_VerifyFinal`) must map that
+    /// specific error to `CKR_SIGNATURE_INVALID`, not a generic failure code.
+    fn remote_verify(
+        &self,
+        remote_id: &str,
+        algorithm: &SignatureAlgorithm,
+        data: &[u8],
+        signature: &[u8],
+    ) -> ModuleResult<()>;
 }

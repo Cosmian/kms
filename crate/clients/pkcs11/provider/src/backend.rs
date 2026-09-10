@@ -28,7 +28,7 @@ use crate::{
         get_kms_certificate_objects, get_kms_disk_encryption_data_objects, get_kms_object,
         get_kms_object_attributes, get_kms_secret_data_objects, key_algorithm_from_attributes,
         kms_decrypt, kms_destroy_object, kms_encrypt, kms_import_object, kms_import_symmetric_key,
-        kms_revoke_object, kms_sign, locate_kms_objects,
+        kms_revoke_object, kms_sign, kms_verify, locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -615,5 +615,16 @@ impl Backend for CliBackend {
     ) -> ModuleResult<Vec<u8>> {
         debug!("remote_sign: remote_id: {remote_id}, algorithm: {algorithm:?}");
         kms_sign(&self.kms_rest_client, remote_id, algorithm, data).map_err(Into::into)
+    }
+
+    fn remote_verify(
+        &self,
+        remote_id: &str,
+        algorithm: &SignatureAlgorithm,
+        data: &[u8],
+        signature: &[u8],
+    ) -> ModuleResult<()> {
+        debug!("remote_verify: remote_id: {remote_id}, algorithm: {algorithm:?}");
+        kms_verify(&self.kms_rest_client, remote_id, algorithm, data, signature).map_err(Into::into)
     }
 }

@@ -16,11 +16,12 @@ use ckms::{
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
                 kmip_operations::{
                     Activate, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, Query,
-                    Revoke, Sign,
+                    Revoke, Sign, SignatureVerify,
                 },
                 kmip_types::{
                     CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
                     KeyFormatType, QueryFunction, RecommendedCurve, UniqueIdentifier,
+                    ValidityIndicator,
                 },
             },
         },
@@ -892,17 +893,25 @@ const fn digest_type_to_hashing_algorithm(digest: &DigestType) -> HashingAlgorit
     }
 }
 
-pub(crate) async fn kms_sign_async(
-    kms_rest_client: &KmsClient,
-    unique_identifier: &str,
+/// Result of mapping a `SignatureAlgorithm` to KMIP request fields: `(cryptographic_parameters,
+/// data, digested_data)`. See `signature_algorithm_to_kmip_params`.
+type SignatureKmipParams = (
+    Option<CryptographicParameters>,
+    Option<Vec<u8>>,
+    Option<Vec<u8>>,
+);
+
+/// Maps a PKCS#11 `SignatureAlgorithm`/payload pair to the KMIP `CryptographicParameters` and
+/// `data`/`digested_data` fields used by both the `Sign` and `SignatureVerify` KMIP operations.
+///
+/// Shared by `kms_sign_async` and `kms_verify_async` so the two operations can never diverge on
+/// whether a given mechanism sends a raw message (`data`) or a pre-computed digest
+/// (`digested_data`) — a mismatch here would make valid signatures fail verification.
+fn signature_algorithm_to_kmip_params(
     algorithm: &SignatureAlgorithm,
     data: &[u8],
-) -> Pkcs11Result<Vec<u8>> {
-    // Map the PKCS#11 mechanism to KMIP CryptographicParameters.
-    // For CKM_ECDSA (SignatureAlgorithm::Ecdsa), the data is a pre-computed hash
-    // passed by OpenSSH — send it as `digested_data` to prevent double-hashing on
-    // the server side.
-    let (cryptographic_parameters, data_bytes, digested_data_bytes) = match algorithm {
+) -> Pkcs11Result<SignatureKmipParams> {
+    Ok(match algorithm {
         SignatureAlgorithm::Ecdsa => {
             // CKM_ECDSA: caller (OpenSSH) provides a pre-computed hash
             let digital_signature_algorithm = match data.len() {
@@ -963,6 +972,13 @@ pub(crate) async fn kms_sign_async(
             mask_generation_function,
             salt_length,
         } => {
+            // CKM_RSA_PKCS_PSS is a "bare" PSS mechanism (PKCS#11 v3.1 §6.4.7): per the
+            // spec, it "operate[s] only on the part of PKCS #1 that involves block
+            // formatting and RSA, given a hash value; it does not compute a hash value
+            // on the message to be signed." The caller (e.g. `pkcs11-tool --sign
+            // --mechanism RSA-PKCS-PSS`) therefore always provides a pre-computed
+            // digest, not the raw message — send it as `digested_data` (like CKM_ECDSA)
+            // so the server does not hash it a second time.
             let hashing_algorithm = Some(digest_type_to_hashing_algorithm(digest));
             let mask_generator_hashing_algorithm =
                 Some(digest_type_to_hashing_algorithm(mask_generation_function));
@@ -974,9 +990,23 @@ pub(crate) async fn kms_sign_async(
                 salt_length: Some(i32::try_from(*salt_length)?),
                 ..Default::default()
             };
-            (Some(cp), Some(data.to_vec()), None)
+            (Some(cp), None, Some(data.to_vec()))
         }
-    };
+    })
+}
+
+pub(crate) async fn kms_sign_async(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: &SignatureAlgorithm,
+    data: &[u8],
+) -> Pkcs11Result<Vec<u8>> {
+    // Map the PKCS#11 mechanism to KMIP CryptographicParameters.
+    // For CKM_ECDSA (SignatureAlgorithm::Ecdsa), the data is a pre-computed hash
+    // passed by OpenSSH — send it as `digested_data` to prevent double-hashing on
+    // the server side.
+    let (cryptographic_parameters, data_bytes, digested_data_bytes) =
+        signature_algorithm_to_kmip_params(algorithm, data)?;
 
     let sign_request = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
@@ -992,6 +1022,56 @@ pub(crate) async fn kms_sign_async(
     response.signature_data.ok_or_else(|| {
         Pkcs11Error::ServerError("Sign response does not contain signature data".to_owned())
     })
+}
+
+pub(crate) fn kms_verify(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: &SignatureAlgorithm,
+    data: &[u8],
+    signature: &[u8],
+) -> Pkcs11Result<()> {
+    RUNTIME.block_on(kms_verify_async(
+        kms_rest_client,
+        unique_identifier,
+        algorithm,
+        data,
+        signature,
+    ))
+}
+
+/// Verifies `signature` over `data` for the public key `unique_identifier`, via a KMIP
+/// `SignatureVerify` round trip. Reuses `signature_algorithm_to_kmip_params` — the exact same
+/// mapping used by `kms_sign_async` — so a signature produced by `C_Sign` is always verified
+/// with the matching raw-message/pre-hashed-digest convention.
+pub(crate) async fn kms_verify_async(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: &SignatureAlgorithm,
+    data: &[u8],
+    signature: &[u8],
+) -> Pkcs11Result<()> {
+    let (cryptographic_parameters, data_bytes, digested_data_bytes) =
+        signature_algorithm_to_kmip_params(algorithm, data)?;
+
+    let verify_request = SignatureVerify {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
+        cryptographic_parameters,
+        data: data_bytes,
+        digested_data: digested_data_bytes,
+        signature_data: Some(signature.to_vec()),
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+
+    let response = kms_rest_client.signature_verify(verify_request).await?;
+    match response.validity_indicator {
+        Some(ValidityIndicator::Valid) => Ok(()),
+        Some(ValidityIndicator::Invalid | ValidityIndicator::Unknown) | None => {
+            Err(Pkcs11Error::SignatureInvalid)
+        }
+    }
 }
 
 pub(crate) fn get_kms_object_attributes(

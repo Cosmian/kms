@@ -42,8 +42,8 @@ use crate::{
     },
     objects_store::{OBJECTS_STORE, ObjectsStore},
     traits::{
-        DecryptContext, EncryptContext, KeyAlgorithm, SearchOptions, SignContext, backend,
-        use_pin_as_access_token,
+        DecryptContext, EncryptContext, KeyAlgorithm, SearchOptions, SignContext, VerifyContext,
+        backend, use_pin_as_access_token,
     },
 };
 
@@ -125,6 +125,7 @@ pub(crate) struct Session {
     /// and that have not yet been read by `C_FindObjects`
     pub find_objects_ctx: Vec<CK_OBJECT_HANDLE>,
     pub sign_ctx: Option<SignContext>,
+    pub verify_ctx: Option<VerifyContext>,
     pub decrypt_ctx: Option<DecryptContext>,
     pub encrypt_ctx: Option<EncryptContext>,
 }
@@ -533,6 +534,23 @@ impl Session {
             *pulSignatureLen = signature.len().try_into()?;
         }
         Ok(())
+    }
+
+    /// Verify `signature` over the provided data (or accumulated `C_VerifyUpdate` payload if
+    /// data is not provided). A cryptographically invalid signature surfaces as
+    /// `ModuleError::SignatureInvalid`, which the `C_Verify`/`C_VerifyFinal` callers must not
+    /// mask as a generic error — PKCS#11 clients rely on `CKR_SIGNATURE_INVALID` specifically
+    /// to distinguish "verification failed" from "operation error".
+    pub(crate) fn verify(&mut self, data: Option<&[u8]>, signature: &[u8]) -> ModuleResult<()> {
+        let Some(verify_ctx) = self.verify_ctx.take() else {
+            return Err(ModuleError::OperationNotInitialized(0));
+        };
+        let data = data
+            .or(verify_ctx.payload.as_deref())
+            .ok_or(ModuleError::OperationNotInitialized(0))?;
+        verify_ctx
+            .public_key
+            .verify(&verify_ctx.algorithm, data, signature)
     }
 
     pub(crate) fn decrypt(

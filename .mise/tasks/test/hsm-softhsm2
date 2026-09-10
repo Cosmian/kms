@@ -82,10 +82,13 @@ env \
 print_status "HSM vector tests completed"
 
 # ── Run cosmian_pkcs11 HSM-KEK conformance tests ────────────────────────────
-# 3 mandatory PKCS#11 signing tests (EdDSA Ed25519, ECDSA P-256, ECDSA
-# secp256k1) against a KMS server backed by SoftHSM2 with a Key-Encryption-Key
-# (HSM-KEK). These tests live in `cosmian_pkcs11`'s non-fips-only test module,
-# so they only run for the non-fips variant.
+# Mandatory PKCS#11 signing tests (EdDSA Ed25519, ECDSA P-256, ECDSA
+# secp256k1), an RSA-PSS sign test, and an end-to-end C_Verify round-trip
+# test (including a tampered-signature negative case), all against a KMS
+# server backed by SoftHSM2 with a Key-Encryption-Key (HSM-KEK). These tests
+# live in `cosmian_pkcs11`'s non-fips-only `tests_v3` module (PKCS#11 v3.x
+# conformance tests are never mixed with the legacy `tests` module), so they
+# only run for the non-fips variant.
 if [ "${VARIANT:-}" = "non-fips" ]; then
   print_header "Running cosmian_pkcs11 HSM-KEK conformance tests"
   env \
@@ -106,7 +109,7 @@ if [ "${VARIANT:-}" = "non-fips" ]; then
     -p cosmian_pkcs11 \
     ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
     --lib \
-    -- --ignored tests::test_hsm_kek --test-threads=1
+    -- --ignored test_hsm_kek --test-threads=1
 
   print_status "cosmian_pkcs11 HSM-KEK conformance tests completed"
 else
