@@ -224,6 +224,7 @@ where
                                 result: item_result,
                                 duration_ms,
                                 request_id: Some(request_id),
+                                details: None,
                             }
                         })
                         .collect()
