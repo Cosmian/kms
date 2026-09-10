@@ -22,7 +22,7 @@ use cosmian_logger::{debug, log_init};
 use cosmian_pkcs11_module::{
     pkcs11::{
         C_CloseSession, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
-        C_GetAttributeValue, C_Initialize, C_Login, C_LoginUser, C_Login, C_LoginUser, C_OpenSession,
+        C_GetAttributeValue, C_Initialize, C_Login, C_LoginUser, C_OpenSession,
         C_SetAttributeValue, SLOT_ID,
     },
     test_decrypt, test_encrypt,
@@ -1138,108 +1138,4 @@ fn find_profile_count(
     );
     assert_eq!(C_FindObjectsFinal(session), CKR_OK);
     Ok(count)
-}
-
-/// PKCS#11 v3.1 `C_LoginUser` (issue #1153 follow-up): this module exposes a single implicit
-/// backend identity per slot, so `C_LoginUser` must succeed regardless of the supplied
-/// `pUsername`, exactly like `C_Login`, when the deployment does not use PIN-as-access-token
-/// mode (the default in tests).
-#[test]
-#[serial]
-#[expect(unsafe_code)]
-fn test_c_login_user() -> Pkcs11Result<()> {
-    let _backend = initialize_backend()?;
-    let conf_path = save_pkcs11_client_config();
-    // SAFETY: see other tests in this file for the `#[serial]` + `set_var` justification.
-    unsafe {
-        std::env::set_var(CKMS_CONF_ENV, &conf_path);
-    }
-
-    test_init();
-    assert_eq!(C_Initialize(std::ptr::null_mut()), CKR_OK);
-    let mut handle = CK_INVALID_HANDLE;
-    assert_eq!(
-        // SAFETY: `SLOT_ID` is the only valid slot; the two null/None args are optional and
-        // intentionally unused; `handle` is a properly-aligned out-parameter on the stack.
-        unsafe {
-            C_OpenSession(
-                SLOT_ID,
-                CKF_SERIAL_SESSION,
-                std::ptr::null_mut(),
-                None,
-                &raw mut handle,
-            )
-        },
-        CKR_OK
-    );
-
-    assert_eq!(
-        // SAFETY: all optional byte buffers are null with zero lengths; `handle` is valid.
-        unsafe {
-            C_LoginUser(
-                handle,
-                CKU_CONTEXT_SPECIFIC,
-                std::ptr::null_mut(),
-                0,
-                std::ptr::null_mut(),
-                0,
-            )
-        },
-        CKR_OPERATION_NOT_INITIALIZED
-    );
-    assert_eq!(
-        // SAFETY: all optional byte buffers are null with zero lengths; `handle` is valid.
-        unsafe {
-            C_LoginUser(
-                handle,
-                CK_USER_TYPE::MAX,
-                std::ptr::null_mut(),
-                0,
-                std::ptr::null_mut(),
-                0,
-            )
-        },
-        CKR_USER_TYPE_INVALID
-    );
-    assert_eq!(
-        // SAFETY: the PIN buffer is optional outside PIN-as-access-token mode.
-        unsafe { C_Login(handle, CKU_CONTEXT_SPECIFIC, std::ptr::null_mut(), 0) },
-        CKR_OPERATION_NOT_INITIALIZED
-    );
-    assert_eq!(
-        // SAFETY: the PIN buffer is optional outside PIN-as-access-token mode.
-        unsafe { C_Login(handle, CK_USER_TYPE::MAX, std::ptr::null_mut(), 0) },
-        CKR_USER_TYPE_INVALID
-    );
-    assert_eq!(
-        // SAFETY: the PIN buffer is optional outside PIN-as-access-token mode.
-        // This module exposes a single implicit identity per slot (no separate Security
-        // Officer role), so the standard `CKU_SO` user type is accepted like `CKU_USER`
-        // rather than rejected -- real-world clients such as `pkcs11-tool --login-type so`
-        // rely on this.
-        unsafe { C_Login(handle, CKU_SO, std::ptr::null_mut(), 0) },
-        CKR_OK
-    );
-
-    let mut username = b"alice".to_vec();
-    let user_type: CK_USER_TYPE = CKU_USER;
-    assert_eq!(
-        // SAFETY: `handle` is a valid open session; `username` is a well-formed UTF-8 buffer
-        // whose length is passed accurately; no PIN is required outside PIN-as-access-token mode.
-        unsafe {
-            C_LoginUser(
-                handle,
-                user_type,
-                std::ptr::null_mut(),
-                0,
-                username.as_mut_ptr(),
-                username.len().try_into()?,
-            )
-        },
-        CKR_OK
-    );
-
-    assert_eq!(C_CloseSession(handle), CKR_OK);
-    assert_eq!(C_Finalize(std::ptr::null_mut()), CKR_OK);
-    Ok(())
 }

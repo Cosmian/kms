@@ -1,0 +1,28 @@
+[package]
+name = "cosmian_pkcs11_bench"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords = ["pkcs11", "cryptoki", "kms", "cosmian", "benchmark"]
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Real dlopen()-based PKCS#11 load benchmark for the cosmian_pkcs11 provider"
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "pkcs11_bench"
+path = "src/main.rs"
+
+[dependencies]
+ckms = { path = "../../ckms", version = "5.27.0" }
+clap = { workspace = true, features = ["help", "std", "usage", "error-context", "derive"] }
+cosmian_logger = { workspace = true }
+libloading = { workspace = true }
+pkcs11-sys = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }

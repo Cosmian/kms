@@ -315,3 +315,52 @@ row — the opposite of the software baseline, and not a real protocol differenc
      (`bench/load-hsm`, default)
   3. `benchmarks/ckms_bench_hsm/report.md` — HSM-delegated crypto, ttlv-json only
      (`bench/load-hsm --delegated`)
+
+### New independent benchmark: `mise bench:load-pkcs11`
+
+- Add a new `cosmian_pkcs11_bench` crate (`crate/clients/pkcs11/bench`) and a new
+  `mise bench:load-pkcs11` task (renamed from an initial `bench:pkcs11`),
+  benchmarking the `cosmian_pkcs11` PKCS#11 provider itself rather than the KMIP
+  REST API: the benchmark `dlopen()`s the built `libcosmian_pkcs11.{so,dylib}` and
+  drives its real Cryptoki v2.40 C ABI (`C_Initialize`, `C_OpenSession`,
+  `C_EncryptInit`/`C_Encrypt`, `C_DecryptInit`/`C_Decrypt`, `C_SignInit`/`C_Sign`,
+  `C_VerifyInit`/`C_Verify`, `C_GenerateKey`, ...) — the same call path real-world
+  PKCS#11 consumers (Oracle TDE, OpenSSH, disk-encryption tools) use, which
+  `bench/load`'s direct `KmsClient`/HTTP path does not exercise
+- Intentionally uses a **single shared `C_OpenSession` handle** reused by every
+  concurrent worker thread of the sweep, instead of one session per thread: the
+  provider's own session store (`crate/clients/pkcs11/module/src/sessions.rs`)
+  already serializes all session access behind one global `Mutex`, so this
+  benchmarks real-world single-session contention rather than artificial
+  per-thread parallelism
+- Five modes, run individually or via the default `all`, each measured
+  **independently** (its own concurrency sweep, its own report row/chart — never a
+  combined round trip): `encrypt` (`C_EncryptInit`/`C_Encrypt`, AES-CBC-PAD),
+  `decrypt` (`C_DecryptInit`/`C_Decrypt`, against ciphertext produced once during
+  setup, not timed), `sign` (`C_SignInit`/`C_Sign`, RSA `CKM_SHA256_RSA_PKCS`),
+  `verify` (`C_VerifyInit`/`C_Verify`, RSA `CKM_SHA256_RSA_PKCS`), and
+  `key-creation` (`C_GenerateKey` + `C_DestroyObject`, ephemeral AES key per
+  iteration — `C_GenerateKeyPair` is not implemented by the provider, since
+  asymmetric keys are always created through the KMS REST API, not PKCS#11).
+  `verify` is probed once before sweeping and skipped with a console notice if the
+  loaded provider reports `CKR_FUNCTION_NOT_SUPPORTED` (as `cosmian_pkcs11_module`
+  currently does for `C_VerifyInit`/`C_Verify`), instead of publishing fabricated
+  numbers for an operation that always fails
+- Reuses `.mise/lib/bench_helpers.sh` (`bench_start_server`,
+  `bench_register_cleanup`, `bench_warn_cpu_scaling`, and now also
+  `bench_generate_report`) for the temporary SQLite-backed KMS server and the
+  report pipeline, and extends `.mise/lib/pkcs11_helpers.sh`'s
+  `get_cosmian_pkcs11_lib` with an optional build-mode argument (defaults to
+  `debug`, preserving existing callers) so the new task can resolve the
+  library path for release builds too
+- **Now generates a dedicated report**, `documentation/docs/benchmarks/ckms_bench_pkcs11/`,
+  reusing the existing Criterion/`plot_version_compare.py` pipeline unchanged for
+  chart/table generation: the benchmark binary writes `load_pkcs11.json` in the
+  exact same schema `bench/load` uses (`crate/clients/pkcs11/bench/src/report.rs`),
+  so `bench_generate_report`'s existing `load_*.json` glob picks it up with zero
+  parsing changes. Added a new `--pkcs11` flag to `plot_version_compare.py`
+  (alongside the existing `--hsm`/`--kek`) and a matching `is_pkcs11` parameter to
+  `bench_generate_report`, so the report's Protocols/Methodology sections describe
+  the real dlopen()-based Cryptoki benchmark instead of the generic
+  KMIP-wire-protocol text — mirroring `bench/load`/`bench/load-hsm` exactly instead
+  of a standalone console-only benchmark as originally implemented

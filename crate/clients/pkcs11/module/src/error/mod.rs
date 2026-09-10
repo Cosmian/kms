@@ -26,7 +26,7 @@ use pkcs11_sys::{
     CKR_GENERAL_ERROR, CKR_KEY_HANDLE_INVALID, CKR_MECHANISM_INVALID, CKR_NEED_TO_CREATE_THREADS,
     CKR_OBJECT_HANDLE_INVALID, CKR_OPERATION_NOT_INITIALIZED, CKR_PIN_INCORRECT, CKR_RANDOM_NO_RNG,
     CKR_SESSION_HANDLE_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SIGNATURE_INVALID,
-    CKR_SLOT_ID_INVALID, CKR_TOKEN_WRITE_PROTECTED, CKR_USER_NOT_LOGGED_IN, CKR_USER_TYPE_INVALID, CKR_USER_TYPE_INVALID,
+    CKR_SLOT_ID_INVALID, CKR_TOKEN_WRITE_PROTECTED, CKR_USER_NOT_LOGGED_IN, CKR_USER_TYPE_INVALID,
 };
 use thiserror::Error;
 
@@ -156,10 +156,8 @@ impl From<ModuleError> for CK_RV {
             ModuleError::TokenWriteProtected => CKR_TOKEN_WRITE_PROTECTED,
             ModuleError::PinRequired => CKR_PIN_INCORRECT,
             ModuleError::UserNotLoggedIn => CKR_USER_NOT_LOGGED_IN,
-            ModuleError::UserTypeInvalid => CKR_USER_TYPE_INVALID,
             ModuleError::ActionProhibited(_) => CKR_ACTION_PROHIBITED,
             ModuleError::UserTypeInvalid => CKR_USER_TYPE_INVALID,
-            ModuleError::ActionProhibited(_) => CKR_ACTION_PROHIBITED,
             ModuleError::SignatureInvalid => CKR_SIGNATURE_INVALID,
 
             ModuleError::Backend(_)

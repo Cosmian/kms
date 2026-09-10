@@ -632,7 +632,7 @@ def _render_env_section(env_data: dict[str, dict], versions: list[str]) -> list[
 
 
 def _render_protocol_section(
-    *, is_hsm: bool = False, is_hsm_kek: bool = False
+    *, is_hsm: bool = False, is_hsm_kek: bool = False, is_pkcs11: bool = False
 ) -> list[str]:
     """Render the static ## Protocols section.
 
@@ -645,7 +645,34 @@ def _render_protocol_section(
     benchmarks software crypto with an HSM-resident *key-wrapping* key
     (KEK), not HSM-delegated crypto operations (see the dedicated HSM
     report for that).
+
+    When `is_pkcs11` is set, no KMIP wire protocol is documented at all: this
+    report benchmarks the `cosmian_pkcs11` provider's real Cryptoki C ABI,
+    driven by `dlopen()`ing the built shared library directly (see
+    `bench/load-pkcs11`), not any HTTP/KMIP transport.
     """
+    if is_pkcs11:
+        return [
+            '## Protocols',
+            '',
+            'This report does not benchmark a KMIP wire protocol at all: it drives the'
+            ' `cosmian_pkcs11` provider'
+            "'s real PKCS#11 v2.40 Cryptoki C ABI directly, by `dlopen()`ing the built"
+            ' shared library (`libcosmian_pkcs11.{so,dylib}`) and resolving its'
+            ' `C_GetFunctionList` table — the same call path real-world PKCS#11'
+            ' consumers (Oracle TDE, OpenSSH, disk-encryption tools) use. Every'
+            ' Cryptoki call still ends up as an HTTP request from the provider to the'
+            ' KMS server underneath, but that transport is an implementation detail of'
+            ' the provider, not something the benchmark selects.',
+            '',
+            '| Interface | Transport | Description |',
+            '|---|---|---|',
+            '| **PKCS#11 (Cryptoki v2.40)** | `dlopen()` + C ABI | `C_Initialize`,'
+            ' `C_OpenSession`, `C_EncryptInit`/`C_Encrypt`, `C_DecryptInit`/`C_Decrypt`,'
+            ' `C_SignInit`/`C_Sign`, `C_VerifyInit`/`C_Verify`, `C_GenerateKey` |',
+            '',
+            '',
+        ]
     if is_hsm:
         return [
             '## Protocols',
@@ -730,9 +757,75 @@ def _render_protocol_section(
 
 
 def _render_methodology_section(
-    *, is_hsm: bool = False, is_hsm_kek: bool = False
+    *, is_hsm: bool = False, is_hsm_kek: bool = False, is_pkcs11: bool = False
 ) -> list[str]:
     """Render the static ## Benchmark Methodology section."""
+    if is_pkcs11:
+        return [
+            '## Benchmark Methodology',
+            '',
+            '### Real Cryptoki C ABI, single shared session',
+            '',
+            'The benchmark binary (`cosmian_pkcs11_bench`, driven by'
+            ' `mise bench:load-pkcs11`) `dlopen()`s the built `cosmian_pkcs11` shared'
+            ' library and calls its Cryptoki v2.40 function table directly — the same'
+            ' code path a real PKCS#11 consumer application uses, as opposed to'
+            ' `mise bench:load`, which drives the KMIP REST API directly through the'
+            ' `ckms` client library.',
+            '',
+            'All concurrency levels of a given sweep share a **single**'
+            ' `C_OpenSession` handle across every worker thread, rather than one'
+            ' session per thread. This is intentional: the provider'
+            "'s own session store"
+            ' (`crate/clients/pkcs11/module/src/sessions.rs`) already serializes all'
+            ' session access behind one global `Mutex`, so this benchmark measures'
+            ' real-world single-session contention — the same constraint any'
+            ' single-session PKCS#11 consumer (e.g. one OpenSSH/LUKS/TDE process) is'
+            ' subject to — rather than artificial per-thread parallelism that no real'
+            ' consumer would ever get for free.',
+            '',
+            '### Independent operations',
+            '',
+            'Unlike the software/HSM reports above, where `encrypt` and `sign-verify`'
+            ' each measure a single named request, this report measures every Cryptoki'
+            ' operation **independently**: `encrypt` (`C_EncryptInit`/`C_Encrypt`),'
+            ' `decrypt` (`C_DecryptInit`/`C_Decrypt`, against ciphertext produced once'
+            ' during setup — not timed), `sign` (`C_SignInit`/`C_Sign`), `verify`'
+            ' (`C_VerifyInit`/`C_Verify`), and `key-creation`'
+            ' (`C_GenerateKey`+`C_DestroyObject`, ephemeral AES key per iteration) each'
+            ' get their own concurrency sweep and their own row/chart below.',
+            '',
+            '> **`verify` may be absent from this report.** `C_VerifyInit`/`C_Verify`'
+            ' are not implemented by `cosmian_pkcs11_module` (registered via its'
+            ' `cryptoki_fn_not_supported!` macro, always returning'
+            ' `CKR_FUNCTION_NOT_SUPPORTED`). The benchmark probes this once before'
+            ' sweeping and skips `verify` with a console notice if unsupported, rather'
+            ' than publishing fabricated numbers for an operation that always fails.',
+            '',
+            '`C_GenerateKeyPair` is not implemented either (asymmetric keys are always'
+            ' created through the KMS REST API, not PKCS#11), so `key-creation` only'
+            ' covers the one Cryptoki key-creation path the provider does support:'
+            ' symmetric `C_GenerateKey`.',
+            '',
+            '### Load test (`mise bench:load-pkcs11`)',
+            '',
+            'The load test sweeps a configurable list of concurrency levels, mirroring'
+            ' `mise bench:load`'
+            "'s own sweep mechanics exactly: at each level *N* concurrent OS threads"
+            ' call the target Cryptoki function in a tight loop for a fixed'
+            ' **measurement window** (default: 20 s), preceded by a **warm-up phase**'
+            ' (default: 5 s) that is excluded from measurements, followed by a'
+            ' **cooldown** (default: 2 s) before the next level.',
+            'Recorded metrics per *(operation, concurrency)* pair:',
+            '',
+            '- **Throughput** — Cryptoki calls per second',
+            '- **p50 / p95 / p99** — per-call latency percentiles (ms)',
+            '',
+            '> **Infrastructure note:** The benchmark server uses a **local SQLite**'
+            ' backend (temporary, discarded after the run). Throughput figures will'
+            ' differ on a production deployment backed by PostgreSQL or Redis-Findex.',
+            '',
+        ]
     if is_hsm:
         return [
             '## Benchmark Methodology',
@@ -942,6 +1035,7 @@ def generate_report(
     *,
     is_hsm: bool = False,
     is_hsm_kek: bool = False,
+    is_pkcs11: bool = False,
 ) -> None:
     """Write report.md combining load-test and criterion sections."""
     sep = ['', '---', '']
@@ -961,11 +1055,15 @@ def generate_report(
             lines += sep
 
     # ── Protocols ─────────────────────────────────────────────────────────────
-    lines += _render_protocol_section(is_hsm=is_hsm, is_hsm_kek=is_hsm_kek)
+    lines += _render_protocol_section(
+        is_hsm=is_hsm, is_hsm_kek=is_hsm_kek, is_pkcs11=is_pkcs11
+    )
     lines += sep
 
     # ── Methodology ───────────────────────────────────────────────────────────
-    lines += _render_methodology_section(is_hsm=is_hsm, is_hsm_kek=is_hsm_kek)
+    lines += _render_methodology_section(
+        is_hsm=is_hsm, is_hsm_kek=is_hsm_kek, is_pkcs11=is_pkcs11
+    )
     lines += sep
 
     # ── Load tests ────────────────────────────────────────────────────────
@@ -1063,14 +1161,20 @@ def main() -> None:
     # is otherwise identical to the plain software-bench text but prefixed
     # with a short note that the KEK (not the benchmarked keys themselves)
     # is HSM-resident. Mutually exclusive with --hsm (--hsm takes priority).
+    # Optional --pkcs11 flag: may appear anywhere in argv. When set, the report
+    # documents the real dlopen()-based Cryptoki C ABI benchmark (see
+    # `bench/load-pkcs11`) instead of any KMIP-wire-protocol text. Mutually
+    # exclusive with --hsm/--kek (either of those takes priority).
     argv = sys.argv[1:]
     is_hsm = '--hsm' in argv
     is_hsm_kek = '--kek' in argv and not is_hsm
-    argv = [a for a in argv if a not in ('--hsm', '--kek')]
+    is_pkcs11 = '--pkcs11' in argv and not is_hsm and not is_hsm_kek
+    argv = [a for a in argv if a not in ('--hsm', '--kek', '--pkcs11')]
 
     if len(argv) < 2:
         print(
-            f"Usage: {sys.argv[0]} <results_dir> <version1> [version2] ... [--hsm|--kek]"
+            f"Usage: {sys.argv[0]} <results_dir> <version1> [version2] ... "
+            '[--hsm|--kek|--pkcs11]'
         )
         sys.exit(1)
 
@@ -1139,6 +1243,7 @@ def main() -> None:
         env_data=env_data or None,
         is_hsm=is_hsm,
         is_hsm_kek=is_hsm_kek,
+        is_pkcs11=is_pkcs11,
     )
 
 

@@ -1,0 +1,112 @@
+#!/usr/bin/env -S usage bash
+#MISE description="Run a real dlopen()-based PKCS#11 load benchmark against cosmian_pkcs11"
+#USAGE flag "-v --variant <v>"      env="BENCH_VARIANT"       default="non-fips"       help="FIPS variant"                              { choices "fips" "non-fips" }
+#USAGE flag "-l --link <l>"         env="BENCH_LINK"          default="static"          help="Linkage type"                              { choices "static" "dynamic" }
+#USAGE flag "-r --release"          env="BENCH_RELEASE"       default="true"            help="Build in release mode"
+#USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "decrypt" "sign" "verify" "key-creation" }
+#USAGE flag "-t --time <t>"         env="BENCH_TIME"          default="20"              help="Measurement time per level (seconds)"
+#USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16"  help="Comma-separated concurrency levels"
+#USAGE flag "-W --warmup <s>"       env="BENCH_WARMUP"        default="5"               help="Warmup time before the load sweep (seconds)"
+#USAGE flag "-C --cooldown <s>"     env="BENCH_COOLDOWN"      default="2"               help="Cooldown between concurrency levels (seconds)"
+#USAGE flag "-s --sanity"           env="BENCH_SANITY"                                  help="Quick sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/bench_helpers.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/pkcs11_helpers.sh"
+
+# ── Resolve BENCH_ variables from usage-parsed lowercase names ──────────────────────
+BENCH_VARIANT="${usage_variant:-non-fips}"
+BENCH_LINK="${usage_link:-static}"
+BENCH_RELEASE="${usage_release:-true}"
+BENCH_MODE="${usage_mode:-all}"
+BENCH_TIME="${usage_time:-20}"
+BENCH_CONCURRENCY="${usage_concurrency:-1,2,4,8,16}"
+BENCH_WARMUP="${usage_warmup:-5}"
+BENCH_COOLDOWN="${usage_cooldown:-2}"
+BENCH_SANITY="${usage_sanity:-}"
+
+kms_init_env "${BENCH_VARIANT}" "${BENCH_LINK}"
+print_header "Running PKCS#11 load benchmark (${VARIANT_NAME})"
+
+# ── Variables ────────────────────────────────────────────────────────────────
+TMP_DIR="$(mktemp -d /tmp/kms-bench-pkcs11-XXXXXX)"
+BUILD_MODE=$([ "${BENCH_RELEASE}" = "false" ] && echo debug || echo release)
+
+# Sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt.
+# usage always resolves to "true" whether -s flag or BENCH_SANITY=1 env alias is used.
+if [ "${BENCH_SANITY}" = "true" ]; then
+  BUILD_MODE="debug"
+  BENCH_TIME="2"
+  BENCH_WARMUP="0"
+  BENCH_COOLDOWN="0"
+  BENCH_MODE="encrypt"
+  BENCH_CONCURRENCY="1,2"
+fi
+
+bench_register_cleanup
+
+# Build the server, the cosmian_pkcs11 cdylib, and the benchmark binary.
+BUILD_ARGS=(-p cosmian_kms_server -p cosmian_pkcs11 -p cosmian_pkcs11_bench)
+[ "${BUILD_MODE}" = "release" ] && BUILD_ARGS+=(--release)
+echo "Building cosmian_kms server, cosmian_pkcs11 provider, and the PKCS#11 benchmark (${BUILD_MODE})..."
+cargo build "${BUILD_ARGS[@]}" ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+
+# shellcheck disable=SC2119
+CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$(get_repo_root)/target}"
+export CARGO_TARGET_DIR
+KMS_BIN="${CARGO_TARGET_DIR}/${BUILD_MODE}/cosmian_kms"
+PKCS11_BENCH_BIN="${CARGO_TARGET_DIR}/${BUILD_MODE}/pkcs11_bench"
+export KMS_BIN
+
+PKCS11_LIB="$(get_cosmian_pkcs11_lib "${CARGO_TARGET_DIR}" "${BUILD_MODE}")"
+
+BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+bench_start_server "$BENCH_PORT" "$TMP_DIR"
+
+# The cosmian_pkcs11 provider resolves its own KMS server URL from a ckms.toml
+# (CKMS_CONF env var > ckms.toml next to the DLL > default search path) — it does
+# NOT read the benchmark binary's --kms-url flag. Without this, C_Initialize would
+# connect to the default http://localhost:9998 instead of the temporary server
+# started above.
+CKMS_CONF="${TMP_DIR}/ckms.toml"
+cat >"${CKMS_CONF}" <<EOF
+[http_config]
+server_url = "http://127.0.0.1:${BENCH_PORT}"
+EOF
+export CKMS_CONF
+
+# CRITERION_HOME is where the benchmark binary writes load_pkcs11.json and where
+# bench_generate_report reads it from — same variable, same directory convention as
+# `bench/load` and `bench/load-hsm`. Always start from a clean slate so results are
+# never mixed with output from another bench task's earlier run.
+export CRITERION_HOME="${CRITERION_HOME:-${CARGO_TARGET_DIR}/criterion}"
+echo "Cleaning ${CRITERION_HOME}..."
+rm -rf "${CRITERION_HOME}"
+mkdir -p "${CRITERION_HOME}"
+
+bench_warn_cpu_scaling
+
+# BENCH_PROTOCOL feeds bench_collect_env's "Load test parameters" table (via
+# bench_generate_report below, called later in this script) — there is only one
+# "protocol" here: the real PKCS#11 Cryptoki C ABI, dlopen()-ed directly, not any
+# KMIP wire protocol.
+# shellcheck disable=SC2034  # read by bench_collect_env (sourced from bench_helpers.sh) as a global
+BENCH_PROTOCOL="pkcs11"
+
+"${PKCS11_BENCH_BIN}" \
+  --pkcs11-lib "${PKCS11_LIB}" \
+  --kms-url "http://127.0.0.1:${BENCH_PORT}" \
+  --mode "${BENCH_MODE}" \
+  --concurrency "${BENCH_CONCURRENCY}" \
+  --time "${BENCH_TIME}" \
+  --warmup "${BENCH_WARMUP}" \
+  --cooldown "${BENCH_COOLDOWN}"
+
+# Dedicated report directory (documentation/docs/benchmarks/ckms_bench_pkcs11/) so
+# this never clobbers the ckms_bench / ckms_bench_hsm_kek / ckms_bench_hsm reports
+# generated by bench/load and bench/load-hsm. is_pkcs11=true selects the PKCS#11
+# Protocols/Methodology report text in plot_version_compare.py instead of the
+# generic KMIP-wire-protocol text.
+bench_generate_report "${BENCH_PORT}" "ckms_bench_pkcs11" "false" "false" "true"
+
+print_success "PKCS#11 load benchmark completed"

@@ -8,14 +8,12 @@ use std::{
 };
 
 use cosmian_kms_interfaces::{
-    CryptoAlgorithm, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent, HashingAlgorithm,
-    HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
+    CryptoAlgorithm, EcCurve, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent,
+    HashingAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
     KeyType::{AesKey, EcPrivateKey, EcPublicKey, RsaPrivateKey, RsaPublicKey},
     RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
 };
 use cosmian_logger::{debug, trace};
-#[cfg(feature = "non-fips")]
-use pkcs11_sys::CKM_EDDSA;
 use pkcs11_sys::{
     CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_DATE, CK_FALSE, CK_HKDF_PARAMS, CK_KEY_TYPE,
     CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
@@ -124,28 +122,6 @@ pub enum HsmSigningAlgorithm {
     /// `base_hsm`-internal callers and tests until the KMIP integration phase wires it
     /// up. Requires a key generated with `Session::generate_eddsa_key_pair`.
     Eddsa,
-    /// RSA-PSS signing. When `prehashed` is true, use raw `CKM_RSA_PKCS_PSS`; otherwise use the
-    /// corresponding hashing mechanism `CKM_SHA*_RSA_PKCS_PSS`.
-    RsaPss {
-        hashing_algorithm: HashingAlgorithm,
-        mask_generator_hashing_algorithm: HashingAlgorithm,
-        salt_length: Option<u32>,
-        prehashed: bool,
-    },
-    /// ECDSA signing. When `prehashed` is true, use raw `CKM_ECDSA`; otherwise use
-    /// `CKM_ECDSA_SHA*`. PKCS#11 returns raw `r || s`, which is re-encoded to DER to match the
-    /// software ECDSA signing convention (`ecdsa_sign` in `crate::crypto`).
-    Ecdsa {
-        hashing_algorithm: HashingAlgorithm,
-        prehashed: bool,
-    },
-    /// `CKM_EDDSA` over an Ed25519 private key (pure `EdDSA`, un-hashed input). Non-FIPS: see
-    /// `crate::crypto::elliptic_curves::sign` for the equivalent software gating (issue #1157).
-    #[cfg(feature = "non-fips")]
-    Ed25519,
-    /// `CKM_EDDSA` over an Ed448 private key.
-    #[cfg(feature = "non-fips")]
-    Ed448,
 }
 
 impl From<SigningAlgorithm> for HsmSigningAlgorithm {
@@ -159,28 +135,6 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
             SigningAlgorithm::Sha256WithRsa => Self::Sha256WithRsa,
             SigningAlgorithm::Sha384WithRsa => Self::Sha384WithRsa,
             SigningAlgorithm::Sha512WithRsa => Self::Sha512WithRsa,
-            SigningAlgorithm::RsaPss {
-                hashing_algorithm,
-                mask_generator_hashing_algorithm,
-                salt_length,
-                prehashed,
-            } => Self::RsaPss {
-                hashing_algorithm,
-                mask_generator_hashing_algorithm,
-                salt_length,
-                prehashed,
-            },
-            SigningAlgorithm::Ecdsa {
-                hashing_algorithm,
-                prehashed,
-            } => Self::Ecdsa {
-                hashing_algorithm,
-                prehashed,
-            },
-            #[cfg(feature = "non-fips")]
-            SigningAlgorithm::Ed25519 => Self::Ed25519,
-            #[cfg(feature = "non-fips")]
-            SigningAlgorithm::Ed448 => Self::Ed448,
             SigningAlgorithm::RsaPss {
                 hashing_algorithm,
                 mask_generator_hashing_algorithm,

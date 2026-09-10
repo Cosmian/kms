@@ -31,16 +31,18 @@ source "${_PKCS11_HELPERS_DIR}/kms_server.sh"
 # Usage:
 #   pkcs11_lib=$(get_cosmian_pkcs11_lib)
 #   pkcs11_lib=$(get_cosmian_pkcs11_lib "$cargo_target_dir")
+#   pkcs11_lib=$(get_cosmian_pkcs11_lib "$cargo_target_dir" "release")
 get_cosmian_pkcs11_lib() {
   local cargo_target_dir="${1:-${CARGO_TARGET_DIR:-}}"
+  local build_mode="${2:-debug}"
   if [ -z "$cargo_target_dir" ]; then
     cargo_target_dir="$(get_repo_root)/target"
   fi
   local lib
   if [ "$(uname)" = "Darwin" ]; then
-    lib="$cargo_target_dir/debug/libcosmian_pkcs11.dylib"
+    lib="$cargo_target_dir/$build_mode/libcosmian_pkcs11.dylib"
   else
-    lib="$cargo_target_dir/debug/libcosmian_pkcs11.so"
+    lib="$cargo_target_dir/$build_mode/libcosmian_pkcs11.so"
   fi
   if [ ! -f "$lib" ]; then
     echo "ERROR: PKCS#11 library not found: $lib" >&2

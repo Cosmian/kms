@@ -526,7 +526,7 @@ PYEOF
 
 # Generate SVG charts and a markdown report from benchmark data.
 # Call after running load tests and/or criterion benchmarks.
-# Usage: bench_generate_report <kms_port> [docs_subdir] [is_hsm] [is_hsm_kek]
+# Usage: bench_generate_report <kms_port> [docs_subdir] [is_hsm] [is_hsm_kek] [is_pkcs11]
 #   docs_subdir defaults to "ckms_bench" (the shared software-bench baseline
 #   used by bench/load). Pass a distinct name (e.g. "ckms_bench_hsm" or
 #   "ckms_bench_hsm_kek") to avoid clobbering that baseline with a different
@@ -540,6 +540,12 @@ PYEOF
 #   Protocols/Methodology sections keep the generic software-bench text but
 #   are prefixed with a short note that the KEK (not the benchmarked keys)
 #   is HSM-resident. Ignored if is_hsm is "true".
+#   is_pkcs11 ("true"/"false", default "false"): when "true" (and is_hsm and
+#   is_hsm_kek are both "false"), passes --pkcs11 to plot_version_compare.py
+#   so the report's Protocols/Methodology sections describe the real
+#   dlopen()-based Cryptoki C API benchmark (see `bench/load-pkcs11`) instead
+#   of the generic KMIP-wire-protocol text. Ignored if is_hsm or is_hsm_kek
+#   is "true".
 # Reads:  $CRITERION_HOME/load_*.json  (load tests)
 #         $CRITERION_HOME/criterion.json  (criterion benchmarks)
 # Writes: $CRITERION_HOME/reports/<version>/  data files + report.md + SVGs
@@ -551,6 +557,7 @@ bench_generate_report() {
   local docs_subdir="${2:-ckms_bench}"
   local is_hsm="${3:-false}"
   local is_hsm_kek="${4:-false}"
+  local is_pkcs11="${5:-false}"
 
   # Compute criterion home step-by-step to avoid deeply nested expansions.
   local crit_home
@@ -597,8 +604,13 @@ bench_generate_report() {
 
   echo "Generating report..."
   local plot_args=("${report_dir}" "${version}")
-  [ "${is_hsm}" = "true" ] && plot_args+=("--hsm")
-  [ "${is_hsm}" != "true" ] && [ "${is_hsm_kek}" = "true" ] && plot_args+=("--kek")
+  if [ "${is_hsm}" = "true" ]; then
+    plot_args+=("--hsm")
+  elif [ "${is_hsm_kek}" = "true" ]; then
+    plot_args+=("--kek")
+  elif [ "${is_pkcs11}" = "true" ]; then
+    plot_args+=("--pkcs11")
+  fi
   python3 "${plot_script}" "${plot_args[@]}" || {
     echo "WARNING: report generation failed — raw data is in ${report_dir}/${version}/"
     return 0
