@@ -134,6 +134,8 @@ exclude = [
 
   # Fortinet documentation — returns 503 to automated crawlers
   'docs\.fortinet\.com',
+  # GNOME GitLab — returns 500 Internal Server Error to automated crawlers
+  'gitlab\.gnome\.org',
 
   # Fragment/anchor patterns that are not real URLs
   'get--export',

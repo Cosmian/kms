@@ -222,6 +222,10 @@ impl KMS {
     }
 
     /// Get all the access rights granted to a given user
+    ///
+    /// Excludes objects owned by `user`: the owner already has full,
+    /// implicit access to their own objects, so a wildcard `*` grant must
+    /// not cause an owned object to be listed as "obtained" via a grant.
     pub(crate) async fn list_access_rights_obtained(
         &self,
         user: &UserId,
@@ -229,6 +233,7 @@ impl KMS {
         let list = self.database.list_user_operations_granted(user).await?;
         let ids: Vec<AccessRightsObtainedResponse> = list
             .into_iter()
+            .filter(|(_, (owner, _, _))| owner.as_str() != user.as_str())
             .map(|entry| {
                 let mut resp = AccessRightsObtainedResponse::from(entry);
                 // For HSM keys (not in the objects table), use the HSM

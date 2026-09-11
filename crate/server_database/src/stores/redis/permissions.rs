@@ -181,11 +181,20 @@ impl PermissionDB {
 
     /// List all the permissions granted to a user
     /// per object uid
+    ///
+    /// Also includes permissions granted to the wildcard user `*` (unless
+    /// `user_id` itself is the wildcard), so that access rights obtained via
+    /// a wildcard grant are reported as "obtained" by the requesting user too.
     pub(crate) async fn list_user_permissions(
         &self,
         user_id: &FindexUserId,
     ) -> DbResult<HashMap<ObjectUid, HashSet<KmipOperation>>> {
-        let all_user_permissions = self.search_one_keyword(Keyword::from(user_id)).await?;
+        let mut all_user_permissions = self.search_one_keyword(Keyword::from(user_id)).await?;
+        if user_id.0 != "*" {
+            let wildcard_id = FindexUserId("*".to_owned());
+            all_user_permissions
+                .extend(self.search_one_keyword(Keyword::from(&wildcard_id)).await?);
+        }
         Ok(PermTriple::permissions_per_object(all_user_permissions))
     }
 
