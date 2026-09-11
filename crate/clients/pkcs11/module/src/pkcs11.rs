@@ -139,7 +139,10 @@ macro_rules! valid_slot {
 pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
     // In this structure 'version' is the cryptoki specification version number. The major and minor
     // versions must be set to 0x02 and 0x28 indicating a version 2.40 compatible structure.
-    version: CK_VERSION { major: 2, minor: 4 },
+    version: CK_VERSION {
+        major: 2,
+        minor: 40,
+    },
     C_Initialize: Some(C_Initialize),
     C_Finalize: Some(C_Finalize),
     C_GetInfo: Some(C_GetInfo),
@@ -212,8 +215,14 @@ pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
 
 cryptoki_fn!(
     fn C_Initialize(pInitArgs: CK_VOID_PTR) {
+        cosmian_logger::info!("C_Initialize: begin (args_null={})", pInitArgs.is_null());
         if !pInitArgs.is_null() {
             let args = unsafe { *(pInitArgs as CK_C_INITIALIZE_ARGS_PTR) };
+            cosmian_logger::info!(
+                "C_Initialize: flags=0x{:x}, reserved_null={}",
+                args.flags,
+                args.pReserved.is_null()
+            );
             if !args.pReserved.is_null() {
                 return Err(ModuleError::BadArguments(
                     "C_Initialize: pReserved is not null".to_owned(),
@@ -223,6 +232,7 @@ cryptoki_fn!(
         if INITIALIZED.swap(true, Ordering::SeqCst) {
             return Err(ModuleError::CryptokiAlreadyInitialized);
         }
+        cosmian_logger::info!("C_Initialize: returning CKR_OK");
         Ok(())
     }
 );

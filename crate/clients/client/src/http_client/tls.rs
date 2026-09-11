@@ -49,7 +49,12 @@ fn iana_to_openssl_tls12(iana: &str) -> Option<&'static str> {
 pub(crate) fn build_ssl_connector(
     http_conf: &HttpClientConfig,
 ) -> HttpClientResult<SslConnectorBuilder> {
+    eprintln!("build_ssl_connector: about to initialize OpenSSL");
+    openssl::init();
+    eprintln!("build_ssl_connector: OpenSSL initialized");
+    eprintln!("build_ssl_connector: about to call SslConnector::builder");
     let mut builder = SslConnector::builder(SslMethod::tls_client())?;
+    eprintln!("build_ssl_connector: SslConnector::builder returned Ok");
 
     // Certificate verification
     if http_conf.accept_invalid_certs {
@@ -66,7 +71,9 @@ pub(crate) fn build_ssl_connector(
     }
 
     // Client certificate authentication (PEM or PKCS#12)
+    eprintln!("build_ssl_connector: about to call add_client_identity");
     add_client_identity(&mut builder, http_conf)?;
+    eprintln!("build_ssl_connector: add_client_identity returned Ok");
 
     // Cipher suites configuration
     if let Some(ref cipher_suites) = http_conf.cipher_suites {
@@ -155,17 +162,25 @@ fn add_client_identity(
         // Verify the private key matches the certificate
         builder.check_private_key()?;
     } else if let Some(pkcs12_path) = &http_conf.tls_client_pkcs12_path {
+        eprintln!("add_client_identity: about to open pkcs12 file: {pkcs12_path}");
         let mut pkcs12_file = BufReader::new(File::open(pkcs12_path)?);
         let mut pkcs12_bytes = vec![];
         pkcs12_file.read_to_end(&mut pkcs12_bytes)?;
+        eprintln!(
+            "add_client_identity: pkcs12 file read, {} bytes",
+            pkcs12_bytes.len()
+        );
 
         let password = http_conf
             .tls_client_pkcs12_password
             .as_deref()
             .unwrap_or_default();
 
+        eprintln!("add_client_identity: about to call Pkcs12::from_der");
         let pkcs12 = Pkcs12::from_der(&pkcs12_bytes)?;
+        eprintln!("add_client_identity: Pkcs12::from_der returned Ok, about to call parse2");
         let parsed = pkcs12.parse2(password)?;
+        eprintln!("add_client_identity: parse2 returned Ok");
 
         if let Some(cert) = parsed.cert {
             builder.set_certificate(&cert)?;
@@ -178,7 +193,9 @@ fn add_client_identity(
                 builder.add_extra_chain_cert(ca_cert)?;
             }
         }
+        eprintln!("add_client_identity: about to call check_private_key");
         builder.check_private_key()?;
+        eprintln!("add_client_identity: check_private_key returned Ok");
     }
 
     Ok(())
