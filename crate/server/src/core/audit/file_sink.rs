@@ -10,9 +10,10 @@
 //!
 //! Always-start recovery
 //! ======================
-//! `writer_supervisor` guarantees the KMS always starts regardless of the audit log's
+//! [`FileSink::resume`] guarantees the KMS always starts regardless of the audit log's
 //! state: it acquires the exclusive lock and recovers/opens the file inside a
-//! self-healing retry loop that runs in the background, never blocking the caller.
+//! self-healing retry loop that never returns an error — the generic writer task simply
+//! awaits it while events are buffered upstream in the channel, never blocking the caller.
 //! Recovery is routed by cause (see `TailOutcome`) rather than one global policy: a torn
 //! (interrupted) write is truncated and the chain resumes in place; a tampered or
 //! structurally invalid row is sealed aside as forensic evidence and a fresh chain
@@ -22,20 +23,17 @@ use std::{
     ffi::{OsStr, OsString},
     io::{Read, Seek, Write},
     path::{Path, PathBuf},
-    sync::{Arc, atomic::AtomicU64},
+    sync::{Arc, atomic::Ordering},
 };
 
+use async_trait::async_trait;
 use cosmian_kms_access::audit::{
     AuditEvent, AuditEventDraft, AuditResult, verify_chain_link, verify_event,
 };
+use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult};
 use cosmian_logger::{debug, error};
 use time::OffsetDateTime;
-use tokio::sync::mpsc;
 
-use super::{
-    store::WriterMsg,
-    writer::{write_draft_to_chain, writer_loop},
-};
 use crate::{error::KmsError, result::KResult};
 
 /// Bytes read from the end of an existing log to locate the last complete event
@@ -50,11 +48,6 @@ const LOCK_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_milli
 /// How long to wait between attempts to recover/open the audit log after a
 /// content-independent I/O fault (EACCES, EIO, read-only mount, missing disk).
 const OPEN_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
-
-/// Minimum interval between "still capped" debug log lines while blocked events
-/// keep arriving — avoids flooding the log once `max_size_bytes` is reached.
-pub(super) const CAPPED_DEBUG_LOG_INTERVAL: std::time::Duration =
-    std::time::Duration::from_millis(500);
 
 /// Cross-task state for the optional `max_size_bytes` write-stop cap.
 ///
@@ -434,7 +427,7 @@ fn truncate_and_continue(
         details: Some(details),
     };
     let mut chain_prev_hash = prev_hash;
-    let final_next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut chain_prev_hash);
+    let final_next_id = write_recovery_sentinel(&mut sink, draft, next_id, &mut chain_prev_hash);
 
     Ok((final_next_id, chain_prev_hash))
 }
@@ -540,76 +533,203 @@ fn seal_and_roll(
     // Reanchor is a new chain root — continuity across a sealed, untrusted tail is never
     // asserted (see module docs).
     let mut prev_hash = [0_u8; 32];
-    let next_id = write_draft_to_chain(&mut sink, draft, 0, &mut prev_hash);
+    let next_id = write_recovery_sentinel(&mut sink, draft, 0, &mut prev_hash);
 
     Ok((next_id, prev_hash))
 }
 
-/// Abstraction over the audit log's underlying writer.
+/// Serialises `event` as a single JSONL line and durably syncs it to `file`.
 ///
-/// This exists so the fault path (`write_event` failing mid-run) can be
-/// exercised in tests with a mock sink, without touching real files —
-/// production always uses `std::fs::File`.
-pub(super) trait AuditSink {
-    /// Serialises and durably persists one event.
+/// Shared by [`FileSink::write_event`] (steady-state, called from the async writer task)
+/// and [`write_recovery_sentinel`] (recovery-time, called from a `spawn_blocking` context
+/// with no async runtime available) so both paths write byte-identical rows.
+///
+/// `sync_data()` is called on every write to guarantee durability: without it data sits
+/// in the kernel page cache and is lost on a power failure. The tradeoff is one `fsync`
+/// per audit event; high-throughput deployments can reduce cost by batching syncs (every
+/// N events or every T ms).
+fn write_event_line(file: &mut std::fs::File, event: &AuditEvent) -> std::io::Result<()> {
+    serde_json::to_writer(&mut *file, event)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    file.write_all(b"\n")?;
+    file.sync_data()
+}
+
+/// Writes a synthetic recovery sentinel (torn-write-recovered / reanchor) directly to
+/// `file`, advancing the chain on success and leaving it untouched on failure — mirroring
+/// the writer loop's own "never advance on a failed write" rule.
+///
+/// A plain sync helper rather than a call through [`AuditSink`]: `recover_and_open` runs
+/// inside `spawn_blocking`, before the async writer task (and its sink) exist at all.
+fn write_recovery_sentinel(
+    file: &mut std::fs::File,
+    draft: AuditEventDraft,
+    next_id: i64,
+    prev_hash: &mut [u8; 32],
+) -> i64 {
+    let event = draft.finalize(next_id, *prev_hash);
+    match write_event_line(file, &event) {
+        Ok(()) => {
+            *prev_hash = event.row_hash;
+            next_id.checked_add(1).unwrap_or(next_id)
+        }
+        Err(e) => {
+            error!(
+                "AuditFileStore: failed to write recovery sentinel id={}: {e} — event dropped",
+                event.id
+            );
+            next_id
+        }
+    }
+}
+
+/// The file-backed [`AuditSink`]: persists the audit chain as a tamper-evident JSONL file
+/// with the always-start, self-healing recovery documented at the top of this module.
+///
+/// Historically (before this trait existed) a write failure was always logged and
+/// skipped rather than treated as fatal — [`AuditSink::write_failure_is_fatal`] is
+/// overridden to `false` to preserve that behaviour.
+pub(crate) struct FileSink {
+    path: PathBuf,
+    write_state: Arc<AuditWriteState>,
+    /// `None` until [`Self::resume`] has run; the trait contract guarantees `resume` is
+    /// called exactly once before any `write_event_atomic`.
+    file: Option<std::fs::File>,
+    /// Held for the sink's entire lifetime — the OS releases it automatically on drop or
+    /// process exit, so a crash never leaves a stale lock behind. Never read after
+    /// acquisition; kept alive purely for its `Drop` behaviour.
+    #[allow(dead_code, reason = "kept alive for its Drop impl, never read again")]
+    lock: Option<std::fs::File>,
+}
+
+impl FileSink {
+    /// Builds a not-yet-resumed file sink for `path`. `write_state` is shared with the
+    /// `AuditFileStore` handle so `enqueue()`'s fast pre-check and this sink's own
+    /// post-write cap update observe the same flag.
+    pub(super) const fn new(path: PathBuf, write_state: Arc<AuditWriteState>) -> Self {
+        Self {
+            path,
+            write_state,
+            file: None,
+            lock: None,
+        }
+    }
+}
+
+#[async_trait]
+impl AuditSink for FileSink {
+    fn name(&self) -> &'static str {
+        "file"
+    }
+
+    /// Acquires the exclusive lock (retrying forever, without erroring, while a peer
+    /// instance holds it) and recovers/opens the file (retrying forever on a
+    /// content-independent I/O fault — EACCES, EIO, a read-only mount), self-healing the
+    /// moment the fault clears. In practice this never returns `Err`: see the module docs
+    /// for why the file backend always starts.
     ///
     /// # Errors
-    /// On failure, the caller must NOT consider the event committed: it does
-    /// not advance the chain's `next_id`/`prev_hash`, so the same slot is
-    /// reused by the next successfully written event.
-    fn write_event(&mut self, event: &AuditEvent) -> std::io::Result<()>;
+    /// The signature allows an error per the trait contract, but this implementation
+    /// retries indefinitely instead of ever reporting one.
+    async fn resume(&mut self) -> InterfaceResult<ChainHead> {
+        let lock_path = lock_file_path(&self.path);
+        let mut lock_contended_logged = false;
+        let lock = loop {
+            match try_acquire_lock(&lock_path) {
+                Ok(lock) => break lock,
+                Err(e) => {
+                    if lock_contended_logged {
+                        debug!(
+                            "AuditFileStore: still waiting on audit log lock {} ({e})",
+                            lock_path.display()
+                        );
+                    } else {
+                        error!(
+                            "AuditFileStore: audit log lock {} held by another instance ({e}) — \
+                             buffering events until it is released",
+                            lock_path.display()
+                        );
+                        lock_contended_logged = true;
+                    }
+                    tokio::time::sleep(LOCK_RETRY_INTERVAL).await;
+                }
+            }
+        };
+        self.lock = Some(lock);
 
-    /// Called once when the writer loop exits (channel closed). Default is a
-    /// no-op.
-    fn final_sync(&mut self) -> std::io::Result<()> {
+        let (file, next_id, prev_hash) = loop {
+            // `recover_and_open` does blocking `std::fs` I/O (whole-file scan, hash, and
+            // possible rename on seal-and-roll) — run it on the blocking pool so a large
+            // audit log doesn't monopolize this tokio worker thread during recovery.
+            let path_for_recovery = self.path.clone();
+            let recovered =
+                tokio::task::spawn_blocking(move || recover_and_open(&path_for_recovery)).await;
+            match recovered {
+                Ok(Ok(triple)) => break triple,
+                Ok(Err(e)) => {
+                    error!(
+                        "AuditFileStore: cannot open audit log {} ({e}) — retrying",
+                        self.path.display()
+                    );
+                    tokio::time::sleep(OPEN_RETRY_INTERVAL).await;
+                }
+                Err(join_err) => {
+                    error!("AuditFileStore: recovery task failed to run ({join_err}) — retrying");
+                    tokio::time::sleep(OPEN_RETRY_INTERVAL).await;
+                }
+            }
+        };
+
+        enforce_size_cap(&file, &self.write_state, &self.path);
+        self.file = Some(file);
+        Ok(ChainHead { next_id, prev_hash })
+    }
+
+    /// # Errors
+    /// Returns an error if the sink has not been `resume()`d yet, or if the underlying
+    /// write/sync fails. Neither ever advances the chain — see the trait contract.
+    async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<()> {
+        let file = self.file.as_mut().ok_or_else(|| {
+            InterfaceError::Default(
+                "audit: FileSink::write_event called before resume()".to_owned(),
+            )
+        })?;
+        write_event_line(file, event)
+            .map_err(|e| InterfaceError::Default(format!("audit: write failed: {e}")))?;
+        enforce_size_cap(file, &self.write_state, &self.path);
         Ok(())
     }
 
-    /// Current on-disk length in bytes, used to enforce `max_size_bytes`.
-    ///
-    /// Only the real `std::fs::File` sink can answer this meaningfully; mock sinks
-    /// used for fault-injection tests never configure a size cap, so the default
-    /// (`Ok(0)`) is never exercised by them.
-    fn current_len(&self) -> std::io::Result<u64> {
-        Ok(0)
+    /// Preserves the file backend's pre-trait behaviour: a write failure is logged and
+    /// skipped, never fatal to the server.
+    fn write_failure_is_fatal(&self) -> bool {
+        false
+    }
+
+    fn is_write_capacity_exceeded(&self) -> bool {
+        self.write_state.size_limit_reached.load(Ordering::Relaxed)
+    }
+
+    async fn final_sync(&mut self) -> InterfaceResult<()> {
+        if let Some(file) = self.file.as_mut() {
+            file.sync_data()
+                .map_err(|e| InterfaceError::Default(format!("audit: final sync failed: {e}")))?;
+        }
+        Ok(())
     }
 }
 
-impl AuditSink for std::fs::File {
-    /// Serialises `event` as a single JSONL line and syncs to storage.
-    ///
-    /// `sync_data()` is called on every write to guarantee durability: without it
-    /// data sits in the kernel page cache and is lost on a power failure.  The
-    /// tradeoff is one `fsync` per audit event; high-throughput deployments can
-    /// reduce cost by batching syncs (every N events or every T ms).
-    fn write_event(&mut self, event: &AuditEvent) -> std::io::Result<()> {
-        serde_json::to_writer(&mut *self, event)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        self.write_all(b"\n")?;
-        self.sync_data()
-    }
-
-    fn final_sync(&mut self) -> std::io::Result<()> {
-        self.sync_data()
-    }
-
-    fn current_len(&self) -> std::io::Result<u64> {
-        Ok(self.metadata()?.len())
-    }
-}
-
-/// Checks `sink`'s current on-disk length against `write_state.max_size_bytes` and
+/// Checks `file`'s current on-disk length against `write_state.max_size_bytes` and
 /// updates `write_state` on the first transition into the capped state (logging
-/// once). Called right after the writer opens/recovers the file (an already-
-/// oversized log must block immediately) and again after every successful write
-/// (a write that crosses the cap is allowed to land, then blocks everything after
-/// it).
-pub(super) fn enforce_size_cap<S: AuditSink>(sink: &S, write_state: &AuditWriteState, path: &Path) {
+/// once). Called right after the sink resumes/opens the file (an already-oversized log
+/// must block immediately) and again after every successful write (a write that crosses
+/// the cap is allowed to land, then blocks everything after it).
+fn enforce_size_cap(file: &std::fs::File, write_state: &AuditWriteState, path: &Path) {
     let Some(cap) = write_state.max_size_bytes else {
         return;
     };
-    let len = match sink.current_len() {
-        Ok(len) => len,
+    let len = match file.metadata() {
+        Ok(meta) => meta.len(),
         Err(e) => {
             error!(
                 "AuditFileStore: cannot stat audit log {} ({e})",
@@ -621,9 +741,7 @@ pub(super) fn enforce_size_cap<S: AuditSink>(sink: &S, write_state: &AuditWriteS
     if len < cap {
         return;
     }
-    let was_already_capped = write_state
-        .size_limit_reached
-        .swap(true, std::sync::atomic::Ordering::Relaxed);
+    let was_already_capped = write_state.size_limit_reached.swap(true, Ordering::Relaxed);
     if !was_already_capped {
         error!(
             "AuditFileStore: audit log {} reached its configured max_size_bytes cap \
@@ -871,79 +989,4 @@ fn recover_and_open(path: &Path) -> KResult<(std::fs::File, i64, [u8; 32])> {
     })?;
 
     Ok((file, next_id, prev_hash))
-}
-
-/// Supervises the writer's lifecycle so the KMS always starts, regardless of the audit
-/// log's state: acquires the exclusive lock (retrying in the background, without draining
-/// the channel, if a peer holds it), recovers/opens the file (retrying if the path is
-/// unwritable — EACCES, EIO, a read-only mount — so audit logging self-heals the moment
-/// the fault clears), then runs the normal `writer_loop`.
-///
-/// Events enqueued while waiting for either step are genuinely queued in the channel and
-/// flushed in order once the writer proceeds — they are not dropped. Only a channel that
-/// fills to capacity during the wait spills to drop + eviction-sentinel, exactly like
-/// saturation during normal operation.
-pub(super) async fn writer_supervisor(
-    path: PathBuf,
-    rx: mpsc::Receiver<WriterMsg>,
-    dropped_count: Arc<AtomicU64>,
-    write_state: Arc<AuditWriteState>,
-) {
-    let lock_path = lock_file_path(&path);
-    let mut lock_contended_logged = false;
-    let _lock = loop {
-        match try_acquire_lock(&lock_path) {
-            Ok(lock) => break lock,
-            Err(e) => {
-                if lock_contended_logged {
-                    debug!(
-                        "AuditFileStore: still waiting on audit log lock {} ({e})",
-                        lock_path.display()
-                    );
-                } else {
-                    error!(
-                        "AuditFileStore: audit log lock {} held by another instance ({e}) — \
-                         buffering events until it is released",
-                        lock_path.display()
-                    );
-                    lock_contended_logged = true;
-                }
-                tokio::time::sleep(LOCK_RETRY_INTERVAL).await;
-            }
-        }
-    };
-
-    let (sink, next_id, prev_hash) = loop {
-        // `recover_and_open` does blocking `std::fs` I/O (whole-file scan, hash, and
-        // possible rename on seal-and-roll) — run it on the blocking pool so a large
-        // audit log doesn't monopolize this tokio worker thread during startup/recovery.
-        let path_for_recovery = path.clone();
-        let recovered =
-            tokio::task::spawn_blocking(move || recover_and_open(&path_for_recovery)).await;
-        match recovered {
-            Ok(Ok(triple)) => break triple,
-            Ok(Err(e)) => {
-                error!(
-                    "AuditFileStore: cannot open audit log {} ({e}) — retrying",
-                    path.display()
-                );
-                tokio::time::sleep(OPEN_RETRY_INTERVAL).await;
-            }
-            Err(join_err) => {
-                error!("AuditFileStore: recovery task failed to run ({join_err}) — retrying");
-                tokio::time::sleep(OPEN_RETRY_INTERVAL).await;
-            }
-        }
-    };
-
-    writer_loop(
-        sink,
-        next_id,
-        prev_hash,
-        rx,
-        dropped_count,
-        write_state,
-        &path,
-    )
-    .await;
 }
