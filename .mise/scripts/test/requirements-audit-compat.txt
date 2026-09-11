@@ -1,1 +1,4 @@
 requests>=2.31.0,<3.0.0
+# urllib3 is used directly (disable_warnings) in validate_audit_compat.py, not just
+# transitively via requests; pin it explicitly so it can't silently disappear.
+urllib3>=2.0.0,<3.0.0

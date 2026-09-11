@@ -3,12 +3,11 @@
 #USAGE flag "-f --file <file>" env="AUDIT_FILE" help="Path to the KMS JSONL audit file" default=".mise/scripts/test/fixtures/sample-audit.jsonl"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/audit_compat.sh"
 
 print_header "Splunk audit JSONL compatibility test"
 
-require_cmd docker "Docker is required to run the ephemeral Splunk container."
-require_cmd python3
-require_cmd curl
+audit_compat_require_common_cmds "Splunk"
 
 if [ -z "${SPLUNK_PASSWORD:-}" ]; then
   print_error "SPLUNK_PASSWORD env var must be set (CI secret, 8+ chars, one number/uppercase)"
@@ -20,13 +19,8 @@ SPLUNK_HOST=127.0.0.1
 SPLUNK_MGMT_PORT=8089
 SPLUNK_HEC_PORT=8088
 CONTAINER_NAME="kms-audit-compat-splunk-$$"
+audit_compat_container_cleanup_trap "${CONTAINER_NAME}"
 HEC_TOKEN="$(python3 -c 'import uuid; print(uuid.uuid4())')"
-
-cleanup() {
-  print_status "Removing container ${CONTAINER_NAME}"
-  docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
-}
-trap cleanup EXIT
 
 print_status "Starting ephemeral Splunk container (no volume, --rm)"
 # splunk/splunk has no native arm64 manifest; force amd64 (emulated via Rosetta/QEMU
@@ -72,9 +66,9 @@ curl -fsSk -u "admin:${SPLUNK_PASSWORD}" \
   -d "disabled=0" \
   "https://${SPLUNK_HOST}:${SPLUNK_MGMT_PORT}/servicesNS/nobody/splunk_httpinput/data/inputs/http" >/dev/null
 
-python3 -m pip install --quiet -r "${REPO_ROOT}/.mise/scripts/test/requirements-audit-compat.txt"
+PYTHON_BIN=$(audit_compat_python "${REPO_ROOT}")
 
-python3 "${REPO_ROOT}/.mise/scripts/test/validate_audit_compat.py" \
+"${PYTHON_BIN}" "${REPO_ROOT}/.mise/scripts/test/validate_audit_compat.py" \
   --backend splunk \
   --file "${AUDIT_FILE}" \
   --fields-file "${REPO_ROOT}/schemas/kms-audit-fields.json" \

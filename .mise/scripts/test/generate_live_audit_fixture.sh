@@ -2,9 +2,9 @@
 # Generate a live KMS JSONL audit fixture (non-fips only — audit middleware feature gate)
 # for the OpenSearch/Splunk SIEM compat checks, instead of relying on a static fixture.
 #
-# Mirrors the KMIP operation mix driven by test_audit_log.sh (Create, Encrypt,
-# Decrypt, Destroy, + 1 deliberate Failure) so the two tests exercise the same
-# real audit event shapes, then hands off the resulting file at --output.
+# Drives Create -> Encrypt -> Decrypt -> Revoke -> Destroy (all expected to
+# succeed) plus one deliberate Failure (export of a non-existent key), then
+# hands off the resulting file at --output.
 #
 # Usage:
 #   bash .mise/scripts/test/generate_live_audit_fixture.sh --output /path/to/audit.jsonl
@@ -64,16 +64,16 @@ kms_start_from_bin "${kms_bin}"
 ckms_conf=$(kms_write_ckms_conf)
 
 ckms_json() {
-  COSMIAN_KMS_CLI_FORMAT=json "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null
+  COSMIAN_KMS_CLI_FORMAT=json "${ckms_bin}" --conf-path "${ckms_conf}" "$@"
 }
 ckms_run() {
-  "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null || true
+  "${ckms_bin}" --conf-path "${ckms_conf}" "$@" >/dev/null
 }
 extract_uid() {
   grep -o '"unique_identifier": *"[^"]*"' | head -1 | sed 's/"unique_identifier": *"//;s/"$//'
 }
 
-echo "==> Driving KMIP operations (Create, Encrypt, Decrypt, Destroy, 1 deliberate Failure)..."
+echo "==> Driving KMIP operations (Create, Encrypt, Decrypt, Revoke, Destroy, 1 deliberate Failure)..."
 CREATE_OUT=$(ckms_json sym keys create --algorithm aes --number-of-bits 256)
 SYM_UID=$(echo "${CREATE_OUT}" | extract_uid)
 
@@ -83,16 +83,28 @@ ENCRYPTED="${TMPDIR_DATA}/encrypted.bin"
 DECRYPTED="${TMPDIR_DATA}/decrypted.txt"
 echo "Hello, live audit compat fixture!" >"${PLAINTEXT}"
 
-ckms_run sym encrypt "${PLAINTEXT}" --key-id "${SYM_UID}" --output "${ENCRYPTED}"
-ckms_run sym decrypt "${ENCRYPTED}" --key-id "${SYM_UID}" --output "${DECRYPTED}"
+# Every call below is expected to succeed (script exits on the first failure, see
+# `set -e`), except the deliberate Failure at the end which is explicitly allowed to fail.
+ckms_run sym encrypt "${PLAINTEXT}" --key-id "${SYM_UID}" --output-file "${ENCRYPTED}"
+ckms_run sym decrypt "${ENCRYPTED}" --key-id "${SYM_UID}" --output-file "${DECRYPTED}"
+# KMIP forbids destroying an Active key directly; it must be revoked first.
+ckms_run sym keys revoke "audit fixture teardown" --key-id "${SYM_UID}"
 ckms_run sym keys destroy --key-id "${SYM_UID}"
 rm -rf "${TMPDIR_DATA}"
 
 # Deliberate Failure: export a non-existent key to produce a Failure result event
-ckms_run sym keys export --key-id "00000000-0000-0000-0000-000000000000"
+ckms_run sym keys export --key-id "00000000-0000-0000-0000-000000000000" "$(mktemp -t audit-compat-export-XXXXXX)" || true
 
 echo "==> Waiting for audit events to flush..."
-sleep 2
+previous_count=-1
+for _ in $(seq 1 20); do
+  current_count=$(grep -c . "${OUTPUT}" 2>/dev/null || echo 0)
+  if [ "${current_count}" -gt 0 ] && [ "${current_count}" = "${previous_count}" ]; then
+    break
+  fi
+  previous_count="${current_count}"
+  sleep 0.5
+done
 
 if [ ! -s "${OUTPUT}" ]; then
   echo "ERROR: no audit events were written to ${OUTPUT}" >&2
