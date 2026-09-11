@@ -260,6 +260,11 @@ pub(crate) struct Pkcs11Session<'lib> {
 static CRYPTOKI_INITIALIZED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+/// Process-wide monotonic counter suffixing every `generate_and_destroy_key` label, so
+/// concurrent worker threads never request the same KMIP `unique_identifier` for two
+/// simultaneously-live ephemeral keys. See the call site's doc comment for why this matters.
+static NEXT_KEY_CREATION_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 impl<'lib> Pkcs11Session<'lib> {
     pub(crate) fn reset_sign_profile(&self) -> BenchResult<()> {
         self.lib.reset_sign_profile()
@@ -765,7 +770,17 @@ impl<'lib> Pkcs11Session<'lib> {
         let mut sensitive: CK_BBOOL = CK_TRUE as CK_BBOOL;
         let mut extractable: CK_BBOOL = CK_TRUE as CK_BBOOL;
         let mut value_len: CK_ULONG = 16;
-        let label = "pkcs11-bench-key-creation";
+        // `cosmian_pkcs11_provider::kms_object::kms_import_symmetric_key_async` requests the
+        // KMIP `unique_identifier` directly from `CKA_LABEL` — a fixed label here would make
+        // every concurrent worker thread's `C_GenerateKey` call race to create/overwrite the
+        // *same* underlying KMS object, corrupting the module's global object store (two
+        // threads' still-live handles silently collapsing onto one entry) and causing sporadic
+        // `C_DestroyObject` failures (`CKR_OBJECT_HANDLE_INVALID`) once concurrency > 1. Suffix
+        // with a process-wide monotonic counter so every generated key gets its own identity.
+        let label = format!(
+            "pkcs11-bench-key-creation-{}",
+            NEXT_KEY_CREATION_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
         let mut template = [
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,

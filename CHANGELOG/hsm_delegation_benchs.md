@@ -689,3 +689,56 @@ passing) to confirm no regression on the HSM that previously worked. The Crypt2p
 path itself could not be re-verified locally (requires the physical/emulated
 Crypt2pay HSM only available in CI), but the fix only changes behavior for the two
 previously-unhandled return codes on this one call site.
+
+### Fix `mise bench:load-pkcs11 --mode key-creation` at concurrency > 1: `C_DestroyObject` (`CKR_OBJECT_HANDLE_INVALID`)
+
+Running `mise bench:load-pkcs11` (any mode set including `key-creation`, at any
+requested concurrency above 1) reliably failed partway through with:
+
+```
+Error: Cryptoki { op: "C_DestroyObject", rv: 130 }
+```
+
+(`130` = `0x82` = `CKR_OBJECT_HANDLE_INVALID`.)
+
+Root cause, found via `COSMIAN_PKCS11_LOGGING_LEVEL=debug`: two independent bugs
+compounded.
+
+1. **Benchmark bug (the actual trigger)**: `Pkcs11Session::generate_and_destroy_key`
+   (`crate/clients/pkcs11/bench/src/loader.rs`) generated every ephemeral AES key
+   with the exact same, hardcoded `CKA_LABEL` (`"pkcs11-bench-key-creation"`).
+   `cosmian_pkcs11_provider::kms_object::kms_import_symmetric_key_async` requests
+   the KMIP `unique_identifier` directly from that label
+   (`unique_identifier: label.map(|l| UniqueIdentifier::TextString(l.to_owned()))`),
+   so every worker thread's `C_GenerateKey` call raced to create/overwrite the
+   *same* underlying KMS object — confirmed in the debug log, which showed every
+   single generated key logged as `STORE: inserting new object with remote id:
+   pkcs11-bench-key-creation` (the literal label, identical across hundreds of
+   keys) and, at the moment of failure, two different sessions both holding
+   handle 296 for what the module's global object store now considered a single
+   object. Fixed by suffixing the label with a process-wide monotonic counter
+   (`NEXT_KEY_CREATION_ID`, a new `static AtomicU64`) so every generated key gets
+   its own identity, regardless of how many threads call this concurrently.
+2. **Module hardening (defense in depth, found investigating the above)**:
+   `ObjectsStore::upsert` (`crate/clients/pkcs11/module/src/objects_store.rs`)
+   computed a new object's handle as `1 + self.ids.len()` — derived from the
+   *current* map size, not a monotonic counter. Under concurrent insert/destroy
+   (even with the benchmark bug above fixed, this remains a real hazard for any
+   other concurrent caller), the map can shrink between one thread's
+   `C_GenerateKey` and its own later `C_DestroyObject`, letting another thread's
+   new object be assigned the same handle a still-live object already holds —
+   silently orphaning the original entry so a later `C_DestroyObject` for it
+   fails with `CKR_OBJECT_HANDLE_INVALID`. Replaced the length-derived handle
+   with a dedicated `next_handle: CK_OBJECT_HANDLE` field, incremented once per
+   newly-inserted object (never derived from map size), so two live objects can
+   never collide on the same handle regardless of destroy ordering.
+
+Verified: `cargo test -p cosmian_pkcs11_module --lib --features non-fips` (40
+passed), `cargo test -p cosmian_pkcs11_bench --features non-fips` (2 passed),
+`cargo test -p cosmian_pkcs11 --lib --features non-fips` (19 passed, 5
+pre-existing `#[ignore]`), and `cargo clippy --all-targets --features non-fips
+-- -D warnings` all clean on both crates. Reproduced the original failure with
+`mise run bench:load-pkcs11 --mode key-creation --concurrency 1,2,4,8` (debug
+build) before the fix, and confirmed it now completes cleanly after; also ran the
+full `--mode all` sweep (9 operations, concurrency 1/2/4, including
+`key-creation`) end-to-end with no failures.

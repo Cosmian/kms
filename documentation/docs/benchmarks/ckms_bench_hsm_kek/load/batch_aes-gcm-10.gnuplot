@@ -5,4 +5,4 @@ set grid
 set xlabel 'Concurrency'
 set ylabel 'Requests/s'
 set key top left
-plot 'batch_aes-gcm-10-5.27.0-ttlv-json.dat' using 1:2 with linespoints lw 2 pt 7 title 'ttlv-json'
+plot 'batch_aes-gcm-10-5.27.1-ttlv-json.dat' using 1:2 with linespoints lw 2 pt 7 title 'ttlv-json'
