@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import math
 import re
 import subprocess
 import sys
@@ -38,8 +39,14 @@ _JWA_SYMMETRIC_RE = re.compile(r'^a\d+(gcm|cbc)', re.IGNORECASE)
 
 
 def _is_symmetric(algorithm: str) -> bool:
-    """Return True if the algorithm name suggests a symmetric cipher."""
-    alg = algorithm.lower()
+    """Return True if the algorithm name suggests a symmetric cipher.
+
+    Strips an optional 'hsm-' prefix first: HSM-delegated benchmarks (see
+    `bench/load-hsm --delegated`) label their algorithm 'hsm-aes-gcm', 'hsm-rsa-oaep',
+    etc. so the criterion group's op_type still parses correctly (a bare 'hsm/'
+    path segment would shift `bench_id_to_parts`'s op_type/algorithm split).
+    """
+    alg = algorithm.lower().removeprefix('hsm-')
     return any(alg.startswith(p) for p in _SYMMETRIC_PREFIXES) or bool(
         _JWA_SYMMETRIC_RE.match(alg)
     )
@@ -86,7 +93,96 @@ def _normalize_jwa_algo(jwa: str) -> tuple[str, str]:
 # ── Shared criterion-classification helpers ───────────────────────────────────
 
 # Display order of protocols in table columns and chart bars.
-_PROTOCOL_ORDER: dict[str, int] = {'ttlv-json': 0, 'ttlv-bytes': 1, 'jose': 2}
+_PROTOCOL_ORDER: dict[str, int] = {
+    'ttlv-json': 0,
+    'ttlv-bytes': 1,
+    'jose': 2,
+    'pkcs11': 3,
+}
+
+_PKCS11_OVERHEAD_TIERS: list[tuple[str, str, str | None]] = [
+    ('request-build', 'Request construction', None),
+    ('ttlv-json-serialize', 'TTLV + JSON serialization', None),
+    (
+        'published-full-message-raw-http',
+        'Published-equivalent full-message raw HTTP',
+        None,
+    ),
+    (
+        'bare-sign-raw-http',
+        'Bare Sign raw HTTP',
+        'published-full-message-raw-http',
+    ),
+    ('response-parse', 'Response JSON + TTLV parsing', None),
+    ('typed-kms-client-sign', 'Typed KMS client Sign', 'bare-sign-raw-http'),
+    (
+        'published-full-message-binary-http',
+        'Full-message binary TTLV HTTP + KMIP validation',
+        None,
+    ),
+    ('binary-response-parse', 'Binary TTLV response parsing', None),
+    (
+        'typed-binary-message-sign-bracketed',
+        'Typed binary-TTLV message Sign (bracketed mean)',
+        'published-full-message-binary-http',
+    ),
+    ('runtime-block-on-ready', 'Tokio block_on control', None),
+    (
+        'pkcs11-one-call-bracketed',
+        'PKCS#11 v3 C_SignMessage (bracketed mean)',
+        'typed-binary-message-sign-bracketed',
+    ),
+    (
+        'pkcs11-two-call-fixed-query',
+        'Legacy C_Sign API (fixed length query)',
+        None,
+    ),
+]
+_PKCS11_TIER_LABELS = {
+    name: (label, baseline) for name, label, baseline in _PKCS11_OVERHEAD_TIERS
+}
+
+_PKCS11_PHASE_ORDER = [
+    'c-sign-body',
+    'session-map-lookup',
+    'session-lock-wait',
+    'session-callback',
+    'private-key-sign',
+    'backend-lookup',
+    'backend-remote-sign',
+    'request-build',
+    'runtime-block-on',
+    'kms-client-sign',
+    'signature-copy',
+]
+_PKCS11_PHASE_LABELS = {
+    'c-sign-body': 'C_SignMessage body',
+    'session-map-lookup': 'Session map lookup',
+    'session-lock-wait': 'Per-session lock wait',
+    'session-callback': 'Session callback',
+    'private-key-sign': 'Private-key Sign',
+    'backend-lookup': 'Backend lookup',
+    'backend-remote-sign': 'Backend remote Sign',
+    'request-build': 'Request construction',
+    'runtime-block-on': 'Tokio block_on',
+    'kms-client-sign': 'Typed KMS client Sign',
+    'signature-copy': 'Signature copy',
+}
+_PKCS11_INCLUSIVE_PHASES = {
+    'c-sign-body',
+    'session-callback',
+    'private-key-sign',
+    'backend-remote-sign',
+    'runtime-block-on',
+    'kms-client-sign',
+}
+_PKCS11_LEAF_PHASES = {
+    'session-map-lookup',
+    'session-lock-wait',
+    'backend-lookup',
+    'request-build',
+    'signature-copy',
+}
 
 
 def _criterion_algo_key(algorithm: str, bench_fn: str) -> str:
@@ -155,7 +251,7 @@ def _normalize_load_records(records: list[dict]) -> None:
 
 
 # Known protocol prefixes that may appear at the start of a criterion group name.
-_KNOWN_PROTOCOLS = ('ttlv-bytes', 'ttlv-json', 'jose')
+_KNOWN_PROTOCOLS = ('ttlv-bytes', 'ttlv-json', 'jose', 'pkcs11')
 
 
 def bench_id_to_parts(bid: str) -> tuple[str, str, str]:
@@ -246,6 +342,117 @@ def parse_criterion_json(path: Path, version: str) -> dict[str, float]:
         except (json.JSONDecodeError, KeyError, TypeError):
             continue
     return results
+
+
+def _finite_number(value: object, *, positive: bool = False) -> float | None:
+    """Return a finite non-negative JSON number, or None when invalid."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        number = float(value)
+    except (OverflowError, ValueError):
+        return None
+    if not math.isfinite(number) or number < 0 or (positive and number == 0):
+        return None
+    return number
+
+
+def _optional_measurements(
+    record: dict[str, object], names: tuple[str, ...]
+) -> dict[str, float]:
+    """Extract valid optional timing measurements from a schema record."""
+    measurements: dict[str, float] = {}
+    for name in names:
+        value = _finite_number(record.get(name))
+        if value is not None:
+            measurements[name] = value
+    return measurements
+
+
+def parse_pkcs11_overhead_json(path: Path) -> dict[str, object]:
+    """Parse the versioned PKCS#11 Ed25519 overhead schema.
+
+    Invalid top-level documents are ignored. Within a valid schema, malformed
+    tier or phase records are skipped independently so a partial benchmark run
+    can still produce the useful portions of the report.
+    """
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding='utf-8'))
+    except (json.JSONDecodeError, OSError, ValueError):
+        return {}
+    if (
+        not isinstance(raw, dict)
+        or type(raw.get('schema_version')) is not int
+        or raw.get('schema_version') != 1
+        or raw.get('algorithm') != 'eddsa-ed25519'
+    ):
+        return {}
+
+    tiers: list[dict[str, object]] = []
+    raw_tiers = raw.get('tiers', [])
+    if isinstance(raw_tiers, list):
+        for record in raw_tiers:
+            if not isinstance(record, dict):
+                continue
+            name = record.get('name')
+            mean_ns = _finite_number(record.get('mean_ns'), positive=True)
+            if not isinstance(name, str) or not name or mean_ns is None:
+                continue
+            tier: dict[str, object] = {'name': name, 'mean_ns': mean_ns}
+            tier.update(
+                _optional_measurements(record, ('median_ns', 'lower_ns', 'upper_ns'))
+            )
+            tiers.append(tier)
+
+    phases: list[dict[str, object]] = []
+    raw_phases = raw.get('phases', [])
+    if isinstance(raw_phases, list):
+        for record in raw_phases:
+            if not isinstance(record, dict):
+                continue
+            name = record.get('name')
+            count = record.get('count')
+            mean_ns = _finite_number(record.get('mean_ns'), positive=True)
+            if (
+                not isinstance(name, str)
+                or not name
+                or isinstance(count, bool)
+                or not isinstance(count, int)
+                or count < 0
+                or mean_ns is None
+            ):
+                continue
+            phase: dict[str, object] = {
+                'name': name,
+                'count': count,
+                'mean_ns': mean_ns,
+            }
+            phase.update(
+                _optional_measurements(record, ('p50_ns', 'p95_ns', 'p99_ns', 'max_ns'))
+            )
+            phases.append(phase)
+
+    parsed: dict[str, object] = {
+        'schema_version': 1,
+        'algorithm': 'eddsa-ed25519',
+        'tiers': tiers,
+        'phases': phases,
+    }
+    for name in (
+        'payload_bytes',
+        'request_bytes',
+        'response_bytes',
+        'binary_request_bytes',
+        'binary_response_bytes',
+    ):
+        value = raw.get(name)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            parsed[name] = value
+    if isinstance(raw.get('varying_payload'), bool):
+        parsed['varying_payload'] = raw['varying_payload']
+    return parsed
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -625,11 +832,286 @@ def _render_env_section(env_data: dict[str, dict], versions: list[str]) -> list[
     return lines
 
 
-def _render_protocol_section() -> list[str]:
-    """Render the static ## Protocols section."""
+def _fmt_signed_time(ns: float) -> str:
+    """Format a signed nanosecond delta."""
+    if ns == 0:
+        return '0 ns'
+    prefix = '+' if ns > 0 else '−'
+    return f"{prefix}{_fmt_time(abs(ns))}"
+
+
+def _render_pkcs11_overhead_section(
+    overhead_data: dict[str, dict[str, object]], versions: list[str]
+) -> list[str]:
+    """Render valid PKCS#11 Ed25519 overhead tiers and internal phases."""
+    available: dict[str, dict[str, object]] = {}
+    for version in versions:
+        data = overhead_data.get(version, {})
+        if data.get('tiers') or data.get('phases'):
+            available[version] = data
+    if not available:
+        return []
+
+    lines = [
+        '## PKCS#11 Ed25519 signing overhead',
+        '',
+        'These differential micro-benchmarks use the same Ed25519 key, payload,'
+        ' server, runtime, and Criterion configuration. The JSON tiers target'
+        ' `/kmip/2_1`; binary TTLV and the full PKCS#11 path target `/kmip`.'
+        ' The typed binary and PKCS#11 values are A/B/A/B bracketed means (one'
+        ' measurement before and one after each other) to reduce temporal drift.'
+        ' Component-only rows'
+        ' intentionally have no incremental delta; end-to-end rows compare with'
+        ' the nearest lower-level path named in the **Compared with** column.',
+        '',
+        '> **Public reference:** the software benchmark report records'
+        ' `ttlv-json` `eddsa-ed25519/sign` at'
+        ' [87.0 µs](https://docs.cosmian.com/key_management_system/benchmarks/'
+        'ckms_bench/report.html). That measurement uses a pre-serialized full'
+        ' `RequestMessage` sent over raw HTTP and only collects then drops the'
+        ' response. It is therefore not directly comparable with typed'
+        ' `KmsClient::sign` or the full PKCS#11 path. The machine-local'
+        ' **Published-equivalent full-message raw HTTP** tier below is the fair'
+        ' reference for incremental comparisons.',
+        '',
+    ]
+    tier_order = {
+        name: index for index, (name, _, _) in enumerate(_PKCS11_OVERHEAD_TIERS)
+    }
+    phase_order = {name: index for index, name in enumerate(_PKCS11_PHASE_ORDER)}
+
+    for version, data in available.items():
+        ver_tag = f"v{version}" if version[:1].isdigit() else version
+        lines += [f"### Version {ver_tag}", '']
+
+        metadata = []
+        for key, label in (
+            ('payload_bytes', 'payload'),
+            ('request_bytes', 'JSON request'),
+            ('response_bytes', 'JSON response'),
+            ('binary_request_bytes', 'binary request'),
+            ('binary_response_bytes', 'binary response'),
+        ):
+            value = data.get(key)
+            if isinstance(value, int):
+                metadata.append(f'{label}: **{value} bytes**')
+        if metadata:
+            payload_mode = (
+                'varying payloads'
+                if data.get('varying_payload') is True
+                else 'fixed payload'
+            )
+            lines += [f"Ed25519; {payload_mode}; {'; '.join(metadata)}.", '']
+
+        raw_tiers = data.get('tiers', [])
+        tiers = (
+            [tier for tier in raw_tiers if str(tier.get('name')) in tier_order]
+            if isinstance(raw_tiers, list)
+            else []
+        )
+        if tiers:
+            lines += [
+                '#### Tier comparison',
+                '',
+                '| Protocol | Tier | Mean | Median | Mean 95% CI | Compared with |'
+                ' Incremental delta | Incremental change |',
+                '|---|---|---:|---:|---:|---|---:|---:|',
+            ]
+            tiers = sorted(
+                tiers,
+                key=lambda tier: (
+                    tier_order.get(str(tier.get('name')), len(tier_order)),
+                    str(tier.get('name')),
+                ),
+            )
+            by_name = {str(tier['name']): tier for tier in tiers}
+            for tier in tiers:
+                name = str(tier['name'])
+                mean_ns = float(tier['mean_ns'])
+                label, baseline_name = _PKCS11_TIER_LABELS.get(
+                    name, (f'`{name}`', None)
+                )
+                median = tier.get('median_ns')
+                median_text = _fmt_time(float(median)) if median is not None else '—'
+                lower = tier.get('lower_ns')
+                upper = tier.get('upper_ns')
+                ci_text = (
+                    f"{_fmt_time(float(lower))}–{_fmt_time(float(upper))}"
+                    if lower is not None and upper is not None
+                    else '—'
+                )
+                baseline = by_name.get(baseline_name) if baseline_name else None
+                if baseline is None:
+                    compared_with = '—'
+                    delta_text = '—'
+                    percent_text = '—'
+                else:
+                    baseline_mean = float(baseline['mean_ns'])
+                    delta = mean_ns - baseline_mean
+                    compared_with = _PKCS11_TIER_LABELS[baseline_name][0]
+                    delta_text = _fmt_signed_time(delta)
+                    percent_text = f"{delta / baseline_mean:+.1%}"
+                lines.append(
+                    f'| `pkcs11` | {label} | {_fmt_time(mean_ns)} | {median_text} |'
+                    f' {ci_text} | {compared_with} | {delta_text} |'
+                    f' {percent_text} |'
+                )
+            lines.append('')
+
+        raw_phases = data.get('phases', [])
+        phases = raw_phases if isinstance(raw_phases, list) else []
+        if phases:
+            phases = sorted(
+                phases,
+                key=lambda phase: (
+                    phase_order.get(str(phase.get('name')), len(phase_order)),
+                    str(phase.get('name')),
+                ),
+            )
+            lines += [
+                '#### Internal phase boundaries',
+                '',
+                'Boundary timings are nested and inclusive: `C_SignMessage` body → session'
+                ' callback → private-key Sign → backend remote Sign → Tokio `block_on`'
+                ' → typed KMS client Sign. They are **not exclusive components and'
+                ' must not be summed**. Session map lookup, per-session lock wait,'
+                ' backend lookup, request construction, and signature copy are leaf'
+                ' timings.',
+                '',
+                'The p50/p95/p99 values are approximate upper bounds from log2'
+                ' histogram buckets. Mean and maximum values are exact.',
+                '',
+                '| Phase | Semantics | Mean (exact) | p50 upper bound |'
+                ' p95 upper bound | p99 upper bound | Max (exact) | Samples |',
+                '|---|---|---:|---:|---:|---:|---:|---:|',
+            ]
+            for phase in phases:
+                name = str(phase['name'])
+                mean_ns = float(phase['mean_ns'])
+
+                def measurement(field: str) -> str:
+                    value = phase.get(field)
+                    return _fmt_time(float(value)) if value is not None else '—'
+
+                if name in _PKCS11_INCLUSIVE_PHASES:
+                    semantics = 'Inclusive boundary'
+                elif name in _PKCS11_LEAF_PHASES:
+                    semantics = 'Leaf timing'
+                else:
+                    semantics = 'Unclassified'
+                label = _PKCS11_PHASE_LABELS.get(name, f'`{name}`')
+                lines.append(
+                    f'| {label} | {semantics} | {_fmt_time(mean_ns)} |'
+                    f" {measurement('p50_ns')} | {measurement('p95_ns')} |"
+                    f" {measurement('p99_ns')} | {measurement('max_ns')} |"
+                    f" {phase['count']} |"
+                )
+            lines.append('')
+
+    return lines
+
+
+def _render_protocol_section(
+    *, is_hsm: bool = False, is_hsm_kek: bool = False, is_pkcs11: bool = False
+) -> list[str]:
+    """Render the static ## Protocols section.
+
+    When `is_hsm` is set, only ttlv-json is documented: `ttlv-bytes` and
+    `jose` are both excluded (for different reasons — see below), so
+    `--hsm` benchmarks exercise a single wire protocol.
+
+    When `is_hsm_kek` is set, all three protocols are documented exactly as
+    in the plain software report, preceded by a short note that this report
+    benchmarks software crypto with an HSM-resident *key-wrapping* key
+    (KEK), not HSM-delegated crypto operations (see the dedicated HSM
+    report for that).
+
+    When `is_pkcs11` is set, the caller-facing protocol is the real Cryptoki C
+    ABI. The provider's remote Sign implementation then uses KMIP 2.1 binary
+    TTLV over the `/kmip` octet-stream endpoint.
+    """
+    if is_pkcs11:
+        return [
+            '## Protocols',
+            '',
+            'The caller-facing protocol benchmarked here is the `cosmian_pkcs11`'
+            " provider's real PKCS#11 v3.1 Cryptoki C ABI: the benchmark `dlopen()`s"
+            ' the built'
+            ' shared library (`libcosmian_pkcs11.{so,dylib}`) and resolves its'
+            ' standard interface through `C_GetInterface` — the same call path'
+            ' v3-aware PKCS#11'
+            ' consumers (Oracle TDE, OpenSSH, disk-encryption tools) use. For remote'
+            ' Sign, the provider wraps the KMIP operation in a KMIP 2.1'
+            ' `RequestMessage`, serializes binary TTLV, and sends'
+            ' `application/octet-stream` to `POST /kmip`; the binary TTLV response is'
+            ' fully deserialized before `C_SignMessage` returns.',
+            '',
+            '| Interface | Transport | Description |',
+            '|---|---|---|',
+            '| **PKCS#11 (Cryptoki v3.1)** | `C_GetInterface` + C ABI | `C_Initialize`,'
+            ' `C_OpenSession`, `C_EncryptInit`/`C_Encrypt`, `C_DecryptInit`/`C_Decrypt`,'
+            ' `C_MessageSignInit`/`C_SignMessage`, `C_VerifyInit`/`C_Verify`,'
+            ' `C_GenerateKey` |',
+            '| **Provider → KMS Sign** | KMIP 2.1 binary TTLV over HTTP |'
+            ' `POST /kmip`, `application/octet-stream` |',
+            '',
+            '',
+        ]
+    if is_hsm:
+        return [
+            '## Protocols',
+            '',
+            'This report benchmarks cryptographic operations delegated to an HSM'
+            ' (PKCS#11) via the KMS `CryptoOracle`, exercised over a single wire'
+            ' protocol: **ttlv-json**.',
+            '',
+            '| Protocol | Transport | Encoding | Endpoint | Description |',
+            '|---|---|---|---|---|',
+            '| **ttlv-json** | HTTP/1.1 | KMIP 2.1 JSON-TTLV | `POST /kmip/2_1` |'
+            ' Primary interoperability protocol — any KMIP 2.1 compliant client can use it |',
+            '',
+            '**KMIP TTLV** (Tag-Type-Length-Value) is the native encoding of the KMIP 2.1 standard'
+            ' (OASIS KMIP Spec v2.1, §9.1).'
+            " The **JSON** variant wraps every field in a `{\"tag\": …, \"type\": …, \"value\": …}`"
+            ' JSON object and base64-encodes binary values.',
+            '',
+            '**ttlv-bytes is not benchmarked here.** Measuring it would require running it'
+            ' either against the same HSM-resident key/token as the ttlv-json sweep (strictly'
+            ' after it completes) or on a fresh token started specifically for that purpose.'
+            ' The former was tried first and rejected: cumulative SoftHSM2 token load from the'
+            ' preceding ttlv-json sweep contaminated every ttlv-bytes measurement, making'
+            ' ttlv-json appear *faster* than ttlv-bytes in every single operation — the'
+            ' opposite of the software baseline (where ttlv-bytes is consistently faster, as'
+            ' expected, since it skips JSON parsing). Rather than publish numbers that are'
+            ' measurement artefacts of test ordering, ttlv-bytes is omitted from this report'
+            ' until the harness can measure both protocols under equivalent conditions'
+            ' (e.g. independent tokens per protocol).',
+            '',
+            '**JOSE is not benchmarked here.** The JOSE REST key-creation endpoint'
+            ' (`POST /v1/crypto/keys`) has no parameter to request a caller-chosen'
+            ' `kid`, and HSM-resident key delegation requires the client to choose'
+            ' the `hsm::<slot>::<uuid>` unique identifier up front (the HSM has no'
+            ' server-assigned ID scheme) — so an HSM-resident key cannot be created'
+            ' through the JOSE endpoints at all.',
+            '',
+        ]
     return [
         '## Protocols',
         '',
+        *(
+            [
+                '> **HSM-backed KEK, software crypto.** The root key-encryption-key (KEK)'
+                ' used to wrap every benchmarked key is HSM-resident (SoftHSM2); only its'
+                ' unwrap touches the HSM. Encrypt/Sign themselves still execute in KMS'
+                ' software (OpenSSL), same as the plain software baseline — this report'
+                ' isolates the cost of HSM-backed key wrapping. For benchmarks where the'
+                ' cryptographic operation itself executes ON the HSM, see the dedicated'
+                ' HSM-delegated-crypto report.',
+                '',
+            ]
+            if is_hsm_kek
+            else []
+        ),
         'The KMS server was exercised over three distinct wire protocols.',
         'Each benchmark column is labelled with the protocol name it used.',
         '',
@@ -658,11 +1140,226 @@ def _render_protocol_section() -> list[str]:
     ]
 
 
-def _render_methodology_section() -> list[str]:
+def _render_methodology_section(
+    *, is_hsm: bool = False, is_hsm_kek: bool = False, is_pkcs11: bool = False
+) -> list[str]:
     """Render the static ## Benchmark Methodology section."""
+    if is_pkcs11:
+        return [
+            '## Benchmark Methodology',
+            '',
+            '### Real Cryptoki C ABI, one session per worker',
+            '',
+            'The benchmark binary (`cosmian_pkcs11_bench`, driven by'
+            ' `mise bench:load-pkcs11`) `dlopen()`s the built `cosmian_pkcs11` shared'
+            ' library, resolves the v3.1 function table through `C_GetInterface`,'
+            ' and calls it directly — the same'
+            ' code path a real PKCS#11 consumer application uses, as opposed to'
+            ' `mise bench:load`, which drives the KMIP REST API directly through the'
+            ' `ckms` client library.',
+            '',
+            'By default each worker thread owns a dedicated `C_OpenSession` handle.'
+            ' The provider looks the handle up in its session map and serializes only'
+            ' access to that individual session with a per-session lock, so unrelated'
+            ' worker sessions can progress independently. `--shared-session` is an'
+            ' opt-in comparison mode that reproduces the former single-session'
+            ' contention model; it is not the default methodology.',
+            '',
+            'For the Ed25519 Sign path measured in this report,'
+            ' `C_MessageSignInit` runs once during setup and each'
+            ' `C_SignMessage` crosses the'
+            ' synchronous PKCS#11 boundary, builds a KMIP 2.1 `RequestMessage`,'
+            ' serializes it as binary TTLV, sends it to the `/kmip` octet-stream'
+            ' endpoint, and parses the binary TTLV response before copying the'
+            ' signature into the caller-owned buffer.',
+            '',
+            '### Independent operations',
+            '',
+            'Unlike the software/HSM reports above, where `encrypt` and `sign-verify`'
+            ' each measure a single named request, this report measures every Cryptoki'
+            ' operation **independently**: `encrypt` (`C_EncryptInit`/`C_Encrypt`),'
+            ' `decrypt` (`C_DecryptInit`/`C_Decrypt`, against ciphertext produced once'
+            ' during setup — not timed), Ed25519 `sign`'
+            ' (`C_MessageSignInit` once + `C_SignMessage` per message), RSA `sign`'
+            ' (`C_SignInit`/`C_Sign`), `verify`'
+            ' (`C_VerifyInit`/`C_Verify`), and `key-creation`'
+            ' (`C_GenerateKey`+`C_DestroyObject`, ephemeral AES key per iteration) each'
+            ' get their own concurrency sweep and their own row/chart below.',
+            '',
+            '`C_VerifyInit`/`C_Verify` are implemented and benchmarked through the'
+            ' same real Cryptoki function table. Verify rows are therefore ordinary'
+            ' measured operations, not placeholders or unsupported-operation probes.',
+            '',
+            '`C_GenerateKeyPair` is not implemented either (asymmetric keys are always'
+            ' created through the KMS REST API, not PKCS#11), so `key-creation` only'
+            ' covers the one Cryptoki key-creation path the provider does support:'
+            ' symmetric `C_GenerateKey`.',
+            '',
+            '### Load test (`mise bench:load-pkcs11`)',
+            '',
+            'The load test sweeps a configurable list of concurrency levels, mirroring'
+            ' `mise bench:load`'
+            "'s own sweep mechanics exactly: at each level *N* concurrent OS threads"
+            ' call the target Cryptoki function in a tight loop for a fixed'
+            ' **measurement window** (default: 20 s), preceded by a **warm-up phase**'
+            ' (default: 5 s) that is excluded from measurements, followed by a'
+            ' **cooldown** (default: 2 s) before the next level.',
+            'Recorded metrics per *(operation, concurrency)* pair:',
+            '',
+            '- **Throughput** — Cryptoki calls per second',
+            '- **p50 / p95 / p99** — per-call latency percentiles (ms)',
+            '',
+            '> **Infrastructure note:** The benchmark server uses a **local SQLite**'
+            ' backend (temporary, discarded after the run). Throughput figures will'
+            ' differ on a production deployment backed by PostgreSQL or Redis-Findex.',
+            '',
+        ]
+    if is_hsm:
+        return [
+            '## Benchmark Methodology',
+            '',
+            '### HSM delegation model',
+            '',
+            'Every operation in this report is executed against an `hsm::<slot>::<uuid>`'
+            ' unique identifier. The KMS server routes both key generation'
+            ' (`Create`/`CreateKeyPair`) and cryptographic operations (`Encrypt`/`Sign`)'
+            ' for such keys to the HSM'
+            "'s `CryptoOracle` (PKCS#11) instead of executing them in KMS software —"
+            ' the benchmarked latency/throughput is therefore dominated by the PKCS#11'
+            ' round-trip to the HSM, not by in-process OpenSSL. `Verify` is not'
+            ' implemented for HSM-resident keys at all yet, for any algorithm, and is'
+            ' intentionally excluded from this report.',
+            '',
+            '> **Reference HSM:** SoftHSM2 (a software PKCS#11 simulator), single'
+            ' SoftHSM2 token per benchmark run. A hardware HSM will exhibit different'
+            ' absolute numbers (typically bound by the HSM'
+            "'s own internal parallelism and network/PCIe transport latency rather than"
+            ' loopback TCP), but the same operations and request shapes apply unchanged.',
+            '',
+            '### Algorithm coverage and SoftHSM2-specific constraints',
+            '',
+            'Every algorithm variant of the KMS'
+            "'s `CryptoAlgorithm` (encrypt) and `SigningAlgorithm` (sign) oracle enums"
+            ' reachable via an ordinary (non-prehashed-digest-only) KMIP request is'
+            ' covered:',
+            '',
+            '| Category | Algorithms covered | Notes |',
+            '|---|---|---|',
+            '| Encrypt | AES-GCM, AES-CBC, RSA-OAEP-SHA256, RSA-OAEP-SHA1, RSA-PKCS1v15 | 2048-bit RSA, 256-bit AES |',
+            '| Sign | RSA-PSS, RSA-PKCS1v15 (SHA1/256/384/512 hash-and-sign) | 2048-bit RSA |',
+            '| Sign | ECDSA P-256 / P-384 | **Prehashed only** (`digested_data`): SoftHSM2 2.6.1 implements only the raw `CKM_ECDSA` mechanism, not the combined `CKM_ECDSA_SHA*` hash-and-sign mechanisms |',
+            '| Sign | EdDSA Ed25519 / Ed448 | Non-FIPS only; pure, un-hashed `CKM_EDDSA` — the full message is sent, never a digest |',
+            '| Key creation | AES-256, RSA-2048, EC P-256, Ed25519, Ed448 | P-521 excluded — see below |',
+            '',
+            'Two gaps are **not** HSM-delegation limitations and are excluded for'
+            ' unrelated reasons:',
+            '',
+            '- **P-521 key creation**: `crate/crypto/src/crypto/elliptic_curves/operation.rs`'
+            " derives the KMIP `CryptographicLength` from the generated private scalar's"
+            ' serialized byte length rather than the curve'
+            "'s nominal bit length, which can under-count P-521 keys by one byte and makes"
+            ' `HSM::create_keypair` reject the result — a pre-existing bug unrelated to HSM'
+            ' delegation, tracked as a follow-up.',
+            '- **Bare `SigningAlgorithm::RsaPkcsV15`** (a raw `CKM_RSA_PKCS` sign over a'
+            ' caller-supplied `DigestInfo` blob) has no ordinary KMIP request shape that'
+            ' reaches it — `padding_method: PKCS1v15` without an explicit digest always'
+            ' resolves to one of the hash-and-sign variants above, which exercise the'
+            ' same PKCS#11 mechanism family end-to-end.',
+            '',
+            '### Payload sizes',
+            '',
+            'All encrypt benchmarks use a **64-byte** fixed-size random payload'
+            ' (128 bytes for AES-CBC/PKCS1v15, which pad to a whole block); all sign'
+            ' benchmarks use a **32-byte** fixed-size message (or, for prehashed ECDSA,'
+            ' a 32-byte SHA-256 digest of that same message) — small enough that the'
+            ' RSA-2048 modulus bounds every RSA variant without truncation.',
+            '',
+            '### SoftHSM2 per-token degradation (key creation only)',
+            '',
+            'Concurrent/cumulative RSA and EC key **generation** against a single'
+            ' SoftHSM2 token progressively degrades that token — later PKCS#11'
+            ' operations, even unrelated `Encrypt`/`Sign` calls against different keys,'
+            ' can slow from milliseconds to *minutes* per request. This is a SoftHSM2'
+            ' limitation (a software simulator, not built for heavy concurrent/cumulative'
+            ' key generation on one token), not a KMS defect. Mitigations applied to keep'
+            ' this report reproducible:',
+            '',
+            '- Load-test key-creation concurrency is capped at 4 regardless of the'
+            ' requested sweep (`PreparedLoadOp::max_concurrency`).',
+            '- The `bench/load-hsm --delegated` task runs `key-creation`, `encrypt`, and'
+            ' `sign-verify` as three separate SoftHSM2 sessions (each with its own fresh'
+            ' token) when `--mode all` (the default), so key-creation load never'
+            ' contaminates the encrypt/sign token; results are merged into this single'
+            ' report afterward.',
+            '',
+            '### Why ttlv-json only (no ttlv-bytes)',
+            '',
+            'An earlier version of this report benchmarked both `ttlv-json` and `ttlv-bytes`'
+            ' for every HSM-delegated operation, sharing one HSM-resident key between the two'
+            ' protocol variants and measuring `ttlv-json`'
+            "'s full concurrency sweep before `ttlv-bytes`"
+            "'s. Every single result inverted the expected direction — `ttlv-json` appeared"
+            ' *faster* than `ttlv-bytes`, the opposite of the software baseline (where binary'
+            ' TTLV is consistently faster, since it skips JSON parsing). Root cause: the'
+            ' `ttlv-bytes` sweep always ran second against the same already-active HSM'
+            ' session/token, so it inherited whatever cumulative SoftHSM2 degradation the'
+            ' `ttlv-json` sweep had already caused (the same class of per-token degradation'
+            ' described above, triggered here by sustained Encrypt/Sign call volume rather'
+            ' than key generation) — a test-ordering artefact, not a real protocol'
+            ' difference. This report therefore benchmarks `ttlv-json` only, until the'
+            ' harness can measure both protocols under equivalent conditions (e.g.'
+            ' independent SoftHSM2 tokens per protocol).',
+            '',
+            '### Load test (`ckms bench --load --hsm`)',
+            '',
+            'The load test sweeps a configurable list of concurrency levels.'
+            ' At each level *N* concurrent async tasks send pre-serialised requests in tight loops'
+            ' for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase**'
+            ' (default: 5 s) that is excluded from measurements.'
+            ' Pre-serialisation happens once at setup time and the same bytes are reused on every iteration,'
+            ' isolating server-side (and HSM-side) latency from client-side encoding overhead.'
+            ' Key **creation** cannot be pre-serialised the same way — the HSM has no'
+            ' auto-generated ID, so each iteration builds a fresh request with a distinct'
+            ' `hsm::` unique identifier.',
+            'Recorded metrics per *(protocol, operation, concurrency)* triple:',
+            '',
+            '- **Throughput** — requests per second (req/s)',
+            '- **p50 / p95 / p99** — round-trip latency percentiles (ms)',
+            '',
+            '### Criterion micro-benchmarks (`ckms bench --hsm`)',
+            '',
+            'Criterion (Rust, v0.5) measures the **round-trip latency of a single request**'
+            ' from the ckms client library through the KMS server (and, for these'
+            ' benchmarks, onward to the HSM) and back over a loopback TCP connection.'
+            ' The server is started once and kept alive across all benchmarks in the suite.',
+            'The reported value is the **mean ± 95 % confidence interval** over a configurable'
+            ' number of samples (preset `quick`: 3 s warm-up + 5 s measurement per benchmark).',
+            '',
+            '> **Infrastructure note:** The load test and criterion benchmarks both use a'
+            ' **local SQLite** backend (temporary, discarded after the run) for the KMS'
+            ' server'
+            "'s own metadata store — the key material itself resides on the HSM, never in"
+            ' SQLite. Throughput figures will differ on a production deployment backed by'
+            ' PostgreSQL or Redis-Findex, and even more so against a hardware HSM instead'
+            ' of SoftHSM2.',
+            '',
+        ]
     return [
         '## Benchmark Methodology',
         '',
+        *(
+            [
+                '> **HSM-backed KEK.** The server is started with a SoftHSM2-registered'
+                ' `key_encryption_key` (KEK): every benchmarked software key is wrapped by'
+                ' this HSM-resident KEK at rest, and unwrapped via a PKCS#11 round-trip on'
+                ' each use. All other methodology below (payload sizes, load-test/criterion'
+                ' procedure) is identical to the plain software baseline — the only'
+                ' difference is this extra HSM unwrap step per operation.',
+                '',
+            ]
+            if is_hsm_kek
+            else []
+        ),
         '### Plaintext / payload sizes',
         '',
         'All encrypt/decrypt benchmarks use a **fixed-size random payload**.'
@@ -723,6 +1420,11 @@ def generate_report(
     load_charts: list[str],
     crit_charts: list[str],
     env_data: dict[str, dict] | None = None,
+    pkcs11_overhead_data: dict[str, dict[str, object]] | None = None,
+    *,
+    is_hsm: bool = False,
+    is_hsm_kek: bool = False,
+    is_pkcs11: bool = False,
 ) -> None:
     """Write report.md combining load-test and criterion sections."""
     sep = ['', '---', '']
@@ -742,12 +1444,23 @@ def generate_report(
             lines += sep
 
     # ── Protocols ─────────────────────────────────────────────────────────────
-    lines += _render_protocol_section()
+    lines += _render_protocol_section(
+        is_hsm=is_hsm, is_hsm_kek=is_hsm_kek, is_pkcs11=is_pkcs11
+    )
     lines += sep
 
     # ── Methodology ───────────────────────────────────────────────────────────
-    lines += _render_methodology_section()
+    lines += _render_methodology_section(
+        is_hsm=is_hsm, is_hsm_kek=is_hsm_kek, is_pkcs11=is_pkcs11
+    )
     lines += sep
+
+    # ── PKCS#11 Ed25519 overhead ──────────────────────────────────────────
+    if is_pkcs11 and pkcs11_overhead_data:
+        overhead_lines = _render_pkcs11_overhead_section(pkcs11_overhead_data, versions)
+        if overhead_lines:
+            lines += overhead_lines
+            lines += sep
 
     # ── Load tests ────────────────────────────────────────────────────────
     has_load = any(load_data.get(v) for v in versions)
@@ -837,12 +1550,32 @@ def generate_report(
 
 
 def main() -> None:
-    if len(sys.argv) < 3:
-        print(f"Usage: {sys.argv[0]} <results_dir> <version1> [version2] ...")
+    # Optional --hsm flag: may appear anywhere in argv. When set, the report
+    # documents the HSM/CryptoOracle delegation model (Protocols/Methodology
+    # sections) instead of the generic software-bench text.
+    # Optional --kek flag: may appear anywhere in argv. When set, the report
+    # is otherwise identical to the plain software-bench text but prefixed
+    # with a short note that the KEK (not the benchmarked keys themselves)
+    # is HSM-resident. Mutually exclusive with --hsm (--hsm takes priority).
+    # Optional --pkcs11 flag: may appear anywhere in argv. When set, the report
+    # documents the real dlopen()-based Cryptoki C ABI benchmark (see
+    # `bench/load-pkcs11`) instead of any KMIP-wire-protocol text. Mutually
+    # exclusive with --hsm/--kek (either of those takes priority).
+    argv = sys.argv[1:]
+    is_hsm = '--hsm' in argv
+    is_hsm_kek = '--kek' in argv and not is_hsm
+    is_pkcs11 = '--pkcs11' in argv and not is_hsm and not is_hsm_kek
+    argv = [a for a in argv if a not in ('--hsm', '--kek', '--pkcs11')]
+
+    if len(argv) < 2:
+        print(
+            f"Usage: {sys.argv[0]} <results_dir> <version1> [version2] ... "
+            '[--hsm|--kek|--pkcs11]'
+        )
         sys.exit(1)
 
-    out_dir = Path(sys.argv[1])
-    versions = sys.argv[2:]
+    out_dir = Path(argv[0])
+    versions = argv[1:]
 
     print('── Environment data ──')
     env_data: dict[str, dict] = {}
@@ -877,7 +1610,47 @@ def main() -> None:
         criterion_data[v] = data
         print(f"  [{v}] {len(data)} benchmark(s)" if data else f"  [{v}] no data")
 
-    if not any(load_data.values()) and not any(criterion_data.values()):
+    pkcs11_overhead_data: dict[str, dict[str, object]] = {}
+    if is_pkcs11:
+        print('── PKCS#11 overhead data ──')
+        for v in versions:
+            data = parse_pkcs11_overhead_json(out_dir / v / 'pkcs11_overhead.json')
+            pkcs11_overhead_data[v] = data
+            tier_count = len(data.get('tiers', [])) if data else 0
+            phase_count = len(data.get('phases', [])) if data else 0
+            if tier_count or phase_count:
+                print(f"  [{v}] {tier_count} tier(s), {phase_count} phase(s)")
+            else:
+                print(f"  [{v}] no valid overhead data")
+
+            # The overhead ladder's `pkcs11-one-call` tier is the canonical
+            # Ed25519 C_SignMessage measurement. Reuse that exact estimate in the generic
+            # Sign / Verify table instead of accepting a duplicate benchmark run
+            # from a later (potentially noisier) time window.
+            one_call = next(
+                (
+                    tier
+                    for tier in data.get('tiers', [])
+                    if tier.get('name') == 'pkcs11-one-call-bracketed'
+                ),
+                None,
+            )
+            if isinstance(one_call, dict):
+                mean_ns = _finite_number(one_call.get('mean_ns'), positive=True)
+                if mean_ns is not None:
+                    criterion_data.setdefault(v, {})[
+                        'pkcs11_sign-verify_eddsa-ed25519/sign'
+                    ] = mean_ns
+
+    has_overhead_data = any(
+        data.get('tiers') or data.get('phases')
+        for data in pkcs11_overhead_data.values()
+    )
+    if (
+        not any(load_data.values())
+        and not any(criterion_data.values())
+        and not has_overhead_data
+    ):
         print('ERROR: no benchmark data found for any version')
         sys.exit(1)
 
@@ -904,6 +1677,10 @@ def main() -> None:
         load_charts,
         crit_charts,
         env_data=env_data or None,
+        pkcs11_overhead_data=pkcs11_overhead_data or None,
+        is_hsm=is_hsm,
+        is_hsm_kek=is_hsm_kek,
+        is_pkcs11=is_pkcs11,
     )
 
 

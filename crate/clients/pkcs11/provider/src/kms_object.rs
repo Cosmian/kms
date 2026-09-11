@@ -35,9 +35,12 @@ use ckms::{
     },
 };
 use cosmian_logger::{debug, error, trace};
-use cosmian_pkcs11_module::traits::{
-    DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
-    SignatureAlgorithm,
+use cosmian_pkcs11_module::{
+    profiling::{self, SignPhase},
+    traits::{
+        DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
+        SignatureAlgorithm,
+    },
 };
 use zeroize::Zeroizing;
 
@@ -874,12 +877,15 @@ pub(crate) fn kms_sign(
     algorithm: &SignatureAlgorithm,
     data: &[u8],
 ) -> Pkcs11Result<Vec<u8>> {
-    RUNTIME.block_on(kms_sign_async(
+    let runtime_block_on = profiling::phase(SignPhase::RuntimeBlockOn);
+    let result = RUNTIME.block_on(kms_sign_async(
         kms_rest_client,
         unique_identifier,
         algorithm,
         data,
-    ))
+    ));
+    drop(runtime_block_on);
+    result
 }
 
 /// Map a PKCS#11 `DigestType` to its KMIP `HashingAlgorithm` counterpart.
@@ -1001,6 +1007,7 @@ pub(crate) async fn kms_sign_async(
     algorithm: &SignatureAlgorithm,
     data: &[u8],
 ) -> Pkcs11Result<Vec<u8>> {
+    let request_build = profiling::phase(SignPhase::RequestBuild);
     // Map the PKCS#11 mechanism to KMIP CryptographicParameters.
     // For CKM_ECDSA (SignatureAlgorithm::Ecdsa), the data is a pre-computed hash
     // passed by OpenSSH — send it as `digested_data` to prevent double-hashing on
@@ -1017,8 +1024,12 @@ pub(crate) async fn kms_sign_async(
         init_indicator: None,
         final_indicator: None,
     };
+    drop(request_build);
 
-    let response = kms_rest_client.sign(sign_request).await?;
+    let kms_client_sign = profiling::phase(SignPhase::KmsClientSign);
+    let response = kms_rest_client.sign_bytes(sign_request).await;
+    drop(kms_client_sign);
+    let response = response?;
     response.signature_data.ok_or_else(|| {
         Pkcs11Error::ServerError("Sign response does not contain signature data".to_owned())
     })

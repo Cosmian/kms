@@ -34,10 +34,10 @@ use pkcs11_sys::{
     CK_SESSION_INFO, CK_SESSION_INFO_PTR, CK_SLOT_ID, CK_SLOT_ID_PTR, CK_SLOT_INFO,
     CK_SLOT_INFO_PTR, CK_TOKEN_INFO, CK_TOKEN_INFO_PTR, CK_ULONG, CK_ULONG_PTR,
     CK_UNAVAILABLE_INFORMATION, CK_USER_TYPE, CK_UTF8CHAR_PTR, CK_VERSION, CK_VOID_PTR,
-    CKA_UNIQUE_ID, CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT,
+    CKA_UNIQUE_ID, CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT, CKF_MESSAGE_SIGN,
     CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN,
     CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_USER_PIN_INITIALIZED, CKF_VERIFY, CKM_AES_CBC,
-    CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKR_OK, CKS_RO_USER_FUNCTIONS,
+    CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_EDDSA, CKR_OK, CKS_RO_USER_FUNCTIONS,
     CKS_RW_USER_FUNCTIONS, CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR,
     CRYPTOKI_VERSION_MINOR,
 };
@@ -53,8 +53,8 @@ use crate::{
     objects_store::OBJECTS_STORE,
     sessions::{self, Session},
     traits::{
-        DecryptContext, EncryptContext, EncryptionAlgorithm, SignContext, VerifyContext, backend,
-        clear_backend, invoke_login_fn, use_pin_as_access_token,
+        DecryptContext, EncryptContext, EncryptionAlgorithm, SignContext, SignOperation,
+        VerifyContext, backend, clear_backend, invoke_login_fn, use_pin_as_access_token,
     },
 };
 
@@ -246,10 +246,10 @@ pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
 /// v2.x function pointer already exposed via `FUNC_LIST` above, plus the new v3.0-only
 /// functions. Per the PKCS#11 v3.0 spec, unimplemented v3.0 functions must be non-null stubs
 /// returning `CKR_FUNCTION_NOT_SUPPORTED` (never a null pointer) — see the
-/// `cryptoki_fn_not_supported!` stubs near the end of this file for `C_SessionCancel` and the
-/// "message-based" bulk encrypt/decrypt/sign/verify functions (this module does not implement
-/// PKCS#11 v3.0 message operations). `C_LoginUser` is fully implemented (see above), unlike the
-/// message-based functions. `C_GetFunctionList`, `C_GetInterfaceList`, and `C_GetInterface` are
+/// `cryptoki_fn_not_supported!` stubs near the end of this file. One-shot `EdDSA`
+/// message signing (`C_MessageSignInit`/`C_SignMessage`/`C_MessageSignFinal`) and
+/// `C_LoginUser` are implemented; the other message-operation families remain
+/// unsupported. `C_GetFunctionList`, `C_GetInterfaceList`, and `C_GetInterface` are
 /// patched at runtime by the `cosmian_pkcs11` provider crate (mirroring how
 /// `FUNC_LIST.C_GetFunctionList` is patched above), since their real implementations must
 /// perform KMS backend/config initialization that only the provider crate knows how to do.
@@ -557,6 +557,7 @@ cryptoki_fn!(
         let flags = match mechType {
             CKM_AES_KEY_GEN => CKF_GENERATE,
             CKM_AES_CBC | CKM_AES_CBC_PAD | CKM_AES_GCM => CKF_ENCRYPT | CKF_DECRYPT,
+            CKM_EDDSA => CKF_SIGN | CKF_VERIFY | CKF_MESSAGE_SIGN,
             _ => CKF_SIGN | CKF_VERIFY,
         };
         let info = CK_MECHANISM_INFO {
@@ -1343,6 +1344,9 @@ cryptoki_fn!(
         valid_session!(hSession);
         not_null!(pMechanism, "C_SignInit: pMechanism");
         sessions::session(hSession, |session| -> ModuleResult<()> {
+            if session.sign_ctx.is_some() {
+                return Err(ModuleError::OperationActive);
+            }
             let find_ctx = OBJECTS_STORE.read()?;
             // .map_err(|_| ModuleError::OperationNotInitialized(hSession))?;
             let object = find_ctx.get_using_handle(hKey);
@@ -1353,6 +1357,7 @@ cryptoki_fn!(
             session.sign_ctx = Some(SignContext {
                 algorithm: mechanism.try_into()?,
                 private_key: private_key.clone(),
+                operation: SignOperation::Classic,
                 payload: None,
             });
             Ok(())
@@ -1368,14 +1373,16 @@ cryptoki_fn!(
         pSignature: CK_BYTE_PTR,
         pulSignatureLen: CK_ULONG_PTR,
     ) {
-        initialized!();
-        valid_session!(hSession);
-        not_null!(pData, "C_Sign: pData");
-        not_null!(pulSignatureLen, "C_Sign: pulSignatureLen");
-        sessions::session(hSession, |session| -> ModuleResult<()> {
-            let data = unsafe { slice::from_raw_parts(pData, usize::try_from(ulDataLen)?) };
-            unsafe { session.sign(Some(data), pSignature, pulSignatureLen) }?;
-            Ok(())
+        crate::profiling::sign_scope(|| -> ModuleResult<()> {
+            initialized!();
+            valid_session!(hSession);
+            not_null!(pData, "C_Sign: pData");
+            not_null!(pulSignatureLen, "C_Sign: pulSignatureLen");
+            sessions::session(hSession, |session| -> ModuleResult<()> {
+                let data = unsafe { slice::from_raw_parts(pData, usize::try_from(ulDataLen)?) };
+                unsafe { session.sign(Some(data), pSignature, pulSignatureLen) }?;
+                Ok(())
+            })
         })
     }
 );
@@ -1389,6 +1396,9 @@ cryptoki_fn!(
             let Some(sign_ctx) = session.sign_ctx.as_mut() else {
                 return Err(ModuleError::OperationNotInitialized(hSession));
             };
+            if sign_ctx.operation != SignOperation::Classic {
+                return Err(ModuleError::OperationNotInitialized(hSession));
+            }
             sign_ctx
                 .payload
                 .get_or_insert(vec![])
@@ -1793,22 +1803,66 @@ cryptoki_fn_not_supported!(
 
 cryptoki_fn_not_supported!(C_MessageDecryptFinal, hSession: CK_SESSION_HANDLE);
 
-cryptoki_fn_not_supported!(
-    C_MessageSignInit,
-    hSession: CK_SESSION_HANDLE,
-    pMechanism: CK_MECHANISM_PTR,
-    hKey: CK_OBJECT_HANDLE
+cryptoki_fn!(
+    unsafe fn C_MessageSignInit(
+        hSession: CK_SESSION_HANDLE,
+        pMechanism: CK_MECHANISM_PTR,
+        hKey: CK_OBJECT_HANDLE,
+    ) {
+        initialized!();
+        valid_session!(hSession);
+        not_null!(pMechanism, "C_MessageSignInit: pMechanism");
+        sessions::session(hSession, |session| -> ModuleResult<()> {
+            if session.sign_ctx.is_some() {
+                return Err(ModuleError::OperationActive);
+            }
+            let object_store = OBJECTS_STORE.read()?;
+            let object = object_store.get_using_handle(hKey);
+            let Some(Object::PrivateKey(private_key)) = object.as_deref() else {
+                return Err(ModuleError::KeyHandleInvalid(hKey));
+            };
+            let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
+            if !matches!(mechanism, Mechanism::EdDsa) {
+                return Err(ModuleError::FunctionNotSupported);
+            }
+            session.sign_ctx = Some(SignContext {
+                algorithm: mechanism.try_into()?,
+                private_key: private_key.clone(),
+                operation: SignOperation::Message,
+                payload: None,
+            });
+            Ok(())
+        })
+    }
 );
 
-cryptoki_fn_not_supported!(
-    C_SignMessage,
-    hSession: CK_SESSION_HANDLE,
-    pParameter: CK_VOID_PTR,
-    ulParameterLen: CK_ULONG,
-    pData: CK_BYTE_PTR,
-    ulDataLen: CK_ULONG,
-    pSignature: CK_BYTE_PTR,
-    pulSignatureLen: CK_ULONG_PTR
+cryptoki_fn!(
+    unsafe fn C_SignMessage(
+        hSession: CK_SESSION_HANDLE,
+        pParameter: CK_VOID_PTR,
+        ulParameterLen: CK_ULONG,
+        pData: CK_BYTE_PTR,
+        ulDataLen: CK_ULONG,
+        pSignature: CK_BYTE_PTR,
+        pulSignatureLen: CK_ULONG_PTR,
+    ) {
+        crate::profiling::sign_scope(|| -> ModuleResult<()> {
+            initialized!();
+            valid_session!(hSession);
+            not_null!(pData, "C_SignMessage: pData");
+            not_null!(pulSignatureLen, "C_SignMessage: pulSignatureLen");
+            if !pParameter.is_null() || ulParameterLen != 0 {
+                return Err(ModuleError::BadArguments(
+                    "C_SignMessage: per-message parameters are not supported for pure EdDSA"
+                        .to_owned(),
+                ));
+            }
+            sessions::session(hSession, |session| -> ModuleResult<()> {
+                let data = unsafe { slice::from_raw_parts(pData, usize::try_from(ulDataLen)?) };
+                unsafe { session.sign_message(data, pSignature, pulSignatureLen) }
+            })
+        })
+    }
 );
 
 cryptoki_fn_not_supported!(
@@ -1829,7 +1883,13 @@ cryptoki_fn_not_supported!(
     pulSignatureLen: CK_ULONG_PTR
 );
 
-cryptoki_fn_not_supported!(C_MessageSignFinal, hSession: CK_SESSION_HANDLE);
+cryptoki_fn!(
+    fn C_MessageSignFinal(hSession: CK_SESSION_HANDLE) {
+        initialized!();
+        valid_session!(hSession);
+        sessions::session(hSession, Session::finish_message_sign)
+    }
+);
 
 cryptoki_fn_not_supported!(
     C_MessageVerifyInit,

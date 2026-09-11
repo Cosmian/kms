@@ -10,8 +10,8 @@
 #   hsm_kek_bootstrap        — SoftHSM2 token + HSM-resident KEK + KMS server restart
 #
 # Globals set by hsm_kek_bootstrap:
-#   HSM_USER_PASSWORD, HSM_SLOT_ID, KEK_ID, CKMS_CONF (via KMS_URL/KMS_CKMS_CONF,
-#   see .mise/lib/kms_server.sh)
+#   HSM_USER_PASSWORD, HSM_SLOT_ID, KEK_ID, SOFTHSM2_PKCS11_LIB, CKMS_CONF (via
+#   KMS_URL/KMS_CKMS_CONF, see .mise/lib/kms_server.sh)
 
 # ── Guard against double-sourcing ─────────────────────────────────────────────
 [ -n "${_MISE_PKCS11_HELPERS_SH_LOADED:-}" ] && return 0
@@ -31,16 +31,18 @@ source "${_PKCS11_HELPERS_DIR}/kms_server.sh"
 # Usage:
 #   pkcs11_lib=$(get_cosmian_pkcs11_lib)
 #   pkcs11_lib=$(get_cosmian_pkcs11_lib "$cargo_target_dir")
+#   pkcs11_lib=$(get_cosmian_pkcs11_lib "$cargo_target_dir" "release")
 get_cosmian_pkcs11_lib() {
   local cargo_target_dir="${1:-${CARGO_TARGET_DIR:-}}"
+  local build_mode="${2:-debug}"
   if [ -z "$cargo_target_dir" ]; then
     cargo_target_dir="$(get_repo_root)/target"
   fi
   local lib
   if [ "$(uname)" = "Darwin" ]; then
-    lib="$cargo_target_dir/debug/libcosmian_pkcs11.dylib"
+    lib="$cargo_target_dir/$build_mode/libcosmian_pkcs11.dylib"
   else
-    lib="$cargo_target_dir/debug/libcosmian_pkcs11.so"
+    lib="$cargo_target_dir/$build_mode/libcosmian_pkcs11.so"
   fi
   if [ ! -f "$lib" ]; then
     echo "ERROR: PKCS#11 library not found: $lib" >&2
@@ -156,7 +158,7 @@ EOF
 #   HSM_USER_PASSWORD, HSM_SLOT_ID, KEK_ID  — the bootstrapped HSM-KEK's identity
 #   KMS_URL, CKMS_CONF                       — the running, KEK-enabled KMS server
 #   LD_LIBRARY_PATH, DYLD_LIBRARY_PATH       — extended with the SoftHSM2 lib path
-#   SOFTHSM2_PKCS11_LIB                      — SoftHSM2 PKCS#11 library path
+#   SOFTHSM2_PKCS11_LIB                      — SoftHSM2 PKCS#11 lib path the server loads
 hsm_kek_bootstrap() {
   local repo_root="$1" test_name="$2" work_dir="$3" kms_bin="$4" ckms_bin="$5"
 
@@ -172,6 +174,12 @@ hsm_kek_bootstrap() {
   lib_path="$(softhsm2_lib_search_path)"
   export LD_LIBRARY_PATH="${lib_path}:${LD_LIBRARY_PATH:-}"
   export DYLD_LIBRARY_PATH="${lib_path}:${DYLD_LIBRARY_PATH:-}"
+  # The KMS server resolves its SoftHSM2 PKCS#11 library from the
+  # `SOFTHSM2_PKCS11_LIB` env var, falling back to a hardcoded system path
+  # (`crate/hsm/softhsm2/src/lib.rs::SOFTHSM2_PKCS11_LIB`) that does not exist on a
+  # Nix-based CI runner, where SoftHSM2 is built into the Nix store instead. Without
+  # this export, `kms_start_from_bin` below fails with "cannot open shared object
+  # file" as soon as `hsm_model = "softhsm2"` is set.
   export SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}"
 
   local port sqlite_dir

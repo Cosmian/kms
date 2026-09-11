@@ -1,0 +1,15 @@
+{"protocol":"ttlv-bytes","operation":"encrypt/aes-gcm","concurrency":1,"throughput_rps":3462.45,"p50_ms":0.276,"p95_ms":0.329,"p99_ms":0.347}
+{"protocol":"ttlv-bytes","operation":"encrypt/aes-gcm","concurrency":2,"throughput_rps":5983.30,"p50_ms":0.318,"p95_ms":0.379,"p99_ms":0.403}
+{"protocol":"ttlv-bytes","operation":"encrypt/aes-gcm","concurrency":4,"throughput_rps":10321.75,"p50_ms":0.368,"p95_ms":0.473,"p99_ms":0.709}
+{"protocol":"ttlv-bytes","operation":"encrypt/aes-gcm","concurrency":8,"throughput_rps":14375.05,"p50_ms":0.449,"p95_ms":0.845,"p99_ms":1.033}
+{"protocol":"ttlv-bytes","operation":"encrypt/aes-gcm","concurrency":16,"throughput_rps":20685.90,"p50_ms":0.662,"p95_ms":1.063,"p99_ms":1.122}
+{"protocol":"ttlv-bytes","operation":"sign-verify/ecdsa-p256","concurrency":1,"throughput_rps":1931.75,"p50_ms":0.515,"p95_ms":0.542,"p99_ms":0.588}
+{"protocol":"ttlv-bytes","operation":"sign-verify/ecdsa-p256","concurrency":2,"throughput_rps":3732.10,"p50_ms":0.508,"p95_ms":0.603,"p99_ms":0.679}
+{"protocol":"ttlv-bytes","operation":"sign-verify/ecdsa-p256","concurrency":4,"throughput_rps":6349.65,"p50_ms":0.595,"p95_ms":0.761,"p99_ms":1.029}
+{"protocol":"ttlv-bytes","operation":"sign-verify/ecdsa-p256","concurrency":8,"throughput_rps":9817.75,"p50_ms":0.730,"p95_ms":1.177,"p99_ms":1.288}
+{"protocol":"ttlv-bytes","operation":"sign-verify/ecdsa-p256","concurrency":16,"throughput_rps":14017.25,"p50_ms":1.133,"p95_ms":1.477,"p99_ms":1.581}
+{"protocol":"ttlv-bytes","operation":"sign-verify/eddsa-ed25519","concurrency":1,"throughput_rps":8392.50,"p50_ms":0.117,"p95_ms":0.138,"p99_ms":0.186}
+{"protocol":"ttlv-bytes","operation":"sign-verify/eddsa-ed25519","concurrency":2,"throughput_rps":13918.05,"p50_ms":0.145,"p95_ms":0.155,"p99_ms":0.161}
+{"protocol":"ttlv-bytes","operation":"sign-verify/eddsa-ed25519","concurrency":4,"throughput_rps":26617.40,"p50_ms":0.142,"p95_ms":0.197,"p99_ms":0.263}
+{"protocol":"ttlv-bytes","operation":"sign-verify/eddsa-ed25519","concurrency":8,"throughput_rps":37252.00,"p50_ms":0.174,"p95_ms":0.318,"p99_ms":0.374}
+{"protocol":"ttlv-bytes","operation":"sign-verify/eddsa-ed25519","concurrency":16,"throughput_rps":50921.60,"p50_ms":0.364,"p95_ms":0.412,"p99_ms":0.439}

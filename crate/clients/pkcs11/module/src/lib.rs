@@ -29,6 +29,7 @@ pub mod core;
 mod error;
 mod objects_store;
 pub mod pkcs11;
+pub mod profiling;
 mod sessions;
 #[cfg(test)]
 #[expect(
