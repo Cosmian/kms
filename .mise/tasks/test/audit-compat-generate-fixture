@@ -5,7 +5,8 @@ set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 
 REPO_ROOT="$(get_repo_root)"
-OUTPUT="${usage_output:-/tmp/kms-audit-compat-live.jsonl}"
+# shellcheck disable=SC2154  # usage_output is set by the MISE USAGE framework
+OUTPUT="${usage_output}"
 
 bash "${REPO_ROOT}/.mise/scripts/test/generate_live_audit_fixture.sh" --output "${OUTPUT}"
 

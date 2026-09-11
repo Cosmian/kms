@@ -3,24 +3,18 @@
 #USAGE flag "-f --file <file>" env="AUDIT_FILE" help="Path to the KMS JSONL audit file" default=".mise/scripts/test/fixtures/sample-audit.jsonl"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/audit_compat.sh"
 
 print_header "OpenSearch audit JSONL compatibility test"
 
-require_cmd docker "Docker is required to run the ephemeral OpenSearch container."
-require_cmd python3
-require_cmd curl
+audit_compat_require_common_cmds "OpenSearch"
 
 REPO_ROOT="$(get_repo_root)"
 AUDIT_FILE="${usage_file:-${REPO_ROOT}/.mise/scripts/test/fixtures/sample-audit.jsonl}"
 OPENSEARCH_HOST=127.0.0.1
 OPENSEARCH_PORT=9200
 CONTAINER_NAME="kms-audit-compat-opensearch-$$"
-
-cleanup() {
-  print_status "Removing container ${CONTAINER_NAME}"
-  docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
-}
-trap cleanup EXIT
+audit_compat_container_cleanup_trap "${CONTAINER_NAME}"
 
 print_status "Starting ephemeral OpenSearch container (no volume, --rm)"
 # Pinned to the current stable release (not :latest) so this test stays reproducible;
@@ -48,9 +42,9 @@ if [ "${status:-}" != "green" ] && [ "${status:-}" != "yellow" ]; then
   print_error "OpenSearch cluster never reached a usable health status"
 fi
 
-python3 -m pip install --quiet -r "${REPO_ROOT}/.mise/scripts/test/requirements-audit-compat.txt"
+PYTHON_BIN=$(audit_compat_python "${REPO_ROOT}")
 
-python3 "${REPO_ROOT}/.mise/scripts/test/validate_audit_compat.py" \
+"${PYTHON_BIN}" "${REPO_ROOT}/.mise/scripts/test/validate_audit_compat.py" \
   --backend opensearch \
   --file "${AUDIT_FILE}" \
   --fields-file "${REPO_ROOT}/schemas/kms-audit-fields.json" \
