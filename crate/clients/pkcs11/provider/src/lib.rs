@@ -18,7 +18,10 @@ use cosmian_pkcs11_module::{
 };
 use pkcs11_sys::{CK_FUNCTION_LIST_PTR_PTR, CK_RV, CKR_FUNCTION_FAILED, CKR_OK};
 
-use crate::{kms_object::get_kms_config, logging::initialize_logging};
+use crate::{
+    kms_object::{RUNTIME, get_kms_config},
+    logging::initialize_logging,
+};
 
 mod backend;
 mod error;
@@ -88,6 +91,22 @@ fn dll_directory() -> Option<PathBuf> {
 #[unsafe(no_mangle)]
 #[expect(unsafe_code)]
 pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PTR_PTR) -> CK_RV {
+    // Temporary diagnostic for the ASE PKCS#11 CI failure: ASE's own logs show
+    // the call aborting with no further trace, which is consistent with a Rust
+    // panic unwinding across this `extern "C"` boundary (UB, normally silent).
+    // Write directly to stderr (unbuffered) so the panic message survives even
+    // if the tracing subscriber's file writer is never flushed before the abort.
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("cosmian-pkcs11 PANIC: {info}");
+    }));
+    eprintln!(
+        "C_GetFunctionList: begin (pp_function_list_null={})",
+        pp_function_list.is_null()
+    );
+    cosmian_logger::info!(
+        "C_GetFunctionList: begin (pp_function_list_null={})",
+        pp_function_list.is_null()
+    );
     let debug_level =
         std::env::var("COSMIAN_PKCS11_LOGGING_LEVEL").unwrap_or_else(|_| "info".to_owned());
 
@@ -135,6 +154,10 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
     };
 
     let use_pin = config.pkcs11_use_pin_as_access_token.unwrap_or(false);
+    // `C_GetFunctionList` is called directly by the PKCS#11 consumer (e.g. SAP ASE) with
+    // no Tokio runtime active. `KmsClient::new_with_config` builds a `hyper` client that
+    // requires one, so enter the shared runtime's context for the duration of construction.
+    let _rt_guard = RUNTIME.enter();
     if use_pin {
         // Mode 2 — OIDC pin: register a pre-auth backend so metadata calls
         // (C_GetTokenInfo etc.) work before C_Login, then register the login
@@ -154,6 +177,9 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
         register_login_fn(Box::new(move |token: &str| {
             let mut cfg = config.clone();
             cfg.http_config.access_token = Some(token.to_owned());
+            // C_Login is also called directly by the PKCS#11 consumer, outside the
+            // C_GetFunctionList call frame, so it needs its own runtime-context guard.
+            let _rt_guard = RUNTIME.enter();
             let kms_client =
                 KmsClient::new_with_config(cfg).map_err(|e| ModuleError::Backend(Box::new(e)))?;
             register_backend(Box::new(backend::CliBackend::instantiate(kms_client)));
@@ -161,9 +187,14 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
         }));
     } else {
         // Modes 0 and 1 — no auth or static token/TLS cert: create KmsClient immediately.
-        let kms_client = match KmsClient::new_with_config(config) {
-            Ok(client) => client,
-            Err(e) => {
+        // Temporary diagnostic: catch a panic here explicitly, since a panic unwinding
+        // across this `extern "C"` boundary would otherwise be silent UB (matches the
+        // ASE-observed abort with no further log output).
+        eprintln!("C_GetFunctionList: about to call KmsClient::new_with_config");
+        let construct_result = std::panic::catch_unwind(|| KmsClient::new_with_config(config));
+        let kms_client = match construct_result {
+            Ok(Ok(client)) => client,
+            Ok(Err(e)) => {
                 cosmian_logger::error!(
                     "C_GetFunctionList: failed to instantiate KMS client: {}. \
                      Check that ckms.toml exists alongside the DLL \
@@ -173,13 +204,28 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
                 );
                 return CKR_FUNCTION_FAILED;
             }
+            Err(panic_payload) => {
+                let message = panic_payload
+                    .downcast_ref::<&str>()
+                    .map(|s| (*s).to_owned())
+                    .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "<non-string panic payload>".to_owned());
+                eprintln!("C_GetFunctionList: KmsClient::new_with_config PANICKED: {message}");
+                cosmian_logger::error!(
+                    "C_GetFunctionList: KmsClient::new_with_config panicked: {}",
+                    message
+                );
+                return CKR_FUNCTION_FAILED;
+            }
         };
+        eprintln!("C_GetFunctionList: KmsClient::new_with_config returned Ok");
         register_backend(Box::new(backend::CliBackend::instantiate(kms_client)));
     }
     unsafe {
         FUNC_LIST.C_GetFunctionList = Some(C_GetFunctionList);
         *pp_function_list = addr_of_mut!(FUNC_LIST);
     }
+    cosmian_logger::info!("C_GetFunctionList: returning CKR_OK");
     CKR_OK
 }
 
