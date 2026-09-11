@@ -29,9 +29,9 @@ use pkcs11_sys::{
     CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS,
     CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512, CKM_SHA512_RSA_PKCS,
     CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED,
-    CKR_ATTRIBUTE_SENSITIVE, CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID,
-    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE,
-    CKZ_DATA_SPECIFIED,
+    CKR_ATTRIBUTE_SENSITIVE, CKR_ATTRIBUTE_TYPE_INVALID, CKR_MECHANISM_INVALID,
+    CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID,
+    CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
 };
 use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
@@ -2774,13 +2774,16 @@ impl Session {
         )))
     }
 
-    fn call_get_attributes(
+    /// Raw `C_GetAttributeValue` call, returning the `CK_RV` unchanged so callers can decide how
+    /// to interpret HSM-specific error codes (e.g. [`call_get_attributes`](Self::call_get_attributes)
+    /// treats most non-`CKR_OK` codes as hard failures, while
+    /// [`get_key_dates`](Self::get_key_dates) tolerates `CKR_ATTRIBUTE_TYPE_INVALID`).
+    fn raw_get_attributes(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         template: &mut [CK_ATTRIBUTE],
-    ) -> HResult<Option<()>> {
+    ) -> HResult<pkcs11_sys::CK_RV> {
         debug!("Retrieving HSM key attributes for key handle: {key_handle}");
-        // Get the length of the key value
         #[expect(unsafe_code)]
         let rv = match self.hsm.C_GetAttributeValue {
             Some(func) => unsafe {
@@ -2797,6 +2800,15 @@ impl Session {
                 ));
             }
         };
+        Ok(rv)
+    }
+
+    fn call_get_attributes(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        template: &mut [CK_ATTRIBUTE],
+    ) -> HResult<Option<()>> {
+        let rv = self.raw_get_attributes(key_handle, template)?;
         if rv == CKR_ATTRIBUTE_SENSITIVE {
             return Err(HError::Default(
                 "This key is sensitive and cannot be exported from the HSM.".to_owned(),
@@ -2859,12 +2871,19 @@ impl Session {
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_DATE>())?,
             },
         ];
-        // If the HSM doesn't support these attributes, just return None for both
-        if self
-            .call_get_attributes(key_handle, &mut template)?
-            .is_none()
-        {
+        // If the HSM doesn't support these attributes (some PKCS#11 implementations — e.g.
+        // Crypt2pay — report `CKR_ATTRIBUTE_TYPE_INVALID` for `CKA_START_DATE`/`CKA_END_DATE` on
+        // secret keys, since these attributes are only meaningful for certificates in the base
+        // PKCS#11 spec) or the key itself is gone (`CKR_OBJECT_HANDLE_INVALID`), just return None
+        // for both rather than hard-failing metadata retrieval for a purely informational field.
+        let rv = self.raw_get_attributes(key_handle, &mut template)?;
+        if rv == CKR_OBJECT_HANDLE_INVALID || rv == CKR_ATTRIBUTE_TYPE_INVALID {
             return Ok((None, None));
+        }
+        if rv != CKR_OK {
+            return Err(HError::Default(format!(
+                "Failed to get the HSM key dates for key handle: {key_handle}. Return code: {rv}"
+            )));
         }
         // Check if the returned length is 0 (attribute present but empty)
         let start = if template.first().is_none_or(|t| t.ulValueLen == 0) {

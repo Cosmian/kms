@@ -612,3 +612,80 @@ mode at all, and EdDSA required the separate `sign-eddsa`/`verify-eddsa` names.
   parse `sign`/`verify` labels generically by splitting on `/`, so the new
   `sign/ecdsa-p256`/`verify/ecdsa-p256` labels are categorized correctly with zero
   additional code.
+
+### CI fix: `test / HSM softhsm2 - non-fips` and `test / HSM crypt2pay - non-fips` — missing `SOFTHSM2_PKCS11_LIB` export
+
+Both jobs failed in their `Test (PKCS#11 v3 conformance via pkcs11-tool)` step
+(`mise run test:hsm-pkcs11-tool`), which always exercises a SoftHSM2-backed
+HSM-KEK regardless of which HSM the surrounding job matrix targets:
+
+```
+Error: Unexpected server error: start KMS server: failed instantiating the server:
+Invalid Request: Failed to instantiate the Softhsm2 HSM
+(lib: /usr/lib/softhsm/libsofthsm2.so): Error loading the library:
+/usr/lib/softhsm/libsofthsm2.so: cannot open shared object file: No such file or directory
+```
+
+Root cause: `hsm_kek_bootstrap` (`.mise/lib/pkcs11_helpers.sh`) sets up a SoftHSM2
+token and extends `LD_LIBRARY_PATH`/`DYLD_LIBRARY_PATH`, but never exported
+`SOFTHSM2_PKCS11_LIB` before starting the KMS server. The server resolves its
+SoftHSM2 PKCS#11 library from that env var, falling back to a hardcoded path
+(`crate/hsm/softhsm2/src/lib.rs::SOFTHSM2_PKCS11_LIB`,
+`/usr/lib/softhsm/libsofthsm2.so` on Linux) that only exists when SoftHSM2 was
+installed via the system package manager — not on the Nix-based CI runners used
+here, where `mise`'s nix-shell builds SoftHSM2 into the Nix store instead. The
+sibling helper `run_db_softhsm2_tests` (`.mise/lib/softhsm2.sh`) already exported
+this variable correctly; `hsm_kek_bootstrap` was the one path that didn't.
+
+Fix: `hsm_kek_bootstrap` now also exports
+`SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}"` (resolved by
+`softhsm2_detect_lib`, called from `softhsm2_setup` earlier in the same function),
+alongside the existing library-path exports. Verified locally end-to-end: `mise run
+test:hsm-pkcs11-tool --variant non-fips` now bootstraps the HSM-KEK and passes all
+five conformance checks (ECDSA P-256, ECDSA secp256k1, EdDSA Ed25519, RSA-PSS, and
+the tampered-signature rejection case).
+
+### CI fix: `test / HSM crypt2pay - non-fips` — `CKR_ATTRIBUTE_TYPE_INVALID` on `CKA_START_DATE`/`CKA_END_DATE` for AES keys
+
+The same run's `test / HSM crypt2pay - non-fips` job failed earlier, in its plain
+`Test` step (`cargo test -p crypt2pay_pkcs11_loader --lib -- tests::test_hsm_crypt2pay_all
+--ignored`), before the pkcs11-tool step even started:
+
+```
+Error: Default("Failed to get the HSM attributes for key handle: 16777248. Return code: 18")
+test tests::test_hsm_crypt2pay_all ... FAILED
+```
+
+Root cause: `crate/hsm/base_hsm/src/session/session_impl.rs::get_key_dates` queries
+`CKA_START_DATE`/`CKA_END_DATE` via the shared `call_get_attributes` helper, whose
+doc comment on the call site claims "If the HSM doesn't support these attributes,
+just return None for both" — but `call_get_attributes` only special-cases
+`CKR_OBJECT_HANDLE_INVALID` (returns `None`) and `CKR_ATTRIBUTE_SENSITIVE` (a
+dedicated error); any other non-`CKR_OK` code, including `CKR_ATTRIBUTE_TYPE_INVALID`
+(0x12 = 18), is treated as a hard failure. The Crypt2pay PKCS#11 emulator returns
+exactly `CKR_ATTRIBUTE_TYPE_INVALID` for `CKA_START_DATE`/`CKA_END_DATE` on a plain
+AES secret key (these attributes are only meaningful for certificates in the base
+PKCS#11 spec), so `shared::get_key_metadata`'s very first `get_key_metadata` call —
+on a freshly generated AES-256 key — always fails end-to-end against a real
+Crypt2pay HSM. SoftHSM2 does not reproduce this (its emulator accepts the query and
+returns `CKR_OK` with empty/zeroed dates), which is why `test / HSM softhsm2 -
+non-fips`'s equivalent `test_hsm_softhsm2_all` test (calling the same
+`shared::get_key_metadata` helper) was unaffected.
+
+Fix: extracted the raw `C_GetAttributeValue` FFI call out of `call_get_attributes`
+into a new `raw_get_attributes` helper returning the unmodified `CK_RV`, so
+`get_key_dates` can interpret HSM-specific return codes itself without weakening
+`call_get_attributes`'s existing strict semantics for its other, non-optional
+callers (e.g. reading `CKA_MODULUS` for an RSA key, where an unexpected attribute
+error should remain a hard failure). `get_key_dates` now treats both
+`CKR_OBJECT_HANDLE_INVALID` and `CKR_ATTRIBUTE_TYPE_INVALID` as "dates unavailable"
+and returns `(None, None)`, matching its own doc comment's intent.
+
+Verified: `cargo test -p cosmian_kms_base_hsm --features non-fips --lib` (24 passed)
+and `cargo clippy -p cosmian_kms_base_hsm --all-targets --features non-fips -- -D
+warnings` both clean; re-ran `mise run test:hsm-softhsm2 --variant non-fips`
+end-to-end locally (58 HSM vector tests + `test_hsm_softhsm2_all`, all still
+passing) to confirm no regression on the HSM that previously worked. The Crypt2pay
+path itself could not be re-verified locally (requires the physical/emulated
+Crypt2pay HSM only available in CI), but the fix only changes behavior for the two
+previously-unhandled return codes on this one call site.
