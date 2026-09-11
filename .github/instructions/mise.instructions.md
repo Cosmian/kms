@@ -126,7 +126,7 @@ Never assume `common.sh` is already loaded; always guard the source.
 
 | Library | What it provides |
 |---|---|
-| `.mise/lib/common.sh` | Colors, `print_*`, `kms_init_env`, `require_cmd`, `get_repo_root`, `setup_test_logging`, `run_isolated`, `wait_for_port`, `compute_sha256`, `build_test_deps`, `run_db_tests`, `setup_db_env`, `check_and_test_db`, `kms_wait_ready`, `pkcs11_check_warnings` |
+| `.mise/lib/common.sh` | Colors, `print_*`, `kms_init_env`, `require_cmd`, `has_cmd`, `has_env_vars`, `docker_ready`, `get_repo_root`, `setup_test_logging`, `run_isolated`, `wait_for_port`, `compute_sha256`, `build_test_deps`, `run_db_tests`, `setup_db_env`, `check_and_test_db`, `kms_wait_ready`, `pkcs11_check_warnings` |
 | `.mise/lib/kms_build.sh` | `kms_build_server`, `kms_build_cli`, `kms_build_all`, `get_kms_bin`, `get_ckms_bin`, `get_cargo_target_dir` |
 | `.mise/lib/kms_server.sh` | `kms_write_config`, `kms_start`, `kms_start_from_bin`, `kms_stop`, `kms_write_ckms_conf` + globals `KMS_PID`, `KMS_URL`, `KMS_PORT` |
 | `.mise/lib/pkcs11_helpers.sh` | PKCS#11 slot and object helpers |

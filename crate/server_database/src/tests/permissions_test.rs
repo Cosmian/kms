@@ -1,15 +1,23 @@
 use std::collections::HashSet;
 
-use cosmian_kmip::kmip_2_1::KmipOperation;
+use cosmian_kmip::kmip_2_1::{
+    KmipOperation, extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+    kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+};
+use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
+    CsRng,
+    reexport::rand_core::{RngCore, SeedableRng},
+};
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, UserId};
 use uuid::Uuid;
 
-use crate::error::DbResult;
+use crate::{db_error, error::DbResult};
 
 pub(super) async fn permissions<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbResult<()> {
     cosmian_logger::log_init(None);
     permissions_users(db).await?;
     permissions_wildcard(db).await?;
+    permissions_granted_includes_wildcard(db).await?;
     crl_persistence(db).await?;
     Ok(())
 }
@@ -214,6 +222,62 @@ async fn permissions_wildcard<DB: ObjectsStore + PermissionsStore>(db: &DB) -> D
         .await?;
     assert_eq!(perms.len(), 1);
     assert!(perms.contains(&KmipOperation::Get));
+
+    Ok(())
+}
+
+/// Regression test for `list_user_operations_granted` (`GET /access/obtained`):
+/// a permission granted only to the wildcard user `*` must be reported as
+/// "obtained" by every other user, consistent with `list_user_operations_on_object`
+/// which already treats wildcard grants as inherited.
+async fn permissions_granted_includes_wildcard<DB: ObjectsStore + PermissionsStore>(
+    db: &DB,
+) -> DbResult<()> {
+    let owner = UserId::from(Uuid::new_v4().to_string());
+    let user_id = UserId::from(Uuid::new_v4().to_string());
+
+    let mut rng = CsRng::from_entropy();
+    let mut symmetric_key_bytes = vec![0; 32];
+    rng.fill_bytes(&mut symmetric_key_bytes);
+    let symmetric_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &symmetric_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
+    )?;
+    let uid = Uuid::new_v4().to_string();
+    db.create(
+        Some(uid.clone()),
+        &owner,
+        &symmetric_key,
+        symmetric_key.attributes()?,
+        &HashSet::new(),
+    )
+    .await?;
+
+    // Grant `Get` to the wildcard user only (no direct grant to `user_id`).
+    db.grant_operations(
+        &uid,
+        &UserId::from("*"),
+        HashSet::from([KmipOperation::Get]),
+    )
+    .await?;
+
+    // Grant `Encrypt` directly to `user_id`.
+    db.grant_operations(&uid, &user_id, HashSet::from([KmipOperation::Encrypt]))
+        .await?;
+
+    let granted = db.list_user_operations_granted(&user_id).await?;
+    let (_owner, _state, ops) = granted
+        .get(&uid)
+        .ok_or_else(|| db_error!("object not found in the granted-access list"))?;
+    assert!(
+        ops.contains(&KmipOperation::Get),
+        "wildcard-granted operations must be included in the user's obtained access rights"
+    );
+    assert!(ops.contains(&KmipOperation::Encrypt));
 
     Ok(())
 }
