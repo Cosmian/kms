@@ -4,9 +4,6 @@
 [env]
 RUST_BACKTRACE = "1"
 
-[tools]
-usage = "latest"
-
 [task_config]
 dir = "{{config_root}}"
 includes = [".mise/tasks"]
