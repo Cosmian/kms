@@ -37,6 +37,15 @@ def log_error(message: str) -> None:
     print(f"ERROR: {message}", file=sys.stderr)
 
 
+def _parse_json_response(resp: requests.Response, context: str) -> Any | None:
+    """Parse a response body as JSON, logging and returning None instead of raising."""
+    try:
+        return resp.json()
+    except json.JSONDecodeError as exc:
+        log_error(f"{context}: response was not valid JSON: {exc}")
+        return None
+
+
 def load_json_file(path: str) -> dict[str, Any]:
     """Load and parse a JSON file, exiting on failure."""
     try:
@@ -132,9 +141,15 @@ def run_opensearch(
     base_url = f"{args.scheme}://{args.host}:{args.port}"
     mapping = load_json_file(args.mapping_file)
 
-    requests.delete(
+    delete_resp = requests.delete(
         f"{base_url}/{args.index}", timeout=args.timeout, verify=not args.insecure
     )
+    if not delete_resp.ok and delete_resp.status_code != 404:
+        log_error(
+            f"failed to delete existing index '{args.index}': "
+            f"{delete_resp.status_code} {delete_resp.text}"
+        )
+        return 1
     resp = requests.put(
         f"{base_url}/{args.index}",
         json=mapping,
@@ -159,7 +174,9 @@ def run_opensearch(
         log_error(f"bulk request failed: {resp.status_code} {resp.text}")
         return 1
 
-    bulk_result = resp.json()
+    bulk_result = _parse_json_response(resp, "bulk request")
+    if bulk_result is None:
+        return 1
     if bulk_result.get('errors'):
         for i, item in enumerate(bulk_result.get('items', [])):
             outcome = item.get('index', {})
@@ -177,7 +194,11 @@ def run_opensearch(
     if not count_resp.ok:
         log_error(f"count request failed: {count_resp.status_code} {count_resp.text}")
         return 1
-    indexed_count = count_resp.json()['count']
+    count_body = _parse_json_response(count_resp, "count request")
+    if count_body is None or 'count' not in count_body:
+        log_error("count request: response missing 'count' field")
+        return 1
+    indexed_count = count_body['count']
     if indexed_count != len(records):
         log_error(
             f"indexed count mismatch: expected {len(records)}, got {indexed_count}"
@@ -239,7 +260,11 @@ def run_splunk_search(args: argparse.Namespace, query: str) -> int | None:
     if not resp.ok:
         log_error(f"failed to start Splunk search job: {resp.status_code} {resp.text}")
         return None
-    sid = resp.json()['sid']
+    job_body = _parse_json_response(resp, "Splunk search job")
+    if job_body is None or 'sid' not in job_body:
+        log_error("Splunk search job: response missing 'sid' field")
+        return None
+    sid = job_body['sid']
 
     results_resp = requests.get(
         f"{mgmt_base}/services/search/jobs/{sid}/results",
@@ -253,7 +278,10 @@ def run_splunk_search(args: argparse.Namespace, query: str) -> int | None:
             f"failed to fetch Splunk search results: {results_resp.status_code} {results_resp.text}"
         )
         return None
-    rows = results_resp.json().get('results', [])
+    results_body = _parse_json_response(results_resp, "Splunk search results")
+    if results_body is None:
+        return None
+    rows = results_body.get('results', [])
     if not rows or 'count' not in rows[0]:
         return 0
     return int(rows[0]['count'])

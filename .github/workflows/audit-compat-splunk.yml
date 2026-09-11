@@ -34,9 +34,13 @@ jobs:
 
       - uses: ./.github/actions/install-mise
 
+      - name: Read Rust toolchain version
+        id: toolchain
+        run: echo "version=$(grep '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.0
+          toolchain: ${{ steps.toolchain.outputs.version }}
 
       - name: Cache Cargo registry and build artifacts
         uses: actions/cache@v4
