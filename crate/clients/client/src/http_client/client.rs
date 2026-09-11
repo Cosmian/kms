@@ -375,7 +375,9 @@ impl HttpClient {
         }
 
         // Build OpenSSL connector
+        eprintln!("instantiate: about to call build_ssl_connector");
         let ssl_builder = build_ssl_connector(http_conf)?;
+        eprintln!("instantiate: build_ssl_connector returned Ok");
 
         // Build the smart connector (handles proxy or direct connections)
         let connector =
@@ -388,16 +390,20 @@ impl HttpClient {
                 });
 
         // Wrap with HTTPS (OpenSSL TLS)
+        eprintln!("instantiate: about to call HttpsConnector::with_connector");
         let https_connector =
             HttpsConnector::with_connector(connector, ssl_builder).map_err(|e| {
                 HttpClientError::Default(format!("Failed to build HTTPS connector: {e}"))
             })?;
+        eprintln!("instantiate: HttpsConnector::with_connector returned Ok");
 
         // Evict idle connections before the server's keep-alive window closes them.
+        eprintln!("instantiate: about to build hyper Client");
         let client = Client::builder(TokioExecutor::new())
             .pool_idle_timeout(Duration::from_secs(Self::POOL_IDLE_TIMEOUT_SECS))
             .pool_timer(TokioTimer::new())
             .build(https_connector);
+        eprintln!("instantiate: hyper Client built");
 
         Ok(Self {
             server_url,
