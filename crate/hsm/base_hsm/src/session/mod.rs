@@ -1,4 +1,6 @@
 mod aes;
+mod eddsa;
+mod message_aead;
 mod rsa;
 
 mod session_impl;

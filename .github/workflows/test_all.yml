@@ -44,8 +44,19 @@ jobs:
           - kmip-go
           - ocsp
           - pki-revocation
+          # Not a vendor HSM backend: `kryoptic` is a PKCS#11 v3.0 software token used
+          # purely as a conformance-test oracle for crate/hsm/base_hsm's v3.0 mechanism
+          # support (EdDSA, HKDF, message-based AEAD, populated interface list). No
+          # hardware/secrets required, so it runs here rather than in the `hsm` job's
+          # concurrency-limited vendor matrix below. Gated purely behind `#[ignore]`
+          # like every other vendor HSM suite (no Cargo feature — `kryoptic` is
+          # fetched/built out-of-tree, never a real dependency).
+          - hsm-kryoptic-conformance
         features: [fips, non-fips]
         exclude:
+          # kryoptic-conformance only needs to be validated once (fips)
+          - type: hsm-kryoptic-conformance
+            features: non-fips
           # redis is exclusively for non-fips
           - type: redis
             features: fips
