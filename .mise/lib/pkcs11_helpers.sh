@@ -156,6 +156,7 @@ EOF
 #   HSM_USER_PASSWORD, HSM_SLOT_ID, KEK_ID  — the bootstrapped HSM-KEK's identity
 #   KMS_URL, CKMS_CONF                       — the running, KEK-enabled KMS server
 #   LD_LIBRARY_PATH, DYLD_LIBRARY_PATH       — extended with the SoftHSM2 lib path
+#   SOFTHSM2_PKCS11_LIB                      — SoftHSM2 PKCS#11 library path
 hsm_kek_bootstrap() {
   local repo_root="$1" test_name="$2" work_dir="$3" kms_bin="$4" ckms_bin="$5"
 
@@ -171,6 +172,7 @@ hsm_kek_bootstrap() {
   lib_path="$(softhsm2_lib_search_path)"
   export LD_LIBRARY_PATH="${lib_path}:${LD_LIBRARY_PATH:-}"
   export DYLD_LIBRARY_PATH="${lib_path}:${DYLD_LIBRARY_PATH:-}"
+  export SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}"
 
   local port sqlite_dir
   port="$(kms_pick_free_port)"
