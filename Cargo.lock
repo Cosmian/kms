@@ -1813,6 +1813,7 @@ dependencies = [
  "cosmian_pkcs11_module",
  "etcetera",
  "hex",
+ "openssl",
  "p256",
  "pkcs1",
  "pkcs11-sys",

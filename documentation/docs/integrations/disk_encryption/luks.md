@@ -6,6 +6,9 @@ The Eviden KMS can provision secrets to open [Linux LUKS](https://en.wikipedia.o
 
 The Eviden KMS provides a PKCS#11 module that can be used to access the KMS from applications that support PKCS#11, using the `p11-kit` framework.
 
+See the [PKCS#11 provider module](../pkcs11_provider.md) reference page for the mechanisms
+and Cryptoki versions supported by the library.
+
 With LUKS, the system provided `systemd-cryptenroll` command must have support for `p11-kit` which you can check by running `systemd-cryptenroll --help` and checking for the `+P11KIT` flag.
 
 ```bash

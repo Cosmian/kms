@@ -346,3 +346,7 @@ pub unsafe extern "C" fn C_GetInterface(
 #[cfg(feature = "non-fips")]
 #[expect(clippy::expect_used, clippy::panic_in_result_fn)]
 mod tests;
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
+#[expect(clippy::expect_used, clippy::panic_in_result_fn)]
+mod tests_v3;

@@ -36,9 +36,10 @@ use pkcs11_sys::{
     CK_UNAVAILABLE_INFORMATION, CK_USER_TYPE, CK_UTF8CHAR_PTR, CK_VERSION, CK_VOID_PTR,
     CKA_UNIQUE_ID, CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT,
     CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN,
-    CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_USER_PIN_INITIALIZED, CKM_AES_CBC,
-    CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKR_OK, CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS,
-    CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
+    CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_USER_PIN_INITIALIZED, CKF_VERIFY, CKM_AES_CBC,
+    CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKR_OK, CKS_RO_USER_FUNCTIONS,
+    CKS_RW_USER_FUNCTIONS, CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR,
+    CRYPTOKI_VERSION_MINOR,
 };
 use rand::Rng;
 
@@ -52,8 +53,8 @@ use crate::{
     objects_store::OBJECTS_STORE,
     sessions::{self, Session},
     traits::{
-        DecryptContext, EncryptContext, EncryptionAlgorithm, SignContext, backend, clear_backend,
-        invoke_login_fn, use_pin_as_access_token,
+        DecryptContext, EncryptContext, EncryptionAlgorithm, SignContext, VerifyContext, backend,
+        clear_backend, invoke_login_fn, use_pin_as_access_token,
     },
 };
 
@@ -137,10 +138,39 @@ macro_rules! valid_slot {
     };
 }
 
+/// The `(iv, aad)` pair carried by an AES mechanism.
+type IvAndAad = (Option<Vec<u8>>, Option<Vec<u8>>);
+
+/// Extract the `(iv, aad)` pair carried by an AES mechanism (`CKM_AES_CBC`,
+/// `CKM_AES_CBC_PAD`, or `CKM_AES_GCM`). `aad` is always `None` for the two
+/// non-AEAD CBC mechanisms. Returns an error for any other mechanism.
+fn iv_and_aad_from_mechanism(mechanism: &Mechanism) -> ModuleResult<IvAndAad> {
+    match mechanism {
+        Mechanism::AesCbcPad { iv } | Mechanism::AesCbc { iv } => Ok((Some(iv.to_vec()), None)),
+        Mechanism::AesGcm { iv, aad } => Ok((
+            Some(iv.clone()),
+            if aad.is_empty() {
+                None
+            } else {
+                Some(aad.clone())
+            },
+        )),
+        mech => Err(ModuleError::MechanismInvalid(CK_MECHANISM_TYPE::from(mech))),
+    }
+}
+
 pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
-    // In this structure 'version' is the cryptoki specification version number. The major and minor
-    // versions must be set to 0x02 and 0x28 indicating a version 2.40 compatible structure.
-    version: CK_VERSION { major: 2, minor: 4 },
+    // PKCS#11 v3.0 rollout (issue #1156): this legacy `C_GetFunctionList` table must keep
+    // reporting version 2.40, matching the PKCS#11 v2.40 spec, even though the module also
+    // implements the v3.0 `C_GetInterfaceList`/`C_GetInterface` entry points (see `FUNC_LIST_3_0`
+    // below, which correctly reports 3.1). Some v2.40-only consumers validate
+    // `CK_FUNCTION_LIST.version` and reject the module if it does not read exactly 2.40, so this
+    // field must NOT be bumped even though every v2.x function pointer here is unchanged and the
+    // v3.0 entry points are purely additive.
+    version: CK_VERSION {
+        major: 2,
+        minor: 40,
+    },
     C_Initialize: Some(C_Initialize),
     C_Finalize: Some(C_Finalize),
     C_GetInfo: Some(C_GetInfo),
@@ -518,10 +548,16 @@ cryptoki_fn!(
         if !SUPPORTED_SIGNATURE_MECHANISMS.contains(&mechType) {
             return Err(ModuleError::MechanismInvalid(mechType));
         }
+        // PKCS#11 v3.1 §5.2 Table 3: `CK_MECHANISM_INFO.flags` MUST accurately report every
+        // operation the mechanism actually supports. `C_Verify` is a real, implemented
+        // operation for every signature mechanism below (see `C_Verify`/`VerifyContext`), so
+        // reporting `CKF_SIGN` alone here would be a conformance bug: a spec-following client
+        // that checks `CKF_VERIFY` before calling `C_VerifyInit` would incorrectly conclude
+        // verification is unsupported.
         let flags = match mechType {
             CKM_AES_KEY_GEN => CKF_GENERATE,
-            CKM_AES_CBC | CKM_AES_CBC_PAD => CKF_ENCRYPT | CKF_DECRYPT,
-            _ => CKF_SIGN,
+            CKM_AES_CBC | CKM_AES_CBC_PAD | CKM_AES_GCM => CKF_ENCRYPT | CKF_DECRYPT,
+            _ => CKF_SIGN | CKF_VERIFY,
         };
         let info = CK_MECHANISM_INFO {
             flags,
@@ -1043,38 +1079,27 @@ cryptoki_fn!(
                         remote_object_id: pk.remote_id().to_owned(),
                         algorithm: mechanism.try_into()?,
                         iv: None,
+                        aad: None,
                     });
                     Ok(())
                 }
                 Some(Object::SymmetricKey(sk)) => {
-                    let iv = match &mechanism {
-                        Mechanism::AesCbcPad { iv } | Mechanism::AesCbc { iv } => Some(iv.to_vec()),
-                        mech => {
-                            return Err(ModuleError::MechanismInvalid(CK_MECHANISM_TYPE::from(
-                                mech,
-                            )));
-                        }
-                    };
+                    let (iv, aad) = iv_and_aad_from_mechanism(&mechanism)?;
                     session.encrypt_ctx = Some(EncryptContext {
                         remote_object_id: sk.remote_id().to_owned(),
                         algorithm: EncryptionAlgorithm::try_from(mechanism)?,
                         iv,
+                        aad,
                     });
                     Ok(())
                 }
                 Some(Object::DataObject(data)) => {
-                    let iv = match &mechanism {
-                        Mechanism::AesCbcPad { iv } | Mechanism::AesCbc { iv } => Some(iv.to_vec()),
-                        mech => {
-                            return Err(ModuleError::MechanismInvalid(CK_MECHANISM_TYPE::from(
-                                mech,
-                            )));
-                        }
-                    };
+                    let (iv, aad) = iv_and_aad_from_mechanism(&mechanism)?;
                     session.encrypt_ctx = Some(EncryptContext {
                         remote_object_id: data.remote_id().to_owned(),
                         algorithm: EncryptionAlgorithm::try_from(mechanism)?,
                         iv,
+                        aad,
                     });
                     Ok(())
                 }
@@ -1164,39 +1189,28 @@ cryptoki_fn!(
                         remote_object_id: sk.remote_id().to_owned(),
                         algorithm: mechanism.try_into()?,
                         iv: None,
+                        aad: None,
                     });
                     Ok(())
                 }
                 Some(Object::SymmetricKey(sk)) => {
-                    let iv = match &mechanism {
-                        Mechanism::AesCbcPad { iv } | Mechanism::AesCbc { iv } => Some(iv.to_vec()),
-                        mech => {
-                            return Err(ModuleError::MechanismInvalid(CK_MECHANISM_TYPE::from(
-                                mech,
-                            )));
-                        }
-                    };
+                    let (iv, aad) = iv_and_aad_from_mechanism(&mechanism)?;
 
                     session.decrypt_ctx = Some(DecryptContext {
                         remote_object_id: sk.remote_id().to_owned(),
                         algorithm: mechanism.try_into()?,
                         iv,
+                        aad,
                     });
                     Ok(())
                 }
                 Some(Object::DataObject(data)) => {
-                    let iv = match &mechanism {
-                        Mechanism::AesCbcPad { iv } | Mechanism::AesCbc { iv } => Some(iv.to_vec()),
-                        mech => {
-                            return Err(ModuleError::MechanismInvalid(CK_MECHANISM_TYPE::from(
-                                mech,
-                            )));
-                        }
-                    };
+                    let (iv, aad) = iv_and_aad_from_mechanism(&mechanism)?;
                     session.decrypt_ctx = Some(DecryptContext {
                         remote_object_id: data.remote_id().to_owned(),
                         algorithm: mechanism.try_into()?,
                         iv,
+                        aad,
                     });
                     Ok(())
                 }
@@ -1419,34 +1433,88 @@ cryptoki_fn_not_supported!(
     pulSignatureLen: CK_ULONG_PTR
 );
 
-cryptoki_fn_not_supported!(
-    C_VerifyInit,
-    hSession: CK_SESSION_HANDLE,
-    pMechanism: CK_MECHANISM_PTR,
-    hKey: CK_OBJECT_HANDLE
+cryptoki_fn!(
+    unsafe fn C_VerifyInit(
+        hSession: CK_SESSION_HANDLE,
+        pMechanism: CK_MECHANISM_PTR,
+        hKey: CK_OBJECT_HANDLE,
+    ) {
+        initialized!();
+        valid_session!(hSession);
+        not_null!(pMechanism, "C_VerifyInit: pMechanism");
+        sessions::session(hSession, |session| -> ModuleResult<()> {
+            let find_ctx = OBJECTS_STORE.read()?;
+            let object = find_ctx.get_using_handle(hKey);
+            let Some(Object::PublicKey(public_key)) = object.as_deref() else {
+                return Err(ModuleError::KeyHandleInvalid(hKey));
+            };
+            let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
+            session.verify_ctx = Some(VerifyContext {
+                algorithm: mechanism.try_into()?,
+                public_key: public_key.clone(),
+                payload: None,
+            });
+            Ok(())
+        })
+    }
 );
 
-cryptoki_fn_not_supported!(
-    C_Verify,
-    hSession: CK_SESSION_HANDLE,
-    pData: CK_BYTE_PTR,
-    ulDataLen: CK_ULONG,
-    pSignature: CK_BYTE_PTR,
-    ulSignatureLen: CK_ULONG
+cryptoki_fn!(
+    unsafe fn C_Verify(
+        hSession: CK_SESSION_HANDLE,
+        pData: CK_BYTE_PTR,
+        ulDataLen: CK_ULONG,
+        pSignature: CK_BYTE_PTR,
+        ulSignatureLen: CK_ULONG,
+    ) {
+        initialized!();
+        valid_session!(hSession);
+        not_null!(pData, "C_Verify: pData");
+        not_null!(pSignature, "C_Verify: pSignature");
+        sessions::session(hSession, |session| -> ModuleResult<()> {
+            let data = unsafe { slice::from_raw_parts(pData, usize::try_from(ulDataLen)?) };
+            let signature =
+                unsafe { slice::from_raw_parts(pSignature, usize::try_from(ulSignatureLen)?) };
+            session.verify(Some(data), signature)
+        })
+    }
 );
 
-cryptoki_fn_not_supported!(
-    C_VerifyUpdate,
-    hSession: CK_SESSION_HANDLE,
-    pPart: CK_BYTE_PTR,
-    ulPartLen: CK_ULONG
+cryptoki_fn!(
+    unsafe fn C_VerifyUpdate(hSession: CK_SESSION_HANDLE, pPart: CK_BYTE_PTR, ulPartLen: CK_ULONG) {
+        initialized!();
+        valid_session!(hSession);
+        not_null!(pPart, "C_VerifyUpdate: pPart");
+        sessions::session(hSession, |session| -> ModuleResult<()> {
+            let Some(verify_ctx) = session.verify_ctx.as_mut() else {
+                return Err(ModuleError::OperationNotInitialized(hSession));
+            };
+            verify_ctx
+                .payload
+                .get_or_insert(vec![])
+                .extend_from_slice(unsafe {
+                    slice::from_raw_parts(pPart, usize::try_from(ulPartLen)?)
+                });
+            Ok(())
+        })
+    }
 );
 
-cryptoki_fn_not_supported!(
-    C_VerifyFinal,
-    hSession: CK_SESSION_HANDLE,
-    pSignature: CK_BYTE_PTR,
-    ulSignatureLen: CK_ULONG
+cryptoki_fn!(
+    unsafe fn C_VerifyFinal(
+        hSession: CK_SESSION_HANDLE,
+        pSignature: CK_BYTE_PTR,
+        ulSignatureLen: CK_ULONG,
+    ) {
+        initialized!();
+        valid_session!(hSession);
+        not_null!(pSignature, "C_VerifyFinal: pSignature");
+        sessions::session(hSession, |session| -> ModuleResult<()> {
+            let signature =
+                unsafe { slice::from_raw_parts(pSignature, usize::try_from(ulSignatureLen)?) };
+            session.verify(None, signature)
+        })
+    }
 );
 
 cryptoki_fn_not_supported!(
