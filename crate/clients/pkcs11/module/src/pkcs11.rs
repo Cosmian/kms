@@ -218,10 +218,12 @@ cryptoki_fn!(
         cosmian_logger::info!("C_Initialize: begin (args_null={})", pInitArgs.is_null());
         if !pInitArgs.is_null() {
             let args = unsafe { *(pInitArgs as CK_C_INITIALIZE_ARGS_PTR) };
+            let flags = args.flags;
+            let reserved_null = args.pReserved.is_null();
             cosmian_logger::info!(
                 "C_Initialize: flags=0x{:x}, reserved_null={}",
-                args.flags,
-                args.pReserved.is_null()
+                flags,
+                reserved_null
             );
             if !args.pReserved.is_null() {
                 return Err(ModuleError::BadArguments(
