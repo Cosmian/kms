@@ -2,13 +2,18 @@
 #MISE description="Run a real dlopen()-based PKCS#11 load benchmark against cosmian_pkcs11"
 #USAGE flag "-v --variant <v>"      env="BENCH_VARIANT"       default="non-fips"       help="FIPS variant"                              { choices "fips" "non-fips" }
 #USAGE flag "-l --link <l>"         env="BENCH_LINK"          default="static"          help="Linkage type"                              { choices "static" "dynamic" }
-#USAGE flag "-r --release"          env="BENCH_RELEASE"       default="true"            help="Build in release mode"
-#USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "decrypt" "sign" "verify" "key-creation" }
+#USAGE flag "-r --release"          env="BENCH_RELEASE"       default="true"            help="Build optimized benchmark binaries (workspace bench profile: opt-level=3, debug symbols)"
+#USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "decrypt" "sign" "verify" "sign-rsa" "verify-rsa" "sign-ecdsa" "verify-ecdsa" "sign-eddsa" "verify-eddsa" "key-creation" }
 #USAGE flag "-t --time <t>"         env="BENCH_TIME"          default="20"              help="Measurement time per level (seconds)"
 #USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16"  help="Comma-separated concurrency levels"
 #USAGE flag "-W --warmup <s>"       env="BENCH_WARMUP"        default="5"               help="Warmup time before the load sweep (seconds)"
 #USAGE flag "-C --cooldown <s>"     env="BENCH_COOLDOWN"      default="2"               help="Cooldown between concurrency levels (seconds)"
 #USAGE flag "-s --sanity"           env="BENCH_SANITY"                                  help="Quick sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt"
+#USAGE flag "--shared-session"      env="BENCH_SHARED_SESSION"                          help="Force every worker thread to share one Cryptoki session (pre-fix behavior), instead of one dedicated session per thread (default) — for before/after comparison only"
+#USAGE flag "--criterion"           env="BENCH_CRITERION"                               help="Run real criterion-crate single-operation micro-benchmarks instead of the concurrency sweep — writes only criterion.json, so the report has no Load test section"
+#USAGE flag "--speed <sp>"          env="BENCH_SPEED"         default="quick"           help="Criterion speed preset (with --criterion)" { choices "sanity" "quick" "normal" }
+#USAGE flag "--overhead-payload-size <n>" env="BENCH_OVERHEAD_PAYLOAD_SIZE" default="32" help="Ed25519 payload bytes for differential Criterion tiers"
+#USAGE flag "--overhead-payload-mode <m>" env="BENCH_OVERHEAD_PAYLOAD_MODE" default="fixed" help="Payload selection for typed and PKCS#11 Criterion tiers" { choices "fixed" "varying" }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/bench_helpers.sh"
@@ -24,18 +29,36 @@ BENCH_CONCURRENCY="${usage_concurrency:-1,2,4,8,16}"
 BENCH_WARMUP="${usage_warmup:-5}"
 BENCH_COOLDOWN="${usage_cooldown:-2}"
 BENCH_SANITY="${usage_sanity:-}"
+BENCH_SHARED_SESSION="${usage_shared_session:-}"
+BENCH_CRITERION="${usage_criterion:-}"
+BENCH_SPEED="${usage_speed:-quick}"
+BENCH_OVERHEAD_PAYLOAD_SIZE="${usage_overhead_payload_size:-32}"
+BENCH_OVERHEAD_PAYLOAD_MODE="${usage_overhead_payload_mode:-fixed}"
 
 kms_init_env "${BENCH_VARIANT}" "${BENCH_LINK}"
 print_header "Running PKCS#11 load benchmark (${VARIANT_NAME})"
 
 # ── Variables ────────────────────────────────────────────────────────────────
 TMP_DIR="$(mktemp -d /tmp/kms-bench-pkcs11-XXXXXX)"
-BUILD_MODE=$([ "${BENCH_RELEASE}" = "false" ] && echo debug || echo release)
+if [ "${BENCH_RELEASE}" = "false" ]; then
+  BUILD_MODE="debug"
+  BUILD_DIR="debug"
+  BUILD_PROFILE_ARGS=()
+else
+  # Workspace release optimizes for binary size (`opt-level = "z"`); benchmarks
+  # must use the speed-oriented profile (`opt-level = 3`). Cargo writes this
+  # built-in/custom bench profile to target/release.
+  BUILD_MODE="bench"
+  BUILD_DIR="release"
+  BUILD_PROFILE_ARGS=(--profile bench)
+fi
 
 # Sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt.
 # usage always resolves to "true" whether -s flag or BENCH_SANITY=1 env alias is used.
 if [ "${BENCH_SANITY}" = "true" ]; then
   BUILD_MODE="debug"
+  BUILD_DIR="debug"
+  BUILD_PROFILE_ARGS=()
   BENCH_TIME="2"
   BENCH_WARMUP="0"
   BENCH_COOLDOWN="0"
@@ -47,18 +70,26 @@ bench_register_cleanup
 
 # Build the server, the cosmian_pkcs11 cdylib, and the benchmark binary.
 BUILD_ARGS=(-p cosmian_kms_server -p cosmian_pkcs11 -p cosmian_pkcs11_bench)
-[ "${BUILD_MODE}" = "release" ] && BUILD_ARGS+=(--release)
+BUILD_FEATURES=()
+[ "${BENCH_VARIANT}" = "non-fips" ] && BUILD_FEATURES+=(non-fips)
+[ "${BENCH_CRITERION}" = "true" ] && BUILD_FEATURES+=(cosmian_pkcs11/benchmarking)
+BUILD_FEATURE_ARGS=()
+if [ "${#BUILD_FEATURES[@]}" -gt 0 ]; then
+  BUILD_FEATURE_LIST=$(IFS=,; echo "${BUILD_FEATURES[*]}")
+  BUILD_FEATURE_ARGS=(--features "${BUILD_FEATURE_LIST}")
+fi
 echo "Building cosmian_kms server, cosmian_pkcs11 provider, and the PKCS#11 benchmark (${BUILD_MODE})..."
-cargo build "${BUILD_ARGS[@]}" ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+cargo build "${BUILD_ARGS[@]}" ${BUILD_PROFILE_ARGS[@]+"${BUILD_PROFILE_ARGS[@]}"} \
+  ${BUILD_FEATURE_ARGS[@]+"${BUILD_FEATURE_ARGS[@]}"}
 
 # shellcheck disable=SC2119
 CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$(get_repo_root)/target}"
 export CARGO_TARGET_DIR
-KMS_BIN="${CARGO_TARGET_DIR}/${BUILD_MODE}/cosmian_kms"
-PKCS11_BENCH_BIN="${CARGO_TARGET_DIR}/${BUILD_MODE}/pkcs11_bench"
+KMS_BIN="${CARGO_TARGET_DIR}/${BUILD_DIR}/cosmian_kms"
+PKCS11_BENCH_BIN="${CARGO_TARGET_DIR}/${BUILD_DIR}/pkcs11_bench"
 export KMS_BIN
 
-PKCS11_LIB="$(get_cosmian_pkcs11_lib "${CARGO_TARGET_DIR}" "${BUILD_MODE}")"
+PKCS11_LIB="$(get_cosmian_pkcs11_lib "${CARGO_TARGET_DIR}" "${BUILD_DIR}")"
 
 BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
 bench_start_server "$BENCH_PORT" "$TMP_DIR"
@@ -93,6 +124,19 @@ bench_warn_cpu_scaling
 # shellcheck disable=SC2034  # read by bench_collect_env (sourced from bench_helpers.sh) as a global
 BENCH_PROTOCOL="pkcs11"
 
+SHARED_SESSION_ARGS=()
+[ "${BENCH_SHARED_SESSION}" = "true" ] && SHARED_SESSION_ARGS+=(--shared-session)
+
+CRITERION_ARGS=()
+if [ "${BENCH_CRITERION}" = "true" ]; then
+  CRITERION_ARGS+=(
+    --criterion
+    --speed "${BENCH_SPEED}"
+    --overhead-payload-size "${BENCH_OVERHEAD_PAYLOAD_SIZE}"
+    --overhead-payload-mode "${BENCH_OVERHEAD_PAYLOAD_MODE}"
+  )
+fi
+
 "${PKCS11_BENCH_BIN}" \
   --pkcs11-lib "${PKCS11_LIB}" \
   --kms-url "http://127.0.0.1:${BENCH_PORT}" \
@@ -100,7 +144,9 @@ BENCH_PROTOCOL="pkcs11"
   --concurrency "${BENCH_CONCURRENCY}" \
   --time "${BENCH_TIME}" \
   --warmup "${BENCH_WARMUP}" \
-  --cooldown "${BENCH_COOLDOWN}"
+  --cooldown "${BENCH_COOLDOWN}" \
+  ${SHARED_SESSION_ARGS[@]+"${SHARED_SESSION_ARGS[@]}"} \
+  ${CRITERION_ARGS[@]+"${CRITERION_ARGS[@]}"}
 
 # Dedicated report directory (documentation/docs/benchmarks/ckms_bench_pkcs11/) so
 # this never clobbers the ckms_bench / ckms_bench_hsm_kek / ckms_bench_hsm reports

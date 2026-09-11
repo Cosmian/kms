@@ -35,9 +35,8 @@ pub(crate) enum BenchError {
 
 impl BenchError {
     /// Returns `true` if this error is the provider reporting
-    /// `CKR_FUNCTION_NOT_SUPPORTED` for a Cryptoki call (e.g. `C_VerifyInit`/
-    /// `C_Verify`, which `cosmian_pkcs11_module` does not implement) — the caller
-    /// should treat this as "skip this benchmark", not a hard failure.
+    /// `CKR_FUNCTION_NOT_SUPPORTED` for a Cryptoki call. The caller should treat
+    /// this as "skip this benchmark", not a hard failure.
     pub(crate) const fn is_function_not_supported(&self) -> bool {
         matches!(
             self,

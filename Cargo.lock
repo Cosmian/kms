@@ -1837,10 +1837,14 @@ dependencies = [
  "ckms",
  "clap",
  "cosmian_logger",
+ "criterion",
  "libloading",
  "pkcs11-sys",
+ "serde",
+ "serde_json",
  "thiserror 2.0.19",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]

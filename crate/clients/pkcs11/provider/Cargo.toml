@@ -21,6 +21,7 @@ crate-type = ["rlib", "cdylib"]
 doctest = false
 
 [features]
+benchmarking = ["cosmian_pkcs11_module/benchmarking"]
 non-fips = ["ckms/non-fips", "test_kms_server/non-fips"]
 
 [dependencies]

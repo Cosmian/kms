@@ -167,6 +167,7 @@ nav:
           - Multi-Framework Security Audit: certifications_and_compliance/audit/multi_framework_security_audit.md
   - Benchmarks:
       - Software: benchmarks/ckms_bench/report.md
+      - PKCS#11: benchmarks/ckms_bench_pkcs11/report.md
       - HSM KEK-Wrap: benchmarks/ckms_bench_hsm_kek/report.md
       - HSM Delegated Crypto: benchmarks/ckms_bench_hsm/report.md
       - CPU Scaling & Flamegraphs: benchmarks/cpu_scaling.md

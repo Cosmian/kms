@@ -1,5 +1,37 @@
 # HSM-direct crypto benchmarks: `ckms bench --hsm` and `bench/load-hsm --delegated`
 
+## Bug Fixes
+
+### PKCS#11
+
+- Fix `crate/clients/pkcs11/module/src/sessions.rs` serializing **every** Cryptoki
+  operation across **every** session process-wide: the session store was one
+  `Mutex<HashMap<CK_SESSION_HANDLE, Session>>`, locked by `session()` for the full
+  duration of its callback — including the synchronous, blocking
+  `RUNTIME.block_on(...)` KMS network round-trip that `C_Sign`/`C_Verify`/
+  `C_Encrypt`/`C_Decrypt` all make. A concurrency sweep against
+  `mise bench:load-pkcs11` (`--mode sign-eddsa`) showed the resulting bottleneck
+  concretely: throughput stayed completely flat (~17-19 ops/s) from concurrency 1
+  through 8, while p99 latency exploded from 74ms to over 5s — a single lock held
+  across a blocking network call was serializing concurrent Cryptoki calls
+  regardless of which session issued them
+- Now: `SessionMap` stores `Arc<Mutex<Session>>` (one lock **per session**) behind
+  an outer `RwLock` (was a `Mutex`) that is only ever held long enough to look up
+  and clone that `Arc` — never across the actual (potentially slow) callback.
+  Concurrent operations against *different* sessions now run fully in parallel;
+  concurrent operations against the *same* session handle still serialize, as the
+  Cryptoki spec requires without additional application-level synchronization.
+  `create`/`exists`/`flags`/`session`/`close`/`close_all` all updated accordingly
+- Re-benchmarked with the same `sign-eddsa` sweep after also switching
+  `mise bench:load-pkcs11` to one dedicated session per worker thread (see
+  "Testing" below, since a shared single session would have masked this fix
+  entirely): throughput now scales with concurrency (19 → 34 → 57 → 82 ops/s at
+  concurrency 1/2/4/8, a ~4.3x improvement at c=8) and p99 latency stays bounded
+  (71ms → 193ms, vs. 73ms → 3.3s before)
+- `cargo test -p cosmian_pkcs11_module --lib` (38 tests) and
+  `cargo test -p cosmian_pkcs11 --lib --features non-fips` (19 tests, 5 pre-existing
+  `#[ignore]`) both still pass unchanged
+
 ## Testing
 
 ### HSM-resident crypto benchmarking (`--hsm`)
@@ -364,3 +396,219 @@ row — the opposite of the software baseline, and not a real protocol differenc
   the real dlopen()-based Cryptoki benchmark instead of the generic
   KMIP-wire-protocol text — mirroring `bench/load`/`bench/load-hsm` exactly instead
   of a standalone console-only benchmark as originally implemented
+
+### Add EdDSA-Ed25519 `sign`/`verify` modes to `mise bench:load-pkcs11`
+
+- `mise bench:load-pkcs11` previously only exercised RSA (`CKM_SHA256_RSA_PKCS`)
+  for its `sign`/`verify` modes — there was no way to benchmark Ed25519 through
+  PKCS#11 at all, even though `cosmian_pkcs11_module` fully supports `CKM_EDDSA`.
+  Added two new modes, `sign-eddsa`/`verify-eddsa`, that drive `C_SignInit`/`C_Sign`
+  and `C_VerifyInit`/`C_Verify` with `CKM_EDDSA` against a dedicated Ed25519 key
+  pair now provisioned by `src/setup.rs` alongside the existing AES/RSA keys,
+  enabling a real, apples-to-apples comparison against `mise bench:load`'s
+  `eddsa-ed25519` KMIP-REST case
+- `Pkcs11Session::sign`/`verify` (`src/loader.rs`) now take an explicit
+  `CK_MECHANISM_TYPE` parameter instead of hardcoding `CKM_SHA256_RSA_PKCS`, and a
+  new `find_first_by_class_and_key_type` helper disambiguates the RSA vs. Ed25519
+  private/public key objects by `CKA_KEY_TYPE` (`CKK_RSA`/`CKK_EC_EDWARDS`) — plain
+  `find_first_by_class` would otherwise non-deterministically return whichever key
+  the backend enumerates first now that two key pairs exist
+- Added the two new mode names to `.mise/tasks/bench/load-pkcs11`'s `--mode`
+  `choices` list and to the crate `README.md`'s mode table
+- Corrected a stale doc comment/README claim that `C_VerifyInit`/`C_Verify` are
+  unimplemented (`CKR_FUNCTION_NOT_SUPPORTED`) by `cosmian_pkcs11_module` — both
+  are registered via `cryptoki_fn!`, not `cryptoki_fn_not_supported!`, and do work
+  (confirmed live: `verify`/`verify-eddsa` both execute and report real
+  throughput/latency). The runtime skip-with-notice fallback is kept as a
+  defensive guard for a future provider/backend that doesn't support it, not
+  because it is currently needed
+
+### `mise bench:load-pkcs11` now pools one Cryptoki session per worker thread
+
+- Every worker thread of the concurrency sweep previously hammered a **single**,
+  process-wide-shared `C_OpenSession` handle — the doc comments framed this as
+  intentionally modeling "real-world single-session contention", but it also meant
+  the benchmark could never demonstrate any of the parallelism the module-level
+  session-locking fix above (see "Bug Fixes") now provides
+- `main.rs` now opens a *pool* of sessions up front (one per worker thread the
+  sweep will ever spawn — the highest requested `--concurrency` level — or a
+  single session under the new `--shared-session` flag), sequentially, before any
+  worker thread is spawned. `Pkcs11Session::open` (`src/loader.rs`) now guards
+  `C_Initialize` with an `AtomicBool` so it only actually runs once even though
+  `open()` itself is now called once per pooled session (a second `C_Initialize`
+  call is a Cryptoki protocol error, `CKR_CRYPTOKI_ALREADY_INITIALIZED`).
+  `run_sweep`/`run_for`/`run_all` (`src/load.rs`) now thread a `&[Pkcs11Session]`
+  pool through instead of a single shared `&Pkcs11Session`, indexing
+  `pool[i % pool.len()]` per worker thread — object handles found via one session
+  remain valid on any other session, since `crate/clients/pkcs11/module/src/
+  objects_store.rs`'s object store is global, not scoped per session
+- Added `--shared-session` (mise: `--shared-session`) to force the old
+  everyone-shares-one-handle model back on, purely so the pre-fix numbers above
+  remain reproducible for direct before/after comparison — it is not how a
+  well-behaved, high-concurrency PKCS#11 consumer would actually use the provider,
+  so it is not the default
+
+### Add `--criterion` mode to `mise bench:load-pkcs11`; diagnose remaining latency variance
+
+- Added real `criterion`-crate single-operation micro-benchmarks
+  (`src/criterion_bench.rs`, new `--criterion`/`--speed` flags mirroring `mise
+  bench:load --criterion`'s own `sanity`/`quick`/`normal` presets exactly) as a
+  fast alternative to the concurrency sweep — no per-level warmup/cooldown,
+  statistically rigorous mean/median/CI per mode, and (with `--speed quick`)
+  results in a couple of seconds instead of tens of seconds to minutes. Skipping
+  the sweep entirely means the generated report has only a "Criterion data"
+  section, no "Load test data" one
+- Refactored `load.rs`: extracted `prepare_ops` (all the one-time
+  setup/object-discovery/`C_Verify`-support-probe logic previously inlined in
+  `run_all`) so both the concurrency sweep and the new criterion path build each
+  mode's closure identically and can never silently diverge
+- `report.rs` gained `write_criterion_json`, a small self-contained duplicate of
+  `crate/clients/clap/src/actions/bench/output.rs`'s criterion-estimates collector
+  (that one is `pub(super)`-private to the `clap` bench module) — walks
+  `$CRITERION_HOME` for `new/estimates.json` files and writes `criterion.json` in
+  the identical JSONL schema, so `bench_generate_report`/`plot_version_compare.py`
+  need zero changes to pick it up
+- **Bottleneck-hunting finding, using the new fast loop**: re-benchmarking
+  `sign-eddsa`/`sign` (RSA) in isolation, 3 back-to-back identical runs each,
+  showed the exact same operation measuring 400µs-800µs in most runs and a
+  ~70-250ms outlier (~100-500x) in others — with the very *first* sample of a slow
+  run already slow (ruling out any kind of warmup/accumulation effect in the code).
+  Correlated with host state: `uptime`/`ps` showed a 1-minute load average of
+  ~3-5 on this shared development machine, with several competing CPU-hungry
+  background processes (IDE indexing, browser, torrent client, ...) — not the
+  benchmarked code. Conclusion: **no remaining code-level bottleneck found**; the
+  session-locking and pooled-session fixes above are validated (concurrency scales
+  correctly), and the occasional large outlier is host contention on a
+  non-dedicated machine, not a regression
+- Extended `bench_warn_cpu_scaling` (`.mise/lib/bench_helpers.sh`, shared by every
+  `bench/*` task, not just this one) to also check `/proc/loadavg` and warn on an
+  elevated 1-minute load average, citing this exact reproduced false alarm, so
+  future users don't mistake host noise for a code regression
+- **Follow-up fix**: the first `--criterion` run's report was silently missing all
+  `sign`/`verify` rows from every chart/table. `.mise/scripts/bench/plot_version_compare.py`'s
+  `bench_id_to_parts`/`_criterion_category` (pre-existing, shared with `mise bench:load
+  --criterion`) only recognizes the combined op_type `"sign-verify"` for its
+  "Sign / Verify" category — never bare `"sign"`/`"verify"`. `run_criterion` used a
+  flat `c.bench_function("sign/eddsa-ed25519", ...)`, which criterion sanitizes to
+  a single directory `sign_eddsa-ed25519`, parsed as op_type `"sign"` (unrecognized,
+  dropped). Fixed by routing `sign`/`verify` labels through a real criterion
+  *group* instead — `c.benchmark_group("sign-verify_eddsa-ed25519")` +
+  `group.bench_function("sign"|"verify", ...)` — producing the
+  `sign-verify_<algo>/<sign|verify>` ID shape the categorizer expects, mirroring
+  how `crate/clients/clap/src/actions/bench/transport.rs::bench_op` benchmarks the
+  KMIP path. `encrypt`/`decrypt`/`key-creation` labels are unaffected (already
+  correctly categorized via the flat path)
+
+### Attribute PKCS#11 Ed25519 signing overhead and remove duplicate remote signing
+
+- Add an apples-to-apples Criterion ladder for Ed25519 signing to
+  `mise bench:load-pkcs11 --criterion`: request construction, TTLV+JSON
+  serialization, the published `ckms bench --criterion`-equivalent
+  pre-serialized full-message HTTP call, a pre-serialized bare `Sign` HTTP call,
+  response parsing, typed `KmsClient::sign`, the Tokio `block_on` control cost,
+  one-call PKCS#11 signing, and the standard two-call PKCS#11 API after the
+  fixed-size length-query optimization. All tiers
+  use the same server, key, 32-byte payload, endpoint, runtime, and Criterion
+  configuration, and are written to `pkcs11_overhead.json`
+- Add a compile-time-only `benchmarking` feature to `cosmian_pkcs11_module` and
+  `cosmian_pkcs11`. The feature collects allocation-free in-memory Sign phase
+  timings and exposes benchmark-only reset/snapshot symbols to the dynamically
+  loaded benchmark library; normal provider builds compile the probes to no-ops
+- The phase data shows that session-map lookup, session-lock wait, backend lookup,
+  request construction, and signature copying are individually sub-microsecond.
+  The typed `KmsClient::sign` call dominates the one-call PKCS#11 path; the Tokio
+  ready-future control is about 0.1 microseconds
+- Fix a concrete two-request bug: `pkcs11_bench` previously called
+  `C_Sign(NULL)` followed by `C_Sign(buffer)`, and `Session::sign` performed a
+  complete remote KMS Sign for both calls. Ed25519 one-call signing measured
+  approximately 344 microseconds while the historical path measured approximately
+  680 microseconds in the same run. Fixed-size Ed25519/Ed448 and RSA length
+  queries now return the required size from key metadata without contacting the
+  KMS; undersized buffers are rejected the same way without remote signing
+
+### Use binary TTLV for PKCS#11 remote Sign requests
+
+- Change the `cosmian_pkcs11` provider's remote Sign transport from typed
+  TTLV-JSON on `POST /kmip/2_1` to a KMIP 2.1 `RequestMessage` serialized as
+  binary TTLV on `POST /kmip` with `application/octet-stream`
+- Add `KmsClient::post_message_bytes`, which serializes and fully parses binary
+  TTLV request/response messages while preserving HTTP and KMIP error handling
+- Keep the PKCS#11 caller contract unchanged: `C_SignInit`/`C_Sign` still return
+  the same Ed25519 signature bytes and PKCS#11 error codes; only the provider-to-KMS
+  wire representation changes
+- Regenerate the external `sign-tx` Ed25519 benchmark with the local release KMS,
+  `ckms`, and `libcosmian_pkcs11.so`: 1000 signatures verified successfully;
+  `C_Sign` p50 was 387.30 microseconds and total p50 was 428.60 microseconds on
+  the shared benchmark host
+
+### Use the PKCS#11 v3 message-signing flow for Ed25519 benchmarks
+
+- Implement one-shot EdDSA message signing in the provider's v3.1 function table:
+  `C_MessageSignInit` establishes the Ed25519 key/mechanism once,
+  `C_SignMessage` signs each independent message while preserving that context,
+  and `C_MessageSignFinal` releases it. Other v3 message-operation families remain
+  conformant `CKR_FUNCTION_NOT_SUPPORTED` stubs
+- Change `cosmian_pkcs11_bench` to discover the provider through `C_GetInterface`
+  and a `CK_FUNCTION_LIST_3_0`; Ed25519 setup calls `C_MessageSignInit` once per
+  worker session and each measured iteration calls only `C_SignMessage`
+- Change the external `sign-tx` benchmark to use the same v3 discovery and
+  Ed25519 message-signing flow. P-256 remains on classic
+  `C_SignInit`/`C_Sign` because the implemented v3 message path is EdDSA-only
+- Add unit coverage proving a message-sign context signs multiple messages and
+  remains initialized until `C_MessageSignFinal`
+- Build optimized PKCS#11 benchmarks with the speed-oriented workspace `bench`
+  profile (`opt-level = 3`) instead of the size-oriented release profile
+  (`opt-level = "z"`). A controlled same-host quick run reduced v3
+  `C_SignMessage` from approximately 433 microseconds to 227 microseconds
+- Bracket the key comparison A/B/A/B (typed binary before, PKCS#11 before, typed
+  binary after, PKCS#11 after) and report pair averages, preventing a late-running
+  tier from absorbing thermal/scheduler/server drift. In the first improved run,
+  bracketed typed binary Sign measured 119.1 microseconds and bracketed v3
+  `C_SignMessage` measured 124.4 microseconds: 5.3 microseconds / 4.4% overhead
+- Add configurable fixed or varying differential payloads and regenerate the
+  normal-speed report with varying 150-byte messages. The final bracketed means
+  are 134.2 microseconds for typed binary Sign and 143.7 microseconds for PKCS#11
+  v3 `C_SignMessage`: 9.6 microseconds / 7.1% incremental PKCS#11 overhead.
+  Internal profiling attributes only tens of nanoseconds each to session lookup,
+  lock wait, backend lookup, and signature copy; the remote typed KMS call remains
+  the dominant boundary
+- Stabilize the external `sign-tx` harness with a minimum elapsed warmup,
+  three independent trials, median-trial selection, and optional separate CPU
+  affinity for client and server. On the shared development host, affinity
+  reduced trial p50 spread from 359.89-1223 microseconds to
+  137.40-146.78 microseconds; the final 1000-iteration representative run
+  measured 114.11 microseconds for `C_SignMessage` and 139.28 microseconds
+  end-to-end including local verification
+
+### `mise bench:load-pkcs11 --mode sign`/`--mode verify` now cover every signature algorithm
+
+`--mode sign` previously benchmarked RSA (`CKM_SHA256_RSA_PKCS`) only; ECDSA had no
+mode at all, and EdDSA required the separate `sign-eddsa`/`verify-eddsa` names.
+
+- `src/setup.rs` now always provisions an EC P-256 key pair (FIPS-approved, unlike
+  Ed25519, so it is provisioned unconditionally, mirroring the RSA key pair) in
+  addition to the existing AES/RSA/Ed25519 keys.
+- Renamed the previous `ConcreteMode::Sign`/`Verify` to `SignRsa`/`VerifyRsa` and
+  added `SignEcdsa`/`VerifyEcdsa` (`CKM_ECDSA`, driven against the same 32-byte
+  payload already used as the Ed25519 message — it doubles as the pre-computed
+  SHA-256 digest `CKM_ECDSA` expects, since the mechanism performs no hashing of
+  its own), disambiguated from the RSA/Ed25519 key pairs by `CKK_EC` in
+  `find_first_by_class_and_key_type`.
+- `BenchMode::Sign`/`Verify` are now aggregate CLI modes: `--mode sign` expands to
+  `[SignRsa, SignEcdsa, SignEdDsa]` (`--mode verify` likewise) instead of naming one
+  algorithm, so a single invocation benchmarks every signature algorithm the
+  provider supports in one sweep/report, one row per algorithm — mirroring `--mode
+  all`'s aggregate behavior but scoped to signing. `--mode sign-rsa`/`sign-ecdsa`/
+  `sign-eddsa` (and their `verify-*` counterparts) remain available to benchmark one
+  algorithm in isolation. FIPS builds drop the EdDSA entry from every aggregate,
+  unchanged from the prior `sign-eddsa`/`verify-eddsa` gating.
+- `mise bench:load-pkcs11 --mode sign --sanity`-equivalent run (debug build,
+  concurrency 1, 2 s/level) confirmed all three algorithms execute end-to-end in one
+  sweep: RSA-2048 (~36 ops/s), ECDSA P-256 (~258 ops/s), Ed25519 (~863 ops/s); same
+  for `--mode verify` (RSA ~653 ops/s, ECDSA ~242 ops/s, Ed25519 ~860 ops/s).
+- Updated `.mise/tasks/bench/load-pkcs11`'s `--mode` choices list and
+  `crate/clients/pkcs11/bench/README.md`'s mode table/usage examples accordingly.
+  `criterion_bench.rs`/`plot_version_compare.py` required no changes: both already
+  parse `sign`/`verify` labels generically by splitting on `/`, so the new
+  `sign/ecdsa-p256`/`verify/ecdsa-p256` labels are categorized correctly with zero
+  additional code.

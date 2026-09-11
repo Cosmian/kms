@@ -14,6 +14,9 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+non-fips = ["ckms/non-fips"]
+
 [[bin]]
 name = "pkcs11_bench"
 path = "src/main.rs"
@@ -22,7 +25,11 @@ path = "src/main.rs"
 ckms = { path = "../../ckms", version = "5.27.0" }
 clap = { workspace = true, features = ["help", "std", "usage", "error-context", "derive"] }
 cosmian_logger = { workspace = true }
+criterion = { workspace = true }
 libloading = { workspace = true }
 pkcs11-sys = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
+zeroize = { workspace = true }
