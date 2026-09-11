@@ -31,3 +31,9 @@ zeroize = { workspace = true, default-features = true }
 [dev-dependencies]
 mockall = "0.13"
 tokio = { workspace = true, features = ["rt", "macros"] }
+
+[features]
+# Enables HSM-delegated EdDSA (Ed25519/Ed448) signing and X25519 ECDH key agreement types,
+# mirroring the software crypto path gating in `crate/crypto/src/crypto/elliptic_curves/sign.rs`.
+# See issue #1157 ("HSM delegation Track B").
+non-fips = []
