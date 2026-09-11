@@ -1299,7 +1299,7 @@ Create, destroy, import, and export FPE keys
 
 ### Subcommands
 
-**`create`** [[8.1.1]](#811-ckms-fpe-keys-create) 
+**`create`** [[8.1.1]](#811-ckms-fpe-keys-create)
 **`export`** [[8.1.2]](#812-ckms-fpe-keys-export)  Export a key or secret data from the KMS
 
 **`import`** [[8.1.3]](#813-ckms-fpe-keys-import)  Import a secret data or a key in the KMS.
