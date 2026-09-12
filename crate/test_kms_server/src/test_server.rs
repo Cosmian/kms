@@ -1,7 +1,9 @@
 use std::{
-    env,
+    env, fs,
+    future::Future,
     net::TcpListener,
     path::{Path, PathBuf},
+    pin::Pin,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -229,6 +231,159 @@ fn apply_test_db_override(config: &mut ClapConfig) {
             );
         }
         _ => {} // unrecognized or non-FIPS redis: fall back to SQLite
+    }
+}
+
+/// RAII guard that finalises the shared-database "clear" coordination once
+/// the winning process finishes instantiating its server: it creates the
+/// permanent-for-this-run "already cleared" marker (see
+/// [`acquire_shared_test_db_clear_lock`]) and removes the transient
+/// in-progress lock file, signalling every waiting process that the clear +
+/// bootstrap step completed and it is now safe for them to connect (without
+/// re-clearing) even if instantiation failed.
+struct DbClearLockGuard {
+    lock_path: PathBuf,
+    marker_path: PathBuf,
+}
+
+impl Drop for DbClearLockGuard {
+    fn drop(&mut self) {
+        drop(fs::write(&self.marker_path, b""));
+        drop(fs::remove_file(&self.lock_path));
+    }
+}
+
+/// In-process latch: only the *first* test-server flavor to instantiate
+/// within this process is allowed to actually clear a given shared external
+/// database; every other flavor (plain, cert-auth, JWT-auth,
+/// multi-crypto-officer, …) started later **in the same process** must
+/// leave already-inserted rows alone, even though each flavor's own TOML
+/// config independently sets `clear_database = true`.
+static DB_CLEARED_IN_PROCESS: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+
+/// Cross-process **and** cross-task coordination for the shared external
+/// test databases (`PostgreSQL`, `MySQL`, Redis) selected via `KMS_TEST_DB`.
+///
+/// This crate exposes more than a dozen distinct test-server "flavors"
+/// (plain, cert-auth, JWT-auth, multi-crypto-officer, …), each behind its
+/// own `OnceCell` and each loaded from a TOML config that independently
+/// sets `clear_database = true` (every flavor expects a pristine database
+/// the first time *it* starts). Left unguarded this causes two distinct
+/// problems:
+/// - Under `cargo nextest`, every test executes in its own OS process, so
+///   each process's lazily-initialized test server independently tries to
+///   clear the exact same shared external database, racing with sibling
+///   processes' in-flight tests ("object already exists" / vanished-object
+///   failures).
+/// - Even under `cargo test` (single process), a *later* flavor — first
+///   requested only when its first test runs, potentially long after
+///   *another* flavor already bootstrapped and other tests are relying on
+///   rows it inserted — would otherwise truncate the shared tables out from
+///   under those already-running tests.
+///
+/// Coordination protocol (scoped to one shared DB kind, e.g. `postgresql`):
+/// 1. An in-process [`DB_CLEARED_IN_PROCESS`] latch ensures only the first
+///    flavor instantiated in this process is even a *candidate* to clear;
+///    every later flavor in the same process is forced to
+///    `clear_database = false` immediately, with no file I/O involved
+///    (this alone is sufficient for `cargo test`, which is single-process).
+/// 2. For cross-process coordination (`cargo nextest`, scoped to one
+///    `NEXTEST_RUN_ID`), the surviving candidate then checks a permanent
+///    "already cleared this run" marker file; if present, some sibling
+///    process already did the clearing, so it backs off to
+///    `clear_database = false`.
+/// 3. Otherwise it races other sibling processes for a transient
+///    "in-progress" lock file (atomic `create_new`). The winner keeps
+///    `clear_database = true` and proceeds; the returned guard writes the
+///    permanent marker and removes the lock once instantiation finishes
+///    (success or failure). Losers wait for either the marker to appear or
+///    the lock to disappear (winner crashed), then connect with
+///    `clear_database` forced to `false`.
+/// 4. A lock file older than the wait timeout is treated as an orphan left
+///    behind by a process that crashed before cleaning up, and is removed
+///    so a fresh run isn't blocked forever by a stale marker.
+///
+/// Deliberately synchronous (blocking `std::thread::sleep`, not
+/// `tokio::time::sleep`): this only ever blocks a "loser" process, once,
+/// right at test-server startup, and keeping it out of `.await` avoids
+/// forcing the (large) `ClapConfig` to be captured across a yield point in
+/// every caller's generated future — which otherwise trips Clippy's
+/// `large_futures` lint workspace-wide.
+fn acquire_shared_test_db_clear_lock(config: &mut ClapConfig) -> Option<DbClearLockGuard> {
+    const WAIT_TIMEOUT: Duration = Duration::from_secs(120);
+
+    if !config.db.clear_database {
+        return None;
+    }
+    let db_kind = config.db.database_type.clone().unwrap_or_default();
+    if db_kind.is_empty() || db_kind == "sqlite" {
+        return None; // SQLite: each process already gets its own unique file/tempdir.
+    }
+
+    // Step 1: only the first flavor instantiated in this process is even a
+    // candidate to clear; every subsequent one (any flavor) backs off
+    // immediately, with no file I/O.
+    if DB_CLEARED_IN_PROCESS.set(()).is_err() {
+        config.db.clear_database = false;
+        return None;
+    }
+
+    // `cargo test`: single process, the in-process latch above is enough.
+    let Ok(run_id) = env::var("NEXTEST_RUN_ID") else {
+        return None;
+    };
+
+    // Step 2/3: cross-process coordination, scoped to this nextest run.
+    let marker_path =
+        env::temp_dir().join(format!("kms-test-db-cleared-{db_kind}-{run_id}.marker"));
+    if marker_path.exists() {
+        // A sibling process already cleared this backend for this run.
+        config.db.clear_database = false;
+        return None;
+    }
+    let lock_path = env::temp_dir().join(format!("kms-test-db-clear-{db_kind}-{run_id}.lock"));
+
+    // Best-effort clean-up of an orphaned lock from a process that crashed
+    // before removing it: if it is older than the wait timeout, nobody
+    // could still legitimately be holding it.
+    if let Ok(metadata) = fs::metadata(&lock_path) {
+        if let Ok(age) = metadata
+            .modified()
+            .and_then(|m| m.elapsed().map_err(std::io::Error::other))
+        {
+            if age > WAIT_TIMEOUT {
+                drop(fs::remove_file(&lock_path));
+            }
+        }
+    }
+
+    if let Ok(_lock_file) = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock_path)
+    {
+        // We are the first process this run: keep `clear_database` as
+        // configured (true) and let the caller instantiate normally.
+        Some(DbClearLockGuard {
+            lock_path,
+            marker_path,
+        })
+    } else {
+        // Another process already won the race. Wait for either the
+        // permanent marker to appear (clear + bootstrap completed) or the
+        // lock to disappear without a marker (winner crashed before
+        // finishing) — then connect without clearing ourselves.
+        let start = std::time::Instant::now();
+        while !marker_path.exists() && lock_path.exists() {
+            if start.elapsed() > WAIT_TIMEOUT {
+                // Give up waiting rather than hang forever if the
+                // winning process crashed before removing the lock.
+                break;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        config.db.clear_database = false;
+        None
     }
 }
 
@@ -1229,22 +1384,38 @@ fn load_test_config_from_toml(
 }
 
 /// Start a server from a pre-loaded (and optionally patched) [`ClapConfig`].
-async fn start_server_from_config(
-    config: ClapConfig,
+///
+/// Returns a boxed future rather than being declared `async fn`: this
+/// function's body captures the whole (large) `ClapConfig` alongside the
+/// synchronous `acquire_shared_test_db_clear_lock` guard, which otherwise
+/// inflates every one of this function's ~15 direct/indirect callers past
+/// Clippy's `large_futures` size threshold. Boxing here caps the size each
+/// caller's own generated future has to store to a single pointer.
+fn start_server_from_config(
+    mut config: ClapConfig,
     config_path: &Path,
     http_listener: std::net::TcpListener,
-) -> Result<TestsContext, KmsClientError> {
-    ensure_no_proxy_for_localhost();
-    disable_proxies_for_tests();
+) -> Pin<Box<dyn Future<Output = Result<TestsContext, KmsClientError>> + Send + '_>> {
+    Box::pin(async move {
+        ensure_no_proxy_for_localhost();
+        disable_proxies_for_tests();
 
-    let server_params = ServerParams::try_from(config).map_err(|e| {
-        KmsClientError::UnexpectedError(format!(
-            "Failed to create ServerParams from TOML config {}: {e}",
-            config_path.display()
-        ))
-    })?;
+        // See `acquire_shared_test_db_clear_lock`: guards against every
+        // nextest process racing to clear the same shared external test
+        // database. The guard (if any) is held until this function
+        // returns, releasing the lock only once this process's own
+        // instantiation attempt is done.
+        let _db_clear_lock = acquire_shared_test_db_clear_lock(&mut config);
 
-    start_from_server_params(server_params, http_listener).await
+        let server_params = ServerParams::try_from(config).map_err(|e| {
+            KmsClientError::UnexpectedError(format!(
+                "Failed to create ServerParams from TOML config {}: {e}",
+                config_path.display()
+            ))
+        })?;
+
+        start_from_server_params(server_params, http_listener).await
+    })
 }
 
 /// Start an isolated test KMS server from a TOML configuration file.
