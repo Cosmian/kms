@@ -18,6 +18,7 @@
   - [Trustway Proteccio](hsm_support/proteccio.md)
   - [Utimaco General Purpose](hsm_support/utimaco.md)
   - [Smart card HSM / Nitrokey HSM 2](hsm_support/sc_hsm.md)
+  - [AWS CloudHSM](hsm_support/aws_cloudhsm.md)
   - [SoftHSMv2](hsm_support/softhsm2.md)
   - [Other HSMs](hsm_support/other_hsms.md)
 - [Integrations]()

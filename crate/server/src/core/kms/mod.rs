@@ -10,6 +10,9 @@ use std::{
     sync::{Arc, atomic::AtomicU64},
 };
 
+// AWS CloudHSM's PKCS#11 client (Client SDK 5) supports Linux x86_64 and arm64, but not macOS.
+#[cfg(target_os = "linux")]
+use aws_cloudhsm_pkcs11_loader::{AWS_CLOUDHSM_PKCS11_LIB, AwsCloudhsm};
 use cosmian_kms_server_database::{
     CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
     reexport::{
@@ -450,6 +453,14 @@ impl KMS {
                 "Smartcardhsm",
                 slot_passwords
             )),
+            #[cfg(target_os = "linux")]
+            "aws_cloudhsm" => Ok(instantiate_hsm_with_env!(
+                AwsCloudhsm,
+                "AWS_CLOUDHSM_PKCS11_LIB",
+                AWS_CLOUDHSM_PKCS11_LIB,
+                "AwsCloudhsm",
+                slot_passwords
+            )),
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             "other" => Ok(instantiate_hsm_with_env!(
                 Softhsm2,
@@ -460,7 +471,7 @@ impl KMS {
             )),
             _ => kms_bail!(
                 "Unsupported HSM model: {model}. Supported values: \
-                 proteccio, crypt2pay, smartcardhsm, softhsm2, utimaco, other"
+                 proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, softhsm2, utimaco, other"
             ),
         }
     }

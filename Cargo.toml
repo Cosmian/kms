@@ -28,6 +28,7 @@ members = [
   "crate/hsm/softhsm2",
   "crate/hsm/smartcardhsm",
   "crate/hsm/utimaco",
+  "crate/hsm/aws_cloudhsm",
   "crate/hsm/base_hsm",
   "crate/interfaces",
   "crate/server",
