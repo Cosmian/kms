@@ -133,6 +133,8 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
             clap_config.hsm.hsm_model = "crypt2pay".to_owned();
         } else if unwrapped_model == "kryoptic" {
             clap_config.hsm.hsm_model = "kryoptic".to_owned();
+        } else if unwrapped_model == "aws_cloudhsm" {
+            clap_config.hsm.hsm_model = "aws_cloudhsm".to_owned();
         } else if unwrapped_model == "other" {
             clap_config.hsm.hsm_model = "other".to_owned();
         } else {
