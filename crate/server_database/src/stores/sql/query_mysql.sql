@@ -161,7 +161,7 @@ SELECT read_access.id, COALESCE(objects.owner, ''), COALESCE(objects.state, 'Act
 FROM read_access
          LEFT JOIN objects
                     ON objects.id = read_access.id
-WHERE read_access.userid = ?;
+WHERE read_access.userid = ? OR read_access.userid = '*';
 
 -- name: insert-tags
 INSERT INTO tags (id, tag)

@@ -1375,7 +1375,12 @@ pub(super) async fn list_user_granted_access_rights_(
         let ops: HashSet<KmipOperation> = serde_json::from_value(ops_val).map_err(|e| {
             DbError::ConversionError(format!("failed deserializing the operations: {e}").into())
         })?;
-        ids.insert(uid, (owner, state, ops));
+        // The same object may be returned twice: once for the direct grant and
+        // once for the wildcard `*` grant. Union the permission sets instead of
+        // overwriting the entry.
+        ids.entry(uid)
+            .and_modify(|(_, _, existing_ops)| existing_ops.extend(ops.iter().copied()))
+            .or_insert((owner, state, ops));
     }
     debug!("Listed {} rows", ids.len());
     Ok(ids)

@@ -1213,7 +1213,7 @@ impl PermissionsStore for RedisWithFindex {
             .permission_db
             .list_user_permissions(&FindexUserId(user.as_str().to_owned()))
             .await?;
-        let redis_db_objects = self
+        let mut redis_db_objects = self
             .objects_db
             .objects_get(
                 &permissions
@@ -1222,18 +1222,24 @@ impl PermissionsStore for RedisWithFindex {
                     .collect::<HashSet<String>>(),
             )
             .await?;
+        // Join by uid rather than zipping the two maps by iteration order:
+        // `permissions` and `redis_db_objects` are independent `HashMap`s whose
+        // iteration orders are not guaranteed to correspond, and `objects_get`
+        // may legitimately return fewer entries (e.g. a stale permission for an
+        // object that no longer exists). Missing objects are skipped.
         Ok(permissions
             .into_iter()
-            .zip(redis_db_objects)
-            .map(|((uid, permissions), (_, redis_db_object))| {
-                (
-                    uid.into(),
+            .filter_map(|(uid, permissions)| {
+                let uid_string: String = uid.into();
+                let redis_db_object = redis_db_objects.remove(&uid_string)?;
+                Some((
+                    uid_string,
                     (
                         redis_db_object.owner,
                         redis_db_object.state,
                         permissions.into_iter().collect::<HashSet<KmipOperation>>(),
                     ),
-                )
+                ))
             })
             .collect())
     }
