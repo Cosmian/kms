@@ -5,6 +5,7 @@ mod error;
 pub use base_hsm::BaseHsm;
 pub use error::{HError, HResult};
 pub use hsm_lib::{HsmLib, Info};
+pub use pkcs11_v3::InterfaceDescriptor;
 pub use session::{
     AesKeySize, HsmEncryptionAlgorithm, HsmSigningAlgorithm, RsaKeySize, RsaOaepDigest, Session,
 };
@@ -12,6 +13,7 @@ pub use slots::{ObjectHandlesCache, SlotManager};
 
 mod base_hsm;
 mod hsm_lib;
+mod pkcs11_v3;
 mod session;
 
 mod kms_hsm;

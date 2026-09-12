@@ -26,3 +26,5 @@ pkcs11-sys = { workspace = true }
 [features]
 # Enable this feature to run softhsm2 tests (they require a softhsm2 HSM)
 softhsm2 = []
+# Enable HSM-delegated EdDSA/X25519 support (see cosmian_kms_base_hsm's `non-fips` feature).
+non-fips = ["cosmian_kms_base_hsm/non-fips"]

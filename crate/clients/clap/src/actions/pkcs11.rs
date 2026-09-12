@@ -12,12 +12,15 @@ use crate::error::result::KmsCliResult;
 /// Commands for verifying the Cosmian PKCS#11 provider library.
 #[derive(Subcommand, Debug)]
 pub enum Pkcs11Commands {
-    /// Load the PKCS#11 shared library and exercise the standard API sequence.
+    /// Load the PKCS#11 shared library and exercise the standard v3.1 API sequence.
     ///
     /// Verifies that the shared library opens, `ckms.toml` is parsed correctly,
     /// and the KMS server is reachable by walking through:
-    /// `C_GetFunctionList` → `C_Initialize` → `C_GetSlotList` → `C_OpenSession` →
-    /// `C_Login` (optional) → `C_FindObjects` → `C_CloseSession` → `C_Finalize`.
+    /// `C_GetInterfaceList`/`C_GetInterface` (v3.0 Interfaces API) →
+    /// `C_GetFunctionList` → `C_Initialize` → `C_GetInfo` → `C_GetSlotList` →
+    /// `C_GetMechanismList`/`C_GetMechanismInfo` → `C_OpenSession` →
+    /// `C_Login` (optional) → `C_FindObjects` (including `CKO_PROFILE`
+    /// self-declaration) → `C_CloseSession` → `C_Finalize`.
     Verify {
         /// Path to the PKCS#11 shared library (`libcosmian_pkcs11.so` / `.dylib` / `.dll`).
         #[arg(long, value_name = "PATH")]

@@ -676,6 +676,12 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--cooldown-time <COOLDOWN_TIME>` Cooldown time in seconds between load-test concurrency levels. Lets the server drain TCP `TIME_WAIT` sockets, checkpoint `SQLite` WAL, and release memory before the next level starts fresh
 
+`--hsm <HSM>` Benchmark cryptographic operations executed directly ON an HSM (PKCS#11), instead of in KMS software. Requires the KMS server to be started with the legacy flat HSM config (`hsm_model`/`hsm_slot`/ `hsm_admin`/`hsm_password` — see the `bench/load-hsm --delegated` mise task), which registers the `hsm::<slot>::<uuid>` unique-identifier prefix. Keys created under this prefix have both their generation and Encrypt/Sign routed to the HSM's `CryptoOracle`. Algorithm scope is limited to what the oracle supports: AES-GCM/CBC and RSA-OAEP/PKCS1v15 encrypt; RSA-PSS/PKCS1v15/SHA*`WithRSA` and ECDSA (prehashed) sign. `Verify` is not implemented for HSM-resident keys and is skipped. Composable with `--mode`/`--protocol`/`--load`. Only the `ttlv-json` protocol is benchmarked: `ttlv-bytes` is skipped (measuring it after `ttlv-json` against the same HSM-resident key/token would be contaminated by cumulative `SoftHSM2` load from the preceding run) and `jose` is unsupported (no way to request a caller-chosen `kid`)
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--hsm-slot <HSM_SLOT>` HSM slot id, used to build the `hsm::<slot>::` unique identifier prefix for `--hsm`. Must match the slot the server's legacy flat HSM config (`hsm_slot`) has registered
+
 
 
 ---
@@ -1235,7 +1241,7 @@ Create, destroy, import, and export FPE keys
 
 ### Subcommands
 
-**`create`** [[7.1.1]](#711-ckms-fpe-keys-create) 
+**`create`** [[7.1.1]](#711-ckms-fpe-keys-create)
 **`export`** [[7.1.2]](#712-ckms-fpe-keys-export)  Export a key or secret data from the KMS
 
 **`import`** [[7.1.3]](#713-ckms-fpe-keys-import)  Import a secret data or a key in the KMS.

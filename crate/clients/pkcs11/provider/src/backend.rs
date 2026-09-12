@@ -28,7 +28,7 @@ use crate::{
         get_kms_certificate_objects, get_kms_disk_encryption_data_objects, get_kms_object,
         get_kms_object_attributes, get_kms_secret_data_objects, key_algorithm_from_attributes,
         kms_decrypt, kms_destroy_object, kms_encrypt, kms_import_object, kms_import_symmetric_key,
-        kms_revoke_object, kms_sign, locate_kms_objects,
+        kms_revoke_object, kms_sign, kms_verify, locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -46,10 +46,9 @@ pub(crate) const COSMIAN_PKCS11_SSH_KEY_TAG: &str = "ssh-auth";
 fn require_id(query: SearchOptions, caller: &str) -> ModuleResult<String> {
     match query {
         SearchOptions::Id(id) => Ok(id),
-        SearchOptions::All => Err(ModuleError::Backend(Box::new(pkcs11_error!(
-            "{}: find must be made using an ID",
-            caller
-        )))),
+        SearchOptions::All | SearchOptions::ProfileId(_) => Err(ModuleError::Backend(Box::new(
+            pkcs11_error!("{}: find must be made using an ID", caller),
+        ))),
     }
 }
 
@@ -615,6 +614,23 @@ impl Backend for CliBackend {
         data: &[u8],
     ) -> ModuleResult<Vec<u8>> {
         debug!("remote_sign: remote_id: {remote_id}, algorithm: {algorithm:?}");
-        kms_sign(&self.kms_rest_client, remote_id, algorithm, data).map_err(Into::into)
+        let remote_sign = cosmian_pkcs11_module::profiling::phase(
+            cosmian_pkcs11_module::profiling::SignPhase::BackendRemoteSign,
+        );
+        let result =
+            kms_sign(&self.kms_rest_client, remote_id, algorithm, data).map_err(Into::into);
+        drop(remote_sign);
+        result
+    }
+
+    fn remote_verify(
+        &self,
+        remote_id: &str,
+        algorithm: &SignatureAlgorithm,
+        data: &[u8],
+        signature: &[u8],
+    ) -> ModuleResult<()> {
+        debug!("remote_verify: remote_id: {remote_id}, algorithm: {algorithm:?}");
+        kms_verify(&self.kms_rest_client, remote_id, algorithm, data, signature).map_err(Into::into)
     }
 }

@@ -1,0 +1,30 @@
+[package]
+name = "aws_cloudhsm_pkcs11_loader"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "AWS CloudHSM PKCS#11 loader"
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.27.1" }
+
+[dev-dependencies]
+libloading = { workspace = true }
+pkcs11-sys = { workspace = true }
+
+[features]
+# Enable this feature to run aws_cloudhsm tests (they require a live AWS CloudHSM cluster)
+aws_cloudhsm = []
+# Enable HSM-delegated EdDSA/X25519 support (see cosmian_kms_base_hsm's `non-fips` feature).
+non-fips = ["cosmian_kms_base_hsm/non-fips"]

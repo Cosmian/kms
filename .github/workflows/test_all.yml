@@ -44,8 +44,19 @@ jobs:
           - kmip-go
           - ocsp
           - pki-revocation
+          # Not a vendor HSM backend: `kryoptic` is a PKCS#11 v3.0 software token used
+          # purely as a conformance-test oracle for crate/hsm/base_hsm's v3.0 mechanism
+          # support (EdDSA, HKDF, message-based AEAD, populated interface list). No
+          # hardware/secrets required, so it runs here rather than in the `hsm` job's
+          # concurrency-limited vendor matrix below. Gated purely behind `#[ignore]`
+          # like every other vendor HSM suite (no Cargo feature — `kryoptic` is
+          # fetched/built out-of-tree, never a real dependency).
+          - hsm-kryoptic-conformance
         features: [fips, non-fips]
         exclude:
+          # kryoptic-conformance only needs to be validated once (fips)
+          - type: hsm-kryoptic-conformance
+            features: non-fips
           # redis is exclusively for non-fips
           - type: redis
             features: fips
@@ -183,12 +194,13 @@ jobs:
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
     runs-on: ubuntu-latest
-    # proteccio and crypt2pay hardware do not support concurrent connections from multiple CI runs;
-    # give them fixed concurrency groups so only one job runs at a time across all PRs.
-    # utimaco and softhsm2 use a per-run group so they are never blocked by other PRs.
+    # proteccio, crypt2pay, and aws-cloudhsm hardware do not support concurrent connections
+    # from multiple CI runs; give them fixed concurrency groups so only one job runs at a time
+    # across all PRs. utimaco and softhsm2 use a per-run group so they are never blocked by
+    # other PRs.
     concurrency:
-      group: ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || format('hsm-{0}-{1}', matrix.hsm-type,
-        github.run_id) }}
+      group: ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || (matrix.hsm-type == 'aws-cloudhsm'
+        && 'hsm-aws-cloudhsm') || format('hsm-{0}-{1}', matrix.hsm-type, github.run_id) }}
       queue: max
       cancel-in-progress: false
     strategy:
@@ -199,6 +211,7 @@ jobs:
           - proteccio
           - softhsm2
           - crypt2pay
+          - aws-cloudhsm
         features: [fips, non-fips]
         exclude:
           # parallel connections on proteccio is not supported
@@ -206,6 +219,10 @@ jobs:
             features: fips
           # Not required - testing non-fips is sufficient
           - hsm-type: crypt2pay
+            features: fips
+          # Not required until FIPS-mode compatibility is confirmed against the cluster's
+          # supported mechanism list - testing non-fips is sufficient for now
+          - hsm-type: aws-cloudhsm
             features: fips
 
     steps:
@@ -226,6 +243,14 @@ jobs:
           PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
           PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
           CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
+          # AWS CloudHSM: persistent CI cluster (see crate/hsm/aws_cloudhsm/README.md)
+          AWS_CLOUDHSM_CLUSTER_ID: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CLUSTER_ID }}
+          AWS_CLOUDHSM_CU_USERNAME: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CU_USERNAME }}
+          AWS_CLOUDHSM_CU_PASSWORD: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CU_PASSWORD }}
+          # Reused generic AWS credentials (read-only `cloudhsm:DescribeClusters` is enough)
+          AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
           # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
@@ -235,6 +260,20 @@ jobs:
           OVPN_CONF: ${{ secrets.OVPN_CONF }}
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
+
+      # PKCS#11 v3 conformance tests: signs through OpenSC's pkcs11-tool (a real,
+      # independently-implemented external PKCS#11 v3 client), not just our own
+      # in-process Rust tests above. SoftHSM2-only: it is the only backend the CI
+      # is allowed to reconfigure with an HSM-KEK for this check.
+      # Prerequisite warning: `pkcs11-tool` (OpenSC) is a hard requirement — the
+      # task fails loudly if it is missing, with no silent fallback. It does not
+      # need a separate install step here: shell.nix already adds `pkgs.opensc` to
+      # the nix-shell PATH on Linux whenever `WITH_HSM=1` is set, which this task
+      # sets before entering the nix shell (see .mise/tasks/test/hsm-pkcs11-tool).
+      - name: Test (PKCS#11 v3 conformance via pkcs11-tool)
+        if: matrix.hsm-type == 'softhsm2'
+        run: |
+          mise run test:hsm-pkcs11-tool --variant ${{ matrix.features }}
 
   helm:
     name: Helm chart E2E (minikube)

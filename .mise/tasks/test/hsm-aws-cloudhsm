@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+#MISE description="Run AWS CloudHSM tests against the persistent CI cluster (Linux only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; loader tests do not use a KMS server DB)" default="sqlite" {
+#USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+if [ "$(uname)" != "Linux" ]; then
+  print_error "AWS CloudHSM tests require Linux"
+fi
+
+print_header "Running AWS CloudHSM tests (${VARIANT_NAME})"
+
+# Installs the AWS CloudHSM PKCS#11 client, fetches the persistent CI cluster's CA certificate
+# via the AWS CLI (reusing the existing KMS_CI_AWS_* credentials), registers the cluster, and
+# exports AWS_CLOUDHSM_PKCS11_LIB + HSM_USER_PASSWORD for the Rust test harness.
+# See crate/hsm/aws_cloudhsm/README.md for the one-time cluster provisioning runbook.
+source "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_aws_cloudhsm.sh"
+
+require_cmd cargo
+
+FEATURES="aws_cloudhsm"
+if [ "${VARIANT_NAME}" = "non-fips" ]; then
+  FEATURES="aws_cloudhsm,non-fips"
+fi
+
+cargo test \
+  -p aws_cloudhsm_pkcs11_loader \
+  --features "${FEATURES}" \
+  -- --nocapture tests::test_hsm_aws_cloudhsm_all --ignored --exact
+
+print_success "AWS CloudHSM tests completed"

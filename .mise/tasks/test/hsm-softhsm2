@@ -81,6 +81,41 @@ env \
 
 print_status "HSM vector tests completed"
 
+# ── Run cosmian_pkcs11 HSM-KEK conformance tests ────────────────────────────
+# Mandatory PKCS#11 signing tests (EdDSA Ed25519, ECDSA P-256, ECDSA
+# secp256k1), an RSA-PSS sign test, and an end-to-end C_Verify round-trip
+# test (including a tampered-signature negative case), all against a KMS
+# server backed by SoftHSM2 with a Key-Encryption-Key (HSM-KEK). These tests
+# live in `cosmian_pkcs11`'s non-fips-only `tests_v3` module (PKCS#11 v3.x
+# conformance tests are never mixed with the legacy `tests` module), so they
+# only run for the non-fips variant.
+if [ "${VARIANT:-}" = "non-fips" ]; then
+  print_header "Running cosmian_pkcs11 HSM-KEK conformance tests"
+  env \
+    PATH="$PATH" \
+    LD_LIBRARY_PATH="$LIB_PATH" \
+    DYLD_LIBRARY_PATH="$LIB_PATH" \
+    SOFTHSM2_CONF="$SOFTHSM2_CONF" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+    HSM_MODEL="softhsm2" \
+    HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+    HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+    KMS_TEST_DB="${KMS_TEST_DB:-sqlite}" \
+    ${KMS_POSTGRES_URL:+KMS_POSTGRES_URL="$KMS_POSTGRES_URL"} \
+    ${KMS_MYSQL_URL:+KMS_MYSQL_URL="$KMS_MYSQL_URL"} \
+    ${REDIS_HOST:+REDIS_HOST="$REDIS_HOST"} \
+    ${REDIS_PORT:+REDIS_PORT="$REDIS_PORT"} \
+    cargo test \
+    -p cosmian_pkcs11 \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    --lib \
+    -- --ignored test_hsm_kek --test-threads=1
+
+  print_status "cosmian_pkcs11 HSM-KEK conformance tests completed"
+else
+  print_status "Skipping cosmian_pkcs11 HSM-KEK conformance tests (non-fips only)"
+fi
+
 # ── Run softhsm2 loader tests ───────────────────────────────────────────────
 # Note: softhsm2_pkcs11_loader has no feature flags — never pass --features here
 print_header "Running softhsm2_pkcs11_loader tests"

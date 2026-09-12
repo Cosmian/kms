@@ -62,7 +62,7 @@ fn jose_try_create_rsa_kp(
 }
 
 #[cfg(feature = "non-fips")]
-fn jose_try_create_okp_kp(rt: &Runtime, client: &KmsClient) -> Option<(String, String)> {
+pub(super) fn jose_try_create_okp_kp(rt: &Runtime, client: &KmsClient) -> Option<(String, String)> {
     let req = JoseKeyReq {
         kty: "OKP",
         alg: Some("EdDSA"),

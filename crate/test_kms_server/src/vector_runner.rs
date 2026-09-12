@@ -4684,21 +4684,29 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    async fn test_vec_hsm_resident_ec_p256_rejected() -> Result<(), KmsClientError> {
+    async fn test_vec_hsm_resident_ec_p256_created() -> Result<(), KmsClientError> {
         crate::init_test_logging();
-        run_test_vector("test_data/vectors/hsm/resident_ec_p256_rejected").await
+        run_test_vector("test_data/vectors/hsm/resident_ec_p256_created").await
     }
 
     #[tokio::test]
-    async fn test_vec_hsm_resident_ec_p384_rejected() -> Result<(), KmsClientError> {
+    async fn test_vec_hsm_resident_ec_p384_created() -> Result<(), KmsClientError> {
         crate::init_test_logging();
-        run_test_vector("test_data/vectors/hsm/resident_ec_p384_rejected").await
+        run_test_vector("test_data/vectors/hsm/resident_ec_p384_created").await
     }
 
     #[tokio::test]
+    #[cfg(not(feature = "non-fips"))]
     async fn test_vec_hsm_resident_ed25519_rejected() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/resident_ed25519_rejected").await
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "non-fips")]
+    async fn test_vec_hsm_resident_ed25519_created() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_ed25519_created").await
     }
 
     #[tokio::test]

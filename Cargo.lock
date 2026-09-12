@@ -633,6 +633,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws_cloudhsm_pkcs11_loader"
+version = "5.27.1"
+dependencies = [
+ "cosmian_kms_base_hsm",
+ "libloading",
+ "pkcs11-sys",
+]
+
+[[package]]
 name = "axum"
 version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1411,11 +1420,13 @@ name = "cosmian_kms_base_hsm"
 version = "5.27.1"
 dependencies = [
  "async-trait",
+ "cc",
  "cosmian_kms_interfaces",
  "cosmian_logger",
  "futures",
  "libloading",
  "lru",
+ "openssl",
  "pkcs11-sys",
  "rand 0.10.2",
  "thiserror 2.0.19",
@@ -1680,6 +1691,7 @@ dependencies = [
  "actix-tls",
  "actix-web",
  "async-recursion",
+ "aws_cloudhsm_pkcs11_loader",
  "base64 0.22.1",
  "chrono",
  "clap",
@@ -1812,6 +1824,7 @@ dependencies = [
  "cosmian_pkcs11_module",
  "etcetera",
  "hex",
+ "openssl",
  "p256",
  "pkcs1",
  "pkcs11-sys",
@@ -1824,6 +1837,23 @@ dependencies = [
  "tracing-error",
  "tracing-subscriber",
  "x509-cert",
+ "zeroize",
+]
+
+[[package]]
+name = "cosmian_pkcs11_bench"
+version = "5.27.1"
+dependencies = [
+ "ckms",
+ "clap",
+ "cosmian_logger",
+ "criterion",
+ "libloading",
+ "pkcs11-sys",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
  "zeroize",
 ]
 

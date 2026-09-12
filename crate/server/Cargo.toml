@@ -43,8 +43,16 @@ insecure = []
 timeout = []
 # Enable extra cryptographic mechanisms which are non-FIPS compliant.
 non-fips = [
+  "cosmian_kms_base_hsm/non-fips",
+  "cosmian_kms_interfaces/non-fips",
   "cosmian_kms_client_utils/non-fips",
   "cosmian_kms_server_database/non-fips",
+  "aws_cloudhsm_pkcs11_loader/non-fips",
+  "crypt2pay_pkcs11_loader/non-fips",
+  "proteccio_pkcs11_loader/non-fips",
+  "smartcardhsm_pkcs11_loader/non-fips",
+  "softhsm2_pkcs11_loader/non-fips",
+  "utimaco_pkcs11_loader/non-fips",
 ]
 # Enable interop test operations (should only be used for testing)
 interop = ["cosmian_kms_server_database/interop"]
@@ -58,6 +66,7 @@ actix-session = { workspace = true, features = ["cookie-session"] }
 actix-tls = { workspace = true }
 actix-web = { workspace = true, features = ["macros", "openssl"] }
 async-recursion = { workspace = true }
+aws_cloudhsm_pkcs11_loader = { path = "../hsm/aws_cloudhsm", version = "5.27.1" }
 base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = [

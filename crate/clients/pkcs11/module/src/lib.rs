@@ -29,6 +29,7 @@ pub mod core;
 mod error;
 mod objects_store;
 pub mod pkcs11;
+pub mod profiling;
 mod sessions;
 #[cfg(test)]
 #[expect(
@@ -37,6 +38,8 @@ mod sessions;
     clippy::indexing_slicing
 )]
 mod tests;
+#[cfg(test)]
+mod tests_v3;
 pub mod traits;
 mod utils;
 

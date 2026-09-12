@@ -16,11 +16,12 @@ use ckms::{
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
                 kmip_operations::{
                     Activate, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, Query,
-                    Revoke, Sign,
+                    Revoke, Sign, SignatureVerify,
                 },
                 kmip_types::{
                     CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
                     KeyFormatType, QueryFunction, RecommendedCurve, UniqueIdentifier,
+                    ValidityIndicator,
                 },
             },
         },
@@ -34,13 +35,23 @@ use ckms::{
     },
 };
 use cosmian_logger::{debug, error, trace};
-use cosmian_pkcs11_module::traits::{
-    DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
-    SignatureAlgorithm,
+use cosmian_pkcs11_module::{
+    profiling::{self, SignPhase},
+    traits::{
+        DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
+        SignatureAlgorithm,
+    },
 };
 use zeroize::Zeroizing;
 
 use crate::error::{Pkcs11Error, result::Pkcs11Result};
+
+/// The GCM authentication tag length (in bytes) used by the KMS's AES-GCM backend
+/// (`AES_128_GCM_MAC_LENGTH`/`AES_192_GCM_MAC_LENGTH`/`AES_256_GCM_MAC_LENGTH` in
+/// `crate/crypto` are all 16 bytes / 128 bits). `CKM_AES_GCM` mechanism parsing on the
+/// module side (`cosmian_pkcs11_module`) rejects any other `ulTagBits` value, so this
+/// constant is always correct for data reaching this function.
+const AES_GCM_TAG_LENGTH: usize = 16;
 
 /// Shared Tokio runtime — created once, reused for every blocking KMS call.
 /// Avoids the overhead (and potential `io::Error`) of spinning up a runtime per call.
@@ -737,6 +748,11 @@ pub(crate) async fn kms_encrypt_async(
             padding_method: Some(PaddingMethod::None),
             ..Default::default()
         },
+        EncryptionAlgorithm::AesGcm => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(BlockCipherMode::GCM),
+            ..Default::default()
+        },
         EncryptionAlgorithm::RsaPkcs1v15 => CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             padding_method: Some(PaddingMethod::PKCS1v15),
@@ -750,12 +766,25 @@ pub(crate) async fn kms_encrypt_async(
         cryptographic_parameters: Some(cryptographic_parameters),
         data: Some(Zeroizing::new(data)),
         i_v_counter_nonce: encrypt_ctx.iv.clone(),
+        authenticated_encryption_additional_data: encrypt_ctx.aad.clone(),
         ..Default::default()
     };
     let response = kms_rest_client.encrypt(encryption_request).await?;
-    let ciphertext = response.data.ok_or_else(|| {
+    let mut ciphertext = response.data.ok_or_else(|| {
         Pkcs11Error::ServerError("Encryption response does not contain data".to_owned())
     })?;
+
+    // `CKM_AES_GCM` (PKCS#11 v3.0): the caller expects a single output buffer of
+    // ciphertext followed by the authentication tag (per the PKCS#11 spec's
+    // "ciphertext = C || T" convention for AEAD mechanisms without separate tag output).
+    if matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
+        let tag = response.authenticated_encryption_tag.ok_or_else(|| {
+            Pkcs11Error::ServerError(
+                "AES-GCM encryption response does not contain an authentication tag".to_owned(),
+            )
+        })?;
+        ciphertext.extend_from_slice(&tag);
+    }
 
     debug!(
         "kms_encrypt_async: ciphertext: {}",
@@ -790,19 +819,50 @@ pub(crate) async fn kms_decrypt_async(
             padding_method: Some(PaddingMethod::None),
             ..Default::default()
         },
+        EncryptionAlgorithm::AesGcm => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(BlockCipherMode::GCM),
+            ..Default::default()
+        },
         EncryptionAlgorithm::RsaPkcs1v15 => CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             padding_method: Some(PaddingMethod::PKCS1v15),
             ..Default::default()
         },
     };
+
+    // `CKM_AES_GCM` (PKCS#11 v3.0): the caller supplies a single input buffer of
+    // ciphertext followed by the authentication tag ("C || T"); split it back apart
+    // before sending the KMIP Decrypt request, which expects them as separate fields.
+    let (ciphertext, authenticated_encryption_tag) =
+        if matches!(decrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
+            if data.len() < AES_GCM_TAG_LENGTH {
+                // Too-short ciphertext is a caller/input error, not a server-side failure —
+                // use the dedicated `Pkcs11` variant rather than `ServerError` so it is not
+                // misclassified as a KMS backend fault.
+                return Err(Pkcs11Error::Pkcs11(format!(
+                    "AES-GCM ciphertext too short: {} bytes, expected at least {} (tag length)",
+                    data.len(),
+                    AES_GCM_TAG_LENGTH
+                )));
+            }
+            let split_at = data.len() - AES_GCM_TAG_LENGTH;
+            let mut data = data;
+            let tag = data.split_off(split_at);
+            (data, Some(tag))
+        } else {
+            (data, None)
+        };
+
     let decryption_request = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(
             decrypt_ctx.remote_object_id.clone(),
         )),
         cryptographic_parameters: Some(cryptographic_parameters),
-        data: Some(data),
+        data: Some(ciphertext),
         i_v_counter_nonce: decrypt_ctx.iv.clone(),
+        authenticated_encryption_additional_data: decrypt_ctx.aad.clone(),
+        authenticated_encryption_tag,
         ..Default::default()
     };
     let response = kms_rest_client.decrypt(decryption_request).await?;
@@ -817,12 +877,15 @@ pub(crate) fn kms_sign(
     algorithm: &SignatureAlgorithm,
     data: &[u8],
 ) -> Pkcs11Result<Vec<u8>> {
-    RUNTIME.block_on(kms_sign_async(
+    let runtime_block_on = profiling::phase(SignPhase::RuntimeBlockOn);
+    let result = RUNTIME.block_on(kms_sign_async(
         kms_rest_client,
         unique_identifier,
         algorithm,
         data,
-    ))
+    ));
+    drop(runtime_block_on);
+    result
 }
 
 /// Map a PKCS#11 `DigestType` to its KMIP `HashingAlgorithm` counterpart.
@@ -836,17 +899,25 @@ const fn digest_type_to_hashing_algorithm(digest: &DigestType) -> HashingAlgorit
     }
 }
 
-pub(crate) async fn kms_sign_async(
-    kms_rest_client: &KmsClient,
-    unique_identifier: &str,
+/// Result of mapping a `SignatureAlgorithm` to KMIP request fields: `(cryptographic_parameters,
+/// data, digested_data)`. See `signature_algorithm_to_kmip_params`.
+type SignatureKmipParams = (
+    Option<CryptographicParameters>,
+    Option<Vec<u8>>,
+    Option<Vec<u8>>,
+);
+
+/// Maps a PKCS#11 `SignatureAlgorithm`/payload pair to the KMIP `CryptographicParameters` and
+/// `data`/`digested_data` fields used by both the `Sign` and `SignatureVerify` KMIP operations.
+///
+/// Shared by `kms_sign_async` and `kms_verify_async` so the two operations can never diverge on
+/// whether a given mechanism sends a raw message (`data`) or a pre-computed digest
+/// (`digested_data`) — a mismatch here would make valid signatures fail verification.
+fn signature_algorithm_to_kmip_params(
     algorithm: &SignatureAlgorithm,
     data: &[u8],
-) -> Pkcs11Result<Vec<u8>> {
-    // Map the PKCS#11 mechanism to KMIP CryptographicParameters.
-    // For CKM_ECDSA (SignatureAlgorithm::Ecdsa), the data is a pre-computed hash
-    // passed by OpenSSH — send it as `digested_data` to prevent double-hashing on
-    // the server side.
-    let (cryptographic_parameters, data_bytes, digested_data_bytes) = match algorithm {
+) -> Pkcs11Result<SignatureKmipParams> {
+    Ok(match algorithm {
         SignatureAlgorithm::Ecdsa => {
             // CKM_ECDSA: caller (OpenSSH) provides a pre-computed hash
             let digital_signature_algorithm = match data.len() {
@@ -907,6 +978,13 @@ pub(crate) async fn kms_sign_async(
             mask_generation_function,
             salt_length,
         } => {
+            // CKM_RSA_PKCS_PSS is a "bare" PSS mechanism (PKCS#11 v3.1 §6.4.7): per the
+            // spec, it "operate[s] only on the part of PKCS #1 that involves block
+            // formatting and RSA, given a hash value; it does not compute a hash value
+            // on the message to be signed." The caller (e.g. `pkcs11-tool --sign
+            // --mechanism RSA-PKCS-PSS`) therefore always provides a pre-computed
+            // digest, not the raw message — send it as `digested_data` (like CKM_ECDSA)
+            // so the server does not hash it a second time.
             let hashing_algorithm = Some(digest_type_to_hashing_algorithm(digest));
             let mask_generator_hashing_algorithm =
                 Some(digest_type_to_hashing_algorithm(mask_generation_function));
@@ -918,9 +996,24 @@ pub(crate) async fn kms_sign_async(
                 salt_length: Some(i32::try_from(*salt_length)?),
                 ..Default::default()
             };
-            (Some(cp), Some(data.to_vec()), None)
+            (Some(cp), None, Some(data.to_vec()))
         }
-    };
+    })
+}
+
+pub(crate) async fn kms_sign_async(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: &SignatureAlgorithm,
+    data: &[u8],
+) -> Pkcs11Result<Vec<u8>> {
+    let request_build = profiling::phase(SignPhase::RequestBuild);
+    // Map the PKCS#11 mechanism to KMIP CryptographicParameters.
+    // For CKM_ECDSA (SignatureAlgorithm::Ecdsa), the data is a pre-computed hash
+    // passed by OpenSSH — send it as `digested_data` to prevent double-hashing on
+    // the server side.
+    let (cryptographic_parameters, data_bytes, digested_data_bytes) =
+        signature_algorithm_to_kmip_params(algorithm, data)?;
 
     let sign_request = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
@@ -931,11 +1024,65 @@ pub(crate) async fn kms_sign_async(
         init_indicator: None,
         final_indicator: None,
     };
+    drop(request_build);
 
-    let response = kms_rest_client.sign(sign_request).await?;
+    let kms_client_sign = profiling::phase(SignPhase::KmsClientSign);
+    let response = kms_rest_client.sign_bytes(sign_request).await;
+    drop(kms_client_sign);
+    let response = response?;
     response.signature_data.ok_or_else(|| {
         Pkcs11Error::ServerError("Sign response does not contain signature data".to_owned())
     })
+}
+
+pub(crate) fn kms_verify(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: &SignatureAlgorithm,
+    data: &[u8],
+    signature: &[u8],
+) -> Pkcs11Result<()> {
+    RUNTIME.block_on(kms_verify_async(
+        kms_rest_client,
+        unique_identifier,
+        algorithm,
+        data,
+        signature,
+    ))
+}
+
+/// Verifies `signature` over `data` for the public key `unique_identifier`, via a KMIP
+/// `SignatureVerify` round trip. Reuses `signature_algorithm_to_kmip_params` — the exact same
+/// mapping used by `kms_sign_async` — so a signature produced by `C_Sign` is always verified
+/// with the matching raw-message/pre-hashed-digest convention.
+pub(crate) async fn kms_verify_async(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: &SignatureAlgorithm,
+    data: &[u8],
+    signature: &[u8],
+) -> Pkcs11Result<()> {
+    let (cryptographic_parameters, data_bytes, digested_data_bytes) =
+        signature_algorithm_to_kmip_params(algorithm, data)?;
+
+    let verify_request = SignatureVerify {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
+        cryptographic_parameters,
+        data: data_bytes,
+        digested_data: digested_data_bytes,
+        signature_data: Some(signature.to_vec()),
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+
+    let response = kms_rest_client.signature_verify(verify_request).await?;
+    match response.validity_indicator {
+        Some(ValidityIndicator::Valid) => Ok(()),
+        Some(ValidityIndicator::Invalid | ValidityIndicator::Unknown) | None => {
+            Err(Pkcs11Error::SignatureInvalid)
+        }
+    }
 }
 
 pub(crate) fn get_kms_object_attributes(
@@ -964,6 +1111,13 @@ pub(crate) fn key_algorithm_from_attributes(attributes: &Attributes) -> Pkcs11Re
     })? {
         CryptographicAlgorithm::AES => KeyAlgorithm::Aes256,
         CryptographicAlgorithm::RSA => KeyAlgorithm::Rsa,
+        // KMIP 2.1 assigns Ed25519/Ed448 their own dedicated CryptographicAlgorithm
+        // values (distinct from the generic EC/ECDH used for NIST/SECG curves) — see
+        // crate/kmip/src/kmip_2_1/requests/create_key_pair.rs::build_algorithm_from_curve.
+        // The curve itself is unambiguous from the algorithm alone, so no domain
+        // parameters lookup is needed here (unlike the EC/ECDH branch below).
+        CryptographicAlgorithm::Ed25519 => KeyAlgorithm::Ed25519,
+        CryptographicAlgorithm::Ed448 => KeyAlgorithm::Ed448,
         CryptographicAlgorithm::ECDH | CryptographicAlgorithm::EC => {
             let curve = attributes
                 .cryptographic_domain_parameters

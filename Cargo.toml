@@ -18,6 +18,7 @@ members = [
   "crate/clients/k8s/csi_provider",
   "crate/clients/pkcs11/module",
   "crate/clients/pkcs11/provider",
+  "crate/clients/pkcs11/bench",
   "crate/clients/cng",
   # Server crates
   "crate/access",
@@ -27,6 +28,7 @@ members = [
   "crate/hsm/softhsm2",
   "crate/hsm/smartcardhsm",
   "crate/hsm/utimaco",
+  "crate/hsm/aws_cloudhsm",
   "crate/hsm/base_hsm",
   "crate/interfaces",
   "crate/server",
@@ -197,6 +199,7 @@ axum = "0.8"
 axum-server = "0.8"
 base64 = "0.22"
 bitflags = "2.9"
+cc = "1.4"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
 clap-config-fallback = { version = "0.1", features = ["derive"] }

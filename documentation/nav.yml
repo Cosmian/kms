@@ -18,6 +18,7 @@ nav:
       - Trustway Proteccio: hsm_support/proteccio.md
       - Utimaco General Purpose: hsm_support/utimaco.md
       - Smart card HSM / Nitrokey HSM 2: hsm_support/sc_hsm.md
+      - AWS CloudHSM: hsm_support/aws_cloudhsm.md
       - SoftHSMv2: hsm_support/softhsm2.md
       - Other HSMs: hsm_support/other_hsms.md
   - KMIP Support:
@@ -61,6 +62,7 @@ nav:
       - API overview:
           - API Endpoints: integrations/api.md
           - OpenAPI Specification and Swagger UI: integrations/openapi.md
+      - PKCS#11 provider module: integrations/pkcs11_provider.md
       - JOSE (JWS, JWE, JWKS):
           - JOSE API: integrations/jose/jose_api.md
           - JWE Key Unwrap: integrations/jose/jwe_decryption.md
@@ -113,6 +115,7 @@ nav:
           - Secrets Store CSI Driver: integrations/kubernetes/csi-provider.md
           - Kubernetes Operator: integrations/kubernetes/operator.md
       - Other:
+          - PKCS#11 provider module: integrations/pkcs11_provider.md
           - FortiGate / FortiOS: integrations/fortigate.md
           - OpenSSH: integrations/openssh.md
           - PyKMIP: integrations/pykmip.md
@@ -164,7 +167,10 @@ nav:
           - Security Audit (OWASP): certifications_and_compliance/audit/owasp_security_audit.md
           - Multi-Framework Security Audit: certifications_and_compliance/audit/multi_framework_security_audit.md
   - Benchmarks:
-      - Reports: benchmarks/ckms_bench/report.md
+      - Software: benchmarks/ckms_bench/report.md
+      - PKCS#11: benchmarks/ckms_bench_pkcs11/report.md
+      - HSM KEK-Wrap: benchmarks/ckms_bench_hsm_kek/report.md
+      - HSM Delegated Crypto: benchmarks/ckms_bench_hsm/report.md
       - CPU Scaling & Flamegraphs: benchmarks/cpu_scaling.md
   - KMS Clients:
       - Getting started: kms_clients/index.md
