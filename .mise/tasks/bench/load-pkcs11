@@ -10,10 +10,11 @@
 #USAGE flag "-C --cooldown <s>"     env="BENCH_COOLDOWN"      default="2"               help="Cooldown between concurrency levels (seconds)"
 #USAGE flag "-s --sanity"           env="BENCH_SANITY"                                  help="Quick sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt"
 #USAGE flag "--shared-session"      env="BENCH_SHARED_SESSION"                          help="Force every worker thread to share one Cryptoki session (pre-fix behavior), instead of one dedicated session per thread (default) — for before/after comparison only"
-#USAGE flag "--criterion"           env="BENCH_CRITERION"                               help="Run real criterion-crate single-operation micro-benchmarks instead of the concurrency sweep — writes only criterion.json, so the report has no Load test section"
+#USAGE flag "--criterion"           env="BENCH_CRITERION"                               help="Also run real criterion-crate single-operation micro-benchmarks, on top of the concurrency sweep that always runs — writes criterion.json alongside load_pkcs11.json, so the report gets both a Load Tests and a Criterion Benchmarks section"
 #USAGE flag "--speed <sp>"          env="BENCH_SPEED"         default="quick"           help="Criterion speed preset (with --criterion)" { choices "sanity" "quick" "normal" }
-#USAGE flag "--overhead-payload-size <n>" env="BENCH_OVERHEAD_PAYLOAD_SIZE" default="32" help="Ed25519 payload bytes for differential Criterion tiers"
-#USAGE flag "--overhead-payload-mode <m>" env="BENCH_OVERHEAD_PAYLOAD_MODE" default="fixed" help="Payload selection for typed and PKCS#11 Criterion tiers" { choices "fixed" "varying" }
+#USAGE flag "--overhead"            env="BENCH_OVERHEAD"                                help="Also run the Ed25519-specific differential overhead ladder (with --criterion) and write pkcs11_overhead.json — a standalone local diagnostic, never rendered into report.md"
+#USAGE flag "--overhead-payload-size <n>" env="BENCH_OVERHEAD_PAYLOAD_SIZE" default="32" help="Ed25519 payload bytes for differential Criterion tiers (with --overhead)"
+#USAGE flag "--overhead-payload-mode <m>" env="BENCH_OVERHEAD_PAYLOAD_MODE" default="fixed" help="Payload selection for typed and PKCS#11 Criterion tiers (with --overhead)" { choices "fixed" "varying" }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/bench_helpers.sh"
@@ -32,6 +33,7 @@ BENCH_SANITY="${usage_sanity:-}"
 BENCH_SHARED_SESSION="${usage_shared_session:-}"
 BENCH_CRITERION="${usage_criterion:-}"
 BENCH_SPEED="${usage_speed:-quick}"
+BENCH_OVERHEAD="${usage_overhead:-}"
 BENCH_OVERHEAD_PAYLOAD_SIZE="${usage_overhead_payload_size:-32}"
 BENCH_OVERHEAD_PAYLOAD_MODE="${usage_overhead_payload_mode:-fixed}"
 
@@ -72,7 +74,10 @@ bench_register_cleanup
 BUILD_ARGS=(-p cosmian_kms_server -p cosmian_pkcs11 -p cosmian_pkcs11_bench)
 BUILD_FEATURES=()
 [ "${BENCH_VARIANT}" = "non-fips" ] && BUILD_FEATURES+=(non-fips)
-[ "${BENCH_CRITERION}" = "true" ] && BUILD_FEATURES+=(cosmian_pkcs11/benchmarking)
+# The `benchmarking` feature only powers the Ed25519 overhead ladder's internal
+# phase counters (`overhead.rs`/`profiling.rs`), so it is only needed for
+# `--overhead`, not for every `--criterion` run.
+[ "${BENCH_OVERHEAD}" = "true" ] && BUILD_FEATURES+=(cosmian_pkcs11/benchmarking)
 BUILD_FEATURE_ARGS=()
 if [ "${#BUILD_FEATURES[@]}" -gt 0 ]; then
   BUILD_FEATURE_LIST=$(IFS=,; echo "${BUILD_FEATURES[*]}")
@@ -135,6 +140,7 @@ if [ "${BENCH_CRITERION}" = "true" ]; then
     --overhead-payload-size "${BENCH_OVERHEAD_PAYLOAD_SIZE}"
     --overhead-payload-mode "${BENCH_OVERHEAD_PAYLOAD_MODE}"
   )
+  [ "${BENCH_OVERHEAD}" = "true" ] && CRITERION_ARGS+=(--overhead)
 fi
 
 "${PKCS11_BENCH_BIN}" \

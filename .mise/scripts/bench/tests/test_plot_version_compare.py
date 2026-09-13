@@ -106,7 +106,11 @@ class Pkcs11OverheadReportTests(unittest.TestCase):
 
         self.assertEqual({}, data)
 
-    def test_overhead_section_is_pkcs11_only(self) -> None:
+    def test_overhead_section_is_never_rendered_in_the_standard_report(self) -> None:
+        """`generate_report` intentionally never wires in the internal-diagnosis
+        overhead section, regardless of `is_pkcs11`/`pkcs11_overhead_data` — it
+        remains available only via `_render_pkcs11_overhead_section` directly for
+        ad hoc local diagnostics (see the other tests in this file)."""
         data = MODULE.parse_pkcs11_overhead_json(FIXTURES / 'pkcs11_overhead_full.json')
         common = (
             Path('unused'),
@@ -133,7 +137,9 @@ class Pkcs11OverheadReportTests(unittest.TestCase):
                 pkcs11_overhead_data={'5.24.0': data},
                 is_pkcs11=True,
             )
-        self.assertIn('PKCS#11 Ed25519 signing overhead', write_text.call_args.args[0])
+        self.assertNotIn(
+            'PKCS#11 Ed25519 signing overhead', write_text.call_args.args[0]
+        )
 
 
 if __name__ == '__main__':

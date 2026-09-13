@@ -2,6 +2,32 @@
 
 ## Bug Fixes
 
+### `bench:load-pkcs11` report accuracy
+
+- `--criterion` was mutually exclusive with the concurrency sweep in
+  `crate/clients/pkcs11/bench/src/main.rs` (`if cli.criterion { return
+  run_criterion(...) }`), unlike `mise bench:load --criterion`'s additive
+  behavior ("also run criterion before the sweep"). This is why
+  `ckms_bench_pkcs11/report.md` was missing its `## Load Tests` section
+  entirely. `--criterion` now always runs *in addition to* the sweep, matching
+  the software-bench tool and producing both sections from one invocation
+- `sign/eddsa-ed25519` in Criterion mode was skipped and its Sign/Verify table
+  cell was instead aliased from the `pkcs11-one-call-bracketed` tier of the
+  Ed25519 differential overhead ladder (`overhead.rs`) — an A/B/A/B bracketed
+  mean measured inside a group with ~12 unrelated micro-benchmarks, unlike
+  every other algorithm's clean, standalone sample series. It now always runs
+  through the same dedicated benchmark path as every other Sign/Verify row
+- Removed the `## PKCS#11 Ed25519 signing overhead` internal-diagnosis section
+  from the generated report (`.mise/scripts/bench/plot_version_compare.py`) so
+  `ckms_bench_pkcs11/report.md` mirrors `ckms_bench/report.md`'s structure
+- Added an explicit `--overhead` flag (`crate/clients/pkcs11/bench/src/main.rs`,
+  `criterion_bench.rs`) gating the Ed25519 overhead ladder, which previously ran
+  unconditionally whenever an EdDSA sign mode was selected under `--criterion`.
+  It remains a standalone local diagnostic, never rendered into `report.md`.
+  `.mise/tasks/bench/load-pkcs11` now only builds `cosmian_pkcs11` with its
+  `benchmarking` feature when `--overhead` is passed, not on every `--criterion`
+  run
+
 ### PKCS#11
 
 - Fix `crate/clients/pkcs11/module/src/sessions.rs` serializing **every** Cryptoki

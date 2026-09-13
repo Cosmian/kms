@@ -48,6 +48,13 @@ pub(crate) struct CriterionRunConfig {
     pub(crate) measurement_time: Duration,
     pub(crate) overhead_payload_size: usize,
     pub(crate) overhead_payload_mode: PayloadMode,
+    /// Explicit opt-in for the Ed25519-specific differential overhead ladder
+    /// (`overhead.rs`). Previously this ran automatically whenever
+    /// `ConcreteMode::SignEdDsa` was selected, forcing every default
+    /// `--criterion --mode all`/`--mode sign` run to pay for and emit a 12-benchmark
+    /// diagnostic group that is specific to one algorithm. It is now a standalone
+    /// local diagnostic, never part of the standard report pipeline.
+    pub(crate) overhead: bool,
 }
 
 /// Runs every mode in `modes` as a single-operation criterion benchmark (using only
@@ -85,7 +92,7 @@ pub(crate) fn run_criterion(
             .warm_up_time(Duration::from_secs(3)),
     };
 
-    let overhead_metadata = if modes.contains(&ConcreteMode::SignEdDsa) {
+    let overhead_metadata = if config.overhead && modes.contains(&ConcreteMode::SignEdDsa) {
         let private_key_id = ed25519_private_key_id.ok_or_else(|| {
             crate::error::BenchError::Setup(
                 "Ed25519 overhead benchmark requires a provisioned private key".to_owned(),
@@ -105,13 +112,15 @@ pub(crate) fn run_criterion(
     };
 
     for PreparedOp { label, setup, op } in prepare_ops(modes, pool)? {
-        if overhead_metadata.is_some() && label == "sign/eddsa-ed25519" {
-            // `pkcs11-one-call` in the overhead group is this exact operation.
-            // `write_criterion_json` aliases that estimate into the normal
-            // Sign/Verify category, avoiding a duplicate run at a later (possibly
-            // noisier) point in time.
-            continue;
-        }
+        // `sign/eddsa-ed25519` used to be skipped here and aliased from the
+        // `pkcs11-one-call-bracketed` tier in the overhead ladder above. That tier
+        // is an A/B/A/B bracketed mean measured *inside* a differential benchmark
+        // group alongside ~12 unrelated micro-benchmarks (request construction,
+        // TTLV serialization, raw HTTP tiers, ...), so it is not a clean,
+        // standalone sample series like every other algorithm in the Sign/Verify
+        // table. Always run a dedicated, non-interleaved benchmark for it here —
+        // identical in kind to `ecdsa-p256/sign` and `rsa-pkcs-sha256/sign` below —
+        // so every row in that table is measured the same way.
         if let Some(setup) = setup {
             setup(pool)?;
         }

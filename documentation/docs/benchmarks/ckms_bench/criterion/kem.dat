@@ -1,0 +1,7 @@
+# idx  ttlv-json/5.27.1  ttlv-bytes/5.27.1  label
+0  179.65  108.68  "configurable/decapsulate/ML-KEM-512"
+1  1381699.71  1224027.60  "configurable/encapsulate/ML-KEM-512"
+2  1125059.93  1218846.49  "configurable/encapsulate/ML-KEM-768"
+3  146.53  131.00  "pqc/decapsulate/ML-KEM-512"
+4  992923.55  1233054.98  "pqc/encapsulate/ML-KEM-512"
+5  1028379.45  1240211.56  "pqc/encapsulate/ML-KEM-768"

@@ -1455,12 +1455,12 @@ def generate_report(
     )
     lines += sep
 
-    # ── PKCS#11 Ed25519 overhead ──────────────────────────────────────────
-    if is_pkcs11 and pkcs11_overhead_data:
-        overhead_lines = _render_pkcs11_overhead_section(pkcs11_overhead_data, versions)
-        if overhead_lines:
-            lines += overhead_lines
-            lines += sep
+    # NOTE: the standard report intentionally omits the "PKCS#11 Ed25519 signing
+    # overhead" internal-diagnosis section (tier ladder + internal phase
+    # boundaries) so `ckms_bench_pkcs11/report.md` mirrors `ckms_bench/report.md`'s
+    # structure exactly. `_render_pkcs11_overhead_section`/`pkcs11_overhead_data`
+    # remain available (and tested) for ad hoc local diagnostics, they are simply
+    # never wired into this function's output.
 
     # ── Load tests ────────────────────────────────────────────────────────
     has_load = any(load_data.get(v) for v in versions)
@@ -1612,7 +1612,7 @@ def main() -> None:
 
     pkcs11_overhead_data: dict[str, dict[str, object]] = {}
     if is_pkcs11:
-        print('── PKCS#11 overhead data ──')
+        print('── PKCS#11 overhead data (diagnostic only, not rendered in report) ──')
         for v in versions:
             data = parse_pkcs11_overhead_json(out_dir / v / 'pkcs11_overhead.json')
             pkcs11_overhead_data[v] = data
@@ -1622,25 +1622,14 @@ def main() -> None:
                 print(f"  [{v}] {tier_count} tier(s), {phase_count} phase(s)")
             else:
                 print(f"  [{v}] no valid overhead data")
-
-            # The overhead ladder's `pkcs11-one-call` tier is the canonical
-            # Ed25519 C_SignMessage measurement. Reuse that exact estimate in the generic
-            # Sign / Verify table instead of accepting a duplicate benchmark run
-            # from a later (potentially noisier) time window.
-            one_call = next(
-                (
-                    tier
-                    for tier in data.get('tiers', [])
-                    if tier.get('name') == 'pkcs11-one-call-bracketed'
-                ),
-                None,
-            )
-            if isinstance(one_call, dict):
-                mean_ns = _finite_number(one_call.get('mean_ns'), positive=True)
-                if mean_ns is not None:
-                    criterion_data.setdefault(v, {})[
-                        'pkcs11_sign-verify_eddsa-ed25519/sign'
-                    ] = mean_ns
+            # NOTE: the overhead ladder's `pkcs11-one-call-bracketed` tier used to
+            # be aliased into `pkcs11_sign-verify_eddsa-ed25519/sign` here. That tier
+            # is an A/B/A/B bracketed mean measured inside a differential benchmark
+            # group alongside ~12 unrelated micro-benchmarks, not a clean standalone
+            # sample series like every other Sign/Verify row — so it is no longer
+            # substituted in. `sign/eddsa-ed25519` is now always benchmarked
+            # standalone (see `criterion_bench.rs::run_criterion`), the same way as
+            # every other algorithm.
 
     has_overhead_data = any(
         data.get('tiers') or data.get('phases')

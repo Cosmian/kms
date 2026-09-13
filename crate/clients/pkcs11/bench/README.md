@@ -35,8 +35,8 @@ Unlike `mise bench:load` (which load-tests the KMIP REST API directly through
   `.mise/scripts/bench/plot_version_compare.py`) generates a dedicated
   `documentation/docs/benchmarks/ckms_bench_pkcs11/` report — charts, tables, and
   all — with zero changes to that pipeline's JSON parsing.
-- `--criterion` runs real `criterion`-crate single-operation micro-benchmarks
-  instead of the concurrency sweep — see "Criterion mode" below.
+- `--criterion` *adds* real `criterion`-crate single-operation micro-benchmarks on
+  top of the concurrency sweep, which always runs — see "Criterion mode" below.
 
 ## Usage
 
@@ -49,25 +49,28 @@ mise run bench:load-pkcs11 --sanity               # quick smoke test
 mise run bench:load-pkcs11                        # full sweep, mode=all
 mise run bench:load-pkcs11 --mode sign --time 30 --concurrency 1,2,4,8    # every signature algorithm
 mise run bench:load-pkcs11 --mode sign-ecdsa --time 30 --concurrency 1,2,4,8
-mise run bench:load-pkcs11 --criterion --speed quick   # fast, single-op latency only
+mise run bench:load-pkcs11 --criterion --speed quick   # full sweep + fast single-op latency
 ```
 
 See `mise run bench:load-pkcs11 --help` for all flags (variant, link, release, mode,
-concurrency, time, warmup, cooldown, sanity, shared-session, criterion, speed).
+concurrency, time, warmup, cooldown, sanity, shared-session, criterion, speed,
+overhead, overhead-payload-size, overhead-payload-mode).
 
 ## Criterion mode
 
-`--criterion` skips the concurrency sweep entirely and instead runs each mode once
-as a real [`criterion`](https://docs.rs/criterion) single-operation micro-benchmark
-(`src/criterion_bench.rs`), using the exact same setup/closures as the load sweep
+`--criterion` runs each mode once as a real [`criterion`](https://docs.rs/criterion)
+single-operation micro-benchmark (`src/criterion_bench.rs`), **in addition to** the
+concurrency sweep that always runs, using the exact same setup/closures as the sweep
 (`load::prepare_ops`, shared by both so the two can never diverge on what a mode
-actually calls). It writes `criterion.json`, not `load_pkcs11.json`, so the
-generated report contains only the "Criterion data" section — no "Load test data"
-— matching `mise bench:load --criterion`'s own behavior/`--speed` presets exactly.
+actually calls). It writes `criterion.json` alongside `load_pkcs11.json`, so the
+generated report gets both a "Load Tests" section and a "Criterion Benchmarks"
+section from a single invocation — matching `mise bench:load --criterion`'s own
+additive behavior/`--speed` presets exactly.
 
-This is much faster to iterate on (no warmup/cooldown per concurrency level, and
-`--speed quick`'s 10 samples / 1s measurement complete in a couple of seconds) and
-gives statistically rigorous per-call latency (mean/median/CI) — the right tool for
+This is much faster to iterate on for single-call latency (no warmup/cooldown per
+concurrency level, and `--speed quick`'s 10 samples / 1s measurement complete in a
+couple of seconds) and gives statistically rigorous per-call latency (mean/median/CI)
+— the right tool for
 bottleneck-hunting, as opposed to the full sweep's job of characterizing
 concurrent-load behavior.
 
@@ -84,9 +87,11 @@ unrelated background load (IDE indexing, browsers, ...) briefly winning the CPU.
 task) now also flags an elevated 1-minute load average up front for exactly this
 reason — treat an isolated slow sample as suspect until reproduced.
 
-When `sign-eddsa` is selected, criterion mode also emits
-`pkcs11_overhead.json` and the generated report includes a permanent differential
-breakdown:
+## Ed25519 overhead ladder (`--overhead`, standalone diagnostic)
+
+`--overhead` (only meaningful together with `--criterion`, and only when an EdDSA
+sign mode is selected) additionally emits `pkcs11_overhead.json` and a permanent
+differential breakdown covering:
 
 1. request construction;
 2. TTLV + JSON serialization;
@@ -101,6 +106,12 @@ breakdown:
 11. PKCS#11 v3 `C_SignMessage` with a pre-sized 64-byte Ed25519 buffer;
 12. the legacy `C_Sign(NULL)` + `C_Sign(buffer)` API after the fixed-size
    length-query optimization.
+
+This is a standalone local diagnostic for investigating Ed25519 signing overhead
+specifically — it is **not** part of the standard report pipeline: the generated
+`ckms_bench_pkcs11/report.md` never renders this breakdown, regardless of whether
+`--overhead` was passed. Use it interactively (`pkcs11_overhead.json`'s tiers and
+phases) when bottleneck-hunting on the Ed25519 signing path.
 
 For this mode the task builds `cosmian_pkcs11` with its compile-time-only
 `benchmarking` feature. That feature exposes allocation-free in-memory phase

@@ -46,6 +46,7 @@ use loader::{Pkcs11Lib, Pkcs11Session};
 /// Real PKCS#11 (`dlopen()`) load benchmark for the `cosmian_pkcs11` provider.
 #[derive(Parser, Debug)]
 #[command(name = "pkcs11_bench", version, about)]
+#[allow(clippy::struct_excessive_bools)] // CLI flag structs legitimately have many boolean flags
 struct Cli {
     /// Path to the built `cosmian_pkcs11` shared library
     /// (`libcosmian_pkcs11.so` / `.dylib`).
@@ -93,12 +94,12 @@ struct Cli {
     #[arg(long)]
     shared_session: bool,
 
-    /// Run real `criterion`-crate single-operation micro-benchmarks instead of the
-    /// concurrency sweep — much faster to iterate on (no warmup/cooldown per
-    /// concurrency level) and gives statistically rigorous per-call latency
-    /// (mean/median/CI), at the cost of not measuring concurrent-load behavior.
-    /// Writes `criterion.json`, not `load_pkcs11.json`, so the generated report
-    /// contains only the "Criterion data" section.
+    /// Also run real `criterion`-crate single-operation micro-benchmarks, on top of
+    /// the concurrency sweep that always runs — gives statistically rigorous
+    /// per-call latency (mean/median/CI) in addition to the sweep's
+    /// concurrent-load throughput/percentiles. Writes `criterion.json` alongside
+    /// `load_pkcs11.json`, so the generated report gets both a "Load Tests" and a
+    /// "Criterion Benchmarks" section from a single invocation.
     #[arg(long)]
     criterion: bool,
 
@@ -106,11 +107,23 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = BenchSpeed::Quick)]
     speed: BenchSpeed,
 
-    /// Ed25519 payload size for differential Criterion tiers.
+    /// Also run the Ed25519-specific differential overhead ladder (request
+    /// construction, TTLV serialization, raw HTTP tiers, PKCS#11 `C_SignMessage`,
+    /// internal phase boundaries — see `overhead.rs`) and write
+    /// `pkcs11_overhead.json`. Only used with `--criterion` and when an `EdDSA` sign
+    /// mode is selected. This is a standalone local diagnostic for investigating
+    /// Ed25519 signing overhead specifically — it is not part of the standard
+    /// report pipeline and is never rendered into `report.md`.
+    #[arg(long)]
+    overhead: bool,
+
+    /// Ed25519 payload size for differential Criterion tiers (only used with
+    /// `--overhead`).
     #[arg(long, default_value_t = 32)]
     overhead_payload_size: usize,
 
-    /// Payload selection for typed and PKCS#11 overhead tiers.
+    /// Payload selection for typed and PKCS#11 overhead tiers (only used with
+    /// `--overhead`).
     #[arg(long, value_enum, default_value_t = PayloadMode::Fixed)]
     overhead_payload_mode: PayloadMode,
 }
@@ -189,12 +202,13 @@ fn main() -> BenchResult<()> {
     // One dedicated session per worker thread the sweep will ever spawn (the
     // highest requested concurrency level), so no thread ever waits on another
     // thread's session lock — unless `--shared-session` asks to reproduce the old
-    // everyone-shares-one-handle model instead. `--criterion` only ever uses one
-    // session (see `criterion_bench::run_criterion`), so a single-session pool is
-    // sufficient there too. `Pkcs11Session::open` is cheap (no network I/O;
+    // everyone-shares-one-handle model instead. `--criterion` runs *in addition to*
+    // the load sweep (see below) and only ever uses the pool's first session (see
+    // `criterion_bench::run_criterion`), so sizing the pool for the sweep alone is
+    // sufficient for both. `Pkcs11Session::open` is cheap (no network I/O;
     // `C_Initialize` itself only actually runs once, see its own doc comment) and
     // all opened here sequentially on this thread, before any worker thread exists.
-    let pool_size = if cli.shared_session || cli.criterion {
+    let pool_size = if cli.shared_session {
         1
     } else {
         config.concurrency_levels.iter().copied().max().unwrap_or(1)
@@ -203,11 +217,19 @@ fn main() -> BenchResult<()> {
         .map(|_| Pkcs11Session::open(&lib))
         .collect::<BenchResult<Vec<_>>>()?;
 
+    // The concurrency sweep always runs (writing `load_pkcs11.json`) — `--criterion`
+    // *adds* the single-operation micro-benchmarks on top of it rather than
+    // replacing it, mirroring `mise bench:load --criterion`'s own
+    // "load sweep, then optionally also criterion" behavior
+    // (`.mise/tasks/bench/load`). This is what lets a single
+    // `mise run bench:load-pkcs11 --criterion` invocation produce both a
+    // "Load Tests" and a "Criterion Benchmarks" section in the generated report.
+    let results = run_all(modes, &pool, &config)?;
+    print_results(&results);
+    report::write_load_json(&results)?;
+
     if cli.criterion {
-        // `--criterion` measures single-operation latency only — no load sweep, no
-        // `load_pkcs11.json`, so the generated report contains only the "Criterion
-        // data" section (see `mise bench:load-pkcs11 --criterion --help`).
-        return run_criterion(
+        run_criterion(
             modes,
             &pool,
             &runtime,
@@ -218,14 +240,11 @@ fn main() -> BenchResult<()> {
                 measurement_time: config.measure_time,
                 overhead_payload_size: cli.overhead_payload_size,
                 overhead_payload_mode: cli.overhead_payload_mode,
+                overhead: cli.overhead,
             },
-        );
+        )?;
     }
 
-    let results = run_all(modes, &pool, &config)?;
-
-    print_results(&results);
-    report::write_load_json(&results)?;
     Ok(())
 }
 
