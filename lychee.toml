@@ -147,6 +147,4 @@ exclude = [
   'sekretz\.com',
   # Local IP addresses used in test scripts
   '127\.0\.0\.1',
-  # cargo-deny registry entries in deny.toml (internal/self-hosted)
-  'sekretz\.com',
 ]
