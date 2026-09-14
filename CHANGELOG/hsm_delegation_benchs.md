@@ -2,6 +2,25 @@
 
 ## Bug Fixes
 
+### HSM
+
+- **Security fix**: `Session::generate_aes_key()`, `generate_rsa_key_pair()`, and
+  `generate_eddsa_key_pair()` (`crate/hsm/base_hsm`) always set `CKA_EXTRACTABLE =
+  CK_TRUE` regardless of the caller-provided `sensitive` flag. `CKA_SENSITIVE` was
+  correctly derived from `sensitive`, but `CKA_EXTRACTABLE` was hard-coded, so a
+  key created with `sensitive = true` (e.g. via `ckms sym keys create --sensitive`
+  / `ckms rsa keys create --sensitive`) was only protected against export by a
+  software-level KMIP check (`Sensitive: DENIED` on `Get`/`Export`), not by the
+  HSM itself — a caller with direct PKCS#11 access (bypassing the KMS) could still
+  extract the key material via `C_WrapKey`. Now derives `CKA_EXTRACTABLE` from
+  `sensitive` (`sensitive == true` ⇒ `CKA_EXTRACTABLE = CK_FALSE`), giving a
+  hardware-enforced, non-exportable guarantee as required for ANSSI-certified KEK
+  usage. Affects all PKCS#11 HSM backends sharing `crate/hsm/base_hsm` (Proteccio,
+  Utimaco, SoftHSM2, Crypt2Pay, SmartCard HSM). Note: existing keys created before
+  this fix remain `CKA_EXTRACTABLE = true` — `CKA_EXTRACTABLE` cannot be flipped
+  from `true` to `false` on an existing PKCS#11 object, so already-provisioned
+  sensitive keys must be regenerated to benefit from this fix
+
 ### `bench:load-pkcs11` report accuracy
 
 - `--criterion` was mutually exclusive with the concurrency sweep in

@@ -220,6 +220,13 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
             assert_eq!(v.len(), 32);
         }
     }
+    // a non-sensitive (exportable) key must have CKA_EXTRACTABLE = true
+    if let Some(extractable) = session.is_extractable(key_handle)? {
+        assert!(
+            extractable,
+            "A non-sensitive AES key must have CKA_EXTRACTABLE=true"
+        );
+    }
 
     // Generate a sensitive AES key
     let key_id = Uuid::new_v4().to_string();
@@ -236,6 +243,14 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     );
     // it should not be exportable
     session.export_key(key_handle).unwrap_err();
+    // a sensitive key must have CKA_EXTRACTABLE = false at the PKCS#11 level,
+    // not just be rejected by the KMS software check
+    if let Some(extractable) = session.is_extractable(key_handle)? {
+        assert!(
+            !extractable,
+            "A sensitive AES key must have CKA_EXTRACTABLE=false"
+        );
+    }
     Ok(())
 }
 
@@ -277,6 +292,13 @@ pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
         KeyMaterial::RsaPublicKey(v) => assert_eq!(v.modulus.len() * 8, 2048),
         _ => panic!("Expected an RSA public key"),
     }
+    // a non-sensitive (exportable) private key must have CKA_EXTRACTABLE = true
+    if let Some(extractable) = session.is_extractable(sk_handle)? {
+        assert!(
+            extractable,
+            "A non-sensitive RSA private key must have CKA_EXTRACTABLE=true"
+        );
+    }
 
     // sensitive keypair
     let sk_id = Uuid::new_v4().to_string();
@@ -290,6 +312,14 @@ pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     info!("Generated sensitive RSA key: sk: {sk_id}, pk: {pk_id}");
     let sk_handle = session.get_object_handle(sk_id.as_bytes())?;
     session.export_key(sk_handle).unwrap_err();
+    // a sensitive private key must have CKA_EXTRACTABLE = false at the PKCS#11
+    // level, not just be rejected by the KMS software check
+    if let Some(extractable) = session.is_extractable(sk_handle)? {
+        assert!(
+            !extractable,
+            "A sensitive RSA private key must have CKA_EXTRACTABLE=false"
+        );
+    }
     let pk_handle = session.get_object_handle(pk_id.as_bytes())?;
     let _unused = session.export_key(pk_handle)?;
     Ok(())
@@ -355,7 +385,11 @@ pub fn rsa_key_wrap(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResult<(
     log_init(None);
     let key_id = Uuid::new_v4().to_string();
     let session = slot.open_session(true)?;
-    let symmetric_key = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
+    // The AES key being wrapped (extracted from the HSM in wrapped form) must be
+    // extractable: a sensitive (non-extractable) key cannot be wrapped via
+    // C_WrapKey per PKCS#11 semantics, now that CKA_EXTRACTABLE correctly follows
+    // the `sensitive` flag.
+    let symmetric_key = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false)?;
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk";
     let (sk, pk) = session.generate_rsa_key_pair(
