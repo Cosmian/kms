@@ -93,6 +93,7 @@ nav:
           - Microsoft SQL Server External (EKM): integrations/databases/ms_sql_server.md
           - Oracle Database TDE: integrations/databases/oracle_tde.md
           - EDB Postgres Advanced Server TDE: integrations/databases/edb_postgres_tde.md
+          - SAP ASE and IBM Db2 LUW TDE: integrations/databases/sybase_ase_db2_tde.md
           - InterSystems IRIS: integrations/databases/intersystems_iris.md
       - Disk encryption:
           - Veracrypt: integrations/disk_encryption/veracrypt.md
