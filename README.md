@@ -207,6 +207,8 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 | Percona PostgreSQL   | TDE via KMIP ([docs](./documentation/docs/integrations/databases/percona.md))                                    | 1.4          | ✅      |
 | Microsoft SQL Server | External Key Management (EKM) via PKCS#11 ([docs](./documentation/docs/integrations/databases/ms_sql_server.md)) | —            | ✅      |
 | EDB Postgres Adv. Server | TDE via KMIP ([docs](./documentation/docs/integrations/databases/edb_postgres_tde.md)) | 2.1          | ✅      |
+| SAP ASE | TDE via PKCS#11 ([docs](./documentation/docs/integrations/databases/sybase_ase_db2_tde.md)) | —            | ✅      |
+| IBM Db2 LUW | TDE via KMIP 1.1 ([docs](./documentation/docs/integrations/databases/sybase_ase_db2_tde.md)) | 1.1          | ✅      |
 
 ### 💿 Disk Encryption
 
