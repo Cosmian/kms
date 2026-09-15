@@ -633,6 +633,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws_cloudhsm_pkcs11_loader"
+version = "5.27.1"
+dependencies = [
+ "cosmian_kms_base_hsm",
+ "libloading",
+ "pkcs11-sys",
+]
+
+[[package]]
 name = "axum"
 version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1682,6 +1691,7 @@ dependencies = [
  "actix-tls",
  "actix-web",
  "async-recursion",
+ "aws_cloudhsm_pkcs11_loader",
  "base64 0.22.1",
  "chrono",
  "clap",

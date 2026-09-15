@@ -8,6 +8,7 @@ Eviden KMS natively integrates with
 the [Proteccio](https://eviden.com/solutions/digital-security/data-encryption/trustway-proteccio-nethsm/),
 the [Utimaco general purpose](https://utimaco.com/),
 the [Smartcard HSM](https://www.smartcard-hsm.com/features.html),
+[AWS CloudHSM](https://aws.amazon.com/cloudhsm/),
 and any HSM that has a standard PKCS#11 interface such as [SoftHSMv2](https://github.com/softhsm/SoftHSMv2).
 
 ## Integration Workflow

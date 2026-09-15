@@ -603,7 +603,7 @@ The signature is available at "/tmp/secret.sig"
 ## PKCS#11 protocol version compatibility
 
 Eviden KMS talks to HSMs over Cryptoki (PKCS#11) **v2.40** on the consumer side (`crate/hsm/base_hsm`
-and its vendor loaders: SoftHSM2, Utimaco, Proteccio, Crypt2Pay, SmartCard HSM). Every Cryptoki
+and its vendor loaders: SoftHSM2, Utimaco, Proteccio, Crypt2Pay, SmartCard HSM, AWS CloudHSM). Every Cryptoki
 function (`C_Initialize`, `C_GetInfo`, `C_Encrypt`, ...) is resolved by its stable C symbol name,
 never through the PKCS#11 v3.0 "interfaces" discovery mechanism
 (`C_GetInterfaceList`/`C_GetInterface`). This means any v2.40-compliant HSM library works out of
@@ -649,7 +649,7 @@ AES/RSA) — tracked as a dedicated follow-up ([#1182](https://github.com/Cosmia
 #### Validating v3.0 mechanisms: the Kryoptic conformance suite
 
 No vendor HSM currently supported by Eviden KMS (SoftHSM2, Utimaco, Proteccio, Crypt2Pay,
-SmartCard HSM) implements PKCS#11 v3.0, so none of them can exercise the mechanisms above —
+SmartCard HSM, AWS CloudHSM) implements PKCS#11 v3.0, so none of them can exercise the mechanisms above —
 SoftHSM2's own v3 probe test only confirms the "not supported" degrade path.
 
 To actually validate this code against a real v3.0 implementation, `crate/hsm/base_hsm`
@@ -665,7 +665,7 @@ isolated build/lockfile — it is never added to this workspace's dependency gra
 and locates the SoftHSM2 library) — no Rust code in this crate builds `kryoptic`. The mise
 task exports the resulting cdylib path as `KRYOPTIC_PKCS11_LIB`, which the test reads directly
 from the environment, exactly like `SOFTHSM2_PKCS11_LIB`. Like every other vendor HSM suite in
-this workspace (SoftHSM2/Utimaco/Proteccio/Crypt2Pay), the test always compiles and is opt-in
+this workspace (SoftHSM2/Utimaco/Proteccio/Crypt2Pay/AWS CloudHSM), the test always compiles and is opt-in
 purely via `#[ignore]` — no Cargo feature is needed since `kryoptic` is never a real
 dependency.
 

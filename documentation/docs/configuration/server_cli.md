@@ -49,11 +49,11 @@ Options:
       --hsm-model <HSM_MODEL>
           The HSM model.
           `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-          `Smartcard HSM`, and `SoftHSM2` are natively supported.
+          `Smartcard HSM`, `AWS CloudHSM`, and `SoftHSM2` are natively supported.
           Other HSMs are supported too; specify `other` and check the documentation
 
           [default: proteccio]
-          [possible values: proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, other]
+          [possible values: proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, other]
 
       --hsm-admin <HSM_ADMIN>...
           List of KMS usernames that are granted HSM admin privileges.
