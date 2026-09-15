@@ -49,10 +49,10 @@ cleanup() {
     docker rm -f "${RSYSLOG_CONTAINER}" 2>/dev/null || true
     RSYSLOG_CONTAINER=""
   fi
-  if [ -n "${VENV_DIR:-}" ]; then rm -rf "${VENV_DIR}" || true; fi
-  if [ -n "${RSYSLOG_DIR:-}" ]; then rm -rf "${RSYSLOG_DIR}" || true; fi
-  if [ -n "${AUDIT_JSONL:-}" ]; then rm -f "${AUDIT_JSONL}" || true; fi
-  if [ -n "${VERIFY_CEF:-}" ]; then rm -f "${VERIFY_CEF}" || true; fi
+  [ -n "${VENV_DIR:-}" ] && { rm -rf "${VENV_DIR}" || true; }
+  [ -n "${RSYSLOG_DIR:-}" ] && { rm -rf "${RSYSLOG_DIR}" || true; }
+  [ -n "${AUDIT_JSONL:-}" ] && { rm -f "${AUDIT_JSONL}" || true; }
+  [ -n "${VERIFY_CEF:-}" ] && { rm -f "${VERIFY_CEF}" || true; }
 }
 trap cleanup EXIT
 

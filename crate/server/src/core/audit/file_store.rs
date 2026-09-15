@@ -376,22 +376,14 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
     // The trailing fragment after the final newline, if the buffer doesn't end in '\n'.
     let trailing = (!ends_with_newline).then_some((prev_end, buf.len()));
 
-    // Blank rows (consecutive newlines at EOF) are skipped rather than kept as candidates —
-    // `check_row("")` always fails, which would otherwise misclassify a trailing blank line
-    // in an otherwise-healthy log as tampering. Matches `verify_interior_chain`'s handling.
     let mut candidates: Vec<(String, u64, u64)> = rows
         .iter()
-        .filter_map(|&(s, e)| {
-            let line = String::from_utf8_lossy(buf.get(s..e).unwrap_or(&[])).into_owned();
-            if line.trim().is_empty() {
-                None
-            } else {
-                Some((
-                    line,
-                    seek_pos + u64::try_from(s).unwrap_or(u64::MAX),
-                    seek_pos + u64::try_from(e).unwrap_or(u64::MAX),
-                ))
-            }
+        .map(|&(s, e)| {
+            (
+                String::from_utf8_lossy(buf.get(s..e).unwrap_or(&[])).into_owned(),
+                seek_pos + u64::try_from(s).unwrap_or(u64::MAX),
+                seek_pos + u64::try_from(e).unwrap_or(u64::MAX),
+            )
         })
         .collect();
     if let Some((s, e)) = trailing {
@@ -813,20 +805,16 @@ fn verify_interior_chain(path: &Path) -> KResult<InteriorChainVerification> {
     let mut pending: Option<(String, u64)> = None;
     let mut offset: u64 = 0;
 
-    for line_bytes in std::io::BufRead::split(reader, b'\n') {
-        let line_bytes = line_bytes.map_err(|e| {
+    for line in std::io::BufRead::lines(reader) {
+        let line = line.map_err(|e| {
             KmsError::ServerError(format!(
                 "audit: cannot read log file for startup verification: {e}"
             ))
         })?;
-        // Split on raw bytes and decode lossily (matching `classify_tail`) instead of
-        // `BufRead::lines()`, whose `str` decoding turns a torn write that severs a
-        // multi-byte UTF-8 sequence into an `InvalidData` I/O error — which would
-        // otherwise be indistinguishable from a real I/O fault and retried forever.
-        let consumed = u64::try_from(line_bytes.len()).unwrap_or(u64::MAX) + 1;
+        // `.lines()` strips the trailing '\n'; every interior line was terminated by one.
+        let consumed = u64::try_from(line.len()).unwrap_or(u64::MAX) + 1;
         let line_offset = offset;
         offset += consumed;
-        let line = String::from_utf8_lossy(&line_bytes).into_owned();
 
         if let Some((pending_line, pending_offset)) = pending.take() {
             if !pending_line.trim().is_empty() {
@@ -992,11 +980,7 @@ async fn writer_supervisor(
     let _lock = loop {
         match try_acquire_lock(&lock_path) {
             Ok(lock) => break lock,
-            // `try_acquire_lock` also fails for reasons unrelated to contention (EACCES,
-            // EROFS, directory-creation failure) — only `WouldBlock` means a peer holds
-            // the lock; anything else is a deployment fault and must be logged as such,
-            // not masked as the (benign, expected-in-HA) "held by another instance" case.
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            Err(e) => {
                 if lock_contended_logged {
                     debug!(
                         "AuditFileStore: still waiting on audit log lock {} ({e})",
@@ -1010,13 +994,6 @@ async fn writer_supervisor(
                     );
                     lock_contended_logged = true;
                 }
-                tokio::time::sleep(LOCK_RETRY_INTERVAL).await;
-            }
-            Err(e) => {
-                error!(
-                    "AuditFileStore: cannot acquire audit log lock {} ({e}) — retrying",
-                    lock_path.display()
-                );
                 tokio::time::sleep(LOCK_RETRY_INTERVAL).await;
             }
         }
