@@ -1,18 +1,7 @@
-//! `AuditFileStore`: a cheaply cloneable handle to the audit writer task.
+//! Non-blocking handle to the file audit writer.
 //!
-//! * `AuditFileStore` is a cheaply cloneable handle (wraps a channel `Sender`).
-//! * A single background tokio task is the **sole owner** of the sink (see
-//!   `file_sink::FileSink`), the monotonic event counter, and the previous-row hash.
-//!   This design avoids any mutex around the file and guarantees write order under
-//!   concurrent requests.
-//! * The KMS always starts: `start_with_max_size()` returns synchronously and never
-//!   blocks on file I/O or lock contention. Recovery, exclusive-lock acquisition, and
-//!   opening the file all happen inside `FileSink::resume`, awaited by the spawned task,
-//!   never by the caller. Events enqueued in the meantime are genuinely queued (not
-//!   dropped) up to the channel's bounded capacity.
-//! * The middleware calls `enqueue()` which is a non-blocking `try_send`.  If the
-//!   channel is full (beyond the configured capacity) the draft is silently dropped
-//!   and an error is logged — we never block the request path.
+//! One task owns the sink and chain head. Producers communicate through a bounded
+//! channel; overflowed events are dropped and counted.
 
 use std::{
     path::Path,
@@ -47,11 +36,7 @@ pub(super) enum WriterMsg {
     Flush(oneshot::Sender<()>),
 }
 
-/// A cheaply cloneable handle to the audit writer task.
-///
-/// Cloning this value is O(1) — `tokio::sync::mpsc::Sender` is already backed
-/// by an internal `Arc`, and `dropped_count`/`write_state` are themselves `Arc`s.
-/// All clones share the same underlying channel and writer task.
+/// Cloneable handle to the file audit writer task.
 #[derive(Clone)]
 pub(crate) struct AuditFileStore {
     sender: mpsc::Sender<WriterMsg>,
@@ -63,23 +48,11 @@ pub(crate) struct AuditFileStore {
 }
 
 impl AuditFileStore {
-    /// Initialises the audit file store and spawns the background writer task.
-    ///
-    /// Returns immediately: the channel is created and handed back synchronously so the
-    /// middleware can start enqueueing events right away, even before the writer has
-    /// acquired the lock or opened the file. `channel_capacity` is the number of events
-    /// that can be buffered before new events are dropped. Must be ≥ 1.
-    ///
-    /// `max_size_bytes`, when `Some`, stops all writes once the file reaches that many
-    /// bytes — see `AuditFileConfig::audit_file_max_size_bytes`. `None` is unlimited.
-    ///
-    /// Recovery, locking, and opening all happen inside `FileSink::resume`, awaited by
-    /// the spawned writer task. This call never blocks on file I/O or lock contention.
+    /// Spawns the writer and returns without waiting for file recovery.
+    /// `max_size_bytes = None` disables the size limit.
     ///
     /// # Errors
-    /// Returns an error only if `channel_capacity` is 0 — a pure configuration mistake,
-    /// not a runtime condition. Every other fault (I/O, lock contention, log corruption)
-    /// is handled inside `FileSink::resume` without aborting startup — see its docs.
+    /// Returns an error if `channel_capacity` is zero.
     pub(crate) fn start_with_max_size(
         path: &Path,
         channel_capacity: usize,
