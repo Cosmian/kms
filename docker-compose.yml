@@ -167,12 +167,14 @@ services:
 
   # ── Elasticsearch 8.x (SIEM integration tests) ───────────────────────────
   #
+  # WARNING: FOR LOCAL TEST AND CI AUTOMATION ONLY. DO NOT USE IN PRODUCTION.
+  # Authentication and TLS are disabled (xpack.security.enabled=false) to simplify ephemeral test runs.
+  #
   # Used by: mise run test:siem-filebeat, mise run test:siem
   # Start with: docker compose up -d elasticsearch
   #
-  # Security is disabled (xpack.security.enabled=false) for CI simplicity —
-  # no TLS certificates or credentials are required.
   elasticsearch:
+    profiles: [test, siem]
     image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
     environment:
       - discovery.type=single-node
