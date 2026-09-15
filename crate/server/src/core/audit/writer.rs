@@ -1,7 +1,6 @@
-//! The background audit writer task: sole owner of the sink, the id counter, and
-//! `prev_hash`. Designed not to panic — errors are logged and the loop continues.
-//! Generic over [`AuditSink`] so every backend shares this exact steady-state loop;
-//! only initialization (see `AuditSink::resume`) differs per backend.
+//! Shared audit writer loop.
+//!
+//! The task owns the sink and chain head; backends provide persistence and recovery.
 
 use std::sync::{Arc, atomic::AtomicU64};
 
@@ -13,16 +12,10 @@ use tokio::sync::mpsc;
 
 use super::store::WriterMsg;
 
-/// Minimum interval between "sink at capacity" debug log lines while blocked events keep
-/// arriving — avoids flooding the log once a backend-specific cap (e.g. the file
-/// backend's `max_size_bytes`) is reached.
+/// Minimum interval between capacity warnings.
 const CAPPED_DEBUG_LOG_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 
-/// The background writer task.  Sole owner of the sink, the id counter, and
-/// `prev_hash`.  Designed not to panic — errors are logged and the loop
-/// continues.  Calls `final_sync()` before exiting so in-flight events are
-/// durable on graceful shutdown.  Returns the sink so tests can inspect what
-/// was actually persisted.
+/// Consumes queued events and returns the sink after shutdown synchronisation.
 pub(super) async fn writer_loop<S: AuditSink>(
     mut sink: S,
     mut next_id: i64,
@@ -73,8 +66,6 @@ pub(super) async fn writer_loop<S: AuditSink>(
         }
     }
 
-    // Channel closed (sender dropped on graceful shutdown): ensure all written
-    // events are durable before the task exits.
     if let Err(e) = sink.final_sync().await {
         error!("AuditFileStore: final sync failed: {e}");
     }
@@ -82,8 +73,7 @@ pub(super) async fn writer_loop<S: AuditSink>(
     sink
 }
 
-/// Finalises and writes a single `AuditEventDraft` into the chain, advancing
-/// `next_id` and `prev_hash` on success.  Returns the new `next_id`.
+/// Writes one draft and advances the chain head only on success.
 pub(super) async fn write_draft_to_chain<S: AuditSink>(
     sink: &mut S,
     draft: AuditEventDraft,
@@ -108,16 +98,13 @@ pub(super) async fn write_draft_to_chain<S: AuditSink>(
                 "AuditFileStore: failed to write event id={}: {e} — event dropped",
                 event.id
             );
-            // Do NOT advance id or prev_hash — the next event will reuse
-            // the same slot, preserving chain continuity.
+            // Reuse this chain position after a failed write.
             next_id
         }
     }
 }
 
-/// Builds a sentinel `AuditEventDraft` that records how many real events were
-/// dropped due to channel saturation.  Joins the hash chain like any real event
-/// — detectable by `ckms audit verify` and compliance tooling.
+/// Builds a chained sentinel recording events dropped by channel saturation.
 fn make_eviction_sentinel(n_dropped: u64) -> AuditEventDraft {
     AuditEventDraft {
         timestamp: OffsetDateTime::now_utc(),
