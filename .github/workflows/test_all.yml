@@ -247,6 +247,9 @@ jobs:
           AWS_CLOUDHSM_CLUSTER_ID: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CLUSTER_ID }}
           AWS_CLOUDHSM_CU_USERNAME: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CU_USERNAME }}
           AWS_CLOUDHSM_CU_PASSWORD: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CU_PASSWORD }}
+          AWS_CLOUDHSM_SLOT_ID: ${{ secrets.KMS_CI_AWS_CLOUDHSM_SLOT_ID }}
+          AWS_CLOUDHSM_CA_CERT: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CA_CERT }}
+          AWS_CLOUDHSM_HSM_IPS: ${{ secrets.KMS_CI_AWS_CLOUDHSM_HSM_IPS }}
           # Reused generic AWS credentials (read-only `cloudhsm:DescribeClusters` is enough)
           AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}

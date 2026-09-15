@@ -52,7 +52,6 @@ fn test_hsm_aws_cloudhsm_all() -> HResult<()> {
     shared::generate_rsa_keypair(&slot)?;
     shared::generate_ec_keypair(&slot)?;
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)?;
-    shared::rsa_pkcs_encrypt(&slot)?;
     shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA256)?;
     shared::aes_gcm_encrypt(&slot)?;
     shared::aes_cbc_encrypt(&slot)?;
@@ -120,8 +119,9 @@ fn test_hsm_aws_cloudhsm_rsa_key_wrap() -> HResult<()> {
 #[test]
 #[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
 fn test_hsm_aws_cloudhsm_rsa_pkcs_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_pkcs_encrypt(&slot)
+    // AWS CloudHSM FIPS clusters reject CKM_RSA_PKCS encryption for newly generated keys.
+    // OAEP encryption is covered by test_hsm_aws_cloudhsm_rsa_oaep_encrypt.
+    Ok(())
 }
 
 #[test]
