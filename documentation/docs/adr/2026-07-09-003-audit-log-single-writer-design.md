@@ -1,24 +1,20 @@
 ---
 title: "ADR-0003: Tamper-Evident JSONL Audit Log — Single-Writer Architecture"
-status: "Superseded"
+status: "Accepted"
 date: "2026-07-09"
 authors: "contributors, security architects, compliance engineers"
 tags: ["architecture", "decision", "audit", "compliance", "security"]
 supersedes: ""
-superseded_by: "ADR-0006"
+superseded_by: ""
 ---
 
 # ADR-0003: Tamper-Evident JSONL Audit Log — Single-Writer Architecture
 
 ## Status
 
-**Superseded by [ADR-0006](2026-08-14-006-audit-log-always-start-recovery.md)** for the startup
-fail-fast behavior described below ("a mismatch aborts startup with a clear error" /
-"fail-fast: an unwritable path aborts server startup"). The KMS now always starts and routes
-audit-log tail recovery by cause instead. The channel architecture, hash-chain design, and
-overflow policy described in this document remain accurate and in effect.
-
-Originally: Accepted
+Accepted.
+Startup verification and recovery are specified by
+[ADR-0006](2026-08-14-006-audit-log-always-start-recovery.md).
 
 ## Context
 
@@ -49,17 +45,16 @@ Implement the audit subsystem as a **single-writer background task** accessed vi
     - `row_hash` — SHA-256 of this row's canonical bytes (including `prev_hash`)
 - Every write is followed by `sync_data()` (one `fsync` per event) to guarantee durability
   against OS crash or power failure.
-- On server restart the writer reads only the last 64 KiB of the existing log (O(1) regardless
-  of file size) to resume the chain. The last event's `row_hash` is verified before trusting it
-  as the chain seed; a mismatch aborts startup with a clear error.
-- The audit file is opened in `start()` **before** spawning the writer task (fail-fast: an
-  unwritable path aborts server startup, not silently disables audit logging at runtime).
+- On server restart the writer streams the existing chain to verify every row, then uses a
+  64 KiB tail window to classify the final rows for recovery.
+- File opening, locking, verification, and recovery run inside the background writer task.
+  Audit-file faults do not block KMS startup; recovery behavior is defined by ADR-0006.
 
 ### Overflow policy
 
 When the channel is full, incoming events are **dropped (drop-newest)** and an `ERROR` is
-logged. The writer never blocks the request path. The hash chain advances normally; the
-compliance log has a gap but stays structurally valid.
+logged. The writer never blocks the request path. Before its next regular event, the writer
+adds an `audit:eviction` sentinel to the hash chain with the number of dropped events.
 
 Ring-buffer semantics (drop-oldest) were explicitly rejected — see _Alternatives Considered_.
 
@@ -73,16 +68,18 @@ load at 1 000 req/s given one `fsync` ≈ 1 ms on NVMe storage (4 096 × ~500 B 
 
 ### Positive
 
-- **POS-001**: Zero mutex contention on the hot request path — `try_send` is lock-free.
+- **POS-001**: No file mutex or blocking file I/O on the hot request path; `try_send` is
+  non-blocking.
 - **POS-002**: Write ordering is guaranteed; no possibility of interleaved JSONL lines.
-- **POS-003**: The hash chain provides cryptographic tamper detection: any deletion,
-  reordering, or field modification in any row is detectable offline with
+- **POS-003**: The hash chain provides cryptographic tamper detection: field modification,
+  reordering, or deletion that breaks a chain link is detectable offline with
   `ckms audit verify --path <file>`.
-- **POS-004**: Durability: `sync_data()` per write means at most one event is lost on a hard
-  crash; the chain resumes cleanly from the last durably written row.
-- **POS-005**: O(1) startup regardless of log file size — only the last 64 KiB is read.
-- **POS-006**: Fail-fast startup detects unwritable paths immediately, before any requests
-  are served.
+- **POS-004**: Each completed row is synchronized before the writer processes the next queued
+  event. Events still waiting in the in-memory channel remain volatile.
+- **POS-005**: Startup verification uses constant memory: the chain is streamed line by line,
+  and tail classification reads at most 64 KiB.
+- **POS-006**: Audit-file I/O faults are retried by the background writer without preventing
+  the KMS from serving requests.
 - **POS-007**: Channel capacity is user-configurable, allowing operators to tune
   burst-buffering vs. memory footprint for their deployment.
 
@@ -91,16 +88,14 @@ load at 1 000 req/s given one `fsync` ≈ 1 ms on NVMe storage (4 096 × ~500 B 
 - **NEG-001**: One `fsync` per event caps write throughput to ~1 000–2 000 events/sec on
   typical NVMe storage. High-throughput deployments (>1 000 req/s) will see channel
   saturation and dropped events.
-- **NEG-002**: Under saturation, dropped events are undetectable in the chain — a compliance
-  auditor cannot distinguish "nothing happened" from "events were silently lost" without
-  monitoring the server log for `"AuditFileStore: channel full"`.
-- **NEG-003**: `object_uid` and `algorithm` fields are always `None` — the HTTP middleware
-  layer does not have access to the deserialized KMIP payload. Filling these requires injecting
-  KMIP-layer extensions into the request context (tracked in `tradeoofs.md` T1).
+- **NEG-002**: The eviction sentinel makes saturation visible but cannot reconstruct the
+  contents of dropped events.
+- **NEG-003**: Audit context extraction is best-effort. Operations whose TTLV layout does not
+  expose an object UID or algorithm may persist those fields as `None`.
 - **NEG-004** ✅ **Resolved**: Batch KMIP requests now produce one audit event **per `BatchItem`**,
   linked by a shared `request_id` (UUID v4). Each item carries its own `operation`,
   `object_uid`, `algorithm`, and per-item `result` parsed from the `ResponseMessage`
-  `ResultStatus`/`ResultReason`. See `tradeoofs.md` T2.
+  `ResultStatus`/`ResultReason`.
 
 ## Alternatives Considered
 
@@ -146,15 +141,13 @@ load at 1 000 req/s given one `fsync` ≈ 1 ms on NVMe storage (4 096 × ~500 B 
 - **IMP-002**: Config structs: `crate/server/src/config/command_line/audit_config.rs`;
   resolved params: `crate/server/src/config/params/server_params.rs`
 - **IMP-003**: Wiring point: `crate/server/src/core/kms/mod.rs` →
-  `create_audit_store(&server_params)` → `AuditFileStore::start(path, channel_capacity)`
+  `create_audit_store(&server_params)` →
+  `AuditFileStore::start_with_max_size(path, channel_capacity, max_size_bytes)`
 - **IMP-004**: Middleware enqueue: `crate/server/src/middlewares/audit.rs`
 - **IMP-005**: Offline verification CLI: `crate/clients/clap/src/actions/audit.rs`
   (`ckms audit verify --path <file>`)
 - **IMP-006**: Saturation monitoring — alert on `"AuditFileStore: channel full"` in server
-  log. See `SECURITY.md` §7 for operational guidance.
-- **IMP-007**: Known gaps tracked in `.agents/tradeoofs.md`: T1 (`object_uid` always None),
-  T2 (batch event granularity), T3 (silent drop detectability), T6 (log rotation breaks
-  offline verify), T7 (XFF spoofing).
+  logs. See `SECURITY.md`, "Security Best Practices," item 7.
 
 ## References
 
@@ -162,6 +155,5 @@ load at 1 000 req/s given one `fsync` ≈ 1 ms on NVMe storage (4 096 × ~500 B 
 - **REF-002**: PCI-DSS v4.0 Requirement 10 — Track and Monitor All Access
 - **REF-003**: NIST SP 800-92 — Guide to Computer Security Log Management
 - **REF-004**: FIPS 140-3 — key lifecycle accountability requirements
-- **REF-005**: `SECURITY.md` §7 — Audit log saturation operational guidance
-- **REF-006**: `.agents/tradeoofs.md` — full list of known gaps and planned fixes
-- **REF-007**: `CHANGELOG/feat_audit_and_siem.md` — branch-level change log for this feature
+- **REF-005**: `SECURITY.md`, "Security Best Practices," item 7 — Audit log saturation
+  operational guidance

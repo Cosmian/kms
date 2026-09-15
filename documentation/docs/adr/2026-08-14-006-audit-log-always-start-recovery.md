@@ -4,7 +4,7 @@ status: "Accepted"
 date: "2026-08-14"
 authors: "contributors, security architects, compliance engineers"
 tags: ["architecture", "decision", "audit", "compliance", "security", "availability"]
-supersedes: "ADR-0003"
+supersedes: ""
 superseded_by: ""
 ---
 
@@ -12,23 +12,18 @@ superseded_by: ""
 
 ## Status
 
-Accepted. Supersedes the startup-abort behavior of ADR-0003 (§ "Fail-fast startup" /
-`resume_chain`); ADR-0003's single-writer channel architecture, hash-chain design, and channel
-overflow policy remain unchanged and in effect.
+Accepted.
+Extends ADR-0003's single-writer channel and hash-chain design with startup verification and
+recovery behavior.
 
 ## Context
 
-ADR-0003 established that `AuditFileStore::start()` aborts server startup if the last event in
-an existing audit log fails to parse or fails `verify_event` — treating this as tamper/crash
-evidence that must be triaged by an operator before the KMS serves traffic again.
-
-In practice this makes the audit subsystem a single point of failure for the entire KMS: any
-condition at the tail of the log — a process killed mid-write (OOM, pod eviction, power loss), a
-disk fault that truncated the last line, or genuine tampering — takes down the whole key
-management service, not just audit logging. At fleet scale, ungraceful restarts (the common
-case for "torn write") are frequent; a KMS that cannot restart until an operator manually repairs
-or deletes the last line of a log file is not acceptable availability posture for a system whose
-entire purpose is to keep cryptographic operations available.
+Before appending after a restart, the audit writer must classify the existing log without
+turning audit-file damage into a KMS availability failure.
+A process killed mid-write, pod eviction, power loss, filesystem fault, or tampering can all
+leave anomalous bytes at the tail.
+These conditions require different evidence-preservation actions, but none should prevent the
+key management service from starting.
 
 The two failure conditions at the tail are also structurally different and were being handled
 identically:
@@ -81,7 +76,7 @@ circumstance.
    a new chain root, **not** a continuation. The sealed file's tail is by definition untrusted,
    so asserting continuity across it would manufacture false provenance. The event's new
    `details` field (see below) records the sealed file's name, SHA-256, size, the claimed last
-   id, the failure offset, and the reason (`hash_mismatch` | `unparseable`).
+  id, the failure offset, and the reason (`hash_mismatch` | `unparseable` | `id_overflow`).
 5. `fsync` the containing directory so the rename is itself durable.
 
 Order is load-bearing: rename before open, so the lock holder never observes a half-migrated
@@ -97,7 +92,7 @@ terminates. This is **not** a guarantee for arbitrary shared/network volumes: `f
 over NFS-backed `ReadWriteMany` mounts depends on the storage backend's lock-manager support, so
 multiple KMS instances must still never be configured to write to the same audit file as a
 steady-state multi-writer setup — see
-[High availability: file-based audit logging is not multi-instance safe](../installation/high_availability_mode.md#deployment-options).
+[High availability: file-based audit logging is not multi-instance safe](../installation/high_availability_mode.md).
 
 - Lock acquired → sole writer → free to classify, truncate/seal, and write.
 - Lock held by a peer → **the KMS still starts and serves immediately**. The writer does not
@@ -124,9 +119,8 @@ not hold up: hashing and JSON-decoding a JSONL row is cheap per row, and skippin
 log by default left the common case blind to interior tampering for no real benefit. Verification
 now always runs, streamed line-by-line rather than loaded into memory, so memory use stays
 constant regardless of log size — runtime is still linear in the number of rows, but that cost is
-small enough per row (a hash and a JSON decode) to be an acceptable default. As with the rest of
-this ADR, there is **no** corresponding "abort on corruption" toggle: unlike ADR-0003's design,
-this is not configurable, period.
+small enough per row (a hash and a JSON decode) to be an acceptable default.
+There is no configuration toggle that changes recovery into a startup failure.
 
 ### Offline verification (`ckms audit verify`) gains directory + evidence-integrity support
 
@@ -157,10 +151,8 @@ this is not configurable, period.
 
 ### Negative
 
-- **NEG-001**: Removing the fail-fast abort means an operator who previously relied on "the KMS
-  won't start until I look at this" as a forcing function for triage must now rely on the new
-  recovery audit events and server logs instead. This is an explicit, accepted trade: a
-  compliance log gap must never become a cryptographic service outage.
+- **NEG-001**: Operators must monitor recovery audit events and server errors because audit-file
+  faults are reported asynchronously rather than through KMS startup failure.
 - **NEG-002**: Sealed `*.corrupt.jsonl` files accumulate on disk with no built-in rotation or
   retention — deferred to the separate log-rotation work item.
 - **NEG-003**: The lock is host/kernel-scoped (`flock`-equivalent), not a distributed coordination
@@ -168,17 +160,16 @@ this is not configurable, period.
   acquires), but it is **not a multi-writer backend**: if multiple long-lived KMS instances point
   at the same shared audit file (e.g. a `ReadWriteMany` volume across Kubernetes replicas), only
   the instance holding the lock ever writes — the others retry indefinitely and their events are
-  never recorded, silently. Sustained horizontal scaling must use one audit file per instance
-  (the default), not a shared one. A genuinely multi-writer-safe, centrally consolidated audit
-  trail requires a transactional backend (PostgreSQL audit backend, in progress) where a unique
-  constraint, not a file lock, arbitrates concurrent writers.
+  not durably recorded while the lock is unavailable; channel overflow is reported in server
+  logs. Sustained horizontal scaling must use one audit file per instance (the default), not a
+  shared one. A multi-writer audit backend requires a separate coordination design.
 
 ## Alternatives Considered
 
-### Keep fail-fast, add an operator override flag only
+### Block startup pending operator intervention
 
-- **ALT-001 Description**: Keep ADR-0003's abort-on-corruption behavior as the default, and add
-  an opt-in `--audit-recover-on-corruption` flag for operators who want always-start.
+- **ALT-001 Description**: Treat audit corruption as a startup error by default, with an opt-in
+  `--audit-recover-on-corruption` flag for operators who want always-start behavior.
 - **ALT-002 Rejection Reason**: Explicitly rejected. The mandate is that the KMS must always be
   startable; making that conditional on a flag means the default deployment still has a
   single point of failure. There is intentionally no configuration path back to the old
@@ -218,7 +209,6 @@ this is not configurable, period.
 ## References
 
 - **REF-001**: `ADR-0003` — Tamper-Evident JSONL Audit Log — Single-Writer Architecture (the
-  design this ADR amends; its channel/hash-chain/overflow-policy sections remain in effect)
+  foundational channel and hash-chain design)
 - **REF-002**: PCI-DSS v4.0 Requirement 10 — Track and Monitor All Access
 - **REF-003**: NIST SP 800-92 — Guide to Computer Security Log Management
-- **REF-004**: `CHANGELOG/feat_audit_startup.md` — branch-level change log for this feature

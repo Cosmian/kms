@@ -33,6 +33,8 @@ const SEV_OTHER_FAILURE: u8 = 6;
 /// `cs1Label`          | deviceCustomString1Label   | "objectUID" (omitted if cs1 absent)  |
 /// `cs2`               | deviceCustomString2        | Algorithm (omitted if unknown)       |
 /// `cs2Label`          | deviceCustomString2Label   | "algorithm" (omitted if cs2 absent)  |
+/// `cs3`               | deviceCustomString3        | Recovery `details` JSON (omitted if none) |
+/// `cs3Label`          | deviceCustomString3Label   | "details" (omitted if cs3 absent)    |
 /// `externalId`        | externalId                 | Audit record ID (JSONL row index)    |
 /// `devicePayloadId`   | devicePayloadId            | Request correlation ID (omitted if none) |
 #[must_use]
@@ -86,6 +88,12 @@ pub fn to_cef_line(event: &AuditEvent, kms_version: &str) -> String {
 
     if let Some(alg) = &event.algorithm {
         let _ = write!(ext, " cs2={} cs2Label=algorithm", escape_ext_value(alg));
+    }
+
+    // Forensic payload on synthetic recovery events (`audit:reanchor`,
+    // `audit:torn-write-recovered`) — omitted for ordinary KMIP events.
+    if let Some(details) = &event.details {
+        let _ = write!(ext, " cs3={} cs3Label=details", escape_ext_value(details));
     }
 
     // Audit record ID → standard CEF `externalId` (unique ID from originating device)
@@ -234,6 +242,27 @@ mod tests {
     }
 
     #[test]
+    fn cef_line_has_details_when_present() {
+        let mut ev = make_event(AuditResult::Success);
+        ev.details = Some("{\"reason\":\"hash_mismatch\"}".to_owned());
+        let line = to_cef_line(&ev, "5.0.0");
+        assert!(
+            line.contains("cs3={\"reason\":\"hash_mismatch\"}"),
+            "{line}"
+        );
+        assert!(line.contains("cs3Label=details"), "{line}");
+    }
+
+    #[test]
+    fn cef_line_no_details_when_absent() {
+        let ev = make_event(AuditResult::Success);
+        assert!(ev.details.is_none());
+        let line = to_cef_line(&ev, "5.0.0");
+        assert!(!line.contains("cs3="));
+        assert!(!line.contains("cs3Label="));
+    }
+
+    #[test]
     fn escape_header_pipe() {
         assert_eq!(escape_header("foo|bar"), "foo\\|bar");
     }
@@ -285,14 +314,10 @@ mod tests {
 
     #[test]
     fn cef_line_uses_only_standard_cef_keys() {
-        // Verify no non-standard custom labels (cs3Label, cs4Label, cs5Label)
-        // are emitted — all extension keys must be from the CEF v27 dictionary.
+        // Verify no non-standard custom labels beyond cs1-cs3 (cs4Label, cs5Label) are
+        // emitted — all extension keys must be from the CEF v27 dictionary.
         let ev = make_event(AuditResult::Success);
         let line = to_cef_line(&ev, "5.0.0");
-        assert!(
-            !line.contains("cs3Label="),
-            "cs3Label is not a standard CEF key: {line}"
-        );
         assert!(
             !line.contains("cs4Label="),
             "cs4Label is not a standard CEF key: {line}"
@@ -468,6 +493,8 @@ mod tests {
             "cs1Label",
             "cs2",
             "cs2Label",
+            "cs3",
+            "cs3Label",
             "externalId",
             "devicePayloadId",
         ]

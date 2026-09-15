@@ -35,8 +35,8 @@ a proprietary JSON schema. The KMS must choose a serialisation format that:
 
 ## Decision
 
-Implement `to_cef_line()` on `AuditEvent` producing a **CEF v27** (ArcSight Common Event
-Format, revision 27) line string.
+Implement `to_cef_line(event: &AuditEvent, kms_version: &str)` as a pure function producing a
+**CEF v27** (ArcSight Common Event Format, revision 27) line string.
 
 ```text
 CEF:0|Cosmian|KMS|<version>|<operation>|<operation>|<severity>|<extensions>
@@ -53,12 +53,13 @@ Severity mapping:
 Extension fields (all keys from the CEF v27 standard dictionary):
 `rt` (epoch ms), `suser` (user), `src` (client IP), `outcome`, `reason` (failure message),
 `act` (operation), `cn1` (duration ms), `cs1` (object UID), `cs2` (algorithm),
-`externalId` (audit record ID), `devicePayloadId` (request correlation UUID).
+`cs3` (recovery details), `externalId` (audit record ID), and `devicePayloadId` (request
+correlation UUID).
 
-CEF is implemented as a **pure serialisation method** (`fn to_cef_line(&self) -> String`)
-on `AuditEvent`. It is not a transport; callers are responsible for forwarding the string
-to a syslog socket, a file, or a network destination. This keeps the KMS codebase free of
-SIEM-specific network transport dependencies.
+CEF is implemented as a **pure serialisation function**.
+It is not a transport; callers are responsible for forwarding the string to a syslog socket,
+a file, or a network destination.
+This keeps the KMS codebase free of SIEM-specific network transport dependencies.
 
 ## Consequences
 
@@ -74,7 +75,7 @@ SIEM-specific network transport dependencies.
   no async runtime required; no TLS certificate management for the SIEM transport.
 - **POS-005**: `object_uid`, `algorithm`, and `client_ip` map to CEF standard
   extension keys (`cs1`, `cs2`, `src`). Audit ID and request ID use standard keys
-  `externalId` and `devicePayloadId` — no custom labels.
+  `externalId` and `devicePayloadId`; recovery details use `cs3` with `cs3Label=details`.
 
 ### Negative
 
@@ -131,13 +132,13 @@ SIEM-specific network transport dependencies.
 ## Implementation Notes
 
 - **IMP-001**: Serialiser: `crate/access/src/audit/cef.rs` — `to_cef_line()`
-- **IMP-002**: CEF v27 spec reference: [ArcSight CEF Implementation Standard, version 27](https://www.microfocus.com/documentation/arcsight/arcsight-smartconnectors-24.2/pdfdoc/cef-implementation-standard/cef-implementation-standard.pdf)
-  (OpenText, April 2024)
+- **IMP-002**: CEF v27 spec reference:
+  [ArcSight CEF Implementation Standard, version 27][cef-v27] (OpenText, April 2024)
 - **IMP-003**: Severity thresholds (5/6/7) are constants in `cef.rs`; operators needing
   different mappings should adjust there.
 - **IMP-004**: Transport is out of scope for this implementation. Recommended pattern:
   tail the JSONL file with `filebeat` / `fluent-bit`, convert each line via
-  `ckms audit to-cef`, pipe to a syslog destination.
+  `ckms audit export --format cef`, and pipe to a syslog destination.
 - **IMP-005**: CEF escaping: `|` → `\|`, `\` → `\\` in header fields;
   `=` → `\=`, `\n` → `\\n`, `\r` → `\\r` in extension values. Covered by unit tests
   in `cef.rs`.
@@ -149,6 +150,8 @@ SIEM-specific network transport dependencies.
 
 - **REF-001**: ADR-0003 — Tamper-Evident JSONL Audit Log (authoritative record)
 - **REF-002**: ADR-0004 — HTTP-Layer Audit Middleware (capture architecture)
-- **REF-003**: [ArcSight CEF Implementation Standard v27](https://www.microfocus.com/documentation/arcsight/arcsight-smartconnectors-24.2/pdfdoc/cef-implementation-standard/cef-implementation-standard.pdf) (OpenText, April 2024)
+- **REF-003**: [ArcSight CEF Implementation Standard v27][cef-v27] (OpenText, April 2024)
 - **REF-004**: OCSF v1.x specification — <https://schema.ocsf.io>
 - **REF-005**: `crate/access/src/audit/cef.rs`
+
+[cef-v27]: https://www.microfocus.com/documentation/arcsight/arcsight-smartconnectors-24.2/pdfdoc/cef-implementation-standard/cef-implementation-standard.pdf
