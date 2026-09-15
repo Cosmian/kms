@@ -1,19 +1,19 @@
 ---
-title: "ADR-0006: Audit Log Always-Start Recovery — Route by Cause, Not One Global Policy"
+title: "ADR-2026-08-14: Audit Log Always-Start Recovery — Route by Cause, Not One Global Policy"
 status: "Accepted"
 date: "2026-08-14"
 authors: "contributors, security architects, compliance engineers"
 tags: ["architecture", "decision", "audit", "compliance", "security", "availability"]
-supersedes: ""
+supersedes: "2026-07-09-audit-log-single-writer-design.md"
 superseded_by: ""
 ---
 
-# ADR-0006: Audit Log Always-Start Recovery — Route by Cause, Not One Global Policy
+# ADR-2026-08-14: Audit Log Always-Start Recovery — Route by Cause, Not One Global Policy
 
 ## Status
 
 Accepted.
-Extends ADR-0003's single-writer channel and hash-chain design with startup verification and
+Extends [ADR-2026-07-09](2026-07-09-audit-log-single-writer-design.md)'s single-writer channel and hash-chain design with startup verification and
 recovery behavior.
 
 ## Context
@@ -45,16 +45,16 @@ recovery routes by cause instead of one global policy.
 ### Discriminator: the file's final byte
 
 - Ends in `\n` → the write completed.
-  - Last row parses + verifies → **resume** normally.
-  - Last row doesn't parse or its hash doesn't match → **seal-and-roll** (structural garbage /
+    - Last row parses + verifies → **resume** normally.
+    - Last row doesn't parse or its hash doesn't match → **seal-and-roll** (structural garbage /
     tampered row).
 - Does not end in `\n` → the write was interrupted.
-  - The row is nonetheless complete and verified (crash landed between the JSON write and the
+    - The row is nonetheless complete and verified (crash landed between the JSON write and the
     trailing-newline write) → **resume**, repairing the missing line terminator before the next
     append.
-  - The row is incomplete/invalid, but the row before it (or genesis) verifies → **truncate the
+    - The row is incomplete/invalid, but the row before it (or genesis) verifies → **truncate the
     torn fragment and continue** in place.
-  - The row before it is also untrustworthy → **seal-and-roll**.
+    - The row before it is also untrustworthy → **seal-and-roll**.
 
 The tail-window scan retains the **last two** candidate rows, not one, so truncate-and-continue
 can fall back past a torn fragment to the prior verified row.
@@ -208,7 +208,7 @@ There is no configuration toggle that changes recovery into a startup failure.
 
 ## References
 
-- **REF-001**: `ADR-0003` — Tamper-Evident JSONL Audit Log — Single-Writer Architecture (the
+- **REF-001**: [ADR-2026-07-09: Tamper-Evident JSONL Audit Log — Single-Writer Architecture](2026-07-09-audit-log-single-writer-design.md) (the
   foundational channel and hash-chain design)
 - **REF-002**: PCI-DSS v4.0 Requirement 10 — Track and Monitor All Access
 - **REF-003**: NIST SP 800-92 — Guide to Computer Security Log Management

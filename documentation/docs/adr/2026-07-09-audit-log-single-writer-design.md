@@ -1,20 +1,20 @@
 ---
-title: "ADR-0003: Tamper-Evident JSONL Audit Log — Single-Writer Architecture"
+title: "ADR-2026-07-09: Tamper-Evident JSONL Audit Log — Single-Writer Architecture"
 status: "Accepted"
 date: "2026-07-09"
 authors: "contributors, security architects, compliance engineers"
 tags: ["architecture", "decision", "audit", "compliance", "security"]
 supersedes: ""
-superseded_by: ""
+superseded_by: "2026-08-14-audit-log-always-start-recovery.md"
 ---
 
-# ADR-0003: Tamper-Evident JSONL Audit Log — Single-Writer Architecture
+# ADR-2026-07-09: Tamper-Evident JSONL Audit Log — Single-Writer Architecture
 
 ## Status
 
 Accepted.
 Startup verification and recovery are specified by
-[ADR-0006](2026-08-14-006-audit-log-always-start-recovery.md).
+[ADR-2026-08-14](2026-08-14-audit-log-always-start-recovery.md).
 
 ## Context
 
@@ -48,7 +48,7 @@ Implement the audit subsystem as a **single-writer background task** accessed vi
 - On server restart the writer streams the existing chain to verify every row, then uses a
   64 KiB tail window to classify the final rows for recovery.
 - File opening, locking, verification, and recovery run inside the background writer task.
-  Audit-file faults do not block KMS startup; recovery behavior is defined by ADR-0006.
+  Audit-file faults do not block KMS startup; recovery behavior is defined by [ADR-2026-08-14](2026-08-14-audit-log-always-start-recovery.md).
 
 ### Overflow policy
 
@@ -151,7 +151,7 @@ load at 1 000 req/s given one `fsync` ≈ 1 ms on NVMe storage (4 096 × ~500 B 
 
 ## References
 
-- **REF-001**: `ADR-0002` — Key Auto-Rotation Keyset Chain Design (hash chain precedent)
+- **REF-001**: [ADR-2026-06-30: KMIP-Compliant Key Auto-Rotation with Keyset Chain Design](2026-06-30-key-auto-rotation-keyset-chain-design.md) (hash chain precedent)
 - **REF-002**: PCI-DSS v4.0 Requirement 10 — Track and Monitor All Access
 - **REF-003**: NIST SP 800-92 — Guide to Computer Security Log Management
 - **REF-004**: FIPS 140-3 — key lifecycle accountability requirements

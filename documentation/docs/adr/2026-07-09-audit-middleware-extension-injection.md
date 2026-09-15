@@ -1,5 +1,5 @@
 ---
-title: "ADR-0004: HTTP-Layer Audit Middleware with Actix Extension Injection"
+title: "ADR-2026-07-09: HTTP-Layer Audit Middleware with Actix Extension Injection"
 status: "Accepted"
 date: "2026-07-09"
 authors: "contributors, security architects, compliance engineers"
@@ -8,7 +8,7 @@ supersedes: ""
 superseded_by: ""
 ---
 
-# ADR-0004: HTTP-Layer Audit Middleware with Actix Extension Injection
+# ADR-2026-07-09: HTTP-Layer Audit Middleware with Actix Extension Injection
 
 ## Status
 
@@ -17,7 +17,7 @@ Accepted
 ## Context
 
 Every KMIP operation — including authentication failures — must produce an audit event
-(see ADR-0003). The challenge is _where_ in the call stack to intercept it. The KMS has
+(see [ADR-2026-07-09](2026-07-09-audit-log-single-writer-design.md)). The challenge is _where_ in the call stack to intercept it. The KMS has
 a layered architecture:
 
 ```text
@@ -152,7 +152,7 @@ dispatch.
 
 ## References
 
-- **REF-001**: ADR-0003 — Tamper-Evident JSONL Audit Log (storage layer decisions)
+- **REF-001**: [ADR-2026-07-09: Tamper-Evident JSONL Audit Log — Single-Writer Architecture](2026-07-09-audit-log-single-writer-design.md) (storage layer decisions)
 - **REF-002**: Actix-web middleware docs — `Transform` / `Service` pattern
 - **REF-003**: `crate/server/src/middlewares/audit.rs`
 - **REF-004**: `crate/server/src/start_kms_server.rs` — middleware registration order

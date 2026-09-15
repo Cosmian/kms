@@ -1,5 +1,5 @@
 ---
-title: "ADR-0005: CEF v27 as SIEM Export Format for Audit Events"
+title: "ADR-2026-07-09: CEF v27 as SIEM Export Format for Audit Events"
 status: "Accepted"
 date: "2026-07-09"
 authors: "contributors, security operations engineers, compliance engineers"
@@ -8,7 +8,7 @@ supersedes: ""
 superseded_by: ""
 ---
 
-# ADR-0005: CEF v27 as SIEM Export Format for Audit Events
+# ADR-2026-07-09: CEF v27 as SIEM Export Format for Audit Events
 
 ## Status
 
@@ -16,7 +16,7 @@ Accepted
 
 ## Context
 
-The tamper-evident JSONL audit log (ADR-0003) stores events in a KMS-specific JSON schema
+The tamper-evident JSONL audit log ([ADR-2026-07-09](2026-07-09-audit-log-single-writer-design.md)) stores events in a KMS-specific JSON schema
 optimised for hash-chain verification. Compliance environments additionally require feeding
 audit events into centralised SIEM systems such as ArcSight, Splunk, IBM QRadar, or
 Microsoft Sentinel for:
@@ -148,8 +148,8 @@ This keeps the KMS codebase free of SIEM-specific network transport dependencies
 
 ## References
 
-- **REF-001**: ADR-0003 — Tamper-Evident JSONL Audit Log (authoritative record)
-- **REF-002**: ADR-0004 — HTTP-Layer Audit Middleware (capture architecture)
+- **REF-001**: [ADR-2026-07-09: Tamper-Evident JSONL Audit Log — Single-Writer Architecture](2026-07-09-audit-log-single-writer-design.md) (authoritative record)
+- **REF-002**: [ADR-2026-07-09: HTTP-Layer Audit Middleware with Actix Extension Injection](2026-07-09-audit-middleware-extension-injection.md) (capture architecture)
 - **REF-003**: [ArcSight CEF Implementation Standard v27][cef-v27] (OpenText, April 2024)
 - **REF-004**: OCSF v1.x specification — <https://schema.ocsf.io>
 - **REF-005**: `crate/access/src/audit/cef.rs`
