@@ -147,12 +147,8 @@ impl AuditEventDraft {
         }
     }
 
-    /// Assigns the hash-chain fields to turn this draft into a persistable [`AuditEvent`],
-    /// computing `row_hash` over the canonical bytes (including `prev_hash`).
-    ///
-    /// Shared by every backend's writer so the same draft, `id`, and `prev_hash` always
-    /// yield byte-identical canonical hashes regardless of which sink persists it — see
-    /// `audit_now`'s microsecond truncation, which this depends on.
+    /// Finalises this draft with the supplied chain position.
+    /// The resulting hash includes `prev_hash`.
     #[must_use]
     pub fn finalize(self, id: i64, prev_hash: [u8; 32]) -> AuditEvent {
         let mut event = AuditEvent {

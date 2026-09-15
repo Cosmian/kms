@@ -1,19 +1,6 @@
-//! The `AuditSink` trait: a durable destination for finalised audit events.
+//! Durable storage interface for finalised audit events.
 //!
-//! Implemented by each backend that wants to persist the audit hash chain. A sink never
-//! assigns ids and never computes hashes — it persists what it is given, in the order it
-//! is given, and reports where the chain left off so the writer can resume it. Backends
-//! are interchangeable at the trait boundary: a chain started on one backend can be
-//! verified after export from another, because both encode the same [`AuditEvent`] and
-//! the same canonical hash (see `cosmian_kms_access::audit::canonical_bytes`).
-//!
-//! # Recovery policy is per-backend, not part of this contract
-//!
-//! [`AuditSink::resume`] does not mandate a single recovery policy. A backend whose
-//! storage can be torn mid-write (an appended file, killed mid-`fsync`) may recover a
-//! trustworthy prefix and truncate the rest; a backend whose writes are atomic (a single
-//! `INSERT`) has no torn-write case to recover from and can reasonably fail closed on
-//! any tail corruption. Document the chosen policy on the implementing type, not here.
+//! Each backend owns its recovery policy; the writer owns ids and hashes.
 
 use async_trait::async_trait;
 use cosmian_kms_access::audit::AuditEvent;
@@ -29,7 +16,7 @@ pub struct ChainHead {
 }
 
 impl ChainHead {
-    /// Seed for an empty chain: the first event gets id 0 and an all-zeros `prev_hash`.
+    /// Chain head before the first event.
     pub const EMPTY: Self = Self {
         next_id: 0,
         prev_hash: [0_u8; 32],
@@ -39,20 +26,14 @@ impl ChainHead {
 /// A durable destination for finalised audit events.
 ///
 /// # Contract
-/// * `write_event_atomic` : on `Ok` the event is durable; on `Err` nothing was
-///   persisted. The writer relies on this — a failed write does not advance
-///   `next_id`/`prev_hash`. This ensures that a half-written row does not silently fork the chain.
+/// * On `write_event_atomic` success, the event is durable. On error, nothing is persisted.
 /// * A sink **must never update or delete** a previously written event.
 #[async_trait]
 pub trait AuditSink: Send {
     /// Short sink name for log messages: `"file"`, `"postgres"`.
     fn name(&self) -> &'static str;
 
-    /// Reads the chain head so the writer can resume an existing log. Called exactly
-    /// once, before any `write_event_atomic`.
-    ///
-    /// Recovery policy on a corrupted or unreadable tail is entirely up to the
-    /// implementation — see the module docs.
+    /// Recovers the backend and returns the chain head.
     ///
     /// # Errors
     /// Returns an error when the tail cannot be read, or when the implementation's own
@@ -66,25 +47,16 @@ pub trait AuditSink: Send {
     /// not consider the event committed (see the trait-level contract).
     async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<()>;
 
-    /// Whether the sink is currently refusing new writes — e.g. a configured on-disk
-    /// size cap has been reached. Checked by the writer loop **before** every write; when
-    /// `true` the event is silently skipped without ever calling [`Self::write_event_atomic`],
-    /// exactly like a channel-capacity drop.
-    ///
-    /// Defaults to `false`: most backends have no such concept. A backend that does
-    /// (only the file backend, today) updates its own internal state after each write
-    /// and reports it here instead of returning an error from `write_event_atomic` — an error
-    /// there would be logged per rejected event; this path is a silent, rate-limited
-    /// skip owned entirely by the sink.
+    /// Whether the writer should drop events without calling
+    /// [`Self::write_event_atomic`].
     fn is_write_capacity_exceeded(&self) -> bool {
         false
     }
 
-    /// Called once when the writer loop exits (channel closed on graceful shutdown).
+    /// Performs backend-specific shutdown synchronisation.
     ///
     /// # Errors
-    /// Returns an error if final synchronisation fails; the writer logs it and exits
-    /// regardless.
+    /// Returns an error if synchronisation fails.
     async fn final_sync(&mut self) -> InterfaceResult<()> {
         Ok(())
     }
