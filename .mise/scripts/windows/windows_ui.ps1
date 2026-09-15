@@ -125,7 +125,7 @@ function Build-UI {
             exit 1
         }
 
-        # Detect package manager (pnpm or npm)
+        # Detect package manager (pnpm is required when pnpm-lock.yaml is present)
         $packageManager = "npm"
         if (Test-Path "pnpm-lock.yaml") {
             if (Get-Command pnpm -ErrorAction SilentlyContinue) {
@@ -133,7 +133,8 @@ function Build-UI {
                 Write-Host "Using pnpm as package manager"
             }
             else {
-                Write-Host "Warning: pnpm-lock.yaml found but pnpm not installed. Using npm instead."
+                Write-Error "pnpm-lock.yaml found but pnpm is not installed. Install pnpm with: npm install -g pnpm or via pnpm/action-setup in CI."
+                exit 1
             }
         }
 
