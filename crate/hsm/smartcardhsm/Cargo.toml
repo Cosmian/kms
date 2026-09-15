@@ -26,3 +26,5 @@ pkcs11-sys = { workspace = true }
 [features]
 # Enable this feature to run smartcardhsm tests (they require a Smart card HSM)
 smartcardhsm = []
+# Enable HSM-delegated EdDSA/X25519 support (see cosmian_kms_base_hsm's `non-fips` feature).
+non-fips = ["cosmian_kms_base_hsm/non-fips"]
