@@ -81,6 +81,14 @@ if ! docker info &>/dev/null 2>&1; then
   exit 1
 fi
 
+# Fail fast if Elasticsearch is not reachable and the container is not running
+if ! curl -sf "${ES_URL}/_cluster/health" >/dev/null 2>&1; then
+  if [ -z "$(docker compose ps --status running -q elasticsearch 2>/dev/null || true)" ]; then
+    echo "ERROR: Elasticsearch container is not running. Run: docker compose up -d elasticsearch" >&2
+    exit 1
+  fi
+fi
+
 # Wait for Elasticsearch to be ready (it may be starting up via docker compose)
 echo "==> Waiting for Elasticsearch at ${ES_URL}..."
 waited=0
@@ -322,8 +330,28 @@ until [ "${es_count}" -ge "${audit_lines}" ]; do
     # Hard fail — partial ingestion is not acceptable.
     echo "ERROR: only ${es_count}/${audit_lines} events indexed after 60s." >&2
     echo "       All audit events must be indexed — partial ingestion is not acceptable." >&2
-    echo "       Filebeat may have dropped events due to a mapping conflict." >&2
+    echo "       Filebeat may have dropped events due to pipeline/mapping errors, or Elasticsearch may have blocked indexing (e.g. disk flood-stage watermark)." >&2
     echo "       Check that the kms-audit-normalize ingest pipeline is in place." >&2
+
+    cluster_health=$(curl -sf "${ES_URL}/_cluster/health" 2>/dev/null || true)
+    if [ -n "${cluster_health}" ]; then
+      es_status=$(echo "${cluster_health}" | grep -o '"status":"[^"]*"' | cut -d: -f2 | tr -d '"' || true)
+      es_unassigned=$(echo "${cluster_health}" | grep -o '"unassigned_shards":[0-9]*' | cut -d: -f2 || true)
+      echo "       Elasticsearch cluster health: status=${es_status:-unknown}, unassigned_shards=${es_unassigned:-unknown}" >&2
+      echo "       Cluster health: ${cluster_health}" >&2
+      if [ "${es_unassigned:-0}" -gt 0 ] 2>/dev/null; then
+        alloc_explain=$(curl -sf "${ES_URL}/_cluster/allocation/explain" 2>/dev/null || true)
+        if [ -n "${alloc_explain}" ]; then
+          echo "       Allocation explain: ${alloc_explain}" >&2
+        fi
+      fi
+    else
+      echo "       Elasticsearch cluster health: query failed (${ES_URL}/_cluster/health)" >&2
+    fi
+
+    echo "       Filebeat container logs (last 25 lines):" >&2
+    docker logs "${FILEBEAT_CONTAINER}" 2>&1 | tail -25 >&2 || true
+
     docker rm -f "${FILEBEAT_CONTAINER}" 2>/dev/null || true
     FILEBEAT_CONTAINER=""
     exit 1

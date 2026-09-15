@@ -29,6 +29,19 @@ setup_test_logging
 SUITE="${SUITE:-all}"
 REPO_ROOT="$(get_repo_root)"
 
+ensure_elasticsearch() {
+  if ! curl -sf "http://127.0.0.1:9200/_cluster/health" >/dev/null 2>&1; then
+    if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+      print_status "Elasticsearch is not running. Auto-starting via docker compose..."
+      docker compose up -d elasticsearch
+    else
+      echo "ERROR: Elasticsearch is not running and Docker is not available." >&2
+      echo "Run: docker compose up -d elasticsearch" >&2
+      exit 1
+    fi
+  fi
+}
+
 run_sub() {
   local name="$1"
   local script="$2"
@@ -43,6 +56,7 @@ echo ""
 
 case "${SUITE}" in
   all)
+    ensure_elasticsearch
     run_sub "Fluent Bit JSONL file-tailing" "test_siem_fluent_bit.sh"
     run_sub "Filebeat → Elasticsearch" "test_siem_filebeat.sh"
     ;;
@@ -50,6 +64,7 @@ case "${SUITE}" in
     run_sub "Fluent Bit JSONL file-tailing" "test_siem_fluent_bit.sh"
     ;;
   filebeat)
+    ensure_elasticsearch
     run_sub "Filebeat → Elasticsearch" "test_siem_filebeat.sh"
     ;;
   *)
