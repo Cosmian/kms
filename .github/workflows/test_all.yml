@@ -247,6 +247,20 @@ jobs:
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
+      # PKCS#11 v3 conformance tests: signs through OpenSC's pkcs11-tool (a real,
+      # independently-implemented external PKCS#11 v3 client), not just our own
+      # in-process Rust tests above. SoftHSM2-only: it is the only backend the CI
+      # is allowed to reconfigure with an HSM-KEK for this check.
+      # Prerequisite warning: `pkcs11-tool` (OpenSC) is a hard requirement — the
+      # task fails loudly if it is missing, with no silent fallback. It does not
+      # need a separate install step here: shell.nix already adds `pkgs.opensc` to
+      # the nix-shell PATH on Linux whenever `WITH_HSM=1` is set, which this task
+      # sets before entering the nix shell (see .mise/tasks/test/hsm-pkcs11-tool).
+      - name: Test (PKCS#11 v3 conformance via pkcs11-tool)
+        if: matrix.hsm-type == 'softhsm2'
+        run: |
+          mise run test:hsm-pkcs11-tool --variant ${{ matrix.features }}
+
   helm:
     name: Helm chart E2E (minikube)
     runs-on: ubuntu-latest
