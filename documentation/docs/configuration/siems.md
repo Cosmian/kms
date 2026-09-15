@@ -52,13 +52,15 @@ Supported agents: Filebeat, Fluent Bit, Splunk Universal Forwarder, rsyslog imfi
 sequenceDiagram
     participant File as audit.jsonl
     participant ckms as ckms audit export
-    participant Syslog as syslog listener
+    participant Transport as Transport (shell / nc / logger)
+    participant Syslog as Syslog (rsyslog / SIEM listener)
 
-    Note over File,ckms: Run on demand or via cron
+    Note over File,Transport: Run on demand or via cron
     ckms->>File: read JSONL (optional --since / --until range)
-    ckms->>Syslog: CEF lines on stdout
-    Note over ckms,Syslog: TCP uses RFC 6587 octet-counting framing
-    Note over ckms,Syslog: UDP uses RFC 5424 syslog datagrams
+    ckms->>Transport: CEF lines on stdout
+    Transport->>Syslog: forward frames over wire (TCP RFC 6587 or UDP)
+    Note over Transport,Syslog: TCP uses RFC 6587 octet-counting framing
+    Note over Transport,Syslog: UDP uses RFC 5424 syslog datagrams
 ```
 
 Supported targets: rsyslog, ArcSight, Splunk, nc listener.
@@ -183,7 +185,7 @@ field extraction, facets, or dashboards:
 | `user` | string | No | Source user identity |
 | `object_uid` | string | Yes | Target object identifier (KMIP `UniqueIdentifier`) |
 | `algorithm` | string | Yes | Cryptographic algorithm (e.g. `AES`, `RSA`) |
-| `client_ip` | string | Yes | Source IP address |
+| `client_ip` | string | Yes | Source IP address (direct TCP peer unless configured behind trusted proxies; see [Client IP and reverse proxies](./audit-logs.md#client-ip-and-reverse-proxies)) |
 | `result` | `"Success"` or `{"Failure": "..."}` | No | Polymorphic — normalize with the ingest pipeline described above into `result_status` + `result_error` |
 | `result_status` | `"Success"` or `"Failure"` | No | Normalized outcome (after pipeline); use for facets and alerts |
 | `result_error` | string | Yes | Normalized error message (after pipeline); present only on Failure events |
@@ -227,24 +229,29 @@ Example with rsyslog — add to `/etc/rsyslog.conf` or `/etc/rsyslog.d/kms.conf`
 module(load="imtcp")
 input(type="imtcp" port="5514" Ruleset="kms_cef")
 ruleset(name="kms_cef") {
-  action(type="omfile" file="/var/log/kms-cef.log" template="RSYSLOG_ForwardFormat")
+  action(type="omfile" file="/var/log/kms-cef.log" template="RSYSLOG_FileFormat")
 }
 ```
 
 Send CEF events with octet-counting framing:
 
 ```bash
-# Each frame: "<byte-count> <message>"
+#!/usr/bin/env bash
+# Note: Requires Bash due to /dev/tcp network redirection and process substitution < <(...).
+# Alternatively, nc <host> 5514 can be used as an alternative to /dev/tcp.
+# Each frame: "<byte-count> <message>" (RFC 6587 octet counting)
 # The message is a syslog PRI header + CEF line.
 while IFS= read -r line; do
   msg="<134>$(date '+%b %d %H:%M:%S') kms-audit: ${line}"
-  printf '%zu %s' "${#msg}" "${msg}" > /dev/tcp/<host>/5514
+  byte_count=$(LC_ALL=C printf '%s' "${msg}" | wc -c | tr -d ' ')
+  printf '%d %s' "${byte_count}" "${msg}" > /dev/tcp/<host>/5514
 done < <(ckms audit export --format cef --path /var/log/cosmian-kms/audit.jsonl)
 ```
 
 !!! note "TCP vs UDP"
     - **TCP with octet-counting**: reliable, ordered delivery — suitable for production
-      pipelines. Each frame carries its own length prefix (`<count> <message>`).
+      pipelines. Each frame carries its own length prefix (`<count> <message>`). Note that
+      `nc <host> 5514` can be used as an alternative to `/dev/tcp` if running outside Bash.
     - **UDP**: no delivery guarantee — suitable only for ad hoc verification.
 
 ### Ad hoc export to a CEF listener (UDP)
