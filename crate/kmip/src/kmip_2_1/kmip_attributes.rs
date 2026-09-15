@@ -518,7 +518,7 @@ impl Attributes {
     /// semantics: once `NeverExtractable` becomes `False` (i.e., the key has been extractable),
     /// it remains `False` even if `Extractable` is later set back to `False`.
     ///
-    /// This mirrors the KMIP 2.1 §4.33 / KMIP 1.4 §3.50 specification for the
+    /// This mirrors the KMIP 2.1 §4.33 / KMIP 1.4 §3.51 specification for the
     /// Never Extractable attribute.
     pub fn apply_extractable(&mut self, extractable: bool) -> &mut Self {
         // Previous NeverExtractable value; if absent, seed it from the complement

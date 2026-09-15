@@ -47,7 +47,16 @@ pub(crate) async fn delete_attribute(
     if let Some(attribute) = request.current_attribute {
         // Read-only guard — these attributes are server-managed.
         match &attribute {
-            Attribute::AlwaysSensitive(_)
+            Attribute::UniqueIdentifier(_)
+            | Attribute::ObjectType(_)
+            | Attribute::CertificateLength(_)
+            | Attribute::Digest(_)
+            | Attribute::State(_)
+            | Attribute::InitialDate(_)
+            | Attribute::Fresh(_)
+            | Attribute::LastChangeDate(_)
+            | Attribute::OriginalCreationDate(_)
+            | Attribute::AlwaysSensitive(_)
             | Attribute::Sensitive(_)
             | Attribute::NeverExtractable(_)
             | Attribute::Extractable(_)
