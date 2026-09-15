@@ -39,7 +39,7 @@ enum SealReason {
     /// A complete, well-formed row whose `row_hash` doesn't match its own bytes.
     HashMismatch,
     /// Bytes that don't deserialize as an `AuditEvent` at all.
-    Unparseable,
+    Unparsable,
     /// A valid, verified row whose `id` is `i64::MAX` — incrementing it for the next
     /// event would overflow, so recovery cannot safely resume the chain in place.
     IdOverflow,
@@ -49,7 +49,7 @@ impl SealReason {
     const fn as_str(self) -> &'static str {
         match self {
             Self::HashMismatch => "hash_mismatch",
-            Self::Unparseable => "unparseable",
+            Self::Unparsable => "unparsable",
             Self::IdOverflow => "id_overflow",
         }
     }
@@ -62,14 +62,14 @@ enum RowCheck {
     /// Parsed but `row_hash` doesn't match its own bytes — tampered.
     HashMismatch(AuditEvent),
     /// Didn't deserialize as an `AuditEvent` at all.
-    Unparseable,
+    Unparsable,
 }
 
 fn check_row(line: &str) -> RowCheck {
     match serde_json::from_str::<AuditEvent>(line) {
         Ok(event) if verify_event(&event) => RowCheck::Verified(event),
         Ok(event) => RowCheck::HashMismatch(event),
-        Err(_) => RowCheck::Unparseable,
+        Err(_) => RowCheck::Unparsable,
     }
 }
 
@@ -175,7 +175,7 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
         // TAIL_WINDOW, or the seek landed inside one. Can't safely discriminate
         // torn-vs-tampered without risking misclassification — seal.
         return Ok(TailOutcome::SealAndRoll {
-            reason: SealReason::Unparseable,
+            reason: SealReason::Unparsable,
             claimed_last_id: None,
             failure_offset: seek_pos,
         });
@@ -196,7 +196,7 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
             rows.remove(0);
         } else {
             return Ok(TailOutcome::SealAndRoll {
-                reason: SealReason::Unparseable,
+                reason: SealReason::Unparsable,
                 claimed_last_id: None,
                 failure_offset: seek_pos,
             });
@@ -239,7 +239,7 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
         // Can't happen (newline_positions was non-empty), but never panic on a
         // recovery path — fall back to the safest outcome.
         return Ok(TailOutcome::SealAndRoll {
-            reason: SealReason::Unparseable,
+            reason: SealReason::Unparsable,
             claimed_last_id: None,
             failure_offset: seek_pos,
         });
@@ -270,8 +270,8 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
                 claimed_last_id: Some(event.id),
                 failure_offset: last_start,
             },
-            RowCheck::Unparseable => TailOutcome::SealAndRoll {
-                reason: SealReason::Unparseable,
+            RowCheck::Unparsable => TailOutcome::SealAndRoll {
+                reason: SealReason::Unparsable,
                 claimed_last_id: None,
                 failure_offset: last_start,
             },
@@ -312,7 +312,7 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
     let Some(anchor_line) = second_last else {
         // Can't happen per the invariant above, but never panic on a recovery path.
         return Ok(TailOutcome::SealAndRoll {
-            reason: SealReason::Unparseable,
+            reason: SealReason::Unparsable,
             claimed_last_id: None,
             failure_offset: last_start,
         });
@@ -332,8 +332,8 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
                 failure_offset: last_start,
             }),
         },
-        RowCheck::HashMismatch(_) | RowCheck::Unparseable => Ok(TailOutcome::SealAndRoll {
-            reason: SealReason::Unparseable,
+        RowCheck::HashMismatch(_) | RowCheck::Unparsable => Ok(TailOutcome::SealAndRoll {
+            reason: SealReason::Unparsable,
             claimed_last_id: None,
             failure_offset: last_start,
         }),
@@ -422,11 +422,11 @@ fn verify_interior_chain(path: &Path) -> KResult<InteriorChainVerification> {
                             }),
                         });
                     }
-                    RowCheck::Unparseable => {
+                    RowCheck::Unparsable => {
                         return Ok(InteriorChainVerification {
                             previous_event: None,
                             failure: Some(InteriorChainFailure {
-                                reason: SealReason::Unparseable,
+                                reason: SealReason::Unparsable,
                                 claimed_last_id: prev.as_ref().map(|p| p.id),
                                 failure_offset: pending_offset,
                             }),
