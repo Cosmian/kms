@@ -64,6 +64,7 @@ pub(crate) async fn set_attribute(
     // Read-only guard — must be checked before the DB round-trip.
     match &request.new_attribute {
         Attribute::AlwaysSensitive(_)
+        | Attribute::NeverExtractable(_)
         | Attribute::State(_)
         | Attribute::RotateGeneration(_)
         | Attribute::RotateDate(_)
@@ -186,7 +187,6 @@ pub(crate) async fn set_attribute(
             Description => description,
             DestroyDate => destroy_date,
             DigitalSignatureAlgorithm => digital_signature_algorithm,
-            Extractable => extractable,
             Fresh => fresh,
             InitialDate => initial_date,
             KeyFormatType => key_format_type,
@@ -194,7 +194,6 @@ pub(crate) async fn set_attribute(
             KeyValuePresent => key_value_present,
             LastChangeDate => last_change_date,
             LeaseTime => lease_time,
-            NeverExtractable => never_extractable,
             NistKeyType => nist_key_type,
             ObjectGroupMember => object_group_member,
             OpaqueDataType => opaque_data_type,
@@ -229,10 +228,41 @@ pub(crate) async fn set_attribute(
                 ));
             }
             Attribute::Sensitive(sensitive) => {
+                if !kms
+                    .user_can_perform_operation(&owm, user, &KmipOperation::SetAttribute)
+                    .await?
+                {
+                    return Err(KmsError::Kmip21Error(
+                        ErrorReason::Permission_Denied,
+                        "DENIED: modifying Sensitive attribute requires ownership or explicit SetAttribute grant"
+                            .to_owned(),
+                    ));
+                }
                 // Setting Sensitive also (re)computes the server-managed
                 // AlwaysSensitive attribute (KMIP 2.1 §4.3).
                 trace!("Set Attribute: Sensitive: {:?}", sensitive);
                 attributes.apply_sensitive(sensitive);
+            }
+            Attribute::Extractable(extractable) => {
+                if !kms
+                    .user_can_perform_operation(&owm, user, &KmipOperation::SetAttribute)
+                    .await?
+                {
+                    return Err(KmsError::Kmip21Error(
+                        ErrorReason::Permission_Denied,
+                        "DENIED: modifying Extractable attribute requires ownership or explicit SetAttribute grant"
+                            .to_owned(),
+                    ));
+                }
+                trace!("Set Attribute: Extractable: {:?}", extractable);
+                attributes.apply_extractable(extractable);
+            }
+            Attribute::NeverExtractable(_) => {
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Attribute_Read_Only,
+                    "DENIED: NeverExtractable is server-managed and cannot be set by the user"
+                        .to_owned(),
+                ));
             }
             Attribute::Link(link) => {
                 trace!("Set Attribute: Link: {}", link.linked_object_identifier);

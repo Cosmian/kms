@@ -203,3 +203,206 @@ async fn test_always_sensitive_derived_from_sensitive_changes() -> KResult<()> {
 
     Ok(())
 }
+
+/// A non-owner with only a Get grant cannot delete or modify Sensitive attribute
+/// to bypass sensitive export protection (GHSA-c75c-3cmm-48h7).
+#[tokio::test]
+async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> {
+    use std::collections::HashSet;
+
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        KmipOperation,
+        kmip_operations::{DeleteAttribute, Get},
+    };
+
+    log_init(option_env!("RUST_LOG"));
+    let kms = instantiate_kms().await?;
+    let alice = UserId::from("alice");
+    let bob = UserId::from("bob");
+
+    // Alice creates a sensitive key.
+    let request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        Vec::<String>::new(),
+        true,
+        None,
+    )?;
+    let response = kms.create(request, &alice).await?;
+    let uid = response.unique_identifier.to_string();
+
+    // Alice grants Bob only Get permission.
+    kms.database
+        .grant_operations(&uid, &bob, HashSet::from([KmipOperation::Get]))
+        .await?;
+
+    // Bob Get -> denied because key is sensitive and unwrapped.
+    let get_req = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+        key_wrapping_specification: None,
+        key_compression_type: None,
+        key_format_type: None,
+        key_wrap_type: None,
+    };
+    let err = kms.get(get_req.clone(), &bob).await.unwrap_err();
+    assert!(matches!(
+        err,
+        KmsError::Kmip21Error(ErrorReason::Sensitive, _)
+    ));
+
+    // Bob attempts to DeleteAttribute(Sensitive) by value -> denied.
+    let del_by_val = kms
+        .delete_attribute(
+            DeleteAttribute {
+                unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                current_attribute: Some(Attribute::Sensitive(true)),
+                attribute_references: None,
+            },
+            &bob,
+        )
+        .await;
+    assert!(matches!(
+        del_by_val,
+        Err(KmsError::Kmip21Error(ErrorReason::Attribute_Read_Only, _))
+    ));
+
+    // Bob attempts to DeleteAttribute(Sensitive) by tag reference -> denied.
+    let del_by_ref = kms
+        .delete_attribute(
+            DeleteAttribute {
+                unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                current_attribute: None,
+                attribute_references: Some(vec![AttributeReference::Standard(Tag::Sensitive)]),
+            },
+            &bob,
+        )
+        .await;
+    assert!(matches!(
+        del_by_ref,
+        Err(KmsError::Kmip21Error(ErrorReason::Attribute_Read_Only, _))
+    ));
+
+    // Bob attempts to SetAttribute(Sensitive(false)) -> denied.
+    let set_res = kms
+        .set_attribute(
+            SetAttribute {
+                unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                new_attribute: Attribute::Sensitive(false),
+            },
+            &bob,
+        )
+        .await;
+    assert!(matches!(
+        set_res,
+        Err(KmsError::Kmip21Error(ErrorReason::Permission_Denied, _))
+    ));
+
+    // Bob attempts to ModifyAttribute(Sensitive(false)) -> denied.
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
+        AddAttribute, ModifyAttribute,
+    };
+    let mod_res = kms
+        .modify_attribute(
+            ModifyAttribute {
+                unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                new_attribute: Attribute::Sensitive(false),
+            },
+            &bob,
+        )
+        .await;
+    assert!(matches!(
+        mod_res,
+        Err(KmsError::Kmip21Error(ErrorReason::Permission_Denied, _))
+    ));
+
+    // Bob attempts to AddAttribute(Sensitive(false)) -> denied.
+    let add_res = kms
+        .add_attribute(
+            AddAttribute {
+                unique_identifier: UniqueIdentifier::TextString(uid.clone()),
+                new_attribute: Attribute::Sensitive(false),
+            },
+            &bob,
+        )
+        .await;
+    assert!(matches!(
+        add_res,
+        Err(KmsError::Kmip21Error(ErrorReason::Permission_Denied, _))
+    ));
+
+    // Bob attempts to SetAttribute(Extractable(false)) -> denied.
+    let set_ext_res = kms
+        .set_attribute(
+            SetAttribute {
+                unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                new_attribute: Attribute::Extractable(false),
+            },
+            &bob,
+        )
+        .await;
+    assert!(matches!(
+        set_ext_res,
+        Err(KmsError::Kmip21Error(ErrorReason::Permission_Denied, _))
+    ));
+
+    // Bob attempts to ModifyAttribute(Extractable(false)) -> denied.
+    let mod_ext_res = kms
+        .modify_attribute(
+            ModifyAttribute {
+                unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                new_attribute: Attribute::Extractable(false),
+            },
+            &bob,
+        )
+        .await;
+    assert!(matches!(
+        mod_ext_res,
+        Err(KmsError::Kmip21Error(ErrorReason::Permission_Denied, _))
+    ));
+
+    // Bob attempts to AddAttribute(Extractable(false)) -> denied.
+    let add_ext_res = kms
+        .add_attribute(
+            AddAttribute {
+                unique_identifier: UniqueIdentifier::TextString(uid.clone()),
+                new_attribute: Attribute::Extractable(false),
+            },
+            &bob,
+        )
+        .await;
+    assert!(matches!(
+        add_ext_res,
+        Err(KmsError::Kmip21Error(ErrorReason::Permission_Denied, _))
+    ));
+
+    // Now Alice grants Bob explicit SetAttribute and ModifyAttribute rights.
+    kms.database
+        .grant_operations(
+            &uid,
+            &bob,
+            HashSet::from([
+                KmipOperation::Get,
+                KmipOperation::SetAttribute,
+                KmipOperation::ModifyAttribute,
+            ]),
+        )
+        .await?;
+
+    // With explicit SetAttribute grant, Bob can now set Sensitive(false).
+    kms.set_attribute(
+        SetAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+            new_attribute: Attribute::Sensitive(false),
+        },
+        &bob,
+    )
+    .await?;
+
+    // Now Bob Get succeeds because Sensitive is false.
+    let get_resp = kms.get(get_req, &bob).await?;
+    assert_eq!(get_resp.unique_identifier.to_string(), uid);
+
+    Ok(())
+}

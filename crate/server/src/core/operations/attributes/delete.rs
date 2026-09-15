@@ -48,6 +48,9 @@ pub(crate) async fn delete_attribute(
         // Read-only guard — these attributes are server-managed.
         match &attribute {
             Attribute::AlwaysSensitive(_)
+            | Attribute::Sensitive(_)
+            | Attribute::NeverExtractable(_)
+            | Attribute::Extractable(_)
             | Attribute::RotateAutomatic(_)
             | Attribute::RotateGeneration(_)
             | Attribute::RotateDate(_)
@@ -197,8 +200,12 @@ pub(crate) async fn delete_attribute(
                             | Tag::OriginalCreationDate
                         // KMIP 1.4 §3.49 — Always Sensitive
                             | Tag::AlwaysSensitive
+                        // KMIP 1.4 §3.48 — Sensitive
+                            | Tag::Sensitive
                         // KMIP 1.4 §3.51 — Never Extractable
                             | Tag::NeverExtractable
+                        // KMIP 1.4 §3.50 — Extractable
+                            | Tag::Extractable
                         // Cosmian keyset rotation metadata is server-managed.
                             | Tag::RotateAutomatic
                             | Tag::RotateGeneration
