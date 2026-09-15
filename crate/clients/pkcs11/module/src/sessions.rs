@@ -41,9 +41,10 @@ use crate::{
         object::{Object, ObjectType},
     },
     objects_store::{OBJECTS_STORE, ObjectsStore},
+    profiling::{self, SignPhase},
     traits::{
-        DecryptContext, EncryptContext, KeyAlgorithm, SearchOptions, SignContext, VerifyContext,
-        backend, use_pin_as_access_token,
+        DecryptContext, EncryptContext, KeyAlgorithm, SearchOptions, SignContext, SignOperation,
+        VerifyContext, backend, use_pin_as_access_token,
     },
 };
 
@@ -113,9 +114,22 @@ static NEXT_SESSION_HANDLE: sync::atomic::AtomicU64 = sync::atomic::AtomicU64::n
 #[cfg(target_os = "windows")]
 static NEXT_SESSION_HANDLE: sync::atomic::AtomicU32 = sync::atomic::AtomicU32::new(1);
 
-type SessionMap = HashMap<CK_SESSION_HANDLE, Session>;
+/// Each session is individually guarded by its own `Mutex` (instead of the whole map
+/// being behind one lock) so that a slow, blocking operation on one session — e.g.
+/// `C_Sign`/`C_Verify`/`C_Encrypt`/`C_Decrypt`, all of which round-trip synchronously
+/// to the remote KMS server via `RUNTIME.block_on(...)` — never blocks operations on
+/// *other* sessions. Only [`session`]'s brief `Arc` clone (no I/O) touches the
+/// per-session lock while the outer map lock is held; the actual (potentially slow)
+/// callback runs after the outer lock has already been released.
+type SessionMap = HashMap<CK_SESSION_HANDLE, Arc<sync::Mutex<Session>>>;
 
-static SESSIONS: std::sync::LazyLock<sync::Mutex<SessionMap>> =
+/// `RwLock`, not `Mutex`: [`session`]/[`exists`]/[`flags`] only ever need to *read*
+/// this map (to clone an `Arc` or check/read a key), and are called on every single
+/// Cryptoki operation; only [`create`]/[`close`]/[`close_all`] mutate it, and do so
+/// far less often (once per `C_OpenSession`/`C_CloseSession`). Letting readers run
+/// concurrently keeps session lookup itself from becoming a second global
+/// bottleneck now that the per-session `Mutex` above no longer is one.
+static SESSIONS: std::sync::LazyLock<sync::RwLock<SessionMap>> =
     std::sync::LazyLock::new(Default::default);
 
 #[derive(Default)]
@@ -131,6 +145,24 @@ pub(crate) struct Session {
 }
 
 impl Session {
+    fn fixed_signature_len(sign_ctx: &SignContext) -> Option<usize> {
+        match (&sign_ctx.algorithm, sign_ctx.private_key.algorithm()) {
+            (crate::traits::SignatureAlgorithm::EdDsa, KeyAlgorithm::Ed25519) => Some(64),
+            (crate::traits::SignatureAlgorithm::EdDsa, KeyAlgorithm::Ed448) => Some(114),
+            (
+                crate::traits::SignatureAlgorithm::RsaRaw
+                | crate::traits::SignatureAlgorithm::RsaPkcs1v15Raw
+                | crate::traits::SignatureAlgorithm::RsaPkcs1v15Sha1
+                | crate::traits::SignatureAlgorithm::RsaPkcs1v15Sha256
+                | crate::traits::SignatureAlgorithm::RsaPkcs1v15Sha384
+                | crate::traits::SignatureAlgorithm::RsaPkcs1v15Sha512
+                | crate::traits::SignatureAlgorithm::RsaPss { .. },
+                KeyAlgorithm::Rsa,
+            ) => Some(sign_ctx.private_key.key_size().div_ceil(8)),
+            _ => None,
+        }
+    }
+
     pub(crate) fn update_find_objects_context(
         &mut self,
         object: Arc<Object>,
@@ -507,9 +539,35 @@ impl Session {
         let Some(sign_ctx) = self.sign_ctx.as_mut() else {
             return Err(ModuleError::OperationNotInitialized(0));
         };
+        if sign_ctx.operation != SignOperation::Classic {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        if let Some(signature_len) = Self::fixed_signature_len(sign_ctx) {
+            if pSignature.is_null() {
+                // A PKCS#11 length query must leave the operation initialized for
+                // the subsequent buffer-filling call. EdDSA and RSA signature sizes
+                // are fixed by the key, so no remote KMS Sign is needed to answer it.
+                unsafe {
+                    *pulSignatureLen = signature_len.try_into()?;
+                }
+                return Ok(());
+            }
+            if unsafe { usize::try_from(*pulSignatureLen)? } < signature_len {
+                // The required size is known without signing; report it and keep the
+                // operation initialized so the caller can retry with a larger buffer.
+                unsafe {
+                    *pulSignatureLen = signature_len.try_into()?;
+                }
+                return Err(ModuleError::BufferTooSmall);
+            }
+        }
         let data = data
             .or(sign_ctx.payload.as_deref())
             .ok_or(ModuleError::OperationNotInitialized(0))?;
+        // Variable-length algorithms (currently ECDSA) must still sign once during
+        // a null-buffer query to discover the exact encoded length. Fixed-size
+        // EdDSA/RSA queries returned above without contacting the KMS.
+        let private_key_sign = profiling::phase(SignPhase::PrivateKeySign);
         let signature = match sign_ctx.private_key.sign(&sign_ctx.algorithm, data) {
             Ok(sig) => sig,
             Err(e) => {
@@ -518,21 +576,92 @@ impl Session {
                 )));
             }
         };
+        drop(private_key_sign);
         if !pSignature.is_null() {
-            // TODO(bweeks): This will cause a second sign call when this function is
-            // called again with an appropriately-sized buffer. Do we really need to
-            // sign twice for ECDSA? Consider storing the signature in the ctx for the next
-            // call.
             if (unsafe { usize::try_from(*pulSignatureLen)? }) < signature.len() {
                 return Err(ModuleError::BufferTooSmall);
             }
+            let signature_copy = profiling::phase(SignPhase::SignatureCopy);
             unsafe { std::slice::from_raw_parts_mut(pSignature, signature.len()) }
                 .copy_from_slice(&signature);
+            drop(signature_copy);
             self.sign_ctx = None;
         }
         unsafe {
             *pulSignatureLen = signature.len().try_into()?;
         }
+        Ok(())
+    }
+
+    /// Signs one complete PKCS#11 v3 message while keeping the message-sign
+    /// operation initialized for subsequent independent messages.
+    pub(crate) unsafe fn sign_message(
+        &mut self,
+        data: &[u8],
+        p_signature: CK_BYTE_PTR,
+        p_signature_len: CK_ULONG_PTR,
+    ) -> ModuleResult<()> {
+        let Some(sign_ctx) = self.sign_ctx.as_ref() else {
+            return Err(ModuleError::OperationNotInitialized(0));
+        };
+        if sign_ctx.operation != SignOperation::Message {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        if let Some(signature_len) = Self::fixed_signature_len(sign_ctx) {
+            if p_signature.is_null() {
+                unsafe {
+                    *p_signature_len = signature_len.try_into()?;
+                }
+                return Ok(());
+            }
+            if unsafe { usize::try_from(*p_signature_len)? } < signature_len {
+                unsafe {
+                    *p_signature_len = signature_len.try_into()?;
+                }
+                return Err(ModuleError::BufferTooSmall);
+            }
+        }
+
+        let private_key_sign = profiling::phase(SignPhase::PrivateKeySign);
+        let signature = sign_ctx
+            .private_key
+            .sign(&sign_ctx.algorithm, data)
+            .map_err(|error| {
+                ModuleError::BadArguments(format!("message signature failed: {error:?}"))
+            })?;
+        drop(private_key_sign);
+        if p_signature.is_null() {
+            unsafe {
+                *p_signature_len = signature.len().try_into()?;
+            }
+            return Ok(());
+        }
+        if unsafe { usize::try_from(*p_signature_len)? } < signature.len() {
+            unsafe {
+                *p_signature_len = signature.len().try_into()?;
+            }
+            return Err(ModuleError::BufferTooSmall);
+        }
+
+        let signature_copy = profiling::phase(SignPhase::SignatureCopy);
+        unsafe { std::slice::from_raw_parts_mut(p_signature, signature.len()) }
+            .copy_from_slice(&signature);
+        drop(signature_copy);
+        unsafe {
+            *p_signature_len = signature.len().try_into()?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn finish_message_sign(&mut self) -> ModuleResult<()> {
+        if self
+            .sign_ctx
+            .as_ref()
+            .is_none_or(|context| context.operation != SignOperation::Message)
+        {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        self.sign_ctx = None;
         Ok(())
     }
 
@@ -712,14 +841,14 @@ fn ignore_sessions() -> bool {
 pub(crate) fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
     if ignore_sessions() {
         {
-            let mut session_map = SESSIONS.lock().expect("failed locking the sessions map");
+            let mut session_map = SESSIONS.write().expect("failed locking the sessions map");
             if session_map.is_empty() {
                 session_map.insert(
                     0,
-                    Session {
+                    Arc::new(sync::Mutex::new(Session {
                         flags,
                         ..Default::default()
-                    },
+                    })),
                 );
             }
         }
@@ -727,14 +856,14 @@ pub(crate) fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
     } else {
         let handle = NEXT_SESSION_HANDLE.fetch_add(1, Ordering::SeqCst);
         SESSIONS
-            .lock()
+            .write()
             .expect("failed locking the sessions map")
             .insert(
                 handle,
-                Session {
+                Arc::new(sync::Mutex::new(Session {
                     flags,
                     ..Default::default()
-                },
+                })),
             );
         handle
     }
@@ -742,36 +871,58 @@ pub(crate) fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
 
 pub(crate) fn exists(handle: CK_SESSION_HANDLE) -> ModuleResult<bool> {
     Ok(SESSIONS
-        .lock()
+        .read()
         .context("failed locking the sessions map")?
         .contains_key(&handle))
 }
 
 pub(crate) fn flags(handle: CK_SESSION_HANDLE) -> ModuleResult<CK_FLAGS> {
-    Ok(SESSIONS
-        .lock()
+    let session = SESSIONS
+        .read()
         .context("failed locking the sessions map")?
         .get(&handle)
-        .ok_or_else(|| ModuleError::SessionHandleInvalid(handle))?
-        .flags)
+        .ok_or(ModuleError::SessionHandleInvalid(handle))?
+        .clone();
+    let flags = session.lock().context("failed locking the session")?.flags;
+    Ok(flags)
 }
 
+/// Runs `callback` against the session identified by `h`.
+///
+/// The outer [`SESSIONS`] map lock is only held long enough to clone the per-session
+/// `Arc` (a cheap, non-blocking refcount bump) — it is released *before* `callback`
+/// runs. `callback` then blocks only on that one session's own `Mutex`, so a slow
+/// operation (e.g. `C_Sign`/`C_Verify`/`C_Encrypt`/`C_Decrypt`, which round-trip
+/// synchronously to the remote KMS server) on session `h` never blocks any other
+/// session's concurrent operations, while still serializing concurrent calls that
+/// target the *same* session handle (as the Cryptoki spec requires without extra
+/// application-level synchronization).
 pub(crate) fn session<F>(h: CK_SESSION_HANDLE, callback: F) -> ModuleResult<()>
 where
     F: FnOnce(&mut Session) -> ModuleResult<()>,
 {
-    let mut session_map = SESSIONS.lock().context("failed locking the sessions map")?;
-    let session = session_map
-        .get_mut(&h)
-        .ok_or(ModuleError::SessionHandleInvalid(h))?;
+    let map_lookup = profiling::phase(SignPhase::SessionMapLookup);
+    let session_arc = SESSIONS
+        .read()
+        .context("failed locking the sessions map")?
+        .get(&h)
+        .ok_or(ModuleError::SessionHandleInvalid(h))?
+        .clone();
+    drop(map_lookup);
+    let lock_wait = profiling::phase(SignPhase::SessionLockWait);
+    let mut session = session_arc.lock().context("failed locking the session")?;
+    drop(lock_wait);
     debug!("session: {h} found");
-    callback(session)
+    let session_callback = profiling::phase(SignPhase::SessionCallback);
+    let result = callback(&mut session);
+    drop(session_callback);
+    result
 }
 
 pub(crate) fn close(handle: CK_SESSION_HANDLE) -> ModuleResult<bool> {
     if !ignore_sessions() {
         return Ok(SESSIONS
-            .lock()
+            .write()
             .context("failed locking the sessions map")?
             .remove(&handle)
             .is_some());
@@ -781,7 +932,7 @@ pub(crate) fn close(handle: CK_SESSION_HANDLE) -> ModuleResult<bool> {
 
 pub(crate) fn close_all() -> ModuleResult<()> {
     SESSIONS
-        .lock()
+        .write()
         .context("failed locking the sessions map")?
         .clear();
     Ok(())
@@ -790,7 +941,173 @@ pub(crate) fn close_all() -> ModuleResult<()> {
 #[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
+    use zeroize::Zeroizing;
+
     use super::*;
+
+    #[derive(Debug)]
+    struct CountingEd25519PrivateKey {
+        sign_calls: Arc<AtomicUsize>,
+    }
+
+    impl crate::traits::PrivateKey for CountingEd25519PrivateKey {
+        fn remote_id(&self) -> &'static str {
+            "counting-ed25519"
+        }
+
+        fn sign(
+            &self,
+            _algorithm: &crate::traits::SignatureAlgorithm,
+            _data: &[u8],
+        ) -> ModuleResult<Vec<u8>> {
+            self.sign_calls.fetch_add(1, AtomicOrdering::Relaxed);
+            Ok(vec![0x42; 64])
+        }
+
+        fn algorithm(&self) -> KeyAlgorithm {
+            KeyAlgorithm::Ed25519
+        }
+
+        fn key_size(&self) -> usize {
+            256
+        }
+
+        fn pkcs8_der_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+
+        fn rsa_public_exponent(&self) -> ModuleResult<Vec<u8>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+    }
+
+    #[test]
+    fn ed25519_length_query_does_not_sign_remotely() {
+        let sign_calls = Arc::new(AtomicUsize::new(0));
+        let mut session = Session {
+            sign_ctx: Some(SignContext {
+                algorithm: crate::traits::SignatureAlgorithm::EdDsa,
+                private_key: Arc::new(CountingEd25519PrivateKey {
+                    sign_calls: Arc::clone(&sign_calls),
+                }),
+                operation: SignOperation::Classic,
+                payload: None,
+            }),
+            ..Default::default()
+        };
+        let data = [0x24_u8; 32];
+        let mut signature_len: CK_ULONG = 0;
+
+        // SAFETY: the data slice and output-length pointer remain valid for the call;
+        // a null signature pointer is the standard PKCS#11 length-query convention.
+        unsafe {
+            session
+                .sign(Some(&data), std::ptr::null_mut(), &raw mut signature_len)
+                .unwrap();
+        }
+        assert_eq!(signature_len, 64);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 0);
+        assert!(session.sign_ctx.is_some());
+
+        let mut message_signature = [0_u8; 64];
+        let mut message_signature_len: CK_ULONG = 64;
+        // SAFETY: buffers are valid; a classic sign context must not be usable by
+        // the v3 message-sign operation.
+        let message_result = unsafe {
+            session.sign_message(
+                &data,
+                message_signature.as_mut_ptr(),
+                &raw mut message_signature_len,
+            )
+        };
+        assert!(matches!(
+            message_result,
+            Err(ModuleError::OperationNotInitialized(_))
+        ));
+
+        let mut undersized_signature = [0_u8; 63];
+        signature_len = 63;
+        // SAFETY: the undersized buffer and output-length pointer remain valid for
+        // the call; the implementation must reject it before any remote signing.
+        let undersized_result = unsafe {
+            session.sign(
+                Some(&data),
+                undersized_signature.as_mut_ptr(),
+                &raw mut signature_len,
+            )
+        };
+        assert!(matches!(
+            undersized_result,
+            Err(ModuleError::BufferTooSmall)
+        ));
+        assert_eq!(signature_len, 64);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 0);
+        assert!(session.sign_ctx.is_some());
+
+        let mut signature = [0_u8; 64];
+        // SAFETY: `signature` has exactly the queried capacity and both pointers
+        // remain valid for the duration of the call.
+        unsafe {
+            session
+                .sign(Some(&data), signature.as_mut_ptr(), &raw mut signature_len)
+                .unwrap();
+        }
+        assert_eq!(signature_len, 64);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 1);
+        assert!(session.sign_ctx.is_none());
+    }
+
+    #[test]
+    fn ed25519_message_sign_keeps_context_for_multiple_messages() {
+        let sign_calls = Arc::new(AtomicUsize::new(0));
+        let mut session = Session {
+            sign_ctx: Some(SignContext {
+                algorithm: crate::traits::SignatureAlgorithm::EdDsa,
+                private_key: Arc::new(CountingEd25519PrivateKey {
+                    sign_calls: Arc::clone(&sign_calls),
+                }),
+                operation: SignOperation::Message,
+                payload: None,
+            }),
+            ..Default::default()
+        };
+        let data = [0x24_u8; 32];
+        let mut signature = [0_u8; 64];
+
+        let mut classic_signature_len: CK_ULONG = 64;
+        // SAFETY: buffers are valid; a v3 message context must not be consumable by
+        // the classic `C_Sign` path.
+        let classic_result = unsafe {
+            session.sign(
+                Some(&data),
+                signature.as_mut_ptr(),
+                &raw mut classic_signature_len,
+            )
+        };
+        assert!(matches!(
+            classic_result,
+            Err(ModuleError::OperationNotInitialized(_))
+        ));
+
+        for expected_calls in 1..=2 {
+            let mut signature_len: CK_ULONG = 64;
+            // SAFETY: the input/output buffers and length pointer remain valid for
+            // the duration of each one-shot message-sign call.
+            unsafe {
+                session
+                    .sign_message(&data, signature.as_mut_ptr(), &raw mut signature_len)
+                    .unwrap();
+            }
+            assert_eq!(signature_len, 64);
+            assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), expected_calls);
+            assert!(session.sign_ctx.is_some());
+        }
+
+        session.finish_message_sign().unwrap();
+        assert!(session.sign_ctx.is_none());
+    }
 
     #[test]
     fn test_map_oracle_tde_security_to_mk() {

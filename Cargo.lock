@@ -1831,6 +1831,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_pkcs11_bench"
+version = "5.27.1"
+dependencies = [
+ "ckms",
+ "clap",
+ "cosmian_logger",
+ "criterion",
+ "libloading",
+ "pkcs11-sys",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
 name = "cosmian_pkcs11_module"
 version = "5.27.1"
 dependencies = [

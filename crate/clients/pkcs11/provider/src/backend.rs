@@ -614,7 +614,13 @@ impl Backend for CliBackend {
         data: &[u8],
     ) -> ModuleResult<Vec<u8>> {
         debug!("remote_sign: remote_id: {remote_id}, algorithm: {algorithm:?}");
-        kms_sign(&self.kms_rest_client, remote_id, algorithm, data).map_err(Into::into)
+        let remote_sign = cosmian_pkcs11_module::profiling::phase(
+            cosmian_pkcs11_module::profiling::SignPhase::BackendRemoteSign,
+        );
+        let result =
+            kms_sign(&self.kms_rest_client, remote_id, algorithm, data).map_err(Into::into);
+        drop(remote_sign);
+        result
     }
 
     fn remote_verify(
