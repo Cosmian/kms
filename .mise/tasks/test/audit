@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#MISE description="Run audit log integration test (JSONL, hash chain, fields)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+# Proves tamper-evident JSONL single-writer log + HTTP audit middleware capture.
+# No Nix shell needed. Uses Cargo to build KMS binary.
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+kms_init_env "${usage_variant:-fips}" "static"
+setup_test_logging
+
+print_header "Running audit log integration test (${VARIANT_NAME})"
+echo "Purpose: prove tamper-evident JSONL hash chain + HTTP audit middleware capture"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/test/test_audit_log.sh" --variant "${VARIANT}"
+
+print_success "Audit log integration test completed"

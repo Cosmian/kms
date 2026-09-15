@@ -576,13 +576,17 @@ def main() -> None:
 
     # Rust computes rt as unix_timestamp*1000 + millisecond(); derive the same
     # value here from the RFC3339 timestamp so we don't need a datetime dep.
-    # datetime.fromisoformat() only accepts up to microsecond (6-digit)
-    # fractional seconds, so truncate any nanosecond-precision input first.
+    # Python 3.9 datetime.fromisoformat() requires 0, 3, or 6 fractional digits.
     import datetime
 
     for event in events:
-        ts = re.sub(r'(\.\d{6})\d*Z$', r'\1Z', event['timestamp'])
-        dt = datetime.datetime.fromisoformat(ts.replace('Z', '+00:00'))
+        ts = event['timestamp'].replace('Z', '+00:00')
+        m = re.match(r'^(.*?)(\.\d+)([+-]\d{2}:\d{2})$', ts)
+        if m:
+            base, frac, tz = m.groups()
+            digits = frac[1:][:6].ljust(6, '0')
+            ts = f"{base}.{digits}{tz}"
+        dt = datetime.datetime.fromisoformat(ts)
         event['_rt_ms'] = int(dt.timestamp() * 1000)
 
     # ── Phase 1: JSONL schema validation ────────────────────────────────────

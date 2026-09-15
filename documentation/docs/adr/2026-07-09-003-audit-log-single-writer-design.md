@@ -165,3 +165,5 @@ load at 1 000 req/s given one `fsync` ≈ 1 ms on NVMe storage (4 096 × ~500 B 
 - **REF-005**: `SECURITY.md` §7 — Audit log saturation operational guidance
 - **REF-006**: `.agents/tradeoofs.md` — full list of known gaps and planned fixes
 - **REF-007**: `CHANGELOG/feat_audit_and_siem.md` — branch-level change log for this feature
+- **REF-008**: ADR-0006 — OTLP Log Record Export (side-car export to OTLP collector)
+- **REF-009**: ADR-0007 — TCP Syslog CEF Transport (production CEF delivery)

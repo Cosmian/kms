@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#MISE description="Run CEF v27 format validation test"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="Feature variant (must be non-fips)" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+# Proves CEF v27 format, extension keys, 1:1 mapping, outcome coverage.
+# Requires non-fips: CEF export is only available in non-fips builds.
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+VARIANT="${usage_variant:-non-fips}"
+if [[ "${VARIANT}" == "fips" ]]; then
+  echo "ERROR: CEF format test requires --variant non-fips." >&2
+  exit 1
+fi
+
+kms_init_env "${VARIANT}" "static"
+setup_test_logging
+
+print_header "Running CEF format validation test (${VARIANT_NAME})"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/test/test_cef_format.sh" --variant "${VARIANT}"
+
+print_success "CEF format validation test completed"
