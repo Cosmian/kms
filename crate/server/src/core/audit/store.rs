@@ -643,7 +643,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].operation, "audit:reanchor");
         let details = events[0].details.as_deref().unwrap_or_default();
-        assert!(details.contains("unparseable"), "details: {details}");
+        assert!(details.contains("unparsable"), "details: {details}");
 
         std::fs::remove_file(&path).ok();
         cleanup_sealed_files(&path);
