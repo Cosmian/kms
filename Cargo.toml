@@ -197,6 +197,7 @@ axum = "0.8"
 axum-server = "0.8"
 base64 = "0.22"
 bitflags = "2.9"
+cc = "1.4"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
 clap-config-fallback = { version = "0.1", features = ["derive"] }

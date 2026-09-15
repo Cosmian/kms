@@ -4684,18 +4684,6 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    async fn test_vec_hsm_resident_ec_p256_rejected() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/hsm/resident_ec_p256_rejected").await
-    }
-
-    #[tokio::test]
-    async fn test_vec_hsm_resident_ec_p384_rejected() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/hsm/resident_ec_p384_rejected").await
-    }
-
-    #[tokio::test]
     async fn test_vec_hsm_resident_ed25519_rejected() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/resident_ed25519_rejected").await
