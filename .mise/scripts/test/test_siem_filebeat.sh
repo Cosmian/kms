@@ -139,10 +139,16 @@ ckms_conf=$(kms_write_ckms_conf)
 echo "==> Exercising KMIP operations..."
 
 ckms_json() {
-  COSMIAN_KMS_CLI_FORMAT=json "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null
+  COSMIAN_KMS_CLI_FORMAT=json "${ckms_bin}" --conf-path "${ckms_conf}" "$@"
 }
 ckms_run() {
-  "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null || true
+  "${ckms_bin}" --conf-path "${ckms_conf}" "$@"
+}
+ckms_run_fail() {
+  if "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null; then
+    echo "ERROR: expected ckms command to fail: $*" >&2
+    exit 1
+  fi
 }
 extract_uid() {
   grep -o '"unique_identifier": *"[^"]*"' | head -1 | sed 's/"unique_identifier": *"//;s/"$//'
@@ -156,9 +162,9 @@ TMPDIR_ES="$(mktemp -d -t es-data-XXXXXX)"
 PLAINTEXT="${TMPDIR_ES}/plaintext.txt"
 ENCRYPTED="${TMPDIR_ES}/encrypted.bin"
 echo "Hello, Filebeat ES test!" >"${PLAINTEXT}"
-ckms_run sym encrypt "${PLAINTEXT}" --key-id "${SYM_UID}" --output "${ENCRYPTED}"
-ckms_run sym decrypt "${ENCRYPTED}" --key-id "${SYM_UID}" --output "${TMPDIR_ES}/decrypted.txt"
-ckms_run sym keys revoke --key-id "${SYM_UID}"
+ckms_run sym encrypt "${PLAINTEXT}" --key-id "${SYM_UID}" --output-file "${ENCRYPTED}"
+ckms_run sym decrypt "${ENCRYPTED}" --key-id "${SYM_UID}" --output-file "${TMPDIR_ES}/decrypted.txt"
+ckms_run sym keys revoke "test cleanup" --key-id "${SYM_UID}"
 ckms_run sym keys destroy --key-id "${SYM_UID}"
 rm -rf "${TMPDIR_ES}"
 
@@ -166,7 +172,7 @@ rm -rf "${TMPDIR_ES}"
 # handles BOTH result types (Success string and {"Failure":"..."} object).
 # A Get on a non-existent UUID produces a Failure audit event.
 echo "    Triggering a deliberate Failure event (non-existent key lookup)..."
-ckms_run sym keys export --key-id "00000000-0000-0000-0000-000000000000" 2>/dev/null || true
+ckms_run_fail sym keys export /dev/null --key-id "00000000-0000-0000-0000-000000000000"
 
 echo "==> Waiting for audit events to flush..."
 sleep 2

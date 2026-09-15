@@ -145,10 +145,10 @@ ckms_conf=$(kms_write_ckms_conf)
 echo "==> Exercising KMIP operations..."
 
 ckms_json() {
-  COSMIAN_KMS_CLI_FORMAT=json "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null
+  COSMIAN_KMS_CLI_FORMAT=json "${ckms_bin}" --conf-path "${ckms_conf}" "$@"
 }
 ckms_run() {
-  "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null || true
+  "${ckms_bin}" --conf-path "${ckms_conf}" "$@"
 }
 extract_uid() {
   grep -o '"unique_identifier": *"[^"]*"' | head -1 | sed 's/"unique_identifier": *"//;s/"$//'
@@ -162,9 +162,9 @@ TMPDIR_CEF="$(mktemp -d -t cef-tcp-data-XXXXXX)"
 PLAINTEXT="${TMPDIR_CEF}/plaintext.txt"
 ENCRYPTED="${TMPDIR_CEF}/encrypted.bin"
 echo "Hello, CEF TCP syslog test!" >"${PLAINTEXT}"
-ckms_run sym encrypt "${PLAINTEXT}" --key-id "${SYM_UID}" --output "${ENCRYPTED}"
-ckms_run sym decrypt "${ENCRYPTED}" --key-id "${SYM_UID}" --output "${TMPDIR_CEF}/decrypted.txt"
-ckms_run sym keys revoke --key-id "${SYM_UID}"
+ckms_run sym encrypt "${PLAINTEXT}" --key-id "${SYM_UID}" --output-file "${ENCRYPTED}"
+ckms_run sym decrypt "${ENCRYPTED}" --key-id "${SYM_UID}" --output-file "${TMPDIR_CEF}/decrypted.txt"
+ckms_run sym keys revoke "test cleanup" --key-id "${SYM_UID}"
 ckms_run sym keys destroy --key-id "${SYM_UID}"
 rm -rf "${TMPDIR_CEF}"
 

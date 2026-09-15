@@ -74,10 +74,16 @@ ckms_conf=$(kms_write_ckms_conf)
 # ── Helper functions ──────────────────────────────────────────────────────────
 
 ckms_json() {
-  COSMIAN_KMS_CLI_FORMAT=json "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null
+  COSMIAN_KMS_CLI_FORMAT=json "${ckms_bin}" --conf-path "${ckms_conf}" "$@"
 }
 ckms_run() {
-  "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null || true
+  "${ckms_bin}" --conf-path "${ckms_conf}" "$@"
+}
+ckms_run_fail() {
+  if "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null; then
+    echo "ERROR: expected ckms command to fail: $*" >&2
+    exit 1
+  fi
 }
 extract_uid() {
   grep -o '"unique_identifier": *"[^"]*"' | head -1 | sed 's/"unique_identifier": *"//;s/"$//'
@@ -85,7 +91,7 @@ extract_uid() {
 
 # ── Exercise KMIP operations ──────────────────────────────────────────────────
 
-echo "==> Exercising KMIP operations (4 ops including 1 deliberate Failure)..."
+echo "==> Exercising KMIP operations (including 1 deliberate Failure)..."
 
 CREATE_OUT=$(ckms_json sym keys create --algorithm aes --number-of-bits 256)
 SYM_UID=$(echo "${CREATE_OUT}" | extract_uid)
@@ -96,14 +102,16 @@ PLAINTEXT="${TMPDIR_DATA}/plaintext.txt"
 ENCRYPTED="${TMPDIR_DATA}/encrypted.bin"
 echo "Hello, CEF format test!" >"${PLAINTEXT}"
 
-ckms_run sym encrypt "${PLAINTEXT}" --key-id "${SYM_UID}" --output "${ENCRYPTED}"
+ckms_run sym encrypt "${PLAINTEXT}" --key-id "${SYM_UID}" --output-file "${ENCRYPTED}"
 echo "    Encrypted."
+ckms_run sym keys revoke "test cleanup" --key-id "${SYM_UID}"
+echo "    Revoked key."
 ckms_run sym keys destroy --key-id "${SYM_UID}"
 echo "    Destroyed key."
 rm -rf "${TMPDIR_DATA}"
 
 # Deliberate Failure: export a non-existent key to produce a Failure result event
-ckms_run sym keys export --key-id "00000000-0000-0000-0000-000000000000" 2>/dev/null || true
+ckms_run_fail sym keys export /dev/null --key-id "00000000-0000-0000-0000-000000000000"
 echo "    Triggered deliberate Failure event (non-existent key)."
 
 echo "==> Waiting for audit events to flush..."
