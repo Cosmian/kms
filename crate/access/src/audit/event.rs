@@ -57,8 +57,8 @@ impl AuditResult {
     /// column (e.g. a `PostgreSQL` row) instead of a JSONL line's own enum encoding.
     ///
     /// Returns `None` for anything that is neither `"Success"` nor `"Failure:…"`. Coercing
-    /// an unparseable value to a default would change the row's canonical bytes and make a
-    /// genuine row look tampered, so an unparseable value must be an error, not a fallback.
+    /// an unparsable value to a default would change the row's canonical bytes and make a
+    /// genuine row look tampered, so an unparsable value must be an error, not a fallback.
     #[must_use]
     pub fn from_canonical_str(s: &str) -> Option<Self> {
         match s {
@@ -194,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn from_canonical_str_rejects_unparseable() {
+    fn from_canonical_str_rejects_unparsable() {
         assert_eq!(AuditResult::from_canonical_str("garbage"), None);
         assert_eq!(AuditResult::from_canonical_str(""), None);
     }
