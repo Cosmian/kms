@@ -39,9 +39,9 @@ impl ChainHead {
 /// A durable destination for finalised audit events.
 ///
 /// # Contract
-/// * `write_event_atomic` :on `Ok` the event is durable; on `Err` nothing was
+/// * `write_event_atomic` : on `Ok` the event is durable; on `Err` nothing was
 ///   persisted. The writer relies on this — a failed write does not advance
-///   `next_id`/`prev_hash`, so a half-written row would silently fork the chain.
+///   `next_id`/`prev_hash`. This ensures that a half-written row does not silently fork the chain.
 /// * A sink **must never update or delete** a previously written event.
 #[async_trait]
 pub trait AuditSink: Send {
@@ -65,21 +65,6 @@ pub trait AuditSink: Send {
     /// Returns an error when the event could not be persisted. On error, the caller must
     /// not consider the event committed (see the trait-level contract).
     async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<()>;
-
-    /// Whether a write failure that survived the sink's own retries should stop the
-    /// server rather than be logged and skipped.
-    ///
-    /// Defaults to `true`: losing the audit trail defeats the purpose of having enabled
-    /// it. A sink whose historical behaviour was to log and continue (e.g. the file
-    /// backend predates this trait and always kept serving on a write failure) overrides
-    /// this to `false` to preserve that behaviour.
-    ///
-    /// Takes no error argument on purpose: an implementation's answer should depend on
-    /// what kind of storage it is, not on which particular error occurred — a parameter
-    /// no caller reads is a knob that invites inconsistent policy later.
-    fn write_failure_is_fatal(&self) -> bool {
-        true
-    }
 
     /// Called once when the writer loop exits (channel closed on graceful shutdown).
     ///
