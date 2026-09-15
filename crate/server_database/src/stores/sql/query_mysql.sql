@@ -90,6 +90,12 @@ SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.st
 FROM objects
 WHERE objects.id = ?;
 
+-- name: select-object-for-update
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
+FROM objects
+WHERE objects.id = ?
+FOR UPDATE;
+
 -- name: update-object-with-object
 UPDATE objects
 SET object=?,

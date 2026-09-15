@@ -40,6 +40,44 @@ use crate::{
     result::KResult,
 };
 
+/// Authorize the destination UID that `Certify` will write to.
+/// If the object already exists, the caller must own it or have an explicit grant.
+/// If the object does not exist, the caller must hold Create rights.
+async fn authorize_destination_uid(
+    kms: &KMS,
+    certificate_id: &UniqueIdentifier,
+    user: &UserId,
+) -> KResult<()> {
+    let uid_str = certificate_id.to_string();
+    if uid_str.trim().is_empty() {
+        kms_bail!(KmsError::InvalidRequest(
+            "Certify: certificate unique_identifier cannot be empty".to_owned()
+        ));
+    }
+    if uid_str == "*" {
+        kms_bail!(KmsError::InvalidRequest(
+            "'*' is a reserved identifier and cannot be used as an object unique identifier"
+                .to_owned()
+        ));
+    }
+    if let Some(existing) = kms
+        .database
+        .retrieve_objects(ObjectHandle::from(&uid_str))
+        .await?
+        .values()
+        .next()
+    {
+        if existing.owner() != user {
+            kms_bail!(KmsError::Unauthorized(format!(
+                "User '{user}' does not own object '{uid_str}' and cannot certify over it"
+            )));
+        }
+    } else {
+        kms.enforce_create_permission(user).await?;
+    }
+    Ok(())
+}
+
 #[cfg(not(feature = "non-fips"))]
 fn cryptographic_usage_mask_private_key(
     cryptographic_algorithm: CryptographicAlgorithm,
@@ -99,6 +137,7 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
             .as_ref()
             .and_then(|attributes| attributes.unique_identifier.clone())
             .unwrap_or_default();
+        authorize_destination_uid(kms, &certificate_id, user).await?;
         // see if there is a link to a private key (in case of self-signed cert)
         return Ok(Subject::X509Req(certificate_id, x509_req));
     }
@@ -122,6 +161,7 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
                         .as_ref()
                         .and_then(|attributes| attributes.unique_identifier.clone())
                         .unwrap_or_else(|| request_id.clone());
+                    authorize_destination_uid(kms, &certificate_id, user).await?;
                     return Ok(Subject::Certificate(
                         certificate_id,
                         kmip_certificate_to_openssl(owm.object())?,
@@ -162,8 +202,10 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
         let unwrapped_object =
             Box::pin(kms.get_unwrapped(public_key.id(), public_key.object(), user)).await?;
         public_key.set_object(unwrapped_object);
+        let certificate_id = attributes.unique_identifier.clone().unwrap_or_default();
+        authorize_destination_uid(kms, &certificate_id, user).await?;
         return Ok(Subject::PublicKeyAndSubjectName(
-            attributes.unique_identifier.clone().unwrap_or_default(),
+            certificate_id,
             public_key,
             subject_name,
         ));
@@ -218,8 +260,11 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
     )?;
     info!("Key pair created for certification");
 
+    let certificate_id = attributes.unique_identifier.clone().unwrap_or_default();
+    authorize_destination_uid(kms, &certificate_id, user).await?;
+
     Ok(Subject::KeypairAndSubjectName(
-        attributes.unique_identifier.clone().unwrap_or_default(),
+        certificate_id,
         KeyPairData {
             private_key_id: sk_uid,
             private_key_object: key_pair.private_key().to_owned(),
