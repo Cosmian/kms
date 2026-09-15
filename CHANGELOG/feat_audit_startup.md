@@ -50,5 +50,5 @@
 
 ---
 
-Supersedes [ADR-2026-07-09](documentation/docs/adr/2026-07-09-audit-log-single-writer-design.md)'s fail-fast startup design; see [ADR-2026-08-14](documentation/docs/adr/2026-08-14-audit-log-always-start-recovery.md) documenting the always-start /
+Supersedes ADR-0003's fail-fast startup design; see the new ADR documenting the always-start /
 route-by-cause recovery model.

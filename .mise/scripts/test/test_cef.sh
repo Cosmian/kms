@@ -79,12 +79,20 @@ echo "==> Exercising KMIP operations via ckms..."
 
 # Helper: run ckms with the test config and JSON output
 ckms_json() {
-  COSMIAN_KMS_CLI_FORMAT=json "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null
+  COSMIAN_KMS_CLI_FORMAT=json "${ckms_bin}" --conf-path "${ckms_conf}" "$@"
 }
 
-# Helper: run ckms with the test config (text output, errors allowed)
+# Helper: run ckms with the test config (errors not swallowed)
 ckms_run() {
-  "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null || true
+  "${ckms_bin}" --conf-path "${ckms_conf}" "$@"
+}
+
+# Helper: assert that a ckms command fails as expected
+ckms_run_fail() {
+  if "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null; then
+    echo "ERROR: expected ckms command to fail: $*" >&2
+    exit 1
+  fi
 }
 
 # Helper: extract UID from JSON create output
@@ -111,11 +119,11 @@ echo "         UID: ${SYM_UID}"
 
 # 2. Encrypt data → audit: Encrypt, Success
 echo "    [2/9] Encrypting data..."
-ckms_run sym encrypt "${PLAINTEXT}" --key-id "${SYM_UID}" --output "${ENCRYPTED}"
+ckms_run sym encrypt "${PLAINTEXT}" --key-id "${SYM_UID}" --output-file "${ENCRYPTED}"
 
 # 3. Decrypt data → audit: Decrypt, Success
 echo "    [3/9] Decrypting data..."
-ckms_run sym decrypt "${ENCRYPTED}" --key-id "${SYM_UID}" --output "${DECRYPTED}"
+ckms_run sym decrypt "${ENCRYPTED}" --key-id "${SYM_UID}" --output-file "${DECRYPTED}"
 
 # 4. Create AES-128 key → audit: Create, Success, different key size
 echo "    [4/9] Creating AES-128 key..."
@@ -125,15 +133,15 @@ echo "         UID: ${SYM2_UID}"
 
 # 5. Failed decrypt (wrong key for this ciphertext) → audit: Decrypt, Failure
 echo "    [5/9] Attempting decrypt with wrong key (expect failure)..."
-ckms_run sym decrypt "${ENCRYPTED}" --key-id "${SYM2_UID}" --output "${TMPDIR_CEF}/bad.bin"
+ckms_run_fail sym decrypt "${ENCRYPTED}" --key-id "${SYM2_UID}" --output-file "${TMPDIR_CEF}/bad.bin"
 
 # 6. Decrypt with non-existent key → audit: Failure, null/missing object_uid
 echo "    [6/9] Attempting decrypt with non-existent key (expect failure)..."
-ckms_run sym decrypt "${ENCRYPTED}" --key-id "non-existent-key-uid-99999" --output "${TMPDIR_CEF}/bad2.bin"
+ckms_run_fail sym decrypt "${ENCRYPTED}" --key-id "non-existent-key-uid-99999" --output-file "${TMPDIR_CEF}/bad2.bin"
 
 # 7. Revoke + destroy second key → audit: Revoke + Destroy, Success
 echo "    [7/9] Revoking and destroying second key..."
-ckms_run sym keys revoke --key-id "${SYM2_UID}"
+ckms_run sym keys revoke "test cleanup" --key-id "${SYM2_UID}"
 ckms_run sym keys destroy --key-id "${SYM2_UID}"
 
 # 8. Unauthenticated request → audit: 401 Unauthorized, severity 7
@@ -143,7 +151,7 @@ curl -s -o /dev/null "http://127.0.0.1:${KMS_PORT}/kmip/2_1" \
 
 # 9. Revoke + destroy first key → audit: Revoke + Destroy, Success
 echo "    [9/9] Revoking and destroying first key..."
-ckms_run sym keys revoke --key-id "${SYM_UID}"
+ckms_run sym keys revoke "test cleanup" --key-id "${SYM_UID}"
 ckms_run sym keys destroy --key-id "${SYM_UID}"
 
 # Clean up temp data

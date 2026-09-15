@@ -138,6 +138,7 @@ Each line in the JSONL file is a complete JSON object with the following fields:
 | `client_ip`   | `string` or `null`                       | Yes      | Source IP from `X-Forwarded-For` (if present) or the TCP peer address.                                                                           |
 | `result`      | `"Success"` or `{"Failure": "<reason>"}` | No       | Outcome of the operation.                                                                                                                        |
 | `duration_ms` | `integer`                                | No       | Wall-clock duration of the operation in milliseconds.                                                                                            |
+| `request_id`  | `string` (UUID) or `null`                | Yes      | Correlation ID across operations from the same request. `null` for synthetic events.                                                             |
 | `details`     | `string` or `null`                       | Yes      | Structured JSON payload attached to synthetic recovery events (`audit:torn-write-recovered`, `audit:reanchor`). `null` for ordinary KMIP events. |
 | `prev_hash`   | `string` (64 hex chars)                  | No       | SHA-256 of the previous row's canonical bytes. All-zeros for the first row (`id = 0`).                                                           |
 | `row_hash`    | `string` (64 hex chars)                  | No       | SHA-256 of this row's canonical bytes (including `prev_hash`).                                                                                   |
@@ -155,6 +156,7 @@ Each line in the JSONL file is a complete JSON object with the following fields:
   "client_ip": "127.0.0.1",
   "result": "Success",
   "duration_ms": 1,
+  "request_id": "c1f728c0-85f2-498c-8f47-9759d57a2745",
   "prev_hash": "e492c0f02860bc6c428259d44414651eda3aaaee2f48eb857144c940ac0fe909",
   "row_hash": "699a2837830af4a26fe79aeb48509fc707507e514da5850d953366a14e730c38"
 }
@@ -167,14 +169,14 @@ Each line in the JSONL file is a complete JSON object with the following fields:
 Every persisted event includes a SHA-256 hash chain that makes tampering detectable offline.
 
 The hash is computed over a canonical byte sequence of the event's fields:
-`id || timestamp || operation || user || object_uid || algorithm || client_ip || result || duration_ms || prev_hash`
+`id || timestamp || operation || user || object_uid || algorithm || client_ip || result || duration_ms || request_id || prev_hash`
 
 `prev_hash` of the first event (`id = 0`) is the 32-byte all-zeros sentinel.
 
 Any modification to a field in any row — including reordering rows, deleting rows, or appending
 forged rows — breaks at least one `prev_hash → row_hash` link and is detected by `ckms audit verify`.
 
-#### Durability
+### Durability
 
 Each write is followed by [`fsync()`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/fsync.html) to ensure data is physically written to disk. Events survive
 an OS crash or power failure as long as the storage medium has confirmed the write.
