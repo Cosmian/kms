@@ -277,7 +277,7 @@ impl Session {
         let (sk_handle, pk_handle) = self.generate_rsa_key_pair(
             sk_id.as_bytes(),
             pk_id.as_bytes(),
-            RsaKeySize::Rsa1024, //As the specific key size doesn't matter, use the smallest (fastest) algorithm supported.
+            RsaKeySize::Rsa2048,
             false,
         )?;
 
@@ -800,7 +800,7 @@ impl Session {
     ) -> HResult<EncryptedContent> {
         Ok(match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
-                let mut nonce = generate_random_nonce::<12>()?;
+                let mut nonce = [0_u8; AES_GCM_IV_LENGTH];
                 let mut params = CK_AES_GCM_PARAMS {
                     pIv: nonce.as_mut_ptr(),
                     ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
@@ -817,7 +817,7 @@ impl Session {
                 let ciphertext =
                     self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
                 EncryptedContent {
-                    iv: Some(nonce.to_vec()),
+                    iv: Some(nonce.into()),
                     ciphertext: ciphertext
                         .get(..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH)
                         .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?
