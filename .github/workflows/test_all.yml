@@ -93,9 +93,6 @@ jobs:
           # run non-fips only to avoid duplicating test time.
           - type: siem
             features: fips
-          # audit integration tests require non-fips (audit middleware + CEF features)
-          - type: audit
-            features: fips
         include:
           # Docker services required per test type (types without an entry need no containers)
           - type: psql
