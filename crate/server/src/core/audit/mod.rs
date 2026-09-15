@@ -1,4 +1,5 @@
 mod file_sink;
+mod recovery;
 mod store;
 mod writer;
 
