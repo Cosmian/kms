@@ -544,6 +544,8 @@ pub(crate) fn setup_new_key(
 ) -> KResult<()> {
     if let Ok(key_attrs) = key_object.attributes_mut() {
         key_attrs.name.clone_from(&replacement_attrs.name);
+        key_attrs.extractable = replacement_attrs.extractable;
+        key_attrs.sensitive = replacement_attrs.sensitive;
         key_attrs.set_link(
             LinkType::ReplacedObjectLink,
             LinkedObjectIdentifier::TextString(old_uid.to_owned()),
@@ -557,6 +559,18 @@ pub(crate) fn setup_new_key(
     }
 
     key_object.setup_with_lifecycle(object_type, replacement_attrs.activation_date)?;
+
+    // For SymmetricKey, PrivateKey, and SecretData, re-initialize NeverExtractable
+    // for the fresh key object based on its new Extractable setting (KMIP 2.1 §4.33).
+    if matches!(
+        object_type,
+        ObjectType::SymmetricKey | ObjectType::PrivateKey | ObjectType::SecretData
+    ) {
+        if let Ok(key_attrs) = key_object.attributes_mut() {
+            key_attrs.initialize_never_extractable();
+        }
+    }
+
     Ok(())
 }
 

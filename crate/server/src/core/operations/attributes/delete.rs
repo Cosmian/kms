@@ -3,7 +3,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::{
         KmipOperation,
         kmip_attributes::{Attribute, Attributes},
-        kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SymmetricKey},
         kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
         kmip_types::{AttributeReference, Tag, UniqueIdentifier},
     },
@@ -49,6 +48,7 @@ pub(crate) async fn delete_attribute(
         match &attribute {
             Attribute::UniqueIdentifier(_)
             | Attribute::ObjectType(_)
+            | Attribute::CryptographicLength(_)
             | Attribute::CertificateLength(_)
             | Attribute::Digest(_)
             | Attribute::State(_)
@@ -147,19 +147,13 @@ pub(crate) async fn delete_attribute(
                             .to_owned(),
                     ));
                 }
-                Attribute::CryptographicLength(length) => {
-                    if Some(length) == attributes.cryptographic_length {
-                        attributes.cryptographic_length = None;
-                        match owm.object_mut() {
-                            Object::SymmetricKey(SymmetricKey { key_block })
-                            | Object::PrivateKey(PrivateKey { key_block })
-                            | Object::PublicKey(PublicKey { key_block })
-                            | Object::SecretData(SecretData { key_block, .. }) => {
-                                key_block.cryptographic_length = None;
-                            }
-                            _ => {}
-                        }
-                    }
+                Attribute::CryptographicLength(_) => {
+                    return Err(KmsError::Kmip21Error(
+                        ErrorReason::Attribute_Read_Only,
+                        "DENIED: CryptographicLength is server-managed and cannot be deleted by the \
+                         user"
+                            .to_owned(),
+                    ));
                 }
                 Attribute::Link(requested_link) => {
                     attributes.remove_link(requested_link.link_type);

@@ -413,10 +413,8 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
 #[tokio::test]
 async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-        kmip_attributes::Attributes,
         kmip_data_structures::KeyWrappingSpecification,
-        kmip_objects::ObjectType,
-        kmip_operations::{Create, CreateResponse, Get},
+        kmip_operations::{CreateResponse, Get},
     };
 
     log_init(option_env!("RUST_LOG"));
@@ -425,18 +423,18 @@ async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
 
     // 1. Create a key with Extractable=false and attempt to pass conflicting NeverExtractable=false.
     // The server MUST override NeverExtractable to true at creation.
-    let attrs = Attributes {
-        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-        cryptographic_length: Some(256),
-        extractable: Some(false),
-        never_extractable: Some(false), // conflicting client value
-        ..Default::default()
-    };
-    let create_req = Create {
-        object_type: ObjectType::SymmetricKey,
-        attributes: attrs,
-        protection_storage_masks: None,
-    };
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::requests::symmetric_key_create_request;
+    let mut create_req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        Vec::<String>::new(),
+        false,
+        None,
+    )?;
+    create_req.attributes.extractable = Some(false);
+    create_req.attributes.never_extractable = Some(false); // conflicting client value
     let CreateResponse {
         unique_identifier, ..
     } = kms.create(create_req, &user).await?;
@@ -516,5 +514,134 @@ async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
         "NeverExtractable must latch to false and never revert to true"
     );
 
+    // 5. Rekey: Rekeying a previously-extractable key
+    // (Extractable=false, NeverExtractable=false) into a currently non-extractable replacement
+    // re-initializes NeverExtractable to true for the new key.
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::ReKey;
+    let rekey_res = kms
+        .rekey(
+            ReKey {
+                unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                offset: None,
+                attributes: None,
+                protection_storage_masks: None,
+            },
+            &user,
+        )
+        .await?;
+    let new_uid = rekey_res.unique_identifier.to_string();
+    let new_resp = get_attributes(&kms, &new_uid, Tag::NeverExtractable).await?;
+    assert_eq!(
+        new_resp.attributes.never_extractable,
+        Some(true),
+        "ReKey fresh symmetric key must initialize NeverExtractable to true when Extractable is false"
+    );
+
+    Ok(())
+}
+
+/// PKCS#12 export of a sensitive private key must reject dummy/empty wrapping specs
+/// that supply no encryption key password information.
+#[tokio::test]
+async fn test_pkcs12_sensitive_export_requires_non_empty_password() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::KeyWrappingSpecification,
+        kmip_operations::{Certify, Get},
+        kmip_types::{
+            CertificateAttributes, EncryptionKeyInformation, KeyFormatType, WrappingMethod,
+        },
+    };
+    log_init(option_env!("RUST_LOG"));
+    let kms = instantiate_kms().await?;
+    let user = UserId::from(USER);
+
+    // Generate an RSA keypair with private key marked Sensitive=true.
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::requests::create_rsa_key_pair_request;
+    let kp_req = create_rsa_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        Vec::<String>::new(),
+        2048,
+        true,
+        None,
+    )?;
+    let kp_res = kms.create_key_pair(kp_req, &user).await?;
+
+    let sk_uid = kp_res.private_key_unique_identifier.to_string();
+    let pk_uid = kp_res.public_key_unique_identifier.clone();
+
+    // Export private key directly as PKCS#12 with dummy wrapping spec (no encryption key info) -> denied Sensitive.
+    let dummy_wrapping_spec = KeyWrappingSpecification {
+        wrapping_method: WrappingMethod::Encrypt,
+        encryption_key_information: None,
+        ..Default::default()
+    };
+    let req = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(sk_uid.clone())),
+        key_wrapping_specification: Some(dummy_wrapping_spec.clone()),
+        key_compression_type: None,
+        key_format_type: Some(KeyFormatType::PKCS12),
+        key_wrap_type: None,
+    };
+    let err = kms.get(req, &user).await.unwrap_err();
+    assert!(
+        matches!(err, KmsError::Kmip21Error(ErrorReason::Sensitive, _)),
+        "PKCS#12 with dummy wrapping spec must be denied Sensitive, got: {err:?}"
+    );
+
+    // Export private key directly with empty password UID -> denied Sensitive.
+    let empty_pw_spec = KeyWrappingSpecification {
+        wrapping_method: WrappingMethod::Encrypt,
+        encryption_key_information: Some(EncryptionKeyInformation {
+            unique_identifier: UniqueIdentifier::TextString(String::new()),
+            cryptographic_parameters: None,
+        }),
+        ..Default::default()
+    };
+    let req2 = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(sk_uid.clone())),
+        key_wrapping_specification: Some(empty_pw_spec),
+        key_compression_type: None,
+        key_format_type: Some(KeyFormatType::PKCS12),
+        key_wrap_type: None,
+    };
+    let err2 = kms.get(req2, &user).await.unwrap_err();
+    assert!(
+        matches!(err2, KmsError::Kmip21Error(ErrorReason::Sensitive, _)),
+        "PKCS#12 with empty password must be denied Sensitive, got: {err2:?}"
+    );
+
+    // Export certificate target (which links to the sensitive private key) as PKCS#12
+    let cert_attrs = Attributes {
+        certificate_attributes: Some(CertificateAttributes::parse_subject_line(
+            "C=FR, O=KMS Test, CN=Cert Sensitive PKCS12",
+        )?),
+        ..Default::default()
+    };
+    let cert_res = kms
+        .certify(
+            Certify {
+                unique_identifier: Some(pk_uid),
+                attributes: Some(cert_attrs),
+                ..Certify::default()
+            },
+            &user,
+        )
+        .await?;
+    let cert_uid = cert_res.unique_identifier.to_string();
+
+    let req_cert = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(cert_uid)),
+        key_wrapping_specification: Some(dummy_wrapping_spec),
+        key_compression_type: None,
+        key_format_type: Some(KeyFormatType::PKCS12),
+        key_wrap_type: None,
+    };
+    let err_cert = kms.get(req_cert, &user).await.unwrap_err();
+    assert!(
+        matches!(err_cert, KmsError::Kmip21Error(ErrorReason::Sensitive, _)),
+        "Certificate->linked sensitive private key PKCS#12 export with dummy wrapping spec must be denied Sensitive, got: {err_cert:?}"
+    );
     Ok(())
 }
