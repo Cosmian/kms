@@ -1,0 +1,56 @@
+---
+name: Audit JSONL compatibility — OpenSearch
+
+on:
+  pull_request:
+    paths:
+      - .mise/scripts/test/validate_audit_compat.py
+      - .mise/scripts/test/generate_live_audit_fixture.sh
+      - .mise/scripts/test/requirements-audit-compat.txt
+      - .mise/scripts/test/fixtures/**
+      - schemas/kms-audit-*.json
+      - .mise/tasks/test/audit-compat-opensearch
+      - .mise/tasks/test/audit-compat-generate-fixture
+      - .mise/lib/common.sh
+      - .mise/lib/kms_build.sh
+      - .mise/lib/kms_server.sh
+      - crate/access/src/audit/**
+      - crate/server/src/middlewares/audit.rs
+      - .github/workflows/audit-compat-opensearch.yml
+  workflow_dispatch:
+
+jobs:
+  opensearch-compat:
+    name: OpenSearch ingestion compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Read Rust toolchain version
+        id: toolchain
+        run: echo "version=$(grep '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.version }}
+
+      - name: Cache Cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-audit-compat-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Generate a live KMS JSONL audit fixture
+        run: mise run test:audit-compat-generate-fixture --output /tmp/kms-audit-live.jsonl
+
+      - name: Run OpenSearch audit JSONL compatibility test
+        run: mise run test:audit-compat-opensearch --file /tmp/kms-audit-live.jsonl

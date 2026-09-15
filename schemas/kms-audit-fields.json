@@ -1,0 +1,109 @@
+{
+  "$comment": "Field list for the KMS local JSONL audit trail (crate/access/src/audit/, feat/audit_and_siem, PR #934). Field names below are the REAL names emitted by the KMS, verified against the sample line shared in PR #934: {\"id\":0,\"timestamp\":\"2026-07-20T19:02:25.605113314Z\",\"operation\":\"Create\",\"user\":\"admin\",\"object_uid\":\"...\",\"algorithm\":\"AES\",\"client_ip\":\"127.0.0.1\",\"result\":\"Success\",\"duration_ms\":4,\"request_id\":\"...\",\"prev_hash\":\"...\",\"row_hash\":\"...\"}. They differ from the originally-requested conceptual names (event_type/actor/object_id) — the mapping is recorded in 'conceptual_alias' below for traceability.",
+  "schema_version": "1.0.0",
+  "source": "https://github.com/Cosmian/kms/pull/934",
+  "line_format": "jsonl",
+  "fields": [
+    {
+      "name": "id",
+      "conceptual_alias": null,
+      "type": "integer",
+      "required": true,
+      "nullable": false,
+      "description": "Monotonically increasing sequence number of the audit row."
+    },
+    {
+      "name": "timestamp",
+      "conceptual_alias": "timestamp",
+      "type": "string",
+      "format": "date-time",
+      "required": true,
+      "nullable": false,
+      "description": "RFC 3339 timestamp with nanosecond precision, UTC (Z suffix)."
+    },
+    {
+      "name": "operation",
+      "conceptual_alias": "event_type",
+      "type": "string",
+      "required": true,
+      "nullable": false,
+      "description": "KMIP operation name (e.g. Create, Encrypt, Decrypt) or \"kmip\" for malformed/unrouted requests."
+    },
+    {
+      "name": "user",
+      "conceptual_alias": "actor",
+      "type": "string",
+      "required": true,
+      "nullable": false,
+      "description": "Authenticated user id (or default_username) performing the operation."
+    },
+    {
+      "name": "object_uid",
+      "conceptual_alias": "object_id",
+      "type": "string",
+      "required": true,
+      "nullable": true,
+      "description": "UUID of the targeted KMIP object. Null when the operation could not be routed to an object (e.g. malformed request)."
+    },
+    {
+      "name": "algorithm",
+      "conceptual_alias": null,
+      "type": "string",
+      "required": true,
+      "nullable": true,
+      "description": "Cryptographic algorithm of the targeted object, when known."
+    },
+    {
+      "name": "client_ip",
+      "conceptual_alias": null,
+      "type": "string",
+      "format": "ip",
+      "required": true,
+      "nullable": false,
+      "description": "Caller IP address (direct peer, or trusted reverse-proxy XFF value)."
+    },
+    {
+      "name": "result",
+      "conceptual_alias": "result",
+      "type": ["string", "object"],
+      "required": true,
+      "nullable": false,
+      "description": "\"Success\", or an object {\"Failure\": \"<http status + reason>\"} on error. Polymorphic — normalized to result_status/result_detail before ingestion into either backend, see .mise/scripts/test/validate_audit_compat.py."
+    },
+    {
+      "name": "duration_ms",
+      "conceptual_alias": null,
+      "type": "integer",
+      "required": true,
+      "nullable": false,
+      "description": "Operation duration in milliseconds."
+    },
+    {
+      "name": "request_id",
+      "conceptual_alias": null,
+      "type": "string",
+      "format": "uuid",
+      "required": true,
+      "nullable": false,
+      "description": "Correlation id for the originating HTTP request."
+    },
+    {
+      "name": "prev_hash",
+      "conceptual_alias": null,
+      "type": "string",
+      "required": true,
+      "nullable": false,
+      "description": "Hash of the previous audit row (hash-chain, tamper-evidence)."
+    },
+    {
+      "name": "row_hash",
+      "conceptual_alias": null,
+      "type": "string",
+      "required": true,
+      "nullable": false,
+      "description": "Hash of this row, computed over its fields + prev_hash."
+    }
+  ],
+  "splunk_required_keys_check": ["operation", "user", "result_status"],
+  "splunk_no_timestamp_sourcetype": "_json_no_timestamp"
+}
