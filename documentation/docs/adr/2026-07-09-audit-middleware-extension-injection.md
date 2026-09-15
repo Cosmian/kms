@@ -1,5 +1,5 @@
 ---
-title: "ADR-0004: HTTP-Layer Audit Middleware with Actix Extension Injection"
+title: "ADR-2026-07-09: HTTP-Layer Audit Middleware with Actix Extension Injection"
 status: "Accepted"
 date: "2026-07-09"
 authors: "contributors, security architects, compliance engineers"
@@ -8,7 +8,7 @@ supersedes: ""
 superseded_by: ""
 ---
 
-# ADR-0004: HTTP-Layer Audit Middleware with Actix Extension Injection
+# ADR-2026-07-09: HTTP-Layer Audit Middleware with Actix Extension Injection
 
 ## Status
 
@@ -17,7 +17,7 @@ Accepted
 ## Context
 
 Every KMIP operation — including authentication failures — must produce an audit event
-(see ADR-0003). The challenge is _where_ in the call stack to intercept it. The KMS has
+(see [ADR-2026-07-09](2026-07-09-audit-log-single-writer-design.md)). The challenge is _where_ in the call stack to intercept it. The KMS has
 a layered architecture:
 
 ```text
@@ -65,9 +65,10 @@ structured context into the Actix request extensions:
 
 | Extension type      | Populated by  | Content                                       |
 | ------------------- | ------------- | --------------------------------------------- |
-| `KmipOperationName` | TTLV parser   | `"Encrypt"`, `"Create"`, `"Create+Destroy"` … |
+| `KmipOperationName` | TTLV parser   | `"Encrypt"`, `"Create"`, …                   |
 | `KmipObjectUid`     | route handler | UID from request or server-assigned (Create)  |
 | `KmipAlgorithm`     | route handler | `"AES"`, `"RSA"`, …                           |
+| `KmipBatchOperations` | route handler | Per-item operation, UID, algorithm, and result |
 
 The outer middleware reads these extensions when composing the `AuditEventDraft`. If an
 extension is absent (e.g. non-KMIP endpoint, or extraction failed) the field defaults to
@@ -77,20 +78,21 @@ extension is absent (e.g. non-KMIP endpoint, or extraction failed) the field def
 parsing failure returns `None`; it never propagates an error to the response or panics.
 Audit context extraction is best-effort; the KMIP response is authoritative.
 
-### Current state vs. full design
+### Extraction boundaries
 
-`KmipObjectUid` and `KmipAlgorithm` injection are defined and exported but not yet
-populated by all operation handlers (tracked as T1 in `tradeoofs.md`). The extension
-mechanism is in place; filling it is incremental per-operation work.
+The route layer calls the extraction logic for every KMIP request.
+Object UID and algorithm values are populated when the operation's request or response TTLV
+contains them in a supported location; otherwise they remain absent.
+Batch requests carry one context per `BatchItem`, and response fields are backfilled after
+dispatch.
 
 ## Consequences
 
 ### Positive
 
 - **POS-001**: Authentication failures (401/403) are audited with no per-handler changes.
-- **POS-002**: Adding audit coverage to a new KMIP operation requires only populating
-  `KmipObjectUid` and `KmipAlgorithm` extensions — no changes to the audit middleware
-  or the storage layer.
+- **POS-002**: Adding extraction for another KMIP operation requires extending the route-layer
+  TTLV extractor, without changing the audit middleware or storage layer.
 - **POS-003**: The middleware is a zero-overhead pass-through when audit is disabled.
 - **POS-004**: Infallibility guarantees that a buggy TTLV extractor never breaks the
   KMIP response.
@@ -98,15 +100,13 @@ mechanism is in place; filling it is incremental per-operation work.
 
 ### Negative
 
-- **NEG-001**: Until all handlers inject `KmipObjectUid`, the field is `None` — the log
-  cannot answer "which key was used", failing FIPS key lifecycle accountability and
-  PCI-DSS 10.2.1.2 (tracked: T1).
-- **NEG-002**: Batch `RequestMessage` with N `BatchItems` produces one audit event.
-  Per-item granularity requires a different enqueue API (tracked: T2).
-- **NEG-003**: The `client_ip` is taken from `X-Forwarded-For` without validating the
-  peer IP against a trusted-proxy allowlist — spoofable (tracked: T7).
+- **NEG-001**: Unsupported or unexpected TTLV layouts degrade `object_uid` or `algorithm` to
+  `None`; audit extraction never changes the KMIP response.
+- **NEG-002**: Batch request and response items are correlated by position rather than
+  `UniqueBatchItemID`.
+- **NEG-003**: Client IP attribution depends on correct trusted-proxy CIDR configuration.
 - **NEG-004**: Middleware ordering is implicit in `start_kms_server.rs` registration
-  order; a future reordering could accidentally exclude auth-failure events.
+  order; integration tests must continue guarding auth-failure coverage.
 
 ## Alternatives Considered
 
@@ -144,18 +144,15 @@ mechanism is in place; filling it is incremental per-operation work.
 - **IMP-001**: Middleware: `crate/server/src/middlewares/audit.rs`
 - **IMP-002**: Extension types exported from `crate/server/src/middlewares/mod.rs`
 - **IMP-003**: Injection site: `crate/server/src/routes/kmip/audit.rs`
-  (`inject_kmip_audit_context()` called from KMIP route handlers)
+  (`inject_audit_request()` called from `crate/server/src/routes/kmip/handlers.rs`)
 - **IMP-004**: Middleware registration: `crate/server/src/start_kms_server.rs`
-  (`.wrap(AuditMiddleware::new(audit_store.clone(), trusted_proxy_cidrs.clone()))` before `.wrap(cors)`)
-- **IMP-005**: To fill T1 — inject `KmipObjectUid` from each operation handler's
-  request/response TTLV; see `tradeoofs.md` and `.agents/prompts/fill-audit-object-uid.md`
-- **IMP-006**: Infallibility rule: all functions in `routes/kmip/audit.rs` must be
-  `fn f(..) -> Option<String>` or return a fallback — never `KResult`.
+  (`AuditMiddleware::new` receives the store, trusted-proxy CIDRs, and failure mode)
+- **IMP-005**: Infallibility rule: all extraction functions in
+  `crate/server/src/routes/kmip/audit.rs` return `Option` values or fallbacks, never `KResult`.
 
 ## References
 
-- **REF-001**: ADR-0003 — Tamper-Evident JSONL Audit Log (storage layer decisions)
+- **REF-001**: [ADR-2026-07-09: Tamper-Evident JSONL Audit Log — Single-Writer Architecture](2026-07-09-audit-log-single-writer-design.md) (storage layer decisions)
 - **REF-002**: Actix-web middleware docs — `Transform` / `Service` pattern
-- **REF-003**: `tradeoofs.md` T1, T2, T7 — known gaps in this design
-- **REF-004**: `crate/server/src/middlewares/audit.rs` — "Design decisions" doc comment
-- **REF-005**: `crate/server/src/start_kms_server.rs` — middleware registration order
+- **REF-003**: `crate/server/src/middlewares/audit.rs`
+- **REF-004**: `crate/server/src/start_kms_server.rs` — middleware registration order

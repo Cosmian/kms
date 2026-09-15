@@ -1,14 +1,14 @@
 ---
-title: "ADR-0003: Two-Tier Cache Architecture for KMS Object Retrieval"
+title: "ADR-2026-07-08: Two-Tier Cache Architecture for KMS Object Retrieval"
 status: "Accepted"
 date: "2026-07-08"
 authors: "contributors, security architects, operators"
 tags: ["architecture", "decision", "performance", "security", "cache"]
-supersedes: "0001-unwrapped-cache-configurable-max-size.md"
+supersedes: "2026-06-26-unwrapped-cache-configurable-max-size.md"
 superseded_by: ""
 ---
 
-# ADR-0003: Two-Tier Cache Architecture for KMS Object Retrieval
+# ADR-2026-07-08: Two-Tier Cache Architecture for KMS Object Retrieval
 
 ## Status
 
@@ -186,7 +186,7 @@ across Actix-web worker threads with no serialization overhead.
 
 ## References
 
-- **REF-001**: ADR-0001 — Configurable `UnwrappedCache` max size (superseded by
+- **REF-001**: [ADR-2026-06-26: Configurable UnwrappedCache max size](2026-06-26-unwrapped-cache-configurable-max-size.md) (superseded by
   this ADR which generalizes all cache configuration parameters).
 - **REF-002**: [moka crate documentation](https://docs.rs/moka/latest/moka/future/struct.Cache.html)
 - **REF-003**: [CacheFX paper — Cache Side-Channels in Key Management Systems](https://arxiv.org/abs/2010.02432)

@@ -92,46 +92,60 @@ ckms audit export \
 
 ## ckms audit verify
 
-Verify the SHA-256 hash chain of a JSONL audit log file.
+Verify the SHA-256 hash chain of a JSONL audit log file, or every JSONL file in a directory.
 
 Checks that:
 
 1. Each event's `row_hash` matches a freshly computed hash of its fields.
 2. Each event's `prev_hash` matches the `row_hash` of the previous event (or is all-zeros for the first event).
+3. Every `audit:reanchor` event's sealed evidence file still exists next to the log and its
+   SHA-256 still matches the digest recorded in the event — this is what makes deleting or
+   altering sealed evidence after the fact detectable.
 
-Exits with code **0** when the chain is intact, or **1** when a broken link is detected.
+Exits with code **0** when every chain is intact, or **1** when a broken link, tampered event, or
+altered/missing sealed-evidence file is detected.
 
 ### Usage
 
-`ckms audit verify --path <FILE> [options]`
+`ckms audit verify --path <FILE|DIRECTORY> [options]`
 
 #### Arguments
 
-`--path [-p] <FILE>` Path to the JSONL audit log file.
-_Required._ Can also be set via `KMS_AUDIT_FILE_PATH`.
+`--path [-p] <FILE|DIRECTORY>` Path to a JSONL audit log file, or a directory containing one or
+more. A directory is scanned for every non-sealed `*.jsonl` file, each verified as its own
+**independent** chain. Sealed `*.corrupt.jsonl` evidence files are intentionally not verified
+as chains — their corruption is why they were sealed — but are SHA-256 checked through the live
+log's `audit:reanchor` record. _Required._ Can also be set via `KMS_AUDIT_FILE_PATH`.
 
 `--verbose` Print a summary line for every event even when the chain is valid.
 _Default: false._
 
 #### Exit codes
 
-| Code | Meaning                                 |
-| ---- | --------------------------------------- |
-| `0`  | All events verified — chain is intact.  |
-| `1`  | A tampered or broken link was detected. |
+| Code | Meaning                                                                        |
+| ---- | ------------------------------------------------------------------------------- |
+| `0`  | All events (and, for reanchor events, all sealed evidence) verified — intact.   |
+| `1`  | A tampered/broken link, or missing/altered sealed evidence, was detected.       |
 
 #### Output examples
 
 Chain intact:
 
 ```text
-Verified 42 events. Chain is intact.
+/var/log/cosmian-kms/audit.jsonl: chain OK: 42 events verified
 ```
 
 Tampered file:
 
 ```text
-TAMPERED: event id=17 row_hash mismatch
+TAMPERED: /var/log/cosmian-kms/audit.jsonl event id=17 (line 18) has an invalid row_hash
+```
+
+Missing sealed evidence (a `seal-and-roll` recovery's corrupted file was deleted or moved):
+
+```text
+MISSING EVIDENCE: /var/log/cosmian-kms/audit.jsonl: reanchor event id=0 references sealed file
+audit.20260814T140233Z.9f3ac1b2.corrupt.jsonl which no longer exists
 ```
 
 Verbose mode:
@@ -148,6 +162,12 @@ Verify a log file and fail CI if the chain is broken:
 
 ```bash
 ckms audit verify --path /var/log/cosmian-kms/audit.jsonl
+```
+
+Verify every live JSONL chain in a directory; sealed evidence is checked through its reanchor:
+
+```bash
+ckms audit verify --path /var/log/cosmian-kms/
 ```
 
 Verbose verification for debugging:
