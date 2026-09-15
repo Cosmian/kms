@@ -87,6 +87,12 @@
   message-based AES-GCM round trip. Gated purely behind `#[ignore]`, like every other
   vendor HSM suite (no Cargo feature — `kryoptic` is never a real dependency). Run via
   `mise run test:hsm-kryoptic-conformance`
+- Rename the sole `#[test]` in `tests/kryoptic_conformance.rs` from
+  `test_kryoptic_pkcs11_v3_conformance_suite` to `kryoptic_conformance` so it matches
+  the integration-test target/file name. Previously, `cargo test kryoptic_conformance`
+  (name-substring filter, without `-p`/`--test`) selected 0 tests, making the suite
+  look like it "did not exist" even though `--test kryoptic_conformance` (target name)
+  always found and ran it
 - Add the `hsm-kryoptic-conformance` entry to the `test-nix` job's matrix in
   `.github/workflows/test_all.yml` (fips only, no hardware/secrets required — does not
   need the concurrency-limited vendor HSM matrix), reusing the same

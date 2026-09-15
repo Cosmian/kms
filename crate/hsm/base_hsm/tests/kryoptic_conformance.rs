@@ -344,7 +344,7 @@ fn check_message_based_aes_gcm_round_trip(hsm: &BaseHsm<KryopticCapabilityProvid
 /// process").
 #[test]
 #[ignore = "Requires network access + cargo/curl/tar to build kryoptic out-of-tree"]
-fn test_kryoptic_pkcs11_v3_conformance_suite() {
+fn kryoptic_conformance() {
     configure_kryoptic_token();
     let lib_path = kryoptic_pkcs11_lib_path();
     // Kept alive for the whole test: see `bootstrap_kryoptic_token`'s doc comment.
