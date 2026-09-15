@@ -47,6 +47,50 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
+/// Validate that the object may be exported/retrieved given its Sensitive,
+/// Extractable, and NeverExtractable attributes.
+///
+/// Per KMIP 1.4 §3.48 / 2.1 §4.54 (Sensitive): sensitive objects cannot leave in plaintext.
+/// Per KMIP 1.4 §3.50 / 2.1 §4.23 (Extractable): non-extractable keys cannot be exported
+/// in any form (plaintext or encrypted).
+fn check_extractable_and_sensitive(
+    owm: &ObjectWithMetadata,
+    key_wrapping_specification: &Option<KeyWrappingSpecification>,
+    is_pkcs12: bool,
+) -> KResult<()> {
+    // Extractable=false or NeverExtractable=true (defensive latch check) forbids export completely.
+    if owm.attributes().extractable == Some(false)
+        || owm.attributes().never_extractable == Some(true)
+    {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Not_Extractable,
+            "DENIED".to_owned(),
+        ));
+    }
+
+    // Sensitive objects cannot be returned without wrapping.
+    // For PKCS#12 export, the password is recovered from the key wrapping spec's
+    // encryption_key_information. A dummy wrapping spec with no password would yield
+    // an empty password and return sensitive key material unprotected.
+    let is_wrapped = if is_pkcs12 {
+        key_wrapping_specification
+            .as_ref()
+            .and_then(|kws| kws.encryption_key_information.as_ref())
+            .is_some_and(|eki| !eki.unique_identifier.to_string().is_empty())
+    } else {
+        key_wrapping_specification.is_some()
+    };
+
+    if owm.attributes().sensitive == Some(true) && !is_wrapped {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Sensitive,
+            "DENIED".to_owned(),
+        ));
+    }
+
+    Ok(())
+}
+
 /// Export an object
 ///
 /// This function is used by the KMIP Export and Get operations
@@ -73,14 +117,7 @@ pub(crate) async fn export_get(
     trace!(target: "kmip", "retrieved object uid={} type={:?} state={:?} key_fmt={:?}",
         owm.id(), owm.object().object_type(), owm.state(), owm.object().key_block().ok().map(|kb| kb.key_format_type));
 
-    // The object cannot be returned (Get/Export) if it is sensitive and not wrapped.
-    // Per KMIP Profiles vector BL-M-12-21 the server must return ResultReason=Sensitive and message DENIED.
-    if owm.attributes().sensitive == Some(true) && request.key_wrapping_specification.is_none() {
-        return Err(KmsError::Kmip21Error(
-            ErrorReason::Sensitive,
-            "DENIED".to_owned(),
-        ));
-    }
+    check_extractable_and_sensitive(&owm, &request.key_wrapping_specification, false)?;
 
     // Revoked (Deactivated / Compromised) objects must NOT be accessible via Get (without
     // allow_revoked). The client uses Export with allow_revoked=true when retrieval of a revoked
@@ -296,6 +333,11 @@ pub(crate) async fn export_get(
                         user,
                     )
                     .await?;
+                    check_extractable_and_sensitive(
+                        &owm,
+                        &request.key_wrapping_specification,
+                        true,
+                    )?;
                     Box::pin(post_process_private_key(
                         kms,
                         operation_type,
@@ -424,6 +466,9 @@ async fn post_process_private_key(
 
     #[cfg(not(feature = "non-fips"))]
     let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
+    if is_pkcs12 {
+        check_extractable_and_sensitive(owm, &request.key_wrapping_specification, true)?;
+    }
     // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
     trace!("post_process_private_key: operation type: {operation_type:?}");
     if (operation_type == KmipOperation::Export)

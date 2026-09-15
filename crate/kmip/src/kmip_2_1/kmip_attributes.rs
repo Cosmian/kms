@@ -485,6 +485,15 @@ impl Attributes {
         self
     }
 
+    /// Initialize the `NeverExtractable` attribute at object creation time
+    /// (KMIP 2.1 §4.33 / KMIP 1.4 §3.51).
+    ///
+    /// It is server-managed and set to `True` iff `Extractable` is `False`.
+    pub fn initialize_never_extractable(&mut self) -> &mut Self {
+        self.never_extractable = Some(self.extractable == Some(false));
+        self
+    }
+
     /// Apply a change to the client-modifiable `Sensitive` attribute and
     /// recompute the server-managed `AlwaysSensitive` attribute accordingly
     /// (KMIP 2.1 §4.3).

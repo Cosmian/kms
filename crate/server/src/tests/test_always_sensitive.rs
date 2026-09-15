@@ -406,3 +406,115 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
 
     Ok(())
 }
+
+/// Keys marked Extractable=false cannot be exported in plaintext or wrapped form,
+/// NeverExtractable latches server-side, and client-supplied NeverExtractable values
+/// are overridden at creation time (GHSA-8mmx-f92q-2gq8).
+#[tokio::test]
+async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::KeyWrappingSpecification,
+        kmip_objects::ObjectType,
+        kmip_operations::{Create, CreateResponse, Get},
+    };
+
+    log_init(option_env!("RUST_LOG"));
+    let kms = instantiate_kms().await?;
+    let user = UserId::from(USER);
+
+    // 1. Create a key with Extractable=false and attempt to pass conflicting NeverExtractable=false.
+    // The server MUST override NeverExtractable to true at creation.
+    let attrs = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        cryptographic_length: Some(256),
+        extractable: Some(false),
+        never_extractable: Some(false), // conflicting client value
+        ..Default::default()
+    };
+    let create_req = Create {
+        object_type: ObjectType::SymmetricKey,
+        attributes: attrs,
+        protection_storage_masks: None,
+    };
+    let CreateResponse {
+        unique_identifier, ..
+    } = kms.create(create_req, &user).await?;
+    let uid = unique_identifier.to_string();
+
+    // Verify NeverExtractable is true (unconditionally initialized server-side).
+    let response = get_attributes(&kms, &uid, Tag::NeverExtractable).await?;
+    assert_eq!(
+        response.attributes.never_extractable,
+        Some(true),
+        "NeverExtractable must be initialized to true when Extractable is false"
+    );
+
+    // 2. Get with no wrapping spec -> rejected with Not_Extractable.
+    let get_req_plain = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+        key_wrapping_specification: None,
+        key_compression_type: None,
+        key_format_type: None,
+        key_wrap_type: None,
+    };
+    let err_plain = kms.get(get_req_plain, &user).await.unwrap_err();
+    assert!(
+        matches!(
+            err_plain,
+            KmsError::Kmip21Error(ErrorReason::Not_Extractable, _)
+        ),
+        "expected Not_Extractable on unwrapped Get, got: {err_plain:?}"
+    );
+
+    // 3. Get WITH wrapping spec -> still rejected with Not_Extractable.
+    let get_req_wrapped = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+        key_wrapping_specification: Some(KeyWrappingSpecification::default()),
+        key_compression_type: None,
+        key_format_type: None,
+        key_wrap_type: None,
+    };
+    let err_wrapped = kms.get(get_req_wrapped, &user).await.unwrap_err();
+    assert!(
+        matches!(
+            err_wrapped,
+            KmsError::Kmip21Error(ErrorReason::Not_Extractable, _)
+        ),
+        "expected Not_Extractable even with wrapping spec, got: {err_wrapped:?}"
+    );
+
+    // 4. Latch behavior: Set Extractable=true -> NeverExtractable latches to false.
+    kms.set_attribute(
+        SetAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+            new_attribute: Attribute::Extractable(true),
+        },
+        &user,
+    )
+    .await?;
+    let resp = get_attributes(&kms, &uid, Tag::NeverExtractable).await?;
+    assert_eq!(
+        resp.attributes.never_extractable,
+        Some(false),
+        "NeverExtractable must transition to false when Extractable becomes true"
+    );
+
+    // Set Extractable=false again -> NeverExtractable must STAY false.
+    kms.set_attribute(
+        SetAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+            new_attribute: Attribute::Extractable(false),
+        },
+        &user,
+    )
+    .await?;
+    let resp = get_attributes(&kms, &uid, Tag::NeverExtractable).await?;
+    assert_eq!(
+        resp.attributes.never_extractable,
+        Some(false),
+        "NeverExtractable must latch to false and never revert to true"
+    );
+
+    Ok(())
+}
