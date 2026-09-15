@@ -19,16 +19,18 @@ Unlike `mise bench:load` (which load-tests the KMIP REST API directly through
   actually use the provider. Pass `--shared-session` to instead force every thread
   onto a single shared handle, reproducing the pre-fix
   everyone-serializes-on-one-lock behavior for direct before/after comparison.
-- Provisions one AES secret key, one RSA key pair, one EC P-256 key pair, and one
-  Ed25519 key pair in the target KMS via the REST API (`src/setup.rs`) before the
-  Cryptoki hot loop starts.
+- Provisions one AES secret key, one RSA key pair, one EC P-256 key pair, and
+  (opt-in, when a matching mode is selected) one Ed25519 and/or one secp256k1 key
+  pair in the target KMS via the REST API (`src/setup.rs`) before the Cryptoki hot
+  loop starts.
 - Sweeps a list of concurrency levels **independently for each operation**
   (`encrypt`, `decrypt`, `sign-rsa`, `verify-rsa`, `sign-ecdsa`, `verify-ecdsa`,
-  `sign-eddsa`, `verify-eddsa`, `key-creation`), reporting throughput and
-  p50/p95/p99 latency per level (`src/load.rs`) — mirroring `mise bench:load`'s own
-  per-operation granularity rather than timing a combined round trip. `--mode sign`
-  and `--mode verify` are aggregate shortcuts that run every signature algorithm
-  (RSA, ECDSA, and — in `non-fips` builds — EdDSA) in sequence.
+  `sign-secp256k1`, `verify-secp256k1`, `sign-eddsa`, `verify-eddsa`,
+  `key-creation`), reporting throughput and p50/p95/p99 latency per level
+  (`src/load.rs`) — mirroring `mise bench:load`'s own per-operation granularity
+  rather than timing a combined round trip. `--mode sign` and `--mode verify` are
+  aggregate shortcuts that run every signature algorithm (RSA, ECDSA, and — in
+  `non-fips` builds — secp256k1 and EdDSA) in sequence.
 - Writes `load_pkcs11.json` in the same schema as `mise bench:load`
   (`src/report.rs`), so the shared report pipeline
   (`.mise/lib/bench_helpers.sh::bench_generate_report` +
@@ -49,6 +51,7 @@ mise run bench:load-pkcs11 --sanity               # quick smoke test
 mise run bench:load-pkcs11                        # full sweep, mode=all
 mise run bench:load-pkcs11 --mode sign --time 30 --concurrency 1,2,4,8    # every signature algorithm
 mise run bench:load-pkcs11 --mode sign-ecdsa --time 30 --concurrency 1,2,4,8
+mise run bench:load-pkcs11 --mode sign-secp256k1 --time 30 --concurrency 1,2,4,8   # non-FIPS only
 mise run bench:load-pkcs11 --criterion --speed quick   # full sweep + fast single-op latency
 ```
 
@@ -143,16 +146,25 @@ the report table, its own SVG chart — never combined into a single round trip.
 | --------------- | ---------------------------------------------------------------- |
 | `encrypt`       | `C_EncryptInit`/`C_Encrypt` (AES-CBC-PAD)                          |
 | `decrypt`       | `C_DecryptInit`/`C_Decrypt` (AES-CBC-PAD, against ciphertext produced once during setup, not timed) |
-| `sign`          | Every signature algorithm below (`sign-rsa`, `sign-ecdsa`, and — in `non-fips` builds — `sign-eddsa`), run one after another |
-| `verify`        | Every verify algorithm below (`verify-rsa`, `verify-ecdsa`, and — in `non-fips` builds — `verify-eddsa`), run one after another |
+| `sign`          | Every signature algorithm below (`sign-rsa`, `sign-ecdsa`, and — in `non-fips` builds — `sign-secp256k1` and `sign-eddsa`), run one after another |
+| `verify`        | Every verify algorithm below (`verify-rsa`, `verify-ecdsa`, and — in `non-fips` builds — `verify-secp256k1` and `verify-eddsa`), run one after another |
 | `sign-rsa`      | `C_SignInit`/`C_Sign` (RSA, `CKM_SHA256_RSA_PKCS`)                 |
 | `verify-rsa`    | `C_VerifyInit`/`C_Verify` (RSA, `CKM_SHA256_RSA_PKCS`) — skipped with a console notice if the loaded provider does not implement it (see below) |
 | `sign-ecdsa`    | `C_SignInit`/`C_Sign` (EC P-256, `CKM_ECDSA` — a pre-computed SHA-256 digest; the mechanism itself performs no hashing) |
 | `verify-ecdsa`  | `C_VerifyInit`/`C_Verify` (EC P-256, `CKM_ECDSA`) — skipped with a console notice if the loaded provider does not implement it (see below) |
+| `sign-secp256k1`   | `C_SignInit`/`C_Sign` (EC secp256k1, `CKM_ECDSA` — same mechanism as P-256). Non-FIPS only: secp256k1 is not a FIPS-approved curve |
+| `verify-secp256k1` | `C_VerifyInit`/`C_Verify` (EC secp256k1, `CKM_ECDSA`) — skipped with a console notice if the loaded provider does not implement it (see below). Non-FIPS only |
 | `sign-eddsa`    | PKCS#11 v3 `C_MessageSignInit` once, then `C_SignMessage` per Ed25519 message |
 | `verify-eddsa`  | `C_VerifyInit`/`C_Verify` (Ed25519, `CKM_EDDSA`) — skipped with a console notice if the loaded provider does not implement it (see below) |
 | `key-creation`  | `C_GenerateKey` + `C_DestroyObject` (ephemeral AES key)            |
 | `all` (default) | Runs every mode above in sequence                                  |
+
+P-256 and secp256k1 keys both report `CK_KEY_TYPE` `CKK_EC` — unlike RSA/Ed25519,
+which each get their own distinct `CK_KEY_TYPE` — so `sign-ecdsa`/`verify-ecdsa`
+and `sign-secp256k1`/`verify-secp256k1` disambiguate which EC key pair to use by
+also matching `CKA_EC_PARAMS` (the DER-encoded curve OID) rather than relying on
+`CK_KEY_TYPE` alone (`Pkcs11Session::find_first_by_class_key_type_and_ec_params`,
+`src/loader.rs`).
 
 One Cryptoki function is not implemented by `cosmian_pkcs11_module`
 (`crate/clients/pkcs11/module/src/pkcs11.rs`, registered via its

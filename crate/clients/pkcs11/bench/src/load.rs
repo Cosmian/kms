@@ -26,8 +26,19 @@ const RSA_2048_SIGNATURE_LEN: usize = 256;
 /// 2 (SEQUENCE tag+len) + 2 * (2 (INTEGER tag+len) + 33 (sign byte + 32-byte scalar))
 /// = 72 bytes. The actual encoded length varies call-to-call (leading zero bytes are
 /// stripped), so callers must size the buffer to this maximum and use the length
-/// `C_Sign` actually returns, not this constant, when reading the result.
+/// `C_Sign` actually returns, not this constant, when reading the result. secp256k1
+/// shares the same 256-bit order bit-length, so this bound is reused for it too.
 const ECDSA_P256_SIGNATURE_MAX_LEN: usize = 72;
+/// DER-encoded OID for NIST P-256 (`1.2.840.10045.3.1.7`), matching
+/// `KeyAlgorithm::EccP256::to_oid()` on the module side
+/// (`crate/clients/pkcs11/module/src/traits/key_algorithm.rs`). Used to
+/// disambiguate the P-256 EC key pair from the secp256k1 one when both are
+/// provisioned — both report `CKK_EC` as their `CK_KEY_TYPE`.
+const P256_EC_PARAMS_DER: [u8; 10] = [0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07];
+/// DER-encoded OID for secp256k1 (`1.3.132.0.10`), matching
+/// `KeyAlgorithm::Secp256k1::to_oid()` on the module side. See
+/// [`P256_EC_PARAMS_DER`]'s doc comment for why this disambiguation is needed.
+const SECP256K1_EC_PARAMS_DER: [u8; 7] = [0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x0A];
 
 /// Which Cryptoki operation family to load-test (CLI-facing; `All` expands to every
 /// [`ConcreteMode`] via [`BenchMode::expand`]).
@@ -76,6 +87,17 @@ pub(crate) enum BenchMode {
     /// [`ConcreteMode::VerifyRsa`]).
     #[value(name = "verify-ecdsa")]
     VerifyEcdsa,
+    /// `C_SignInit`/`C_Sign` on an EC secp256k1 private key (`CKM_ECDSA`, a
+    /// pre-computed SHA-256 digest). Non-FIPS only: secp256k1 is not a
+    /// FIPS-approved curve (`algorithm_policy::validate_curve`).
+    #[value(name = "sign-secp256k1")]
+    SignSecp256k1,
+    /// `C_VerifyInit`/`C_Verify` on an EC secp256k1 public key (`CKM_ECDSA`).
+    /// Skipped with a console notice if the loaded provider does not implement it
+    /// (see [`ConcreteMode::VerifyRsa`]). Non-FIPS only, see
+    /// [`Self::SignSecp256k1`].
+    #[value(name = "verify-secp256k1")]
+    VerifySecp256k1,
     /// PKCS#11 v3 `C_MessageSignInit` once, then `C_SignMessage` per Ed25519
     /// message (`CKM_EDDSA`).
     #[value(name = "sign-eddsa")]
@@ -101,6 +123,13 @@ pub(crate) enum ConcreteMode {
     VerifyRsa,
     SignEcdsa,
     VerifyEcdsa,
+    // Only ever constructed by the non-FIPS `expand()` impl below (secp256k1 is not
+    // FIPS-approved); the FIPS `expand()` impl only pattern-matches these variants
+    // (to return an empty list), which the dead-code lint doesn't count as use.
+    #[cfg_attr(not(feature = "non-fips"), allow(dead_code))]
+    SignSecp256k1,
+    #[cfg_attr(not(feature = "non-fips"), allow(dead_code))]
+    VerifySecp256k1,
     SignEdDsa,
     VerifyEdDsa,
     KeyCreation,
@@ -117,6 +146,8 @@ impl ConcreteMode {
             Self::VerifyRsa => "verify/rsa-pkcs-sha256",
             Self::SignEcdsa => "sign/ecdsa-p256",
             Self::VerifyEcdsa => "verify/ecdsa-p256",
+            Self::SignSecp256k1 => "sign/secp256k1",
+            Self::VerifySecp256k1 => "verify/secp256k1",
             Self::SignEdDsa => "sign/eddsa-ed25519",
             Self::VerifyEdDsa => "verify/eddsa-ed25519",
             Self::KeyCreation => "key-creation/aes",
@@ -135,9 +166,11 @@ impl BenchMode {
                 ConcreteMode::Decrypt,
                 ConcreteMode::SignRsa,
                 ConcreteMode::SignEcdsa,
+                ConcreteMode::SignSecp256k1,
                 ConcreteMode::SignEdDsa,
                 ConcreteMode::VerifyRsa,
                 ConcreteMode::VerifyEcdsa,
+                ConcreteMode::VerifySecp256k1,
                 ConcreteMode::VerifyEdDsa,
                 ConcreteMode::KeyCreation,
             ],
@@ -146,26 +179,32 @@ impl BenchMode {
             Self::Sign => &[
                 ConcreteMode::SignRsa,
                 ConcreteMode::SignEcdsa,
+                ConcreteMode::SignSecp256k1,
                 ConcreteMode::SignEdDsa,
             ],
             Self::Verify => &[
                 ConcreteMode::VerifyRsa,
                 ConcreteMode::VerifyEcdsa,
+                ConcreteMode::VerifySecp256k1,
                 ConcreteMode::VerifyEdDsa,
             ],
             Self::SignRsa => &[ConcreteMode::SignRsa],
             Self::VerifyRsa => &[ConcreteMode::VerifyRsa],
             Self::SignEcdsa => &[ConcreteMode::SignEcdsa],
             Self::VerifyEcdsa => &[ConcreteMode::VerifyEcdsa],
+            Self::SignSecp256k1 => &[ConcreteMode::SignSecp256k1],
+            Self::VerifySecp256k1 => &[ConcreteMode::VerifySecp256k1],
             Self::SignEdDsa => &[ConcreteMode::SignEdDsa],
             Self::VerifyEdDsa => &[ConcreteMode::VerifyEdDsa],
             Self::KeyCreation => &[ConcreteMode::KeyCreation],
         }
     }
 
-    /// FIPS expansion excludes Ed25519 modes (`Sign`/`Verify`/`All` silently drop
-    /// them); selecting `sign-eddsa`/`verify-eddsa` explicitly returns an empty list
-    /// so `main` can surface a clear feature-gating error instead.
+    /// FIPS expansion excludes Ed25519 and secp256k1 modes (`Sign`/`Verify`/`All`
+    /// silently drop them, since neither is FIPS-approved); selecting
+    /// `sign-eddsa`/`verify-eddsa`/`sign-secp256k1`/`verify-secp256k1` explicitly
+    /// returns an empty list so `main` can surface a clear feature-gating error
+    /// instead.
     #[cfg(not(feature = "non-fips"))]
     pub(crate) const fn expand(self) -> &'static [ConcreteMode] {
         match self {
@@ -186,7 +225,9 @@ impl BenchMode {
             Self::VerifyRsa => &[ConcreteMode::VerifyRsa],
             Self::SignEcdsa => &[ConcreteMode::SignEcdsa],
             Self::VerifyEcdsa => &[ConcreteMode::VerifyEcdsa],
-            Self::SignEdDsa | Self::VerifyEdDsa => &[],
+            Self::SignEdDsa | Self::VerifyEdDsa | Self::SignSecp256k1 | Self::VerifySecp256k1 => {
+                &[]
+            }
             Self::KeyCreation => &[ConcreteMode::KeyCreation],
         }
     }
@@ -401,7 +442,25 @@ pub(crate) fn prepare_ops<'a>(
         .iter()
         .any(|mode| matches!(mode, ConcreteMode::SignEcdsa | ConcreteMode::VerifyEcdsa))
     {
-        Some(setup_session.find_first_by_class_and_key_type(CKO_PRIVATE_KEY, CKK_EC)?)
+        Some(setup_session.find_first_by_class_key_type_and_ec_params(
+            CKO_PRIVATE_KEY,
+            CKK_EC,
+            &P256_EC_PARAMS_DER,
+        )?)
+    } else {
+        None
+    };
+    let secp256k1_private_key = if modes.iter().any(|mode| {
+        matches!(
+            mode,
+            ConcreteMode::SignSecp256k1 | ConcreteMode::VerifySecp256k1
+        )
+    }) {
+        Some(setup_session.find_first_by_class_key_type_and_ec_params(
+            CKO_PRIVATE_KEY,
+            CKK_EC,
+            &SECP256K1_EC_PARAMS_DER,
+        )?)
     } else {
         None
     };
@@ -447,6 +506,18 @@ pub(crate) fn prepare_ops<'a>(
     let verify_ecdsa_signature = if modes.contains(&ConcreteMode::VerifyEcdsa) {
         let key = ecdsa_private_key.ok_or_else(|| {
             BenchError::Setup("VerifyEcdsa mode requires a provisioned EC P-256 key".to_owned())
+        })?;
+        Some(setup_session.sign(key, &message, CKM_ECDSA, ECDSA_P256_SIGNATURE_MAX_LEN)?)
+    } else {
+        None
+    };
+    // Likewise for `VerifySecp256k1`, signing the same 32-byte digest used by
+    // `SignSecp256k1`.
+    let verify_secp256k1_signature = if modes.contains(&ConcreteMode::VerifySecp256k1) {
+        let key = secp256k1_private_key.ok_or_else(|| {
+            BenchError::Setup(
+                "VerifySecp256k1 mode requires a provisioned secp256k1 key".to_owned(),
+            )
         })?;
         Some(setup_session.sign(key, &message, CKM_ECDSA, ECDSA_P256_SIGNATURE_MAX_LEN)?)
     } else {
@@ -520,6 +591,22 @@ pub(crate) fn prepare_ops<'a>(
                     Ok(())
                 })
             }
+            ConcreteMode::SignSecp256k1 => {
+                let Some(secp256k1_private_key) = secp256k1_private_key else {
+                    continue;
+                };
+                let message = message.clone();
+                Box::new(move |session: &Pkcs11Session<'a>| {
+                    let mut signature = [0_u8; ECDSA_P256_SIGNATURE_MAX_LEN];
+                    session.sign_into(
+                        secp256k1_private_key,
+                        &message,
+                        CKM_ECDSA,
+                        &mut signature,
+                    )?;
+                    Ok(())
+                })
+            }
             ConcreteMode::SignEdDsa => {
                 let Some(eddsa_private_key) = eddsa_private_key else {
                     continue;
@@ -567,8 +654,39 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(signature) = verify_ecdsa_signature.clone() else {
                     continue;
                 };
-                let public_key =
-                    setup_session.find_first_by_class_and_key_type(CKO_PUBLIC_KEY, CKK_EC)?;
+                let public_key = setup_session.find_first_by_class_key_type_and_ec_params(
+                    CKO_PUBLIC_KEY,
+                    CKK_EC,
+                    &P256_EC_PARAMS_DER,
+                )?;
+                match setup_session.verify(public_key, &message, &signature, CKM_ECDSA) {
+                    Ok(()) => { /* supported: fall through to the closure below */ }
+                    Err(e) if e.is_function_not_supported() => {
+                        eprintln!(
+                            "[bench:load-pkcs11] '{}' — C_Verify is not implemented by the \
+                             loaded provider (CKR_FUNCTION_NOT_SUPPORTED); skipping",
+                            mode.label()
+                        );
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                }
+                let message = message.clone();
+                Box::new(move |session: &Pkcs11Session<'a>| {
+                    session.verify(public_key, &message, &signature, CKM_ECDSA)
+                })
+            }
+            ConcreteMode::VerifySecp256k1 => {
+                // Checked above: `verify_secp256k1_signature` is `Some` whenever
+                // `VerifySecp256k1` is requested.
+                let Some(signature) = verify_secp256k1_signature.clone() else {
+                    continue;
+                };
+                let public_key = setup_session.find_first_by_class_key_type_and_ec_params(
+                    CKO_PUBLIC_KEY,
+                    CKK_EC,
+                    &SECP256K1_EC_PARAMS_DER,
+                )?;
                 match setup_session.verify(public_key, &message, &signature, CKM_ECDSA) {
                     Ok(()) => { /* supported: fall through to the closure below */ }
                     Err(e) if e.is_function_not_supported() => {

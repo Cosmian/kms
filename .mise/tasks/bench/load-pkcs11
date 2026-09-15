@@ -3,7 +3,7 @@
 #USAGE flag "-v --variant <v>"      env="BENCH_VARIANT"       default="non-fips"       help="FIPS variant"                              { choices "fips" "non-fips" }
 #USAGE flag "-l --link <l>"         env="BENCH_LINK"          default="static"          help="Linkage type"                              { choices "static" "dynamic" }
 #USAGE flag "-r --release"          env="BENCH_RELEASE"       default="true"            help="Build optimized benchmark binaries (workspace bench profile: opt-level=3, debug symbols)"
-#USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "decrypt" "sign" "verify" "sign-rsa" "verify-rsa" "sign-ecdsa" "verify-ecdsa" "sign-eddsa" "verify-eddsa" "key-creation" }
+#USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "decrypt" "sign" "verify" "sign-rsa" "verify-rsa" "sign-ecdsa" "verify-ecdsa" "sign-secp256k1" "verify-secp256k1" "sign-eddsa" "verify-eddsa" "key-creation" }
 #USAGE flag "-t --time <t>"         env="BENCH_TIME"          default="20"              help="Measurement time per level (seconds)"
 #USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16"  help="Comma-separated concurrency levels"
 #USAGE flag "-W --warmup <s>"       env="BENCH_WARMUP"        default="5"               help="Warmup time before the load sweep (seconds)"

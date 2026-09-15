@@ -41,12 +41,14 @@ const BENCH_TAG: &str = "pkcs11-bench";
 /// it.
 const DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 
-/// Creates one AES secret key, one RSA key pair, and one Ed25519 key pair in the
-/// KMS pointed at by `server_url`, returning the client and identifiers needed by
-/// the differential overhead benchmarks.
+/// Creates one AES secret key, one RSA key pair, one EC P-256 key pair, and
+/// (opt-in) one Ed25519 and/or one secp256k1 key pair in the KMS pointed at by
+/// `server_url`, returning the client and identifiers needed by the differential
+/// overhead benchmarks.
 pub(crate) async fn provision_bench_keys(
     server_url: &str,
     provision_ed25519: bool,
+    provision_secp256k1: bool,
 ) -> BenchResult<BenchSetup> {
     let mut config = KmsClientConfig::default();
     server_url.clone_into(&mut config.http_config.server_url);
@@ -115,6 +117,23 @@ pub(crate) async fn provision_bench_keys(
     } else {
         None
     };
+
+    // secp256k1 is not FIPS-approved (unlike P-256 above), so this key pair is
+    // only provisioned when `sign-secp256k1`/`verify-secp256k1` (or an aggregate
+    // `sign`/`verify`/`all` mode under a non-FIPS build) was requested — mirroring
+    // how the Ed25519 key pair above is opt-in.
+    if provision_secp256k1 {
+        let request = create_ec_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            [BENCH_TAG, disk_encryption_tag.as_str()],
+            RecommendedCurve::SECP256K1,
+            false,
+            None,
+        )
+        .map_err(|e| BenchError::Kmip(e.to_string()))?;
+        client.create_key_pair(request).await?;
+    }
 
     Ok(BenchSetup {
         client,

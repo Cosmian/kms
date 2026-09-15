@@ -9,9 +9,9 @@ use std::ptr;
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_FLAGS, CK_FUNCTION_LIST_3_0, CK_INTERFACE_PTR, CK_KEY_TYPE,
     CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RV, CK_SESSION_HANDLE,
-    CK_SLOT_ID, CK_TRUE, CK_ULONG, CK_USER_TYPE, CK_VERSION, CKA_CLASS, CKA_EXTRACTABLE,
-    CKA_KEY_TYPE, CKA_LABEL, CKA_SENSITIVE, CKA_VALUE_LEN, CKF_RW_SESSION, CKF_SERIAL_SESSION,
-    CKK_AES, CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKR_OK, CKU_USER,
+    CK_SLOT_ID, CK_TRUE, CK_ULONG, CK_USER_TYPE, CK_VERSION, CKA_CLASS, CKA_EC_PARAMS,
+    CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_SENSITIVE, CKA_VALUE_LEN, CKF_RW_SESSION,
+    CKF_SERIAL_SESSION, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKR_OK, CKU_USER,
 };
 
 use crate::error::{BenchError, BenchResult};
@@ -335,7 +335,7 @@ impl<'lib> Pkcs11Session<'lib> {
         &self,
         class: CK_OBJECT_CLASS,
     ) -> BenchResult<CK_OBJECT_HANDLE> {
-        self.find_first(class, None)
+        self.find_first(class, None, None)
     }
 
     /// Finds the first object of the given `CK_OBJECT_CLASS` *and* `CK_KEY_TYPE`
@@ -350,16 +350,38 @@ impl<'lib> Pkcs11Session<'lib> {
         class: CK_OBJECT_CLASS,
         key_type: CK_KEY_TYPE,
     ) -> BenchResult<CK_OBJECT_HANDLE> {
-        self.find_first(class, Some(key_type))
+        self.find_first(class, Some(key_type), None)
+    }
+
+    /// Finds the first object of the given `CK_OBJECT_CLASS` and `CK_KEY_TYPE`
+    /// whose `CKA_EC_PARAMS` attribute matches `expected_ec_params_der` exactly
+    /// (a DER-encoded curve OID, e.g. from `KeyAlgorithm::to_oid()` /
+    /// `pkcs1::ObjectIdentifier::to_der()` on the module side).
+    ///
+    /// Needed because more than one EC key pair sharing the same `CKK_EC`
+    /// `CK_KEY_TYPE` may be provisioned (e.g. P-256 and secp256k1 both report
+    /// `CKK_EC` — unlike RSA/Ed25519, which have their own distinct
+    /// `CK_KEY_TYPE`s — see [`Self::find_first_by_class_and_key_type`]'s doc
+    /// comment) — filtering by class and key type alone would
+    /// non-deterministically return whichever EC key the backend happens to
+    /// enumerate first.
+    pub(crate) fn find_first_by_class_key_type_and_ec_params(
+        &self,
+        class: CK_OBJECT_CLASS,
+        key_type: CK_KEY_TYPE,
+        expected_ec_params_der: &[u8],
+    ) -> BenchResult<CK_OBJECT_HANDLE> {
+        self.find_first(class, Some(key_type), Some(expected_ec_params_der))
     }
 
     /// Shared `C_FindObjectsInit`/`C_FindObjects`/`C_FindObjectsFinal` implementation
-    /// backing [`Self::find_first_by_class`] and
-    /// [`Self::find_first_by_class_and_key_type`].
+    /// backing [`Self::find_first_by_class`], [`Self::find_first_by_class_and_key_type`],
+    /// and [`Self::find_first_by_class_key_type_and_ec_params`].
     fn find_first(
         &self,
         class: CK_OBJECT_CLASS,
         key_type: Option<CK_KEY_TYPE>,
+        expected_ec_params: Option<&[u8]>,
     ) -> BenchResult<CK_OBJECT_HANDLE> {
         let f = &self.lib.functions;
         let mut class = class;
@@ -418,15 +440,17 @@ impl<'lib> Pkcs11Session<'lib> {
         let found = usize::try_from(found)
             .map_err(|e| BenchError::Setup(format!("invalid C_FindObjects count: {e}")))?
             .min(handles.len());
-        let selected = if let Some(expected_key_type) = key_type {
+        let selected = if key_type.is_some() || expected_ec_params.is_some() {
             handles[..found]
                 .iter()
                 .copied()
-                .find_map(|handle| match self.object_key_type(handle) {
-                    Ok(actual_key_type) if actual_key_type == expected_key_type => Some(Ok(handle)),
-                    Ok(_) => None,
-                    Err(error) => Some(Err(error)),
-                })
+                .find_map(
+                    |handle| match self.matches(handle, key_type, expected_ec_params) {
+                        Ok(true) => Some(Ok(handle)),
+                        Ok(false) => None,
+                        Err(error) => Some(Err(error)),
+                    },
+                )
                 .transpose()?
         } else {
             handles[..found].first().copied()
@@ -458,6 +482,56 @@ impl<'lib> Pkcs11Session<'lib> {
             c_get_attribute_value(self.handle, handle, &raw mut attribute, 1)
         })?;
         Ok(key_type)
+    }
+
+    /// Whether `handle` matches `expected_key_type` (if given) and
+    /// `expected_ec_params` (if given) — used to disambiguate objects that share
+    /// the same `CK_OBJECT_CLASS`/`CK_KEY_TYPE` (e.g. P-256 and secp256k1 keys,
+    /// both reported as `CKK_EC`) by their curve's `CKA_EC_PARAMS`.
+    fn matches(
+        &self,
+        handle: CK_OBJECT_HANDLE,
+        expected_key_type: Option<CK_KEY_TYPE>,
+        expected_ec_params: Option<&[u8]>,
+    ) -> BenchResult<bool> {
+        if let Some(expected_key_type) = expected_key_type {
+            if self.object_key_type(handle)? != expected_key_type {
+                return Ok(false);
+            }
+        }
+        if let Some(expected_ec_params) = expected_ec_params {
+            if self.object_ec_params(handle)? != expected_ec_params {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    /// Reads `CKA_EC_PARAMS` (the DER-encoded curve OID) off an EC key object.
+    /// Every curve OID used by this benchmark (P-256, secp256k1) DER-encodes to
+    /// well under `EC_PARAMS_MAX_LEN` bytes, so a single fixed-size buffer read
+    /// is sufficient — no length-query round trip is needed.
+    fn object_ec_params(&self, handle: CK_OBJECT_HANDLE) -> BenchResult<Vec<u8>> {
+        const EC_PARAMS_MAX_LEN: usize = 32;
+        let c_get_attribute_value = self
+            .lib
+            .functions
+            .C_GetAttributeValue
+            .ok_or_else(|| missing("C_GetAttributeValue"))?;
+        let mut buffer = [0_u8; EC_PARAMS_MAX_LEN];
+        let mut attribute = CK_ATTRIBUTE {
+            type_: CKA_EC_PARAMS,
+            pValue: buffer.as_mut_ptr().cast::<std::ffi::c_void>(),
+            ulValueLen: EC_PARAMS_MAX_LEN as CK_ULONG,
+        };
+        // SAFETY: `buffer` is `EC_PARAMS_MAX_LEN` bytes, matching `ulValueLen`;
+        // `C_GetAttributeValue` writes at most that many bytes back and reports
+        // the actual length written in `attribute.ulValueLen`.
+        check("C_GetAttributeValue(CKA_EC_PARAMS)", unsafe {
+            c_get_attribute_value(self.handle, handle, &raw mut attribute, 1)
+        })?;
+        let len = (attribute.ulValueLen as usize).min(EC_PARAMS_MAX_LEN);
+        Ok(buffer[..len].to_vec())
     }
 
     /// `C_EncryptInit` + `C_Encrypt` with `CKM_AES_CBC_PAD` and a fixed zero IV.

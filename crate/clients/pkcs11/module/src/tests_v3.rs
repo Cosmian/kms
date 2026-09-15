@@ -69,6 +69,24 @@ fn test_to_ck_key_type_reports_distinct_types_per_curve_family() {
     }
 }
 
+/// Regression test: `KeyAlgorithm::Secp256k1` must map to and from the SEC
+/// 2-registered OID `1.3.132.0.10`, not `1.3.132.0.33` (which is secp224r1/NIST
+/// P-224's OID). The wrong OID previously reported here made `CKA_EC_PARAMS`
+/// misidentify secp256k1 keys and made `Pkcs11PublicKey::try_from_spki`
+/// (`crate/clients/pkcs11/provider/src/pkcs11_public_key.rs`) fail to import a real
+/// secp256k1 public key's SPKI (OpenSSL always exports the standard
+/// `1.3.132.0.10` OID) with "EC curve OID not supported".
+#[test]
+fn test_secp256k1_oid_is_the_sec2_registered_value() {
+    assert_eq!(KeyAlgorithm::Secp256k1.to_oid_str(), "1.3.132.0.10");
+    assert_eq!(
+        KeyAlgorithm::from_oid_str("1.3.132.0.10"),
+        Some(KeyAlgorithm::Secp256k1)
+    );
+    // "1.3.132.0.33" is secp224r1, not secp256k1 — must no longer resolve here.
+    assert_eq!(KeyAlgorithm::from_oid_str("1.3.132.0.33"), None);
+}
+
 /// PKCS#11 v3.0 conformance requirement (§5.2): every function pointer declared in the
 /// `CK_FUNCTION_LIST_3_0` slot table must be non-null, even for functions this module does not
 /// implement (recoverable-signature operations, key wrap/unwrap/derive, digest, message-based

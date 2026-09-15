@@ -189,13 +189,23 @@ fn main() -> BenchResult<()> {
             load::ConcreteMode::SignEdDsa | load::ConcreteMode::VerifyEdDsa
         )
     });
+    let provision_secp256k1 = modes.iter().any(|mode| {
+        matches!(
+            mode,
+            load::ConcreteMode::SignSecp256k1 | load::ConcreteMode::VerifySecp256k1
+        )
+    });
 
     // Provision the benchmark keys via the KMS REST API before opening the
     // Cryptoki session — needs its own (short-lived) Tokio runtime since the rest
     // of this binary is a plain synchronous FFI hot loop.
     let runtime = tokio::runtime::Runtime::new()
         .map_err(|e| error::BenchError::Setup(format!("failed to start Tokio runtime: {e}")))?;
-    let setup = runtime.block_on(setup::provision_bench_keys(&cli.kms_url, provision_ed25519))?;
+    let setup = runtime.block_on(setup::provision_bench_keys(
+        &cli.kms_url,
+        provision_ed25519,
+        provision_secp256k1,
+    ))?;
 
     let lib = Pkcs11Lib::load(&cli.pkcs11_lib)?;
 

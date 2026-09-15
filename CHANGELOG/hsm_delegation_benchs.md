@@ -21,6 +21,34 @@
   from `true` to `false` on an existing PKCS#11 object, so already-provisioned
   sensitive keys must be regenerated to benefit from this fix
 
+### PKCS#11 secp256k1 signing (software module)
+
+- **Bug fix**: `crate/clients/pkcs11/module/src/traits/key_algorithm.rs` mapped
+  `KeyAlgorithm::Secp256k1` to OID `1.3.132.0.33` in both `to_oid_str()` and
+  `from_oid_str()` — that OID is actually secp224r1 (NIST P-224)'s, not
+  secp256k1's. The correct, SEC 2-registered OID for secp256k1 is `1.3.132.0.10`
+  (already correctly documented elsewhere in this repo,
+  `crate/hsm/base_hsm/src/session/ec.rs`). This made a secp256k1 public key's
+  `CKA_EC_PARAMS` report the wrong curve to real Cryptoki consumers, and made
+  `Pkcs11PublicKey::try_from_spki` (`crate/clients/pkcs11/provider`) fail to
+  import a real secp256k1 public key's SPKI — which always carries the standard
+  `1.3.132.0.10` OID from OpenSSL — with `"EC curve OID not supported"`. Fixed,
+  plus a regression test (`tests_v3.rs`) locking in the correct OID. Also added
+  `KeyAlgorithm::Secp256k1` to `private_key_attribute`'s `CKA_EC_PARAMS` match arm
+  (`core/object.rs`), which previously only covered NIST/Curve25519 families, so
+  a secp256k1 private key's curve can also be disambiguated via that attribute
+- Added `sign-secp256k1`/`verify-secp256k1` benchmark modes to
+  `cosmian_pkcs11_bench` (`crate/clients/pkcs11/bench`), exercising real
+  `C_SignInit`/`C_Sign`/`C_VerifyInit`/`C_Verify` (`CKM_ECDSA`) against a
+  provisioned secp256k1 key pair through the actual dlopen()'d `cosmian_pkcs11`
+  DLL — non-FIPS only, included in the `sign`/`verify`/`all` aggregate modes.
+  Since P-256 and secp256k1 keys both report `CK_KEY_TYPE` `CKK_EC`, added a new
+  `CKA_EC_PARAMS`-based lookup
+  (`Pkcs11Session::find_first_by_class_key_type_and_ec_params`, `loader.rs`) to
+  disambiguate which EC key pair to use — verified end-to-end that `sign-ecdsa`
+  and `sign-secp256k1` correctly select their own key when both coexist
+  (`--mode all`)
+
 ### `bench:load-pkcs11` report accuracy
 
 - `--criterion` was mutually exclusive with the concurrency sweep in
