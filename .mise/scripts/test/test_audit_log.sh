@@ -12,8 +12,9 @@
 #      (plus 1 deliberate Failure for result coverage)
 #   4. Assert audit file has ≥5 events (exit 1 if 0)
 #   5. Run `ckms audit verify --path` — exit 1 if chain broken
-#   6. Validate required fields in every event (exit 1 if any missing)
-#   7. Print evidence for each event
+#   6. Mutate a copy of the audit log and assert `ckms audit verify` fails (tamper detection)
+#   7. Validate required fields in every event (exit 1 if any missing)
+#   8. Print evidence for each event
 #
 # Usage:
 #   bash .mise/scripts/test/test_audit_log.sh [--variant fips|non-fips]
@@ -28,10 +29,11 @@ init_build_env "$@"
 setup_test_logging
 
 AUDIT_JSONL=""
+TAMPERED_JSONL=""
 
 cleanup() {
   kms_stop
-  [ -n "${AUDIT_JSONL:-}" ] && { rm -f "${AUDIT_JSONL}" || true; }
+  rm -f "${AUDIT_JSONL:-}" "${TAMPERED_JSONL:-}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -136,6 +138,32 @@ if ! "${ckms_bin}" audit verify --path "${AUDIT_JSONL}" 2>&1; then
   exit 1
 fi
 echo "GUARD OK: hash chain verified (${audit_lines} rows, SHA-256 chain intact)."
+
+# ── GUARD 2b: tamper detection (mutated log must fail verification) ───────────
+
+echo "==> Testing tamper detection (mutating audit log copy)..."
+TAMPERED_JSONL="$(mktemp -t audit-tampered-XXXXXX.jsonl)"
+cp "${AUDIT_JSONL}" "${TAMPERED_JSONL}"
+
+python3 -c "
+import json
+with open('${TAMPERED_JSONL}', 'r') as f:
+    lines = [l for l in f if l.strip()]
+d = json.loads(lines[1])
+d['operation'] = d.get('operation', '') + '_tampered'
+lines[1] = json.dumps(d) + '\n'
+with open('${TAMPERED_JSONL}', 'w') as f:
+    f.writelines(lines)
+"
+
+if "${ckms_bin}" audit verify --path "${TAMPERED_JSONL}" >/dev/null 2>&1; then
+  echo "ERROR: ckms audit verify succeeded on tampered audit log — tampering was NOT detected!" >&2
+  rm -f "${TAMPERED_JSONL}"
+  exit 1
+fi
+rm -f "${TAMPERED_JSONL}"
+TAMPERED_JSONL=""
+echo "GUARD OK: tamper detection verified (ckms audit verify rejected mutated log)."
 
 # ── GUARD 3: required fields in every event ──────────────────────────────────
 
