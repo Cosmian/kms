@@ -1,14 +1,6 @@
-//! Tamper-evident JSONL file persistence for the audit log: the always-start recovery
-//! loop, the exclusive cross-instance lock, and `FileSink`'s implementation of
-//! `cosmian_kms_interfaces::AuditSink`.
+//! Tamper-evident JSONL audit sink with recovery and an exclusive cross-instance lock.
 //!
-//! Always-start recovery
-//! ======================
-//! [`FileSink::resume`] guarantees the KMS always starts regardless of the audit log's
-//! state: it acquires the exclusive lock and recovers/opens the file (see the
-//! `recovery` module for tail classification and seal-and-roll) inside a self-healing
-//! retry loop that never returns an error — the generic writer task simply awaits it
-//! while events are buffered upstream in the channel, never blocking the caller.
+//! Recovery runs in the writer task, allowing server startup to continue independently.
 
 use std::{
     ffi::{OsStr, OsString},
@@ -24,21 +16,13 @@ use cosmian_logger::{debug, error};
 
 use super::recovery::recover_and_open;
 
-/// How long to wait between attempts to acquire the exclusive audit-log lock while a
-/// peer instance (e.g. the other side of a rolling update on a shared volume) holds it.
 const LOCK_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 
-/// How long to wait between attempts to recover/open the audit log after a
-/// content-independent I/O fault (EACCES, EIO, read-only mount, missing disk).
 const OPEN_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// Cross-task state for the optional `max_size_bytes` write-stop cap.
 ///
-/// `enqueue()` reads `size_limit_reached` as a fast, non-blocking pre-check so a
-/// caller doesn't bother queueing an event the writer will only ever discard; the
-/// writer task is the sole owner of the file and the only one that ever sets it.
-/// `max_size_bytes` is immutable for the store's lifetime, carried alongside so
-/// the writer doesn't need it threaded through as a separate argument everywhere.
+/// The writer sets `size_limit_reached`; producers read it before enqueueing.
 #[derive(Default)]
 pub(super) struct AuditWriteState {
     pub(super) max_size_bytes: Option<u64>,
@@ -54,15 +38,7 @@ impl AuditWriteState {
     }
 }
 
-/// Serialises `event` as a single JSONL line and durably syncs it to `file`.
-///
-/// Used by [`write_recovery_sentinel`] (recovery-time, called from a `spawn_blocking`
-/// context with no async runtime available). The steady-state path
-/// ([`FileSink::write_event_atomic`]) has its own buffered variant so it can track
-/// `committed_len` without an extra `stat` per event — see its doc comment.
-///
-/// `sync_data()` is called on every write to guarantee durability: without it data sits
-/// in the kernel page cache and is lost on a power failure.
+/// Writes and synchronises one JSONL event during recovery.
 fn write_event_line(file: &mut std::fs::File, event: &AuditEvent) -> std::io::Result<()> {
     serde_json::to_writer(&mut *file, event)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
@@ -70,12 +46,8 @@ fn write_event_line(file: &mut std::fs::File, event: &AuditEvent) -> std::io::Re
     file.sync_data()
 }
 
-/// Writes a synthetic recovery sentinel (torn-write-recovered / reanchor) directly to
-/// `file`, advancing the chain on success and leaving it untouched on failure — mirroring
-/// the writer loop's own "never advance on a failed write" rule.
-///
-/// A plain sync helper rather than a call through [`AuditSink`]: `recover_and_open` runs
-/// inside `spawn_blocking`, before the async writer task (and its sink) exist at all.
+/// Writes a recovery sentinel, advancing the chain only after a successful sync.
+/// This synchronous path runs before the sink is resumed.
 pub(super) fn write_recovery_sentinel(
     file: &mut std::fs::File,
     draft: AuditEventDraft,
@@ -98,40 +70,25 @@ pub(super) fn write_recovery_sentinel(
     }
 }
 
-/// The file-backed [`AuditSink`]: persists the audit chain as a tamper-evident JSONL file
-/// with the always-start, self-healing recovery documented at the top of this module. A
-/// write failure is always logged and the event skipped — never fatal to the server,
-/// preserving the file backend's historical behaviour.
+/// File-backed [`AuditSink`] for a tamper-evident JSONL chain.
 ///
-/// A write can fail after some of its bytes already hit the OS (a short write, or an
-/// error between the JSON and its trailing newline): the row is not committed, but the
-/// bytes are already durable. [`Self::write_event_atomic`] truncates back to
-/// `committed_len` before its next attempt, closing that gap the same way
-/// `classify_tail`'s `TruncateContinue` does at boot — just triggered by the next write
-/// instead of the next restart.
+/// A failed write may leave a partial row. The next write truncates back to
+/// `committed_len` before appending.
 pub(crate) struct FileSink {
     path: PathBuf,
     write_state: Arc<AuditWriteState>,
-    /// `None` until [`Self::resume`] has run; the trait contract guarantees `resume` is
-    /// called exactly once before any `write_event_atomic`.
+    /// Set by [`Self::resume`].
     file: Option<std::fs::File>,
-    /// End of the last durably written, complete row. Set once by `resume()`, from the
-    /// recovered file's length; advanced by every successful write.
+    /// End of the last durably written row.
     committed_len: u64,
-    /// A previous write left bytes past `committed_len` that must be discarded before
-    /// the next append.
+    /// Whether bytes past `committed_len` must be discarded.
     needs_repair: bool,
-    /// Held for the sink's entire lifetime — the OS releases it automatically on drop or
-    /// process exit, so a crash never leaves a stale lock behind. Never read after
-    /// acquisition; kept alive purely for its `Drop` behaviour.
-    #[allow(dead_code, reason = "kept alive for its Drop impl, never read again")]
-    lock: Option<std::fs::File>,
+    /// Kept alive because dropping the handle releases the OS lock; never read again.
+    _lock: Option<std::fs::File>,
 }
 
 impl FileSink {
-    /// Builds a not-yet-resumed file sink for `path`. `write_state` is shared with the
-    /// `AuditFileStore` handle so `enqueue()`'s fast pre-check and this sink's own
-    /// post-write cap update observe the same flag.
+    /// Builds a file sink that has not yet been resumed.
     pub(super) const fn new(path: PathBuf, write_state: Arc<AuditWriteState>) -> Self {
         Self {
             path,
@@ -139,11 +96,10 @@ impl FileSink {
             file: None,
             committed_len: 0,
             needs_repair: false,
-            lock: None,
+            _lock: None,
         }
     }
 
-    /// Discards any bytes past `committed_len` left by a previous failed write.
     fn repair_if_needed(&mut self) -> std::io::Result<()> {
         if !self.needs_repair {
             return Ok(());
@@ -163,16 +119,9 @@ impl AuditSink for FileSink {
         "file"
     }
 
-    /// Acquires the exclusive lock (retrying forever, without erroring, while a peer
-    /// instance holds it) and recovers/opens the file (retrying forever on a
-    /// content-independent I/O fault — EACCES, EIO, a read-only mount), self-healing the
-    /// moment the fault clears. In practice this never returns `Err`: see the module docs
-    /// for why the file backend always starts.
-    ///
-    /// # Errors
-    /// The signature allows an error per the trait contract, but this implementation
-    /// retries indefinitely instead of ever reporting one — except if the recovered file
-    /// cannot even be `stat`'d, an anomaly no retry loop here is positioned to fix.
+    /// Waits for the exclusive lock, then recovers and opens the audit file. Every fault
+    /// — lock contention, recovery/open, and stat — retries in place, so this never
+    /// returns `Err` in practice.
     async fn resume(&mut self) -> InterfaceResult<ChainHead> {
         let lock_path = lock_file_path(&self.path);
         let mut lock_contended_logged = false;
@@ -208,12 +157,10 @@ impl AuditSink for FileSink {
                 }
             }
         };
-        self.lock = Some(lock);
+        self._lock = Some(lock);
 
         let (file, next_id, prev_hash) = loop {
-            // `recover_and_open` does blocking `std::fs` I/O (whole-file scan, hash, and
-            // possible rename on seal-and-roll) — run it on the blocking pool so a large
-            // audit log doesn't monopolize this tokio worker thread during recovery.
+            // Recovery scans the file and may rename it, so keep it off the async worker.
             let path_for_recovery = self.path.clone();
             let recovered =
                 tokio::task::spawn_blocking(move || recover_and_open(&path_for_recovery)).await;
@@ -233,34 +180,36 @@ impl AuditSink for FileSink {
             }
         };
 
-        self.committed_len = file
-            .metadata()
-            .map_err(|e| {
-                InterfaceError::Default(format!("audit: cannot stat recovered log file: {e}"))
-            })?
-            .len();
+        self.committed_len = loop {
+            match file.metadata() {
+                Ok(meta) => break meta.len(),
+                Err(e) => {
+                    error!(
+                        "AuditFileStore: cannot stat recovered log file {} ({e}) — retrying",
+                        self.path.display()
+                    );
+                    tokio::time::sleep(OPEN_RETRY_INTERVAL).await;
+                }
+            }
+        };
         enforce_size_cap(self.committed_len, &self.write_state, &self.path);
         self.file = Some(file);
         Ok(ChainHead { next_id, prev_hash })
     }
 
-    /// Serialises `event` as a single JSONL line, repairing any torn tail from a
-    /// previous failed write first so a partial row is never observable mid-session.
-    ///
-    /// Serializes to a buffer before touching the file — a serialization failure must
-    /// never touch it — and tracks the exact byte length written in `committed_len`
-    /// instead of a `stat` per event.
+    /// Serialises and synchronises one event, repairing any previous partial write first.
     ///
     /// # Errors
-    /// Returns an error if the sink has not been `resume()`d yet, or if the underlying
-    /// write/sync fails. Neither ever advances the chain — see the trait contract.
+    /// Returns an error if the sink is not resumed or file I/O fails.
     async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<()> {
         let mut row = serde_json::to_vec(event)
             .map_err(|e| InterfaceError::Default(format!("audit: cannot serialise event: {e}")))?;
         row.push(b'\n');
 
-        self.repair_if_needed()
-            .map_err(|e| InterfaceError::Default(format!("audit: torn-tail repair failed: {e}")))?;
+        self.repair_if_needed().map_err(|e| InterfaceError::Io {
+            context: "audit: torn-tail repair failed".to_owned(),
+            source: e,
+        })?;
 
         let file = self.file.as_mut().ok_or_else(|| {
             InterfaceError::Default(
@@ -275,7 +224,10 @@ impl AuditSink for FileSink {
             }
             Err(e) => {
                 self.needs_repair = true;
-                Err(InterfaceError::Default(format!("audit: write failed: {e}")))
+                Err(InterfaceError::Io {
+                    context: "audit: write failed".to_owned(),
+                    source: e,
+                })
             }
         }
     }
@@ -284,25 +236,23 @@ impl AuditSink for FileSink {
         self.write_state.size_limit_reached.load(Ordering::Relaxed)
     }
 
-    /// Repairs a torn tail before the final sync so a clean shutdown never leaves one
-    /// for the next boot to find.
     async fn final_sync(&mut self) -> InterfaceResult<()> {
-        self.repair_if_needed().map_err(|e| {
-            InterfaceError::Default(format!("audit: final sync repair failed: {e}"))
+        self.repair_if_needed().map_err(|e| InterfaceError::Io {
+            context: "audit: final sync repair failed".to_owned(),
+            source: e,
         })?;
         if let Some(file) = self.file.as_mut() {
-            file.sync_data()
-                .map_err(|e| InterfaceError::Default(format!("audit: final sync failed: {e}")))?;
+            file.sync_data().map_err(|e| InterfaceError::Io {
+                context: "audit: final sync failed".to_owned(),
+                source: e,
+            })?;
         }
         Ok(())
     }
 }
 
-/// Checks `len` (the sink's current committed length) against `write_state.max_size_bytes`
-/// and updates `write_state` on the first transition into the capped state (logging
-/// once). Called right after the sink resumes (an already-oversized log must block
-/// immediately) and again after every successful write (a write that crosses the cap is
-/// allowed to land, then blocks everything after it).
+/// Marks the sink capped once its committed length reaches the configured limit.
+/// The write crossing the limit remains committed.
 fn enforce_size_cap(len: u64, write_state: &AuditWriteState, path: &Path) {
     let Some(cap) = write_state.max_size_bytes else {
         return;
@@ -321,7 +271,6 @@ fn enforce_size_cap(len: u64, write_state: &AuditWriteState, path: &Path) {
     }
 }
 
-/// Builds the sidecar lock file path for `path`, e.g. `audit.jsonl` -> `audit.jsonl.lock`.
 pub(super) fn lock_file_path(path: &Path) -> PathBuf {
     let mut name = path
         .file_name()
@@ -330,12 +279,8 @@ pub(super) fn lock_file_path(path: &Path) -> PathBuf {
     path.with_file_name(name)
 }
 
-/// Attempts to acquire the exclusive, cross-platform advisory lock on `path`'s lock
-/// sidecar. Non-blocking: returns immediately (`Err` if another live instance holds it).
-///
-/// The returned `File` must be kept alive for as long as the lock should be held — the OS
-/// releases it automatically when the handle is dropped or the process exits, so a crash
-/// never leaves a stale lock behind.
+/// Attempts to acquire the advisory lock without blocking.
+/// Dropping the returned file releases the lock.
 fn try_acquire_lock(lock_path: &Path) -> std::io::Result<std::fs::File> {
     if let Some(parent) = lock_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -417,8 +362,6 @@ mod tests {
             .expect("open for append")
     }
 
-    /// Builds a `FileSink` already past `resume()`, bypassing the real lock+recovery
-    /// dance so the write path can be tested in isolation.
     fn make_sink(file: std::fs::File, committed_len: u64) -> FileSink {
         FileSink {
             path: PathBuf::new(),
@@ -426,7 +369,7 @@ mod tests {
             file: Some(file),
             committed_len,
             needs_repair: false,
-            lock: None,
+            _lock: None,
         }
     }
 
