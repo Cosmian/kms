@@ -32,7 +32,10 @@ source "${SCRIPT_DIR}/../../lib/kms_server.sh"
 init_build_env "$@"
 setup_test_logging
 
+HELPER="${SCRIPT_DIR}/cef_helper.py"
+
 AUDIT_JSONL=""
+VERIFY_CEF=""
 VENV_DIR=""
 RSYSLOG_CONTAINER=""
 RSYSLOG_DIR=""
@@ -49,6 +52,7 @@ cleanup() {
   [ -n "${VENV_DIR:-}" ] && { rm -rf "${VENV_DIR}" || true; }
   [ -n "${RSYSLOG_DIR:-}" ] && { rm -rf "${RSYSLOG_DIR}" || true; }
   [ -n "${AUDIT_JSONL:-}" ] && { rm -f "${AUDIT_JSONL}" || true; }
+  [ -n "${VERIFY_CEF:-}" ] && { rm -f "${VERIFY_CEF}" || true; }
 }
 trap cleanup EXIT
 
@@ -106,13 +110,15 @@ kms_build_all
 kms_bin=$(get_kms_bin)
 ckms_bin=$(get_ckms_bin)
 
-# ── Python venv ───────────────────────────────────────────────────────────────
+# ── Python venv setup (jc) ───────────────────────────────────────────────────
 
-echo "==> Setting up Python virtualenv (no extra packages needed)..."
+echo "==> Setting up Python virtualenv with jc..."
 VENV_DIR="$(mktemp -d -t siem-venv-XXXXXX)"
 python3 -m venv "${VENV_DIR}"
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
+pip install --quiet -r "${SCRIPT_DIR}/requirements-cef.txt"
+echo "    Python venv OK ($(python3 --version), jc $(pip show jc | grep ^Version | awk '{print $2}'))"
 
 # ── Start KMS server with audit logging ───────────────────────────────────────
 
@@ -216,8 +222,9 @@ while IFS= read -r line; do
   [[ "${line}" == CEF:* ]] || continue
   # Assemble a minimal RFC 3164 syslog message (PRI 134 = local0.info)
   syslog_msg="<134>$(date '+%b %d %H:%M:%S') kms-audit: ${line}"
-  # RFC 6587 octet-counting: space between count and message, count = len(message)
-  printf '%zu %s' "${#syslog_msg}" "${syslog_msg}" |
+  # RFC 6587 octet-counting: space between count and message, count = byte length of message
+  byte_count=$(LC_ALL=C printf '%s' "${syslog_msg}" | wc -c | tr -d ' ')
+  printf '%d %s' "${byte_count}" "${syslog_msg}" |
     nc -w 5 127.0.0.1 "${SYSLOG_TCP_PORT}" 2>/dev/null || true
   sent=$((sent + 1))
   sleep 0.05
@@ -266,40 +273,13 @@ echo "    Guard OK: all ${cef_lines} CEF messages received by rsyslog."
 VERIFY_CEF="$(mktemp -t kms-cef-verify-XXXXXX.txt)"
 grep 'CEF:' "${RSYSLOG_LOG}" | sed 's/.*CEF:/CEF:/' >"${VERIFY_CEF}"
 
-# ── Verify CEF field integrity ───────────────────────────────────────────────
+# ── Verify CEF field integrity and v27 compliance via Python helper ──────────
 
-echo "==> Verifying CEF field integrity after TCP transport..."
-
-# Use the Python helper to validate CEF structure.
-# We pipe the extracted CEF lines and verify every one starts with CEF:0 and
-# contains the required extension keys.
-cef_ok=0
-cef_fail=0
-while IFS= read -r cef_line; do
-  if ! echo "${cef_line}" | grep -q '^CEF:0|Cosmian|KMS|'; then
-    echo "FAIL: missing CEF header in line: ${cef_line}" >&2
-    cef_fail=$((cef_fail + 1))
-    continue
-  fi
-  # Verify required CEF extension keys are present
-  for key in rt= suser= outcome= act= cn1= cn1Label=durationMs externalId=; do
-    if ! echo "${cef_line}" | grep -q "${key}"; then
-      echo "FAIL: missing CEF extension key '${key}' in: ${cef_line}" >&2
-      cef_fail=$((cef_fail + 1))
-      continue 2
-    fi
-  done
-  cef_ok=$((cef_ok + 1))
-done <"${VERIFY_CEF}"
+echo "==> Verifying CEF field integrity and v27 compliance via Python helper..."
+python3 "${HELPER}" --jsonl "${AUDIT_JSONL}" --cef "${VERIFY_CEF}"
 
 rm -f "${VERIFY_CEF}"
-
-if [ "${cef_fail}" -gt 0 ]; then
-  echo "ERROR: ${cef_fail} CEF line(s) failed field verification." >&2
-  exit 1
-fi
-
-echo "    All ${cef_ok} CEF lines passed field verification."
+VERIFY_CEF=""
 
 echo ""
 echo "CEF-over-TCP-syslog integration test PASSED."
