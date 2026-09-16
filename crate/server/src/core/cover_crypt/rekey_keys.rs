@@ -19,7 +19,7 @@ use cosmian_kms_server_database::reexport::{
             user_key::UserDecryptionKeysHandler,
         },
         reexport::cosmian_cover_crypt::{
-            AccessPolicy, MasterPublicKey, MasterSecretKey, QualifiedAttribute, api::Covercrypt,
+            AccessPolicy, MasterPublicKey, MasterSecretKey, api::Covercrypt,
         },
     },
 };
@@ -118,13 +118,13 @@ pub(crate) async fn rekey_keypair_cover_crypt(
         }
         RekeyEditAction::AddAnarchy(dimension, attributes) => {
             update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
-                msk.access_structure.add_anarchy(dimension)?;
+                msk.access_structure.add_anarchy(dimension.clone())?;
                 attributes
-                    .into_iter()
+                    .iter()
                     .try_for_each(|(attribute, encryption_hint)| {
                         msk.access_structure.add_attribute(
-                            QualifiedAttribute::new(dimension, attribute),
-                            encryption_hint,
+                            attribute.clone(),
+                            *encryption_hint,
                             None,
                         )
                     })?;
@@ -135,18 +135,19 @@ pub(crate) async fn rekey_keypair_cover_crypt(
         }
         RekeyEditAction::AddHierarchy(dimension, attributes) => {
             update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
-                msk.access_structure.add_hierarchy(dimension)?;
+                msk.access_structure.add_hierarchy(dimension.clone())?;
                 let mut prev = None;
                 attributes
-                    .into_iter()
+                    .iter()
                     .try_for_each(|(attribute, encryption_hint)| {
+                        let name = attribute.name.clone();
                         msk.access_structure.add_attribute(
-                            QualifiedAttribute::new(dimension, attribute.clone()),
-                            encryption_hint,
-                            prev,
+                            attribute.clone(),
+                            *encryption_hint,
+                            prev.as_deref(),
                         )?;
-                        prev = Some(attribute);
-                        Ok(())
+                        prev = Some(name);
+                        KResult::Ok(())
                     })?;
                 *mpk = cover_crypt.update_msk(msk)?;
                 Ok(())
