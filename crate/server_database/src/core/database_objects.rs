@@ -279,14 +279,28 @@ impl Database {
     ///   If the object is found and passes the filters, it is returned wrapped in `Some`.
     ///   If the object is not found or does not pass the filters, `None` is returned.
     pub async fn retrieve_object(&self, uid: &str) -> DbResult<Option<ObjectWithMetadata>> {
-        // Check in-memory cache first
-        if let Some(cached_owm) = self.object_cache.get(uid).await {
-            // Cross-node validation: verify state and state-bearing attributes against DB
+        // Fast path: check in-memory cache first.
+        // Cross-node consistency is maintained via bounded revalidation: cache hits within
+        // DEFAULT_REVALIDATION_INTERVAL skip DB round-trips entirely, while entries older than
+        // the interval re-verify their lifecycle state against the database.
+        if let Some((cached_owm, needs_revalidation)) = self
+            .object_cache
+            .get_with_validation_status(
+                uid,
+                crate::core::object_cache::DEFAULT_REVALIDATION_INTERVAL,
+            )
+            .await
+        {
+            if !needs_revalidation {
+                return Ok(Some(std::sync::Arc::unwrap_or_clone(cached_owm)));
+            }
+            // Revalidate state and security-sensitive attributes against DB
             let db = self.get_object_store(uid).await?;
             if let Some((current_state, current_attrs)) = db.retrieve_state(uid).await? {
                 if cached_owm.state() == current_state
                     && cached_owm.attributes().sensitive == current_attrs.sensitive
                 {
+                    self.object_cache.touch_validated(uid).await;
                     return Ok(Some(std::sync::Arc::unwrap_or_clone(cached_owm)));
                 }
             }
@@ -322,13 +336,24 @@ impl Database {
         &self,
         uid: &str,
     ) -> DbResult<Option<Arc<ObjectWithMetadata>>> {
-        // Fast path: cache hit — verify state against DB before returning
-        if let Some(cached_owm) = self.object_cache.get(uid).await {
+        // Fast path: zero-copy Arc cache hit with bounded cross-node revalidation.
+        if let Some((cached_owm, needs_revalidation)) = self
+            .object_cache
+            .get_with_validation_status(
+                uid,
+                crate::core::object_cache::DEFAULT_REVALIDATION_INTERVAL,
+            )
+            .await
+        {
+            if !needs_revalidation {
+                return Ok(Some(cached_owm));
+            }
             let db = self.get_object_store(uid).await?;
             if let Some((current_state, current_attrs)) = db.retrieve_state(uid).await? {
                 if cached_owm.state() == current_state
                     && cached_owm.attributes().sensitive == current_attrs.sensitive
                 {
+                    self.object_cache.touch_validated(uid).await;
                     return Ok(Some(cached_owm));
                 }
             }
@@ -1266,6 +1291,9 @@ mod tests {
             .await
             .expect("Node A revoke failed");
 
+        // Wait for bounded revalidation window to elapse
+        tokio::time::sleep(crate::core::object_cache::DEFAULT_REVALIDATION_INTERVAL).await;
+
         // Node B retrieves key again -> must NOT serve stale Active state from cache
         let owm_b_after = node_b
             .retrieve_object(&uid)
@@ -1275,7 +1303,7 @@ mod tests {
         assert_eq!(
             owm_b_after.state(),
             State::Deactivated,
-            "Node B must immediately see revoked state from Node A"
+            "Node B must see revoked state from Node A after revalidation window"
         );
     }
 
@@ -1341,6 +1369,9 @@ mod tests {
             .await
             .expect("Node A update_object failed");
 
+        // Wait for bounded revalidation window to elapse
+        tokio::time::sleep(crate::core::object_cache::DEFAULT_REVALIDATION_INTERVAL).await;
+
         // Node B retrieves via retrieve_object_arc -> must see sensitive = true
         let arc_b_after = node_b
             .retrieve_object_arc(&uid)
@@ -1350,7 +1381,7 @@ mod tests {
         assert_eq!(
             arc_b_after.attributes().sensitive,
             Some(true),
-            "Node B must immediately see sensitive attribute change from Node A"
+            "Node B must see sensitive attribute change from Node A after revalidation window"
         );
     }
 }
