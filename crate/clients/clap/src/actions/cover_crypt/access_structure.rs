@@ -401,7 +401,7 @@ impl AddDimensionAction {
                 })
             })
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| KmsCliError::SerdeJsonError(e))?;
+            .map_err(KmsCliError::SerdeJsonError)?;
 
         let query = build_rekey_keypair_request(
             kms_rest_client.config.vendor_id.as_str(),
