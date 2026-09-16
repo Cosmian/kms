@@ -1,5 +1,6 @@
 //! `PostgreSQL` audit backend: [`PgAuditSink`] (write path, used by the server's audit
-//! writer task) and [`PgAuditReader`] (read-only path, used by `ckms audit export|verify`).
+//! writer task) and [`PgAuditReader`] (read-only path, currently used only by tests and
+//! ad-hoc inspection tooling — not yet wired into any `ckms audit` subcommand).
 //!
 //! Kept separate from `stores::sql`: the object store's `PgPool` speaks `ObjectsStore` /
 //! `PermissionsStore`; this module speaks `cosmian_kms_interfaces::AuditSink`. Both reuse
@@ -67,9 +68,12 @@ mod tests {
             "select-audit-schema-columns",
             "select-audit-advisory-lock",
             "insert-audit-event",
+            "select-audit-latest-generation",
+            "select-audit-generations",
             "select-audit-events-page",
             "select-audit-instances",
             "select-audit-event-row-hash",
+            "select-audit-generation-evidence",
         ] {
             assert!(
                 AUDIT_QUERIES.get(name).is_some(),
