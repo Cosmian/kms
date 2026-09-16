@@ -192,6 +192,8 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.KMS_CI_AZURE_CLIENT_SECRET }}
           AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}
 
+          # Splunk audit JSONL compatibility test password
+          SPLUNK_PASSWORD: ${{ secrets.AUDIT_COMPAT_SPLUNK_PASSWORD }}
           # Provide an authenticated token so mise can install tools from
           # GitHub releases without hitting the unauthenticated rate limit.
           GITHUB_TOKEN: ${{ github.token }}

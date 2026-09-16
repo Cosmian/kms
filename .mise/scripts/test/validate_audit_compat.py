@@ -3,7 +3,7 @@
 """Validate that a KMS JSONL audit file ingests cleanly into an external SIEM.
 
 Reads a KMS audit trail (one JSON object per line, see
-schemas/kms-audit-fields.json), validates every line against the expected
+.mise/scripts/test/fixtures/schemas/kms-audit-fields.json), validates every line against the expected
 field schema, then ingests it into either OpenSearch or Splunk and checks
 that the ingested event count matches the source line count.
 
@@ -28,8 +28,8 @@ from typing import Any
 import requests
 import urllib3
 
-DEFAULT_FIELDS_FILE = 'schemas/kms-audit-fields.json'
-DEFAULT_MAPPING_FILE = 'schemas/kms-audit-mapping.json'
+DEFAULT_FIELDS_FILE = '.mise/scripts/test/fixtures/schemas/kms-audit-fields.json'
+DEFAULT_MAPPING_FILE = '.mise/scripts/test/fixtures/schemas/kms-audit-mapping.json'
 
 
 def log_error(message: str) -> None:

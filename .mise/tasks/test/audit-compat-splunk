@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 #MISE description="Ingest a KMS JSONL audit file into an ephemeral Splunk container and verify compatibility"
-#USAGE flag "-f --file <file>" env="AUDIT_FILE" help="Path to the KMS JSONL audit file" default=".mise/scripts/test/fixtures/sample-audit.jsonl"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-f --file <file>" env="AUDIT_FILE" help="Path to the KMS JSONL audit file (auto-generated if omitted)"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/audit_compat.sh"
@@ -14,7 +17,13 @@ if [ -z "${SPLUNK_PASSWORD:-}" ]; then
 fi
 
 REPO_ROOT="$(get_repo_root)"
-AUDIT_FILE="${usage_file:-${REPO_ROOT}/.mise/scripts/test/fixtures/sample-audit.jsonl}"
+if [ -n "${usage_file:-}" ]; then
+  AUDIT_FILE="${usage_file}"
+else
+  AUDIT_FILE="$(mktemp -t kms-audit-live-splunk-XXXXXX.jsonl)"
+  print_status "No --file specified: generating live KMS audit fixture at ${AUDIT_FILE}..."
+  mise run test:audit-compat-generate-fixture --output "${AUDIT_FILE}"
+fi
 SPLUNK_HOST=127.0.0.1
 SPLUNK_MGMT_PORT=8089
 SPLUNK_HEC_PORT=8088
@@ -71,7 +80,7 @@ PYTHON_BIN=$(audit_compat_python "${REPO_ROOT}")
 "${PYTHON_BIN}" "${REPO_ROOT}/.mise/scripts/test/validate_audit_compat.py" \
   --backend splunk \
   --file "${AUDIT_FILE}" \
-  --fields-file "${REPO_ROOT}/schemas/kms-audit-fields.json" \
+  --fields-file "${REPO_ROOT}/.mise/scripts/test/fixtures/schemas/kms-audit-fields.json" \
   --scheme https \
   --insecure \
   --host "${SPLUNK_HOST}" \
