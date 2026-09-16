@@ -68,8 +68,10 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResul
     // The server SHALL create the AlwaysSensitive attribute at creation time
     // (KMIP 2.1 §4.3): it is True iff the object is created Sensitive.
     attributes.initialize_always_sensitive();
+    attributes.initialize_never_extractable();
     if let Ok(object_attributes) = object.attributes_mut() {
         object_attributes.always_sensitive = attributes.always_sensitive;
+        object_attributes.never_extractable = attributes.never_extractable;
     }
 
     // Keyset validation (SQL keys only): if rotate_name is present, the UID must equal it.

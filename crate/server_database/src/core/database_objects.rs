@@ -701,7 +701,7 @@ impl Database {
             return Ok(vec![]);
         }
         for op in operations {
-            if let AtomicOperation::Create((uid, ..)) = op {
+            if let AtomicOperation::Create((uid, ..)) | AtomicOperation::Upsert((uid, ..)) = op {
                 reject_reserved_uid(uid)?;
             }
         }
@@ -791,7 +791,7 @@ mod tests {
     };
 
     use cosmian_kmip::{
-        kmip_0::kmip_types::CertificateType,
+        kmip_0::kmip_types::{CertificateType, State},
         kmip_2_1::{
             extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
             kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
@@ -886,6 +886,29 @@ mod tests {
         ))];
         let result = db.atomic(&owner, &operations).await;
         let err = result.expect_err("atomic Create with uid '*' must fail");
+        assert!(
+            err.to_string().contains("reserved"),
+            "expected a reserved-identifier error, got: {err}"
+        );
+    }
+
+    /// `Database::atomic` with `AtomicOperation::Upsert` must refuse the reserved uid `"*"` (GHSA-pvw2-jxwc-95xq).
+    #[tokio::test]
+    async fn test_atomic_upsert_rejects_reserved_uid() {
+        let db = test_db().await;
+        let owner = UserId::from("owner@example.com");
+        let key = test_key();
+        let attributes = key.attributes().expect("key has attributes").clone();
+
+        let operations = vec![AtomicOperation::Upsert((
+            "*".to_owned(),
+            key,
+            attributes,
+            Some(HashSet::new()),
+            State::Active,
+        ))];
+        let result = db.atomic(&owner, &operations).await;
+        let err = result.expect_err("atomic Upsert with uid '*' must fail");
         assert!(
             err.to_string().contains("reserved"),
             "expected a reserved-identifier error, got: {err}"

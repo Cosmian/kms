@@ -1452,3 +1452,116 @@ async fn test_crl_counting_revoked_certs_with_co() -> KResult<()> {
     }
     Ok(())
 }
+
+/// Certify must reject targeting the reserved UID `"*"` (GHSA-pvw2-jxwc-95xq Part A).
+#[tokio::test]
+async fn test_certify_rejects_reserved_uid_star() -> KResult<()> {
+    let kms = make_kms().await?;
+    let alice = UserId::new("alice");
+
+    let subject_name = "C=FR, O=KMS Test, CN=Star CA";
+    let attrs = Attributes {
+        unique_identifier: Some(UniqueIdentifier::TextString("*".to_owned())),
+        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+        cryptographic_length: Some(2048),
+        key_format_type: None,
+        certificate_attributes: Some(CertificateAttributes::parse_subject_line(subject_name)?),
+        ..Attributes::default()
+    };
+    let result = kms
+        .certify(
+            Certify {
+                attributes: Some(attrs),
+                ..Certify::default()
+            },
+            &alice,
+        )
+        .await;
+
+    let err = result.expect_err("Certify with uid '*' must be rejected");
+    assert!(
+        err.to_string().contains("reserved"),
+        "expected reserved identifier error, got: {err}"
+    );
+    Ok(())
+}
+
+/// Certify must reject overwriting an existing object owned by another user (GHSA-pvw2-jxwc-95xq Part B).
+#[tokio::test]
+async fn test_certify_cannot_overwrite_victim_object() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        extra::tagging::EMPTY_TAGS, kmip_objects::ObjectType,
+        requests::symmetric_key_create_request,
+    };
+
+    use crate::core::ObjectHandle;
+
+    let kms = make_kms().await?;
+    let alice = UserId::new("alice");
+    let bob = UserId::new("bob");
+
+    // Alice creates a CA.
+    let (ca_id, ca_sk_id) = certify(&kms, &alice, "Shared CA", None, None, CA_EXT).await?;
+    // Alice grants Bob Certify permission on the CA.
+    grant_certify_access(&kms, &ca_id, &ca_sk_id, &bob).await?;
+
+    // Alice creates her own symmetric key.
+    let req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    let key_id = kms.create(req, &alice).await?.unique_identifier.to_string();
+    let subject_name = "C=FR, O=KMS Test, CN=Victim Overwrite";
+    let links = vec![
+        Link {
+            link_type: LinkType::CertificateLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(ca_id.clone()),
+        },
+        Link {
+            link_type: LinkType::PrivateKeyLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(ca_sk_id.clone()),
+        },
+    ];
+    let attrs = Attributes {
+        unique_identifier: Some(UniqueIdentifier::TextString(key_id.clone())),
+        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+        cryptographic_length: Some(2048),
+        key_format_type: None,
+        certificate_attributes: Some(CertificateAttributes::parse_subject_line(subject_name)?),
+        link: Some(links),
+        ..Attributes::default()
+    };
+    let result = kms
+        .certify(
+            Certify {
+                attributes: Some(attrs),
+                ..Certify::default()
+            },
+            &bob,
+        )
+        .await;
+
+    let err = result.expect_err("Bob must not be able to certify over Alice's key UID");
+    assert!(
+        err.to_string().contains("does not own object") || err.to_string().contains("Unauthorized"),
+        "expected unauthorized/does not own error, got: {err}"
+    );
+
+    // Alice's key must remain unchanged.
+    let existing = kms
+        .database
+        .retrieve_objects(ObjectHandle::from(&key_id))
+        .await?
+        .into_values()
+        .next()
+        .expect("Alice's key must still exist");
+    assert_eq!(existing.owner(), &alice);
+    assert_eq!(existing.object().object_type(), ObjectType::SymmetricKey);
+
+    Ok(())
+}

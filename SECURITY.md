@@ -1,48 +1,51 @@
 # Security Policy
 
 - [Security Policy](#security-policy)
-  - [Reporting a Vulnerability](#reporting-a-vulnerability)
-  - [Severity Rating](#severity-rating)
-  - [Known Vulnerabilities](#known-vulnerabilities)
-    - [2026](#2026)
-      - [COSMIAN-2026-021 — SSRF via attacker-controlled CRL Distribution Points in KMIP Validate/Import](#cosmian-2026-021--ssrf-via-attacker-controlled-crl-distribution-points-in-kmip-validateimport)
-      - [COSMIAN-2026-020 — `Get` grant on wildcard uid `*` bypasses the Create/Import authorization gate](#cosmian-2026-020--get-grant-on-wildcard-uid--bypasses-the-createimport-authorization-gate)
-      - [COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`](#cosmian-2026-019--rustsec-2026-0173-proc-macro-error2-soundness-issue-via-mysql_async)
-      - [COSMIAN-2026-018 — Activate operation uses overly permissive authorization check](#cosmian-2026-018--activate-operation-uses-overly-permissive-authorization-check)
-      - [COSMIAN-2026-017 — ReKey / ReKeyKeyPair authorization bypass via raw object retrieval](#cosmian-2026-017--rekey--rekeykeypair-authorization-bypass-via-raw-object-retrieval)
-      - [COSMIAN-2026-016 — Attribute-mutation authorization bypass via incorrect operation type](#cosmian-2026-016--attribute-mutation-authorization-bypass-via-incorrect-operation-type)
-      - [COSMIAN-2026-015 — KEK plaintext leak via `UsageLimits` persist in Decrypt and Sign](#cosmian-2026-015--kek-plaintext-leak-via-usagelimits-persist-in-decrypt-and-sign)
-      - [COSMIAN-2026-014 — Sensitive configuration values exposed in Debug output](#cosmian-2026-014--sensitive-configuration-values-exposed-in-debug-output)
-      - [COSMIAN-2026-013 — Internal error details leaked in HTTP 5xx responses](#cosmian-2026-013--internal-error-details-leaked-in-http-5xx-responses)
-      - [COSMIAN-2026-012 — `/server-info` endpoint accessible without authentication](#cosmian-2026-012--server-info-endpoint-accessible-without-authentication)
-      - [COSMIAN-2026-011 — Non-atomic state transitions enable TOCTOU races](#cosmian-2026-011--non-atomic-state-transitions-enable-toctou-races)
-      - [COSMIAN-2026-010 — Predictable default session cookie salt](#cosmian-2026-010--predictable-default-session-cookie-salt)
-      - [COSMIAN-2026-009 — Google CSE rewrap SSRF via `original_kacls_url`](#cosmian-2026-009--google-cse-rewrap-ssrf-via-original_kacls_url)
-      - [COSMIAN-2026-008 — Unwrap cache not invalidated on key revocation/destruction](#cosmian-2026-008--unwrap-cache-not-invalidated-on-key-revocationdestruction)
-      - [COSMIAN-2026-007 — MS DKE scope missing authentication middleware](#cosmian-2026-007--ms-dke-scope-missing-authentication-middleware)
-      - [COSMIAN-2026-006 — Server crash under concurrent requests due to tracing span misuse](#cosmian-2026-006--server-crash-under-concurrent-requests-due-to-tracing-span-misuse)
-      - [COSMIAN-2026-005 — JWT decoding race condition causing intermittent authentication bypass](#cosmian-2026-005--jwt-decoding-race-condition-causing-intermittent-authentication-bypass)
-      - [COSMIAN-2026-004 — OTLP telemetry exported over plaintext HTTP leaks encryption queries](#cosmian-2026-004--otlp-telemetry-exported-over-plaintext-http-leaks-encryption-queries)
-      - [COSMIAN-2026-003 — KMIP Import `replace_existing` bypasses ownership verification](#cosmian-2026-003--kmip-import-replace_existing-bypasses-ownership-verification)
-      - [COSMIAN-2026-002 — SipHash key hardcoded to zero in unwrap cache](#cosmian-2026-002--siphash-key-hardcoded-to-zero-in-unwrap-cache)
-    - [2025](#2025)
-      - [COSMIAN-2025-003 — glibc CVEs in container base image (CVE-2024-2961, CVE-2024-33600, CVE-2024-33601)](#cosmian-2025-003--glibc-cves-in-container-base-image-cve-2024-2961-cve-2024-33600-cve-2024-33601)
-      - [COSMIAN-2025-012 — Session cookie encryption key randomly regenerated on each restart](#cosmian-2025-012--session-cookie-encryption-key-randomly-regenerated-on-each-restart)
-      - [COSMIAN-2025-011 — RUSTSEC-2023-0071: RSA Marvin Attack timing side-channel](#cosmian-2025-011--rustsec-2023-0071-rsa-marvin-attack-timing-side-channel)
-      - [COSMIAN-2025-004 — OpenSSL 3.x CVEs addressed by upgrade to 3.6.2](#cosmian-2025-004--openssl-3x-cves-addressed-by-upgrade-to-362)
-      - [COSMIAN-2025-010 — JWT authentication token not forwarded to downstream services](#cosmian-2025-010--jwt-authentication-token-not-forwarded-to-downstream-services)
-      - [COSMIAN-2025-009 — HSM unwrap operation bypasses KMS permission checks](#cosmian-2025-009--hsm-unwrap-operation-bypasses-kms-permission-checks)
-      - [COSMIAN-2025-002 — Negative X.509 certificate serial numbers](#cosmian-2025-002--negative-x509-certificate-serial-numbers)
-      - [COSMIAN-2025-008 — Google CSE `privilegedunwrap` endpoint unrestricted access](#cosmian-2025-008--google-cse-privilegedunwrap-endpoint-unrestricted-access)
-      - [COSMIAN-2025-001 — CSE migration key pair race condition](#cosmian-2025-001--cse-migration-key-pair-race-condition)
-      - [COSMIAN-2025-007 — OpenID Connect authentication silently falls back to no-auth on TLS failure](#cosmian-2025-007--openid-connect-authentication-silently-falls-back-to-no-auth-on-tls-failure)
-      - [COSMIAN-2025-006 — Missing PKCE in OAuth2 authentication flow](#cosmian-2025-006--missing-pkce-in-oauth2-authentication-flow)
-      - [COSMIAN-2025-005 — JWT authorization config loop — only first OIDC provider checked](#cosmian-2025-005--jwt-authorization-config-loop--only-first-oidc-provider-checked)
-  - [Summary Table](#summary-table)
-  - [Security Best Practices](#security-best-practices)
-  - [FIPS Compliance](#fips-compliance)
-  - [Security Audits](#security-audits)
-  - [Contact](#contact)
+    - [Reporting a Vulnerability](#reporting-a-vulnerability)
+    - [Severity Rating](#severity-rating)
+    - [Known Vulnerabilities](#known-vulnerabilities)
+        - [2026](#2026)
+            - [GHSA-8mmx-f92q-2gq8 — `Extractable` and `NeverExtractable` not enforced on key export paths](#ghsa-8mmx-f92q-2gq8--extractable-and-neverextractable-not-enforced-on-key-export-paths)
+            - [GHSA-pvw2-jxwc-95xq — Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite](#ghsa-pvw2-jxwc-95xq--reserved-uid--bypassable-via-atomicoperationupsert-and-certify-destination-overwrite)
+            - [GHSA-c75c-3cmm-48h7 — `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant](#ghsa-c75c-3cmm-48h7--sensitive-and-extractable-attribute-stripping-via-read-only-get-grant)
+            - [COSMIAN-2026-021 — SSRF via attacker-controlled CRL Distribution Points in KMIP Validate/Import](#cosmian-2026-021--ssrf-via-attacker-controlled-crl-distribution-points-in-kmip-validateimport)
+            - [COSMIAN-2026-020 — `Get` grant on wildcard uid `*` bypasses the Create/Import authorization gate](#cosmian-2026-020--get-grant-on-wildcard-uid--bypasses-the-createimport-authorization-gate)
+            - [COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`](#cosmian-2026-019--rustsec-2026-0173-proc-macro-error2-soundness-issue-via-mysql_async)
+            - [COSMIAN-2026-018 — Activate operation uses overly permissive authorization check](#cosmian-2026-018--activate-operation-uses-overly-permissive-authorization-check)
+            - [COSMIAN-2026-017 — ReKey / ReKeyKeyPair authorization bypass via raw object retrieval](#cosmian-2026-017--rekey--rekeykeypair-authorization-bypass-via-raw-object-retrieval)
+            - [COSMIAN-2026-016 — Attribute-mutation authorization bypass via incorrect operation type](#cosmian-2026-016--attribute-mutation-authorization-bypass-via-incorrect-operation-type)
+            - [COSMIAN-2026-015 — KEK plaintext leak via `UsageLimits` persist in Decrypt and Sign](#cosmian-2026-015--kek-plaintext-leak-via-usagelimits-persist-in-decrypt-and-sign)
+            - [COSMIAN-2026-014 — Sensitive configuration values exposed in Debug output](#cosmian-2026-014--sensitive-configuration-values-exposed-in-debug-output)
+            - [COSMIAN-2026-013 — Internal error details leaked in HTTP 5xx responses](#cosmian-2026-013--internal-error-details-leaked-in-http-5xx-responses)
+            - [COSMIAN-2026-012 — `/server-info` endpoint accessible without authentication](#cosmian-2026-012--server-info-endpoint-accessible-without-authentication)
+            - [COSMIAN-2026-011 — Non-atomic state transitions enable TOCTOU races](#cosmian-2026-011--non-atomic-state-transitions-enable-toctou-races)
+            - [COSMIAN-2026-010 — Predictable default session cookie salt](#cosmian-2026-010--predictable-default-session-cookie-salt)
+            - [COSMIAN-2026-009 — Google CSE rewrap SSRF via `original_kacls_url`](#cosmian-2026-009--google-cse-rewrap-ssrf-via-original_kacls_url)
+            - [COSMIAN-2026-008 — Unwrap cache not invalidated on key revocation/destruction](#cosmian-2026-008--unwrap-cache-not-invalidated-on-key-revocationdestruction)
+            - [COSMIAN-2026-007 — MS DKE scope missing authentication middleware](#cosmian-2026-007--ms-dke-scope-missing-authentication-middleware)
+            - [COSMIAN-2026-006 — Server crash under concurrent requests due to tracing span misuse](#cosmian-2026-006--server-crash-under-concurrent-requests-due-to-tracing-span-misuse)
+            - [COSMIAN-2026-005 — JWT decoding race condition causing intermittent authentication bypass](#cosmian-2026-005--jwt-decoding-race-condition-causing-intermittent-authentication-bypass)
+            - [COSMIAN-2026-004 — OTLP telemetry exported over plaintext HTTP leaks encryption queries](#cosmian-2026-004--otlp-telemetry-exported-over-plaintext-http-leaks-encryption-queries)
+            - [COSMIAN-2026-003 — KMIP Import `replace_existing` bypasses ownership verification](#cosmian-2026-003--kmip-import-replace_existing-bypasses-ownership-verification)
+            - [COSMIAN-2026-002 — SipHash key hardcoded to zero in unwrap cache](#cosmian-2026-002--siphash-key-hardcoded-to-zero-in-unwrap-cache)
+        - [2025](#2025)
+            - [COSMIAN-2025-003 — glibc CVEs in container base image (CVE-2024-2961, CVE-2024-33600, CVE-2024-33601)](#cosmian-2025-003--glibc-cves-in-container-base-image-cve-2024-2961-cve-2024-33600-cve-2024-33601)
+            - [COSMIAN-2025-012 — Session cookie encryption key randomly regenerated on each restart](#cosmian-2025-012--session-cookie-encryption-key-randomly-regenerated-on-each-restart)
+            - [COSMIAN-2025-011 — RUSTSEC-2023-0071: RSA Marvin Attack timing side-channel](#cosmian-2025-011--rustsec-2023-0071-rsa-marvin-attack-timing-side-channel)
+            - [COSMIAN-2025-004 — OpenSSL 3.x CVEs addressed by upgrade to 3.6.2](#cosmian-2025-004--openssl-3x-cves-addressed-by-upgrade-to-362)
+            - [COSMIAN-2025-010 — JWT authentication token not forwarded to downstream services](#cosmian-2025-010--jwt-authentication-token-not-forwarded-to-downstream-services)
+            - [COSMIAN-2025-009 — HSM unwrap operation bypasses KMS permission checks](#cosmian-2025-009--hsm-unwrap-operation-bypasses-kms-permission-checks)
+            - [COSMIAN-2025-002 — Negative X.509 certificate serial numbers](#cosmian-2025-002--negative-x509-certificate-serial-numbers)
+            - [COSMIAN-2025-008 — Google CSE `privilegedunwrap` endpoint unrestricted access](#cosmian-2025-008--google-cse-privilegedunwrap-endpoint-unrestricted-access)
+            - [COSMIAN-2025-001 — CSE migration key pair race condition](#cosmian-2025-001--cse-migration-key-pair-race-condition)
+            - [COSMIAN-2025-007 — OpenID Connect authentication silently falls back to no-auth on TLS failure](#cosmian-2025-007--openid-connect-authentication-silently-falls-back-to-no-auth-on-tls-failure)
+            - [COSMIAN-2025-006 — Missing PKCE in OAuth2 authentication flow](#cosmian-2025-006--missing-pkce-in-oauth2-authentication-flow)
+            - [COSMIAN-2025-005 — JWT authorization config loop — only first OIDC provider checked](#cosmian-2025-005--jwt-authorization-config-loop--only-first-oidc-provider-checked)
+    - [Summary Table](#summary-table)
+    - [Security Best Practices](#security-best-practices)
+    - [FIPS Compliance](#fips-compliance)
+    - [Security Audits](#security-audits)
+    - [Contact](#contact)
 
 ---
 
@@ -78,6 +81,63 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### GHSA-8mmx-f92q-2gq8 — `Extractable` and `NeverExtractable` not enforced on key export paths
+
+| Field      | Value                                                                             |
+| ---------- | --------------------------------------------------------------------------------- |
+| Severity   | High                                                                              |
+| Published  | Pending                                                                           |
+| Affected   | 5.0.0 – 5.27.1                                                                    |
+| Fixed in   | 5.28.0                                                                            |
+| Found by   | External reporter (GHSA-8mmx-f92q-2gq8)                                           |
+| References | [GHSA-8mmx-f92q-2gq8](https://github.com/Cosmian/kms/security/advisories/GHSA-8mmx-f92q-2gq8) |
+
+**Summary:** The KMIP `Extractable` and `NeverExtractable` attributes were stored and echoed by the server but never evaluated on output paths (`Get`, `Export`, and PKCS#12 export). A key created or registered with `Extractable=false` could be exported in plaintext by any user holding a `Get` grant. Furthermore, client-supplied `NeverExtractable` values could contradict server-managed latch semantics, and PKCS#12 export routes did not validate that key-wrapping specifications provided non-empty password credentials for sensitive keys.
+
+**Impact:** Compromise of keys intended to remain server-bound. Clients relying on `Extractable=false` to prevent key extraction from the KMS could have plaintext key material retrieved.
+
+**Mitigation:** Upgrade to 5.28.0. The server now checks `check_extractable_and_sensitive` across all `Get`, `Export`, and PKCS#12 export paths (denying non-extractable keys with `ResultReason::Not_Extractable` regardless of wrapping), requires non-empty password information for sensitive PKCS#12 exports, unconditionally initializes server-managed `NeverExtractable` at creation and import time, maintains the latch across lifecycle state transitions and `ReKey`/`ReKeyKeyPair` rotations, requires explicit operation authorization or ownership for mutating `Extractable`, and enforces `NeverExtractable` as strictly server-managed and read-only.
+
+---
+
+#### GHSA-pvw2-jxwc-95xq — Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite
+
+| Field      | Value                                                                             |
+| ---------- | --------------------------------------------------------------------------------- |
+| Severity   | High                                                                              |
+| Published  | Pending                                                                           |
+| Affected   | 5.0.0 – 5.27.1                                                                    |
+| Fixed in   | 5.28.0                                                                            |
+| Found by   | External reporter (GHSA-pvw2-jxwc-95xq)                                           |
+| References | [GHSA-pvw2-jxwc-95xq](https://github.com/Cosmian/kms/security/advisories/GHSA-pvw2-jxwc-95xq), [COSMIAN-2026-020](#cosmian-2026-020--get-grant-on-wildcard-uid--bypasses-the-createimport-authorization-gate) |
+
+**Summary:** The COSMIAN-2026-020 reserved UID check screened `AtomicOperation::Create` in `Database::atomic`, but did not screen `AtomicOperation::Upsert`. Operations such as `Certify` write via `Upsert` and take destination UIDs directly from requests without prior destination authorization, allowing re-creation of the reserved `"*"` UID and potential overwrite of existing objects owned by other users. In addition, MySQL lacked the `WHERE objects.owner=$5` SQL guard present in PostgreSQL and SQLite, and tag mutations were not gated on affected row counts.
+
+**Impact:** Privilege escalation via recreation of the sentinel `"*"` UID (bypassing the global `Create` gate), and unauthorized overwrite/partial modification of victim objects.
+
+**Mitigation:** Upgrade to 5.28.0. `Database::atomic` now screens both `AtomicOperation::Create` and `AtomicOperation::Upsert` against `reject_reserved_uid`. `Certify` validates destination UIDs before building atomic operations (rejecting empty or reserved UIDs and requiring ownership to overwrite existing objects or Create rights to create new ones). All backends (SQLite, PostgreSQL, MySQL via `select-object-for-update`, and Redis) atomically enforce ownership on `Upsert` and return `DbError::Unauthorized` without partial mutations.
+
+---
+
+#### GHSA-c75c-3cmm-48h7 — `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant
+
+| Field      | Value                                                                             |
+| ---------- | --------------------------------------------------------------------------------- |
+| Severity   | High                                                                              |
+| Published  | Pending                                                                           |
+| Affected   | 5.0.0 – 5.27.1                                                                    |
+| Fixed in   | 5.28.0                                                                            |
+| Found by   | External reporter (GHSA-c75c-3cmm-48h7)                                           |
+| References | [GHSA-c75c-3cmm-48h7](https://github.com/Cosmian/kms/security/advisories/GHSA-c75c-3cmm-48h7) |
+
+**Summary:** `Sensitive` export enforcement prevents plaintext retrieval of keys flagged sensitive unless wrapped. However, `DeleteAttribute` permitted removal of `Sensitive` and `Extractable` attributes, and `retrieve_object_for_operation`'s permission check allowed any caller with a read-only `Get` grant to invoke `DeleteAttribute`, `SetAttribute`, `ModifyAttribute`, or `AddAttribute` on the target object. A user with read-only access to another user's sensitive key could strip `Sensitive` or toggle `Extractable` and subsequently read the plaintext key material.
+
+**Impact:** Plaintext key compromise by users holding only read-only (`Get`) grants on sensitive keys.
+
+**Mitigation:** Upgrade to 5.28.0. `Tag::Sensitive`, `Tag::Extractable`, `Tag::AlwaysSensitive`, and `Tag::NeverExtractable` are now enforced as read-only under both value and reference variants of `DeleteAttribute`. `SetAttribute`, `ModifyAttribute`, and `AddAttribute` now enforce `user_can_perform_operation` specifically for the requested attribute operation, rejecting changes from callers relying solely on generic `Get` grants.
+
+---
 
 #### COSMIAN-2026-021 — SSRF via attacker-controlled CRL Distribution Points in KMIP Validate/Import
 
@@ -154,7 +214,7 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 | Found by   | Copilot code review (GitHub PR #961)            |
 | References | [#961](https://github.com/Cosmian/kms/pull/961) |
 
-**Summary:** The KMIP `Activate` operation passed `KmipOperation::GetAttributes` as the operation type to `retrieve_object_for_operation`. The permission check for `GetAttributes` grants access to any user holding _any_ operation grant on the object. This meant a user with only `Encrypt` permission could activate a `PreActive` key, changing its lifecycle state — a security-relevant state transition that should require explicit authorization.
+**Summary:** The KMIP `Activate` operation passed `KmipOperation::GetAttributes` as the operation type to `retrieve_object_for_operation`. The permission check for `GetAttributes` grants access to any user holding *any* operation grant on the object. This meant a user with only `Encrypt` permission could activate a `PreActive` key, changing its lifecycle state — a security-relevant state transition that should require explicit authorization.
 
 **Impact:** Privilege escalation: a user with a minimal grant (e.g., encrypt-only) could force-activate a key that was intentionally kept in `PreActive` state (e.g., with a future activation date), bypassing the key lifecycle controls set by the key owner.
 
@@ -192,7 +252,7 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 | Found by   | Copilot code review (GitHub PR #959)              |
 | References | [#960](https://github.com/Cosmian/kms/issues/960) |
 
-**Summary:** The `SetAttribute`, `ModifyAttribute`, `AddAttribute`, and `DeleteAttribute` KMIP operations all passed `KmipOperation::GetAttributes` as the operation type to `retrieve_object_for_operation`. That function's permission check uses a relaxed "any-permission" policy for `GetAttributes`, so any user holding _any_ grant on an object (e.g., `Encrypt`-only) could mutate its attributes — including security-sensitive attributes such as `CryptographicUsageMask` — without the required `Modify` or full-access grant.
+**Summary:** The `SetAttribute`, `ModifyAttribute`, `AddAttribute`, and `DeleteAttribute` KMIP operations all passed `KmipOperation::GetAttributes` as the operation type to `retrieve_object_for_operation`. That function's permission check uses a relaxed "any-permission" policy for `GetAttributes`, so any user holding *any* grant on an object (e.g., `Encrypt`-only) could mutate its attributes — including security-sensitive attributes such as `CryptographicUsageMask` — without the required `Modify` or full-access grant.
 
 **Impact:** Privilege escalation: a user with a limited grant (e.g., encrypt-only) could change key attributes, potentially widening the usage mask, altering sensitive metadata, or compromising the key's intended usage restrictions.
 
@@ -700,6 +760,9 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID               | Severity | Affected                | Fixed in | Title                                                         |
 | ---------------- | -------- | ----------------------- | -------- | ------------------------------------------------------------- |
+| GHSA-8mmx-f92q-2gq8 | High     | 5.0.0 – 5.27.1          | 5.28.0   | `Extractable` and `NeverExtractable` not enforced on key export paths |
+| GHSA-pvw2-jxwc-95xq | High     | 5.0.0 – 5.27.1          | 5.28.0   | Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite |
+| GHSA-c75c-3cmm-48h7 | High     | 5.0.0 – 5.27.1          | 5.28.0   | `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant |
 | COSMIAN-2026-021 | High     | 5.0.0 – 5.26.x          | 5.27.0   | SSRF via CRL Distribution Points in KMIP Validate/Import     |
 | COSMIAN-2026-020 | Critical | 5.0.0 – 5.26.0          | 5.27.0   | `Get` grant on wildcard uid `*` bypasses Create/Import gate   |
 | COSMIAN-2026-019 | Low      | 5.0.0 – 5.22.x          | 5.23.0   | RUSTSEC-2026-0173: proc-macro-error2 via mysql_async (compile-time) |

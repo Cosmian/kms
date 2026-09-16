@@ -1262,19 +1262,48 @@ pub(super) async fn upsert_(
         DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
     })?;
     let wrapping_key_id = object.wrapping_key_uid();
-    tx.exec_drop(
-        get_mysql_query!("upsert-object"),
-        (
-            uid,
-            object_json,
-            attributes_json,
-            state.to_string(),
-            owner,
-            wrapping_key_id,
-        ),
-    )
-    .await
-    .map_err(DbError::from)?;
+
+    // If the object already exists, ensure the caller owns it before overwriting.
+    // SQLite and PostgreSQL enforce this via `WHERE objects.owner=$5` on ON CONFLICT DO UPDATE.
+    // In MySQL, `ON DUPLICATE KEY UPDATE` cannot have a WHERE clause.
+    let existing_owner_row: Option<mysql_async::Row> = tx
+        .exec_first(get_mysql_query!("select-object-for-update"), (uid,))
+        .await
+        .map_err(DbError::from)?;
+    if let Some(row) = existing_owner_row {
+        let existing_owner: String = row.get(3).context("missing owner")?;
+        if existing_owner != owner {
+            return Err(DbError::Unauthorized(format!(
+                "User '{owner}' does not own object '{uid}' and cannot overwrite it"
+            )));
+        }
+        tx.exec_drop(
+            get_mysql_query!("update-object-with-object"),
+            (&object_json, &attributes_json, wrapping_key_id, uid),
+        )
+        .await
+        .map_err(DbError::from)?;
+        tx.exec_drop(
+            get_mysql_query!("update-object-with-state"),
+            (state.to_string(), uid),
+        )
+        .await
+        .map_err(DbError::from)?;
+    } else {
+        tx.exec_drop(
+            get_mysql_query!("insert-objects"),
+            (
+                uid,
+                object_json,
+                attributes_json,
+                state.to_string(),
+                owner,
+                wrapping_key_id,
+            ),
+        )
+        .await
+        .map_err(DbError::from)?;
+    }
 
     // Insert the new tags if present
     if let Some(tags) = tags {
@@ -1588,11 +1617,7 @@ pub(super) async fn atomic_(
                 uids.push(uid.clone());
             }
             AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
-                if let Err(e) =
-                    upsert_(uid, owner, object, attributes, tags.as_ref(), *state, tx).await
-                {
-                    db_bail!("upsert of object {uid} failed: {e}");
-                }
+                upsert_(uid, owner, object, attributes, tags.as_ref(), *state, tx).await?;
                 uids.push(uid.clone());
             }
             AtomicOperation::Delete(uid) => {

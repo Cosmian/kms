@@ -485,6 +485,21 @@ impl Attributes {
         self
     }
 
+    /// Initialize the `NeverExtractable` attribute at object creation time
+    /// (KMIP 2.1 §4.33 / KMIP 1.4 §3.51).
+    ///
+    /// It is server-managed and set to `True` iff `Extractable` is `False` at
+    /// creation. When `Extractable` is `True` (the default), the value is left
+    /// unset (`None`) rather than `Some(false)`: `GetAttributes` reports `False`
+    /// for an unset value (see `get.rs`), but leaving it unset means the latch
+    /// established by [`Self::apply_extractable`] has not yet been engaged, so
+    /// the very first `ModifyAttribute`/`SetAttribute(Extractable=false)` call
+    /// after creation correctly flips `NeverExtractable` to `True`.
+    pub fn initialize_never_extractable(&mut self) -> &mut Self {
+        self.never_extractable = (self.extractable == Some(false)).then_some(true);
+        self
+    }
+
     /// Apply a change to the client-modifiable `Sensitive` attribute and
     /// recompute the server-managed `AlwaysSensitive` attribute accordingly
     /// (KMIP 2.1 §4.3).
@@ -505,20 +520,27 @@ impl Attributes {
 
     /// Apply a new `Extractable` value and update `NeverExtractable` accordingly.
     ///
-    /// `NeverExtractable` is the logical complement of `Extractable`, but with latch
-    /// semantics: once `NeverExtractable` becomes `False` (i.e., the key has been extractable),
-    /// it remains `False` even if `Extractable` is later set back to `False`.
+    /// `NeverExtractable` is the logical complement of `Extractable` the first time
+    /// this method is invoked, but with latch semantics thereafter: once `Extractable`
+    /// is explicitly set to `True` (via `ModifyAttribute`/`SetAttribute`), `NeverExtractable`
+    /// latches to `False` and stays `False` even if `Extractable` is later set back to
+    /// `False`. The initial creation-time value (see
+    /// [`Self::initialize_never_extractable`]) does not itself engage the latch.
     ///
-    /// This mirrors the KMIP 2.1 §4.33 / KMIP 1.4 §3.50 specification for the
+    /// This mirrors the KMIP 2.1 §4.33 / KMIP 1.4 §3.51 specification for the
     /// Never Extractable attribute.
     pub fn apply_extractable(&mut self, extractable: bool) -> &mut Self {
-        // Previous NeverExtractable value; if absent, seed it from the complement
-        // of the incoming Extractable value so a first assignment behaves like initialization.
-        let previous_never_extractable = self.never_extractable.unwrap_or(!extractable);
+        // Already latched to False by a prior explicit Extractable=True call.
+        let already_latched = self.never_extractable == Some(false);
         self.extractable = Some(extractable);
-        // NeverExtractable latches to False once Extractable has been True.
-        // It can only transition from True to False, never back to True.
-        self.never_extractable = Some(previous_never_extractable && !extractable);
+        self.never_extractable = Some(if extractable {
+            // Explicitly setting Extractable to True (re)establishes the latch.
+            false
+        } else {
+            // Extractable is being set to False: mirror the complement, unless
+            // the latch was already engaged by a previous Extractable=True call.
+            !already_latched
+        });
         self
     }
 

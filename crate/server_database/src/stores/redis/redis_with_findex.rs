@@ -672,6 +672,14 @@ impl ObjectsStore for RedisWithFindex {
                     } else {
                         self.objects_db.object_get(uid).await?
                     };
+                    if let Some(old) = &old_obj {
+                        if old.owner != user.as_str() {
+                            return Err(DbError::Unauthorized(format!(
+                                "User '{user}' does not own object '{uid}' and cannot overwrite it"
+                            ))
+                            .into());
+                        }
+                    }
                     let old_state = old_obj.as_ref().map(|o| o.state);
                     let old_object_type = old_obj.as_ref().map(|o| o.object_type);
                     let new_live = i64::from(is_live(*state));

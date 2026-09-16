@@ -194,12 +194,32 @@ pub(crate) async fn modify_attribute(
                 ));
             }
             Attribute::Sensitive(sensitive) => {
+                if !kms
+                    .user_can_perform_operation(&owm, user, &KmipOperation::ModifyAttribute)
+                    .await?
+                {
+                    return Err(KmsError::Kmip21Error(
+                        ErrorReason::Permission_Denied,
+                        "DENIED: modifying Sensitive attribute requires ownership or explicit ModifyAttribute grant"
+                            .to_owned(),
+                    ));
+                }
                 // Setting Sensitive also (re)computes the server-managed
                 // AlwaysSensitive attribute (KMIP 2.1 §4.3).
                 trace!("ModifyAttribute: Sensitive: {:?}", sensitive);
                 attributes.apply_sensitive(sensitive);
             }
             Attribute::Extractable(extractable) => {
+                if !kms
+                    .user_can_perform_operation(&owm, user, &KmipOperation::ModifyAttribute)
+                    .await?
+                {
+                    return Err(KmsError::Kmip21Error(
+                        ErrorReason::Permission_Denied,
+                        "DENIED: modifying Extractable attribute requires ownership or explicit ModifyAttribute grant"
+                            .to_owned(),
+                    ));
+                }
                 // Setting Extractable also (re)computes the server-managed
                 // NeverExtractable attribute (KMIP 2.1 §4.33).
                 trace!("ModifyAttribute: Extractable: {:?}", extractable);

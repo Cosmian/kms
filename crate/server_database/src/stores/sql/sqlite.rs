@@ -606,16 +606,18 @@ impl ObjectsStore for SqlitePool {
         let v = self
             .writer
             .call(
-                move |c: &mut rusqlite::Connection| -> Result<Vec<String>, rusqlite::Error> {
-                    let tx = c.transaction()?;
-                    let uids = apply_owned_ops(&tx, &user_s, &ops_owned)
-                        .map_err(|_err| rusqlite::Error::InvalidQuery)?;
-                    tx.commit()?;
+                move |c: &mut rusqlite::Connection| -> DbResult<Vec<String>> {
+                    let tx = c.transaction().map_err(DbError::from)?;
+                    let uids = apply_owned_ops(&tx, &user_s, &ops_owned)?;
+                    tx.commit().map_err(DbError::from)?;
                     Ok(uids)
                 },
             )
             .await
-            .map_err(DbError::from)?;
+            .map_err(|e| match e {
+                tokio_rusqlite::Error::Error(db_err) => db_err,
+                other => DbError::from(other),
+            })?;
         Ok(v)
     }
 
@@ -1504,7 +1506,7 @@ fn upsert_sqlite(
     let state_s = state.to_string();
     let uid_s = uid.to_owned();
     let owner_s: String = owner.to_owned();
-    tx.execute(
+    let rows_affected = tx.execute(
         &sql,
         rusqlite::params![
             uid_s,
@@ -1515,6 +1517,11 @@ fn upsert_sqlite(
             wrapping_key_id
         ],
     )?;
+    if rows_affected == 0 {
+        return Err(DbError::Unauthorized(format!(
+            "User '{owner_s}' does not own object '{uid_s}' and cannot overwrite it"
+        )));
+    }
     if let Some(tags) = tags {
         let del = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
         tx.execute(&del, params_from_iter([&uid_s]))?;

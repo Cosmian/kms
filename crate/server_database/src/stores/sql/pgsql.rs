@@ -820,19 +820,25 @@ impl ObjectsStore for PgPool {
                             .map_err(DbError::from)?;
                         let st = state.to_string();
                         let attrs_param = Json(&attributes_json);
-                        tx.execute(
-                            &stmt,
-                            &[
-                                &uid,
-                                &object_json,
-                                &attrs_param,
-                                &st,
-                                &user,
-                                &wrapping_key_id,
-                            ],
-                        )
-                        .await
-                        .map_err(DbError::from)?;
+                        let rows_affected = tx
+                            .execute(
+                                &stmt,
+                                &[
+                                    &uid,
+                                    &object_json,
+                                    &attrs_param,
+                                    &st,
+                                    &user,
+                                    &wrapping_key_id,
+                                ],
+                            )
+                            .await
+                            .map_err(DbError::from)?;
+                        if rows_affected == 0 {
+                            return Err(DbError::Unauthorized(format!(
+                                "User '{user}' does not own object '{uid}' and cannot overwrite it"
+                            )));
+                        }
                         if let Some(tags) = tags {
                             let delete_stmt = tx
                                 .prepare_cached(get_pgsql_query!("delete-tags"))

@@ -749,6 +749,8 @@ Crate path: `crate/server`
 | `debug` | `AuditFileStore: audit log {} is at its max_size_bytes cap — event dropped` | `src/core/audit/file_store.rs` | - | Throttled to at most once every 500ms while blocked events keep arriving after the cap has been reached. |
 | `error` | `AuditFileStore: recovery task failed to run ({join_err}) — retrying` | `src/core/audit/file_store.rs` | `join_err`: task join error (tokio thread panic or cancellation) | Audit recovery background task crashed; will retry after backoff interval. Monitor frequency to detect systemic issues. |
 | `error` | `AuditFileStore: cannot acquire audit log lock {} ({e}) — retrying` | `src/core/audit/file_store.rs` | `e` | - |
+| `trace` | `Extractable: {:?}` | `src/core/operations/attributes/add.rs` | - | - |
+| `trace` | `Set Attribute: Extractable: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
