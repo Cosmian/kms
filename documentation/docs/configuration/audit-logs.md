@@ -41,8 +41,9 @@ When `audit.file.path` is omitted the file defaults to `<root-data-path>/audit.j
     The audit file backend is designed for **one writer per file**. If you run multiple KMS
     instances (horizontal scaling, Kubernetes replicas), each one needs its **own** audit file —
     never point several instances at the same path on a shared volume. Only one instance will ever hold the
-    lock and write, so the others' events are effectively never recorded. A centralized,
-    multi-writer-safe audit trail is planned via a PostgreSQL backend.
+    lock and write, so the others' events are effectively never recorded. For a centralized,
+    multi-writer-safe audit trail across instances, use the [PostgreSQL backend](#postgresql-backend)
+    instead.
 
 ---
 
@@ -288,3 +289,108 @@ id=1  2026-05-06T20:31:15Z  Encrypt  chain=ok
   happens — the KMS no longer refuses to start on audit-log corruption, so these are the primary
   operator signals for noticing and triaging it.
 - For SIEM ingestion and CEF export, see [SIEMs](./siems.md).
+
+## PostgreSQL backend
+
+Instead of a local JSONL file, the KMS can write the audit hash chain to a `PostgreSQL`
+database — a centralized, multi-writer-safe alternative for horizontally-scaled deployments.
+Backend selection is config-time only: setting `--audit-postgres-url` switches the writer to
+`PostgreSQL` instead of the file; there is no runtime fallback between the two.
+
+=== "Command line"
+
+    ```bash
+    cosmian_kms --audit-enable \
+      --audit-postgres-url postgresql://kms_audit:password@db-host:5432/kms_audit \
+      --audit-instance-id kms-prod-0
+    ```
+
+=== "Environment variables"
+
+    ```bash
+    export KMS_AUDIT_ENABLE=true
+    export KMS_AUDIT_POSTGRES_URL=postgresql://kms_audit:password@db-host:5432/kms_audit
+    export KMS_AUDIT_INSTANCE_ID=kms-prod-0
+    cosmian_kms
+    ```
+
+| CLI flag               | Environment variable    | Description                                                                                                                                                                                                       |
+| ----------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--audit-postgres-url` | `KMS_AUDIT_POSTGRES_URL` | Connection URL for the audit database. Must be a **different** database than `--database-url` when the object store is also `PostgreSQL` — the server refuses to start otherwise.                              |
+| `--audit-instance-id`  | `KMS_AUDIT_INSTANCE_ID`  | Identifies this instance's chain. Must be stable across restarts and unique per instance sharing the database — a reused id is rejected at startup by an advisory-lock check. Defaults to the machine hostname. |
+
+!!! warning "Schema is not release-stable yet"
+    The `PostgreSQL` audit schema has no migration path between versions yet. If you are
+    developing against it and upgrade the KMS across a schema change, drop and let the KMS
+    recreate `kms_audit_events` rather than expecting an in-place upgrade:
+    `psql "$KMS_AUDIT_POSTGRES_URL" -c 'DROP TABLE IF EXISTS kms_audit_events CASCADE'`.
+
+### Chain generations and startup recovery
+
+A stable `--audit-instance-id` owns a sequence of immutable **generations**
+(`chain_generation`, starting at 0) in the shared `kms_audit_events` table, keyed by
+`(instance_id, chain_generation, id)`. Exactly one generation accepts writes at a time; every
+older generation is sealed and never modified again — the `PostgreSQL` analogue of the file
+backend's renamed `*.corrupt.jsonl` evidence file, applying the same
+[always-start recovery policy](../adr/2026-08-14-006-audit-log-always-start-recovery.md).
+
+On startup only the **latest** generation is verified. A clean generation resumes normally. A
+corrupted row is classified by cause, recorded in the reanchor `details` below:
+
+| Reason          | Meaning                                                                   |
+| ---------------- | ---------------------------------------------------------------------------- |
+| `hash_mismatch` | A complete row whose own hash doesn't match its stored bytes.             |
+| `broken_link`   | A row that verifies on its own but doesn't chain to its predecessor.      |
+| `unparseable`   | A column doesn't decode as an audit event at all.                        |
+| `id_overflow`   | A valid tail row at `id = i64::MAX` — continuing in place would overflow. |
+
+The corrupted generation is preserved unchanged. A fresh generation starts with a row-0
+`audit:reanchor` event whose `details` record:
+
+```json
+{
+  "sealed_generation": 0,
+  "new_generation": 1,
+  "first_failure_id": 2,
+  "reason": "hash_mismatch",
+  "evidence": "v1:sha256:<64 hex chars>"
+}
+```
+
+Only connectivity, TLS, schema, advisory-lock, or recovery-write failures still abort startup —
+the same operational/content distinction the file backend draws between a torn write and a
+tampered row. A seal-and-roll recovery is logged at `error!` level; monitor server logs for it
+the same way you would for a file-backend seal-and-roll.
+
+### Reproducing the evidence digest independently
+
+The `evidence` digest is SHA-256 over a deterministic SQL projection of every row in the sealed
+generation (one canonical line per row, in `id` order), plus a footer recording the generation
+number and row count. It is reproducible without trusting the KMS's own hashing — run the same
+projection through `psql` and pipe it to `sha256sum`:
+
+```bash
+QUERY="SELECT 'v1' || '|' || encode(convert_to(instance_id, 'UTF8'), 'hex') || '|' ||
+  chain_generation || '|' || id || '|' ||
+  to_char(timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') || '|' ||
+  encode(convert_to(operation, 'UTF8'), 'hex') || '|' ||
+  encode(convert_to(username, 'UTF8'), 'hex') || '|' ||
+  COALESCE(encode(convert_to(object_uid, 'UTF8'), 'hex'), '-') || '|' ||
+  COALESCE(encode(convert_to(algorithm, 'UTF8'), 'hex'), '-') || '|' ||
+  COALESCE(encode(convert_to(client_ip, 'UTF8'), 'hex'), '-') || '|' ||
+  encode(convert_to(result, 'UTF8'), 'hex') || '|' || duration_ms || '|' ||
+  COALESCE(request_id::text, '-') || '|' ||
+  COALESCE(encode(convert_to(details, 'UTF8'), 'hex'), '-') || '|' ||
+  encode(prev_hash, 'hex') || '|' || encode(row_hash, 'hex')
+  FROM kms_audit_events
+  WHERE instance_id = '<instance_id>' AND chain_generation = <sealed_generation>
+  ORDER BY id ASC"
+
+{
+  psql "$KMS_AUDIT_POSTGRES_URL" -qtA -c "$QUERY"
+  printf 'v1|end|%s|%s\n' "<sealed_generation>" "<row_count>"
+} | sha256sum
+```
+
+The resulting hex digest, prefixed with `v1:sha256:`, must match the `evidence` field recorded
+in the corresponding `audit:reanchor` event.

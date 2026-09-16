@@ -1,20 +1,21 @@
 -- name: create-table-audit-events
 CREATE TABLE IF NOT EXISTS kms_audit_events (
-    instance_id  TEXT        NOT NULL CHECK (length(instance_id) BETWEEN 1 AND 255),
-    id           BIGINT      NOT NULL CHECK (id >= 0),
-    timestamp    TIMESTAMPTZ NOT NULL,
-    operation    TEXT        NOT NULL,
-    username     TEXT        NOT NULL,
-    object_uid   TEXT,
-    algorithm    TEXT,
-    client_ip    TEXT,
-    result       TEXT        NOT NULL,
-    duration_ms  BIGINT      NOT NULL CHECK (duration_ms >= 0),
-    request_id   UUID,
-    details      TEXT,
-    prev_hash    BYTEA       NOT NULL CHECK (octet_length(prev_hash) = 32),
-    row_hash     BYTEA       NOT NULL CHECK (octet_length(row_hash) = 32),
-    PRIMARY KEY (instance_id, id)
+    instance_id      TEXT        NOT NULL CHECK (length(instance_id) BETWEEN 1 AND 255),
+    chain_generation BIGINT      NOT NULL CHECK (chain_generation >= 0),
+    id               BIGINT      NOT NULL CHECK (id >= 0),
+    timestamp        TIMESTAMPTZ NOT NULL,
+    operation        TEXT        NOT NULL,
+    username         TEXT        NOT NULL,
+    object_uid       TEXT,
+    algorithm        TEXT,
+    client_ip        TEXT,
+    result           TEXT        NOT NULL,
+    duration_ms      BIGINT      NOT NULL CHECK (duration_ms >= 0),
+    request_id       UUID,
+    details          TEXT,
+    prev_hash        BYTEA       NOT NULL CHECK (octet_length(prev_hash) = 32),
+    row_hash         BYTEA       NOT NULL CHECK (octet_length(row_hash) = 32),
+    PRIMARY KEY (instance_id, chain_generation, id)
 );
 
 -- name: add-column-audit-events-details
@@ -42,19 +43,22 @@ CREATE TRIGGER kms_audit_no_delete BEFORE DELETE ON kms_audit_events FOR EACH RO
 REVOKE UPDATE, DELETE, TRUNCATE ON kms_audit_events FROM PUBLIC;
 
 -- name: select-audit-schema-columns
-SELECT instance_id, id, timestamp, operation, username, object_uid, algorithm, client_ip, result, duration_ms, request_id, details, prev_hash, row_hash FROM kms_audit_events LIMIT 0;
+SELECT instance_id, chain_generation, id, timestamp, operation, username, object_uid, algorithm, client_ip, result, duration_ms, request_id, details, prev_hash, row_hash FROM kms_audit_events LIMIT 0;
 
 -- name: select-audit-advisory-lock
 SELECT pg_try_advisory_lock(hashtextextended($1, 0));
 
 -- name: insert-audit-event
-INSERT INTO kms_audit_events (instance_id, id, timestamp, operation, username, object_uid, algorithm, client_ip, result, duration_ms, request_id, details, prev_hash, row_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
+INSERT INTO kms_audit_events (instance_id, chain_generation, id, timestamp, operation, username, object_uid, algorithm, client_ip, result, duration_ms, request_id, details, prev_hash, row_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);
 
--- name: select-audit-chain-head
-SELECT instance_id, id, timestamp, operation, username, object_uid, algorithm, client_ip, result, duration_ms, request_id, details, prev_hash, row_hash FROM kms_audit_events WHERE instance_id = $1 ORDER BY id DESC LIMIT 1;
+-- name: select-audit-latest-generation
+SELECT MAX(chain_generation) FROM kms_audit_events WHERE instance_id = $1;
+
+-- name: select-audit-generations
+SELECT DISTINCT chain_generation FROM kms_audit_events WHERE instance_id = $1 ORDER BY chain_generation ASC;
 
 -- name: select-audit-events-page
-SELECT instance_id, id, timestamp, operation, username, object_uid, algorithm, client_ip, result, duration_ms, request_id, details, prev_hash, row_hash FROM kms_audit_events WHERE instance_id = $1 AND id > $2 ORDER BY id ASC LIMIT $3;
+SELECT instance_id, chain_generation, id, timestamp, operation, username, object_uid, algorithm, client_ip, result, duration_ms, request_id, details, prev_hash, row_hash FROM kms_audit_events WHERE instance_id = $1 AND chain_generation = $2 AND id > $3 ORDER BY id ASC LIMIT $4;
 
 -- name: select-audit-instances
 SELECT DISTINCT instance_id FROM kms_audit_events ORDER BY instance_id ASC;
@@ -63,4 +67,8 @@ SELECT DISTINCT instance_id FROM kms_audit_events ORDER BY instance_id ASC;
 SELECT to_regclass('kms_audit_events') IS NOT NULL;
 
 -- name: select-audit-event-row-hash
-SELECT row_hash FROM kms_audit_events WHERE instance_id = $1 AND id = $2;
+SELECT row_hash FROM kms_audit_events WHERE instance_id = $1 AND chain_generation = $2 AND id = $3;
+
+-- name: select-audit-generation-evidence
+SELECT id, 'v1' || '|' || encode(convert_to(instance_id, 'UTF8'), 'hex') || '|' || chain_generation || '|' || id || '|' || to_char(timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') || '|' || encode(convert_to(operation, 'UTF8'), 'hex') || '|' || encode(convert_to(username, 'UTF8'), 'hex') || '|' || COALESCE(encode(convert_to(object_uid, 'UTF8'), 'hex'), '-') || '|' || COALESCE(encode(convert_to(algorithm, 'UTF8'), 'hex'), '-') || '|' || COALESCE(encode(convert_to(client_ip, 'UTF8'), 'hex'), '-') || '|' || encode(convert_to(result, 'UTF8'), 'hex') || '|' || duration_ms || '|' || COALESCE(request_id::text, '-') || '|' || COALESCE(encode(convert_to(details, 'UTF8'), 'hex'), '-') || '|' || encode(prev_hash, 'hex') || '|' || encode(row_hash, 'hex') AS evidence_line FROM kms_audit_events WHERE instance_id = $1 AND chain_generation = $2 AND id > $3 ORDER BY id ASC LIMIT $4;
+

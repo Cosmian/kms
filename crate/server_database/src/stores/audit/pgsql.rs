@@ -1,6 +1,18 @@
 //! `PgAuditSink` (write path) and `PgAuditReader` (read path) for the `PostgreSQL` audit
 //! backend.
 //!
+//! Chain generations and recovery
+//! ==============================
+//! A stable `instance_id` owns a sequence of immutable **generations**
+//! (`chain_generation`, starting at 0). At any time exactly one generation is active for
+//! writes; every older generation is sealed, forensic evidence that is never modified
+//! again. [`PgAuditSink::resume`] verifies only the latest generation: a clean one
+//! resumes normally, a corrupted one is left untouched and a fresh generation is started
+//! with a row-0 `audit:reanchor` event recording the failure and a digest of the sealed
+//! generation — see [`PgAuditSink::seal_and_roll`]. This mirrors the file backend's
+//! always-start policy (ADR-0006) for content corruption; connectivity, schema, and lock
+//! failures still abort startup.
+//!
 //! Multi-writer safety
 //! ====================
 //! Two independent mechanisms guard against two KMS instances sharing an
@@ -14,9 +26,12 @@
 //!    if the dedicated session itself dies (e.g. a network partition), the lock is
 //!    released by `PostgreSQL` and a competing writer could take over the `instance_id`
 //!    until this process reconnects. The composite-key defense below is what makes that
-//!    residual window safe rather than silently corrupting.
-//! 2. **Composite primary key** (defense in depth): `(instance_id, id)` makes a genuine
-//!    chain fork *structurally impossible*, not just detected — see
+//!    residual window safe rather than silently corrupting. The seal-and-roll reanchor
+//!    insert (see above) runs directly on this dedicated session rather than a pooled
+//!    one, precisely so `PostgreSQL` itself — not a separate liveness check racing the
+//!    write — guarantees the lock is held for that insert's entire duration.
+//! 2. **Composite primary key** (defense in depth): `(instance_id, chain_generation, id)`
+//!    makes a genuine chain fork *structurally impossible*, not just detected — see
 //!    [`PgAuditSink::write_event_once`] for how a lost-acknowledgement retry (same writer,
 //!    same row) is told apart from a genuine second writer (same slot, different row).
 //!
@@ -28,13 +43,18 @@
 //! statement's closing `;`.
 
 use async_trait::async_trait;
-use cosmian_kms_access::audit::{AuditEvent, verify_chain_link, verify_event};
-use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult};
+use cosmian_kms_access::audit::{
+    AuditEvent, AuditEventDraft, AuditResult, audit_now, verify_chain_link, verify_event,
+};
+use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult, SealReason};
 use cosmian_logger::error;
 use deadpool_postgres::{
     Config as PgConfig, GenericClient as _, ManagerConfig, Pool, RecyclingMethod,
 };
-use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
+use openssl::{
+    hash::{Hasher, MessageDigest},
+    ssl::{SslConnector, SslMethod, SslVerifyMode},
+};
 use postgres_openssl::MakeTlsConnector;
 use tokio_postgres::{NoTls, error::SqlState};
 
@@ -142,13 +162,12 @@ pub struct PgAuditSink {
     /// it scopes every read: one instance, one chain.
     instance_id: String,
     /// Holds the instance's advisory lock for the sink's entire lifetime — see the
-    /// module docs. Never read again after `connect()`; kept alive purely so the
-    /// session (and therefore the lock) stays open until this sink is dropped.
-    #[allow(
-        dead_code,
-        reason = "kept alive to hold the session-scoped advisory lock"
-    )]
+    /// module docs. Also used directly (not through `pool`) to insert a seal-and-roll
+    /// reanchor row, so the lock is provably held for that insert's entire duration.
     lock_session: tokio_postgres::Client,
+    /// The generation currently accepting writes. Set by [`Self::resume`] (never before);
+    /// `write_event_atomic` always writes into this generation.
+    active_generation: i64,
 }
 
 impl PgAuditSink {
@@ -192,6 +211,7 @@ impl PgAuditSink {
             pool,
             instance_id: instance_id.to_owned(),
             lock_session,
+            active_generation: 0,
         })
     }
 
@@ -257,34 +277,50 @@ impl PgAuditSink {
         Ok(())
     }
 
-    /// Reads the `row_hash` stored for `(instance_id, id)`, if any. Used only to
-    /// disambiguate a unique-violation on insert (see [`Self::write_event_once`]).
-    async fn stored_row_hash(pool: &Pool, instance_id: &str, id: i64) -> DbResult<Option<Vec<u8>>> {
+    /// Reads the `row_hash` stored for `(instance_id, chain_generation, id)`, if any.
+    /// Used only to disambiguate a unique-violation on insert (see
+    /// [`Self::write_event_once`]).
+    async fn stored_row_hash(
+        pool: &Pool,
+        instance_id: &str,
+        generation: i64,
+        id: i64,
+    ) -> DbResult<Option<Vec<u8>>> {
         let client = pool.get().await.map_err(DbError::from)?;
         let row = client
             .query_opt(
                 get_audit_query!("select-audit-event-row-hash"),
-                &[&instance_id, &id],
+                &[&instance_id, &generation, &id],
             )
             .await
             .map_err(DbError::from)?;
         Ok(row.map(|r| r.get(0)))
     }
 
-    /// Single-attempt insert of `event`, retried by [`Self::write_event`] on transient
-    /// errors.
-    async fn write_event_once(pool: &Pool, instance_id: &str, event: &AuditEvent) -> DbResult<()> {
-        let client = pool.get().await.map_err(DbError::from)?;
+    /// Executes `insert-audit-event` on `client` for `(instance_id, generation)`. Shared
+    /// by the steady-state pooled write path ([`Self::write_event_once`]) and the
+    /// lock-session reanchor insert ([`Self::seal_and_roll`]) so the parameter binding is
+    /// defined exactly once. Returns the raw `tokio_postgres` error (not [`DbError`]): the
+    /// caller needs the original `SqlState` to disambiguate a unique-violation retry from
+    /// a genuine competing writer, which [`DbError::from`] collapses into one message.
+    async fn insert_event_row(
+        client: &tokio_postgres::Client,
+        query: &str,
+        instance_id: &str,
+        generation: i64,
+        event: &AuditEvent,
+    ) -> Result<u64, tokio_postgres::Error> {
         let duration_ms = i64::try_from(event.duration_ms).unwrap_or(i64::MAX);
         let result_str = event.result.as_canonical_str();
         let prev_hash = event.prev_hash.as_slice();
         let row_hash = event.row_hash.as_slice();
 
-        let res = client
+        client
             .execute(
-                get_audit_query!("insert-audit-event"),
+                query,
                 &[
                     &instance_id,
+                    &generation,
                     &event.id,
                     &event.timestamp,
                     &event.operation,
@@ -300,7 +336,20 @@ impl PgAuditSink {
                     &row_hash,
                 ],
             )
-            .await;
+            .await
+    }
+
+    /// Single-attempt insert of `event` into `generation`, retried by
+    /// [`Self::write_event_atomic`] on transient errors.
+    async fn write_event_once(
+        pool: &Pool,
+        instance_id: &str,
+        generation: i64,
+        event: &AuditEvent,
+    ) -> DbResult<()> {
+        let client = pool.get().await.map_err(DbError::from)?;
+        let query = get_audit_query!("insert-audit-event");
+        let res = Self::insert_event_row(&client, query, instance_id, generation, event).await;
 
         let Err(e) = res else {
             return Ok(());
@@ -311,21 +360,21 @@ impl PgAuditSink {
         // waiting for a connection that only `client`'s own drop can free.
         drop(client);
 
-        // SQLSTATE 23505 on (instance_id, id). Do NOT report "another writer" yet: a
-        // retry after a lost commit acknowledgement collides with our own row. Read the
-        // stored hash to tell the two apart. `ON CONFLICT DO NOTHING` is not an option
-        // here — it would paper over the genuine case and leave two divergent chains
-        // that each verify in isolation.
+        // SQLSTATE 23505 on (instance_id, chain_generation, id). Do NOT report "another
+        // writer" yet: a retry after a lost commit acknowledgement collides with our own
+        // row. Read the stored hash to tell the two apart. `ON CONFLICT DO NOTHING` is not
+        // an option here — it would paper over the genuine case and leave two divergent
+        // chains that each verify in isolation.
         if e.as_db_error()
             .is_some_and(|db| *db.code() == SqlState::UNIQUE_VIOLATION)
         {
-            let stored = Self::stored_row_hash(pool, instance_id, event.id).await?;
+            let stored = Self::stored_row_hash(pool, instance_id, generation, event.id).await?;
             return match stored {
                 Some(h) if h == event.row_hash => Ok(()),
                 _ => Err(DbError::DatabaseError(format!(
-                    "audit: another writer is appending to chain instance_id={instance_id} at \
-                     id={}. Two KMS instances must not share an audit instance_id — set a \
-                     distinct --audit-instance-id on each.",
+                    "audit: another writer is appending to chain instance_id={instance_id} \
+                     generation={generation} at id={}. Two KMS instances must not share an \
+                     audit instance_id — set a distinct --audit-instance-id on each.",
                     event.id
                 ))),
             };
@@ -333,25 +382,48 @@ impl PgAuditSink {
 
         Err(DbError::from(e))
     }
-}
 
-#[async_trait]
-impl AuditSink for PgAuditSink {
-    fn name(&self) -> &'static str {
-        "postgres"
+    /// Inserts `event` directly on [`Self::lock_session`] rather than through `pool` —
+    /// see the module docs for why this is what makes the reanchor insert safe against
+    /// advisory-lock loss, instead of merely checking the lock is held immediately
+    /// beforehand (which would still race the loss against the write).
+    async fn insert_reanchor_on_lock_session(
+        &self,
+        generation: i64,
+        event: &AuditEvent,
+    ) -> DbResult<()> {
+        let query = get_audit_query!("insert-audit-event");
+        Self::insert_event_row(
+            &self.lock_session,
+            query,
+            &self.instance_id,
+            generation,
+            event,
+        )
+        .await
+        .map_err(DbError::from)?;
+        Ok(())
     }
 
-    /// Verifies the **entire** chain (not just the last row) page by page before
-    /// resuming, catching an interior tamper the same way the file backend's unconditional
-    /// interior scan does. Deliberately fail-fast: unlike the file backend, `PostgreSQL`
-    /// writes are atomic (a single `INSERT`), so there is no torn-write case to recover
-    /// from, and papering over a corrupted chain here would silently continue an audit
-    /// trail that can no longer be trusted.
-    ///
-    /// TODO: reconsider whether a narrower, ADR-006-style recovery (e.g. quarantine and
-    /// reanchor, matching the file backend) makes sense for `PostgreSQL` once there is
-    /// operational experience with how this fails in practice.
-    async fn resume(&mut self) -> InterfaceResult<ChainHead> {
+    /// Returns the highest `chain_generation` stored for this instance, or `None` if the
+    /// instance has no rows at all (a brand-new chain).
+    async fn latest_generation(&self) -> DbResult<Option<i64>> {
+        let client = self.pool.get().await.map_err(DbError::from)?;
+        let row = client
+            .query_one(
+                get_audit_query!("select-audit-latest-generation"),
+                &[&self.instance_id],
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(row.get(0))
+    }
+
+    /// Verifies every row of `generation`, page by page, the same way the file backend's
+    /// unconditional interior scan does. Returns the chain head when every row verifies,
+    /// or the first failure's classification when one doesn't — recovery from that
+    /// failure is [`Self::seal_and_roll`]'s job, not this function's.
+    async fn verify_generation(&self, generation: i64) -> InterfaceResult<GenerationOutcome> {
         let mut prev: Option<AuditEvent> = None;
         let mut after_id = -1_i64;
         loop {
@@ -363,7 +435,7 @@ impl AuditSink for PgAuditSink {
             let rows = client
                 .query(
                     get_audit_query!("select-audit-events-page"),
-                    &[&self.instance_id, &after_id, &AUDIT_PAGE_SIZE],
+                    &[&self.instance_id, &generation, &after_id, &AUDIT_PAGE_SIZE],
                 )
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
@@ -372,38 +444,217 @@ impl AuditSink for PgAuditSink {
                 break;
             }
             for row in &rows {
-                let event = event_from_row(row)?;
+                let Ok(event) = event_from_row(row) else {
+                    return Ok(GenerationOutcome::Corrupt(RecoveryFailure {
+                        reason: SealReason::Unparseable,
+                        first_failure_id: row.get("id"),
+                    }));
+                };
                 if !verify_event(&event) {
-                    return Err(InterfaceError::Db(format!(
-                        "audit: event id={} for instance_id={} has an invalid row_hash — \
-                         the chain may be corrupted or tampered. Repair or remove it \
-                         before restarting.",
-                        event.id, self.instance_id
-                    )));
+                    return Ok(GenerationOutcome::Corrupt(RecoveryFailure {
+                        reason: SealReason::HashMismatch,
+                        first_failure_id: event.id,
+                    }));
                 }
                 if !verify_chain_link(&event, prev.as_ref()) {
-                    return Err(InterfaceError::Db(format!(
-                        "audit: event id={} for instance_id={} does not link to the \
-                         previous row — the chain may be corrupted or tampered. Repair or \
-                         remove it before restarting.",
-                        event.id, self.instance_id
-                    )));
+                    return Ok(GenerationOutcome::Corrupt(RecoveryFailure {
+                        reason: SealReason::BrokenLink,
+                        first_failure_id: event.id,
+                    }));
                 }
                 after_id = event.id;
                 prev = Some(event);
             }
         }
 
-        Ok(prev.map_or(ChainHead::EMPTY, |event| ChainHead {
-            next_id: event.id.checked_add(1).unwrap_or(event.id),
-            prev_hash: event.row_hash,
-        }))
+        Ok(prev.map_or(
+            GenerationOutcome::Valid(ChainHead::EMPTY),
+            |event| match event.id.checked_add(1) {
+                Some(next_id) => GenerationOutcome::Valid(ChainHead {
+                    next_id,
+                    prev_hash: event.row_hash,
+                }),
+                None => GenerationOutcome::Corrupt(RecoveryFailure {
+                    reason: SealReason::IdOverflow,
+                    first_failure_id: event.id,
+                }),
+            },
+        ))
+    }
+
+    /// Computes the recovery evidence digest over every stored row of `generation`: the
+    /// deterministic text projection in `select-audit-generation-evidence`, one line per
+    /// row (in `id` order) plus the footer `v1|end|<generation>|<row_count>`, streamed
+    /// through OpenSSL SHA-256 page by page — bounded per-page memory, matching
+    /// `AUDIT_PAGE_SIZE`'s existing bounded-read design intent.
+    ///
+    /// Independently reproducible without this code: run the query in `psql` with
+    /// unaligned, tuples-only output, append the same footer line, and pipe both through
+    /// `sha256sum` — see the audit operator guide for the exact command.
+    async fn compute_generation_evidence(&self, generation: i64) -> DbResult<String> {
+        let mut hasher = Hasher::new(MessageDigest::sha256()).map_err(|e| {
+            DbError::DatabaseError(format!("audit: cannot start evidence hasher: {e}"))
+        })?;
+        let mut row_count: i64 = 0;
+        let mut after_id = -1_i64;
+        loop {
+            let client = self.pool.get().await.map_err(DbError::from)?;
+            let rows = client
+                .query(
+                    get_audit_query!("select-audit-generation-evidence"),
+                    &[&self.instance_id, &generation, &after_id, &AUDIT_PAGE_SIZE],
+                )
+                .await
+                .map_err(DbError::from)?;
+            drop(client);
+            if rows.is_empty() {
+                break;
+            }
+            for row in &rows {
+                let line: String = row.get(1);
+                hasher.update(line.as_bytes()).map_err(|e| {
+                    DbError::DatabaseError(format!("audit: evidence hashing failed: {e}"))
+                })?;
+                hasher.update(b"\n").map_err(|e| {
+                    DbError::DatabaseError(format!("audit: evidence hashing failed: {e}"))
+                })?;
+                row_count += 1;
+            }
+            after_id = rows.last().map_or(after_id, |r| r.get::<_, i64>(0));
+        }
+
+        hasher
+            .update(format!("v1|end|{generation}|{row_count}\n").as_bytes())
+            .map_err(|e| DbError::DatabaseError(format!("audit: evidence hashing failed: {e}")))?;
+        let digest = hasher
+            .finish()
+            .map_err(|e| DbError::DatabaseError(format!("audit: evidence hashing failed: {e}")))?;
+        Ok(format!("v1:sha256:{}", hex::encode(digest.as_ref())))
+    }
+
+    /// Seals `sealed_generation` as forensic evidence — never modified again — and starts
+    /// `sealed_generation + 1` with a row-0 `audit:reanchor` event identifying the
+    /// failure and carrying a digest of the sealed generation. This is the KMS's
+    /// always-start recovery for `PostgreSQL` content corruption (ADR-0006): the
+    /// corrupted generation is preserved, not discarded, and startup proceeds.
+    ///
+    /// # Errors
+    /// Returns an error if the generation counter is exhausted, the evidence digest
+    /// cannot be computed, or the reanchor cannot be persisted — these are treated as
+    /// operational failures, not corruption, and still abort startup.
+    async fn seal_and_roll(
+        &mut self,
+        sealed_generation: i64,
+        failure: RecoveryFailure,
+    ) -> InterfaceResult<ChainHead> {
+        let evidence = self
+            .compute_generation_evidence(sealed_generation)
+            .await
+            .map_err(InterfaceError::from)?;
+
+        let new_generation = sealed_generation.checked_add(1).ok_or_else(|| {
+            InterfaceError::Db(format!(
+                "audit: instance_id={} chain_generation counter exhausted at i64::MAX — \
+                 cannot start a fresh generation",
+                self.instance_id
+            ))
+        })?;
+
+        let details = serde_json::json!({
+            "sealed_generation": sealed_generation,
+            "new_generation": new_generation,
+            "first_failure_id": failure.first_failure_id,
+            "reason": failure.reason.as_str(),
+            "evidence": evidence,
+        })
+        .to_string();
+
+        let draft = AuditEventDraft {
+            timestamp: audit_now(),
+            operation: "audit:reanchor".to_owned(),
+            user: "server".to_owned(),
+            object_uid: None,
+            algorithm: None,
+            client_ip: None,
+            result: AuditResult::Success,
+            duration_ms: 0,
+            request_id: None,
+            details: Some(details),
+        };
+        let reanchor = draft.finalize(0, [0_u8; 32]);
+
+        self.insert_reanchor_on_lock_session(new_generation, &reanchor)
+            .await
+            .map_err(InterfaceError::from)?;
+
+        error!(
+            "audit: instance_id={} sealed generation {sealed_generation} (reason={}, \
+             first_failure_id={}, evidence={evidence}) — starting generation {new_generation}",
+            self.instance_id,
+            failure.reason.as_str(),
+            failure.first_failure_id,
+        );
+
+        self.active_generation = new_generation;
+        Ok(ChainHead {
+            next_id: 1,
+            prev_hash: reanchor.row_hash,
+        })
+    }
+}
+
+/// First-failure classification produced by [`PgAuditSink::verify_generation`].
+struct RecoveryFailure {
+    reason: SealReason,
+    first_failure_id: i64,
+}
+
+/// Outcome of verifying one generation's stored rows.
+enum GenerationOutcome {
+    Valid(ChainHead),
+    Corrupt(RecoveryFailure),
+}
+
+#[async_trait]
+impl AuditSink for PgAuditSink {
+    fn name(&self) -> &'static str {
+        "postgres"
+    }
+
+    /// Resumes the latest chain generation for this instance, or starts generation 0 for
+    /// a brand-new instance. A clean latest generation resumes normally; a corrupted one
+    /// is sealed unchanged and a fresh generation takes over — see the module docs and
+    /// [`Self::seal_and_roll`]. Older, already-sealed generations are never re-verified.
+    async fn resume(&mut self) -> InterfaceResult<ChainHead> {
+        let Some(generation) = self
+            .latest_generation()
+            .await
+            .map_err(InterfaceError::from)?
+        else {
+            self.active_generation = 0;
+            return Ok(ChainHead::EMPTY);
+        };
+
+        match self.verify_generation(generation).await? {
+            GenerationOutcome::Valid(head) => {
+                self.active_generation = generation;
+                Ok(head)
+            }
+            GenerationOutcome::Corrupt(failure) => self.seal_and_roll(generation, failure).await,
+        }
     }
 
     async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<()> {
         let mut last_err = None;
         for attempt in 0..crate::stores::sql::PG_MAX_RETRIES {
-            match Self::write_event_once(&self.pool, &self.instance_id, event).await {
+            match Self::write_event_once(
+                &self.pool,
+                &self.instance_id,
+                self.active_generation,
+                event,
+            )
+            .await
+            {
                 Ok(()) => return Ok(()),
                 Err(e) if is_pg_retryable_error(&e.to_string()) => {
                     let delay = pg_retry_backoff_ms(attempt);
@@ -419,12 +670,14 @@ impl AuditSink for PgAuditSink {
     }
 }
 
-/// Read-only view of a `PostgreSQL` audit database, used by `ckms audit export|verify`.
+/// Read-only view of a `PostgreSQL` audit database. Not currently wired into any `ckms
+/// audit` subcommand — used today by tests and ad-hoc inspection tooling.
 ///
 /// Deliberately separate from [`PgAuditSink`]: it never writes, and it lists *every*
 /// chain in the database rather than a single instance's, because an auditor verifying a
 /// cluster needs every stream. Both types decode rows through [`event_from_row`], so the
-/// read and write representations cannot drift.
+/// read and write representations cannot drift. Generations are never concatenated into
+/// one chain: each is independently anchored, and a caller must ask for one explicitly.
 pub struct PgAuditReader {
     pool: Pool,
 }
@@ -454,8 +707,29 @@ impl PgAuditReader {
         Ok(rows.iter().map(|r| r.get(0)).collect())
     }
 
-    /// Fetches up to one page of events for `instance_id` with `id > after_id`, in
-    /// ascending order. Returns an empty `Vec` once the chain is exhausted.
+    /// Lists every `chain_generation` stored for `instance_id`, in ascending order (the
+    /// order generations were started in). An instance with no rows returns an empty
+    /// `Vec`.
+    ///
+    /// # Errors
+    /// Returns an error if the query fails.
+    pub async fn list_generations(&self, instance_id: &str) -> DbResult<Vec<i64>> {
+        let client = self.pool.get().await.map_err(DbError::from)?;
+        let rows = client
+            .query(
+                get_audit_query!("select-audit-generations"),
+                &[&instance_id],
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(rows.iter().map(|r| r.get(0)).collect())
+    }
+
+    /// Fetches up to one page of events for `(instance_id, generation)` with `id >
+    /// after_id`, in ascending order. Returns an empty `Vec` once the generation is
+    /// exhausted. `generation` is required, not defaulted: generations are independently
+    /// anchored chains and must never be silently concatenated — see
+    /// [`Self::list_generations`] to enumerate them first.
     ///
     /// Bounded, streaming-friendly building block: a caller that needs "every event"
     /// (export/verify) pages through this in a loop instead of materializing the entire
@@ -463,12 +737,17 @@ impl PgAuditReader {
     ///
     /// # Errors
     /// Returns an error if the query fails or a row cannot be decoded.
-    pub async fn events_page(&self, instance_id: &str, after_id: i64) -> DbResult<Vec<AuditEvent>> {
+    pub async fn events_page(
+        &self,
+        instance_id: &str,
+        generation: i64,
+        after_id: i64,
+    ) -> DbResult<Vec<AuditEvent>> {
         let client = self.pool.get().await.map_err(DbError::from)?;
         let rows = client
             .query(
                 get_audit_query!("select-audit-events-page"),
-                &[&instance_id, &after_id, &AUDIT_PAGE_SIZE],
+                &[&instance_id, &generation, &after_id, &AUDIT_PAGE_SIZE],
             )
             .await
             .map_err(DbError::from)?;
@@ -479,7 +758,12 @@ impl PgAuditReader {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod live_tests {
     use cosmian_kms_access::audit::{AuditEvent, AuditResult, audit_now, compute_row_hash};
     use cosmian_kms_interfaces::AuditSink;
@@ -488,11 +772,12 @@ mod live_tests {
 
     use super::{PgAuditReader, PgAuditSink};
 
-    /// Live audit database URL, resolved at **compile time** (matches the convention used
-    /// by the object-store tests in `crate::tests::get_pgsql`).
+    /// Live audit database URL. Defaults to the repository's shared `docker-compose`
+    /// `PostgreSQL` service (see `.mise/lib/test_slots.sh`'s `KMS_AUDIT_POSTGRES_URL`), so a
+    /// local `docker compose up -d postgres` is enough to run these tests.
     fn audit_url() -> String {
         option_env!("KMS_AUDIT_POSTGRES_URL")
-            .unwrap_or("postgresql://kms_audit:kms_audit@127.0.0.1:5436/kms_audit")
+            .unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms")
             .to_owned()
     }
 
@@ -522,6 +807,20 @@ mod live_tests {
         ev
     }
 
+    /// Writes a clean 3-row generation 0 (ids 0, 1, 2) and returns the sink so the caller
+    /// can drop it before corrupting the table directly.
+    async fn seed_generation_zero(url: &str, instance_id: &str) -> PgAuditSink {
+        let mut sink = PgAuditSink::connect(url, instance_id).await.unwrap();
+        sink.resume().await.unwrap();
+        let ev0 = make_event(0, [0_u8; 32]);
+        sink.write_event_atomic(&ev0).await.unwrap();
+        let ev1 = make_event(1, ev0.row_hash);
+        sink.write_event_atomic(&ev1).await.unwrap();
+        let ev2 = make_event(2, ev1.row_hash);
+        sink.write_event_atomic(&ev2).await.unwrap();
+        sink
+    }
+
     /// A raw, unpooled connection used only to simulate a privileged administrator
     /// bypassing the append-only guard (disabling triggers) or attempting to mutate the
     /// table directly.
@@ -535,9 +834,94 @@ mod live_tests {
         client
     }
 
+    /// Disables the append-only triggers, runs one parameterised `UPDATE`, then
+    /// re-enables them — the bypass every tamper test below needs, since the triggers
+    /// fire regardless of role.
+    async fn tamper_row(
+        url: &str,
+        sql: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) {
+        let raw = raw_client(url).await;
+        raw.batch_execute("ALTER TABLE kms_audit_events DISABLE TRIGGER kms_audit_no_update;")
+            .await
+            .unwrap();
+        raw.execute(sql, params).await.unwrap();
+        raw.batch_execute("ALTER TABLE kms_audit_events ENABLE TRIGGER kms_audit_no_update;")
+            .await
+            .unwrap();
+    }
+
+    /// Shared post-corruption assertions for seal-and-roll recovery: `resume()` must
+    /// succeed (not fail closed), generation 0 must be byte-for-byte unchanged from
+    /// `sealed_before` (captured after corruption, before recovery — the baseline
+    /// recovery must leave untouched), generation 1 must start with exactly one valid
+    /// `audit:reanchor` identifying the failure, and a following write must link onto it.
+    async fn assert_recovers_into_generation_1(
+        url: &str,
+        instance_id: &str,
+        expected_failure_id: i64,
+        expected_reason: &str,
+        sealed_before: &[AuditEvent],
+    ) {
+        let mut sink = PgAuditSink::connect(url, instance_id).await.unwrap();
+        let head = sink
+            .resume()
+            .await
+            .unwrap_or_else(|e| panic!("resume() must recover content corruption, not fail: {e}"));
+        assert_eq!(
+            head.next_id, 1,
+            "recovery must anchor the new generation at id=1"
+        );
+
+        let reader = PgAuditReader::connect(url).await.unwrap();
+        let sealed_after = reader.events_page(instance_id, 0, -1).await.unwrap();
+        assert_eq!(
+            sealed_before.len(),
+            sealed_after.len(),
+            "sealed generation 0 must not gain or lose rows"
+        );
+        for (before, after) in sealed_before.iter().zip(sealed_after.iter()) {
+            assert_eq!(
+                before.row_hash, after.row_hash,
+                "sealed generation 0 must not change"
+            );
+        }
+
+        let gen1 = reader.events_page(instance_id, 1, -1).await.unwrap();
+        assert_eq!(
+            gen1.len(),
+            1,
+            "generation 1 must start with exactly the reanchor"
+        );
+        let reanchor = &gen1[0];
+        assert_eq!(reanchor.operation, "audit:reanchor");
+        assert_eq!(reanchor.id, 0);
+        assert_eq!(reanchor.prev_hash, [0_u8; 32]);
+        let details: serde_json::Value =
+            serde_json::from_str(reanchor.details.as_deref().unwrap()).unwrap();
+        assert_eq!(details["sealed_generation"], 0);
+        assert_eq!(details["new_generation"], 1);
+        assert_eq!(details["first_failure_id"], expected_failure_id);
+        assert_eq!(details["reason"], expected_reason);
+        assert!(
+            details["evidence"]
+                .as_str()
+                .is_some_and(|e| e.starts_with("v1:sha256:")),
+            "reanchor must carry a versioned evidence digest"
+        );
+
+        sink.write_event_atomic(&make_event(1, head.prev_hash))
+            .await
+            .unwrap();
+        let gen1_after = reader.events_page(instance_id, 1, -1).await.unwrap();
+        assert_eq!(gen1_after.len(), 2);
+        assert_eq!(gen1_after[1].prev_hash, reanchor.row_hash);
+    }
+
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
-    async fn pg_chain_resumes_across_restart() {
+    async fn pg_audit_chain_resumes_across_restart() {
         let instance_id = unique_instance_id("resume");
         let url = audit_url();
 
@@ -561,83 +945,151 @@ mod live_tests {
         assert_eq!(head2.prev_hash, ev1.row_hash);
     }
 
+    /// T1a: a complete, well-formed row whose own hash doesn't match its stored bytes
+    /// (the tail row here) must seal generation 0 and reanchor generation 1 — not fail
+    /// startup, per ADR-0006's always-start policy for content corruption.
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
-    async fn pg_resume_rejects_tampered_last_row() {
-        let instance_id = unique_instance_id("tamper");
+    async fn pg_audit_seal_and_roll_recovers_tail_hash_mismatch() {
+        let instance_id = unique_instance_id("seal-roll-tail");
         let url = audit_url();
 
-        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
-        let ev0 = make_event(0, [0_u8; 32]);
-        sink.write_event_atomic(&ev0).await.unwrap();
+        let sink = seed_generation_zero(&url, &instance_id).await;
         drop(sink);
 
-        // Simulate a privileged administrator: the append-only triggers fire regardless
-        // of role, including for the table owner, so tampering even in a test requires
-        // disabling them first — exactly the bypass the design's threat model calls out.
-        let raw = raw_client(&url).await;
-        raw.batch_execute("ALTER TABLE kms_audit_events DISABLE TRIGGER kms_audit_no_update;")
-            .await
-            .unwrap();
-        raw.execute(
-            "UPDATE kms_audit_events SET row_hash = $1 WHERE instance_id = $2 AND id = 0",
-            &[&vec![0_u8; 32], &instance_id],
+        tamper_row(
+            &url,
+            "UPDATE kms_audit_events SET row_hash = $2 WHERE instance_id = $1 AND \
+             chain_generation = 0 AND id = 2",
+            &[&instance_id, &vec![0_u8; 32]],
         )
-        .await
-        .unwrap();
-        raw.batch_execute("ALTER TABLE kms_audit_events ENABLE TRIGGER kms_audit_no_update;")
-            .await
-            .unwrap();
+        .await;
 
-        let mut sink2 = PgAuditSink::connect(&url, &instance_id).await.unwrap();
-        let result = sink2.resume().await;
-        assert!(result.is_err(), "resume() must reject a tampered last row");
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        let sealed_before = reader.events_page(&instance_id, 0, -1).await.unwrap();
+
+        assert_recovers_into_generation_1(&url, &instance_id, 2, "hash_mismatch", &sealed_before)
+            .await;
     }
 
-    /// `resume()` verifies the **entire** chain, not just the last row: tampering an
-    /// early row (leaving the last row untouched) must still be caught.
+    /// T1b: a row whose own hash is internally consistent but doesn't chain to its
+    /// predecessor (an interior row here, id=1, with the tail row id=2 left untouched)
+    /// must also recover — proving recovery is not accidentally tail-only.
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
-    async fn pg_resume_rejects_interior_tamper() {
-        let instance_id = unique_instance_id("interior-tamper");
+    async fn pg_audit_seal_and_roll_recovers_interior_broken_link() {
+        let instance_id = unique_instance_id("seal-roll-interior");
         let url = audit_url();
 
-        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
-        let ev0 = make_event(0, [0_u8; 32]);
-        sink.write_event_atomic(&ev0).await.unwrap();
-        let ev1 = make_event(1, ev0.row_hash);
-        sink.write_event_atomic(&ev1).await.unwrap();
-        let ev2 = make_event(2, ev1.row_hash);
-        sink.write_event_atomic(&ev2).await.unwrap();
+        let sink = seed_generation_zero(&url, &instance_id).await;
         drop(sink);
 
-        // Tamper row 0's content without touching its stored row_hash — the LAST row
-        // (id=2) is untouched and would look perfectly fine to a last-row-only check.
-        let raw = raw_client(&url).await;
-        raw.batch_execute("ALTER TABLE kms_audit_events DISABLE TRIGGER kms_audit_no_update;")
-            .await
-            .unwrap();
-        raw.execute(
-            "UPDATE kms_audit_events SET operation = 'Destroy' WHERE instance_id = $1 AND id = 0",
-            &[&instance_id],
+        // Forge row 1 from its *actual* stored fields, changing only `prev_hash` and
+        // recomputing `row_hash` to match — otherwise the row's own hash wouldn't match
+        // its other stored columns (unrelated timestamp/fields), producing a
+        // hash_mismatch instead of the broken-link case this test targets.
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        let before_tamper = reader.events_page(&instance_id, 0, -1).await.unwrap();
+        let mut forged = before_tamper[1].clone();
+        forged.prev_hash = [0xAA_u8; 32];
+        forged.row_hash = compute_row_hash(&forged);
+        tamper_row(
+            &url,
+            "UPDATE kms_audit_events SET prev_hash = $2, row_hash = $3 WHERE instance_id = \
+             $1 AND chain_generation = 0 AND id = 1",
+            &[
+                &instance_id,
+                &forged.prev_hash.as_slice(),
+                &forged.row_hash.as_slice(),
+            ],
         )
-        .await
-        .unwrap();
-        raw.batch_execute("ALTER TABLE kms_audit_events ENABLE TRIGGER kms_audit_no_update;")
+        .await;
+
+        let sealed_before = reader.events_page(&instance_id, 0, -1).await.unwrap();
+
+        assert_recovers_into_generation_1(&url, &instance_id, 1, "broken_link", &sealed_before)
+            .await;
+    }
+
+    /// T3: the evidence digest stored in the reanchor must match the same SHA-256
+    /// computed independently over the documented SQL projection, proving the digest is
+    /// reproducible without this code — see the audit operator guide for the exact
+    /// `psql | sha256sum` recipe this mirrors.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_evidence_digest_matches_sql_projection() {
+        use openssl::hash::{Hasher, MessageDigest};
+
+        let instance_id = unique_instance_id("evidence");
+        let url = audit_url();
+
+        let sink = seed_generation_zero(&url, &instance_id).await;
+        drop(sink);
+        tamper_row(
+            &url,
+            "UPDATE kms_audit_events SET row_hash = $2 WHERE instance_id = $1 AND \
+             chain_generation = 0 AND id = 2",
+            &[&instance_id, &vec![0_u8; 32]],
+        )
+        .await;
+
+        let mut sink2 = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        sink2.resume().await.unwrap();
+
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        let gen1 = reader.events_page(&instance_id, 1, -1).await.unwrap();
+        let details: serde_json::Value =
+            serde_json::from_str(gen1[0].details.as_deref().unwrap()).unwrap();
+        let stored_digest = details["evidence"].as_str().unwrap();
+
+        // Independently reproduce the digest from the documented projection, exactly as
+        // an operator would with `psql -qtA` piped to `sha256sum`.
+        let raw = raw_client(&url).await;
+        let rows = raw
+            .query(
+                "SELECT 'v1' || '|' || encode(convert_to(instance_id, 'UTF8'), 'hex') || '|' \
+                 || chain_generation || '|' || id || '|' || to_char(timestamp AT TIME ZONE \
+                 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') || '|' || \
+                 encode(convert_to(operation, 'UTF8'), 'hex') || '|' || \
+                 encode(convert_to(username, 'UTF8'), 'hex') || '|' || \
+                 COALESCE(encode(convert_to(object_uid, 'UTF8'), 'hex'), '-') || '|' || \
+                 COALESCE(encode(convert_to(algorithm, 'UTF8'), 'hex'), '-') || '|' || \
+                 COALESCE(encode(convert_to(client_ip, 'UTF8'), 'hex'), '-') || '|' || \
+                 encode(convert_to(result, 'UTF8'), 'hex') || '|' || duration_ms || '|' || \
+                 COALESCE(request_id::text, '-') || '|' || \
+                 COALESCE(encode(convert_to(details, 'UTF8'), 'hex'), '-') || '|' || \
+                 encode(prev_hash, 'hex') || '|' || encode(row_hash, 'hex') FROM \
+                 kms_audit_events WHERE instance_id = $1 AND chain_generation = 0 ORDER BY \
+                 id ASC",
+                &[&instance_id],
+            )
             .await
             .unwrap();
 
-        let mut sink2 = PgAuditSink::connect(&url, &instance_id).await.unwrap();
-        let result = sink2.resume().await;
-        assert!(
-            result.is_err(),
-            "resume() must catch a mid-chain tamper, not just the last row"
+        let mut hasher = Hasher::new(MessageDigest::sha256()).unwrap();
+        let row_count = rows.len();
+        for row in &rows {
+            let line: String = row.get(0);
+            hasher.update(line.as_bytes()).unwrap();
+            hasher.update(b"\n").unwrap();
+        }
+        hasher
+            .update(format!("v1|end|0|{row_count}\n").as_bytes())
+            .unwrap();
+        let expected = format!(
+            "v1:sha256:{}",
+            hex::encode(hasher.finish().unwrap().as_ref())
+        );
+
+        assert_eq!(
+            stored_digest, expected,
+            "stored evidence digest must match the independently reproduced SQL projection"
         );
     }
 
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
-    async fn pg_duplicate_writer_rejected_by_advisory_lock() {
+    async fn pg_audit_duplicate_writer_rejected_by_advisory_lock() {
         let instance_id = unique_instance_id("dup-writer-lock");
         let url = audit_url();
 
@@ -652,7 +1104,7 @@ mod live_tests {
 
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
-    async fn pg_write_retry_after_lost_ack_is_idempotent() {
+    async fn pg_audit_write_retry_after_lost_ack_is_idempotent() {
         let instance_id = unique_instance_id("retry-ack");
         let url = audit_url();
         let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
@@ -678,11 +1130,10 @@ mod live_tests {
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance and a pre-provisioned restricted \
                 kms_audit_writer role (see doc comment)"]
-    async fn pg_connect_falls_back_to_column_check_without_ddl_rights() {
+    async fn pg_audit_connect_falls_back_to_column_check_without_ddl_rights() {
         let base_url = audit_url();
         // Swap in the restricted role's credentials, keeping the same host/port/database.
-        let restricted_url =
-            base_url.replacen("kms_audit:kms_audit", "kms_audit_writer:writer_pw", 1);
+        let restricted_url = base_url.replacen("kms:kms", "kms_audit_writer:writer_pw", 1);
 
         let result = PgAuditSink::connect(&restricted_url, &unique_instance_id("no-ddl")).await;
         assert!(
@@ -695,7 +1146,7 @@ mod live_tests {
 
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
-    async fn pg_distinct_instances_keep_independent_chains() {
+    async fn pg_audit_distinct_instances_keep_independent_chains() {
         let url = audit_url();
         let id_a = unique_instance_id("chain-a");
         let id_b = unique_instance_id("chain-b");
@@ -716,15 +1167,15 @@ mod live_tests {
         sink_b.write_event_atomic(&ev_b).await.unwrap();
 
         let reader = PgAuditReader::connect(&url).await.unwrap();
-        let events_a = reader.events_page(&id_a, -1).await.unwrap();
-        let events_b = reader.events_page(&id_b, -1).await.unwrap();
+        let events_a = reader.events_page(&id_a, 0, -1).await.unwrap();
+        let events_b = reader.events_page(&id_b, 0, -1).await.unwrap();
         assert_eq!(events_a.len(), 1);
         assert_eq!(events_b.len(), 1);
     }
 
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
-    async fn pg_events_page_paginates_and_terminates() {
+    async fn pg_audit_events_page_paginates_and_terminates() {
         let instance_id = unique_instance_id("pagination");
         let url = audit_url();
         let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
@@ -738,10 +1189,10 @@ mod live_tests {
         }
 
         let reader = PgAuditReader::connect(&url).await.unwrap();
-        let page = reader.events_page(&instance_id, -1).await.unwrap();
+        let page = reader.events_page(&instance_id, 0, -1).await.unwrap();
         assert_eq!(page.len(), 3);
         let last_id = page.last().unwrap().id;
-        let next_page = reader.events_page(&instance_id, last_id).await.unwrap();
+        let next_page = reader.events_page(&instance_id, 0, last_id).await.unwrap();
         assert!(
             next_page.is_empty(),
             "paginating past the end of the chain must terminate with an empty page"
@@ -750,7 +1201,7 @@ mod live_tests {
 
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
-    async fn pg_update_and_delete_are_rejected() {
+    async fn pg_audit_update_and_delete_are_rejected() {
         let instance_id = unique_instance_id("no-mutate");
         let url = audit_url();
         let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
@@ -762,7 +1213,8 @@ mod live_tests {
 
         let update_err = raw
             .execute(
-                "UPDATE kms_audit_events SET username = 'mallory' WHERE instance_id = $1 AND id = 0",
+                "UPDATE kms_audit_events SET username = 'mallory' WHERE instance_id = $1 AND \
+                 chain_generation = 0 AND id = 0",
                 &[&instance_id],
             )
             .await
@@ -774,7 +1226,8 @@ mod live_tests {
 
         let delete_err = raw
             .execute(
-                "DELETE FROM kms_audit_events WHERE instance_id = $1 AND id = 0",
+                "DELETE FROM kms_audit_events WHERE instance_id = $1 AND chain_generation = \
+                 0 AND id = 0",
                 &[&instance_id],
             )
             .await
