@@ -24,10 +24,6 @@
 mod client_ip;
 mod extensions;
 
-pub(crate) use extensions::{
-    BatchItemAuditContext, KmipAlgorithm, KmipBatchOperations, KmipObjectUid, KmipOperationName,
-};
-
 use std::{
     pin::Pin,
     rc::Rc,
@@ -45,6 +41,9 @@ use cosmian_kms_access::audit::{
     AuditEventDraft, AuditResult, OperationAuditContext, RequestAuditContext, audit_now,
 };
 use cosmian_logger::error;
+pub(crate) use extensions::{
+    BatchItemAuditContext, KmipAlgorithm, KmipBatchOperations, KmipObjectUid, KmipOperationName,
+};
 use futures::{
     Future,
     future::{Ready, ok},
