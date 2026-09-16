@@ -1517,15 +1517,16 @@ async fn test_certify_cannot_overwrite_victim_object() -> KResult<()> {
     )?;
     let key_id = kms.create(req, &alice).await?.unique_identifier.to_string();
     let subject_name = "C=FR, O=KMS Test, CN=Victim Overwrite";
-    let mut links = Vec::new();
-    links.push(Link {
-        link_type: LinkType::CertificateLink,
-        linked_object_identifier: LinkedObjectIdentifier::TextString(ca_id.clone()),
-    });
-    links.push(Link {
-        link_type: LinkType::PrivateKeyLink,
-        linked_object_identifier: LinkedObjectIdentifier::TextString(ca_sk_id.clone()),
-    });
+    let links = vec![
+        Link {
+            link_type: LinkType::CertificateLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(ca_id.clone()),
+        },
+        Link {
+            link_type: LinkType::PrivateKeyLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(ca_sk_id.clone()),
+        },
+    ];
     let attrs = Attributes {
         unique_identifier: Some(UniqueIdentifier::TextString(key_id.clone())),
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),

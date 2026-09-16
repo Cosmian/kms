@@ -212,7 +212,7 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
 
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
         KmipOperation,
-        kmip_operations::{DeleteAttribute, Get},
+        kmip_operations::{AddAttribute, DeleteAttribute, Get, ModifyAttribute},
     };
 
     log_init(option_env!("RUST_LOG"));
@@ -300,9 +300,6 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
     ));
 
     // Bob attempts to ModifyAttribute(Sensitive(false)) -> denied.
-    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
-        AddAttribute, ModifyAttribute,
-    };
     let mod_res = kms
         .modify_attribute(
             ModifyAttribute {
@@ -408,13 +405,15 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
 }
 
 /// Keys marked Extractable=false cannot be exported in plaintext or wrapped form,
-/// NeverExtractable latches server-side, and client-supplied NeverExtractable values
+/// `NeverExtractable` latches server-side, and client-supplied `NeverExtractable` values
 /// are overridden at creation time (GHSA-8mmx-f92q-2gq8).
 #[tokio::test]
 async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
         kmip_data_structures::KeyWrappingSpecification,
-        kmip_operations::{CreateResponse, Get},
+        kmip_objects::ObjectType,
+        kmip_operations::{CreateResponse, Get, Import, ReKey},
+        requests::{create_symmetric_key_kmip_object, symmetric_key_create_request},
     };
 
     log_init(option_env!("RUST_LOG"));
@@ -423,7 +422,6 @@ async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
 
     // 1. Create a key with Extractable=false and attempt to pass conflicting NeverExtractable=false.
     // The server MUST override NeverExtractable to true at creation.
-    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::requests::symmetric_key_create_request;
     let mut create_req = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
         None,
@@ -450,10 +448,6 @@ async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
 
     // Also test Import with conflicting Extractable=false and NeverExtractable=false:
     // the server must unconditionally initialize NeverExtractable to true.
-    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-        kmip_objects::ObjectType, kmip_operations::Import,
-        requests::create_symmetric_key_kmip_object,
-    };
     let mut import_attrs = create_req.attributes.clone();
     import_attrs.unique_identifier = None;
     import_attrs.extractable = Some(false);
@@ -598,7 +592,6 @@ async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
     // 5. Rekey: Rekeying a previously-extractable key
     // (Extractable=false, NeverExtractable=false) into a currently non-extractable replacement
     // re-initializes NeverExtractable to true for the new key.
-    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::ReKey;
     let rekey_res = kms
         .rekey(
             ReKey {
@@ -632,13 +625,13 @@ async fn test_pkcs12_sensitive_export_requires_non_empty_password() -> KResult<(
         kmip_types::{
             CertificateAttributes, EncryptionKeyInformation, KeyFormatType, WrappingMethod,
         },
+        requests::create_rsa_key_pair_request,
     };
     log_init(option_env!("RUST_LOG"));
     let kms = instantiate_kms().await?;
     let user = UserId::from(USER);
 
     // Generate an RSA keypair with private key marked Sensitive=true.
-    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::requests::create_rsa_key_pair_request;
     let kp_req = create_rsa_key_pair_request(
         VENDOR_ID_COSMIAN,
         None,

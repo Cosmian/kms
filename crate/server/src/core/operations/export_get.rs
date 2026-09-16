@@ -48,7 +48,7 @@ use crate::{
 };
 
 /// Validate that the object may be exported/retrieved given its Sensitive,
-/// Extractable, and NeverExtractable attributes.
+/// Extractable, and `NeverExtractable` attributes.
 ///
 /// Per KMIP 1.4 §3.48 / 2.1 §4.54 (Sensitive): sensitive objects cannot leave in plaintext.
 /// Per KMIP 1.4 §3.50 / 2.1 §4.23 (Extractable): non-extractable keys cannot be exported
