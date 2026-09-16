@@ -45,7 +45,7 @@
 #     KMS_SLOT_RSYSLOG_TCP_PORT
 #
 #   Computed database URLs:
-#     KMS_POSTGRES_URL, KMS_MYSQL_URL, KMS_MARIADB_URL
+#     KMS_POSTGRES_URL, KMS_AUDIT_POSTGRES_URL, KMS_MYSQL_URL, KMS_MARIADB_URL
 #     KMS_PERCONA_URL, KMS_REDIS_URL
 
 # ── Guard against double-sourcing ─────────────────────────────────────────────
@@ -166,6 +166,9 @@ slot_init() {
 
   # ── Computed database URLs (consumed by Rust tests and MISE tasks) ────────
   export KMS_POSTGRES_URL="postgresql://kms:kms@127.0.0.1:${KMS_SLOT_POSTGRES_PORT}/kms"
+  # The audit backend uses the same shared PostgreSQL service/database as the
+  # object store — a separate table, not a separate instance.
+  export KMS_AUDIT_POSTGRES_URL="$KMS_POSTGRES_URL"
   export KMS_MYSQL_URL="mysql://kms:kms@127.0.0.1:${KMS_SLOT_MYSQL_PORT}/kms"
   export KMS_MARIADB_URL="mysql://kms:kms@127.0.0.1:${KMS_SLOT_MARIADB_PORT}/kms"
   export KMS_PERCONA_URL="mysql://kms:kms@127.0.0.1:${KMS_SLOT_PERCONA_PORT}/kms"

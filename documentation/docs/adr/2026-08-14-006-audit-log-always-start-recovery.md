@@ -87,6 +87,39 @@ circumstance.
 Order is load-bearing: rename before open, so the lock holder never observes a half-migrated
 state.
 
+### PostgreSQL backend: seal-and-roll via immutable generations
+
+The always-start mandate above applies to every backend, not just the file backend. The
+`PostgreSQL` backend has no torn-write case — a row is written by a single atomic `INSERT` — but
+it still must not abort startup on **content** corruption (a tampered or malformed row). It
+adapts the same seal-and-roll principle using immutable chain generations instead of renamed
+files:
+
+1. A stable `--audit-instance-id` owns a sequence of generations (`chain_generation`, starting at
+   0) in one shared `kms_audit_events` table, key `(instance_id, chain_generation, id)`. Exactly
+   one generation is active for writes at a time; every older generation is sealed and never
+   written again.
+2. On startup, only the **latest** generation is verified, page by page, the same way the file
+   backend's interior scan works. A clean generation resumes normally. The first corrupted row is
+   classified precisely: `hash_mismatch` (row's own hash doesn't match its bytes), `broken_link`
+   (row verifies on its own but doesn't chain to its predecessor), `unparseable` (a column doesn't
+   decode as an `AuditEvent` at all), or `id_overflow` (a valid tail at `i64::MAX`).
+3. The corrupted generation is **never modified** — the PostgreSQL analogue of renaming the file
+   aside. A deterministic SQL text projection over every stored row of that generation (one
+   canonical line per row: hex-encoded variable-length fields, `-` for SQL `NULL`, an explicit
+   UTC timestamp format) is SHA-256-hashed, stored as `v1:sha256:<hex>`, and independently
+   reproducible by piping the same query through `psql -qtA` and `sha256sum` — no need to trust
+   this code's own hashing to audit the evidence.
+4. A fresh generation (`sealed_generation + 1`) starts with a row-0 `audit:reanchor` event, whose
+   `details` record the sealed and new generation numbers, the first failing id, the reason, and
+   the evidence digest. This is inserted on the same dedicated session that holds the instance's
+   advisory lock (see below) — not through the pooled connection — so `PostgreSQL` itself, not a
+   separate liveness check racing the insert, guarantees the lock is held for the write's entire
+   duration.
+5. Only connectivity, TLS, schema, advisory-lock, or recovery-write failures remain startup
+   errors — the same operational/content distinction the file backend draws between a torn write
+   and a tampered row.
+
 ### Concurrency: a lock is a prerequisite, not an enhancement
 
 A best-effort, non-blocking, cross-platform exclusive lock (`flock`-equivalent via the `fs4`
@@ -170,8 +203,9 @@ this is not configurable, period.
   the instance holding the lock ever writes — the others retry indefinitely and their events are
   never recorded, silently. Sustained horizontal scaling must use one audit file per instance
   (the default), not a shared one. A genuinely multi-writer-safe, centrally consolidated audit
-  trail requires a transactional backend (PostgreSQL audit backend, in progress) where a unique
-  constraint, not a file lock, arbitrates concurrent writers.
+  trail uses the `PostgreSQL` audit backend instead, where a unique constraint on
+  `(instance_id, chain_generation, id)` — not a file lock — structurally arbitrates concurrent
+  writers; see "PostgreSQL backend: seal-and-roll via immutable generations" above.
 
 ## Alternatives Considered
 
@@ -214,6 +248,11 @@ this is not configurable, period.
 - **IMP-005**: Offline verification: `crate/clients/clap/src/actions/audit.rs`
   (`ckms audit verify --path <file|directory>`).
 - **IMP-006**: Lock dependency: `fs4` (crate/server/Cargo.toml).
+- **IMP-007**: `PostgreSQL` backend generation-aware recovery:
+  `crate/server_database/src/stores/audit/pgsql.rs` (`PgAuditSink::resume`, `verify_generation`,
+  `seal_and_roll`, `compute_generation_evidence`) and `audit.sql` (`chain_generation` schema,
+  evidence projection query). Shared reason vocabulary:
+  `crate/interfaces/src/stores/audit_sink.rs` (`SealReason`).
 
 ## References
 

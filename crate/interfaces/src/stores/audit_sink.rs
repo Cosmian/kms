@@ -9,16 +9,51 @@
 //!
 //! # Recovery policy is per-backend, not part of this contract
 //!
-//! [`AuditSink::resume`] does not mandate a single recovery policy. A backend whose
-//! storage can be torn mid-write (an appended file, killed mid-`fsync`) may recover a
-//! trustworthy prefix and truncate the rest; a backend whose writes are atomic (a single
-//! `INSERT`) has no torn-write case to recover from and can reasonably fail closed on
-//! any tail corruption. Document the chosen policy on the implementing type, not here.
+//! [`AuditSink::resume`] does not mandate a single recovery policy, but every backend is
+//! expected to always start rather than fail closed on **content** corruption (a tampered
+//! or malformed row) — see ADR-0006. A backend whose storage can be torn mid-write (an
+//! appended file, killed mid-`fsync`) recovers a trustworthy prefix and truncates the
+//! rest; a backend whose writes are atomic (a single `INSERT`) has no torn-write case and
+//! instead seals the corrupted evidence aside and starts a fresh chain. Only truly
+//! operational faults — connectivity, permissions, lock contention, a failure to persist
+//! the recovery evidence itself — may still abort startup. Document the chosen mechanics
+//! on the implementing type, not here.
 
 use async_trait::async_trait;
 use cosmian_kms_access::audit::AuditEvent;
 
 use crate::InterfaceResult;
+
+/// Why a stored/recovered row failed content verification and triggered seal-and-roll
+/// recovery. Shared by every `AuditSink` backend so file and database recovery emit the
+/// same diagnostic vocabulary in `audit:reanchor` details and error logs. Reason strings
+/// are diagnostic only — never an input to a row's own hash — so backends may adopt or
+/// refine this vocabulary without affecting hash-chain verification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SealReason {
+    /// A complete, well-formed row whose `row_hash` doesn't match its own bytes.
+    HashMismatch,
+    /// A row that verifies on its own but does not chain to its predecessor.
+    BrokenLink,
+    /// Bytes/columns that don't decode as an `AuditEvent` at all.
+    Unparseable,
+    /// A valid, verified row whose `id` is `i64::MAX` — continuing the chain in place
+    /// would overflow the next id.
+    IdOverflow,
+}
+
+impl SealReason {
+    /// Stable diagnostic string stored in recovery `details` and error logs.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::HashMismatch => "hash_mismatch",
+            Self::BrokenLink => "broken_link",
+            Self::Unparseable => "unparseable",
+            Self::IdOverflow => "id_overflow",
+        }
+    }
+}
 
 /// Position of the audit hash chain: the id to assign to the next event, and the
 /// `row_hash` of the last durably persisted one.

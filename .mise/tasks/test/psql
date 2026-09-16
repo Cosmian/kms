@@ -136,11 +136,30 @@ _run_postgresql_failover_test() {
   print_success "PostgreSQL failover retry test passed"
 }
 
+# ── PostgreSQL audit backend: seal-and-roll recovery ──────────────────────────
+# Runs the ignored, live-database audit tests that a plain `cargo test` skips.
+# --test-threads=1: PgAuditSink::connect() reruns its full schema-bootstrap DDL
+# (function/trigger CREATE OR REPLACE) on every call, unscoped by instance_id;
+# running these tests concurrently races that shared DDL and fails with
+# PostgreSQL's "tuple concurrently updated" (a pre-existing bootstrap
+# limitation, not specific to these tests).
+
+_run_postgres_audit_recovery_tests() {
+  print_status "Running PostgreSQL audit seal-and-roll recovery tests..."
+  cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
+    -- --ignored --nocapture --test-threads=1 \
+    --skip pg_audit_connect_falls_back_to_column_check_without_ddl_rights \
+    pg_audit_
+  cargo test -p cosmian_kms_server --lib "${FEATURES_FLAG[@]}" \
+    -- --ignored --nocapture postgres_corruption_starts_on_next_generation
+}
+
 print_header "Running PostgreSQL tests (${VARIANT_NAME})"
 
 check_and_test_db "PostgreSQL" "postgresql" "POSTGRES_HOST" "POSTGRES_PORT"
 run_db_softhsm2_tests "postgresql_softhsm2"
 
 _run_postgresql_failover_test
+_run_postgres_audit_recovery_tests
 
 print_success "PostgreSQL tests completed"

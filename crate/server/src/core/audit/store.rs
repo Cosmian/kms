@@ -1110,3 +1110,136 @@ mod tests {
         );
     }
 }
+
+/// Live tests for the real, crate-private `PostgreSQL` controlling path
+/// (`AuditStore::start_postgres`/`enqueue`/`flush`) — proving the server's own startup
+/// call site actually recovers content corruption, not just the
+/// `cosmian_kms_server_database` sink underneath it in isolation.
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+mod live_postgres_tests {
+    use cosmian_kms_access::audit::{AuditEventDraft, AuditResult, audit_now};
+    use cosmian_kms_interfaces::AuditSink;
+    use cosmian_kms_server_database::{PgAuditReader, PgAuditSink};
+    use tokio_postgres::NoTls;
+    use uuid::Uuid;
+
+    use super::AuditStore;
+
+    const TEST_CAPACITY: usize = 16;
+
+    /// Live audit database URL — same convention and default as the
+    /// `cosmian_kms_server_database` audit live tests.
+    fn audit_url() -> String {
+        option_env!("KMS_AUDIT_POSTGRES_URL")
+            .unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms")
+            .to_owned()
+    }
+
+    fn unique_instance_id(label: &str) -> String {
+        format!("test-store-{label}-{}", Uuid::new_v4())
+    }
+
+    fn make_draft() -> AuditEventDraft {
+        AuditEventDraft {
+            timestamp: audit_now(),
+            operation: "Encrypt".to_owned(),
+            user: "alice".to_owned(),
+            object_uid: Some("obj-1".to_owned()),
+            algorithm: Some("AES-256-GCM".to_owned()),
+            client_ip: Some("127.0.0.1".to_owned()),
+            result: AuditResult::Success,
+            duration_ms: 5,
+            request_id: None,
+            details: None,
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn postgres_corruption_starts_on_next_generation() {
+        let instance_id = unique_instance_id("recovery");
+        let url = audit_url();
+
+        // Seed a clean 3-row generation 0 directly through the sink, exactly as the real
+        // writer task would.
+        {
+            let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+            sink.resume().await.unwrap();
+            let d0 = make_draft().finalize(0, [0_u8; 32]);
+            sink.write_event_atomic(&d0).await.unwrap();
+            let d1 = make_draft().finalize(1, d0.row_hash);
+            sink.write_event_atomic(&d1).await.unwrap();
+            let d2 = make_draft().finalize(2, d1.row_hash);
+            sink.write_event_atomic(&d2).await.unwrap();
+        }
+
+        // Corrupt the tail row's own hash, bypassing the append-only trigger — the same
+        // administrator-bypass threat model every other tamper test in this repository
+        // uses.
+        let (raw, connection) = tokio_postgres::connect(&url, NoTls).await.unwrap();
+        tokio::spawn(async move {
+            drop(connection.await);
+        });
+        raw.batch_execute("ALTER TABLE kms_audit_events DISABLE TRIGGER kms_audit_no_update;")
+            .await
+            .unwrap();
+        raw.execute(
+            "UPDATE kms_audit_events SET row_hash = $2 WHERE instance_id = $1 AND \
+             chain_generation = 0 AND id = 2",
+            &[&instance_id, &vec![0_u8; 32]],
+        )
+        .await
+        .unwrap();
+        raw.batch_execute("ALTER TABLE kms_audit_events ENABLE TRIGGER kms_audit_no_update;")
+            .await
+            .unwrap();
+
+        // Forensic baseline: captured after corruption, before recovery.
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        let sealed_before = reader.events_page(&instance_id, 0, -1).await.unwrap();
+
+        let store = AuditStore::start_postgres(&url, &instance_id, TEST_CAPACITY)
+            .await
+            .expect("start_postgres() must recover content corruption, not abort startup");
+
+        store.enqueue(std::iter::once(make_draft()));
+        store.flush().await;
+        drop(store);
+
+        let sealed_after = reader.events_page(&instance_id, 0, -1).await.unwrap();
+        assert_eq!(
+            sealed_before.len(),
+            sealed_after.len(),
+            "sealed generation 0 must not gain or lose rows"
+        );
+        for (before, after) in sealed_before.iter().zip(sealed_after.iter()) {
+            assert_eq!(
+                before.row_hash, after.row_hash,
+                "sealed generation 0 must not change"
+            );
+        }
+
+        let gen1 = reader.events_page(&instance_id, 1, -1).await.unwrap();
+        assert_eq!(
+            gen1.len(),
+            2,
+            "generation 1 must contain the reanchor plus the one enqueued event"
+        );
+        assert_eq!(gen1[0].operation, "audit:reanchor");
+        assert_eq!(gen1[0].id, 0);
+        assert_eq!(gen1[0].prev_hash, [0_u8; 32]);
+        let details: serde_json::Value =
+            serde_json::from_str(gen1[0].details.as_deref().unwrap()).unwrap();
+        assert_eq!(details["sealed_generation"], 0);
+        assert_eq!(details["new_generation"], 1);
+        assert_eq!(details["first_failure_id"], 2);
+        assert_eq!(details["reason"], "hash_mismatch");
+
+        assert_eq!(gen1[1].id, 1);
+        assert_eq!(
+            gen1[1].prev_hash, gen1[0].row_hash,
+            "the event enqueued after recovery must link to the reanchor"
+        );
+    }
+}
