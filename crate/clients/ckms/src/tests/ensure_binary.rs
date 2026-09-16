@@ -28,12 +28,17 @@ impl Drop for BuildLockGuard {
     }
 }
 
-/// Waits until `binary_path` exists, polling at a short interval, bailing
+/// Waits until `marker_path` (indicating build completion) or `binary_path`
+/// exists and the lock file is released, polling at a short interval. Bails
 /// out after `timeout` so a stuck/crashed builder process cannot hang the
 /// waiting test forever.
-fn wait_for_binary(binary_path: &Path, timeout: Duration) {
+fn wait_for_binary(binary_path: &Path, lock_path: &Path, marker_path: &Path, timeout: Duration) {
     let start = Instant::now();
-    while !binary_path.exists() {
+    while !marker_path.exists() {
+        // If the lock file disappeared and the binary exists, the builder finished.
+        if !lock_path.exists() && binary_path.exists() {
+            break;
+        }
         assert!(
             start.elapsed() < timeout,
             "Timed out after {timeout:?} waiting for another test process to finish building \
@@ -42,6 +47,12 @@ fn wait_for_binary(binary_path: &Path, timeout: Duration) {
         );
         thread::sleep(Duration::from_millis(100));
     }
+
+    assert!(
+        binary_path.exists(),
+        "ckms binary was reported ready but does not exist at {}",
+        binary_path.display()
+    );
 }
 
 #[allow(clippy::print_stdout)]
@@ -81,6 +92,24 @@ fn build_ckms_binary() {
     let lock_path = workspace_root
         .join("target")
         .join(format!(".ckms-build-{profile}.lock"));
+    let marker_path = workspace_root
+        .join("target")
+        .join(format!(".ckms-build-{profile}.ready"));
+
+    let wait_timeout: Duration = Duration::from_secs(300);
+
+    // If an orphaned lock file exists from a crashed or killed process, check
+    // its age and clear it if it exceeds the timeout.
+    if let Ok(metadata) = fs::metadata(&lock_path) {
+        if let Ok(age) = metadata
+            .modified()
+            .and_then(|m| m.elapsed().map_err(std::io::Error::other))
+        {
+            if age > wait_timeout {
+                drop(fs::remove_file(&lock_path));
+            }
+        }
+    }
 
     match OpenOptions::new()
         .write(true)
@@ -89,13 +118,16 @@ fn build_ckms_binary() {
     {
         Ok(_lock_file) => {
             let _guard = BuildLockGuard(lock_path);
+            drop(fs::remove_file(&marker_path));
             run_cargo_build(workspace_root, &binary_path);
+            // Write marker to signal completion before dropping guard
+            drop(fs::write(&marker_path, b"ready"));
         }
         Err(_) => {
             // Another process already holds the lock (or just finished and
             // hasn't been able to remove it yet) — wait for the binary
             // rather than racing our own `cargo build`.
-            wait_for_binary(&binary_path, Duration::from_secs(300));
+            wait_for_binary(&binary_path, &lock_path, &marker_path, wait_timeout);
         }
     }
 }
