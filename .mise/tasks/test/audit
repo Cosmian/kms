@@ -17,4 +17,14 @@ echo "Purpose: prove tamper-evident JSONL hash chain + HTTP audit middleware cap
 REPO_ROOT="$(get_repo_root)"
 bash "${REPO_ROOT}/.mise/scripts/test/test_audit_log.sh" --variant "${VARIANT}"
 
+print_header "Running OpenSearch audit JSONL compatibility test"
+mise run test:audit-compat-opensearch --variant "${VARIANT}"
+
+if [ -n "${SPLUNK_PASSWORD:-}" ]; then
+  print_header "Running Splunk audit JSONL compatibility test"
+  mise run test:audit-compat-splunk --variant "${VARIANT}"
+else
+  print_warning "SPLUNK_PASSWORD not set: skipping Splunk compatibility test"
+fi
+
 print_success "Audit log integration test completed"
