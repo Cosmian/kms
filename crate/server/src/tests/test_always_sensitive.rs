@@ -437,7 +437,7 @@ async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
     create_req.attributes.never_extractable = Some(false); // conflicting client value
     let CreateResponse {
         unique_identifier, ..
-    } = kms.create(create_req, &user).await?;
+    } = kms.create(create_req.clone(), &user).await?;
     let uid = unique_identifier.to_string();
 
     // Verify NeverExtractable is true (unconditionally initialized server-side).
@@ -448,6 +448,38 @@ async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
         "NeverExtractable must be initialized to true when Extractable is false"
     );
 
+    // Also test Import with conflicting Extractable=false and NeverExtractable=false:
+    // the server must unconditionally initialize NeverExtractable to true.
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_objects::ObjectType, kmip_operations::Import,
+        requests::create_symmetric_key_kmip_object,
+    };
+    let mut import_attrs = create_req.attributes.clone();
+    import_attrs.unique_identifier = None;
+    import_attrs.extractable = Some(false);
+    import_attrs.never_extractable = Some(false);
+    let import_obj =
+        create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &[0x42; 32], &import_attrs)?;
+    let import_res = kms
+        .import(
+            Import {
+                unique_identifier: UniqueIdentifier::default(),
+                object_type: ObjectType::SymmetricKey,
+                object: import_obj,
+                attributes: import_attrs,
+                key_wrap_type: None,
+                replace_existing: None,
+            },
+            &user,
+        )
+        .await?;
+    let import_uid = import_res.unique_identifier.to_string();
+    let import_resp = get_attributes(&kms, &import_uid, Tag::NeverExtractable).await?;
+    assert_eq!(
+        import_resp.attributes.never_extractable,
+        Some(true),
+        "Imported symmetric key must initialize NeverExtractable to true when Extractable is false"
+    );
     // 2. Get with no wrapping spec -> rejected with Not_Extractable.
     let get_req_plain = Get {
         unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
@@ -514,6 +546,55 @@ async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
         "NeverExtractable must latch to false and never revert to true"
     );
 
+    // Defensive latch check: If an object somehow has NeverExtractable=true while
+    // Extractable is absent/true, export must STILL be denied with Not_Extractable.
+    let defensive_key = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        Vec::<String>::new(),
+        false,
+        None,
+    )?;
+    let defensive_res = kms.create(defensive_key, &user).await?;
+    let def_uid = defensive_res.unique_identifier.to_string();
+    // Simulate legacy/corrupted state in database: Extractable=None, NeverExtractable=true
+    let mut def_attrs = kms
+        .database
+        .retrieve_object(&def_uid)
+        .await?
+        .unwrap()
+        .attributes()
+        .clone();
+    def_attrs.extractable = None;
+    def_attrs.never_extractable = Some(true);
+    let tags = def_attrs.get_tags(VENDOR_ID_COSMIAN);
+    let def_obj = kms
+        .database
+        .retrieve_object(&def_uid)
+        .await?
+        .unwrap()
+        .object()
+        .clone();
+    kms.database
+        .update_object(&def_uid, &def_obj, &def_attrs, Some(&tags))
+        .await?;
+    let def_get = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(def_uid)),
+        key_wrapping_specification: None,
+        key_compression_type: None,
+        key_format_type: None,
+        key_wrap_type: None,
+    };
+    let def_err = kms.get(def_get, &user).await.unwrap_err();
+    assert!(
+        matches!(
+            def_err,
+            KmsError::Kmip21Error(ErrorReason::Not_Extractable, _)
+        ),
+        "defensive latch branch must return Not_Extractable, got: {def_err:?}"
+    );
     // 5. Rekey: Rekeying a previously-extractable key
     // (Extractable=false, NeverExtractable=false) into a currently non-extractable replacement
     // re-initializes NeverExtractable to true for the new key.
