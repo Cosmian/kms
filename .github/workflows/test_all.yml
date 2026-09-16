@@ -46,7 +46,6 @@ jobs:
           - monitoring
           - ocsp
           - pki-revocation
-          - cef
           - siem
           - audit
         features: [fips, non-fips]

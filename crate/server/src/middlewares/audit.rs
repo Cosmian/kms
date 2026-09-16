@@ -203,17 +203,10 @@ where
                         .0
                         .iter()
                         .map(|ctx| {
-                            let item_result = ctx.result.clone().unwrap_or_else(|| {
-                                if status.is_success() || status.is_redirection() {
-                                    AuditResult::Success
-                                } else {
-                                    AuditResult::Failure(format!(
-                                        "{} {}",
-                                        status.as_u16(),
-                                        status.canonical_reason().unwrap_or("Unknown")
-                                    ))
-                                }
-                            });
+                            let item_result = ctx
+                                .result
+                                .clone()
+                                .unwrap_or_else(|| missing_batch_item_result(status));
                             AuditEventDraft {
                                 timestamp,
                                 operation: ctx.operation.clone(),
@@ -308,6 +301,23 @@ where
     }
 }
 
+/// Determines the audit result for a batch item that `inject_response_uid` never
+/// backfilled (`ctx.result` still `None` once the inner service has responded).
+///
+/// Always `Failure`, never `Success`: an unbackfilled item's outcome was never actually
+/// confirmed — whether because the response carried fewer batch items than the request
+/// (e.g. a `BatchErrorContinuationOption::Stop` early exit) or the response body could
+/// not be correlated at all. KMIP-over-HTTP wraps virtually every outcome, including
+/// partial in-batch failures, in an HTTP 200 — so the wrapping status is reported here
+/// only as diagnostic context, never treated as a stand-in verdict for the item.
+fn missing_batch_item_result(status: actix_web::http::StatusCode) -> AuditResult {
+    AuditResult::Failure(format!(
+        "item not present in response (wrapping HTTP status {} {})",
+        status.as_u16(),
+        status.canonical_reason().unwrap_or("Unknown")
+    ))
+}
+
 /// Derives an operation name from the HTTP path by taking the first path segment.
 ///
 /// For KMIP requests the route handler injects a `KmipOperationName` extension with
@@ -368,6 +378,21 @@ mod tests {
         assert_eq!(extract_operation("/v1/crypto/encrypt"), "v1");
         assert_eq!(extract_operation("/"), "unknown");
         assert_eq!(extract_operation(""), "unknown");
+    }
+
+    /// An unbackfilled batch item must never be reported as `Success`, even when the
+    /// wrapping HTTP status is 200 — which is the common case for KMIP-over-HTTP, since
+    /// partial in-batch failures do not change the outer HTTP status.
+    #[test]
+    fn missing_batch_item_result_is_always_failure() {
+        assert!(matches!(
+            missing_batch_item_result(actix_web::http::StatusCode::OK),
+            AuditResult::Failure(_)
+        ));
+        assert!(matches!(
+            missing_batch_item_result(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR),
+            AuditResult::Failure(_)
+        ));
     }
 
     #[test]

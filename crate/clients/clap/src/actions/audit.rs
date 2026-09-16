@@ -369,9 +369,26 @@ impl VerifyAuditAction {
             .and_then(serde_json::Value::as_str)
             .ok_or_else(malformed)?;
 
+        // `sealed_file` comes from the untrusted log's `details` payload. Reject anything
+        // with a parent component ("../", an absolute path) before joining it onto the log's
+        // directory — otherwise a forged reanchor row could make this hash (and disclose the
+        // SHA-256 of) an arbitrary file on disk.
+        let sealed_name = Path::new(sealed_file);
+        if sealed_name
+            .parent()
+            .is_some_and(|p| !p.as_os_str().is_empty())
+            || !is_sealed_audit_evidence_file(sealed_name)
+        {
+            return Err(crate::error::KmsCliError::InvalidRequest(format!(
+                "{}: reanchor event id={} contains an invalid sealed_file path: {sealed_file}",
+                path.display(),
+                event.id
+            )));
+        }
+
         let sealed_path = path.parent().map_or_else(
-            || PathBuf::from(sealed_file),
-            |parent| parent.join(sealed_file),
+            || PathBuf::from(sealed_name),
+            |parent| parent.join(sealed_name),
         );
 
         if !sealed_path.exists() {
