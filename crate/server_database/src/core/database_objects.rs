@@ -1221,7 +1221,7 @@ mod tests {
     /// Node A and Node B share the same backing database.
     /// Node B retrieves the object, warming its local in-memory cache.
     /// Node A revokes (or destroys) the object.
-    /// Node B's subsequent retrieve_object call must observe the new state immediately,
+    /// Node B's subsequent `retrieve_object` call must observe the new state,
     /// not after TTL expiry.
     #[tokio::test]
     async fn test_cross_node_cache_invalidation_on_state_change() {
@@ -1307,7 +1307,7 @@ mod tests {
         );
     }
 
-    /// Two-node cross-node cache invalidation test for retrieve_object_arc and attribute change (e.g. Sensitive).
+    /// Two-node cross-node cache invalidation test for `retrieve_object_arc` and attribute change (e.g. Sensitive).
     #[tokio::test]
     async fn test_cross_node_cache_invalidation_on_sensitive_attribute_change() {
         let tmp = TempDir::new().expect("Failed to create temp dir");
