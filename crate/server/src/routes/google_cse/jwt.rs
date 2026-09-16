@@ -162,6 +162,7 @@ pub(super) fn decode_jwt_authorization_token(
         .map_err(|e| KmsError::Unauthorized(format!("Failed to build decoding key: {e}")))?;
 
     let mut validation = Validation::new(header.alg);
+    validation.algorithms = vec![header.alg];
     // Allow tokens to omit some standard claims (e.g., iat, nbf), but handle exp explicitly.
     validation.required_spec_claims.clear();
     validation.set_issuer(&[&jwt_config.jwt_issuer_uri]);

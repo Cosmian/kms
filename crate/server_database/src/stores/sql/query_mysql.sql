@@ -90,6 +90,9 @@ SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.st
 FROM objects
 WHERE objects.id = ?;
 
+-- name: select-object-state
+SELECT objects.state, objects.attributes FROM objects WHERE objects.id = ?;
+
 -- name: select-object-for-update
 SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
 FROM objects

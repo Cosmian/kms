@@ -60,6 +60,7 @@ add a new node to the database and to the HAProxy backend, and it will start rec
 
 Because the KMS nodes are stateless, the **shared database is the source of truth**: ensure you have **regular database backups**
 (and periodically test restores) using your database engine's recommended procedures.
+In-memory object caches validate lifecycle state and security-sensitive attributes against the shared database on cache hits, ensuring immediate cross-node consistency when keys are revoked, deactivated, or destroyed on any node.
 
 ## Configuring the load balancer
 

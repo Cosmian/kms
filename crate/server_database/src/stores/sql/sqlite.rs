@@ -492,6 +492,31 @@ impl ObjectsStore for SqlitePool {
         Ok(res)
     }
 
+    async fn retrieve_state(&self, uid: &str) -> InterfaceResult<Option<(State, Attributes)>> {
+        let sql: &str = get_sqlite_query!("select-object-state");
+        let uid_s = uid.to_owned();
+        let res = self
+            .reader()
+            .call(move |c: &mut rusqlite::Connection| -> Result<Option<(State, Attributes)>, rusqlite::Error> {
+                let mut stmt = c.prepare_cached(sql)?;
+                let row = stmt
+                    .query_row(params_from_iter([&uid_s]), |row| {
+                        let state_str: String = row.get(0)?;
+                        let state = State::try_from(state_str.as_str())
+                            .map_err(|_e| rusqlite::Error::InvalidQuery)?;
+                        let attrs_str: String = row.get(1)?;
+                        let attrs: Attributes = serde_json::from_str(&attrs_str)
+                            .map_err(|_e| rusqlite::Error::InvalidQuery)?;
+                        Ok((state, attrs))
+                    })
+                    .optional()?;
+                Ok(row)
+            })
+            .await
+            .map_err(DbError::from)?;
+        Ok(res)
+    }
+
     async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
         let sql: &str = get_sqlite_query!("select-tags");
         let uid_s = uid.to_owned();
