@@ -390,14 +390,13 @@ impl AddDimensionAction {
             .iter()
             .map(|attribute| {
                 serde_json::from_str::<(String, bool)>(attribute).map(|(name, hint)| {
-                    (
-                        QualifiedAttribute::new(&self.dimension, &name),
-                        if hint {
-                            EncryptionHint::Hybridized
-                        } else {
-                            EncryptionHint::Classic
-                        },
-                    )
+                    let attr = QualifiedAttribute::new(&self.dimension, &name);
+                    let hint = if hint {
+                        EncryptionHint::Hybridized
+                    } else {
+                        EncryptionHint::Classic
+                    };
+                    (attr, hint)
                 })
             })
             .collect::<Result<Vec<_>, _>>()
