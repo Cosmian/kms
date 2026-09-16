@@ -7,9 +7,9 @@ use cosmian_kms_interfaces::{InterfaceError, InterfaceResult};
 use tokio_postgres::Row;
 use uuid::Uuid;
 
-/// Rebuilds an `AuditEvent` from a row produced by any `select-audit-chain-head` /
-/// `select-audit-events-page` query. Column order must match the `SELECT` list in
-/// `audit.sql`.
+/// Rebuilds an `AuditEvent` from a row produced by `select-audit-events-page`. Column
+/// access is by name, so an extra column (e.g. `chain_generation`, which the caller
+/// already knows from its query parameters) in the row is harmless.
 ///
 /// # Errors
 /// Returns an error if a column is structurally invalid: an unparseable `result` string,
