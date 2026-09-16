@@ -70,15 +70,11 @@ ignore = [
   # "a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
   # { crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
   { id = "RUSTSEC-2023-0071", reason = "Marvin Attack: potential key recovery through timing sidechannels. KMS depends now on jsonwebtoken that has 2 crypto backends (rust_crypto and aws-lc). aws-lc not being Windows compatible, we must choose rust_crypto" },
-  { id = "RUSTSEC-2025-0012", reason = "backoff is unmaintained but pulled transitively by kube-runtime; no safe upgrade available" },
-  { id = "RUSTSEC-2024-0384", reason = "instant is unmaintained but pulled transitively by backoff -> kube-runtime; no safe upgrade available" },
-  { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is unmaintained but pulled transitively by axum-server and kube-client; no safe upgrade available" },
-  { crate = "rustls-pemfile@2.2.0", reason = "Unmaintained transitive dependency of axum-server and kube-client; no safe upgrade is available until upstream migrates to rustls-pki-types" },
   # h2 0.3.x (used by actix-http 3.x) accepts unbounded empty DATA frames, potentially causing OOM or panic.
   # The fix is in h2 >=0.4.16, but actix-http 3.x (and its master branch as of 2026-08) is hardcoded to h2 ^0.3
   # and there is no actix-http 4.x / actix-web 5.x release yet. No upstream upgrade path exists.
   # Severity: low. Re-evaluate when actix-web 5.x is published.
-  { id = "RUSTSEC-2026-0258", reason = "h2 0.3.27 is pulled in by actix-http (actix-web's own HTTP/1.1+2 listener) and remains unpatched — no 0.3.x fix exists, and actix-web has not yet released a version depending on the patched 0.4 line. The separate h2 0.4.16 upgrade in this lockfile only covers the reqwest/hyper client-side dependency chain; it does not touch the server-side listener, which is still exposed. Tracked as an accepted risk pending an actix-web major-version upgrade or an explicit ALPN restriction to disable HTTP/2 on the server listener." },
+  { id = "RUSTSEC-2026-0258", reason = "h2 0.3.x unbounded empty DATA frames (low severity): fixed in h2 0.4.16, but actix-http 3.x is hardcoded to h2 ^0.3 even on master; actix-web 5.x not yet released, no upgrade path available" },
 ] # The path where the advisory databases are cloned/fetched into
 # db-path = "$CARGO_HOME/advisory-dbs"
 # The url(s) of the advisory databases to use

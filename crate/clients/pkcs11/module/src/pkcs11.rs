@@ -215,16 +215,8 @@ pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
 
 cryptoki_fn!(
     fn C_Initialize(pInitArgs: CK_VOID_PTR) {
-        cosmian_logger::info!("C_Initialize: begin (args_null={})", pInitArgs.is_null());
         if !pInitArgs.is_null() {
             let args = unsafe { *(pInitArgs as CK_C_INITIALIZE_ARGS_PTR) };
-            let flags = args.flags;
-            let reserved_null = args.pReserved.is_null();
-            cosmian_logger::info!(
-                "C_Initialize: flags=0x{:x}, reserved_null={}",
-                flags,
-                reserved_null
-            );
             if !args.pReserved.is_null() {
                 return Err(ModuleError::BadArguments(
                     "C_Initialize: pReserved is not null".to_owned(),
@@ -234,7 +226,6 @@ cryptoki_fn!(
         if INITIALIZED.swap(true, Ordering::SeqCst) {
             return Err(ModuleError::CryptokiAlreadyInitialized);
         }
-        cosmian_logger::info!("C_Initialize: returning CKR_OK");
         Ok(())
     }
 );

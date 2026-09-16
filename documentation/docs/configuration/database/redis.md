@@ -65,6 +65,36 @@ It is the database selected to [run the Eviden KMS in the cloud or any other zer
 
 The master password never leaves the KMS server; only the derived keys are used in memory.
 
+## Connection & Operation Workflow
+
+The sequence diagram below shows how the Eviden KMS connects to Redis, initializes cryptographic keys in memory, and performs encrypted storage and indexing operations:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as KMS Client (CLI / REST / KMIP)
+    participant KMS as Eviden KMS Server (Enclave / Confidential VM)
+    participant Findex as Cosmian Findex Engine
+    participant Redis as Redis Server (Remote / Untrusted)
+
+    Note over KMS,Redis: Startup & In-Memory Key Derivation
+    KMS->>KMS: Derive Master Key via Argon2 (salt: rediswithfindex_)
+    KMS->>KMS: Derive Database Key via Master Key (AES-256-GCM)
+    KMS->>Redis: TCP / TLS Connect & AUTH
+    Redis-->>KMS: Connection established
+    KMS->>Redis: Check metadata keys (db_state, db_version)
+    Redis-->>KMS: State: ready
+
+    Note over Client,Redis: Storing an Object (e.g. Create Key)
+    Client->>KMS: Create AES key request
+    KMS->>KMS: Encrypt object data with DB Key (AES-256-GCM)
+    KMS->>Findex: Generate encrypted search tokens for tags & attributes
+    Findex-->>KMS: Encrypted index entries
+    KMS->>Redis: SET encrypted object by UID & update Findex keys
+    Redis-->>KMS: OK (Redis never sees plaintext key material or search terms)
+    KMS-->>Client: Key created (returns UID)
+```
+
 ## Data layout in Redis
 
 Redis-with-Findex does not use relational tables (see [Database tables](./tables.md) for the SQL schema).
