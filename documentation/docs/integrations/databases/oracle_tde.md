@@ -130,6 +130,42 @@ graph TD
 ```
 
 </div>
+### Direct PKCS#11 End-to-End Workflow
+
+The sequence diagram below shows how Oracle TDE interacts with `libcosmian_pkcs11.so`, which translates PKCS#11 calls into KMIP requests over HTTPS (`/kmip` or `/kmip/2_1`) to Eviden KMS, persisting key state in the KMS database backend:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ORA as Oracle Database (TDE Engine)
+    participant P11 as cosmian_pkcs11 (libcosmian_pkcs11.so)
+    participant KMS as Eviden KMS Server
+    participant DB as KMS Database Backend (PostgreSQL / MySQL / SQLite / Redis)
+
+    Note over ORA,P11: Keystore Initialization
+    ORA->>P11: C_Initialize & C_OpenSession
+    P11->>P11: Read ckms.toml (KMS URL, credentials)
+    P11-->>ORA: CKR_OK
+    ORA->>P11: C_Login (User PIN)
+    P11-->>ORA: CKR_OK
+
+    Note over ORA,DB: TDE Master Key Creation & Management
+    ORA->>P11: C_GenerateKey (AES-256 Master Key, CKA_LABEL="ORACLE_TDE_...")
+    P11->>KMS: POST /kmip (KMIP Create Request: AES-256 SymmetricKey)
+    KMS->>DB: Store encrypted key & attributes
+    DB-->>KMS: Key UID persisted
+    KMS-->>P11: KMIP Create Response (Unique Identifier)
+    P11-->>ORA: PKCS#11 Object Handle (CKR_OK)
+
+    Note over ORA,DB: Column / Tablespace Encryption Key Wrapping
+    ORA->>P11: C_EncryptInit & C_Encrypt (Wrap DEK with Master Key)
+    P11->>KMS: POST /kmip (KMIP Encrypt Request with key UID and DEK)
+    KMS->>DB: Fetch Master Key (via ObjectCache / DB)
+    DB-->>KMS: Encrypted Master Key
+    KMS->>KMS: Encrypt DEK
+    KMS-->>P11: KMIP Encrypt Response (Ciphertext data)
+    P11-->>ORA: Encrypted DEK stored in Oracle dictionary
+```
 
 ### Direct HSM Configuration
 

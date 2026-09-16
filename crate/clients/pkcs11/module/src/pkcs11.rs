@@ -139,7 +139,10 @@ macro_rules! valid_slot {
 pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
     // In this structure 'version' is the cryptoki specification version number. The major and minor
     // versions must be set to 0x02 and 0x28 indicating a version 2.40 compatible structure.
-    version: CK_VERSION { major: 2, minor: 4 },
+    version: CK_VERSION {
+        major: 2,
+        minor: 40,
+    },
     C_Initialize: Some(C_Initialize),
     C_Finalize: Some(C_Finalize),
     C_GetInfo: Some(C_GetInfo),

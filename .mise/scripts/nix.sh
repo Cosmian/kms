@@ -39,6 +39,8 @@ usage() {
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
       iris                   Run IRIS ↔ KMS mTLS integration tests (requires Docker + IRIS image)
+      db2                    Run IBM Db2 LUW KMIP TDE integration tests (requires Docker)
+      ase                    Run SAP ASE KMIP TDE integration test (builds the ASE image on the fly)
       cef                    Run CEF audit export test (live server + jc)
       hsm [backend]          Run HSM tests (Linux + macOS for softhsm2)
                              backend: softhsm2 | utimaco | proteccio | all (default)
@@ -296,6 +298,11 @@ resolve_command_args() {
     export WITH_DOCKER=1
   fi
 
+  # SAP ASE and Db2 TDE tests need Docker to run the database container.
+  if [ "$COMMAND" = "test" ] && { [ "${TEST_TYPE:-}" = "ase" ] || [ "${TEST_TYPE:-}" = "db2" ]; }; then
+    export WITH_DOCKER=1
+  fi
+
   # In strict mode (`set -u`), expanding an unset array triggers an error.
   # Use the nounset-safe idiom so CI invocations without trailing args work.
   COMMAND_ARGS=("${args[@]+"${args[@]}"}")
@@ -494,6 +501,12 @@ test_command() {
       ;;
     iris)
       SCRIPT="$REPO_ROOT/.mise/scripts/test/test_iris.sh"
+      ;;
+    db2)
+      SCRIPT="$REPO_ROOT/.mise/scripts/test/test_db2_tde.sh"
+      ;;
+    ase)
+      SCRIPT="$REPO_ROOT/.mise/scripts/test/test_ase_tde.sh"
       ;;
     cef)
       SCRIPT="$REPO_ROOT/.mise/scripts/test/test_cef.sh"

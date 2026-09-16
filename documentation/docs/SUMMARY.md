@@ -54,6 +54,8 @@
     - [Microsoft SQL Server External (EKM)](integrations/databases/ms_sql_server.md)
     - [Oracle Database TDE](integrations/databases/oracle_tde.md)
     - [EDB Postgres Advanced Server TDE](integrations/databases/edb_postgres_tde.md)
+    - [SAP ASE TDE](integrations/databases/sap_ase_tde.md)
+    - [IBM Db2 LUW TDE](integrations/databases/ibm_db2_luw_tde.md)
     - [InterSystems IRIS](integrations/databases/intersystems_iris.md)
   - [Disk encryption]()
     - [Veracrypt](integrations/disk_encryption/veracrypt.md)

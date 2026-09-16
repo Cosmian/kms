@@ -2,7 +2,7 @@
 #![allow(clippy::as_conversions)]
 
 use std::{
-    ptr::{self, addr_of_mut},
+    ptr::{self, addr_of, addr_of_mut},
     sync::{Arc, atomic::Ordering},
 };
 
@@ -38,6 +38,17 @@ use crate::{
         PublicKey, SearchOptions, SignatureAlgorithm, SymmetricKey, Version, register_backend,
     },
 };
+
+#[test]
+fn function_list_reports_pkcs11_2_40() {
+    // SAFETY: the test only reads the immutable version fields of the global
+    // function list while no PKCS#11 operation mutates its metadata.
+    unsafe {
+        let version = (*addr_of!(FUNC_LIST)).version;
+        assert_eq!(version.major, 2);
+        assert_eq!(version.minor, 40);
+    }
+}
 
 struct DummyDataObject {
     remote_id: String,
