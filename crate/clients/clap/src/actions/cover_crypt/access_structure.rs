@@ -27,7 +27,7 @@ use cosmian_kms_crypto::{
 use crate::{
     actions::{console, labels::KEY_ID, shared::get_key_uid},
     cli_bail,
-    error::result::KmsCliResult,
+    error::{KmsCliError, result::KmsCliResult},
 };
 
 /// Extract, view, or edit policies of existing keys
@@ -38,6 +38,7 @@ pub enum AccessStructureCommands {
     RemoveAttribute(RemoveAttributeAction),
     DisableAttribute(DisableAttributeAction),
     RenameAttribute(RenameAttributeAction),
+    AddDimension(AddDimensionAction),
 }
 
 impl AccessStructureCommands {
@@ -56,6 +57,9 @@ impl AccessStructureCommands {
                 action.run(kms_rest_client).await?;
             }
             Self::RenameAttribute(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::AddDimension(action) => {
                 action.run(kms_rest_client).await?;
             }
         }
@@ -356,10 +360,11 @@ pub struct AddDimensionAction {
     #[clap(required = true)]
     pub(crate) dimension: String,
 
-    /// The name and encryption hint associated to each attributes of the new
-    /// dimension. In case this dimension is hierarchical, the attributes are
-    /// listed in increasing order.
-    pub(crate) attributes: Vec<(String, bool)>,
+    /// The name associated to each attributes of the new dimension. In case
+    /// this dimension is hierarchical, the attributes are listed in increasing
+    /// order.
+    #[clap(required = true)]
+    pub(crate) attributes: Vec<String>,
 
     /// Is this dimension hierarchical?
     #[clap(required = false, long, default_value = "false")]
@@ -383,17 +388,20 @@ impl AddDimensionAction {
         let attributes = self
             .attributes
             .iter()
-            .map(|(attribute, hybridized)| {
-                (
-                    QualifiedAttribute::new(&self.dimension, attribute),
-                    if *hybridized {
-                        EncryptionHint::Hybridized
-                    } else {
-                        EncryptionHint::Classic
-                    },
-                )
+            .map(|attribute| {
+                serde_json::from_str::<(String, bool)>(attribute).map(|(name, hint)| {
+                    (
+                        QualifiedAttribute::new(&self.dimension, &name),
+                        if hint {
+                            EncryptionHint::Hybridized
+                        } else {
+                            EncryptionHint::Classic
+                        },
+                    )
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| KmsCliError::SerdeJsonError(e))?;
 
         let query = build_rekey_keypair_request(
             kms_rest_client.config.vendor_id.as_str(),
