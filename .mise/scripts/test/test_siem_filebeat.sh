@@ -299,8 +299,10 @@ EOF
 
 # ── Run Filebeat container ────────────────────────────────────────────────────
 
-echo "==> Running Filebeat ${ELASTIC_VERSION} container..."
+echo "==> Pulling Filebeat ${ELASTIC_VERSION} image..."
+docker pull "docker.elastic.co/beats/filebeat:${ELASTIC_VERSION}" 2>/dev/null
 
+echo "==> Running Filebeat ${ELASTIC_VERSION} container..."
 # Detect host IP accessible from Docker
 # On Linux: use host networking (--network host)
 # On macOS: use host.docker.internal
