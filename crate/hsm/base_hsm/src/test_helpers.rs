@@ -1,23 +1,21 @@
 use crate::{HError, HResult};
 
 pub fn get_hsm_password() -> HResult<String> {
-    let user_password = std::env::var("HSM_USER_PASSWORD").map_err(|_| {
-        HError::Default(
+    let user_password = std::env::var("HSM_USER_PASSWORD").map_err(|e| {
+        HError::Default(format!(
             "The user password for the HSM is not set. Please set the HSM_USER_PASSWORD \
-                 environment variable"
-                .to_owned(),
-        )
+             environment variable: {e}"
+        ))
     })?;
     Ok(user_password)
 }
 
 pub fn get_hsm_slot_id() -> HResult<usize> {
-    let slot_id = std::env::var("HSM_SLOT_ID").map_err(|_| {
-        HError::Default(
+    let slot_id = std::env::var("HSM_SLOT_ID").map_err(|e| {
+        HError::Default(format!(
             "The slot id for the HSM was not provided. Please set the HSM_SLOT_ID environment \
-                 variable"
-                .to_owned(),
-        )
+             variable: {e}"
+        ))
     })?;
     slot_id.parse().map_err(|e| {
         HError::Default(format!(

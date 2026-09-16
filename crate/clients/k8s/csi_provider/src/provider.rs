@@ -82,6 +82,7 @@ pub mod csi_driver_provider_client {
         missing_docs,
         clippy::wildcard_imports,
         clippy::let_unit_value,
+        clippy::result_large_err,
     )]
     use tonic::codegen::*;
     use tonic::codegen::http::Uri;
