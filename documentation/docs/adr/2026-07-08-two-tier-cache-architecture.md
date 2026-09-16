@@ -78,8 +78,8 @@ across Actix-web worker threads with no serialization overhead.
 
 ### Positive
 
-- **POS-001**: Expensive database fetches and object deserialization avoided for hot keys —
-  a lightweight state check verifies validity without loading or parsing full key blobs.
+- **POS-001**: Database round-trips eliminated for hot keys within a short bounded revalidation window (2s) —
+  hot operations skip DB calls entirely, preserving high throughput while capping cross-node state lag.
 - **POS-002**: KEK unwrap operations eliminated for hot keys — RSA-OAEP overhead
   (~2 ms/call) does not accumulate across consecutive decrypts of the same key.
 - **POS-003**: Lock-free concurrent reads via moka sharding — no global `RwLock`
@@ -87,11 +87,11 @@ across Actix-web worker threads with no serialization overhead.
 - **POS-004**: Security properties are separated by tier — operators can disable
   the unwrapped cache independently of the object cache without sacrificing DB
   performance.
-- **POS-005**: Lightweight state and fingerprint validation on read/write paths
+- **POS-005**: Lightweight state validation with bounded revalidation on read paths
   ensures cross-node consistency in multi-node HA deployments. Key lifecycle state
   (revocation, deactivation, destruction) and state-bearing attributes (e.g. `Sensitive`)
-  are checked against the database on cache hits, ensuring immediate visibility across
-  all cluster nodes without stale-window lag.
+  are re-verified against the database whenever a cached entry exceeds the revalidation interval (2s),
+  eliminating long stale-window lag (previously up to 15m) while avoiding full DB fetches on every hit.
 - **POS-006**: Zeroization-on-eviction limits the window during which plaintext
   key material could be recovered from freed memory pages (cold-boot, memory
   forensics).
