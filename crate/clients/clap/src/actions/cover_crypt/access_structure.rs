@@ -34,7 +34,7 @@ use crate::{
 #[derive(Subcommand)]
 pub enum AccessStructureCommands {
     View(ViewAction),
-    AddAttribute(AddQualifiedAttributeAction),
+    AddAttribute(AddAttributeAction),
     RemoveAttribute(RemoveAttributeAction),
     DisableAttribute(DisableAttributeAction),
     RenameAttribute(RenameAttributeAction),
@@ -115,7 +115,7 @@ impl ViewAction {
 /// Add an attribute to the access structure of an existing private master key.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
-pub struct AddQualifiedAttributeAction {
+pub struct AddAttributeAction {
     /// The name of the attribute to create.
     /// Example: `department::rnd`
     #[clap(required = true)]
@@ -136,7 +136,7 @@ pub struct AddQualifiedAttributeAction {
     pub(crate) tags: Option<Vec<String>>,
 }
 
-impl AddQualifiedAttributeAction {
+impl AddAttributeAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let id = get_key_uid(self.secret_key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
@@ -345,5 +345,78 @@ impl RemoveAttributeAction {
         console::Stdout::new(&stdout).write()?;
 
         Ok(())
+    }
+}
+
+/// Add an anarchical dimension to the access structure of an existing private master key.
+#[derive(Parser)]
+#[clap(verbatim_doc_comment)]
+pub struct AddDimensionAction {
+    /// The name of the dimension to create.
+    #[clap(required = true)]
+    pub(crate) dimension: String,
+
+    /// The name and encryption hint associated to each attributes of the new
+    /// dimension. In case this dimension is hierarchical, the attributes are
+    /// listed in increasing order.
+    pub(crate) attributes: Vec<(String, bool)>,
+
+    /// Is this dimension hierarchical?
+    #[clap(required = false, long, default_value = "false")]
+    pub(crate) hierarchical: bool,
+
+    /// The master secret key unique identifier stored in the KMS.
+    /// If not specified, tags should be specified
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
+    pub(crate) secret_key_id: Option<String>,
+
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    pub(crate) tags: Option<Vec<String>>,
+}
+
+impl AddDimensionAction {
+    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
+        let id = get_key_uid(self.secret_key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
+
+        let attributes = self
+            .attributes
+            .iter()
+            .map(|(attribute, hybridized)| {
+                (
+                    QualifiedAttribute::new(&self.dimension, attribute),
+                    if *hybridized {
+                        EncryptionHint::Hybridized
+                    } else {
+                        EncryptionHint::Classic
+                    },
+                )
+            })
+            .collect();
+
+        let query = build_rekey_keypair_request(
+            kms_rest_client.config.vendor_id.as_str(),
+            &id,
+            &if self.hierarchical {
+                RekeyEditAction::AddHierarchy(self.dimension.clone(), attributes)
+            } else {
+                RekeyEditAction::AddAnarchy(self.dimension.clone(), attributes)
+            },
+        )?;
+
+        let rekey_response = kms_rest_client
+            .rekey_keypair(query)
+            .await
+            .with_context(|| "failed adding a dimension to the master keys")?;
+
+        console::Stdout::new(&format!(
+            "New dimension {} was successfully added to the master secret key {} and master \
+             public key {}.",
+            self.dimension,
+            rekey_response.private_key_unique_identifier,
+            rekey_response.public_key_unique_identifier,
+        ))
+        .write()
     }
 }

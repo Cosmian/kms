@@ -19,7 +19,7 @@ use cosmian_kms_server_database::reexport::{
             user_key::UserDecryptionKeysHandler,
         },
         reexport::cosmian_cover_crypt::{
-            AccessPolicy, MasterPublicKey, MasterSecretKey, api::Covercrypt,
+            AccessPolicy, MasterPublicKey, MasterSecretKey, QualifiedAttribute, api::Covercrypt,
         },
     },
 };
@@ -37,6 +37,8 @@ use crate::{
 /// - `RemoveAttribute`: Remove attributes from the access structure.
 /// - `DisableAttribute`: Disable attributes in the access structure.
 /// - `AddAttribute`: Add new attributes to the access structure.
+/// - `AddAnarchy`: Add a new anarchical dimension to the access structure.
+/// - `AddHierarchy`: Add a new hierarchical dimension to the access structure.
 /// - `RenameAttribute`: Rename attributes in the access structure.
 #[expect(clippy::large_futures)]
 pub(crate) async fn rekey_keypair_cover_crypt(
@@ -108,6 +110,43 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                     .try_for_each(|(attr, encryption_hint, _after)| {
                         msk.access_structure
                             .add_attribute(attr.clone(), *encryption_hint, None)
+                    })?;
+                *mpk = cover_crypt.update_msk(msk)?;
+                Ok(())
+            })
+            .await?
+        }
+        RekeyEditAction::AddAnarchy(dimension, attributes) => {
+            update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
+                msk.access_structure.add_anarchy(dimension)?;
+                attributes
+                    .into_iter()
+                    .try_for_each(|(attribute, encryption_hint)| {
+                        msk.access_structure.add_attribute(
+                            QualifiedAttribute::new(dimension, attribute),
+                            encryption_hint,
+                            None,
+                        )
+                    })?;
+                *mpk = cover_crypt.update_msk(msk)?;
+                Ok(())
+            })
+            .await?
+        }
+        RekeyEditAction::AddHierarchy(dimension, attributes) => {
+            update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
+                msk.access_structure.add_hierarchy(dimension)?;
+                let mut prev = None;
+                attributes
+                    .into_iter()
+                    .try_for_each(|(attribute, encryption_hint)| {
+                        msk.access_structure.add_attribute(
+                            QualifiedAttribute::new(dimension, attribute.clone()),
+                            encryption_hint,
+                            prev,
+                        )?;
+                        prev = Some(attribute);
+                        Ok(())
                     })?;
                 *mpk = cover_crypt.update_msk(msk)?;
                 Ok(())
