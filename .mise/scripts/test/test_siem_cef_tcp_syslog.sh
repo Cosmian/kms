@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+set -euo pipefail
+
 # CEF-over-TCP-syslog integration test (rsyslog Docker).
 #
 # Validates the pipeline:
@@ -22,13 +24,13 @@
 #
 # Usage:
 #   bash .mise/scripts/test/test_siem_cef_tcp_syslog.sh [--variant fips|non-fips]
-set -euo pipefail
-
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=.mise/scripts/common.sh
 source "${SCRIPT_DIR}/../common.sh"
+# shellcheck source=.mise/lib/kms_build.sh
 source "${SCRIPT_DIR}/../../lib/kms_build.sh"
+# shellcheck source=.mise/lib/kms_server.sh
 source "${SCRIPT_DIR}/../../lib/kms_server.sh"
-
 init_build_env "$@"
 setup_test_logging
 
@@ -49,10 +51,11 @@ cleanup() {
     docker rm -f "${RSYSLOG_CONTAINER}" 2>/dev/null || true
     RSYSLOG_CONTAINER=""
   fi
-  [ -n "${VENV_DIR:-}" ] && { rm -rf "${VENV_DIR}" || true; }
-  [ -n "${RSYSLOG_DIR:-}" ] && { rm -rf "${RSYSLOG_DIR}" || true; }
-  [ -n "${AUDIT_JSONL:-}" ] && { rm -f "${AUDIT_JSONL}" || true; }
-  [ -n "${VERIFY_CEF:-}" ] && { rm -f "${VERIFY_CEF}" || true; }
+  if [ -n "${VENV_DIR:-}" ]; then rm -rf "${VENV_DIR}" 2>/dev/null || true; fi
+  if [ -n "${RSYSLOG_DIR:-}" ]; then rm -rf "${RSYSLOG_DIR}" 2>/dev/null || true; fi
+  if [ -n "${AUDIT_JSONL:-}" ]; then rm -f "${AUDIT_JSONL}" 2>/dev/null || true; fi
+  if [ -n "${VERIFY_CEF:-}" ]; then rm -f "${VERIFY_CEF}" 2>/dev/null || true; fi
+  return 0
 }
 trap cleanup EXIT
 
@@ -105,8 +108,9 @@ echo "    rsyslog is ready (${waited}s)."
 # ── Build ─────────────────────────────────────────────────────────────────────
 
 echo "==> Building KMS server + ckms CLI..."
+# kms_build_all consumes variant from init_build_env; script flags must not be passed to Cargo
+# shellcheck disable=SC2119
 kms_build_all
-
 kms_bin=$(get_kms_bin)
 ckms_bin=$(get_ckms_bin)
 
