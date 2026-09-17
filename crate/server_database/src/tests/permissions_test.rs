@@ -18,6 +18,7 @@ pub(super) async fn permissions<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
     permissions_users(db).await?;
     permissions_wildcard(db).await?;
     permissions_granted_includes_wildcard(db).await?;
+    permissions_find_includes_wildcard(db).await?;
     crl_persistence(db).await?;
     Ok(())
 }
@@ -278,6 +279,73 @@ async fn permissions_granted_includes_wildcard<DB: ObjectsStore + PermissionsSto
         "wildcard-granted operations must be included in the user's obtained access rights"
     );
     assert!(ops.contains(&KmipOperation::Encrypt));
+
+    Ok(())
+}
+
+/// Regression test for `find` (KMIP `Locate`, used by the "Search Objects" UI page):
+/// an object granted only to the wildcard user `*` must be found by every other
+/// user, consistent with `list_user_operations_granted` (the "Obtained" UI page)
+/// which already treats wildcard grants as inherited.
+///
+/// A tag filter is used to drive the search (rather than no filter at all)
+/// because the Redis-findex backend indexes objects by keyword and cannot
+/// return anything for a completely unfiltered `find`, mirroring how the real
+/// `Locate` KMIP operation always searches by a set of `Attributes`.
+async fn permissions_find_includes_wildcard<DB: ObjectsStore + PermissionsStore>(
+    db: &DB,
+) -> DbResult<()> {
+    let owner = UserId::from(Uuid::new_v4().to_string());
+    let user_id = UserId::from(Uuid::new_v4().to_string());
+    let tag = format!("wildcard-find-{}", Uuid::new_v4());
+
+    let mut rng = CsRng::from_entropy();
+    let mut symmetric_key_bytes = vec![0; 32];
+    rng.fill_bytes(&mut symmetric_key_bytes);
+    let symmetric_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &symmetric_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
+    )?;
+    let uid = Uuid::new_v4().to_string();
+    db.create(
+        Some(uid.clone()),
+        &owner,
+        &symmetric_key,
+        symmetric_key.attributes()?,
+        &HashSet::from([tag.clone()]),
+    )
+    .await?;
+
+    // Grant `Get` to the wildcard user only (no direct grant to `user_id`).
+    db.grant_operations(
+        &uid,
+        &UserId::from("*"),
+        HashSet::from([KmipOperation::Get]),
+    )
+    .await?;
+
+    // `find` (non-owner path), filtered by the tag set at creation, must
+    // return the object for `user_id`, even though the grant was made to `*`
+    // and not to `user_id` directly.
+    let mut search_attributes = Attributes::default();
+    search_attributes.set_tags(VENDOR_ID_COSMIAN, [tag])?;
+    let found = db
+        .find(
+            Some(&search_attributes),
+            None,
+            &user_id,
+            false,
+            VENDOR_ID_COSMIAN,
+        )
+        .await?;
+    assert!(
+        found.iter().any(|(found_uid, ..)| found_uid == &uid),
+        "wildcard-granted objects must be locatable by every user, not just the owner"
+    );
 
     Ok(())
 }
