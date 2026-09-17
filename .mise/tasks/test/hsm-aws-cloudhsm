@@ -19,6 +19,22 @@ if [ "$(uname)" != "Linux" ]; then
   print_error "AWS CloudHSM tests require Linux"
 fi
 
+print_aws_cloudhsm_diagnostics_on_failure() {
+  local exit_code=$?
+  if [ "${exit_code}" -ne 0 ]; then
+    printf 'ERROR: AWS CloudHSM test failed (exit code %s); dumping client logs\n' "${exit_code}" >&2
+    for log_file in /opt/cloudhsm/run/cloudhsm-pkcs11.log /opt/cloudhsm/run/cloudhsm-cli.log; do
+      if [ -r "${log_file}" ]; then
+        printf '\n===== %s =====\n' "${log_file}" >&2
+        sudo cat "${log_file}" >&2
+      fi
+    done
+  fi
+  return "${exit_code}"
+}
+
+trap print_aws_cloudhsm_diagnostics_on_failure EXIT
+
 print_header "Running AWS CloudHSM tests (${VARIANT_NAME})"
 
 # Installs the AWS CloudHSM PKCS#11 client, registers the cluster from either the HSM ENI IPs or
