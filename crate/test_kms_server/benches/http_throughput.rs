@@ -182,7 +182,7 @@ fn bench_http_throughput(c: &mut Criterion) {
         .build()
         .expect("failed to build tokio runtime for bench");
 
-    let config_path = test_config_path("auth_plain.toml");
+    let config_path = test_config_path("auth/plain.toml");
 
     let mut group = c.benchmark_group("kms_bench");
     group.throughput(Throughput::Elements(CONCURRENCY as u64));
