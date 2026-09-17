@@ -70,13 +70,26 @@ fn build_ckms_binary() {
     } else {
         "release"
     };
+    let variant = if cfg!(feature = "non-fips") {
+        "non-fips"
+    } else {
+        "fips"
+    };
 
     let binary_path = workspace_root
         .join("target")
         .join(profile)
         .join(format!("ckms{}", std::env::consts::EXE_SUFFIX));
+    let lock_path = workspace_root
+        .join("target")
+        .join(format!(".ckms-build-{profile}-{variant}.lock"));
+    let marker_path = workspace_root
+        .join("target")
+        .join(format!(".ckms-build-{profile}-{variant}.ready"));
 
-    if binary_path.exists() {
+    // If the binary exists AND was built for the currently running test's variant,
+    // we can return immediately.
+    if binary_path.exists() && marker_path.exists() {
         return;
     }
 
@@ -89,13 +102,6 @@ fn build_ckms_binary() {
     // process. Use an atomically-created lock file so only the first process
     // across the whole test run actually builds; everyone else just waits
     // for the binary to appear.
-    let lock_path = workspace_root
-        .join("target")
-        .join(format!(".ckms-build-{profile}.lock"));
-    let marker_path = workspace_root
-        .join("target")
-        .join(format!(".ckms-build-{profile}.ready"));
-
     let wait_timeout: Duration = Duration::from_secs(300);
 
     // If an orphaned lock file exists from a crashed or killed process, check
