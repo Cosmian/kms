@@ -6,9 +6,7 @@
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_interfaces::{
-    EcCurve,
-    EcCurve, HSM, HashingAlgorithm, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
-,
+    EcCurve, HSM, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
 };
 use cosmian_logger::{debug, info, log_init, trace, warn};
 use futures::executor::block_on;
