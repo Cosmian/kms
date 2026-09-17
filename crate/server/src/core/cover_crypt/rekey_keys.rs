@@ -116,43 +116,11 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             })
             .await?
         }
-        RekeyEditAction::AddAnarchy(dimension, attributes) => {
-            update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
-                msk.access_structure.add_anarchy(dimension.clone())?;
-                attributes
-                    .iter()
-                    .try_for_each(|(attribute, encryption_hint)| {
-                        msk.access_structure.add_attribute(
-                            attribute.clone(),
-                            *encryption_hint,
-                            None,
-                        )
-                    })?;
-                *mpk = cover_crypt.update_msk(msk)?;
-                Ok(())
-            })
-            .await?
+        RekeyEditAction::AddAnarchy(_, _) => {
+            todo!()
         }
-        RekeyEditAction::AddHierarchy(dimension, attributes) => {
-            update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
-                msk.access_structure.add_hierarchy(dimension.clone())?;
-                let mut prev = None;
-                attributes
-                    .iter()
-                    .try_for_each(|(attribute, encryption_hint)| {
-                        let name = attribute.name.clone();
-                        msk.access_structure.add_attribute(
-                            attribute.clone(),
-                            *encryption_hint,
-                            prev.as_deref(),
-                        )?;
-                        prev = Some(name);
-                        KResult::Ok(())
-                    })?;
-                *mpk = cover_crypt.update_msk(msk)?;
-                Ok(())
-            })
-            .await?
+        RekeyEditAction::AddHierarchy(_, _) => {
+            todo!()
         }
     };
 
