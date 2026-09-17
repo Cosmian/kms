@@ -1,10 +1,12 @@
 import { Button, Card, Form, Input, Select, Space, Switch } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import * as wasmClient from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface ECSignFormData {
     inputFile: Uint8Array;
@@ -19,13 +21,14 @@ interface ECSignFormData {
 const ECSignForm: React.FC = () => {
     const [form] = Form.useForm<ECSignFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
     // Signature algorithm is inferred by key type; no explicit options
 
     const onFinish = async (values: ECSignFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("ecSign.missingKeyId"));
             }
             // Use algorithm string like "ecdsa-with-sha256"
             const request = await wasmClient.sign_ttlv_request(id, values.inputFile, undefined, values.digested);
@@ -50,28 +53,28 @@ const ECSignForm: React.FC = () => {
                 const filename = `${values.fileName}.sig`;
                 console.debug("ECSign: signature length", signature.byteLength);
                 downloadFile(signature, filename, "application/octet-stream");
-                return `Signature created and downloaded (${signature.byteLength} bytes).`;
+                return t("ecSign.success", { size: signature.byteLength });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Elliptic Curve Sign</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("ecSign.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Sign a file using an EC private key (ECDSA).</p>
-                <p>The key can be identified using either its ID or associated tags.</p>
+                <p>{t("ecSign.intro")}</p>
+                <p>{t("ecSign.introKey")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ digested: false }}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Input File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("ecSign.inputFile")}</h3>
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
-                        <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to sign" }]}>
+                        <Form.Item name="inputFile" rules={[{ required: true, message: t("ecSign.pleaseSelectFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
@@ -88,22 +91,27 @@ const ECSignForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag file to this area to sign</p>
+                                <p className="ant-upload-text">{t("ecSign.uploadText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Key ID" help="The unique identifier of the private key">
-                            <Input placeholder="Enter key ID" />
-                        </Form.Item>
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <h3 className="text-m font-bold mb-4">{t("ecSign.keyIdentification")}</h3>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("ecSign.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                            objectType="PrivateKey"
+                        />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("ecSign.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Card>
                         {/* Signature algorithm is determined by key type (ECDSA). */}
-                        <Form.Item name="digested" label="Input Is Digested" valuePropName="checked">
+                        <Form.Item name="digested" label={t("ecSign.inputIsDigested")} valuePropName="checked">
                             <Switch />
                         </Form.Item>
                     </Card>
@@ -115,12 +123,12 @@ const ECSignForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Sign File
+                            {t("ecSign.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="EC sign response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("ecSign.responseTitle")} />
         </div>
     );
 };

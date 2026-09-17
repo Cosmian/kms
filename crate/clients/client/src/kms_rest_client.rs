@@ -5,16 +5,17 @@ use cosmian_kms_client_utils::reexport::{
         kmip_2_1::kmip_operations::{
             Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify,
             CertifyResponse, Check, CheckResponse, Create, CreateKeyPair, CreateKeyPairResponse,
-            CreateResponse, Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse,
-            DeriveKey, DeriveKeyResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse,
-            Export, ExportResponse, Get, GetAttributeList, GetAttributeListResponse, GetAttributes,
-            GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
-            LocateResponse, MAC, MACResponse, MACVerify, MACVerifyResponse, ModifyAttribute,
-            ModifyAttributeResponse, Query, QueryResponse, RNGRetrieve, RNGRetrieveResponse,
-            RNGSeed, RNGSeedResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse,
-            Register, RegisterResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse,
-            Sign, SignResponse, SignatureVerify, SignatureVerifyResponse, StatusResponse, Validate,
-            ValidateResponse,
+            CreateResponse, CreateSplitKey, CreateSplitKeyResponse, Decrypt, DecryptResponse,
+            DeleteAttribute, DeleteAttributeResponse, DeriveKey, DeriveKeyResponse, Destroy,
+            DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get,
+            GetAttributeList, GetAttributeListResponse, GetAttributes, GetAttributesResponse,
+            GetResponse, Hash, HashResponse, Import, ImportResponse, JoinSplitKey,
+            JoinSplitKeyResponse, Locate, LocateResponse, MAC, MACResponse, MACVerify,
+            MACVerifyResponse, ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse,
+            RNGRetrieve, RNGRetrieveResponse, RNGSeed, RNGSeedResponse, ReKey, ReKeyKeyPair,
+            ReKeyKeyPairResponse, ReKeyResponse, Register, RegisterResponse, Revoke,
+            RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse,
+            SignatureVerify, SignatureVerifyResponse, StatusResponse, Validate, ValidateResponse,
         },
     },
     cosmian_kms_access::access::{
@@ -164,6 +165,30 @@ impl KmsClient {
         request: CreateKeyPair,
     ) -> Result<CreateKeyPairResponse, KmsClientError> {
         self.post_ttlv_2_1::<CreateKeyPair, CreateKeyPairResponse>(&request)
+            .await
+    }
+
+    /// Split a Managed Cryptographic Object into multiple split-key shares.
+    ///
+    /// The key is split using XOR-based split knowledge (all shares required).
+    /// The returned share UIDs can be distributed to custodians for split-knowledge ceremonies.
+    pub async fn create_split_key(
+        &self,
+        request: CreateSplitKey,
+    ) -> Result<CreateSplitKeyResponse, KmsClientError> {
+        self.post_ttlv_2_1::<CreateSplitKey, CreateSplitKeyResponse>(&request)
+            .await
+    }
+
+    /// Reconstruct a Managed Cryptographic Object from split-key shares.
+    ///
+    /// Joins the specified shares back into the original key using XOR.
+    /// All shares must be provided (threshold must equal `total_parts`).
+    pub async fn join_split_key(
+        &self,
+        request: JoinSplitKey,
+    ) -> Result<JoinSplitKeyResponse, KmsClientError> {
+        self.post_ttlv_2_1::<JoinSplitKey, JoinSplitKeyResponse>(&request)
             .await
     }
 
@@ -661,6 +686,55 @@ impl KmsClient {
         self.get_no_ttlv("/access/obtained", None::<&()>).await
     }
 
+    /// Return the Crypto Officer role configuration and ceremony activation status.
+    pub async fn crypto_officer_status(&self) -> Result<serde_json::Value, KmsClientError> {
+        self.get_no_ttlv("/access/crypto_officer/status", None::<&()>)
+            .await
+    }
+
+    /// Disable an active Crypto Officer ceremony.
+    ///
+    /// Requires the caller to be an active Crypto Officer.
+    pub async fn crypto_officer_disable(
+        &self,
+        target_user: Option<&str>,
+    ) -> Result<SuccessResponse, KmsClientError> {
+        // Send `{}` or `{"target_user": "..."}` — the server's `Json<DisableCryptoOfficerRequest>`
+        // extractor requires a valid JSON body; an empty body triggers a 400.
+        #[derive(serde::Serialize)]
+        struct DisableRequest<'a> {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            target_user: Option<&'a str>,
+        }
+        self.post_no_ttlv(
+            "/access/crypto_officer/disable",
+            Some(&DisableRequest { target_user }),
+        )
+        .await
+    }
+
+    /// Activate the Crypto Officer role via a split-key ceremony.
+    ///
+    /// Sends all n share UIDs to the server. The server reconstructs the ceremony
+    /// secret in RAM (XOR n-of-n), verifies dual-control constraints, activates the
+    /// CO role, then zeroizes the secret — the secret is never stored as a KMS object.
+    ///
+    /// Requires the caller to be listed in `crypto_officer_users`.
+    pub async fn crypto_officer_activate(
+        &self,
+        share_ids: &[String],
+    ) -> Result<SuccessResponse, KmsClientError> {
+        #[derive(serde::Serialize)]
+        struct CeremonyActivateRequest<'a> {
+            share_ids: &'a [String],
+        }
+        self.post_no_ttlv(
+            "/access/crypto_officer/ceremony/activate",
+            Some(&CeremonyActivateRequest { share_ids }),
+        )
+        .await
+    }
+
     /// This operation requests the version of the server
     pub async fn version(&self) -> Result<String, KmsClientError> {
         self.get_no_ttlv("/version", None::<&()>).await
@@ -707,6 +781,32 @@ impl KmsClient {
         let status_code = response.status;
         if status_code.is_success() {
             return Ok(response.json::<R>()?);
+        }
+
+        Err(process_error_response(endpoint, status_code, &response))
+    }
+
+    /// Perform a GET request and return the raw response bytes.
+    ///
+    /// Useful for endpoints that return non-JSON content (e.g. DER/PEM encoded data).
+    pub async fn get_bytes<O>(
+        &self,
+        endpoint: &str,
+        data: Option<&O>,
+    ) -> Result<Vec<u8>, KmsClientError>
+    where
+        O: Serialize + Sync,
+    {
+        let server_url = format!("{}{endpoint}", self.client.server_url);
+        info!("GET {server_url}");
+        let response = match data {
+            Some(d) => self.client.get_with_query(&server_url, d).await?,
+            None => self.client.get(&server_url).await?,
+        };
+
+        let status_code = response.status;
+        if status_code.is_success() {
+            return Ok(response.bytes().to_vec());
         }
 
         Err(process_error_response(endpoint, status_code, &response))

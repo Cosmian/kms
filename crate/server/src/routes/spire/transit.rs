@@ -27,6 +27,7 @@ use actix_web::{
     web::{Data, Json, Path},
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use cosmian_kms_interfaces::UserId;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
@@ -361,7 +362,7 @@ fn auto_rotate_disabled(value: Option<&serde_json::Value>) -> bool {
 #[cfg(feature = "non-fips")]
 async fn create_nonfips_transit_key(
     kms: &KMS,
-    user: &str,
+    user: &UserId,
     name: &str,
     body: &CreateTransitKeyRequest,
     tags: [&str; 1],
@@ -397,7 +398,7 @@ async fn create_nonfips_transit_key(
 #[allow(clippy::unused_async)] // async required to match the non-fips signature awaited by the caller
 async fn create_nonfips_transit_key(
     _kms: &KMS,
-    _user: &str,
+    _user: &UserId,
     _name: &str,
     _body: &CreateTransitKeyRequest,
     _tags: [&str; 1],
@@ -459,7 +460,7 @@ async fn create_transit_key_impl(
     let body = body.into_inner();
 
     trace!(
-        user = user,
+        user = %user,
         "{} vault transit keys/{name} type={}",
         req.method(),
         body.key_type
@@ -775,7 +776,7 @@ async fn sign_with_transit_key_impl(
     let body = body.into_inner();
 
     trace!(
-        user = user,
+        user = %user,
         "{} vault transit sign/{name}/{hash_alg_path}",
         req.method()
     );
@@ -1051,6 +1052,7 @@ mod tests {
 
     use std::sync::Arc;
 
+    use cosmian_kms_interfaces::UserId;
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
         extra::tagging::VENDOR_ID_COSMIAN,
         kmip_objects::ObjectType,
@@ -1090,7 +1092,7 @@ mod tests {
 
         // Tenant A creates a transit key and we record the private key UID.
         let resp = kms
-            .create_key_pair(transit_create_req_for("my-key")?, "tenant-a")
+            .create_key_pair(transit_create_req_for("my-key")?, &UserId::from("tenant-a"))
             .await?;
         let priv_uid = resp
             .private_key_unique_identifier
@@ -1100,7 +1102,10 @@ mod tests {
 
         // Tenant B tries to Get the same UID — must fail.
         let result = kms
-            .get(get_ec_private_key_request(&priv_uid), "tenant-b")
+            .get(
+                get_ec_private_key_request(&priv_uid),
+                &UserId::from("tenant-b"),
+            )
             .await;
         assert!(
             result.is_err(),
@@ -1115,8 +1120,11 @@ mod tests {
         let kms = isolation_test_kms().await?;
 
         // Tenant A creates a transit key.
-        kms.create_key_pair(transit_create_req_for("secret-key")?, "tenant-a")
-            .await?;
+        kms.create_key_pair(
+            transit_create_req_for("secret-key")?,
+            &UserId::from("tenant-a"),
+        )
+        .await?;
 
         // Tenant B lists all private keys — result must be empty.
         let locate = Locate {
@@ -1126,7 +1134,7 @@ mod tests {
             },
             ..Locate::default()
         };
-        let resp = kms.locate(locate, "tenant-b").await?;
+        let resp = kms.locate(locate, &UserId::from("tenant-b")).await?;
         let count = resp.located_items.unwrap_or(0);
         assert_eq!(
             count, 0,
@@ -1141,11 +1149,11 @@ mod tests {
         let kms = isolation_test_kms().await?;
 
         // Tenant A creates two transit keys; tenant B creates one.
-        kms.create_key_pair(transit_create_req_for("key-a1")?, "tenant-a")
+        kms.create_key_pair(transit_create_req_for("key-a1")?, &UserId::from("tenant-a"))
             .await?;
-        kms.create_key_pair(transit_create_req_for("key-a2")?, "tenant-a")
+        kms.create_key_pair(transit_create_req_for("key-a2")?, &UserId::from("tenant-a"))
             .await?;
-        kms.create_key_pair(transit_create_req_for("key-b1")?, "tenant-b")
+        kms.create_key_pair(transit_create_req_for("key-b1")?, &UserId::from("tenant-b"))
             .await?;
 
         // Locate private keys for each tenant.
@@ -1157,12 +1165,12 @@ mod tests {
             ..Locate::default()
         };
         let a_count = kms
-            .locate(private_key_locate(), "tenant-a")
+            .locate(private_key_locate(), &UserId::from("tenant-a"))
             .await?
             .located_items
             .unwrap_or(0);
         let b_count = kms
-            .locate(private_key_locate(), "tenant-b")
+            .locate(private_key_locate(), &UserId::from("tenant-b"))
             .await?
             .located_items
             .unwrap_or(0);

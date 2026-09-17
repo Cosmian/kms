@@ -97,11 +97,8 @@ pub fn write_kmip_object_to_file(
     kmip_object: &Object,
     object_file: &impl AsRef<Path>,
 ) -> Result<(), KmsClientError> {
-    // serialize the returned object to JSON TTLV
     let mut ttlv = to_ttlv(kmip_object)?;
-    // set the top tag to the object type
     ttlv.tag = tag_from_object(kmip_object);
-    // write the JSON TTLV to a file
     write_json_object_to_file(&ttlv, object_file)
 }
 
@@ -204,7 +201,6 @@ pub fn write_bulk_decrypted_data(
     };
 
     (0..nb_chunks).try_for_each(|idx| {
-        // get chunk of data from slice
         let chunk_data = de.read_vec_as_ref()?;
 
         // Write plaintext data to its own file
@@ -264,7 +260,6 @@ pub fn write_bulk_encrypted_data(
     };
 
     (0..nb_chunks).try_for_each(|idx| {
-        // get chunk of data from slice
         let chunk_data = de.read_vec_as_ref()?;
 
         // Write encrypted data to its own file

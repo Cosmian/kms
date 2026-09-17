@@ -59,7 +59,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_operations::{CreateKeyPair, Destroy, Get, Operation},
         kmip_types::OperationEnumeration,
     },
-    ttlv::{KmipFlavor, TTLV, from_ttlv, to_ttlv},
+    ttlv::{KmipFlavor, TTLV, TTLValue, from_ttlv, to_ttlv},
 };
 use cosmian_logger::{info, log_init};
 
@@ -211,15 +211,30 @@ fn destroy_key(client: &SocketClient, key_id: &str) {
 
 // ─── assertions ──────────────────────────────────────────────────────────────
 
+/// Recursively check whether any node in a TTLV tree carries `target` as its tag.
+/// Used to detect structural tag presence without scanning raw bytes.
+fn ttlv_contains_tag(node: &TTLV, target: &str) -> bool {
+    if node.tag == target {
+        return true;
+    }
+    if let TTLValue::Structure(children) = &node.value {
+        return children.iter().any(|c| ttlv_contains_tag(c, target));
+    }
+    false
+}
+
 /// Assert that a `GetResponse` for a KMIP-1.4 `PublicKey` or `PrivateKey`
 /// contains **no** attributes inside `KeyValue` (Veeam compatibility).
 ///
 /// Also verifies that:
-/// - The `PrivateKeyUniqueIdentifier` tag bytes (`0x42 0x00 0x66`) are absent
-///   from the entire wire-level response (refutes expert hypothesis H2).
+/// - The `PrivateKeyUniqueIdentifier` KMIP tag is absent as a *structural*
+///   element in the decoded response (refutes expert hypothesis H2).
+///   Note: scanning raw bytes for `[0x42, 0x00, 0x66]` is incorrect because
+///   RSA key material can coincidentally contain those bytes.
+///   The correct check walks the TTLV tree and looks for the tag by name.
 /// - The TTLV byte stream can be fully round-tripped through decode → encode.
 fn assert_no_key_value_attributes(response: &ResponseMessage, label: &str) {
-    // ── raw-wire checks ───────────────────────────────────────────────────
+    // ── raw-wire encode + round-trip ─────────────────────────────────────
 
     let response_ttlv: TTLV =
         to_ttlv(response).unwrap_or_else(|e| panic!("{label}: to_ttlv failed: {e}"));
@@ -227,13 +242,14 @@ fn assert_no_key_value_attributes(response: &ResponseMessage, label: &str) {
         .to_bytes(KmipFlavor::Kmip1)
         .unwrap_or_else(|e| panic!("{label}: to_bytes failed: {e}"));
 
-    // H2 refutation: PrivateKeyUniqueIdentifier (0x420066) must not appear.
+    // H2 refutation: PrivateKeyUniqueIdentifier (0x420066) must not appear
+    // as a TTLV tag in the decoded tree.
     assert!(
-        !response_bytes.windows(3).any(|w| w == [0x42, 0x00, 0x66]),
-        "{label}: Get response MUST NOT contain `PrivateKeyUniqueIdentifier` \
-         tag bytes (0x42 0x00 0x66). Expert hypothesis H2 is refuted: this tag \
+        !ttlv_contains_tag(&response_ttlv, "PrivateKeyUniqueIdentifier"),
+        "{label}: Get response MUST NOT contain a `PrivateKeyUniqueIdentifier` \
+         TTLV tag (0x420066). Expert hypothesis H2 is refuted: this tag \
          never appears on the wire; the private-key back-reference uses a \
-         `Link` attribute (tag 0x42004A) wrapped inside an `Attribute` (0x420008)."
+         `Link` attribute wrapped inside an `Attribute` (0x420008)."
     );
 
     // TTLV round-trip sanity: the bytes must be decodable without error.

@@ -60,17 +60,49 @@ hostname = "0.0.0.0"
 # WARNING: this endpoint is intentionally unauthenticated — any client can read
 # the listed public keys.  Enable only when you want third parties to verify
 # JWT signatures or discover your public keys.
-[jwks_endpoint]
-# Enable the /.well-known/jwks.json endpoint (default: false).
+
+#[jwks_endpoint]
 # jwks_endpoint_enabled = false
-# Maximum number of public keys returned per response (default: 50).
+
 # Responses exceeding this limit include X-JWKS-Truncated: true.
 # jwks_endpoint_max_keys = 50
+
 # Automatically tag key pairs created via POST /v1/crypto/keys with "jwks"
-# so they appear in the endpoint immediately (default: true).
 # jwks_endpoint_auto_tag = true
+
+# ── Audit logging ────────────────────────────────────────────────────────────
+# [audit]
+# enabled = true
+#
+# [audit.file]
+# path = "/var/lib/cosmian/kms/audit.jsonl"
+# channel_capacity = 4096
+#
+# Stops all further writes once the file reaches this many bytes. Omitted means
+# unlimited. Write-stop cap only — never rotates or deletes the file.
+# max_size_bytes = 1073741824
+#
+# Only uncomment trusted_proxy_cidrs if the KMS sits behind a reverse proxy or
+# load balancer. Leave it unset otherwise (client_ip then always reflects the
+# real TCP peer address).
+# trusted_proxy_cidrs = ["10.0.0.0/8"]
 
 [db]
 database_type = "redis-findex"
 database_url = "redis://0.0.0.0:6379"
 redis_master_password = "master-password"
+
+# ── Role-based access control ─────────────────────────────────────────────────
+[roles]
+# Uncomment to assign users to the Crypto Officer role:
+## crypto_officer_users = ["key-mgr@example.com"]
+
+# Enable split-key ceremony requirement (XOR n-of-n):
+## crypto_officer_require_ceremony = true
+
+# Hex-encoded 32-byte secret for ceremony record encryption (AES-256-GCM).
+# Required when any role has require_ceremony = true.
+# All ceremony activation records are encrypted with keys derived from this secret,
+# preventing forgery via direct database writes and protecting participant identities.
+# Generate with: openssl rand -hex 32
+## ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"

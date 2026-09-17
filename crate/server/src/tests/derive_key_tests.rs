@@ -18,7 +18,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use zeroize::Zeroizing;
 
 use crate::{
-    config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
+    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
+    tests::test_utils::https_clap_config,
 };
 
 /// Helper function to create a symmetric key for testing `DeriveKey` operations
@@ -38,11 +39,11 @@ fn create_base_secret_data_request() -> Create {
 async fn test_derive_key_pbkdf2_default() -> KResult<()> {
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_user";
+    let owner = UserId::from("test_user");
 
     // Create a base symmetric key
     let create_request = create_base_symmetric_key_request();
-    let create_response = kms.create(create_request, owner).await?;
+    let create_response = kms.create(create_request, &owner).await?;
     let base_key_id = create_response.unique_identifier;
 
     // Create DeriveKey request with PBKDF2
@@ -73,7 +74,7 @@ async fn test_derive_key_pbkdf2_default() -> KResult<()> {
     };
 
     // Perform the derivation
-    let derive_response = kms.derive_key(derive_request, owner).await?;
+    let derive_response = kms.derive_key(derive_request, &owner).await?;
 
     // Verify the response
     assert!(!derive_response.unique_identifier.to_string().is_empty());
@@ -86,7 +87,7 @@ async fn test_derive_key_pbkdf2_default() -> KResult<()> {
         key_compression_type: None,
         key_wrapping_specification: None,
     };
-    let get_response = kms.get(get_request, owner).await?;
+    let get_response = kms.get(get_request, &owner).await?;
 
     // Verify the derived key properties
     match get_response.object {
@@ -129,11 +130,11 @@ async fn test_derive_key_pbkdf2_default() -> KResult<()> {
 async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KResult<()> {
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_user";
+    let owner = UserId::from("test_user");
 
     // Create a base symmetric key
     let create_request = create_base_symmetric_key_request();
-    let create_response = kms.create(create_request, owner).await?;
+    let create_response = kms.create(create_request, &owner).await?;
     let base_key_id = create_response.unique_identifier;
 
     let hash_algorithms = vec![
@@ -169,7 +170,7 @@ async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KResult<()> {
             },
         };
 
-        let derive_response = kms.derive_key(derive_request, owner).await?;
+        let derive_response = kms.derive_key(derive_request, &owner).await?;
         assert!(!derive_response.unique_identifier.to_string().is_empty());
 
         // Verify the derived key
@@ -180,7 +181,7 @@ async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KResult<()> {
             key_compression_type: None,
             key_wrapping_specification: None,
         };
-        let get_response = kms.get(get_request, owner).await?;
+        let get_response = kms.get(get_request, &owner).await?;
 
         match get_response.object {
             Object::SymmetricKey(SymmetricKey { key_block }) => {
@@ -199,11 +200,11 @@ async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KResult<()> {
 async fn test_derive_key_hkdf() -> KResult<()> {
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_user";
+    let owner = UserId::from("test_user");
 
     // Create a base symmetric key
     let create_request = create_base_symmetric_key_request();
-    let create_response = kms.create(create_request, owner).await?;
+    let create_response = kms.create(create_request, &owner).await?;
     let base_key_id = create_response.unique_identifier;
 
     // Create DeriveKey request with HKDF
@@ -234,7 +235,7 @@ async fn test_derive_key_hkdf() -> KResult<()> {
     };
 
     // Perform the derivation
-    let derive_response = kms.derive_key(derive_request, owner).await?;
+    let derive_response = kms.derive_key(derive_request, &owner).await?;
 
     // Verify the response
     assert!(!derive_response.unique_identifier.to_string().is_empty());
@@ -247,7 +248,7 @@ async fn test_derive_key_hkdf() -> KResult<()> {
         key_compression_type: None,
         key_wrapping_specification: None,
     };
-    let get_response = kms.get(get_request, owner).await?;
+    let get_response = kms.get(get_request, &owner).await?;
 
     // Verify the derived key properties
     match get_response.object {
@@ -266,11 +267,11 @@ async fn test_derive_key_hkdf() -> KResult<()> {
 async fn test_derive_key_from_secret_data() -> KResult<()> {
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_user";
+    let owner = UserId::from("test_user");
 
     // Create a base secret data object
     let create_request = create_base_secret_data_request();
-    let create_response = kms.create(create_request, owner).await?;
+    let create_response = kms.create(create_request, &owner).await?;
     let base_secret_id = create_response.unique_identifier;
 
     // Create DeriveKey request using the secret data as base
@@ -301,7 +302,7 @@ async fn test_derive_key_from_secret_data() -> KResult<()> {
     };
 
     // Perform the derivation
-    let derive_response = kms.derive_key(derive_request, owner).await?;
+    let derive_response = kms.derive_key(derive_request, &owner).await?;
     assert!(!derive_response.unique_identifier.to_string().is_empty());
     Ok(())
 }
@@ -311,7 +312,7 @@ async fn test_derive_key_from_secret_data() -> KResult<()> {
 async fn test_derive_key_error_cases() -> KResult<()> {
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_user";
+    let owner = UserId::from("test_user");
 
     // Create a base symmetric key WITHOUT DeriveKey usage mask
     let create_request = Create {
@@ -329,7 +330,7 @@ async fn test_derive_key_error_cases() -> KResult<()> {
         },
         protection_storage_masks: None,
     };
-    let create_response = kms.create(create_request, owner).await?;
+    let create_response = kms.create(create_request, &owner).await?;
     let invalid_key_id = create_response.unique_identifier;
 
     // Test 1: Missing DeriveKey usage mask should fail
@@ -359,7 +360,7 @@ async fn test_derive_key_error_cases() -> KResult<()> {
         },
     };
 
-    let result = kms.derive_key(derive_request, owner).await;
+    let result = kms.derive_key(derive_request, &owner).await;
     match result {
         Err(e) => assert!(e.to_string().contains("DeriveKey usage mask")),
         Ok(_) => panic!("expected error"),
@@ -373,11 +374,11 @@ async fn test_derive_key_error_cases() -> KResult<()> {
 async fn test_derive_key_pbkdf2_missing_salt() -> KResult<()> {
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_user";
+    let owner = UserId::from("test_user");
 
     // Create a base symmetric key
     let create_request = create_base_symmetric_key_request();
-    let create_response = kms.create(create_request, owner).await?;
+    let create_response = kms.create(create_request, &owner).await?;
     let base_key_id = create_response.unique_identifier;
 
     // Create DeriveKey request with PBKDF2 but missing salt
@@ -407,7 +408,7 @@ async fn test_derive_key_pbkdf2_missing_salt() -> KResult<()> {
         },
     };
 
-    let result = kms.derive_key(derive_request, owner).await;
+    let result = kms.derive_key(derive_request, &owner).await;
     match result {
         Err(e) => assert!(
             e.to_string()
@@ -424,7 +425,7 @@ async fn test_derive_key_pbkdf2_missing_salt() -> KResult<()> {
 async fn test_derive_key_nonexistent_base_key() -> KResult<()> {
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_user";
+    let owner = UserId::from("test_user");
 
     // Create DeriveKey request with non-existent base key
     let derive_request = DeriveKey {
@@ -453,7 +454,7 @@ async fn test_derive_key_nonexistent_base_key() -> KResult<()> {
         },
     };
 
-    let result = kms.derive_key(derive_request, owner).await;
+    let result = kms.derive_key(derive_request, &owner).await;
     match result {
         Err(e) => assert!(e.to_string().contains("failed to retrieve base object")),
         Ok(_) => panic!("expected error"),
@@ -467,11 +468,11 @@ async fn test_derive_key_nonexistent_base_key() -> KResult<()> {
 async fn test_derive_key_missing_cryptographic_length() -> KResult<()> {
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_user";
+    let owner = UserId::from("test_user");
 
     // Create a base symmetric key
     let create_request = create_base_symmetric_key_request();
-    let create_response = kms.create(create_request, owner).await?;
+    let create_response = kms.create(create_request, &owner).await?;
     let base_key_id = create_response.unique_identifier;
 
     // Create DeriveKey request without cryptographic length
@@ -501,7 +502,7 @@ async fn test_derive_key_missing_cryptographic_length() -> KResult<()> {
         },
     };
 
-    let result = kms.derive_key(derive_request, owner).await;
+    let result = kms.derive_key(derive_request, &owner).await;
     match result {
         Err(e) => assert!(
             e.to_string()

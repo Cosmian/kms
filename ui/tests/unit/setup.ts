@@ -4,6 +4,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeAll, vi } from "vitest";
 import initWasm from "../../src/wasm/pkg";
+// Initialise the i18n singleton (en resources) so components using
+// useTranslation() resolve keys instead of returning raw keys. jsdom's
+// navigator.language is "en-US", so tests deterministically render English.
+import "../../src/i18n";
 
 afterEach(() => {
     cleanup();

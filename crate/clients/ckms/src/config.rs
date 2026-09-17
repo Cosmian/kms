@@ -158,7 +158,10 @@ mod tests {
         log_init(None);
         // valid conf
         unsafe {
-            env::set_var(CKMS_CONF_ENV, "../../../test_data/configs/ckms.toml");
+            env::set_var(
+                CKMS_CONF_ENV,
+                "../../../test_data/configs/client/default.toml",
+            );
         }
         assert!(ClientConfig::load(None).is_ok());
 
@@ -166,7 +169,7 @@ mod tests {
         unsafe {
             env::set_var(
                 CKMS_CONF_ENV,
-                "../../../test_data/configs/ckms_partial.toml",
+                "../../../test_data/configs/client/partial.toml",
             );
         }
         assert!(ClientConfig::load(None).is_ok());
@@ -186,7 +189,7 @@ mod tests {
 
         // invalid conf
         unsafe {
-            env::set_var(CKMS_CONF_ENV, "../../../test_data/configs/ckms.bad.toml");
+            env::set_var(CKMS_CONF_ENV, "../../../test_data/configs/client/bad.toml");
         }
         let e = ClientConfig::load(None).err().unwrap().to_string();
         assert!(e.contains("missing field `server_url`"));
@@ -195,9 +198,10 @@ mod tests {
         unsafe {
             env::remove_var(CKMS_CONF_ENV);
         }
-        let conf_path =
-            ClientConfig::location(Some(PathBuf::from("../../../test_data/configs/ckms.toml")))
-                .unwrap();
+        let conf_path = ClientConfig::location(Some(PathBuf::from(
+            "../../../test_data/configs/client/default.toml",
+        )))
+        .unwrap();
 
         assert!(ClientConfig::from_toml(conf_path.to_str().unwrap()).is_ok());
     }

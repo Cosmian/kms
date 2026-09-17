@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import { postNoTTLVRequest } from "../../utils/utils";
 
@@ -8,21 +9,21 @@ interface AggregateDateFormData {
     time_unit: string;
 }
 
-const TIME_UNITS = [
-    { label: "Second", value: "Second" },
-    { label: "Minute", value: "Minute" },
-    { label: "Hour", value: "Hour" },
-    { label: "Day", value: "Day" },
-    { label: "Month", value: "Month" },
-    { label: "Year", value: "Year" },
-];
-
 const TokenizeAggregateDateForm: React.FC = () => {
     const [form] = Form.useForm<AggregateDateFormData>();
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const { serverUrl } = useAuth();
+    const { t } = useTranslation("actions");
     const responseRef = useRef<HTMLDivElement>(null);
+    const TIME_UNITS = [
+        { label: t("tokenizeAggregateDate.timeUnitSecond"), value: "Second" },
+        { label: t("tokenizeAggregateDate.timeUnitMinute"), value: "Minute" },
+        { label: t("tokenizeAggregateDate.timeUnitHour"), value: "Hour" },
+        { label: t("tokenizeAggregateDate.timeUnitDay"), value: "Day" },
+        { label: t("tokenizeAggregateDate.timeUnitMonth"), value: "Month" },
+        { label: t("tokenizeAggregateDate.timeUnitYear"), value: "Year" },
+    ];
 
     useEffect(() => {
         if (res && responseRef.current) {
@@ -41,12 +42,12 @@ const TokenizeAggregateDateForm: React.FC = () => {
             );
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {
-                setRes(`Result: ${typed.result}`);
+                setRes(t("tokenizeAggregateDate.resultPrefix", { value: typed.result }));
             } else {
-                setRes(`Error: ${typed.message ?? "Unknown error"}`);
+                setRes(`${t("common:errorPrefix")}${typed.message ?? t("tokenizeAggregateDate.unknownError")}`);
             }
         } catch (e) {
-            setRes(`Error: ${e}`);
+            setRes(`${t("common:errorPrefix")}${e}`);
             console.error("Aggregate date error:", e);
         } finally {
             setIsLoading(false);
@@ -55,13 +56,12 @@ const TokenizeAggregateDateForm: React.FC = () => {
 
     return (
         <div className="rounded-lg p-6 m-4">
-            <h1 className="text-2xl font-bold mb-6">Anonymize — Aggregate Date</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("tokenizeAggregateDate.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Truncate an RFC3339 date to reduce its temporal precision.</p>
+                <p>{t("tokenizeAggregateDate.intro")}</p>
                 <p>
-                    For example, truncating <code>2023-04-07T12:34:56+02:00</code> to <strong>Hour</strong> yields{" "}
-                    <code>2023-04-07T12:00:00+02:00</code>.
+                    <Trans ns="actions" i18nKey="tokenizeAggregateDate.introExample" components={{ code: <code />, strong: <strong /> }} />
                 </p>
             </div>
 
@@ -70,27 +70,27 @@ const TokenizeAggregateDateForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="data"
-                            label="Date (RFC3339)"
-                            rules={[{ required: true, message: "Please enter an RFC3339 date" }]}
-                            help="Date to truncate, e.g. 2023-04-07T12:34:56+02:00"
+                            label={t("tokenizeAggregateDate.dateLabel")}
+                            rules={[{ required: true, message: t("tokenizeAggregateDate.pleaseEnterDate") }]}
+                            help={t("tokenizeAggregateDate.dateHelp")}
                         >
-                            <Input placeholder="e.g. 2023-04-07T12:34:56+02:00" />
+                            <Input placeholder={t("tokenizeAggregateDate.datePlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Card>
                         <Form.Item
                             name="time_unit"
-                            label="Truncate to"
-                            rules={[{ required: true, message: "Please select a time unit" }]}
-                            help="All sub-units below this level are set to zero"
+                            label={t("tokenizeAggregateDate.truncateTo")}
+                            rules={[{ required: true, message: t("tokenizeAggregateDate.pleaseSelectTimeUnit") }]}
+                            help={t("tokenizeAggregateDate.truncateHelp")}
                         >
                             <Select data-testid="aggdate-timeunit-select" options={TIME_UNITS} />
                         </Form.Item>
                     </Card>
 
                     <Button type="primary" htmlType="submit" loading={isLoading} data-testid="submit-btn">
-                        Aggregate Date
+                        {t("tokenizeAggregateDate.submit")}
                     </Button>
                 </Space>
             </Form>
@@ -98,13 +98,13 @@ const TokenizeAggregateDateForm: React.FC = () => {
             {res && (
                 <div ref={responseRef} className="mt-6">
                     <Alert
-                        message={res.startsWith("Error") ? "Error" : "Success"}
+                        message={res.startsWith(t("common:errorPrefix")) ? t("common:error") : t("tokenizeAggregateDate.success")}
                         description={
                             <div data-testid="response-output" className="break-all font-mono text-sm whitespace-pre-wrap">
                                 {res}
                             </div>
                         }
-                        type={res.startsWith("Error") ? "error" : "success"}
+                        type={res.startsWith(t("common:errorPrefix")) ? "error" : "success"}
                         showIcon
                     />
                 </div>

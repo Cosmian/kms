@@ -14,6 +14,7 @@ use openssl::{
     pkey::{PKey, Public},
     x509::{X509, X509Extension, X509Name, X509NameRef, X509Req},
 };
+use x509_parser::prelude::{FromDer, X509Certificate};
 
 use crate::{kms_error, result::KResult};
 
@@ -115,6 +116,43 @@ impl Subject {
                 openssl_certificate_extensions(x509).map_err(Into::into)
             }
             _ => Ok(vec![]),
+        }
+    }
+
+    /// Returns `true` when the subject already carries a `crlDistributionPoints` extension
+    /// (OID `2.5.29.31`, DER bytes `55 1d 1f`).
+    ///
+    /// This prevents [`crate::core::operations::certify::build_certificate`] from injecting
+    /// a duplicate CDP when re-certifying a certificate that was previously issued with one.
+    pub(crate) fn has_crl_distribution_points(&self) -> bool {
+        // OID 2.5.29.31 — id-ce-cRLDistributionPoints DER bytes
+        const CDP_OID: &[u8] = &[0x55, 0x1d, 0x1f];
+        match self {
+            Self::Certificate(_, x509, _) => {
+                let Ok(der) = x509.to_der() else { return false };
+                let Ok((_, parsed)) = X509Certificate::from_der(&der) else {
+                    return false;
+                };
+                parsed
+                    .extensions()
+                    .iter()
+                    .any(|ext| ext.oid.as_bytes() == CDP_OID)
+            }
+            Self::X509Req(_, req) => {
+                // CSR extensions live inside a requestedExtensions attribute
+                req.extensions().is_ok_and(|stack| {
+                    // Check if any extension OID matches id-ce-cRLDistributionPoints.
+                    // We cannot inspect the OID bytes from openssl::x509::X509Extension
+                    // directly, so we encode each extension to DER and search for the OID.
+                    stack.iter().any(|ext| {
+                        ext.to_der().is_ok_and(|der| {
+                            // OID appears near the start; simple byte search suffices.
+                            der.windows(CDP_OID.len()).any(|w| w == CDP_OID)
+                        })
+                    })
+                })
+            }
+            _ => false,
         }
     }
 

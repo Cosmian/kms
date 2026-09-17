@@ -18,6 +18,7 @@ use cosmian_kms_server_database::reexport::{
 
 use crate::{
     core::{KMS, operations},
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -28,7 +29,7 @@ pub(crate) async fn locate_usk(
     master_secret_key_uid: &str,
     cover_crypt_policy_attributes_to_revoke: Option<Vec<QualifiedAttribute>>,
     state: Option<State>,
-    owner: &str,
+    owner: &UserId,
 ) -> KResult<Option<Vec<String>>> {
     // Convert the access structure attributes to vendor attributes
     let vendor_attributes = match cover_crypt_policy_attributes_to_revoke {

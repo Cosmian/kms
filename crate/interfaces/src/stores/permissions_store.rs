@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use async_trait::async_trait;
 use cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::KmipOperation};
 
-use crate::InterfaceResult;
+use crate::{InterfaceResult, UserId};
 
 /// Trait that the stores must implement to store permissions
 #[async_trait(?Send)]
@@ -15,7 +15,7 @@ pub trait PermissionsStore {
     /// where `operations` is a list of operations that `user` can perform on the object
     async fn list_user_operations_granted(
         &self,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>>;
 
     /// List all the KMIP operations granted per `user`
@@ -30,7 +30,7 @@ pub trait PermissionsStore {
     async fn grant_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()>;
 
@@ -39,7 +39,7 @@ pub trait PermissionsStore {
     async fn remove_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()>;
 
@@ -50,7 +50,89 @@ pub trait PermissionsStore {
     async fn list_user_operations_on_object(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         no_inherited_access: bool,
     ) -> InterfaceResult<HashSet<KmipOperation>>;
+
+    // ── Crypto Officer ceremony ─────────────────────────────────────────────
+
+    /// Atomically revoke the activating user's prior record (if any) and insert a new one.
+    ///
+    /// **Per-user model**: each CO user maintains their own independent activation record.
+    /// Multiple CO users can be simultaneously active. This call only touches the
+    /// record for `activated_by` — it does not affect any other user's active record.
+    ///
+    /// The revoke and insert are performed in a single database transaction to close
+    /// the TOCTOU race where two concurrent re-activations by the same user could both
+    /// slip through and leave two active rows for the same user.
+    ///
+    /// `revoked_by` is written to the `revoked_by` audit column of the prior active
+    /// record (typically equals `activated_by`).
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+        revoked_by: &str,
+    ) -> InterfaceResult<()>;
+
+    /// Retrieve the active (non-revoked) sealed ceremony record for a specific user.
+    async fn get_crypto_officer_activation_by(&self, user: &str)
+    -> InterfaceResult<Option<String>>;
+
+    /// Returns `true` when at least one user has an active ceremony activation.
+    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool>;
+
+    /// Revoke `activated_by`'s active ceremony record (set `revoked_at` to now).
+    ///
+    /// `revoked_by` is the user who issued the revocation (audit trail).
+    /// `activated_by` filters which user's record to revoke — only that user's
+    /// record is touched; other users' records remain unaffected.
+    /// No-op if the target user has no active record.
+    async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()>;
+
+    // ── CRL persistence (RFC 5280 §5) ──────────────────────────────────────
+
+    /// Persist (or replace) the most recently generated CRL for `issuer_id`.
+    ///
+    /// Called by `generate_crl` after every successful CRL signing so the
+    /// public CDP endpoint can resume serving after a server restart without
+    /// requiring a manual re-generation.
+    ///
+    /// # Arguments
+    /// * `issuer_id`    — UID of the CA certificate (primary key)
+    /// * `crl_der`      — DER-encoded signed CRL bytes
+    /// * `crl_number`   — Monotonically increasing CRL sequence number (RFC 5280 §5.2.3)
+    /// * `generated_at` — ISO-8601 UTC timestamp of generation
+    /// * `next_update`  — ISO-8601 UTC timestamp of expiry
+    async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> InterfaceResult<()>;
+
+    /// Retrieve the persisted CRL DER bytes and generation timestamp for `issuer_id`.
+    ///
+    /// Returns `None` when no CRL has ever been generated for this issuer.
+    async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>>;
+
+    /// List all issuer IDs with their stored `next_update` timestamps.
+    ///
+    /// Used by the background CRL refresh scheduler to identify CRLs that are
+    /// expiring soon without fetching the full DER bytes for every CA.
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>>;
+
+    /// Return the highest `crl_number` stored across all issuers, or `None` when
+    /// no CRL has ever been persisted.
+    ///
+    /// Used on startup to seed the monotonically-increasing CRL sequence counter
+    /// so that CRL Numbers remain strictly greater than any previously issued
+    /// number across server restarts (RFC 5280 §5.2.3).
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>>;
 }

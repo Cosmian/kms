@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import { BrandingProvider } from "./contexts/BrandingProvider";
+import "./i18n";
 import { applyBrandingToDocument, loadBranding } from "./utils/branding";
 import "./styles.css";
 

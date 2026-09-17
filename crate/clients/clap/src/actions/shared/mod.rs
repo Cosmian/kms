@@ -32,3 +32,9 @@ pub use wrap_key::WrapSecretDataOrKeyAction;
 
 /// The size of a symmetric wrapping key in bytes derived from a password
 pub const SYMMETRIC_WRAPPING_KEY_SIZE: usize = 32;
+
+/// Vendor attribute name for the Crypto Officer ceremony flag.
+///
+/// Shared by `ckms sym keys create-split-key --ceremony` (bring-your-own-key path)
+/// and `ckms access-rights crypto-officer create-split-key` (guided path).
+pub(crate) const VENDOR_ATTR_CO_CEREMONY: &str = "x-cosmian-crypto-officer-ceremony";

@@ -20,23 +20,18 @@ use openssl::{nid::Nid, x509::X509};
 use crate::{
     error::KmsError,
     kms_bail,
-    middlewares::{AuthMethod, AuthenticatedUser},
+    middlewares::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_aws_xks_identity},
     result::KResult,
 };
 
-/// The extension struct holding the peer certificate during the connection.
-///
-/// This struct stores the peer certificate in the request context.
+/// Holds the peer certificate for the current connection.
 #[derive(Debug, Clone)]
 pub(super) struct PeerCertificate {
     /// The peer certificate.
     pub(crate) cert: X509,
 }
 
-/// Extract the peer certificate from the TLS stream and pass it to middleware.
-///
-/// This function extracts the peer certificate from the TLS stream and passes it to the middleware.
-/// The middleware can then use the peer certificate to authenticate the client.
+/// Extract the peer certificate from the TLS stream and store it in request extensions.
 pub(crate) fn extract_peer_certificate(cnx: &dyn Any, extensions: &mut Extensions) {
     // Check if the connection is a TLS connection.
     if let Some(cnx) = cnx.downcast_ref::<TlsStream<TcpStream>>() {
@@ -110,6 +105,8 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
                     );
                 }
                 trace!("Client certificate common name: {}", username);
+                let username = UserId::from(trimmed);
+                reject_reserved_aws_xks_identity(&username)?;
                 Ok(AuthenticatedUser {
                     username,
                     auth_method: AuthMethod::Mtls,

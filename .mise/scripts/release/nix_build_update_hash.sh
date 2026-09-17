@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build all Nix derivations (ui → kms-cli → kms-server) and automatically fix
-# vendor-hash mismatches without user prompts.
+# Build all Nix derivations (ui → kms-cli → kms-server → k8s) and automatically
+# fix vendor-hash mismatches without user prompts.
 #
 # When nix-build fails with a fixed-output derivation hash mismatch the script:
 #   1. Extracts the correct hash from the error output.
@@ -21,12 +21,13 @@ OS="$(uname -s)"
 OS_LOWER="$(tr '[:upper:]' '[:lower:]' <<<"$OS")"
 
 # Ordered list of derivations to build, split by platform:
-#   Linux  — all derivations (server + cli + ui wasm + ui pnpm)
+#   Linux  — all derivations (server + cli + ui wasm + ui pnpm + k8s binaries)
 #   macOS  — only CLI (for cli.vendor.*.darwin)
 #             ui-fips/ui-non-fips are excluded: their vendor hashes are
 #             Linux-only and building them on macOS always fails at the
 #             vendor hash step.  The ui.pnpm.darwin.sha256 is not updated
 #             by this workflow and must be refreshed manually when needed.
+#             k8s binaries are Linux-only statically-linked derivations.
 if [[ "$OS" == "Darwin" ]]; then
   ALL_ATTRS=(
     kms-cli-fips-static-openssl
@@ -42,6 +43,13 @@ else
     kms-cli-non-fips-dynamic-openssl
     kms-server-fips-static-openssl
     kms-server-non-fips-dynamic-openssl
+    # Kubernetes binaries — Linux-only statically-linked derivations.
+    # Vendor hashes: k8s-plugin.vendor.linux.sha256,
+    #                k8s-operator.vendor.linux.sha256,
+    #                k8s-csi-provider.vendor.linux.sha256
+    k8s-plugin-bin
+    k8s-operator-bin
+    k8s-csi-provider-bin
   )
 fi
 
@@ -81,6 +89,25 @@ drv_to_hash_file() {
     local link="static"
     [[ "$drv_name" == *dynamic* || "$attr" == *dynamic* ]] && link="dynamic"
     echo "$EXPECTED_DIR/server.vendor.${link}.sha256"
+    return
+  fi
+  # ── Kubernetes binaries — Linux-only ─────────────────────────────────────────
+  # pname = "kubernetes-kms-plugin" in nix/k8s-plugin.nix
+  if [[ "$drv_name" =~ kubernetes-kms-plugin.*vendor ]]; then
+    [[ "$OS" != "Linux" ]] && echo "" && return
+    echo "$EXPECTED_DIR/k8s-plugin.vendor.linux.sha256"
+    return
+  fi
+  # pname = "cosmian-kms-operator" in nix/k8s-binaries.nix
+  if [[ "$drv_name" =~ cosmian-kms-operator.*vendor ]]; then
+    [[ "$OS" != "Linux" ]] && echo "" && return
+    echo "$EXPECTED_DIR/k8s-operator.vendor.linux.sha256"
+    return
+  fi
+  # pname = "cosmian-kms-csi-provider" in nix/k8s-binaries.nix
+  if [[ "$drv_name" =~ cosmian-kms-csi-provider.*vendor ]]; then
+    [[ "$OS" != "Linux" ]] && echo "" && return
+    echo "$EXPECTED_DIR/k8s-csi-provider.vendor.linux.sha256"
     return
   fi
   echo ""

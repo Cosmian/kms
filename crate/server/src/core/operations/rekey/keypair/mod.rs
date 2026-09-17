@@ -20,8 +20,12 @@ use cosmian_logger::trace;
 use self::sql::SqlKeypairRekeyer;
 use super::common::execute_rekey;
 use crate::{
-    core::{KMS, uid_utils::resolve_uid_or_keyset},
+    core::{
+        KMS,
+        uid_utils::{ObjectHandle, resolve_uid_or_keyset},
+    },
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -41,7 +45,7 @@ use crate::{
 pub(crate) async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
-    user: &str,
+    user: &UserId,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("ReKeyKeyPair: {}", serde_json::to_string(&request)?);
 
@@ -59,7 +63,9 @@ pub(crate) async fn rekey_keypair(
         .as_ref()
         .and_then(|u| u.as_str())
     {
-        if let Some(resolved) = resolve_uid_or_keyset(uid_str, "ReKeyKeyPair", kms, user).await? {
+        if let Some(resolved) =
+            resolve_uid_or_keyset(ObjectHandle::from(uid_str), "ReKeyKeyPair", kms, user).await?
+        {
             trace!(
                 "ReKeyKeyPair: resolved keyset ref '{}' → '{}'",
                 uid_str, resolved
@@ -94,7 +100,7 @@ impl KMS {
     ) -> KResult<cosmian_kms_server_database::reexport::cosmian_kms_interfaces::ObjectWithMetadata>
     {
         self.database
-            .retrieve_objects(pk_uid)
+            .retrieve_objects(ObjectHandle::from(pk_uid))
             .await?
             .into_values()
             .next()

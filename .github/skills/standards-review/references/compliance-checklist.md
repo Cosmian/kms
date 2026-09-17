@@ -1,6 +1,6 @@
 # Algorithm Compliance Checklist
 
-Per-algorithm cross-standard compliance matrix for algorithms used in the Cosmian KMS.
+Per-algorithm cross-standard compliance matrix for algorithms used in the Eviden KMS.
 This table is a reference for the `/standards-review` and `/cryptography-review` skills.
 
 > **Maintenance**: update this table when a standard is revised or a new algorithm is added to the KMS.

@@ -29,7 +29,7 @@ use openssl::{
     pkey::{Id, PKey, Public},
 };
 
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
 /// User tag that marks a public key for inclusion in the JWKS endpoint.
 ///
@@ -133,7 +133,7 @@ async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object
         .find(
             Some(&filter),
             None, // no state pre-filter: filter client-side to include both Active and Deactivated
-            &kms.params.default_username,
+            &UserId::from(kms.params.default_username.as_str()),
             false,
             kms.vendor_id(),
         )

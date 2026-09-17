@@ -17,7 +17,7 @@ use cosmian_logger::{debug, error};
 
 use crate::{
     core::KMS,
-    middlewares::{AuthMethod, AuthenticatedUser},
+    middlewares::{AuthMethod, AuthenticatedUser, UserId},
 };
 
 /// Creates the authentication fallback middleware.
@@ -56,7 +56,7 @@ where
 
             // No authentication configured — inject the default username.
             req.extensions_mut().insert(AuthenticatedUser {
-                username: kms_server.params.default_username.clone(),
+                username: UserId::from(kms_server.params.default_username.as_str()),
                 auth_method: AuthMethod::DefaultUser,
             });
             next.call(req)

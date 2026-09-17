@@ -1,6 +1,6 @@
 # Threat Model Orchestrator
 
-Complete 10-step workflow for performing a STRIDE-A threat model analysis of the Cosmian KMS. Follow every step in order.
+Complete 10-step workflow for performing a STRIDE-A threat model analysis of the Eviden KMS. Follow every step in order.
 
 ## Mandatory Rules (apply to every analysis)
 

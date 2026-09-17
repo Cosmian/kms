@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+#MISE description="Fast pre-commit validation (format + lint + sync checks)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Running fast pre-commit checks"
+
+FAILED=()
+
+run_step() {
+  local name="$1"
+  shift
+  print_status "Running: $name"
+  if "$@" >/dev/null 2>&1; then
+    print_success "$name passed"
+  else
+    print_warning "$name FAILED"
+    FAILED+=("$name")
+  fi
+}
+
+# Formatting checks (fast)
+run_step "cargo fmt" cargo fmt --all -- --check
+run_step "cargo machete" cargo machete
+
+# Sync checks
+run_step "sync-instructions" bash .mise/scripts/pre-commit/sync-instructions.sh
+run_step "log-index-check" mise run docs:log-index-check
+
+# Linting (medium speed)
+run_step "cargo deny" cargo deny check
+
+if [[ ${#FAILED[@]} -gt 0 ]]; then
+  echo "" >&2
+  echo "============================================" >&2
+  echo "  FAILED: ${FAILED[*]}" >&2
+  echo "============================================" >&2
+  echo "" >&2
+  echo "Fix the issues above, or run 'pre-commit run -a' to auto-fix."
+  exit 1
+fi
+
+print_success "All fast checks passed"

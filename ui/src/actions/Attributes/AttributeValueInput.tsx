@@ -1,5 +1,6 @@
 import { DatePicker, Form, Input, Select } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { ATTRIBUTE_REGISTRY, type AlgoOption } from "./attributeRegistry";
 
 const { Option } = Select;
@@ -21,6 +22,8 @@ const KEY_USAGE_OPTIONS = [
     { value: "Unrestricted", label: "Unrestricted" },
 ];
 
+type RegistryEntry = (typeof ATTRIBUTE_REGISTRY)[number];
+
 interface Props {
     selectedAttributeName: string | undefined;
     cryptoAlgorithms: AlgoOption[];
@@ -32,16 +35,26 @@ interface Props {
  * AttributeModify to avoid duplicating the switch logic.
  */
 const AttributeValueInput: React.FC<Props> = ({ selectedAttributeName, cryptoAlgorithms }) => {
+    const { t } = useTranslation("actions");
+    const attrLabel = (entry: RegistryEntry) => t(`attribute.${entry.value}`, { defaultValue: entry.label });
+    const attrHelp = (entry: RegistryEntry) => (entry.help ? t(`attribute.${entry.value}.help`, { defaultValue: entry.help }) : undefined);
+    const attrPlaceholder = (entry: RegistryEntry) =>
+        entry.placeholder ? t(`attribute.${entry.value}.placeholder`, { defaultValue: entry.placeholder }) : undefined;
+
     if (!selectedAttributeName) {
-        return <Input placeholder="First select an attribute name" disabled />;
+        return <Input placeholder={t("attributeValueInput.firstSelectAttribute")} disabled />;
     }
 
     const entry = ATTRIBUTE_REGISTRY.find((a) => a.value === selectedAttributeName);
 
     if (!entry) {
         return (
-            <Form.Item name="attribute_value" label="Attribute Value" rules={[{ required: true, message: "Please enter attribute value" }]}>
-                <Input placeholder="Enter attribute value" />
+            <Form.Item
+                name="attribute_value"
+                label={t("attributeValueInput.attributeValue")}
+                rules={[{ required: true, message: t("attributeValueInput.pleaseEnterAttributeValue") }]}
+            >
+                <Input placeholder={t("attributeValueInput.enterAttributeValue")} />
             </Form.Item>
         );
     }
@@ -51,8 +64,8 @@ const AttributeValueInput: React.FC<Props> = ({ selectedAttributeName, cryptoAlg
             return (
                 <Form.Item
                     name="attribute_value"
-                    label={entry.label}
-                    rules={[{ required: true, message: `Please select ${entry.label.toLowerCase()}` }]}
+                    label={attrLabel(entry)}
+                    rules={[{ required: true, message: t("attributeValueInput.pleaseSelectValue", { value: attrLabel(entry) }) }]}
                 >
                     <DatePicker showTime style={{ width: "100%" }} />
                 </Form.Item>
@@ -60,8 +73,12 @@ const AttributeValueInput: React.FC<Props> = ({ selectedAttributeName, cryptoAlg
 
         case "algorithm":
             return (
-                <Form.Item name="attribute_value" label={entry.label} rules={[{ required: true, message: "Please select an algorithm" }]}>
-                    <Select placeholder="Select algorithm">
+                <Form.Item
+                    name="attribute_value"
+                    label={attrLabel(entry)}
+                    rules={[{ required: true, message: t("attributeValueInput.pleaseSelectAlgorithm") }]}
+                >
+                    <Select placeholder={t("attributeValueInput.selectAlgorithm")}>
                         {cryptoAlgorithms.map((algo) => (
                             <Option key={algo.value} value={algo.value}>
                                 {algo.label}
@@ -75,10 +92,10 @@ const AttributeValueInput: React.FC<Props> = ({ selectedAttributeName, cryptoAlg
             return (
                 <Form.Item
                     name="attribute_value"
-                    label={entry.label}
-                    rules={[{ required: true, message: "Please select at least one key usage" }]}
+                    label={attrLabel(entry)}
+                    rules={[{ required: true, message: t("attributeValueInput.pleaseSelectKeyUsage") }]}
                 >
-                    <Select mode="multiple" placeholder="Select one or more key usages">
+                    <Select mode="multiple" placeholder={t("attributeValueInput.selectKeyUsages")}>
                         {KEY_USAGE_OPTIONS.map((usage) => (
                             <Option key={usage.value} value={usage.value}>
                                 {usage.label}
@@ -90,10 +107,14 @@ const AttributeValueInput: React.FC<Props> = ({ selectedAttributeName, cryptoAlg
 
         case "boolean":
             return (
-                <Form.Item name="attribute_value" label={entry.label} rules={[{ required: true, message: "Please select true or false" }]}>
-                    <Select placeholder="Select value">
-                        <Option value="true">True</Option>
-                        <Option value="false">False</Option>
+                <Form.Item
+                    name="attribute_value"
+                    label={attrLabel(entry)}
+                    rules={[{ required: true, message: t("attributeValueInput.pleaseSelectBoolean") }]}
+                >
+                    <Select placeholder={t("attributeValueInput.selectValue")}>
+                        <Option value="true">{t("common:true")}</Option>
+                        <Option value="false">{t("common:false")}</Option>
                     </Select>
                 </Form.Item>
             );
@@ -102,11 +123,11 @@ const AttributeValueInput: React.FC<Props> = ({ selectedAttributeName, cryptoAlg
             return (
                 <Form.Item
                     name="attribute_value"
-                    label={entry.label}
-                    help={entry.help}
-                    rules={[{ required: true, message: "Please enter a number" }]}
+                    label={attrLabel(entry)}
+                    help={attrHelp(entry)}
+                    rules={[{ required: true, message: t("attributeValueInput.pleaseEnterNumber") }]}
                 >
-                    <Input type="number" placeholder="Enter value" />
+                    <Input type="number" placeholder={t("attributeValueInput.enterValue")} />
                 </Form.Item>
             );
 
@@ -114,10 +135,10 @@ const AttributeValueInput: React.FC<Props> = ({ selectedAttributeName, cryptoAlg
             return (
                 <Form.Item
                     name="attribute_value"
-                    label={`${entry.label} Value`}
-                    rules={[{ required: true, message: "Please enter ID value" }]}
+                    label={t("attributeValueInput.linkValue", { label: attrLabel(entry) })}
+                    rules={[{ required: true, message: t("attributeValueInput.pleaseEnterIdValue") }]}
                 >
-                    <Input placeholder="Enter ID value" />
+                    <Input placeholder={t("attributeValueInput.enterIdValue")} />
                 </Form.Item>
             );
 
@@ -126,11 +147,11 @@ const AttributeValueInput: React.FC<Props> = ({ selectedAttributeName, cryptoAlg
             return (
                 <Form.Item
                     name="attribute_value"
-                    label={entry.label}
-                    help={entry.help}
-                    rules={[{ required: true, message: "Please enter a value" }]}
+                    label={attrLabel(entry)}
+                    help={attrHelp(entry)}
+                    rules={[{ required: true, message: t("attributeValueInput.pleaseEnterValue") }]}
                 >
-                    <Input placeholder={entry.placeholder ?? "Enter value"} />
+                    <Input placeholder={attrPlaceholder(entry) ?? t("attributeValueInput.enterValue")} />
                 </Form.Item>
             );
     }

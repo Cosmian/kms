@@ -1,7 +1,7 @@
 ---
 name: Kubernetes Packaging & E2E
 
-# Covers all Kubernetes-related CI for Cosmian KMS:
+# Covers all Kubernetes-related CI for Eviden KMS:
 #   - K8s E2E tests (KMS Provider Plugin, CSI Driver Provider, Operator) on every
 #     PR/branch push and manual dispatch
 #   - K8s plugin deb/rpm packaging on tags and manual dispatch
@@ -129,7 +129,7 @@ jobs:
       - uses: ./.github/actions/install-mise
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Download prebuilt binaries
         uses: actions/download-artifact@v8
@@ -144,7 +144,7 @@ jobs:
             target/release/ckms
 
       - name: Start Minikube
-        uses: medyagh/setup-minikube@v0.0.18
+        uses: medyagh/setup-minikube@v0.0.21
         with:
           driver: docker
           kubernetes-version: v1.32.0
@@ -185,7 +185,7 @@ jobs:
       - uses: ./.github/actions/install-mise
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Download prebuilt binaries (ckms fixture helper)
         uses: actions/download-artifact@v8
@@ -203,7 +203,7 @@ jobs:
         run: chmod +x target/release/ckms
 
       - name: Start Minikube
-        uses: medyagh/setup-minikube@v0.0.18
+        uses: medyagh/setup-minikube@v0.0.21
         with:
           driver: docker
           kubernetes-version: v1.32.0
@@ -353,7 +353,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Configure Git
         run: |

@@ -501,6 +501,14 @@ fn compare_payload_v14(expected: &Op14, actual: &Op14) -> KmsCliResult<()> {
                 )));
             }
         }
+        (Op14::DeleteAttributeResponse(exp), Op14::DeleteAttributeResponse(act)) => {
+            if exp != act {
+                return Err(KmsCliError::Default(format!(
+                    "DeleteAttributeResponse mismatch\n  expected uid={} attr={:?}\n  actual   uid={} attr={:?}",
+                    exp.unique_identifier, exp.attribute, act.unique_identifier, act.attribute
+                )));
+            }
+        }
         (Op14::ModifyAttributeResponse(exp), Op14::ModifyAttributeResponse(act)) => {
             if exp.unique_identifier != act.unique_identifier {
                 return Err(KmsCliError::Default(format!(

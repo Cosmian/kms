@@ -35,7 +35,8 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
+    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
+    tests::test_utils::https_clap_config,
 };
 
 const USER: &str = "eyJhbGciOiJSUzI1Ni";
@@ -61,7 +62,7 @@ async fn create_key_with_state(kms: &Arc<KMS>, state: State) -> KResult<String> 
     kms.database
         .create(
             Some(uid.clone()),
-            USER,
+            &UserId::from(USER),
             &object,
             object.attributes()?,
             &HashSet::new(),
@@ -78,7 +79,7 @@ async fn get_attributes(kms: &Arc<KMS>, uid: &str, tag: Tag) -> KResult<GetAttri
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
             attribute_reference: Some(vec![AttributeReference::Standard(tag)]),
         },
-        USER,
+        &UserId::from(USER),
     )
     .await
 }
@@ -93,7 +94,7 @@ async fn modify_attribute(
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
             new_attribute: attribute,
         },
-        USER,
+        &UserId::from(USER),
     )
     .await
 }

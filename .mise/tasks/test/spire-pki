@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+#MISE description="KMS PKI capability validation tests (non-FIPS)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+
+# Validates the KMS-owned test cases from the Aembit Capability Validation Test Plan:
+#   M-01 / PKI-06  — Self-signed cert prohibition + pathlen:0 + out-of-chain rejection
+#   M-02 / PKI-11  — TLS version enforcement (TLS ≤1.1 rejected; TLS 1.2/1.3 verified)
+#   M-03 / PKI-12  — Algorithm policy change without redeploy (baseline + restricted)
+#   M-04 / PKI-04  — Zero-downtime Intermediate CA rotation
+#   M-05 / PKI-17  — Trust re-establishment
+#   M-06 / OBS-05  — PKI signing latency < 500 ms (hard gate)
+#   M-07 / INFO-2  — Independent DPoP signing key lifecycle
+#   M-08 / RES-08  — Legacy + SPIFFE workload coexistence
+#   M-09 / PKI-03  — Client/server certificate parity (clientAuth + serverAuth EKU)
+#   M-10 / WI-05   — Revocation propagation with measured timing window
+#
+# These tests cover the ~30% of the RFI that Aembit does NOT cover.
+# Test cases already covered by the existing `mise run test:spire` task:
+#   PKI-01 (Root CA chain), PKI-07 (algorithm restriction), PKI-08 (storage policy),
+#   PKI-14 (programmatic CA issuance), PKI-16 (automated bootstrapping).
+#
+# Usage:
+#   mise run test:spire-pki                     # default: non-fips, static
+#   mise run test:spire-pki --variant non-fips  # explicit
+#
+# Can also be invoked as step 16 of `mise run test:spire` (server already running).
+
+set -euo pipefail
+
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+
+if [ "${usage_variant:-non-fips}" != "non-fips" ]; then
+  print_error "spire-pki tests require non-fips variant (Vault API is non-FIPS only)"
+fi
+
+kms_init_env "non-fips" "${usage_link:-static}"
+setup_test_logging
+
+REPO_ROOT="$(get_repo_root)"
+TEST_DATA="${REPO_ROOT}/test_data/spire"
+AUTH_PID=""
+AUTH_LOG="/tmp/auth-verifier-spire-pki.log"
+AUTH_DB_FILE="/tmp/auth-verifier-spire-pki.db"
+SPIRE_SECRETS_ENV="/tmp/spire-pki-secrets.env"
+KMS_LOG_FILE="/tmp/kms-spire-pki.log"
+
+# ── Port cleanup helpers (same pattern as spire task) ─────────────────────────
+listener_pids_for_port() {
+  lsof -ti tcp:"$1" 2>/dev/null | sort -u || true
+}
+
+port_is_listening() {
+  lsof -i tcp:"$1" -sTCP:LISTEN 2>/dev/null | grep -q . 2>/dev/null
+}
+
+wait_for_port_closed() {
+  local port="$1" timeout_secs="$2" elapsed=0
+  while port_is_listening "${port}"; do
+    [[ "${elapsed}" -ge "${timeout_secs}" ]] && return 1
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+}
+
+stop_listener_on_port() {
+  local port="$1" label="$2" pids pid
+  pids="$(listener_pids_for_port "${port}")"
+  [[ -z "${pids}" ]] && return 0
+  print_info "Stopping stale ${label} listener on port ${port}"
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] && kill "${pid}" 2>/dev/null || true
+  done <<<"${pids}"
+  wait_for_port_closed "${port}" 10 || {
+    while IFS= read -r pid; do
+      [[ -n "${pid}" ]] && kill -9 "${pid}" 2>/dev/null || true
+    done <<<"${pids}"
+  }
+}
+
+# ── Cleanup on exit ────────────────────────────────────────────────────────────
+cleanup() {
+  [[ -n "${AUTH_PID}" ]] && kill "${AUTH_PID}" 2>/dev/null || true
+  [[ -n "${KMS_PID:-}" ]] && kill "${KMS_PID}" 2>/dev/null || true
+  rm -f "${AUTH_DB_FILE}" "${SPIRE_SECRETS_ENV}"
+}
+trap cleanup EXIT
+
+# ── Step 1: Build binaries ─────────────────────────────────────────────────────
+print_header "Step 1: Build binaries"
+require_cmd cargo
+
+print_status "Building KMS server (non-fips)..."
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+print_status "Building auth-verifier..."
+cargo build --manifest-path "${REPO_ROOT}/authentication/Cargo.toml" \
+  --bin auth_verifier
+
+AUTH_BIN="$(
+  cd "${REPO_ROOT}/authentication" &&
+    cargo metadata --no-deps --format-version 1 |
+    python3 -c "import sys,json; m=json.load(sys.stdin); print(m['target_directory'])"
+)/debug/auth_verifier"
+if [[ -z "${AUTH_BIN}" || ! -x "${AUTH_BIN}" ]]; then
+  print_error "auth-verifier binary not found after build."
+fi
+
+print_status "Building ckms CLI..."
+kms_build_cli "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+print_success "Binaries built."
+
+# ── Step 2: Generate TLS certs if missing ──────────────────────────────────────
+print_header "Step 2: TLS certificates"
+if [[ ! -f "${TEST_DATA}/certs/ca.crt" ]]; then
+  print_status "Generating test TLS certs..."
+  bash "${TEST_DATA}/certs/generate-test-certs.sh"
+fi
+print_success "TLS certs ready."
+
+# ── Step 3: Stop stale listeners ───────────────────────────────────────────────
+stop_listener_on_port 8443 "auth-verifier"
+stop_listener_on_port 9998 "KMS"
+
+# ── Step 4: Start auth-verifier ────────────────────────────────────────────────
+print_header "Step 4: auth-verifier"
+rm -f "${AUTH_DB_FILE}"
+"${AUTH_BIN}" "${TEST_DATA}/config/auth_verifier.toml" >"${AUTH_LOG}" 2>&1 &
+AUTH_PID=$!
+if ! wait_for_port 127.0.0.1 8443 60; then
+  print_error "auth-verifier failed to start. Check ${AUTH_LOG}"
+fi
+print_success "auth-verifier ready (PID=${AUTH_PID})."
+
+# ── Step 5: Start KMS ──────────────────────────────────────────────────────────
+print_header "Step 5: KMS server"
+KMS_CONFIG_FILE="${TEST_DATA}/config/kms.toml"
+"$(get_kms_bin)" --config "${KMS_CONFIG_FILE}" >"${KMS_LOG_FILE}" 2>&1 &
+KMS_PID=$!
+if ! wait_for_port 127.0.0.1 9998 120; then
+  print_error "KMS failed to start. Check ${KMS_LOG_FILE}"
+fi
+print_success "KMS ready (PID=${KMS_PID})."
+
+# ── Step 6: Create PKI CA key + provision AppRoles ────────────────────────────
+print_header "Step 6: PKI CA key + AppRoles"
+
+CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998")"
+
+_VAULT_EXT_FILE=$(mktemp /tmp/vault_pki_ca_ext.XXXXXX)
+cat >"${_VAULT_EXT_FILE}" <<'EXTEOF'
+[ v3_ca ]
+basicConstraints=critical,CA:TRUE
+keyUsage=critical,keyCertSign,crlSign,digitalSignature
+EXTEOF
+
+"$(get_ckms_bin)" --conf-path "${CKMS_CONF}" --accept-invalid-certs \
+  certificates certify \
+  --generate-key-pair \
+  --algorithm nist-p384 \
+  --certificate-id vault_pki_ca_cert \
+  --subject-name "CN=Client PKI Test Root CA,O=Test,C=FR" \
+  --tag vault_pki_ca \
+  --days 3650 \
+  --certificate-extensions "${_VAULT_EXT_FILE}" \
+  2>&1 | grep -v "^$"
+rm -f "${_VAULT_EXT_FILE}"
+print_success "PKI CA key created."
+
+print_status "Provisioning AppRoles..."
+AUTH_VERIFIER_URL="https://localhost:8443" \
+  VAULT_ADDR="https://localhost:9998" \
+  VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
+  CKMS_BIN="$(get_ckms_bin)" \
+  CKMS_CONF="${CKMS_CONF}" \
+  SECRETS_ENV_FILE="${SPIRE_SECRETS_ENV}" \
+  bash "${TEST_DATA}/setup/provision.sh"
+
+# shellcheck disable=SC1090
+source "${SPIRE_SECRETS_ENV}"
+print_success "AppRoles provisioned."
+
+# ── Step 7: Run PKI test scenarios ────────────────────────────────────
+print_header "Step 7: KMS PKI test scenarios (M-01 through M-08)"
+
+VAULT_ADDR="https://localhost:9998" \
+  VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
+  AUTH_VERIFIER_URL="https://localhost:8443" \
+  ADMIN_USER="admin" \
+  ADMIN_PASS="change_me" \
+  SPIRE_ROLE_ID_A="${SPIRE_ROLE_ID_A}" \
+  SPIRE_SECRET_ID_A="${SPIRE_SECRET_ID_A}" \
+  CKMS_BIN="$(get_ckms_bin)" \
+  CKMS_CONF="${CKMS_CONF}" \
+  KMS_BIN="$(get_kms_bin)" \
+  KMS_CONFIG_FILE="${KMS_CONFIG_FILE}" \
+  bash "${TEST_DATA}/setup/test_pki.sh"
+
+print_header "KMS PKI capability validation complete"
+print_success "All KMS-owned test cases plan passed!"
+print_info "Test IDs covered: PKI-03, PKI-04, PKI-06, PKI-11, PKI-12, PKI-17, OBS-05, INFO-2, RES-08, WI-05"
+print_info "Test IDs covered by existing tests (see test_data/spire/README_test_coverage.md):"
+print_info "  PKI-01, PKI-02, PKI-07, PKI-08, PKI-14, PKI-16 (in mise run test:spire)"
+print_info "  PKI-05 (in cargo test -p cosmian_kms_server -- kmip_policy)"

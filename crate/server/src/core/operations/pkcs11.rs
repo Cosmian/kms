@@ -6,7 +6,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operatio
 };
 use cosmian_logger::trace;
 
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
 /// PKCS#11 operation implementation
 ///
@@ -29,7 +29,7 @@ use crate::{core::KMS, error::KmsError, result::KResult};
 /// - PKCS#11 Return Code: REQUIRED - The PKCS#11 return code
 /// - Correlation Value: Optional - Server-defined value for client to return next
 /// - PKCS#11 Output Parameters: Optional - Parameters output from the function
-pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &str) -> KResult<PKCS11Response> {
+pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &UserId) -> KResult<PKCS11Response> {
     trace!("function={:?}", request.pkcs11_function);
 
     // Get the function to perform (default to `C_Initialize` if not specified)

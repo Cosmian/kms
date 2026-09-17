@@ -14,9 +14,10 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::debug;
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{KMS, uid_utils::ObjectHandle},
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
@@ -31,7 +32,7 @@ use crate::{
 ///
 /// # Returns
 /// * `KResult<()>` - the result of the operation
-pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &str) -> KResult<()> {
+pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &UserId) -> KResult<()> {
     if !object.is_wrapped() {
         debug!("object is not wrapped, no need to unwrap");
         return Ok(());
@@ -56,13 +57,18 @@ pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &str) ->
         .unique_identifier
         .to_string();
 
-    if let Some(prefix) = has_prefix(&unwrapping_key_uid) {
+    if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(&unwrapping_key_uid) {
         debug!(
             "...unwrapping the key block with key uid: {unwrapping_key_uid} using an encryption \
              oracle, user: {user}"
         );
-        unwrapping_key_uid =
-            unwrap_using_crypto_oracle(object_key_block, kms, &unwrapping_key_uid, prefix).await?;
+        unwrapping_key_uid = unwrap_using_crypto_oracle(
+            object_key_block,
+            kms,
+            ObjectHandle::from(&unwrapping_key_uid),
+            prefix,
+        )
+        .await?;
     } else {
         debug!(
             "...unwrapping the key block with key uid: {unwrapping_key_uid} using the KMS, user: \
@@ -72,7 +78,7 @@ pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &str) ->
             object_key_block,
             kms,
             user,
-            &unwrapping_key_uid,
+            ObjectHandle::from(&unwrapping_key_uid),
         ))
         .await?;
     }
@@ -87,9 +93,10 @@ pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &str) ->
 async fn unwrap_using_kms(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
-    user: &str,
-    unwrapping_key_uid: &String,
+    user: &UserId,
+    handle: ObjectHandle<'_>,
 ) -> KResult<()> {
+    let unwrapping_key_uid = handle.as_str();
     // fetch the wrapping key
     let unwrapping_key = kms
         .database
@@ -154,7 +161,7 @@ async fn unwrap_using_kms(
         )));
     }
     // check user permissions
-    if unwrapping_key.owner() != user && user != kms.params.default_username {
+    if unwrapping_key.owner() != user && user != kms.params.default_username.as_str() {
         let ops = kms
             .database
             .list_user_operations_on_object(unwrapping_key.id(), user, false)
@@ -180,9 +187,10 @@ async fn unwrap_using_kms(
 async fn unwrap_using_crypto_oracle(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
-    unwrapping_key_uid: &str,
+    handle: ObjectHandle<'_>,
     prefix: &str,
 ) -> KResult<String> {
+    let unwrapping_key_uid = handle.as_str();
     // Determine the private key if a public key is passed
     let unwrapping_key_uid = unwrapping_key_uid
         .strip_suffix(SYSTEM_TAG_PUBLIC_KEY)

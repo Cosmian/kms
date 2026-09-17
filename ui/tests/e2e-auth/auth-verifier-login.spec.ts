@@ -27,7 +27,9 @@ test.describe("Auth Verifier server — Web UI login", () => {
     test("GET /ui/auth_method reports AUTH_VERIFIER", async ({ request, baseURL }) => {
         const response = await request.get(`${baseURL}/ui/auth_method`);
         expect(response.ok()).toBeTruthy();
-        await expect(response.json()).resolves.toEqual({ auth_method: "AUTH_VERIFIER" });
+        // `auth_method` is the primary (backward-compatible); `auth_methods` is the
+        // ordered array of all configured methods (primary first).
+        await expect(response.json()).resolves.toEqual({ auth_method: "AUTH_VERIFIER", auth_methods: ["AUTH_VERIFIER"] });
     });
 
     test("TC1 — happy path login", async ({ page }) => {

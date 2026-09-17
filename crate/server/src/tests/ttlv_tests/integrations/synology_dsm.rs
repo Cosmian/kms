@@ -73,6 +73,7 @@ use zeroize::Zeroizing;
 use crate::{
     config::ServerParams,
     core::KMS,
+    middlewares::UserId,
     result::KResult,
     tests::{
         hsm::test_helpers::{get_hsm_password, get_hsm_slot_id},
@@ -655,7 +656,7 @@ async fn test_issue_933_modify_attribute_kmip12_payload() -> KResult<()> {
             ),
         )],
     };
-    let create_resp = kms.message(request, &owner).await?;
+    let create_resp = kms.message(request, &UserId::from(owner.as_str())).await?;
     let ResponseMessageBatchItemVersioned::V21(bi) = &create_resp.batch_item[0] else {
         panic!("Expected KMIP 2.1 response");
     };
@@ -692,7 +693,9 @@ async fn test_issue_933_modify_attribute_kmip12_payload() -> KResult<()> {
             },
         )],
     };
-    let modify_resp = kms.message(modify_request, &owner).await?;
+    let modify_resp = kms
+        .message(modify_request, &UserId::from(owner.as_str()))
+        .await?;
     let ResponseMessageBatchItemVersioned::V14(bi) = &modify_resp.batch_item[0] else {
         panic!("Expected KMIP 1.2 response");
     };
@@ -728,7 +731,10 @@ async fn test_issue_933_modify_attribute_kmip12_payload() -> KResult<()> {
             ),
         )],
     };
-    drop(kms.message(destroy_request, &owner).await);
+    drop(
+        kms.message(destroy_request, &UserId::from(owner.as_str()))
+            .await,
+    );
 
     Ok(())
 }

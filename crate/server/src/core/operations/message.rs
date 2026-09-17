@@ -23,7 +23,7 @@ use cosmian_logger::{info, trace};
 use strum::IntoEnumIterator;
 
 use super::modify_attribute;
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
 /// Processing of an input KMIP Message
 ///
@@ -35,10 +35,10 @@ use crate::{core::KMS, error::KmsError, result::KResult};
 pub(crate) async fn message(
     kms: &KMS,
     request: RequestMessage,
-    user: &str,
+    user: &UserId,
 ) -> KResult<ResponseMessage> {
     info!(
-        user = user,
+        user = user.as_str(),
         "KMIP Request message with {} operation(s): {:?}",
         request.batch_item.len(),
         request
@@ -174,7 +174,7 @@ pub(crate) async fn message(
         // KMIP 1.x specific response shaping for GetAttributes defaults:
         // - Remove AlwaysSensitive, Extractable, Sensitive, NeverExtractable,
         //   ShortUniqueIdentifier, KeyFormatType from default responses (when client did not explicitly request them)
-        // - Remove internal Cosmian tag vendor attribute; preserve all user-facing vendor attributes
+        // - Filter vendor attributes to only include vendor_identification == "x" and remove internal Cosmian tag
         // 4) Apply KMIP 1.x response shaping for GetAttributes
         shape_kmip1_get_attributes_response(
             kmip_version,
@@ -281,13 +281,15 @@ pub(crate) async fn message(
 
 /// Revert an Activate operation by setting the object's state back to `PreActive` and clearing
 /// the `activation_date`. This is a best-effort revert used when batch UNDO is triggered.
-async fn revert_activation_to_preactive(kms: &KMS, uid: &str, user: &str) -> KResult<()> {
+async fn revert_activation_to_preactive(kms: &KMS, uid: &str, user: &UserId) -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::KmipOperation;
 
-    use crate::core::retrieve_object_utils::retrieve_object_for_operation;
+    use crate::core::{
+        retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
+    };
 
     let mut owm = Box::pin(retrieve_object_for_operation(
-        uid,
+        ObjectHandle::from(uid),
         KmipOperation::GetAttributes,
         kms,
         user,
@@ -353,7 +355,7 @@ fn get_operation_name(operation: &Operation) -> &'static str {
 
 async fn process_operation(
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 
     request_operation: Operation,
     protocol_version: Option<ProtocolVersion>,
@@ -364,6 +366,11 @@ async fn process_operation(
 
     // Only capture start time when metrics are enabled to avoid unconditional syscall overhead.
     let start_time = kms.metrics.as_ref().map(|_| std::time::Instant::now());
+
+    // Enforce role-based access control for the RequestMessage path.
+    // This mirrors the check in dispatch_inner() for the single-operation TTLV path.
+    super::dispatch::check_role_permission(kms, user, operation_name, &kms.params.crypto_officer)
+        .await?;
 
     // Process the operation and capture the result
     let result: Result<Operation, KmsError> = Box::pin(async {
@@ -563,11 +570,19 @@ async fn process_operation(
             | Operation::SetAttributeResponse(_)
             | Operation::SignResponse(_)
             | Operation::SignatureVerifyResponse(_)
-            | Operation::ValidateResponse(_) => {
+            | Operation::ValidateResponse(_)
+            | Operation::CreateSplitKeyResponse(_)
+            | Operation::JoinSplitKeyResponse(_) => {
                 return Err(KmsError::Kmip21Error(
                     ErrorReason::Operation_Not_Supported,
                     format!("Operation: {request_operation} not supported"),
                 ));
+            }
+            Operation::CreateSplitKey(req) => {
+                Operation::CreateSplitKeyResponse(Box::pin(kms.create_split_key(req, user)).await?)
+            }
+            Operation::JoinSplitKey(req) => {
+                Operation::JoinSplitKeyResponse(Box::pin(kms.join_split_key(req, user)).await?)
             }
         })
     })
@@ -710,37 +725,38 @@ fn shape_kmip1_get_attributes_response(
     {
         return;
     }
-    if let Some(Operation::GetAttributesResponse(ref mut gar)) = item.response_payload {
-        let attrs = &mut gar.attributes;
-        if explicit_request {
-            // Still remove internal tagging attribute if present
-            if let Some(vas) = attrs.vendor_attributes.as_mut() {
-                vas.retain(|va| {
-                    !(va.vendor_identification == vendor_id && va.attribute_name == VENDOR_ATTR_TAG)
-                });
-                if vas.is_empty() {
-                    attrs.vendor_attributes = None;
-                }
-            }
-        } else {
-            // Drop TL-omitted standard attributes
-            attrs.always_sensitive = None;
-            attrs.extractable = None;
-            attrs.sensitive = None;
-            attrs.never_extractable = None;
-            attrs.short_unique_identifier = None;
-            attrs.key_format_type = None;
+    let Some(Operation::GetAttributesResponse(ref mut gar)) = item.response_payload else {
+        return;
+    };
+    let attrs = &mut gar.attributes;
 
-            // Remove only the internal Cosmian tag attribute; preserve all
-            // user-facing vendor attributes (e.g. KMIP1:__Operation Policy Name__).
-            if let Some(vas) = attrs.vendor_attributes.as_mut() {
-                vas.retain(|va| {
-                    !(va.vendor_identification == vendor_id && va.attribute_name == VENDOR_ATTR_TAG)
-                });
-                if vas.is_empty() {
-                    attrs.vendor_attributes = None;
-                }
-            }
+    // A KMIP 1.x `GetAttributes` carrying no attribute name returns the TL profile set.
+    // Per the OASIS mandatory test vector `TL-M-3-14.xml`, that set excludes `Sensitive`,
+    // `Always Sensitive`, `Extractable` and `Never Extractable` even for KMIP 1.4 — they
+    // are only returned when explicitly requested (they remain advertised by
+    // `GetAttributeList`, as the same vector shows). `Short Unique Identifier` has no
+    // KMIP 1.x counterpart and `Key Format Type` belongs to the Key Block, not the
+    // attribute list.
+    //
+    // Version gating of attributes that a pre-1.4 client cannot decode is applied later,
+    // for both explicit and default requests, by `strip_kmip1_version_unsupported_attrs`.
+    if !explicit_request {
+        attrs.always_sensitive = None;
+        attrs.extractable = None;
+        attrs.sensitive = None;
+        attrs.never_extractable = None;
+        attrs.short_unique_identifier = None;
+        attrs.key_format_type = None;
+    }
+
+    // The Cosmian-internal tagging vendor attribute is never part of a KMIP response.
+    // All other vendor attributes (e.g. `KMIP1:__Operation Policy Name__`) are preserved.
+    if let Some(vas) = attrs.vendor_attributes.as_mut() {
+        vas.retain(|va| {
+            !(va.vendor_identification == vendor_id && va.attribute_name == VENDOR_ATTR_TAG)
+        });
+        if vas.is_empty() {
+            attrs.vendor_attributes = None;
         }
     }
 }
@@ -761,6 +777,12 @@ fn update_id_placeholder_from_response(
         // CreateKeyPair returns public+private UIDs; prefer the private key as placeholder
         Some(Operation::CreateKeyPairResponse(ckpr)) => {
             *id_placeholder = Some(ckpr.private_key_unique_identifier.clone());
+        }
+        // CreateSplitKey returns a list of split key part UIDs; per KMIP spec the ID
+        // Placeholder SHALL be set to the Unique Identifier of the split whose Key Part
+        // Identifier is 1 (i.e., the first entry in the list).
+        Some(Operation::CreateSplitKeyResponse(cskr)) => {
+            *id_placeholder = cskr.unique_identifier.first().cloned();
         }
         // Locate may return a list of UIDs; per KMIP ID Placeholder semantics we only
         // set the placeholder when exactly one UID is located. Otherwise, clear it.

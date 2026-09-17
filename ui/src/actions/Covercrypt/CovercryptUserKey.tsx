@@ -1,9 +1,11 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import { create_cc_user_key_ttlv_request, parse_create_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface CovercryptUserKeyFormData {
     masterPrivateKeyId: string;
@@ -21,6 +23,7 @@ More examples:
 const CovercryptUserKeyForm: React.FC = () => {
     const [form] = Form.useForm<CovercryptUserKeyFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: CovercryptUserKeyFormData) => {
         await execute(async () => {
@@ -34,18 +37,18 @@ const CovercryptUserKeyForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result = await parse_create_ttlv_response(result_str);
-                return `${result.UniqueIdentifier} has been created.`;
+                return t("covercryptUserKey.success", { keyId: result.UniqueIdentifier });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Create a Covercrypt user key</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("covercryptUserKey.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Create a new user decryption key with specific access rights.</p>
-                <p>The access policy is a boolean expression combining policy attributes.</p>
+                <p>{t("covercryptUserKey.intro")}</p>
+                <p>{t("covercryptUserKey.introPolicy")}</p>
             </div>
 
             <Form
@@ -60,58 +63,69 @@ const CovercryptUserKeyForm: React.FC = () => {
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <div className="p-4 rounded-lg space-y-4">
-                            <h3 className="text-m font-bold mb-4">Key Configuration</h3>
+                            <h3 className="text-m font-bold mb-4">{t("covercryptUserKey.keyConfiguration")}</h3>
 
-                            <Form.Item
-                                name="masterPrivateKeyId"
-                                label="Master Private Key ID"
-                                help="The unique identifier of the master private key"
-                                rules={[{ required: true, message: "Please enter master private key ID" }]}
-                            >
-                                <Input placeholder="Enter master private key ID" />
-                            </Form.Item>
+                            <KeyIdInput
+                                form={form}
+                                fieldName="masterPrivateKeyId"
+                                label={t("covercryptUserKey.masterPrivateKeyId")}
+                                help={t("covercryptUserKey.masterPrivateKeyIdHelp")}
+                                rules={[{ required: true, message: t("covercryptUserKey.pleaseEnterMasterPrivateKeyId") }]}
+                                placeholder={t("covercryptUserKey.enterMasterPrivateKeyId")}
+                                objectType="PrivateKey"
+                            />
 
                             <Form.Item
                                 name="accessPolicy"
-                                label="Access Policy"
+                                label={t("covercryptUserKey.accessPolicy")}
                                 help={
                                     <div className="text-sm space-y-2">
-                                        <p>Boolean expression combining policy attributes</p>
+                                        <p>{t("covercryptUserKey.policyHelp")}</p>
                                         <div className="p-3 rounded">
-                                            <p className="font-medium mb-2">Example formats:</p>
+                                            <p className="font-medium mb-2">{t("covercryptUserKey.exampleFormats")}</p>
                                             <pre className="text-xs whitespace-pre-wrap">{POLICY_EXAMPLE}</pre>
-                                            <p className="mt-2 text-xs">
-                                                Note: A user with "Confidential" access will also have access to "Protected" data due to
-                                                hierarchy.
-                                            </p>
+                                            <p className="mt-2 text-xs">{t("covercryptUserKey.hierarchyNote")}</p>
                                         </div>
                                         <ul className="list-disc pl-5 mt-2 space-y-1">
                                             <li>
-                                                Use <code>&&</code> for AND, <code>||</code> for OR
+                                                <Trans
+                                                    ns="actions"
+                                                    i18nKey="covercryptUserKey.andOrOperators"
+                                                    components={{ code: <code /> }}
+                                                />
                                             </li>
-                                            <li>Group expressions with parentheses</li>
-                                            <li>Use exact attribute names from the policy</li>
+                                            <li>{t("covercryptUserKey.groupExpressions")}</li>
+                                            <li>{t("covercryptUserKey.useExactAttributes")}</li>
                                         </ul>
                                     </div>
                                 }
-                                rules={[{ required: true, message: "Please enter access policy" }]}
+                                rules={[{ required: true, message: t("covercryptUserKey.pleaseEnterAccessPolicy") }]}
                             >
-                                <Input.TextArea placeholder="Enter access policy expression" rows={4} className="font-mono text-sm" />
+                                <Input.TextArea
+                                    placeholder={t("covercryptUserKey.enterAccessPolicy")}
+                                    rows={4}
+                                    className="font-mono text-sm"
+                                />
                             </Form.Item>
                         </div>
                     </Card>
                     <Card>
-                        <Form.Item name="tags" label="Tags" help="Optional tags to help retrieve the key later">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("covercryptUserKey.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
-                        <Form.Item name="wrappingKeyId" label="Wrapping Key ID" help="Optional: ID of the key to wrap this new key with">
-                            <Input placeholder="Enter wrapping key ID" />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="wrappingKeyId"
+                            label={t("covercryptUserKey.wrappingKeyId")}
+                            help={t("covercryptUserKey.wrappingKeyIdHelp")}
+                            placeholder={t("covercryptUserKey.enterWrappingKeyId")}
+                            objectType="SymmetricKey"
+                        />
 
-                        <Form.Item name="sensitive" valuePropName="checked" help="If enabled, the key will not be exportable">
+                        <Form.Item name="sensitive" valuePropName="checked" help={t("covercryptUserKey.sensitiveHelp")}>
                             <Checkbox>
-                                <span>Sensitive Key</span>
+                                <span>{t("covercryptUserKey.sensitive")}</span>
                             </Checkbox>
                         </Form.Item>
                     </Card>
@@ -123,12 +137,12 @@ const CovercryptUserKeyForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Create User Key
+                            {t("covercryptUserKey.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="Covercrypt User key creation response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("covercryptUserKey.responseTitle")} />
         </div>
     );
 };

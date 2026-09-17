@@ -28,6 +28,8 @@ export interface MenuItem {
     children?: MenuItem[];
     component?: React.ComponentType;
     disabled?: boolean;
+    /** When true, `label` is displayed as-is (e.g. branding-provided) and never translated. */
+    rawLabel?: boolean;
 }
 
 // Covercrypt is conditionally shown based on branding.enableCovercrypt
@@ -49,6 +51,8 @@ const baseMenu: MenuItem[] = [
                 label: "Keys",
                 children: [
                     { key: "sym/keys/create", label: "Create" },
+                    { key: "sym/keys/split", label: "Split" },
+                    { key: "sym/keys/join", label: "Join" },
                     { key: "sym/keys/export", label: "Export" },
                     { key: "sym/keys/import", label: "Import" },
                     { key: "sym/keys/rekey", label: "Re-Key" },
@@ -261,6 +265,7 @@ const baseMenu: MenuItem[] = [
                     { key: "certificates/certs/revoke", label: "Revoke" },
                     { key: "certificates/certs/destroy", label: "Destroy" },
                     { key: "certificates/certs/validate", label: "Validate" },
+                    { key: "certificates/certs/generate-crl", label: "Download CRL" },
                 ],
             },
             { key: "certificates/encrypt", label: "Encrypt" },
@@ -288,6 +293,7 @@ const baseMenu: MenuItem[] = [
             { key: "access-rights/list", label: "List" },
             { key: "access-rights/owned", label: "Owned" },
             { key: "access-rights/obtained", label: "Obtained" },
+            { key: "access-rights/crypto-officer", label: "Crypto Officer" },
         ],
     },
     {
@@ -361,7 +367,9 @@ export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: 
     const isFips = options?.isFips ?? false;
 
     let menu = baseMenu.map((item) => {
-        if (item.key === "pqc") return { ...item, label: pqcLabel };
+        // The PQC section label comes from branding (pqcLabel) and must be
+        // displayed as-is; Sidebar skips translation for rawLabel items.
+        if (item.key === "pqc") return { ...item, label: pqcLabel, rawLabel: true };
         return item;
     });
 

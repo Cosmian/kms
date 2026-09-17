@@ -1,7 +1,9 @@
 import { CheckCircleFilled, DatabaseOutlined } from "@ant-design/icons";
 import { Select } from "antd";
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useBranding } from "../../contexts/useBranding";
+import { DOCS_BASE_URL } from "../../utils/utils";
 
 export interface HsmSlotStatus {
     slot_id: number;
@@ -28,6 +30,7 @@ type HeaderProps = {
 
 const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
     const branding = useBranding();
+    const { t } = useTranslation("layout");
     const logoUrl = isDarkMode ? branding.logoDarkUrl : branding.logoLightUrl;
 
     const instances = serverInfo?.hsm_instances ?? [];
@@ -43,7 +46,7 @@ const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
     // Compute label strings to derive a proper minWidth for the Select trigger.
     const hsmLabelTexts = instances.map((inst) => {
         const slotIds = inst.slots.map((s) => s.slot_id).join(", ");
-        return `${inst.prefix}: ${inst.model}${slotIds ? ` (slot ${slotIds})` : ""}`;
+        return `${inst.prefix}: ${inst.model}${slotIds ? ` (${t("header.hsmSlot")} ${slotIds})` : ""}`;
     });
     const longestLabel = hsmLabelTexts.reduce((max, s) => (s.length > max.length ? s : max), "");
     // Approx 8 px per character + 64 px for icon/padding/suffix.
@@ -61,7 +64,11 @@ const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
 
     return (
         <div className="flex items-center h-full">
-            {logoUrl && <img src={logoUrl} alt={branding.logoAlt} className="h-16 mr-4 transition-opacity duration-300" />}
+            {logoUrl && (
+                <a href={DOCS_BASE_URL} target="_blank" rel="noreferrer">
+                    <img src={logoUrl} alt={branding.logoAlt} className="h-16 mr-4 transition-opacity duration-300 hover:opacity-80" />
+                </a>
+            )}
             <h1 className="text-xl font-bold pl-10">{branding.logoAlt}</h1>
             {instances.length > 0 ? (
                 <div className="ml-6 flex items-center gap-2">
@@ -77,7 +84,10 @@ const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
                     />
                 </div>
             ) : (
-                serverInfo !== null && serverInfo !== undefined && <span className="ml-6 text-gray-400 text-sm">No HSM configured</span>
+                serverInfo !== null &&
+                serverInfo !== undefined && (
+                    <span className="ml-6 text-gray-500 dark:text-gray-400 text-sm">{t("header.noHsmConfigured")}</span>
+                )
             )}
         </div>
     );

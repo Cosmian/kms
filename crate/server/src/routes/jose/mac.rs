@@ -38,7 +38,7 @@ pub(crate) async fn mac(
     let user = kms.get_user(&req);
     let body = body.into_inner();
 
-    trace!(user = user, "POST /v1/crypto/mac kid={}", body.kid);
+    trace!(user = user.as_str(), "POST /v1/crypto/mac kid={}", body.kid);
 
     let data_bytes = b64_decode("data", &body.data)?;
     let kmip_params = jose_to_kmip_params(body.alg, None)?;

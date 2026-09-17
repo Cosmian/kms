@@ -1,6 +1,6 @@
 # GitHub Workflows Documentation
 
-This document provides a visual representation of all GitHub Actions workflows in the Cosmian KMS repository, their triggers, dependencies, and execution flows.
+This document provides a visual representation of all GitHub Actions workflows in the Eviden KMS repository, their triggers, dependencies, and execution flows.
 
 ## Workflow Overview
 

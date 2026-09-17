@@ -33,7 +33,7 @@ pub(crate) async fn verify(
     let user = kms.get_user(&req);
     let body = body.into_inner();
 
-    trace!(user = user, "POST /v1/crypto/verify");
+    trace!(user = user.as_str(), "POST /v1/crypto/verify");
 
     let header_bytes = b64_decode("protected", &body.protected)?;
     let header_json: serde_json::Value = serde_json::from_slice(&header_bytes).map_err(|e| {

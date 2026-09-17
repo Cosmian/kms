@@ -8,7 +8,7 @@ on:
       server_version:
         description: KMS server version to profile (e.g. 5.24.0); omit to build from the selected branch
         required: false
-        default: ""
+        default: ''
         type: string
       variant:
         description: Build variant (fips|non-fips)
@@ -24,7 +24,7 @@ on:
       server_version:
         description: KMS server version to profile (e.g. 5.24.0); omit to build from the selected branch
         required: false
-        default: ""
+        default: ''
       variant:
         description: Build variant (fips|non-fips)
         required: false
@@ -87,7 +87,7 @@ jobs:
           # acceptable for a CI flamegraph.
           PERF_CALL_GRAPH: fp
           # Cap profile time at 10 s (default 15 s) to reduce total runtime.
-          PROFILE_TIME: "10"
+          PROFILE_TIME: '10'
         run: |
           ARGS=(--variant "${{ inputs.variant }}")
           [[ -n "${{ inputs.server_version }}" ]] && ARGS+=(--server-version "${{ inputs.server_version }}")

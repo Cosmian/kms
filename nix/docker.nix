@@ -68,45 +68,23 @@ let
       pkgs.tzdata # Timezone data
       pkgs.coreutils # Basic utilities
       pkgs.bash # Shell for scripts
-      # wget and netcat are required for Docker health checks (wget for HTTP, nc for TLS port checks).
+      pkgs.gnugrep # grep (not provided by coreutils) — required by the CA
+      # bundle smoke test and any script relying on grep at runtime.
+      # wget, curl, and netcat are required for Docker/Kubernetes health checks.
+      # wget: CMD-SHELL health checks (HTTP /health endpoint)
+      # curl: Kubernetes liveness/readiness probes and docker-compose wait scripts
+      # netcat-openbsd: nc -z TLS port probes (-z flag requires BSD/OpenBSD semantics)
       # These replace the previous busybox dependency which caused
       # "failed to register layer: openat dev/pts/ptmx" errors on older containerd versions.
       pkgs.wget
+      pkgs.curl
       pkgs.netcat-openbsd
     ]
     ++ pkcs11Contents;
   };
 
-  # Create a minimal /etc structure that will be added to the image
-  etcPasswd = pkgs.writeTextFile {
-    name = "passwd";
-    text = ''
-      root:x:0:0:root:/root:/bin/sh
-      kms:x:1000:1000:KMS User:/home/kms:/bin/sh
-    '';
-    destination = "/etc/passwd";
-  };
-
-  etcGroup = pkgs.writeTextFile {
-    name = "group";
-    text = ''
-      root:x:0:
-      kms:x:1000:
-    '';
-    destination = "/etc/group";
-  };
-
-  etcNsswitch = pkgs.writeTextFile {
-    name = "nsswitch.conf";
-    text = ''
-      hosts: files dns
-      networks: files
-      passwd: files
-      group: files
-      shadow: files
-    '';
-    destination = "/etc/nsswitch.conf";
-  };
+  # CA bundle derivation used in fakeRootCommands to copy into /etc/ssl/certs/
+  caBundle = pkgs.cacert;
 
   # Create home and data directories
   kmsDirectories = pkgs.runCommand "kms-directories" { } ''
@@ -242,23 +220,68 @@ pkgs.dockerTools.buildLayeredImage {
   # character device node that causes `failed to register layer` errors on older
   # containerd versions (< 1.6.8). coreutils and bash (already in runtimeEnv)
   # cover all basic utilities needed at runtime.
+  #
+  # Note: /etc content (/etc/passwd, /etc/group, /etc/nsswitch.conf,
+  # /etc/ssl/certs/ca-bundle.crt, /etc/cosmian/) is created in fakeRootCommands
+  # below. The etc/ directory inherited from runtimeEnv is read-only
+  # (dr-xr-xr-x), so fakeRootCommands first chmod 755 it before writing.
   contents = [
     runtimeEnv
-    etcPasswd
-    etcGroup
-    etcNsswitch
     kmsDirectories
     startupScript
   ];
 
   # For this nixpkgs version, use fakeRootCommands to create root files
   fakeRootCommands = ''
+    # buildLayeredImage's `contents` merge (via buildEnv/lndir) keeps a
+    # directory as a symlink into the read-only Nix store whenever only a
+    # single input derivation contributes that subtree (e.g. usr/local/bin
+    # when only the pkcs11 ckms-bin derivation provides it, or etc/ when
+    # only runtimeEnv provides it). Any mkdir/cp/tee performed on such a
+    # path inside fakeRootCommands then silently fails with "Permission
+    # denied", because the symlink target is not writable even under
+    # fakeroot/proot. ensure_writable_dir replaces the symlink (if any)
+    # with a real, writable directory that preserves the original content,
+    # so every directory this script writes into is guaranteed writable
+    # regardless of how many contents derivations contributed to it.
+    ensure_writable_dir() {
+      _dir="$1"
+      if [ -L "$_dir" ]; then
+        _target=$(readlink "$_dir")
+        rm "$_dir"
+        mkdir -p "$_dir"
+        cp -r "$_target/." "$_dir/" 2>/dev/null || true
+      else
+        mkdir -p "$_dir"
+        chmod u+w "$_dir" 2>/dev/null || true
+      fi
+    }
+
     echo "=== fakeRootCommands: Creating directory structure ==="
-    mkdir -p bin
-    mkdir -p usr/local/bin
-    mkdir -p usr/local/cosmian/ui
-    mkdir -p etc
+    ensure_writable_dir bin
+    ensure_writable_dir usr
+    ensure_writable_dir usr/local
+    ensure_writable_dir usr/local/bin
+    ensure_writable_dir usr/local/cosmian
+    ensure_writable_dir usr/local/cosmian/ui
+
+    echo "=== fakeRootCommands: Creating /etc files ==="
+    ensure_writable_dir etc
     mkdir -p etc/ssl/certs
+    mkdir -p etc/cosmian
+    printf 'root:x:0:0:root:/root:/bin/sh\nkms:x:1000:1000:KMS User:/home/kms:/bin/sh\n' \
+      | tee etc/passwd > /dev/null
+    printf 'root:x:0:\nkms:x:1000:\n' | tee etc/group > /dev/null
+    printf 'hosts: files dns\nnetworks: files\npasswd: files\ngroup: files\nshadow: files\n' \
+      | tee etc/nsswitch.conf > /dev/null
+    cp ${caBundle}/etc/ssl/certs/ca-bundle.crt etc/ssl/certs/ca-bundle.crt
+    # Verify /etc files were created
+    test -f etc/passwd         || { echo "FATAL: etc/passwd not created"; exit 1; }
+    test -f etc/group          || { echo "FATAL: etc/group not created"; exit 1; }
+    test -f etc/nsswitch.conf  || { echo "FATAL: etc/nsswitch.conf not created"; exit 1; }
+    test -f etc/ssl/certs/ca-bundle.crt || { echo "FATAL: etc/ssl/certs/ca-bundle.crt not created"; exit 1; }
+    test -d etc/cosmian        || { echo "FATAL: etc/cosmian not created"; exit 1; }
+    echo "All /etc files verified."
 
     echo "=== fakeRootCommands: Installing binaries (no symlinks) ==="
     cp -L ${actualKmsServer}/bin/cosmian_kms bin/cosmian_kms || echo "Failed to copy cosmian_kms to /bin"
@@ -272,8 +295,9 @@ pkgs.dockerTools.buildLayeredImage {
     # Prefer copying OpenSSL provider modules and configs from the provided OpenSSL derivation
     # (opensslDrv) to strictly reuse the derivation-generated configuration. Fall back to
     # the server output if opensslDrv is not provided.
-    mkdir -p usr/local/cosmian/lib/ossl-modules
-    mkdir -p usr/local/cosmian/lib/ssl
+    ensure_writable_dir usr/local/cosmian/lib
+    ensure_writable_dir usr/local/cosmian/lib/ossl-modules
+    ensure_writable_dir usr/local/cosmian/lib/ssl
     if [ -n "${opensslDrvPath}" ] && [ -d ${opensslDrvPath}/usr/local/cosmian/lib/ossl-modules ]; then
       cp -L ${opensslDrvPath}/usr/local/cosmian/lib/ossl-modules/* usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
     elif [ -d ${actualKmsServer}/usr/local/cosmian/lib/ossl-modules ]; then
@@ -299,18 +323,8 @@ pkgs.dockerTools.buildLayeredImage {
     ls -la usr/local/cosmian/lib/ossl-modules/ || echo "ossl-modules not present"
     ls -la usr/local/cosmian/lib/ssl/ || echo "ssl config not present"
 
-    echo "=== fakeRootCommands: Bundling CA certificates locally ==="
-    cp -L ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt etc/ssl/certs/ca-bundle.crt || echo "Failed to copy CA bundle"
-
     # ckms and libcosmian_pkcs11.so are now added via pkcs11Contents in the
     # contents list, so no fakeRootCommands step is needed for them.
-
-    # Pre-create /etc/cosmian so Docker bind-mounts of config files (e.g.
-    # /etc/cosmian/kms.toml) land as regular files rather than directories.
-    # Without this, Docker creates the mount-point path as a directory when
-    # the parent does not exist in the image, causing the KMS server to fail
-    # with "Is a directory" when reading COSMIAN_KMS_CONF.
-    mkdir -p etc/cosmian
 
     echo "=== fakeRootCommands: Verifying installed files ==="
     ls -la bin/ || echo "ERROR: bin not found"

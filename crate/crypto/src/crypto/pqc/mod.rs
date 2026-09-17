@@ -337,6 +337,66 @@ pub(crate) fn load_raw_private_key(
     }
 }
 
+/// Convert a PQC private key from PKCS#8 DER to raw bytes.
+///
+/// Loads the DER into an `EVP_PKEY` and extracts the raw private key material
+/// via `EVP_PKEY_get_raw_private_key`.
+#[expect(unsafe_code)]
+pub fn pqc_private_key_pkcs8_to_raw(pkcs8_der: &[u8]) -> Result<Vec<u8>, CryptoError> {
+    if pkcs8_der.is_empty() {
+        return Err(CryptoError::Default(
+            "pqc_private_key_pkcs8_to_raw: empty PKCS#8 DER input".to_owned(),
+        ));
+    }
+    unsafe {
+        let mut der_ptr = pkcs8_der.as_ptr();
+        let pkey = openssl_sys::d2i_AutoPrivateKey(
+            ptr::null_mut(),
+            ptr::from_mut(&mut der_ptr),
+            std::os::raw::c_long::try_from(pkcs8_der.len())
+                .map_err(|e| CryptoError::Default(format!("PKCS#8 DER length overflow: {e}")))?,
+        );
+        if pkey.is_null() {
+            return Err(CryptoError::Default(format!(
+                "pqc_private_key_pkcs8_to_raw: d2i_AutoPrivateKey failed: {}",
+                openssl::error::ErrorStack::get()
+            )));
+        }
+        let guard = PKeyGuard(pkey);
+        evp_pkey_get_raw_private(guard.as_ptr())
+    }
+}
+
+/// Convert a PQC public key from SPKI DER to raw bytes.
+///
+/// Loads the DER into an `EVP_PKEY` and extracts the raw public key material
+/// via `EVP_PKEY_get_raw_public_key`.
+#[expect(unsafe_code)]
+pub fn pqc_public_key_spki_to_raw(spki_der: &[u8]) -> Result<Vec<u8>, CryptoError> {
+    if spki_der.is_empty() {
+        return Err(CryptoError::Default(
+            "pqc_public_key_spki_to_raw: empty SPKI DER input".to_owned(),
+        ));
+    }
+    unsafe {
+        let mut der_ptr = spki_der.as_ptr();
+        let pkey = openssl_sys::d2i_PUBKEY(
+            ptr::null_mut(),
+            ptr::from_mut(&mut der_ptr),
+            std::os::raw::c_long::try_from(spki_der.len())
+                .map_err(|e| CryptoError::Default(format!("SPKI DER length overflow: {e}")))?,
+        );
+        if pkey.is_null() {
+            return Err(CryptoError::Default(format!(
+                "pqc_public_key_spki_to_raw: d2i_PUBKEY failed: {}",
+                openssl::error::ErrorStack::get()
+            )));
+        }
+        let guard = PKeyGuard(pkey);
+        evp_pkey_get_raw_public(guard.as_ptr())
+    }
+}
+
 /// Map a `CryptographicAlgorithm` to the OpenSSL algorithm name string.
 fn ml_kem_algorithm_name(algorithm: CryptographicAlgorithm) -> Result<&'static str, CryptoError> {
     match algorithm {
@@ -551,6 +611,94 @@ mod tests {
         assert!(
             result.is_err(),
             "key for wrong algorithm must return Err, not panic"
+        );
+    }
+
+    // ── PKCS8/SPKI → Raw conversion round-trip ─────────────────────────────
+
+    #[test]
+    fn pkcs8_to_raw_private_roundtrip_ml_dsa_44() {
+        // Generate key via pqc_keygen (PKCS8) and pqc_keygen + load → raw extraction
+        let (pkcs8_der, _, _) = pqc_keygen("ML-DSA-44").expect("keygen");
+        let raw = pqc_private_key_pkcs8_to_raw(&pkcs8_der).expect("pkcs8 to raw");
+        assert!(!raw.is_empty(), "raw private key must not be empty");
+        // Verify it can be loaded back
+        let guard = load_raw_private_key("ML-DSA-44", &raw).expect("reload raw");
+        let raw2 = evp_pkey_get_raw_private(guard.as_ptr()).expect("re-extract");
+        assert_eq!(raw, raw2, "round-trip raw private key must match");
+    }
+
+    #[test]
+    fn spki_to_raw_public_roundtrip_ml_dsa_44() {
+        let (_, spki_der, _) = pqc_keygen("ML-DSA-44").expect("keygen");
+        let raw = pqc_public_key_spki_to_raw(&spki_der).expect("spki to raw");
+        assert!(!raw.is_empty(), "raw public key must not be empty");
+        let guard = load_raw_public_key("ML-DSA-44", &raw).expect("reload raw");
+        let raw2 = evp_pkey_get_raw_public(guard.as_ptr()).expect("re-extract");
+        assert_eq!(raw, raw2, "round-trip raw public key must match");
+    }
+
+    #[test]
+    fn pkcs8_to_raw_private_roundtrip_ml_kem_768() {
+        let (pkcs8_der, _, _) = pqc_keygen("ML-KEM-768").expect("keygen");
+        let raw = pqc_private_key_pkcs8_to_raw(&pkcs8_der).expect("pkcs8 to raw");
+        assert!(!raw.is_empty(), "raw private key must not be empty");
+        let guard = load_raw_private_key("ML-KEM-768", &raw).expect("reload raw");
+        let raw2 = evp_pkey_get_raw_private(guard.as_ptr()).expect("re-extract");
+        assert_eq!(raw, raw2, "round-trip raw private key must match");
+    }
+
+    #[test]
+    fn spki_to_raw_public_roundtrip_ml_kem_768() {
+        let (_, spki_der, _) = pqc_keygen("ML-KEM-768").expect("keygen");
+        let raw = pqc_public_key_spki_to_raw(&spki_der).expect("spki to raw");
+        assert!(!raw.is_empty(), "raw public key must not be empty");
+        let guard = load_raw_public_key("ML-KEM-768", &raw).expect("reload raw");
+        let raw2 = evp_pkey_get_raw_public(guard.as_ptr()).expect("re-extract");
+        assert_eq!(raw, raw2, "round-trip raw public key must match");
+    }
+
+    #[test]
+    fn pkcs8_to_raw_private_roundtrip_slh_dsa_sha2_128s() {
+        let (pkcs8_der, _, _) = pqc_keygen("SLH-DSA-SHA2-128s").expect("keygen");
+        let raw = pqc_private_key_pkcs8_to_raw(&pkcs8_der).expect("pkcs8 to raw");
+        assert!(!raw.is_empty(), "raw private key must not be empty");
+        let guard = load_raw_private_key("SLH-DSA-SHA2-128s", &raw).expect("reload raw");
+        let raw2 = evp_pkey_get_raw_private(guard.as_ptr()).expect("re-extract");
+        assert_eq!(raw, raw2, "round-trip raw private key must match");
+    }
+
+    #[test]
+    fn spki_to_raw_public_roundtrip_slh_dsa_sha2_128s() {
+        let (_, spki_der, _) = pqc_keygen("SLH-DSA-SHA2-128s").expect("keygen");
+        let raw = pqc_public_key_spki_to_raw(&spki_der).expect("spki to raw");
+        assert!(!raw.is_empty(), "raw public key must not be empty");
+        let guard = load_raw_public_key("SLH-DSA-SHA2-128s", &raw).expect("reload raw");
+        let raw2 = evp_pkey_get_raw_public(guard.as_ptr()).expect("re-extract");
+        assert_eq!(raw, raw2, "round-trip raw public key must match");
+    }
+
+    #[test]
+    fn pkcs8_to_raw_empty_input_returns_err() {
+        assert!(
+            pqc_private_key_pkcs8_to_raw(&[]).is_err(),
+            "empty private key input should fail"
+        );
+        assert!(
+            pqc_public_key_spki_to_raw(&[]).is_err(),
+            "empty public key input should fail"
+        );
+    }
+
+    #[test]
+    fn pkcs8_to_raw_garbage_input_returns_err() {
+        assert!(
+            pqc_private_key_pkcs8_to_raw(&[0xDE; 128]).is_err(),
+            "garbage private key input should fail"
+        );
+        assert!(
+            pqc_public_key_spki_to_raw(&[0xDE; 128]).is_err(),
+            "garbage public key input should fail"
         );
     }
 }

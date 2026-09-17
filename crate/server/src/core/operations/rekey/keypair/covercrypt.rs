@@ -17,8 +17,9 @@ use cosmian_kms_server_database::reexport::{
 };
 
 use crate::{
-    core::{KMS, cover_crypt::rekey_keypair_cover_crypt},
+    core::{KMS, cover_crypt::rekey_keypair_cover_crypt, uid_utils::from_request},
     error::KmsError,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
@@ -26,17 +27,15 @@ use crate::{
 pub(super) async fn try_covercrypt_rekey(
     kms: &KMS,
     request: &ReKeyKeyPair,
-    user: &str,
+    user: &UserId,
 ) -> KResult<Option<ReKeyKeyPairResponse>> {
-    let uid_or_tags = request
-        .private_key_unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?
-        .as_str()
-        .context("ReKeyKeyPair: the private key unique identifier must be a string")?;
+    let object_handle = from_request(
+        request.private_key_unique_identifier.as_ref(),
+        "ReKeyKeyPair",
+    )?;
 
     for owm in kms
-        .retrieve_eligible_keys(uid_or_tags, ObjectType::PrivateKey)
+        .retrieve_eligible_keys(object_handle, ObjectType::PrivateKey)
         .await?
     {
         let key_format_type = owm.attributes().key_format_type.or_else(|| {

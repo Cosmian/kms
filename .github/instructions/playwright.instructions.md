@@ -39,6 +39,8 @@ test.skip(isFips, 'Non-FIPS feature — skipped in FIPS mode');
 
 - Update `ui/tests/e2e/README.md` whenever adding or removing test files.
 
+> Rule 4.16 of `/kms-sync-rules`.
+
 ## Running tests
 
 ```bash

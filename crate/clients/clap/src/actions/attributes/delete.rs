@@ -38,7 +38,9 @@ impl DeleteAttributesAction {
         attribute_references: Option<Vec<AttributeReference>>,
     ) -> KmsCliResult<UniqueIdentifier> {
         let id = UniqueIdentifier::TextString(id.to_owned());
-        let DeleteAttributeResponse { unique_identifier } = kms_rest_client
+        let DeleteAttributeResponse {
+            unique_identifier, ..
+        } = kms_rest_client
             .delete_attribute(DeleteAttribute {
                 unique_identifier: Some(id.clone()),
                 current_attribute: current_attribute.clone(),

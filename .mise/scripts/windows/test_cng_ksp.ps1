@@ -246,7 +246,13 @@ server_url = "$KMS_URL"
         Write-Ok "ckms cng status confirms registration"
 
         # Verify the provider is visible to Windows via certutil
-        $cspOutput = certutil.exe -csplist 2>&1 | Select-String "Cosmian"
+        $cspOutputFile = Join-Path $env:TEMP "kms-cng-certutil-output.txt"
+        $certutilCommand = 'certutil.exe -csplist > "' + $cspOutputFile + '" 2>&1'
+        cmd /c $certutilCommand
+        $cspOutput = if (Test-Path $cspOutputFile) {
+            Get-Content $cspOutputFile | Select-String "Cosmian"
+        }
+        Remove-Item $cspOutputFile -Force -ErrorAction SilentlyContinue
         if ($cspOutput) {
             Write-Ok "certutil -csplist shows: $($cspOutput.Line.Trim())"
         } else {
@@ -329,7 +335,15 @@ server_url = "$KMS_URL"
         }
 
         # Verify the key exists via ckms list-keys (output shows UIDs, not names)
-        $listOutput = & $ckmsExe cng list-keys 2>&1 | Out-String
+        $listOutputFile = Join-Path $env:TEMP "kms-cng-list-keys-output.txt"
+        $listKeysCommand = '"' + $ckmsExe + '" cng list-keys > "' + $listOutputFile + '" 2>&1'
+        cmd /c $listKeysCommand
+        $listOutput = if (Test-Path $listOutputFile) {
+            Get-Content $listOutputFile -Raw
+        } else {
+            ""
+        }
+        Remove-Item $listOutputFile -Force -ErrorAction SilentlyContinue
         if ($listOutput -match "No CNG KSP keys found") {
             Write-Fail "Key '$intuneKeyName' NOT found in ckms cng list-keys (no keys listed)"
             exit 1

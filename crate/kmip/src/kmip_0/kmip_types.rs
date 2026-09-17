@@ -1052,7 +1052,12 @@ pub enum RevocationReasonCode {
     Superseded = 0x0000_0005,
     CessationOfOperation = 0x0000_0006,
     PrivilegeWithdrawn = 0x0000_0007,
-    // Extensions 8XXXXXXX
+    // KMIP vendor extensions (8XXXXXXX range per KMIP 2.1 §11.48).
+    // These correspond to RFC 5280 §5.3.1 reason codes that are not
+    // part of the KMIP standard set but are needed for full CRL support.
+    CertificateHold = 0x8000_0001,
+    RemoveFromCRL = 0x8000_0002,
+    AaCompromise = 0x8000_0003,
 }
 
 /// The Revocation Reason attribute is a structure used to indicate why the

@@ -1,10 +1,12 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { getMimeType, saveDecryptedFile, sendKmipRequest } from "../../utils/utils";
 import { decrypt_ec_ttlv_request, parse_decrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface ECDecryptFormData {
     inputFile: Uint8Array;
@@ -17,12 +19,13 @@ interface ECDecryptFormData {
 const ECDecryptForm: React.FC = () => {
     const [form] = Form.useForm<ECDecryptFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: ECDecryptFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("ecDecrypt.missingKeyId"));
             }
             const request = decrypt_ec_ttlv_request(id, values.inputFile);
             const result_str = await sendKmipRequest(request, serverUrl);
@@ -33,30 +36,30 @@ const ECDecryptForm: React.FC = () => {
                 const fileName = lastDotIndex !== -1 ? name : `${name}.plain`;
                 const mimeType = getMimeType(fileName);
                 saveDecryptedFile(response.Data, fileName, mimeType);
-                return "File has been decrypted";
+                return t("ecDecrypt.success");
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">EC Decryption</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("ecDecrypt.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Decrypt a file using ECIES (Elliptic Curve Integrated Encryption Scheme).</p>
-                <p>The key can be identified using either its ID or associated tags.</p>
-                <p className="text-sm text-yellow-600">Note: This operation loads the entire file in memory.</p>
+                <p>{t("ecDecrypt.intro")}</p>
+                <p>{t("ecDecrypt.introKey")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("ecDecrypt.note")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Input File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("ecDecrypt.inputFile")}</h3>
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
 
-                        <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to decrypt" }]}>
+                        <Form.Item name="inputFile" rules={[{ required: true, message: t("ecDecrypt.pleaseSelectFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
@@ -73,18 +76,23 @@ const ECDecryptForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag file to this area to decrypt</p>
+                                <p className="ant-upload-text">{t("ecDecrypt.uploadText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Key ID" help="The unique identifier of the private key">
-                            <Input placeholder="Enter key ID" />
-                        </Form.Item>
+                        <h3 className="text-m font-bold mb-4">{t("ecDecrypt.keyIdentification")}</h3>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("ecDecrypt.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                            objectType="PrivateKey"
+                        />
 
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("ecDecrypt.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Form.Item>
@@ -95,12 +103,12 @@ const ECDecryptForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Decrypt File
+                            {t("ecDecrypt.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="EC decrypt response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("ecDecrypt.responseTitle")} />
         </div>
     );
 };

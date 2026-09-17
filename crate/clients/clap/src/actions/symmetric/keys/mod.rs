@@ -2,7 +2,8 @@ use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
 
 use self::{
-    create_key::CreateKeyAction, destroy_key::DestroyKeyAction, rekey::ReKeyAction,
+    create_key::CreateKeyAction, create_split_key::CreateSplitKeyAction,
+    destroy_key::DestroyKeyAction, join_split_key::JoinSplitKeyAction, rekey::ReKeyAction,
     revoke_key::RevokeKeyAction,
 };
 use crate::{
@@ -15,15 +16,19 @@ use crate::{
 };
 
 pub mod create_key;
+pub mod create_split_key;
 pub mod destroy_key;
+pub mod join_split_key;
 pub mod rekey;
 pub mod revoke_key;
 
-/// Create, destroy, import, and export symmetric keys
+/// Create, destroy, import, export, split and join symmetric keys
 #[derive(Subcommand)]
 pub enum KeysCommands {
     Activate(ActivateKeyAction),
     Create(CreateKeyAction),
+    CreateSplitKey(CreateSplitKeyAction),
+    JoinSplitKey(JoinSplitKeyAction),
     ReKey(ReKeyAction),
     Export(ExportSecretDataOrKeyAction),
     Import(ImportSecretDataOrKeyAction),
@@ -42,6 +47,12 @@ impl KeysCommands {
                 action.run(kms_rest_client).await?;
             }
             Self::Create(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::CreateSplitKey(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::JoinSplitKey(action) => {
                 action.run(kms_rest_client).await?;
             }
             Self::ReKey(action) => {

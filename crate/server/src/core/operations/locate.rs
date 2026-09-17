@@ -8,7 +8,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::trace;
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{KMS, uid_utils::ObjectHandle},
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -22,22 +23,34 @@ pub(crate) async fn locate(
     kms: &KMS,
     request: Locate,
     state: Option<State>,
-    user: &str,
+    user: &UserId,
 ) -> KResult<LocateResponse> {
     trace!("{}", request);
     // Determine the effective state filter: prefer explicit parameter, else Attributes.state
     let effective_state = state.or(request.attributes.state);
-    // Find all the objects that match the attributes
-    let uids_attrs = kms
-        .database
-        .find(
-            Some(&request.attributes),
-            effective_state,
-            user,
-            false,
-            kms.vendor_id(),
-        )
-        .await?;
+    // Find all the objects that match the attributes.
+    // CryptoOfficer ownership bypass: active COs call find_all (no user filter) and
+    // receive *all* matching objects in the database, while non-COs call find which
+    // restricts to objects they own or hold explicit grants on.
+    // NOTE: the bypass only manifests as a difference in the *returned UID list*,
+    // not in the exit code. Observing the bypass requires diffing the result set across
+    // CO vs non-CO callers against the same seeded objects, not just checking success/error.
+    let uids_attrs = if kms.is_crypto_officer(user).await? {
+        // CryptoOfficer: bypass user filtering and return all matching objects
+        kms.database
+            .find_all(Some(&request.attributes), effective_state, kms.vendor_id())
+            .await?
+    } else {
+        kms.database
+            .find(
+                Some(&request.attributes),
+                effective_state,
+                user,
+                false,
+                kms.vendor_id(),
+            )
+            .await?
+    };
     for (uid, _, attributes) in &uids_attrs {
         trace!("Found uid: {}, attributes: {}", uid, attributes);
     }
@@ -113,7 +126,7 @@ pub(crate) async fn locate(
         let mut filtered = Vec::with_capacity(uids.len());
         for uid in uids {
             let uid_str = uid.as_str().unwrap_or_default();
-            if has_prefix(uid_str).is_some() {
+            if ObjectHandle::from(uid_str).is_hsm() {
                 // Check if user has any granted operation on this HSM key
                 let ops = kms
                     .database

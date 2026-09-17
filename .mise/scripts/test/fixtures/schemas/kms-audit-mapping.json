@@ -1,0 +1,27 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "id": { "type": "long" },
+      "timestamp": {
+        "type": "date",
+        "format": "strict_date_optional_time_nanos||strict_date_optional_time"
+      },
+      "operation": { "type": "keyword" },
+      "user": { "type": "keyword" },
+      "object_uid": { "type": "keyword" },
+      "algorithm": { "type": "keyword" },
+      "client_ip": { "type": "ip" },
+      "result_status": { "type": "keyword" },
+      "result_detail": { "type": "text" },
+      "duration_ms": { "type": "long" },
+      "request_id": { "type": "keyword" },
+      "prev_hash": { "type": "keyword" },
+      "row_hash": { "type": "keyword" }
+    }
+  }
+}

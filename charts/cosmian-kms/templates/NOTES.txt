@@ -1,4 +1,4 @@
-Cosmian KMS has been deployed as {{ include "cosmian-kms.fullname" . }} in namespace {{ .Release.Namespace }}.
+Eviden KMS has been deployed as {{ include "cosmian-kms.fullname" . }} in namespace {{ .Release.Namespace }}.
 
 {{- if .Values.kms.database.clearDatabase }}
 

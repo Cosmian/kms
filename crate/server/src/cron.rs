@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use cosmian_logger::debug;
+use cosmian_logger::{debug, info, warn};
 use tokio::sync::oneshot;
 
 use crate::core::{
@@ -52,7 +52,103 @@ pub fn spawn_auto_rotation_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
     shutdown_tx
 }
 
-/// Spawn a background thread that periodically refreshes metrics.
+/// Spawn a background thread that periodically refreshes CRLs near their expiry.
+///
+/// The scheduler wakes up every `crl_refresh_check_hours` hours (from
+/// [`ServerParams`]) and regenerates any stored CRL whose `nextUpdate`
+/// timestamp is within `crl_refresh_overlap_hours` of the current time.
+///
+/// This prevents relying parties from seeing an expired CRL during the
+/// window between expiry and the next revocation-triggered regeneration —
+/// analogous to EJBCA's "CRL Overlap Time" and AWS PCA's 1-day overlap.
+///
+/// Returns a `oneshot::Sender<()>` that cleanly stops the thread when sent.
+/// The scheduler is not spawned when `crl_refresh_check_hours == 0`.
+pub fn spawn_crl_refresh_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
+    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+    let check_hours = u64::from(kms.params.crl_refresh_check_hours);
+    let overlap_hours = i64::from(kms.params.crl_refresh_overlap_hours);
+
+    std::thread::spawn(move || {
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(e) => {
+                warn!("[crl-refresh-cron] Failed to build runtime: {e}");
+                return;
+            }
+        };
+
+        rt.block_on(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+                check_hours.saturating_mul(3600),
+            ));
+            let mut shutdown_rx = shutdown_rx;
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        debug!("[crl-refresh-cron] Running scheduled CRL refresh check");
+                        refresh_expiring_crls(&kms, overlap_hours).await;
+                    }
+                    _ = &mut shutdown_rx => {
+                        debug!("[crl-refresh-cron] Shutdown signal received; stopping");
+                        break;
+                    }
+                }
+            }
+        });
+    });
+
+    shutdown_tx
+}
+
+/// Scan all stored CRLs and regenerate those expiring within `overlap_hours`.
+async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
+    // CRL content is public information (RFC 5280 §3) — no special role required.
+    let signer = crate::middlewares::UserId::from(kms.params.default_username.as_str());
+
+    // Enumerate all issuer IDs stored in the `crls` table.
+    let issuers = match kms.database.list_crl_issuers().await {
+        Ok(ids) => ids,
+        Err(e) => {
+            warn!("[crl-refresh-cron] Failed to list CRL issuers from DB: {e}");
+            return;
+        }
+    };
+
+    let now = time::OffsetDateTime::now_utc();
+    let threshold = now + time::Duration::hours(overlap_hours);
+
+    for (issuer_id, next_update_str) in issuers {
+        let needs_refresh = time::OffsetDateTime::parse(
+            &next_update_str,
+            &time::format_description::well_known::Rfc3339,
+        )
+        .map_or(true, |next_update| next_update <= threshold); // stale if unparsable
+
+        if !needs_refresh {
+            continue;
+        }
+
+        info!(
+            issuer_id = issuer_id.as_str(),
+            "[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}' \
+             (expires within {overlap_hours}h)"
+        );
+
+        if let Err(e) =
+            crate::core::operations::generate_crl::generate_crl(kms, &issuer_id, None, &signer)
+                .await
+        {
+            warn!(
+                issuer_id = issuer_id.as_str(),
+                "[crl-refresh-cron] CRL refresh failed for '{issuer_id}': {e}"
+            );
+        }
+    }
+}
 /// Returns a oneshot Sender that, when sent, cleanly stops the cron thread.
 ///
 /// # Errors

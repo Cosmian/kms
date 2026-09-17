@@ -21,10 +21,11 @@ use super::{issuer::Issuer, subject::Subject};
 use crate::{
     core::{
         KMS, certificate::retrieve_issuer_private_key_and_certificate,
-        retrieve_object_utils::retrieve_object_for_operation,
+        retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -51,7 +52,7 @@ pub(crate) async fn get_issuer<'a>(
     subject: &'a Subject,
     kms: &KMS,
     request: &Certify,
-    user: &str,
+    user: &UserId,
 ) -> KResult<Issuer<'a>> {
     let (issuer_certificate_id, issuer_private_key_id) =
         request
@@ -81,9 +82,12 @@ pub(crate) async fn get_issuer<'a>(
         // If no issuer is provided, the subject is self-signed
         return Box::pin(issuer_for_self_signed_certificate(subject, kms, user)).await;
     }
+    // Bind the link identifiers to locals so the borrowed `ObjectHandle`s outlive the call.
+    let issuer_private_key_id = issuer_private_key_id.map(|id| id.to_string());
+    let issuer_certificate_id = issuer_certificate_id.map(|id| id.to_string());
     let (issuer_private_key, issuer_certificate) = retrieve_issuer_private_key_and_certificate(
-        issuer_private_key_id.map(|id| id.to_string()),
-        issuer_certificate_id.map(|id| id.to_string()),
+        issuer_private_key_id.as_ref().map(ObjectHandle::from),
+        issuer_certificate_id.as_ref().map(ObjectHandle::from),
         kms,
         user,
     )
@@ -106,11 +110,11 @@ async fn fetch_object_from_attributes(
     link_type: LinkType,
     kms: &KMS,
     attributes: &Attributes,
-    user: &str,
+    user: &UserId,
 ) -> KResult<Option<ObjectWithMetadata>> {
     if let Some(object_id) = attributes.get_link(link_type) {
         let object = Box::pin(retrieve_object_for_operation(
-            &object_id.to_string(),
+            ObjectHandle::from(&object_id.to_string()),
             KmipOperation::Certify,
             kms,
             user,
@@ -124,7 +128,7 @@ async fn fetch_object_from_attributes(
 async fn issuer_for_self_signed_certificate<'a>(
     subject: &'a Subject,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<Issuer<'a>> {
     match subject {
         Subject::X509Req(_, _) => {

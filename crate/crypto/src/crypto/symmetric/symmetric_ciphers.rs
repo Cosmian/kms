@@ -403,16 +403,16 @@ impl SymCipher {
             #[cfg(feature = "non-fips")]
             CryptographicAlgorithm::ChaCha20 => match key_size {
                 32 => Ok(Self::Chacha20),
-                _ => crypto_bail!(CryptoError::NotSupported(
-                    "ChaCha20 key must be 32 bytes long".to_owned()
-                )),
+                _ => crypto_bail!(CryptoError::NotSupported(format!(
+                    "ChaCha20 key must be 32 bytes long. Found {key_size} bytes"
+                ))),
             },
             #[cfg(feature = "non-fips")]
             CryptographicAlgorithm::ChaCha20Poly1305 => match key_size {
                 32 => Ok(Self::Chacha20Poly1305),
-                _ => crypto_bail!(CryptoError::NotSupported(
-                    "ChaCha20 key must be 32 bytes long".to_owned()
-                )),
+                _ => crypto_bail!(CryptoError::NotSupported(format!(
+                    "ChaCha20 key must be 32 bytes long. Found {key_size} bytes"
+                ))),
             },
             other => crypto_bail!(CryptoError::NotSupported(format!(
                 "unsupported cryptographic algorithm: {other} for a symmetric key"

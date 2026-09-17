@@ -17,7 +17,7 @@ Cryptographic operations themselves are rarely the bottleneck. The key factors a
 
 1. **Network latency**: Minimizing the distance between the KMS and client applications
 2. **CPU resources**: Allocating sufficient processing power for concurrent operations
-3. **Database performance**: Using optimized [database configurations](../configuration/database.md)
+3. **Database performance**: Using optimized [database configurations](../configuration/database/configuration.md)
 
 ## Deployment Architecture
 

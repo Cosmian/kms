@@ -59,7 +59,9 @@ test.describe("OIDC (Auth0) — Web UI login", () => {
     test("GET /ui/auth_method reports JWT", async ({ request, baseURL }) => {
         const response = await request.get(`${baseURL}/ui/auth_method`);
         expect(response.ok()).toBeTruthy();
-        await expect(response.json()).resolves.toEqual({ auth_method: "JWT" });
+        // `auth_method` is the primary (backward-compatible); `auth_methods` is the
+        // ordered list the multi-method login page renders from.
+        await expect(response.json()).resolves.toEqual({ auth_method: "JWT", auth_methods: ["JWT"] });
     });
 
     test("TC1 — happy path login", async ({ page }) => {

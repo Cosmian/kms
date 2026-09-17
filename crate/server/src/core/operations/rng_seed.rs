@@ -5,6 +5,7 @@ use cosmian_logger::trace;
 
 use crate::{
     core::{KMS, rng::global_rng},
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -17,7 +18,7 @@ use crate::{
 pub(crate) async fn rng_seed(
     _kms: &KMS,
     request: RNGSeed,
-    _user: &str,
+    _user: &UserId,
 ) -> KResult<RNGSeedResponse> {
     trace!("{request}");
 

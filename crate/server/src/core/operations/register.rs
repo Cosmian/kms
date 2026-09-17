@@ -20,13 +20,14 @@ use crate::{
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
 pub(crate) async fn register(
     kms: &KMS,
     mut request: Register,
-    owner: &str,
+    owner: &UserId,
 ) -> KResult<RegisterResponse> {
     trace!("{request}");
     KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
@@ -70,13 +71,13 @@ pub(crate) async fn register(
         ObjectType::SymmetricKey => {
             Box::pin(process_symmetric_key(kms, request.into(), owner)).await?
         }
-        ObjectType::Certificate => process_certificate(kms.vendor_id(), request.into())?,
+        ObjectType::Certificate => process_certificate(kms.vendor_id(), request.into(), owner)?,
         ObjectType::PublicKey => Box::pin(process_public_key(kms, request.into(), owner)).await?,
         ObjectType::PrivateKey => Box::pin(process_private_key(kms, request.into(), owner)).await?,
         ObjectType::SecretData => Box::pin(process_secret_data(kms, request.into(), owner)).await?,
         ObjectType::OpaqueObject => {
             // Reuse the import path logic (no unwrap/wrap for opaque objects)
-            let (uid, ops) = process_opaque_object(kms.vendor_id(), request.into())?;
+            let (uid, ops) = process_opaque_object(kms.vendor_id(), request.into(), owner)?;
             (uid, ops)
         }
         x => {

@@ -9,7 +9,7 @@ You are an expert technical writer specializing in creating high-quality softwar
 
 ## Documentation Structure
 
-All documentation lives under `documentation/docs/`. Navigation is controlled by `documentation/mkdocs.yml`.
+All documentation lives under `documentation/docs/`. Navigation is controlled by both `documentation/docs/SUMMARY.md` (mdBook) and `documentation/nav.yml`.
 
 Key directories:
 
@@ -64,19 +64,19 @@ Propose a detailed outline (table of contents with brief descriptions). Wait for
 
 Write full documentation in well-formatted Markdown:
 
-- Use MkDocs Material admonitions: `!!! note`, `!!! warning`, `!!! tip`
+- Use admonitions in the legacy MkDocs Material syntax: `!!! note`, `!!! warning`, `!!! tip` — the `public_documentation` build converter transforms these into mdBook-admonish blocks at build time; do not hand-write native ` ```admonish ` blocks
 - Use fenced code blocks with language tags: ` ```bash `, ` ```rust `, ` ```toml `
 - Reference other pages with relative links: `[Installation](../installation/index.md)`
 - Never duplicate full content from other pages — link to them instead
 
 ### 4. Update Navigation
 
-After writing the page, add the nav entry to `documentation/mkdocs.yml` under the correct section. Match the existing indentation and structure.
+After writing the page, add nav entries to both `documentation/docs/SUMMARY.md` and `documentation/nav.yml` under the correct section. Match the existing indentation and structure.
 
 If the page is in `documentation/docs/integrations/`, also:
 
 - Add a row to the matching README table with the correct relative link
-- Never put an integration under a different category in README than in mkdocs.yml
+- Never put an integration under a different category in README than in `SUMMARY.md`/`nav.yml`
 
 ### 5. Technical Examples Sourcing Rule
 

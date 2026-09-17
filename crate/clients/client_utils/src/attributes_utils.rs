@@ -321,6 +321,17 @@ pub fn parse_selected_attributes(
                     }
                 }
             }
+            Tag::AlwaysSensitive => {
+                // Server-managed attribute (KMIP 2.1 §4.3); read-only, display only.
+                if let Some(v) = attributes.always_sensitive.as_ref() {
+                    results.insert(tag.to_string(), serde_json::to_value(v).unwrap_or_default());
+                }
+            }
+            Tag::Sensitive => {
+                if let Some(v) = attributes.sensitive.as_ref() {
+                    results.insert(tag.to_string(), serde_json::to_value(v).unwrap_or_default());
+                }
+            }
             _x => {}
         }
     }
@@ -572,6 +583,11 @@ pub fn parse_selected_attributes_flatten(
                 results,
                 selected_attribute_name,
                 attributes.sensitive.as_ref()
+            ),
+            "always_sensitive" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.always_sensitive.as_ref()
             ),
             "extractable" => insert_if_some!(
                 results,

@@ -37,6 +37,7 @@ let
   # Allow selectively adding extra tools from the environment (kept via nix-shell --keep)
   withHsm = (builtins.getEnv "WITH_HSM") == "1";
   withPython = (builtins.getEnv "WITH_PYTHON") == "1";
+  withGo = (builtins.getEnv "WITH_GO") == "1";
   withCurl = (builtins.getEnv "WITH_CURL") == "1";
   withXks = (builtins.getEnv "WITH_XKS") == "1";
   withWasm = (builtins.getEnv "WITH_WASM") == "1";
@@ -179,6 +180,7 @@ pkgs.mkShell {
     else
       [ ]
   )
+  ++ (if withGo then [ pkgs.go ] else [ ])
   # OpenSSH PKCS#11 test: include openssh so ssh-keygen is available on Linux CI
   ++ pkgs.lib.optionals (withOpenssh && pkgs.stdenv.isLinux) [ pkgs.openssh ]
   # LUKS disk-encryption test: include opensc for pkcs11-tool on Linux CI

@@ -30,7 +30,8 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
-    config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
+    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
+    tests::test_utils::https_clap_config,
 };
 
 #[tokio::test]
@@ -38,7 +39,7 @@ async fn test_secret_data_create_basic() -> KResult<()> {
     // Instantiate KMS
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_secret_data_create_basic@example.com";
+    let owner = UserId::from("test_secret_data_create_basic@example.com");
 
     // Create a basic secret data object using the existing request function
     let secret_id = format!("test-secret-{}", Uuid::new_v4());
@@ -50,7 +51,7 @@ async fn test_secret_data_create_basic() -> KResult<()> {
         None,
     )?;
 
-    let create_response = kms.create(create_request, owner).await?;
+    let create_response = kms.create(create_request, &owner).await?;
     assert!(create_response.unique_identifier.as_str().is_some());
 
     // Test Get operation
@@ -62,7 +63,7 @@ async fn test_secret_data_create_basic() -> KResult<()> {
         ..Default::default()
     };
 
-    let get_response = kms.get(get_request, owner).await?;
+    let get_response = kms.get(get_request, &owner).await?;
     assert_eq!(
         get_response.unique_identifier,
         create_response.unique_identifier
@@ -78,7 +79,7 @@ async fn test_secret_data_create_basic() -> KResult<()> {
         key_wrapping_specification: None,
     };
 
-    let export_response = kms.export(export_request, owner).await?;
+    let export_response = kms.export(export_request, &owner).await?;
     assert_eq!(
         export_response.unique_identifier,
         create_response.unique_identifier
@@ -96,7 +97,7 @@ async fn test_secret_data_create_basic() -> KResult<()> {
         cascade: true,
     };
 
-    let revoke_response = kms.revoke(revoke_request, owner).await?;
+    let revoke_response = kms.revoke(revoke_request, &owner).await?;
     assert_eq!(
         revoke_response.unique_identifier,
         create_response.unique_identifier
@@ -110,7 +111,7 @@ async fn test_secret_data_create_basic() -> KResult<()> {
         expected_object_type: None,
     };
 
-    let destroy_response = kms.destroy(destroy_request, owner).await?;
+    let destroy_response = kms.destroy(destroy_request, &owner).await?;
     assert_eq!(
         destroy_response.unique_identifier,
         create_response.unique_identifier
@@ -125,7 +126,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
     // Instantiate KMS
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_secret_data_wrapping@example.com";
+    let owner = UserId::from("test_secret_data_wrapping@example.com");
 
     // Create a SecretData object with wrapping enabled
     let secret_id = UniqueIdentifier::TextString(format!("test-secret-wrapped-{}", Uuid::new_v4()));
@@ -137,7 +138,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
         None,
     )?;
 
-    let create_response = kms.create(create_request, owner).await?;
+    let create_response = kms.create(create_request, &owner).await?;
     assert!(create_response.unique_identifier.as_str().is_some());
 
     // create the wrapping key
@@ -150,7 +151,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
         false,
         None,
     )?;
-    let create_wrapping_key_response = kms.create(create_wrapping_key_request, owner).await?;
+    let create_wrapping_key_response = kms.create(create_wrapping_key_request, &owner).await?;
     assert!(
         create_wrapping_key_response
             .unique_identifier
@@ -176,7 +177,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
         None,
     );
 
-    let export_response = kms.export(export_request, owner).await?;
+    let export_response = kms.export(export_request, &owner).await?;
     assert_ne!(export_response.unique_identifier, wrapping_key_id);
     assert_eq!(export_response.unique_identifier, secret_id.clone());
     assert!(matches!(export_response.object, Object::SecretData(_)));
@@ -192,7 +193,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
         cascade: true,
     };
 
-    kms.revoke(revoke_request, owner).await?;
+    kms.revoke(revoke_request, &owner).await?;
 
     let destroy_request = Destroy {
         unique_identifier: Some(secret_id.clone()),
@@ -201,7 +202,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
         expected_object_type: None,
     };
 
-    kms.destroy(destroy_request, owner).await?;
+    kms.destroy(destroy_request, &owner).await?;
 
     Ok(())
 }
@@ -214,7 +215,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
     let sqlite_path = clap_config.db.sqlite_path.clone();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let key_material = Zeroizing::from(b"TestData".to_vec());
-    let owner = "test_secret_data_wrapping@example.com";
+    let owner = UserId::from("test_secret_data_wrapping@example.com");
 
     // create the wrapping key
     let create_wrapping_key_request = symmetric_key_create_request(
@@ -226,7 +227,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
         false,
         None,
     )?;
-    let create_wrapping_key_response = kms.create(create_wrapping_key_request, owner).await?;
+    let create_wrapping_key_response = kms.create(create_wrapping_key_request, &owner).await?;
     assert!(
         create_wrapping_key_response
             .unique_identifier
@@ -272,7 +273,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
         object: secret_data,
     };
 
-    let import_response = kms.import(import_request, owner).await?;
+    let import_response = kms.import(import_request, &owner).await?;
     assert_eq!(import_response.unique_identifier, secret_id);
 
     // Test Export operation with wrapping enabled
@@ -284,7 +285,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
         key_wrapping_specification: None,
     };
 
-    let export_response = kms.export(export_request, owner).await?;
+    let export_response = kms.export(export_request, &owner).await?;
     assert_eq!(
         export_response.unique_identifier,
         import_response.unique_identifier
@@ -301,7 +302,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
         key_wrapping_specification: None,
     };
 
-    let export_response_unwrap = kms.export(export_request_unwrap, owner).await?;
+    let export_response_unwrap = kms.export(export_request_unwrap, &owner).await?;
     assert_eq!(
         export_response_unwrap.unique_identifier,
         import_response.unique_identifier
@@ -340,7 +341,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
         key_wrapping_specification: None,
     };
 
-    let export_response_default_unwrap = kms.export(export_request_default_unwrap, owner).await?;
+    let export_response_default_unwrap = kms.export(export_request_default_unwrap, &owner).await?;
     assert!(matches!(
         export_response_default_unwrap.object,
         Object::SecretData(_)
@@ -368,7 +369,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
         cascade: true,
     };
 
-    kms.revoke(revoke_request, owner).await?;
+    kms.revoke(revoke_request, &owner).await?;
 
     let destroy_request = Destroy {
         unique_identifier: Some(secret_id.clone()),
@@ -377,7 +378,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
         expected_object_type: None,
     };
 
-    kms.destroy(destroy_request, owner).await?;
+    kms.destroy(destroy_request, &owner).await?;
 
     Ok(())
 }

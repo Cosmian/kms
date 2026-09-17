@@ -24,11 +24,9 @@ sequenceDiagram
     KMS-->>Admin: 200 OK (key stored, tag: vault_pki_ca)
     Admin->>AuthV: 1a. Admin login (directly)<br/>POST /login?realm=_ (HTTP Basic)
     AuthV-->>Admin: session cookie
-    loop for each identity: "spire-server", "mistral-agents"
-        Admin->>AuthV: 1b. Create AppRole, read role_id, mint secret_id<br/>POST .../role/{name} · GET .../role/{name}/role-id · POST .../role/{name}/secret-id
-        AuthV-->>Admin: role_id + secret_id
-    end
-    Note over Admin,Server: Admin configures SPIRE with spire-server role_id + secret_id
+    Admin->>AuthV: 1b. Create the SPIRE server AppRole, read role_id, mint secret_id<br/>POST .../role/{name} · GET .../role/{name}/role-id · POST .../role/{name}/secret-id
+    AuthV-->>Admin: role_id + secret_id
+    Note over Admin,Server: Admin configures SPIRE with the role_id + secret_id
     Server->>KMS: 2. AppRole login<br/>POST /v1/auth/approle/login<br/>{role_id, secret_id}
     KMS->>AuthV: proxy /v1/auth/* → /auth/*
     AuthV-->>Server: Vault token (hvs.xxxx)
@@ -38,23 +36,17 @@ sequenceDiagram
     Note over Server,Agent: 4. SPIRE Agent attests to SPIRE Server<br/>(join_token in this demo)
     Agent-->>Mistral: 5. Workload API (unix socket)<br/>fetch JWT-SVID
     Mistral->>Mistral: 6. Validate SPIFFE ID,<br/>trust domain, expiry
-    Note over Admin,Mistral: AI agent is provisioned with the "mistral-agents" role_id + secret_id
-    Mistral->>KMS: 7. AppRole login (own credentials)<br/>POST /v1/auth/approle/login<br/>{role_id, secret_id}
-    KMS->>AuthV: proxy /v1/auth/* → /auth/*
-    AuthV-->>Mistral: Vault token (hvs.yyyy)
-    Mistral->>KMS: 8. Transit crypto with own token<br/>POST /v1/transit/keys/{name} · /sign/{name}/{hash}<br/>(X-Vault-Token)
-    Note over KMS: validate X-Vault-Token via AuthV (30 s cache)<br/>owner = "mistral-agents" → keys isolated from other tenants
-    KMS-->>Mistral: transit key / signature
+    Note over Mistral: The workload's identity is its SPIFFE SVID —<br/>it never calls the KMS and holds no AppRole credentials.
 ```
 
-Steps 1–6 establish SPIFFE identity (the SPIRE server chains its CA to the KMS PKI engine,
-and the AI agent workload receives a SPIFFE SVID). Steps 7–8 are where the **`mistral-agents`
-AppRole** (created in 1b) is used: the AI agent authenticates to the KMS's Vault-compatible
-**transit** engine with its *own* AppRole token to create/use keys — which the KMS scopes to
-the `mistral-agents` owner, keeping them isolated from the SPIRE server's (and any other
-tenant's) objects. The two are independent capabilities: SPIFFE identity (5–6) is for the
-agent to authenticate to *other* services, while the transit flow (7–8) is the agent using the
-KMS as its FIPS-backed crypto backend.
+Steps 1–4 are the SPIRE server's Vault-compatible flow: it logs in with its AppRole, then uses
+the KMS PKI engine to sign its intermediate CA and (optionally) the transit engine to store and
+use its own signing keys. Steps 5–6 are the **only** interaction the AI agent workload has with
+SPIRE: it authenticates to the SPIRE Agent through the Workload API and receives a SPIFFE SVID
+(JWT-SVID and/or X.509-SVID), which it uses to authenticate to *other* services. The workload
+never talks to the KMS and holds **no** AppRole credentials — SPIFFE identity (5–6) and the KMS
+AppRole (2–4) are two independent, non-overlapping capabilities: the former for the workload,
+the latter for the SPIRE server.
 
 ## What is it?
 
@@ -108,10 +100,10 @@ split — it connects to one endpoint.
 flowchart LR
     subgraph Cosmian ["Cosmian Backend"]
         direction TB
-        KMS["Eviden KMS :9998\nvault_addr\n/v1/auth/* → proxy\n/v1/transit/*, /v1/pki/* → native"]
-        AuthV["auth-verifier :8443\n/v1/auth/* (AppRole, token)"]
-        KMS -- "/v1/auth/* proxy\n(AppRole login,\ntoken lookup)" --> AuthV
-        KMS -. "token lookup-self\n(30 s cache)" .-> AuthV
+        KMS["Eviden KMS :9998<br/>vault_addr<br/>/v1/auth/* → proxy<br/>/v1/transit/*, /v1/pki/* → native"]
+        AuthV["auth-verifier :8443<br/>/v1/auth/* (AppRole, token)"]
+        KMS -- "/v1/auth/* proxy<br/>(AppRole login,<br/>token lookup)" --> AuthV
+        KMS -. "token lookup-self<br/>(30 s cache)" .-> AuthV
     end
     subgraph SPIRE ["SPIRE Runtime"]
         direction TB
@@ -126,15 +118,92 @@ flowchart LR
     end
 
     Admin(["Platform Admin"])
-    Admin -- "1. provision AppRoles\n+ PKI CA key" --> Cosmian
-    SS -- "2. vault_addr\n(AppRole login,\nPKI/transit calls)" --> KMS
-    SA -- "Workload API\n(unix socket)" --> MA1
-    SA -- "Workload API\n(unix socket)" --> MA2
+    Admin -- "1. provision AppRoles + PKI CA key" --> Cosmian
+    SS -- "2. vault_addr<br/>(AppRole login,<br/>PKI/transit calls)" --> KMS
+    SA -- "Workload API<br/>(unix socket)" --> MA1
+    SA -- "Workload API<br/>(unix socket)" --> MA2
 ```
 
 KMS proxies `/v1/auth/*` to the auth-verifier URL configured via
 `vault_auth_verifier_url`. No nginx or additional reverse proxy is needed — the same
 TLS client already used for token validation is reused for the proxy.
+
+### KMS endpoint groups
+
+The KMS exposes three distinct path groups under its `vault_addr`. Each group has a
+different purpose, a different caller, and a different backend implementation.
+
+| Path group | Handled by | Caller | Purpose | Output type |
+|---|---|---|---|---|
+| `/v1/auth/*` | auth-verifier *(proxied)* | SPIRE server | AppRole login, token validation, renewal, revocation — all HTTP methods forwarded transparently | Vault token (`hvs.*`) / 204 No Content |
+| `/v1/{mount}/keys/*` | Eviden KMS *(native)* | SPIRE `KeyManager` | Create (`CreateKeyPair`), read (`Find`+`Get`), configure (no-op), list (`Find`), delete (`Revoke`+`Destroy`) asymmetric key pairs; private key `sensitive=true` (non-exportable) | `TransitKeyInfo` (name, type, public key PEM, version map) / 204 No Content |
+| `/v1/{mount}/sign/{name}/{hash_alg}` | Eviden KMS *(native)* | SPIRE `KeyManager` | Server-side signing (`Sign`); private key never leaves the KMS | Signature string (`vault:v1:` prefix + base64) |
+| `/v1/{mount}/root/sign-intermediate` | Eviden KMS *(native)* | SPIRE `UpstreamAuthority` | Sign a SPIRE intermediate CA CSR with the pre-provisioned Root CA key (`Find`→`Certify`→`Find`+`Get`) — **only** implemented PKI path | `SignIntermediateResult` (signed cert PEM, issuing CA PEM, CA chain PEMs) |
+
+#### `/v1/auth/*` — Authentication proxy
+
+Handled by **auth-verifier** (the KMS forwards all `/v1/auth/*` requests transparently).
+The KMS never processes credentials itself.
+
+| Method | Path | Caller | Purpose | Output type |
+|---|---|---|---|---|
+| `POST` | `/v1/auth/approle/login` | SPIRE server | Exchange `role_id`+`secret_id` for a Vault token | Vault token (`hvs.*` string + lease metadata) |
+| `GET` | `/v1/auth/token/lookup-self` | KMS middleware (internal) | Validate an `X-Vault-Token` and retrieve `entity_id` (used as KMS owner) | Token metadata (`entity_id`, `expire_time`, policies) |
+| `POST` | `/v1/auth/token/renew-self` | SPIRE server | Extend a token's TTL | Renewed Vault token (same `hvs.*` string, updated `lease_duration`) |
+| `POST` | `/v1/auth/token/revoke-self` | SPIRE server | Immediately invalidate the caller's own token | 204 No Content |
+
+All HTTP methods (`GET`, `POST`, `PUT`, `DELETE`) on any `/v1/auth/{path}` are forwarded
+unchanged to auth-verifier — the KMS never inspects the body or response of auth requests.
+
+> For admin operations (create/delete roles, mint `secret_id`), operators call the
+> **auth-verifier directly** — those paths are not proxied by the KMS. See
+> [Two planes](#two-planes-data-plane-vs-management-plane) below.
+
+#### `/v1/{mount}/keys/*` and `/v1/{mount}/sign/*` — Transit engine
+
+Handled **natively** by the KMS. Caller: SPIRE server (`KeyManager "vault"` plugin).
+Requires `X-Vault-Token`; the `entity_id` from the token becomes
+the KMIP object owner, enforcing per-AppRole isolation.
+
+Each transit key is stored as a KMIP `PrivateKey`+`PublicKey` pair tagged
+`vault_transit:{name}`, with `sensitive=true` set at creation time — the private key is
+permanently non-exportable at every API surface.
+
+| Method | Path | KMIP op | Purpose | Output type |
+|---|---|---|---|---|
+| `POST`/`PUT` | `/v1/{mount}/keys/{name}` | `CreateKeyPair` | Create a named key pair | `TransitKeyInfo` (name, type, version map with public key PEM) |
+| `GET` | `/v1/{mount}/keys/{name}` | `Find`→`Get` | Read key metadata and public key PEM | `TransitKeyInfo` (same shape as create) |
+| `GET` | `/v1/{mount}/keys` | `Find` | List all transit key names owned by the caller | Key name list |
+| `POST` | `/v1/{mount}/keys/{name}/config` | *(no-op)* | Accept SPIRE's config call without error | 204 No Content |
+| `DELETE` | `/v1/{mount}/keys/{name}` | `Revoke`+`Destroy` | Permanently delete key pair | 204 No Content |
+| `POST`/`PUT` | `/v1/{mount}/sign/{name}/{hash_alg}` | `Sign` | Sign a pre-hashed input server-side (private key never leaves KMS) | Signature string (`vault:v1:` prefix + base64) |
+
+#### `/v1/{mount}/root/sign-intermediate` — PKI engine (single endpoint)
+
+> **Scope note**: The KMS implements **only** this one path from the full Vault PKI
+> namespace. Other PKI paths (`/v1/{mount}/ca`, `/v1/{mount}/issue/*`,
+> `/v1/{mount}/cert/*`, etc.) are **not** implemented and will return `404`. SPIRE's
+> `UpstreamAuthority "vault"` plugin calls only `sign-intermediate`, so no other path
+> is needed.
+
+Handled **natively** by the KMS. Caller: SPIRE server (`UpstreamAuthority "vault"` plugin).
+Requires `X-Vault-Token` (authentication only — the signing always executes as the server
+admin, so the caller's AppRole does not need to own the CA key).
+
+| Method | Path | KMIP ops | Purpose | Output type |
+|---|---|---|---|---|
+| `POST`/`PUT` | `/v1/{mount}/root/sign-intermediate` | `Find` → `Certify` → `Find`+`Get` (CA cert chain) | Sign a SPIRE intermediate CA CSR with the pre-provisioned Root CA key | `SignIntermediateResult` (signed intermediate certificate PEM, issuing CA certificate PEM, CA chain PEM list) |
+
+The CA key is located by the tag configured in `vault_pki_ca_key_label` (default
+`vault_pki_ca`). The Root CA key and its certificate **never leave the KMS** — only the
+newly signed intermediate certificate is returned. Returns `HTTP 500` if the CA key or
+its linked certificate is absent.
+
+> **Authentication for `/v1/transit/*` and `/v1/pki/*`**: every request to these
+> native KMS paths must carry a valid `X-Vault-Token` header. The KMS validates it by
+> calling `/v1/auth/token/lookup-self` on the auth-verifier (results cached for 30 s).
+> The token determines the **owner** of all KMS objects created or used during the
+> request, ensuring strict multi-tenant isolation.
 
 ### Two planes: data plane vs management plane
 
@@ -143,7 +212,7 @@ common source of confusion:
 
 | Plane                | Who                      | Reaches                        | Endpoints                                                                  |
 | -------------------- | ------------------------ | ------------------------------ | -------------------------------------------------------------------------- |
-| **Data plane**       | SPIRE servers, workloads | the **KMS only**               | `/v1/auth/approle/login`, `/v1/auth/token/*`, `/v1/transit/*`, `/v1/pki/*` |
+| **Data plane**       | SPIRE servers            | the **KMS only**               | `/v1/auth/approle/login`, `/v1/auth/token/*`, `/v1/transit/*`, `/v1/pki/*` |
 | **Management plane** | Platform operators       | the **auth-verifier directly** | `/login?realm=_` (admin), `/auth/approle/*` (role/secret-id CRUD)          |
 
 Why AppRole **creation** is not on the data plane: creating a role or minting a
@@ -158,7 +227,7 @@ operators — it is a **separate endpoint** from the KMS, never proxied by it. B
 admin API mints AppRoles (and therefore access to any tenant's keys), it is strongly
 recommended to keep it on a limited-exposure endpoint (a private network, `localhost` on
 the host, or an mTLS-gated ingress) rather than the open internet. The KMS remains the
-only endpoint SPIRE workloads ever touch.
+only endpoint the SPIRE server ever touches.
 
 ### Provisioning AppRoles (operator, management plane)
 
@@ -181,6 +250,11 @@ ckms vault approle generate-secret-id spire-prod
 
 > SPIRE performs the data-plane AppRole *login* itself against the KMS `vault_addr`
 > (`POST /v1/auth/approle/login`); there is no `login` sub-command in `ckms vault approle`.
+>
+> Keep the `secret_id_accessor` returned by `generate-secret-id` in a secure store —
+> it is the only handle available to revoke the `secret_id` without deleting the entire
+> role. See [Manage AppRole credentials](#4-manage-approle-credentials) for rotation and
+> automation guidance.
 
 Equivalent raw calls (used by the test harness `provision.sh`): `POST /login?realm=_`
 for the admin cookie, then `POST /auth/approle/role/{name}` and
@@ -197,7 +271,7 @@ stack. Each step links to the detailed reference for that component. In order:
 | 2 | **Install the auth-verifier** | Deploy the Cosmian Authentication Server that the KMS proxies `/v1/auth/*` to. | `authentication/server/documentation/docs/installation.md` |
 | 3 | **Enable the Vault API on the KMS** | Turn on the SPIRE-compatible API and point it at the auth-verifier. | [Configuration reference](#configuration-reference) |
 | 4 | **Create the PKI CA key** | Create the KMS key the PKI engine signs intermediate CAs with. | [PKI CA key provisioning](#0-pki-ca-key-provisioning-prerequisite) |
-| 5 | **Provision AppRoles** | Create one AppRole per SPIRE server (and per workload group) and hand out `role_id`/`secret_id`. | [Provisioning AppRoles](#provisioning-approles-operator-management-plane) |
+| 5 | **Provision AppRoles** | Create one AppRole per SPIRE server and hand out its `role_id`/`secret_id`. | [Provisioning AppRoles](#provisioning-approles-operator-management-plane) |
 | 6 | **Configure the SPIRE server** | Point SPIRE's `vault_addr` at the KMS and wire the `UpstreamAuthority`/`KeyManager` plugins. | [SPIRE server configuration](#spire-server-configuration) |
 | 7 | **Start SPIRE and verify** | Start the SPIRE server/agent and confirm the intermediate CA is signed and SVIDs issue. | [Quick start](#quick-start-local-demo-stack) |
 
@@ -333,8 +407,9 @@ ckms --accept-invalid-certs \
 
 ### 1. AppRole provisioning (admin bootstrap)
 
-An administrator provisions one `AppRole` per consumer: one for the SPIRE server itself
-and one for the AI agent workloads that need direct transit signing.
+An administrator provisions one `AppRole` per SPIRE server. AI agent workloads do **not**
+need a KMS AppRole — they authenticate to SPIRE (and, through it, to other services) via
+their SPIFFE SVID, not via the KMS. See [Workload SVID issuance](#5-workload-svid-issuance-ai-agent-identity).
 
 ```mermaid
 sequenceDiagram
@@ -349,12 +424,6 @@ sequenceDiagram
     AuthV-->>Admin: {"data":{"role_id":"..."}}
     Admin->>AuthV: POST /v1/auth/approle/role/spire-server/secret-id
     AuthV-->>Admin: {"data":{"secret_id":"...","secret_id_accessor":"..."}}
-    Admin->>AuthV: POST /v1/auth/approle/role/mistral-agents<br/>{token_ttl, token_policies, secret_id_ttl}
-    AuthV-->>Admin: 200 OK
-    Admin->>AuthV: GET /v1/auth/approle/role/mistral-agents/role-id
-    AuthV-->>Admin: {"data":{"role_id":"..."}}
-    Admin->>AuthV: POST /v1/auth/approle/role/mistral-agents/secret-id
-    AuthV-->>Admin: {"data":{"secret_id":"...","secret_id_accessor":"..."}}
 ```
 
 #### AppRole credentials — what `role_id` and `secret_id` mean
@@ -364,7 +433,7 @@ Two distinct kinds of "admin" appear in this integration — do not confuse them
 | Term                    | What it is                                                                                                  | Used for                                                                                 |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | **Auth-verifier admin** | A **human** administrator account (`Admin` struct) authenticated with username + password in the `_` realm. | Calling `POST /v1/auth/approle/role/{name}` and other role-management endpoints.         |
-| **AppRole**             | A **machine** identity with `role_id` + `secret_id` credentials. No relationship to the `Admin` concept.    | Used by SPIRE server and AI-agent workloads to obtain `hvs.*` tokens from auth-verifier. |
+| **AppRole**             | A **machine** identity with `role_id` + `secret_id` credentials. No relationship to the `Admin` concept.    | Used by the SPIRE server to obtain `hvs.*` tokens from auth-verifier.                   |
 
 An AppRole has three credentials, each with a distinct purpose and lifecycle:
 
@@ -378,7 +447,7 @@ An AppRole has three credentials, each with a distinct purpose and lifecycle:
 
 The `role_id` UUID is only used at login time to look up the AppRole record.
 What the KMS ultimately uses as the object owner is the AppRole **name** — a
-human-readable string like `"spire-server"` or `"mistral-agents"`.
+human-readable string like `"spire-server"` (or, per tenant, `"spire-server-a"`/`"spire-server-b"`).
 
 ```text
 ① SPIRE sends login:
@@ -396,12 +465,12 @@ human-readable string like `"spire-server"` or `"mistral-agents"`.
 
 The mapping from AppRole name to KMS owner is therefore 1-to-1:
 
-| AppRole name     | KMS `username`   | KMS objects owned                                                |
-| ---------------- | ---------------- | ---------------------------------------------------------------- |
-| `spire-server`   | `spire-server`   | Signed intermediate certificates (stored in KMS after `Certify`) |
-| `mistral-agents` | `mistral-agents` | Transit key pairs tagged `vault_transit:{name}`                  |
+| AppRole name       | KMS `username`     | KMS objects owned                                                                 |
+| ------------------ | ------------------ | --------------------------------------------------------------------------------- |
+| `spire-server-a`   | `spire-server-a`   | Signed intermediate certificates and transit key pairs owned by tenant A's server  |
+| `spire-server-b`   | `spire-server-b`   | Signed intermediate certificates and transit key pairs owned by tenant B's server  |
 
-`mistral-agents` cannot read, sign with, or delete objects owned by `spire-server`,
+`spire-server-a` cannot read, sign with, or delete objects owned by `spire-server-b`,
 and vice versa — each AppRole has a **fully isolated KMS object namespace**.
 
 > **PKI root CA exception.**
@@ -438,8 +507,9 @@ signed certificate itself (Vault ≥1.11 semantics).
 
 ### 3. Transit key lifecycle (KeyManager engine)
 
-Whether used by SPIRE's `KeyManager "vault"` plugin or by an application calling the
-Transit API directly, the lifecycle is the same:
+SPIRE's `KeyManager "vault"` plugin drives this engine. The lifecycle of a transit key
+is the same regardless of which AppRole-authenticated client (in practice, SPIRE's
+`KeyManager "vault"` plugin) calls it:
 
 ```mermaid
 sequenceDiagram
@@ -482,22 +552,42 @@ sequenceDiagram
 
 ### 5. Workload SVID issuance (AI agent identity)
 
-Once SPIRE is running, workloads never talk to Cosmian directly — they fetch identities
-from the local SPIRE Agent over the Workload API:
+JWT-SVIDs are signed by the **SPIRE Server** using its JWT signing key. When the
+`KeyManager "vault"` plugin is configured, that signing key lives exclusively in the KMS
+transit engine — the SPIRE Server calls `/v1/transit/sign/{name}/{hash_alg}` every time it
+mints a SVID. The KMS performs the cryptographic operation server-side and returns the
+signature; the private key never leaves the KMS.
+
+The workload itself only needs the SPIRE Agent unix socket — it never talks to the KMS
+directly for SVID issuance:
 
 ```mermaid
 sequenceDiagram
-    participant Agent as SPIRE Agent
     participant Workload as AI Agent Workload
-    participant Lib as spiffe (Python)
+    participant Agent as SPIRE Agent
+    participant Server as SPIRE Server
+    participant KMS as Eviden KMS<br/>(transit engine)
 
-    Note over Agent: Agent already attested to<br/>SPIRE Server (e.g. join_token)
-    Workload->>Lib: WorkloadApiClient(spiffe_socket)
-    Lib->>Agent: fetch JWT-SVID (unix socket)
-    Agent-->>Lib: JWT-SVID for spiffe://<trust-domain>/<workload-id>
-    Lib-->>Workload: SVID + claims
+    Workload->>Agent: fetch JWT-SVID (Workload API, unix socket)
+    Agent->>Server: request JWT-SVID for workload
+    Server->>KMS: POST /v1/transit/sign/{jwt-key}/{hash_alg}<br/>X-Vault-Token: hvs.xxxx<br/>{"input": "<base64 claims>", "prehashed": true}
+    Note over KMS: KMIP Sign — private key never leaves KMS
+    KMS-->>Server: {"data":{"signature":"vault:v1:<base64>"}}
+    Note over Server: assembles JWT: header.claims.<KMS signature>
+    Server-->>Agent: JWT-SVID (spiffe://trust-domain/workload-id)
+    Agent-->>Workload: JWT-SVID + JWKS bundle (for validation)
     Workload->>Workload: validate SPIFFE ID, trust domain, expiry
 ```
+
+The JWKS bundle (public key) used to **verify** the JWT-SVID is fetched from the SPIRE
+Server's trust bundle endpoint — which serves the public key corresponding to the transit
+key pair stored in the KMS. Only the KMS holds the private half.
+
+> **Why this matters for security:** even if the SPIRE Server process is compromised, the
+> attacker cannot extract the JWT signing key — it exists only as a KMIP `PrivateKey`
+> object with `sensitive=true` inside the KMS. They can call `/v1/transit/sign` while
+> their token is valid, but that window is bounded by `vault_token_ttl_secs` and closed
+> by revoking the AppRole `secret_id` (see [Incident response](#incident-response)).
 
 ## Quick start (local demo stack)
 
@@ -530,7 +620,8 @@ ckms --accept-invalid-certs \
   --subject-name "CN=Eviden KMS Root CA,O=Cosmian,C=FR" \
   --tag vault_pki_ca --days 3650
 
-# 1. Provision AppRoles (spire-server + mistral-agents)
+# 1. Provision AppRoles (one per SPIRE server tenant; the harness also mints a
+#    throwaway "mistral-agents" AppRole purely to smoke-test the transit engine)
 #    Admin API calls go directly to auth-verifier (port 8443).
 #    The smoke-test login uses the KMS vault_addr (port 9998), which proxies to auth-verifier.
 AUTH_VERIFIER_URL=https://localhost:8443 \
@@ -617,7 +708,7 @@ ckms vault approle create-role spire-prod --token-ttl 3600
 export VAULT_APPROLE_ID=$(ckms vault approle get-role-id spire-prod)
 echo "role_id: $VAULT_APPROLE_ID"
 
-# Mint a secret_id — regenerate this each time SPIRE restarts
+# Mint a secret_id — see §"Manage AppRole credentials" for rotation and automation guidance
 export VAULT_APPROLE_SECRET_ID=$(
   ckms vault approle generate-secret-id spire-prod \
     | awk '/^secret_id:/{print $2}')
@@ -753,7 +844,41 @@ spire-server run -config /etc/spire/server/server.conf
 
 ### 4. Manage AppRole credentials
 
-#### Rotate secret_id (before each SPIRE restart)
+#### Why rotate `secret_id`
+
+There are three distinct reasons, each with different urgency:
+
+| Trigger | When it bites | Action |
+|---------|--------------|--------|
+| **`secret_id_ttl` expiry** | The `secret_id` becomes invalid after the configured TTL. A running SPIRE server is unaffected (its Vault token is independent), but the *next restart* silently fails to log in — a time-bomb that strikes at the worst moment. | Rotate before the TTL expires **or** set `secret_id_ttl = 0` (no expiry). |
+| **Security hygiene / rotation policy** | Even with `secret_id_ttl = 0`, a leaked `secret_id` lets an attacker obtain tokens. Rotating it periodically limits the window during which a compromised credential is usable. | Rotate before every deployment, or on a schedule (e.g., 30 days). |
+| **Incident response** | If a `secret_id` is suspected to have leaked, revoking it via its `secret_id_accessor` immediately prevents any future login. The running SPIRE server's current token remains valid until it expires. | Revoke via `secret_id_accessor`; see [Incident response](#incident-response). |
+
+> **Production recommendation** — set `secret_id_ttl = 0` (no expiry) to eliminate the
+> time-bomb scenario. Rotate `secret_id` only on deployment and on security incidents.
+> Never set `num_uses = 1` for a long-lived SPIRE server: if SPIRE restarts unexpectedly
+> before a new `secret_id` is provisioned, it will fail to come back.
+
+#### Who rotates `secret_id`
+
+Only a **platform operator** with **management-plane** admin access to the auth-verifier
+can mint a new `secret_id`. The SPIRE server itself holds only data-plane credentials:
+it can log in and obtain tokens, but it cannot create roles or generate new secret_ids.
+This separation is intentional — but it means credential renewal requires an
+out-of-band administrative step that must be integrated into your deployment process.
+
+```text
+Platform operator  →  auth-verifier management API  →  new secret_id
+                       (POST /auth/approle/role/{name}/secret-id)
+
+Operator  →  injects new secret_id into SPIRE env  →  SPIRE restarts
+```
+
+The `secret_id_accessor` returned when the `secret_id` was minted is the only handle
+available to revoke it. **Store the accessor securely** — it is required for the
+incident-response procedure and has no other purpose.
+
+#### Rotate `secret_id` (CLI)
 
 ```bash
 # Option A — ckms
@@ -769,24 +894,182 @@ export VAULT_APPROLE_SECRET_ID=$(echo "$SECRET_RESP" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['secret_id'])")
 ```
 
-#### List roles
+After generating the new `secret_id`, update SPIRE's configuration or environment
+variable and restart the SPIRE server. The old `secret_id` remains valid until
+explicitly revoked via its accessor.
 
-```bash
-# Option A — ckms
-ckms vault approle list-roles
+#### Automation patterns
 
-# Option B — curl
-curl -s -b "$COOKIE_JAR" --cacert "$AUTH_CA" \
-  "$AUTH_URL/auth/approle/role?list=true"
+Because the SPIRE server cannot mint its own `secret_id`, renewal requires operator
+tooling. Choose the pattern that fits your infrastructure:
+
+| Pattern | How | When to use |
+|---------|-----|------------|
+| **`secret_id_ttl = 0`, manual rotation** | Never expire the `secret_id`; rotate only on deployment or incident. | Simplest; acceptable when deploy frequency is high relative to any rotation policy. |
+| **Pre-deployment CI pipeline** | Pipeline step calls `generate-secret-id`, writes result to a Kubernetes Secret or encrypted store, then restarts SPIRE. | Best fit for GitOps-style deployments where SPIRE is redeployed on every release. |
+| **Kubernetes Operator (recommended)** | The [Cosmian KMS Kubernetes Operator](kubernetes/operator.md) calls `generate-secret-id`, materialises the result as a `Secret`, and triggers a rolling restart — all declaratively. | Best for Kubernetes-native teams; no imperative scripts. |
+| **External Secrets Operator (ESO)** | ESO `PushSecret` or a custom generator calls `POST /auth/approle/role/{name}/secret-id` on the auth-verifier and writes the result to a K8s Secret. | Kubernetes teams already running ESO; requires a custom generator since the auth-verifier is not a vanilla Vault. |
+| **PAM-orchestrated rotation (Segura, CyberArk, etc.)** | The PAM's rotation workflow calls `POST /auth/approle/role/{name}/secret-id` on the auth-verifier, vaults the result, then delivers the new `secret_id` to SPIRE and triggers a restart. | Enterprise environments where a PAM already owns credential lifecycle and audit trails. Full TISAX-compliant session recording. |
+| **`num_uses = 1` (one-shot)** | Mint a single-use `secret_id` immediately before each restart; SPIRE consumes it at login. | Strongest security posture; requires tight coupling between the operator and restart orchestration. Not suitable if SPIRE may restart unexpectedly. |
+
+---
+
+#### PAM integration (Segura, CyberArk, and equivalents)
+
+A Privileged Access Manager (PAM) such as Segura is a natural fit for AppRole credential
+lifecycle management: it already owns privileged account inventory, rotation schedules,
+and full audit recording (required for TISAX). The integration is **entirely on the PAM
+configuration side** — no KMS code changes are required.
+
+##### How it works
+
+The PAM takes on the role that the Kubernetes Operator plays in simpler deployments: it
+calls the auth-verifier management API on a schedule (or on demand), vaults the result,
+and delivers it to SPIRE.
+
+```mermaid
+sequenceDiagram
+    participant PAM as PAM (Segura / CyberArk)
+    participant AuthV as auth-verifier<br/>(management plane)
+    participant Vault as PAM Secret Store
+    participant SPIRE as SPIRE server
+
+    Note over PAM: Rotation trigger (schedule or incident)
+
+    PAM->>AuthV: POST /login?realm=_<br/>(HTTP Basic: admin credentials)
+    AuthV-->>PAM: session cookie
+
+    PAM->>AuthV: POST /auth/approle/role/{name}/secret-id<br/>(session cookie, {"ttl":0,"num_uses":0})
+    AuthV-->>PAM: {"data":{"secret_id":"<new>","secret_id_accessor":"<accessor>"}}
+
+    PAM->>Vault: Store secret_id + secret_id_accessor<br/>(tagged: role={name}, rotated_at=now)
+    Note over Vault: Previous secret_id_accessor archived<br/>(kept for emergency revocation)
+
+    PAM->>SPIRE: Deliver new secret_id<br/>(inject into SPIRE env/config)
+    PAM->>SPIRE: Trigger restart (kubectl rollout restart,<br/>systemd restart, or equivalent)
+
+    Note over SPIRE: Restarts, logs in with new secret_id<br/>POST /v1/auth/approle/login → new token
 ```
 
-#### Delete a role
+##### What the PAM must store
+
+| Item | Where in PAM | Purpose |
+|---|---|---|
+| `role_id` | PAM account record for `spire-{name}` | Stable — never changes; used at every login |
+| `secret_id` | PAM secret (rotated on schedule) | Delivered to SPIRE env before each restart |
+| `secret_id_accessor` | PAM secret, archived with timestamp | Emergency revocation handle — `POST /auth/approle/role/{name}/secret-id-accessor/destroy` |
+| auth-verifier admin credential | PAM account (privileged) | Required to call the management API; must be a strong credential, session-recorded |
+
+##### Required API calls (in order)
+
+The PAM needs to make exactly two HTTP calls to the **auth-verifier** (not the KMS):
+
+**Step 1 — Admin login** (once per rotation workflow execution):
+
+```http
+POST /login?realm=_
+Host: auth-verifier.internal:8443
+Authorization: Basic <base64(admin_user:admin_password)>
+Content-Type: application/json
+
+{}
+```
+
+Response: `Set-Cookie: session=<cookie>` — valid for the duration of the rotation session.
+
+**Step 2 — Generate new `secret_id`** (once per AppRole being rotated):
+
+```http
+POST /auth/approle/role/{name}/secret-id
+Host: auth-verifier.internal:8443
+Cookie: session=<cookie>
+Content-Type: application/json
+
+{"ttl": 0, "num_uses": 0}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "secret_id": "b4a3c2d1-...",
+    "secret_id_accessor": "f9e8d7c6-..."
+  }
+}
+```
+
+The **accessor** is the only handle available to revoke this specific `secret_id` without
+deleting the entire AppRole. Store it in the PAM alongside the `secret_id` it identifies.
+
+##### Delivering the `secret_id` to SPIRE
+
+After vaulting the new credentials, the PAM must update SPIRE's configuration.
+The exact mechanism depends on the deployment:
+
+| Deployment | Delivery method |
+|---|---|
+| Kubernetes | Patch the `Secret` that SPIRE reads via `secretKeyRef`, then `kubectl rollout restart deployment/spire-server` |
+| Systemd on VM | Write to the env file that `ExecStart` sources (e.g. `/etc/spire/approle.env`), then `systemctl restart spire-server` |
+| Docker Compose | Update the `.env` file, then `docker compose restart spire-server` |
+
+> **Important**: the SPIRE server **must be restarted** after the credential is updated.
+> A running SPIRE server holds a live Vault token — it does not re-read `secret_id` from
+> disk until the next login, which only happens on restart. The restart is therefore
+> **part of the rotation**, not optional cleanup.
+
+##### PAM session recording and TISAX audit
+
+Every rotation workflow execution runs as a PAM-brokered privileged session:
+
+- The admin credential used to call the auth-verifier is vaulted in the PAM — operators
+  never see it in plaintext.
+- The session is recorded end-to-end: which PAM user triggered the rotation, at what time,
+  what responses were received.
+- The `secret_id_accessor` provides a correlation handle: if a `secret_id` is later found
+  to have been misused, the accessor links the credential back to the rotation session that
+  created it.
+
+This satisfies TISAX's non-repudiation requirements for privileged access to identity
+infrastructure without requiring any custom audit hook in the KMS or auth-verifier.
+
+---
+
+**Kubernetes Operator (recommended):**
+
+The [Cosmian KMS Kubernetes Operator](kubernetes/operator.md) is the recommended approach
+for Kubernetes deployments. It handles the full lifecycle declaratively — no imperative
+scripts, no image pinning, no RBAC for `kubectl` inside a Job:
+
+1. The Operator's `KMSSecret` custom resource calls `POST /auth/approle/role/{name}/secret-id`
+   on the auth-verifier on the configured schedule and materialises the result as a
+   Kubernetes `Secret`.
+2. An `AppRoleRotation` annotation on the SPIRE `Deployment` tells the Operator to trigger
+   a rolling restart automatically once the `Secret` is updated.
+3. The previous `secret_id_accessor` is archived in the Operator's own state for emergency
+   revocation.
+
+See [Cosmian KMS Kubernetes Operator — AppRole rotation](kubernetes/operator.md#approle-rotation)
+for the full configuration reference.
+
+> **Non-Kubernetes environments** (VMs, bare-metal): use the PAM-orchestrated pattern
+> described above, or a CI/CD pipeline step that calls `ckms vault approle generate-secret-id`
+> and injects the result before restarting the workload identity server process.
+
+#### List and delete roles
 
 ```bash
-# Option A — ckms
+# List all AppRoles
+ckms vault approle list-roles
+
+# curl equivalent
+curl -s -b "$COOKIE_JAR" --cacert "$AUTH_CA" \
+  "$AUTH_URL/auth/approle/role?list=true"
+
+# Delete a role (destroys all its secret_ids and revokes any outstanding tokens)
 ckms vault approle delete-role spire-prod
 
-# Option B — curl
+# curl equivalent
 curl -s -b "$COOKIE_JAR" --cacert "$AUTH_CA" -X DELETE \
   "$AUTH_URL/auth/approle/role/spire-prod"
 ```
@@ -910,8 +1193,8 @@ The guarantee holds because:
    WHERE (objects.owner = :username OR read_access.userid = :username)
    ```
 
-A token for `"mistral-agents"` therefore returns an empty result set for any object owned
-by `"spire-server"` — not a 403, but a 404 (object not found).
+A token for `"spire-server-b"` therefore returns an empty result set for any object owned
+by `"spire-server-a"` — not a 403, but a 404 (object not found).
 This is enforced at the database layer and cannot be circumvented by manipulating HTTP headers.
 
 > **⚠ Do not set `KMS_FORCE_DEFAULT_USERNAME=true`** (or `--force-default-username`) on a
@@ -956,6 +1239,176 @@ This is enforced at the database layer and cannot be circumvented by manipulatin
   keys for the same logical SPIRE key id are created within the same wall-clock second,
   SPIRE's newest-key tiebreak may be non-deterministic. Operators should avoid sub-second
   rotation cycles until this is resolved.
+
+### Incident response
+
+This section answers the two most critical security questions for operators:
+**what happens when a SPIRE server is compromised**, and **how to bound
+the damage while waiting for a revoked certificate to expire**.
+
+#### Background: what a compromised SPIRE server can do
+
+A SPIRE server holds:
+
+1. **AppRole credentials** (`role_id` + `secret_id`) — used to authenticate to the KMS
+   and request a fresh intermediate CA certificate.
+2. **A live `X-Vault-Token`** — valid for `vault_token_ttl_secs` seconds (default: 1 hour).
+3. **The ability to issue SVIDs** to any workload whose SPIRE registration entry it controls.
+
+An attacker who controls the SPIRE server process can therefore:
+
+- Request new intermediate CA certificates (until the AppRole is revoked).
+- Issue SVIDs to any registered workload identity — allowing impersonation.
+- Perform transit operations (sign, encrypt) under the `spire-server` AppRole — but **only on objects it owns**.
+  It cannot touch transit keys of other tenants' AppRoles (e.g. `spire-server-b`).
+
+It **cannot**:
+
+- Extract or export the KMS CA private key (KMIP `Sensitive` attribute blocks all export).
+- Access objects owned by other AppRoles — the KMS database enforces strict per-owner isolation.
+- Forge a token for a different AppRole — the auth-verifier issues tokens, not the SPIRE server.
+
+---
+
+#### Step-by-step: responding to a compromised SPIRE server
+
+##### Step 1 — Cut access immediately (revoke the `secret_id`)
+
+The `secret_id_accessor` is the revocation handle you saved when you created the AppRole.
+Revoking it means the SPIRE server cannot log in again once its current token expires.
+
+```bash
+# ckms
+ckms vault approle destroy-secret-id spire-prod \
+  --accessor <accessor-uuid>
+
+# curl
+curl -s -b "$COOKIE_JAR" --cacert "$AUTH_CA" \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"secret_id_accessor":"<accessor-uuid>"}' \
+  "$AUTH_URL/auth/approle/role/spire-prod/secret-id-accessor/destroy"
+```
+
+> **If you did not save the accessor**, delete and re-create the entire AppRole.
+> This is more disruptive but equally effective.
+
+```bash
+ckms vault approle delete-role spire-prod
+ckms vault approle create-role spire-prod   # then re-provision SPIRE
+```
+
+##### Step 2 — Wait for the live token to expire (or force-revoke it)
+
+Revoking the `secret_id` stops *future* logins. The token the attacker already holds
+remains valid for up to `vault_token_ttl_secs` seconds (default 1 h, configurable).
+
+If you know the token value, revoke it immediately:
+
+```bash
+# The compromised SPIRE server's token
+curl -s -H "X-Vault-Token: hvs.ATTACKER_TOKEN" \
+  -X POST https://<kms>:9998/v1/auth/token/revoke-self
+```
+
+If you do not know the token, lower `vault_token_cache_ttl_secs` to `0` in `kms.toml`
+and restart the KMS. This forces a live lookup on every request — any token already
+invalidated by the auth-verifier will be rejected immediately instead of being served
+from cache.
+
+##### Step 3 — Rotate the intermediate CA key
+
+Even if the attacker never extracted the CA private key (they cannot — the KMS blocks
+export), SPIRE may have signed intermediate certificates under that key. Rotating the
+key label invalidates all trust chains that reference the old intermediate.
+
+```bash
+# 1. Create a new CA key pair with a new label
+ckms certificates certify \
+  --generate-key-pair --algorithm nist-p384 \
+  --tag vault_pki_ca_new \
+  --subject-name "CN=Cosmian KMS Root CA v2,O=Cosmian,C=FR" \
+  --days 3650
+
+# 2. Update kms.toml: vault_pki_ca_key_label = "vault_pki_ca_new"
+# 3. Restart the KMS
+```
+
+After the restart, the old label (`vault_pki_ca`) is orphaned in the KMS database but
+no longer reachable via the PKI endpoint.
+
+##### Step 4 — Re-provision the legitimate SPIRE server
+
+```bash
+# Generate a new secret_id for the legitimate SPIRE server
+ckms vault approle generate-secret-id spire-prod
+
+# Update SPIRE server config with the new secret_id and the new CA label, then restart
+```
+
+##### Step 5 — Re-attest all SPIRE agents
+
+SPIRE agents that were attested to the compromised SPIRE server must be re-attested to
+the new server. The fastest path is to:
+
+1. Restart the SPIRE server with a fresh join token.
+2. Clear each agent's data directory (`/var/lib/spire/agent` or wherever `data_dir` points).
+3. Restart each agent — it will re-attest and fetch a fresh SVID.
+
+---
+
+#### Certificate revocation and blast-radius control
+
+SVIDs are short-lived X.509 certificates issued by the SPIRE agent to workloads.
+A workload that already holds an SVID from a compromised SPIRE server will
+**continue to present that SVID successfully until it expires** — even after you
+have revoked the SPIRE server's AppRole and rotated the CA key.
+
+The blast radius is therefore bounded by the **SVID TTL**, not by the revocation event.
+
+| SVID TTL (`svid_ttl` in SPIRE agent config) | Maximum post-revocation exposure |
+|----|---|
+| 1 hour (SPIRE default) | Up to 1 hour |
+| 24 hours | Up to 24 hours |
+| 1 hour with SPIFFE federation rotation | Until trust bundle propagates (minutes) |
+
+**Operational recommendation: keep SVIDs short-lived.**
+
+Set `svid_ttl` in your SPIRE agent configuration to the shortest value your workloads
+can tolerate. One hour is a reasonable default for most services. For high-security
+workloads, 5–15 minutes is achievable with modern SPIRE versions without meaningful
+overhead.
+
+```hcl
+# spire-agent.conf
+agent {
+  svid_ttl = "1h"   # ← keep this short; it is your blast-radius ceiling
+  ...
+}
+```
+
+**Why rotating the CA key (Step 3) does help, eventually:**
+
+When the KMS CA key label changes, the *new* intermediate CA certificate issued by
+the re-provisioned SPIRE server has a different issuer chain. Validators that refresh
+their trust bundle from SPIRE (which they do on every SVID renewal) will eventually
+only trust the new chain. Old SVIDs signed under the old intermediate will stop being
+accepted once:
+
+- The validator re-fetches its trust bundle from SPIRE (happens on SVID renewal), **and**
+- The old SVID's TTL expires (the validator may cache the old bundle for one renewal cycle).
+
+---
+
+#### Summary: the three knobs that control blast radius
+
+| Knob | Where to set it | Effect |
+|---|---|---|
+| `svid_ttl` | SPIRE agent `agent.conf` | Caps how long a stolen SVID remains valid |
+| `vault_token_ttl_secs` | KMS `kms.toml` | Caps how long a stolen AppRole token lets the attacker sign new intermediates |
+| `vault_token_cache_ttl_secs` | KMS `kms.toml` | Caps revocation propagation delay (set to `0` during an incident for immediate effect) |
+
+All three are configurable without code changes. Keep them as short as your workloads
+and network latency allow.
 
 ## Adversarial test coverage
 

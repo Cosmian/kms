@@ -23,6 +23,13 @@ Once the KMS server is running on Kubernetes you can enable the other integratio
     an external database. Refer to the [High Availability guide](../../installation/high_availability_mode.md)
     for architecture details.
 
+!!! warning "Audit logging and multiple replicas"
+    If you enable audit logging, do not point multiple replicas at the same audit file (e.g. a
+    shared PVC). The file backend is not safe for concurrent writers from different pods — only
+    one replica will actually log events. Keep audit files per-pod (the chart default) and ship
+    them off with a sidecar/log agent, or wait for the PostgreSQL audit backend for a single
+    consolidated trail.
+
 ## Container images
 
 The KMS container images are published to the GitHub Container Registry (GHCR),
@@ -137,7 +144,7 @@ helm install my-kms cosmian/cosmian-kms \
 
 ## Configuration
 
-See [`values.yaml`](https://github.com/Cosmian/kms/tree/feat/k8s-kms-plugin/charts/cosmian-kms/values.yaml)
+See [`values.yaml`](https://github.com/Cosmian/kms/blob/develop/charts/cosmian-kms/values.yaml)
 for the full list of configurable parameters. Key settings:
 
 | Key | Description |
@@ -158,7 +165,7 @@ for the full list of configurable parameters. Key settings:
 
 Every `kms.*` value maps to a `KMS_*` environment variable or CLI flag consumed
 directly by the `cosmian_kms` binary. See
-[`crate/server/src/config/command_line/`](https://github.com/Cosmian/kms/tree/feat/k8s-kms-plugin/crate/server/src/config/command_line)
+[`crate/server/src/config/command_line/`](https://github.com/Cosmian/kms/tree/main/crate/server/src/config/command_line)
 in the main repository for the authoritative list.
 
 ## Upgrading

@@ -4,9 +4,9 @@
 **Standard**: OWASP Top 10 (2021) + OWASP ASVS v4.0 (selective)
 **Repository**: `Eviden/kms` — branch `develop`
 **Workspace root**: `crate/` (Rust workspace) + `ui/` (React/TypeScript)
-**Audit date**: 2026-06-05 (re-run with remediation verification: 2026-04-14)
+**Audit date**: 2026-08-18 (re-run with remediation verification: 2026-04-14)
 **Auditor(s)**: GitHub Copilot (automated static analysis)
-**Status**: ☑ Complete — automated pass (audit.sh ran 2026-06-05)
+**Status**: ⚠️ Incomplete — 2 check(s) FAILED (audit.sh ran 2026-08-18)
 
 ## Tools available during this audit
 
@@ -982,7 +982,7 @@ Key design decisions with security implications:
 | `Get` → all operations | `user_has_permission()` | Anyone with `Get` can Encrypt/Decrypt/Sign/Export |
 | Wildcard `"*"` stores Create perm | DB schema | User with Create on `"*"` can create unlimited objects |
 | `force_default_username=true` | `kms.get_user()` | Discards all user identities — complete authorization bypass |
-| `privileged_users` list | `clap_config.rs` | Members bypass Create/Import permission checks |
+| `crypto_officer_users` list | `clap_config.rs` | Members bypass Create/Import permission checks |
 | `EnsureAuth` fallback | `ensure_auth.rs` | Default single-user mode if no auth is configured |
 
 ### 12.2 Scope
@@ -994,7 +994,7 @@ Key design decisions with security implications:
 | Permission data types | `crate/access/src/access.rs` |
 | SQL permission queries | `crate/server_database/src/stores/sql/` — permissions table |
 | Redis permission store | `crate/server_database/src/stores/redis/permissions.rs` |
-| Privilege config (`force_default_username`, `privileged_users`) | `crate/server/src/config/command_line/clap_config.rs` |
+| Privilege config (`force_default_username`, `crypto_officer_users`) | `crate/server/src/config/command_line/clap_config.rs` |
 | Create / Import authorization | `crate/server/src/core/operations/create.rs`, `import.rs`, `register.rs` |
 | Delegation controls | `crate/server/src/core/kms/permissions.rs` — `grant_access()`, `revoke_access()` |
 
@@ -1002,7 +1002,7 @@ Key design decisions with security implications:
 
 ```bash
 # Step 1 — Map every bypass mechanism and their activation conditions
-grep -n "force_default_username\|privileged_users\|default_username" \
+grep -n "force_default_username\|crypto_officer_users\|default_username" \
   crate/server/src/config/command_line/clap_config.rs \
   crate/server/src/core/kms/permissions.rs
 
@@ -1016,7 +1016,7 @@ grep -n "owner\|is_object_owned_by\|user.*==.*owner\|owner.*==" \
 grep -n "KmipOperation::Get\|contains.*Get\|implies\|all.*ops" \
   crate/server/src/core/retrieve_object_utils.rs
 
-# Step 4 — Wildcard "*" permission for Create: only privileged_users may grant it
+# Step 4 — Wildcard "*" permission for Create: only crypto_officer_users may grant it
 grep -n '"\\*"\|wildcard\|Create\|privileged\|grant_access\|is_create' \
   crate/server/src/core/kms/permissions.rs \
   crate/server/src/core/operations/create.rs \
@@ -1058,10 +1058,10 @@ cat crate/server/src/middlewares/ensure_auth.rs
 ### 12.4 Checklist
 
 - [ ] `force_default_username=true` cannot be set via any unauthenticated endpoint or environment variable injection
-- [ ] `privileged_users` list is logged at startup so admins can detect unauthorized changes
+- [ ] `crypto_officer_users` list is logged at startup so admins can detect unauthorized changes
 - [ ] `Get` → all-operations implicit grant is intentional, documented, and cannot cross user boundaries
 - [ ] A non-owner holding `Get` permission **cannot** call `grant_access()` to escalate other users
-- [ ] A user cannot grant `Create` permission to themselves or others unless they are in `privileged_users`
+- [ ] A user cannot grant `Create` permission to themselves or others unless they are in `crypto_officer_users`
 - [ ] `/health`, `/version`, `/server-info` return no object metadata, user identities, or internal state
 - [ ] Enterprise routes (XKS, EKM, CSE, DKE) authenticate independently and cannot reach standard KMIP key material without passing the full KMIP auth chain
 - [ ] KMIP lifecycle transitions from `Compromised` or `Destroyed` are irreversible and enforced at DB level
@@ -1084,8 +1084,8 @@ Status: ⚠️ Review needed
 | EXT0-1 | `retrieve_object_utils.rs:191` | Medium | `permissions.contains(&KmipOperation::Get)` is used as the universal "has some access" check. Any user with `Get` permission on an object is treated as having permission for ALL operations on it (Encrypt, Decrypt, Sign, Verify, GetAttributes, etc.). This is an intentional design decision but undocumented as a security policy. It makes permission grants broader than the receiver may expect. |
 | EXT0-2 | `core/kms/permissions.rs:23–100` | ✅ | `grant_access()` correctly enforces: (1) only the owner can grant, (2) `Create` can only be granted by privileged users to non-privileged users, (3) self-grant is prevented. Logic is sound. |
 | EXT0-3 | `config/command_line/clap_config.rs` | ✅ | `force_default_username` defaults to `false`. When `false`, the authenticated user's identity is used. No anonymous or identity-collapse by default. |
-| EXT0-4 | `config/command_line/clap_config.rs` | ✅ | `privileged_users` defaults to `None` (empty list). Privilege escalation via config is absent by default. |
-| EXT0-5 | `core/kms/permissions.rs` — wildcard `"*"` | ✅ | The `"*"` wildcard Create permission is documented and guarded: only `privileged_users` can grant Create, and it cannot be granted to another privileged user. Correct. |
+| EXT0-4 | `config/command_line/clap_config.rs` | ✅ | `crypto_officer_users` defaults to `None` (empty list). Privilege escalation via config is absent by default. |
+| EXT0-5 | `core/kms/permissions.rs` — wildcard `"*"` | ✅ | The `"*"` wildcard Create permission is documented and guarded: only `crypto_officer_users` can grant Create, and it cannot be granted to another privileged user. Correct. |
 
 **Recommended fix**:
 

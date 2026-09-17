@@ -1,11 +1,13 @@
 import { DownloadOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
 import { Alert, Button, Layout, Spin, Switch, Tag } from "antd";
 import React, { useCallback, useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "../../contexts/useAuth";
 import Footer from "./Footer";
 import Header, { ServerInfo } from "./Header";
 import Sidebar from "./Sidebar";
+import LanguageSwitcher from "../common/LanguageSwitcher";
 import { AuthMethod, getNoTTLVRequest, getNoTTLVRequestWithTimeout } from "../../utils/utils";
 
 type MainLayoutProps = {
@@ -13,15 +15,18 @@ type MainLayoutProps = {
     setIsDarkMode: (value: boolean) => void;
     authMethod: AuthMethod;
     wasmError: boolean;
+    /** Defined only when CERT is active and other methods are also configured. */
+    onCertLogout?: () => void;
 };
 
-const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, authMethod, wasmError }) => {
+const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, authMethod, wasmError, onCertLogout }) => {
     const [serverVersion, setServerVersion] = useState("");
     const [serverHealth, setServerHealth] = useState<string>("");
     const [serverHealthLatencyMs, setServerHealthLatencyMs] = useState<number | null>(null);
     const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const { logout, serverUrl, userId } = useAuth();
+    const { t } = useTranslation("layout");
     const [downloadTarget, setDownloadTarget] = useState<string>();
     const [currentUser, setCurrentUser] = useState<string | null>(null);
 
@@ -29,7 +34,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
     const isServerHealthy = normalizedServerHealth === "UP";
 
     const serverHealthLabel =
-        serverHealthLatencyMs === null ? `Health DB: ${serverHealth}` : `Health DB: ${serverHealth} (${serverHealthLatencyMs}ms)`;
+        serverHealthLatencyMs === null
+            ? t("main.healthDb", { status: serverHealth })
+            : t("main.healthDbWithLatency", { status: serverHealth, latency: serverHealthLatencyMs });
     const serverHealthMarker = isServerHealthy ? "🟢" : "🔴";
 
     const fetchServerInfo = useCallback(async () => {
@@ -38,7 +45,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                 const version = await getNoTTLVRequest("/version", serverUrl);
                 setServerVersion(version);
                 const health = await getNoTTLVRequestWithTimeout("/health", serverUrl, 2_000);
-                setServerHealth(health?.status ?? "Unavailable");
+                setServerHealth(health?.status ?? t("main.unavailable"));
                 setServerHealthLatencyMs(typeof health?.latency_ms === "number" ? health.latency_ms : null);
                 const info = await getNoTTLVRequest("/server-info", serverUrl);
                 setServerInfo(info as ServerInfo);
@@ -54,8 +61,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                     setCurrentUser((info as ServerInfo).default_username ?? null);
                 }
             } catch {
-                setServerVersion("Unavailable");
-                setServerHealth("Unavailable");
+                setServerVersion(t("main.unavailable"));
+                setServerHealth(t("main.unavailable"));
                 setServerHealthLatencyMs(null);
             } finally {
                 setLoading(false);
@@ -63,7 +70,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
         } else {
             setLoading(false);
         }
-    }, [authMethod, serverUrl]);
+    }, [authMethod, serverUrl, t, userId]);
 
     const downloadCliUrl = "/download-cli";
 
@@ -97,12 +104,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
 
     return (
         <Layout>
-            <Layout.Header className="fixed w-full z-10 p-0 h-16 border-b flex items-center justify-between border-gray-300">
+            <Layout.Header className="fixed w-full z-10 p-0 h-16 border-b flex items-center justify-between border-gray-300 dark:border-gray-700">
                 <div className="flex items-center w-full h-full">
                     <Header isDarkMode={isDarkMode} serverInfo={serverInfo} />
                     {import.meta.env.VITE_DEV_MODE === "true" && (
                         <Alert
-                            message="DEV unrestricted mode running"
+                            message={t("main.devUnrestricted")}
                             type="info"
                             showIcon
                             closable
@@ -111,13 +118,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                         />
                     )}
                     <div className="flex items-center h-full ml-auto" style={{ gap: "16px" }}>
-                        {downloadTarget && (
-                            <Link to={downloadTarget} target="_blank">
-                                <Button type="primary" shape="round" icon={<DownloadOutlined />}>
-                                    Download CLI
-                                </Button>
-                            </Link>
-                        )}
+                        <LanguageSwitcher />
                         <Switch
                             className="w-20"
                             checked={isDarkMode}
@@ -125,6 +126,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                             checkedChildren={<MoonOutlined />}
                             unCheckedChildren={<SunOutlined />}
                         />
+                        {downloadTarget && (
+                            <Link to={downloadTarget} target="_blank">
+                                <Button type="primary" shape="round" icon={<DownloadOutlined />}>
+                                    {t("main.downloadCli")}
+                                </Button>
+                            </Link>
+                        )}
                         {authMethod === "JWT" || authMethod === "AUTH_VERIFIER" ? (
                             <div className="flex justify-center items-center h-full overflow-hidden ml-4">
                                 {userId && (
@@ -133,22 +141,29 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                     </Tag>
                                 )}
                                 <Button onClick={handleLogout} className="w-18 ml-4" data-testid="logout-btn">
-                                    Logout
+                                    {t("main.logout")}
                                 </Button>
                             </div>
                         ) : (
-                            currentUser && (
-                                <Tag className="truncate text-sm leading-tight ml-4" color="green">
-                                    {currentUser}
-                                </Tag>
-                            )
+                            <div className="flex justify-center items-center h-full overflow-hidden ml-4">
+                                {currentUser && (
+                                    <Tag className="truncate text-sm leading-tight" color="green">
+                                        {currentUser}
+                                    </Tag>
+                                )}
+                                {onCertLogout && (
+                                    <Button onClick={onCertLogout} className="w-18 ml-4" data-testid="logout-btn">
+                                        Logout
+                                    </Button>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>
             </Layout.Header>
 
             <Layout id="main-page" className="overflow-hidden" style={{ marginTop: 64, height: "calc(100vh - 64px)" }}>
-                <Sidebar isFips={serverInfo?.fips_mode ?? false} />
+                <Sidebar isFips={serverInfo?.fips_mode ?? false} isDarkMode={isDarkMode} />
                 <Layout id="main-center" className="flex flex-col overflow-hidden">
                     <Layout.Content id="main-content" className="flex-grow overflow-auto p-4">
                         {authMethod === "None" && (
@@ -157,11 +172,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                 showIcon
                                 banner
                                 className="mb-4"
-                                message={<span className="text-yellow-900 font-bold">Authentication is disabled on this KMS server</span>}
+                                message={
+                                    <span className="text-yellow-900 dark:text-yellow-200 font-bold">{t("main.authDisabledTitle")}</span>
+                                }
                                 description={
-                                    <span className="text-yellow-900">
-                                        This KMS server was started without authentication method configured.
-                                    </span>
+                                    <span className="text-yellow-900 dark:text-yellow-200">{t("main.authDisabledDescription")}</span>
                                 }
                             />
                         )}
@@ -170,16 +185,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                 type="warning"
                                 showIcon
                                 message={
-                                    <span className="text-yellow-900 font-bold">
-                                        WebAssembly is not available. It may be blocked by an extension, disabled manually, or restricted by
-                                        a security policy.
-                                    </span>
+                                    <span className="text-yellow-900 dark:text-yellow-200 font-bold">{t("main.wasmUnavailableTitle")}</span>
                                 }
                                 description={
-                                    <span className="text-yellow-900">
-                                        Please enable WASM in your browser and refresh this page to be able to use the KMS UI. In Firefox,
-                                        you can enable it by setting <code>javascript.options.wasm</code> = true in{" "}
-                                        <code>about:config</code>.
+                                    <span className="text-yellow-900 dark:text-yellow-200">
+                                        <Trans i18nKey="main.wasmUnavailableDescription" ns="layout" components={{ code: <code /> }} />
                                     </span>
                                 }
                             />

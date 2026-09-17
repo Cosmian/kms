@@ -28,6 +28,7 @@ use crate::core::cover_crypt::create_user_decryption_key;
 use crate::{
     core::{KMS, wrapping::unwrap_object},
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -51,7 +52,12 @@ impl KMS {
     /// * `params` - Extra parameters for the store
     /// # Errors
     /// If the object is not a key object
-    pub async fn get_unwrapped(&self, uid: &str, object: &Object, user: &str) -> KResult<Object> {
+    pub async fn get_unwrapped(
+        &self,
+        uid: &str,
+        object: &Object,
+        user: &UserId,
+    ) -> KResult<Object> {
         // Is this an unwrapped key?
         if !object.is_wrapped() {
             // already an unwrapped key
@@ -231,7 +237,7 @@ impl KMS {
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     ///
     /// Only Covercrypt user decryption keys can be created using this function
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async)] // signature must match the non-fips async variant of this function
     #[cfg(not(feature = "non-fips"))]
     pub(crate) async fn create_private_key_and_tags(
         &self,
@@ -349,7 +355,7 @@ impl KMS {
     pub(crate) async fn create_private_key_and_tags(
         &self,
         create_request: &Create,
-        owner: &str,
+        owner: &UserId,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;
@@ -523,7 +529,7 @@ impl KMS {
         &self,
         op_name: &str,
         op_start: std::time::Instant,
-        user: &str,
+        user: &UserId,
     ) {
         if let Some(metrics) = &self.metrics {
             metrics.record_kmip_operation(op_name, user);

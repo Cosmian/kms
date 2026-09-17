@@ -403,7 +403,51 @@ impl ObjectsDB {
     /// This is O(N) over the keyspace and decrypts every object — it is
     /// expensive by design and must only be called once (when the counter key is
     /// absent).  After this call the incremental counter path takes over.
+    /// Scan every `do::*` key and return (uid, `[``RedisDbObject``]`) pairs for all objects.
     ///
+    /// Corrupt or foreign blobs are skipped with a `debug!` log.
+    pub(crate) async fn scan_all_objects(&self) -> DbResult<Vec<(String, RedisDbObject)>> {
+        let mut results = Vec::new();
+        let mut cursor: u64 = 0;
+        loop {
+            let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg("do::*")
+                .arg("COUNT")
+                .arg(SCAN_BATCH_HINT)
+                .query_async(&mut self.mgr.clone())
+                .await?;
+
+            if !keys.is_empty() {
+                let mut pipeline = pipe();
+                for key in &keys {
+                    pipeline.get(key);
+                }
+                let values: Vec<Vec<u8>> = pipeline.query_async(&mut self.mgr.clone()).await?;
+
+                for (key, ciphertext) in keys.iter().zip(values) {
+                    if ciphertext.is_empty() {
+                        continue;
+                    }
+                    let uid = key.strip_prefix("do::").unwrap_or(key.as_str());
+                    match self.decrypt_object(uid, &ciphertext) {
+                        Ok(obj) => results.push((uid.to_owned(), obj)),
+                        Err(e) => {
+                            debug!("[redis-scan-all] skipping key {key}: {e}");
+                        }
+                    }
+                }
+            }
+
+            cursor = next_cursor;
+            if cursor == 0 {
+                break;
+            }
+        }
+        Ok(results)
+    }
+
     /// # Decryption errors
     ///
     /// A single corrupt or foreign blob does not abort the scan: it is skipped

@@ -1,39 +1,4 @@
-//! Hardware Security Module (HSM) Session Implementation
-//!
-//! This module provides the implementation of a session with a Hardware Security Module (HSM)
-//! following the PKCS#11 standard. It includes functionality for:
-//!
-//! - Managing HSM session lifecycle (creation, authentication, closure)
-//! - Object handling (creation, deletion, listing)
-//! - Cryptographic operations (encryption, decryption)
-//! - Key management (export, metadata retrieval)
-//!
-//! The implementation supports various cryptographic algorithms, including:
-//! - AES-GCM for symmetric encryption
-//! - RSA PKCS#1 v1.5 and OAEP for asymmetric encryption
-//!
-//! # Key Features
-//!
-//! - Session management with HSM devices
-//! - Object handle caching for improved performance
-//! - Support for both symmetric and asymmetric cryptographic operations
-//! - Key export capabilities with security controls
-//! - Comprehensive error handling
-//!
-//! # Security Considerations
-//!
-//! - Sensitive key material is protected using the `Zeroizing` type
-//! - Login state is tracked to ensure proper session closure
-//! - Object handle caching is thread-safe using `Arc`
-//!
-//! # Examples
-//!
-//! ```no_run
-//! use hsm::Session;
-//!
-//! let session = Session::new(hsm, session_handle, cache, true);
-//! let random_bytes = session.generate_random(32)?;
-//! ```
+//! PKCS#11 session implementation for HSM interaction.
 
 use std::{
     cmp::min,
@@ -129,70 +94,7 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
     }
 }
 
-/// A session with an HSM (Hardware Security Module) that implements PKCS#11 interface.
-///
-/// This structure represents an active connection to the HSM and provides methods to
-/// perform cryptographic operations and key management.
-///
-/// # Structure Fields
-/// * `hsm` - Arc reference to the HSM library interface
-/// * `session_handle` - PKCS#11 session handle
-/// * `object_handles_cache` - Cache for object handles
-/// * `supported_oaep_hash_cache` - Cache for supported OAEP hashing algorithms
-/// * `is_logged_in` - Login state of the session
-///
-/// # Methods
-/// The session provides several categories of operations:
-///
-/// ## Session Management
-/// * `new()` - Creates a new session
-/// * `close()` - Closes the session and logs out if necessary
-///
-/// ## Object Management
-/// * `get_object_handle()` - Retrieves handle for an object by its ID
-/// * `clear_object_handles()` - Removes all object handles from the cache
-/// * `delete_object_handle()` - Removes an object handle from cache
-/// * `list_objects()` - Lists objects matching specified filter
-/// * `destroy_object()` - Deletes an object from the HSM
-///
-/// ## Cryptographic Operations
-/// * `encrypt()` - Encrypts data using specified algorithm
-/// * `decrypt()` - Decrypts data using specified algorithm
-/// * `encrypt_aes_cbc_multi_round` - Encrypt data using AES-CBC in multiple rounds
-/// * `decrypt_aes_cbc_multi_round` - Decrypt data using AES-CBC in multiple rounds
-/// * `generate_random()` - Generates random data
-/// * `get_supported_oaep_hash` - List the supported OAEP hashing algorithms
-///
-/// ## Key Management
-/// * `export_key()` - Exports a key from the HSM (if allowed)
-/// * `get_key_metadata()` - Retrieves metadata about a key
-/// * `get_key_type()` - Gets the type of a key
-/// * `get_object_id()` - Gets the ID of an object
-///
-/// ## Internal Helpers
-/// * `encrypt_with_mechanism()` - Internal encryption implementation
-/// * `decrypt_with_mechanism()` - Internal decryption implementation
-/// * `export_rsa_private_key()` - Exports RSA private key
-/// * `export_rsa_public_key()` - Exports RSA public key
-/// * `export_aes_key()` - Exports AES key
-/// * `call_get_attributes()` - Helper for retrieving object attributes
-/// * `pkcs7_pad()` - Apply PKCS#7 padding to the input data
-/// * `pkcs7_unpad()` - Remove PKCS#7 padding from the input data.
-/// * `find_object_handles` - retrieve object handles that match the provided attribute template
-///
-/// # Safety
-/// Many methods in this implementation contain unsafe blocks as they interact with
-/// the PKCS#11 C interface. Care should be taken when using these methods, and all
-/// preconditions must be met to ensure safe operation.
-///
-/// # Error Handling
-/// Methods return `PResult<T>` which is a custom result type for handling HSM-related
-/// errors. Operations can fail due to various reasons including:
-/// * Invalid object handles
-/// * Permission issues
-/// * Communication errors with HSM
-/// * Invalid parameters
-/// * Unsupported operations
+/// An active PKCS#11 session with an HSM.
 pub struct Session {
     hsm: Arc<crate::hsm_lib::HsmLib>,
     handle: CK_SESSION_HANDLE,

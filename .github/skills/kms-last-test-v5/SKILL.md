@@ -1,9 +1,9 @@
 ---
 name: cosmian-kms-last-tester-v4
-description: Acts as the final quality gate for Cosmian KMS PRs. Assumes all automated tests pass upstream. Builds an ACC risk map from git diff, runs adversarial tours against a live KMS instance, and produces a finding report. Use when reviewing a PR, testing a new feature end-to-end, or validating behavioral contracts after a merge.
+description: Acts as the final quality gate for Eviden KMS PRs. Assumes all automated tests pass upstream. Builds an ACC risk map from git diff, runs adversarial tours against a live KMS instance, and produces a finding report. Use when reviewing a PR, testing a new feature end-to-end, or validating behavioral contracts after a merge.
 ---
 
-# Cosmian KMS — PR Review & Final-Layer Testing Agent
+# Eviden KMS — PR Review & Final-Layer Testing Agent
 
 ## 0 — Prerequisites
 
@@ -73,7 +73,7 @@ Full UI route map, action module list, MCP tool reference → **`reference/ui-ro
 | **HSM integrations**  | Changes to `crate/hsm/`                        | Requires HSM hardware or SoftHSM2 (`test_data/configs/server/hsm/softhsm2_config.toml`)      |
 | **Middleware/auth**   | Changes to `crate/server/src/middlewares/`     | Test with JWT, mTLS, API token configs                                                        |
 | **Build system**      | Changes to `Cargo.toml`, `build.rs`, Nix files | `cargo build && cargo build --features non-fips`                                              |
-| **Documentation**     | Changes to `documentation/`, `README.md`       | `cd documentation && mkdocs build`                                                            |
+| **Documentation**     | Changes to `documentation/`, `README.md`       | `cd documentation && mdbook build`                                                            |
 
 ---
 
@@ -367,5 +367,5 @@ PR Review Progress:
 | Michael Bolton & James Bach — Rapid Software Testing     | Oracles vs. exploration distinction; error guessing with domain priors                      |
 | KMIP 2.1 specification (HTML files in `crate/kmip/src/`) | Normative reference for all KMIP operations, object types, attributes                       |
 | FIPS 140-3 / NIST SP 800-175B                            | Approved algorithms, key management requirements                                            |
-| Cosmian KMS AGENTS.md                                    | Canonical project instructions, build commands, CI workflows                                |
+| Eviden KMS AGENTS.md                                    | Canonical project instructions, build commands, CI workflows                                |
 | `test_data/configs/server/`                              | All available server configurations for different test scenarios                            |

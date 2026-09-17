@@ -143,6 +143,105 @@ curl -I "http://127.0.0.1:${HOST_HTTP_PORT}/ui/index.html"
 curl --insecure -I "https://127.0.0.1:${HOST_TLS_PORT}/ui/index.html"
 curl --insecure -I "https://127.0.0.1:${HOST_TLS13_PORT}/ui/index.html"
 
+# === No-config smoke test ===
+# Verify the KMS image works out of the box with no conf file, no env vars.
+# Also tests that the UI is served from the default endpoint.
+HOST_NO_CONF_PORT="${KMS_SLOT_KMS_NO_CONF_PORT:-13098}"
+KMS_NO_CONF_URL="http://127.0.0.1:${HOST_NO_CONF_PORT}"
+echo "=== No-config smoke test: ${KMS_NO_CONF_URL} ==="
+
+version_response=$(curl -sf "${KMS_NO_CONF_URL}/version")
+echo "  /version → ${version_response}"
+echo "${version_response}" | grep -q '"' || {
+  echo "ERROR: /version did not return expected JSON"
+  exit 1
+}
+
+# UI must be served at /ui/index.html
+curl -sf "${KMS_NO_CONF_URL}/ui/index.html" >/dev/null || {
+  echo "ERROR: UI not served at ${KMS_NO_CONF_URL}/ui/index.html"
+  exit 1
+}
+echo "  UI served at /ui/index.html ✓"
+
+echo "=== No-config smoke test passed ==="
+
+# === Non-root user smoke test (regression: issue #1132) ===
+# The KMS must start and serve requests when running as UID 1000 (the user
+# configured in the Helm chart's podSecurityContext). This requires:
+#   - /etc/passwd    (UID/GID resolution — getpwuid must succeed)
+#   - writable data directory (provided by the tmpfs in docker-compose)
+HOST_NONROOT_PORT="${KMS_SLOT_KMS_NONROOT_PORT:-14098}"
+KMS_NONROOT_URL="http://127.0.0.1:${HOST_NONROOT_PORT}"
+echo "=== Non-root user smoke test: ${KMS_NONROOT_URL} (user=1000) ==="
+
+version_response=$(curl -sf "${KMS_NONROOT_URL}/version")
+echo "  /version → ${version_response}"
+echo "${version_response}" | grep -q '"' || {
+  echo "ERROR: KMS did not respond as non-root user — missing /etc/passwd or permission issue"
+  docker compose -f "$COMPOSE_FILE" logs --tail=40 kms-nonroot || true
+  exit 1
+}
+echo "  KMS running as non-root UID 1000 ✓"
+echo "=== Non-root user smoke test passed ==="
+
+# === CA bundle / OIDC outbound TLS prerequisite test (regression: issue #1132) ===
+# /etc/ssl/certs/ca-bundle.crt (pointed to by SSL_CERT_FILE) must be present
+# and contain valid certificate data. This is a prerequisite for OIDC token
+# validation, which makes outbound HTTPS calls to the identity provider.
+echo "=== CA bundle test (SSL_CERT_FILE / OIDC prerequisite) ==="
+docker run --rm --entrypoint '' "${DOCKER_IMAGE_NAME}" sh -c '
+  set -e
+  ssl_cert_file="${SSL_CERT_FILE:-/etc/ssl/certs/ca-bundle.crt}"
+  echo "SSL_CERT_FILE=${ssl_cert_file}"
+  [ -f "${ssl_cert_file}" ] || { echo "ERROR: CA bundle missing: ${ssl_cert_file}"; exit 1; }
+  cert_count=$(grep -c "BEGIN CERTIFICATE" "${ssl_cert_file}" 2>/dev/null || echo 0)
+  echo "  CA bundle found: ${cert_count} certificates"
+  [ "${cert_count}" -ge 50 ] || { echo "ERROR: CA bundle has only ${cert_count} certs (expected ≥50)"; exit 1; }
+  echo "  CA bundle OK ✓"
+' || {
+  echo "ERROR: CA bundle check failed — OIDC outbound TLS will not work"
+  exit 1
+}
+echo "=== CA bundle test passed ==="
+
+# === TLS + non-root user test (regression: issue #1132) ===
+# Verifies that mTLS certificate authentication works when the KMS runs as
+# UID 1000 with a read-only root filesystem (the Helm chart security context).
+# This scenario was impossible to test in 5.26 because /etc/passwd was missing.
+HOST_TLS_NONROOT_PORT="${KMS_SLOT_KMS_TLS_NONROOT_PORT:-15099}"
+echo "=== TLS + non-root user test: 127.0.0.1:${HOST_TLS_NONROOT_PORT} ==="
+openssl_test "127.0.0.1:${HOST_TLS_NONROOT_PORT}" "tls1_2"
+openssl_test "127.0.0.1:${HOST_TLS_NONROOT_PORT}" "tls1_3"
+echo "=== TLS + non-root user test passed ==="
+
+# === FIPS / non-FIPS variant assertion ===
+# The /version endpoint embeds the OpenSSL build string, e.g.:
+#   "5.26.0 (OpenSSL 3.6.2 7 Apr 2026-FIPS)"       ← fips image
+#   "5.26.0 (OpenSSL 3.6.2 7 Apr 2026-non-FIPS)"   ← non-fips image
+# This catches accidentally shipping the wrong variant binary.
+echo "=== FIPS/non-FIPS variant check (KMS_TLS_CONFIG_FLAVOR=${KMS_TLS_CONFIG_FLAVOR}) ==="
+VERSION_STRING=$(curl -sf "http://127.0.0.1:${HOST_HTTP_PORT}/version")
+echo "  /version → ${VERSION_STRING}"
+if [[ "${KMS_TLS_CONFIG_FLAVOR}" == "fips" ]]; then
+  echo "${VERSION_STRING}" | grep -q "FIPS" || {
+    echo "ERROR: expected FIPS build but version string contains no 'FIPS': ${VERSION_STRING}"
+    exit 1
+  }
+  echo "${VERSION_STRING}" | grep -q "non-FIPS" && {
+    echo "ERROR: version string contains 'non-FIPS' but this is the FIPS image: ${VERSION_STRING}"
+    exit 1
+  } || true
+  echo "  Confirmed: FIPS build ✓"
+else
+  echo "${VERSION_STRING}" | grep -q "non-FIPS" || {
+    echo "ERROR: expected non-FIPS build but version string contains no 'non-FIPS': ${VERSION_STRING}"
+    exit 1
+  }
+  echo "  Confirmed: non-FIPS build ✓"
+fi
+echo "=== FIPS/non-FIPS variant check passed ==="
+
 # === Config-file based compose test ===
 echo "Running config-based compose test ($COMPOSE_FILE:kms-with-conf)"
 docker compose -f "$COMPOSE_FILE" logs --tail=120 kms-with-conf || true

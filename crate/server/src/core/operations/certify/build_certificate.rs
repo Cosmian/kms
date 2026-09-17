@@ -23,11 +23,11 @@ use cosmian_logger::warn;
 #[cfg(feature = "non-fips")]
 use openssl::x509::extension::KeyUsage;
 use openssl::{
-    asn1::{Asn1Integer, Asn1Time},
+    asn1::{Asn1Integer, Asn1Object, Asn1OctetString, Asn1Time},
     hash::MessageDigest,
     pkey::Id,
     sha::Sha1,
-    x509::X509,
+    x509::{X509, X509Extension},
 };
 
 use super::{issuer::Issuer, rfc9608, subject::Subject};
@@ -45,6 +45,7 @@ pub(crate) fn build_and_sign_certificate(
     issuer: &Issuer,
     subject: &Subject,
     request: Certify,
+    kms_public_url: Option<&str>,
 ) -> KResult<(Object, HashSet<String>, Attributes)> {
     debug!("Building and signing certificate");
     // recover the attributes
@@ -85,7 +86,10 @@ pub(crate) fn build_and_sign_certificate(
             .as_ref(),
     )?;
 
-    // add subject extensions (from CSR or existing certificate)
+    // add subject extensions (from CSR or existing certificate).
+    // Also detect whether a crlDistributionPoints extension is already present so
+    // that `inject_server_crl_dp` does not attempt to append a duplicate.
+    let subject_has_cdp = subject.has_crl_distribution_points();
     subject
         .extensions()?
         .into_iter()
@@ -99,6 +103,16 @@ pub(crate) fn build_and_sign_certificate(
     #[allow(unused_variables)]
     let (has_cdp, has_user_key_usage) =
         apply_user_extensions(&mut x509_builder, &mut attributes, vendor_id, issuer)?;
+    // Combine: CDP is present if it came from the subject (CSR/existing cert) OR user vendor attrs.
+    let has_cdp = has_cdp || subject_has_cdp;
+
+    // RFC 5280 §4.2.1.13: auto-inject CRL Distribution Point pointing to the KMS
+    // public CRL endpoint when:
+    //   - the server's public URL is known,
+    //   - the user did not already supply a crlDistributionPoints extension, and
+    //   - the issuer is a CA (non-self-signed) certificate so that relying parties
+    //     can actually fetch a CRL signed by that CA.
+    let has_cdp = has_cdp || inject_server_crl_dp(&mut x509_builder, issuer, kms_public_url)?;
 
     // Warn when user-supplied keyUsage overrides RFC-mandated PQC keyUsage
     #[cfg(feature = "non-fips")]
@@ -307,6 +321,99 @@ fn apply_user_extensions(
     } else {
         Ok((false, false))
     }
+}
+
+/// RFC 5280 §4.2.1.13 — auto-inject a `crlDistributionPoints` extension pointing to
+/// the KMS public CRL endpoint (`/public/certificates/{issuer_id}/crl`).
+///
+/// The extension is only injected when **all** of the following hold:
+/// - `kms_public_url` is `Some` (the server knows its own public URL).
+/// - The issuer is a proper CA (`Issuer::PrivateKeyAndCertificate`); self-signed
+///   certificates get `id-ce-noRevAvail` instead (RFC 9608 §2–§3).
+///
+/// Returns `true` when the extension was actually added, `false` otherwise.
+fn inject_server_crl_dp(
+    x509_builder: &mut openssl::x509::X509Builder,
+    issuer: &Issuer,
+    kms_public_url: Option<&str>,
+) -> KResult<bool> {
+    let Some(base_url) = kms_public_url else {
+        return Ok(false);
+    };
+    // Only inject for non-self-signed certificates (issuer has a CA certificate).
+    let Issuer::PrivateKeyAndCertificate(issuer_id, _, _) = issuer else {
+        return Ok(false);
+    };
+    let crl_url = format!(
+        "{}/public/certificates/{}/crl",
+        base_url.trim_end_matches('/'),
+        issuer_id
+    );
+    debug!("Auto-injecting CRL Distribution Point: {crl_url}");
+    // Build crlDistributionPoints with a single full-name URI entry.
+    // The OID 2.5.29.31 is id-ce-cRLDistributionPoints (RFC 5280 §4.2.1.13).
+    // We encode the extension value manually as ASN.1 DER:
+    //   SEQUENCE { SEQUENCE { [0] { [0] { [6] <uri-bytes> } } } }
+    let uri_bytes = crl_url.as_bytes();
+    let uri_len = uri_bytes.len();
+    // Build inner DER: [6] IMPLICIT IA5String of length uri_len
+    // 0x86 = context-specific primitive tag 6
+    let mut ia5 = vec![0x86_u8]; // [6] IMPLICIT
+    encode_der_length(&mut ia5, uri_len)?;
+    ia5.extend_from_slice(uri_bytes);
+    // 0xA0 = [0] CONSTRUCTED (GeneralName CHOICE fullName)
+    let mut general_name = vec![0xA0_u8]; // [0] CONSTRUCTED
+    encode_der_length(&mut general_name, ia5.len())?;
+    general_name.extend_from_slice(&ia5);
+    // 0xA0 = [0] distributionPoint CHOICE
+    let mut dp_name = vec![0xA0_u8]; // [0] CONSTRUCTED
+    encode_der_length(&mut dp_name, general_name.len())?;
+    dp_name.extend_from_slice(&general_name);
+    // 0x30 = SEQUENCE (DistributionPoint)
+    let mut dp_seq = vec![0x30_u8]; // SEQUENCE
+    encode_der_length(&mut dp_seq, dp_name.len())?;
+    dp_seq.extend_from_slice(&dp_name);
+    // 0x30 = SEQUENCE OF DistributionPoint
+    let mut outer = vec![0x30_u8]; // SEQUENCE
+    encode_der_length(&mut outer, dp_seq.len())?;
+    outer.extend_from_slice(&dp_seq);
+    let oid = Asn1Object::from_str("2.5.29.31")?;
+    let val = Asn1OctetString::new_from_bytes(&outer)?;
+    x509_builder.append_extension(X509Extension::new_from_der(
+        oid.as_ref(),
+        false,
+        val.as_ref(),
+    )?)?;
+    Ok(true)
+}
+
+/// Encode a DER length field into `buf` (short or long form).
+///
+/// Supports lengths up to 65 535 (two-byte long form). Lengths above this
+/// limit are rejected with an error to prevent silent DER truncation.
+// SAFETY: all `as u8` casts below are guarded by explicit range checks immediately above them.
+#[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+fn encode_der_length(buf: &mut Vec<u8>, len: usize) -> KResult<()> {
+    if len < 0x80 {
+        // len fits in 7 bits — short form; cast safe: len < 128
+        buf.push(len as u8);
+    } else if len <= 0xFF {
+        // one-byte long form; cast safe: len <= 255
+        buf.push(0x81_u8);
+        buf.push(len as u8);
+    } else if len <= 0xFFFF {
+        // two-byte long form; casts safe: len <= 65535
+        buf.push(0x82_u8);
+        buf.push((len >> 8) as u8);
+        buf.push((len & 0xFF) as u8);
+    } else {
+        return Err(KmsError::InvalidRequest(format!(
+            "CRL Distribution Point URI produces a DER length of {len} bytes, \
+which exceeds the maximum supported value of 65535. \
+Shorten kms_public_url or the issuer identifier."
+        )));
+    }
+    Ok(())
 }
 
 /// RFC 9608 §2–§3 — delegate to [`rfc9608::apply_extensions`].

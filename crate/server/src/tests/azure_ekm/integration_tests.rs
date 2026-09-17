@@ -26,6 +26,7 @@ use cosmian_logger::{log_init, warn};
 use crate::{
     config::ServerParams,
     core::KMS,
+    middlewares::UserId,
     result::KResult,
     routes::azure_ekm::{
         handlers::{unwrap_key_handler, wrap_key_handler},
@@ -41,7 +42,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
     // INFO: I will take care of this one by adding the new code
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "ekm_owner";
+    let owner = UserId::from("ekm_owner");
 
     // Test 1: Invalid Base64 URL encoding
     let req = symmetric_key_create_request(
@@ -54,7 +55,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
         None,
     )
     .unwrap();
-    let create_response = kms.create(req, owner).await.unwrap();
+    let create_response = kms.create(req, &owner).await.unwrap();
     let aes_kek_id = create_response.unique_identifier.to_string();
 
     // Test invalid base64url - contains invalid characters
@@ -68,7 +69,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
         value: "This!is@not#valid$base64url%".to_owned(), // Invalid characters
     };
 
-    let wrap_result = wrap_key_handler(&kms, &aes_kek_id, owner, invalid_wrap_request).await;
+    let wrap_result = wrap_key_handler(&kms, &aes_kek_id, &owner, invalid_wrap_request).await;
     assert!(
         wrap_result.is_err(),
         "Wrap operation should fail with invalid base64url input"
@@ -88,7 +89,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
     };
 
     let mismatch_result =
-        wrap_key_handler(&kms, &aes_kek_id, owner, algorithm_mismatch_request).await;
+        wrap_key_handler(&kms, &aes_kek_id, &owner, algorithm_mismatch_request).await;
 
     assert!(
         mismatch_result.is_err(),
@@ -119,7 +120,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
     };
 
     let nonexistent_result =
-        wrap_key_handler(&kms, nonexistent_key_id, owner, nonexistent_key_request).await;
+        wrap_key_handler(&kms, nonexistent_key_id, &owner, nonexistent_key_request).await;
 
     assert!(
         nonexistent_result.is_err(),
@@ -137,7 +138,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
         value: String::new(), // Empty string
     };
 
-    let empty_result = wrap_key_handler(&kms, &aes_kek_id, owner, empty_value_request).await;
+    let empty_result = wrap_key_handler(&kms, &aes_kek_id, &owner, empty_value_request).await;
     assert!(
         empty_result.is_err(),
         "Wrap operation should fail with empty value"
@@ -157,7 +158,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
                 None,
             )
             .unwrap();
-            let create_response = kms.create(req, owner).await.unwrap();
+            let create_response = kms.create(req, &owner).await.unwrap();
             let aes_kek_id = create_response.unique_identifier.to_string();
 
             let invalid_size_request = WrapKeyRequest {
@@ -171,7 +172,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
             };
 
             let invalid_size_result =
-                wrap_key_handler(&kms, &aes_kek_id, owner, invalid_size_request).await;
+                wrap_key_handler(&kms, &aes_kek_id, &owner, invalid_size_request).await;
 
             assert!(
                 invalid_size_result.is_err(),
@@ -188,7 +189,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kw() -> KResult<()> {
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "ekm_owner";
+    let owner = UserId::from("ekm_owner");
 
     // RFC 3394 Section 4.6: Wrap 256 bits of Key Data with a 256-bit KEK
     let rfc_kek_bytes =
@@ -226,7 +227,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kw() -> KResult<()> {
         EMPTY_TAGS,
     )?;
 
-    let import_response = kms.import(import_request, owner).await?;
+    let import_response = kms.import(import_request, &owner).await?;
     let kek_id = import_response.unique_identifier.to_string();
 
     let wrap_request = WrapKeyRequest {
@@ -239,7 +240,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kw() -> KResult<()> {
         value: URL_SAFE_NO_PAD.encode(&rfc_plaintext_unwrapped_input),
     };
 
-    let wrap_response = wrap_key_handler(&kms, &kek_id, owner, wrap_request)
+    let wrap_response = wrap_key_handler(&kms, &kek_id, &owner, wrap_request)
         .await
         .unwrap();
     let decoded_wrapped_key = URL_SAFE_NO_PAD.decode(&wrap_response.value)?;
@@ -260,7 +261,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kw() -> KResult<()> {
         value: wrap_response.value, // Use our wrapped result
     };
 
-    let unwrap_response = unwrap_key_handler(&kms, &kek_id, owner, unwrap_request)
+    let unwrap_response = unwrap_key_handler(&kms, &kek_id, &owner, unwrap_request)
         .await
         .unwrap();
     let unwrapped = URL_SAFE_NO_PAD.decode(&unwrap_response.value)?;
@@ -279,7 +280,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "ekm_owner";
+    let owner = UserId::from("ekm_owner");
 
     // For info, the rfc document has no test vector with a 256-bit KEK, so we generate our own
     for _ in 0..5 {
@@ -316,7 +317,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
         )
         .unwrap();
 
-        let import_response = kms.import(import_request, owner).await?;
+        let import_response = kms.import(import_request, &owner).await?;
         let kek_id = import_response.unique_identifier.to_string();
 
         let wrap_request = WrapKeyRequest {
@@ -329,7 +330,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
             value: URL_SAFE_NO_PAD.encode(&rfc_plaintext_unwrapped_input),
         };
 
-        let wrap_response = wrap_key_handler(&kms, &kek_id, owner, wrap_request)
+        let wrap_response = wrap_key_handler(&kms, &kek_id, &owner, wrap_request)
             .await
             .unwrap();
 
@@ -344,7 +345,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
             value: wrap_response.value, // Use our wrapped result
         };
 
-        let unwrap_response = unwrap_key_handler(&kms, &kek_id, owner, unwrap_request)
+        let unwrap_response = unwrap_key_handler(&kms, &kek_id, &owner, unwrap_request)
             .await
             .unwrap();
         let unwrapped = URL_SAFE_NO_PAD.decode(&unwrap_response.value)?;
@@ -363,7 +364,7 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "ekm_owner";
+    let owner = UserId::from("ekm_owner");
 
     let create_keys = kms
         .create_key_pair(
@@ -375,7 +376,7 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
                 false,
                 None,
             )?,
-            owner,
+            &owner,
         )
         .await?;
     let key_id_private = create_keys.private_key_unique_identifier.to_string();
@@ -400,7 +401,7 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
         value: URL_SAFE_NO_PAD.encode(&valid_random_plaintext),
     };
 
-    let wrap_response = wrap_key_handler(&kms, &key_id_private, owner, wrap_request)
+    let wrap_response = wrap_key_handler(&kms, &key_id_private, &owner, wrap_request)
         .await
         .unwrap();
 
@@ -420,7 +421,7 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
         value: wrap_response.value, // Use our wrapped result
     };
 
-    let unwrap_response = unwrap_key_handler(&kms, &key_id_private, owner, unwrap_request)
+    let unwrap_response = unwrap_key_handler(&kms, &key_id_private, &owner, unwrap_request)
         .await
         .unwrap();
     let unwrapped = URL_SAFE_NO_PAD.decode(&unwrap_response.value)?;

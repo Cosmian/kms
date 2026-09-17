@@ -5,7 +5,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::trace;
 use openssl::hash::{Hasher, MessageDigest};
 
-use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
+use crate::{core::KMS, error::KmsError, kms_bail, middlewares::UserId, result::KResult};
 
 fn compute_hash(
     data: &[u8],
@@ -35,7 +35,7 @@ fn compute_hash(
 pub(crate) async fn hash_operation(
     _kms: &KMS,
     request: Hash,
-    _user: &str,
+    _user: &UserId,
 ) -> KResult<HashResponse> {
     trace!(
         "algorithm={:?}, data_len={}",
@@ -73,7 +73,8 @@ mod tests {
     };
 
     use crate::{
-        config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
+        config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
+        tests::test_utils::https_clap_config,
     };
 
     #[allow(clippy::unwrap_in_result)]
@@ -105,7 +106,7 @@ mod tests {
                 init_indicator,
                 final_indicator,
             };
-            let response = kms.hash(request, "test").await.unwrap();
+            let response = kms.hash(request, &UserId::from("test")).await.unwrap();
             assert_eq!(response.data, Some(expected_hash.clone()));
             assert_eq!(response.correlation_value, None);
         }
@@ -131,7 +132,7 @@ mod tests {
             init_indicator: Some(true),
             final_indicator: Some(true),
         };
-        kms.hash(request, "test").await.unwrap_err();
+        kms.hash(request, &UserId::from("test")).await.unwrap_err();
 
         // Test different hashing algorithms
         for algorithm in [
@@ -151,7 +152,7 @@ mod tests {
                 init_indicator: None,
                 final_indicator: None,
             };
-            let response = kms.hash(request, "test").await.unwrap();
+            let response = kms.hash(request, &UserId::from("test")).await.unwrap();
             assert!(response.data.is_some());
             assert_eq!(response.correlation_value, None);
         }
@@ -167,7 +168,7 @@ mod tests {
             init_indicator: None,
             final_indicator: None,
         };
-        let response = kms.hash(request, "test").await?;
+        let response = kms.hash(request, &UserId::from("test")).await?;
         assert!(response.data.is_some());
         assert!(response.correlation_value.is_none());
 
@@ -182,7 +183,7 @@ mod tests {
             init_indicator: None,
             final_indicator: None,
         };
-        kms.hash(request, "test").await.unwrap_err();
+        kms.hash(request, &UserId::from("test")).await.unwrap_err();
 
         Ok(())
     }

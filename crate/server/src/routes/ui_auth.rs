@@ -9,7 +9,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
 
-use crate::config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig};
+use crate::{
+    config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig},
+    middlewares::{UserId, reject_reserved_aws_xks_identity},
+};
 
 fn random_b64url(len_bytes: usize) -> Result<String, ()> {
     let mut buf = vec![0_u8; len_bytes];
@@ -201,8 +204,20 @@ pub(crate) async fn callback(
     };
 
     let Some(id_token_str) = json.get("id_token").and_then(|v| v.as_str()) else {
-        return HttpResponse::InternalServerError()
-            .json(serde_json::json!({ "error": "No id_token in response" }));
+        // Surface any error Auth0 returned to make debugging easier.
+        let auth0_error = json
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("(none)");
+        let auth0_desc = json
+            .get("error_description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("(none)");
+        return HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "No id_token in response",
+            "auth0_error": auth0_error,
+            "auth0_error_description": auth0_desc,
+        }));
     };
 
     // Validate the id_token using the JwksManager. The authorization_endpoint and
@@ -263,6 +278,7 @@ pub(crate) async fn callback(
     };
 
     let mut validation = Validation::new(header.alg);
+    validation.algorithms = vec![header.alg];
     validation.set_audience(&[&client_id]);
 
     #[cfg(all(not(test), not(feature = "insecure")))]
@@ -302,6 +318,14 @@ pub(crate) async fn callback(
         return HttpResponse::InternalServerError()
             .json(serde_json::json!({ "error": "Missing email claim in id_token" }));
     };
+    let Ok(user_id) = UserId::try_new(user_id.as_str()) else {
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({ "error": "Empty email claim in id_token" }));
+    };
+    if let Err(error) = reject_reserved_aws_xks_identity(&user_id) {
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({ "error": format!("Forbidden user identity: {error}") }));
+    }
 
     if session.insert("user_id", &user_id).is_err() {
         return HttpResponse::InternalServerError()
@@ -491,6 +515,16 @@ pub(crate) async fn login_as(
                     );
                 }
             };
+            let Ok(user_id) = UserId::try_new(user_id.as_str()) else {
+                return HttpResponse::Unauthorized().json(
+                    serde_json::json!({ "error": "Empty subject claim in Auth Verifier token" }),
+                );
+            };
+            if let Err(error) = reject_reserved_aws_xks_identity(&user_id) {
+                return HttpResponse::Unauthorized().json(
+                    serde_json::json!({ "error": format!("Forbidden user identity: {error}") }),
+                );
+            }
 
             if session.insert("user_id", &user_id).is_err() {
                 return HttpResponse::InternalServerError()
@@ -557,13 +591,21 @@ pub(crate) async fn logout(
 }
 
 #[get("/auth_method")]
-pub(crate) async fn get_auth_method(auth_type: web::Data<Option<String>>) -> HttpResponse {
-    let auth_method = auth_type
-        .as_ref()
-        .as_ref()
-        .map_or_else(|| "None".to_owned(), std::clone::Clone::clone);
+pub(crate) async fn get_auth_method(auth_methods: web::Data<Vec<String>>) -> HttpResponse {
+    let methods = auth_methods.get_ref();
+    // The singular `auth_method` is kept for backward compatibility: it is the
+    // highest-priority configured method (`auth_methods[0]`), or `"None"` when no
+    // method is configured. New clients read the ordered `auth_methods` array to
+    // render the multi-method login page (primary + secondary actions).
+    let primary = methods
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "None".to_owned());
 
-    HttpResponse::Ok().json(serde_json::json!({ "auth_method": auth_method }))
+    HttpResponse::Ok().json(serde_json::json!({
+        "auth_method": primary,
+        "auth_methods": methods,
+    }))
 }
 
 // Function to register all auth routes
@@ -584,10 +626,10 @@ mod tests {
 
     #[actix_web::test]
     async fn test_auth_method_returns_cosmian_when_configured() {
-        let auth_type: Option<String> = Some("AUTH_VERIFIER".to_owned());
+        let auth_methods: Vec<String> = vec!["AUTH_VERIFIER".to_owned()];
         let app = test::init_service(
             App::new()
-                .app_data(web::Data::new(auth_type))
+                .app_data(web::Data::new(auth_methods))
                 .service(get_auth_method),
         )
         .await;
@@ -601,14 +643,20 @@ mod tests {
             body.get("auth_method").and_then(|v| v.as_str()),
             Some("AUTH_VERIFIER")
         );
+        assert_eq!(
+            body.get("auth_methods")
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>()),
+            Some(vec!["AUTH_VERIFIER"])
+        );
     }
 
     #[actix_web::test]
     async fn test_auth_method_returns_none_when_not_configured() {
-        let auth_type: Option<String> = None;
+        let auth_methods: Vec<String> = Vec::new();
         let app = test::init_service(
             App::new()
-                .app_data(web::Data::new(auth_type))
+                .app_data(web::Data::new(auth_methods))
                 .service(get_auth_method),
         )
         .await;
@@ -621,6 +669,43 @@ mod tests {
         assert_eq!(
             body.get("auth_method").and_then(|v| v.as_str()),
             Some("None")
+        );
+        assert_eq!(
+            body.get("auth_methods").and_then(|v| v.as_array()),
+            Some(&vec![])
+        );
+    }
+
+    #[actix_web::test]
+    async fn test_auth_method_returns_ordered_list_when_multiple_configured() {
+        // Priority order is JWT > AUTH_VERIFIER > CERT. The singular `auth_method`
+        // must equal the first (primary) entry.
+        let auth_methods: Vec<String> = vec![
+            "JWT".to_owned(),
+            "AUTH_VERIFIER".to_owned(),
+            "CERT".to_owned(),
+        ];
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(auth_methods))
+                .service(get_auth_method),
+        )
+        .await;
+
+        let req = test::TestRequest::get().uri("/auth_method").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        assert_eq!(
+            body.get("auth_method").and_then(|v| v.as_str()),
+            Some("JWT")
+        );
+        assert_eq!(
+            body.get("auth_methods")
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>()),
+            Some(vec!["JWT", "AUTH_VERIFIER", "CERT"])
         );
     }
 }

@@ -57,12 +57,12 @@ graph TD
 
 Before configuring a HSM such as described in [Oracle Key Vault](https://docs.oracle.com/en/database/oracle/key-vault/21.10/okvhm/index.html), some steps are needed:
 
-For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.25.0/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.25.0_linux-amd64.zip).
+For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.27.1/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.27.1_linux-amd64.zip).
 
 - Extract the package:
 
     ```bash
-    unzip cosmian-pkcs11-non-fips-static-openssl_5.25.0_linux-amd64.zip
+    unzip cosmian-pkcs11-non-fips-static-openssl_5.27.1_linux-amd64.zip
     ```
 
 - Copy the PKCS#11 provider library to the Oracle Key Vault server to `/usr/local/okv/hsm/generic/libcosmian_pkcs11.so`
@@ -130,6 +130,42 @@ graph TD
 ```
 
 </div>
+### Direct PKCS#11 End-to-End Workflow
+
+The sequence diagram below shows how Oracle TDE interacts with `libcosmian_pkcs11.so`, which translates PKCS#11 calls into KMIP requests over HTTPS (`/kmip` or `/kmip/2_1`) to Eviden KMS, persisting key state in the KMS database backend:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ORA as Oracle Database (TDE Engine)
+    participant P11 as cosmian_pkcs11 (libcosmian_pkcs11.so)
+    participant KMS as Eviden KMS Server
+    participant DB as KMS Database Backend (PostgreSQL / MySQL / SQLite / Redis)
+
+    Note over ORA,P11: Keystore Initialization
+    ORA->>P11: C_Initialize & C_OpenSession
+    P11->>P11: Read ckms.toml (KMS URL, credentials)
+    P11-->>ORA: CKR_OK
+    ORA->>P11: C_Login (User PIN)
+    P11-->>ORA: CKR_OK
+
+    Note over ORA,DB: TDE Master Key Creation & Management
+    ORA->>P11: C_GenerateKey (AES-256 Master Key, CKA_LABEL="ORACLE_TDE_...")
+    P11->>KMS: POST /kmip (KMIP Create Request: AES-256 SymmetricKey)
+    KMS->>DB: Store encrypted key & attributes
+    DB-->>KMS: Key UID persisted
+    KMS-->>P11: KMIP Create Response (Unique Identifier)
+    P11-->>ORA: PKCS#11 Object Handle (CKR_OK)
+
+    Note over ORA,DB: Column / Tablespace Encryption Key Wrapping
+    ORA->>P11: C_EncryptInit & C_Encrypt (Wrap DEK with Master Key)
+    P11->>KMS: POST /kmip (KMIP Encrypt Request with key UID and DEK)
+    KMS->>DB: Fetch Master Key (via ObjectCache / DB)
+    DB-->>KMS: Encrypted Master Key
+    KMS->>KMS: Encrypt DEK
+    KMS-->>P11: KMIP Encrypt Response (Ciphertext data)
+    P11-->>ORA: Encrypted DEK stored in Oracle dictionary
+```
 
 ### Direct HSM Configuration
 
@@ -137,11 +173,11 @@ graph TD
 
 1. **Install Eviden PKCS#11 Library**
 
-    For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.25.0/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.25.0_linux-amd64.zip).
+    For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.27.1/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.27.1_linux-amd64.zip).
 
     ```bash
     # Extract library from PKCS#11 ZIP package.
-    unzip cosmian-pkcs11-non-fips-static-openssl_5.25.0_linux-amd64.zip
+    unzip cosmian-pkcs11-non-fips-static-openssl_5.27.1_linux-amd64.zip
 
     # Copy to Oracle's HSM directory
     mkdir -p /opt/oracle/extapi/64/hsm/Cosmian/

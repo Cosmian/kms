@@ -30,6 +30,8 @@ tags:
     description: Access-control and permission management for KMS objects
   - name: Server
     description: Server information and HSM status
+  - name: Certificates
+    description: X.509 certificate lifecycle — CRL generation, OCSP status (RFC 6960)
   - name: REST Crypto API
     description: Simplified JWE/JWS/HMAC REST API built on top of KMIP keys
   - name: Google CSE
@@ -1640,6 +1642,83 @@ components:
         data:
           $ref: '#/components/schemas/SignIntermediateData'
 
+    CryptoOfficerStatusResponse:
+      type: object
+      required:
+        - enabled
+        - users
+        - active_co_users
+        - custodians_count
+        - require_ceremony
+        - ceremony_activated
+        - is_crypto_officer
+      properties:
+        enabled:
+          type: boolean
+          description: Whether a Crypto Officer role configuration exists on the server.
+        users:
+          type: array
+          items:
+            type: string
+          description: >
+            Configured CO candidate usernames. Only populated for callers who are
+            themselves CO candidates; regular Operators receive an empty list.
+        active_co_users:
+          type: array
+          items:
+            type: string
+          description: >
+            Subset of `users` that currently hold an active ceremony activation.
+            Only populated for CO candidates. Useful for peer-revocation target lists.
+        custodians_count:
+          type: integer
+          description: Total number of CO custodians configured on the server.
+        require_ceremony:
+          type: boolean
+          description: Whether a split-key ceremony is required before the role becomes active.
+        ceremony_activated:
+          type: boolean
+          description: Whether the ceremony has been completed and the role is currently active.
+        is_crypto_officer:
+          type: boolean
+          description: Whether the calling user is currently an active Crypto Officer.
+      example:
+        enabled: true
+        users: [alice@example.com, bob@example.com]
+        active_co_users: [alice@example.com]
+        custodians_count: 2
+        require_ceremony: true
+        ceremony_activated: true
+        is_crypto_officer: true
+
+    DisableCryptoOfficerRequest:
+      type: object
+      properties:
+        target_user:
+          type: string
+          nullable: true
+          description: >
+            The user ID of the active CO to revoke. If omitted, the caller self-revokes
+            their own active ceremony. If provided, any configured CO candidate may
+            peer-revoke the specified active CO.
+      example:
+        target_user: alice@example.com
+
+    CeremonyActivateRequest:
+      type: object
+      required: [share_ids]
+      properties:
+        share_ids:
+          type: array
+          items:
+            type: string
+          description: UIDs of all n split-key shares required for XOR reconstruction.
+          minItems: 2
+      example:
+        share_ids:
+          - ceremony-key-2026#1
+          - ceremony-key-2026#2
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 paths:
@@ -2038,6 +2117,95 @@ paths:
               example:
                 has_privileged_access: false
 
+  /access/crypto_officer/status:
+    get:
+      tags: [Access]
+      summary: Get Crypto Officer status
+      description: >
+        Returns the current Crypto Officer configuration and the calling user's activation status.
+        CO candidate users additionally receive the list of configured CO users and which of them
+        currently hold an active ceremony activation.
+        Any authenticated user may call this endpoint — no key material is revealed.
+      operationId: getCryptoOfficerStatus
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: Crypto Officer status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CryptoOfficerStatusResponse'
+
+  /access/crypto_officer/disable:
+    post:
+      tags: [Access]
+      summary: Revoke Crypto Officer ceremony
+      description: >
+        Revokes an active Crypto Officer ceremony activation.
+
+        - **Self-revoke** (omit `target_user`): the caller revokes their own active ceremony.
+        - **Peer revocation** (`target_user` provided): any configured CO candidate can revoke
+          another active CO — intended for compromise recovery when no active CO is available.
+
+        The reconstructed key is **not** destroyed — only the `crypto_officer_activations` row
+        is updated. The demoted CO drops back to Operator privileges.
+        Only valid when `require_ceremony = true`.
+      operationId: disableCryptoOfficer
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisableCryptoOfficerRequest'
+      responses:
+        '200':
+          description: Ceremony revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /access/crypto_officer/ceremony/activate:
+    post:
+      tags: [Access]
+      summary: Activate Crypto Officer via split-key ceremony
+      description: >
+        Activates the Crypto Officer role by reconstructing the ceremony secret in RAM from
+        all n XOR split-key shares, verifying dual-control and ceremony-attribute constraints,
+        and persisting the activation record.
+
+        The ceremony secret is **never stored** as a KMS managed object — it is zeroized
+        immediately after the activation record is written (NIST SP 800-57 Part 2 Rev 1 §4.6).
+
+        Callers must be listed in `crypto_officer_users`.
+        Only valid when `require_ceremony = true`.
+
+        **Note**: this endpoint is also the only activation path used by the Web UI
+        (`CryptoOfficerRole.tsx`). Any change to the request/response shape must be
+        verified against both the CLI (`ckms`) and the UI.
+      operationId: activateCryptoOfficerCeremony
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CeremonyActivateRequest'
+      responses:
+        '200':
+          description: Ceremony activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
   # ── Server ───────────────────────────────────────────────────────────────────
 
   /server-info:
@@ -2087,7 +2255,251 @@ paths:
                 items:
                   type: object
 
+  # ── Certificates ─────────────────────────────────────────────────────────────
+
+  /certificates/{issuer_id}/crl:
+    get:
+      tags: [Certificates]
+      summary: Generate a fresh CRL (signs with CA private key)
+      description: |
+        Signs a fresh X.509 v2 Certificate Revocation List (CRL) for the CA identified
+        by `issuer_id` and returns it immediately.
+
+        **Why authentication is required**: generating a CRL uses the CA private key to
+        produce a cryptographic signature.  The caller must be authenticated so the server
+        can verify they have read access to the CA key via the normal object-level ACL.
+        No special role (Crypto Officer or otherwise) is required — any authenticated user
+        with access to the CA certificate may request its CRL.
+
+        The generated CRL is also persisted to the database and served by the public
+        distribution endpoint `GET /public/certificates/{issuer_id}/crl`.
+
+        **CRL content is public information** (RFC 5280 §3): it lists revoked certificate
+        serial numbers and contains no private key material.  Authentication here protects
+        the CA private key from being used as a signing oracle by unauthenticated callers.
+
+        Supported output formats:
+        - **DER** (default, `application/pkix-crl`, RFC 2585 §3)
+        - **PEM** (`application/x-pem-file`)
+      operationId: getCrl
+      security:
+        - bearerAuth: []
+        - mtls: []
+      parameters:
+        - name: issuer_id
+          in: path
+          required: true
+          description: KMIP unique identifier of the issuer certificate object
+          schema:
+            type: string
+        - name: format
+          in: query
+          required: false
+          description: Output format — `der` (default, RFC 2585) or `pem`
+          schema:
+            type: string
+            enum: [der, pem]
+            default: der
+        - name: validity_days
+          in: query
+          required: false
+          description: 'CRL validity period in days (default: server-configured value, typically 7)'
+          schema:
+            type: integer
+            minimum: 1
+            default: 7
+      responses:
+        '200':
+          description: |
+            Fresh signed CRL in the requested format.
+            Content-Type is `application/pkix-crl` for DER or `application/x-pem-file` for PEM.
+          content:
+            application/pkix-crl:
+              schema:
+                type: string
+                format: binary
+            application/x-pem-file:
+              schema:
+                type: string
+                example: |
+                  -----BEGIN X509 CRL-----
+                  MIIBpDCBjQIBATANBgkqhkiG9w0BAQsFADARMQ8wDQYDVQQDDAZSb290Q0EX
+                  ...
+                  -----END X509 CRL-----
+        '401':
+          description: Unauthorized — missing or invalid credentials
+        '404':
+          description: Issuer certificate not found or caller lacks read access to the CA key
+        '422':
+          description: Invalid request — e.g. unsupported `format` value
+        '500':
+          description: Internal server error — CRL generation failed
+
   # ── REST Crypto API ──────────────────────────────────────────────────────────
+
+  /public/certificates/{issuer_id}/crl:
+    get:
+      tags: [Certificates]
+      summary: Download CRL from the public distribution point (no authentication)
+      description: |
+        Returns the most recently generated CRL for the specified issuer.
+
+        This endpoint is intended for **CRL Distribution Point (CDP) URIs** embedded
+        in certificates. Standard PKI relying parties — browsers, TLS stacks, OCSP
+        clients — fetch CDP URIs without credentials, as required by RFC 5280 §3.
+
+        The CRL is served from the server's cache (no CA private key access at serve
+        time) and includes **all** revoked certificates issued by this CA regardless
+        of which user owns the corresponding DB record.
+
+        **Automatic refresh**: the CRL is regenerated automatically after every
+        certificate revocation and by a background scheduler before expiry.  The
+        server also loads the last signed CRL from the database on startup, so the
+        endpoint is immediately available without any manual call.
+
+        **Format**: always DER (`application/pkix-crl`).  Use the authenticated
+        `GET /certificates/{issuer_id}/crl?format=pem` endpoint for PEM output.
+
+        **HTTP caching**: responses include `Cache-Control: public, max-age=N` and
+        `Last-Modified` headers so that relying parties can cache the CRL and avoid
+        unnecessary round-trips.
+      operationId: getCrlPublic
+      security: []
+      parameters:
+        - name: issuer_id
+          in: path
+          required: true
+          description: KMIP unique identifier of the issuer certificate object
+          schema:
+            type: string
+      responses:
+        '200':
+          description: DER-encoded CRL (`application/pkix-crl`, RFC 2585 §3)
+          headers:
+            Last-Modified:
+              description: HTTP-date when the CRL was last generated
+              schema:
+                type: string
+            Cache-Control:
+              description: >-
+                HTTP caching directive, e.g. `public, max-age=86340, no-transform`.
+                The `max-age` is derived from the CRL's `nextUpdate` timestamp minus
+                a 60-second safety buffer.
+              schema:
+                type: string
+            Expires:
+              description: RFC 7231 date of the CRL's effective expiry (for HTTP/1.0 compatibility)
+              schema:
+                type: string
+          content:
+            application/pkix-crl:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: |
+            No CRL available for this issuer yet.
+            The CRL is generated automatically when a certificate is revoked.
+            If no certificate has been revoked yet, call `GET /certificates/{issuer_id}/crl`
+            (authenticated) to generate an initial CRL.
+
+  /ocsp/{encoded_request}:
+    get:
+      tags: [Certificates]
+      summary: OCSP status check via HTTP GET (no authentication)
+      description: |
+        Implements RFC 6960 Appendix A.1: submit a DER-encoded `OCSPRequest`,
+        base64url-encoded directly in the URL path, for small requests (the
+        encoded request SHOULD fit within typical URL length limits).
+
+        Returns a signed, DER-encoded `OCSPResponse` reporting `good`, `revoked`
+        (with `CRLReason` and `revocationTime`), or `unknown` for each certificate
+        serial number queried, based on the KMS's internal certificate lifecycle
+        state for the CA configured via `ocsp_ca_uid`.
+
+        This endpoint is **public and unauthenticated** per RFC 6960 §2 — OCSP
+        response content is public information; requiring authentication would
+        break standard relying-party tooling (`openssl ocsp`, TLS stacks, browsers).
+
+        Returns `404` when `ocsp_enabled = false` (the default).
+
+        See `POST /ocsp/` for the equivalent transport used for larger requests
+        (RFC 6960 Appendix A.2), and the "PKI Support → OCSP Responder"
+        documentation for the full configuration reference and CA-compromise
+        cascade behavior (RFC 6960 §2.7).
+      operationId: getOcsp
+      security: []
+      parameters:
+        - name: encoded_request
+          in: path
+          required: true
+          description: base64url encoding of the DER-encoded `OCSPRequest`
+          schema:
+            type: string
+      responses:
+        '200':
+          description: |
+            Signed, DER-encoded `OCSPResponse` (RFC 6960 §4.2). Also returned for
+            protocol-level rejections (`malformedRequest`, `unauthorized`) per
+            RFC 6960 §2.3 — these are unsigned, minimal `OCSPResponse` bodies, not
+            HTTP error statuses, since standard OCSP clients cannot parse anything
+            other than a DER `OCSPResponse`.
+          headers:
+            Cache-Control:
+              description: >-
+                RFC 5019 §2.2.1 caching directive, e.g. `max-age=86400, public`.
+                Absent when the request carries a nonce that must be echoed.
+              schema:
+                type: string
+            Last-Modified:
+              schema:
+                type: string
+            Expires:
+              schema:
+                type: string
+            ETag:
+              description: Strong validator — SHA-256 hex digest of the response body
+              schema:
+                type: string
+          content:
+            application/ocsp-response:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: OCSP responder disabled (`ocsp_enabled = false`, the default)
+
+  /ocsp/:
+    post:
+      tags: [Certificates]
+      summary: OCSP status check via HTTP POST (no authentication)
+      description: |
+        Implements RFC 6960 Appendix A.2: submit a DER-encoded `OCSPRequest` as
+        the request body with `Content-Type: application/ocsp-request`. Use this
+        transport for requests too large to fit in a URL (e.g. batched queries),
+        subject to the responder's maximum accepted query count per request.
+
+        See `GET /ocsp/{encoded_request}` for the full response format,
+        authentication posture, and status-mapping documentation.
+      operationId: postOcsp
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/ocsp-request:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Signed, DER-encoded `OCSPResponse` — see `GET /ocsp/{encoded_request}` for details.
+          content:
+            application/ocsp-response:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: OCSP responder disabled (`ocsp_enabled = false`, the default)
 
   /v1/crypto/encrypt:
     post:
@@ -3204,7 +3616,12 @@ paths:
     get:
       tags: [UI Auth]
       summary: Auth method configuration
-      description: Returns the authentication method configured for the web UI (OIDC/JWT, client certificate, Cosmian authentication server, or none).
+      description: >-
+        Returns the authentication methods configured for the web UI as an ordered
+        `auth_methods` array (priority first: OIDC/JWT, then auth-verifier
+        username/password, then client certificate). The singular `auth_method`
+        field is the primary method (auth_methods[0]) or `None`, retained for
+        backward compatibility.
       operationId: uiAuthMethod
       responses:
         '200':
@@ -3216,7 +3633,14 @@ paths:
                 properties:
                   auth_method:
                     type: string
-                    enum: [JWT, CERT, COSMIAN, None]
+                    enum: [JWT, AUTH_VERIFIER, CERT, None]
+                    description: Highest-priority configured method (auth_methods[0]), or None. Kept for backward compatibility.
+                  auth_methods:
+                    type: array
+                    items:
+                      type: string
+                      enum: [JWT, AUTH_VERIFIER, CERT]
+                    description: Configured UI login methods, ordered by priority (primary first).
                   oidc_issuer:
                     type: string
                     description: OIDC issuer URL (only when auth_method is JWT)

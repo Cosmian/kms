@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 /// Error Name for AWS XKS Error replies
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[allow(non_camel_case_types)]
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names)] // variant names mirror the AWS XKS error protocol's `*Exception` naming exactly
 pub enum XksErrorName {
     /// The request was rejected because one
     /// or more input parameters is invalid.

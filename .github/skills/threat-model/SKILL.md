@@ -1,6 +1,6 @@
 ---
 name: threat-model
-description: 'STRIDE-A threat model analysis for the Cosmian KMS. Two modes: full analysis or incremental update. Use when asked to perform a threat model, generate a DFD, or update threat analysis.'
+description: 'STRIDE-A threat model analysis for the Eviden KMS. Two modes: full analysis or incremental update. Use when asked to perform a threat model, generate a DFD, or update threat analysis.'
 ---
 
 # Threat Model Analyst

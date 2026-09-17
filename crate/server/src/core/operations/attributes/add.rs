@@ -15,27 +15,31 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::has_prefix},
+    core::{
+        KMS,
+        retrieve_object_utils::retrieve_object_for_operation,
+        uid_utils::{ObjectHandle, from_request},
+    },
     error::KmsError,
-    result::{KResult, KResultHelper},
+    middlewares::UserId,
+    result::KResult,
 };
 
 pub(crate) async fn add_attribute(
     kms: &KMS,
     request: AddAttribute,
-    user: &str,
+    user: &UserId,
 ) -> KResult<AddAttributeResponse> {
     trace!("{}", serde_json::to_string(&request)?);
 
     // there must be an identifier
-    let uid_or_tags = request
-        .unique_identifier
-        .as_str()
-        .context("Add Attribute: the unique identifier must be a string")?;
+    let object_handle = from_request(Some(&request.unique_identifier), "Add Attribute")?;
 
     // Read-only guard — these attributes are server-managed.
     match &request.new_attribute {
-        Attribute::RotateAutomatic(_)
+        Attribute::AlwaysSensitive(_)
+        | Attribute::NeverExtractable(_)
+        | Attribute::RotateAutomatic(_)
         | Attribute::RotateGeneration(_)
         | Attribute::RotateDate(_)
         | Attribute::RotateLatest(_) => {
@@ -55,7 +59,7 @@ pub(crate) async fn add_attribute(
     }
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
-        uid_or_tags,
+        object_handle,
         KmipOperation::AddAttribute,
         kms,
         user,
@@ -65,7 +69,7 @@ pub(crate) async fn add_attribute(
 
     // For SQL keys (non-HSM): rotate_name must equal the key's UID.
     // This enforces the gen-0 UID = keyset name invariant for deterministic @N addressing.
-    if has_prefix(owm.id()).is_none() {
+    if !ObjectHandle::from(owm.id()).is_hsm() {
         if let Attribute::RotateName(name) = &request.new_attribute {
             let key_uid = owm.id();
             if name.as_str() != key_uid {
@@ -81,7 +85,7 @@ pub(crate) async fn add_attribute(
 
     // Capture before the macro runs (which may partially move request.new_attribute).
     let is_adding_rotate_name_on_sql = matches!(&request.new_attribute, Attribute::RotateName(_))
-        && has_prefix(owm.id()).is_none();
+        && !ObjectHandle::from(owm.id()).is_hsm();
 
     // Check if the attribute is allowed to be set
     match_add_attribute! {
@@ -102,7 +106,6 @@ pub(crate) async fn add_attribute(
             X509CertificateSubject => x_509_certificate_subject,
             X509CertificateIssuer => x_509_certificate_issuer,
             AlternativeName => alternative_name,
-            AlwaysSensitive => always_sensitive,
             ApplicationSpecificInformation => application_specific_information,
             ArchiveDate => archive_date,
             AttributeIndex => attribute_index,
@@ -115,7 +118,6 @@ pub(crate) async fn add_attribute(
             Critical => critical,
             DestroyDate => destroy_date,
             DigitalSignatureAlgorithm => digital_signature_algorithm,
-            Extractable => extractable,
             Fresh => fresh,
             InitialDate => initial_date,
             KeyFormatType => key_format_type,
@@ -123,7 +125,6 @@ pub(crate) async fn add_attribute(
             KeyValuePresent => key_value_present,
             LastChangeDate => last_change_date,
             LeaseTime => lease_time,
-            NeverExtractable => never_extractable,
             NistKeyType => nist_key_type,
             ObjectGroupMember => object_group_member,
             OpaqueDataType => opaque_data_type,
@@ -203,14 +204,60 @@ pub(crate) async fn add_attribute(
                 }
                 attributes.description = Some(description);
             }
+            Attribute::AlwaysSensitive(_) => {
+                // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Attribute_Read_Only,
+                    "DENIED: AlwaysSensitive is server-managed and cannot be added by the user"
+                        .to_owned(),
+                ));
+            }
             Attribute::Sensitive(sensitive) => {
+                if !kms
+                    .user_can_perform_operation(&owm, user, &KmipOperation::AddAttribute)
+                    .await?
+                {
+                    return Err(KmsError::Kmip21Error(
+                        ErrorReason::Permission_Denied,
+                        "DENIED: adding Sensitive attribute requires ownership or explicit AddAttribute grant"
+                            .to_owned(),
+                    ));
+                }
                 trace!("Sensitive: {:?}", sensitive);
                 if attributes.sensitive.is_some() {
                     return Err(KmsError::InvalidRequest(
                         "Sensitive already exists".to_owned(),
                     ));
                 }
-                attributes.sensitive = sensitive.then_some(true);
+                // Setting Sensitive also (re)computes the server-managed
+                // AlwaysSensitive attribute (KMIP 2.1 §4.3).
+                attributes.apply_sensitive(sensitive);
+            }
+            Attribute::Extractable(extractable) => {
+                if !kms
+                    .user_can_perform_operation(&owm, user, &KmipOperation::AddAttribute)
+                    .await?
+                {
+                    return Err(KmsError::Kmip21Error(
+                        ErrorReason::Permission_Denied,
+                        "DENIED: adding Extractable attribute requires ownership or explicit AddAttribute grant"
+                            .to_owned(),
+                    ));
+                }
+                trace!("Extractable: {:?}", extractable);
+                if attributes.extractable.is_some() {
+                    return Err(KmsError::InvalidRequest(
+                        "Extractable already exists".to_owned(),
+                    ));
+                }
+                attributes.apply_extractable(extractable);
+            }
+            Attribute::NeverExtractable(_) => {
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Attribute_Read_Only,
+                    "DENIED: NeverExtractable is server-managed and cannot be added by the user"
+                        .to_owned(),
+                ));
             }
             Attribute::State(_state) => {
                 return Err(KmsError::InvalidRequest(

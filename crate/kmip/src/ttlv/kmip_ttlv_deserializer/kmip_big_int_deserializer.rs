@@ -37,15 +37,7 @@ use crate::ttlv::{KmipBigInt, TtlvError};
 
 type Result<T> = std::result::Result<T, TtlvError>;
 
-/// A deserializer for KMIP `BigInt` values that implements Serde's Deserializer trait.
-///
-/// # Fields
-///
-/// * `sign` - The sign of the `BigInt` value (-1, 0, or 1)
-/// * `u32_be` - A double-ended queue containing the big-endian u32 digits of the number
-///
-/// This struct provides methods to deserialize a KMIP `BigInt` into its component parts,
-/// primarily focusing on extracting the sign and sequence of u32 values.
+/// Serde `Deserializer` for a KMIP `BigInt` value.
 #[derive(Debug)]
 pub struct KmipBigIntDeserializer {
     sign: i8,

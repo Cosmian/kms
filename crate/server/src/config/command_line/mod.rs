@@ -1,6 +1,8 @@
+mod audit_config;
 mod auth_verifier_config;
 mod azure_ekm_config;
 mod clap_config;
+mod crl_config;
 mod db;
 mod google_cse_config;
 mod hsm_config;
@@ -9,7 +11,9 @@ mod idp_auth_config;
 mod jwks_endpoint_config;
 mod kmip_policy_config;
 mod logging;
+mod ocsp_config;
 mod proxy_config;
+mod roles_config;
 pub mod secret_backends;
 mod socket_server_config;
 mod tls_config;
@@ -17,11 +21,13 @@ mod ui_config;
 mod vault_config;
 mod workspace;
 
+pub use audit_config::{AuditConfig, AuditFailureMode, AuditFileConfig};
 pub use auth_verifier_config::AuthVerifierConfig;
 pub use azure_ekm_config::AzureEkmConfig;
 #[cfg(not(target_os = "windows"))]
 pub use clap_config::DEFAULT_COSMIAN_KMS_CONF;
 pub use clap_config::{ClapConfig, get_default_config_path};
+pub use crl_config::CrlConfig;
 pub use db::{DEFAULT_SQLITE_PATH, DatabaseType, MainDBConfig};
 pub use google_cse_config::GoogleCseConfig;
 pub use hsm_config::{HsmConfig, HsmModel};
@@ -32,7 +38,9 @@ pub use kmip_policy_config::{
     AesKeySize, KmipAllowlistsConfig, KmipPolicyConfig, KmipPolicyId, RsaKeySize,
 };
 pub use logging::{LoggingConfig, get_default_rolling_log_dir};
+pub use ocsp_config::{NoncePolicyConfig, OcspConfig};
 pub use proxy_config::ProxyConfig;
+pub use roles_config::RolesConfig;
 pub use secret_backends::{
     AwsSsmBackendConfig, AzureKvBackendConfig, CosmianKmsSecretConfig, SecretBackendConfig,
     SecretBackendKind, VaultBackendConfig,

@@ -9,7 +9,7 @@ name: Release
 #   3. Runs the version-bump script (.mise/scripts/release/release.sh).
 #   4. Commits the bumped versions on the release branch and pushes it.
 #   5. Regenerates all documentation via generate_docs.sh (server CLI, ckms docs,
-#      KMIP tables, crypto inventory, and CBOM).
+#      KMIP tables and CBOM).
 #   6. Runs `nix_build_update_hash.sh` on BOTH Linux and macOS runners in
 #      parallel to recompute all Nix vendor hashes (Linux writes server +
 #      linux-cli + UI wasm hashes; macOS writes darwin-cli + UI pnpm hashes)
@@ -184,8 +184,7 @@ jobs:
           #   1. server_cli.md + server_configuration_file.md (--help / --print-default-config)
           #   2. documentation/docs/kms_clients/cli/main_commands.md + usage.md (ckms markdown)
           #   3. KMIP support tables (README.md + kmip_support/support.md)
-          #   4. crypto_inventory.md (cryptographic asset sensor, no network)
-          #   5. cbom/cbom.cdx.json (CycloneDX 1.6, requires cdxgen)
+          #   4. cbom/cbom.cdx.json (CycloneDX 1.6, requires cdxgen)
           pip install cyclonedx-bom --quiet
           mise run docs:generate
 

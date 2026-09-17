@@ -4,8 +4,9 @@ use cosmian_kms_client::KmsClient;
 use self::{
     certify::CertifyAction, decrypt_certificate::DecryptCertificateAction,
     destroy_certificate::DestroyCertificateAction, encrypt_certificate::EncryptCertificateAction,
-    export_certificate::ExportCertificateAction, import_certificate::ImportCertificateAction,
-    revoke_certificate::RevokeCertificateAction, validate_certificate::ValidateCertificatesAction,
+    export_certificate::ExportCertificateAction, generate_crl::GenerateCrlAction,
+    import_certificate::ImportCertificateAction, revoke_certificate::RevokeCertificateAction,
+    validate_certificate::ValidateCertificatesAction,
 };
 use crate::{
     actions::shared::{ActivateKeyAction, SetRotationPolicyAction},
@@ -17,6 +18,7 @@ pub(crate) mod decrypt_certificate;
 pub(crate) mod destroy_certificate;
 pub(crate) mod encrypt_certificate;
 pub(crate) mod export_certificate;
+pub(crate) mod generate_crl;
 pub(crate) mod import_certificate;
 pub(crate) mod revoke_certificate;
 pub(crate) mod validate_certificate;
@@ -29,6 +31,7 @@ pub enum CertificatesCommands {
     Decrypt(DecryptCertificateAction),
     Encrypt(EncryptCertificateAction),
     Export(ExportCertificateAction),
+    GenerateCrl(GenerateCrlAction),
     Import(ImportCertificateAction),
     Revoke(RevokeCertificateAction),
     Destroy(DestroyCertificateAction),
@@ -72,6 +75,10 @@ impl CertificatesCommands {
                 Ok(())
             }
             Self::Destroy(action) => {
+                action.run(kms_rest_client).await?;
+                Ok(())
+            }
+            Self::GenerateCrl(action) => {
                 action.run(kms_rest_client).await?;
                 Ok(())
             }

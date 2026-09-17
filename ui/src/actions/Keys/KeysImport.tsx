@@ -1,6 +1,7 @@
 import { UploadOutlined } from "@ant-design/icons";
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { FormUpload } from "../../components/common/FormUpload";
 import { sendKmipRequest } from "../../utils/utils";
 import { import_ttlv_request, parse_import_ttlv_response } from "../../wasm/pkg";
@@ -26,7 +27,7 @@ interface ImportKeyFormData {
     wrappingKeyId?: string;
 }
 
-type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt" | "pqc" | "secret-data" | "opaque-object";
+type KeyType = "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "secret-data" | "opaque-object";
 
 interface KeyImportFormProps {
     key_type: KeyType;
@@ -39,6 +40,7 @@ type KeyImportResponse = {
 const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
     const [form] = Form.useForm<ImportKeyFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: ImportKeyFormData) => {
         await execute(async () => {
@@ -58,7 +60,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: KeyImportResponse = await parse_import_ttlv_response(result_str);
-                return `File has been imported - imported object id: ${result.UniqueIdentifier}`;
+                return t("keysImport.success", { objectId: result.UniqueIdentifier });
             }
         });
     };
@@ -68,75 +70,79 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
 
     if (key_type === "rsa") {
         key_formats = [
-            { label: "JSON TTLV (default)", value: "json-ttlv" },
-            { label: "PEM (auto-detect format)", value: "pem" },
-            { label: "PKCS#1 DER (RSA private)", value: "pkcs1-priv" },
-            { label: "PKCS#1 DER (RSA public)", value: "pkcs1-pub" },
-            { label: "PKCS#8 DER (RSA private)", value: "pkcs8-priv" },
-            { label: "PKCS#8 DER (RSA public)", value: "pkcs8-pub" },
+            { label: t("keysImport.formatJsonTtlv"), value: "json-ttlv" },
+            { label: t("keysImport.formatPem"), value: "pem" },
+            { label: t("keysImport.formatPkcs1Priv"), value: "pkcs1-priv" },
+            { label: t("keysImport.formatPkcs1Pub"), value: "pkcs1-pub" },
+            { label: t("keysImport.formatPkcs8Priv"), value: "pkcs8-priv" },
+            { label: t("keysImport.formatPkcs8Pub"), value: "pkcs8-pub" },
         ];
         key_usages = [
-            { label: "Sign", value: "Sign" },
-            { label: "Verify", value: "Verify" },
-            { label: "Encrypt", value: "Encrypt" },
-            { label: "Decrypt", value: "Decrypt" },
-            { label: "Wrap", value: "WrapKey" },
-            { label: "Unwrap", value: "UnwrapKey" },
+            { label: t("keysImport.usageSign"), value: "Sign" },
+            { label: t("keysImport.usageVerify"), value: "Verify" },
+            { label: t("keysImport.usageEncrypt"), value: "Encrypt" },
+            { label: t("keysImport.usageDecrypt"), value: "Decrypt" },
+            { label: t("keysImport.usageWrap"), value: "WrapKey" },
+            { label: t("keysImport.usageUnwrap"), value: "UnwrapKey" },
         ];
     } else if (key_type === "ec") {
         key_formats = [
-            { label: "JSON TTLV (default)", value: "json-ttlv" },
-            { label: "PEM (auto-detect format)", value: "pem" },
-            { label: "SEC1 DER (EC private)", value: "sec1" },
-            { label: "PKCS#8 DER (RSA public)", value: "pkcs8-pub" },
-            { label: "PKCS#8 DER (RSA private)", value: "pkcs8-priv" },
+            { label: t("keysImport.formatJsonTtlv"), value: "json-ttlv" },
+            { label: t("keysImport.formatPem"), value: "pem" },
+            { label: t("keysImport.formatSec1"), value: "sec1" },
+            { label: t("keysImport.formatPkcs8Pub"), value: "pkcs8-pub" },
+            { label: t("keysImport.formatPkcs8Priv"), value: "pkcs8-priv" },
         ];
         key_usages = [
-            { label: "Sign", value: "Sign" },
-            { label: "Verify", value: "Verify" },
-            { label: "Encrypt", value: "Encrypt" },
-            { label: "Decrypt", value: "Decrypt" },
-            { label: "Wrap", value: "WrapKey" },
-            { label: "Unwrap", value: "UnwrapKey" },
+            { label: t("keysImport.usageSign"), value: "Sign" },
+            { label: t("keysImport.usageVerify"), value: "Verify" },
+            { label: t("keysImport.usageEncrypt"), value: "Encrypt" },
+            { label: t("keysImport.usageDecrypt"), value: "Decrypt" },
+            { label: t("keysImport.usageWrap"), value: "WrapKey" },
+            { label: t("keysImport.usageUnwrap"), value: "UnwrapKey" },
         ];
-    } else if (key_type === "symmetric") {
+    } else if (key_type === "symmetric" || key_type === "fpe") {
         key_formats = [
-            { label: "JSON TTLV (default)", value: "json-ttlv" },
-            { label: "AES", value: "aes" },
-            { label: "ChaCha20", value: "chacha20" },
+            { label: t("keysImport.formatJsonTtlv"), value: "json-ttlv" },
+            { label: t("keysImport.formatAes"), value: "aes" },
+            { label: t("keysImport.formatChacha20"), value: "chacha20" },
         ];
         key_usages = [
-            { label: "Encrypt", value: "Encrypt" },
-            { label: "Decrypt", value: "Decrypt" },
-            { label: "Wrap", value: "WrapKey" },
-            { label: "Unwrap", value: "UnwrapKey" },
+            { label: t("keysImport.usageEncrypt"), value: "Encrypt" },
+            { label: t("keysImport.usageDecrypt"), value: "Decrypt" },
+            { label: t("keysImport.usageWrap"), value: "WrapKey" },
+            { label: t("keysImport.usageUnwrap"), value: "UnwrapKey" },
         ];
     } else if (key_type === "secret-data" || key_type === "opaque-object") {
-        key_formats = [{ label: "JSON TTLV (default)", value: "json-ttlv" }];
+        key_formats = [{ label: t("keysImport.formatJsonTtlv"), value: "json-ttlv" }];
         key_usages = [
-            { label: "Wrap", value: "WrapKey" },
-            { label: "Unwrap", value: "UnwrapKey" },
+            { label: t("keysImport.usageWrap"), value: "WrapKey" },
+            { label: t("keysImport.usageUnwrap"), value: "UnwrapKey" },
         ];
     } else {
-        key_formats = [{ label: "JSON TTLV (default)", value: "json-ttlv" }];
+        key_formats = [{ label: t("keysImport.formatJsonTtlv"), value: "json-ttlv" }];
         key_usages = [
-            { label: "Encrypt", value: "Encrypt" },
-            { label: "Decrypt", value: "Decrypt" },
+            { label: t("keysImport.usageEncrypt"), value: "Encrypt" },
+            { label: t("keysImport.usageDecrypt"), value: "Decrypt" },
         ];
     }
 
     const isSecretData = key_type === "secret-data";
     const isOpaqueObject = key_type === "opaque-object";
     const isDataLike = isSecretData || isOpaqueObject;
-    const displayName = isSecretData ? "Secret Data" : isOpaqueObject ? "Opaque Object" : `${key_type} key`;
+    const displayName = isSecretData
+        ? t("keysImport.secretData")
+        : isOpaqueObject
+          ? t("keysImport.opaqueObject")
+          : t("keysImport.keyName", { keyType: key_type.toUpperCase() });
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Import {displayName}</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("keysImport.title", { displayName })}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Import {displayName} into the KMS.</p>
-                <p>When no ID is specified, a random UUID will be generated.</p>
+                <p>{t("keysImport.intro", { displayName })}</p>
+                <p>{t("keysImport.introUuid")}</p>
             </div>
 
             <Form
@@ -154,14 +160,14 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                     <Card>
                         <Form.Item
                             name="keyFile"
-                            label={isDataLike ? "Data File" : "Key File"}
-                            rules={[{ required: true, message: "Please upload a file" }]}
+                            label={isDataLike ? t("keysImport.dataFileLabel") : t("keysImport.keyFileLabel")}
+                            rules={[{ required: true, message: t("keysImport.pleaseUploadFile") }]}
                             help={
                                 isSecretData
-                                    ? "Upload the secret data file to import"
+                                    ? t("keysImport.secretDataFileHelp")
                                     : isOpaqueObject
-                                      ? "Upload the opaque object file to import"
-                                      : "Upload the key file to import"
+                                      ? t("keysImport.opaqueObjectFileHelp")
+                                      : t("keysImport.keyFileHelp")
                             }
                         >
                             <FormUpload
@@ -176,7 +182,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                                                     const bytes = new Uint8Array([...decoded].map((char) => char.charCodeAt(0)));
                                                     form.setFieldsValue({ keyFile: bytes });
                                                 } else {
-                                                    throw new Error("Invalid Base64 format");
+                                                    throw new Error(t("keysImport.invalidBase64"));
                                                 }
                                             } catch {
                                                 const binaryReader = new FileReader();
@@ -197,69 +203,78 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                                 maxCount={1}
                             >
                                 <Button icon={<UploadOutlined />}>
-                                    Upload {isSecretData ? "Secret Data File" : isOpaqueObject ? "Opaque Object File" : "Key File"}
+                                    {isSecretData
+                                        ? t("keysImport.uploadSecretData")
+                                        : isOpaqueObject
+                                          ? t("keysImport.uploadOpaqueObject")
+                                          : t("keysImport.uploadKeyFile")}
                                 </Button>
                             </FormUpload>
                         </Form.Item>
 
-                        <Form.Item name="keyId" label="ID" help="Optional: A random UUID will be generated if not specified">
-                            <Input placeholder="Enter ID" />
+                        <Form.Item name="keyId" label={t("keysImport.idLabel")} help={t("keysImport.idHelp")}>
+                            <Input placeholder={t("keysImport.enterId")} />
                         </Form.Item>
 
-                        <Form.Item name="keyFormat" label="Format" help="Format of the file to import" rules={[{ required: true }]}>
+                        <Form.Item
+                            name="keyFormat"
+                            label={t("keysImport.formatLabel")}
+                            help={t("keysImport.formatHelp")}
+                            rules={[{ required: true }]}
+                        >
                             <Select options={key_formats} />
                         </Form.Item>
                     </Card>
 
                     {!isSecretData && (
                         <Card>
-                            <h3 className="text-m font-bold mb-4">Key Relationships</h3>
+                            <h3 className="text-m font-bold mb-4">{t("keysImport.keyRelationships")}</h3>
 
-                            <Form.Item name="publicKeyId" label="Public Key ID" help="Link to public key in KMS">
-                                <Input placeholder="Enter public key ID" />
+                            <Form.Item name="publicKeyId" label={t("keysImport.publicKeyId")} help={t("keysImport.publicKeyIdHelp")}>
+                                <Input placeholder={t("keysImport.enterPublicKeyId")} />
                             </Form.Item>
 
-                            <Form.Item name="privateKeyId" label="Private Key ID" help="Link to private key in KMS">
-                                <Input placeholder="Enter private key ID" />
+                            <Form.Item name="privateKeyId" label={t("keysImport.privateKeyId")} help={t("keysImport.privateKeyIdHelp")}>
+                                <Input placeholder={t("keysImport.enterPrivateKeyId")} />
                             </Form.Item>
 
-                            <Form.Item name="certificateId" label="Certificate ID" help="Link to certificate in KMS">
-                                <Input placeholder="Enter certificate ID" />
+                            <Form.Item name="certificateId" label={t("keysImport.certificateId")} help={t("keysImport.certificateIdHelp")}>
+                                <Input placeholder={t("keysImport.enterCertificateId")} />
                             </Form.Item>
                         </Card>
                     )}
 
                     <Card>
-                        <Form.Item name="keyUsage" label="Usage" help="Specify allowed operations">
-                            <Select mode="multiple" options={key_usages} placeholder="Select usage" />
+                        <Form.Item name="keyUsage" label={t("keysImport.usageLabel")} help={t("keysImport.usageHelp")}>
+                            <Select mode="multiple" options={key_usages} placeholder={t("keysImport.selectUsage")} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Optional: Add tags to help retrieve later">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("keysImport.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
-                        <Form.Item name="wrappingKeyId" label="Wrapping Key ID" help="Optional: ID of wrapping key">
-                            <Input placeholder="Enter wrapping key ID" />
+                        <Form.Item name="wrappingKeyId" label={t("keysImport.wrappingKeyId")} help={t("keysImport.wrappingKeyIdHelp")}>
+                            <Input placeholder={t("keysImport.enterWrappingKeyId")} />
                         </Form.Item>
                     </Card>
 
                     <Card>
-                        <Form.Item name="unwrap" valuePropName="checked" help="Unwrap if wrapped before storing">
-                            <Checkbox>Unwrap before import</Checkbox>
+                        <Form.Item name="unwrap" valuePropName="checked" help={t("keysImport.unwrapHelp")}>
+                            <Checkbox>{t("keysImport.unwrapBeforeImport")}</Checkbox>
                         </Form.Item>
 
-                        <Form.Item name="replaceExisting" valuePropName="checked" help="Replace an existing object with same ID">
-                            <Checkbox>Replace existing</Checkbox>
+                        <Form.Item name="replaceExisting" valuePropName="checked" help={t("keysImport.replaceExistingHelp")}>
+                            <Checkbox>{t("keysImport.replaceExisting")}</Checkbox>
                         </Form.Item>
                     </Card>
 
                     <Card>
                         <Form.Item
                             name="authenticatedAdditionalData"
-                            label="Authenticated Additional Data"
-                            help="Optional: For AES256GCM authenticated encryption"
+                            label={t("keysImport.authenticatedAdditionalData")}
+                            help={t("keysImport.authenticatedAdditionalDataHelp")}
                         >
-                            <Input placeholder="Enter authenticated data" />
+                            <Input placeholder={t("keysImport.enterAuthenticatedData")} />
                         </Form.Item>
                     </Card>
 
@@ -271,13 +286,13 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Import {isDataLike ? "Data" : "Key"}
+                            {isDataLike ? t("keysImport.submitData") : t("keysImport.submitKey")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
 
-            <ActionResponse res={res} responseRef={responseRef} title="Import Response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("keysImport.responseTitle")} />
         </div>
     );
 };

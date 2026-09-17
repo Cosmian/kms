@@ -29,7 +29,6 @@ pub enum MainDbParams {
 }
 
 impl MainDbParams {
-    /// Return the name of the database type
     #[must_use]
     pub const fn db_name(&self) -> &str {
         match &self {

@@ -1,10 +1,12 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { decrypt_ec_ttlv_request, parse_decrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface PqcDecapsulateFormData {
     inputFile: Uint8Array;
@@ -16,12 +18,13 @@ interface PqcDecapsulateFormData {
 const PqcDecapsulateForm: React.FC = () => {
     const [form] = Form.useForm<PqcDecapsulateFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: PqcDecapsulateFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("pqcDecapsulate.missingKeyId"));
             }
             const request = decrypt_ec_ttlv_request(id, values.inputFile);
             const result_str = await sendKmipRequest(request, serverUrl);
@@ -32,9 +35,9 @@ const PqcDecapsulateForm: React.FC = () => {
                 if (data) {
                     const ssBytes = data instanceof Uint8Array ? data : new Uint8Array(data);
                     downloadFile(ssBytes, "shared_secret.key", "application/octet-stream");
-                    return `Decapsulation successful. Shared secret downloaded (${ssBytes.byteLength} bytes).`;
+                    return t("pqcDecapsulate.success", { size: ssBytes.byteLength });
                 } else {
-                    return "Decapsulation returned empty data.";
+                    return t("pqcDecapsulate.emptyData");
                 }
             }
         });
@@ -42,21 +45,21 @@ const PqcDecapsulateForm: React.FC = () => {
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">PQC KEM Decapsulate</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("pqcDecapsulate.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Decapsulate to recover the shared secret from a PQC KEM ciphertext (encapsulation).</p>
-                <p>Upload the encapsulation file and specify the PQC KEM private key.</p>
+                <p>{t("pqcDecapsulate.intro")}</p>
+                <p>{t("pqcDecapsulate.introKey")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Encapsulation File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("pqcDecapsulate.encapsulationFile")}</h3>
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
-                        <Form.Item name="inputFile" rules={[{ required: true, message: "Please select an encapsulation file" }]}>
+                        <Form.Item name="inputFile" rules={[{ required: true, message: t("pqcDecapsulate.pleaseSelectFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
@@ -73,18 +76,23 @@ const PqcDecapsulateForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag the encapsulation file here</p>
+                                <p className="ant-upload-text">{t("pqcDecapsulate.uploadText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Private Key ID" help="The unique identifier of the PQC KEM private key">
-                            <Input placeholder="Enter private key ID" />
-                        </Form.Item>
+                        <h3 className="text-m font-bold mb-4">{t("pqcDecapsulate.keyIdentification")}</h3>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("pqcDecapsulate.privateKeyId")}
+                            help={t("pqcDecapsulate.privateKeyIdHelp")}
+                            placeholder={t("pqcDecapsulate.enterPrivateKeyId")}
+                            objectType="PrivateKey"
+                        />
 
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("pqcDecapsulate.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Form.Item>
@@ -95,12 +103,12 @@ const PqcDecapsulateForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Decapsulate
+                            {t("pqcDecapsulate.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="PQC KEM decapsulate response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("pqcDecapsulate.responseTitle")} />
         </div>
     );
 };

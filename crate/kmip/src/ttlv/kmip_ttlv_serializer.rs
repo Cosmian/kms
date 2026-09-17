@@ -13,6 +13,7 @@ use tracing::instrument;
 use super::{collapse_adjacently_tagged_structure, normalize_ttlv};
 use crate::ttlv::{
     TtlvError,
+    interval::INTERVAL_NEWTYPE,
     tags::BYTE_LIKE_TAGS,
     ttlv_struct::{KmipEnumerationVariant, TTLV, TTLValue},
 };
@@ -146,6 +147,11 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
     type SerializeTuple = &'a mut TtlvSerializer;
     type SerializeTupleStruct = &'a mut TtlvSerializer;
     type SerializeTupleVariant = &'a mut TtlvSerializer;
+
+    // TTLV is a binary, non-human-readable format.
+    fn is_human_readable(&self) -> bool {
+        false
+    }
 
     #[instrument(level = "trace", skip(self))]
     fn serialize_bool(self, v: bool) -> Result<Self::Ok> {
@@ -356,7 +362,25 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
     where
         T: ?Sized + Serialize,
     {
-        let _ = name;
+        // `Interval` wraps a `u32` that KMIP types as the `Interval` primitive
+        // (0x0A) rather than `Integer` (0x02). Serialize the inner value first,
+        // then retype the resulting TTLV node.
+        if name == INTERVAL_NEWTYPE {
+            value.serialize(&mut *self)?;
+            let current = self.current_mut()?;
+            let seconds = match current.value {
+                TTLValue::Integer(v) => u32::try_from(v).unwrap_or(0),
+                TTLValue::LongInteger(v) => u32::try_from(v).unwrap_or(0),
+                TTLValue::Interval(v) => v,
+                _ => {
+                    return Err(TtlvError::custom(
+                        "Interval must wrap an integer value".to_owned(),
+                    ));
+                }
+            };
+            current.value = TTLValue::Interval(seconds);
+            return Ok(());
+        }
         value.serialize(self)
     }
 
@@ -444,10 +468,8 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
 
     #[instrument(level = "trace", skip(self))]
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
-        trace!(
-            "serialize_tuple of len {len}. Current: {:?}",
-            &self.current_tag()
-        );
+        let current_tag = self.current_tag();
+        trace!("serialize_tuple of len {len}. Current: {:?}", &current_tag);
         self.serialize_seq(Some(len))
     }
 
@@ -457,9 +479,10 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleStruct> {
+        let current_tag = self.current_tag();
         trace!(
             "serialize_tuple_struct {name} of len {len}. Current: {:?}",
-            &self.current_tag()
+            &current_tag
         );
         self.serialize_seq(Some(len))
     }
@@ -472,10 +495,11 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleVariant> {
+        let current_tag = self.current_tag();
         trace!(
             "serialize_tuple_variant {name}::{variant} (variant index: {variant_index}) of len \
              {len}. Current: {:?}",
-            &self.current_tag()
+            &current_tag
         );
         Err(TtlvError::custom(
             "'tuple variant' is unsupported in TTLV".to_owned(),
@@ -484,10 +508,8 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
 
     #[instrument(level = "trace", skip(self))]
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap> {
-        trace!(
-            "serialize_map of len: {len:?}. Current: {:?}",
-            &self.current_tag()
-        );
+        let current_tag = self.current_tag();
+        trace!("serialize_map of len: {len:?}. Current: {:?}", &current_tag);
         Err(TtlvError::custom("'map' is unsupported in TTLV".to_owned()))
     }
 
@@ -522,17 +544,13 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant> {
+        let current_tag = self.current_tag();
         trace!(
             "serialize_struct_variant {name}::{variant} (variant index: {variant_index}) of len \
              {len}. Current: {:?}",
-            &self.current_tag()
+            &current_tag
         );
         self.serialize_struct(name, len)
-    }
-
-    #[inline]
-    fn is_human_readable(&self) -> bool {
-        true
     }
 }
 

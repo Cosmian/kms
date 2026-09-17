@@ -14,6 +14,7 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
+# shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
 ensure_nix_shell
 
 print_header "Running Proteccio HSM tests (${VARIANT_NAME})"

@@ -8,6 +8,8 @@ vas = "vas"
 passin = "passin"
 typ = "typ"
 Hashi = "Hashi"
+# SAP ASE installer feature id (CHOSEN_FEATURE_LIST=fase_srv,...), not a typo of "phase".
+fase = "fase"
 # Unicode hex code points inside SVG font unicode-range (e.g. U+1F6BA)
 BA = "BA"
 # Common standards acronym in cryptographic references.
@@ -24,3 +26,10 @@ ANF = "ANF"
 tme = "tme"
 # Plural of PNG (image format)
 PNGs = "PNGs"
+# Base64url fragment inside an example JWK "y" coordinate in openapi.yaml.
+Stik = "Stik"
+# Security Information and Event Management
+SIEM = "SIEM"
+SIEMs = "SIEMs"
+SIE = "SIE"
+sie = "sie"

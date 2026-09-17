@@ -6,6 +6,7 @@ use cosmian_logger::trace;
 
 use crate::{
     core::{KMS, operations::export_get},
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -15,7 +16,7 @@ use crate::{
 /// If the request contains a `KeyWrapType`, the key will be unwrapped.
 /// If both are present, the key will be wrapped.
 /// If none are present, the key will be returned as is.
-pub(crate) async fn export(kms: &KMS, request: Export, user: &str) -> KResult<ExportResponse> {
+pub(crate) async fn export(kms: &KMS, request: Export, user: &UserId) -> KResult<ExportResponse> {
     trace!("{request}");
     Box::pin(export_get(kms, request, KmipOperation::Export, user)).await
 }

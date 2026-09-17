@@ -15,7 +15,10 @@ the current date and time.
 
 ## Implementation
 
-The state of the object is kept as specified but the revocation reason is currently not maintained.
+The state of the object is kept as specified. The revocation reason is also persisted
+in the object's attributes (both internal and external), as required by RFC 5280 §5.3.1
+to populate the `CRLReason` extension in generated CRLs.
+
 Once an Object is revoked, it can only be retrieved using the `Export` operation. The `Get` operation will return an
 error.
 

@@ -1,6 +1,7 @@
-import { Button, Card, Form, Input, Select, Space, Typography } from "antd";
+import { Button, Card, Form, Select, Space, Typography } from "antd";
 import moment from "moment";
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import {
     get_crypto_algorithms,
@@ -10,6 +11,7 @@ import {
 import { useActionState } from "../../hooks/useActionState";
 import { ATTRIBUTE_REGISTRY, SET_MODIFY_ATTRIBUTES, type AlgoOption } from "./attributeRegistry";
 import AttributeValueInput from "./AttributeValueInput";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -26,6 +28,8 @@ const AttributeModifyForm: React.FC = () => {
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [selectedAttributeName, setSelectedAttributeName] = useState<string | undefined>(undefined);
     const [cryptoAlgorithms, setCryptoAlgorithms] = useState<AlgoOption[]>([]);
+    const { t } = useTranslation("actions");
+    const attrLabel = (value: string, fallback: string) => t(`attribute.${value}`, { defaultValue: fallback });
 
     useEffect(() => {
         try {
@@ -45,7 +49,7 @@ const AttributeModifyForm: React.FC = () => {
         const id = values.id ? values.id : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing object identifier.");
+                throw new Error(t("form.missingObjectId"));
             }
 
             if (
@@ -53,7 +57,7 @@ const AttributeModifyForm: React.FC = () => {
                 !values.attribute_value ||
                 (Array.isArray(values.attribute_value) && values.attribute_value.length === 0)
             ) {
-                throw new Error("Missing attribute.");
+                throw new Error(t("form.missingAttribute"));
             }
 
             // Normalise: multi-select (key_usage) returns string[]; join to CSV for Rust
@@ -70,53 +74,54 @@ const AttributeModifyForm: React.FC = () => {
 
             if (result_str) {
                 const response = parse_modify_attribute_ttlv_response(result_str);
-                return `Attribute has been modified for ${response.UniqueIdentifier}`;
+                return t("attributeModify.success", { id: response.UniqueIdentifier });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <Title level={2}>Modify KMIP Object Attribute</Title>
+            <Title level={2}>{t("attributeModify.title")}</Title>
             <div className="mb-8 space-y-2">
-                <div>Modify an existing attribute on a KMIP object by specifying the object ID or tags.</div>
-                <div className="text-sm text-yellow-600">
-                    When using tags to identify the object, rather than the object ID, an error is returned if multiple objects matching the
-                    tags are found.
-                </div>
+                <div>{t("attributeModify.intro")}</div>
+                <div className="text-sm text-yellow-600 dark:text-yellow-400">{t("attributeSet.introWarning")}</div>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{}}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
-                    <Card title="Object Identification">
-                        <div className="mb-5">Specify either the Object ID or one or more tags to identify the object.</div>
+                    <Card title={t("form.objectIdentification")}>
+                        <div className="mb-5">{t("form.identifyHint")}</div>
 
-                        <Form.Item name="id" label="Object ID" help="The unique identifier of the cryptographic object">
-                            <Input placeholder="Enter object ID" />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="id"
+                            label={t("common:objectId")}
+                            help={t("common:objectIdHelp")}
+                            placeholder={t("common:enterObjectId")}
+                        />
 
-                        <Form.Item name="tags" label="Tags" help="Tags to use to retrieve the object when no object ID is specified">
-                            <Select mode="tags" style={{ width: "100%" }} placeholder="Enter tags" tokenSeparators={[","]} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("common:tagsHelp")}>
+                            <Select mode="tags" style={{ width: "100%" }} placeholder={t("common:enterTags")} tokenSeparators={[","]} />
                         </Form.Item>
                     </Card>
 
-                    <Card title="Attribute Modification">
-                        <div className="mb-5">Select one attribute to modify on the selected KMIP object.</div>
+                    <Card title={t("attributeModify.cardTitle")}>
+                        <div className="mb-5">{t("attributeModify.settingHint")}</div>
 
                         <Form.Item
                             name="attribute_name"
-                            label="Attribute Name"
-                            rules={[{ required: true, message: "Please select an attribute name" }]}
-                            help="Select the KMIP attribute you want to modify"
+                            label={t("form.attributeName")}
+                            rules={[{ required: true, message: t("attributeSet.pleaseSelectAttributeName") }]}
+                            help={t("attributeModify.attributeNameHelp")}
                         >
                             <Select
                                 data-testid="attribute-name-select"
-                                placeholder="Select attribute name"
+                                placeholder={t("form.selectAttributeName")}
                                 onChange={onAttributeNameChange}
                             >
                                 {SET_MODIFY_ATTRIBUTES.map((attr) => (
                                     <Option key={attr.value} value={attr.value}>
-                                        {attr.label}
+                                        {attrLabel(attr.value, attr.label)}
                                     </Option>
                                 ))}
                             </Select>
@@ -133,7 +138,7 @@ const AttributeModifyForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Modify Attribute
+                            {t("attributeModify.submit")}
                         </Button>
                     </Form.Item>
                 </Space>

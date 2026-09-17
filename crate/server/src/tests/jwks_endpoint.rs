@@ -15,7 +15,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         },
     },
 };
-use cosmian_logger::log_init;
 use jsonwebtoken::jwk::JwkSet;
 
 use crate::{result::KResult, tests::test_utils};
@@ -38,8 +37,7 @@ where
 /// Empty DB → `200 OK` with `{"keys": []}`.
 #[tokio::test]
 async fn test_jwks_empty_db() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
 
     let resp = get_jwks_response(&app).await;
     assert_eq!(resp.status(), 200);
@@ -56,8 +54,7 @@ async fn test_jwks_empty_db() -> KResult<()> {
 /// RSA-2048 public key tagged `"jwks"` → appears in JWKS with `kty=RSA`, `alg=RS256`.
 #[tokio::test]
 async fn test_jwks_rsa2048_verify_key_present() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
 
     // Create an RSA-2048 key pair via KMIP (no tags yet).
     let kp_req =
@@ -112,8 +109,7 @@ async fn test_jwks_rsa2048_verify_key_present() -> KResult<()> {
 /// EC P-256 public key tagged `"jwks"` → `kty=EC`, `crv=P-256`, `alg=ES256`.
 #[tokio::test]
 async fn test_jwks_ec_p256_verify_key_present() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
 
     let kp_req = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,
@@ -172,8 +168,7 @@ async fn test_jwks_ec_p256_verify_key_present() -> KResult<()> {
 /// EC P-384 public key tagged `"jwks"` → `crv=P-384`, `alg=ES384`.
 #[tokio::test]
 async fn test_jwks_ec_p384_verify_key_present() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
 
     let kp_req = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,
@@ -227,8 +222,7 @@ async fn test_jwks_ec_p384_verify_key_present() -> KResult<()> {
 /// Content-Type must be `application/jwk-set+json`.
 #[tokio::test]
 async fn test_jwks_content_type() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
 
     let req = test::TestRequest::get()
         .uri("/.well-known/jwks.json")
@@ -252,8 +246,7 @@ async fn test_jwks_content_type() -> KResult<()> {
 /// `Cache-Control: no-store` must be present.
 #[tokio::test]
 async fn test_jwks_cache_control_no_store() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
 
     let req = test::TestRequest::get()
         .uri("/.well-known/jwks.json")
@@ -277,8 +270,7 @@ async fn test_jwks_cache_control_no_store() -> KResult<()> {
 /// `ETag` conditional GET: matching `ETag` → `304 Not Modified`.
 #[tokio::test]
 async fn test_jwks_etag_304_on_match() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
 
     // First request — get the ETag
     let req = test::TestRequest::get()
@@ -313,8 +305,7 @@ async fn test_jwks_etag_304_on_match() -> KResult<()> {
 /// Stale `ETag` → `200 OK` (not a 304).
 #[tokio::test]
 async fn test_jwks_etag_200_on_stale() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
 
     let req = test::TestRequest::get()
         .uri("/.well-known/jwks.json")
@@ -338,8 +329,7 @@ async fn test_jwks_etag_200_on_stale() -> KResult<()> {
 /// 4. Assert that only the second public key remains in JWKS.
 #[tokio::test]
 async fn test_jwks_tag_opt_out_flow() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
 
     // Step 1 — create two EC P-256 key pairs via the REST endpoint (auto-tagged).
     let resp_1: serde_json::Value = test_utils::post_json_with_uri(
@@ -416,8 +406,7 @@ async fn test_jwks_tag_opt_out_flow() -> KResult<()> {
 /// JWKS even though the key is deactivated (no longer used for signing).
 #[tokio::test]
 async fn test_jwks_deactivated_key_included() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
 
     // Create an EC P-256 key pair and tag the public key for JWKS.
     let kp_req = create_ec_key_pair_request(
@@ -471,8 +460,7 @@ async fn test_jwks_deactivated_key_included() -> KResult<()> {
 /// JWKS would allow attackers to present forged tokens as valid.
 #[tokio::test]
 async fn test_jwks_compromised_key_excluded() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
 
     // Create an EC P-256 key pair and tag the public key for JWKS.
     let kp_req = create_ec_key_pair_request(
@@ -526,8 +514,7 @@ async fn test_jwks_compromised_key_excluded() -> KResult<()> {
 /// be published; the endpoint filters by `ObjectType::PublicKey`.
 #[tokio::test]
 async fn test_jwks_symmetric_key_excluded() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
 
     // Create an AES-256 symmetric key.
     let create_req = symmetric_key_create_request(

@@ -23,7 +23,7 @@ const TEST_VENDOR_ID: &str = "test_vendor_id";
 pub(crate) async fn test_vendor_id_in_vendor_attributes() -> CosmianResult<()> {
     // 1. Start a test KMS server with a custom vendor_identification patched in.
     let mut ctx = start_test_server_with_patch(
-        &test_config_path("auth_plain.toml"),
+        &test_config_path("auth/plain.toml"),
         |config| {
             config.vendor_identification = TEST_VENDOR_ID.to_owned();
         },

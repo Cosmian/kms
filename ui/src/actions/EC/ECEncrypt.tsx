@@ -1,10 +1,12 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { encrypt_ec_ttlv_request, parse_encrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface ECEncryptFormData {
     inputFile: Uint8Array;
@@ -17,12 +19,13 @@ interface ECEncryptFormData {
 const ECEncryptForm: React.FC = () => {
     const [form] = Form.useForm<ECEncryptFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: ECEncryptFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("ecEncrypt.missingKeyId"));
             }
             const request = encrypt_ec_ttlv_request(id, values.inputFile);
             const result_str = await sendKmipRequest(request, serverUrl);
@@ -32,31 +35,31 @@ const ECEncryptForm: React.FC = () => {
                 const mimeType = "application/octet-stream";
                 const filename = `${values.fileName}.enc`;
                 downloadFile(data, filename, mimeType);
-                return "File has been encrypted";
+                return t("ecEncrypt.success");
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold  mb-6">EC Encryption</h1>
+            <h1 className="text-2xl font-bold  mb-6">{t("ecEncrypt.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Encrypt a file using ECIES (Elliptic Curve Integrated Encryption Scheme).</p>
-                <p>The key can be identified using either its ID or associated tags.</p>
-                <p className="text-sm text-yellow-600">Note: This operation loads the entire file in memory.</p>
+                <p>{t("ecEncrypt.intro")}</p>
+                <p>{t("ecEncrypt.introKey")}</p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">{t("ecEncrypt.note")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical" className="space-y-6">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Input File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("ecEncrypt.inputFile")}</h3>
 
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
 
-                        <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to encrypt" }]}>
+                        <Form.Item name="inputFile" rules={[{ required: true, message: t("ecEncrypt.pleaseSelectFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
@@ -73,18 +76,23 @@ const ECEncryptForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag file to this area to encrypt</p>
+                                <p className="ant-upload-text">{t("ecEncrypt.uploadText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Key ID" help="The unique identifier of the public key">
-                            <Input placeholder="Enter key ID" />
-                        </Form.Item>
+                        <h3 className="text-m font-bold mb-4">{t("ecEncrypt.keyIdentification")}</h3>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("ecEncrypt.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                            objectType="PublicKey"
+                        />
 
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("ecEncrypt.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Form.Item>
@@ -95,12 +103,12 @@ const ECEncryptForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Encrypt File
+                            {t("ecEncrypt.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="EC encrypt response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("ecEncrypt.responseTitle")} />
         </div>
     );
 };

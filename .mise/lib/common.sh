@@ -272,6 +272,7 @@ _run_workspace_tests() {
     cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
       -- --ignored --nocapture "test_db_${db}" test_certificate_validate
   fi
+  cargo test --workspace --lib --all-targets "${FEATURES_FLAG[@]}" --bench benches --no-run
   cargo test --workspace --lib "${FEATURES_FLAG[@]}" -- --nocapture
 }
 

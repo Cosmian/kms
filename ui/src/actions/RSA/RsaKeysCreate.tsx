@@ -1,10 +1,12 @@
 import { Button, Card, Checkbox, Divider, Form, Input, InputNumber, Select, Space } from "antd";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import { create_rsa_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "../../wasm/pkg";
 import * as wasm from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface RsaKeyCreateFormData {
     privateKeyId?: string;
@@ -25,6 +27,7 @@ type CreateKeyPairResponse = {
 const RsaKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<RsaKeyCreateFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
 
     const onFinish = async (values: RsaKeyCreateFormData) => {
         await execute(async () => {
@@ -57,22 +60,25 @@ const RsaKeyCreateForm: React.FC = () => {
                     }
                 }
 
-                return `Key pair has been created. Private key Id: ${skId} - Public key Id: ${result.PublicKeyUniqueIdentifier}`;
+                return t("rsaKeysCreate.success", {
+                    privateKeyId: skId,
+                    publicKeyId: result.PublicKeyUniqueIdentifier,
+                });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Create an RSA key pair</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("rsaKeysCreate.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Create a new RSA key pair:</p>
+                <p>{t("rsaKeysCreate.intro")}</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    <li>The public key is used to encrypt or verify signatures and can be safely shared.</li>
-                    <li>The private key is used to decrypt or sign and must be kept secret.</li>
+                    <li>{t("rsaKeysCreate.introPublicKey")}</li>
+                    <li>{t("rsaKeysCreate.introPrivateKey")}</li>
                 </ul>
-                <p>When creating a key pair with a specified tag, the tag is applied to both keys.</p>
+                <p>{t("rsaKeysCreate.introTags")}</p>
             </div>
 
             <Form
@@ -88,49 +94,42 @@ const RsaKeyCreateForm: React.FC = () => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item
-                            name="privateKeyId"
-                            label="Private Key ID"
-                            help="Optional: a random UUID will be generated if not specified"
-                        >
-                            <Input placeholder="Enter private key ID" />
+                        <Form.Item name="privateKeyId" label={t("rsaKeysCreate.privateKeyId")} help={t("rsaKeysCreate.privateKeyIdHelp")}>
+                            <Input placeholder={t("rsaKeysCreate.enterPrivateKeyId")} />
                         </Form.Item>
 
                         <Form.Item
                             name="sizeInBits"
-                            label="Size in Bits"
-                            help="The expected size in bits for the RSA key"
-                            rules={[{ required: true, message: "Please specify the key size" }]}
+                            label={t("rsaKeysCreate.sizeInBits")}
+                            help={t("rsaKeysCreate.sizeInBitsHelp")}
+                            rules={[{ required: true, message: t("rsaKeysCreate.pleaseSpecifySize") }]}
                         >
                             <InputNumber className="w-[200px]" min={1024} step={1024} max={8192} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Optional: Add tags to help retrieve the keys later">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("rsaKeysCreate.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
-                        <Form.Item
-                            name="wrappingKeyId"
-                            label="Wrapping Key ID"
-                            help="Optional: ID of the key to wrap this new keypair with"
-                        >
-                            <Input placeholder="Enter wrapping key ID" />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="wrappingKeyId"
+                            label={t("rsaKeysCreate.wrappingKeyId")}
+                            help={t("rsaKeysCreate.wrappingKeyIdHelp")}
+                            placeholder={t("rsaKeysCreate.enterWrappingKeyId")}
+                            objectType="SymmetricKey"
+                        />
 
-                        <Form.Item name="sensitive" valuePropName="checked" help="If set, the private key will not be exportable">
-                            <Checkbox>Sensitive</Checkbox>
+                        <Form.Item name="sensitive" valuePropName="checked" help={t("rsaKeysCreate.sensitiveHelp")}>
+                            <Checkbox>{t("rsaKeysCreate.sensitive")}</Checkbox>
                         </Form.Item>
 
                         <Divider orientation="left" plain>
-                            Rotation Policy (optional)
+                            {t("rsaKeysCreate.rotationPolicy")}
                         </Divider>
 
-                        <Form.Item
-                            name="enrollKeyset"
-                            valuePropName="checked"
-                            help="When checked, the rotation name is set to the private key ID so this key pair can be addressed via name@latest, name@first, name@N"
-                        >
-                            <Checkbox data-testid="rsa-enroll-keyset">Enroll in keyset (rotation name = private key ID)</Checkbox>
+                        <Form.Item name="enrollKeyset" valuePropName="checked" help={t("rsaKeysCreate.enrollKeysetHelp")}>
+                            <Checkbox data-testid="rsa-enroll-keyset">{t("rsaKeysCreate.enrollKeyset")}</Checkbox>
                         </Form.Item>
 
                         <Form.Item noStyle shouldUpdate={(prev, curr) => prev.enrollKeyset !== curr.enrollKeyset}>
@@ -139,26 +138,26 @@ const RsaKeyCreateForm: React.FC = () => {
                                     <>
                                         <Form.Item
                                             name="rotateInterval"
-                                            label="Rotation Interval (seconds)"
-                                            help="Auto-rotate the key pair every N seconds. Set 0 to disable."
+                                            label={t("rsaKeysCreate.rotateInterval")}
+                                            help={t("rsaKeysCreate.rotateIntervalHelp")}
                                         >
                                             <InputNumber
                                                 className="w-[200px]"
                                                 min={0}
-                                                placeholder="e.g. 86400"
+                                                placeholder={t("rsaKeysCreate.rotateIntervalPlaceholder")}
                                                 data-testid="rsa-rotation-interval"
                                             />
                                         </Form.Item>
 
                                         <Form.Item
                                             name="rotateOffset"
-                                            label="Rotation Offset (seconds)"
-                                            help="Delay before the first rotation occurs."
+                                            label={t("rsaKeysCreate.rotateOffset")}
+                                            help={t("rsaKeysCreate.rotateOffsetHelp")}
                                         >
                                             <InputNumber
                                                 className="w-[200px]"
                                                 min={0}
-                                                placeholder="e.g. 3600"
+                                                placeholder={t("rsaKeysCreate.rotateOffsetPlaceholder")}
                                                 data-testid="rsa-rotation-offset"
                                             />
                                         </Form.Item>
@@ -175,12 +174,12 @@ const RsaKeyCreateForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Create RSA Keypair
+                            {t("rsaKeysCreate.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="RSA keys creation response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("rsaKeysCreate.responseTitle")} />
         </div>
     );
 };

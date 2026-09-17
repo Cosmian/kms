@@ -1,10 +1,12 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasmClient from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface PqcVerifyFormData {
     dataFile: Uint8Array;
@@ -18,6 +20,7 @@ interface PqcVerifyFormData {
 const PqcVerifyForm: React.FC = () => {
     const [form] = Form.useForm<PqcVerifyFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
+    const { t } = useTranslation("actions");
     const [dataBytes, setDataBytes] = useState<Uint8Array | undefined>(undefined);
     const [sigBytes, setSigBytes] = useState<Uint8Array | undefined>(undefined);
 
@@ -25,13 +28,13 @@ const PqcVerifyForm: React.FC = () => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {
             if (id == undefined) {
-                throw new Error("Missing key identifier.");
+                throw new Error(t("pqcVerify.missingKeyId"));
             }
             const dataBuf = dataBytes ?? (values.dataFile ? new Uint8Array(values.dataFile) : undefined);
             const sigBuf = sigBytes ?? (values.signatureFile ? new Uint8Array(values.signatureFile) : undefined);
 
             if (!sigBuf || sigBuf.byteLength === 0) {
-                throw new Error("Error: signature file is empty or unreadable.");
+                throw new Error(`${t("common:errorPrefix")}${t("pqcVerify.emptySignature")}`);
             }
             // ML-DSA verify: no crypto parameters needed, not digested
             const request = wasmClient.signature_verify_ttlv_request(id, dataBuf!, sigBuf, undefined, false);
@@ -41,28 +44,28 @@ const PqcVerifyForm: React.FC = () => {
                 const respObj = response as unknown as Record<string, unknown>;
                 const validityRaw = respObj.ValidityIndicator ?? respObj.validity_indicator ?? respObj.validityIndicator;
                 const validity = typeof validityRaw === "string" ? validityRaw : String(validityRaw ?? "Unknown");
-                return `Signature validity: ${validity}`;
+                return t("pqcVerify.validity", { validity });
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">PQC Signature Verify</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("pqcVerify.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Verify a PQC signature (ML-DSA or SLH-DSA) for a given data file.</p>
-                <p>The key can be identified using either its ID or associated tags.</p>
+                <p>{t("pqcVerify.intro")}</p>
+                <p>{t("pqcVerify.introKey")}</p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Data File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("pqcVerify.dataFile")}</h3>
                         <Form.Item name="dataFileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
-                        <Form.Item name="dataFile" rules={[{ required: true, message: "Please select the data file" }]}>
+                        <Form.Item name="dataFile" rules={[{ required: true, message: t("pqcVerify.pleaseSelectDataFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("dataFileName", file.name);
@@ -80,16 +83,16 @@ const PqcVerifyForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag data file here</p>
+                                <p className="ant-upload-text">{t("pqcVerify.uploadDataText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Signature File</h3>
+                        <h3 className="text-m font-bold mb-4">{t("pqcVerify.signatureFile")}</h3>
                         <Form.Item name="signatureFileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
-                        <Form.Item name="signatureFile" rules={[{ required: true, message: "Please select the signature file" }]}>
+                        <Form.Item name="signatureFile" rules={[{ required: true, message: t("pqcVerify.pleaseSelectSignatureFile") }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("signatureFileName", file.name);
@@ -107,17 +110,22 @@ const PqcVerifyForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <p className="ant-upload-text">Click or drag signature file here</p>
+                                <p className="ant-upload-text">{t("pqcVerify.uploadSignatureText")}</p>
                             </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Public Key ID" help="The unique identifier of the PQC signature public key">
-                            <Input placeholder="Enter public key ID" />
-                        </Form.Item>
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
-                            <Select mode="tags" placeholder="Enter tags" open={false} />
+                        <h3 className="text-m font-bold mb-4">{t("pqcVerify.keyIdentification")}</h3>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("pqcVerify.publicKeyId")}
+                            help={t("pqcVerify.publicKeyIdHelp")}
+                            placeholder={t("pqcVerify.enterPublicKeyId")}
+                            objectType="PublicKey"
+                        />
+                        <Form.Item name="tags" label={t("common:tags")} help={t("pqcVerify.tagsHelp")}>
+                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
                     </Card>
                     <Form.Item>
@@ -128,12 +136,12 @@ const PqcVerifyForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="submit-btn"
                         >
-                            Verify Signature
+                            {t("pqcVerify.submit")}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            <ActionResponse res={res} responseRef={responseRef} title="PQC verify response" />
+            <ActionResponse res={res} responseRef={responseRef} title={t("pqcVerify.responseTitle")} />
         </div>
     );
 };

@@ -222,7 +222,8 @@ async fn run_service_async() -> crate::result::KResult<()> {
 
     // Run the KMS server on the current (local) task.
     // This blocks until the server exits (triggered by handle.stop() above).
-    let result = crate::start_kms_server::start_kms_server(server_params, Some(handle_tx)).await;
+    let result =
+        crate::start_kms_server::start_kms_server(server_params, Some(handle_tx), None).await;
 
     // Report Stopped
     let _status = status_handle.set_service_status(ServiceStatus {

@@ -1288,7 +1288,7 @@ pub struct RandomNumberGenerator {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_length: Option<i64>,
+    pub cryptographic_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hashing_algorithm: Option<HashingAlgorithm>,
     #[serde(skip_serializing_if = "Option::is_none")]

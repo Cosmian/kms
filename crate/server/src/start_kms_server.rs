@@ -8,6 +8,7 @@
 //! - Setting up routes and middleware
 
 use std::{
+    collections::HashSet,
     path::PathBuf,
     sync::{Arc, mpsc},
 };
@@ -23,8 +24,10 @@ use actix_web::{
     middleware::{Condition, DefaultHeaders, from_fn},
     web::{self, Data, JsonConfig, PayloadConfig},
 };
+use cosmian_kms_access::access::Access;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
+        KmipOperation,
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -56,21 +59,21 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache, api_token_middleware,
-        ensure_auth_middleware, extract_peer_certificate, jwt_auth_middleware,
-        otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
+        AuditMiddleware, AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache,
+        UserId, api_token_middleware, ensure_auth_middleware, extract_peer_certificate,
+        jwt_auth_middleware, otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
         vault_token_optional_middleware,
     },
     result::{KResult, KResultHelper},
     routes::{
         access,
-        aws_xks::{self},
-        azure_ekm, cli_archive_download, cli_archive_exists, get_hsm_status, get_server_info,
+        aws_xks::{self, AWS_XKS_SERVICE_USER},
+        azure_ekm, cli_archive_download, cli_archive_exists, crl, get_hsm_status, get_server_info,
         get_version,
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, root_redirect,
+        ms_dke, ocsp, root_redirect,
         spire::{
             auth_proxy::proxy_auth_request,
             pki::sign_intermediate,
@@ -130,7 +133,7 @@ pub async fn handle_google_cse_rsa_keypair(
                 unique_identifier: Some(UniqueIdentifier::TextString(uid_sk.clone())),
                 attribute_reference: None,
             },
-            &server_params.default_username,
+            &UserId::from(server_params.default_username.as_str()),
         )
         .await
     {
@@ -162,7 +165,10 @@ pub async fn handle_google_cse_rsa_keypair(
                 None,
             )?;
             kms_server
-                .create_key_pair(create_request, &server_params.default_username)
+                .create_key_pair(
+                    create_request,
+                    &UserId::from(server_params.default_username.as_str()),
+                )
                 .await
                 .map(|cr| {
                     (
@@ -188,7 +194,7 @@ pub async fn handle_google_cse_rsa_keypair(
                     unique_identifier: Some(UniqueIdentifier::TextString(uid_sk)),
                     attribute_reference: None,
                 },
-                &server_params.default_username,
+                &UserId::from(server_params.default_username.as_str()),
             )
             .await
         {
@@ -215,6 +221,141 @@ pub async fn handle_google_cse_rsa_keypair(
     }
 
     info!("RSA Keypair for Google CSE created.");
+
+    Ok(())
+}
+
+/// One-time, idempotent migration that grants the reserved AWS XKS service identity access
+/// to XKS keys created by earlier KMS versions.
+///
+/// Before the fix for issue #1093, XKS keys were created with `default_username` as owner
+/// and their `Encrypt`/`Decrypt` grant bound to the transient caller ARN — so only the
+/// creating principal could use the key. XKS operations now run under the reserved
+/// [`AWS_XKS_SERVICE_USER`] identity, so already-shipped keys carrying the `aws-xks` tag
+/// must be granted to that identity. The migration now performs that grant on behalf of
+/// each key's actual owner rather than assuming the current `default_username`, which also
+/// fixes the later limitation where rotating `default_username` stranded legacy XKS keys
+/// without the reserved identity grant. Ownership is deliberately left untouched:
+/// operators keep full administrative control of the keys.
+///
+/// The grant is additive and safe to re-run on every startup: `CreateKey` applies the same
+/// grant for new keys, and re-granting existing permissions is a no-op.
+///
+/// # Errors
+///
+/// Returns a [`KmsError`] if listing tagged objects or granting access fails.
+pub(crate) async fn migrate_aws_xks_key_access(kms_server: &Arc<KMS>) -> KResult<()> {
+    let default_username = kms_server.params.default_username.as_str();
+    // Defensive: an operator could have configured `default_username` to the reserved name.
+    // `grant_access` refuses to let an owner grant themselves, and the owner already has
+    // every right, so there is nothing to do.
+    if default_username == AWS_XKS_SERVICE_USER {
+        return Ok(());
+    }
+
+    let required = [
+        KmipOperation::Encrypt,
+        KmipOperation::Decrypt,
+        KmipOperation::GetAttributes,
+    ];
+    let tags = HashSet::from(["aws-xks".to_owned()]);
+    let uids = kms_server.database.list_uids_for_tags(&tags).await?;
+
+    let mut migrated = 0_usize;
+    for uid in uids {
+        let owner = match kms_server.database.retrieve_object(&uid).await {
+            Ok(Some(owm)) => owm.owner_id().to_owned(),
+            Ok(None) => {
+                warn!(
+                    "AWS XKS: skipping migration for key `{uid}` because its owner could not be \
+                     determined (object missing)"
+                );
+                continue;
+            }
+            Err(error) => return Err(error.into()),
+        };
+
+        if owner == *AWS_XKS_SERVICE_USER {
+            continue;
+        }
+        // Skip keys that already carry the grant so that a steady-state restart performs no
+        // writes and logs nothing.
+        let xks_service_user = UserId::from(AWS_XKS_SERVICE_USER);
+        // Query direct (non-inherited) permissions only: a wildcard (`*`) grant covering the
+        // required operations must not be mistaken for the durable service-identity grant, or
+        // this migration would skip granting it — later revoking the wildcard would then break
+        // XKS access for keys that were never actually granted to `AWS_XKS_SERVICE_USER`.
+        let granted = kms_server
+            .database
+            .list_user_operations_on_object(&uid, &xks_service_user, true)
+            .await?;
+        if required.iter().all(|op| granted.contains(op)) {
+            continue;
+        }
+        kms_server
+            .grant_access(
+                &Access {
+                    unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                    user_id: AWS_XKS_SERVICE_USER.to_owned(),
+                    operation_types: required.to_vec(),
+                },
+                &owner,
+            )
+            .await?;
+        migrated += 1;
+    }
+
+    if migrated > 0 {
+        info!(
+            "AWS XKS: granted usage on {migrated} pre-existing key(s) to the reserved service \
+             identity `{AWS_XKS_SERVICE_USER}`"
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_aws_xks_reserved_identity_config(server_params: &ServerParams) -> KResult<()> {
+    if server_params.aws_xks_params.is_none() {
+        return Ok(());
+    }
+
+    if server_params.default_username == AWS_XKS_SERVICE_USER {
+        return Err(KmsError::ServerError(format!(
+            "AWS XKS is enabled: `default_username` must not equal the reserved AWS XKS service \
+             identity `{AWS_XKS_SERVICE_USER}`"
+        )));
+    }
+
+    if server_params
+        .crypto_officer
+        .users
+        .iter()
+        .any(|username| username == AWS_XKS_SERVICE_USER)
+    {
+        return Err(KmsError::ServerError(format!(
+            "AWS XKS is enabled: `crypto_officer.users` must not contain the reserved AWS XKS \
+             service identity `{AWS_XKS_SERVICE_USER}`"
+        )));
+    }
+
+    // AWS never calls back into the XKS proxy to list, rotate, revoke, or destroy key
+    // material (the XKS proxy API spec only defines GetKeyMetadata/Encrypt/Decrypt/
+    // GetHealthStatus) — lifecycle management of XKS keys is entirely this operator's
+    // responsibility, exercised as the real, credentialed `default_username` identity
+    // (never as the reserved, unreachable-by-design `AWS_XKS_SERVICE_USER`). Warn loudly
+    // when no Crypto Officer is configured, since that is the intended identity for this
+    // responsibility and an empty list very likely means no one can currently reach these
+    // keys through `ckms`/the Web UI.
+    if server_params.crypto_officer.users.is_empty() {
+        warn!(
+            "AWS XKS is enabled but `crypto_officer.users` is empty: no Crypto Officer is \
+             configured to monitor, rotate, revoke, or destroy XKS keys. AWS never triggers \
+             these operations on your behalf — configure a Crypto Officer identity backed by a \
+             real credential (TLS certificate CN / OIDC subject matching `default_username`) so \
+             XKS keys remain manageable. See crate/server/src/routes/aws_xks/README.md."
+        );
+    }
 
     Ok(())
 }
@@ -305,6 +446,7 @@ async fn import_cse_migration_key(
     );
 
     // Import PrivateKey
+    let default_user = UserId::from(server_params.default_username.as_str());
     let import_sk_fut = {
         let import_request_sk = import_object_request::<Vec<String>>(
             server_params.vendor_identification.as_str(),
@@ -315,7 +457,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(import_request_sk, &server_params.default_username)
+        kms_server.import(import_request_sk, &default_user)
     };
     let import_pk_fut = {
         // Import PublicKey
@@ -328,7 +470,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(import_request_pk, &server_params.default_username)
+        kms_server.import(import_request_pk, &default_user)
     };
 
     try_join!(import_sk_fut, import_pk_fut)
@@ -346,7 +488,12 @@ async fn import_cse_migration_key(
 /// # Arguments
 ///
 /// * `server_params` - An instance of `ServerParams` containing the server's settings.
-/// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
+/// * `kms_server_handle_tx` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
+/// * `pre_bound_http_listener` - An optional pre-bound TCP listener for the HTTP port.
+///   When provided, the server uses [`HttpServer::listen()`] / [`HttpServer::listen_openssl()`]
+///   instead of [`HttpServer::bind()`], which eliminates the TOCTOU race that occurs between
+///   probing a free port and re-binding it later. Tests pass a listener from
+///   `allocate_dynamic_port`; production callers pass `None`.
 ///
 /// # Errors
 ///
@@ -354,6 +501,7 @@ async fn import_cse_migration_key(
 pub async fn start_kms_server(
     server_params: Arc<ServerParams>,
     kms_server_handle_tx: Option<mpsc::Sender<ServerHandle>>,
+    pre_bound_http_listener: Option<std::net::TcpListener>,
 ) -> KResult<()> {
     // OpenSSL is loaded now, so that tests can use the correct provider(s)
 
@@ -385,6 +533,17 @@ pub async fn start_kms_server(
         None
     };
 
+    // Spawn background CRL refresh cron thread and retain shutdown signal.
+    // Only spawned when kms_public_url is set (CDP endpoint is active) and
+    // crl_refresh_check_hours > 0.
+    let crl_refresh_shutdown_tx = if kms_server.params.kms_public_url.is_some()
+        && kms_server.params.crl_refresh_check_hours > 0
+    {
+        Some(cron::spawn_crl_refresh_cron(kms_server.clone()))
+    } else {
+        None
+    };
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.google_cse_enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
@@ -404,13 +563,22 @@ pub async fn start_kms_server(
 
     // Log the server configuration
     info!("KMS Server configuration: {server_params:#?}");
-    let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
+    let res = start_http_kms_server(
+        kms_server.clone(),
+        kms_server_handle_tx,
+        pre_bound_http_listener,
+    )
+    .await;
     // Signal the metrics cron thread to stop
     if let Some(tx) = metrics_shutdown_tx {
         let _ = tx.send(());
     }
     // Signal the auto-rotation cron thread to stop
     if let Some(tx) = auto_rotation_shutdown_tx {
+        let _ = tx.send(());
+    }
+    // Signal the CRL refresh cron thread to stop
+    if let Some(tx) = crl_refresh_shutdown_tx {
         let _ = tx.send(());
     }
     if let Some(ss_command_tx) = ss_command_tx {
@@ -450,7 +618,7 @@ fn start_socket_server(
             // tokio: run async code in the current thread
             tokio_handle.block_on(async {
                 // Handle the TTLV bytes
-                handle_ttlv_bytes(username, request, &kms_server).await
+                handle_ttlv_bytes(&UserId::from(username), request, &kms_server).await
             })
         },
         command_receiver,
@@ -472,9 +640,10 @@ fn start_socket_server(
 async fn start_http_kms_server(
     kms_server: Arc<KMS>,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
+    pre_bound_http_listener: Option<std::net::TcpListener>,
 ) -> KResult<()> {
     // Instantiate and prepare the KMS server
-    let server = prepare_kms_server(kms_server).await?;
+    let server = prepare_kms_server(kms_server, pre_bound_http_listener).await?;
 
     // send the server handle to the caller
     if let Some(tx) = &server_handle_transmitter {
@@ -701,10 +870,13 @@ async fn build_oidc_runtime_config(
 /// cannot occur in practice since the URL is syntactically valid. This URL is only
 /// constructed when `vault_api_enabled = false` or `vault_auth_verifier_url` is
 /// absent, and is never invoked (guarded by `Condition::new(false, …)`).
-pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev::Server> {
+pub async fn prepare_kms_server(
+    kms_server: Arc<KMS>,
+    pre_bound_http_listener: Option<std::net::TcpListener>,
+) -> KResult<actix_web::dev::Server> {
     // ── Startup security guards ──────────────────────────────────────────────
 
-    // F-001: Warn loudly if the `insecure` feature flag is compiled in.
+    // Warn loudly if the `insecure` feature flag is compiled in.
     #[cfg(feature = "insecure")]
     {
         cosmian_logger::error!(
@@ -714,7 +886,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
-    // F-002: Warn if accept_invalid_certs is enabled for auth-verifier or vault connections.
+    // Warn if accept_invalid_certs is enabled for auth-verifier or vault connections.
     if kms_server
         .params
         .auth_verifier_config
@@ -733,7 +905,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
-    // F-003: Warn when Vault API is enabled but rate limiting is disabled.
+    // Warn when Vault API is enabled but rate limiting is disabled.
     // The auth proxy at /v1/auth/* is unauthenticated and can be used to flood
     // the auth-verifier. The global rate limiter (if configured) mitigates this.
     if kms_server.params.vault_api_enabled && kms_server.params.rate_limit_per_second.is_none() {
@@ -744,7 +916,21 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         );
     }
 
-    // F-008: Validate session salt entropy when UI is enabled.
+    // Warn when Crypto Officer is configured but the global rate limiter is disabled.
+    // The ceremony activation and disable endpoints perform crypto operations and DB writes
+    // on every call; without rate limiting they can be used for DoS or DB flooding.
+    if !kms_server.params.crypto_officer.users.is_empty()
+        && kms_server.params.rate_limit_per_second.is_none()
+    {
+        cosmian_logger::warn!(
+            "SECURITY: Crypto Officer is configured but rate_limit_per_second is not set. \
+             The ceremony activation endpoint performs crypto operations on every request. \
+             Set rate_limit_per_second in the server config to protect against abuse in \
+             production deployments."
+        );
+    }
+
+    // Validate session salt entropy when UI is enabled.
     if kms_server.params.ui_enable {
         if let Some(ref salt) = kms_server.params.ui_session_salt {
             if salt.len() < 32 {
@@ -929,6 +1115,42 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
     // Should we enable the AWS XKS Service?
     let enable_aws_xks = kms_server.params.aws_xks_params.is_some();
+    if enable_aws_xks {
+        validate_aws_xks_reserved_identity_config(&kms_server.params)?;
+        // Grant the reserved XKS service identity usage on XKS keys created by earlier
+        // versions. Run on a dedicated background thread with its own current-thread
+        // runtime instead of blocking HTTP server startup: the migration has no durable
+        // completion marker and scans every tagged key serially, so an installation with
+        // many XKS keys would otherwise incur a repeated, unbounded startup delay on every
+        // restart. A dedicated thread is required because the store traits are `?Send`
+        // (see `PermissionsStore`/`ObjectsStore`), so the migration future cannot be
+        // spawned onto the main multi-threaded runtime. The migration is additive and
+        // idempotent (see `migrate_aws_xks_key_access`), so running it concurrently with
+        // request serving is safe.
+        let migration_kms_server = kms_server.clone();
+        if let Err(error) = std::thread::Builder::new()
+            .name("aws-xks-key-migration".to_owned())
+            .spawn(move || {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        error!("AWS XKS: failed to start key access migration runtime: {error}");
+                        return;
+                    }
+                };
+                if let Err(error) =
+                    runtime.block_on(migrate_aws_xks_key_access(&migration_kms_server))
+                {
+                    error!("AWS XKS: pre-existing key access migration failed: {error}");
+                }
+            })
+        {
+            error!("AWS XKS: failed to spawn key access migration thread: {error}");
+        }
+    }
 
     // Should we enable the Azure EKM API ?
     let enable_azure_ekm = kms_server.params.azure_ekm.azure_ekm_enable;
@@ -1400,21 +1622,30 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     |arc| arc.as_ref().clone(),
                 );
 
-            let auth_type: Option<String> = if use_jwt_auth {
-                Some("JWT".to_owned())
-            } else if use_cert_auth {
-                Some("CERT".to_owned())
-            } else if use_auth_verifier
+            // Ordered list of UI login methods, highest priority first. The Web UI
+            // renders the first entry as the primary login action and the rest as
+            // secondary actions (a button when a single alternative exists, a
+            // dropdown when several do). Priority is JWT > AUTH_VERIFIER > CERT:
+            // the interactive, per-user methods come before the ambient client
+            // certificate probe. AUTH_VERIFIER is only offered when its UI login is
+            // enabled. The singular `auth_method` served by `get_auth_method` is
+            // derived as the first entry for backward compatibility.
+            let mut auth_methods: Vec<String> = Vec::new();
+            if use_jwt_auth {
+                auth_methods.push("JWT".to_owned());
+            }
+            if use_auth_verifier
                 && kms_server_for_http
                     .params
                     .auth_verifier_config
                     .as_ref()
                     .is_some_and(AuthVerifierConfig::ui_login_enabled)
             {
-                Some("AUTH_VERIFIER".to_owned())
-            } else {
-                None
-            };
+                auth_methods.push("AUTH_VERIFIER".to_owned());
+            }
+            if use_cert_auth {
+                auth_methods.push("CERT".to_owned());
+            }
 
             // BFF runtime config for the Auth Verifier server Web UI login
             // (`/ui/login_as`). Reuses the JWKS manager already built above for the
@@ -1460,7 +1691,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .app_data(Data::new(auth_verifier_runtime_config))
                 .app_data(Data::new(kms_public_url.clone()))
                 .app_data(Data::new(ui_index_folder.clone()))
-                .app_data(Data::new(auth_type))
+                .app_data(Data::new(auth_methods))
                 .wrap(Cors::permissive())
                 .configure(configure_auth_routes);
             // Add all SPA routes
@@ -1498,6 +1729,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(root_redirect::root_redirect_to_ui)
             .service(health::get_health)
             .service(get_version)
+            // Public CRL distribution point (no authentication, RFC 5280 §3).
+            // Registered directly on the app (not in a scope) so it takes priority over
+            // the default catch-all scope without interfering with other routes.
+            .service(crl::get_crl_public)
+            // Public OCSP responder (no authentication, RFC 6960 §2 — public information).
+            .service(ocsp::get_ocsp)
+            .service(ocsp::post_ocsp)
             .service(swagger::get_openapi_yaml)
             .service(swagger::get_swagger_ui)
             .service(swagger::get_swagger_ui_js)
@@ -1606,6 +1844,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     spire_default_username.clone(),
                 ),
             ))
+            // Tamper-evident audit logging: wraps every auth method above so both
+            // successful and failed authentication attempts are recorded (LIFO wrap order).
+            .wrap(AuditMiddleware::new(
+                kms_server_for_http.audit_store.clone(),
+                kms_server_for_http.params.audit_trusted_proxy_cidrs.clone(),
+                kms_server_for_http.params.audit_failure_mode.clone(),
+            ))
             // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
             // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via
             // `cors_allowed_origins` / `KMS_CORS_ALLOWED_ORIGINS`. Enterprise-integration scopes
@@ -1637,6 +1882,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
+            .service(crl::get_crl)
+            .service(access::get_crypto_officer_status)
+            .service(access::disable_crypto_officer)
+            .service(access::activate_crypto_officer_ceremony)
             .service(
                 web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))
@@ -1683,18 +1932,29 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         Some(ssl_acceptor) => {
             if use_cert_auth {
                 trace!("Using Client Certificate Authentication with OpenSSL");
-                // Start an HTTPS server with PKCS#12 with client cert auth
-                server
-                    .on_connect(extract_peer_certificate)
-                    .bind_openssl(address, ssl_acceptor)?
-                    .run()
+                let s = server.on_connect(extract_peer_certificate);
+                if let Some(lst) = pre_bound_http_listener {
+                    s.listen_openssl(lst, ssl_acceptor)?
+                } else {
+                    s.bind_openssl(address, ssl_acceptor)?
+                }
+                .run()
             } else {
                 trace!("Not using Client Certificate Authentication with OpenSSL");
-                // Start an HTTPS server with PKCS#12 but not client cert auth
-                server.bind_openssl(address, ssl_acceptor)?.run()
+                if let Some(lst) = pre_bound_http_listener {
+                    server.listen_openssl(lst, ssl_acceptor)?
+                } else {
+                    server.bind_openssl(address, ssl_acceptor)?
+                }
+                .run()
             }
         }
-        _ => server.bind(address)?.run(),
+        _ => if let Some(lst) = pre_bound_http_listener {
+            server.listen(lst)?
+        } else {
+            server.bind(address)?
+        }
+        .run(),
     })
 }
 
@@ -1753,6 +2013,7 @@ fn validate_jwks_uris_are_https(uris: &[String]) -> KResult<()> {
 #[allow(clippy::assertions_on_result_states)]
 mod tests {
     use super::*;
+    use crate::tests::test_utils::https_clap_config;
 
     #[test]
     fn test_derive_session_key_deterministic() {
@@ -1885,5 +2146,83 @@ mod tests {
                 "Error message must identify the offending URI, got: {msg}"
             );
         }
+    }
+
+    fn sample_aws_xks_params() -> aws_xks::AwsXksParams {
+        aws_xks::AwsXksParams {
+            region: "eu-west-3".to_owned(),
+            service: "kms".to_owned(),
+            sigv4_access_key_id: "access-key".to_owned(),
+            sigv4_secret_access_key: "secret-key".to_owned(),
+        }
+    }
+
+    #[test]
+    fn aws_xks_reserved_identity_rejects_default_username() {
+        let params = ServerParams {
+            aws_xks_params: Some(sample_aws_xks_params()),
+            default_username: AWS_XKS_SERVICE_USER.to_owned(),
+            ..ServerParams::default()
+        };
+
+        let error = validate_aws_xks_reserved_identity_config(&params)
+            .expect_err("reserved default_username must be rejected when AWS XKS is enabled");
+
+        assert!(error.to_string().contains("default_username"));
+    }
+
+    #[test]
+    fn aws_xks_reserved_identity_rejects_crypto_officer_user() {
+        let mut params = ServerParams {
+            aws_xks_params: Some(sample_aws_xks_params()),
+            ..ServerParams::default()
+        };
+        params
+            .crypto_officer
+            .users
+            .push(AWS_XKS_SERVICE_USER.to_owned());
+
+        let error = validate_aws_xks_reserved_identity_config(&params).expect_err(
+            "reserved AWS XKS service identity must be rejected in crypto_officer.users",
+        );
+
+        assert!(error.to_string().contains("crypto_officer.users"));
+    }
+
+    #[test]
+    fn aws_xks_reserved_identity_validation_is_skipped_when_xks_disabled() {
+        let mut params = ServerParams {
+            default_username: AWS_XKS_SERVICE_USER.to_owned(),
+            ..ServerParams::default()
+        };
+        params
+            .crypto_officer
+            .users
+            .push(AWS_XKS_SERVICE_USER.to_owned());
+
+        assert!(validate_aws_xks_reserved_identity_config(&params).is_ok());
+    }
+
+    #[tokio::test]
+    async fn aws_xks_migration_allows_empty_default_username() {
+        let mut clap_config = https_clap_config();
+        clap_config.default_username.clear();
+        clap_config.aws_xks_config.aws_xks_enable = true;
+        clap_config.aws_xks_config.aws_xks_region = Some("eu-west-3".to_owned());
+        clap_config.aws_xks_config.aws_xks_service = Some("kms".to_owned());
+        clap_config.aws_xks_config.aws_xks_sigv4_access_key_id = Some("access-key".to_owned());
+        clap_config.aws_xks_config.aws_xks_sigv4_secret_access_key = Some("secret-key".to_owned());
+
+        let params = ServerParams::try_from(clap_config)
+            .expect("server params with empty default_username must be accepted");
+        let kms = Arc::new(
+            KMS::instantiate(Arc::new(params))
+                .await
+                .expect("KMS instantiation with empty default_username must succeed"),
+        );
+
+        migrate_aws_xks_key_access(&kms)
+            .await
+            .expect("AWS XKS migration must not panic or fail for empty default_username");
     }
 }

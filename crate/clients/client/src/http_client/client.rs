@@ -563,21 +563,33 @@ impl HttpClient {
 
     /// Send a prepared HTTP request and collect the response.
     ///
-    /// Retries once on a connection-level error (`is_connect()`), which occurs when
-    /// hyper's connection pool hands back a stale idle connection that the server has
-    /// already closed (e.g. after a keep-alive timeout).  The retry opens a fresh
-    /// TCP connection, making the failure transparent to callers.
+    /// Retries a connection-level error (`is_connect()`) a few times with a short backoff.
+    /// This covers both a stale idle connection handed back by hyper's connection pool
+    /// (already closed by the server after a keep-alive timeout) and a server that briefly
+    /// refuses new connections — the latter happens intermittently in CI against the
+    /// in-process test server.  A `Connect` error means the TCP connection was never
+    /// established, so the request body is untouched and retrying is always safe.
     async fn send(&self, request: http::Request<Full<Bytes>>) -> HttpClientResult<HttpResponse> {
-        let (req, retry_req) = Self::split_for_retry(request)?;
+        let (req, mut retry_req) = Self::split_for_retry(request)?;
         let response = match self.client.request(req).await {
             Ok(r) => r,
             Err(e) if e.is_connect() => {
-                // Stale pooled connection — retry once with a fresh connection.
-                tracing::debug!("Stale connection from pool, retrying (is_connect): {e}");
-                self.client
-                    .request(*retry_req)
-                    .await
-                    .map_err(|e| HttpClientError::Default(format!("HTTP request failed: {e}")))?
+                tracing::debug!("Connection error, retrying with backoff (is_connect): {e}");
+                let mut last_err = e;
+                for attempt in 1..=3 {
+                    let (retry, next) = Self::split_for_retry(*retry_req)?;
+                    tokio::time::sleep(Duration::from_millis(100 * attempt)).await;
+                    match self.client.request(retry).await {
+                        Ok(r) => return Self::collect_response(r).await,
+                        Err(e) => {
+                            last_err = e;
+                            retry_req = next;
+                        }
+                    }
+                }
+                return Err(HttpClientError::Default(format!(
+                    "HTTP request failed: {last_err}"
+                )));
             }
             Err(e) => {
                 return Err(HttpClientError::Default(format!(

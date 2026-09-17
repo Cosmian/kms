@@ -1,6 +1,7 @@
 import { Alert } from "antd";
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import { postNoTTLVRequest } from "../../utils/utils";
 
@@ -10,18 +11,18 @@ interface HashFormData {
     salt?: string;
 }
 
-const HASH_METHODS = [
-    { label: "SHA2 (256-bit)", value: "SHA2" },
-    { label: "SHA3 (256-bit)", value: "SHA3" },
-    { label: "Argon2 (password hashing)", value: "Argon2" },
-];
-
 const TokenizeHashForm: React.FC = () => {
     const [form] = Form.useForm<HashFormData>();
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const { serverUrl } = useAuth();
+    const { t } = useTranslation("actions");
     const responseRef = useRef<HTMLDivElement>(null);
+    const HASH_METHODS = [
+        { label: t("tokenizeHash.hashMethodSha2"), value: "SHA2" },
+        { label: t("tokenizeHash.hashMethodSha3"), value: "SHA3" },
+        { label: t("tokenizeHash.hashMethodArgon2"), value: "Argon2" },
+    ];
 
     useEffect(() => {
         if (res && responseRef.current) {
@@ -43,12 +44,12 @@ const TokenizeHashForm: React.FC = () => {
             const response = await postNoTTLVRequest("/tokenize/hash", body, serverUrl);
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {
-                setRes(`Result: ${typed.result}`);
+                setRes(t("tokenizeHash.resultPrefix", { value: typed.result }));
             } else {
-                setRes(`Error: ${typed.message ?? "Unknown error"}`);
+                setRes(`${t("common:errorPrefix")}${typed.message ?? t("tokenizeHash.unknownError")}`);
             }
         } catch (e) {
-            setRes(`Error: ${e}`);
+            setRes(`${t("common:errorPrefix")}${e}`);
             console.error("Hash tokenize error:", e);
         } finally {
             setIsLoading(false);
@@ -57,12 +58,12 @@ const TokenizeHashForm: React.FC = () => {
 
     return (
         <div className="rounded-lg p-6 m-4">
-            <h1 className="text-2xl font-bold mb-6">Anonymize — Hash</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("tokenizeHash.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Hash a string using SHA2, SHA3, or Argon2. Returns the base64-encoded digest.</p>
+                <p>{t("tokenizeHash.intro")}</p>
                 <p>
-                    For <strong>Argon2</strong>, a base64-encoded salt is required. SHA2 and SHA3 accept an optional salt.
+                    <Trans ns="actions" i18nKey="tokenizeHash.introArgon2" components={{ strong: <strong /> }} />
                 </p>
             </div>
 
@@ -71,26 +72,30 @@ const TokenizeHashForm: React.FC = () => {
                     <Card>
                         <Form.Item
                             name="data"
-                            label="Input data"
-                            rules={[{ required: true, message: "Please enter the string to hash" }]}
-                            help="Plain-text string to hash"
+                            label={t("tokenizeHash.inputData")}
+                            rules={[{ required: true, message: t("tokenizeHash.pleaseEnterData") }]}
+                            help={t("tokenizeHash.inputDataHelp")}
                         >
-                            <Input placeholder="e.g. hello world" />
+                            <Input placeholder={t("tokenizeHash.inputDataPlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Card>
-                        <Form.Item name="method" label="Hash method" rules={[{ required: true, message: "Please select a hash method" }]}>
+                        <Form.Item
+                            name="method"
+                            label={t("tokenizeHash.hashMethod")}
+                            rules={[{ required: true, message: t("tokenizeHash.pleaseSelectHashMethod") }]}
+                        >
                             <Select data-testid="hash-method-select" options={HASH_METHODS} />
                         </Form.Item>
 
-                        <Form.Item name="salt" label="Salt (base64, optional)" help="Required for Argon2. Optional for SHA2/SHA3.">
-                            <Input placeholder="e.g. c2FsdA==" />
+                        <Form.Item name="salt" label={t("tokenizeHash.salt")} help={t("tokenizeHash.saltHelp")}>
+                            <Input placeholder={t("tokenizeHash.saltPlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Button type="primary" htmlType="submit" loading={isLoading} data-testid="submit-btn">
-                        Hash
+                        {t("tokenizeHash.submit")}
                     </Button>
                 </Space>
             </Form>
@@ -98,13 +103,13 @@ const TokenizeHashForm: React.FC = () => {
             {res && (
                 <div ref={responseRef} className="mt-6">
                     <Alert
-                        message={res.startsWith("Error") ? "Error" : "Success"}
+                        message={res.startsWith(t("common:errorPrefix")) ? t("common:error") : t("tokenizeHash.success")}
                         description={
                             <div data-testid="response-output" className="break-all font-mono text-sm whitespace-pre-wrap">
                                 {res}
                             </div>
                         }
-                        type={res.startsWith("Error") ? "error" : "success"}
+                        type={res.startsWith(t("common:errorPrefix")) ? "error" : "success"}
                         showIcon
                     />
                 </div>

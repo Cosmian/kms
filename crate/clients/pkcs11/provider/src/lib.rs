@@ -18,7 +18,10 @@ use cosmian_pkcs11_module::{
 };
 use pkcs11_sys::{CK_FUNCTION_LIST_PTR_PTR, CK_RV, CKR_FUNCTION_FAILED, CKR_OK};
 
-use crate::{kms_object::get_kms_config, logging::initialize_logging};
+use crate::{
+    kms_object::{RUNTIME, get_kms_config},
+    logging::initialize_logging,
+};
 
 mod backend;
 mod error;
@@ -135,6 +138,10 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
     };
 
     let use_pin = config.pkcs11_use_pin_as_access_token.unwrap_or(false);
+    // `C_GetFunctionList` is called directly by the PKCS#11 consumer (e.g. SAP ASE) with
+    // no Tokio runtime active. `KmsClient::new_with_config` builds a `hyper` client that
+    // requires one, so enter the shared runtime's context for the duration of construction.
+    let _rt_guard = RUNTIME.enter();
     if use_pin {
         // Mode 2 — OIDC pin: register a pre-auth backend so metadata calls
         // (C_GetTokenInfo etc.) work before C_Login, then register the login
@@ -154,6 +161,9 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
         register_login_fn(Box::new(move |token: &str| {
             let mut cfg = config.clone();
             cfg.http_config.access_token = Some(token.to_owned());
+            // C_Login is also called directly by the PKCS#11 consumer, outside the
+            // C_GetFunctionList call frame, so it needs its own runtime-context guard.
+            let _rt_guard = RUNTIME.enter();
             let kms_client =
                 KmsClient::new_with_config(cfg).map_err(|e| ModuleError::Backend(Box::new(e)))?;
             register_backend(Box::new(backend::CliBackend::instantiate(kms_client)));

@@ -38,19 +38,21 @@ use cosmian_kms_client_utils::{
                 OpaqueObject as KmipOpaqueObject, PrivateKey,
             },
             kmip_operations::{
-                CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
-                DecryptResponse, DeleteAttribute, DeleteAttributeResponse, DeriveKey,
-                DeriveKeyResponse, Destroy, DestroyResponse, EncryptResponse, ExportResponse,
-                GetAttributes, GetAttributesResponse, Hash, HashResponse, ImportResponse,
-                LocateResponse, ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse,
-                ReCertifyResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse,
-                RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse,
-                SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
+                CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
+                CreateSplitKeyResponse, Decrypt, DecryptResponse, DeleteAttribute,
+                DeleteAttributeResponse, DeriveKey, DeriveKeyResponse, Destroy, DestroyResponse,
+                EncryptResponse, ExportResponse, GetAttributes, GetAttributesResponse, Hash,
+                HashResponse, ImportResponse, JoinSplitKeyResponse, LocateResponse,
+                ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse, ReCertifyResponse,
+                ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, RevokeResponse,
+                SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
+                SignatureVerifyResponse, Validate, ValidateResponse,
             },
             kmip_types::{
                 AttributeReference, CryptographicAlgorithm, CryptographicParameters,
                 DerivationMethod, KeyFormatType, LinkType, LinkedObjectIdentifier, OpaqueDataType,
-                QueryFunction, RecommendedCurve, Tag, UniqueIdentifier,
+                QueryFunction, RecommendedCurve, Tag, UniqueIdentifier, VendorAttribute,
+                VendorAttributeValue,
             },
             requests::{
                 build_revoke_key_request, create_ec_key_pair_request, create_pqc_key_pair_request,
@@ -1132,6 +1134,10 @@ pub fn create_secret_data_ttlv_request(
 }
 
 wasm_response_parser!(parse_create_ttlv_response, CreateResponse);
+
+wasm_response_parser!(parse_create_split_key_ttlv_response, CreateSplitKeyResponse);
+
+wasm_response_parser!(parse_join_split_key_ttlv_response, JoinSplitKeyResponse);
 
 /// Create an Opaque Object (via Import) TTLV request.
 /// If `object_value` is provided, builds an `OpaqueObject` and forges an `Import` request.
@@ -2288,6 +2294,36 @@ pub fn set_attribute_ttlv_request(
 }
 
 wasm_response_parser!(parse_set_attribute_ttlv_response, SetAttributeResponse);
+
+/// Build a KMIP `SetAttribute` TTLV request that sets a vendor attribute on an object.
+///
+/// Vendor attributes carry custom key-value metadata (e.g. `x-cosmian-crypto-officer-ceremony`).
+/// This binding uses the Rust KMIP type system directly — avoiding the raw-TTLV-JSON pitfall
+/// where `VendorAttribute.AttributeValue` must be hex-encoded bytes.
+///
+/// # Arguments
+/// * `unique_identifier` — The UID of the object to update.
+/// * `vendor_id` — The vendor identification string (e.g. `"cosmian"`).
+/// * `attr_name` — The vendor attribute name (e.g. `"x-cosmian-crypto-officer-ceremony"`).
+/// * `attr_value` — The string value; serialized as `VendorAttributeValue::TextString`.
+#[wasm_bindgen]
+pub fn set_vendor_attribute_ttlv_request(
+    unique_identifier: String,
+    vendor_id: &str,
+    attr_name: &str,
+    attr_value: &str,
+) -> Result<JsValue, JsValue> {
+    let attr = Attribute::VendorAttribute(VendorAttribute {
+        vendor_identification: vendor_id.to_owned(),
+        attribute_name: attr_name.to_owned(),
+        attribute_value: VendorAttributeValue::TextString(attr_value.to_owned()),
+    });
+    let request = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        new_attribute: attr,
+    };
+    to_wasm_ttlv(&request)
+}
 
 #[wasm_bindgen]
 pub fn modify_attribute_ttlv_request(

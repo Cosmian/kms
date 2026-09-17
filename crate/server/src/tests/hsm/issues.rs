@@ -33,6 +33,7 @@ use crate::{
     config::ServerParams,
     core::KMS,
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
     tests::{
         hsm::{
@@ -159,7 +160,9 @@ pub(super) async fn test_server_side_unwrap() -> KResult<()> {
         attributes: Attributes::default(),
         object: wrapped_dek,
     };
-    let import_response = kms.import(import_request, &admin).await?;
+    let import_response = kms
+        .import(import_request, &UserId::from(admin.as_str()))
+        .await?;
     assert_eq!(
         import_response.unique_identifier,
         UniqueIdentifier::TextString(tmp_uid.clone())
@@ -176,7 +179,10 @@ pub(super) async fn test_server_side_unwrap() -> KResult<()> {
         key_wrap_type: Some(KeyWrapType::NotWrapped),
         key_wrapping_specification: None,
     };
-    let unwrapped_dek = kms.export(export_request, &admin).await?.object;
+    let unwrapped_dek = kms
+        .export(export_request, &UserId::from(admin.as_str()))
+        .await?
+        .object;
     assert_eq!(unwrapped_dek.object_type(), ObjectType::SymmetricKey);
     assert!(
         !unwrapped_dek.is_wrapped(),

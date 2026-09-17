@@ -17,18 +17,7 @@ use subtle::ConstantTimeEq;
 
 use crate::{core::KMS, error::KmsError, middlewares::extract_bearer_token, result::KResult};
 
-/// Retrieves the API token from the KMS database
-///
-/// Fetches a symmetric key identified by `api_token_id` and returns it as a
-/// base64-encoded string which serves as the API token.
-///
-/// # Parameters
-/// * `kms` - The KMS server instance
-/// * `api_token_id` - The unique identifier for the symmetric key used as the API token
-///
-/// # Returns
-/// * `Ok(String)` - The base64-encoded symmetric key (API token)
-/// * `Err(KmsError)` - If the token cannot be retrieved or is invalid
+/// Fetch the API token (symmetric key) from the database, returned as a lowercase base64 string.
 async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
     // Retrieve the object from the database
     let owm = kms
@@ -62,20 +51,7 @@ async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
         .to_lowercase())
 }
 
-/// Validates the API token in the request against the configured token
-///
-/// This is the core authentication logic that:
-/// 1. Checks if API token authentication is configured
-/// 2. Extracts the token from the Authorization header
-/// 3. Compares it with the stored token
-///
-/// # Parameters
-/// * `kms_server` - The KMS server instance
-/// * `req` - The incoming HTTP request
-///
-/// # Returns
-/// * `Ok(())` - If authentication is successful or not required
-/// * `Err(KmsError)` - If authentication fails
+/// Validate the `Bearer` token in the request against the configured API token.
 pub(super) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest) -> KResult<()> {
     let Some(api_token_id) = kms_server.params.api_token_id.clone() else {
         return Err(KmsError::InvalidRequest(

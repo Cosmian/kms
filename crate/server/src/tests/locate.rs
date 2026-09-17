@@ -24,6 +24,7 @@ use cosmian_logger::log_init;
 use crate::{
     config::{MainDBConfig, ServerParams},
     core::KMS,
+    middlewares::UserId,
     result::KResult,
     tests::test_utils::{https_clap_config, post_2_1, test_app},
 };
@@ -32,7 +33,7 @@ use crate::{
 async fn test_locate() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let owner = "mt_owner";
+    let owner = UserId::from("mt_owner");
     let mut clap_config = https_clap_config();
     clap_config.db = MainDBConfig {
         database_type: Some("sqlite".to_owned()),
@@ -69,7 +70,7 @@ async fn test_locate() -> KResult<()> {
         )],
     };
 
-    let response = kms.message(request, owner).await?;
+    let response = kms.message(request, &owner).await?;
     assert_eq!(response.response_header.batch_count, 1);
 
     // Verify specific individual keys can be retrieved
@@ -91,7 +92,7 @@ async fn test_locate() -> KResult<()> {
             attributes: key_attrs,
             ..Locate::default()
         };
-        let specific_response = kms.locate(locate_specific, owner).await?;
+        let specific_response = kms.locate(locate_specific, &owner).await?;
         let found_count = specific_response.located_items.unwrap();
         assert_eq!(
             found_count, expected_result,

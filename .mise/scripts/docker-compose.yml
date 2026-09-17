@@ -8,7 +8,7 @@ services:
     environment:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
-      - ../../test_data/configs/server/no_auth.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/auth/none.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 9998
         published: ${KMS_SLOT_HTTP_PORT:-9998}
@@ -27,7 +27,7 @@ services:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
       - ../../test_data:/data:ro
-      - ../../test_data/configs/server/tls_auth_${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/tls/${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 9999
         published: ${KMS_SLOT_TLS_PORT:-9999}
@@ -48,7 +48,7 @@ services:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
       - ../../test_data:/data:ro
-      - ../../test_data/configs/server/tls13_auth_${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/tls/tls13_${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 10000
         published: ${KMS_SLOT_TLS13_PORT:-10000}
@@ -88,7 +88,7 @@ services:
     environment:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
-      - ../../test_data/configs/server/no_auth.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/auth/none.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 9998
         published: ${KMS_SLOT_KMS_EXAMPLE_PORT:-12098}
@@ -97,6 +97,76 @@ services:
     healthcheck:
       test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
             \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  # === No-config smoke test ===
+  # Starts the KMS without any configuration file or environment variables,
+  # using only CLI defaults (SQLite in-memory, no TLS, no auth).
+  # Validates that the Docker image is fully usable out of the box.
+  kms-no-conf:
+    image: ${DOCKER_IMAGE_NAME}
+    ports:
+      - target: 9998
+        published: ${KMS_SLOT_KMS_NO_CONF_PORT:-13098}
+        protocol: tcp
+    restart: no
+    healthcheck:
+      test: [CMD-SHELL, nc -z localhost 9998]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  # === Non-root user smoke test (regression: issue #1132) ===
+  # Runs the KMS as UID/GID 1000 with a read-only root filesystem — the same
+  # security context used by the Helm chart (runAsNonRoot: true,
+  # runAsUser: 1000, readOnlyRootFilesystem: true).
+  # Requires /etc/passwd (UID resolution) and writable tmpfs volumes.
+  kms-nonroot:
+    image: ${DOCKER_IMAGE_NAME}
+    user: 1000:1000
+    read_only: true
+    ports:
+      - target: 9998
+        published: ${KMS_SLOT_KMS_NONROOT_PORT:-14098}
+        protocol: tcp
+    tmpfs:
+      - /var/lib/cosmian-kms:uid=1000,gid=1000
+      - /tmp:uid=1000,gid=1000
+    restart: no
+    healthcheck:
+      test: [CMD-SHELL, nc -z localhost 9998]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  # === TLS + non-root user test ===
+  # Combines mTLS cert auth with user=1000 and read_only filesystem.
+  # This is the exact scenario that failed in 5.26 but could not be tested
+  # because /etc/passwd was missing (issue #1132).
+  kms-tls-nonroot:
+    image: ${DOCKER_IMAGE_NAME}
+    user: 1000:1000
+    read_only: true
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data:/data:ro
+      - ../../test_data/configs/server/tls/${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
+    ports:
+      - target: 9999
+        published: ${KMS_SLOT_KMS_TLS_NONROOT_PORT:-15099}
+        protocol: tcp
+    tmpfs:
+      - /tmp:uid=1000,gid=1000
+      - /var/lib/cosmian-kms:uid=1000,gid=1000
+    restart: no
+    healthcheck:
+      test: [CMD-SHELL, nc -z localhost 9999]
       interval: 5s
       timeout: 5s
       retries: 60
@@ -125,7 +195,7 @@ services:
     environment:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
-      - ../../test_data/configs/server/lb_kms1_postgres.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/db/postgres_lb_primary.toml:/etc/cosmian/kms.toml:ro
     expose:
       - '9998'
     healthcheck:
@@ -143,7 +213,7 @@ services:
     environment:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
-      - ../../test_data/configs/server/lb_kms2_postgres.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/db/postgres_lb_secondary.toml:/etc/cosmian/kms.toml:ro
     expose:
       - '9998'
     healthcheck:
@@ -161,7 +231,7 @@ services:
     environment:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
-      - ../../test_data/configs/server/lb_kms3_postgres.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/configs/server/db/postgres_lb_secondary.toml:/etc/cosmian/kms.toml:ro
     expose:
       - '9998'
     healthcheck:

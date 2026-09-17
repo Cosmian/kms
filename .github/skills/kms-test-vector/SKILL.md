@@ -5,7 +5,7 @@ description: 'Walk through the full KMS test vector creation workflow: directory
 
 # KMS Test Vector Creator
 
-Walk through the complete test vector creation workflow for the Cosmian KMS.
+Walk through the complete test vector creation workflow for the Eviden KMS.
 
 ## When to Use
 

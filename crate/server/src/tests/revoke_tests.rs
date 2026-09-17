@@ -42,7 +42,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         requests::{create_ec_key_pair_request, symmetric_key_create_request},
     },
 };
-use cosmian_logger::log_init;
 
 use crate::{result::KResult, tests::test_utils};
 
@@ -180,8 +179,7 @@ where
 /// KMIP §6.1.44: `Active + Unspecified` → `Deactivated`.
 #[tokio::test]
 async fn test_active_unspecified_yields_deactivated() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
     revoke(&app, &uid, RevocationReasonCode::Unspecified, false).await?;
@@ -193,8 +191,7 @@ async fn test_active_unspecified_yields_deactivated() -> KResult<()> {
 /// KMIP §6.1.44: `Active + KeyCompromise` → `Compromised`.
 #[tokio::test]
 async fn test_active_key_compromise_yields_compromised() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
     revoke(&app, &uid, RevocationReasonCode::KeyCompromise, false).await?;
@@ -206,8 +203,7 @@ async fn test_active_key_compromise_yields_compromised() -> KResult<()> {
 /// KMIP §6.1.44: `Active + CACompromise` → `Compromised`.
 #[tokio::test]
 async fn test_active_ca_compromise_yields_compromised() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
     revoke(&app, &uid, RevocationReasonCode::CACompromise, false).await?;
@@ -219,8 +215,7 @@ async fn test_active_ca_compromise_yields_compromised() -> KResult<()> {
 /// KMIP §6.1.44: `Active + AffiliationChanged` → `Deactivated`.
 #[tokio::test]
 async fn test_active_affiliation_changed_yields_deactivated() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
     revoke(&app, &uid, RevocationReasonCode::AffiliationChanged, false).await?;
@@ -232,8 +227,7 @@ async fn test_active_affiliation_changed_yields_deactivated() -> KResult<()> {
 /// KMIP §6.1.44: `Active + Superseded` → `Deactivated`.
 #[tokio::test]
 async fn test_active_superseded_yields_deactivated() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
     revoke(&app, &uid, RevocationReasonCode::Superseded, false).await?;
@@ -245,8 +239,7 @@ async fn test_active_superseded_yields_deactivated() -> KResult<()> {
 /// KMIP §6.1.44: `Active + CessationOfOperation` → `Deactivated`.
 #[tokio::test]
 async fn test_active_cessation_yields_deactivated() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
     revoke(
@@ -264,8 +257,7 @@ async fn test_active_cessation_yields_deactivated() -> KResult<()> {
 /// KMIP §6.1.44: `Active + PrivilegeWithdrawn` → `Deactivated`.
 #[tokio::test]
 async fn test_active_privilege_withdrawn_yields_deactivated() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
     revoke(&app, &uid, RevocationReasonCode::PrivilegeWithdrawn, false).await?;
@@ -279,8 +271,7 @@ async fn test_active_privilege_withdrawn_yields_deactivated() -> KResult<()> {
 /// KMIP §6.1.44 transition \#8: `Deactivated + KeyCompromise` → `Compromised`.
 #[tokio::test]
 async fn test_deactivated_key_compromise_yields_compromised() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
     // Transition Active → Deactivated first.
@@ -306,8 +297,7 @@ async fn test_deactivated_key_compromise_yields_compromised() -> KResult<()> {
 /// KMIP §6.1.44 transition \#8: `Deactivated + CACompromise` → `Compromised`.
 #[tokio::test]
 async fn test_deactivated_ca_compromise_yields_compromised() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
     revoke(
@@ -335,8 +325,7 @@ async fn test_deactivated_ca_compromise_yields_compromised() -> KResult<()> {
 /// to still succeed on already-deactivated predecessor keys.
 #[tokio::test]
 async fn test_deactivated_unspecified_is_noop() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
     revoke(
@@ -361,8 +350,7 @@ async fn test_deactivated_unspecified_is_noop() -> KResult<()> {
 /// KMIP §6.1.44: `Deactivated + Superseded` is a no-op (stays `Deactivated`).
 #[tokio::test]
 async fn test_deactivated_superseded_is_noop() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
     revoke(
@@ -388,8 +376,7 @@ async fn test_deactivated_superseded_is_noop() -> KResult<()> {
 /// is replayed.
 #[tokio::test]
 async fn test_revoke_on_destroyed_key_succeeds_as_passthrough() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
     // Bring the key to Destroyed state (Revoke → Destroy with metadata kept).
@@ -417,8 +404,7 @@ async fn test_revoke_on_destroyed_key_succeeds_as_passthrough() -> KResult<()> {
 /// AKLC-M-2-21: Revoking an already-`Destroyed_Compromised` key also succeeds.
 #[tokio::test]
 async fn test_revoke_on_destroyed_compromised_key_succeeds_as_passthrough() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
     // Bring to Compromised then Destroy → Destroyed_Compromised.
@@ -461,8 +447,7 @@ async fn test_revoke_on_destroyed_compromised_key_succeeds_as_passthrough() -> K
 /// `cascade=true`: revoking the private key MUST also revoke the linked public key.
 #[tokio::test]
 async fn test_ec_pair_revoke_private_cascade_true_revokes_public() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let (priv_uid, pub_uid) = create_ec_pair(&app).await?;
 
     revoke(
@@ -489,8 +474,7 @@ async fn test_ec_pair_revoke_private_cascade_true_revokes_public() -> KResult<()
 /// `cascade=false`: revoking the private key MUST NOT touch the linked public key.
 #[tokio::test]
 async fn test_ec_pair_revoke_private_cascade_false_leaves_public_active() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let (priv_uid, pub_uid) = create_ec_pair(&app).await?;
 
     revoke(
@@ -513,8 +497,7 @@ async fn test_ec_pair_revoke_private_cascade_false_leaves_public_active() -> KRe
 /// `cascade=true` with `KeyCompromise`: both private AND public MUST become `Compromised`.
 #[tokio::test]
 async fn test_ec_pair_key_compromise_cascade_true_compromises_both() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let (priv_uid, pub_uid) = create_ec_pair(&app).await?;
 
     revoke(&app, &priv_uid, RevocationReasonCode::KeyCompromise, true).await?;
@@ -535,8 +518,7 @@ async fn test_ec_pair_key_compromise_cascade_true_compromises_both() -> KResult<
 /// `cascade=true` via public key: revoking the public key MUST also revoke the private key.
 #[tokio::test]
 async fn test_ec_pair_revoke_public_cascade_true_revokes_private() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let (priv_uid, pub_uid) = create_ec_pair(&app).await?;
 
     revoke(
@@ -565,8 +547,7 @@ async fn test_ec_pair_revoke_public_cascade_true_revokes_private() -> KResult<()
 /// KMIP §6.1.44: Revoking a non-existent UID MUST return `Item_Not_Found`.
 #[tokio::test]
 async fn test_revoke_unknown_uid_returns_item_not_found() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
 
     let result = revoke(
         &app,

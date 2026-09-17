@@ -14,7 +14,7 @@ description = "Cosmian KMS Client Utilities - used in WASM and KMS Client"
 workspace = true
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"] # cdylib causes collisions while not needed
 # doc test linking as a separate binary is extremely slow
 # and is not needed for internal lib
 doctest = false
@@ -26,8 +26,8 @@ non-fips = ["cosmian_kmip/non-fips"]
 base64 = { workspace = true }
 clap = { workspace = true, features = ["std", "derive"] }
 cosmian_config_utils = { workspace = true }
-cosmian_kmip = { path = "../../kmip", version = "5.25.0" }
-cosmian_kms_access = { path = "../../access", version = "5.25.0" }
+cosmian_kmip = { path = "../../kmip", version = "5.27.1" }
+cosmian_kms_access = { path = "../../access", version = "5.27.1" }
 cosmian_logger = { workspace = true }
 pem = { workspace = true }
 serde = { workspace = true }

@@ -1,6 +1,6 @@
 # Cosmian KMS — Kubernetes E2E Tests
 
-Five mise tasks live under `test:k8s:`.
+Six mise tasks live under `test:k8s:`.
 All tests require a running Minikube cluster (`minikube start --driver=docker`).
 
 ---
@@ -21,6 +21,8 @@ graph TB
     OI["<b>test:k8s:operator-image</b><br/>Operator image smoke test<br/>(--help via K8s Pod)"]
 
     CI["<b>test:k8s:csi-provider-image</b><br/>CSI provider image smoke test<br/>(--help via K8s Pod)"]
+
+    KMS["<b>test:k8s:kms-image</b><br/>KMS server image smoke test<br/>(/etc validation + Helm deploy + HTTP health)"]
 
     D --> P
     D --> O
@@ -220,3 +222,34 @@ graph LR
 | `imagePullPolicy: Never` on all test pods/jobs | Forces Minikube to use the locally-loaded Nix image; prevents accidental registry pulls |
 | `ckms` stays a local binary in both tests | It is a test *fixture helper* (pre-populates KMS), not the component under test |
 | Plugin stays a binary on the node | KMS v2 gRPC runs as a privileged systemd service on the control-plane; no K8s container runtime involvement at that layer |
+
+---
+
+## `test:k8s:kms-image` — KMS server image smoke test
+
+Tests the main KMS server Docker image (`ghcr.io/cosmian/kms` or `ghcr.io/cosmian/kms-fips`)
+in a Kubernetes pod. This is the regression test for **issue #1132** where required `/etc`
+files were missing from the 5.26 image after busybox was removed.
+
+**Checks performed:**
+
+1. **`/etc` validation pod** — a one-shot pod that asserts all of the following are present:
+   - `/etc/passwd` — UID resolution (`runAsNonRoot: true`, `getpwuid()`)
+   - `/etc/group` — GID resolution
+   - `/etc/nsswitch.conf` — DNS / hostname resolution
+   - `/etc/ssl/certs/ca-bundle.crt` — outbound TLS certificate verification (OIDC, etc.)
+   - `/etc/cosmian` — bind-mount target for `COSMIAN_KMS_CONF` config files
+
+2. **Helm deploy** — full KMS deployment via `charts/cosmian-kms` with the Helm chart's
+   production security context (`runAsNonRoot`, `readOnlyRootFilesystem`, etc.).
+
+3. **HTTP health check** — verifies `/version` responds over a `kubectl port-forward`.
+
+**In CI:** triggered by `packaging-docker.yml` (`test-k8s-kms-pod` job) on every build,
+for all four combinations of `{fips, non-fips} × {ubuntu-24.04 (amd64), ubuntu-24.04-arm (arm64)}`,
+after the arch-specific images are pushed to GHCR.
+
+```bash
+# Run locally (requires minikube + helm):
+DOCKER_IMAGE_NAME=ghcr.io/cosmian/kms:develop-amd64 mise run test:k8s:kms-image
+```

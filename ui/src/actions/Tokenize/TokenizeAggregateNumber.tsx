@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Form, Input, InputNumber, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import { postNoTTLVRequest } from "../../utils/utils";
 
@@ -9,17 +10,17 @@ interface AggregateNumberFormData {
     power_of_ten: number;
 }
 
-const DATA_TYPES = [
-    { label: "Float", value: "float" },
-    { label: "Integer", value: "integer" },
-];
-
 const TokenizeAggregateNumberForm: React.FC = () => {
     const [form] = Form.useForm<AggregateNumberFormData>();
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const { serverUrl } = useAuth();
+    const { t } = useTranslation("actions");
     const responseRef = useRef<HTMLDivElement>(null);
+    const DATA_TYPES = [
+        { label: t("tokenizeAggregateNumber.dataTypeFloat"), value: "float" },
+        { label: t("tokenizeAggregateNumber.dataTypeInteger"), value: "integer" },
+    ];
 
     useEffect(() => {
         if (res && responseRef.current) {
@@ -39,12 +40,12 @@ const TokenizeAggregateNumberForm: React.FC = () => {
             );
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {
-                setRes(`Result: ${typed.result}`);
+                setRes(t("tokenizeAggregateNumber.resultPrefix", { value: typed.result }));
             } else {
-                setRes(`Error: ${typed.message ?? "Unknown error"}`);
+                setRes(`${t("common:errorPrefix")}${typed.message ?? t("tokenizeAggregateNumber.unknownError")}`);
             }
         } catch (e) {
-            setRes(`Error: ${e}`);
+            setRes(`${t("common:errorPrefix")}${e}`);
             console.error("Aggregate number error:", e);
         } finally {
             setIsLoading(false);
@@ -53,45 +54,49 @@ const TokenizeAggregateNumberForm: React.FC = () => {
 
     return (
         <div className="rounded-lg p-6 m-4">
-            <h1 className="text-2xl font-bold mb-6">Anonymize — Aggregate Number</h1>
+            <h1 className="text-2xl font-bold mb-6">{t("tokenizeAggregateNumber.title")}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Round a number to the nearest power of ten to reduce precision.</p>
+                <p>{t("tokenizeAggregateNumber.intro")}</p>
                 <p>
-                    For example, rounding <code>1234</code> with <code>power_of_ten = 2</code> yields <code>1200</code>.
+                    <Trans ns="actions" i18nKey="tokenizeAggregateNumber.introExample" components={{ code: <code /> }} />
                 </p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ data_type: "integer", power_of_ten: 2 }}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item name="data_type" label="Data type" rules={[{ required: true, message: "Please select a data type" }]}>
+                        <Form.Item
+                            name="data_type"
+                            label={t("tokenizeAggregateNumber.dataType")}
+                            rules={[{ required: true, message: t("tokenizeAggregateNumber.pleaseSelectDataType") }]}
+                        >
                             <Select data-testid="aggnumber-datatype-select" options={DATA_TYPES} />
                         </Form.Item>
 
                         <Form.Item
                             name="data"
-                            label="Input number"
-                            rules={[{ required: true, message: "Please enter a number" }]}
-                            help="Number to round"
+                            label={t("tokenizeAggregateNumber.inputNumber")}
+                            rules={[{ required: true, message: t("tokenizeAggregateNumber.pleaseEnterNumber") }]}
+                            help={t("tokenizeAggregateNumber.inputNumberHelp")}
                         >
-                            <Input placeholder="e.g. 1234" />
+                            <Input placeholder={t("tokenizeAggregateNumber.inputNumberPlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Card>
                         <Form.Item
                             name="power_of_ten"
-                            label="Power of ten"
-                            rules={[{ required: true, message: "Please enter the power of ten" }]}
-                            help="Rounding precision: 1 → nearest 10, 2 → nearest 100, 3 → nearest 1000"
+                            label={t("tokenizeAggregateNumber.powerOfTen")}
+                            rules={[{ required: true, message: t("tokenizeAggregateNumber.pleaseEnterPowerOfTen") }]}
+                            help={t("tokenizeAggregateNumber.powerOfTenHelp")}
                         >
-                            <InputNumber style={{ width: "100%" }} placeholder="e.g. 2" />
+                            <InputNumber style={{ width: "100%" }} placeholder={t("tokenizeAggregateNumber.powerOfTenPlaceholder")} />
                         </Form.Item>
                     </Card>
 
                     <Button type="primary" htmlType="submit" loading={isLoading} data-testid="submit-btn">
-                        Aggregate Number
+                        {t("tokenizeAggregateNumber.submit")}
                     </Button>
                 </Space>
             </Form>
@@ -99,13 +104,13 @@ const TokenizeAggregateNumberForm: React.FC = () => {
             {res && (
                 <div ref={responseRef} className="mt-6">
                     <Alert
-                        message={res.startsWith("Error") ? "Error" : "Success"}
+                        message={res.startsWith(t("common:errorPrefix")) ? t("common:error") : t("tokenizeAggregateNumber.success")}
                         description={
                             <div data-testid="response-output" className="break-all font-mono text-sm whitespace-pre-wrap">
                                 {res}
                             </div>
                         }
-                        type={res.startsWith("Error") ? "error" : "success"}
+                        type={res.startsWith(t("common:errorPrefix")) ? "error" : "success"}
                         showIcon
                     />
                 </div>

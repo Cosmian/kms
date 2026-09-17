@@ -132,7 +132,9 @@ class DocEntry:
 
 def _normalize_msg(msg: str) -> str:
     """Normalise for comparison: {e:?} → {e}, ${uid} → {uid}."""
-    s = re.sub(r'\{(\w+):[^}]*\}', r'{\1}', msg.strip())  # Rust format spec
+    # Collapse newlines/excess whitespace from multi-line string literals first
+    s = ' '.join(msg.split())
+    s = re.sub(r'\{(\w+):[^}]*\}', r'{\1}', s)  # Rust format spec
     s = re.sub(r'\$\{([^}]+)\}', r'{\1}', s)  # JS template literal
     return s
 
@@ -763,6 +765,8 @@ def _fmt_row(level: str, msg: str, file_rel: str, variables: str, notes: str) ->
 def _build_new_row(
     crate_path: str, file_rel: str, level: str, msg: str, mult: int
 ) -> str:
+    # Collapse newlines from multi-line log macros so table cells stay on one line
+    msg = ' '.join(msg.split())
     variables = _extract_var_names(msg)
     notes = f"×{mult} in this file" if mult > 1 else '-'
     return _fmt_row(level, msg, file_rel, variables, notes)

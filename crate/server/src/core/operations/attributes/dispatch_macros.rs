@@ -67,3 +67,28 @@ macro_rules! match_delete_attribute {
         }
     };
 }
+
+/// Deletes an attribute identified by its `Tag` (rather than by value).
+///
+/// `DeleteAttribute` may reference an attribute either by value
+/// (`CurrentAttribute`) or purely by name (`AttributeReference`). This macro
+/// covers the name-based form, clearing the matching field unconditionally.
+///
+/// KMIP 1.4 §4.16 / KMIP 2.1 §6.1.13.
+#[allow(unused_macros)]
+macro_rules! match_delete_attribute_by_tag {
+    (
+        $scrutinee:expr, $attrs:expr,
+        simple { $($variant:ident => $field:ident),* $(,)? }
+        custom { $($custom:tt)* }
+    ) => {
+        match $scrutinee {
+            $(
+                Tag::$variant => {
+                    $attrs.$field = None;
+                }
+            )*
+            $($custom)*
+        }
+    };
+}
