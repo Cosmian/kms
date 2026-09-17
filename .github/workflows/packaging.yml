@@ -23,6 +23,7 @@ jobs:
     with:
       toolchain: 1.97.0
       archive-name: windows
+    secrets: inherit
 
   docker:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==

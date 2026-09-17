@@ -10,20 +10,13 @@ on:
       archive-name:
         required: true
         type: string
-
-  # TODO: debug — remove before shipping
-  workflow_dispatch:
-    inputs:
-      toolchain:
-        description: Rust toolchain version
-        required: false
-        type: string
-        default: 1.97.0
-      archive-name:
-        description: Archive name prefix
-        required: false
-        type: string
-        default: windows-non-fips-test
+    secrets:
+      AZURE_TENANT_ID_POC:
+        required: true
+      AZURE_CLIENT_ID_POC:
+        required: true
+      AZURE_CLIENT_SECRET_POC:
+        required: true
 
 jobs:
   cargo-build:
@@ -146,7 +139,7 @@ jobs:
   sign:
     name: ${{ inputs.archive-name }} - sign installers
     needs: cargo-build
-    uses: Cosmian/reusable_workflows/.github/workflows/sign-windows-artifacts.yml@feat/azure-code-signing
+    uses: Cosmian/reusable_scripts/.github/workflows/sign-windows-artifacts.yml@feat/azure-code-signing
     with:
       artifact-to-download: ${{ inputs.archive-name }}-release
       files-folder: to-sign
