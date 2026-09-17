@@ -503,6 +503,29 @@ impl ObjectsStore for MySqlPool {
         Ok(retrieve_(uid, &self.pool).await?)
     }
 
+    async fn retrieve_state(&self, uid: &str) -> InterfaceResult<Option<(State, Attributes)>> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let row_opt: Option<mysql_async::Row> = conn
+            .exec_first(get_mysql_query!("select-object-state"), (uid,))
+            .await
+            .map_err(DbError::from)?;
+        if let Some(row) = row_opt {
+            let state_str: String = row
+                .get(0)
+                .ok_or_else(|| InterfaceError::Db("missing state".to_owned()))?;
+            let state = State::try_from(state_str.as_str())
+                .map_err(|e| InterfaceError::Db(format!("invalid state: {e}")))?;
+            let attrs_json: Value = row
+                .get(1)
+                .ok_or_else(|| InterfaceError::Db("missing attributes".to_owned()))?;
+            let attrs: Attributes = serde_json::from_value(attrs_json)
+                .map_err(|e| InterfaceError::Db(format!("invalid attributes: {e}")))?;
+            Ok(Some((state, attrs)))
+        } else {
+            Ok(None)
+        }
+    }
+
     async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
         Ok(retrieve_tags_(uid, &self.pool).await?)
     }

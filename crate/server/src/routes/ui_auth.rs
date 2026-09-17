@@ -278,6 +278,7 @@ pub(crate) async fn callback(
     };
 
     let mut validation = Validation::new(header.alg);
+    validation.algorithms = vec![header.alg];
     validation.set_audience(&[&client_id]);
 
     #[cfg(all(not(test), not(feature = "insecure")))]

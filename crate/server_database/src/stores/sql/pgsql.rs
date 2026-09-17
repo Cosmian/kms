@@ -611,6 +611,30 @@ impl ObjectsStore for PgPool {
         })
     }
 
+    async fn retrieve_state(&self, uid: &str) -> InterfaceResult<Option<(State, Attributes)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare_cached(get_pgsql_query!("select-object-state"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&uid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            if let Some(row) = rows.first() {
+                let state_str: String = row.get(0);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let attrs_val: Value = row.get(1);
+                let attrs: Attributes = serde_json::from_value(attrs_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                Ok(Some((state, attrs)))
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
     async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
         pg_retry!(self.pool, |client| {
             let stmt = client

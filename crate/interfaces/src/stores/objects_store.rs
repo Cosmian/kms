@@ -70,6 +70,16 @@ pub trait ObjectsStore {
     /// Retrieve the tags of the object with the given `uid`
     async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>>;
 
+    /// Retrieve only the state and attributes of an object for lightweight cache validation.
+    ///
+    /// Default implementation falls back to `retrieve(uid)` and extracts `(state, attributes)`.
+    async fn retrieve_state(&self, uid: &str) -> InterfaceResult<Option<(State, Attributes)>> {
+        Ok(self
+            .retrieve(uid)
+            .await?
+            .map(|owm| (owm.state(), owm.attributes().clone())))
+    }
+
     /// Update an object in the database.
     ///
     /// If tags is `None`, the tags will not be updated.

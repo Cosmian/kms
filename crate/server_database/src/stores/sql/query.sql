@@ -67,6 +67,9 @@ SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.st
         FROM objects
         WHERE objects.id=$1;
 
+-- name: select-object-state
+SELECT objects.state, objects.attributes FROM objects WHERE objects.id=$1;
+
 -- name: update-object-with-object
 UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3 WHERE id=$4;
 
