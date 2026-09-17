@@ -107,9 +107,9 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
                 attrs_properties
                     .iter()
-                    .try_for_each(|(attr, encryption_hint, _after)| {
+                    .try_for_each(|(attr, hint, after)| {
                         msk.access_structure
-                            .add_attribute(attr.clone(), *encryption_hint, None)
+                            .add_attribute(attr.clone(), *hint, after.as_deref())
                     })?;
                 *mpk = cover_crypt.update_msk(msk)?;
                 Ok(())
