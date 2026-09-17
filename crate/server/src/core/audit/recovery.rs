@@ -24,8 +24,7 @@ use cosmian_kms_access::audit::{
 use cosmian_logger::{debug, error};
 use time::OffsetDateTime;
 
-use super::file_sink::FileSink;
-use super::writer::write_draft_to_chain;
+use super::file_sink::write_recovery_sentinel;
 use crate::{error::KmsError, result::KResult};
 
 /// Bytes read from the end of an existing log to locate the last complete event
@@ -476,15 +475,12 @@ fn truncate_and_continue(
          {discard_offset} (process likely killed mid-write); resuming chain at id={next_id}"
     );
 
-    let mut sink = FileSink::new(
-        open_append(path).map_err(|e| {
-            KmsError::ServerError(format!(
-                "audit: cannot reopen log file after truncation {}: {e}",
-                path.display()
-            ))
-        })?,
-        keep_len,
-    );
+    let mut sink = open_append(path).map_err(|e| {
+        KmsError::ServerError(format!(
+            "audit: cannot reopen log file after truncation {}: {e}",
+            path.display()
+        ))
+    })?;
 
     let details = serde_json::json!({
         "bytes_discarded": bytes_discarded,
@@ -504,7 +500,7 @@ fn truncate_and_continue(
         details: Some(details),
     };
     let mut chain_prev_hash = prev_hash;
-    let final_next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut chain_prev_hash);
+    let final_next_id = write_recovery_sentinel(&mut sink, draft, next_id, &mut chain_prev_hash);
 
     Ok((final_next_id, chain_prev_hash))
 }
@@ -574,15 +570,12 @@ fn seal_and_roll(
         }
     }
 
-    let mut sink = FileSink::new(
-        open_append(path).map_err(|e| {
-            KmsError::ServerError(format!(
-                "audit: cannot open fresh log file {}: {e}",
-                path.display()
-            ))
-        })?,
-        0,
-    );
+    let mut sink = open_append(path).map_err(|e| {
+        KmsError::ServerError(format!(
+            "audit: cannot open fresh log file {}: {e}",
+            path.display()
+        ))
+    })?;
 
     let sealed_name = sealed_path
         .file_name()
@@ -613,7 +606,7 @@ fn seal_and_roll(
     // Reanchor is a new chain root — continuity across a sealed, untrusted tail is never
     // asserted (see module docs).
     let mut prev_hash = [0_u8; 32];
-    let next_id = write_draft_to_chain(&mut sink, draft, 0, &mut prev_hash);
+    let next_id = write_recovery_sentinel(&mut sink, draft, 0, &mut prev_hash);
 
     Ok((next_id, prev_hash))
 }
@@ -643,7 +636,7 @@ fn open_append(path: &Path) -> std::io::Result<std::fs::File> {
 /// Returns an error only for content-independent I/O faults (cannot read/truncate/rename/
 /// open); a data-corruption condition is always routed to a `TailOutcome` variant instead
 /// and handled without error (see `classify_tail`).
-pub(super) fn recover_and_open(path: &Path) -> KResult<(FileSink, i64, [u8; 32])> {
+pub(super) fn recover_and_open(path: &Path) -> KResult<(std::fs::File, i64, [u8; 32])> {
     let verification = verify_interior_chain(path)?;
     let (next_id, prev_hash) = if let Some(failure) = verification.failure {
         seal_and_roll(
@@ -719,15 +712,6 @@ pub(super) fn recover_and_open(path: &Path) -> KResult<(FileSink, i64, [u8; 32])
             path.display()
         ))
     })?;
-    let committed_len = file
-        .metadata()
-        .map_err(|e| {
-            KmsError::ServerError(format!(
-                "audit: cannot stat log file {}: {e}",
-                path.display()
-            ))
-        })?
-        .len();
 
-    Ok((FileSink::new(file, committed_len), next_id, prev_hash))
+    Ok((file, next_id, prev_hash))
 }
