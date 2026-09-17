@@ -285,8 +285,8 @@ pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     let pk_cka_id = session.get_object_id(pk_handle)?;
     assert_eq!(
         pk_cka_id.as_deref(),
-        Some(sk_id.as_bytes()),
-        "RSA key pair components must share the private key id bytes as CKA_ID"
+        Some(pk_id.as_bytes()),
+        "Public key CKA_ID must be set to the key id bytes"
     );
     // public key should be exportable
     let key = session
