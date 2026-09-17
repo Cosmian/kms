@@ -39,14 +39,6 @@ pub struct VerifyContext {
 }
 
 #[derive(Debug)]
-pub struct VerifyContext {
-    pub algorithm: SignatureAlgorithm,
-    pub public_key: Arc<dyn PublicKey>,
-    /// Payload stored for multipart `C_VerifyUpdate` operations.
-    pub payload: Option<Vec<u8>>,
-}
-
-#[derive(Debug)]
 pub struct DecryptContext {
     pub remote_object_id: String,
     pub algorithm: EncryptionAlgorithm,
