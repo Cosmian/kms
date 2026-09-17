@@ -633,15 +633,4 @@ impl Backend for CliBackend {
         debug!("remote_verify: remote_id: {remote_id}, algorithm: {algorithm:?}");
         kms_verify(&self.kms_rest_client, remote_id, algorithm, data, signature).map_err(Into::into)
     }
-
-    fn remote_verify(
-        &self,
-        remote_id: &str,
-        algorithm: &SignatureAlgorithm,
-        data: &[u8],
-        signature: &[u8],
-    ) -> ModuleResult<()> {
-        debug!("remote_verify: remote_id: {remote_id}, algorithm: {algorithm:?}");
-        kms_verify(&self.kms_rest_client, remote_id, algorithm, data, signature).map_err(Into::into)
-    }
 }

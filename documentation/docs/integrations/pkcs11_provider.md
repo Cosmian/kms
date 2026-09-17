@@ -35,16 +35,16 @@ entry points.
   specific operations should continue to use the equivalent v2.x calls
   (`C_Encrypt`/`C_Decrypt`/`C_Sign`/`C_Verify`), which are fully implemented.
 
-## Supported mechanisms
+## Supported operations and mechanisms
 
-| Mechanism | Purpose | Notes |
-|-----------|---------|-------|
-| `CKM_AES_KEY_GEN` | AES key generation | Generates AES-256 keys |
-| `CKM_AES_CBC`, `CKM_AES_CBC_PAD` | AES-CBC encryption/decryption | — |
-| `CKM_AES_GCM` | AES-GCM authenticated encryption/decryption | See below |
-| `CKM_RSA_PKCS`, `CKM_RSA_PKCS_PSS` | RSA encryption and RSA-PSS signing | — |
-| `CKM_ECDSA` | ECDSA signing | — |
-| `CKM_EDDSA` | EdDSA (Ed25519) signing | Cryptoki v3.0 mechanism, already supported |
+For the exhaustive PKCS#11 v2.40/v3.0 operation matrix — every mechanism/operation category
+defined by the two OASIS specifications (key generation, encryption, signatures, digest, key
+derivation, key wrapping, random generation, session/object/interface management, ...) — see the
+single, authoritative comparison table on the HSM keys & operations page:
+[Supported operations and mechanisms](../hsm_support/hsm_operations.md#supported-operations-and-mechanisms).
+That table contrasts, side by side, what this provider DLL (`cosmian_pkcs11`, acting as an HSM
+**provider**) supports against what the Eviden KMS server itself supports as an HSM-delegation
+**client** (`crate/hsm/base_hsm`) — keeping a single source of truth for both roles.
 
 ### `CKM_AES_GCM`
 
