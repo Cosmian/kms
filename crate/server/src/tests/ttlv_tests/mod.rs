@@ -105,17 +105,18 @@ fn start_test_server() -> &'static TestServerCtx {
             .port();
         https_config.http.port = http_port;
 
-        // The socket server does not (yet) support taking a pre-bound
-        // listener, so probe a free port and release it right before the real
-        // server binds it. This is the same accepted TOCTOU trade-off already
-        // used for the socket server port in `test_kms_server::allocate_dynamic_port`.
-        let socket_probe = TcpListener::bind((TEST_HOST, 0))
+        // Pre-bind the socket-server listener too and hand it directly to
+        // `start_kms_server`, exactly like the HTTP listener above. Probing a free
+        // port and releasing it before the real bind (the previous approach) left a
+        // TOCTOU race window where another concurrently-starting test process could
+        // claim the same port, causing intermittent "Address already in use"
+        // failures under highly parallel `cargo nextest` runs.
+        let socket_listener = TcpListener::bind((TEST_HOST, 0))
             .expect("Failed to allocate a free port for the test socket server");
-        let socket_port = socket_probe
+        let socket_port = socket_listener
             .local_addr()
             .expect("Failed to read the allocated socket port")
             .port();
-        drop(socket_probe);
         https_config.socket_server.socket_server_port = socket_port;
 
         let server_params = ServerParams::try_from(https_config).unwrap();
@@ -128,11 +129,16 @@ fn start_test_server() -> &'static TestServerCtx {
                 .enable_all()
                 .build()?
                 .block_on(
-                    start_kms_server(Arc::new(server_params), Some(tx), Some(http_listener))
-                        .map_err(|e| {
-                            tracing::error!("Failed to start Test KMS server: {e}");
-                            e
-                        }),
+                    start_kms_server(
+                        Arc::new(server_params),
+                        Some(tx),
+                        Some(http_listener),
+                        Some(socket_listener),
+                    )
+                    .map_err(|e| {
+                        tracing::error!("Failed to start Test KMS server: {e}");
+                        e
+                    }),
                 )
         });
         trace!("Waiting for test KMS server to start...");
@@ -175,7 +181,7 @@ fn start_test_server_with_fixed_port(socket_port: u16) -> &'static TestServerCtx
                 .enable_all()
                 .build()?
                 .block_on(
-                    start_kms_server(Arc::new(server_params), Some(tx), None).map_err(|e| {
+                    start_kms_server(Arc::new(server_params), Some(tx), None, None).map_err(|e| {
                         tracing::error!("Failed to start Test KMS server: {e}");
                         e
                     }),

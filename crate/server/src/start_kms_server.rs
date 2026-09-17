@@ -494,6 +494,9 @@ async fn import_cse_migration_key(
 ///   instead of [`HttpServer::bind()`], which eliminates the TOCTOU race that occurs between
 ///   probing a free port and re-binding it later. Tests pass a listener from
 ///   `allocate_dynamic_port`; production callers pass `None`.
+/// * `pre_bound_socket_listener` - An optional pre-bound TCP listener for the KMIP socket
+///   server (only meaningful when `socket_server_start` is enabled). Same TOCTOU rationale
+///   as `pre_bound_http_listener`; production callers pass `None`.
 ///
 /// # Errors
 ///
@@ -502,6 +505,7 @@ pub async fn start_kms_server(
     server_params: Arc<ServerParams>,
     kms_server_handle_tx: Option<mpsc::Sender<ServerHandle>>,
     pre_bound_http_listener: Option<std::net::TcpListener>,
+    pre_bound_socket_listener: Option<std::net::TcpListener>,
 ) -> KResult<()> {
     // OpenSSL is loaded now, so that tests can use the correct provider(s)
 
@@ -555,7 +559,8 @@ pub async fn start_kms_server(
     let (ss_command_tx, _socket_server_handle) = if server_params.start_socket_server {
         let (tx, rx) = mpsc::channel::<KResult<()>>();
         // Start the socket server
-        let socket_server_handle = start_socket_server(kms_server.clone(), rx)?;
+        let socket_server_handle =
+            start_socket_server(kms_server.clone(), rx, pre_bound_socket_listener)?;
         (Some(tx), Some(socket_server_handle))
     } else {
         (None, None)
@@ -594,6 +599,9 @@ pub async fn start_kms_server(
 ///
 /// # Arguments
 /// * `server_params` - An instance of `ServerParams` containing the server's settings.
+/// * `pre_bound_socket_listener` - An optional pre-bound TCP listener for the socket server.
+///   When provided, avoids the TOCTOU race between probing a free port and re-binding it
+///   later. Tests pass a listener allocated up front; production callers pass `None`.
 ///
 /// # Errors
 /// This function returns an error if:
@@ -605,6 +613,7 @@ pub async fn start_kms_server(
 fn start_socket_server(
     kms_server: Arc<KMS>,
     command_receiver: mpsc::Receiver<KResult<()>>,
+    pre_bound_socket_listener: Option<std::net::TcpListener>,
 ) -> KResult<JoinHandle<()>> {
     // Start the socket server
     let socket_server =
@@ -622,6 +631,7 @@ fn start_socket_server(
             })
         },
         command_receiver,
+        pre_bound_socket_listener,
     )?;
     Ok(socket_server_handle)
 }
