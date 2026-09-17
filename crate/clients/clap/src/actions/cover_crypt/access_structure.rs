@@ -27,18 +27,17 @@ use cosmian_kms_crypto::{
 use crate::{
     actions::{console, labels::KEY_ID, shared::get_key_uid},
     cli_bail,
-    error::{KmsCliError, result::KmsCliResult},
+    error::result::KmsCliResult,
 };
 
 /// Extract, view, or edit policies of existing keys
 #[derive(Subcommand)]
 pub enum AccessStructureCommands {
     View(ViewAction),
-    AddAttribute(AddAttributeAction),
+    AddAttribute(AddQualifiedAttributeAction),
     RemoveAttribute(RemoveAttributeAction),
     DisableAttribute(DisableAttributeAction),
     RenameAttribute(RenameAttributeAction),
-    AddDimension(AddDimensionAction),
 }
 
 impl AccessStructureCommands {
@@ -57,9 +56,6 @@ impl AccessStructureCommands {
                 action.run(kms_rest_client).await?;
             }
             Self::RenameAttribute(action) => {
-                action.run(kms_rest_client).await?;
-            }
-            Self::AddDimension(action) => {
                 action.run(kms_rest_client).await?;
             }
         }
@@ -119,7 +115,7 @@ impl ViewAction {
 /// Add an attribute to the access structure of an existing private master key.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
-pub struct AddAttributeAction {
+pub struct AddQualifiedAttributeAction {
     /// The name of the attribute to create.
     /// Example: `department::rnd`
     #[clap(required = true)]
@@ -140,7 +136,7 @@ pub struct AddAttributeAction {
     pub(crate) tags: Option<Vec<String>>,
 }
 
-impl AddAttributeAction {
+impl AddQualifiedAttributeAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let id = get_key_uid(self.secret_key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
@@ -349,81 +345,5 @@ impl RemoveAttributeAction {
         console::Stdout::new(&stdout).write()?;
 
         Ok(())
-    }
-}
-
-/// Add an anarchical dimension to the access structure of an existing private master key.
-#[derive(Parser)]
-#[clap(verbatim_doc_comment)]
-pub struct AddDimensionAction {
-    /// The name of the dimension to create.
-    #[clap(required = true)]
-    pub(crate) dimension: String,
-
-    /// The name associated to each attributes of the new dimension. In case
-    /// this dimension is hierarchical, the attributes are listed in increasing
-    /// order.
-    #[clap(required = true)]
-    pub(crate) attributes: Vec<String>,
-
-    /// Is this dimension hierarchical?
-    #[clap(required = false, long, default_value = "false")]
-    pub(crate) hierarchical: bool,
-
-    /// The master secret key unique identifier stored in the KMS.
-    /// If not specified, tags should be specified
-    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
-    pub(crate) secret_key_id: Option<String>,
-
-    /// Tag to use to retrieve the key when no key id is specified.
-    /// To specify multiple tags, use the option multiple times.
-    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
-    pub(crate) tags: Option<Vec<String>>,
-}
-
-impl AddDimensionAction {
-    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
-        let id = get_key_uid(self.secret_key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
-
-        let attributes = self
-            .attributes
-            .iter()
-            .map(|attribute| {
-                serde_json::from_str::<(String, bool)>(attribute).map(|(name, hint)| {
-                    let attr = QualifiedAttribute::new(&self.dimension, &name);
-                    let hint = if hint {
-                        EncryptionHint::Hybridized
-                    } else {
-                        EncryptionHint::Classic
-                    };
-                    (attr, hint)
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(KmsCliError::SerdeJsonError)?;
-
-        let query = build_rekey_keypair_request(
-            kms_rest_client.config.vendor_id.as_str(),
-            &id,
-            &if self.hierarchical {
-                RekeyEditAction::AddHierarchy(self.dimension.clone(), attributes)
-            } else {
-                RekeyEditAction::AddAnarchy(self.dimension.clone(), attributes)
-            },
-        )?;
-
-        let rekey_response = kms_rest_client
-            .rekey_keypair(query)
-            .await
-            .with_context(|| "failed adding a dimension to the master keys")?;
-
-        console::Stdout::new(&format!(
-            "New dimension {} was successfully added to the master secret key {} and master \
-             public key {}.",
-            self.dimension,
-            rekey_response.private_key_unique_identifier,
-            rekey_response.public_key_unique_identifier,
-        ))
-        .write()
     }
 }
