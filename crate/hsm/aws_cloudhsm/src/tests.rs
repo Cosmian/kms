@@ -118,10 +118,9 @@ fn test_hsm_aws_cloudhsm_rsa_key_wrap() -> HResult<()> {
 
 #[test]
 #[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_rsa_pkcs_encrypt() -> HResult<()> {
+fn test_hsm_aws_cloudhsm_rsa_pkcs_encrypt() {
     // AWS CloudHSM FIPS clusters reject CKM_RSA_PKCS encryption for newly generated keys.
     // OAEP encryption is covered by test_hsm_aws_cloudhsm_rsa_oaep_encrypt.
-    Ok(())
 }
 
 #[test]

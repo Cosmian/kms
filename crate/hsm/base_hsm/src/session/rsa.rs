@@ -109,13 +109,13 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_LABEL,
-                pValue: sk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
-                ulValueLen: CK_ULONG::try_from(sk_id.len())?,
+                pValue: pk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: CK_ULONG::try_from(pk_id.len())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_ID,
-                pValue: sk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
-                ulValueLen: CK_ULONG::try_from(sk_id.len())?,
+                pValue: pk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: CK_ULONG::try_from(pk_id.len())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_WRAP,
