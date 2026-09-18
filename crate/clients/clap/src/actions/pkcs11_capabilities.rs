@@ -19,6 +19,7 @@ use std::{env, ffi::c_void, mem::size_of, path::Path, ptr, sync::Mutex};
 
 use cosmian_kms_client::{
     KmsClient,
+    cosmian_kmip::kmip_0::kmip_types::RevocationReasonCode,
     kmip_2_1::{
         kmip_types::{RecommendedCurve, UniqueIdentifier},
         requests::{create_ec_key_pair_request, create_rsa_key_pair_request},
@@ -40,8 +41,6 @@ use super::pkcs11_verify::{
     call_get_function_list, call_get_function_list_3_0, call_get_slot_list, call_login,
     call_open_session, check_rv, ckr_name,
 };
-use cosmian_kms_client::cosmian_kmip::kmip_0::kmip_types::RevocationReasonCode;
-
 use crate::{
     actions::shared::utils::{destroy, revoke},
     error::{KmsCliError, result::KmsCliResult},

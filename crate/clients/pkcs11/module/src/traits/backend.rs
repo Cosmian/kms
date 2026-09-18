@@ -22,6 +22,15 @@ pub struct SignContext {
     pub operation: SignOperation,
     /// Payload stored for multipart `C_SignUpdate` operations.
     pub payload: Option<Vec<u8>>,
+    /// Signature computed during a NULL-buffer length-query call (e.g. the first
+    /// call of `C_SignFinal`/`C_Sign`'s two-call convention), cached so the
+    /// follow-up call that actually copies the bytes out reuses this exact
+    /// signature instead of re-signing. This is required for variable-length
+    /// signatures (e.g. DER-encoded ECDSA, whose length varies call-to-call due
+    /// to leading-zero bytes in r/s): re-signing on the second call could
+    /// produce a different-length signature than what was reported by the
+    /// length query, causing a spurious `CKR_BUFFER_TOO_SMALL`.
+    pub pending_signature: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
