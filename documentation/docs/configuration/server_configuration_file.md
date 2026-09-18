@@ -632,6 +632,15 @@ ocsp_include_cert_chain = true
 # Set to 0 (default) to disable the extension.
 # Typical values: 365 days = 31536000.
 ocsp_archive_cutoff_secs = 0
+
+[audit]
+enabled = false
+channel_capacity = 0
+trusted_proxy_cidrs = []
+failure_mode = "continue"
+
+
+[audit.file]
 ```
 
 ---

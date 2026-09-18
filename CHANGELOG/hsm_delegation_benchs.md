@@ -128,6 +128,65 @@
   `cargo test -p cosmian_pkcs11 --lib --features non-fips` (19 tests, 5 pre-existing
   `#[ignore]`) both still pass unchanged
 
+### PKCS#11 conformance suite: real bugs found and fixed
+
+Building and running a new, exhaustive `pkcs11-tool` + raw-ABI conformance suite
+(`.mise/tasks/test/pkcs11-conformance`, see "Testing" below) against
+`cosmian_pkcs11` surfaced the following genuine regressions, all fixed directly in
+`crate/clients/pkcs11/`:
+
+- `CKA_DERIVE` was not recognized as a valid attribute type in
+  `core/attribute.rs`, so any template containing it (e.g. from `pkcs11-tool
+  --derive`) was rejected outright instead of reaching the intended
+  `CKR_FUNCTION_NOT_SUPPORTED` response
+- `C_FindObjectsInit` rejected an empty search template (`ulCount == 0`), which
+  `pkcs11-tool -O`/`--list-objects` legitimately sends to enumerate every object;
+  fixed in `core/attribute.rs`/`sessions.rs` to treat an empty template as "match
+  all"
+- A session's sign context (`sign_ctx`) was left set after a signing error,
+  making every subsequent `C_SignInit` in that session fail spuriously with
+  `CKR_OPERATION_ACTIVE` even for an unrelated key/mechanism; now cleared on the
+  error path in `sessions.rs`
+- `SHA1WithRSAEncryption` had no match arm in `crate/crypto/src/crypto/rsa/{sign,verify}.rs`,
+  so `CKM_SHA1_RSA_PKCS` signing/verification panicked instead of working or
+  cleanly rejecting
+- `--read-object --type pubkey` returned an empty/invalid DER SPKI for RSA and EC
+  public keys: `find_all_objects()`'s bulk-listing scan populates the object
+  store with metadata-only `Pkcs11PublicKey` stubs (empty key material, to avoid
+  a KMIP export round-trip per object during a full listing), and
+  `SearchOptions::Id` resolution reused that stale stub directly instead of
+  fetching the real key. Fixed in `sessions.rs`: `CKO_PUBLIC_KEY` resolutions by
+  ID now refresh via the backend's full-fetch `find_public_key`, replacing the
+  stub at the same handle
+- `C_SignFinal` incorrectly rejected a NULL `pSignature` argument, breaking the
+  standard PKCS#11 two-call length-query convention (`pSignature=NULL` first,
+  then a real buffer) that `pkcs11-tool` and other conformant callers use for
+  multi-part signing (`C_SignUpdate`/`C_SignFinal`); the null check is removed
+  (only `pulSignatureLen` is required)
+- `C_MessageSignInit` validated mechanism-specific parameters
+  (`parse_mechanism`) before checking whether the mechanism is even supported
+  for message-signing (only `CKM_EDDSA` is), so probing an unsupported mechanism
+  with minimal/null parameters returned `CKR_ARGUMENTS_BAD` instead of the
+  correct `CKR_FUNCTION_NOT_SUPPORTED`; the mechanism-type check now runs first
+- `--read-object --type data`/`--write-object --type data` round trip returned
+  an empty `CKA_VALUE`: the same metadata-only-stub issue as the public key bug
+  above, affecting `CKO_DATA` objects. Fixed in `sessions.rs`'s `CKO_DATA` search
+  path to refresh matches via the backend's full-fetch `find_data_object` before
+  returning them, and in `provider/src/kms_object.rs` to tag newly-created data
+  objects with the `_sd` system tag (previously missing, so
+  `find_all_data_objects()`'s tag-filtered KMS locate could never find them
+  either)
+- Multi-part ECDSA signing (`C_SignInit`/`C_SignUpdate`/`C_SignFinal`) failed
+  intermittently with `CKR_BUFFER_TOO_SMALL`: the length-query call (`C_SignFinal`
+  with `pSignature=NULL`) and the follow-up real call each independently signed
+  the payload, and ECDSA's DER encoding has a variable length (leading-zero
+  bytes in `r`/`s` vary between signing attempts) — a signature produced on the
+  second call could be longer than the length reported by the first. Fixed by
+  caching the signature computed on the first call (`SignContext::pending_signature`)
+  and reusing it for every subsequent call in the same signing operation,
+  guaranteeing a consistent length and avoiding a redundant remote KMS `Sign`
+  call
+
 ## Testing
 
 ### HSM-resident crypto benchmarking (`--hsm`)
@@ -838,3 +897,48 @@ pre-existing `#[ignore]`), and `cargo clippy --all-targets --features non-fips
 build) before the fix, and confirmed it now completes cleanly after; also ran the
 full `--mode all` sweep (9 operations, concurrency 1/2/4, including
 `key-creation`) end-to-end with no failures.
+
+### New independent conformance gate: `mise test:pkcs11-conformance`
+
+Added `.mise/tasks/test/pkcs11-conformance` (fully independent of, and not
+sharing any code with, `test:hsm-pkcs11-tool`), driven by a new
+`.mise/scripts/test/test_pkcs11_conformance.sh`, to exhaustively exercise every
+PKCS#11 v2/v3 mechanism and function `cosmian_pkcs11` implements against a plain
+sqlite KMS server (debug builds for both the server and the `cosmian_pkcs11`
+cdylib):
+
+- A mechanism x function coverage matrix (`sign_function_matrix`/
+  `cipher_function_matrix`) drives every one of the 12 supported mechanisms
+  (`CKM_AES_KEY_GEN`/`CKM_AES_CBC`/`CKM_AES_CBC_PAD`/`CKM_AES_GCM`/`CKM_ECDSA`/
+  `CKM_EDDSA`/`CKM_RSA_PKCS`/`CKM_RSA_PKCS_PSS`/`CKM_SHA{1,256,384,512}_RSA_PKCS`)
+  through every applicable function: single-shot and multi-part sign/verify,
+  single-shot encrypt/decrypt, and cross-verification against `ckms`
+- A key/curve-breadth pass covers every remaining RSA size (3072/4096), EC curve
+  (P-384/P-521/secp256k1/secp224k1), and EdDSA curve (Ed448), each with a
+  tampered-signature negative case
+- Discovery (`-L`/`-T`/`-I`/`-M`/`--list-interfaces`), login/session/object
+  visibility rules, PKCS#11 v3 key-type attribute conformance
+  (`CKK_EC_EDWARDS`/`CKK_EC_MONTGOMERY`), `C_GenerateRandom`, and the full
+  `CKO_DATA` object lifecycle (`C_CreateObject`/read/delete round trip) are all
+  covered
+- The "declared but rejected" boundary (`C_GenerateKeyPair`/`C_WrapKey`/
+  `C_UnwrapKey`/`C_DeriveKey`/`C_DigestInit`/`C_InitToken`/`C_InitPIN`/
+  `C_SetPIN`) is exercised through `pkcs11-tool`, where a clean rejection is the
+  pass condition
+- A standalone Python `ctypes` raw-ABI harness
+  (`.mise/scripts/test/pkcs11_raw_abi_check.py`) dlopens the built cdylib
+  directly to reach every function `pkcs11-tool` has no CLI flag for (
+  `C_CopyObject`, `C_GetObjectSize`, `C_GetOperationState`/`C_SetOperationState`,
+  `C_*Recover*`, all four combined `C_*Digest*Update`/`C_*Verify*Update`
+  variants, `C_SessionCancel`, `C_WaitForSlotEvent`, every v3 message-based
+  bulk-crypto function, and — critically — the module's one implemented v3
+  message-signing trio (`C_MessageSignInit`/`C_SignMessage`/
+  `C_MessageSignFinal`), asserting the documented `CKR_FUNCTION_NOT_SUPPORTED`
+  for the stubs and a genuine, verified signature round trip for the
+  message-signing trio
+- Every individual check prints exactly one `✅`/`❌` line; the suite exits `0`
+  only if every one of the 192 checks passes
+
+Running this new suite end-to-end against a fresh debug build is what surfaced
+every regression listed under "Bug Fixes" -> "PKCS#11 conformance suite: real
+bugs found and fixed" above; the suite now passes 192/192.

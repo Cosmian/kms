@@ -1354,6 +1354,7 @@ cryptoki_fn!(
                 private_key: private_key.clone(),
                 operation: SignOperation::Classic,
                 payload: None,
+                pending_signature: None,
             });
             Ok(())
         })
@@ -1413,7 +1414,11 @@ cryptoki_fn!(
     ) {
         initialized!();
         valid_session!(hSession);
-        not_null!(pSignature, "C_SignFinal: pSignature");
+        // `pSignature` MAY be NULL: per the PKCS#11 spec, callers first invoke
+        // C_SignFinal with a NULL `pSignature` to query the required buffer
+        // length via `pulSignatureLen`, then call again with an allocated
+        // buffer (the standard two-call convention `pkcs11-tool` uses for
+        // multi-part signing). Only `pulSignatureLen` is required.
         not_null!(pulSignatureLen, "C_SignFinal: pulSignatureLen");
         sessions::session(hSession, |session| -> ModuleResult<()> {
             unsafe { session.sign(None, pSignature, pulSignatureLen) }?;
@@ -1811,20 +1816,29 @@ cryptoki_fn!(
             if session.sign_ctx.is_some() {
                 return Err(ModuleError::OperationActive);
             }
+            // Reject any mechanism other than CKM_EDDSA by its raw mechanism
+            // type *before* calling `parse_mechanism`, which validates
+            // mechanism-specific parameters (e.g. `CK_RSA_PKCS_PSS_PARAMS`).
+            // A caller probing an unsupported mechanism may not supply valid
+            // parameters for it, and must still get CKR_FUNCTION_NOT_SUPPORTED
+            // (not a parameter-parsing error) since v3 message-based signing
+            // is only implemented for EdDSA — see the module doc comment.
+            let mechanism_type = unsafe { pMechanism.read() }.mechanism;
+            if mechanism_type != CKM_EDDSA {
+                return Err(ModuleError::FunctionNotSupported);
+            }
             let object_store = OBJECTS_STORE.read()?;
             let object = object_store.get_using_handle(hKey);
             let Some(Object::PrivateKey(private_key)) = object.as_deref() else {
                 return Err(ModuleError::KeyHandleInvalid(hKey));
             };
             let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
-            if !matches!(mechanism, Mechanism::EdDsa) {
-                return Err(ModuleError::FunctionNotSupported);
-            }
             session.sign_ctx = Some(SignContext {
                 algorithm: mechanism.try_into()?,
                 private_key: private_key.clone(),
                 operation: SignOperation::Message,
                 payload: None,
+                pending_signature: None,
             });
             Ok(())
         })
