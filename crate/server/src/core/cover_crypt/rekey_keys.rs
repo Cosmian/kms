@@ -197,9 +197,8 @@ pub(crate) async fn rekey_keypair_cover_crypt(
     })
 }
 
-/// Updates the key-pair associated to the MSK which UID is given using the
-/// given mutator, and replaces the stored key-pair with the mutated
-/// one. Returns the associated MPK UID.
+/// Updates the MSK which UID is given using the given mutator, and update the
+/// linked MPK ans USKs. Returns the new MPK UID.
 pub(super) async fn update_msk(
     server: &KMS,
     owner: &UserId,
