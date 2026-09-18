@@ -496,11 +496,15 @@ ON objects.id = matched_tags.id"
     }
 
     if !user_must_be_owner {
-        // select objects for which the user is the owner or has been granted an access right
+        // Select objects for which the user is the owner or has been granted an
+        // access right, either directly or via the wildcard user `*` (a grant to
+        // `*` is inherited by every user, so it must be visible here just like it
+        // already is in the "obtained access rights" listing).
         query = format!(
             "{query}\n LEFT JOIN read_access ON objects.id = read_access.id AND \
-             read_access.userid = {}",
-            qb.bind_text(user)
+             (read_access.userid = {} OR read_access.userid = {})",
+            qb.bind_text(user),
+            qb.bind_text("*")
         );
     }
 
@@ -526,9 +530,10 @@ ON objects.id = matched_tags.id"
         // only select objects for which the user is the owner
         query = format!("{query} WHERE objects.owner = {}", qb.bind_text(user));
     } else {
+        // `read_access.id` is only non-NULL when the LEFT JOIN above matched a
+        // grant to the user or to the wildcard user `*`.
         query = format!(
-            "{query} WHERE (objects.owner = {} OR read_access.userid = {})",
-            qb.bind_text(user),
+            "{query} WHERE (objects.owner = {} OR read_access.id IS NOT NULL)",
             qb.bind_text(user)
         );
     }

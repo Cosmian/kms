@@ -100,6 +100,10 @@ _VALID_OPERATIONS: frozenset[str] = frozenset(
         'DeleteAttribute',
         'ObtainLease',
         'RekeyKeyPair',
+        # ── Synthetic recovery / eviction operations ─────────────────────────
+        'audit:reanchor',
+        'audit:torn-write-recovered',
+        'audit:eviction',
     }
 )
 
