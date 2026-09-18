@@ -492,7 +492,6 @@ impl Backend for CliBackend {
             SYSTEM_TAG_SYMMETRIC_KEY,
             SYSTEM_TAG_PRIVATE_KEY,
             SYSTEM_TAG_PUBLIC_KEY,
-            SYSTEM_TAG_CERTIFICATE,
             SYSTEM_TAG_SECRET_DATA,
             SYSTEM_TAG_COVER_CRYPT_USER_KEY,
         ] {
@@ -508,6 +507,42 @@ impl Backend for CliBackend {
                         }
                     }
                 }
+            }
+        }
+
+        // Certificates are not reconstructible from attributes alone
+        // (`Pkcs11Certificate::try_from` needs the actual X.509 DER plus the
+        // `PrivateKeyLink` attribute, not just a subset of KMIP attributes), so
+        // they are located and batch-exported separately, reusing the same
+        // `Get` + `GetAttributes` path as `find_all_certificates` (which correctly
+        // populates `PrivateKeyLink` in the returned `Attributes`).
+        match get_kms_certificate_objects(
+            &self.kms_rest_client,
+            &self.vendor_id,
+            &[SYSTEM_TAG_CERTIFICATE.to_owned()],
+        ) {
+            Ok(kms_objects) => {
+                for dao in kms_objects {
+                    if seen_ids.insert(dao.remote_id.clone()) {
+                        match Pkcs11Certificate::try_from(dao) {
+                            Ok(certificate) => {
+                                objects.push(Arc::new(Object::Certificate(Arc::new(certificate))));
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "find_all_objects: failed to build Certificate object: {e}, \
+                                     skipping"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(
+                    "find_all_objects: failed to fetch Certificate objects: {e}, skipping \
+                     certificates"
+                );
             }
         }
 
