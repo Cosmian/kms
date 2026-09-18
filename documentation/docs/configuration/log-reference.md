@@ -1038,8 +1038,6 @@ Crate path: `crate/interfaces`
 | `debug` | `HSM key {uid} export failed ({e}); falling back to metadata-only stub for                      attribute operations`                                                   | `src/hsm/hsm_store.rs`        | `uid`, `e`                                                     | —                                                                                        |
 | `debug` | `signature_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 | `debug` | `Creating {algorithm:?} keypair with uid: {uid}` | `src/hsm/hsm_store.rs` | `algorithm`: KMIP `CryptographicAlgorithm` requested for the keypair (RSA, ECDSA, Ed25519, ...); `uid`: HSM-resident unique identifier the keypair will be stored under | Logged before delegating `CreateKeyPair` to the HSM; generalized from an RSA-only message to cover the EC/Ed25519 keypair creation support added in this change |
-| `debug` | `Creating {algorithm:?} keypair with uid: {uid}` | `src/hsm/hsm_store.rs` | `algorithm`: KMIP `CryptographicAlgorithm` requested for the keypair (RSA, ECDSA, Ed25519, ...); `uid`: HSM-resident unique identifier the keypair will be stored under | Logged before delegating `CreateKeyPair` to the HSM; generalized from an RSA-only message to cover the EC/Ed25519 keypair creation support added in this change |
-| `debug` | `signature_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 | `debug` | `signature_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 
 ### `cosmian_kms_access`
@@ -1271,7 +1269,6 @@ Crate path: `crate/clients/pkcs11/module`
 | `info` | `C_GetAttributeValue: session: {:?}, object: {:?} [handle: {}], type: {:?}` | `src/pkcs11.rs` | - | - |
 | `info` | `C_OpenSession: slot={slotID:?} flags={flags:?} session handle written` | `src/pkcs11.rs` | `slotID`: slotID<br>`flags`: flags | - |
 | `debug` | `C_DestroyObject: session: {hSession:?}, hObject: {hObject}` | `src/pkcs11.rs` | `hSession`: hSession<br>`hObject`: hObject | - |
-| `debug` | `CKO_DATA match: remote_id={}, handle={}` | `src/sessions.rs` | - | - |
 | `debug` | `CKO_DATA search: label_filter={:?}, store has {} DataObjects` | `src/sessions.rs` | - | - |
 | `debug` | `create_object: attributes: {attributes:?}` | `src/sessions.rs` | `attributes`: KMIP attribute (debug display)s | - |
 | `debug` | `create_object: created object with handle: {handle}` | `src/sessions.rs` | `handle`: PKCS#11 object handle | - |
@@ -1318,6 +1315,10 @@ Crate path: `crate/clients/pkcs11/module`
 | `error` | `CKM_AES_GCM pParameter incorrect size: {} != {}` | `src/core/mechanism.rs` | actual size in bytes, expected `CK_GCM_PARAMS` size in bytes | Caller passed a mechanism parameter buffer of the wrong size for `CKM_AES_GCM`; request is rejected before any unaligned/OOB read. |
 | `error` | `CKM_AES_GCM: unsupported ulTagBits {} (only {} is supported)` | `src/core/mechanism.rs` | requested tag length in bits, only supported tag length in bits (128) | The module only implements the standard 128-bit GCM authentication tag; any other `ulTagBits` value is rejected. |
 | `debug` | `parse_mechanism: CKM_AES_GCM iv_len: {}, aad_len: {}` | `src/core/mechanism.rs` | IV length in bytes, AAD length in bytes | Diagnostic trace emitted after successfully parsing a `CK_GCM_PARAMS` mechanism parameter (read via `read_unaligned` for C-caller safety). No sensitive key material is logged. |
+| `warn` | `CKO_DATA search: failed to refresh {remote_id} from KMS: {e}, keeping cached stub` | `src/sessions.rs` | `remote_id`, `e` | - |
+| `warn` | `CKO_DATA search: full fetch for {remote_id} returned no object, keeping cached stub` | `src/sessions.rs` | `remote_id` | - |
+| `warn` | `load_find_context_by_class: failed to refresh public key {} with full key material: {e}, using cached (metadata-only) object` | `src/sessions.rs` | `e` | - |
+| `debug` | `CKO_DATA match: remote_id={remote_id}, handle={handle}` | `src/sessions.rs` | `remote_id`, `handle` | - |
 
 ---
 
