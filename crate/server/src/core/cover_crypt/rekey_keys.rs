@@ -1,5 +1,3 @@
-use std::ops::AsyncFn;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{ErrorReason, State},
@@ -18,9 +16,7 @@ use cosmian_kms_server_database::reexport::{
             },
             user_key::UserDecryptionKeysHandler,
         },
-        reexport::cosmian_cover_crypt::{
-            AccessPolicy, MasterPublicKey, MasterSecretKey, api::Covercrypt,
-        },
+        reexport::cosmian_cover_crypt::{AccessPolicy, MasterSecretKey, api::Covercrypt},
     },
 };
 use cosmian_logger::trace;
@@ -37,10 +33,9 @@ use crate::{
 /// - `RemoveAttribute`: Remove attributes from the access structure.
 /// - `DisableAttribute`: Disable attributes in the access structure.
 /// - `AddAttribute`: Add new attributes to the access structure.
+/// - `RenameAttribute`: Rename attributes in the access structure.
 /// - `AddAnarchy`: Add a new anarchical dimension to the access structure.
 /// - `AddHierarchy`: Add a new hierarchical dimension to the access structure.
-/// - `RenameAttribute`: Rename attributes in the access structure.
-#[expect(clippy::large_futures)]
 pub(crate) async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
@@ -50,108 +45,148 @@ pub(crate) async fn rekey_keypair_cover_crypt(
     _sensitive: bool,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair Covercrypt");
+
     let mpk_uid = match action {
         RekeyEditAction::RekeyAccessPolicy(access_policy) => {
-            update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
-                let ap = AccessPolicy::parse(&access_policy)?;
-                *mpk = cover_crypt.rekey(msk, &ap)?;
-                update_all_active_usk(kmip_server, &cover_crypt, &msk_uid, msk, owner).await?;
-                Ok(())
-            })
+            Box::pin(update_msk(
+                kmip_server,
+                owner,
+                &msk_uid,
+                &cover_crypt,
+                |mut msk| {
+                    let ap = AccessPolicy::parse(&access_policy)?;
+                    drop(cover_crypt.rekey(&mut msk, &ap)?);
+                    Ok(msk)
+                },
+            ))
             .await?
         }
         RekeyEditAction::PruneAccessPolicy(access_policy) => {
-            update_master_keys(kmip_server, owner, &msk_uid, async |msk, _mpk| {
-                let ap = AccessPolicy::parse(&access_policy)?;
-                cover_crypt.prune_master_secret_key(msk, &ap)?;
-                update_all_active_usk(kmip_server, &cover_crypt, &msk_uid, msk, owner).await?;
-                Ok(())
-            })
+            Box::pin(update_msk(
+                kmip_server,
+                owner,
+                &msk_uid,
+                &cover_crypt,
+                |mut msk| {
+                    let ap = AccessPolicy::parse(&access_policy)?;
+                    cover_crypt.prune_master_secret_key(&mut msk, &ap)?;
+
+                    Ok(msk)
+                },
+            ))
             .await?
         }
         RekeyEditAction::DeleteAttribute(attrs) => {
-            update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
-                attrs
-                    .iter()
-                    .try_for_each(|attr| msk.access_structure.del_attribute(attr))?;
-                *mpk = cover_crypt.update_msk(msk)?;
-                update_all_active_usk(kmip_server, &cover_crypt, &msk_uid, msk, owner).await?;
-                Ok(())
-            })
+            Box::pin(update_msk(
+                kmip_server,
+                owner,
+                &msk_uid,
+                &cover_crypt,
+                |mut msk| {
+                    attrs
+                        .iter()
+                        .try_for_each(|attr| msk.access_structure.del_attribute(attr))?;
+                    Ok(msk)
+                },
+            ))
             .await?
         }
         RekeyEditAction::DisableAttribute(attrs) => {
-            update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
-                attrs
-                    .iter()
-                    .try_for_each(|attr| msk.access_structure.disable_attribute(attr))?;
-                *mpk = cover_crypt.update_msk(msk)?;
-                Ok(())
-            })
+            Box::pin(update_msk(
+                kmip_server,
+                owner,
+                &msk_uid,
+                &cover_crypt,
+                |mut msk| {
+                    attrs
+                        .iter()
+                        .try_for_each(|attr| msk.access_structure.disable_attribute(attr))?;
+                    Ok(msk)
+                },
+            ))
             .await?
         }
         RekeyEditAction::RenameAttribute(pairs_attr_name) => {
-            update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
-                pairs_attr_name
-                    .iter()
-                    .try_for_each(|(ap_attributes, new_name)| {
-                        msk.access_structure
-                            .rename_attribute(ap_attributes, new_name.clone())
-                    })?;
-                *mpk = cover_crypt.update_msk(msk)?;
-                Ok(())
-            })
+            Box::pin(update_msk(
+                kmip_server,
+                owner,
+                &msk_uid,
+                &cover_crypt,
+                |mut msk| {
+                    pairs_attr_name
+                        .iter()
+                        .try_for_each(|(ap_attributes, new_name)| {
+                            msk.access_structure
+                                .rename_attribute(ap_attributes, new_name.clone())
+                        })?;
+                    Ok(msk)
+                },
+            ))
             .await?
         }
         RekeyEditAction::AddAttribute(attrs_properties) => {
-            update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
-                attrs_properties
-                    .iter()
-                    .try_for_each(|(attr, hint, after)| {
-                        msk.access_structure
-                            .add_attribute(attr.clone(), *hint, after.as_deref())
-                    })?;
-                *mpk = cover_crypt.update_msk(msk)?;
-                Ok(())
-            })
+            Box::pin(update_msk(
+                kmip_server,
+                owner,
+                &msk_uid,
+                &cover_crypt,
+                |mut msk| {
+                    attrs_properties
+                        .iter()
+                        .try_for_each(|(attr, hint, after)| {
+                            msk.access_structure.add_attribute(
+                                attr.clone(),
+                                *hint,
+                                after.as_deref(),
+                            )
+                        })?;
+                    Ok(msk)
+                },
+            ))
             .await?
         }
         RekeyEditAction::AddAnarchy(dimension, attributes) => {
-            update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
-                msk.access_structure.add_anarchy(dimension.clone())?;
-                attributes
-                    .iter()
-                    .try_for_each(|(attribute, encryption_hint)| {
-                        msk.access_structure.add_attribute(
-                            attribute.clone(),
-                            *encryption_hint,
-                            None,
-                        )
-                    })?;
-                *mpk = cover_crypt.update_msk(msk)?;
-                Ok(())
-            })
+            Box::pin(update_msk(
+                kmip_server,
+                owner,
+                &msk_uid,
+                &cover_crypt,
+                |mut msk| {
+                    msk.access_structure.add_anarchy(dimension.clone())?;
+                    attributes
+                        .iter()
+                        .try_for_each(|(attribute, encryption_hint)| {
+                            msk.access_structure.add_attribute(
+                                attribute.clone(),
+                                *encryption_hint,
+                                None,
+                            )
+                        })?;
+                    Ok(msk)
+                },
+            ))
             .await?
         }
         RekeyEditAction::AddHierarchy(dimension, attributes) => {
-            update_master_keys(kmip_server, owner, &msk_uid, async |msk, mpk| {
-                msk.access_structure.add_hierarchy(dimension.clone())?;
-                let mut prev = None;
-                attributes
-                    .iter()
-                    .try_for_each(|(attribute, encryption_hint)| {
-                        let name = attribute.name.clone();
+            Box::pin(update_msk(
+                kmip_server,
+                owner,
+                &msk_uid,
+                &cover_crypt,
+                |mut msk| {
+                    msk.access_structure.add_hierarchy(dimension.clone())?;
+                    let mut prev = None;
+                    for (attribute, encryption_hint) in &attributes {
                         msk.access_structure.add_attribute(
                             attribute.clone(),
                             *encryption_hint,
-                            prev.as_deref(),
+                            prev,
                         )?;
-                        prev = Some(name);
-                        KResult::Ok(())
-                    })?;
-                *mpk = cover_crypt.update_msk(msk)?;
-                Ok(())
-            })
+                        prev = Some(&attribute.name);
+                    }
+                    Ok(msk)
+                },
+            ))
             .await?
         }
     };
@@ -165,17 +200,20 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 /// Updates the key-pair associated to the MSK which UID is given using the
 /// given mutator, and replaces the stored key-pair with the mutated
 /// one. Returns the associated MPK UID.
-pub(super) async fn update_master_keys(
+pub(super) async fn update_msk(
     server: &KMS,
     owner: &UserId,
     msk_uid: &String,
-    mutator: impl AsyncFn(&mut MasterSecretKey, &mut MasterPublicKey) -> KResult<()>,
+    cover_crypt: &Covercrypt,
+    mutator: impl Fn(Box<MasterSecretKey>) -> KResult<Box<MasterSecretKey>>,
 ) -> KResult<String> {
     let (msk_obj, (mpk_uid, mpk_obj)) = get_master_keys(server, msk_uid, owner).await?;
+    let (msk, _) = cc_master_keypair_from_kmip_objects(&msk_obj, &mpk_obj)?;
 
-    let (mut msk, mut mpk) = cc_master_keypair_from_kmip_objects(&msk_obj, &mpk_obj)?;
+    let mut msk = mutator(Box::new(msk))?;
+    let mpk = cover_crypt.update_msk(&mut msk)?;
 
-    mutator(&mut msk, &mut mpk).await?;
+    update_all_active_usk(server, cover_crypt, msk_uid, &mut msk, owner).await?;
 
     let (msk_obj, mpk_obj) = kmip_objects_from_cc_master_keypair(&msk, &mpk, msk_obj, mpk_obj)?;
 
