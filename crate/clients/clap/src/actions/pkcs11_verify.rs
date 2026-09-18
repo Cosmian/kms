@@ -203,7 +203,7 @@ pub(crate) fn run_verify(
 
 type GetFunctionListFn = unsafe extern "C" fn(CK_FUNCTION_LIST_PTR_PTR) -> CK_RV;
 
-fn call_get_function_list(lib: &Library) -> KmsCliResult<*mut CK_FUNCTION_LIST> {
+pub(crate) fn call_get_function_list(lib: &Library) -> KmsCliResult<*mut CK_FUNCTION_LIST> {
     let get_func_list: Symbol<GetFunctionListFn> = unsafe { lib.get(b"C_GetFunctionList\0") }
         .map_err(|e| {
             KmsCliError::Default(format!(
@@ -233,7 +233,7 @@ fn call_get_function_list(lib: &Library) -> KmsCliResult<*mut CK_FUNCTION_LIST> 
     Ok(func_list_ptr)
 }
 
-fn call_get_slot_list(func_list: &CK_FUNCTION_LIST) -> KmsCliResult<CK_SLOT_ID> {
+pub(crate) fn call_get_slot_list(func_list: &CK_FUNCTION_LIST) -> KmsCliResult<CK_SLOT_ID> {
     let c_get_slot_list = func_list.C_GetSlotList.ok_or_else(|| {
         KmsCliError::Default("FAIL [C_GetSlotList]: not present in function list".to_owned())
     })?;
@@ -264,7 +264,7 @@ fn call_get_slot_list(func_list: &CK_FUNCTION_LIST) -> KmsCliResult<CK_SLOT_ID> 
     })
 }
 
-fn call_open_session(
+pub(crate) fn call_open_session(
     func_list: &CK_FUNCTION_LIST,
     slot_id: CK_SLOT_ID,
 ) -> KmsCliResult<CK_SESSION_HANDLE> {
@@ -296,7 +296,7 @@ fn call_open_session(
     Ok(session)
 }
 
-fn call_login(
+pub(crate) fn call_login(
     func_list: &CK_FUNCTION_LIST,
     session: CK_SESSION_HANDLE,
     token: &str,
@@ -337,6 +337,42 @@ type GetInterfaceFn =
 /// The one interface name this provider is required to expose (see
 /// `cosmian_pkcs11_provider::PKCS11_INTERFACE_NAME`), NUL-terminated.
 const PKCS11_INTERFACE_NAME: &[u8] = b"PKCS 11\0";
+
+/// Resolves the v3.0 `CK_FUNCTION_LIST_3_0` function table via `C_GetInterface`
+/// (default lookup). The legacy `C_GetFunctionList` entry point only returns a
+/// v2.40-sized `CK_FUNCTION_LIST`, which does not include the v3.0 message-based
+/// signing functions (`C_MessageSignInit`/`C_SignMessage`/`C_MessageSignFinal`).
+pub(crate) fn call_get_function_list_3_0(
+    lib: &Library,
+) -> KmsCliResult<*const pkcs11_sys::CK_FUNCTION_LIST_3_0> {
+    let get_interface: Symbol<GetInterfaceFn> =
+        unsafe { lib.get(b"C_GetInterface\0") }.map_err(|e| {
+            KmsCliError::Default(format!(
+                "FAIL [C_GetInterface]: symbol not found in .so: {e}"
+            ))
+        })?;
+
+    let mut iface_ptr: CK_INTERFACE_PTR = ptr::null_mut();
+    let rv = unsafe { get_interface(ptr::null_mut(), ptr::null_mut(), &raw mut iface_ptr, 0) };
+    check_rv(rv, "C_GetInterface (default lookup)")?;
+    if iface_ptr.is_null() {
+        return Err(KmsCliError::Default(
+            "FAIL [C_GetInterface]: default lookup returned CKR_OK but a null interface pointer"
+                .to_owned(),
+        ));
+    }
+    // SAFETY: `iface_ptr` was just checked to be non-null and was populated by a
+    // successful `C_GetInterface` call, per the PKCS#11 v3.1 §5.2 contract.
+    let iface = unsafe { &*iface_ptr };
+    if iface.pFunctionList.is_null() {
+        return Err(KmsCliError::Default(
+            "FAIL [C_GetInterface]: interface reports a null function list".to_owned(),
+        ));
+    }
+    Ok(iface
+        .pFunctionList
+        .cast::<pkcs11_sys::CK_FUNCTION_LIST_3_0>())
+}
 
 /// Exercises the v3.0 Interfaces API surface: `C_GetInterfaceList` (two-call convention) and
 /// `C_GetInterface` (default lookup, exact-name lookup, backward-compatible v3.0 version
@@ -733,7 +769,7 @@ fn call_verify_profiles(
     Ok(())
 }
 
-fn check_rv(rv: CK_RV, step: &str) -> KmsCliResult<()> {
+pub(crate) fn check_rv(rv: CK_RV, step: &str) -> KmsCliResult<()> {
     if rv == CKR_OK {
         Ok(())
     } else {
@@ -768,7 +804,7 @@ macro_rules! ckr_match {
     };
 }
 
-const fn ckr_name(rv: CK_RV) -> &'static str {
+pub(crate) const fn ckr_name(rv: CK_RV) -> &'static str {
     ckr_match!(rv;
         CKR_OK,
         CKR_CANCEL,

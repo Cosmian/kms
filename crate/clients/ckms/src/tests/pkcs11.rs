@@ -12,7 +12,9 @@ use std::{
 
 use test_kms_server::{AUTH0_TOKEN, start_default_test_kms_server_with_jwt_auth};
 
-use crate::tests::utils::{ckms_bin, load_client_config, recover_cmd_logs};
+use crate::tests::utils::{
+    ckms_bin, force_save_kms_cli_config, load_client_config, recover_cmd_logs,
+};
 
 // ---------------------------------------------------------------------------
 // Ensure the PKCS#11 cdylib is built before tests run
@@ -181,4 +183,79 @@ async fn test_pkcs11_verify_fails_without_server() {
          stdout: {}",
         String::from_utf8_lossy(&output.stdout)
     );
+}
+
+/// Verify that `ckms pkcs11 capabilities` runs every FIPS-eligible mechanism
+/// (AES/RSA/ECDSA) end to end against a JWT-authenticated server and reports
+/// them all as passing.
+#[cfg(not(target_os = "windows"))]
+#[tokio::test]
+async fn test_pkcs11_capabilities_with_jwt_auth() {
+    ensure_pkcs11_lib();
+
+    let ctx = start_default_test_kms_server_with_jwt_auth().await;
+    let dll_path = pkcs11_lib_path();
+    // The PKCS#11 provider authenticates via `C_Login`/`--token` (bearer token
+    // supplied at keystore-open time); the KMS client used to *provision* the
+    // RSA/EC/Ed25519 test keys over the REST API is a separate, conventionally
+    // authenticated client (owner config), independent of that PKCS#11 flow.
+    let conf_path = load_client_config("pkcs11_oidc.toml", ctx);
+    let (owner_conf_path, _) = force_save_kms_cli_config(ctx);
+
+    let mut cmd = ckms_bin();
+    cmd.env("CKMS_CONF_PATH", &owner_conf_path);
+    cmd.args([
+        "pkcs11",
+        "capabilities",
+        "--dll",
+        dll_path.to_str().expect("dll path is UTF-8"),
+        "--conf",
+        &conf_path,
+        "--token",
+        AUTH0_TOKEN,
+    ]);
+
+    let output = recover_cmd_logs(&mut cmd);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        output.status.success(),
+        "ckms pkcs11 capabilities exited non-zero.\nstdout: {stdout}\nstderr: {stderr}"
+    );
+    for mechanism in [
+        "CKM_AES_KEY_GEN",
+        "CKM_AES_CBC",
+        "CKM_AES_CBC_PAD",
+        "CKM_AES_GCM",
+        "CKM_RSA_PKCS",
+        "CKM_SHA256_RSA_PKCS",
+        "CKM_RSA_PKCS_PSS",
+        "CKM_ECDSA",
+    ] {
+        assert!(
+            stdout.contains(mechanism),
+            "Expected a report row for {mechanism}.\nstdout: {stdout}"
+        );
+    }
+    // `CKM_SHA1_RSA_PKCS` is expected to fail: the KMS server's algorithm policy
+    // (`crate/server/src/core/operations/algorithm_policy.rs`) unconditionally denies
+    // the deprecated `SHA1WithRSAEncryption` signature algorithm, independent of the
+    // FIPS/non-FIPS build. Any other failing (\u{274c}) row is a genuine regression.
+    for line in stdout.lines() {
+        if line.contains('\u{274c}') {
+            assert!(
+                line.contains("CKM_SHA1_RSA_PKCS"),
+                "Unexpected failing mechanism row: {line}\nstdout: {stdout}"
+            );
+        }
+    }
+
+    #[cfg(feature = "non-fips")]
+    {
+        assert!(
+            stdout.contains("CKM_EDDSA"),
+            "Expected a report row for CKM_EDDSA in a non-fips build.\nstdout: {stdout}"
+        );
+    }
 }
