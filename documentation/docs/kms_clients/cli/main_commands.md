@@ -1297,7 +1297,7 @@ Create, destroy, import, and export FPE keys
 
 ### Subcommands
 
-**`create`** [[8.1.1]](#811-ckms-fpe-keys-create) 
+**`create`** [[8.1.1]](#811-ckms-fpe-keys-create)
 **`export`** [[8.1.2]](#812-ckms-fpe-keys-export)  Export a key or secret data from the KMS
 
 **`import`** [[8.1.3]](#813-ckms-fpe-keys-import)  Import a secret data or a key in the KMS.
@@ -4342,7 +4342,7 @@ Verify PKCS#11 shared library integration
 
 **`verify`** [[25.1]](#251-ckms-pkcs11-verify)  Load the PKCS#11 shared library and exercise the standard v3.1 API sequence
 
-**`capabilities`** [[25.2]](#252-ckms-pkcs11-capabilities)  Exhaustively exercise every PKCS#11 mechanism the `cosmian_pkcs11` DLL implements (key generation, encryption/decryption, signing/verification) and report a ✅/❌/⏭️ per mechanism
+**`capabilities`** [[25.2]](#252-ckms-pkcs11-capabilities)  Report on the full PKCS#11 v2/v3 surface: all 442 real `CKM_*` mechanisms and all 92 `C_*` functions, each marked ✅/❌/⏭️/⬛, every row printed individually
 
 ---
 
@@ -4365,7 +4365,7 @@ Load the PKCS#11 shared library and exercise the standard v3.1 API sequence
 
 ## 25.2 ckms pkcs11 capabilities
 
-Exhaustively exercise every PKCS#11 mechanism the `cosmian_pkcs11` DLL implements (key generation, encryption/decryption, signing/verification) and report a ✅/❌/⏭️ per mechanism
+Report on the full PKCS#11 v2/v3 surface: all 442 real `CKM_*` mechanisms and all 92 `C_*` functions, each marked ✅/❌/⏭️/⬛, every row printed individually
 
 ### Usage
 `ckms pkcs11 capabilities [options]`
