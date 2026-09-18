@@ -6,13 +6,11 @@ use std::{
     ptr,
 };
 
-use cosmian_kms_base_hsm::{
-    AesKeySize, BaseHsm, HResult, HsmSigningAlgorithm, RsaOaepDigest, tests_shared as shared,
-};
+use cosmian_kms_base_hsm::{HResult, RsaOaepDigest, tests_shared as shared};
 use libloading::Library;
 use pkcs11_sys::{
     CK_C_INITIALIZE_ARGS, CK_FUNCTION_LIST_PTR, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CK_ULONG,
-    CKF_OS_LOCKING_OK, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKM_SHA256, CKR_OK, CKU_SO,
+    CKF_OS_LOCKING_OK, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKU_SO,
 };
 
 use crate::{KRYOPTIC_PKCS11_LIB, KryopticCapabilityProvider};
@@ -156,84 +154,6 @@ fn kryoptic_pkcs11_lib_path() -> PathBuf {
     }
 }
 
-fn check_pkcs11_v3_interface_list_is_populated(hsm: &BaseHsm<KryopticCapabilityProvider>) {
-    assert!(hsm.hsm_lib().supports_pkcs11_v3_interfaces());
-    let interfaces = hsm
-        .hsm_lib()
-        .list_pkcs11_v3_interfaces()
-        .expect("failed to list PKCS#11 v3 interfaces")
-        .expect("kryoptic must report v3 interfaces");
-    assert!(!interfaces.is_empty());
-    assert!(
-        interfaces
-            .iter()
-            .all(|interface| !interface.name.is_empty())
-    );
-}
-
-fn check_eddsa_sign_and_verify_round_trip(hsm: &BaseHsm<KryopticCapabilityProvider>) {
-    let slot = hsm.get_slot(SLOT_ID).expect("failed to get slot");
-    let session = slot.open_session(true).expect("failed to open session");
-    let (sk, pk) = session
-        .generate_eddsa_key_pair(b"eddsa-sk", b"eddsa-pk", false)
-        .expect("kryoptic must support CKM_EC_EDWARDS_KEY_PAIR_GEN (v3.0 EdDSA)");
-    let data = b"pkcs11 v3.1 eddsa conformance";
-    let signature = session
-        .sign(sk, HsmSigningAlgorithm::Eddsa, data)
-        .expect("kryoptic must support CKM_EDDSA signing");
-    let verified = session
-        .verify(pk, HsmSigningAlgorithm::Eddsa, data, &signature)
-        .expect("kryoptic must support CKM_EDDSA verification");
-    assert!(verified, "EdDSA signature must verify");
-}
-
-fn check_hkdf_derive(hsm: &BaseHsm<KryopticCapabilityProvider>) {
-    let slot = hsm.get_slot(SLOT_ID).expect("failed to get slot");
-    let session = slot.open_session(true).expect("failed to open session");
-    let ikm = session
-        .generate_generic_secret_key(b"hkdf-ikm", 32, false)
-        .expect("failed to generate HKDF input key material");
-    let derived = session
-        .derive_hkdf_key(
-            ikm,
-            CKM_SHA256,
-            Some(b"salt"),
-            b"info",
-            32,
-            b"hkdf-derived",
-            false,
-        )
-        .expect("kryoptic must support CKM_HKDF_DERIVE (v3.0)");
-    assert_ne!(derived, 0);
-}
-
-fn check_message_based_aes_gcm_round_trip(hsm: &BaseHsm<KryopticCapabilityProvider>) {
-    let slot = hsm.get_slot(SLOT_ID).expect("failed to get slot");
-    let session = slot.open_session(true).expect("failed to open session");
-    let key = session
-        .generate_aes_key(b"aead-key", AesKeySize::Aes256, false)
-        .expect("failed to generate AES key");
-    assert!(
-        hsm.hsm_lib().supports_message_encrypt(),
-        "kryoptic must support C_MessageEncryptInit/C_EncryptMessage (v3.0)"
-    );
-    assert!(
-        hsm.hsm_lib().supports_message_decrypt(),
-        "kryoptic must support C_MessageDecryptInit/C_DecryptMessage (v3.0)"
-    );
-    let aad = b"pkcs11-v3-aad";
-    let plaintext = b"pkcs11 v3.1 message-based aead conformance";
-    let encrypted = session
-        .encrypt_message_aes_gcm(key, aad, plaintext)
-        .expect("message-based AES-GCM encryption failed");
-    let iv = encrypted.iv.clone().unwrap_or_default();
-    let tag = encrypted.tag.clone().unwrap_or_default();
-    let decrypted = session
-        .decrypt_message_aes_gcm(key, aad, &iv, &tag, &encrypted.ciphertext)
-        .expect("message-based AES-GCM decryption failed");
-    assert_eq!(decrypted.as_slice(), plaintext.as_slice());
-}
-
 #[test]
 #[ignore = "Requires network access + cargo/curl/tar to build kryoptic out-of-tree"]
 fn test_hsm_kryoptic_all() -> HResult<()> {
@@ -277,10 +197,10 @@ fn test_hsm_kryoptic_all() -> HResult<()> {
     shared::destroy_all(&slot)?;
 
     // PKCS#11 v3 specific checks
-    check_pkcs11_v3_interface_list_is_populated(&hsm);
-    check_eddsa_sign_and_verify_round_trip(&hsm);
-    check_hkdf_derive(&hsm);
-    check_message_based_aes_gcm_round_trip(&hsm);
+    shared::check_pkcs11_v3_interface_list_is_populated(&hsm)?;
+    shared::check_eddsa_sign_and_verify_round_trip(&hsm, &test_cfg)?;
+    shared::check_hkdf_derive(&hsm, &test_cfg)?;
+    shared::check_message_based_aes_gcm_round_trip(&hsm, &test_cfg)?;
 
     Ok(())
 }
