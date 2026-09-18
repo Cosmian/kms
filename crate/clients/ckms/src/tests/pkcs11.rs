@@ -185,6 +185,26 @@ async fn test_pkcs11_verify_fails_without_server() {
     );
 }
 
+/// Function names whose function-coverage shallow probe is expected to fail
+/// every run, because the probe deliberately does not engineer the full
+/// precondition sequence for that function (`plan.md` Decision 5/"dynamic"
+/// philosophy: report the real `CK_RV` rather than perfectly staging state).
+#[cfg(not(target_os = "windows"))]
+const KNOWN_FAILING_SHALLOW_PROBES: &[&str] = &[
+    // Rejected: the minimal template omitted mandatory attributes.
+    "C_CreateObject",
+    // `CKR_OPERATION_NOT_INITIALIZED`: no matching `C_SignInit`/`C_VerifyInit`
+    // precedes this shallow probe (that pairing is only exercised inside the
+    // deep mechanism checks, which use one-shot `C_Sign`/`C_Verify`, not the
+    // streaming `*Update`/`*Final` variants).
+    "C_SignUpdate",
+    "C_SignFinal",
+    "C_VerifyUpdate",
+    "C_VerifyFinal",
+    // `cosmian_pkcs11` does not support application-seeded randomness.
+    "C_SeedRandom",
+];
+
 /// Verify that `ckms pkcs11 capabilities` runs every FIPS-eligible mechanism
 /// (AES/RSA/ECDSA) end to end against a JWT-authenticated server and reports
 /// them all as passing.
@@ -241,12 +261,38 @@ async fn test_pkcs11_capabilities_with_jwt_auth() {
     // `CKM_SHA1_RSA_PKCS` is expected to fail: the KMS server's algorithm policy
     // (`crate/server/src/core/operations/algorithm_policy.rs`) unconditionally denies
     // the deprecated `SHA1WithRSAEncryption` signature algorithm, independent of the
-    // FIPS/non-FIPS build. Any other failing (\u{274c}) row is a genuine regression.
-    for line in stdout.lines() {
-        if line.contains('\u{274c}') {
+    // FIPS/non-FIPS build. A ❌ row that is genuinely "not implemented" (the vast
+    // majority of the 430 mechanisms `cosmian_pkcs11` does not advertise) is
+    // expected and excluded from this check; any other failing (\u{274c}) row —
+    // i.e. a real attempted operation that did not behave as expected — is a
+    // genuine regression.
+    let mechanism_section_start = stdout
+        .find("PKCS#11 mechanism coverage")
+        .expect("mechanism coverage section not found");
+    for line in stdout[mechanism_section_start..].lines() {
+        if line.contains('\u{274c}') && !line.contains("(not implemented:") {
             assert!(
                 line.contains("CKM_SHA1_RSA_PKCS"),
                 "Unexpected failing mechanism row: {line}\nstdout: {stdout}"
+            );
+        }
+    }
+    // The function section's shallow probes deliberately do not engineer every
+    // operation's full precondition sequence (`plan.md` Decision 5/"dynamic"
+    // philosophy: report the real `CK_RV` rather than perfectly staging state).
+    // These specific functions are therefore expected to fail with a
+    // precondition-related error every run. A ❌ row that is genuinely "not
+    // implemented" (`CKR_FUNCTION_NOT_SUPPORTED`-stubbed functions) is expected
+    // and excluded from this check; any other failing (\u{274c}) row in this
+    // section is a genuine regression.
+    let function_section_end = mechanism_section_start;
+    for line in stdout[..function_section_end].lines() {
+        if line.contains('\u{274c}') && !line.contains("(not implemented:") {
+            assert!(
+                KNOWN_FAILING_SHALLOW_PROBES
+                    .iter()
+                    .any(|name| line.contains(name)),
+                "Unexpected failing function row: {line}\nstdout: {stdout}"
             );
         }
     }
@@ -258,4 +304,72 @@ async fn test_pkcs11_capabilities_with_jwt_auth() {
             "Expected a report row for CKM_EDDSA in a non-fips build.\nstdout: {stdout}"
         );
     }
+
+    // All 92 C_* functions must be accounted for exactly once each (passed +
+    // failed + skipped + not-implemented + excluded == 92): no function may be
+    // silently dropped by the coverage pass.
+    assert_section_total(&stdout, "PKCS#11 API function coverage", 92);
+    // The mechanism section has more *rows* than 442 whenever a mechanism is
+    // deep-tested across several curves (e.g. CKM_ECDSA: P-256/P-384/P-521/
+    // secp256k1), since each curve is a genuinely distinct code path (Decision
+    // 7). The invariant that must hold is therefore on *distinct* CKM_* names
+    // covered, not on the raw row count.
+    assert_mechanism_names_covered(&stdout, 442);
+}
+
+/// Parses one report section's trailing summary line (`"N passed, N failed, N
+/// skipped, N not implemented, N excluded (N total)."`) and asserts the
+/// reported total matches the known universe size for that section, per
+/// `plan.md` Decision 10's count-reconciliation invariant.
+#[cfg(not(target_os = "windows"))]
+fn assert_section_total(stdout: &str, section_title: &str, expected_total: usize) {
+    let section_start = stdout
+        .find(section_title)
+        .unwrap_or_else(|| panic!("section '{section_title}' not found.\nstdout: {stdout}"));
+    let summary_line = stdout[section_start..]
+        .lines()
+        .find(|line| line.contains("total)."))
+        .unwrap_or_else(|| {
+            panic!("no summary line found for section '{section_title}'.\nstdout: {stdout}")
+        });
+    let total_str = summary_line
+        .rsplit('(')
+        .next()
+        .and_then(|s| s.split_whitespace().next())
+        .unwrap_or_else(|| panic!("cannot parse summary line: {summary_line}"));
+    let total: usize = total_str
+        .parse()
+        .unwrap_or_else(|e| panic!("cannot parse total '{total_str}' in '{summary_line}': {e}"));
+    assert_eq!(
+        total, expected_total,
+        "section '{section_title}' reported {total} total rows, expected {expected_total} \
+         (some entries were silently dropped or double-counted).\nsummary line: {summary_line}"
+    );
+}
+
+/// Counts the number of *distinct* `CKM_*` mechanism names appearing as report
+/// rows in the "PKCS#11 mechanism coverage" section and asserts it matches the
+/// known 442-mechanism universe (`ALL_MECHANISMS` in `pkcs11_capabilities.rs`).
+#[cfg(not(target_os = "windows"))]
+fn assert_mechanism_names_covered(stdout: &str, expected_names: usize) {
+    let section_start = stdout
+        .find("PKCS#11 mechanism coverage")
+        .expect("mechanism coverage section not found");
+    let section_end = stdout[section_start..]
+        .find("total).")
+        .map_or(stdout.len(), |offset| section_start + offset);
+    let mut names: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for line in stdout[section_start..section_end].lines() {
+        if let Some(rest) = line.split(' ').nth(1) {
+            if rest.starts_with("CKM_") {
+                names.insert(rest);
+            }
+        }
+    }
+    assert_eq!(
+        names.len(),
+        expected_names,
+        "expected {expected_names} distinct CKM_* mechanism names in the report, found {}",
+        names.len()
+    );
 }
