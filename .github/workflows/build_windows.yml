@@ -146,7 +146,7 @@ jobs:
     uses: Cosmian/reusable_scripts/.github/workflows/sign-windows-artifacts.yml@feat/azure-code-signing
     with:
       artifact-to-download: ${{ inputs.archive-name }}-release
-      files-folder: to-sign/target/release
+      files-folder: to-sign/target/release/target/release
       files-folder-filter: exe
       artifact-name: ${{ inputs.archive-name }}-release-signed
       signing-account-name: cosmian-codesigning-test
