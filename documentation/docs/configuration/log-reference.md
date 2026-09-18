@@ -1239,6 +1239,8 @@ Crate path: `crate/clients/pkcs11/provider`
 | `error` | `ensure_backend_registered: failed to load ckms.toml: {}.                  Check that ckms.toml exists alongside the DLL                  (C:\opt\oracle\extapi\64\pkcs11\ckms.toml),                  at ~/.cosmian/ckms.toml, or set CKMS_CONF to its path.` | `src/lib.rs` | `{}`: caught error reading/parsing ckms.toml | Renamed from `C_GetFunctionList: failed to load ckms.toml: {}...`. Configuration file missing or invalid; verify the search paths listed in the message. |
 | `error` | `remote_verify failed for Pkcs11PublicKey with remote_id {}: {e}` | `src/pkcs11_public_key.rs` | `e` | - |
 | `debug` | `remote_verify: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`, `algorithm` | - |
+| `warn` | `find_all_objects: failed to build Certificate object: {e}, skipping` | `src/backend.rs` | `e`: error building a `Pkcs11Certificate` from an exported KMS object (e.g. missing `PrivateKeyLink`) | The matching certificate is skipped, not the whole listing |
+| `warn` | `find_all_objects: failed to fetch Certificate objects: {e}, skipping certificates` | `src/backend.rs` | `e`: error from the KMS Locate/Get/GetAttributes batch export of `_cert`-tagged objects | All certificates are skipped for this listing call; other object types are unaffected |
 
 ### `cosmian_pkcs11_module`
 
