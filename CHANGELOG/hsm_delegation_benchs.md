@@ -158,7 +158,7 @@
 ### PKCS#11 conformance suite: real bugs found and fixed
 
 Building and running a new, exhaustive `pkcs11-tool` + raw-ABI conformance suite
-(`.mise/tasks/test/pkcs11-conformance`, see "Testing" below) against
+(`.mise/tasks/test/pkcs11/conformance`, see "Testing" below) against
 `cosmian_pkcs11` surfaced the following genuine regressions, all fixed directly in
 `crate/clients/pkcs11/`:
 
@@ -925,9 +925,9 @@ build) before the fix, and confirmed it now completes cleanly after; also ran th
 full `--mode all` sweep (9 operations, concurrency 1/2/4, including
 `key-creation`) end-to-end with no failures.
 
-### New independent conformance gate: `mise test:pkcs11-conformance`
+### New independent conformance gate: `mise test:pkcs11:conformance`
 
-Added `.mise/tasks/test/pkcs11-conformance` (fully independent of, and not
+Added `.mise/tasks/test/pkcs11/conformance` (fully independent of, and not
 sharing any code with, `test:hsm-pkcs11-tool`), driven by a new
 `.mise/scripts/test/test_pkcs11_conformance.sh`, to exhaustively exercise every
 PKCS#11 v2/v3 mechanism and function `cosmian_pkcs11` implements against a plain
@@ -969,3 +969,24 @@ cdylib):
 Running this new suite end-to-end against a fresh debug build is what surfaced
 every regression listed under "Bug Fixes" -> "PKCS#11 conformance suite: real
 bugs found and fixed" above; the suite now passes 192/192.
+
+### New MISE task group: `mise test:pkcs11:*`
+
+Renamed the flat `mise test:pkcs11-conformance` task to
+`mise test:pkcs11:conformance` (`.mise/tasks/test/pkcs11-conformance` ->
+`.mise/tasks/test/pkcs11/conformance`), and added it under a new `test:pkcs11`
+task namespace:
+
+- `mise test:pkcs11:support` (new): builds `cosmian_pkcs11`,
+  `cosmian_kms_server`, and `ckms` (`kms_build_all`, non-fips by default),
+  starts a plain sqlite KMS server on port 9998 (matching
+  `test_data/configs/client/default.toml`), then runs `ckms pkcs11
+  capabilities --dll <built cdylib>` against it — a fast smoke test of the
+  full 442-mechanism/92-function conformance report added above, independent
+  of the exhaustive `pkcs11-tool`/raw-ABI suite.
+- `mise test:pkcs11` (new, bare): an alias that simply execs
+  `test:pkcs11:conformance`, so the existing exhaustive suite stays the
+  default entry point for the namespace.
+- Wired `test:pkcs11:support` into `.github/workflows/test_all.yml`'s
+  `test-nix` matrix (non-fips only, same exclusion pattern as `ase`/`openssh`/
+  other PKCS#11-only-in-non-fips test types).
