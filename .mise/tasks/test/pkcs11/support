@@ -11,7 +11,9 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_build.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/pkcs11_helpers.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+ensure_nix_shell
 
 print_header "Building cosmian_pkcs11, cosmian_kms_server and ckms (${VARIANT_NAME})"
 
