@@ -38,7 +38,6 @@ jobs:
           - iris
           - db2
           - ase
-          - pkcs11
           - secret_vault
           - secret_aws
           - secret_azure
@@ -88,10 +87,6 @@ jobs:
             features: fips
           # ase (PKCS#11) forces non-fips like the other PKCS#11 test types
           - type: ase
-            features: fips
-          # pkcs11:support requires non-fips (cosmian_pkcs11 crate: Ed25519/Ed448
-          # key provisioning, secp256k1)
-          - type: pkcs11
             features: fips
           # secret_cosmian_kms runs against a local KMS server — works with both fips and non-fips
           # secret_vault, secret_aws, secret_azure require external services — run non-fips only
@@ -216,6 +211,16 @@ jobs:
         run: |
           set -ex
           mise run test:${{ matrix.type }} --variant ${{ matrix.features }}
+
+      # PKCS#11 support report: exhaustive ckms pkcs11 capabilities smoke test
+      # (442 mechanisms / 92 functions against a live sqlite KMS server). Runs
+      # once (non-fips only, since cosmian_pkcs11 needs --features non-fips),
+      # piggybacking on the `ase` matrix combination to avoid a separate,
+      # colon-containing matrix value (which the yamlfmt pre-commit hook mangles).
+      - name: 'Test (PKCS#11 support report: ckms pkcs11 capabilities)'
+        if: matrix.type == 'ase' && matrix.features == 'non-fips'
+        run: |
+          mise run test:pkcs11:support --variant non-fips
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}

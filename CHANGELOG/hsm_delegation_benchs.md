@@ -988,5 +988,9 @@ task namespace:
   `test:pkcs11:conformance`, so the existing exhaustive suite stays the
   default entry point for the namespace.
 - Wired `test:pkcs11:support` into `.github/workflows/test_all.yml`'s
-  `test-nix` matrix (non-fips only, same exclusion pattern as `ase`/`openssh`/
-  other PKCS#11-only-in-non-fips test types).
+  `test-nix` job as a dedicated extra step, guarded to run exactly once
+  (`if: matrix.type == 'ase' && matrix.features == 'non-fips'`) rather than as
+  a new `matrix.type` entry — a colon-containing matrix value (e.g.
+  `pkcs11:support`) gets silently mangled by the `yamlfmt` pre-commit hook
+  (`--mapping 2 --sequence 4 --offset 2` reparses/re-emits the file and drops
+  everything after the colon), so this avoids that footgun entirely.
