@@ -198,9 +198,16 @@ impl Session {
 
     pub(crate) fn load_find_context(&mut self, attributes: &Attributes) -> ModuleResult<()> {
         if attributes.is_empty() {
-            return Err(ModuleError::BadArguments(
-                "load_find_context: empty attributes".to_owned(),
-            ));
+            // A NULL/empty search template is spec-valid and means "match
+            // every object visible in this session" (e.g. `pkcs11-tool -O`
+            // with no filters calls `C_FindObjectsInit(hSession, NULL, 0)`).
+            // Populate the find context with every object instead of
+            // rejecting the call.
+            self.clear_find_objects_ctx();
+            for object in backend()?.find_all_objects()? {
+                self.update_find_objects_context(object)?;
+            }
+            return Ok(());
         }
         if attributes
             .get(crate::core::attribute::AttributeType::ProfileId)
@@ -320,26 +327,60 @@ impl Session {
                         // cannot be fetched (e.g. old SecretData objects in unexpected state).
                         // Using the local store avoids that fragility entirely.
                         let label_filter = attributes.get_label().ok();
-                        let find_ctx = OBJECTS_STORE.read()?;
-                        let data_objects = find_ctx.get_using_type(&ObjectType::DataObject);
-                        debug!(
-                            "CKO_DATA search: label_filter={:?}, store has {} DataObjects",
-                            label_filter,
-                            data_objects.len()
-                        );
+                        let matched: Vec<(String, CK_OBJECT_HANDLE)> = {
+                            let find_ctx = OBJECTS_STORE.read()?;
+                            let data_objects = find_ctx.get_using_type(&ObjectType::DataObject);
+                            debug!(
+                                "CKO_DATA search: label_filter={:?}, store has {} DataObjects",
+                                label_filter,
+                                data_objects.len()
+                            );
+                            data_objects
+                                .into_iter()
+                                .filter_map(|(object, handle)| {
+                                    if let Object::DataObject(data) = &*object {
+                                        if label_filter
+                                            .as_ref()
+                                            .is_none_or(|l| data.remote_id() == *l)
+                                        {
+                                            return Some((data.remote_id().to_owned(), handle));
+                                        }
+                                    }
+                                    None
+                                })
+                                .collect()
+                        };
                         let mut result = vec![];
-                        for (object, handle) in data_objects {
-                            if let Object::DataObject(data) = &*object {
-                                if label_filter.as_ref().is_none_or(|l| data.remote_id() == *l) {
-                                    debug!(
-                                        "CKO_DATA match: remote_id={}, handle={}",
-                                        data.remote_id(),
-                                        handle
+                        for (remote_id, handle) in matched {
+                            debug!("CKO_DATA match: remote_id={remote_id}, handle={handle}");
+                            // The store entry may be a metadata-only stub (e.g. built by the
+                            // generic bulk-listing scan, with an empty CKA_VALUE) - refresh it
+                            // with a full KMS fetch so CKA_VALUE is populated, replacing the
+                            // stub at the same handle (upsert semantics). The read lock above
+                            // is dropped before this call to avoid deadlocking on the write
+                            // lock taken by `update_find_objects_context`.
+                            match backend()?.find_data_object(SearchOptions::Id(remote_id.clone()))
+                            {
+                                Ok(Some(full_data)) => {
+                                    self.update_find_objects_context(Arc::new(
+                                        Object::DataObject(full_data),
+                                    ))?;
+                                }
+                                Ok(None) => {
+                                    warn!(
+                                        "CKO_DATA search: full fetch for {remote_id} returned no \
+                                         object, keeping cached stub"
                                     );
-                                    self.find_objects_ctx.push(handle);
-                                    result.push(handle);
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "CKO_DATA search: failed to refresh {remote_id} from \
+                                         KMS: {e}, keeping cached stub"
+                                    );
                                 }
                             }
+                            self.find_objects_ctx.push(handle);
+                            result.push(handle);
                         }
                         result
                     }
@@ -403,6 +444,7 @@ impl Session {
                     // base UID (`<base>`), so the suffix is stripped before lookup.
                     let resolved = Self::resolve_object_by_class(&find_ctx, &id, search_class);
                     if let Some((object, handle)) = resolved {
+                        drop(find_ctx);
                         debug!(
                             "load_find_context_by_class: search by id: {} -> handle: {} -> \
                              object: {}:{}",
@@ -411,6 +453,34 @@ impl Session {
                             object.name(),
                             object.remote_id()
                         );
+                        // `find_all_objects` (called from `load_find_context`) only
+                        // populates the store with lightweight, metadata-only public
+                        // key stubs (no raw key bytes), to avoid a KMIP export
+                        // round-trip for every object during a bulk scan. A direct
+                        // by-id lookup (e.g. `--read-object -d <id>`) needs the real
+                        // key material for attributes such as CKA_MODULUS,
+                        // CKA_PUBLIC_EXPONENT, CKA_EC_POINT and CKA_VALUE, so refresh
+                        // the store with a fully-fetched object here, replacing the
+                        // stub at the same handle.
+                        let handle = if search_class == pkcs11_sys::CKO_PUBLIC_KEY {
+                            match backend()?.find_public_key(SearchOptions::Id(object.remote_id()))
+                            {
+                                Ok(full_pk) => self.update_find_objects_context(Arc::new(
+                                    Object::PublicKey(full_pk),
+                                ))?,
+                                Err(e) => {
+                                    warn!(
+                                        "load_find_context_by_class: failed to refresh public \
+                                         key {} with full key material: {e}, using cached \
+                                         (metadata-only) object",
+                                        object.remote_id()
+                                    );
+                                    handle
+                                }
+                            }
+                        } else {
+                            handle
+                        };
                         self.clear_find_objects_ctx();
                         self.add_to_find_objects_ctx(handle);
                     } else if search_class == pkcs11_sys::CKO_PRIVATE_KEY {
@@ -561,32 +631,60 @@ impl Session {
                 return Err(ModuleError::BufferTooSmall);
             }
         }
-        let data = data
-            .or(sign_ctx.payload.as_deref())
-            .ok_or(ModuleError::OperationNotInitialized(0))?;
-        // Variable-length algorithms (currently ECDSA) must still sign once during
-        // a null-buffer query to discover the exact encoded length. Fixed-size
-        // EdDSA/RSA queries returned above without contacting the KMS.
-        let private_key_sign = profiling::phase(SignPhase::PrivateKeySign);
-        let signature = match sign_ctx.private_key.sign(&sign_ctx.algorithm, data) {
-            Ok(sig) => sig,
-            Err(e) => {
-                return Err(ModuleError::BadArguments(format!(
-                    "signature failed: {e:?}"
-                )));
-            }
+        // Variable-length algorithms (currently ECDSA) must still sign to discover
+        // the exact encoded length. The signature produced on the FIRST call that
+        // reaches this point (whether a NULL-buffer length query or a direct
+        // one-call C_Sign) is cached in `pending_signature` and reused by every
+        // subsequent call for this same operation. Re-signing on a later call
+        // would risk a different-length DER signature (ECDSA's leading-zero
+        // bytes in r/s vary from signature to signature), which would make the
+        // length reported by an earlier query call inconsistent with the bytes
+        // actually produced later - causing a spurious CKR_BUFFER_TOO_SMALL on
+        // the caller's second, real-buffer call.
+        let signature = if let Some(cached) = sign_ctx.pending_signature.clone() {
+            cached
+        } else {
+            let data = data
+                .or(sign_ctx.payload.as_deref())
+                .ok_or(ModuleError::OperationNotInitialized(0))?;
+            let private_key_sign = profiling::phase(SignPhase::PrivateKeySign);
+            let signature = match sign_ctx.private_key.sign(&sign_ctx.algorithm, data) {
+                Ok(sig) => sig,
+                Err(e) => {
+                    // Per the PKCS#11 spec, any C_Sign/C_SignFinal failure other
+                    // than CKR_BUFFER_TOO_SMALL terminates the active signing
+                    // operation. Leaving `sign_ctx` set here would make every
+                    // subsequent C_SignInit in this session fail spuriously with
+                    // CKR_OPERATION_ACTIVE, even for an unrelated key/mechanism.
+                    self.sign_ctx = None;
+                    return Err(ModuleError::BadArguments(format!(
+                        "signature failed: {e:?}"
+                    )));
+                }
+            };
+            drop(private_key_sign);
+            sign_ctx.pending_signature = Some(signature.clone());
+            signature
         };
-        drop(private_key_sign);
-        if !pSignature.is_null() {
-            if (unsafe { usize::try_from(*pulSignatureLen)? }) < signature.len() {
-                return Err(ModuleError::BufferTooSmall);
+        if pSignature.is_null() {
+            unsafe {
+                *pulSignatureLen = signature.len().try_into()?;
             }
-            let signature_copy = profiling::phase(SignPhase::SignatureCopy);
-            unsafe { std::slice::from_raw_parts_mut(pSignature, signature.len()) }
-                .copy_from_slice(&signature);
-            drop(signature_copy);
-            self.sign_ctx = None;
+            return Ok(());
         }
+        if (unsafe { usize::try_from(*pulSignatureLen)? }) < signature.len() {
+            // Keep the operation (and the cached signature) initialized so the
+            // caller can retry with a larger buffer using the SAME signature.
+            unsafe {
+                *pulSignatureLen = signature.len().try_into()?;
+            }
+            return Err(ModuleError::BufferTooSmall);
+        }
+        let signature_copy = profiling::phase(SignPhase::SignatureCopy);
+        unsafe { std::slice::from_raw_parts_mut(pSignature, signature.len()) }
+            .copy_from_slice(&signature);
+        drop(signature_copy);
+        self.sign_ctx = None;
         unsafe {
             *pulSignatureLen = signature.len().try_into()?;
         }
@@ -996,6 +1094,7 @@ mod tests {
                 }),
                 operation: SignOperation::Classic,
                 payload: None,
+                pending_signature: None,
             }),
             ..Default::default()
         };
@@ -1072,6 +1171,7 @@ mod tests {
                 }),
                 operation: SignOperation::Message,
                 payload: None,
+                pending_signature: None,
             }),
             ..Default::default()
         };
