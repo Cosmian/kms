@@ -272,6 +272,10 @@ jobs:
           AWS_CLOUDHSM_SLOT_ID: ${{ secrets.KMS_CI_AWS_CLOUDHSM_SLOT_ID }}
           AWS_CLOUDHSM_CA_CERT: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CA_CERT }}
           AWS_CLOUDHSM_HSM_IPS: ${{ secrets.KMS_CI_AWS_CLOUDHSM_HSM_IPS }}
+          # AWS Client VPN profile (.ovpn, cert-based mutual auth): GitHub-hosted
+          # runners have no route to the HSM's private VPC IP; prepare_aws_cloudhsm.sh
+          # starts this tunnel only if the HSM is not already directly reachable.
+          AWS_CLOUDHSM_OVPN_CONF: ${{ secrets.KMS_CI_AWS_CLOUDHSM_OVPN_CONF }}
           # Reused generic AWS credentials (read-only `cloudhsm:DescribeClusters` is enough)
           AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
