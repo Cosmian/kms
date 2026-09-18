@@ -943,6 +943,14 @@ pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> 
         };
 
         for (name, algorithm, ckm, digest_nid) in algorithms {
+            if matches!(curve, EcCurve::P384 | EcCurve::P521) && matches!(digest_nid, Nid::SHA256) {
+                warn!("{curve:?}/{name} rejected by CloudHSM strength policy, skipping");
+                continue;
+            }
+            if matches!(curve, EcCurve::P521) && matches!(digest_nid, Nid::SHA384) {
+                warn!("{curve:?}/{name} rejected by CloudHSM strength policy, skipping");
+                continue;
+            }
             // Some PKCS#11 implementations (e.g. SoftHSM2) do not implement the
             // combined hash-and-sign mechanisms (CKM_ECDSA_SHA*), only the raw
             // CKM_ECDSA mechanism operating on a pre-computed digest. Fall back to

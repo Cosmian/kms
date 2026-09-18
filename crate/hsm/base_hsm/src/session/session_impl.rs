@@ -277,7 +277,7 @@ impl Session {
         let (sk_handle, pk_handle) = self.generate_rsa_key_pair(
             sk_id.as_bytes(),
             pk_id.as_bytes(),
-            RsaKeySize::Rsa1024, //As the specific key size doesn't matter, use the smallest (fastest) algorithm supported.
+            RsaKeySize::Rsa2048,
             false,
         )?;
 
@@ -800,7 +800,7 @@ impl Session {
     ) -> HResult<EncryptedContent> {
         Ok(match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
-                let mut nonce = generate_random_nonce::<12>()?;
+                let mut nonce = [0_u8; AES_GCM_IV_LENGTH];
                 let mut params = CK_AES_GCM_PARAMS {
                     pIv: nonce.as_mut_ptr(),
                     ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
@@ -817,7 +817,7 @@ impl Session {
                 let ciphertext =
                     self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
                 EncryptedContent {
-                    iv: Some(nonce.to_vec()),
+                    iv: Some(nonce.into()),
                     ciphertext: ciphertext
                         .get(..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH)
                         .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?
@@ -3393,12 +3393,15 @@ impl Session {
     /// # Returns
     /// * `Result<Option<Vec<u8>>>` - The key object id if the object exists
     ///
-    /// Reads `CKA_ID` first (set by Cosmian KMS on every key it creates); if absent or
-    /// empty, falls back to `CKA_LABEL` (for externally provisioned keys).
+    /// Reads `CKA_LABEL` first for public keys so paired keys can share `CKA_ID`; for
+    /// private and symmetric keys, reads `CKA_ID` first and falls back to `CKA_LABEL`.
     /// For RSA public keys read via `CKA_LABEL`, the `_pk` suffix is appended if missing.
     pub fn get_object_id(&self, object_handle: CK_OBJECT_HANDLE) -> HResult<Option<Vec<u8>>> {
-        // Try CKA_ID first, then CKA_LABEL
-        for attr_type in [CKA_ID, CKA_LABEL] {
+        let attr_types = match self.get_key_type(object_handle)? {
+            Some(KeyType::RsaPublicKey | KeyType::EcPublicKey) => [CKA_LABEL, CKA_ID],
+            _ => [CKA_ID, CKA_LABEL],
+        };
+        for attr_type in attr_types {
             let mut template = [CK_ATTRIBUTE {
                 type_: attr_type,
                 pValue: ptr::null_mut(),
@@ -3429,8 +3432,7 @@ impl Session {
             if id.is_empty() {
                 continue;
             }
-            // When read via CKA_LABEL, append _pk for RSA public keys lacking the suffix.
-            // (When read via CKA_ID, KMS already stored the _pk suffix in the id.)
+            // When read via CKA_LABEL, append _pk for public keys lacking the suffix.
             if attr_type == CKA_LABEL
                 && self.get_key_type(object_handle)? == Some(KeyType::RsaPublicKey)
                 && !id.ends_with(b"_pk")
