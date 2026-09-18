@@ -91,7 +91,7 @@ jobs:
             features: fips
           # pkcs11:support requires non-fips (cosmian_pkcs11 crate: Ed25519/Ed448
           # key provisioning, secp256k1)
-          - type: pkcs11:support
+          - type: pkcs11
             features: fips
           # secret_cosmian_kms runs against a local KMS server — works with both fips and non-fips
           # secret_vault, secret_aws, secret_azure require external services — run non-fips only
