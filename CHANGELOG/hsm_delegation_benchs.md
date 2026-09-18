@@ -75,6 +75,22 @@
   least 1 certificate in PKCS#11 output, got 0`, now passes with the
   certificate correctly listed and used for LUKS enrollment)
 
+### `mise test:pkcs11:support` failed to load the OpenSSL legacy provider in CI
+
+- The new `.mise/tasks/test/pkcs11/support` task (see "New MISE task group:
+  `mise test:pkcs11:*`" below) did not call `ensure_nix_shell` before building,
+  unlike `test:ase`/`test:luks`/`test:pkcs11:conformance`. In CI, this made
+  `kms_build_all` compile outside the Nix shell, so `crate/crypto/build.rs`
+  fell back to its own vendored OpenSSL 3.6.2 build (configured with
+  `no-shared`, i.e. no dynamically loadable provider modules) instead of
+  reusing the Nix-provided OpenSSL already used by the preceding `test:ase`
+  step in the same job. The `--features non-fips` KMS server then failed at
+  startup with `unable to load the required OpenSSL provider: ... legacy.so:
+  cannot open shared object file`. Fixed by sourcing `nix_helpers.sh` and
+  calling `ensure_nix_shell` right after `kms_init_env`, matching the other
+  PKCS#11/HSM-adjacent tasks. Verified locally with `mise run
+  test:pkcs11:support --variant non-fips`.
+
 ### HSM
 
 - **Security fix**: `Session::generate_aes_key()`, `generate_rsa_key_pair()`, and
