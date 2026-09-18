@@ -10,7 +10,10 @@ use ckms::{
                 PaddingMethod, RevocationReason, RevocationReasonCode, SecretDataType,
             },
             kmip_2_1::{
-                extra::{VENDOR_ID_COSMIAN, tagging::SYSTEM_TAG_SYMMETRIC_KEY},
+                extra::{
+                    VENDOR_ID_COSMIAN,
+                    tagging::{SYSTEM_TAG_SECRET_DATA, SYSTEM_TAG_SYMMETRIC_KEY},
+                },
                 kmip_attributes::Attributes,
                 kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
@@ -632,7 +635,7 @@ pub(crate) async fn kms_import_object_async(
         "kms_import_object_async: label: {label}, data (length): {}",
         data.len()
     );
-    let tags = vec![label.to_owned()];
+    let tags = vec![label.to_owned(), SYSTEM_TAG_SECRET_DATA.to_owned()];
     let unique_identifier = UniqueIdentifier::TextString(label.to_owned());
 
     let secret_data_value = data.to_vec();
