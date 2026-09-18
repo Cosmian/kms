@@ -24,7 +24,7 @@
 # per-check log file under WORK_DIR and only surfaced on failure).
 #
 # Usage:
-#   mise run test:pkcs11-conformance --variant non-fips
+#   mise run test:pkcs11:conformance --variant non-fips
 #   bash .mise/scripts/test/test_pkcs11_conformance.sh --variant non-fips
 # ============================================================================
 set -euo pipefail
