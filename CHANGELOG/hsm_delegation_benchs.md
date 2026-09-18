@@ -4,24 +4,51 @@
 
 ### CLI
 
-- Add `ckms pkcs11 capabilities` subcommand: an exhaustive, end-to-end PKCS#11
-  mechanism conformance report for the `cosmian_pkcs11` provider DLL. Unlike
-  `ckms pkcs11 verify` (session/discovery-level API sequencing only), this
-  command **executes** every mechanism the provider implements through the real
-  `C_*` entry points — `CKM_AES_KEY_GEN`/`CKM_AES_CBC`/`CKM_AES_CBC_PAD`/
-  `CKM_AES_GCM` encrypt/decrypt round-trips, `CKM_RSA_PKCS`/
-  `CKM_SHA{1,256,384,512}_RSA_PKCS`/`CKM_RSA_PKCS_PSS` sign/verify, `CKM_ECDSA`
-  over P-256 (and secp256k1 in non-FIPS builds), and `CKM_EDDSA` sign/verify
-  both one-shot and via the PKCS#11 v3 message-signing API
-  (`C_MessageSignInit`/`C_SignMessage`/`C_MessageSignFinal`) — and prints a
-  ✅/❌ per mechanism plus a pass/fail summary. Test RSA/EC/Ed25519 key pairs
-  are auto-provisioned through the KMS REST API (`C_GenerateKeyPair` is not
-  implemented by this provider) and revoked + destroyed on completion unless
-  `--keep-keys` is passed. The command always exits `0`: it is a diagnostic
-  capability report, not a hard conformance gate — for example
-  `CKM_SHA1_RSA_PKCS` is expected to (and correctly does) report ❌ because the
-  KMS server's algorithm policy unconditionally denies the deprecated
-  `SHA1WithRSAEncryption` signature algorithm.
+- Add `ckms pkcs11 capabilities` subcommand: an exhaustive PKCS#11 v2/v3
+  conformance report for the `cosmian_pkcs11` provider DLL, covering the
+  **entire** surface `pkcs11-sys` v0.2.25 defines — all 442 real `CKM_*`
+  mechanisms (`CKM_VENDOR_DEFINED` excluded, a range-marker sentinel, not an
+  operation) and all 92 `C_*` functions in `CK_FUNCTION_LIST_3_0` — not just
+  the mechanisms the provider happens to implement. Two independent report
+  sections are printed, each with its own pass/fail/skip/not-implemented
+  summary (their universes/denominators are unrelated, so no merged grand
+  total is shown):
+  - **"PKCS#11 mechanism coverage"**: the ~12 mechanisms `cosmian_pkcs11`
+    actually advertises are deep-tested end to end through the real `C_*`
+    entry points — `CKM_AES_KEY_GEN`/`CKM_AES_CBC`/`CKM_AES_CBC_PAD`/
+    `CKM_AES_GCM` encrypt/decrypt round-trips, `CKM_RSA_PKCS`/
+    `CKM_SHA{1,256,384,512}_RSA_PKCS`/`CKM_RSA_PKCS_PSS` sign/verify,
+    `CKM_ECDSA` over every provisioned curve (P-256/P-384/P-521, and
+    secp256k1 in non-FIPS builds), and `CKM_EDDSA` sign/verify — both
+    one-shot and via the PKCS#11 v3 message-signing API
+    (`C_MessageSignInit`/`C_SignMessage`/`C_MessageSignFinal`) — over
+    Ed25519 and (non-FIPS) Ed448. Every other mechanism is probed via a
+    single `C_GetMechanismInfo(slot, ckm)` call (`CKR_MECHANISM_INVALID` ⇒
+    ❌ not implemented — reported as a red cross, the same as a real attempted
+    operation that failed, since both mean "you cannot use this"), so the
+    report stays self-updating as the provider evolves rather than relying on
+    a hardcoded "supported" list.
+  - **"PKCS#11 API function coverage"**: functions already exercised for
+    real elsewhere (bootstrap, session lifecycle, object lookup, or one of
+    the deep mechanism checks) are reported by reuse rather than probed
+    twice; `C_InitToken`/`C_InitPIN`/`C_SetPIN` are never invoked (would
+    reinitialize the token or change its authentication state) and are
+    reported ⬛ excluded — a distinct marker from ❌ not-implemented, since
+    their real support status is deliberately left unknown rather than
+    claimed unsupported; every other function gets one real,
+    minimal-precondition shallow `C_*` call, classified by its raw `CK_RV`
+    (`CKR_FUNCTION_NOT_SUPPORTED` ⇒ ❌ not implemented).
+  - Every row is always printed individually (all 442 mechanisms, all 92
+    functions) — nothing is collapsed or hidden by default.
+  - Test RSA (2048)/EC (P-256/P-384/P-521, +secp256k1 non-FIPS)/Ed25519/
+    (non-FIPS) Ed448 key pairs are auto-provisioned through the KMS REST API
+    (`C_GenerateKeyPair` is not implemented by this provider) and revoked +
+    destroyed on completion unless `--keep-keys` is passed. The command
+    always exits `0`: it is a diagnostic capability report, not a hard
+    conformance gate — for example `CKM_SHA1_RSA_PKCS` is expected to (and
+    correctly does) report ❌ because the KMS server's algorithm policy
+    unconditionally denies the deprecated `SHA1WithRSAEncryption` signature
+    algorithm.
 
 ## Bug Fixes
 

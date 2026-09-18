@@ -39,17 +39,26 @@ pub enum Pkcs11Commands {
         token: Option<String>,
     },
 
-    /// Exhaustively exercise every PKCS#11 mechanism the `cosmian_pkcs11` DLL
-    /// implements (key generation, encryption/decryption, signing/verification)
-    /// and report a ✅/❌/⏭️ per mechanism.
+    /// Report on the full PKCS#11 v2/v3 surface: all 442 real `CKM_*` mechanisms
+    /// and all 92 `C_*` functions, each marked ✅/❌/⏭️/⬛, every row printed
+    /// individually.
     ///
-    /// Unlike `verify`, which only walks the session/discovery API, this command
-    /// actually runs the cryptographic operations end to end. RSA, EC (P-256, and
-    /// in a `non-fips` build secp256k1), and (non-fips) Ed25519 test key pairs are
-    /// provisioned on the KMS via the REST API (`C_GenerateKeyPair` is not
-    /// implemented by this provider) and destroyed again at the end unless
-    /// `--keep-keys` is set. The AES key used for `CKM_AES_CBC`/`CKM_AES_CBC_PAD`/
-    /// `CKM_AES_GCM` is generated live through `C_GenerateKey`.
+    /// Two independent sections are printed: "PKCS#11 mechanism coverage" (the
+    /// ~12 mechanisms `cosmian_pkcs11` advertises are deep-tested end to end
+    /// across every provisioned curve; every other mechanism is probed via
+    /// `C_GetMechanismInfo` alone) and "PKCS#11 API function coverage" (functions
+    /// already exercised elsewhere are reported by reuse; the rest get one real
+    /// shallow probe each). A mechanism/function that is genuinely unsupported
+    /// (dynamically detected, e.g. `CKR_MECHANISM_INVALID`/
+    /// `CKR_FUNCTION_NOT_SUPPORTED`) is marked ❌, same as a real attempted
+    /// operation that failed; `⬛` is reserved for the handful of functions
+    /// deliberately never invoked for safety (`C_InitToken`/`C_InitPIN`/
+    /// `C_SetPIN`). RSA, EC (P-256/P-384/P-521, and in a `non-fips` build
+    /// secp256k1), and (non-fips) Ed25519/Ed448 test key pairs are provisioned on
+    /// the KMS via the REST API (`C_GenerateKeyPair` is not implemented by this
+    /// provider) and destroyed again at the end unless `--keep-keys` is set. The
+    /// AES key used for `CKM_AES_CBC`/`CKM_AES_CBC_PAD`/`CKM_AES_GCM` is generated
+    /// live through `C_GenerateKey`.
     Capabilities {
         /// Path to the PKCS#11 shared library (`libcosmian_pkcs11.so` / `.dylib` / `.dll`).
         #[arg(long, value_name = "PATH")]
