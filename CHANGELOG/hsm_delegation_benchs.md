@@ -1,5 +1,28 @@
 # HSM-direct crypto benchmarks: `ckms bench --hsm` and `bench/load-hsm --delegated`
 
+## Features
+
+### CLI
+
+- Add `ckms pkcs11 capabilities` subcommand: an exhaustive, end-to-end PKCS#11
+  mechanism conformance report for the `cosmian_pkcs11` provider DLL. Unlike
+  `ckms pkcs11 verify` (session/discovery-level API sequencing only), this
+  command **executes** every mechanism the provider implements through the real
+  `C_*` entry points — `CKM_AES_KEY_GEN`/`CKM_AES_CBC`/`CKM_AES_CBC_PAD`/
+  `CKM_AES_GCM` encrypt/decrypt round-trips, `CKM_RSA_PKCS`/
+  `CKM_SHA{1,256,384,512}_RSA_PKCS`/`CKM_RSA_PKCS_PSS` sign/verify, `CKM_ECDSA`
+  over P-256 (and secp256k1 in non-FIPS builds), and `CKM_EDDSA` sign/verify
+  both one-shot and via the PKCS#11 v3 message-signing API
+  (`C_MessageSignInit`/`C_SignMessage`/`C_MessageSignFinal`) — and prints a
+  ✅/❌ per mechanism plus a pass/fail summary. Test RSA/EC/Ed25519 key pairs
+  are auto-provisioned through the KMS REST API (`C_GenerateKeyPair` is not
+  implemented by this provider) and revoked + destroyed on completion unless
+  `--keep-keys` is passed. The command always exits `0`: it is a diagnostic
+  capability report, not a hard conformance gate — for example
+  `CKM_SHA1_RSA_PKCS` is expected to (and correctly does) report ❌ because the
+  KMS server's algorithm policy unconditionally denies the deprecated
+  `SHA1WithRSAEncryption` signature algorithm.
+
 ## Bug Fixes
 
 ### HSM
