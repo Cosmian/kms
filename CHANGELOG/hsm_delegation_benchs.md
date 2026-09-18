@@ -52,6 +52,29 @@
 
 ## Bug Fixes
 
+### PKCS#11 `find_all_objects` silently dropped certificates (LUKS enrollment)
+
+- `CliBackend::find_all_objects()` (`crate/clients/pkcs11/provider/src/backend.rs`)
+  — the backing implementation of `C_FindObjectsInit`/`C_FindObjects` used by
+  every generic object listing, including `pkcs11-tool --list-objects` — located
+  certificates by their `_cert` system tag but then dispatched them through
+  `create_object_from_attributes()`, which only handles `SymmetricKey`,
+  `PrivateKey`, `PublicKey`, and `SecretData` and silently drops any other object
+  type (logging a `warn!` and returning `None`). Certificates were therefore
+  **never exposed** through the generic object listing, even though
+  `find_all_certificates()` (a separate, narrower code path used elsewhere)
+  worked correctly. This broke `systemd-cryptenroll --pkcs11` /
+  `mise run test:luks` end to end: `pkcs11-tool --list-objects` reported 0
+  certificates, so LUKS PKCS#11 token enrollment could never locate the
+  enrollment certificate. Fixed by locating and batch-exporting certificates
+  separately (reusing the same `Get`+`GetAttributes` path already used by
+  `find_all_certificates()`, which correctly populates the `PrivateKeyLink`
+  attribute required to build a `Pkcs11Certificate`), instead of routing them
+  through the attributes-only reconstruction path. Verified locally end to end
+  via `mise run test:luks --variant non-fips` (was failing with `expected at
+  least 1 certificate in PKCS#11 output, got 0`, now passes with the
+  certificate correctly listed and used for LUKS enrollment)
+
 ### HSM
 
 - **Security fix**: `Session::generate_aes_key()`, `generate_rsa_key_pair()`, and
