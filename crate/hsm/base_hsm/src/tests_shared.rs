@@ -29,7 +29,7 @@ use pkcs11_sys::{
     CKA_ECDSA_PARAMS, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_PRIVATE,
     CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP, CKF_OS_LOCKING_OK,
     CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384,
-    CKM_ECDSA_SHA512, CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS, CKM_SHA256_RSA_PKCS,
+    CKM_ECDSA_SHA512, CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS,
     CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512_RSA_PKCS,
     CKM_SHA512_RSA_PKCS_PSS, CKR_OK,
 };
@@ -1359,6 +1359,113 @@ where
     assert_eq!(object_list_start.len(), object_list_end.len());
     assert_eq!(object_find_start.len(), object_find_end.len());
     info!("Tested invalid object search");
+    Ok(())
+}
+
+/// Checks that the PKCS#11 v3.0 interface discovery (`C_GetInterfaceList`) is populated.
+///
+/// Unlike [`get_supported_algorithms`], this asserts that the library *does* report v3
+/// interfaces: only call this for libraries known to implement PKCS#11 v3.0 discovery.
+#[allow(clippy::panic, clippy::unwrap_used)]
+pub fn check_pkcs11_v3_interface_list_is_populated<P>(hsm: &BaseHsm<P>) -> HResult<()>
+where
+    P: crate::hsm_capabilities::HsmProvider,
+    BaseHsm<P>: Sized,
+{
+    assert!(hsm.hsm_lib().supports_pkcs11_v3_interfaces());
+    let interfaces = hsm
+        .hsm_lib()
+        .list_pkcs11_v3_interfaces()?
+        .ok_or_else(|| HError::Default("HSM must report v3 interfaces".to_owned()))?;
+    assert!(!interfaces.is_empty());
+    assert!(
+        interfaces
+            .iter()
+            .all(|interface| !interface.name.is_empty())
+    );
+    Ok(())
+}
+
+/// Generates an Ed25519 (`EdDSA`) key pair (`CKM_EC_EDWARDS_KEY_PAIR_GEN`, OASIS Cryptoki
+/// v3.0 §2.3.9) and checks that a `CKM_EDDSA` signature round-trips through `sign`/`verify`.
+#[allow(clippy::panic, clippy::unwrap_used)]
+pub fn check_eddsa_sign_and_verify_round_trip<P>(
+    hsm: &BaseHsm<P>,
+    cfg: &HsmTestConfig,
+) -> HResult<()>
+where
+    P: crate::hsm_capabilities::HsmProvider,
+    BaseHsm<P>: Sized,
+{
+    log_init(None);
+    let slot = get_slot(hsm, cfg)?;
+    let session = slot.open_session(true)?;
+    let (sk, pk) = session.generate_eddsa_key_pair(b"eddsa-sk", b"eddsa-pk", false)?;
+    let data = b"pkcs11 v3.1 eddsa conformance";
+    let signature = session.sign(sk, HsmSigningAlgorithm::Eddsa, data)?;
+    let verified = session.verify(pk, HsmSigningAlgorithm::Eddsa, data, &signature)?;
+    assert!(verified, "EdDSA signature must verify");
+    Ok(())
+}
+
+/// Generates a `CKK_GENERIC_SECRET` base key and derives a key from it via `CKM_HKDF_DERIVE`
+/// (OASIS Cryptoki v3.0 §2.5).
+#[allow(clippy::panic, clippy::unwrap_used)]
+pub fn check_hkdf_derive<P>(hsm: &BaseHsm<P>, cfg: &HsmTestConfig) -> HResult<()>
+where
+    P: crate::hsm_capabilities::HsmProvider,
+    BaseHsm<P>: Sized,
+{
+    log_init(None);
+    let slot = get_slot(hsm, cfg)?;
+    let session = slot.open_session(true)?;
+    let ikm = session.generate_generic_secret_key(b"hkdf-ikm", 32, false)?;
+    let derived = session.derive_hkdf_key(
+        ikm,
+        CKM_SHA256,
+        Some(b"salt"),
+        b"info",
+        32,
+        b"hkdf-derived",
+        false,
+    )?;
+    assert_ne!(derived, 0);
+    Ok(())
+}
+
+/// Checks a message-based AES-GCM AEAD round-trip (`C_MessageEncryptInit`/`C_EncryptMessage`
+/// and `C_MessageDecryptInit`/`C_DecryptMessage`, OASIS Cryptoki v3.0 §5.20/§5.21).
+///
+/// Only call this for libraries reporting `HsmLib::supports_message_encrypt`/
+/// `supports_message_decrypt`.
+#[allow(clippy::panic, clippy::unwrap_used)]
+pub fn check_message_based_aes_gcm_round_trip<P>(
+    hsm: &BaseHsm<P>,
+    cfg: &HsmTestConfig,
+) -> HResult<()>
+where
+    P: crate::hsm_capabilities::HsmProvider,
+    BaseHsm<P>: Sized,
+{
+    log_init(None);
+    let slot = get_slot(hsm, cfg)?;
+    let session = slot.open_session(true)?;
+    let key = session.generate_aes_key(b"aead-key", AesKeySize::Aes256, false)?;
+    assert!(
+        hsm.hsm_lib().supports_message_encrypt(),
+        "HSM must support C_MessageEncryptInit/C_EncryptMessage (v3.0)"
+    );
+    assert!(
+        hsm.hsm_lib().supports_message_decrypt(),
+        "HSM must support C_MessageDecryptInit/C_DecryptMessage (v3.0)"
+    );
+    let aad = b"pkcs11-v3-aad";
+    let plaintext = b"pkcs11 v3.1 message-based aead conformance";
+    let encrypted = session.encrypt_message_aes_gcm(key, aad, plaintext)?;
+    let iv = encrypted.iv.clone().unwrap_or_default();
+    let tag = encrypted.tag.clone().unwrap_or_default();
+    let decrypted = session.decrypt_message_aes_gcm(key, aad, &iv, &tag, &encrypted.ciphertext)?;
+    assert_eq!(decrypted.as_slice(), plaintext.as_slice());
     Ok(())
 }
 
