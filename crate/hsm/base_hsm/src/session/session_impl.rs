@@ -29,9 +29,9 @@ use pkcs11_sys::{
     CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS,
     CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512, CKM_SHA512_RSA_PKCS,
     CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED,
-    CKR_ATTRIBUTE_SENSITIVE, CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID,
-    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE,
-    CKZ_DATA_SPECIFIED,
+    CKR_ATTRIBUTE_SENSITIVE, CKR_ATTRIBUTE_TYPE_INVALID, CKR_MECHANISM_INVALID,
+    CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID,
+    CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
 };
 use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
@@ -2859,12 +2859,33 @@ impl Session {
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_DATE>())?,
             },
         ];
-        // If the HSM doesn't support these attributes, just return None for both
-        if self
-            .call_get_attributes(key_handle, &mut template)?
-            .is_none()
-        {
+        // Some PKCS#11 libraries (e.g. Crypt2Pay) reject CKA_START_DATE/CKA_END_DATE on
+        // secret-key objects with CKR_ATTRIBUTE_TYPE_INVALID rather than returning an empty
+        // value. Treat that case, like an unsupported object, as "no dates" instead of
+        // failing the whole metadata lookup.
+        #[expect(unsafe_code)]
+        let rv = match self.hsm.C_GetAttributeValue {
+            Some(func) => unsafe {
+                func(
+                    self.handle,
+                    key_handle,
+                    template.as_mut_ptr(),
+                    CK_ULONG::try_from(template.len())?,
+                )
+            },
+            None => {
+                return Err(HError::Default(
+                    "C_GetAttributeValue not available on library".to_owned(),
+                ));
+            }
+        };
+        if rv == CKR_ATTRIBUTE_TYPE_INVALID || rv == CKR_OBJECT_HANDLE_INVALID {
             return Ok((None, None));
+        }
+        if rv != CKR_OK {
+            return Err(HError::Default(format!(
+                "Failed to get the HSM key dates for key handle: {key_handle}. Return code: {rv}"
+            )));
         }
         // Check if the returned length is 0 (attribute present but empty)
         let start = if template.first().is_none_or(|t| t.ulValueLen == 0) {
