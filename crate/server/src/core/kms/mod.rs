@@ -259,8 +259,10 @@ impl KMS {
                     m.update_active_keys_count(i64::try_from(count).unwrap_or(i64::MAX));
                 }
                 Err(e) => {
-                    // Non-fatal: the cron will correct the value within 30 s.
-                    cosmian_logger::debug!("[kms-init] Failed to seed kms.keys.active.count: {e}");
+                    // Non-fatal: the cron will correct the value within 30 s, but a
+                    // persistently failing query (e.g. a backend-specific SQL bug)
+                    // should be visible without enabling debug logging.
+                    cosmian_logger::warn!("[kms-init] Failed to seed kms.keys.active.count: {e}");
                 }
             }
         }

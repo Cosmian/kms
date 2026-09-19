@@ -205,10 +205,10 @@ SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';
 -- name: count-non-destroyed-keys
 SELECT COUNT(*) FROM objects
 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
-AND (object ? 'SymmetricKey' OR
-     object ? 'PrivateKey'   OR
-     object ? 'PublicKey'    OR
-     object ? 'SplitKey');
+AND (object::jsonb ? 'SymmetricKey' OR
+     object::jsonb ? 'PrivateKey'   OR
+     object::jsonb ? 'PublicKey'    OR
+     object::jsonb ? 'SplitKey');
 
 -- ── CRL persistence (RFC 5280 §5) ─────────────────────────────────────────────
 -- One row per CA issuer. On regeneration the row is replaced in-place so that
