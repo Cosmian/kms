@@ -130,6 +130,7 @@ pub(crate) async fn generate_crl(
     validity_days: Option<u32>,
     user: &UserId,
 ) -> KResult<X509Crl> {
+    crate::core::require_leader_region(kms, "CRL generation")?;
     debug!(
         "Generating CRL for issuer certificate: {}",
         issuer_certificate_id

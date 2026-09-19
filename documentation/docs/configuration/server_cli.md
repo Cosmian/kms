@@ -30,6 +30,16 @@ Options:
 
           [env: KMS_FORCE_DEFAULT_USERNAME=]
 
+      --region-role <REGION_ROLE>
+          See [`RegionRole`] for the full semantics.
+
+          Possible values:
+          - leader:   The single region allowed to generate CRLs and activate/revoke Crypto Officer ceremonies. Default; correct for single-region deployments
+          - follower: A non-leader region. CRL generation and Crypto Officer ceremony activation/revocation are rejected with a clear error naming the restriction
+
+          [env: KMS_REGION_ROLE=]
+          [default: leader]
+
       --ms-dke-service-url <MS_DKE_SERVICE_URL>
           This setting enables the Microsoft Double Key Encryption service feature of this server.
 

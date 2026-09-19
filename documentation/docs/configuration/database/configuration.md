@@ -215,6 +215,57 @@ backoff** for the following PostgreSQL SQLSTATE codes:
 No additional configuration is required; the retry behaviour is enabled automatically for all
 PostgreSQL connections.
 
+##### Multi-region active-active PostgreSQL (Spock / pgEdge / BDR)
+
+The KMS supports multi-region active-active deployments using PostgreSQL with a Spock-, pgEdge-, or BDR-class logical multi-master replication extension (validated against `ghcr.io/pgedge/pgedge-postgres`). In this topology, each region runs a local KMS instance group connected to a local PostgreSQL node, serving local reads and writes for minimum latency. State converges asynchronously across regions via bidirectional logical replication.
+
+###### Topology and `region_role`
+
+To prevent split-brain conflicts on operations requiring global coordination, the deployment defines a topological role per region via the `region_role` configuration setting:
+
+```toml
+# /etc/cosmian/kms.toml
+region_role = "leader"    # exactly one region per deployment
+# region_role = "follower"  # all other regions
+```
+
+Or via CLI flag `--region-role <leader|follower>` or environment variable `KMS_REGION_ROLE`.
+
+###### Leader-only operations
+
+Exactly one region across the entire deployment MUST be designated `leader` (`region_role = "leader"`, which is the default). All other regions MUST be configured as `follower`.
+
+The `leader` region is the only region permitted to execute:
+
+1. **X.509 CRL generation and background refresh** — RFC 5280 §5.2.3 requires strict per-issuer `crlNumber` monotonicity. Concurrent issuance from uncoordinated writers violates this requirement.
+2. **Crypto Officer ceremony activation and revocation** — Key ceremonies rely on dual-control quorum and activation history; safety takes priority over local write availability.
+
+If a client attempts CRL generation or ceremony activation/revocation against a node configured with `region_role = "follower"`, the request is rejected immediately with an HTTP 422 error instructing the client to target the leader region. Background CRL refresh cron tasks on followers are automatically skipped.
+
+Every other operation (key generation, encryption, decryption, access grants, Locate, etc.) executes locally on any region with no leader dependency.
+
+###### State conflict resolution (monotonic merge)
+
+In multi-region active-active replication, object `State` transitions can race across regions (e.g. an object deactivated in region A while destroyed in region B). Standard commit-timestamp last-write-wins (LWW) could silently overwrite a terminal `Destroyed` or `Compromised` state with an earlier `Deactivated` write.
+
+The KMS installs an automatic `BEFORE UPDATE` trigger on the `objects` table marked `ENABLE REPLICA`. When an incoming replicated write arrives (under `session_replication_role = 'replica'`), the trigger coerces the state update to `GREATEST(existing_state, incoming_state)` using the NIST SP 800-57 / KMIP lifecycle hierarchy:
+
+$$\text{PreActive (1)} < \text{Active (2)} < \text{Deactivated (3)} < \text{Compromised (4)} < \text{Destroyed (5)} < \text{Destroyed\_Compromised (6)}$$
+
+Local writes (such as KMIP batch UNDO reverting an object to `PreActive`) execute under `session_replication_role = 'origin'` and are not restricted by this trigger.
+
+###### Permissions and access control (LWW)
+
+Concurrent conflicting modifications to `read_access` (e.g. concurrent grant on node 1 and revoke on node 2 for the same `(object_id, user_id)` pair) converge via the underlying replication extension's row-level conflict resolution (`last_update_wins`). A concurrent grant and revoke on the same object/user pair can result in either state winning.
+
+###### Extension requirements
+
+Any PostgreSQL multi-master extension supporting Spock/BDR/pglogical protocols is supported. Key requirements:
+
+- `wal_level = logical`
+- `track_commit_timestamp = on`
+- Shared replication set covering all public KMS tables (`objects`, `tags`, `read_access`, `crypto_officer_activations`, `parameters`, `crls`).
+
 #### MySQL, MariaDB, or Percona XtraDB Cluster
 
 The KMS supports MySQL-compatible databases including MySQL, MariaDB, and Percona XtraDB Cluster.
