@@ -372,6 +372,15 @@ Options:
 
           [env: KMS_JWT_AUTH_PROVIDER=]
 
+      --jwt-svid-auth
+          Accept SPIFFE JWT-SVIDs from the configured `--jwt-auth-provider` issuers.
+
+          A SPIFFE JWT-SVID carries no `email` claim, only a `sub` claim shaped as `spiffe://<trust-domain>/<workload-path>`. When this flag is enabled, a JWT that validates successfully (signature, issuer, audience, expiry) against a configured issuer but has no `email` claim is authenticated using its `sub` claim **only if** `sub` starts with `spiffe://`; every other JWT still requires `email` as before.
+
+          Disabled by default: enabling it only makes sense when the configured issuer(s) are a SPIFFE-aware JWKS source (e.g. a SPIRE OIDC Discovery Provider).
+
+          [env: KMS_JWT_SVID_AUTH=]
+
       --enable
           Disable the embedded web UI. When set to false, the UI HTML assets are not served and all `/ui/` routes return 404
 
@@ -816,6 +825,76 @@ Options:
 
           [env: KMS_VAULT_TOKEN_CACHE_TTL_SECS=]
           [default: 30]
+
+      --audit-enable
+          Enable the structured audit event pipeline.
+
+          When disabled (the default) no audit file is created and no background writer task is spawned.  The value can also be toggled at config-file level (`[audit] enable = true`).
+
+          [env: KMS_AUDIT_ENABLE=]
+
+      --audit-file-path <AUDIT_FILE_PATH>
+          Path to the JSONL audit log file.
+
+          When `--audit-enable` is set and this option is omitted, the file
+          defaults to `<root-data-path>/audit.jsonl`.
+
+          [env: KMS_AUDIT_FILE_PATH=]
+
+      --audit-file-max-size-bytes <AUDIT_FILE_MAX_SIZE_BYTES>
+          Stops all further writes once the audit file reaches this many bytes.
+
+          The event that pushes the file to or past this size is still persisted; every event
+          after that is dropped (subject to `--audit-failure-mode`) until the log is remediated
+          and the KMS is restarted.
+
+          Omitted (the default) means unlimited. Must be > 0 when set.
+
+          [env: KMS_AUDIT_FILE_MAX_SIZE_BYTES=]
+
+      --audit-channel-capacity <AUDIT_CHANNEL_CAPACITY>
+          Capacity of the bounded in-memory channel between request threads and the
+          audit writer task.
+
+          When the channel is full, incoming events are dropped (non-blocking) and
+          an `error!` is logged.  Each event is ≈500 B, so the default (4 096 × 500 B
+          ≈ 2 MiB) absorbs short bursts without blocking request threads.
+
+          Must be ≥ 1.  Raise this value if you see `"AuditFileStore: channel full"`
+          in the server log under sustained high load.
+
+          [env: KMS_AUDIT_CHANNEL_CAPACITY=]
+          [default: 4096]
+
+      --audit-trusted-proxy-cidrs <AUDIT_TRUSTED_PROXY_CIDRS>
+          Only set this if the KMS sits behind a reverse proxy or load balancer.
+
+          When set, the audit middleware trusts the `X-Forwarded-For` header only if
+          the direct TCP peer is one of the proxy addresses listed here, and records
+          the header's value as `client_ip` instead. This must be scoped to your
+          proxy's own address(es) — trusting it from any peer lets a remote attacker
+          forge `client_ip` in the audit trail.
+
+          Format: comma-separated IP addresses or CIDR blocks, e.g.
+          `"10.0.0.0/8,172.16.0.0/12"`. Single IPs can be expressed as `/32` (IPv4)
+          or `/128` (IPv6).
+
+          [env: KMS_AUDIT_TRUSTED_PROXY_CIDRS=]
+
+      --audit-failure-mode <AUDIT_FAILURE_MODE>
+          What to do when an audit event cannot be queued (channel full or writer dead).
+
+          `continue` (default): log the error, keep serving normally.
+          `reject`: return HTTP 503 to the client. The KMIP operation has already
+          executed at this point — this signals that its outcome was not recorded,
+          it does not prevent the operation from completing.
+
+          Possible values:
+          - continue: Log the error and keep serving — no service disruption (default)
+          - reject:   Return 503 to the client when the event could not be queued
+
+          [env: KMS_AUDIT_FAILURE_MODE=]
+          [default: continue]
 
       --crl-default-validity-days <CRL_DEFAULT_VALIDITY_DAYS>
           Default CRL validity period in days for CA certificates managed by this server.

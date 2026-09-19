@@ -150,6 +150,11 @@ pub struct JwtConfig {
     pub jwt_issuer_uri: String,
     pub jwt_audience: Option<Vec<String>>,
     pub jwks: Arc<JwksManager>,
+    /// When `true`, a token from this issuer that has no `email` claim is authenticated
+    /// using its `sub` claim, provided `sub` starts with `spiffe://` (SPIFFE JWT-SVID).
+    /// Defaults to `false` so existing OIDC/IdP issuers keep requiring `email`. Only set
+    /// from the operator-controlled `--jwt-svid-auth` flag; Google CSE issuers never set it.
+    pub accept_spiffe_subject: bool,
 }
 
 impl JwtConfig {
