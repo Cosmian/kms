@@ -1456,3 +1456,73 @@ numbered scenario; all are asserted **live** against a running KMS + auth-verifi
 - `test_data/spire/setup/kms_setup.sh` — Bash script that runs all provisioning steps in one shot (`ROLE_NAME=my-spire bash test_data/spire/setup/kms_setup.sh`).
 - `crate/server/documentation/openapi.yaml` — OpenAPI schema for the `/v1/transit/*` and `/v1/<pki_mount>/*` paths.
 - `ckms vault approle --help` — full CLI reference for AppRole provisioning.
+
+---
+
+## Workload Authentication via SPIFFE JWT-SVID
+
+In addition to acting as a Vault-compatible backend for SPIRE itself (described above),
+Eviden KMS natively supports **authenticating application workloads using SPIFFE JWT-SVIDs**.
+
+Workloads deployed in Kubernetes clusters with SPIRE can establish mTLS connections at
+the transport level and present a JWT-SVID as an `Authorization: Bearer <JWT-SVID>` token
+to authenticate to the KMS.
+
+### Architecture & Claim Mapping
+
+- **Transport Layer (mTLS)**: Validates client certificates against the cluster's CA bundle
+  via `client_ca_cert_pem` / `clients_ca_cert_file`. Certificate subject (CN/SAN) is **not**
+  used for application identity.
+- **Application Identity (JWT-SVID)**: Standard JWT-SVIDs do not carry an `email` claim; they
+  identify the workload via `sub = spiffe://<trust-domain>/<workload-path>`.
+- **Opt-In Flag (`--jwt-svid-auth` / `jwt_svid_auth = true`)**: When enabled, the KMS JWT
+  authentication middleware accepts tokens with no `email` claim provided `sub` begins with
+  `spiffe://`. The full SPIFFE URI is used as the KMS `UserId` / object owner.
+
+### KMS Server Configuration
+
+Add the SPIRE OIDC Discovery Provider endpoint (or JWKS endpoint) to `[idp_auth]` in `kms.toml`:
+
+```toml
+[idp_auth]
+jwt_auth_provider = [
+  "https://oidc-discovery.spire.local,https://oidc-discovery.spire.local/keys,cosmian-kms"
+]
+jwt_svid_auth = true
+```
+
+Or via CLI flags / environment variables:
+
+```bash
+cosmian_kms_server \
+  --jwt-auth-provider "https://oidc-discovery.spire.local,https://oidc-discovery.spire.local/keys,cosmian-kms" \
+  --jwt-svid-auth
+```
+
+### Workload CLI Usage (`ckms`)
+
+1. Mint a JWT-SVID for the workload using SPIRE:
+
+   ```bash
+   spire-server jwt mint \
+     -spiffeID spiffe://cosmian-test-a.local/my-workload \
+     -audience cosmian-kms
+   ```
+
+2. Configure `ckms.toml` to use the minted token:
+
+   ```toml
+   [http_config]
+   server_url = "https://kms.example.com:9998"
+   access_token = "<minted_jwt_svid>"
+   ```
+
+3. Run `ckms` commands — all created keys and accesses will be owned by `spiffe://cosmian-test-a.local/my-workload`:
+
+   ```bash
+   ckms sym keys create my-key
+   ckms access-rights owned
+   ```
+
+> **Note on Web UI**: Self-service SPIFFE login from browser UI is not supported; the Web UI
+> continues to use standard OIDC/user authentication.

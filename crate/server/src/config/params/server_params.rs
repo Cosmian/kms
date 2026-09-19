@@ -46,6 +46,11 @@ pub struct ServerParams {
     /// The JWT Config if Auth is enabled
     pub identity_provider_configurations: Option<Vec<IdpConfig>>,
 
+    /// When `true`, JWTs from `identity_provider_configurations` issuers that have no
+    /// `email` claim are authenticated using their `sub` claim, provided it starts with
+    /// `spiffe://` (SPIFFE JWT-SVID support). See `IdpAuthConfig::jwt_svid_auth`.
+    pub jwt_svid_auth_enabled: bool,
+
     /// The UI distribution folder
     pub ui_index_html_folder: PathBuf,
 
@@ -395,6 +400,9 @@ impl ServerParams {
         // include it in the CORS allow-list when cors_allowed_origins is not configured.
         let public_url_for_cors = conf.kms_public_url.clone();
 
+        // Capture before `conf.idp_auth` is consumed by `extract_idp_configs` below.
+        let jwt_svid_auth_enabled = conf.idp_auth.jwt_svid_auth;
+
         // Determine whether CO users will come from the deprecated `privileged_users` path.
         // Used after `res` is built to preserve v5.26.0 behaviour: if the operator had
         // `force_default_username = true` AND `privileged_users = [...]` (nonsensical but
@@ -409,6 +417,7 @@ impl ServerParams {
                     .extract_idp_configs()
                     .context("failed initializing IdPs from idp_auth")?
             },
+            jwt_svid_auth_enabled,
             ui_index_html_folder,
             ui_enable: conf.ui_config.enable,
             ui_oidc_auth: conf.ui_config.ui_oidc_auth,
@@ -829,6 +838,7 @@ impl fmt::Debug for ServerParams {
         if let Some(ref idp_configs) = self.identity_provider_configurations {
             debug_struct.field("identity_provider_configurations", idp_configs);
         }
+        debug_struct.field("jwt_svid_auth_enabled", &self.jwt_svid_auth_enabled);
 
         // Always show these non-optional fields
         debug_struct

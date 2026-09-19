@@ -296,6 +296,9 @@ mod tests {
                     "jwt issuer uri 1,jwks uri 1,jwt audience 1".to_owned(),
                     "jwt issuer uri 2,jwks uri 2,jwt audience 2".to_owned(),
                 ]),
+                // Set to true only when the provider(s) above are SPIFFE-aware (e.g. a
+                // SPIRE OIDC Discovery Provider) issuing JWT-SVIDs with no `email` claim.
+                jwt_svid_auth: false,
             },
             auth_verifier: AuthVerifierConfig::default(),
             ui_config: UiConfig {
@@ -427,6 +430,7 @@ proxy_exclusion_list = ["domain1", "domain2"]
 
 [idp_auth]
 jwt_auth_provider = ["jwt issuer uri 1,jwks uri 1,jwt audience 1", "jwt issuer uri 2,jwks uri 2,jwt audience 2"]
+jwt_svid_auth = false
 
 [auth_verifier]
 auth_verifier_accept_invalid_certs = false

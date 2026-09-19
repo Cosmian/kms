@@ -54,6 +54,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
 
     // JWT / OIDC
     let mut jwt_providers: Vec<String> = Vec::new();
+    let mut jwt_svid_auth = false;
     let mut ui_oidc = OidcConfig::default();
     let mut auth_verifier = AuthVerifierConfig::default();
 
@@ -79,6 +80,16 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
                 break;
             }
         }
+
+        jwt_svid_auth = Confirm::with_theme(&theme)
+            .with_prompt(
+                "Do these provider(s) issue SPIFFE JWT-SVIDs (tokens with no 'email' claim, \
+                 identified by a 'sub' claim shaped as spiffe://<trust-domain>/...), e.g. a \
+                 SPIRE OIDC Discovery Provider?",
+            )
+            .default(false)
+            .interact()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
 
         // UI OIDC
         let configure_ui_oidc = Confirm::with_theme(&theme)
@@ -198,6 +209,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
             } else {
                 Some(jwt_providers)
             },
+            jwt_svid_auth,
         },
         auth_verifier,
         default_username,

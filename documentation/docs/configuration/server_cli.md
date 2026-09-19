@@ -372,6 +372,15 @@ Options:
 
           [env: KMS_JWT_AUTH_PROVIDER=]
 
+      --jwt-svid-auth
+          Accept SPIFFE JWT-SVIDs from the configured `--jwt-auth-provider` issuers.
+
+          A SPIFFE JWT-SVID carries no `email` claim, only a `sub` claim shaped as `spiffe://<trust-domain>/<workload-path>`. When this flag is enabled, a JWT that validates successfully (signature, issuer, audience, expiry) against a configured issuer but has no `email` claim is authenticated using its `sub` claim **only if** `sub` starts with `spiffe://`; every other JWT still requires `email` as before.
+
+          Disabled by default: enabling it only makes sense when the configured issuer(s) are a SPIFFE-aware JWKS source (e.g. a SPIRE OIDC Discovery Provider).
+
+          [env: KMS_JWT_SVID_AUTH=]
+
       --enable
           Disable the embedded web UI. When set to false, the UI HTML assets are not served and all `/ui/` routes return 404
 

@@ -1022,6 +1022,7 @@ pub async fn prepare_kms_server(
                 jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
                 jwks: jwks_manager.clone(),
                 jwt_audience: idp_config.jwt_audience.clone(),
+                accept_spiffe_subject: kms_server.params.jwt_svid_auth_enabled,
             })
             .collect::<Vec<_>>();
 

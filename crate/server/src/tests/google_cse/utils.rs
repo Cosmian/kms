@@ -72,6 +72,7 @@ pub(crate) async fn google_cse_auth(
         jwt_issuer_uri: GOOGLE_JWT_ISSUER_URI.to_owned(),
         jwks: jwks_manager.clone(),
         jwt_audience: None,
+        accept_spiffe_subject: false,
     };
 
     Ok(GoogleCseConfig {
