@@ -237,7 +237,6 @@ impl KmsClient {
         &self,
         private_key_uid: impl Into<String>,
         peer_public_key_uid: impl Into<String>,
-        cryptographic_length: i32,
     ) -> Result<String, KmsClientError> {
         let request = DeriveKey::new_asymmetric(
             UniqueIdentifier::TextString(private_key_uid.into()),
@@ -245,7 +244,7 @@ impl KmsClient {
             DerivationParameters::default(),
             crate::kmip_2_1::kmip_attributes::Attributes {
                 object_type: Some(crate::kmip_2_1::kmip_objects::ObjectType::SecretData),
-                cryptographic_length: Some(cryptographic_length),
+                cryptographic_length: Some(256),
                 ..Default::default()
             },
         );
