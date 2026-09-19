@@ -1,6 +1,4 @@
 use std::collections::HashSet;
-#[cfg(not(feature = "non-fips"))]
-use std::future::Future;
 
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::{
@@ -523,16 +521,15 @@ fn decrement_usage_limits_in_attributes(attributes: &mut Attributes, data_len: u
 }
 
 #[cfg(not(feature = "non-fips"))]
-fn derive_key_asymmetric(
+#[allow(clippy::unused_async)] // signature must match the non-fips async variant awaited by derive_key
+async fn derive_key_asymmetric(
     _kms: &KMS,
     _request: DeriveKey,
     _user: &UserId,
-) -> impl Future<Output = KResult<DeriveKeyResponse>> {
-    async {
-        Err(KmsError::NotSupported(
-            "DeriveKey: asymmetric derivation is not supported in FIPS mode".to_owned(),
-        ))
-    }
+) -> KResult<DeriveKeyResponse> {
+    Err(KmsError::NotSupported(
+        "DeriveKey: asymmetric derivation is not supported in FIPS mode".to_owned(),
+    ))
 }
 
 fn requested_derived_object_id(attributes: &Attributes) -> String {
