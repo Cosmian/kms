@@ -138,6 +138,7 @@ Never assume `common.sh` is already loaded; always guard the source.
 | `.mise/lib/k8s.sh` | Kubernetes helpers (helm, kubectl) |
 | `.mise/lib/bench_helpers.sh` | Benchmark setup helpers |
 | `.mise/lib/test_slots.sh` | Dynamic port-slot allocation |
+| `.mise/lib/multi_region_guards.sh` | Multi-region active-active PostgreSQL guards (source/config/live/behavioral) |
 | `.mise/lib/audit_e2e.sh` | Shared ckms/audit E2E helpers: `audit_ckms(_json/_fail)`, `audit_exercise_kmip_ops`, `audit_assert_events_jsonl` |
 
 **Always check these libraries first.** Do not re-implement `wait_for_port`, TCP probing,
