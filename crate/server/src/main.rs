@@ -335,6 +335,7 @@ mod tests {
             },
             default_username: "[default username]".to_owned(),
             force_default_username: false,
+            region_role: cosmian_kms_server::config::RegionRole::Leader,
             vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             kmip_policy: KmipPolicyConfig::default(),
             ms_dke_service_url: Some("[ms dke service url]".to_owned()),
@@ -381,6 +382,7 @@ mod tests {
 vendor_identification = "cosmian"
 default_username = "[default username]"
 force_default_username = false
+region_role = "leader"
 ms_dke_service_url = "[ms dke service url]"
 info = false
 hsm_model = ""
