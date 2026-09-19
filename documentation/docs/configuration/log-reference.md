@@ -478,9 +478,7 @@ Crate path: `crate/server`
 | `debug` | `...unwrapping the key block with key uid: {unwrapping_key_uid} using the KMS, user:              {user}` | `src/core/wrapping/unwrap.rs` | `unwrapping_key_uid`, `user` | — |
 | `debug` | `...wrapping the key block with key uid: {wrapping_key_uid} using an encryption              oracle, user: {user}` | `src/core/wrapping/wrap.rs` | `wrapping_key_uid`, `user` | — |
 | `debug` | `...wrapping the key block with key uid: {wrapping_key_uid} using the KMS, user:              {user}` | `src/core/wrapping/wrap.rs` | `wrapping_key_uid`, `user` | — |
-| `debug` | `[kms-init] Failed to seed kms.keys.active.count: {e}` | `src/core/kms/mod.rs` | `e` | — |
 | `debug` | `[kms-init] Failed to seed kms.objects.total: {e}` | `src/core/kms/mod.rs` | `e` | — |
-| `debug` | `[metrics-cron] Failed to sync kms.keys.active.count: {}` | `src/cron.rs` | — | — |
 | `debug` | `[metrics-cron] Failed to sync kms.objects.total: {}` | `src/cron.rs` | — | — |
 | `debug` | `[metrics-cron] kms.keys.active.count synced to {}` | `src/cron.rs` | — | — |
 | `debug` | `[metrics-cron] kms.objects.total synced to {}` | `src/cron.rs` | — | — |
@@ -751,6 +749,8 @@ Crate path: `crate/server`
 | `error` | `AuditFileStore: cannot acquire audit log lock {} ({e}) — retrying` | `src/core/audit/file_store.rs` | `e` | - |
 | `trace` | `Extractable: {:?}` | `src/core/operations/attributes/add.rs` | - | - |
 | `trace` | `Set Attribute: Extractable: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
+| `warn` | `[kms-init] Failed to seed kms.keys.active.count: {e}` | `src/core/kms/mod.rs` | `e` | - |
+| `warn` | `[metrics-cron] Failed to sync kms.keys.active.count: {}` | `src/cron.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 

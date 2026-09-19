@@ -192,7 +192,9 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                                     );
                                 }
                                 Err(e) => {
-                                    debug!(
+                                    // A persistently failing query (e.g. a backend-specific
+                                    // SQL bug) should be visible without debug logging.
+                                    warn!(
                                         "[metrics-cron] Failed to sync kms.keys.active.count: {}",
                                         e
                                     );
