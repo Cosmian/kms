@@ -41,6 +41,8 @@ The most common flags (accepted by most tasks):
 | `test:mysql` | fips | MySQL tests |
 | `test:percona` | fips | Percona XtraDB tests |
 | `test:mariadb` | fips | MariaDB tests |
+| `test:pgedge` | fips | pgEdge active-active replication tests (2-node live cluster) |
+| `test:multi-region-guards` | fips | Multi-region deployment-model guard suite (schema, trigger, gating, config detectors); `--variant non-fips` also runs the CO ceremony gating proof |
 | `test:redis` | non-fips | Redis-findex tests |
 | `test:matrix` | all | All HSM × DB backend × variant combinations |
 
