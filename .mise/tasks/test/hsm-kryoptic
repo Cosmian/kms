@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+#MISE description="Run Kryoptic HSM tests"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "-d --db <db>" env="DB" help="DB backend to test against" default="sqlite" {
+#USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kryoptic.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_db_env "${usage_db:-sqlite}"
+setup_test_logging
+
+print_header "Running Kryoptic HSM tests (${VARIANT_NAME})"
+
+kryoptic_build_cdylib
+
+STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/cosmian-kms-kryoptic-state-XXXXXX")"
+trap 'rm -rf "${STATE_DIR}"' EXIT
+
+kryoptic_setup "${STATE_DIR}"
+
+export WITH_HSM=1
+export HSM_MODEL="kryoptic"
+export HSM_SLOT_ID="$KRYOPTIC_HSM_SLOT_ID"
+export HSM_USER_PASSWORD
+export KRYOPTIC_CONF
+export KRYOPTIC_PKCS11_LIB
+
+# ── 1. Run kryoptic_pkcs11_loader tests (bootstrap token + v3 checks) ────────
+print_header "Running kryoptic_pkcs11_loader tests"
+env \
+  PATH="$PATH" \
+  KRYOPTIC_CONF="$KRYOPTIC_CONF" \
+  KRYOPTIC_PKCS11_LIB="$KRYOPTIC_PKCS11_LIB" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="$HSM_SLOT_ID" \
+  cargo test \
+  -p kryoptic_pkcs11_loader \
+  --features kryoptic \
+  -- --nocapture tests::test_hsm_kryoptic_all --ignored --exact
+
+print_status "Kryoptic loader tests completed"
+
+# ── 2. Run KMS server HSM tests ─────────────────────────────────────────────
+print_header "Running KMS server HSM tests"
+env \
+  PATH="$PATH" \
+  KRYOPTIC_CONF="$KRYOPTIC_CONF" \
+  KRYOPTIC_PKCS11_LIB="$KRYOPTIC_PKCS11_LIB" \
+  HSM_MODEL="kryoptic" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="$HSM_SLOT_ID" \
+  KMS_TEST_DB="${KMS_TEST_DB:-sqlite}" \
+  ${KMS_POSTGRES_URL:+KMS_POSTGRES_URL="$KMS_POSTGRES_URL"} \
+  ${KMS_MYSQL_URL:+KMS_MYSQL_URL="$KMS_MYSQL_URL"} \
+  ${REDIS_HOST:+REDIS_HOST="$REDIS_HOST"} \
+  ${REDIS_PORT:+REDIS_PORT="$REDIS_PORT"} \
+  cargo test \
+  -p cosmian_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  -- tests::hsm::test_hsm_all --ignored --exact
+
+print_status "Kryoptic KMS server tests completed"
+
+# ── 3. Run test_kms_server HSM vector tests ──────────────────────────────────
+print_header "Running test_kms_server HSM vector tests"
+env \
+  PATH="$PATH" \
+  KRYOPTIC_CONF="$KRYOPTIC_CONF" \
+  KRYOPTIC_PKCS11_LIB="$KRYOPTIC_PKCS11_LIB" \
+  HSM_MODEL="kryoptic" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="$HSM_SLOT_ID" \
+  KMS_TEST_DB="${KMS_TEST_DB:-sqlite}" \
+  ${KMS_POSTGRES_URL:+KMS_POSTGRES_URL="$KMS_POSTGRES_URL"} \
+  ${KMS_MYSQL_URL:+KMS_MYSQL_URL="$KMS_MYSQL_URL"} \
+  ${REDIS_HOST:+REDIS_HOST="$REDIS_HOST"} \
+  ${REDIS_PORT:+REDIS_PORT="$REDIS_PORT"} \
+  cargo test \
+  -p test_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  --lib \
+  -- test_vec_hsm
+
+print_success "Kryoptic tests completed"
