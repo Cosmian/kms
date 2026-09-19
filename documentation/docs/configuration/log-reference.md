@@ -751,6 +751,7 @@ Crate path: `crate/server`
 | `error` | `AuditFileStore: cannot acquire audit log lock {} ({e}) — retrying` | `src/core/audit/file_store.rs` | `e` | - |
 | `trace` | `Extractable: {:?}` | `src/core/operations/attributes/add.rs` | - | - |
 | `trace` | `Set Attribute: Extractable: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
+| `debug` | `[crl-refresh-cron] Skipping background CRL refresh on follower region` | `src/cron.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
