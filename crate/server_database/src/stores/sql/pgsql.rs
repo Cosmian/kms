@@ -1010,6 +1010,9 @@ impl ObjectsStore for PgPool {
                         let attributes_json =
                             serde_json::to_value(attributes).map_err(DbError::from)?;
                         let wrapping_key_id = object.wrapping_key_uid();
+                        tx.batch_execute("SET LOCAL kms.allow_backward_state_transition = 'on';")
+                            .await
+                            .map_err(DbError::from)?;
                         let stmt = tx
                             .prepare_cached(get_pgsql_query!("upsert-object"))
                             .await
