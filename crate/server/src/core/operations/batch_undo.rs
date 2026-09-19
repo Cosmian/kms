@@ -366,6 +366,15 @@ async fn revert_inner(kms: &KMS, user: &UserId, record: &UndoRecord) -> KResult<
         )));
     }
     kms.database.atomic(user, &operations).await?;
+    // The multi-region PostgreSQL monotonic state trigger coerces a backward UpdateState inside
+    // `atomic` back to the higher state; re-apply it with the explicit UNDO bypass (idempotent).
+    // shortcut: not in the same transaction as the restore above, so a crash between the two
+    // leaves the old state on PostgreSQL; upgrade by threading the bypass through `atomic`.
+    for snapshot in &record.snapshots {
+        kms.database
+            .update_state_allow_downgrade(snapshot.before.id(), snapshot.before.state())
+            .await?;
+    }
 
     for (uid, _) in &record.created {
         info!(

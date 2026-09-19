@@ -106,6 +106,14 @@ pub fn spawn_crl_refresh_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
 
 /// Scan all stored CRLs and regenerate those expiring within `overlap_hours`.
 async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
+    // CRL content is public information (RFC 5280 §3) — no special role required.
+    let _signer = crate::middlewares::UserId::from(kms.params.default_username.as_str());
+
+    if kms.params.region_role == crate::config::RegionRole::Follower {
+        debug!("[crl-refresh-cron] Skipping background CRL refresh on follower region");
+        return;
+    }
+
     // Enumerate all issuer IDs stored in the `crls` table.
     let issuers = match kms.database.list_crl_issuers().await {
         Ok(ids) => ids,
