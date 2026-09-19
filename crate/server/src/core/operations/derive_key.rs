@@ -1,10 +1,15 @@
 use std::collections::HashSet;
+#[cfg(not(feature = "non-fips"))]
+use std::future::Future;
 
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        kmip_objects::{PrivateKey, PublicKey},
-        kmip_types::RecommendedCurve,
+    cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            kmip_objects::{PrivateKey, PublicKey},
+            kmip_types::{RecommendedCurve, UsageLimitsUnit},
+        },
     },
     cosmian_kms_crypto::{
         CryptoError,
@@ -368,6 +373,25 @@ async fn derive_key_asymmetric(
         )
     })?;
 
+    private_owm.check_process_window()?;
+    peer_owm.check_process_window()?;
+
+    let private_state = private_owm.effective_state();
+    if private_state != State::Active {
+        kms_bail!(KmsError::InvalidRequest(format!(
+            "DeriveKey: private key state {private_state:?} is not accepted (must be Active)"
+        )));
+    }
+    let peer_state = peer_owm.effective_state();
+    if peer_state != State::Active {
+        kms_bail!(KmsError::InvalidRequest(format!(
+            "DeriveKey: peer public key state {peer_state:?} is not accepted (must be Active)"
+        )));
+    }
+
+    private_owm.enforce_usage_limits(32)?;
+    peer_owm.enforce_usage_limits(32)?;
+
     private_owm.set_object(
         Box::pin(kms.get_unwrapped(private_owm.id(), private_owm.object(), user))
             .await
@@ -416,6 +440,15 @@ async fn derive_key_asymmetric(
                     .to_owned(),
             )
         })?;
+
+    decrement_usage_limits_in_attributes(private_link_owm.attributes_mut(), 32);
+    if let Ok(obj_attrs) = private_link_owm.object_mut().attributes_mut() {
+        decrement_usage_limits_in_attributes(obj_attrs, 32);
+    }
+    decrement_usage_limits_in_attributes(peer_link_owm.attributes_mut(), 32);
+    if let Ok(obj_attrs) = peer_link_owm.object_mut().attributes_mut() {
+        decrement_usage_limits_in_attributes(obj_attrs, 32);
+    }
 
     add_link_to_attributes(
         &mut private_link_owm,
@@ -474,16 +507,32 @@ async fn derive_key_asymmetric(
     })
 }
 
+#[cfg(feature = "non-fips")]
+fn decrement_usage_limits_in_attributes(attributes: &mut Attributes, data_len: usize) {
+    if let Some(ul) = attributes.usage_limits.as_mut() {
+        match ul.usage_limits_unit {
+            UsageLimitsUnit::Byte => {
+                let consumed = i64::try_from(data_len).unwrap_or(i64::MAX);
+                ul.usage_limits_total = (ul.usage_limits_total - consumed).max(0);
+            }
+            UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
+                ul.usage_limits_total = (ul.usage_limits_total - 1).max(0);
+            }
+        }
+    }
+}
+
 #[cfg(not(feature = "non-fips"))]
-#[allow(clippy::unused_async)] // kept async to match the non-fips `derive_key_asymmetric` signature so the call site in `derive_key` doesn't need feature-specific branching
-async fn derive_key_asymmetric(
+fn derive_key_asymmetric(
     _kms: &KMS,
     _request: DeriveKey,
     _user: &UserId,
-) -> KResult<DeriveKeyResponse> {
-    Err(KmsError::NotSupported(
-        "DeriveKey: asymmetric derivation is not supported in FIPS mode".to_owned(),
-    ))
+) -> impl Future<Output = KResult<DeriveKeyResponse>> {
+    async {
+        Err(KmsError::NotSupported(
+            "DeriveKey: asymmetric derivation is not supported in FIPS mode".to_owned(),
+        ))
+    }
 }
 
 fn requested_derived_object_id(attributes: &Attributes) -> String {
