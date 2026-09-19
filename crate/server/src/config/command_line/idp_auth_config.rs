@@ -31,6 +31,19 @@ pub struct IdpAuthConfig {
     /// This argument can be repeated to configure multiple identity providers.
     #[clap(verbatim_doc_comment, long, env = "KMS_JWT_AUTH_PROVIDER", action = clap::ArgAction::Append)]
     pub jwt_auth_provider: Option<Vec<String>>,
+
+    /// Accept SPIFFE JWT-SVIDs from the configured `--jwt-auth-provider` issuers.
+    ///
+    /// A SPIFFE JWT-SVID carries no `email` claim, only a `sub` claim shaped as
+    /// `spiffe://<trust-domain>/<workload-path>`. When this flag is enabled, a JWT that
+    /// validates successfully (signature, issuer, audience, expiry) against a configured
+    /// issuer but has no `email` claim is authenticated using its `sub` claim **only if**
+    /// `sub` starts with `spiffe://`; every other JWT still requires `email` as before.
+    ///
+    /// Disabled by default: enabling it only makes sense when the configured issuer(s) are
+    /// a SPIFFE-aware JWKS source (e.g. a SPIRE OIDC Discovery Provider).
+    #[clap(long, env = "KMS_JWT_SVID_AUTH")]
+    pub jwt_svid_auth: bool,
 }
 
 impl IdpAuthConfig {
@@ -128,9 +141,31 @@ mod tests {
                 "https://issuer1.com,https://jwks1.com,key1,key2".to_owned(), // Duplicate
                 "https://issuer3.com,,".to_owned(),
             ]),
+            jwt_svid_auth: false,
         };
         let extracted = idp_list.extract_idp_configs().unwrap().unwrap();
         assert_eq!(extracted.len(), 3); // One duplicate should be removed
         info!("Extracted IDP Configs: {:#?}", extracted);
+    }
+
+    #[test]
+    fn jwt_svid_auth_defaults_to_false() {
+        let idp_auth_config = IdpAuthConfig::default();
+        assert!(!idp_auth_config.jwt_svid_auth);
+    }
+
+    /// `jwt_svid_auth` is a server-wide opt-in flag; it must not influence how
+    /// `--jwt-auth-provider` entries are parsed/deduplicated (non-regression).
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn jwt_svid_auth_does_not_affect_provider_extraction() {
+        let idp_list = IdpAuthConfig {
+            jwt_auth_provider: Some(vec![
+                "https://issuer1.com,https://jwks1.com,key1".to_owned(),
+            ]),
+            jwt_svid_auth: true,
+        };
+        let extracted = idp_list.extract_idp_configs().unwrap().unwrap();
+        assert_eq!(extracted.len(), 1);
     }
 }

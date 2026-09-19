@@ -74,6 +74,8 @@ pub(crate) enum AuthMethod {
     SpireToken,
     /// Standard OIDC / `IdP` JWT (with `kid`)
     OidcJwt,
+    /// SPIFFE JWT-SVID (no `email` claim; identity taken from `sub = spiffe://...`)
+    JwtSvid,
     /// Cosmian Auth Verifier JWT (no `kid`)
     AuthVerifierJwt,
     /// Static API token (Bearer)
