@@ -212,6 +212,16 @@ jobs:
           set -ex
           mise run test:${{ matrix.type }} --variant ${{ matrix.features }}
 
+      # PKCS#11 support report: exhaustive ckms pkcs11 capabilities smoke test
+      # (442 mechanisms / 92 functions against a live sqlite KMS server). Runs
+      # once (non-fips only, since cosmian_pkcs11 needs --features non-fips),
+      # piggybacking on the `ase` matrix combination to avoid a separate,
+      # colon-containing matrix value (which the yamlfmt pre-commit hook mangles).
+      - name: 'Test (PKCS#11 support report: ckms pkcs11 capabilities)'
+        if: matrix.type == 'ase' && matrix.features == 'non-fips'
+        run: |
+          mise run test:pkcs11:support --variant non-fips
+
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
     runs-on: ubuntu-latest

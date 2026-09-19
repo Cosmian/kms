@@ -19,17 +19,17 @@ use pkcs11_sys::{
     CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
     CK_RSA_PKCS_OAEP_PARAMS, CK_RSA_PKCS_PSS_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG,
     CKA_CLASS, CKA_COEFFICIENT, CKA_DERIVE, CKA_EC_PARAMS, CKA_EC_POINT, CKA_END_DATE,
-    CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1,
-    CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_START_DATE,
-    CKA_TOKEN, CKA_VALUE, CKA_VALUE_LEN, CKF_HKDF_SALT_DATA, CKF_HKDF_SALT_NULL, CKG_MGF1_SHA1,
-    CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_EC, CKK_EC_EDWARDS,
-    CKK_EC_MONTGOMERY, CKK_GENERIC_SECRET, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM,
-    CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_EDDSA,
-    CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_RSA_PKCS_PSS,
-    CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS,
-    CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512, CKM_SHA512_RSA_PKCS,
-    CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED,
-    CKR_ATTRIBUTE_SENSITIVE, CKR_ATTRIBUTE_TYPE_INVALID, CKR_MECHANISM_INVALID,
+    CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_EXTRACTABLE, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS,
+    CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE,
+    CKA_START_DATE, CKA_TOKEN, CKA_VALUE, CKA_VALUE_LEN, CKF_HKDF_SALT_DATA, CKF_HKDF_SALT_NULL,
+    CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_EC,
+    CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKK_GENERIC_SECRET, CKK_RSA, CKK_VENDOR_DEFINED,
+    CKM_AES_CBC, CKM_AES_GCM, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512,
+    CKM_EDDSA, CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
+    CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS,
+    CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512,
+    CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
+    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_ATTRIBUTE_TYPE_INVALID, CKR_MECHANISM_INVALID,
     CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID,
     CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
 };
@@ -2774,13 +2774,16 @@ impl Session {
         )))
     }
 
-    fn call_get_attributes(
+    /// Raw `C_GetAttributeValue` call, returning the `CK_RV` unchanged so callers can decide how
+    /// to interpret HSM-specific error codes (e.g. [`call_get_attributes`](Self::call_get_attributes)
+    /// treats most non-`CKR_OK` codes as hard failures, while
+    /// [`get_key_dates`](Self::get_key_dates) tolerates `CKR_ATTRIBUTE_TYPE_INVALID`).
+    fn raw_get_attributes(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         template: &mut [CK_ATTRIBUTE],
-    ) -> HResult<Option<()>> {
+    ) -> HResult<pkcs11_sys::CK_RV> {
         debug!("Retrieving HSM key attributes for key handle: {key_handle}");
-        // Get the length of the key value
         #[expect(unsafe_code)]
         let rv = match self.hsm.C_GetAttributeValue {
             Some(func) => unsafe {
@@ -2797,6 +2800,15 @@ impl Session {
                 ));
             }
         };
+        Ok(rv)
+    }
+
+    fn call_get_attributes(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        template: &mut [CK_ATTRIBUTE],
+    ) -> HResult<Option<()>> {
+        let rv = self.raw_get_attributes(key_handle, template)?;
         if rv == CKR_ATTRIBUTE_SENSITIVE {
             return Err(HError::Default(
                 "This key is sensitive and cannot be exported from the HSM.".to_owned(),
@@ -3442,6 +3454,26 @@ impl Session {
             return Ok(Some(id));
         }
         Ok(None)
+    }
+
+    /// Read the `CKA_EXTRACTABLE` attribute of a key object.
+    ///
+    /// Returns `Ok(None)` if the object cannot be found or the attribute
+    /// cannot be read (e.g. the HSM does not expose it for this object type).
+    pub fn is_extractable(&self, object_handle: CK_OBJECT_HANDLE) -> HResult<Option<bool>> {
+        let mut extractable: CK_BBOOL = CK_FALSE;
+        let mut template = [CK_ATTRIBUTE {
+            type_: CKA_EXTRACTABLE,
+            pValue: (&raw mut extractable).cast::<std::ffi::c_void>(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+        }];
+        if self
+            .call_get_attributes(object_handle, &mut template)?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        Ok(Some(extractable == CK_TRUE))
     }
 }
 
