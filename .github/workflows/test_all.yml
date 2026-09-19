@@ -22,6 +22,7 @@ jobs:
           - percona
           - mariadb
           - psql
+          - pgedge
           - otel
           - google-cse
           - redis

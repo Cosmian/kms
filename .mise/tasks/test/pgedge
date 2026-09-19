@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+#MISE description="Run pgEdge active-active replication tests"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+ensure_nix_shell
+
+_wait_for_pg_db() {
+  local container="$1" user="$2" db="$3" timeout="${4:-30}"
+  local _j
+  for _j in $(seq 1 "$timeout"); do
+    if docker exec "${container}" pg_isready -h 127.0.0.1 -U "${user}" -d "${db}" -q 2>/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+local_pgedge_1_port="${KMS_SLOT_PGEDGE_1_PORT:-6432}"
+local_pgedge_2_port="${KMS_SLOT_PGEDGE_2_PORT:-6433}"
+
+print_header "Running pgEdge active-active tests (${VARIANT_NAME})"
+
+print_status "Starting pgedge containers (pgedge1:${local_pgedge_1_port} / pgedge2:${local_pgedge_2_port})..."
+docker compose --profile pgedge up -d pgedge-1 pgedge-2
+
+_pgedge_cleanup() {
+  docker compose --profile pgedge stop pgedge-1 pgedge-2 2>/dev/null || true
+}
+trap _pgedge_cleanup EXIT
+
+if ! _wait_for_port 127.0.0.1 "${local_pgedge_1_port}" 30; then
+  print_warning "pgedge-1 (port ${local_pgedge_1_port}) not ready — skipping pgEdge test"
+  exit 0
+fi
+if ! _wait_for_port 127.0.0.1 "${local_pgedge_2_port}" 30; then
+  print_warning "pgedge-2 (port ${local_pgedge_2_port}) not ready — skipping pgEdge test"
+  exit 0
+fi
+
+print_status "Waiting for pgedge1 DB to accept connections (up to 30s)..."
+if ! _wait_for_pg_db pgedge1 kms kms 30; then
+  print_warning "pgedge1 DB not ready after 30s — skipping pgEdge test"
+  exit 0
+fi
+print_status "Waiting for pgedge2 DB to accept connections (up to 30s)..."
+if ! _wait_for_pg_db pgedge2 kms kms 30; then
+  print_warning "pgedge2 DB not ready after 30s — skipping pgEdge test"
+  exit 0
+fi
+
+print_status "Running test_db_pgedge_active_active..."
+ret=0
+KMS_PGEDGE_1_URL="postgresql://kms:kms@127.0.0.1:${local_pgedge_1_port}/kms" \
+  KMS_PGEDGE_2_URL="postgresql://kms:kms@127.0.0.1:${local_pgedge_2_port}/kms" \
+  cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
+  -- --ignored --nocapture test_db_pgedge_active_active || ret=$?
+
+if [ "${ret}" -ne 0 ]; then
+  print_error "pgEdge active-active replication test FAILED (exit code ${ret})"
+fi
+print_success "pgEdge active-active replication test passed"

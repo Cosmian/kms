@@ -439,6 +439,17 @@ impl Database {
         Ok(())
     }
 
+    /// Update the state of an object in the database, allowing downgrade (for KMIP batch UNDO).
+    pub async fn update_state_allow_downgrade(&self, uid: &str, state: State) -> DbResult<()> {
+        self.record("update_state", async move {
+            let db = self.get_object_store(uid).await?;
+            Ok(db.update_state_allow_downgrade(uid, state).await?)
+        })
+        .await?;
+        self.object_cache.invalidate(uid).await;
+        Ok(())
+    }
+
     /// Delete an object from the database.
     pub async fn delete(&self, uid: &str) -> DbResult<()> {
         self.record("delete", async move {

@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use clap::{CommandFactory, Parser};
+use clap::{CommandFactory, Parser, ValueEnum};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
 use serde::{Deserialize, Serialize};
 
@@ -61,6 +61,31 @@ pub fn get_default_config_path() -> String {
     DEFAULT_COSMIAN_KMS_CONF.to_owned()
 }
 
+/// The topological role of this KMS node's region in a multi-region active-active
+/// `PostgreSQL` deployment (logical multi-master replication via a Spock/BDR/pgEdge-class
+/// extension). Exactly one region across the whole deployment should be `leader`; every
+/// other region is `follower`. This is a static, operator-set value — the KMS performs no
+/// election or consensus.
+///
+/// The leader is the only region allowed to generate/regenerate X.509 CRLs (RFC 5280
+/// §5.2.3 requires strict per-issuer CRL number monotonicity, incompatible with
+/// uncoordinated multi-writer issuance) and to activate or revoke a Crypto Officer
+/// ceremony (quorum-sensitive; correctness matters more than availability there). Every
+/// other KMIP/REST operation is unaffected and continues to work locally in every region.
+///
+/// Single-region deployments should leave this at the default (`leader`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum RegionRole {
+    /// The single region allowed to generate CRLs and activate/revoke Crypto Officer
+    /// ceremonies. Default; correct for single-region deployments.
+    #[default]
+    Leader,
+    /// A non-leader region. CRL generation and Crypto Officer ceremony
+    /// activation/revocation are rejected with a clear error naming the restriction.
+    Follower,
+}
+
 const DEFAULT_USERNAME: &str = "admin";
 
 impl Default for ClapConfig {
@@ -81,6 +106,7 @@ impl Default for ClapConfig {
             vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             default_username: DEFAULT_USERNAME.to_owned(),
             force_default_username: false,
+            region_role: RegionRole::default(),
             ms_dke_service_url: None,
             logging: LoggingConfig::default(),
             info: false,
@@ -131,6 +157,15 @@ pub struct ClapConfig {
     /// but always use the default username instead of the one provided by the authentication method
     #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME", verbatim_doc_comment)]
     pub force_default_username: bool,
+
+    /// See [`RegionRole`] for the full semantics.
+    #[clap(
+        long = "region-role",
+        env = "KMS_REGION_ROLE",
+        default_value = "leader",
+        verbatim_doc_comment
+    )]
+    pub region_role: RegionRole,
 
     /// This setting enables the Microsoft Double Key Encryption service feature of this server.
     ///
@@ -690,6 +725,7 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("vendor identification", &self.vendor_identification);
         let x = x.field("default username", &self.default_username);
         let x = x.field("force default username", &self.force_default_username);
+        let x = x.field("region_role", &self.region_role);
         let x = if self.google_cse_config.google_cse_enable {
             x.field(
                 "google_cse_enable",

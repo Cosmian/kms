@@ -11,7 +11,7 @@ use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
         AuditFailureMode, AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig,
-        IdpConfig, JwksEndpointConfig, OidcConfig,
+        IdpConfig, JwksEndpointConfig, OidcConfig, RegionRole,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -72,6 +72,8 @@ pub struct ServerParams {
     /// When an authentication method is provided, perform the authentication
     /// but always use the default username instead of the one provided by the authentication method
     pub force_default_username: bool,
+    /// The topological role of this KMS node's region in a multi-region active-active deployment
+    pub region_role: RegionRole,
 
     /// The DB parameters may be supplied on the command line
     pub main_db_params: Option<MainDbParams>,
@@ -461,6 +463,7 @@ impl ServerParams {
             vendor_identification: conf.vendor_identification,
             default_username: conf.default_username,
             force_default_username: conf.force_default_username,
+            region_role: conf.region_role,
             api_token_id: conf.http.api_token_id,
             google_cse: conf.google_cse_config,
             ms_dke_service_url: conf.ms_dke_service_url,
@@ -834,6 +837,7 @@ impl fmt::Debug for ServerParams {
         debug_struct
             .field("default_username", &self.default_username)
             .field("force_default_username", &self.force_default_username)
+            .field("region_role", &self.region_role)
             .field("vendor_identification", &self.vendor_identification);
 
         if let Some(ref db_params) = self.main_db_params {
