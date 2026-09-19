@@ -19,14 +19,17 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation,
-        kmip_data_structures::KeyBlock,
-        kmip_objects::{PublicKey, SecretData},
-        kmip_operations::{Activate, Decrypt, Destroy, Encrypt, Import, Revoke},
-        kmip_types::{CryptographicDomainParameters, LinkType, RecommendedCurve},
-        requests::create_ec_key_pair_request,
+    cosmian_kmip::{
+        kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+        kmip_2_1::{
+            KmipOperation,
+            kmip_data_structures::KeyBlock,
+            kmip_objects::{PublicKey, SecretData},
+            kmip_operations::{Activate, Decrypt, Destroy, Encrypt, Import, Revoke},
+            kmip_types::{CryptographicDomainParameters, LinkType, RecommendedCurve},
+            requests::create_ec_key_pair_request,
+        },
+        time_normalize,
     },
     cosmian_kms_crypto::crypto::elliptic_curves::operation::{to_ec_private_key, to_ec_public_key},
 };
@@ -557,6 +560,7 @@ fn x25519_import_attributes(
             recommended_curve,
             ..CryptographicDomainParameters::default()
         }),
+        activation_date: Some(time_normalize().expect("time_normalize")),
         sensitive: sensitive.then_some(true),
         ..Attributes::default()
     }
