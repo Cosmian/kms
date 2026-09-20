@@ -1038,7 +1038,6 @@ Crate path: `crate/interfaces`
 | `debug` | `HSM key {uid} export failed ({e}); falling back to metadata-only stub for                      attribute operations`                                                   | `src/hsm/hsm_store.rs`        | `uid`, `e`                                                     | —                                                                                        |
 | `debug` | `signature_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 | `debug` | `Creating {algorithm:?} keypair with uid: {uid}` | `src/hsm/hsm_store.rs` | `algorithm`: KMIP `CryptographicAlgorithm` requested for the keypair (RSA, ECDSA, Ed25519, ...); `uid`: HSM-resident unique identifier the keypair will be stored under | Logged before delegating `CreateKeyPair` to the HSM; generalized from an RSA-only message to cover the EC/Ed25519 keypair creation support added in this change |
-| `debug` | `signature_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 
 ### `cosmian_kms_access`
 
