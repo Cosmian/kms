@@ -106,14 +106,47 @@ configuration" error pattern), any call on a `follower` node to:
 Every other KMIP/REST operation (object CRUD, Locate, Grant/Revoke access, etc.) is unaffected
 and continues to work locally in every region.
 
-### 5. Grants/permissions: accepted last-write-wins (no code change)
+### 5. Crypto Officer ceremony state replicates like any other row
+
+`crypto_officer_activations` is an ordinary table in the `public` schema replication set (added
+via `spock.repset_add_all_tables('default', ARRAY['public'])`), so the `INSERT`/`UPDATE` rows
+written by `perform_crypto_officer_ceremony_activation()`, `disable_crypto_officer_ceremony()`,
+and `revoke_crypto_officer_activation()` — all three gated to the leader region via
+`require_leader_region` — replicate normally to every follower. Because only the leader ever
+writes this table, it is effectively single-writer even in the active-active topology: no
+conflict-resolution trigger analogous to the `objects.state` guard is needed.
+
+Consequence: once a Crypto Officer ceremony completes on the leader, that user is recognized as
+an active Crypto Officer on every follower region too, as soon as the row replicates — there is
+no separate per-region CO status. This is eventually consistent (ordinary replication lag), not
+synchronous.
+
+**Precondition**: every region's KMS server MUST be configured with the identical
+`ceremony_secret` (or a `ceremony_key_id` resolving to the same underlying AES-256 key
+material) — `Database::is_crypto_officer_activated_by` AES-256-GCM-decrypts the replicated
+`sealed_record` using the **local** node's derived `CeremonyKeys`
+(`crate/server_database/src/ceremony_keys.rs`); a mismatched key produces a GCM verification
+failure.
+
+Validating this surfaced a related fail-secure gap, now fixed:
+`Database::verify_ceremony_record` (`crate/server_database/src/core/database_permissions.rs`)
+previously propagated that verification failure as a hard `Err` (`DbError::CryptographicError`).
+Unlike `dispatch.rs::check_role_permission`'s existing graceful fallback for the identical
+condition, this was not caught by `KMS::is_crypto_officer()` or the
+`/access/crypto_officer/status` active-CO-list loop, so either path would hard-fail (500-class
+error) instead of treating the record as not-currently-active. `verify_ceremony_record` now
+catches `DbError::CryptographicError` specifically and returns `Ok(false)` with a warning log —
+consistent with the "tampered records fail unsealing" security invariant already documented on
+`CeremonyKeys::unseal`.
+
+### 6. Grants/permissions: accepted last-write-wins (no code change)
 
 Concurrent conflicting writes to `read_access` converge via Spock's own default row-level
 conflict resolution (`last_update_wins`). A concurrent grant + revoke on the same object/user can
 silently drop one side. This is an accepted, documented v1 limitation; an operation-level
 OR-Set/CRDT merge is out of scope here and tracked as separate future work.
 
-### 6. Validation
+### 7. Validation
 
 A live 2-node CI integration test (`ghcr.io/pgedge/pgedge-postgres:16-spock5-standard`, wired
 with real `spock.node_create`/`spock.sub_create` full-mesh subscriptions) proves convergent
@@ -138,6 +171,9 @@ race, alongside a faster single-node unit test that exercises the trigger direct
   strict correctness improvement independent of multi-region use (valid `REPLICA IDENTITY` is
   also a prerequisite for other logical-replication use cases, e.g. read replicas via
   `pg_logical`/CDC tooling).
+- **POS-006**: Crypto Officer ceremony activation converges to every region automatically via
+  the standard `public`-schema replication set — no additional trigger or leader-only read gate
+  is needed, since only the leader ever writes `crypto_officer_activations`.
 
 ### Negative
 
@@ -152,6 +188,13 @@ race, alongside a faster single-node unit test that exercises the trigger direct
   different CAs in this iteration.
 - **NEG-004**: A rejected follower request is a hard error, not a transparent proxy to the
   leader; clients must know to retry against the leader region themselves.
+- **NEG-005**: CO activation/revocation recognition on a follower lags by ordinary replication
+  latency — there is a short window after a leader-side ceremony completes (or is revoked)
+  during which a follower still reports the pre-change status.
+- **NEG-006**: Operators MUST keep `ceremony_secret`/`ceremony_key_id` identical across every
+  region. If they diverge, every follower fails to verify replicated ceremony records (fails
+  secure to "not CO", per IMP-007) and CO ceremonies effectively stop working on that region
+  until the secret is corrected.
 
 ## Alternatives Considered
 
@@ -222,6 +265,11 @@ race, alongside a faster single-node unit test that exercises the trigger direct
 - **IMP-006**: Success criteria — `cargo clippy-all` and `cargo test -p
   cosmian_kms_server_database` pass; the new pgEdge CI test demonstrates convergent behavior for
   concurrent grant/revoke and concurrent state-transition scenarios in both commit orderings.
+- **IMP-007**: `crypto_officer_activations` requires no monotonic-merge trigger (unlike
+  `objects.state`) because writes are single-writer (leader-only).
+  `Database::verify_ceremony_record` fails secure (`Ok(false)`, not `Err`) on a
+  `DbError::CryptographicError` from `CeremonyKeys::unseal`, covering both genuine tampering and
+  a cross-region `ceremony_secret`/`ceremony_key_id` mismatch.
 
 ## References
 
@@ -239,4 +287,6 @@ race, alongside a faster single-node unit test that exercises the trigger direct
 - **REF-007**: Related code: `crate/server_database/src/stores/sql/pgsql.rs`,
   `crate/server/src/core/operations/generate_crl.rs`,
   `crate/server/src/core/operations/join_split_key.rs`,
-  `crate/server/src/core/kms/permissions.rs`, `crate/kmip/src/kmip_0/kmip_types.rs`
+  `crate/server/src/core/kms/permissions.rs`, `crate/kmip/src/kmip_0/kmip_types.rs`,
+  `crate/server_database/src/core/database_permissions.rs`,
+  `crate/server_database/src/ceremony_keys.rs`
