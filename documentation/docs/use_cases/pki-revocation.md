@@ -152,6 +152,15 @@ is stored in the database.
     per-certificate revocation status — see
     [OCSP Responder](pki-ocsp.md).
 
+!!! note "Multi-region active-active deployments"
+    In multi-region deployments with PostgreSQL logical replication (Spock / pgEdge),
+    CRL generation (`GET /certificates/{issuer_id}/crl`) and the background refresh scheduler
+    are gated to the **leader** region (`--region-role leader`) to enforce RFC 5280 `crlNumber`
+    monotonicity. The resulting signed CRL rows in the `crls` table replicate asynchronously to
+    every follower region. Consequently, the public CDP endpoint (`GET /public/certificates/{issuer_id}/crl`)
+    is active on **every region** (both leader and followers) and serves the replicated CRL locally.
+    See [Multi-region active-active PostgreSQL](../configuration/database/configuration.md#multi-region-active-active-postgresql-spock-pgedge-bdr).
+
 ## No Revocation Available (`id-ce-noRevAvail`, RFC 9608)
 
 For **self-signed certificates** (no issuer key provided) that do not carry a CRL

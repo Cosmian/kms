@@ -94,6 +94,12 @@ pub trait ObjectsStore {
     /// Update the state of an object in the database.
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()>;
 
+    /// Update the state of an object in the database, allowing downgrade (backward transition)
+    /// for operations like KMIP batch UNDO. Default implementation delegates to `update_state`.
+    async fn update_state_allow_downgrade(&self, uid: &str, state: State) -> InterfaceResult<()> {
+        self.update_state(uid, state).await
+    }
+
     /// Delete an object from the database.
     async fn delete(&self, uid: &str) -> InterfaceResult<()>;
 

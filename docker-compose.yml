@@ -41,6 +41,34 @@ services:
       - POSTGRES_DB=kms
       - POSTGRES_PASSWORD=kms
       - PGDATA=/tmp/postgres-fo2
+  pgedge-1:
+    image: ghcr.io/pgedge/pgedge-postgres:16-spock5-standard
+    container_name: pgedge1
+    profiles: [pgedge]
+    ports:
+      - ${KMS_SLOT_PGEDGE_1_PORT:-6432}:5432
+    environment:
+      - POSTGRES_USER=kms
+      - POSTGRES_DB=kms
+      - POSTGRES_PASSWORD=kms
+    command: >
+      postgres -c listen_addresses=* -c wal_level=logical -c max_worker_processes=10
+      -c max_replication_slots=10 -c max_wal_senders=10 -c track_commit_timestamp=on
+      -c shared_preload_libraries=spock -c output_plugin_libraries=spock_output
+  pgedge-2:
+    image: ghcr.io/pgedge/pgedge-postgres:16-spock5-standard
+    container_name: pgedge2
+    profiles: [pgedge]
+    ports:
+      - ${KMS_SLOT_PGEDGE_2_PORT:-6433}:5432
+    environment:
+      - POSTGRES_USER=kms
+      - POSTGRES_DB=kms
+      - POSTGRES_PASSWORD=kms
+    command: >
+      postgres -c listen_addresses=* -c wal_level=logical -c max_worker_processes=10
+      -c max_replication_slots=10 -c max_wal_senders=10 -c track_commit_timestamp=on
+      -c shared_preload_libraries=spock -c output_plugin_libraries=spock_output
   mysql:
     image: mysql:8.0
     ports:

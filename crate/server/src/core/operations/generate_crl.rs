@@ -53,6 +53,19 @@ type CrlCacheInner = HashMap<String, (Vec<u8>, Instant, String)>;
 static GENERATED_CRL_CACHE: LazyLock<tokio::sync::RwLock<CrlCacheInner>> =
     LazyLock::new(|| tokio::sync::RwLock::new(HashMap::new()));
 
+/// Test-only: clear the process-global CRL cache.
+///
+/// `GENERATED_CRL_CACHE` is a single process-wide static keyed only by `issuer_id`. Tests that
+/// instantiate multiple `KMS` instances *in the same test process* (simulating multiple KMS
+/// regions, each with its own Postgres database) share this cache across instances. A test
+/// asserting that a given `KMS` instance served a CRL from its own local DB row (not a
+/// coincidental cache hit populated by a *different* simulated region's `generate_crl` call in
+/// the same process) must call this first.
+#[cfg(test)]
+pub(crate) async fn clear_generated_crl_cache_for_tests() {
+    GENERATED_CRL_CACHE.write().await.clear();
+}
+
 /// Retrieve the most recently cached CRL DER bytes for an issuer.
 ///
 /// Called by the public CRL endpoint (`GET /public/certificates/{issuer_id}/crl`).
@@ -130,6 +143,7 @@ pub(crate) async fn generate_crl(
     validity_days: Option<u32>,
     user: &UserId,
 ) -> KResult<X509Crl> {
+    crate::core::require_leader_region(kms, "CRL generation")?;
     debug!(
         "Generating CRL for issuer certificate: {}",
         issuer_certificate_id

@@ -215,6 +215,195 @@ backoff** for the following PostgreSQL SQLSTATE codes:
 No additional configuration is required; the retry behaviour is enabled automatically for all
 PostgreSQL connections.
 
+##### Multi-region active-active PostgreSQL (Spock / pgEdge / BDR)
+
+The KMS supports multi-region active-active deployments using PostgreSQL with a Spock-, pgEdge-, or BDR-class logical multi-master replication extension (validated against `ghcr.io/pgedge/pgedge-postgres`). In this topology, each region runs a local KMS instance group connected to a local PostgreSQL node, serving local reads and writes for minimum latency. State converges asynchronously across regions via bidirectional logical replication.
+
+KMS server nodes do not communicate directly with each other over the network. All cross-region state coordination and replication are handled entirely at the database layer:
+
+```mermaid
+graph TD
+    subgraph Region A [Region A - Leader]
+        ClientA[Client / App] --> KMSA[KMS Server Node<br/>--region-role leader]
+        KMSA --> PGA[(PostgreSQL Node A)]
+    end
+
+    subgraph Region B [Region B - Follower]
+        ClientB[Client / App] --> KMSB[KMS Server Node<br/>--region-role follower]
+        KMSB --> PGB[(PostgreSQL Node B)]
+    end
+
+    subgraph Region C [Region C - Follower]
+        ClientC[Client / App] --> KMSC[KMS Server Node<br/>--region-role follower]
+        KMSC --> PGC[(PostgreSQL Node C)]
+    end
+
+    PGA <-->|Logical Multi-Master Replication<br/>Spock / pgEdge full-mesh| PGB
+    PGB <-->|Logical Multi-Master Replication| PGC
+    PGA <-->|Logical Multi-Master Replication| PGC
+```
+
+###### Topology and `region_role`
+
+To prevent split-brain conflicts on operations requiring global coordination, the deployment defines a topological role per region via the `region_role` configuration setting:
+
+```toml
+# /etc/cosmian/kms.toml
+region_role = "leader"    # exactly one region per deployment
+# region_role = "follower"  # all other regions
+```
+
+Or via CLI flag `--region-role <leader|follower>` or environment variable `KMS_REGION_ROLE`.
+
+###### Leader-only operations
+
+Exactly one region across the entire deployment MUST be designated `leader` (`region_role = "leader"`, which is the default). All other regions MUST be configured as `follower`.
+
+The `leader` region is the only region permitted to execute:
+
+1. **X.509 CRL generation and background refresh** — RFC 5280 §5.2.3 requires strict per-issuer `crlNumber` monotonicity. Concurrent issuance from uncoordinated writers violates this requirement.
+2. **Crypto Officer ceremony activation and revocation** — Key ceremonies rely on dual-control quorum and activation history; safety takes priority over local write availability.
+
+If a client attempts CRL generation or ceremony activation/revocation against a node configured with `region_role = "follower"`, the request is rejected immediately with an HTTP 422 error instructing the client to target the leader region. Background CRL refresh cron tasks on followers are automatically skipped.
+
+###### CRL endpoints across regions
+
+The KMS exposes two distinct CRL endpoints:
+
+1. **Authenticated generation endpoint** (`GET /certificates/{issuer_id}/crl`):
+   Signs a fresh X.509 v2 CRL using the CA private key, assigns a new monotonically increasing `crlNumber`, writes the signed CRL to the `crls` table, and updates the in-memory cache.
+   - **Leader-gated**: Must only be executed on the `leader` region (`require_leader_region`). Calling this on a `follower` region returns HTTP 422 (`KmsError::InvalidRequest`).
+   - **Background refresh cron**: The periodic background task (`crl_refresh_check_hours`) is automatically executed only on the `leader` region; followers skip the check.
+   - **Revocation auto-trigger**: A certificate revocation on the `leader` region triggers automatic CRL regeneration.
+
+2. **Public distribution endpoint (CDP)** (`GET /public/certificates/{issuer_id}/crl`):
+   Unauthenticated public endpoint serving pre-signed CRL bytes to relying parties (browsers, TLS clients, validators).
+   - **Active on every region**: Runs locally on all nodes (both `leader` and `follower`).
+   - **Replicated data**: The `crls` table is included in the replication set. When the leader generates and persists a new CRL, the row (`issuer_id`, `crl_der`, `crl_number`, `generated_at`, `next_update`) replicates asynchronously to all follower PostgreSQL databases.
+   - **Serving from cache and DB**: When a client requests the public CDP on a follower region, the follower serves it from its local in-memory cache, or falls back to reading the replicated row in its local `crls` table on cold start or cache refresh.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin
+    participant KMS_A as KMS Region A (Leader)
+    participant DB_A as PostgreSQL A
+    participant DB_B as PostgreSQL B
+    participant KMS_B as KMS Region B (Follower)
+    actor Client as Relying Party (TLS Client)
+
+    Note over Admin,KMS_A: CRL Generation (Leader only)
+    Admin->>KMS_A: GET /certificates/{issuer_id}/crl (Authenticated)
+    Note over KMS_A: Sign CRL with CA key (crlNumber N+1)
+    KMS_A->>DB_A: UPSERT INTO crls (issuer_id, crl_der, crl_number, next_update)
+    KMS_A-->>Admin: 200 OK (Signed CRL)
+
+    DB_A-->>DB_B: Asynchronous replication of crls table (Spock)
+
+    Note over Client,KMS_B: Public CDP Distribution (Any region)
+    Client->>KMS_B: GET /public/certificates/{issuer_id}/crl (Unauthenticated)
+    alt In-memory cache hit
+        Note over KMS_B: Serve from memory
+    else Cold start / cache miss
+        KMS_B->>DB_B: SELECT crl_der, next_update FROM crls WHERE issuer_id = ...
+        DB_B-->>KMS_B: Replicated CRL row
+        Note over KMS_B: Populate in-memory cache
+    end
+    KMS_B-->>Client: 200 OK (application/pkix-crl)
+
+    Note over Admin,KMS_B: Attempted Generation on Follower
+    Admin->>KMS_B: GET /certificates/{issuer_id}/crl
+    KMS_B-->>Admin: 422 Unprocessable Entity (target leader region)
+```
+
+Every other operation (key generation, encryption, decryption, access grants, Locate, etc.) executes locally on any region with no leader dependency.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Alice
+    participant KMS_A as KMS Region A (Leader)
+    participant DB_A as PostgreSQL A
+    participant DB_B as PostgreSQL B
+    participant KMS_B as KMS Region B (Follower)
+    actor Bob
+
+    Note over Alice,KMS_A: Local Object Operation (Region A)
+    Alice->>KMS_A: POST /kmip/2_1 (Create AES Key)
+    KMS_A->>DB_A: INSERT INTO objects ... (State: PreActive/Active)
+    KMS_A-->>Alice: 200 OK (Key UID)
+    DB_A-->>DB_B: Asynchronous Logical Replication (Spock)
+
+    Note over Bob,KMS_B: Local Crypto Operation on Follower
+    Bob->>KMS_B: POST /kmip/2_1 (Encrypt with Key UID)
+    KMS_B->>DB_B: SELECT FROM objects WHERE uid = ...
+    DB_B-->>KMS_B: Object found (replicated)
+    KMS_B-->>Bob: 200 OK (Ciphertext)
+```
+
+###### State conflict resolution (monotonic merge)
+
+In multi-region active-active replication, object `State` transitions can race across regions (e.g. an object deactivated in region A while destroyed in region B). Standard commit-timestamp last-write-wins (LWW) could silently overwrite a terminal `Destroyed` or `Compromised` state with an earlier `Deactivated` write.
+
+The KMS installs an automatic `BEFORE UPDATE` trigger on the `objects` table marked `ENABLE ALWAYS`, so it coerces **every** state update — both local writes and incoming replicated writes — to `GREATEST(existing_state, incoming_state)` using the NIST SP 800-57 / KMIP lifecycle hierarchy:
+
+$$\text{PreActive (1)} < \text{Active (2)} < \text{Deactivated (3)} < \text{Compromised (4)} < \text{Destroyed (5)} < \text{Destroyed\_Compromised (6)}$$
+
+`ENABLE ALWAYS` (rather than the default `ENABLE`/origin-only, or `ENABLE REPLICA`) is required because a local write on one region can otherwise race against a state that has *already replicated in* from another region at a higher rank: e.g. region B receives `Destroyed` from region A, then a stale local `Deactivated` write on region B — issued under the ordinary `session_replication_role = 'origin'` — must still be coerced back to `Destroyed`.
+
+The one legitimate backward transition — KMIP batch UNDO reverting an object to `PreActive` (`message.rs::revert_activation_to_preactive`) — bypasses the guard via a transaction-scoped `SET LOCAL kms.allow_backward_state_transition = 'on'`, set only by that revert path.
+
+###### Permissions and access control (LWW)
+
+Concurrent conflicting modifications to `read_access` (e.g. concurrent grant on node 1 and revoke on node 2 for the same `(object_id, user_id)` pair) converge via the underlying replication extension's row-level conflict resolution (`last_update_wins`). A concurrent grant and revoke on the same object/user pair can result in either state winning.
+
+###### Crypto Officer ceremony across regions
+
+`crypto_officer_activations` replicates like any other table in the default replication set: a Crypto Officer ceremony completed on the leader region becomes recognized on every follower region automatically, once the activation row replicates (subject to ordinary replication lag — there is no separate per-region CO status). The same applies to revocation.
+
+This requires every region's KMS server to be configured with the **identical** `ceremony_secret` (or a `ceremony_key_id` resolving to the same underlying key). Ceremony records are AES-256-GCM sealed with keys derived from this value; a follower configured with a different secret cannot verify replicated records — it fails secure (treats the user as not an active Crypto Officer, logging a warning) rather than erroring, but the ceremony will not be usable on that region until the secret is corrected to match the leader.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Alice
+    participant KMS_A as KMS Region A (Leader)
+    participant DB_A as PostgreSQL A
+    participant DB_B as PostgreSQL B
+    participant KMS_B as KMS Region B (Follower)
+
+    Note over Alice,KMS_A: Leader Region Ceremony Activation
+    Alice->>KMS_A: POST /access/crypto_officer/ceremony/activate (Shares)
+    Note over KMS_A: Validate shares & reconstruct master key
+    Note over KMS_A: AES-256-GCM seal record using local CeremonyKeys
+    KMS_A->>DB_A: INSERT INTO crypto_officer_activations (user_id, sealed_record)
+    KMS_A-->>Alice: 200 OK (Alice is active CO in Region A)
+
+    DB_A-->>DB_B: Replicate crypto_officer_activations row (Spock)
+
+    Note over Alice,KMS_B: Role Evaluation on Follower Region
+    Alice->>KMS_B: GET /kmip/2_1 (Locate / Export / CO-gated operation)
+    KMS_B->>DB_B: SELECT sealed_record FROM crypto_officer_activations WHERE user_id = Alice
+    DB_B-->>KMS_B: sealed_record
+    Note over KMS_B: Unseal sealed_record using Region B CeremonyKeys
+
+    alt ceremony_secret identical across regions
+        Note over KMS_B: GCM tag verified successfully
+        KMS_B-->>Alice: Authorized as Crypto Officer
+    else ceremony_secret differs (Misconfiguration)
+        Note over KMS_B: GCM tag verification fails -> Fails Secure (warn log)
+        KMS_B-->>Alice: Treated as Operator (Not CO)
+    end
+```
+
+###### Extension requirements
+
+Any PostgreSQL multi-master extension supporting Spock/BDR/pglogical protocols is supported. Key requirements:
+
+- `wal_level = logical`
+- `track_commit_timestamp = on`
+- Shared replication set covering all public KMS tables (`objects`, `tags`, `read_access`, `crypto_officer_activations`, `parameters`, `crls`).
+
 #### MySQL, MariaDB, or Percona XtraDB Cluster
 
 The KMS supports MySQL-compatible databases including MySQL, MariaDB, and Percona XtraDB Cluster.

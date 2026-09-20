@@ -299,6 +299,137 @@ pub(crate) async fn test_db_postgresql_multihost() -> DbResult<()> {
     Ok(())
 }
 
+#[ignore = "Requires a running PostgreSQL instance"]
+#[tokio::test]
+pub(crate) async fn test_db_postgresql_state_monotonic_merge() -> DbResult<()> {
+    use std::collections::HashSet;
+
+    use cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+            kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+        },
+    };
+    use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore, UserId};
+    use uuid::Uuid;
+
+    log_init(option_env!("RUST_LOG"));
+    let pg = get_pgsql().await?;
+    let owner = UserId::from("state_merge_test_user");
+    let sym_key_bytes = [0_u8; 32];
+    let key_obj = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &sym_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )
+    .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+
+    let uid_a = Uuid::new_v4().to_string();
+    let uid_b = Uuid::new_v4().to_string();
+
+    pg.atomic(
+        &owner,
+        &[
+            AtomicOperation::Create((
+                uid_a.clone(),
+                owner.clone(),
+                key_obj.clone(),
+                Attributes::default(),
+                HashSet::new(),
+            )),
+            AtomicOperation::Create((
+                uid_b.clone(),
+                owner.clone(),
+                key_obj.clone(),
+                Attributes::default(),
+                HashSet::new(),
+            )),
+        ],
+    )
+    .await?;
+
+    // Ordering 1: local already Destroyed; a replicated write tries to arrive at Deactivated.
+    pg.update_state(&uid_a, State::Destroyed).await?;
+    // Local write attempt to downgrade: blocked by ENABLE ALWAYS trigger
+    pg.update_state(&uid_a, State::Deactivated).await?;
+    let (state_a1, _) = pg.retrieve_state(&uid_a).await?.expect("object exists");
+    if state_a1 != State::Destroyed {
+        return Err(DbError::ServerError(format!(
+            "Expected state_a1 to be Destroyed, got {state_a1:?}"
+        )));
+    }
+
+    // Replicated write attempt to downgrade: also coerced
+    {
+        let client = pg.raw_pool().get().await.map_err(DbError::from)?;
+        client
+            .batch_execute("SET session_replication_role = 'replica';")
+            .await
+            .map_err(DbError::from)?;
+        client
+            .execute(
+                "UPDATE objects SET state = $1 WHERE id = $2",
+                &[&"Deactivated", &uid_a],
+            )
+            .await
+            .map_err(DbError::from)?;
+        client
+            .batch_execute("SET session_replication_role = 'origin';")
+            .await
+            .map_err(DbError::from)?;
+    }
+    let (state_a2, _) = pg.retrieve_state(&uid_a).await?.expect("object exists");
+    if state_a2 != State::Destroyed {
+        return Err(DbError::ServerError(format!(
+            "Expected state_a2 to be Destroyed, got {state_a2:?}"
+        )));
+    }
+
+    // Ordering 2 (reversed): local Deactivated; replicated write carries the higher-rank Destroyed.
+    pg.update_state(&uid_b, State::Deactivated).await?;
+    {
+        let client = pg.raw_pool().get().await.map_err(DbError::from)?;
+        client
+            .batch_execute("SET session_replication_role = 'replica';")
+            .await
+            .map_err(DbError::from)?;
+        client
+            .execute(
+                "UPDATE objects SET state = $1 WHERE id = $2",
+                &[&"Destroyed", &uid_b],
+            )
+            .await
+            .map_err(DbError::from)?;
+        client
+            .batch_execute("SET session_replication_role = 'origin';")
+            .await
+            .map_err(DbError::from)?;
+    }
+    let (state_b, _) = pg.retrieve_state(&uid_b).await?.expect("object exists");
+    if state_b != State::Destroyed {
+        return Err(DbError::ServerError(format!(
+            "Expected state_b to be Destroyed, got {state_b:?}"
+        )));
+    }
+
+    // Regression guard: explicit KMIP batch UNDO backward transition using
+    // update_state_allow_downgrade bypass succeeds.
+    pg.update_state_allow_downgrade(&uid_b, State::PreActive)
+        .await?;
+    let (state_b2, _) = pg.retrieve_state(&uid_b).await?.expect("object exists");
+    if state_b2 != State::PreActive {
+        return Err(DbError::ServerError(format!(
+            "Expected state_b2 to be PreActive, got {state_b2:?}"
+        )));
+    }
+
+    Ok(())
+}
+
 /// `PostgreSQL` failover retry test.
 ///
 /// Verifies that when one node in a multi-host `PostgreSQL` cluster goes down, the
@@ -420,6 +551,275 @@ pub(crate) async fn test_db_postgresql_failover() -> DbResult<()> {
         return Err(DbError::ServerError(format!(
             "Expected failover to complete within 5s but took {elapsed:?}"
         )));
+    }
+
+    Ok(())
+}
+
+#[ignore = "Orchestrated by `mise run test:db:pgedge` (requires the pgedge Docker Compose profile)."]
+#[tokio::test]
+pub(crate) async fn test_db_pgedge_active_active() -> DbResult<()> {
+    use std::{collections::HashSet, time::Duration};
+
+    use cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            KmipOperation, extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+            kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+        },
+    };
+    use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore, PermissionsStore, UserId};
+    use uuid::Uuid;
+
+    log_init(option_env!("RUST_LOG"));
+
+    let url1 = std::env::var("KMS_PGEDGE_1_URL")
+        .unwrap_or_else(|_| "postgresql://kms:kms@127.0.0.1:6432/kms".to_owned());
+    let url2 = std::env::var("KMS_PGEDGE_2_URL")
+        .unwrap_or_else(|_| "postgresql://kms:kms@127.0.0.1:6433/kms".to_owned());
+
+    // Instantiate PgPool on both nodes: creates KMS schema, PK migrations, and monotonic trigger
+    let pg1 = PgPool::instantiate(&url1, true, None).await?;
+    let pg2 = PgPool::instantiate(&url2, true, None).await?;
+
+    // Wire Spock logical multi-master replication on both nodes (idempotent setup)
+    {
+        let c1 = pg1.raw_pool().get().await.map_err(DbError::from)?;
+        c1.batch_execute("CREATE EXTENSION IF NOT EXISTS spock;")
+            .await
+            .map_err(DbError::from)?;
+        let n1_exists: bool = c1
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM spock.node WHERE node_name = 'n1');",
+                &[],
+            )
+            .await
+            .map_err(DbError::from)?
+            .get(0);
+        if !n1_exists {
+            c1.batch_execute(
+                "SELECT spock.node_create(node_name := 'n1', dsn := 'host=pgedge1 port=5432 dbname=kms user=kms password=kms');",
+            )
+            .await
+            .map_err(DbError::from)?;
+        }
+        c1.batch_execute("SELECT spock.repset_add_all_tables('default', ARRAY['public']);")
+            .await
+            .map_err(DbError::from)?;
+    }
+
+    {
+        let c2 = pg2.raw_pool().get().await.map_err(DbError::from)?;
+        c2.batch_execute("CREATE EXTENSION IF NOT EXISTS spock;")
+            .await
+            .map_err(DbError::from)?;
+        let n2_exists: bool = c2
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM spock.node WHERE node_name = 'n2');",
+                &[],
+            )
+            .await
+            .map_err(DbError::from)?
+            .get(0);
+        if !n2_exists {
+            c2.batch_execute(
+                "SELECT spock.node_create(node_name := 'n2', dsn := 'host=pgedge2 port=5432 dbname=kms user=kms password=kms');",
+            )
+            .await
+            .map_err(DbError::from)?;
+        }
+        c2.batch_execute("SELECT spock.repset_add_all_tables('default', ARRAY['public']);")
+            .await
+            .map_err(DbError::from)?;
+    }
+
+    // Create subscriptions and wait for initial sync
+    {
+        let c1 = pg1.raw_pool().get().await.map_err(DbError::from)?;
+        let sub1_exists: bool = c1
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM spock.subscription WHERE sub_name = 'sub_n1_n2');",
+                &[],
+            )
+            .await
+            .map_err(DbError::from)?
+            .get(0);
+        if !sub1_exists {
+            c1.batch_execute(
+                "SELECT spock.sub_create(subscription_name := 'sub_n1_n2', provider_dsn := 'host=pgedge2 port=5432 dbname=kms user=kms password=kms');",
+            )
+            .await
+            .map_err(DbError::from)?;
+        }
+        c1.batch_execute("SELECT spock.sub_wait_for_sync('sub_n1_n2');")
+            .await
+            .map_err(DbError::from)?;
+    }
+
+    {
+        let c2 = pg2.raw_pool().get().await.map_err(DbError::from)?;
+        let sub2_exists: bool = c2
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM spock.subscription WHERE sub_name = 'sub_n2_n1');",
+                &[],
+            )
+            .await
+            .map_err(DbError::from)?
+            .get(0);
+        if !sub2_exists {
+            c2.batch_execute(
+                "SELECT spock.sub_create(subscription_name := 'sub_n2_n1', provider_dsn := 'host=pgedge1 port=5432 dbname=kms user=kms password=kms');",
+            )
+            .await
+            .map_err(DbError::from)?;
+        }
+        c2.batch_execute("SELECT spock.sub_wait_for_sync('sub_n2_n1');")
+            .await
+            .map_err(DbError::from)?;
+    }
+
+    // Prepare test objects
+    let owner = UserId::from("pgedge_test_user");
+    let sym_key_bytes = [0_u8; 32];
+    let key_obj = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &sym_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )
+    .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+
+    let uid_1 = Uuid::new_v4().to_string();
+    let uid_2 = Uuid::new_v4().to_string();
+
+    pg1.atomic(
+        &owner,
+        &[
+            AtomicOperation::Create((
+                uid_1.clone(),
+                owner.clone(),
+                key_obj.clone(),
+                Attributes::default(),
+                HashSet::new(),
+            )),
+            AtomicOperation::Create((
+                uid_2.clone(),
+                owner.clone(),
+                key_obj.clone(),
+                Attributes::default(),
+                HashSet::new(),
+            )),
+        ],
+    )
+    .await?;
+
+    // Wait for initial object replication to arrive on pg2
+    {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        loop {
+            if pg2.retrieve_state(&uid_1).await?.is_some()
+                && pg2.retrieve_state(&uid_2).await?.is_some()
+            {
+                break;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Err(DbError::ServerError(
+                    "Timed out waiting for initial objects to replicate from pg1 to pg2".to_owned(),
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }
+
+    // State convergence Ordering 1:
+    // pg1 writes Destroyed; pg2 writes Deactivated on same object
+    pg1.update_state(&uid_1, State::Destroyed).await?;
+    pg2.update_state(&uid_1, State::Deactivated).await?;
+
+    // State convergence Ordering 2:
+    // pg2 writes Destroyed; pg1 writes Deactivated on same object
+    pg2.update_state(&uid_2, State::Destroyed).await?;
+    pg1.update_state(&uid_2, State::Deactivated).await?;
+
+    // Poll both nodes until convergence for both objects
+    {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        loop {
+            let s1_on_pg1 = pg1.retrieve_state(&uid_1).await?.map(|(s, _)| s);
+            let s1_on_pg2 = pg2.retrieve_state(&uid_1).await?.map(|(s, _)| s);
+            let s2_on_pg1 = pg1.retrieve_state(&uid_2).await?.map(|(s, _)| s);
+            let s2_on_pg2 = pg2.retrieve_state(&uid_2).await?.map(|(s, _)| s);
+            if s1_on_pg1 == Some(State::Destroyed)
+                && s1_on_pg2 == Some(State::Destroyed)
+                && s2_on_pg1 == Some(State::Destroyed)
+                && s2_on_pg2 == Some(State::Destroyed)
+            {
+                break;
+            }
+
+            if tokio::time::Instant::now() >= deadline {
+                return Err(DbError::ServerError(format!(
+                    "Timed out waiting for state convergence to Destroyed. uid_1: (pg1={s1_on_pg1:?}, pg2={s1_on_pg2:?}), uid_2: (pg1={s2_on_pg1:?}, pg2={s2_on_pg2:?})"
+                )));
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }
+
+    // Grant/revoke convergence (documented LWW limitation)
+    let alice = UserId::from("alice");
+    // First create a permission row for alice on uid_1 on pg1 and wait for it to replicate
+    pg1.grant_operations(&uid_1, &alice, HashSet::from([KmipOperation::Get]))
+        .await?;
+    {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        loop {
+            let r2 = pg2
+                .list_user_operations_on_object(&uid_1, &alice, false)
+                .await?;
+            if r2.contains(&KmipOperation::Get) {
+                break;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Err(DbError::ServerError(
+                    "Timed out waiting for initial grant to replicate from pg1 to pg2".to_owned(),
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }
+
+    // Concurrently revoke on pg2 and grant additional operations on pg1
+    pg2.remove_operations(&uid_1, &alice, HashSet::from([KmipOperation::Get]))
+        .await?;
+    pg1.grant_operations(&uid_1, &alice, HashSet::from([KmipOperation::Encrypt]))
+        .await?;
+
+    // Poll until read_access converges to the same state on both nodes
+    {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        loop {
+            let perm1 = pg1
+                .list_user_operations_on_object(&uid_1, &alice, false)
+                .await?;
+            let perm2 = pg2
+                .list_user_operations_on_object(&uid_1, &alice, false)
+                .await?;
+
+            if perm1 == perm2 {
+                // Both nodes agreed (converged)
+                break;
+            }
+
+            if tokio::time::Instant::now() >= deadline {
+                return Err(DbError::ServerError(format!(
+                    "Timed out waiting for read_access convergence. pg1={perm1:?}, pg2={perm2:?}"
+                )));
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
     }
 
     Ok(())
