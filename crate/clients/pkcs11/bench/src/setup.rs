@@ -14,7 +14,9 @@ use ckms::reexport::cosmian_kms_cli_actions::reexport::{
             create_ec_key_pair_request, create_rsa_key_pair_request, symmetric_key_create_request,
         },
     },
-    cosmian_kms_client::{KmsClient, KmsClientConfig},
+    cosmian_kms_client::{
+        KmsClient, KmsClientConfig, reexport::cosmian_http_client::HttpClientConfig,
+    },
 };
 
 use crate::error::{BenchError, BenchResult};
@@ -43,17 +45,18 @@ const DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 
 /// Creates one AES secret key, one RSA key pair, one EC P-256 key pair, and
 /// (opt-in) one Ed25519 and/or one secp256k1 key pair in the KMS pointed at by
-/// `server_url`, returning the client and identifiers needed by the differential
+/// `http_config`, returning the client and identifiers needed by the differential
 /// overhead benchmarks.
 pub(crate) async fn provision_bench_keys(
-    server_url: &str,
+    http_config: HttpClientConfig,
     provision_ed25519: bool,
     provision_secp256k1: bool,
 ) -> BenchResult<BenchSetup> {
-    let mut config = KmsClientConfig::default();
-    server_url.clone_into(&mut config.http_config.server_url);
+    let config = KmsClientConfig {
+        http_config,
+        ..KmsClientConfig::default()
+    };
     let client = KmsClient::new_with_config(config)?;
-
     let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
         .unwrap_or_else(|_| DISK_ENCRYPTION_TAG.to_owned());
 
