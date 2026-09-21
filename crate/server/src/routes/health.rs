@@ -26,6 +26,8 @@ struct DependencyHealth {
 #[derive(Serialize, Debug)]
 struct Dependencies {
     database: DependencyHealth,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    audit: Option<DependencyHealth>,
 }
 
 #[derive(Serialize, Debug)]
@@ -49,7 +51,12 @@ pub(crate) async fn get_health(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult
     let start = Instant::now();
 
     let db_dep = health_dependencies(&kms).await;
-    let global_status = if db_dep.status == HealthStatus::Up {
+    let audit_dep = audit_dependency(&kms);
+    let global_status = if db_dep.status == HealthStatus::Up
+        && audit_dep
+            .as_ref()
+            .is_none_or(|d| d.status == HealthStatus::Up)
+    {
         HealthStatus::Up
     } else {
         HealthStatus::Down
@@ -58,7 +65,10 @@ pub(crate) async fn get_health(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult
     let response = HealthResponse {
         status: global_status,
         latency_ms: start.elapsed().as_millis(),
-        dependencies: Dependencies { database: db_dep },
+        dependencies: Dependencies {
+            database: db_dep,
+            audit: audit_dep,
+        },
     };
 
     let http_response = match response.status {
@@ -92,4 +102,24 @@ async fn health_dependencies(kms: &Arc<KMS>) -> DependencyHealth {
             message: Some(e),
         },
     }
+}
+
+/// `None` when audit logging isn't configured — the endpoint omits the dependency
+/// entirely rather than reporting a misleading status for a disabled feature.
+fn audit_dependency(kms: &KMS) -> Option<DependencyHealth> {
+    kms.audit_store.as_ref().map(|store| {
+        if store.is_healthy() {
+            DependencyHealth {
+                name: Some("audit".to_owned()),
+                status: HealthStatus::Up,
+                message: None,
+            }
+        } else {
+            DependencyHealth {
+                name: Some("audit".to_owned()),
+                status: HealthStatus::Down,
+                message: Some("writer task has stopped; audit logging is disabled".to_owned()),
+            }
+        }
+    })
 }

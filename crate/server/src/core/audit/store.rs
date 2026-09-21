@@ -137,6 +137,16 @@ impl AuditFileStore {
         all_queued
     }
 
+    /// Reports whether the writer task still owns the channel receiver.
+    ///
+    /// This is channel liveness, not persistence readiness: it stays `true` while
+    /// `FileSink::resume()` is still retrying recovery, and while the sink is
+    /// size-capped. It only turns `false` once the writer task has exited (e.g. a
+    /// panic, or a future `AuditSink::resume()` that gives up instead of retrying).
+    pub(crate) fn is_healthy(&self) -> bool {
+        !self.sender.is_closed()
+    }
+
     /// Awaits until every event enqueued before this call has been written by
     /// the writer task (and, for the real `File` sink, `fsync`'d). Unlike
     /// `enqueue`, this uses a blocking `send` so the barrier itself is never
@@ -612,6 +622,26 @@ mod tests {
         );
 
         std::fs::remove_file(&path).ok();
+    }
+
+    /// A freshly started store's writer task still owns the channel receiver.
+    #[tokio::test]
+    async fn is_healthy_true_for_live_writer() {
+        let path = temp_path("healthy_live");
+        std::fs::remove_file(&path).ok();
+
+        let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+        assert!(store.is_healthy());
+
+        store.flush().await;
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// A store whose receiver was dropped (writer task never runs) reports unhealthy.
+    #[test]
+    fn is_healthy_false_once_writer_channel_is_closed() {
+        let store = AuditFileStore::new_disconnected();
+        assert!(!store.is_healthy());
     }
 
     /// A last line that isn't valid JSON at all, but the file DOES end in `\n` (a complete,
