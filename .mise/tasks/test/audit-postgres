@@ -8,8 +8,9 @@
 #USAGE }
 # Starts a dedicated `postgres-audit` container (docker-compose.yml), provisions the
 # restricted `kms_audit_writer` role used by the no-DDL-rights fallback test, runs the
-# #[ignore]-gated live unit tests in crate/server_database and crate/clients/clap, then
-# the full end-to-end integration test (real KMS server + ckms CLI against PostgreSQL).
+# #[ignore]-gated live unit tests in crate/server_database, crate/clients/clap, and
+# crate/server (the real AuditStore::start_postgres controlling path), then the full
+# end-to-end integration test (real KMS server + ckms CLI against PostgreSQL).
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/test_slots.sh"
@@ -65,6 +66,10 @@ cargo test -p cosmian_kms_server_database --lib stores::audit "${FEATURES_FLAG[@
 
 print_status "Running live unit tests: cosmian_kms_cli_actions..."
 cargo test -p cosmian_kms_cli_actions --lib actions::audit "${FEATURES_FLAG[@]}" \
+  -- --ignored --test-threads=1
+
+print_status "Running live acceptance test: cosmian_kms_server (real AuditStore::start_postgres controlling path)..."
+cargo test -p cosmian_kms_server --lib core::audit::store::live_postgres_tests "${FEATURES_FLAG[@]}" \
   -- --ignored --test-threads=1
 
 print_status "Running end-to-end integration test (KMS server + ckms CLI)..."

@@ -151,7 +151,6 @@ jobs:
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
           KMS_POSTGRES_URL: postgresql://kms:kms@127.0.0.1:5432/kms
-          KMS_AUDIT_POSTGRES_URL: postgresql://kms:kms@127.0.0.1:5432/kms
 
           MYSQL_DATABASE: kms
           MYSQL_ROOT_PASSWORD: kms
