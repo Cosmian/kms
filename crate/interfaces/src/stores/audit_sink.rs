@@ -36,7 +36,7 @@ pub enum SealReason {
     /// A row that verifies on its own but does not chain to its predecessor.
     BrokenLink,
     /// Bytes/columns that don't decode as an `AuditEvent` at all.
-    Unparseable,
+    Unparsable,
     /// A valid, verified row whose `id` is `i64::MAX` — continuing the chain in place
     /// would overflow the next id.
     IdOverflow,
@@ -49,7 +49,7 @@ impl SealReason {
         match self {
             Self::HashMismatch => "hash_mismatch",
             Self::BrokenLink => "broken_link",
-            Self::Unparseable => "unparseable",
+            Self::Unparsable => "unparsable",
             Self::IdOverflow => "id_overflow",
         }
     }
