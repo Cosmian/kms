@@ -1239,6 +1239,8 @@ Crate path: `crate/clients/pkcs11/provider`
 | `error` | `ensure_backend_registered: failed to load ckms.toml: {}.                  Check that ckms.toml exists alongside the DLL                  (C:\opt\oracle\extapi\64\pkcs11\ckms.toml),                  at ~/.cosmian/ckms.toml, or set CKMS_CONF to its path.` | `src/lib.rs` | `{}`: caught error reading/parsing ckms.toml | Renamed from `C_GetFunctionList: failed to load ckms.toml: {}...`. Configuration file missing or invalid; verify the search paths listed in the message. |
 | `error` | `remote_verify failed for Pkcs11PublicKey with remote_id {}: {e}` | `src/pkcs11_public_key.rs` | `e` | - |
 | `debug` | `remote_verify: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`, `algorithm` | - |
+| `warn` | `find_all_objects: failed to build Certificate object: {e}, skipping` | `src/backend.rs` | `e` | - |
+| `warn` | `find_all_objects: failed to fetch Certificate objects: {e}, skipping certificates` | `src/backend.rs` | `e` | - |
 
 ### `cosmian_pkcs11_module`
 
@@ -1314,6 +1316,10 @@ Crate path: `crate/clients/pkcs11/module`
 | `error` | `CKM_AES_GCM pParameter incorrect size: {} != {}` | `src/core/mechanism.rs` | actual size in bytes, expected `CK_GCM_PARAMS` size in bytes | Caller passed a mechanism parameter buffer of the wrong size for `CKM_AES_GCM`; request is rejected before any unaligned/OOB read. |
 | `error` | `CKM_AES_GCM: unsupported ulTagBits {} (only {} is supported)` | `src/core/mechanism.rs` | requested tag length in bits, only supported tag length in bits (128) | The module only implements the standard 128-bit GCM authentication tag; any other `ulTagBits` value is rejected. |
 | `debug` | `parse_mechanism: CKM_AES_GCM iv_len: {}, aad_len: {}` | `src/core/mechanism.rs` | IV length in bytes, AAD length in bytes | Diagnostic trace emitted after successfully parsing a `CK_GCM_PARAMS` mechanism parameter (read via `read_unaligned` for C-caller safety). No sensitive key material is logged. |
+| `warn` | `CKO_DATA search: failed to refresh {remote_id} from KMS: {e}, keeping cached stub` | `src/sessions.rs` | `remote_id`, `e` | - |
+| `warn` | `CKO_DATA search: full fetch for {remote_id} returned no object, keeping cached stub` | `src/sessions.rs` | `remote_id` | - |
+| `warn` | `load_find_context_by_class: failed to refresh public key {} with full key material: {e}, using cached (metadata-only) object` | `src/sessions.rs` | `e` | - |
+| `debug` | `CKO_DATA match: remote_id={remote_id}, handle={handle}` | `src/sessions.rs` | `remote_id`, `handle` | - |
 
 ---
 
