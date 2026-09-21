@@ -211,10 +211,21 @@ KMS_PID=""
 JWT_PROVIDER_SPEC="https://${TRUST_DOMAIN},http://127.0.0.1:8088/jwks.json,${AUDIENCE}"
 KMS_SVID_LOG="/tmp/kms-spire-jwt-svid-server.log"
 
+# Generate config TOML with [idp_auth] because --config takes precedence and ignores CLI args
+KMS_SVID_CONFIG_FILE=$(mktemp /tmp/kms-svid-conf.toml.XXXXXX)
+cat "${KMS_CONFIG_FILE}" >"${KMS_SVID_CONFIG_FILE}"
+cat >>"${KMS_SVID_CONFIG_FILE}" <<EOF
+
+[ui_config]
+ui_index_html_folder = "${REPO_ROOT}/ui/dist"
+
+[idp_auth]
+jwt_auth_provider = ["${JWT_PROVIDER_SPEC}"]
+jwt_svid_auth = true
+EOF
+
 "$(get_kms_bin)" \
-  --config "${KMS_CONFIG_FILE}" \
-  --jwt-auth-provider "${JWT_PROVIDER_SPEC}" \
-  --jwt-svid-auth \
+  --config "${KMS_SVID_CONFIG_FILE}" \
   >"${KMS_SVID_LOG}" 2>&1 &
 KMS_PID=$!
 
@@ -222,7 +233,6 @@ if ! wait_for_port 127.0.0.1 9998 120; then
   print_error "KMS failed to start with --jwt-svid-auth. Check ${KMS_SVID_LOG}"
 fi
 print_success "KMS server ready with --jwt-svid-auth."
-
 # ── Step 8: Mint JWT-SVID for workload and configure ckms ─────────────────────
 print_status "Step 8: Minting JWT-SVID via spire-server..."
 MINT_OUTPUT=$(docker exec "${SPIRE_SERVER_CONTAINER}" \
@@ -268,6 +278,108 @@ if echo "${OWNED_OUTPUT}" | grep -q "${TEST_KEY_ID}"; then
   print_success "Object is owned by the authenticated SPIFFE ID (${WORKLOAD_SPIFFE_ID})!"
 else
   print_error "Key '${TEST_KEY_ID}' not found in list-owned output: ${OWNED_OUTPUT}"
+fi
+# ── Step 10: Run Playwright E2E test with JWT-SVID bearer token ───────────────
+print_status "Step 10: Running Playwright E2E test with JWT-SVID bearer token..."
+export PLAYWRIGHT_KMS_URL="https://127.0.0.1:9998"
+export TEST_JWT_SVID_TOKEN="${JWT_TOKEN}"
+export TEST_SPIFFE_ID="${WORKLOAD_SPIFFE_ID}"
+
+if (cd "${REPO_ROOT}/ui" && ([ -d node_modules ] || pnpm install --frozen-lockfile) && CI=true pnpm run test:e2e -- spiffe-jwt-svid-auth.spec.ts); then
+  print_success "Playwright E2E test for SPIFFE JWT-SVID passed."
+else
+  print_error "Playwright E2E test for SPIFFE JWT-SVID failed."
+fi
+
+# ── Step 11: Mint a demo-user JWT-SVID and log into the Web UI with it ────────
+print_status "Step 11: Minting demo-user JWT-SVID and testing Web UI SPIFFE login..."
+DEMO_USER_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/webui-demo-user"
+DEMO_MINT_OUTPUT=$(docker exec "${SPIRE_SERVER_CONTAINER}" \
+  /opt/spire/bin/spire-server jwt mint \
+  -socketPath /tmp/spire-server/private/api.sock \
+  -spiffeID "${DEMO_USER_SPIFFE_ID}" \
+  -audience "${AUDIENCE}" \
+  -ttl 1h)
+
+DEMO_JWT_TOKEN=$(echo "${DEMO_MINT_OUTPUT}" | awk '/^token:/{print $2}' | tr -d '\r\n')
+if [[ -z "${DEMO_JWT_TOKEN}" ]]; then
+  DEMO_JWT_TOKEN=$(echo "${DEMO_MINT_OUTPUT}" | grep -E '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$' | head -n1 | tr -d '\r\n')
+fi
+if [[ -z "${DEMO_JWT_TOKEN}" ]]; then
+  print_error "Failed to extract demo-user JWT-SVID. Mint output: ${DEMO_MINT_OUTPUT}"
+fi
+print_success "Demo-user JWT-SVID minted for ${DEMO_USER_SPIFFE_ID}."
+
+export PLAYWRIGHT_KMS_URL="https://127.0.0.1:9998"
+export TEST_JWT_SVID_TOKEN="${DEMO_JWT_TOKEN}"
+export TEST_SPIFFE_ID="${DEMO_USER_SPIFFE_ID}"
+
+if (cd "${REPO_ROOT}/ui" && ([ -d node_modules ] || pnpm install --frozen-lockfile) && CI=true pnpm run test:e2e -- spiffe-ui-login.spec.ts); then
+  print_success "Playwright E2E test for the Web UI SPIFFE login form passed."
+else
+  print_error "Playwright E2E test for the Web UI SPIFFE login form failed."
+fi
+
+# ── Step 12: Validate mTLS + JWT-SVID simultaneously ───────────────────────────
+print_status "Step 12: Validating mTLS + JWT-SVID configured together..."
+kill "${KMS_PID}" 2>/dev/null || true
+wait "${KMS_PID}" 2>/dev/null || true
+KMS_PID=""
+
+KMS_MTLS_JWT_LOG="/tmp/kms-spire-mtls-jwt-svid.log"
+KMS_DUAL_CONFIG_FILE=$(mktemp /tmp/kms-dual-conf.toml.XXXXXX)
+sed "/\[tls\]/a\\
+clients_ca_cert_file = \"${TEST_DATA}/certs/ca.crt\"
+" "${KMS_CONFIG_FILE}" >"${KMS_DUAL_CONFIG_FILE}"
+cat >>"${KMS_DUAL_CONFIG_FILE}" <<EOF
+
+[idp_auth]
+jwt_auth_provider = ["${JWT_PROVIDER_SPEC}"]
+jwt_svid_auth = true
+EOF
+"$(get_kms_bin)" \
+  --config "${KMS_DUAL_CONFIG_FILE}" \
+  >"${KMS_MTLS_JWT_LOG}" 2>&1 &
+KMS_PID=$!
+
+if ! wait_for_port 127.0.0.1 9998 120; then
+  print_error "KMS failed to start with both mTLS and --jwt-svid-auth. Check ${KMS_MTLS_JWT_LOG}"
+fi
+print_success "KMS server ready with both mTLS and --jwt-svid-auth."
+
+# 1. Test request using JWT-SVID bearer token (no client cert)
+TEST_KEY_ID_JWT="spiffe-dual-jwt-key-$(date +%s)"
+"$(get_ckms_bin)" --conf-path "${SVID_CKMS_CONF}" --accept-invalid-certs \
+  sym keys create "${TEST_KEY_ID_JWT}"
+print_success "Key '${TEST_KEY_ID_JWT}' created via JWT-SVID on dual-auth server."
+
+OWNED_OUTPUT_JWT=$("$(get_ckms_bin)" --conf-path "${SVID_CKMS_CONF}" --accept-invalid-certs \
+  access-rights owned)
+if echo "${OWNED_OUTPUT_JWT}" | grep -q "${TEST_KEY_ID_JWT}"; then
+  print_success "Dual auth (JWT-SVID path): Object is owned by ${WORKLOAD_SPIFFE_ID}!"
+else
+  print_error "Key '${TEST_KEY_ID_JWT}' not found in list-owned output: ${OWNED_OUTPUT_JWT}"
+fi
+
+# 2. Test request using mTLS client certificate (no JWT bearer token)
+MTLS_CKMS_CONF=$(mktemp /tmp/ckms-mtls.toml.XXXXXX)
+cat >"${MTLS_CKMS_CONF}" <<EOF
+[http_config]
+server_url = "https://localhost:9998"
+tls_client_pem_cert_path = "${TEST_DATA}/certs/spire-client.crt"
+tls_client_pem_key_path = "${TEST_DATA}/certs/spire-client.key"
+EOF
+TEST_KEY_ID_MTLS="spiffe-dual-mtls-key-$(date +%s)"
+"$(get_ckms_bin)" --conf-path "${MTLS_CKMS_CONF}" --accept-invalid-certs \
+  sym keys create "${TEST_KEY_ID_MTLS}"
+print_success "Key '${TEST_KEY_ID_MTLS}' created via mTLS client cert on dual-auth server."
+
+OWNED_OUTPUT_MTLS=$("$(get_ckms_bin)" --conf-path "${MTLS_CKMS_CONF}" --accept-invalid-certs \
+  access-rights owned)
+if echo "${OWNED_OUTPUT_MTLS}" | grep -q "${TEST_KEY_ID_MTLS}"; then
+  print_success "Dual auth (mTLS path): Object is owned by spire-client (certificate CN)!"
+else
+  print_error "Key '${TEST_KEY_ID_MTLS}' not found in list-owned output: ${OWNED_OUTPUT_MTLS}"
 fi
 
 print_header "SPIRE JWT-SVID end-to-end integration test PASSED successfully"

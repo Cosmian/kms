@@ -36,6 +36,9 @@
         "oidc": "OIDC",
         "certificate": "Certificat client",
         "authVerifier": "Nom d'utilisateur et mot de passe",
+        "spiffe": "SPIFFE JWT-SVID",
+        "spiffeSvidPlaceholder": "Collez votre JWT-SVID SPIFFE",
+        "spiffeLoginFailed": "Échec de la connexion SPIFFE JWT-SVID",
         "accessKms": "ACCÉDER AU KMS",
         "certErrorDescription": "Aucun certificat client n'a été fourni ou il est invalide. Si le problème persiste, fermez toutes les instances de votre navigateur et relancez-le avec le certificat client correct préalablement chargé."
     }

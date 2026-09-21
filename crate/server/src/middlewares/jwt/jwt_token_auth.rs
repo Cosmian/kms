@@ -100,6 +100,27 @@ fn resolve_authenticated_user(
     }
 }
 
+/// Validate a raw JWT-SVID token (no "Bearer " prefix, no `Authorization` header)
+/// against the SPIFFE-JWT-SVID-enabled issuers and resolve an `AuthenticatedUser`.
+///
+/// Used by the Web UI's `/ui/login_svid` endpoint so a browser session can
+/// authenticate with a SPIRE-issued JWT-SVID pasted by the user, reusing the
+/// exact same issuer/JWKS validation as the bearer-token path (`handle_jwt`)
+/// without requiring the Authorization header framing.
+pub(crate) fn validate_jwt_svid(configs: &[JwtConfig], token: &str) -> KResult<AuthenticatedUser> {
+    let mut errors = Vec::new();
+    for config in configs.iter().filter(|c| c.accept_spiffe_subject) {
+        match config.validate_authentication_token(token, true) {
+            Ok(claim) => return resolve_authenticated_user(claim, true),
+            Err(e) => errors.push(e),
+        }
+    }
+    for error in &errors {
+        warn!("{error:?}");
+    }
+    Err(KmsError::InvalidRequest("bad JWT-SVID".to_owned()))
+}
+
 /// Core JWT authentication logic
 ///
 /// Extracts the JWT token from the request, validates it, and checks

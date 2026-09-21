@@ -14,3 +14,4 @@ mod jwt_middleware;
 pub(crate) use jwt_middleware::jwt_auth_middleware;
 
 mod jwt_token_auth;
+pub(crate) use jwt_token_auth::validate_jwt_svid;
