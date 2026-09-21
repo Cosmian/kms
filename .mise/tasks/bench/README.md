@@ -9,7 +9,7 @@ is the canonical reference.
 | --- | --- | --- | --- | --- |
 | 1 | Software baseline | `ckms` + KMS server, all-software crypto (OpenSSL) — no HSM at all | `mise run bench:load` | `ckms_bench` |
 | 2 | HSM-backed KEK | `ckms` + KMS server; keys are software keys wrapped by an HSM-resident KEK — Encrypt/Sign still run in software, only the KEK unwrap touches the HSM | `mise run bench:load-hsm` (default) | `ckms_bench_hsm_kek` |
-| 3 | HSM-delegated crypto | `ckms` + KMS server; `hsm::<slot>::<uuid>` keys — key gen + Encrypt/Sign routed to the HSM's CryptoOracle (PKCS#11), crypto runs ON the HSM | `mise run bench:load-hsm --delegated` | `ckms_bench_hsm` |
+| 3 | HSM-delegated crypto | `ckms` + KMS server; `hsm::<slot>::<uuid>` keys — key gen + Encrypt/Sign routed to the HSM's CryptoOracle (PKCS#11), crypto runs ON the HSM | `mise run bench:load-hsm --delegated` | `ckms_bench_delegated_crypto_operations` |
 | 4 | Real PKCS#11 DLL | `cosmian_pkcs11` shared library `dlopen()`-ed + KMS server — drives the real Cryptoki C ABI (`C_Sign`, `C_Encrypt`, ...) | `mise run bench:load-pkcs11` | `ckms_bench_pkcs11` |
 
 Benchmarks 2 and 3 are both driven by the same task (`bench/load-hsm`); the

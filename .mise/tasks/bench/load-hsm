@@ -32,14 +32,14 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/bench_helpers.sh"
 # RESIDENT keys. Both key generation and Encrypt/Sign are routed by the
 # server to the HSM's CryptoOracle (PKCS#11) — the crypto operation itself
 # executes ON the HSM, not in KMS software. Results are written to a
-# separate documentation/docs/benchmarks/ckms_bench_hsm/ directory so they
+# separate documentation/docs/benchmarks/ckms_bench_delegated_crypto_operations/ directory so they
 # never clobber the other two reports.
 #
 # In total there are three independent benchmark reports, all linked from
 # the mdBook "Benchmarks" nav section:
 #   1. documentation/docs/benchmarks/ckms_bench/report.md      — bench/load (software baseline)
 #   2. documentation/docs/benchmarks/ckms_bench_hsm_kek/report.md — bench/load-hsm (this task, default)
-#   3. documentation/docs/benchmarks/ckms_bench_hsm/report.md  — bench/load-hsm --delegated
+#   3. documentation/docs/benchmarks/ckms_bench_delegated_crypto_operations/report.md  — bench/load-hsm --delegated
 
 # ── Resolve BENCH_ variables from usage-parsed lowercase names ──────────────────────
 BENCH_VARIANT="${usage_variant:-non-fips}"
@@ -274,6 +274,6 @@ else
   fi
 fi
 
-bench_generate_report "${BENCH_PORT}" "ckms_bench_hsm" "true"
+bench_generate_report "${BENCH_PORT}" "ckms_bench_delegated_crypto_operations" "true"
 
 print_success "HSM-delegated crypto load benchmark completed"
