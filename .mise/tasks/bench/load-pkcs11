@@ -7,6 +7,12 @@
 #USAGE flag "-t --time <t>"         env="BENCH_TIME"          default="20"              help="Measurement time per level (seconds)"
 #USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16"  help="Comma-separated concurrency levels"
 #USAGE flag "-u --server-url <u>"  env="BENCH_SERVER_URL"    default=""                help="Use an already-running KMS server at this URL instead of building/starting a temporary local one (e.g. a remote/non-local deployment). The cosmian_pkcs11 provider and pkcs11_bench binary are still built locally — only the KMS server itself is external."
+#USAGE flag "--accept-invalid-certs"  env="BENCH_ACCEPT_INVALID_CERTS"                 help="Allow connecting to an HTTPS KMS server with an untrusted or self-signed certificate"
+#USAGE flag "--tls-ca-cert <p>"       env="BENCH_TLS_CA_CERT"                          help="Path to a PEM-encoded CA certificate file used to verify the KMS server certificate"
+#USAGE flag "--tls-client-pem-cert <p>" env="BENCH_TLS_CLIENT_PEM_CERT"                help="Path to a client certificate in PEM format for mutual TLS authentication"
+#USAGE flag "--tls-client-pem-key <p>"  env="BENCH_TLS_CLIENT_PEM_KEY"                 help="Path to a client private key in PEM format for mutual TLS authentication"
+#USAGE flag "--tls-client-pkcs12 <p>"   env="BENCH_TLS_CLIENT_PKCS12"                  help="Path to a client PKCS#12 archive (.p12 / .pfx) for mutual TLS authentication"
+#USAGE flag "--tls-client-pkcs12-password <s>" env="BENCH_TLS_CLIENT_PKCS12_PASSWORD" help="Password for the client PKCS#12 archive"
 #USAGE flag "-W --warmup <s>"       env="BENCH_WARMUP"        default="5"               help="Warmup time before the load sweep (seconds)"
 #USAGE flag "-C --cooldown <s>"     env="BENCH_COOLDOWN"      default="2"               help="Cooldown between concurrency levels (seconds)"
 #USAGE flag "-s --sanity"           env="BENCH_SANITY"                                  help="Quick sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt"
@@ -29,6 +35,12 @@ BENCH_MODE="${usage_mode:-all}"
 BENCH_TIME="${usage_time:-20}"
 BENCH_CONCURRENCY="${usage_concurrency:-1,2,4,8,16}"
 BENCH_SERVER_URL="${usage_server_url:-}"
+BENCH_ACCEPT_INVALID_CERTS="${usage_accept_invalid_certs:-}"
+BENCH_TLS_CA_CERT="${usage_tls_ca_cert:-}"
+BENCH_TLS_CLIENT_PEM_CERT="${usage_tls_client_pem_cert:-}"
+BENCH_TLS_CLIENT_PEM_KEY="${usage_tls_client_pem_key:-}"
+BENCH_TLS_CLIENT_PKCS12="${usage_tls_client_pkcs12:-}"
+BENCH_TLS_CLIENT_PKCS12_PASSWORD="${usage_tls_client_pkcs12_password:-}"
 BENCH_WARMUP="${usage_warmup:-5}"
 BENCH_COOLDOWN="${usage_cooldown:-2}"
 BENCH_SANITY="${usage_sanity:-}"
@@ -103,14 +115,25 @@ PKCS11_LIB="$(get_cosmian_pkcs11_lib "${CARGO_TARGET_DIR}" "${BUILD_DIR}")"
 if [ -n "${BENCH_SERVER_URL}" ]; then
   KMS_BASE_URL="${BENCH_SERVER_URL%/}"
   echo "Using existing KMS server at ${KMS_BASE_URL} (no local server will be started)..."
-  # Reuse kms_wait_ready's polling/error-reporting for a fast, clear failure if the
-  # remote server is unreachable, instead of letting pkcs11_bench fail deep inside
-  # its own key-provisioning step with a cryptic error. Pass "$$" (this script's own
-  # always-alive PID) as the "kms_pid" arg: kms_wait_ready's early-exit branch only
-  # fires when that PID has died, which correctly never happens here — we are not
-  # tracking/owning the remote process. /dev/null stands in for the log file kms_wait_ready
-  # dumps on timeout, since there is no local server log for a remote server.
-  kms_wait_ready "${KMS_BASE_URL}/kmip/2_1" "$$" /dev/null 15
+  # Wait for remote KMS server readiness. If TLS options are set, use curl with appropriate flags.
+  PROBE_CURL_ARGS=(-sS --max-time 2 -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}')
+  [ "${BENCH_ACCEPT_INVALID_CERTS}" = "true" ] && PROBE_CURL_ARGS+=(--insecure)
+  [ -n "${BENCH_TLS_CA_CERT}" ] && PROBE_CURL_ARGS+=(--cacert "${BENCH_TLS_CA_CERT}")
+  [ -n "${BENCH_TLS_CLIENT_PEM_CERT}" ] && PROBE_CURL_ARGS+=(--cert "${BENCH_TLS_CLIENT_PEM_CERT}")
+  [ -n "${BENCH_TLS_CLIENT_PEM_KEY}" ] && PROBE_CURL_ARGS+=(--key "${BENCH_TLS_CLIENT_PEM_KEY}")
+  echo "Waiting for KMS server at ${KMS_BASE_URL} to be ready..."
+  READY=false
+  for _i in $(seq 1 15); do
+    if env -u LD_PRELOAD -u LD_LIBRARY_PATH curl "${PROBE_CURL_ARGS[@]}" "${KMS_BASE_URL}/kmip/2_1" 2>/dev/null | grep -Eq '^[0-9]{3}$'; then
+      READY=true
+      break
+    fi
+    sleep 1
+  done
+  if [ "${READY}" = "false" ]; then
+    echo "ERROR: KMS server at ${KMS_BASE_URL} did not respond within 15s" >&2
+    exit 1
+  fi
 else
   BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
   bench_start_server "$BENCH_PORT" "$TMP_DIR"
@@ -126,7 +149,19 @@ CKMS_CONF="${TMP_DIR}/ckms.toml"
 cat >"${CKMS_CONF}" <<EOF
 [http_config]
 server_url = "${KMS_BASE_URL}"
+$( [ "${BENCH_ACCEPT_INVALID_CERTS}" = "true" ] && echo 'accept_invalid_certs = true' )
+$( [ -n "${BENCH_TLS_CLIENT_PEM_CERT}" ] && echo "tls_client_pem_cert_path = \"${BENCH_TLS_CLIENT_PEM_CERT}\"" )
+$( [ -n "${BENCH_TLS_CLIENT_PEM_KEY}" ] && echo "tls_client_pem_key_path = \"${BENCH_TLS_CLIENT_PEM_KEY}\"" )
+$( [ -n "${BENCH_TLS_CLIENT_PKCS12}" ] && echo "tls_client_pkcs12_path = \"${BENCH_TLS_CLIENT_PKCS12}\"" )
+$( [ -n "${BENCH_TLS_CLIENT_PKCS12_PASSWORD}" ] && echo "tls_client_pkcs12_password = \"${BENCH_TLS_CLIENT_PKCS12_PASSWORD}\"" )
 EOF
+if [ -n "${BENCH_TLS_CA_CERT}" ]; then
+  {
+    echo 'verified_cert = """'
+    cat "${BENCH_TLS_CA_CERT}"
+    echo '"""'
+  } >>"${CKMS_CONF}"
+fi
 export CKMS_CONF
 
 # CRITERION_HOME is where the benchmark binary writes load_pkcs11.json and where
@@ -161,6 +196,13 @@ if [ "${BENCH_CRITERION}" = "true" ]; then
   [ "${BENCH_OVERHEAD}" = "true" ] && CRITERION_ARGS+=(--overhead)
 fi
 
+TLS_BENCH_ARGS=()
+[ "${BENCH_ACCEPT_INVALID_CERTS}" = "true" ] && TLS_BENCH_ARGS+=(--accept-invalid-certs)
+[ -n "${BENCH_TLS_CA_CERT}" ] && TLS_BENCH_ARGS+=(--tls-ca-cert "${BENCH_TLS_CA_CERT}")
+[ -n "${BENCH_TLS_CLIENT_PEM_CERT}" ] && TLS_BENCH_ARGS+=(--tls-client-pem-cert "${BENCH_TLS_CLIENT_PEM_CERT}")
+[ -n "${BENCH_TLS_CLIENT_PEM_KEY}" ] && TLS_BENCH_ARGS+=(--tls-client-pem-key "${BENCH_TLS_CLIENT_PEM_KEY}")
+[ -n "${BENCH_TLS_CLIENT_PKCS12}" ] && TLS_BENCH_ARGS+=(--tls-client-pkcs12 "${BENCH_TLS_CLIENT_PKCS12}")
+[ -n "${BENCH_TLS_CLIENT_PKCS12_PASSWORD}" ] && TLS_BENCH_ARGS+=(--tls-client-pkcs12-password "${BENCH_TLS_CLIENT_PKCS12_PASSWORD}")
 "${PKCS11_BENCH_BIN}" \
   --pkcs11-lib "${PKCS11_LIB}" \
   --kms-url "${KMS_BASE_URL}" \
@@ -170,7 +212,8 @@ fi
   --warmup "${BENCH_WARMUP}" \
   --cooldown "${BENCH_COOLDOWN}" \
   ${SHARED_SESSION_ARGS[@]+"${SHARED_SESSION_ARGS[@]}"} \
-  ${CRITERION_ARGS[@]+"${CRITERION_ARGS[@]}"}
+  ${CRITERION_ARGS[@]+"${CRITERION_ARGS[@]}"} \
+  ${TLS_BENCH_ARGS[@]+"${TLS_BENCH_ARGS[@]}"}
 
 # Dedicated report directory (documentation/docs/benchmarks/ckms_bench_pkcs11/) so
 # this never clobbers the ckms_bench / ckms_bench_hsm_kek / ckms_bench_delegated_crypto_operations reports
