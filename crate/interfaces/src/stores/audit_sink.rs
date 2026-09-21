@@ -22,7 +22,7 @@ use crate::InterfaceResult;
 
 /// Position of the audit hash chain: the id to assign to the next event, and the
 /// `row_hash` of the last durably persisted one.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ChainHead {
     pub next_id: i64,
     pub prev_hash: [u8; 32],

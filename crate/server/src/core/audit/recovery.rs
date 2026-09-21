@@ -124,8 +124,8 @@ struct InteriorChainVerification {
 
 /// Classifies the tail of `path` to decide how startup should recover.
 ///
-/// Reads only the last `TAIL_WINDOW` bytes (O(1) regardless of log size) and retains the
-/// last **two** candidate rows so `TruncateContinue` can fall back past a torn fragment to
+/// Reads only the last `TAIL_WINDOW` bytes and retains the last **two**
+/// candidate rows so `TruncateContinue` can fall back past a torn fragment to
 /// the row before it.
 ///
 /// # Errors
@@ -152,7 +152,6 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
         return Ok(TailOutcome::Genesis);
     }
 
-    // Seek to the tail window so startup cost is O(1) regardless of log size.
     let seek_pos = file_len.saturating_sub(TAIL_WINDOW);
     if seek_pos > 0 {
         file.seek(std::io::SeekFrom::Start(seek_pos))
