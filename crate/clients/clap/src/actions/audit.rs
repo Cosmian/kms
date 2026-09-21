@@ -255,32 +255,39 @@ impl ExportAuditAction {
         };
 
         for instance in &instances {
-            let mut after_id = -1_i64;
-            loop {
-                let page = reader
-                    .events_page(instance, after_id)
-                    .await
-                    .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
-                if page.is_empty() {
-                    break;
-                }
-                for event in &page {
-                    after_id = event.id;
-                    if let Some(ts) = since {
-                        if event.timestamp < ts {
-                            continue;
-                        }
+            for generation in reader
+                .list_generations(instance)
+                .await
+                .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?
+            {
+                let mut after_id = -1_i64;
+                loop {
+                    let page = reader
+                        .events_page(instance, generation, after_id)
+                        .await
+                        .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+                    if page.is_empty() {
+                        break;
                     }
-                    let output_line = match self.format {
-                        ExportFormat::Json => serde_json::to_string(event).map_err(|e| {
-                            crate::error::KmsCliError::Default(format!(
-                                "cannot serialize event id={}: {e}",
-                                event.id
-                            ))
-                        })?,
-                        ExportFormat::Cef => to_cef_line(event, &self.kms_version),
-                    };
-                    writeln!(out, "{output_line}").map_err(crate::error::KmsCliError::IoError)?;
+                    for event in &page {
+                        after_id = event.id;
+                        if let Some(ts) = since {
+                            if event.timestamp < ts {
+                                continue;
+                            }
+                        }
+                        let output_line = match self.format {
+                            ExportFormat::Json => serde_json::to_string(event).map_err(|e| {
+                                crate::error::KmsCliError::Default(format!(
+                                    "cannot serialize event id={}: {e}",
+                                    event.id
+                                ))
+                            })?,
+                            ExportFormat::Cef => to_cef_line(event, &self.kms_version),
+                        };
+                        writeln!(out, "{output_line}")
+                            .map_err(crate::error::KmsCliError::IoError)?;
+                    }
                 }
             }
         }
@@ -297,13 +304,16 @@ impl ExportAuditAction {
 ///    (or is all-zeros for the first event).
 /// 3. (File source only) every `audit:reanchor` event's sealed evidence file still
 ///    exists next to the log and its SHA-256 still matches the digest recorded in the
-///    event — the `PostgreSQL` backend has no equivalent, since its writes are atomic
-///    and it has no torn-write/reanchor recovery path.
+///    event. The `PostgreSQL` backend also seals and reanchors on content corruption
+///    (using immutable chain generations instead of renamed files), but this command
+///    does not yet cross-check a Postgres reanchor's recorded evidence digest against
+///    its sealed generation — see the audit operator guide for the manual `psql`
+///    reproduction recipe in the meantime.
 ///
 /// `--path` may be a single file or a directory. A directory is scanned for every
 /// `*.jsonl` file, each verified as its own **independent** chain. `--audit-postgres-url`
-/// verifies every instance in the database (or just `--audit-instance-id` if given),
-/// each again as its own independent chain.
+/// verifies every instance's every generation in the database (or just
+/// `--audit-instance-id` if given), each generation again as its own independent chain.
 ///
 /// Exits with code **0** when every chain is intact, or **1** when a broken
 /// link, tampered event, or altered/missing sealed-evidence file is detected
@@ -513,65 +523,74 @@ impl VerifyAuditAction {
         Ok(())
     }
 
-    /// Pages through one instance's chain, verifying every row's hash and chain link
-    /// without ever materializing the whole chain in memory.
+    /// Pages through one instance's generations in order, verifying every row's hash and
+    /// chain link without ever materializing a whole generation in memory. Each generation
+    /// is its own independent chain (a fresh genesis after a seal-and-roll recovery), so
+    /// `prev`/`after_id` reset at every generation boundary.
     async fn verify_one_postgres_instance<W: Write>(
         &self,
         reader: &PgAuditReader,
         instance_id: &str,
         out: &mut W,
     ) -> KmsCliResult<()> {
-        let mut prev: Option<AuditEvent> = None;
         let mut total: u64 = 0;
-        let mut after_id = -1_i64;
 
-        loop {
-            let page = reader
-                .events_page(instance_id, after_id)
-                .await
-                .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
-            if page.is_empty() {
-                break;
-            }
+        for generation in reader
+            .list_generations(instance_id)
+            .await
+            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?
+        {
+            let mut prev: Option<AuditEvent> = None;
+            let mut after_id = -1_i64;
 
-            for event in page {
-                after_id = event.id;
-
-                if !verify_event(&event) {
-                    return Err(crate::error::KmsCliError::InvalidRequest(format!(
-                        "TAMPERED: instance_id={instance_id} event id={} has an invalid \
-                         row_hash",
-                        event.id
-                    )));
-                }
-                if !verify_chain_link(&event, prev.as_ref()) {
-                    return Err(crate::error::KmsCliError::InvalidRequest(format!(
-                        "CHAIN BROKEN: instance_id={instance_id} event id={} prev_hash does \
-                         not match the row_hash of event id={}",
-                        event.id,
-                        prev.as_ref().map_or(-1, |p| p.id)
-                    )));
+            loop {
+                let page = reader
+                    .events_page(instance_id, generation, after_id)
+                    .await
+                    .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+                if page.is_empty() {
+                    break;
                 }
 
-                if self.verbose {
-                    let status = match &event.result {
-                        AuditResult::Success => "ok",
-                        AuditResult::Failure(_) => "fail",
-                    };
-                    eprintln!(
-                        "id={:>6}  {}  {}  {}  chain=ok",
-                        event.id,
-                        event
-                            .timestamp
-                            .format(&time::format_description::well_known::Rfc3339)
-                            .unwrap_or_default(),
-                        event.operation,
-                        status
-                    );
-                }
+                for event in page {
+                    after_id = event.id;
 
-                total += 1;
-                prev = Some(event);
+                    if !verify_event(&event) {
+                        return Err(crate::error::KmsCliError::InvalidRequest(format!(
+                            "TAMPERED: instance_id={instance_id} generation={generation} \
+                             event id={} has an invalid row_hash",
+                            event.id
+                        )));
+                    }
+                    if !verify_chain_link(&event, prev.as_ref()) {
+                        return Err(crate::error::KmsCliError::InvalidRequest(format!(
+                            "CHAIN BROKEN: instance_id={instance_id} generation={generation} \
+                             event id={} prev_hash does not match the row_hash of event id={}",
+                            event.id,
+                            prev.as_ref().map_or(-1, |p| p.id)
+                        )));
+                    }
+
+                    if self.verbose {
+                        let status = match &event.result {
+                            AuditResult::Success => "ok",
+                            AuditResult::Failure(_) => "fail",
+                        };
+                        eprintln!(
+                            "generation={generation}  id={:>6}  {}  {}  {}  chain=ok",
+                            event.id,
+                            event
+                                .timestamp
+                                .format(&time::format_description::well_known::Rfc3339)
+                                .unwrap_or_default(),
+                            event.operation,
+                            status
+                        );
+                    }
+
+                    total += 1;
+                    prev = Some(event);
+                }
             }
         }
 
