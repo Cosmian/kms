@@ -18,7 +18,9 @@ mod ensure_auth;
 pub(crate) use ensure_auth::ensure_auth_middleware;
 
 mod jwt;
-pub(crate) use jwt::{JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, jwt_auth_middleware};
+pub(crate) use jwt::{
+    JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, jwt_auth_middleware, validate_jwt_svid,
+};
 
 mod rate_limiter;
 pub(crate) use rate_limiter::{RateLimiterConfig, RateLimiterMiddleware};

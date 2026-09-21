@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
 import { useBranding } from "../contexts/useBranding";
-import { AuthMethod, getNoTTLVRequest, loginAuthVerifier } from "../utils/utils";
+import { AuthMethod, getNoTTLVRequest, loginAuthVerifier, loginJwtSvid } from "../utils/utils";
 
 interface LoginProps {
     auth: boolean;
@@ -18,7 +18,9 @@ interface LoginProps {
 
 const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthenticated }) => {
     // Keep only browser-login methods, preserving the server's priority order.
-    const methods = (authMethods ?? []).filter((m): m is AuthMethod => m === "JWT" || m === "AUTH_VERIFIER" || m === "CERT");
+    const methods = (authMethods ?? []).filter(
+        (m): m is AuthMethod => m === "JWT" || m === "AUTH_VERIFIER" || m === "CERT" || m === "SPIFFE",
+    );
     const [selectedMethod, setSelectedMethod] = useState<AuthMethod | undefined>(methods[0]);
     const [isLoading, setIsLoading] = useState(false);
     const [certError, setCertError] = useState<string | null>(null);
@@ -27,6 +29,8 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
     const [authVerifierTotpCode, setAuthVerifierTotpCode] = useState("");
     const [authVerifierTotpRequired, setAuthVerifierTotpRequired] = useState(false);
     const [authVerifierError, setAuthVerifierError] = useState<string | null>(null);
+    const [jwtSvid, setJwtSvid] = useState("");
+    const [svidError, setSvidError] = useState<string | null>(null);
     const { login, serverUrl } = useAuth();
     const navigate = useNavigate();
     const branding = useBranding();
@@ -40,6 +44,8 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
                 return t("login.certificate");
             case "AUTH_VERIFIER":
                 return t("login.authVerifier");
+            case "SPIFFE":
+                return t("login.spiffe");
             default:
                 return method ?? "";
         }
@@ -87,6 +93,8 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
             void handleLogin();
         } else if (method === "CERT") {
             void handleAccessKms();
+        } else if (method === "SPIFFE") {
+            setSelectedMethod("SPIFFE");
         } else {
             setSelectedMethod("AUTH_VERIFIER");
         }
@@ -115,6 +123,22 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
         } catch (err) {
             console.error("Auth Verifier login failed:", err);
             setAuthVerifierError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleJwtSvidLogin = async () => {
+        try {
+            setIsLoading(true);
+            setSvidError(null);
+            await loginJwtSvid(serverUrl, jwtSvid);
+            // Full page navigation so the app's auth bootstrap re-runs and picks up
+            // the session cookie the server just set (same pattern as AUTH_VERIFIER).
+            window.location.assign("/ui/locate");
+        } catch (err) {
+            console.error("SPIFFE JWT-SVID login failed:", err);
+            setSvidError(err instanceof Error ? err.message : String(err));
         } finally {
             setIsLoading(false);
         }
@@ -190,6 +214,30 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
                                 data-testid="auth-verifier-login-submit"
                             >
                                 {authVerifierTotpRequired ? t("login.verifyCode") : t("login.login")}
+                            </Button>
+                        </div>
+                    ) : selectedMethod === "SPIFFE" ? (
+                        <div className="space-y-4 text-left" data-testid="spiffe-login-form">
+                            {svidError && (
+                                <Alert
+                                    type="error"
+                                    showIcon
+                                    message={t("login.spiffeLoginFailed")}
+                                    description={svidError}
+                                    className="text-left mb-4"
+                                    data-testid="spiffe-login-error"
+                                />
+                            )}
+                            <Input.TextArea
+                                autoFocus
+                                rows={4}
+                                placeholder={t("login.spiffeSvidPlaceholder")}
+                                value={jwtSvid}
+                                onChange={(e) => setJwtSvid(e.target.value)}
+                                data-testid="spiffe-svid-input"
+                            />
+                            <Button type="primary" block onClick={handleJwtSvidLogin} loading={isLoading} data-testid="spiffe-login-submit">
+                                {t("login.login")}
                             </Button>
                         </div>
                     ) : selectedMethod === "JWT" ? (

@@ -58,7 +58,7 @@ Crate path: `crate/server`
 | `warn` | `UI folder invalid or Linux default detected, falling back to: {fallback:#?}` | `src/config/params/server_params.rs` | `fallback`: fallback UI folder path | - |
 | `warn` | `{:?} {} 401 unauthorized, no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
 | `warn` | `{:?} {} 401 unauthorized: bad JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
-| `warn` | `{error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | - |
+| `warn` | `{error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | ×2 in this file |
 | `warn` | `{status_code} - {message}` | `src/routes/mod.rs` | `status_code`: HTTP status code<br>`message`: human-readable message text | - |
 | `warn` | `{status} - {}` | `src/routes/jose/error.rs` | `status`: HTTP response status | - |
 | `info` | `AUTHENTICATION token: {:?}` | `src/routes/google_cse/jwt.rs` | - | - |
@@ -1418,6 +1418,7 @@ Crate path: `ui/src/`
 | `debug` | `RsaSign: signature length`                              | `actions/RSA/RsaSign.tsx`                         | —                                                             | —               |
 | `debug` | `RsaVerify: dataBuf len`                                 | `actions/RSA/RsaVerify.tsx`                       | —                                                             | —               |
 | `error` | `Auth Verifier login failed:` | `pages/LoginPage.tsx` | - | - |
+| `error` | `SPIFFE JWT-SVID login failed:` | `pages/LoginPage.tsx` | - | - |
 
 ---
 
