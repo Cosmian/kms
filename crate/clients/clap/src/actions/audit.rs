@@ -959,7 +959,7 @@ mod tests {
 
         let details = format!(
             "{{\"sealed_file\":\"{}\",\"sha256\":\"{recorded_sha256}\",\"size\":{},\
-             \"claimed_last_id\":0,\"failure_offset\":0,\"reason\":\"unparseable\"}}",
+             \"claimed_last_id\":0,\"failure_offset\":0,\"reason\":\"unparsable\"}}",
             sealed_path.file_name().unwrap().to_string_lossy(),
             sealed_content.len()
         );
