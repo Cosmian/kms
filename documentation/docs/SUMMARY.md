@@ -172,7 +172,7 @@
 - [Benchmarks]()
   - [Software](benchmarks/ckms_bench/report.md)
   - [HSM KEK-Wrap](benchmarks/ckms_bench_hsm_kek/report.md)
-  - [HSM Delegated Crypto](benchmarks/ckms_bench_hsm/report.md)
+  - [HSM Delegated Crypto](benchmarks/ckms_bench_delegated_crypto_operations/report.md)
   - [PKCS#11](benchmarks/ckms_bench_pkcs11/report.md)
   - [CPU Scaling & Flamegraphs](benchmarks/cpu_scaling.md)
 - [KMS Clients]()

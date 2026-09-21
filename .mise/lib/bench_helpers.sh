@@ -561,7 +561,7 @@ PYEOF
 # Call after running load tests and/or criterion benchmarks.
 # Usage: bench_generate_report <kms_port> [docs_subdir] [is_hsm] [is_hsm_kek] [is_pkcs11]
 #   docs_subdir defaults to "ckms_bench" (the shared software-bench baseline
-#   used by bench/load). Pass a distinct name (e.g. "ckms_bench_hsm" or
+#   used by bench/load). Pass a distinct name (e.g. "ckms_bench_delegated_crypto_operations" or
 #   "ckms_bench_hsm_kek") to avoid clobbering that baseline with a different
 #   benchmark's results — the docs dir is entirely replaced on each call.
 #   is_hsm ("true"/"false", default "false"): when "true", passes --hsm to
