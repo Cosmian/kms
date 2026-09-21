@@ -302,7 +302,7 @@ Building and running a new, exhaustive `pkcs11-tool` + raw-ABI conformance suite
 - Add an optional `docs_subdir` argument to `bench_generate_report` (default
   `ckms_bench`, unchanged for `bench/load`/`bench/load-hsm`) so
   `bench/load-hsm --delegated` writes its report to a **separate**
-  `documentation/docs/benchmarks/ckms_bench_hsm/` directory instead of
+  `documentation/docs/benchmarks/ckms_bench_delegated_crypto_operations/` directory instead of
   clobbering the software baseline that `bench/load`/`bench/load-hsm` share
   (the shared helper replaces its target directory wholesale on every run)
 
@@ -355,7 +355,7 @@ categorizes as **Symmetric Encryption** rather than falling through to
 protocols/concurrency, SoftHSM2 2.6.1, i9-14900T, release build) now
 completes end-to-end: **6 load-test operations / 46 records / 6 SVG
 charts**, **16 criterion benchmarks / 4 SVG charts**, written to
-`documentation/docs/benchmarks/ckms_bench_hsm/report.md`.
+`documentation/docs/benchmarks/ckms_bench_delegated_crypto_operations/report.md`.
 
 Measured HSM-direct throughput (load test, `ttlv-json`):
 
@@ -514,14 +514,14 @@ a new `-d`/`--delegated` boolean flag:
   wrapped by an HSM-resident KEK).
 - `--delegated`: the HSM-delegated crypto benchmark (all crypto executed
   directly on the HSM), formerly `bench/load-hsm-crypto` — same
-  three-session `--mode all` splitting, same `docs_subdir=ckms_bench_hsm`
+  three-session `--mode all` splitting, same `docs_subdir=ckms_bench_delegated_crypto_operations`
   report output, same `--criterion`/`--speed` flags, unchanged behavior.
 
 Deleted `.mise/tasks/bench/load-hsm-crypto`. Updated the two stale doc-comment
 references in `crate/clients/clap/src/actions/bench/types.rs` and the two
 comment references in `.mise/scripts/bench/plot_version_compare.py` that
 named the old task, and regenerated
-`documentation/docs/benchmarks/ckms_bench_hsm/report.md` (Methodology
+`documentation/docs/benchmarks/ckms_bench_delegated_crypto_operations/report.md` (Methodology
 section) to reference `bench/load-hsm --delegated` instead — this was done
 by re-running `plot_version_compare.py` directly against the existing
 `target/criterion/reports/5.27.0/` data, without a full benchmark re-run,
@@ -548,7 +548,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
     ttlv-bytes`/`all` with `--hsm --load` now prints a skip notice explaining why.
   - `run_hsm_kmip_benches` (criterion mode, via `clap.rs`) is no longer called with
     `Transport::Bytes`; the same skip notice is printed instead.
-- `documentation/docs/benchmarks/ckms_bench_hsm/report.md`'s Protocols section now
+- `documentation/docs/benchmarks/ckms_bench_delegated_crypto_operations/report.md`'s Protocols section now
   documents `ttlv-json` as the only protocol, with the ordering-artefact explanation
   reproduced in full; a new Methodology subsection ("Why ttlv-json only (no
   ttlv-bytes)") documents the root cause for future readers.
@@ -566,7 +566,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
   1. `benchmarks/ckms_bench/report.md` — software baseline (`bench/load`)
   2. `benchmarks/ckms_bench_hsm_kek/report.md` — HSM-backed KEK, software crypto
      (`bench/load-hsm`, default)
-  3. `benchmarks/ckms_bench_hsm/report.md` — HSM-delegated crypto, ttlv-json only
+  3. `benchmarks/ckms_bench_delegated_crypto_operations/report.md` — HSM-delegated crypto, ttlv-json only
      (`bench/load-hsm --delegated`)
 
 ### New independent benchmark: `mise bench:load-pkcs11`
