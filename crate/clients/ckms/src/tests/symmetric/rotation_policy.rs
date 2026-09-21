@@ -205,7 +205,7 @@ pub(crate) async fn test_keyset_encrypt_at_first() -> CosmianResult<()> {
 
     let key_id = create_symmetric_key(
         &owner_client_conf_path,
-        &["--number-of-bits", "256", "kst-enc-first"],
+        &["--number-of-bits", "256", "kst-enc-first-cli"],
     )?;
 
     // Set rotation name
@@ -216,7 +216,7 @@ pub(crate) async fn test_keyset_encrypt_at_first() -> CosmianResult<()> {
         "--key-id",
         &key_id,
         "--rotation-name",
-        "kst-enc-first",
+        "kst-enc-first-cli",
     ];
     run_ckms(&owner_client_conf_path, &args)?;
 
@@ -229,7 +229,7 @@ pub(crate) async fn test_keyset_encrypt_at_first() -> CosmianResult<()> {
     encrypt(
         &owner_client_conf_path,
         input_file.to_str().unwrap(),
-        "kst-enc-first@first",
+        "kst-enc-first-cli@first",
         DataEncryptionAlgorithm::AesGcm,
         None,
         Some(encrypted_file.to_str().unwrap()),
@@ -247,7 +247,7 @@ pub(crate) async fn test_keyset_encrypt_at_first() -> CosmianResult<()> {
     let result = encrypt(
         &owner_client_conf_path,
         input_file2.to_str().unwrap(),
-        "kst-enc-first@first",
+        "kst-enc-first-cli@first",
         DataEncryptionAlgorithm::AesGcm,
         None,
         Some(encrypted_file2.to_str().unwrap()),
@@ -263,7 +263,7 @@ pub(crate) async fn test_keyset_encrypt_at_first() -> CosmianResult<()> {
     decrypt(
         &owner_client_conf_path,
         encrypted_file.to_str().unwrap(),
-        "kst-enc-first@first",
+        "kst-enc-first-cli@first",
         DataEncryptionAlgorithm::AesGcm,
         None,
         Some(decrypted_file.to_str().unwrap()),
@@ -362,7 +362,7 @@ pub(crate) async fn test_keyset_encrypt_at_generation_n() -> CosmianResult<()> {
 
     let key_id = create_symmetric_key(
         &owner_client_conf_path,
-        &["--number-of-bits", "256", "kst-enc-gen-n"],
+        &["--number-of-bits", "256", "kst-enc-gen-n-cli"],
     )?;
 
     let args = vec![
@@ -372,7 +372,7 @@ pub(crate) async fn test_keyset_encrypt_at_generation_n() -> CosmianResult<()> {
         "--key-id",
         &key_id,
         "--rotation-name",
-        "kst-enc-gen-n",
+        "kst-enc-gen-n-cli",
     ];
     run_ckms(&owner_client_conf_path, &args)?;
 
@@ -388,7 +388,7 @@ pub(crate) async fn test_keyset_encrypt_at_generation_n() -> CosmianResult<()> {
     encrypt(
         &owner_client_conf_path,
         input_file.to_str().unwrap(),
-        "kst-enc-gen-n@1",
+        "kst-enc-gen-n-cli@1",
         DataEncryptionAlgorithm::AesGcm,
         None,
         Some(encrypted_file.to_str().unwrap()),
@@ -406,7 +406,7 @@ pub(crate) async fn test_keyset_encrypt_at_generation_n() -> CosmianResult<()> {
     let result = encrypt(
         &owner_client_conf_path,
         input_file2.to_str().unwrap(),
-        "kst-enc-gen-n@1",
+        "kst-enc-gen-n-cli@1",
         DataEncryptionAlgorithm::AesGcm,
         None,
         Some(encrypted_file2.to_str().unwrap()),
@@ -422,7 +422,7 @@ pub(crate) async fn test_keyset_encrypt_at_generation_n() -> CosmianResult<()> {
     decrypt(
         &owner_client_conf_path,
         encrypted_file.to_str().unwrap(),
-        "kst-enc-gen-n@1",
+        "kst-enc-gen-n-cli@1",
         DataEncryptionAlgorithm::AesGcm,
         None,
         Some(decrypted_file.to_str().unwrap()),
@@ -442,7 +442,7 @@ pub(crate) async fn test_keyset_decrypt_at_first() -> CosmianResult<()> {
 
     let key_id = create_symmetric_key(
         &owner_client_conf_path,
-        &["--number-of-bits", "256", "kst-dec-first"],
+        &["--number-of-bits", "256", "kst-dec-first-cli"],
     )?;
 
     let args = vec![
@@ -452,7 +452,7 @@ pub(crate) async fn test_keyset_decrypt_at_first() -> CosmianResult<()> {
         "--key-id",
         &key_id,
         "--rotation-name",
-        "kst-dec-first",
+        "kst-dec-first-cli",
     ];
     run_ckms(&owner_client_conf_path, &args)?;
 
@@ -480,7 +480,7 @@ pub(crate) async fn test_keyset_decrypt_at_first() -> CosmianResult<()> {
     decrypt(
         &owner_client_conf_path,
         encrypted_file.to_str().unwrap(),
-        "kst-dec-first@first",
+        "kst-dec-first-cli@first",
         DataEncryptionAlgorithm::AesGcm,
         None,
         Some(decrypted_file.to_str().unwrap()),
@@ -500,7 +500,7 @@ pub(crate) async fn test_keyset_decrypt_at_generation_n() -> CosmianResult<()> {
 
     let key_id = create_symmetric_key(
         &owner_client_conf_path,
-        &["--number-of-bits", "256", "kst-dec-gen-n"],
+        &["--number-of-bits", "256", "kst-dec-gen-n-cli"],
     )?;
 
     let args = vec![
@@ -510,7 +510,7 @@ pub(crate) async fn test_keyset_decrypt_at_generation_n() -> CosmianResult<()> {
         "--key-id",
         &key_id,
         "--rotation-name",
-        "kst-dec-gen-n",
+        "kst-dec-gen-n-cli",
     ];
     run_ckms(&owner_client_conf_path, &args)?;
 
@@ -539,7 +539,7 @@ pub(crate) async fn test_keyset_decrypt_at_generation_n() -> CosmianResult<()> {
     decrypt(
         &owner_client_conf_path,
         encrypted_file.to_str().unwrap(),
-        "kst-dec-gen-n@0",
+        "kst-dec-gen-n-cli@0",
         DataEncryptionAlgorithm::AesGcm,
         None,
         Some(decrypted_file.to_str().unwrap()),
@@ -559,7 +559,7 @@ pub(crate) async fn test_keyset_encrypt_at_invalid_generation() -> CosmianResult
 
     let key_id = create_symmetric_key(
         &owner_client_conf_path,
-        &["--number-of-bits", "256", "kst-invalid-gen"],
+        &["--number-of-bits", "256", "kst-invalid-gen-cli"],
     )?;
 
     let args = vec![
@@ -569,7 +569,7 @@ pub(crate) async fn test_keyset_encrypt_at_invalid_generation() -> CosmianResult
         "--key-id",
         &key_id,
         "--rotation-name",
-        "kst-invalid-gen",
+        "kst-invalid-gen-cli",
     ];
     run_ckms(&owner_client_conf_path, &args)?;
 
@@ -582,7 +582,7 @@ pub(crate) async fn test_keyset_encrypt_at_invalid_generation() -> CosmianResult
     let result = encrypt(
         &owner_client_conf_path,
         input_file.to_str().unwrap(),
-        "kst-invalid-gen@99",
+        "kst-invalid-gen-cli@99",
         DataEncryptionAlgorithm::AesGcm,
         None,
         Some(encrypted_file.to_str().unwrap()),

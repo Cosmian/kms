@@ -609,9 +609,9 @@ bench_generate_report() {
   local plot_script="${MISE_CONFIG_ROOT:-$(get_repo_root)}/.mise/scripts/bench/plot_version_compare.py"
 
   # Derive version label from running server (only the numeric part, e.g. "5.24.0").
+  local base_url="${base_url_override:-http://127.0.0.1:${port}}"
   local raw_version
-  raw_version="$(curl -sf "http://127.0.0.1:${port}/version" 2>/dev/null || true)"
-  local version
+  raw_version="$(curl -sf "${base_url}/version" 2>/dev/null || true)"
   # Strip JSON quotes then take only the first whitespace-delimited token.
   version="$(printf '%s' "${raw_version}" | tr -d '"' | awk '{print $1}')"
   [ -z "${version}" ] && version="current"

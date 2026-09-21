@@ -150,10 +150,12 @@ chmod 644 "${COLLECTOR_CONFIG_FILE}"
 COLLECTOR_METRICS_DIR="$(mktemp -d /tmp/otel-metrics-XXXXXXXX)"
 chmod 777 "${COLLECTOR_METRICS_DIR}"
 
-# Pull first so the container starts immediately rather than pulling during the readiness wait.
-echo "==> Pulling OTel collector image..."
+# Pull images first so container startup is instantaneous and not subject
+# to network download latency during readiness wait loops.
+echo "==> Pulling monitoring images..."
 docker pull otel/opentelemetry-collector-contrib:latest 2>/dev/null
-
+docker pull victoriametrics/victoria-metrics:latest 2>/dev/null
+docker pull grafana/grafana:latest 2>/dev/null
 echo "==> Starting OTel collector (gRPC port ${OTEL_GRPC_PORT}, Prometheus debug port ${OTEL_PROM_PORT})..."
 docker run --rm --name "${COLLECTOR_CONTAINER}" \
   --network "${MON_NETWORK}" \
@@ -217,12 +219,12 @@ done
 echo "    OTel collector Prometheus port ready (${waited}s)."
 
 # ── Wait for VictoriaMetrics ──────────────────────────────────────────────────
-
 echo "==> Waiting for VictoriaMetrics on port ${VM_PORT}..."
 waited=0
 while ! curl -sf "http://127.0.0.1:${VM_PORT}/api/v1/query?query=up" >/dev/null 2>&1; do
-  if [ "${waited}" -ge 30 ]; then
-    echo "ERROR: VictoriaMetrics did not become ready within 30s." >&2
+  if [ "${waited}" -ge 45 ]; then
+    echo "ERROR: VictoriaMetrics did not become ready within 45s." >&2
+    docker logs "${VM_CONTAINER}" 2>&1 || true
     exit 1
   fi
   sleep 1
@@ -235,15 +237,15 @@ echo "    VictoriaMetrics ready (${waited}s)."
 echo "==> Waiting for Grafana on port ${GRAFANA_PORT}..."
 waited=0
 while ! curl -sf "http://127.0.0.1:${GRAFANA_PORT}/api/health" >/dev/null 2>&1; do
-  if [ "${waited}" -ge 60 ]; then
-    echo "ERROR: Grafana did not become ready within 60s." >&2
+  if [ "${waited}" -ge 90 ]; then
+    echo "ERROR: Grafana did not become ready within 90s." >&2
+    docker logs "${GRAFANA_CONTAINER}" 2>&1 || true
     exit 1
   fi
   sleep 2
   waited=$((waited + 2))
 done
 echo "    Grafana ready (${waited}s)."
-
 # ── Build KMS ─────────────────────────────────────────────────────────────────
 
 echo "==> Building KMS server + ckms CLI..."

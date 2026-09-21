@@ -1354,6 +1354,7 @@ cryptoki_fn!(
                 private_key: private_key.clone(),
                 operation: SignOperation::Classic,
                 payload: None,
+                pending_signature: None,
             });
             Ok(())
         })
@@ -1413,7 +1414,11 @@ cryptoki_fn!(
     ) {
         initialized!();
         valid_session!(hSession);
-        not_null!(pSignature, "C_SignFinal: pSignature");
+        // `pSignature` MAY be NULL: per the PKCS#11 spec, callers first invoke
+        // C_SignFinal with a NULL `pSignature` to query the required buffer
+        // length via `pulSignatureLen`, then call again with an allocated
+        // buffer (the standard two-call convention `pkcs11-tool` uses for
+        // multi-part signing). Only `pulSignatureLen` is required.
         not_null!(pulSignatureLen, "C_SignFinal: pulSignatureLen");
         sessions::session(hSession, |session| -> ModuleResult<()> {
             unsafe { session.sign(None, pSignature, pulSignatureLen) }?;
@@ -1825,6 +1830,7 @@ cryptoki_fn!(
                 private_key: private_key.clone(),
                 operation: SignOperation::Message,
                 payload: None,
+                pending_signature: None,
             });
             Ok(())
         })

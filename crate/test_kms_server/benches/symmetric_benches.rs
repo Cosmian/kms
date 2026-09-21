@@ -145,18 +145,7 @@ pub(crate) fn bench_encrypt_aes_256_gcm_100000(c: &mut Criterion) {
 }
 
 #[cfg(feature = "non-fips")]
-pub(crate) fn bench_encrypt_chacha20_128_poly1305(c: &mut Criterion) {
-    bench_encrypt(
-        c,
-        "ChaCha20 128 Poly1305",
-        128,
-        chacha20_cryptographic_parameters(),
-        1,
-    );
-}
-
-#[cfg(feature = "non-fips")]
-pub(crate) fn bench_encrypt_chacha20_256_poly1305(c: &mut Criterion) {
+pub(crate) fn bench_encrypt_chacha20_poly1305(c: &mut Criterion) {
     bench_encrypt(
         c,
         "ChaCha20 256 Poly1305",
@@ -267,18 +256,7 @@ pub(crate) fn bench_decrypt_aes_256_gcm_100000(c: &mut Criterion) {
 }
 
 #[cfg(feature = "non-fips")]
-pub(crate) fn bench_decrypt_chacha20_128_poly1305(c: &mut Criterion) {
-    bench_decrypt(
-        c,
-        "Chacha20 Poly1305",
-        128,
-        chacha20_cryptographic_parameters(),
-        1,
-    );
-}
-
-#[cfg(feature = "non-fips")]
-pub(crate) fn bench_decrypt_chacha20_256_poly1305(c: &mut Criterion) {
+pub(crate) fn bench_decrypt_chacha20_poly1305(c: &mut Criterion) {
     bench_decrypt(
         c,
         "Chacha20 Poly1305",

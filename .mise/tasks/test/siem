@@ -30,7 +30,8 @@ SUITE="${SUITE:-all}"
 REPO_ROOT="$(get_repo_root)"
 
 ensure_elasticsearch() {
-  if ! curl -sf "http://127.0.0.1:9200/_cluster/health" >/dev/null 2>&1; then
+  local es_port="${KMS_SLOT_ES_PORT:-9200}"
+  if ! curl -sf "http://127.0.0.1:${es_port}/_cluster/health" >/dev/null 2>&1; then
     if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
       print_status "Elasticsearch is not running. Auto-starting via docker compose..."
       docker compose up -d elasticsearch

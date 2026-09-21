@@ -132,9 +132,13 @@ fn extract_object_uid(ttlv: &TTLV, op_name: &str, is_response: bool) -> Option<S
     };
     match op_name {
         op if op.contains('+') => None,
-        "Create" | "CreateKeyPair" if is_response => {
+        "Create" if is_response => {
             find_ttlv_recursive(ttlv, "UniqueIdentifier").and_then(text_string)
         }
+        "CreateKeyPair" if is_response => find_ttlv_recursive(ttlv, "PrivateKeyUniqueIdentifier")
+            .or_else(|| find_ttlv_recursive(ttlv, "UniqueIdentifier"))
+            .or_else(|| find_ttlv_recursive(ttlv, "PublicKeyUniqueIdentifier"))
+            .and_then(text_string),
         "Create" | "CreateKeyPair" => None,
         _ => {
             if let TTLValue::Structure(children) = &ttlv.value {
@@ -182,11 +186,35 @@ fn extract_algorithm(ttlv: &TTLV, op_name: &str) -> Option<String> {
 
     match op_name {
         op if op.contains('+') => None,
-        "Create" | "CreateKeyPair" | "Register" => {
+        "Create" | "Register" => {
             if let TTLValue::Structure(children) = &ttlv.value {
                 children
                     .iter()
                     .find(|c| c.tag == "Attributes")
+                    .and_then(child_algo)
+            } else {
+                None
+            }
+        }
+        "CreateKeyPair" => {
+            if let TTLValue::Structure(children) = &ttlv.value {
+                // KMIP 2.1 uses CommonAttributes / PrivateKeyAttributes / PublicKeyAttributes;
+                // KMIP 1.4 uses CommonTemplateAttribute / PrivateKeyTemplateAttribute / PublicKeyTemplateAttribute.
+                // In both versions, the algorithm is inside one of these attribute containers.
+                children
+                    .iter()
+                    .find(|c| {
+                        matches!(
+                            c.tag.as_str(),
+                            "CommonAttributes"
+                                | "CommonTemplateAttribute"
+                                | "PrivateKeyAttributes"
+                                | "PrivateKeyTemplateAttribute"
+                                | "PublicKeyAttributes"
+                                | "PublicKeyTemplateAttribute"
+                                | "Attributes"
+                        )
+                    })
                     .and_then(child_algo)
             } else {
                 None
@@ -262,16 +290,28 @@ pub(super) fn inject_response_uid(req: &HttpRequest, response_ttlv: &TTLV, op_na
                 continue;
             };
             // Backfill UID for Create/CreateKeyPair from response
-            if ctx.object_uid.is_none()
-                && (ctx.operation == "Create" || ctx.operation == "CreateKeyPair")
-            {
-                ctx.object_uid = find_ttlv_recursive(resp_item, "UniqueIdentifier").and_then(|t| {
-                    if let TTLValue::TextString(s) = &t.value {
-                        Some(s.clone())
-                    } else {
-                        None
-                    }
-                });
+            if ctx.object_uid.is_none() {
+                if ctx.operation == "Create" {
+                    ctx.object_uid =
+                        find_ttlv_recursive(resp_item, "UniqueIdentifier").and_then(|t| {
+                            if let TTLValue::TextString(s) = &t.value {
+                                Some(s.clone())
+                            } else {
+                                None
+                            }
+                        });
+                } else if ctx.operation == "CreateKeyPair" {
+                    ctx.object_uid = find_ttlv_recursive(resp_item, "PrivateKeyUniqueIdentifier")
+                        .or_else(|| find_ttlv_recursive(resp_item, "UniqueIdentifier"))
+                        .or_else(|| find_ttlv_recursive(resp_item, "PublicKeyUniqueIdentifier"))
+                        .and_then(|t| {
+                            if let TTLValue::TextString(s) = &t.value {
+                                Some(s.clone())
+                            } else {
+                                None
+                            }
+                        });
+                }
             }
             // Backfill per-item result from ResultStatus/ResultReason
             let result_status = enum_field_name(fields, "ResultStatus", |code| {

@@ -160,7 +160,6 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
         }
     }
 }
-
 /// Returns `true` for return codes that indicate the requested mechanism (or its
 /// parameters) is simply not supported by the loaded PKCS#11 library — as opposed to
 /// a hard failure. Callers use this to gracefully degrade (e.g. report the mechanism

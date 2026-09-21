@@ -587,7 +587,7 @@ repos:
         entry: bash .mise/scripts/pre-commit/smart-log-index.sh
         language: system
         pass_filenames: false
-        files: \.(rs|ts|tsx)$
+        always_run: true
 
       - id: generate-docs
         name: Regenerate all documentation (smart — only on CLI/config changes)

@@ -21,7 +21,7 @@ else
   mise run test:audit-compat-generate-fixture --output "${AUDIT_FILE}"
 fi
 OPENSEARCH_HOST=127.0.0.1
-OPENSEARCH_PORT=9200
+OPENSEARCH_PORT="${KMS_SLOT_ES_PORT:-9200}"
 CONTAINER_NAME="kms-audit-compat-opensearch-$$"
 audit_compat_container_cleanup_trap "${CONTAINER_NAME}"
 

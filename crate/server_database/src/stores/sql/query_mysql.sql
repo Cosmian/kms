@@ -90,6 +90,9 @@ SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.st
 FROM objects
 WHERE objects.id = ?;
 
+-- name: select-object-state
+SELECT objects.state, objects.attributes FROM objects WHERE objects.id = ?;
+
 -- name: select-object-for-update
 SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
 FROM objects
@@ -167,7 +170,7 @@ SELECT read_access.id, COALESCE(objects.owner, ''), COALESCE(objects.state, 'Act
 FROM read_access
          LEFT JOIN objects
                     ON objects.id = read_access.id
-WHERE read_access.userid = ?;
+WHERE read_access.userid = ? OR read_access.userid = '*';
 
 -- name: insert-tags
 INSERT INTO tags (id, tag)
