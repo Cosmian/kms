@@ -37,6 +37,7 @@ mod setup;
 
 use std::time::Duration;
 
+use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::reexport::cosmian_http_client::HttpClientConfig;
 use clap::Parser;
 use criterion_bench::{BenchSpeed, CriterionRunConfig, PayloadMode, run_criterion};
 use error::BenchResult;
@@ -57,6 +58,30 @@ struct Cli {
     /// before the Cryptoki hot loop starts.
     #[arg(long, default_value = "http://127.0.0.1:9998")]
     kms_url: String,
+
+    /// Allow connecting to an HTTPS KMS server with an untrusted or self-signed certificate.
+    #[arg(long)]
+    accept_invalid_certs: bool,
+
+    /// Path to a PEM-encoded CA certificate file used to verify the KMS server certificate.
+    #[arg(long)]
+    tls_ca_cert: Option<std::path::PathBuf>,
+
+    /// Path to a client certificate in PEM format for mutual TLS authentication.
+    #[arg(long)]
+    tls_client_pem_cert: Option<std::path::PathBuf>,
+
+    /// Path to a client private key in PEM format for mutual TLS authentication.
+    #[arg(long)]
+    tls_client_pem_key: Option<std::path::PathBuf>,
+
+    /// Path to a client PKCS#12 archive (.p12 / .pfx) for mutual TLS authentication.
+    #[arg(long)]
+    tls_client_pkcs12: Option<std::path::PathBuf>,
+
+    /// Password for the client PKCS#12 archive.
+    #[arg(long)]
+    tls_client_pkcs12_password: Option<String>,
 
     /// Which operation family to benchmark.
     #[arg(long, value_enum, default_value_t = BenchMode::All)]
@@ -199,10 +224,35 @@ fn main() -> BenchResult<()> {
     // Provision the benchmark keys via the KMS REST API before opening the
     // Cryptoki session — needs its own (short-lived) Tokio runtime since the rest
     // of this binary is a plain synchronous FFI hot loop.
+    let mut http_config = HttpClientConfig {
+        accept_invalid_certs: cli.accept_invalid_certs,
+        server_url: cli.kms_url.clone(),
+        tls_client_pem_cert_path: cli
+            .tls_client_pem_cert
+            .map(|p| p.to_string_lossy().into_owned()),
+        tls_client_pem_key_path: cli
+            .tls_client_pem_key
+            .map(|p| p.to_string_lossy().into_owned()),
+        tls_client_pkcs12_path: cli
+            .tls_client_pkcs12
+            .map(|p| p.to_string_lossy().into_owned()),
+        tls_client_pkcs12_password: cli.tls_client_pkcs12_password.clone(),
+        ..HttpClientConfig::default()
+    };
+    if let Some(ca_path) = cli.tls_ca_cert {
+        let ca_pem = std::fs::read_to_string(&ca_path).map_err(|e| {
+            error::BenchError::Setup(format!(
+                "failed to read CA certificate from {}: {e}",
+                ca_path.display()
+            ))
+        })?;
+        http_config.verified_cert = Some(ca_pem);
+    }
+
     let runtime = tokio::runtime::Runtime::new()
         .map_err(|e| error::BenchError::Setup(format!("failed to start Tokio runtime: {e}")))?;
     let setup = runtime.block_on(setup::provision_bench_keys(
-        &cli.kms_url,
+        http_config,
         provision_ed25519,
         provision_secp256k1,
     ))?;
