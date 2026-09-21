@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use actix_session::Session;
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
@@ -11,7 +11,7 @@ use url::Url;
 
 use crate::{
     config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig},
-    middlewares::{UserId, reject_reserved_aws_xks_identity},
+    middlewares::{JwtConfig, UserId, reject_reserved_aws_xks_identity, validate_jwt_svid},
 };
 
 fn random_b64url(len_bytes: usize) -> Result<String, ()> {
@@ -351,6 +351,12 @@ pub(crate) struct AuthVerifierLoginRequest {
     totp_code: Option<String>,
 }
 
+/// Request body for `POST /ui/login_svid`.
+#[derive(Debug, Deserialize)]
+pub(crate) struct JwtSvidLoginRequest {
+    jwt_svid: String,
+}
+
 /// Mirrors the Auth Verifier server's `AuthenticationResult` shape
 /// (see `authentication/client/src/models/login.rs`). Duplicated here — rather than
 /// depending on the `authentication` crate — the same way `ckms login cosmian`
@@ -538,6 +544,43 @@ pub(crate) async fn login_as(
     }
 }
 
+/// SPIFFE JWT-SVID Web UI login.
+///
+/// The browser posts a JWT-SVID minted by `spire-server jwt mint` (or obtained
+/// via the SPIRE Workload API). Validated against the SPIFFE-enabled JWT
+/// issuers configured via `--jwt-auth-provider` + `--jwt-svid-auth` — the same
+/// configuration already used for bearer-token API/KMIP authentication. On
+/// success the `sub` claim (`spiffe://<trust-domain>/<path>`) becomes the
+/// session's `user_id`, exactly like the OIDC `callback` and Auth Verifier
+/// `login_as` flows above.
+#[post("/login_svid")]
+pub(crate) async fn login_svid(
+    session: Session,
+    body: web::Json<JwtSvidLoginRequest>,
+    jwt_configurations: web::Data<Arc<Vec<JwtConfig>>>,
+) -> HttpResponse {
+    if !jwt_configurations.iter().any(|c| c.accept_spiffe_subject) {
+        return HttpResponse::InternalServerError().json(
+            serde_json::json!({ "error": "SPIFFE JWT-SVID login is not enabled on this server" }),
+        );
+    }
+
+    let authenticated = match validate_jwt_svid(&jwt_configurations, body.jwt_svid.trim()) {
+        Ok(user) => user,
+        Err(e) => {
+            return HttpResponse::Unauthorized()
+                .json(serde_json::json!({ "error": format!("{e}") }));
+        }
+    };
+
+    if session.insert("user_id", &authenticated.username).is_err() {
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({ "next_step": "Authenticated" }))
+}
+
 #[get("/whoami")]
 pub(crate) async fn whoami(session: Session) -> HttpResponse {
     match session.get::<String>("user_id") {
@@ -613,6 +656,7 @@ pub fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(login)
         .service(callback)
         .service(login_as)
+        .service(login_svid)
         .service(whoami)
         .service(logout)
         .service(get_auth_method);

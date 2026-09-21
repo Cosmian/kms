@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🚀 Features
+
+#### SPIFFE JWT-SVID Authentication ([#1206](https://github.com/Cosmian/kms/pull/1206))
+
+- Support workload authentication using SPIFFE JWT-SVIDs issued by SPIRE's OIDC Discovery Provider
+- Add `--jwt-svid-auth` flag / `[idp_auth] jwt_svid_auth = true` to accept tokens without an `email` claim when `sub` starts with `spiffe://`
+- Map `sub` claim to KMS workload identity and object ownership
+- Enable co-existence of mTLS transport layer and JWT-SVID bearer authentication
+
 ## [5.27.1] - 2026-09-08
 
 ### 🐛 Bug Fixes
