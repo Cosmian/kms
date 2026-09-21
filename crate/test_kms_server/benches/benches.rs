@@ -28,10 +28,7 @@ use crate::sign_benches::{
     bench_create_ec_key_pair_non_fips, bench_ecdsa_secp256k1_sign_verify, bench_eddsa_sign_verify,
 };
 #[cfg(feature = "non-fips")]
-use crate::symmetric_benches::{
-    bench_decrypt_chacha20_128_poly1305, bench_decrypt_chacha20_256_poly1305,
-    bench_encrypt_chacha20_128_poly1305, bench_encrypt_chacha20_256_poly1305,
-};
+use crate::symmetric_benches::{bench_decrypt_chacha20_poly1305, bench_encrypt_chacha20_poly1305};
 use crate::{
     rsa_benches::{
         bench_rsa_create_keypair, bench_rsa_key_wrp_decrypt_2048, bench_rsa_key_wrp_decrypt_4096,
@@ -104,10 +101,8 @@ criterion_group!(
         bench_encrypt_aes_256_gcm,
         bench_decrypt_aes_128_gcm,
         bench_decrypt_aes_256_gcm,
-        bench_encrypt_chacha20_128_poly1305,
-        bench_encrypt_chacha20_256_poly1305,
-        bench_decrypt_chacha20_128_poly1305,
-        bench_decrypt_chacha20_256_poly1305
+        bench_encrypt_chacha20_poly1305,
+        bench_decrypt_chacha20_poly1305
 );
 #[cfg(not(feature = "non-fips"))]
 criterion_group!(

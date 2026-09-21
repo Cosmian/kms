@@ -21,7 +21,8 @@
       "duration_ms": { "type": "long" },
       "request_id": { "type": "keyword" },
       "prev_hash": { "type": "keyword" },
-      "row_hash": { "type": "keyword" }
+      "row_hash": { "type": "keyword" },
+      "details": { "type": "text" }
     }
   }
 }

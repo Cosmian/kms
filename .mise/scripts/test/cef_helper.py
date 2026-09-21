@@ -451,8 +451,15 @@ def _check_line(line_no: int, event: dict, cef_line: str) -> list[str]:
     else:
         expect_absent('devicePayloadId', 'request id (devicePayloadId)')
 
-    # Verify non-standard custom labels are absent
-    expect_absent('cs3Label', 'cs3Label (non-standard)')
+    # If details is present, expect cs3 and cs3Label=details
+    if event.get('details') is not None:
+        expect('cs3', event['details'], 'details')
+        expect('cs3Label', 'details', 'details label')
+    else:
+        expect_absent('cs3Label', 'cs3Label')
+        expect_absent('cs3', 'cs3')
+
+    # Verify non-standard custom labels beyond cs1-cs3 are absent
     expect_absent('cs4Label', 'cs4Label (non-standard)')
     expect_absent('cs5Label', 'cs5Label (non-standard)')
 
@@ -479,6 +486,7 @@ _JSONL_OPTIONAL_FIELDS: dict[str, type | tuple[type, ...]] = {
     'algorithm': (str, type(None)),
     'client_ip': (str, type(None)),
     'request_id': (str, type(None)),
+    'details': (str, type(None)),
 }
 
 

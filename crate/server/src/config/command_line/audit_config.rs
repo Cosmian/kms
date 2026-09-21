@@ -67,7 +67,7 @@ pub struct AuditConfig {
         env = "KMS_AUDIT_ENABLE",
         default_value = "false"
     )]
-    #[serde(rename = "enabled")]
+    #[serde(rename = "enabled", alias = "enable")]
     pub audit_enable: bool,
 
     #[clap(flatten)]

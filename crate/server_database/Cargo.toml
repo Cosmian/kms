@@ -55,6 +55,8 @@ redis = { version = "0.32", features = [
   "script",
   "connection-manager",
   "tokio-comp",
+  "tls-native-tls",
+  "tokio-native-tls-comp",
 ], optional = true }
 rusqlite = { version = "0.37", features = ["bundled", "serde_json"] }
 serde = { workspace = true }
