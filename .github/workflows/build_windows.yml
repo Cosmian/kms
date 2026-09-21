@@ -133,10 +133,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.archive-name }}-release
-          path: |
-            README.md
-            target/release/cosmian-kms-server*.exe
-            target/release/cosmian-kms-cli*.exe
+          path: target/release/*.exe
           retention-days: 1
           if-no-files-found: error
 
@@ -146,7 +143,7 @@ jobs:
     uses: Cosmian/reusable_scripts/.github/workflows/sign-windows-artifacts.yml@feat/azure-code-signing
     with:
       artifact-to-download: ${{ inputs.archive-name }}-release
-      files-folder: to-sign/target/release
+      files-folder: to-sign
       files-folder-filter: exe
       artifact-name: ${{ inputs.archive-name }}-release-signed
       signing-account-name: cosmian-codesigning-test
