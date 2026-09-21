@@ -341,7 +341,7 @@ corrupted row is classified by cause, recorded in the reanchor `details` below:
 | ---------------- | ---------------------------------------------------------------------------- |
 | `hash_mismatch` | A complete row whose own hash doesn't match its stored bytes.             |
 | `broken_link`   | A row that verifies on its own but doesn't chain to its predecessor.      |
-| `unparseable`   | A column doesn't decode as an audit event at all.                        |
+| `unparsable`   | A column doesn't decode as an audit event at all.                        |
 | `id_overflow`   | A valid tail row at `id = i64::MAX` — continuing in place would overflow. |
 
 The corrupted generation is preserved unchanged. A fresh generation starts with a row-0

@@ -12,12 +12,12 @@ use uuid::Uuid;
 /// already knows from its query parameters) in the row is harmless.
 ///
 /// # Errors
-/// Returns an error if a column is structurally invalid: an unparseable `result` string,
+/// Returns an error if a column is structurally invalid: an unparsable `result` string,
 /// or a hash column that isn't exactly 32 bytes.
 pub(super) fn event_from_row(row: &Row) -> InterfaceResult<AuditEvent> {
     let result_str: String = row.get("result");
     let result = AuditResult::from_canonical_str(&result_str).ok_or_else(|| {
-        InterfaceError::Db(format!("audit: unparseable result column: {result_str}"))
+        InterfaceError::Db(format!("audit: unparsable result column: {result_str}"))
     })?;
 
     let prev_hash: Vec<u8> = row.get("prev_hash");

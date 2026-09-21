@@ -9,7 +9,7 @@
     (`instance_id, chain_generation, id`). Exactly one generation accepts writes at a time.
   - On startup, only the latest generation is verified. Content corruption there — a row whose
     own hash doesn't match its bytes, a row that doesn't chain to its predecessor, an
-    unparseable column, or a valid tail at the id counter's limit — is classified by cause and
+    unparsable column, or a valid tail at the id counter's limit — is classified by cause and
     **seals** the generation unchanged, as forensic evidence, before starting a fresh one.
   - The new generation begins with a row-0 `audit:reanchor` event recording the sealed and new
     generation numbers, the first failing id, the reason, and a SHA-256 evidence digest computed

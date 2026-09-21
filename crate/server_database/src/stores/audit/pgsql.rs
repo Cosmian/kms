@@ -446,7 +446,7 @@ impl PgAuditSink {
             for row in &rows {
                 let Ok(event) = event_from_row(row) else {
                     return Ok(GenerationOutcome::Corrupt(RecoveryFailure {
-                        reason: SealReason::Unparseable,
+                        reason: SealReason::Unparsable,
                         first_failure_id: row.get("id"),
                     }));
                 };
