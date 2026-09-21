@@ -58,7 +58,10 @@ pub(super) fn write_recovery_sentinel(
     match write_event_line(file, &event) {
         Ok(()) => {
             *prev_hash = event.row_hash;
-            next_id.checked_add(1).unwrap_or(next_id)
+            next_id.checked_add(1).unwrap_or_else(|| {
+                error!("AuditFileStore: recovery sentinel id counter overflow at i64::MAX");
+                next_id
+            })
         }
         Err(e) => {
             error!(
