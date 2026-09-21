@@ -30,7 +30,7 @@ identically:
 
 - **Torn tail write**: the last complete, *verified* row is fully intact and trustworthy; only
   an incomplete trailing fragment needs to be discarded.
-- **Tampered or garbage row**: a complete line whose hash doesn't match, or unparseable bytes
+- **Tampered or garbage row**: a complete line whose hash doesn't match, or unparsable bytes
   that aren't an interrupted write. Continuity across this point cannot be trusted.
 
 Applying "always keep writing in place" to the second case would corrupt the chain permanently
@@ -76,7 +76,7 @@ circumstance.
    a new chain root, **not** a continuation. The sealed file's tail is by definition untrusted,
    so asserting continuity across it would manufacture false provenance. The event's new
    `details` field (see below) records the sealed file's name, SHA-256, size, the claimed last
-  id, the failure offset, and the reason (`hash_mismatch` | `unparseable` | `id_overflow`).
+  id, the failure offset, and the reason (`hash_mismatch` | `unparsable` | `id_overflow`).
 5. `fsync` the containing directory so the rename is itself durable.
 
 Order is load-bearing: rename before open, so the lock holder never observes a half-migrated
@@ -97,7 +97,7 @@ files:
 2. On startup, only the **latest** generation is verified, page by page, the same way the file
    backend's interior scan works. A clean generation resumes normally. The first corrupted row is
    classified precisely: `hash_mismatch` (row's own hash doesn't match its bytes), `broken_link`
-   (row verifies on its own but doesn't chain to its predecessor), `unparseable` (a column doesn't
+   (row verifies on its own but doesn't chain to its predecessor), `unparsable` (a column doesn't
    decode as an `AuditEvent` at all), or `id_overflow` (a valid tail at `i64::MAX`).
 3. The corrupted generation is **never modified** — the PostgreSQL analogue of renaming the file
    aside. A deterministic SQL text projection over every stored row of that generation (one
