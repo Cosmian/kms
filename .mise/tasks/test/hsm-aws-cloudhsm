@@ -33,6 +33,7 @@ cleanup_cloudhsm_vpn() {
     sudo rm -f /tmp/cloudhsm-openvpn.pid
   fi
   rm -f /tmp/cloudhsm-openvpn.conf
+  sudo rm -f /tmp/cloudhsm-openvpn.log
 }
 
 print_aws_cloudhsm_diagnostics_on_failure() {
