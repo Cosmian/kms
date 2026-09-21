@@ -328,6 +328,7 @@ services:
       - ${SPIRE_SERVER_CONFIG_FILE_A:-./test_data/spire/config/spire-server-a.conf}:/etc/spire/server/server.conf:ro
       - ./test_data/spire/certs/ca.crt:/etc/spire/server/ca.crt:ro
       - spire-data-a:/data/spire-server
+      - spire-server-socket-a:/tmp/spire-server
     environment:
       # AppRole credentials injected by the mise task from /tmp/spire-secrets.env.
       # SPIRE vault plugin reads VAULT_APPROLE_ID and VAULT_APPROLE_SECRET_ID;
@@ -514,6 +515,31 @@ services:
       - JWT_AUDIENCE=cosmian-kms
       - MAX_SVID_TTL_SECONDS=7200
 
+  spire-oidc-discovery-provider:
+    build:
+      context: ./test_data/spire/oidc-discovery-provider
+    image: spire-oidc-discovery-provider:1.15.2
+    profiles: [spire]
+    container_name: spire-oidc-discovery-provider
+    # SPIRE 1.15+ images run as non-root (uid 1000); run as root for socket access.
+    user: 0:0
+    network_mode: host
+    depends_on:
+      spire-server-a:
+        condition: service_healthy
+    volumes:
+      - ${SPIRE_OIDC_CONFIG_FILE:-./test_data/spire/config/spire-oidc-discovery-provider.conf}:/etc/spire/oidc-discovery-provider.conf:ro
+      - spire-server-socket-a:/tmp/spire-server:ro
+    command: [-config, /etc/spire/oidc-discovery-provider.conf]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:8008/.well-known/openid-configuration >/dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
   # ── SDS test services (profile: spire-sds) ───────────────────────────────
   # Tests PKI-10: deliver certificates to a mesh sidecar via the standard SDS
   # interface (Envoy Secret Discovery Service). Envoy fetches its X.509-SVID
@@ -615,3 +641,4 @@ volumes:
   spire-data-b:
   spire-agent-socket-a:
   spire-agent-socket-b:
+  spire-server-socket-a:

@@ -190,9 +190,11 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
             // certificate prompt. Only if there is no session do we probe the cert.
             const sessionMethod: AuthMethod = methods.includes("JWT")
                 ? "JWT"
-                : methods.includes("AUTH_VERIFIER")
-                  ? "AUTH_VERIFIER"
-                  : undefined;
+                : methods.includes("SPIFFE")
+                  ? "SPIFFE"
+                  : methods.includes("AUTH_VERIFIER")
+                    ? "AUTH_VERIFIER"
+                    : undefined;
 
             if (sessionMethod) {
                 const data = await fetchWhoAmI(location);

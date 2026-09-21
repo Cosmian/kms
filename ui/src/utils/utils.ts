@@ -1,4 +1,4 @@
-export type AuthMethod = "None" | "JWT" | "CERT" | "AUTH_VERIFIER" | undefined;
+export type AuthMethod = "None" | "JWT" | "CERT" | "AUTH_VERIFIER" | "SPIFFE" | undefined;
 
 /** Root of the Cosmian docs site (not the KMS-specific book — see `docsUrl`). */
 export const DOCS_BASE_URL = "https://docs.cosmian.com";
@@ -150,6 +150,31 @@ export const loginAuthVerifier = async (
     }
 
     return (data as { next_step: AuthVerifierLoginNextStep }).next_step;
+};
+
+/**
+ * Log in with a SPIFFE JWT-SVID via the KMS's BFF endpoint (`POST /ui/login_svid`).
+ * The token is validated server-side against the configured SPIFFE-enabled JWT
+ * issuers (`--jwt-auth-provider` + `--jwt-svid-auth`); on success the KMS stores
+ * the `spiffe://...` identity in the session cookie.
+ */
+export const loginJwtSvid = async (serverUrl: string, jwtSvid: string): Promise<void> => {
+    const kmsUrl = serverUrl + "/ui/login_svid";
+    const response = await fetch(kmsUrl, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jwt_svid: jwtSvid }),
+    });
+
+    if (!response.ok) {
+        const data: unknown = await response.json().catch(() => null);
+        let message = `Login failed (${response.status})`;
+        if (data && typeof data === "object" && "error" in data && typeof data.error === "string") {
+            message = data.error;
+        }
+        throw new Error(message);
+    }
 };
 
 export const sendKmipRequest = async (request: object, serverUrl: string) => {
