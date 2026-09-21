@@ -44,7 +44,7 @@ jobs:
     # Benchmarks require a stable, dedicated machine to produce comparable results.
     # See https://github.com/Cosmian/kms/issues/776
     runs-on: [self-hosted, benchmark]
-    timeout-minutes: 180
+    timeout-minutes: 600
     concurrency:
       group: benchmark-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
       cancel-in-progress: true
@@ -69,24 +69,58 @@ jobs:
         run: |
           if command -v apt-get >/dev/null 2>&1; then
             sudo apt-get update -qq && sudo apt-get install -y -qq \
-              jq bc curl pkg-config libssl-dev python3 python3-matplotlib
+              jq bc curl pkg-config libssl-dev python3 python3-matplotlib gnuplot softhsm2
           elif command -v brew >/dev/null 2>&1; then
-            brew install jq bc openssl pkg-config python3
+            brew install jq bc openssl pkg-config python3 gnuplot softhsm
           fi
 
-      - name: Run load + criterion benchmarks
+      - name: Run software baseline benchmark (bench:load)
         run: |
           ARGS=(--variant "${{ inputs.variant }}" --mode "${{ inputs.bench_mode }}" --criterion)
           [[ -n "${{ inputs.server_version }}" ]] && ARGS+=(--server-version "${{ inputs.server_version }}")
           mise run bench:load "${ARGS[@]}"
+
+      - name: Run HSM-backed KEK benchmark (bench:load-hsm)
+        run: |
+          mise run bench:load-hsm \
+            --variant "${{ inputs.variant }}" \
+            --mode "${{ inputs.bench_mode }}" \
+            --criterion
+
+      - name: Run HSM-delegated crypto benchmark (bench:load-hsm --delegated)
+        run: |
+          mise run bench:load-hsm --delegated \
+            --variant "${{ inputs.variant }}" \
+            --mode "${{ inputs.bench_mode }}" \
+            --criterion
+
+      - name: Run PKCS#11 benchmark (bench:load-pkcs11)
+        run: |
+          # bench:load-pkcs11's --mode choices are a different, narrower set than the other
+          # three tasks (no "sign-verify"/"batch"). Fall back to "all" when the shared
+          # bench_mode input picked one of those two, instead of failing the whole job.
+          PKCS11_MODE="${{ inputs.bench_mode }}"
+          case "${PKCS11_MODE}" in
+            all | encrypt | key-creation) ;;
+            *)
+              echo "NOTE: bench_mode '${PKCS11_MODE}' is not a valid bench:load-pkcs11 mode; using 'all' instead."
+              PKCS11_MODE="all"
+              ;;
+          esac
+          mise run bench:load-pkcs11 \
+            --variant "${{ inputs.variant }}" \
+            --mode "${PKCS11_MODE}" \
+            --criterion
 
       - name: Upload benchmark report folder
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
-          # The entire version folder: report.md + load/ + criterion/ + raw JSON.
-          path: target/criterion/reports/${{ inputs.server_version || github.ref_name }}/
+          # All four reports: ckms_bench/, ckms_bench_hsm_kek/, ckms_bench_delegated_crypto_operations/,
+          # ckms_bench_pkcs11/ — each report.md + load/ + criterion/ + raw JSON, mirroring the
+          # existing pattern in .github/workflows/flamegraph.yml.
+          path: documentation/docs/benchmarks/
           retention-days: 30
 
   # ── Job 2: publish benchmark report to package.cosmian.com ────────────────
@@ -122,4 +156,8 @@ jobs:
           tar -C report -cf - . | ssh ${SSH_OPTS} cosmian@package.cosmian.com "tar -xf - -C '${REMOTE_DIR}'"
 
           echo ""
-          echo "Published: https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/report.md"
+          echo "Published:"
+          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench/report.md"
+          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_hsm_kek/report.md"
+          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_delegated_crypto_operations/report.md"
+          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_pkcs11/report.md"
