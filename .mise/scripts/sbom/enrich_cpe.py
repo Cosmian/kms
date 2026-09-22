@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sqlite3
 import sys
 from pathlib import Path
 from typing import Optional
@@ -148,6 +149,86 @@ def _load_overrides(sbom_dir: Path) -> dict[str, str]:
         return {}
 
 
+def _open_cpe_dictionary(db_path: Optional[Path]) -> Optional[sqlite3.Connection]:
+    """Open the SQLite CPE dictionary index, or None if unavailable."""
+    if not db_path or not db_path.exists():
+        return None
+    return sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
+
+
+def _dict_lookup(conn: sqlite3.Connection, product: str) -> list[tuple[str, str]]:
+    """Return [(vendor, version), ...] for every part='a' dictionary entry
+    whose product matches *product* (already WFN-sanitised)."""
+    cur = conn.execute(
+        'SELECT DISTINCT vendor, version FROM cpe_entries WHERE part = ? AND product = ?',
+        ('a', product),
+    )
+    return cur.fetchall()
+
+
+def _cpe_vendor_from_string(cpe: str) -> Optional[str]:
+    """Extract the vendor segment (4th colon-separated field) of a CPE 2.3 string."""
+    fields = cpe.split(':')
+    return fields[3] if len(fields) > 3 else None
+
+
+def _resolve_with_dictionary(
+    name: str,
+    version: str,
+    existing_cpe: Optional[str],
+    guessed_vendor: Optional[str],
+    conn: sqlite3.Connection,
+) -> tuple[Optional[str], str]:
+    """Return (vendor_to_use_or_None, confidence).
+
+    confidence is one of 'verified-exact', 'verified-vendor-product',
+    'no-nvd-entry', 'ambiguous'. vendor_to_use is None when the caller
+    should leave the existing/guessed CPE untouched (already correct, or no
+    confident correction available).
+    """
+    product_key = _cpe_sanitize(name)
+    version_key = _cpe_sanitize(version.lstrip('vV') or '*')
+    rows = _dict_lookup(conn, product_key)
+    if not rows:
+        return None, 'no-nvd-entry'
+
+    vendors_for_version = {v for v, ver in rows if ver == version_key}
+    vendors_any_version = {v for v, ver in rows}
+
+    if guessed_vendor:
+        gv = _cpe_sanitize(guessed_vendor)
+        if gv in vendors_for_version:
+            return gv, 'verified-exact'
+        if gv in vendors_any_version:
+            return gv, 'verified-vendor-product'
+
+    existing_vendor = _cpe_vendor_from_string(existing_cpe) if existing_cpe else None
+    if existing_vendor:
+        if existing_vendor in vendors_for_version:
+            return None, 'verified-exact'  # already correct — leave as is
+        if existing_vendor in vendors_any_version:
+            return (
+                None,
+                'verified-vendor-product',
+            )  # vendor/product matches NVD, version differs
+    if len(vendors_for_version) == 1:
+        return next(iter(vendors_for_version)), 'verified-exact'
+    if len(vendors_any_version) == 1:
+        return next(iter(vendors_any_version)), 'verified-vendor-product'
+
+    return None, 'ambiguous'
+
+
+def _set_match_property(comp: dict, value: str) -> None:
+    """Set (or update) the cosmian:sbom:cpe_match diagnostic property."""
+    props = comp.setdefault('properties', [])
+    for p in props:
+        if p.get('name') == 'cosmian:sbom:cpe_match':
+            p['value'] = value
+            return
+    props.append({'name': 'cosmian:sbom:cpe_match', 'value': value})
+
+
 # ---------------------------------------------------------------------------
 # Per-component vendor resolution
 # ---------------------------------------------------------------------------
@@ -189,6 +270,7 @@ def enrich(
     sbom_dir: Path,
     cargo_sbom_json: Optional[Path],
     in_place: bool,
+    cpe_dict_db: Optional[Path] = None,
 ) -> None:
     """Enrich ``bom.cdx.json`` in *sbom_dir* with CPE 2.3 identifiers."""
     cdx_path = sbom_dir / 'bom.cdx.json'
@@ -198,6 +280,7 @@ def enrich(
 
     overrides = _load_overrides(sbom_dir)
     cargo_index = _build_cargo_index(cargo_sbom_json)
+    dict_conn = _open_cpe_dictionary(cpe_dict_db)
 
     with open(cdx_path, encoding='utf-8') as fh:
         bom = json.load(fh)
@@ -205,31 +288,76 @@ def enrich(
     components = bom.get('components', [])
     enriched = 0
     skipped = 0
+    corrected = 0
+    verified = 0
+    no_nvd_entry = 0
+    ambiguous = 0
 
     for comp in components:
-        if comp.get('cpe'):
-            skipped += 1
-            continue  # already has a CPE
-
         name = comp.get('name', 'unknown')
         version = comp.get('version', '*')
+        existing_cpe = comp.get('cpe')
 
-        # Priority 1: manual override
         if name in overrides:
-            comp['cpe'] = overrides[name]
+            if comp.get('cpe') != overrides[name]:
+                comp['cpe'] = overrides[name]
+            _set_match_property(comp, 'override')
             enriched += 1
             continue
 
-        # Priority 2–4: derive vendor
-        vendor = _resolve_vendor(name, overrides, cargo_index) or name
-        comp['cpe'] = _make_cpe(vendor, name, version)
-        enriched += 1
+        guessed_vendor = _resolve_vendor(name, overrides, cargo_index)
+
+        if dict_conn is None:
+            if existing_cpe:
+                skipped += 1
+                continue
+            comp['cpe'] = _make_cpe(guessed_vendor or name, name, version)
+            _set_match_property(comp, 'guessed')
+            enriched += 1
+            continue
+
+        chosen_vendor, confidence = _resolve_with_dictionary(
+            name,
+            version,
+            existing_cpe,
+            guessed_vendor,
+            dict_conn,
+        )
+        _set_match_property(comp, confidence)
+        if chosen_vendor:
+            comp['cpe'] = _make_cpe(chosen_vendor, name, version)
+            corrected += 1
+        elif confidence.startswith('verified'):
+            verified += 1
+        elif confidence == 'no-nvd-entry':
+            if not existing_cpe:
+                comp['cpe'] = _make_cpe(guessed_vendor or name, name, version)
+                enriched += 1
+            no_nvd_entry += 1
+        else:
+            if not existing_cpe:
+                comp['cpe'] = _make_cpe(guessed_vendor or name, name, version)
+                enriched += 1
+            ambiguous += 1
+
+    if dict_conn is not None:
+        dict_conn.close()
+
+    bom['specVersion'] = '1.6'
 
     total = len(components)
-    print(
-        f'  CPE enrichment: {enriched} added, {skipped} already present'
-        f' ({total} total components)'
-    )
+    if dict_conn is None:
+        print(
+            f'  CPE enrichment: {enriched} added, {skipped} already present'
+            f' ({total} total components)'
+        )
+    else:
+        print(
+            f'  CPE enrichment: {enriched} added, {corrected} corrected via NVD '
+            f'dictionary, {verified} already NVD-verified, {no_nvd_entry} have no '
+            f'NVD CPE dictionary entry (inherent coverage gap), {ambiguous} '
+            f'ambiguous ({total} total components)'
+        )
 
     if in_place:
         output_path = cdx_path
@@ -269,6 +397,14 @@ def _parse_args() -> argparse.Namespace:
         action='store_true',
         help='Overwrite bom.cdx.json in place (default: write bom.cdx.enriched.json).',
     )
+    parser.add_argument(
+        '--cpe-dict-db',
+        type=Path,
+        default=None,
+        help='Path to a SQLite CPE dictionary built by build_cpe_dictionary.py '
+        '(optional — omitted or non-existent path disables dictionary '
+        'verification and preserves legacy guess-only behaviour).',
+    )
     return parser.parse_args()
 
 
@@ -284,6 +420,7 @@ def main() -> None:
         sbom_dir=sbom_dir,
         cargo_sbom_json=args.cargo_sbom_json,
         in_place=args.in_place,
+        cpe_dict_db=args.cpe_dict_db,
     )
 
 
