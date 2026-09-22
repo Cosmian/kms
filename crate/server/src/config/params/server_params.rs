@@ -421,7 +421,9 @@ impl ServerParams {
         if let Some(url) = audit.postgres.audit_postgres_url.as_deref() {
             if !url.starts_with("postgresql://") && !url.starts_with("postgres://") {
                 return Err(KmsError::InvalidRequest(
-                    "--audit-postgres-url must start with 'postgresql://' or 'postgres://'"
+                    "--audit-postgres-url must be a URI-style DSN starting with \
+                     'postgresql://' or 'postgres://'; keyword/value DSN syntax \
+                     (e.g. 'host=... user=...') is not supported here."
                         .to_owned(),
                 ));
             }
@@ -445,11 +447,11 @@ impl ServerParams {
                         .to_owned(),
                 )
             })?;
-            if instance_id.is_empty() || instance_id.len() > 255 {
+            if instance_id.is_empty() || instance_id.chars().count() > 255 {
                 return Err(KmsError::InvalidRequest(format!(
                     "--audit-instance-id must be non-empty and at most 255 characters, \
                      got {} characters",
-                    instance_id.len()
+                    instance_id.chars().count()
                 )));
             }
 

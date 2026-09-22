@@ -86,6 +86,17 @@ hostname = "0.0.0.0"
 # load balancer. Leave it unset otherwise (client_ip then always reflects the
 # real TCP peer address).
 # trusted_proxy_cidrs = ["10.0.0.0/8"]
+#
+# Alternative to [audit.file]: a PostgreSQL-backed audit trail. Mutually
+# exclusive at runtime with the file backend — setting url here selects
+# PostgreSQL instead. Must be a different database than [db] database_url.
+# [audit.postgres]
+# url = "postgresql://kms_audit:password@localhost:5432/kms_audit"
+#
+# Stable across restarts, unique per KMS instance sharing the audit database —
+# no hostname-based default; an incorrect guess risks two instances silently
+# sharing a chain.
+# instance_id = "kms-primary"
 
 [db]
 database_type = "redis-findex"
