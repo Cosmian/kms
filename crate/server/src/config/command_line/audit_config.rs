@@ -51,11 +51,14 @@ pub struct AuditPostgresConfig {
     ///
     /// When set, audit events are written to this `PostgreSQL` database instead of the
     /// JSONL file — backend selection is config-time only, based solely on whether this
-    /// is set; there is no runtime fallback between the two. This database MUST be a
-    /// different database than the main object-storage database (`--database-url`) when
-    /// that database is also `PostgreSQL` — the server refuses to start otherwise, since
-    /// sharing one database would let the KMS's own object-store role bypass the audit
-    /// database's append-only grants.
+    /// is set; there is no runtime fallback between the two: a connectivity failure at
+    /// startup still aborts the server. If `--audit-file-path` is also set, it is only
+    /// used to log a warning that it's ignored (or, on connection failure, that it is
+    /// NOT used as a fallback). This database MUST be a different database than the
+    /// main object-storage database (`--database-url`) when that database is also
+    /// `PostgreSQL` — the server refuses to start otherwise, since sharing one database
+    /// would let the KMS's own object-store role bypass the audit database's
+    /// append-only grants.
     #[clap(
         long = "audit-postgres-url",
         env = "KMS_AUDIT_POSTGRES_URL",
@@ -69,10 +72,9 @@ pub struct AuditPostgresConfig {
     ///
     /// Must be STABLE across restarts and UNIQUE per KMS instance sharing the same audit
     /// database — a second instance reusing an `instance_id` is rejected at startup by an
-    /// advisory-lock check, before any event is written. Defaults to the machine
-    /// hostname. Kubernetes deployments should set this explicitly (e.g. from the
-    /// `StatefulSet` ordinal or the downward API) rather than rely on an ephemeral pod
-    /// hostname.
+    /// advisory-lock check, before any event is written. Required (no default) when
+    /// `--audit-postgres-url` is set. Kubernetes deployments should set this from the
+    /// `StatefulSet` ordinal or the downward API, not an ephemeral pod hostname.
     #[clap(
         long = "audit-instance-id",
         env = "KMS_AUDIT_INSTANCE_ID",

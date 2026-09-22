@@ -11,12 +11,12 @@
 //!
 //! [`AuditSink::resume`] does not mandate a single recovery policy, but every backend is
 //! expected to always start rather than fail closed on **content** corruption (a tampered
-//! or malformed row) — see ADR-0006. A backend whose storage can be torn mid-write (an
+//! or malformed row) (see ADR-0006). A backend whose storage can be torn mid-write (an
 //! appended file, killed mid-`fsync`) recovers a trustworthy prefix and truncates the
 //! rest; a backend whose writes are atomic (a single `INSERT`) has no torn-write case and
 //! instead seals the corrupted evidence aside and starts a fresh chain. Only truly
-//! operational faults — connectivity, permissions, lock contention, a failure to persist
-//! the recovery evidence itself — may still abort startup. Document the chosen mechanics
+//! operational faults (connectivity, permissions, lock contention, a failure to persist
+//! the recovery evidence itself) may still abort startup. Document the chosen mechanics
 //! on the implementing type, not here.
 
 use async_trait::async_trait;
