@@ -25,6 +25,23 @@ CREATE TABLE IF NOT EXISTS kms_audit_events (
 -- name: create-index-audit-events-timestamp
 CREATE INDEX IF NOT EXISTS idx_kms_audit_events_timestamp ON kms_audit_events (timestamp);
 
+-- Authoritative pointer to the generation currently accepting writes for an instance.
+-- Existence of a row here — not `MAX(chain_generation)` over `kms_audit_events`, which
+-- ordinary INSERT privilege alone can skew — is what `kms_audit_no_insert_sealed` checks
+-- before allowing a row into the events table; see `PgAuditSink::seal_and_roll`.
+-- name: create-audit-control-table
+CREATE TABLE IF NOT EXISTS kms_audit_control (
+    instance_id       TEXT   PRIMARY KEY CHECK (length(instance_id) BETWEEN 1 AND 255),
+    active_generation BIGINT NOT NULL CHECK (active_generation >= 0),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- name: upsert-audit-control-generation
+INSERT INTO kms_audit_control (instance_id, active_generation, updated_at) VALUES ($1, $2, now()) ON CONFLICT (instance_id) DO UPDATE SET active_generation = EXCLUDED.active_generation, updated_at = EXCLUDED.updated_at;
+
+-- name: select-audit-control-generation
+SELECT active_generation FROM kms_audit_control WHERE instance_id = $1;
+
 -- name: create-audit-append-only-guard
 CREATE OR REPLACE FUNCTION kms_audit_reject_mutation() RETURNS trigger LANGUAGE plpgsql AS $BODY$ BEGIN RAISE EXCEPTION 'kms_audit_events is append-only: % is not permitted', TG_OP USING ERRCODE = '23001'; END; $BODY$;
 
@@ -48,6 +65,20 @@ DROP TRIGGER IF EXISTS kms_audit_no_truncate ON kms_audit_events;
 
 -- name: create-audit-trigger-no-truncate-create
 CREATE TRIGGER kms_audit_no_truncate BEFORE TRUNCATE ON kms_audit_events FOR EACH STATEMENT EXECUTE FUNCTION kms_audit_reject_mutation();
+
+-- Rejects an INSERT whose chain_generation is not exactly the control table's current
+-- active_generation for that instance_id — blocking both appends to an already-sealed
+-- generation and inserts into a fabricated future one. A missing control row (never
+-- happens once PgAuditSink::connect/resume has run at least once) fails open so schema
+-- bootstrap on a brand-new table is never blocked by its own guard.
+-- name: create-audit-reject-sealed-insert
+CREATE OR REPLACE FUNCTION kms_audit_reject_sealed_insert() RETURNS trigger LANGUAGE plpgsql AS $BODY$ DECLARE active BIGINT; BEGIN SELECT active_generation INTO active FROM kms_audit_control WHERE instance_id = NEW.instance_id; IF active IS NOT NULL AND NEW.chain_generation <> active THEN RAISE EXCEPTION 'kms_audit_events: cannot insert into sealed or unknown generation % (active is %)', NEW.chain_generation, active USING ERRCODE = '23001'; END IF; RETURN NEW; END; $BODY$;
+
+-- name: create-audit-trigger-no-insert-sealed
+DROP TRIGGER IF EXISTS kms_audit_no_insert_sealed ON kms_audit_events;
+
+-- name: create-audit-trigger-no-insert-sealed-create
+CREATE TRIGGER kms_audit_no_insert_sealed BEFORE INSERT ON kms_audit_events FOR EACH ROW EXECUTE FUNCTION kms_audit_reject_sealed_insert();
 
 -- name: create-audit-revoke-mutations
 REVOKE UPDATE, DELETE, TRUNCATE ON kms_audit_events FROM PUBLIC;

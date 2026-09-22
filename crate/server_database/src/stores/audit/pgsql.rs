@@ -219,6 +219,7 @@ impl PgAuditSink {
         for name in [
             "create-table-audit-events",
             "create-index-audit-events-timestamp",
+            "create-audit-control-table",
             "create-audit-append-only-guard",
             "create-audit-trigger-no-update",
             "create-audit-trigger-no-update-create",
@@ -226,6 +227,9 @@ impl PgAuditSink {
             "create-audit-trigger-no-delete-create",
             "create-audit-trigger-no-truncate",
             "create-audit-trigger-no-truncate-create",
+            "create-audit-reject-sealed-insert",
+            "create-audit-trigger-no-insert-sealed",
+            "create-audit-trigger-no-insert-sealed-create",
             "create-audit-revoke-mutations",
         ] {
             let sql = AUDIT_QUERIES
@@ -417,18 +421,63 @@ impl PgAuditSink {
         Ok(())
     }
 
-    /// Returns the highest `chain_generation` stored for this instance, or `None` if the
-    /// instance has no rows at all (a brand-new chain).
+    /// Returns the generation this instance should resume writing into: the
+    /// `kms_audit_control` row's authoritative pointer if one exists, or — first ever
+    /// boot before that row has been written — `MAX(chain_generation)` over any existing
+    /// rows, immediately persisted to the control row so every later call takes the fast
+    /// path. `None` means a genuinely brand-new instance with no rows at all.
+    ///
+    /// This, not a bare `MAX()`, is what [`Self::resume`] trusts: `MAX()` alone can be
+    /// skewed by ordinary `INSERT` privilege into an already-sealed generation, which is
+    /// exactly what `kms_audit_no_insert_sealed` (backed by this same control row) exists
+    /// to reject at the database level.
     async fn latest_generation(&self) -> DbResult<Option<i64>> {
         let client = self.pool.get().await.map_err(DbError::from)?;
-        let row = client
+        if let Some(row) = client
+            .query_opt(
+                get_audit_query!("select-audit-control-generation"),
+                &[&self.instance_id],
+            )
+            .await
+            .map_err(DbError::from)?
+        {
+            return Ok(Some(row.get(0)));
+        }
+
+        let max_generation: Option<i64> = client
             .query_one(
                 get_audit_query!("select-audit-latest-generation"),
                 &[&self.instance_id],
             )
             .await
+            .map_err(DbError::from)?
+            .get(0);
+        if let Some(generation) = max_generation {
+            client
+                .execute(
+                    get_audit_query!("upsert-audit-control-generation"),
+                    &[&self.instance_id, &generation],
+                )
+                .await
+                .map_err(DbError::from)?;
+        }
+        Ok(max_generation)
+    }
+
+    /// Upserts the control row to `generation` on the pooled connection. Used only for a
+    /// brand-new instance's first-ever generation — [`Self::seal_and_roll`] updates the
+    /// control row on [`Self::lock_session`] instead, before its reanchor insert, so both
+    /// happen on the session that provably holds the instance's advisory lock.
+    async fn set_active_generation(&self, generation: i64) -> DbResult<()> {
+        let client = self.pool.get().await.map_err(DbError::from)?;
+        client
+            .execute(
+                get_audit_query!("upsert-audit-control-generation"),
+                &[&self.instance_id, &generation],
+            )
+            .await
             .map_err(DbError::from)?;
-        Ok(row.get(0))
+        Ok(())
     }
 
     /// Verifies every row of `generation`, page by page, the same way the file backend's
@@ -595,6 +644,21 @@ impl PgAuditSink {
         };
         let reanchor = draft.finalize(0, [0_u8; 32]);
 
+        // Must happen before the reanchor insert, on the same lock-held session: the
+        // `kms_audit_no_insert_sealed` trigger checks the control row's active_generation
+        // for every INSERT, including this one.
+        self.lock_session
+            .execute(
+                get_audit_query!("upsert-audit-control-generation"),
+                &[&self.instance_id, &new_generation],
+            )
+            .await
+            .map_err(|e| {
+                InterfaceError::from(DbError::DatabaseError(format!(
+                    "audit: failed to advance control row to generation {new_generation}: {e}"
+                )))
+            })?;
+
         self.insert_reanchor_on_lock_session(new_generation, &reanchor)
             .await
             .map_err(InterfaceError::from)?;
@@ -644,6 +708,9 @@ impl AuditSink for PgAuditSink {
             .map_err(InterfaceError::from)?
         else {
             self.active_generation = 0;
+            self.set_active_generation(0)
+                .await
+                .map_err(InterfaceError::from)?;
             return Ok(ChainHead::EMPTY);
         };
 
@@ -778,7 +845,7 @@ impl PgAuditReader {
 )]
 mod live_tests {
     use cosmian_kms_access::audit::{AuditEvent, AuditResult, audit_now, compute_row_hash};
-    use cosmian_kms_interfaces::{AuditSink, WriteOutcome};
+    use cosmian_kms_interfaces::{AuditSink, ChainHead, WriteOutcome};
     use tokio_postgres::NoTls;
     use uuid::Uuid;
 
@@ -1097,6 +1164,118 @@ mod live_tests {
             stored_digest, expected,
             "stored evidence digest must match the independently reproduced SQL projection"
         );
+    }
+
+    /// Inserts an event directly into `kms_audit_events`, bypassing `PgAuditSink`
+    /// entirely — used to simulate a raw client (or a compromised process sharing the
+    /// audit role's credentials) attempting to forge a row.
+    async fn raw_insert_event(
+        url: &str,
+        instance_id: &str,
+        generation: i64,
+        event: &AuditEvent,
+    ) -> Result<(), tokio_postgres::Error> {
+        let raw = raw_client(url).await;
+        let duration_ms = i64::try_from(event.duration_ms).unwrap();
+        let result_str = event.result.as_canonical_str();
+        raw.execute(
+            "INSERT INTO kms_audit_events (instance_id, chain_generation, id, timestamp, \
+             operation, username, object_uid, algorithm, client_ip, result, duration_ms, \
+             request_id, details, prev_hash, row_hash) VALUES \
+             ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+            &[
+                &instance_id,
+                &generation,
+                &event.id,
+                &event.timestamp,
+                &event.operation,
+                &event.user,
+                &event.object_uid,
+                &event.algorithm,
+                &event.client_ip,
+                &result_str,
+                &duration_ms,
+                &event.request_id,
+                &event.details,
+                &event.prev_hash.as_slice(),
+                &event.row_hash.as_slice(),
+            ],
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// H2: once `seal_and_roll` has advanced the control row past generation 0, a raw
+    /// `INSERT` targeting the now-sealed generation must be rejected by the database
+    /// itself — ordinary `INSERT` privilege must not be enough to forge evidence into a
+    /// generation the KMS itself no longer considers active. The now-active generation
+    /// must still accept inserts normally.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_sealed_generation_rejects_direct_insert() {
+        let instance_id = unique_instance_id("sealed-insert-guard");
+        let url = audit_url();
+
+        let sink = seed_generation_zero(&url, &instance_id).await;
+        drop(sink);
+        tamper_row(
+            &url,
+            "UPDATE kms_audit_events SET row_hash = $2 WHERE instance_id = $1 AND \
+             chain_generation = 0 AND id = 2",
+            &[&instance_id, &vec![0_u8; 32]],
+        )
+        .await;
+
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        sink.resume()
+            .await
+            .expect("resume must seal generation 0 and roll to generation 1");
+
+        let forged = make_event(3, [0xCC_u8; 32]);
+        let err = raw_insert_event(&url, &instance_id, 0, &forged)
+            .await
+            .expect_err("insert into the sealed generation must be rejected");
+        assert_eq!(
+            err.as_db_error().map(|e| e.code().code().to_owned()),
+            Some("23001".to_owned())
+        );
+
+        // The now-active generation is unaffected by the guard.
+        raw_insert_event(&url, &instance_id, 1, &make_event(1, [0xAA_u8; 32]))
+            .await
+            .expect("insert into the active generation must still succeed");
+    }
+
+    /// H2: a brand-new instance's control row must be initialized to generation 0 before
+    /// `resume()` returns, so the very first write (which the guard also checks) is never
+    /// blocked by its own bootstrap.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_control_table_initialized_for_new_instance() {
+        let instance_id = unique_instance_id("control-init");
+        let url = audit_url();
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        let head = sink.resume().await.unwrap();
+        assert_eq!(head, ChainHead::EMPTY);
+
+        let raw = raw_client(&url).await;
+        let row = raw
+            .query_one(
+                "SELECT active_generation FROM kms_audit_control WHERE instance_id = $1",
+                &[&instance_id],
+            )
+            .await
+            .unwrap();
+        let active: i64 = row.get(0);
+        assert_eq!(
+            active, 0,
+            "control row must be initialized to generation 0 for a brand-new instance"
+        );
+
+        // Proven end-to-end: the guard the control row backs does not block this write.
+        sink.write_event_atomic(&make_event(0, [0_u8; 32]))
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
