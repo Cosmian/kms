@@ -169,19 +169,27 @@ jobs:
       - name: Verify Authenticode signatures
         shell: pwsh
         run: |
-          $executables = Get-ChildItem -Recurse -Filter "*.exe"
-          if ($executables.Count -eq 0) {
-            Write-Error "No signed Windows executables found"
+          $executables = @(
+            Get-ChildItem -Recurse -Filter "cosmian-kms-server*.exe"
+            Get-ChildItem -Recurse -Filter "cosmian-kms-cli*.exe"
+          )
+          if ($executables.Count -ne 2) {
+            Write-Error "Expected two signed Windows installers, found $($executables.Count)"
             exit 1
           }
 
+          $invalidSignatures = @()
           foreach ($executable in $executables) {
             $signature = Get-AuthenticodeSignature -FilePath $executable.FullName
             Write-Host "$($executable.Name): $($signature.Status)"
             if ($signature.Status -ne "Valid") {
-              Write-Error "Invalid Authenticode signature: $($executable.FullName) ($($signature.Status))"
-              exit 1
+              $invalidSignatures += "$($executable.FullName) ($($signature.Status))"
             }
+          }
+
+          if ($invalidSignatures.Count -gt 0) {
+            Write-Error "Invalid Authenticode signatures: $($invalidSignatures -join ', ')"
+            exit 1
           }
 
       - name: Launch binaries
