@@ -11,7 +11,8 @@
 //!   acquisition happen inside the spawned task, self-healing in the background — see
 //!   `FileSink::resume`). The `PostgreSQL` backend connects, acquires its advisory lock,
 //!   and verifies the chain SYNCHRONOUSLY inside `start_postgres()` — a failure there
-//!   propagates up and aborts server startup, matching its documented fail-fast policy.
+//!   propagates up to `Kms::create_audit_store`, which falls back to the file backend
+//!   (logging a warning) instead of aborting server startup.
 //! * The middleware calls `enqueue()` which is a non-blocking `try_send`.  If the
 //!   channel is full (beyond the configured capacity) the draft is silently dropped
 //!   and an error is logged — we never block the request path.
@@ -126,9 +127,9 @@ impl AuditStore {
     /// Connects to the `PostgreSQL` audit backend, acquires `instance_id`'s advisory
     /// lock, ensures the schema is current, and verifies the entire existing chain —
     /// all SYNCHRONOUSLY, before returning. Unlike [`Self::start_with_max_size`] (File),
-    /// a failure at any of these steps propagates as an error here and is expected to
-    /// abort server startup: an audit backend that cannot be trusted must not silently
-    /// leave the KMS running unaudited.
+    /// a failure at any of these steps propagates as an error here. The caller
+    /// (`Kms::create_audit_store`) falls back to the file backend rather than aborting
+    /// server startup on this error.
     ///
     /// `channel_capacity` is the number of events that can be buffered before new events
     /// are dropped once steady-state writing begins. Must be ≥ 1.
@@ -1234,6 +1235,47 @@ mod live_postgres_tests {
         assert_eq!(
             gen1[1].prev_hash, gen1[0].row_hash,
             "the event enqueued after recovery must link to the reanchor"
+        );
+    }
+
+    /// A channel-full eviction sentinel's timestamp must survive a real `PostgreSQL`
+    /// round trip: if it doesn't (a nanosecond-precision timestamp re-hashes differently
+    /// after `TIMESTAMPTZ` truncates it to microseconds), `resume()` would wrongly seal
+    /// generation 0 as tampered instead of resuming it cleanly.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn postgres_eviction_sentinel_survives_round_trip() {
+        let instance_id = unique_instance_id("eviction");
+        let url = audit_url();
+
+        let store = AuditStore::start_postgres(&url, &instance_id, 1)
+            .await
+            .unwrap();
+
+        // `enqueue` is synchronous (plain `try_send`, no `.await`), so this loop never
+        // yields to the writer task — with channel_capacity=1, only the first draft is
+        // buffered and every other one is deterministically dropped, forcing an
+        // eviction sentinel before the writer's next successful write.
+        store.enqueue((0..20).map(|_| make_draft()));
+        store.enqueue(std::iter::once(make_draft()));
+        store.flush().await;
+        drop(store);
+
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        let head = sink
+            .resume()
+            .await
+            .expect("resume must succeed after a clean sentinel round trip");
+        assert!(
+            head.next_id > 0,
+            "resume must continue generation 0, not reanchor after a false hash mismatch"
+        );
+
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        assert_eq!(
+            reader.list_generations(&instance_id).await.unwrap(),
+            vec![0],
+            "no seal-and-roll should have occurred — generation 0 must still be the only one"
         );
     }
 }
