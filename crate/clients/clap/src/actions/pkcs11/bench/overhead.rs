@@ -6,7 +6,8 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use ckms::reexport::cosmian_kms_cli_actions::reexport::{
+use cosmian_kms_client::{
+    KmsClient, KmsClientError,
     cosmian_kmip::{
         kmip_0::{
             kmip_messages::{
@@ -22,14 +23,13 @@ use ckms::reexport::cosmian_kms_cli_actions::reexport::{
         },
         ttlv::{KmipFlavor, TTLV, from_ttlv, to_ttlv},
     },
-    cosmian_kms_client::{KmsClient, KmsClientError},
 };
 use criterion::Criterion;
 use pkcs11_sys::{CKK_EC_EDWARDS, CKM_EDDSA, CKO_PRIVATE_KEY};
 use tokio::runtime::Runtime;
 use zeroize::Zeroizing;
 
-use crate::{
+use super::{
     error::{BenchError, BenchResult},
     loader::{Pkcs11Session, SIGN_PROFILE_PHASE_NAMES, SignPhaseSnapshot},
     report::{OverheadMetadata, OverheadPhase},
@@ -139,7 +139,7 @@ fn histogram_quantile(snapshot: &SignPhaseSnapshot, quantile: f64) -> u64 {
     snapshot.max_ns
 }
 
-fn profile_phases(snapshot: &crate::loader::SignProfileSnapshot) -> Vec<OverheadPhase> {
+fn profile_phases(snapshot: &super::loader::SignProfileSnapshot) -> Vec<OverheadPhase> {
     SIGN_PROFILE_PHASE_NAMES
         .iter()
         .zip(&snapshot.phases)

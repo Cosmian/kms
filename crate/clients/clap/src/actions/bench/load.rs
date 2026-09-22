@@ -41,7 +41,7 @@ use crate::error::{KmsCliError, result::KmsCliResult};
 
 /// Throughput and latency percentiles for one operation at one concurrency level.
 #[derive(Debug, Serialize)]
-pub(super) struct LoadResult {
+pub(crate) struct LoadResult {
     /// Operation name (mirrors criterion group IDs where applicable).
     pub operation: String,
     /// Number of concurrent tasks that were sending requests simultaneously.
@@ -333,6 +333,26 @@ fn prepare_load_ops(
         } else {
             eprintln!("[load] Ed25519 key creation failed, skipping sign load test");
         }
+
+        #[cfg(feature = "non-fips")]
+        if let Some((_, priv_id)) = try_create_ec_kp(rt, client, RecommendedCurve::SECP256K1) {
+            let req = Sign {
+                unique_identifier: Some(priv_id),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                    ..Default::default()
+                }),
+                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                ..Default::default()
+            };
+            ops.push(preserialized_op(
+                "ttlv-json/sign-verify/ecdsa-secp256k1",
+                client,
+                Operation::Sign(req),
+            ));
+        } else {
+            eprintln!("[load] secp256k1 key creation failed, skipping sign load test");
+        }
     }
 
     if run_json && needs_batch {
@@ -400,6 +420,24 @@ fn prepare_load_ops(
             };
             ops.push(preserialized_wire_op(
                 "ttlv-bytes/sign-verify/eddsa-ed25519",
+                client,
+                Operation::Sign(req),
+            ));
+        }
+
+        #[cfg(feature = "non-fips")]
+        if let Some((_, priv_id)) = try_create_ec_kp(rt, client, RecommendedCurve::SECP256K1) {
+            let req = Sign {
+                unique_identifier: Some(priv_id),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                    ..Default::default()
+                }),
+                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                ..Default::default()
+            };
+            ops.push(preserialized_wire_op(
+                "ttlv-bytes/sign-verify/ecdsa-secp256k1",
                 client,
                 Operation::Sign(req),
             ));
@@ -954,7 +992,7 @@ pub(super) fn print_load_results(results: &[LoadResult]) {
 ///
 /// The `operation` field strips the protocol prefix so it is protocol-neutral
 /// (e.g. `"ttlv-json/encrypt/aes-gcm"` → `"encrypt/aes-gcm"`).
-pub(super) fn generate_load_json_output(
+pub(crate) fn generate_load_json_output(
     results: &[LoadResult],
     protocol_slug: &str,
 ) -> KmsCliResult<()> {
