@@ -3,9 +3,14 @@
 //! Implemented by each backend that wants to persist the audit hash chain. A sink never
 //! assigns ids and never computes hashes — it persists what it is given, in the order it
 //! is given, and reports where the chain left off so the writer can resume it. Backends
-//! are interchangeable at the trait boundary: a chain started on one backend can be
-//! verified after export from another, because both encode the same [`AuditEvent`] and
-//! the same canonical hash (see `cosmian_kms_access::audit::canonical_bytes`).
+//! are interchangeable at the trait boundary for the base [`AuditEvent`] fields: a chain
+//! started on one backend can be verified after export from another, because both encode
+//! the same fields and the same canonical hash (see
+//! `cosmian_kms_access::audit::canonical_bytes`). This does **not** extend to a recovery
+//! event's `details` payload — the JSON shape a backend records there (e.g. a file
+//! backend's sealed-file name and SHA-256 vs. a database backend's evidence digest) is
+//! backend-specific and needs a backend-aware verifier; see the implementing type's own
+//! documentation for its `details` schema.
 //!
 //! # Recovery policy is per-backend, not part of this contract
 //!
