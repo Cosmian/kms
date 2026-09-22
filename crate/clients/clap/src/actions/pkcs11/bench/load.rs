@@ -15,7 +15,7 @@ use pkcs11_sys::{
     CKO_PUBLIC_KEY, CKO_SECRET_KEY,
 };
 
-use crate::{
+use super::{
     error::{BenchError, BenchResult},
     loader::Pkcs11Session,
 };
@@ -146,8 +146,8 @@ impl ConcreteMode {
             Self::VerifyRsa => "verify/rsa-pkcs-sha256",
             Self::SignEcdsa => "sign/ecdsa-p256",
             Self::VerifyEcdsa => "verify/ecdsa-p256",
-            Self::SignSecp256k1 => "sign/secp256k1",
-            Self::VerifySecp256k1 => "verify/secp256k1",
+            Self::SignSecp256k1 => "sign/ecdsa-secp256k1",
+            Self::VerifySecp256k1 => "verify/ecdsa-secp256k1",
             Self::SignEdDsa => "sign/eddsa-ed25519",
             Self::VerifyEdDsa => "verify/eddsa-ed25519",
             Self::KeyCreation => "key-creation/aes",

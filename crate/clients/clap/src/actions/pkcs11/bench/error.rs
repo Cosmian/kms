@@ -1,4 +1,4 @@
-use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClientError;
+use cosmian_kms_client::KmsClientError;
 use pkcs11_sys::{CK_RV, CKR_FUNCTION_NOT_SUPPORTED};
 
 /// Errors produced by the `cosmian_pkcs11` load benchmark harness.
@@ -48,5 +48,5 @@ impl BenchError {
     }
 }
 
-/// Convenience `Result` alias for this crate.
+/// Convenience `Result` alias for this module.
 pub(crate) type BenchResult<T> = Result<T, BenchError>;

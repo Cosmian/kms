@@ -9,9 +9,11 @@
 #   bench_build_binaries [release|debug]
 #   bench_download_server <version> <out_dir>
 #   bench_start_server <port> <tmp_dir> [http_workers]
+#   bench_stop_server
+#   bench_wait_ready_tls <url> <accept_invalid_certs> <ca_cert> <client_cert> <client_key> [<timeout_secs>]
+#   bench_write_ckms_tls_conf <out_path> <server_url> <accept_invalid_certs> <ca_cert_path> <client_pem_cert> <client_pem_key> <client_pkcs12> <client_pkcs12_password>
 #   bench_register_cleanup
 #   bench_write_md <out_path> <kms_port> <criterion_md_path> [page_title]
-#
 # Globals set:
 #   CARGO_TARGET_DIR, KMS_BIN, CKMS_BIN, KMS_PID, TMP_DIR
 #   BENCH_DEB_BINARY, BENCH_DEB_OSSL_MODS  (after bench_download_server)
@@ -243,6 +245,56 @@ bench_stop_server() {
   kill "${KMS_PID}" 2>/dev/null || true
   wait "${KMS_PID}" 2>/dev/null || true
   KMS_PID=""
+}
+
+# Wait for a KMS server to accept HTTP requests, using curl flags appropriate for
+# optional TLS server/client verification. Exits 1 (like kms_wait_ready) on timeout.
+# Usage: bench_wait_ready_tls <url> <accept_invalid_certs> <ca_cert> <client_cert> <client_key> [<timeout_secs>]
+bench_wait_ready_tls() {
+  local url="$1" accept_invalid_certs="$2" ca_cert="$3" client_cert="$4" client_key="$5" timeout="${6:-15}"
+  require_cmd curl "curl is required for bench_wait_ready_tls"
+  local curl_args=(-sS --max-time 2 -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}')
+  [ "${accept_invalid_certs}" = "true" ] && curl_args+=(--insecure)
+  [ -n "${ca_cert}" ] && curl_args+=(--cacert "${ca_cert}")
+  [ -n "${client_cert}" ] && curl_args+=(--cert "${client_cert}")
+  [ -n "${client_key}" ] && curl_args+=(--key "${client_key}")
+  echo "Waiting for KMS server at ${url} to be ready..."
+  local _i
+  for _i in $(seq 1 "${timeout}"); do
+    if env -u LD_PRELOAD -u LD_LIBRARY_PATH curl "${curl_args[@]}" "${url}" 2>/dev/null | grep -Eq '^[0-9]{3}$'; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "ERROR: KMS server at ${url} did not respond within ${timeout}s" >&2
+  exit 1
+}
+
+# Write a temporary ckms.toml [http_config] section pointing at server_url, with
+# optional TLS client settings. `ca_cert_path`, when non-empty, is read and inlined
+# as `verified_cert` (HttpClientConfig::verified_cert expects PEM content, not a
+# path — see crate/clients/client/src/http_client/client.rs:58-59).
+# Usage: bench_write_ckms_tls_conf <out_path> <server_url> <accept_invalid_certs> \
+#          <ca_cert_path> <client_pem_cert> <client_pem_key> <client_pkcs12> <client_pkcs12_password>
+bench_write_ckms_tls_conf() {
+  local out_path="$1" server_url="$2" accept_invalid_certs="$3" ca_cert_path="$4"
+  local client_pem_cert="$5" client_pem_key="$6" client_pkcs12="$7" client_pkcs12_password="$8"
+  cat >"${out_path}" <<EOF
+[http_config]
+server_url = "${server_url}"
+$([ "${accept_invalid_certs}" = "true" ] && echo 'accept_invalid_certs = true')
+$([ -n "${client_pem_cert}" ] && echo "tls_client_pem_cert_path = \"${client_pem_cert}\"")
+$([ -n "${client_pem_key}" ] && echo "tls_client_pem_key_path = \"${client_pem_key}\"")
+$([ -n "${client_pkcs12}" ] && echo "tls_client_pkcs12_path = \"${client_pkcs12}\"")
+$([ -n "${client_pkcs12_password}" ] && echo "tls_client_pkcs12_password = \"${client_pkcs12_password}\"")
+EOF
+  if [ -n "${ca_cert_path}" ]; then
+    {
+      echo 'verified_cert = """'
+      cat "${ca_cert_path}"
+      echo '"""'
+    } >>"${out_path}"
+  fi
 }
 
 # Internal cleanup handler.

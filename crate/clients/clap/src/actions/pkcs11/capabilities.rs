@@ -54,7 +54,7 @@ use libloading::Library;
 #[allow(clippy::wildcard_imports)]
 use pkcs11_sys::*;
 
-use super::pkcs11_verify::{
+use super::verify::{
     call_get_function_list, call_get_function_list_3_0, call_get_slot_list, call_login,
     call_open_session, check_rv, ckr_name,
 };
