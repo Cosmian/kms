@@ -166,6 +166,24 @@ jobs:
         shell: pwsh
         run: Get-ChildItem -Recurse
 
+      - name: Verify Authenticode signatures
+        shell: pwsh
+        run: |
+          $executables = Get-ChildItem -Recurse -Filter "*.exe"
+          if ($executables.Count -eq 0) {
+            Write-Error "No signed Windows executables found"
+            exit 1
+          }
+
+          foreach ($executable in $executables) {
+            $signature = Get-AuthenticodeSignature -FilePath $executable.FullName
+            Write-Host "$($executable.Name): $($signature.Status)"
+            if ($signature.Status -ne "Valid") {
+              Write-Error "Invalid Authenticode signature: $($executable.FullName) ($($signature.Status))"
+              exit 1
+            }
+          }
+
       - name: Launch binaries
         run: |
           # Both artifacts are NSIS installers (not bare binaries), so we
