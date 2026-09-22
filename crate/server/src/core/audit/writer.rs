@@ -4,10 +4,9 @@
 
 use std::sync::{Arc, atomic::AtomicU64};
 
-use cosmian_kms_access::audit::{AuditEventDraft, AuditResult};
+use cosmian_kms_access::audit::{AuditEventDraft, AuditResult, audit_now};
 use cosmian_kms_interfaces::AuditSink;
 use cosmian_logger::{debug, error};
-use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 use super::store::WriterMsg;
@@ -107,7 +106,10 @@ pub(super) async fn write_draft_to_chain<S: AuditSink>(
 /// Builds a chained sentinel recording events dropped by channel saturation.
 fn make_eviction_sentinel(n_dropped: u64) -> AuditEventDraft {
     AuditEventDraft {
-        timestamp: OffsetDateTime::now_utc(),
+        // Every other production draft uses `audit_now()`, truncated to the microsecond
+        // resolution PostgreSQL's TIMESTAMPTZ stores — a nanosecond timestamp here would
+        // re-hash differently after a PostgreSQL round trip and falsely report tampering.
+        timestamp: audit_now(),
         operation: "audit:eviction".to_owned(),
         user: "server".to_owned(),
         object_uid: None,
