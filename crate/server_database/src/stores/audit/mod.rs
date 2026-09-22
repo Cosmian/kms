@@ -63,6 +63,8 @@ mod tests {
             "create-audit-trigger-no-update-create",
             "create-audit-trigger-no-delete",
             "create-audit-trigger-no-delete-create",
+            "create-audit-trigger-no-truncate",
+            "create-audit-trigger-no-truncate-create",
             "create-audit-revoke-mutations",
             "select-audit-schema-columns",
             "select-audit-advisory-lock",
