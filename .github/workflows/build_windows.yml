@@ -140,7 +140,7 @@ jobs:
   sign:
     name: ${{ inputs.archive-name }} - sign installers
     needs: cargo-build
-    uses: Cosmian/reusable_scripts/.github/workflows/sign-windows-artifacts.yml@feat/azure-code-signing
+    uses: Cosmian/reusable_scripts/.github/workflows/sign-windows-artifacts.yml@develop
     with:
       artifact-to-download: ${{ inputs.archive-name }}-release
       files-folder: to-sign
