@@ -8,6 +8,7 @@
 #USAGE flag "-t --time <t>"         env="BENCH_TIME"          default="20"              help="Measurement time per level (seconds)"
 #USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16"  help="Comma-separated concurrency levels"
 #USAGE flag "-w --http-workers <n>" env="BENCH_HTTP_WORKERS"  default="32"              help="Number of Actix-web HTTP worker threads"
+#USAGE flag "-u --server-url <u>"  env="BENCH_SERVER_URL"    default=""                help="NOT SUPPORTED here: this task always creates and owns its own local SoftHSM2 token, KEK, and hsm_slot for the run and cannot attach those to an external server. Declared for consistency with bench:load / bench:load-pkcs11; passing it fails fast. Use bench:load or bench:load-pkcs11 to benchmark against an external server."
 #USAGE flag "-W --warmup <s>"       env="BENCH_WARMUP"        default="5"               help="Warmup time before the load sweep (seconds)"
 #USAGE flag "-C --cooldown <s>"     env="BENCH_COOLDOWN"      default="2"               help="Cooldown between concurrency levels (seconds)"
 #USAGE flag "-s --sanity"           env="BENCH_SANITY"                                  help="Quick sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt"
@@ -50,11 +51,12 @@ BENCH_PROTOCOL="${usage_protocol:-all}"
 BENCH_TIME="${usage_time:-20}"
 BENCH_CONCURRENCY="${usage_concurrency:-1,2,4,8,16}"
 BENCH_HTTP_WORKERS="${usage_http_workers:-32}"
+BENCH_SERVER_URL="${usage_server_url:-}"
 BENCH_WARMUP="${usage_warmup:-5}"
 BENCH_COOLDOWN="${usage_cooldown:-2}"
 BENCH_SANITY="${usage_sanity:-}"
-BENCH_DELEGATED="${usage_delegated:-false}"
-BENCH_CRITERION="${usage_criterion:-false}"
+BENCH_DELEGATED="${usage_delegated:-}"
+BENCH_CRITERION="${usage_criterion:-}"
 BENCH_SPEED="${usage_speed:-quick}"
 
 kms_init_env "${BENCH_VARIANT}" "${BENCH_LINK}"
@@ -63,6 +65,15 @@ if [ "${BENCH_DELEGATED}" = "true" ]; then
 else
   print_header "Running load benchmark with HSM-backed KEK (${VARIANT_NAME})"
 fi
+if [ -n "${BENCH_SERVER_URL}" ]; then
+  echo "ERROR: --server-url is not supported by bench:load-hsm." >&2
+  echo "       This task always creates and owns its own local SoftHSM2 token, KEK," >&2
+  echo "       and hsm_slot for the duration of the run — it cannot attach those to" >&2
+  echo "       an unmanaged external KMS server. Use bench:load-pkcs11 or bench:load" >&2
+  echo "       to benchmark against an external server instead." >&2
+  exit 1
+fi
+
 
 # ── Variables ────────────────────────────────────────────────────────────────
 TMP_DIR="$(mktemp -d /tmp/kms-bench-hsm-XXXXXX)"
@@ -72,7 +83,7 @@ BUILD_MODE=$([ "${BENCH_RELEASE}" = "false" ] && echo debug || echo release)
 if [ "${BENCH_SANITY}" = "true" ]; then
   BUILD_MODE="debug"
   BENCH_TIME="2"
-  BENCH_WARMUP="1"
+  BENCH_WARMUP="0"
   BENCH_COOLDOWN="0"
   BENCH_MODE="encrypt"
   BENCH_CONCURRENCY="1,2"
