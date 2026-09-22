@@ -1,0 +1,65 @@
+#!/usr/bin/env -S usage bash
+#MISE description="Run all benchmarks (load, load-hsm KEK, load-hsm delegated, load-pkcs11)"
+#USAGE flag "-v --variant <v>"     env="BENCH_VARIANT" default="non-fips" help="FIPS variant" { choices "fips" "non-fips" }
+#USAGE flag "-l --link <l>"        env="BENCH_LINK"    default="static"   help="Linkage type" { choices "static" "dynamic" }
+#USAGE flag "-r --release"         env="BENCH_RELEASE"                    help="Build in release mode"
+#USAGE flag "-s --sanity"          env="BENCH_SANITY"                     help="Quick sanity check"
+#USAGE flag "--speed <speed>"      env="BENCH_SPEED"   default="quick"    help="Criterion speed preset" { choices "quick" "normal" "sanity" }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+
+print_header "Running full benchmark suite (${VARIANT_NAME})"
+
+TASK_DIR="${MISE_CONFIG_ROOT}/.mise/tasks/bench"
+
+COMMON_ARGS=(
+  --variant "${usage_variant:-non-fips}"
+  --link "${usage_link:-static}"
+  --criterion
+  --speed "${usage_speed:-quick}"
+)
+
+if [ "${usage_release:-false}" = "true" ]; then
+  COMMON_ARGS+=(--release)
+fi
+
+if [ "${usage_sanity:-false}" = "true" ]; then
+  COMMON_ARGS+=(--sanity)
+fi
+
+FAILED=()
+
+run_bench() {
+  local name="$1"
+  shift
+  print_status "Running benchmark: $name"
+  if "$@"; then
+    print_success "$name passed"
+  else
+    print_warning "$name FAILED (continuing...)"
+    FAILED+=("$name")
+  fi
+}
+
+# 1. mise bench:load --criterion
+run_bench "bench:load" "${TASK_DIR}/load" "${COMMON_ARGS[@]}"
+
+# 2. mise bench:load-hsm --criterion
+run_bench "bench:load-hsm" "${TASK_DIR}/load-hsm" "${COMMON_ARGS[@]}"
+
+# 3. mise bench:load-hsm --criterion --delegated
+run_bench "bench:load-hsm --delegated" "${TASK_DIR}/load-hsm" "${COMMON_ARGS[@]}" --delegated
+
+# 4. mise bench:load-pkcs11 --criterion
+run_bench "bench:load-pkcs11" "${TASK_DIR}/load-pkcs11" "${COMMON_ARGS[@]}"
+
+echo ''
+echo '============================================'
+if [ ${#FAILED[@]} -gt 0 ]; then
+  echo "FAILED benchmarks: ${FAILED[*]}" >&2
+  echo '============================================' >&2
+  exit 1
+fi
+echo '============================================'
+print_success "All benchmarks completed successfully"

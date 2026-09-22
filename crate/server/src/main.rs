@@ -38,7 +38,27 @@ fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> O
 /// dispatches to the Windows service entry point instead.
 ///
 /// The tokio runtime is sized to the available parallelism reported by the OS.
+#[allow(unsafe_code)]
 fn main() {
+    // SAFETY: this is the first statement executed in `main`, before any other thread
+    // (including the Tokio multi-thread runtime's own worker pool, built immediately
+    // below, and later the actix-server acceptor/worker threads) is spawned. Rust's std
+    // reads `RUST_MIN_STACK` exactly once, on the first-ever thread spawn in the
+    // process, and caches it in a process-global static (see
+    // library/std/src/thread/lifecycle.rs `spawn_unchecked`); there is no concurrent
+    // access to the environment at this point, so this call is sound. actix-server
+    // (pinned at 2.6.0) spawns its acceptor and worker OS threads via a bare
+    // `std::thread::Builder::spawn` with no `.stack_size()` override and exposes no API
+    // to configure one, so this is the only lever to give those threads a larger stack;
+    // deep KMIP/TTLV + middleware call chains under concurrent load otherwise overflow
+    // the small platform default stack (observed: "actix-server worker N ... stack
+    // overflow" under >16 concurrent clients).
+    if std::env::var_os("RUST_MIN_STACK").is_none() {
+        unsafe {
+            std::env::set_var("RUST_MIN_STACK", (16 * 1024 * 1024).to_string());
+        }
+    }
+
     // On Windows, attempt to register with the SCM.  If the process was launched
     // by the SCM, `try_run_as_service()` blocks until the service stops and then
     // returns Ok(()).  If launched from a console, it returns Err (not an SCM
