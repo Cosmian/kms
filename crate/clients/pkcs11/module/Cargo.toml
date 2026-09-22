@@ -17,7 +17,7 @@ workspace = true
 doctest = false
 
 [features]
-benchmarking = []
+default = []
 non-fips = []
 
 [dependencies]
