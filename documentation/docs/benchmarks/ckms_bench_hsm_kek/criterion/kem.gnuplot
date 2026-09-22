@@ -9,6 +9,6 @@ set boxwidth 0.400
 set grid ytics
 set key top right
 set xtics rotate by -30
-set xtics ("pqc/decapsulate/ML-KEM-512" 0, "pqc/encapsulate/ML-KEM-512" 1, "pqc/encapsulate/ML-KEM-768" 2)
+set xtics ("pqc/decapsulate/ML-KEM-512" 0, "pqc/decapsulate/ML-KEM-768" 1, "pqc/encapsulate/ML-KEM-512" 2, "pqc/encapsulate/ML-KEM-768" 3)
 plot 'kem.dat' using ($1+-0.200):2 with boxes lw 1 title 'ttlv-json', \
      'kem.dat' using ($1+0.200):3 with boxes lw 1 title 'ttlv-bytes'
