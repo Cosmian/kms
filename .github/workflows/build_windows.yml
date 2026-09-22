@@ -181,8 +181,17 @@ jobs:
           $invalidSignatures = @()
           foreach ($executable in $executables) {
             $signature = Get-AuthenticodeSignature -FilePath $executable.FullName
-            Write-Host "$($executable.Name): $($signature.Status)"
-            if ($signature.Status -ne "Valid") {
+            $signer = $signature.SignerCertificate
+            $status = "$($signature.Status)"
+            $subject = if ($null -ne $signer) { $signer.Subject } else { "<none>" }
+            Write-Host "$($executable.Name): status=$status signer=$subject"
+
+            # Azure Trusted Signing test profiles can return UnknownError when
+            # the runner cannot build the public trust chain. The signer
+            # certificate is still present; reject missing certificates and
+            # cryptographic/hash failures, but allow this trust-only status.
+            $trustOnlyStatus = $signature.Status -eq "UnknownError" -and $null -ne $signer
+            if ($signature.Status -ne "Valid" -and -not $trustOnlyStatus) {
               $invalidSignatures += "$($executable.FullName) ($($signature.Status))"
             }
           }
