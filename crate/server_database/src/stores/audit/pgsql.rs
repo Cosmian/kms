@@ -39,7 +39,9 @@ use async_trait::async_trait;
 use cosmian_kms_access::audit::{
     AuditEvent, AuditEventDraft, AuditResult, audit_now, verify_chain_link, verify_event,
 };
-use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult, SealReason};
+use cosmian_kms_interfaces::{
+    AuditSink, ChainHead, InterfaceError, InterfaceResult, SealReason, WriteOutcome,
+};
 use cosmian_logger::error;
 use deadpool_postgres::{
     Config as PgConfig, GenericClient as _, ManagerConfig, Pool, RecyclingMethod,
@@ -258,24 +260,33 @@ impl PgAuditSink {
         Ok(())
     }
 
-    /// Reads the `row_hash` stored for `(instance_id, chain_generation, id)`, if any.
-    /// Used only to disambiguate a unique-violation on insert (see
+    /// Reads the `(prev_hash, row_hash)` stored for `(instance_id, chain_generation,
+    /// id)`, if any. Used only to disambiguate a unique-violation on insert (see
     /// [`Self::write_event_once`]).
-    async fn stored_row_hash(
+    async fn stored_chain_fields(
         pool: &Pool,
         instance_id: &str,
         generation: i64,
         id: i64,
-    ) -> DbResult<Option<Vec<u8>>> {
+    ) -> DbResult<Option<([u8; 32], [u8; 32])>> {
         let client = pool.get().await.map_err(DbError::from)?;
         let row = client
             .query_opt(
-                get_audit_query!("select-audit-event-row-hash"),
+                get_audit_query!("select-audit-event-chain-fields"),
                 &[&instance_id, &generation, &id],
             )
             .await
             .map_err(DbError::from)?;
-        Ok(row.map(|r| r.get(0)))
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let prev_hash: Vec<u8> = row.get(0);
+        let row_hash: Vec<u8> = row.get(1);
+        let prev_hash = <[u8; 32]>::try_from(prev_hash.as_slice())
+            .map_err(|_e| db_error!("audit: stored prev_hash has the wrong length"))?;
+        let row_hash = <[u8; 32]>::try_from(row_hash.as_slice())
+            .map_err(|_e| db_error!("audit: stored row_hash has the wrong length"))?;
+        Ok(Some((prev_hash, row_hash)))
     }
 
     /// Executes `insert-audit-event` on `client` for `(instance_id, generation)`. Shared
@@ -322,34 +333,56 @@ impl PgAuditSink {
 
     /// Single-attempt insert of `event` into `generation`, retried by
     /// [`Self::write_event_atomic`] on transient errors.
+    ///
+    /// A unique-violation on `(instance_id, generation, id)` is not automatically a
+    /// competing writer: a retry after a lost commit acknowledgement collides with our
+    /// own prior row at the same slot. The stored row is read back to tell the two cases
+    /// apart:
+    /// * identical `row_hash` — the exact same write, replayed: already durable, done.
+    /// * different content but the stored row's `prev_hash` matches this draft's
+    ///   `prev_hash` — the slot holds a *different*, already-durable event from this same
+    ///   writer (the draft that used to be queued for this id was abandoned after a
+    ///   lost-ack retry gave up). The chain is still valid; the caller must resync onto
+    ///   it and retry the current draft one id further, never dropping it silently.
+    /// * stored `prev_hash` does not match — a genuine fork (corruption, or a second
+    ///   writer that slipped past the advisory lock): unrecoverable here.
     async fn write_event_once(
         pool: &Pool,
         instance_id: &str,
         generation: i64,
         event: &AuditEvent,
-    ) -> DbResult<()> {
+    ) -> DbResult<WriteOutcome> {
         let client = pool.get().await.map_err(DbError::from)?;
         let query = get_audit_query!("insert-audit-event");
         let res = Self::insert_event_row(&client, query, instance_id, generation, event).await;
 
         let Err(e) = res else {
-            return Ok(());
+            return Ok(WriteOutcome::Written);
         };
         // Drop below is necessary for 1 client pool: holding it while calling
-        // `stored_row_hash` (which itself does `pool.get()`) would deadlock forever.
+        // `stored_chain_fields` (which itself does `pool.get()`) would deadlock forever.
         drop(client);
 
-        // SQLSTATE 23505 on (instance_id, chain_generation, id). Do NOT report "another
-        // writer" yet: a retry after a lost commit acknowledgement collides with our own
-        // row. Read the stored hash to tell the two apart. `ON CONFLICT DO NOTHING` is not
-        // an option here — it would paper over the genuine case and leave two divergent
-        // chains that each verify in isolation.
+        // SQLSTATE 23505 on (instance_id, chain_generation, id). `ON CONFLICT DO NOTHING`
+        // is not an option here — it would paper over the genuine-fork case and leave two
+        // divergent chains that each verify in isolation.
         if e.as_db_error()
             .is_some_and(|db| *db.code() == SqlState::UNIQUE_VIOLATION)
         {
-            let stored = Self::stored_row_hash(pool, instance_id, generation, event.id).await?;
+            let stored = Self::stored_chain_fields(pool, instance_id, generation, event.id).await?;
             return match stored {
-                Some(h) if h == event.row_hash => Ok(()),
+                Some((_, row_hash)) if row_hash == event.row_hash => Ok(WriteOutcome::Written),
+                Some((prev_hash, row_hash)) if prev_hash == event.prev_hash => {
+                    Ok(WriteOutcome::Resynced(ChainHead {
+                        next_id: event.id.checked_add(1).ok_or_else(|| {
+                            db_error!(
+                                "audit: instance_id={instance_id} id counter exhausted at \
+                                 i64::MAX during resync"
+                            )
+                        })?,
+                        prev_hash: row_hash,
+                    }))
+                }
                 _ => Err(DbError::DatabaseError(format!(
                     "audit: another writer is appending to chain instance_id={instance_id} \
                      generation={generation} at id={}. Two KMS instances must not share an \
@@ -623,7 +656,7 @@ impl AuditSink for PgAuditSink {
         }
     }
 
-    async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<()> {
+    async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<WriteOutcome> {
         let mut last_err = None;
         for attempt in 0..crate::stores::sql::PG_MAX_RETRIES {
             match Self::write_event_once(
@@ -634,7 +667,7 @@ impl AuditSink for PgAuditSink {
             )
             .await
             {
-                Ok(()) => return Ok(()),
+                Ok(outcome) => return Ok(outcome),
                 Err(e) if is_pg_retryable_error(&e.to_string()) => {
                     let delay = pg_retry_backoff_ms(attempt);
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
@@ -745,7 +778,7 @@ impl PgAuditReader {
 )]
 mod live_tests {
     use cosmian_kms_access::audit::{AuditEvent, AuditResult, audit_now, compute_row_hash};
-    use cosmian_kms_interfaces::AuditSink;
+    use cosmian_kms_interfaces::{AuditSink, WriteOutcome};
     use tokio_postgres::NoTls;
     use uuid::Uuid;
 
@@ -1094,6 +1127,50 @@ mod live_tests {
         // as success (our own row, ack lost), not as a rogue writer.
         sink.write_event_atomic(&ev).await.unwrap();
         sink.write_event_atomic(&ev).await.unwrap();
+    }
+
+    /// H1: when a lost-ack retry's slot already durably holds a *different* event from
+    /// this same writer (the draft that used to target this id was abandoned, but its
+    /// write actually landed), `write_event_once` must report `Resynced` onto the real
+    /// stored chain head instead of misreporting a competing writer — and the original
+    /// row must remain untouched (never-update contract).
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_collision_resyncs_after_lost_ack_with_different_content() {
+        let instance_id = unique_instance_id("resync");
+        let url = audit_url();
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        sink.resume().await.unwrap();
+
+        let ev0 = make_event(0, [0_u8; 32]);
+        sink.write_event_atomic(&ev0).await.unwrap();
+
+        // The writer "forgot" ev0 succeeded (ack lost) and moved on to a different
+        // draft, still targeting id=0 with the same expected prev_hash.
+        let mut ev0_different = make_event(0, [0_u8; 32]);
+        ev0_different.operation = "Decrypt".to_owned();
+        ev0_different.row_hash = compute_row_hash(&ev0_different);
+        assert_ne!(ev0_different.row_hash, ev0.row_hash);
+
+        let outcome =
+            PgAuditSink::write_event_once(&sink.pool, &instance_id, 0, &ev0_different)
+                .await
+                .unwrap();
+        match outcome {
+            WriteOutcome::Resynced(head) => {
+                assert_eq!(head.next_id, 1);
+                assert_eq!(head.prev_hash, ev0.row_hash);
+            }
+            WriteOutcome::Written => panic!("expected a resync, not a plain write"),
+        }
+
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        let page = reader.events_page(&instance_id, 0, -1).await.unwrap();
+        assert_eq!(page.len(), 1, "the abandoned draft must never be persisted");
+        assert_eq!(
+            page[0].row_hash, ev0.row_hash,
+            "the original stored row must remain untouched"
+        );
     }
 
     /// Simulates a hardened production deployment where the KMS role has only

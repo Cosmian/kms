@@ -11,7 +11,7 @@ use std::{
 
 use async_trait::async_trait;
 use cosmian_kms_access::audit::{AuditEvent, AuditEventDraft};
-use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult};
+use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult, WriteOutcome};
 use cosmian_logger::{debug, error};
 
 use super::recovery::recover_and_open;
@@ -199,7 +199,7 @@ impl AuditSink for FileSink {
     ///
     /// # Errors
     /// Returns an error if the sink is not resumed or file I/O fails.
-    async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<()> {
+    async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<WriteOutcome> {
         let mut row = serde_json::to_vec(event)
             .map_err(|e| InterfaceError::Default(format!("audit: cannot serialise event: {e}")))?;
         row.push(b'\n');
@@ -218,7 +218,7 @@ impl AuditSink for FileSink {
             Ok(()) => {
                 self.committed_len += u64::try_from(row.len()).unwrap_or(u64::MAX);
                 enforce_size_cap(self.committed_len, &self.write_state, &self.path);
-                Ok(())
+                Ok(WriteOutcome::Written)
             }
             Err(e) => {
                 self.needs_repair = true;

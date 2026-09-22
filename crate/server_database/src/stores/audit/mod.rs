@@ -73,7 +73,7 @@ mod tests {
             "select-audit-generations",
             "select-audit-events-page",
             "select-audit-instances",
-            "select-audit-event-row-hash",
+            "select-audit-event-chain-fields",
             "select-audit-generation-evidence",
         ] {
             assert!(
