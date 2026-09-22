@@ -40,7 +40,6 @@ pub enum SignPhase {
 pub const SIGN_PROFILE_PHASES: usize = 11;
 
 impl SignPhase {
-    #[cfg(feature = "benchmarking")]
     const fn index(self) -> usize {
         match self {
             Self::CSignBody => 0,
@@ -117,7 +116,6 @@ impl Default for SignProfileSnapshot {
     }
 }
 
-#[cfg(feature = "benchmarking")]
 mod enabled {
     use std::{
         cell::Cell,
@@ -263,50 +261,8 @@ mod enabled {
     }
 }
 
-#[cfg(feature = "benchmarking")]
 pub use enabled::{PhaseGuard, phase, reset, set_enabled, sign_scope, snapshot};
-
-#[cfg(not(feature = "benchmarking"))]
-mod disabled {
-    use super::{SignPhase, SignProfileSnapshot};
-
-    /// No-op phase guard used when the benchmarking feature is disabled.
-    pub struct PhaseGuard;
-
-    impl Drop for PhaseGuard {
-        fn drop(&mut self) {}
-    }
-
-    /// Starts a no-op phase timer.
-    #[inline]
-    #[must_use]
-    pub const fn phase(_phase: SignPhase) -> PhaseGuard {
-        PhaseGuard
-    }
-
-    /// Runs a closure without profiling.
-    #[inline]
-    pub fn sign_scope<T>(f: impl FnOnce() -> T) -> T {
-        f()
-    }
-
-    /// No-op reset.
-    pub const fn reset() {}
-
-    /// No-op runtime switch.
-    pub const fn set_enabled(_enabled: bool) {}
-
-    /// Returns an empty snapshot.
-    #[must_use]
-    pub fn snapshot() -> SignProfileSnapshot {
-        SignProfileSnapshot::default()
-    }
-}
-
-#[cfg(not(feature = "benchmarking"))]
-pub use disabled::{PhaseGuard, phase, reset, set_enabled, sign_scope, snapshot};
-
-#[cfg(all(test, feature = "benchmarking"))]
+#[cfg(test)]
 mod tests {
     use std::thread;
 
