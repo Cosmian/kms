@@ -92,10 +92,6 @@ BUILD_ARGS=(-p cosmian_pkcs11 -p ckms)
 [ -z "${BENCH_SERVER_URL}" ] && BUILD_ARGS=(-p cosmian_kms_server "${BUILD_ARGS[@]}")
 BUILD_FEATURES=()
 [ "${BENCH_VARIANT}" = "non-fips" ] && BUILD_FEATURES+=(non-fips)
-# The `benchmarking` feature only powers the Ed25519 overhead ladder's internal
-# phase counters (`overhead.rs`/`profiling.rs`), so it is only needed for
-# `--overhead`, not for every `--criterion` run.
-[ "${BENCH_OVERHEAD}" = "true" ] && BUILD_FEATURES+=(cosmian_pkcs11/benchmarking)
 BUILD_FEATURE_ARGS=()
 if [ "${#BUILD_FEATURES[@]}" -gt 0 ]; then
   BUILD_FEATURE_LIST=$(IFS=,; echo "${BUILD_FEATURES[*]}")

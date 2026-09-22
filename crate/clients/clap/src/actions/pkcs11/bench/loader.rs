@@ -191,11 +191,7 @@ impl Pkcs11Lib {
 
     pub(crate) fn reset_sign_profile(&self) -> BenchResult<()> {
         let reset = self.profile_reset.ok_or_else(|| {
-            BenchError::MissingSymbol(
-                "cosmian_pkcs11_benchmark_sign_profile_reset (build provider with the \
-                 benchmarking feature)"
-                    .to_owned(),
-            )
+            BenchError::MissingSymbol("cosmian_pkcs11_benchmark_sign_profile_reset".to_owned())
         })?;
         // SAFETY: the symbol was resolved with the exact exported C ABI and takes no
         // pointers or caller-owned state.
@@ -205,11 +201,7 @@ impl Pkcs11Lib {
 
     pub(crate) fn sign_profile_snapshot(&self) -> BenchResult<SignProfileSnapshot> {
         let snapshot_fn = self.profile_snapshot.ok_or_else(|| {
-            BenchError::MissingSymbol(
-                "cosmian_pkcs11_benchmark_sign_profile_snapshot (build provider with the \
-                 benchmarking feature)"
-                    .to_owned(),
-            )
+            BenchError::MissingSymbol("cosmian_pkcs11_benchmark_sign_profile_snapshot".to_owned())
         })?;
         let mut snapshot = SignProfileSnapshot::default();
         // SAFETY: `snapshot` is correctly aligned, writable, and lives for the
@@ -223,9 +215,7 @@ impl Pkcs11Lib {
     pub(crate) fn set_sign_profile_enabled(&self, enabled: bool) -> BenchResult<()> {
         let set_enabled = self.profile_set_enabled.ok_or_else(|| {
             BenchError::MissingSymbol(
-                "cosmian_pkcs11_benchmark_sign_profile_set_enabled (build provider with the \
-                 benchmarking feature)"
-                    .to_owned(),
+                "cosmian_pkcs11_benchmark_sign_profile_set_enabled".to_owned(),
             )
         })?;
         // SAFETY: the symbol was resolved with the exact exported C ABI and takes a

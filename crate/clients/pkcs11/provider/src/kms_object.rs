@@ -22,9 +22,9 @@ use ckms::{
                     Revoke, Sign, SignatureVerify,
                 },
                 kmip_types::{
-                    CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
-                    KeyFormatType, QueryFunction, RecommendedCurve, UniqueIdentifier,
-                    ValidityIndicator,
+                    AttributeReference, CryptographicAlgorithm, CryptographicParameters,
+                    DigitalSignatureAlgorithm, KeyFormatType, QueryFunction, RecommendedCurve, Tag,
+                    UniqueIdentifier, ValidityIndicator,
                 },
             },
         },
@@ -1107,7 +1107,12 @@ pub(crate) async fn get_kms_object_attributes_async(
     let response = kms_client
         .get_attributes(GetAttributes {
             unique_identifier: Some(UniqueIdentifier::TextString(object_id.to_owned())),
-            attribute_reference: None,
+            attribute_reference: Some(vec![
+                AttributeReference::Standard(Tag::CryptographicAlgorithm),
+                AttributeReference::Standard(Tag::CryptographicLength),
+                AttributeReference::Standard(Tag::ObjectType),
+                AttributeReference::Standard(Tag::CryptographicDomainParameters),
+            ]),
         })
         .await?;
     Ok(response.attributes)

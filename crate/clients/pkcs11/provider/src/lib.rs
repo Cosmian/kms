@@ -70,16 +70,13 @@ mod pkcs11_data_object;
 mod pkcs11_private_key;
 mod pkcs11_public_key;
 mod pkcs11_symmetric_key;
-
 /// Clears the benchmark-only in-memory Sign phase counters.
-#[cfg(feature = "benchmarking")]
 #[unsafe(no_mangle)]
 pub extern "C" fn cosmian_pkcs11_benchmark_sign_profile_reset() {
     cosmian_pkcs11_module::profiling::reset();
 }
 
 /// Enables or disables benchmark-only Sign phase collection.
-#[cfg(feature = "benchmarking")]
 #[unsafe(no_mangle)]
 pub extern "C" fn cosmian_pkcs11_benchmark_sign_profile_set_enabled(enabled: bool) {
     cosmian_pkcs11_module::profiling::set_enabled(enabled);
@@ -91,7 +88,6 @@ pub extern "C" fn cosmian_pkcs11_benchmark_sign_profile_set_enabled(enabled: boo
 ///
 /// `snapshot` must be non-null, correctly aligned, and writable for one
 /// [`cosmian_pkcs11_module::profiling::SignProfileSnapshot`].
-#[cfg(feature = "benchmarking")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn cosmian_pkcs11_benchmark_sign_profile_snapshot(
     snapshot: *mut cosmian_pkcs11_module::profiling::SignProfileSnapshot,
