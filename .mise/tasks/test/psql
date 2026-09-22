@@ -137,12 +137,8 @@ _run_postgresql_failover_test() {
 }
 
 # ── PostgreSQL audit backend: seal-and-roll recovery ──────────────────────────
-# Runs the ignored, live-database audit tests that a plain `cargo test` skips.
-# --test-threads=1: PgAuditSink::connect() reruns its full schema-bootstrap DDL
-# (function/trigger CREATE OR REPLACE) on every call, unscoped by instance_id;
-# running these tests concurrently races that shared DDL and fails with
-# PostgreSQL's "tuple concurrently updated" (a pre-existing bootstrap
-# limitation, not specific to these tests).
+# Runs ignored, live-DB audit tests. --test-threads=1: connect() reruns shared
+# bootstrap DDL each call -> concurrent runs race it ("tuple concurrently updated").
 
 _run_postgres_audit_recovery_tests() {
   print_status "Running PostgreSQL audit seal-and-roll recovery tests..."
