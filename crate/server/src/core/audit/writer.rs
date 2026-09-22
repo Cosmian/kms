@@ -5,7 +5,7 @@
 use std::sync::{Arc, atomic::AtomicU64};
 
 use cosmian_kms_access::audit::{AuditEventDraft, AuditResult, audit_now};
-use cosmian_kms_interfaces::AuditSink;
+use cosmian_kms_interfaces::{AuditSink, WriteOutcome};
 use cosmian_logger::{debug, error};
 use tokio::sync::mpsc;
 
@@ -72,35 +72,54 @@ pub(super) async fn writer_loop<S: AuditSink>(
     sink
 }
 
-/// Writes one draft and advances the chain head only on success.
+/// Writes one draft and advances the chain head only on success. If the sink reports
+/// that the requested slot was already durably occupied by a valid link in this same
+/// chain (see [`WriteOutcome::Resynced`] — e.g. a prior write whose acknowledgement was
+/// lost), the same draft is retried at the corrected position instead of being dropped
+/// or permanently wedging the chain on a slot nothing will ever fill again.
 pub(super) async fn write_draft_to_chain<S: AuditSink>(
     sink: &mut S,
     draft: AuditEventDraft,
     next_id: i64,
     prev_hash: &mut [u8; 32],
 ) -> i64 {
-    let event = draft.finalize(next_id, *prev_hash);
+    // A resync can only ever move `id` forward, and the composite primary key means at
+    // most one is ever expected per draft; this bound only guarantees termination
+    // against a pathologically/adversarially pre-filled range of slots.
+    const MAX_RESYNC_ATTEMPTS: u32 = 8;
 
-    match sink.write_event_atomic(&event).await {
-        Ok(()) => {
-            *prev_hash = event.row_hash;
-            next_id.checked_add(1).unwrap_or_else(|| {
+    let mut id = next_id;
+    let mut ph = *prev_hash;
+    for _ in 0..MAX_RESYNC_ATTEMPTS {
+        let event = draft.clone().finalize(id, ph);
+        match sink.write_event_atomic(&event).await {
+            Ok(WriteOutcome::Written) => {
+                *prev_hash = event.row_hash;
+                return id.checked_add(1).unwrap_or_else(|| {
+                    error!(
+                        "AuditFileStore: id counter overflow at i64::MAX — \
+                         audit logging stopped. Rotate the log file and restart."
+                    );
+                    id
+                });
+            }
+            Ok(WriteOutcome::Resynced(head)) => {
+                id = head.next_id;
+                ph = head.prev_hash;
+            }
+            Err(e) => {
                 error!(
-                    "AuditFileStore: id counter overflow at i64::MAX — \
-                     audit logging stopped. Rotate the log file and restart."
+                    "AuditFileStore: failed to write event id={id}: {e} — event dropped"
                 );
-                next_id
-            })
-        }
-        Err(e) => {
-            error!(
-                "AuditFileStore: failed to write event id={}: {e} — event dropped",
-                event.id
-            );
-            // Reuse this chain position after a failed write.
-            next_id
+                // Reuse this chain position after a failed write.
+                return id;
+            }
         }
     }
+    error!(
+        "AuditFileStore: exhausted resync attempts at id={id} — event dropped"
+    );
+    id
 }
 
 /// Builds a chained sentinel recording events dropped by channel saturation.

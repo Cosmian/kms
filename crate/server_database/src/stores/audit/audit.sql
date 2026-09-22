@@ -73,8 +73,8 @@ SELECT instance_id, chain_generation, id, timestamp, operation, username, object
 -- name: select-audit-instances
 SELECT DISTINCT instance_id FROM kms_audit_events ORDER BY instance_id ASC;
 
--- name: select-audit-event-row-hash
-SELECT row_hash FROM kms_audit_events WHERE instance_id = $1 AND chain_generation = $2 AND id = $3;
+-- name: select-audit-event-chain-fields
+SELECT prev_hash, row_hash FROM kms_audit_events WHERE instance_id = $1 AND chain_generation = $2 AND id = $3;
 
 -- name: select-audit-generation-evidence
 SELECT id, 'v1' || '|' || encode(convert_to(instance_id, 'UTF8'), 'hex') || '|' || chain_generation || '|' || id || '|' || to_char(timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') || '|' || encode(convert_to(operation, 'UTF8'), 'hex') || '|' || encode(convert_to(username, 'UTF8'), 'hex') || '|' || COALESCE(encode(convert_to(object_uid, 'UTF8'), 'hex'), '-') || '|' || COALESCE(encode(convert_to(algorithm, 'UTF8'), 'hex'), '-') || '|' || COALESCE(encode(convert_to(client_ip, 'UTF8'), 'hex'), '-') || '|' || encode(convert_to(result, 'UTF8'), 'hex') || '|' || duration_ms || '|' || COALESCE(request_id::text, '-') || '|' || COALESCE(encode(convert_to(details, 'UTF8'), 'hex'), '-') || '|' || encode(prev_hash, 'hex') || '|' || encode(row_hash, 'hex') AS evidence_line FROM kms_audit_events WHERE instance_id = $1 AND chain_generation = $2 AND id > $3 ORDER BY id ASC LIMIT $4;
