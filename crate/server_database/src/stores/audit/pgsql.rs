@@ -187,7 +187,7 @@ impl PgAuditSink {
         instance_id: &str,
         lock_timeout: std::time::Duration,
     ) -> DbResult<Self> {
-        if instance_id.is_empty() || instance_id.len() > 255 {
+        if instance_id.is_empty() || instance_id.chars().count() > 255 {
             return Err(db_error!(
                 "audit: --audit-instance-id must be between 1 and 255 characters"
             ));
@@ -788,7 +788,10 @@ impl AuditSink for PgAuditSink {
             .await
             {
                 Ok(outcome) => return Ok(outcome),
-                Err(e) if is_pg_retryable_error(&e.to_string()) => {
+                Err(e)
+                    if is_pg_retryable_error(&e.to_string())
+                        && attempt + 1 < crate::stores::sql::PG_MAX_RETRIES =>
+                {
                     let delay = pg_retry_backoff_ms(attempt);
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                     last_err = Some(e);
@@ -904,7 +907,7 @@ mod live_tests {
     use tokio_postgres::NoTls;
     use uuid::Uuid;
 
-    use super::{PgAuditReader, PgAuditSink};
+    use super::{AUDIT_PAGE_SIZE, PgAuditReader, PgAuditSink};
 
     /// Live audit database URL. Defaults to the repository's shared `docker-compose`
     /// `PostgreSQL` service (see `.mise/lib/test_slots.sh`'s `KMS_AUDIT_POSTGRES_URL`), so a
@@ -1502,6 +1505,56 @@ mod live_tests {
         assert_eq!(events_b.len(), 1);
     }
 
+    /// L9: `list_instances`/`list_generations` had no test coverage at all. Seeds two
+    /// instances, one of which rolls to a second generation, and checks both listings.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_reader_lists_instances_and_generations() {
+        let url = audit_url();
+        let id_a = unique_instance_id("list-a");
+        let id_b = unique_instance_id("list-b");
+
+        let sink_a = seed_generation_zero(&url, &id_a).await;
+        drop(sink_a);
+        tamper_row(
+            &url,
+            "UPDATE kms_audit_events SET row_hash = $2 WHERE instance_id = $1 AND \
+             chain_generation = 0 AND id = 2",
+            &[&id_a, &vec![0_u8; 32]],
+        )
+        .await;
+        let mut sink_a = PgAuditSink::connect(&url, &id_a).await.unwrap();
+        sink_a
+            .resume()
+            .await
+            .expect("resume must seal generation 0 and roll to generation 1");
+        drop(sink_a);
+
+        let mut sink_b = PgAuditSink::connect(&url, &id_b).await.unwrap();
+        sink_b.resume().await.unwrap();
+        sink_b
+            .write_event_atomic(&make_event(0, [0_u8; 32]))
+            .await
+            .unwrap();
+        drop(sink_b);
+
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        let instances = reader.list_instances().await.unwrap();
+        assert!(instances.contains(&id_a));
+        assert!(instances.contains(&id_b));
+
+        assert_eq!(reader.list_generations(&id_a).await.unwrap(), vec![0, 1]);
+        assert_eq!(reader.list_generations(&id_b).await.unwrap(), vec![0]);
+        assert_eq!(
+            reader
+                .list_generations(&unique_instance_id("never-seen"))
+                .await
+                .unwrap(),
+            Vec::<i64>::new(),
+            "an instance with no rows must return an empty Vec, not an error"
+        );
+    }
+
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
     async fn pg_audit_events_page_paginates_and_terminates() {
@@ -1526,6 +1579,55 @@ mod live_tests {
             next_page.is_empty(),
             "paginating past the end of the chain must terminate with an empty page"
         );
+    }
+
+    /// L3: a chain longer than one page (`AUDIT_PAGE_SIZE` rows) must page correctly at
+    /// the boundary — both for `PgAuditReader::events_page` (one page at a time) and for
+    /// `resume()`'s own internal, unconditional whole-chain verification loop.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_pagination_spans_page_boundary() {
+        let instance_id = unique_instance_id("pagination-boundary");
+        let url = audit_url();
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        sink.resume().await.unwrap();
+
+        let total_rows = AUDIT_PAGE_SIZE + 1;
+        let mut prev_hash = [0_u8; 32];
+        for id in 0..total_rows {
+            let ev = make_event(id, prev_hash);
+            sink.write_event_atomic(&ev).await.unwrap();
+            prev_hash = ev.row_hash;
+        }
+        drop(sink);
+
+        // resume()'s own page-by-page scan must walk past the boundary without losing
+        // or duplicating rows.
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        let head = sink
+            .resume()
+            .await
+            .expect("a chain spanning more than one page must still verify cleanly");
+        assert_eq!(head.next_id, total_rows);
+
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        let first_page = reader.events_page(&instance_id, 0, -1).await.unwrap();
+        assert_eq!(
+            i64::try_from(first_page.len()).unwrap(),
+            AUDIT_PAGE_SIZE,
+            "the first page must be capped at AUDIT_PAGE_SIZE"
+        );
+        let last_id_of_first_page = first_page.last().unwrap().id;
+        let second_page = reader
+            .events_page(&instance_id, 0, last_id_of_first_page)
+            .await
+            .unwrap();
+        assert_eq!(
+            second_page.len(),
+            1,
+            "the remaining row must appear on the second page"
+        );
+        assert_eq!(second_page[0].id, total_rows - 1);
     }
 
     #[tokio::test]

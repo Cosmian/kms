@@ -140,14 +140,27 @@ _run_postgresql_failover_test() {
 # Runs ignored, live-DB audit tests. --test-threads=1: connect() reruns shared
 # bootstrap DDL each call -> concurrent runs race it ("tuple concurrently updated").
 
+# Every `pg_audit_*`/`postgres_*` test uses a fresh, random instance_id, so rows never
+# collide across runs — but they never get cleaned up either, and the append-only guard
+# (deliberately, see fix C1) rejects TRUNCATE/DELETE even for the table owner. DROP TABLE
+# is DDL, not a row mutation, so it bypasses the guard entirely; ensure_schema()
+# recreates the table on the very next PgAuditSink::connect() call.
+_reset_postgres_audit_tables() {
+  print_status "Dropping kms_audit_events/kms_audit_control to reset accumulated test rows..."
+  psql "${KMS_AUDIT_POSTGRES_URL}" -v ON_ERROR_STOP=1 \
+    -c "DROP TABLE IF EXISTS kms_audit_events, kms_audit_control CASCADE;"
+}
+
 _run_postgres_audit_recovery_tests() {
   print_status "Running PostgreSQL audit seal-and-roll recovery tests..."
+  _reset_postgres_audit_tables
   cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
     -- --ignored --nocapture --test-threads=1 \
     --skip pg_audit_connect_falls_back_to_column_check_without_ddl_rights \
     pg_audit_
   cargo test -p cosmian_kms_server --lib "${FEATURES_FLAG[@]}" \
     -- --ignored --nocapture postgres_corruption_starts_on_next_generation
+  _reset_postgres_audit_tables
 }
 
 print_header "Running PostgreSQL tests (${VARIANT_NAME})"

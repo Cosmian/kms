@@ -168,8 +168,11 @@ Each line in the JSONL file is a complete JSON object with the following fields:
 
 Every persisted event includes a SHA-256 hash chain that makes tampering detectable offline.
 
-The hash is computed over a canonical byte sequence of the event's fields:
-`id || timestamp || operation || user || object_uid || algorithm || client_ip || result || duration_ms || request_id || prev_hash`
+The hash is computed over a canonical byte sequence of the event's fields, in this order:
+`prev_hash || id || timestamp || operation || user || object_uid || algorithm || client_ip || result || duration_ms || request_id || details`
+
+`request_id` and `details` are each included only when present (`Some`), so events written
+before either field existed still hash to the same bytes as before.
 
 `prev_hash` of the first event (`id = 0`) is the 32-byte all-zeros sentinel.
 
