@@ -80,6 +80,47 @@ fn decode_pg_ssl_file_query_value(value: &str) -> String {
         .unwrap_or_else(|| value.to_owned())
 }
 
+/// Builds an OpenSSL-backed TLS connector for any non-`disable` `sslmode`: `verify-full`
+/// and `verify-ca` verify the server certificate (`verify-ca` does not additionally
+/// disable hostname checking — `postgres_openssl` verifies it regardless), anything else
+/// connects with TLS but does not verify. Also loads `sslrootcert`/`sslcert`/`sslkey` if
+/// present. Shared by the object-store and audit `PostgreSQL` connections.
+pub(crate) fn build_pg_tls_connector(
+    query_params: &HashMap<String, String>,
+) -> DbResult<MakeTlsConnector> {
+    let sslmode = query_params.get("sslmode").map_or("prefer", String::as_str);
+
+    let mut builder = SslConnector::builder(SslMethod::tls())
+        .map_err(|e| DbError::DatabaseError(format!("TLS setup failed: {e}")))?;
+
+    match sslmode {
+        "verify-full" | "verify-ca" => builder.set_verify(SslVerifyMode::PEER),
+        _ => builder.set_verify(SslVerifyMode::NONE),
+    }
+
+    if let Some(ca_file) = query_params.get("sslrootcert") {
+        let ca_file = decode_pg_ssl_file_query_value(ca_file.as_ref());
+        builder
+            .set_ca_file(ca_file.as_str())
+            .map_err(|e| DbError::DatabaseError(format!("Failed to load CA: {e}")))?;
+    }
+
+    if let Some(cert_file) = query_params.get("sslcert") {
+        let cert_file = decode_pg_ssl_file_query_value(cert_file.as_ref());
+        builder
+            .set_certificate_file(cert_file.as_str(), SslFiletype::PEM)
+            .map_err(|e| DbError::DatabaseError(format!("Failed to load client cert: {e}")))?;
+    }
+    if let Some(key_file) = query_params.get("sslkey") {
+        let key_file = decode_pg_ssl_file_query_value(key_file.as_ref());
+        builder
+            .set_private_key_file(key_file.as_str(), SslFiletype::PEM)
+            .map_err(|e| DbError::DatabaseError(format!("Failed to load client key: {e}")))?;
+    }
+
+    Ok(MakeTlsConnector::new(builder.build()))
+}
+
 /// Get a client from the pool, retrying on transient connection errors.
 /// Used by Migrate trait methods for startup resilience.
 async fn pg_get_client(pool: &deadpool_postgres::Pool) -> DbResult<deadpool_postgres::Object> {
@@ -315,55 +356,7 @@ impl PgPool {
             cfg.create_pool(None, NoTls)
                 .map_err(|e| DbError::DatabaseError(e.to_string()))?
         } else {
-            // Build TLS connector for require, verify-ca, verify-full, prefer, allow
-            let mut builder = SslConnector::builder(SslMethod::tls())
-                .map_err(|e| DbError::DatabaseError(format!("TLS setup failed: {e}")))?;
-
-            // Set verification mode based on sslmode
-            match sslmode {
-                "verify-full" => {
-                    // verify-full: verify certificate AND hostname
-                    builder.set_verify(SslVerifyMode::PEER);
-                }
-                "verify-ca" => {
-                    // verify-ca: verify certificate but NOT hostname
-                    builder.set_verify(SslVerifyMode::PEER);
-                    // For verify-ca, we don't want hostname verification
-                    // This is handled by not setting any hostname verification parameters
-                }
-                _ => {
-                    // require, prefer, allow: connect with TLS but don't verify cert
-                    builder.set_verify(SslVerifyMode::NONE);
-                }
-            }
-
-            // Load CA cert if provided (sslrootcert)
-            if let Some(ca_file) = query_params.get("sslrootcert") {
-                let ca_file = decode_pg_ssl_file_query_value(ca_file.as_ref());
-                builder
-                    .set_ca_file(ca_file.as_str())
-                    .map_err(|e| DbError::DatabaseError(format!("Failed to load CA: {e}")))?;
-            }
-
-            // Load client cert/key for mutual TLS (sslcert, sslkey)
-            if let Some(cert_file) = query_params.get("sslcert") {
-                let cert_file = decode_pg_ssl_file_query_value(cert_file.as_ref());
-                builder
-                    .set_certificate_file(cert_file.as_str(), SslFiletype::PEM)
-                    .map_err(|e| {
-                        DbError::DatabaseError(format!("Failed to load client cert: {e}"))
-                    })?;
-            }
-            if let Some(key_file) = query_params.get("sslkey") {
-                let key_file = decode_pg_ssl_file_query_value(key_file.as_ref());
-                builder
-                    .set_private_key_file(key_file.as_str(), SslFiletype::PEM)
-                    .map_err(|e| {
-                        DbError::DatabaseError(format!("Failed to load client key: {e}"))
-                    })?;
-            }
-
-            let connector = MakeTlsConnector::new(builder.build());
+            let connector = build_pg_tls_connector(&query_params)?;
             cfg.create_pool(None, connector)
                 .map_err(|e| DbError::DatabaseError(e.to_string()))?
         };
@@ -1665,6 +1658,24 @@ mod tests {
         let params = extract_query_params(url);
         let clean = rebuild_url_without_ssl_params(url, &params);
         assert_eq!(clean, url);
+    }
+
+    #[test]
+    // Result assertions read clearer than matches!()/is_ok() here; test-only.
+    #[allow(clippy::unwrap_used)]
+    fn test_build_pg_tls_connector_verify_full_default_ca() {
+        let mut params = HashMap::new();
+        params.insert("sslmode".to_owned(), "verify-full".to_owned());
+        build_pg_tls_connector(&params).unwrap();
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_build_pg_tls_connector_bad_ca_file_errors() {
+        let mut params = HashMap::new();
+        params.insert("sslmode".to_owned(), "verify-ca".to_owned());
+        params.insert("sslrootcert".to_owned(), "/nonexistent/ca.pem".to_owned());
+        build_pg_tls_connector(&params).err().unwrap();
     }
 
     #[test]

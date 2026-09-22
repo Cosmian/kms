@@ -295,7 +295,8 @@ id=1  2026-05-06T20:31:15Z  Encrypt  chain=ok
 Instead of a local JSONL file, the KMS can write the audit hash chain to a `PostgreSQL`
 database — a centralized, multi-writer-safe alternative for horizontally-scaled deployments.
 Backend selection is config-time only: setting `--audit-postgres-url` switches the writer to
-`PostgreSQL` instead of the file; there is no runtime fallback between the two.
+`PostgreSQL` instead of the file; there is no runtime fallback between the two — a connectivity
+failure at startup still aborts the server.
 
 === "Command line"
 
@@ -317,7 +318,15 @@ Backend selection is config-time only: setting `--audit-postgres-url` switches t
 | CLI flag               | Environment variable    | Description                                                                                                                                                                                                       |
 | ----------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--audit-postgres-url` | `KMS_AUDIT_POSTGRES_URL` | Connection URL for the audit database. Must be a **different** database than `--database-url` when the object store is also `PostgreSQL` — the server refuses to start otherwise.                              |
-| `--audit-instance-id`  | `KMS_AUDIT_INSTANCE_ID`  | Identifies this instance's chain. Must be stable across restarts and unique per instance sharing the database — a reused id is rejected at startup by an advisory-lock check. Defaults to the machine hostname. |
+| `--audit-instance-id`  | `KMS_AUDIT_INSTANCE_ID`  | Identifies this instance's chain. Required when `--audit-postgres-url` is set — no default. Must be stable across restarts and unique per instance sharing the database; a reused id is rejected at startup by an advisory-lock check. |
+
+`--audit-postgres-url` supports the same `sslmode`/`sslrootcert`/`sslcert`/`sslkey` query
+parameters as `--database-url` — see [PostgreSQL TLS / mTLS](./database/configuration.md#postgresql-tls-mtls).
+
+If `--audit-file-path` is also set, it's never used as a fallback — `PostgreSQL` always takes
+precedence, and a connectivity failure still aborts startup. The KMS only logs a warning in
+this case, either confirming the file path is ignored (connection succeeded) or noting that it's
+not used as a fallback (connection failed, startup aborts).
 
 !!! warning "Schema is not release-stable yet"
     The `PostgreSQL` audit schema has no migration path between versions yet. If you are

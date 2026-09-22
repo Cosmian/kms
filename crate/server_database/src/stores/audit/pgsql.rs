@@ -17,7 +17,7 @@
 //! ====================
 //! Two independent mechanisms guard against two KMS instances sharing an
 //! `instance_id` and corrupting each other's chain:
-//! 1. **Advisory lock** (primary defense): [`PgAuditSink::connect`] acquires a
+//! 1. **Advisory lock** : [`PgAuditSink::connect`] acquires a
 //!    session-level `pg_try_advisory_lock` keyed by `instance_id` on a dedicated,
 //!    unpooled connection held for the sink's entire lifetime, *before* `resume()` or
 //!    HTTP startup. A competing instance fails to connect at all. Because the lock is
@@ -30,17 +30,10 @@
 //!    insert (see above) runs directly on this dedicated session rather than a pooled
 //!    one, precisely so `PostgreSQL` itself — not a separate liveness check racing the
 //!    write — guarantees the lock is held for that insert's entire duration.
-//! 2. **Composite primary key** (defense in depth): `(instance_id, chain_generation, id)`
+//! 2. **Composite primary key** : `(instance_id, chain_generation, id)`
 //!    makes a genuine chain fork *structurally impossible*, not just detected — see
 //!    [`PgAuditSink::write_event_once`] for how a lost-acknowledgement retry (same writer,
 //!    same row) is told apart from a genuine second writer (same slot, different row).
-//!
-//! `kms_audit_events` schema (`audit.sql`)
-//! =======================================
-//! `audit.sql` deliberately has **no `--` comments inside any multi-line query body**:
-//! the `rawsql` loader joins a query's lines with spaces before handing it to
-//! `PostgreSQL`, so an inline `--` would comment out everything after it, including the
-//! statement's closing `;`.
 
 use async_trait::async_trait;
 use cosmian_kms_access::audit::{
@@ -51,11 +44,7 @@ use cosmian_logger::error;
 use deadpool_postgres::{
     Config as PgConfig, GenericClient as _, ManagerConfig, Pool, RecyclingMethod,
 };
-use openssl::{
-    hash::{Hasher, MessageDigest},
-    ssl::{SslConnector, SslMethod, SslVerifyMode},
-};
-use postgres_openssl::MakeTlsConnector;
+use openssl::hash::{Hasher, MessageDigest};
 use tokio_postgres::{NoTls, error::SqlState};
 
 use super::{AUDIT_QUERIES, row::event_from_row};
@@ -63,7 +52,7 @@ use crate::{
     db_error,
     error::{DbError, DbResult},
     stores::sql::{
-        extract_query_params, is_pg_retryable_error, pg_retry_backoff_ms,
+        build_pg_tls_connector, extract_query_params, is_pg_retryable_error, pg_retry_backoff_ms,
         rebuild_url_without_ssl_params,
     },
 };
@@ -87,12 +76,9 @@ const AUDIT_POOL_SIZE: usize = 1;
 /// (there, a tail window; here, one page at a time).
 const AUDIT_PAGE_SIZE: i64 = 1_000;
 
-/// Builds a connection pool for `url`. `sslmode=disable` connects in the clear; anything
-/// else (including the default, `prefer`) negotiates TLS but does not verify the server
-/// certificate — matching the object store's least-surprise default. Certificate pinning
-/// (`verify-ca`/`verify-full`) is not supported by the audit backend today; use the
-/// object-store connection's stronger guarantees as the model to extend this if a
-/// deployment needs it.
+/// Builds a 1-connection pool for `url`. `sslmode=disable` connects in the clear; any other
+/// mode (default `prefer`) negotiates TLS honoring `sslmode`/`sslrootcert`/`sslcert`/`sslkey`
+/// via `sql::build_pg_tls_connector` — identical behavior to the object-store connection.
 fn build_pool(url: &str, max_size: usize, recycling_method: RecyclingMethod) -> DbResult<Pool> {
     let query_params = extract_query_params(url);
     let clean_url = rebuild_url_without_ssl_params(url, &query_params);
@@ -110,10 +96,7 @@ fn build_pool(url: &str, max_size: usize, recycling_method: RecyclingMethod) -> 
         cfg.create_pool(None, NoTls)
             .map_err(|e| DbError::DatabaseError(e.to_string()))
     } else {
-        let mut builder = SslConnector::builder(SslMethod::tls())
-            .map_err(|e| DbError::DatabaseError(format!("TLS setup failed: {e}")))?;
-        builder.set_verify(SslVerifyMode::NONE);
-        let connector = MakeTlsConnector::new(builder.build());
+        let connector = build_pg_tls_connector(&query_params)?;
         cfg.create_pool(None, connector)
             .map_err(|e| DbError::DatabaseError(e.to_string()))
     }
@@ -137,10 +120,7 @@ async fn connect_dedicated_session(url: &str) -> DbResult<tokio_postgres::Client
         });
         client
     } else {
-        let mut builder = SslConnector::builder(SslMethod::tls())
-            .map_err(|e| DbError::DatabaseError(format!("TLS setup failed: {e}")))?;
-        builder.set_verify(SslVerifyMode::NONE);
-        let connector = MakeTlsConnector::new(builder.build());
+        let connector = build_pg_tls_connector(&query_params)?;
         let (client, connection) = tokio_postgres::connect(&clean_url, connector)
             .await
             .map_err(DbError::from)?;
@@ -236,7 +216,6 @@ impl PgAuditSink {
 
         for name in [
             "create-table-audit-events",
-            "add-column-audit-events-details",
             "create-index-audit-events-timestamp",
             "create-audit-append-only-guard",
             "create-audit-trigger-no-update",
@@ -354,10 +333,8 @@ impl PgAuditSink {
         let Err(e) = res else {
             return Ok(());
         };
-        // Release the pooled connection before the disambiguation read below: on a
-        // size-1 pool (always — see `AUDIT_POOL_SIZE`), holding it while calling
-        // `stored_row_hash` (which itself does `pool.get()`) would deadlock forever
-        // waiting for a connection that only `client`'s own drop can free.
+        // Drop below is necessary for 1 client pool: holding it while calling
+        // `stored_row_hash` (which itself does `pool.get()`) would deadlock forever.
         drop(client);
 
         // SQLSTATE 23505 on (instance_id, chain_generation, id). Do NOT report "another
