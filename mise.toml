@@ -1,6 +1,13 @@
 # mise.toml — Cosmian KMS development environment & task runner
 # See https://mise.jdx.dev/configuration.html
 
+[tools]
+# Required to run any task under .mise/tasks/: every task file starts with the
+# `#!/usr/bin/env -S usage bash` shebang (USAGE-spec flag parsing). Without this
+# declared here, `mise run <task>` fails with "usage: No such file or directory"
+# on any machine that has not separately activated the `usage` CLI.
+usage = "3.5.3"
+
 [env]
 RUST_BACKTRACE = "1"
 

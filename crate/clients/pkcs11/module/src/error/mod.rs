@@ -24,9 +24,10 @@ use pkcs11_sys::{
     CKR_ATTRIBUTE_VALUE_INVALID, CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED,
     CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED,
     CKR_GENERAL_ERROR, CKR_KEY_HANDLE_INVALID, CKR_MECHANISM_INVALID, CKR_NEED_TO_CREATE_THREADS,
-    CKR_OBJECT_HANDLE_INVALID, CKR_OPERATION_NOT_INITIALIZED, CKR_PIN_INCORRECT, CKR_RANDOM_NO_RNG,
-    CKR_SESSION_HANDLE_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SIGNATURE_INVALID,
-    CKR_SLOT_ID_INVALID, CKR_TOKEN_WRITE_PROTECTED, CKR_USER_NOT_LOGGED_IN, CKR_USER_TYPE_INVALID,
+    CKR_OBJECT_HANDLE_INVALID, CKR_OPERATION_ACTIVE, CKR_OPERATION_NOT_INITIALIZED,
+    CKR_PIN_INCORRECT, CKR_RANDOM_NO_RNG, CKR_SESSION_HANDLE_INVALID,
+    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SIGNATURE_INVALID, CKR_SLOT_ID_INVALID,
+    CKR_TOKEN_WRITE_PROTECTED, CKR_USER_NOT_LOGGED_IN, CKR_USER_TYPE_INVALID,
 };
 use thiserror::Error;
 
@@ -73,6 +74,8 @@ pub enum ModuleError {
     MechanismInvalid(CK_MECHANISM_TYPE),
     #[error("object {0} is invalid")]
     ObjectHandleInvalid(CK_OBJECT_HANDLE),
+    #[error("another signing operation is already active")]
+    OperationActive,
     #[error("operation has not been initialized, session: {0}")]
     OperationNotInitialized(CK_SESSION_HANDLE),
     #[error("no random number generator")]
@@ -148,6 +151,7 @@ impl From<ModuleError> for CK_RV {
             ModuleError::MechanismInvalid(_) => CKR_MECHANISM_INVALID,
             ModuleError::NeedToCreateThreads => CKR_NEED_TO_CREATE_THREADS,
             ModuleError::ObjectHandleInvalid(_) => CKR_OBJECT_HANDLE_INVALID,
+            ModuleError::OperationActive => CKR_OPERATION_ACTIVE,
             ModuleError::OperationNotInitialized(_) => CKR_OPERATION_NOT_INITIALIZED,
             ModuleError::RandomNoRng => CKR_RANDOM_NO_RNG,
             ModuleError::SessionHandleInvalid(_) => CKR_SESSION_HANDLE_INVALID,
@@ -156,8 +160,8 @@ impl From<ModuleError> for CK_RV {
             ModuleError::TokenWriteProtected => CKR_TOKEN_WRITE_PROTECTED,
             ModuleError::PinRequired => CKR_PIN_INCORRECT,
             ModuleError::UserNotLoggedIn => CKR_USER_NOT_LOGGED_IN,
-            ModuleError::UserTypeInvalid => CKR_USER_TYPE_INVALID,
             ModuleError::ActionProhibited(_) => CKR_ACTION_PROHIBITED,
+            ModuleError::UserTypeInvalid => CKR_USER_TYPE_INVALID,
             ModuleError::SignatureInvalid => CKR_SIGNATURE_INVALID,
 
             ModuleError::Backend(_)

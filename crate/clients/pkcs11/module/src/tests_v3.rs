@@ -17,11 +17,11 @@ use crate::{
         C_DigestFinal, C_DigestInit, C_DigestKey, C_DigestUpdate, C_EncryptFinal, C_EncryptMessage,
         C_EncryptMessageBegin, C_EncryptMessageNext, C_EncryptUpdate, C_GenerateKeyPair,
         C_GetObjectSize, C_GetOperationState, C_MessageDecryptFinal, C_MessageDecryptInit,
-        C_MessageEncryptFinal, C_MessageEncryptInit, C_MessageSignFinal, C_MessageSignInit,
-        C_MessageVerifyFinal, C_MessageVerifyInit, C_SessionCancel, C_SetOperationState,
-        C_SignEncryptUpdate, C_SignMessage, C_SignMessageBegin, C_SignMessageNext, C_SignRecover,
-        C_SignRecoverInit, C_UnwrapKey, C_VerifyMessage, C_VerifyMessageBegin, C_VerifyMessageNext,
-        C_VerifyRecover, C_VerifyRecoverInit, C_WaitForSlotEvent, C_WrapKey,
+        C_MessageEncryptFinal, C_MessageEncryptInit, C_MessageVerifyFinal, C_MessageVerifyInit,
+        C_SessionCancel, C_SetOperationState, C_SignEncryptUpdate, C_SignMessageBegin,
+        C_SignMessageNext, C_SignRecover, C_SignRecoverInit, C_UnwrapKey, C_VerifyMessage,
+        C_VerifyMessageBegin, C_VerifyMessageNext, C_VerifyRecover, C_VerifyRecoverInit,
+        C_WaitForSlotEvent, C_WrapKey,
     },
     traits::KeyAlgorithm,
 };
@@ -67,6 +67,24 @@ fn test_to_ck_key_type_reports_distinct_types_per_curve_family() {
             "{montgomery:?} must report CKK_EC_MONTGOMERY, not CKK_EC"
         );
     }
+}
+
+/// Regression test: `KeyAlgorithm::Secp256k1` must map to and from the SEC
+/// 2-registered OID `1.3.132.0.10`, not `1.3.132.0.33` (which is secp224r1/NIST
+/// P-224's OID). The wrong OID previously reported here made `CKA_EC_PARAMS`
+/// misidentify secp256k1 keys and made `Pkcs11PublicKey::try_from_spki`
+/// (`crate/clients/pkcs11/provider/src/pkcs11_public_key.rs`) fail to import a real
+/// secp256k1 public key's SPKI (OpenSSL always exports the standard
+/// `1.3.132.0.10` OID) with "EC curve OID not supported".
+#[test]
+fn test_secp256k1_oid_is_the_sec2_registered_value() {
+    assert_eq!(KeyAlgorithm::Secp256k1.to_oid_str(), "1.3.132.0.10");
+    assert_eq!(
+        KeyAlgorithm::from_oid_str("1.3.132.0.10"),
+        Some(KeyAlgorithm::Secp256k1)
+    );
+    // "1.3.132.0.33" is secp224r1, not secp256k1 — must no longer resolve here.
+    assert_eq!(KeyAlgorithm::from_oid_str("1.3.132.0.33"), None);
 }
 
 /// PKCS#11 v3.0 conformance requirement (§5.2): every function pointer declared in the
@@ -180,8 +198,10 @@ fn test_unsupported_functions_return_function_not_supported() {
     );
     assert_eq!(C_SessionCancel(0, 0), CKR_FUNCTION_NOT_SUPPORTED);
 
-    // v3.0 message-based bulk crypto (12 functions): this module does not implement message
-    // operations at all — every function in the family must be a conformant stub.
+    // Unsupported v3.0 message-based bulk crypto functions remain conformant
+    // non-null stubs. One-shot EdDSA message signing
+    // (`C_MessageSignInit`/`C_SignMessage`/`C_MessageSignFinal`) is implemented
+    // and tested separately.
     assert_eq!(
         C_MessageEncryptInit(0, null_mut(), 0),
         CKR_FUNCTION_NOT_SUPPORTED
@@ -237,14 +257,6 @@ fn test_unsupported_functions_return_function_not_supported() {
     );
     assert_eq!(C_MessageDecryptFinal(0), CKR_FUNCTION_NOT_SUPPORTED);
     assert_eq!(
-        C_MessageSignInit(0, null_mut(), 0),
-        CKR_FUNCTION_NOT_SUPPORTED
-    );
-    assert_eq!(
-        C_SignMessage(0, null_mut(), 0, null_mut(), 0, null_mut(), null_mut()),
-        CKR_FUNCTION_NOT_SUPPORTED
-    );
-    assert_eq!(
         C_SignMessageBegin(0, null_mut(), 0),
         CKR_FUNCTION_NOT_SUPPORTED
     );
@@ -252,7 +264,6 @@ fn test_unsupported_functions_return_function_not_supported() {
         C_SignMessageNext(0, null_mut(), 0, null_mut(), 0, null_mut(), null_mut()),
         CKR_FUNCTION_NOT_SUPPORTED
     );
-    assert_eq!(C_MessageSignFinal(0), CKR_FUNCTION_NOT_SUPPORTED);
     assert_eq!(
         C_MessageVerifyInit(0, null_mut(), 0),
         CKR_FUNCTION_NOT_SUPPORTED

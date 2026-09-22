@@ -22,10 +22,7 @@ use pkcs11_sys::{
     CKR_FUNCTION_FAILED, CKR_OK, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 
-use crate::{
-    kms_object::{RUNTIME, get_kms_config},
-    logging::initialize_logging,
-};
+use crate::{kms_object::get_kms_config, logging::initialize_logging};
 
 /// Guards the one-time population of the v3.0 `FUNC_LIST_3_0` function-pointer table. Both
 /// `C_GetInterfaceList` and `C_GetInterface` write the same constant function pointers into
@@ -73,6 +70,38 @@ mod pkcs11_data_object;
 mod pkcs11_private_key;
 mod pkcs11_public_key;
 mod pkcs11_symmetric_key;
+/// Clears the benchmark-only in-memory Sign phase counters.
+#[unsafe(no_mangle)]
+pub extern "C" fn cosmian_pkcs11_benchmark_sign_profile_reset() {
+    cosmian_pkcs11_module::profiling::reset();
+}
+
+/// Enables or disables benchmark-only Sign phase collection.
+#[unsafe(no_mangle)]
+pub extern "C" fn cosmian_pkcs11_benchmark_sign_profile_set_enabled(enabled: bool) {
+    cosmian_pkcs11_module::profiling::set_enabled(enabled);
+}
+
+/// Copies the benchmark-only Sign phase counters into `snapshot`.
+///
+/// # Safety
+///
+/// `snapshot` must be non-null, correctly aligned, and writable for one
+/// [`cosmian_pkcs11_module::profiling::SignProfileSnapshot`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cosmian_pkcs11_benchmark_sign_profile_snapshot(
+    snapshot: *mut cosmian_pkcs11_module::profiling::SignProfileSnapshot,
+) -> CK_RV {
+    if snapshot.is_null() {
+        return CKR_ARGUMENTS_BAD;
+    }
+    // SAFETY: the caller contract above requires a valid writable pointer, and the
+    // null case was rejected immediately above.
+    unsafe {
+        snapshot.write(cosmian_pkcs11_module::profiling::snapshot());
+    }
+    CKR_OK
+}
 
 /// On Windows, return the directory that contains this DLL.
 /// Uses `GetModuleHandleExW` with a static data anchor (more reliable than a
@@ -182,10 +211,6 @@ fn ensure_backend_registered(registration: BackendRegistration) -> Result<(), CK
     };
 
     let use_pin = config.pkcs11_use_pin_as_access_token.unwrap_or(false);
-    // `C_GetFunctionList` is called directly by the PKCS#11 consumer (e.g. SAP ASE) with
-    // no Tokio runtime active. `KmsClient::new_with_config` builds a `hyper` client that
-    // requires one, so enter the shared runtime's context for the duration of construction.
-    let _rt_guard = RUNTIME.enter();
     if use_pin {
         // Mode 2 — OIDC pin: register a pre-auth backend so metadata calls
         // (C_GetTokenInfo etc.) work before C_Login, then register the login
@@ -205,9 +230,6 @@ fn ensure_backend_registered(registration: BackendRegistration) -> Result<(), CK
         register_login_fn(Box::new(move |token: &str| {
             let mut cfg = config.clone();
             cfg.http_config.access_token = Some(token.to_owned());
-            // C_Login is also called directly by the PKCS#11 consumer, outside the
-            // C_GetFunctionList call frame, so it needs its own runtime-context guard.
-            let _rt_guard = RUNTIME.enter();
             let kms_client =
                 KmsClient::new_with_config(cfg).map_err(|e| ModuleError::Backend(Box::new(e)))?;
             register_backend(Box::new(backend::CliBackend::instantiate(kms_client)));
@@ -334,10 +356,10 @@ pub unsafe extern "C" fn C_GetInterface(
         // SAFETY: caller guarantees p_version points to a valid CK_VERSION per this function's
         // safety contract.
         let version = unsafe { *p_version };
-        // Accept any requested minor version up to the one actually implemented: a v3.1
-        // implementation is a superset of v3.0, so a consumer explicitly requesting
-        // `{major: 3, minor: 0}` must still receive this interface rather than being
-        // rejected by an overly strict exact-version-match check.
+        // Same major version required; minor version must not exceed what this module
+        // implements (3.1) — a v3.1 implementation must still satisfy a backward-compatible
+        // caller explicitly requesting {major: 3, minor: 0}, per this function's own doc
+        // comment above. An exact-match check here would reject that valid request.
         if version.major != CRYPTOKI_VERSION_MAJOR || version.minor > CRYPTOKI_VERSION_MINOR {
             return CKR_ARGUMENTS_BAD;
         }

@@ -9,9 +9,11 @@
 #   bench_build_binaries [release|debug]
 #   bench_download_server <version> <out_dir>
 #   bench_start_server <port> <tmp_dir> [http_workers]
+#   bench_stop_server
+#   bench_wait_ready_tls <url> <accept_invalid_certs> <ca_cert> <client_cert> <client_key> [<timeout_secs>]
+#   bench_write_ckms_tls_conf <out_path> <server_url> <accept_invalid_certs> <ca_cert_path> <client_pem_cert> <client_pem_key> <client_pkcs12> <client_pkcs12_password>
 #   bench_register_cleanup
 #   bench_write_md <out_path> <kms_port> <criterion_md_path> [page_title]
-#
 # Globals set:
 #   CARGO_TARGET_DIR, KMS_BIN, CKMS_BIN, KMS_PID, TMP_DIR
 #   BENCH_DEB_BINARY, BENCH_DEB_OSSL_MODS  (after bench_download_server)
@@ -131,11 +133,21 @@ bench_download_server() {
   echo "Server binary: ${BENCH_DEB_BINARY}"
 }
 
-# Warn when CPU frequency scaling / turbo may distort load-sweep scaling curves.
+# Warn when CPU frequency scaling / turbo may distort load-sweep scaling curves,
+# or when other processes are already competing for CPU on this host.
 # On power-limited CPUs (laptops, Intel "T" SKUs, thermally constrained hosts) a
 # heavy concurrency level draws more power and throttles to a LOWER clock than a
 # light level, which exaggerates sublinear scaling independently of the server.
 # No warmup/cooldown value can compensate for load-dependent DVFS; pin the clock.
+#
+# The load-average check exists because of a concrete, reproduced false alarm: on
+# a shared (non-dedicated) development host, the exact same single-operation
+# criterion benchmark (`mise bench:load-pkcs11 --criterion`) measured 400-700us in
+# two back-to-back runs and ~70ms (a ~100x outlier) in a third — not a code
+# regression, just unrelated processes (IDE background indexing, etc.) briefly
+# saturating the CPU during that one run. A load-average warning up front makes
+# that kind of run-to-run noise legible instead of being mistaken for a real
+# bottleneck.
 bench_warn_cpu_scaling() {
   local gov="" turbo="" f0="" fmax=""
   gov=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true)
@@ -159,6 +171,29 @@ bench_warn_cpu_scaling() {
     echo "         and, ideally, run the client on a SEPARATE host so it does not compete"
     echo "         with the server for CPU (co-location caps throughput on shared cores)."
     echo "-------------------------------------------------------------------------------"
+  fi
+
+  local load1="" ncpu=""
+  load1=$(awk '{print $1}' /proc/loadavg 2>/dev/null || true)
+  ncpu=$(nproc 2>/dev/null || true)
+  if [ -n "$load1" ] && [ -n "$ncpu" ] && [ "$ncpu" -gt 0 ] 2>/dev/null; then
+    # A flat, low absolute threshold (not scaled by core count): the false alarm
+    # this reproduced happened on a 32-core host at load average ~3-4, nowhere
+    # near saturating total capacity — a handful of bursty background processes
+    # (IDE indexing, etc.) is enough to occasionally delay a single
+    # latency-sensitive benchmark thread regardless of how many cores are idle.
+    if awk -v l="$load1" 'BEGIN { exit !(l > 2.0) }'; then
+      echo "-------------------------------------------------------------------------------"
+      echo "WARNING: elevated system load (1-min load average ${load1} on ${ncpu} cores)"
+      echo "         Other processes are already competing for CPU on this host — expect"
+      echo "         noisy, possibly wildly inflated latency samples (seen in practice: the"
+      echo "         exact same single-operation criterion benchmark measuring <1ms in one"
+      echo "         run and ~100x that in the next, purely from unrelated background load,"
+      echo "         not a code regression). Close other CPU-heavy work (IDE background"
+      echo "         indexing/compilation, browsers, media/torrent clients, ...) or re-run"
+      echo "         on a quieter host/window before trusting an outlier result."
+      echo "-------------------------------------------------------------------------------"
+    fi
   fi
 }
 
@@ -210,6 +245,56 @@ bench_stop_server() {
   kill "${KMS_PID}" 2>/dev/null || true
   wait "${KMS_PID}" 2>/dev/null || true
   KMS_PID=""
+}
+
+# Wait for a KMS server to accept HTTP requests, using curl flags appropriate for
+# optional TLS server/client verification. Exits 1 (like kms_wait_ready) on timeout.
+# Usage: bench_wait_ready_tls <url> <accept_invalid_certs> <ca_cert> <client_cert> <client_key> [<timeout_secs>]
+bench_wait_ready_tls() {
+  local url="$1" accept_invalid_certs="$2" ca_cert="$3" client_cert="$4" client_key="$5" timeout="${6:-15}"
+  require_cmd curl "curl is required for bench_wait_ready_tls"
+  local curl_args=(-sS --max-time 2 -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}')
+  [ "${accept_invalid_certs}" = "true" ] && curl_args+=(--insecure)
+  [ -n "${ca_cert}" ] && curl_args+=(--cacert "${ca_cert}")
+  [ -n "${client_cert}" ] && curl_args+=(--cert "${client_cert}")
+  [ -n "${client_key}" ] && curl_args+=(--key "${client_key}")
+  echo "Waiting for KMS server at ${url} to be ready..."
+  local _i
+  for _i in $(seq 1 "${timeout}"); do
+    if env -u LD_PRELOAD -u LD_LIBRARY_PATH curl "${curl_args[@]}" "${url}" 2>/dev/null | grep -Eq '^[0-9]{3}$'; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "ERROR: KMS server at ${url} did not respond within ${timeout}s" >&2
+  exit 1
+}
+
+# Write a temporary ckms.toml [http_config] section pointing at server_url, with
+# optional TLS client settings. `ca_cert_path`, when non-empty, is read and inlined
+# as `verified_cert` (HttpClientConfig::verified_cert expects PEM content, not a
+# path — see crate/clients/client/src/http_client/client.rs:58-59).
+# Usage: bench_write_ckms_tls_conf <out_path> <server_url> <accept_invalid_certs> \
+#          <ca_cert_path> <client_pem_cert> <client_pem_key> <client_pkcs12> <client_pkcs12_password>
+bench_write_ckms_tls_conf() {
+  local out_path="$1" server_url="$2" accept_invalid_certs="$3" ca_cert_path="$4"
+  local client_pem_cert="$5" client_pem_key="$6" client_pkcs12="$7" client_pkcs12_password="$8"
+  cat >"${out_path}" <<EOF
+[http_config]
+server_url = "${server_url}"
+$([ "${accept_invalid_certs}" = "true" ] && echo 'accept_invalid_certs = true')
+$([ -n "${client_pem_cert}" ] && echo "tls_client_pem_cert_path = \"${client_pem_cert}\"")
+$([ -n "${client_pem_key}" ] && echo "tls_client_pem_key_path = \"${client_pem_key}\"")
+$([ -n "${client_pkcs12}" ] && echo "tls_client_pkcs12_path = \"${client_pkcs12}\"")
+$([ -n "${client_pkcs12_password}" ] && echo "tls_client_pkcs12_password = \"${client_pkcs12_password}\"")
+EOF
+  if [ -n "${ca_cert_path}" ]; then
+    {
+      echo 'verified_cert = """'
+      cat "${ca_cert_path}"
+      echo '"""'
+    } >>"${out_path}"
+  fi
 }
 
 # Internal cleanup handler.
@@ -315,6 +400,78 @@ EOF
     --number-of-bits 256 \
     "${HSM_KEK_UID}"
   echo "KEK created: ${HSM_KEK_UID}"
+}
+
+# Start a KMS server with an HSM backend registered for HSM-*resident* key
+# benchmarking (`ckms bench --hsm`): unlike bench_start_server_hsm, this does
+# NOT set key_encryption_key — no KEK is created, no software key is ever
+# wrapped. The HSM is only used to route `hsm::softhsm2::<slot>::<uuid>`
+# unique identifiers to the CryptoOracle, so both key generation and
+# Encrypt/Sign for those keys execute directly on the HSM (PKCS#11).
+#
+# Requires:
+#   - softhsm2.sh must already be sourced by the caller.
+#   - bench_build_binaries (or bench_build_ckms) must have run, so KMS_BIN and
+#     CKMS_BIN are set.
+#
+# Usage: bench_start_server_hsm_resident <port> <tmp_dir> [http_workers]
+# Sets:  KMS_PID, SOFTHSM2_HSM_SLOT_ID
+bench_start_server_hsm_resident() {
+  local port="$1" tmp_dir="$2" http_workers="${3:-}"
+  local sqlite_path="${tmp_dir}/kms-data"
+  local kms_conf="${tmp_dir}/kms.toml"
+  local kms_log="${tmp_dir}/kms.log"
+
+  require_cmd softhsm2-util \
+    "SoftHSM2 (softhsm2-util) is required for HSM benchmarks. Install: brew install softhsm (macOS) or apt install softhsm2 (Linux)"
+
+  # Initialize a fresh single-token SoftHSM2 environment.
+  softhsm2_setup "${tmp_dir}/softhsm2/tokens" "${tmp_dir}/softhsm2/softhsm2.conf"
+  local init_out
+  init_out=$(softhsm2_init_token "bench_resident" "${HSM_USER_PASSWORD}" "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
+  SOFTHSM2_HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_resident")
+  export SOFTHSM2_HSM_SLOT_ID
+
+  mkdir -p "$sqlite_path"
+
+  # Write kms.toml with the HSM backend registered but no key_encryption_key:
+  # hsm::softhsm2::<slot>:: keys route to the HSM; every other key stays on
+  # the (temporary) SQLite backend, unwrapped.
+  cat >"${kms_conf}" <<EOF
+hsm_model    = "softhsm2"
+hsm_admin    = ["admin"]
+hsm_slot     = [${SOFTHSM2_HSM_SLOT_ID}]
+hsm_password = ["${HSM_USER_PASSWORD}"]
+
+[db]
+database_type = "sqlite"
+sqlite_path   = "${sqlite_path}"
+
+[http]
+hostname = "0.0.0.0"
+port     = ${port}
+EOF
+
+  if [ -n "${http_workers}" ]; then
+    printf 'http_workers = %s\n' "${http_workers}" >>"${kms_conf}"
+  fi
+
+  echo "Starting KMS server (HSM-resident, no KEK) on port ${port}..."
+  local lib_path_var
+  lib_path_var=$(softhsm2_lib_path_var)
+  local lib_path
+  lib_path=$(softhsm2_lib_search_path)
+
+  env \
+    "${lib_path_var}=${lib_path}" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH}" \
+    SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
+    "${KMS_BIN}" --config "${kms_conf}" \
+    >"${kms_log}" 2>&1 &
+  KMS_PID=$!
+  export KMS_PID
+
+  kms_wait_ready "http://127.0.0.1:${port}/kmip/2_1" "${KMS_PID}" "${kms_log}" 60
 }
 
 # Write a markdown benchmark report.
@@ -454,16 +611,40 @@ PYEOF
 
 # Generate SVG charts and a markdown report from benchmark data.
 # Call after running load tests and/or criterion benchmarks.
-# Usage: bench_generate_report <kms_port>
+# Usage: bench_generate_report <kms_port> [docs_subdir] [is_hsm] [is_hsm_kek] [is_pkcs11]
+#   docs_subdir defaults to "ckms_bench" (the shared software-bench baseline
+#   used by bench/load). Pass a distinct name (e.g. "ckms_bench_delegated_crypto_operations" or
+#   "ckms_bench_hsm_kek") to avoid clobbering that baseline with a different
+#   benchmark's results — the docs dir is entirely replaced on each call.
+#   is_hsm ("true"/"false", default "false"): when "true", passes --hsm to
+#   plot_version_compare.py so the report's Protocols/Methodology sections
+#   describe the HSM/CryptoOracle delegation model instead of the generic
+#   software-bench text.
+#   is_hsm_kek ("true"/"false", default "false"): when "true" (and is_hsm is
+#   "false"), passes --kek to plot_version_compare.py so the report's
+#   Protocols/Methodology sections keep the generic software-bench text but
+#   are prefixed with a short note that the KEK (not the benchmarked keys)
+#   is HSM-resident. Ignored if is_hsm is "true".
+#   is_pkcs11 ("true"/"false", default "false"): when "true" (and is_hsm and
+#   is_hsm_kek are both "false"), passes --pkcs11 to plot_version_compare.py
+#   so the report's Protocols/Methodology sections describe the real
+#   dlopen()-based Cryptoki C API benchmark (see `bench/load-pkcs11`) instead
+#   of the generic KMIP-wire-protocol text. Ignored if is_hsm or is_hsm_kek
+#   is "true".
 # Reads:  $CRITERION_HOME/load_*.json  (load tests)
 #         $CRITERION_HOME/criterion.json  (criterion benchmarks)
+#         $CRITERION_HOME/pkcs11_overhead.json  (PKCS#11 overhead breakdown)
 # Writes: $CRITERION_HOME/reports/<version>/  data files + report.md + SVGs
 #         $CRITERION_HOME/reports/<version>/load/       load SVGs
 #         $CRITERION_HOME/reports/<version>/criterion/  criterion SVGs
 #         $CRITERION_HOME/reports/<version>/report.md   combined report
 bench_generate_report() {
   local port="$1"
-
+  local docs_subdir="${2:-ckms_bench}"
+  local is_hsm="${3:-false}"
+  local is_hsm_kek="${4:-false}"
+  local is_pkcs11="${5:-false}"
+  local base_url_override="${6:-}"
   # Compute criterion home step-by-step to avoid deeply nested expansions.
   local crit_home
   if [ -n "${CRITERION_HOME:-}" ]; then
@@ -480,9 +661,9 @@ bench_generate_report() {
   local plot_script="${MISE_CONFIG_ROOT:-$(get_repo_root)}/.mise/scripts/bench/plot_version_compare.py"
 
   # Derive version label from running server (only the numeric part, e.g. "5.24.0").
+  local base_url="${base_url_override:-http://127.0.0.1:${port}}"
   local raw_version
-  raw_version="$(curl -sf "http://127.0.0.1:${port}/version" 2>/dev/null || true)"
-  local version
+  raw_version="$(curl -sf "${base_url}/version" 2>/dev/null || true)"
   # Strip JSON quotes then take only the first whitespace-delimited token.
   version="$(printf '%s' "${raw_version}" | tr -d '"' | awk '{print $1}')"
   [ -z "${version}" ] && version="current"
@@ -501,6 +682,10 @@ bench_generate_report() {
     cp "${crit_home}/criterion.json" "${report_dir}/${version}/"
     found=1
   fi
+  if [ -f "${crit_home}/pkcs11_overhead.json" ]; then
+    cp "${crit_home}/pkcs11_overhead.json" "${report_dir}/${version}/"
+    found=1
+  fi
 
   if [ "${found}" -eq 0 ]; then
     echo "WARNING: no benchmark data files found in ${crit_home}"
@@ -508,7 +693,15 @@ bench_generate_report() {
   fi
 
   echo "Generating report..."
-  python3 "${plot_script}" "${report_dir}" "${version}" || {
+  local plot_args=("${report_dir}" "${version}")
+  if [ "${is_hsm}" = "true" ]; then
+    plot_args+=("--hsm")
+  elif [ "${is_hsm_kek}" = "true" ]; then
+    plot_args+=("--kek")
+  elif [ "${is_pkcs11}" = "true" ]; then
+    plot_args+=("--pkcs11")
+  fi
+  python3 "${plot_script}" "${plot_args[@]}" || {
     echo "WARNING: report generation failed — raw data is in ${report_dir}/${version}/"
     return 0
   }
@@ -523,7 +716,7 @@ bench_generate_report() {
   # the developer's local run).
   local docs_bench_dir
   # shellcheck disable=SC2119
-  docs_bench_dir="$(get_repo_root)/documentation/docs/benchmarks/ckms_bench"
+  docs_bench_dir="$(get_repo_root)/documentation/docs/benchmarks/${docs_subdir}"
   echo "Updating docs: ${docs_bench_dir}..."
   rm -rf "${docs_bench_dir:?}"
   mkdir -p "${docs_bench_dir}"

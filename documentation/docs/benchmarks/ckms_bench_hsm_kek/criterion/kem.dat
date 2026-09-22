@@ -1,0 +1,5 @@
+# idx  ttlv-json/5.27.1  ttlv-bytes/5.27.1  label
+0  169.78  165.66  "pqc/decapsulate/ML-KEM-512"
+1  209.06  195.55  "pqc/decapsulate/ML-KEM-768"
+2  705640.10  814393.32  "pqc/encapsulate/ML-KEM-512"
+3  701919.60  812198.73  "pqc/encapsulate/ML-KEM-768"

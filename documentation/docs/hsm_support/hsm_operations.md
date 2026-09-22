@@ -72,42 +72,42 @@ HSM keys follow a stricter permission model than regular KMS keys. The key princ
 
 ### Operations by role
 
-| Operation                                                         | HSM Admin            | Non-admin (granted)          | Non-admin (no grant) |
-|-------------------------------------------------------------------|----------------------|------------------------------|----------------------|
-| Create / CreateKeyPair                                            | ✅                   | ❌                            | ❌                   |
-| Destroy                                                           | ✅                   | ❌ (cannot be granted)        | ❌                   |
-| Locate                                                            | All HSM keys         | Granted keys only            | None                 |
-| Grant / Revoke (access rights)                                    | ✅ (any HSM key)     | ❌                            | ❌                   |
-| Encrypt                                                           | ✅                   | ✅                            | ❌                   |
-| Decrypt                                                           | ✅                   | ✅                            | ❌                   |
-| Sign                                                              | ✅                   | ✅                            | ❌                   |
-| SignatureVerify                                                    | ✅                   | ✅                            | ❌                   |
-| MAC                                                               | ✅                   | ✅                            | ❌                   |
-| Get / Export                                                      | ✅                   | ✅ (metadata if sensitive)    | ❌                   |
-| GetAttributes                                                     | ✅                   | ✅                            | ❌                   |
-| SetAttribute / ModifyAttribute / AddAttribute / DeleteAttribute   | ✅                   | ✅                            | ❌                   |
-| Revoke (lifecycle state)                                          | ❌ (not supported)   | ❌                            | ❌                   |
+| Operation                                                       | HSM Admin         | Non-admin (granted)       | Non-admin (no grant) |
+| --------------------------------------------------------------- | ----------------- | ------------------------- | -------------------- |
+| Create / CreateKeyPair                                          | ✅                 | ❌                         | ❌                    |
+| Destroy                                                         | ✅                 | ❌ (cannot be granted)     | ❌                    |
+| Locate                                                          | All HSM keys      | Granted keys only         | None                 |
+| Grant / Revoke (access rights)                                  | ✅ (any HSM key)   | ❌                         | ❌                    |
+| Encrypt                                                         | ✅                 | ✅                         | ❌                    |
+| Decrypt                                                         | ✅                 | ✅                         | ❌                    |
+| Sign                                                            | ✅                 | ✅                         | ❌                    |
+| SignatureVerify                                                 | ✅                 | ✅                         | ❌                    |
+| MAC                                                             | ✅                 | ✅                         | ❌                    |
+| Get / Export                                                    | ✅                 | ✅ (metadata if sensitive) | ❌                    |
+| GetAttributes                                                   | ✅                 | ✅                         | ❌                    |
+| SetAttribute / ModifyAttribute / AddAttribute / DeleteAttribute | ✅                 | ✅                         | ❌                    |
+| Revoke (lifecycle state)                                        | ❌ (not supported) | ❌                         | ❌                    |
 
 ### Grantable operations on HSM keys
 
-| Operation          | Can be granted? | Notes                                                          |
-|--------------------|-----------------|----------------------------------------------------------------|
-| `encrypt`          | ✅              | Symmetric (AES) and asymmetric (RSA)                           |
-| `decrypt`          | ✅              | Symmetric (AES) and asymmetric (RSA)                           |
-| `sign`             | ✅              | RSA private keys only                                          |
-| `signature_verify` | ✅              | RSA public keys only                                           |
-| `mac`              | ✅              | Compute a Message Authentication Code using the HSM key        |
-| `get`              | ✅              | Retrieve key material or metadata; also implies `export`       |
-| `export`           | ✅              | Export key; also implies `get`                                 |
-| `get_attributes`   | ✅              | Read KMS metadata                                              |
-| `locate`           | ✅              | Search visibility for this key                                 |
-| `set_attribute`    | ✅              | Modify KMS metadata — does not access HSM hardware             |
-| `modify_attribute` | ✅              | Modify KMS metadata — does not access HSM hardware             |
-| `add_attribute`    | ✅              | Modify KMS metadata — does not access HSM hardware             |
-| `delete_attribute` | ✅              | Modify KMS metadata — does not access HSM hardware             |
-| `destroy`          | ❌              | Admin-only — irreversible hardware operation                   |
-| `revoke`           | ❌              | HSM keys do not support KMIP lifecycle state changes           |
-| `create`           | ❌              | Admin-only — not a per-key grant                               |
+| Operation          | Can be granted? | Notes                                                    |
+| ------------------ | --------------- | -------------------------------------------------------- |
+| `encrypt`          | ✅               | Symmetric (AES) and asymmetric (RSA)                     |
+| `decrypt`          | ✅               | Symmetric (AES) and asymmetric (RSA)                     |
+| `sign`             | ✅               | RSA private keys only                                    |
+| `signature_verify` | ✅               | RSA public keys only                                     |
+| `mac`              | ✅               | Compute a Message Authentication Code using the HSM key  |
+| `get`              | ✅               | Retrieve key material or metadata; also implies `export` |
+| `export`           | ✅               | Export key; also implies `get`                           |
+| `get_attributes`   | ✅               | Read KMS metadata                                        |
+| `locate`           | ✅               | Search visibility for this key                           |
+| `set_attribute`    | ✅               | Modify KMS metadata — does not access HSM hardware       |
+| `modify_attribute` | ✅               | Modify KMS metadata — does not access HSM hardware       |
+| `add_attribute`    | ✅               | Modify KMS metadata — does not access HSM hardware       |
+| `delete_attribute` | ✅               | Modify KMS metadata — does not access HSM hardware       |
+| `destroy`          | ❌               | Admin-only — irreversible hardware operation             |
+| `revoke`           | ❌               | HSM keys do not support KMIP lifecycle state changes     |
+| `create`           | ❌               | Admin-only — not a per-key grant                         |
 
 !!! warning Get is not a wildcard for HSM keys
     Unlike regular KMS keys, granting `Get` on an HSM key does **not** implicitly grant all other operations.
@@ -620,6 +620,137 @@ v3.0.
     interfaces it exposes (e.g. `"PKCS 11"`). See
     [ADR-2026-09-03](../adr/2026-09-03-pkcs11-v3-scope-decision-ffi-foundation.md) for the full
     scope decision and rationale.
+
+### Supported operations and mechanisms
+
+The tables below enumerate **every mechanism/operation category defined by the OASIS PKCS#11
+v2.40 and v3.0 specifications** (Cryptoki mechanisms table, `PKCS11-Curr-v2.40` §12 and
+`PKCS11-Curr-v3.0` §2/§6), and mark, per the actual source code, which are supported by:
+
+- **KMS server** — Eviden KMS acting as a PKCS#11 **consumer**/client of a vendor HSM
+  (`crate/hsm/base_hsm`), delegating KMIP operations to `C_*` calls against the loaded vendor
+  library.
+- **`cosmian_pkcs11`** — the `libcosmian_pkcs11` provider DLL (documented in full on the
+  [PKCS#11 provider module](../integrations/pkcs11_provider.md) page), which exposes KMS-managed
+  keys as a Cryptoki token to third-party applications — the opposite PKCS#11 role.
+
+✅ supported · ⚠️ partially supported (see Notes) · ❌ not supported · ➖ not applicable to this role
+
+#### Random number generation
+
+| Function | Ver. | KMS server | `cosmian_pkcs11` | Notes |
+|---|---|---|---|---|
+| `C_GenerateRandom` | v2.40 | ✅ delegated to the HSM's own RNG | ✅ system CSPRNG (`rand::rng()`), not HSM-backed | — |
+| `C_SeedRandom` | v2.40 | ➖ (HSM's own RNG is not re-seedable through `base_hsm`) | ❌ always returns `CKR_RANDOM_NO_RNG` | the provider's OS-backed CSPRNG does not accept caller seed material |
+
+#### Object management — symmetric key generation (§6.31 v2.40, §2.3 v3.0)
+
+| Mechanism | Ver. | KMS server: parameters | `cosmian_pkcs11` | Notes |
+|---|---|---|---|---|
+| `CKM_AES_KEY_GEN` | v2.40 | ✅ AES-128 or AES-256 (`CKA_VALUE_LEN` 16/32 bytes) | ❌ | provider: `C_GenerateKeyPair`/`C_GenerateKey` for secret keys stubbed except the `CKM_AES_KEY_GEN` mapping used internally by `C_GenerateKey`'s `KeyAlgorithm` conversion (keys are still created via KMIP `Create`, not through this provider's PKCS#11 surface) |
+| `CKM_GENERIC_SECRET_KEY_GEN` | v3.0 | ✅ `CKK_GENERIC_SECRET`, arbitrary length (HKDF IKM) | ❌ | FIPS-eligible (not gated) |
+| `CKM_DES_KEY_GEN`<br>`CKM_DES2_KEY_GEN`<br>`CKM_DES3_KEY_GEN` | v2.40 | ❌ | ❌ | not implemented (deprecated algorithm) |
+| `CKM_RC2_KEY_GEN`<br>`CKM_RC4_KEY_GEN`<br>`CKM_RC5_KEY_GEN`<br>`CKM_CAST_KEY_GEN`<br>`CKM_CAST3_KEY_GEN`<br>`CKM_CAST128_KEY_GEN`<br>`CKM_IDEA_KEY_GEN`<br>`CKM_CDMF_KEY_GEN`<br>`CKM_BLOWFISH_KEY_GEN`<br>`CKM_CAMELLIA_KEY_GEN`<br>`CKM_SEED_KEY_GEN` | v2.40 | ❌ | ❌ | legacy/vendor ciphers, not implemented |
+| `CKM_GOST28147_KEY_GEN` | v2.40 | ❌ | ❌ | not implemented (Russian GOST cryptosystem) |
+
+#### Object management — asymmetric key-pair generation (§6.31 v2.40, §2.3 v3.0)
+
+| Mechanism | Ver. | KMS server: parameters | `cosmian_pkcs11` | Notes |
+|---|---|---|---|---|
+| `CKM_RSA_PKCS_KEY_PAIR_GEN` | v2.40 | ✅ `CKA_MODULUS_BITS` ∈ {1024, 2048, 3072, 4096}, `CKA_PUBLIC_EXPONENT` fixed `0x010001` (65537) | ❌ | keys created via the KMIP `CreateKeyPair` API, then discovered by the provider |
+| `CKM_RSA_X9_31_KEY_PAIR_GEN` | v2.40 | ❌ | ❌ | not implemented |
+| `CKM_EC_KEY_PAIR_GEN` (NIST prime curves) | v2.40 | ✅ P-224/P-256/P-384/P-521, `CKA_EC_PARAMS` = DER `OBJECT IDENTIFIER` | ❌ (recognized for sign/verify only, see below) | secp256k1/secp224k1 (SECG Koblitz) explicitly **rejected** on the KMS side (`curve_from_der_oid`, issue #1157) |
+| `CKM_DSA_KEY_PAIR_GEN`<br>`CKM_DSA_PARAMETER_GEN` | v2.40 | ❌ | ❌ | not implemented (deprecated algorithm) |
+| `CKM_DH_PKCS_KEY_PAIR_GEN`<br>`CKM_DH_PKCS_PARAMETER_GEN` | v2.40 | ❌ | ❌ | not implemented (classic Diffie-Hellman) |
+| `CKM_X9_42_DH_KEY_PAIR_GEN`<br>`CKM_X9_42_DH_PARAMETER_GEN` | v2.40 | ❌ | ❌ | not implemented |
+| `CKM_GOST3410_KEY_PAIR_GEN` | v2.40 | ❌ | ❌ | not implemented (Russian GOST cryptosystem) |
+| `CKM_EC_EDWARDS_KEY_PAIR_GEN` | v3.0 | ✅ Ed25519 (`non-fips`)/Ed448 (`non-fips`); `CKA_EC_PARAMS` encoded as a `PrintableString` curve name (empirically required by SoftHSM2 2.6.1, not the OID form) | ❌ | capability-gated: attempted best-effort, degrades gracefully if the loaded library lacks the mechanism |
+| `CKM_EC_MONTGOMERY_KEY_PAIR_GEN` | v3.0 | ✅ X25519 (`non-fips`), `CKA_DERIVE` set instead of `CKA_SIGN`/`CKA_VERIFY` | ❌ | keygen only — `C_DeriveKey`/ECDH not yet wired ([#1157](https://github.com/Cosmian/kms/issues/1157)) |
+
+#### Symmetric encryption and decryption (§6.3 v2.40, §5.20-5.21 v3.0)
+
+| Mechanism | Ver. | KMS server: parameters | `cosmian_pkcs11`: parameters | Notes |
+|---|---|---|---|---|
+| `CKM_AES_GCM` | v2.40 | ✅ random 96-bit IV per call; **no AAD** (`ulAADLen` always 0); fixed 128-bit tag, `ciphertext‖tag` layout | ✅ caller-supplied IV 1–128 bytes; caller-supplied AAD 0–1 MiB; tag **must** be exactly 128 bits (rejected otherwise); `ciphertext‖tag` layout; single-shot only (`C_EncryptUpdate`/`C_EncryptFinal` multi-part stubbed) | provider AES-GCM is implemented in the KMS crypto backend, not delegated to a vendor HSM |
+| `CKM_AES_CBC` | v2.40 | ✅ random 16-byte IV; software PKCS#7 padding applied before `C_Encrypt`; multi-round chaining above `max_cbc_data_size` | ✅ caller-supplied 16-byte IV, unpadded | — |
+| `CKM_AES_CBC_PAD` | v2.40 | ❌ (padding done in software, see above) | ✅ caller-supplied 16-byte IV, native PKCS#7 padding | — |
+| `CKM_AES_ECB`<br>`CKM_AES_CTR`<br>`CKM_AES_CFB{8,64,128}`<br>`CKM_AES_OFB`<br>`CKM_AES_CCM`<br>`CKM_AES_CTS` | v2.40 | ❌ | ❌ | not implemented |
+| `CKM_DES_ECB`<br>`CKM_DES_CBC`<br>`CKM_DES_CBC_PAD`<br>`CKM_DES3_ECB`<br>`CKM_DES3_CBC`<br>`CKM_DES3_CBC_PAD`<br>`CKM_DES_CFB{8,64}`<br>`CKM_DES_OFB64` | v2.40 | ❌ | ❌ | not implemented (deprecated algorithm) |
+| `CKM_RC2_*`<br>`CKM_RC4`<br>`CKM_RC5_*`<br>`CKM_CAST_*`<br>`CKM_CAST3_*`<br>`CKM_CAST128_*`<br>`CKM_IDEA_*`<br>`CKM_CDMF_*`<br>`CKM_BLOWFISH_CBC`<br>`CKM_CAMELLIA_*`<br>`CKM_SEED_*`<br>`CKM_GOST28147_ECB`<br>`CKM_GOST28147` | v2.40 | ❌ | ❌ | legacy/vendor ciphers, not implemented |
+
+#### Asymmetric encryption and decryption (§6.4 v2.40)
+
+| Mechanism | Ver. | KMS server: parameters | `cosmian_pkcs11` | Notes |
+|---|---|---|---|---|
+| `CKM_RSA_PKCS` | v2.40 | ✅ RSA PKCS#1 v1.5 encrypt/decrypt, no parameters | ❌ (sign/verify only, see below) | — |
+| `CKM_RSA_PKCS_OAEP` | v2.40 | ✅ SHA-1/MGF1-SHA1 or SHA-256/MGF1-SHA256 (`CK_RSA_PKCS_OAEP_PARAMS`, empty source data); also used via `C_WrapKey`/`C_UnwrapKey` to wrap AES KEKs | ❌ | not implemented on the provider side |
+| `CKM_RSA_X_509` (raw RSA) | v2.40 | ❌ | ❌ | not implemented |
+
+#### Signatures and MACs (§6.4-6.5 v2.40, §2.3.9 v3.0)
+
+| Mechanism | Ver. | KMS server: algorithm & parameters | `cosmian_pkcs11`: algorithm & parameters | Notes |
+|---|---|---|---|---|
+| `CKM_RSA_PKCS` (raw) | v2.40 | ✅ RSA PKCS#1 v1.5 over a caller-supplied `DigestInfo` (SHA-1/256/384/512 OID prefix) | ✅ raw PKCS#1 v1.5 | — |
+| `CKM_SHA{1,256,384,512}_RSA_PKCS` | v2.40 | ✅ RSA PKCS#1 v1.5, hash computed by the HSM | ✅ same 4 hashes | `CKM_SHA224_RSA_PKCS`/`CKM_MD5_RSA_PKCS` not implemented on either side |
+| `CKM_RSA_PKCS_PSS` | v2.40 | ✅ hash ∈ {SHA-256, SHA-384, SHA-512}, independent MGF1 hash, explicit salt length (`CK_RSA_PKCS_PSS_PARAMS`) | ✅ hash & MGF1 ∈ {SHA-1, SHA-224, SHA-256, SHA-384, SHA-512} (any combination), explicit salt length; operates on a **pre-hashed** digest per §6.4.7 | — |
+| `CKM_SHA{256,384,512}_RSA_PKCS_PSS` | v2.40 | ✅ combined hash-then-PSS-sign in one call | ➖ (provider always uses the pre-hashed `CKM_RSA_PKCS_PSS` form) | — |
+| `CKM_RSA_X_509` (raw sign/verify) / `CKM_RSA_9796` | v2.40 | ❌ | ❌ | not implemented |
+| `CKM_ECDSA` (raw digest) | v2.40 | ✅ NIST P-256/P-384/P-521, raw `r‖s` re-encoded to DER `ECDSA-Sig-Value` | ✅ NIST P-256/P-384/P-521 + secp256k1 (non-FIPS) | KMS: secp256k1 explicitly rejected; provider: usable for sign/verify against KMS-generated secp256k1 keys |
+| `CKM_ECDSA_SHA{1,224,256,384,512}` | v2.40 | ✅ (SHA-256/384/512 only) hash-then-sign in one call | ❌ (provider hashes client-side, then uses raw `CKM_ECDSA`) | — |
+| `CKM_DSA`<br>`CKM_DSA_SHA{1,224,256,384,512}` | v2.40 | ❌ | ❌ | not implemented (deprecated algorithm) |
+| `CKM_MD2_HMAC`<br>`CKM_MD5_HMAC`<br>`CKM_SHA_1_HMAC`<br>`CKM_SHA224_HMAC`<br>`CKM_SHA256_HMAC`<br>`CKM_SHA384_HMAC`<br>`CKM_SHA512_HMAC` | v2.40 | ❌ | ❌ | not implemented |
+| `CKM_AES_CMAC`<br>`CKM_AES_CMAC_GENERAL`<br>`CKM_DES3_CMAC`<br>`CKM_DES3_CMAC_GENERAL` | v2.40 | ❌ | ❌ | not implemented |
+| `CKM_GOST3410_WITH_GOSTR3411` | v2.40 | ❌ | ❌ | not implemented (Russian GOST cryptosystem) |
+| `CKM_EDDSA` | v3.0 | ✅ Ed25519/Ed448 (`non-fips`), pure un-hashed signing (RFC 8032); `pParameter` omitted (`NULL`) to select plain `Ed25519`, not `Ed25519ctx` | ✅ Ed25519/Ed448, same pure un-hashed convention | capability-gated on the KMS side |
+| `C_MessageSignInit`<br>`C_SignMessage`<br>`C_MessageSignFinal` | v3.0 | ➖ | ✅ EdDSA (Ed25519/Ed448) only | provider-only concept (message-based split flow); not applicable to the KMS-as-consumer role |
+| `C_MessageVerifyInit`<br>`C_VerifyMessage`<br>`C_MessageVerifyFinal` | v3.0 | ➖ | ❌ | present in the v3.0 function list but stubbed on the provider side |
+
+#### Message digesting (§6.2 v2.40, §2.1 v3.0)
+
+| Mechanism | Ver. | KMS server | `cosmian_pkcs11` | Notes |
+|---|---|---|---|---|
+| `C_Digest` with `CKM_MD2`<br>`CKM_MD5`<br>`CKM_SHA_1`<br>`CKM_SHA224`<br>`CKM_SHA256`<br>`CKM_SHA384`<br>`CKM_SHA512`<br>`CKM_SHA512_224`<br>`CKM_SHA512_256`<br>`CKM_RIPEMD128`<br>`CKM_RIPEMD160` (standalone) | v2.40 | ❌ | ❌ stubbed (`C_Digest` family) | hash mechanisms are used internally only, as parameters to RSA-OAEP/PSS and "hash-and-sign" mechanisms; no standalone digest operation is exposed on either side |
+| `CKM_SHA3_224`<br>`CKM_SHA3_256`<br>`CKM_SHA3_384`<br>`CKM_SHA3_512`<br>`CKM_SHAKE_128`<br>`CKM_SHAKE_256` | v3.0 | ❌ | ❌ | not implemented |
+| `CKM_GOSTR3411` | v2.40 | ❌ | ❌ | not implemented (Russian GOST hash) |
+
+#### Key derivation (§6.30 v2.40, §2.5 v3.0)
+
+| Mechanism | Ver. | KMS server: parameters | `cosmian_pkcs11` | Notes |
+|---|---|---|---|---|
+| `CKM_HKDF_DERIVE`<br>`CKM_HKDF_DATA` | v3.0 | ⚠️ HKDF-Extract-and-Expand, PRF hash ∈ {SHA-256, SHA-384, SHA-512}, optional salt (`CK_HKDF_PARAMS`), base key must be `CKK_GENERIC_SECRET` — implemented in `base_hsm` (`derive_hkdf_key`), not yet KMIP-reachable ([#1182](https://github.com/Cosmian/kms/issues/1182)) | ❌ | provider: `C_DeriveKey` stubbed |
+| `CKM_ECDH1_DERIVE`<br>`CKM_ECDH1_COFACTOR_DERIVE`<br>`CKM_ECMQV_DERIVE` | v2.40/v3.0 | ❌ (X25519 keygen exists but ECDH derive is not wired) | ❌ | not implemented on either side |
+| `CKM_DH_PKCS_DERIVE`<br>`CKM_X9_42_DH_DERIVE`<br>`CKM_X9_42_DH_HYBRID_DERIVE`<br>`CKM_X9_42_MQV_DERIVE` | v2.40 | ❌ | ❌ | not implemented |
+| `CKM_SSL3_MASTER_KEY_DERIVE`<br>`CKM_SSL3_KEY_AND_MAC_DERIVE`<br>`CKM_TLS_MASTER_KEY_DERIVE`<br>`CKM_TLS_KEY_AND_MAC_DERIVE`<br>`CKM_TLS12_MASTER_KEY_DERIVE`<br>`CKM_TLS12_KEY_AND_MAC_DERIVE`<br>`CKM_TLS_KDF` | v2.40 | ❌ | ❌ | not implemented (TLS/SSL session-key derivation) |
+| `CKM_CONCATENATE_BASE_AND_KEY`<br>`CKM_CONCATENATE_BASE_AND_DATA`<br>`CKM_CONCATENATE_DATA_AND_BASE`<br>`CKM_XOR_BASE_AND_DATA`<br>`CKM_EXTRACT_KEY_FROM_KEY`<br>`CKM_AES_CBC_ENCRYPT_DATA`<br>`CKM_DES3_CBC_ENCRYPT_DATA` | v2.40 | ❌ | ❌ | key-derivation utility mechanisms, not implemented |
+| `CKM_PKCS5_PBKD2` | v2.40 | ❌ | ❌ | not implemented (password-based key derivation) |
+| `CKM_SP800_108_COUNTER_KDF`<br>`_FEEDBACK_KDF`<br>`_DOUBLE_PIPELINE_KDF` | v3.0 | ❌ | ❌ | not implemented |
+
+#### Key wrapping and unwrapping (§6.31 v2.40)
+
+| Function | Ver. | KMS server: parameters | `cosmian_pkcs11` | Notes |
+|---|---|---|---|---|
+| `C_WrapKey`<br>`C_UnwrapKey` with `CKM_RSA_PKCS_OAEP` | v2.40 | ✅ RSA-OAEP wraps/unwraps an AES KEK (`wrap_aes_key_with_rsa_oaep`/`unwrap_aes_key_with_rsa_oaep`), SHA-1 or SHA-256 | ❌ stubbed | — |
+| `C_WrapKey`<br>`C_UnwrapKey` with `CKM_RSA_PKCS`<br>`CKM_RSA_X_509` | v2.40 | ❌ | ❌ stubbed | not implemented |
+| `C_WrapKey`<br>`C_UnwrapKey` with `CKM_AES_KEY_WRAP`<br>`CKM_AES_KEY_WRAP_PAD`<br>`CKM_AES_KEY_WRAP_KWP` | v2.40/v3.0 | ❌ | ❌ stubbed | not implemented |
+| `C_WrapKey`<br>`C_UnwrapKey` with `CKM_DES3_ECB`<br>`CKM_DES3_CBC`/CMS wrap variants | v2.40 | ❌ | ❌ stubbed | not implemented |
+
+#### Message-based dual-function encryption/decryption (§5.20-5.21 v3.0, additive to signatures table above)
+
+| Function | Ver. | KMS server: parameters | `cosmian_pkcs11` | Notes |
+|---|---|---|---|---|
+| `C_MessageEncryptInit`<br>`C_EncryptMessage`<br>`C_MessageEncryptFinal` | v3.0 | ⚠️ AES-GCM, random 96-bit IV, **caller-supplied AAD supported** (unlike classic `CKM_AES_GCM` above), fixed 128-bit tag — implemented in `base_hsm`, not yet KMIP-reachable ([#1182](https://github.com/Cosmian/kms/issues/1182)) | ❌ | provider: `C_Message*` family present in the v3.0 function list but stubbed |
+| `C_MessageDecryptInit`<br>`C_DecryptMessage`<br>`C_MessageDecryptFinal` | v3.0 | ⚠️ same as above | ❌ | same as above |
+
+#### Session, object and interface management (v3.0 additions)
+
+| Function | Ver. | KMS server | `cosmian_pkcs11` | Notes |
+|---|---|---|---|---|
+| `C_GetInterfaceList`<br>`C_GetInterface` | v3.0 | ➖ | ✅ | KMS: read-only capability *probe* only (see below), does not change how any function is resolved |
+| `C_LoginUser` | v3.0 | ➖ | ✅ | real implementation on the provider side (not a stub) |
+| `C_SessionCancel` | v3.0 | ➖ | ❌ | present in the v3.0 function list but stubbed |
+| `C_FindObjects` on `CKO_PROFILE` | v3.0 | ➖ | ✅ | self-declares `CKP_BASELINE_PROVIDER`/`CKP_EXTENDED_PROVIDER`/`CKP_AUTHENTICATION_TOKEN`/`CKP_PUBLIC_CERTIFICATES_TOKEN` |
+| `C_Login`<br>`C_Logout`<br>`C_FindObjects*`<br>`C_CreateObject`<br>`C_DestroyObject`<br>`C_GetAttributeValue`<br>`C_SetAttributeValue` | v2.40 | ➖ | ✅ | baseline session/object management |
+| `C_CopyObject`, `C_GetObjectSize`, `C_GetOperationState`, `C_SetOperationState` | v2.40 | ➖ | ❌ | stubbed on the provider side |
 
 ### PKCS#11 v3.0 mechanisms (conditional, capability-gated)
 
