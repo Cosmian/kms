@@ -14,7 +14,7 @@ use pkcs11_sys::{
     CKF_SERIAL_SESSION, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKR_OK, CKU_USER,
 };
 
-use crate::error::{BenchError, BenchResult};
+use super::error::{BenchError, BenchResult};
 
 /// A 16-byte all-zero IV used for every `CKM_AES_CBC_PAD` call in this benchmark.
 ///
@@ -238,7 +238,7 @@ impl Pkcs11Lib {
 /// One Cryptoki session opened against the loaded provider.
 ///
 /// The load sweep now opens **one dedicated session per concurrent worker thread**
-/// (see [`crate::load::run_for`]) instead of sharing a single handle across every
+/// (see [`super::load::run_for`]) instead of sharing a single handle across every
 /// thread: `crate/clients/pkcs11/module/src/sessions.rs` guards each session with its
 /// *own* lock (not one process-wide lock covering every session), so concurrent
 /// operations against *different* sessions now run in parallel — mirroring how a

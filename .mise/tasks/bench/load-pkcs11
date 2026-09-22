@@ -7,13 +7,13 @@
 #USAGE flag "-t --time <t>"         env="BENCH_TIME"          default="20"              help="Measurement time per level (seconds)"
 #USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16"  help="Comma-separated concurrency levels"
 #USAGE flag "-w --http-workers <n>" env="BENCH_HTTP_WORKERS"  default=""            help="Number of Actix-web HTTP worker threads (empty = server default: total logical core count)"
-#USAGE flag "-u --server-url <u>"  env="BENCH_SERVER_URL"    default=""                help="Use an already-running KMS server at this URL instead of building/starting a temporary local one (e.g. a remote/non-local deployment). The cosmian_pkcs11 provider and pkcs11_bench binary are still built locally — only the KMS server itself is external."
+#USAGE flag "-u --server-url <u>"  env="BENCH_SERVER_URL"    default=""                help="Use an already-running KMS server at this URL instead of building/starting a temporary local one (e.g. a remote/non-local deployment). The cosmian_pkcs11 provider and ckms binary are still built locally — only the KMS server itself is external."
 #USAGE flag "--accept-invalid-certs"  env="BENCH_ACCEPT_INVALID_CERTS"                 help="Allow connecting to an HTTPS KMS server with an untrusted or self-signed certificate"
-#USAGE flag "--tls-ca-cert <p>"       env="BENCH_TLS_CA_CERT"                          help="Path to a PEM-encoded CA certificate file used to verify the KMS server certificate"
-#USAGE flag "--tls-client-pem-cert <p>" env="BENCH_TLS_CLIENT_PEM_CERT"                help="Path to a client certificate in PEM format for mutual TLS authentication"
-#USAGE flag "--tls-client-pem-key <p>"  env="BENCH_TLS_CLIENT_PEM_KEY"                 help="Path to a client private key in PEM format for mutual TLS authentication"
-#USAGE flag "--tls-client-pkcs12 <p>"   env="BENCH_TLS_CLIENT_PKCS12"                  help="Path to a client PKCS#12 archive (.p12 / .pfx) for mutual TLS authentication"
-#USAGE flag "--tls-client-pkcs12-password <s>" env="BENCH_TLS_CLIENT_PKCS12_PASSWORD" help="Password for the client PKCS#12 archive"
+#USAGE flag "--tls-ca-cert <p>"       env="BENCH_TLS_CA_CERT"                          help="Path to a PEM-encoded CA certificate file used to verify the KMS server certificate (used for the provider ckms.toml)"
+#USAGE flag "--tls-client-pem-cert <p>" env="BENCH_TLS_CLIENT_PEM_CERT"                help="Path to a client certificate in PEM format for mutual TLS authentication (used for the provider ckms.toml)"
+#USAGE flag "--tls-client-pem-key <p>"  env="BENCH_TLS_CLIENT_PEM_KEY"                 help="Path to a client private key in PEM format for mutual TLS authentication (used for the provider ckms.toml)"
+#USAGE flag "--tls-client-pkcs12 <p>"   env="BENCH_TLS_CLIENT_PKCS12"                  help="Path to a client PKCS#12 archive (.p12 / .pfx) for mutual TLS authentication (used for the provider ckms.toml)"
+#USAGE flag "--tls-client-pkcs12-password <s>" env="BENCH_TLS_CLIENT_PKCS12_PASSWORD" help="Password for the client PKCS#12 archive (used for the provider ckms.toml)"
 #USAGE flag "-W --warmup <s>"       env="BENCH_WARMUP"        default="5"               help="Warmup time before the load sweep (seconds)"
 #USAGE flag "-C --cooldown <s>"     env="BENCH_COOLDOWN"      default="2"               help="Cooldown between concurrency levels (seconds)"
 #USAGE flag "-s --sanity"           env="BENCH_SANITY"                                  help="Quick sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt"
@@ -87,8 +87,8 @@ fi
 
 bench_register_cleanup
 
-# Build the server (if local), the cosmian_pkcs11 cdylib, and the benchmark binary.
-BUILD_ARGS=(-p cosmian_pkcs11 -p cosmian_pkcs11_bench)
+# Build the server (if local), the cosmian_pkcs11 cdylib, and the ckms binary.
+BUILD_ARGS=(-p cosmian_pkcs11 -p ckms)
 [ -z "${BENCH_SERVER_URL}" ] && BUILD_ARGS=(-p cosmian_kms_server "${BUILD_ARGS[@]}")
 BUILD_FEATURES=()
 [ "${BENCH_VARIANT}" = "non-fips" ] && BUILD_FEATURES+=(non-fips)
@@ -109,7 +109,8 @@ cargo build "${BUILD_ARGS[@]}" ${BUILD_PROFILE_ARGS[@]+"${BUILD_PROFILE_ARGS[@]}
 CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$(get_repo_root)/target}"
 export CARGO_TARGET_DIR
 KMS_BIN="${CARGO_TARGET_DIR}/${BUILD_DIR}/cosmian_kms"
-PKCS11_BENCH_BIN="${CARGO_TARGET_DIR}/${BUILD_DIR}/pkcs11_bench"
+CKMS_BIN="${CARGO_TARGET_DIR}/${BUILD_DIR}/ckms"
+export CKMS_BIN
 export KMS_BIN
 
 PKCS11_LIB="$(get_cosmian_pkcs11_lib "${CARGO_TARGET_DIR}" "${BUILD_DIR}")"
@@ -166,24 +167,22 @@ if [ "${BENCH_CRITERION}" = "true" ]; then
   [ "${BENCH_OVERHEAD}" = "true" ] && CRITERION_ARGS+=(--overhead)
 fi
 
-TLS_BENCH_ARGS=()
-[ "${BENCH_ACCEPT_INVALID_CERTS}" = "true" ] && TLS_BENCH_ARGS+=(--accept-invalid-certs)
-[ -n "${BENCH_TLS_CA_CERT}" ] && TLS_BENCH_ARGS+=(--tls-ca-cert "${BENCH_TLS_CA_CERT}")
-[ -n "${BENCH_TLS_CLIENT_PEM_CERT}" ] && TLS_BENCH_ARGS+=(--tls-client-pem-cert "${BENCH_TLS_CLIENT_PEM_CERT}")
-[ -n "${BENCH_TLS_CLIENT_PEM_KEY}" ] && TLS_BENCH_ARGS+=(--tls-client-pem-key "${BENCH_TLS_CLIENT_PEM_KEY}")
-[ -n "${BENCH_TLS_CLIENT_PKCS12}" ] && TLS_BENCH_ARGS+=(--tls-client-pkcs12 "${BENCH_TLS_CLIENT_PKCS12}")
-[ -n "${BENCH_TLS_CLIENT_PKCS12_PASSWORD}" ] && TLS_BENCH_ARGS+=(--tls-client-pkcs12-password "${BENCH_TLS_CLIENT_PKCS12_PASSWORD}")
-"${PKCS11_BENCH_BIN}" \
-  --pkcs11-lib "${PKCS11_LIB}" \
-  --kms-url "${KMS_BASE_URL}" \
+ACCEPT_INVALID_CERTS_ARGS=()
+[ "${BENCH_ACCEPT_INVALID_CERTS}" = "true" ] && ACCEPT_INVALID_CERTS_ARGS+=(--accept-invalid-certs)
+
+"${CKMS_BIN}" \
+  --url "${KMS_BASE_URL}" \
+  ${ACCEPT_INVALID_CERTS_ARGS[@]+"${ACCEPT_INVALID_CERTS_ARGS[@]}"} \
+  pkcs11 bench \
+  --dll "${PKCS11_LIB}" \
+  --conf "${CKMS_CONF}" \
   --mode "${BENCH_MODE}" \
   --concurrency "${BENCH_CONCURRENCY}" \
   --time "${BENCH_TIME}" \
   --warmup "${BENCH_WARMUP}" \
   --cooldown "${BENCH_COOLDOWN}" \
   ${SHARED_SESSION_ARGS[@]+"${SHARED_SESSION_ARGS[@]}"} \
-  ${CRITERION_ARGS[@]+"${CRITERION_ARGS[@]}"} \
-  ${TLS_BENCH_ARGS[@]+"${TLS_BENCH_ARGS[@]}"}
+  ${CRITERION_ARGS[@]+"${CRITERION_ARGS[@]}"}
 
 # Dedicated report directory (documentation/docs/benchmarks/ckms_bench_pkcs11/) so
 # this never clobbers the ckms_bench / ckms_bench_hsm_kek / ckms_bench_delegated_crypto_operations reports
