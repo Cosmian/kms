@@ -326,6 +326,10 @@ pub enum AuditBackendParams {
     Postgres {
         url: String,
         instance_id: String,
+        /// `Some(path)` when `--audit-file-path` was also explicitly set — purely so
+        /// `create_audit_store` can warn that it's unused (`PostgreSQL` takes precedence;
+        /// it is NOT a runtime fallback — a connectivity failure still aborts startup).
+        ignored_file_path: Option<PathBuf>,
     },
 }
 
@@ -340,7 +344,9 @@ impl fmt::Debug for AuditBackendParams {
                 "file: {}, max_size_bytes: {max_size_bytes:?}",
                 path.display()
             ),
-            Self::Postgres { url, instance_id } => write!(
+            Self::Postgres {
+                url, instance_id, ..
+            } => write!(
                 f,
                 "postgres: {}, instance_id: {instance_id}",
                 cosmian_kms_server_database::redact_connection_string(url)
@@ -372,7 +378,10 @@ impl ServerParams {
     ///
     /// Backend selection is config-time only: `--audit-postgres-url` set → `PostgreSQL`;
     /// otherwise → the JSONL file (path defaulting to `<root-data-path>/audit.jsonl`).
-    /// There is no runtime fallback between the two.
+    /// There is no runtime fallback between the two: a `PostgreSQL` connectivity failure
+    /// still aborts startup (see `AuditStore::start_postgres`). If `--audit-file-path` is
+    /// also set, `create_audit_store` only uses it to log a warning that it's ignored —
+    /// see `AuditBackendParams::Postgres::ignored_file_path`.
     ///
     /// # Errors
     /// Returns an error if:
@@ -402,6 +411,12 @@ impl ServerParams {
         if !audit.audit_enable {
             return Ok(None);
         }
+
+        let file_path = audit
+            .file
+            .audit_file_path
+            .clone()
+            .unwrap_or_else(|| workspace.root_data_path.join("audit.jsonl"));
 
         if let Some(url) = audit.postgres.audit_postgres_url.as_deref() {
             if !url.starts_with("postgresql://") && !url.starts_with("postgres://") {
@@ -441,15 +456,11 @@ impl ServerParams {
             Ok(Some(AuditBackendParams::Postgres {
                 url: url.to_owned(),
                 instance_id,
+                ignored_file_path: audit.file.audit_file_path.clone(),
             }))
         } else {
-            let path = audit
-                .file
-                .audit_file_path
-                .clone()
-                .unwrap_or_else(|| workspace.root_data_path.join("audit.jsonl"));
             Ok(Some(AuditBackendParams::File {
-                path,
+                path: file_path,
                 max_size_bytes: audit.file.audit_file_max_size_bytes,
             }))
         }

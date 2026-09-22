@@ -498,6 +498,8 @@ failure_mode = "continue"
 
 [audit.file]
 
+[audit.postgres]
+
 [crl]
 crl_default_validity_days = 7
 crl_refresh_check_hours = 1

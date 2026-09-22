@@ -259,6 +259,7 @@ time = "0.3"
 tiny-keccak = "2.0"
 tempfile = "3.19"
 tokio = { version = "1.44", default-features = false }
+tokio-postgres = { version = "0.7.18", default-features = false }
 tokio-stream = "0.1"
 tonic = "0.12"
 tower = "0.4"

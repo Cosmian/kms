@@ -753,6 +753,7 @@ Crate path: `crate/server`
 | `error` | `AuditFileStore: cannot stat recovered log file {} ({e}) — retrying` | `src/core/audit/file_sink.rs` | `e`: I/O error from `File::metadata()` | Retried in place inside `FileSink::resume()`'s recovery loop; a transient stat failure self-heals and does not disable audit logging. |
 | `error` | `AuditFileStore: failed to write recovery sentinel id={}: {e} — event dropped` | `src/core/audit/file_sink.rs` | `id`: sentinel event ID<br>`e`: I/O error | A torn-write-recovered or reanchor sentinel written during recovery (before the writer task exists) failed to persist; the chain does not advance past this `id` and the sentinel is dropped. |
 | `debug` | `AuditFileStore: sink '{}' is at capacity — event dropped` | `src/core/audit/writer.rs` | sink name (`AuditSink::name()`) | Throttled to at most once every 500ms while blocked events keep arriving after the sink reports `is_write_capacity_exceeded() == true`. |
+| `error` | `AuditFileStore: recovery sentinel id counter overflow at i64::MAX` | `src/core/audit/file_sink.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -797,6 +798,8 @@ Crate path: `crate/server_database`
 | `debug` | `[redis-scan-wrapped] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
 | `debug` | `PostgreSQL error` | `src/error/db_error.rs` | `code`: SQLSTATE code<br>`message`: raw driver error message | Internal only — never surfaced via `SqlError` (which carries just the code) to avoid leaking table/constraint names to clients. |
 | `debug` | `SQLite transient lock encountered, retrying in {backoff:?}: {e}` | `src/stores/sql/sqlite.rs` | `backoff`: delay before the next retry attempt<br>`e`: the underlying "database is locked" error | Emitted while retrying a transient SQLite lock contention error; not an operator-actionable warning by itself, only relevant if retries are repeatedly exhausted. |
+| `error` | `audit: dedicated advisory-lock session ended unexpectedly: {e}` | `src/stores/audit/pgsql.rs` | `e` | ×2 in this file |
+| `error` | `audit: instance_id={} sealed generation {sealed_generation} (reason={}, first_failure_id={}, evidence={evidence}) — starting generation {new_generation}` | `src/stores/audit/pgsql.rs` | `sealed_generation`, `evidence`, `new_generation` | - |
 
 ### `cosmian_kms_crypto`
 

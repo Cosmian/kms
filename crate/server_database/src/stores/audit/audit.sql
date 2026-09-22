@@ -1,3 +1,5 @@
+-- Never put a `--` comment between a `-- name:` tag and its query's closing `;`: the rawsql loader joins a query's lines with spaces, so a mid-body `--` would comment out the rest, including the `;`.
+
 -- name: create-table-audit-events
 CREATE TABLE IF NOT EXISTS kms_audit_events (
     instance_id      TEXT        NOT NULL CHECK (length(instance_id) BETWEEN 1 AND 255),
@@ -18,9 +20,8 @@ CREATE TABLE IF NOT EXISTS kms_audit_events (
     PRIMARY KEY (instance_id, chain_generation, id)
 );
 
--- name: add-column-audit-events-details
-ALTER TABLE kms_audit_events ADD COLUMN IF NOT EXISTS details TEXT;
-
+-- for info: the KMS does not need this index, but it's kept for the convenience of auditors
+-- as time-based queries are common, and a B-tree index is cheap to maintain relative to that.
 -- name: create-index-audit-events-timestamp
 CREATE INDEX IF NOT EXISTS idx_kms_audit_events_timestamp ON kms_audit_events (timestamp);
 
@@ -62,9 +63,6 @@ SELECT instance_id, chain_generation, id, timestamp, operation, username, object
 
 -- name: select-audit-instances
 SELECT DISTINCT instance_id FROM kms_audit_events ORDER BY instance_id ASC;
-
--- name: select-audit-table-exists
-SELECT to_regclass('kms_audit_events') IS NOT NULL;
 
 -- name: select-audit-event-row-hash
 SELECT row_hash FROM kms_audit_events WHERE instance_id = $1 AND chain_generation = $2 AND id = $3;

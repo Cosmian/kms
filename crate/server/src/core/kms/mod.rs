@@ -382,6 +382,10 @@ impl KMS {
     }
 
     /// Starts the audit store for the configured backend, if audit logging is enabled.
+    ///
+    /// For the `PostgreSQL` backend, a connection failure at startup still aborts the
+    /// server — it is not a runtime fallback to the file backend, even if
+    /// `--audit-file-path` is also set (see `AuditBackendParams::Postgres`).
     async fn create_audit_store(server_params: &ServerParams) -> KResult<Option<AuditStore>> {
         match server_params.audit_backend.as_ref() {
             Some(AuditBackendParams::File {
@@ -395,14 +399,33 @@ impl KMS {
                 )?;
                 Ok(Some(store))
             }
-            Some(AuditBackendParams::Postgres { url, instance_id }) => {
-                let store = AuditStore::start_postgres(
+            Some(AuditBackendParams::Postgres {
+                url,
+                instance_id,
+                ignored_file_path,
+            }) => {
+                let result = AuditStore::start_postgres(
                     url,
                     instance_id,
                     server_params.audit_channel_capacity,
                 )
-                .await?;
-                Ok(Some(store))
+                .await;
+                if let Some(path) = ignored_file_path {
+                    match &result {
+                        Ok(_) => tracing::warn!(
+                            "Connected to the PostgreSQL audit backend; ignoring \
+                             --audit-file-path ({}) since both were set",
+                            path.display()
+                        ),
+                        Err(e) => tracing::warn!(
+                            "PostgreSQL audit backend unavailable ({e}); \
+                             --audit-file-path ({}) is set but is NOT used as a runtime \
+                             fallback — startup aborts",
+                            path.display()
+                        ),
+                    }
+                }
+                Ok(Some(result?))
             }
             None => Ok(None),
         }
