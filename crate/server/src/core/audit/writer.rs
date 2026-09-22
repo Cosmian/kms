@@ -108,17 +108,13 @@ pub(super) async fn write_draft_to_chain<S: AuditSink>(
                 ph = head.prev_hash;
             }
             Err(e) => {
-                error!(
-                    "AuditFileStore: failed to write event id={id}: {e} — event dropped"
-                );
+                error!("AuditFileStore: failed to write event id={id}: {e} — event dropped");
                 // Reuse this chain position after a failed write.
                 return id;
             }
         }
     }
-    error!(
-        "AuditFileStore: exhausted resync attempts at id={id} — event dropped"
-    );
+    error!("AuditFileStore: exhausted resync attempts at id={id} — event dropped");
     id
 }
 
