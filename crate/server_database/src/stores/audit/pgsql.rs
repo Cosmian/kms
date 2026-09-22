@@ -72,6 +72,15 @@ macro_rules! get_audit_query {
 /// for a fresh connection after a failover kills the current one.
 const AUDIT_POOL_SIZE: usize = 1;
 
+/// How long [`PgAuditSink::connect`] waits for a stale writer's advisory lock to be
+/// released before giving up — covers a rolling update where the outgoing instance's
+/// `PostgreSQL` session (and its lock) hasn't ended yet when the incoming instance starts,
+/// the same topology the file backend already tolerates for its own lock.
+const LOCK_ACQUIRE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Interval between advisory-lock acquisition attempts while waiting.
+const LOCK_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
 /// Events fetched per page when reading a chain back (`resume()`'s full-chain
 /// verification, and every `PgAuditReader` page) — bounds memory regardless of how long
 /// the chain has grown, matching the file backend's O(1)-startup-window design intent
@@ -156,11 +165,28 @@ impl PgAuditSink {
     /// Connects to `url`, acquires `instance_id`'s advisory lock, and ensures the schema
     /// exists and is current.
     ///
+    /// A held lock is retried with backoff for up to [`LOCK_ACQUIRE_TIMEOUT`] before
+    /// giving up — the same rolling-update topology the file backend's own lock already
+    /// tolerates, rather than hard-aborting KMS startup on a condition that resolves
+    /// itself once the outgoing instance's session ends.
+    ///
     /// # Errors
     /// Returns an error if `instance_id` is empty or over 255 characters, the pool or
-    /// dedicated session cannot be built, another writer already holds the instance's
-    /// advisory lock, or the schema cannot be created/validated.
+    /// dedicated session cannot be built, another writer still holds the instance's
+    /// advisory lock after [`LOCK_ACQUIRE_TIMEOUT`], or the schema cannot be
+    /// created/validated.
     pub async fn connect(url: &str, instance_id: &str) -> DbResult<Self> {
+        Self::connect_with_lock_timeout(url, instance_id, LOCK_ACQUIRE_TIMEOUT).await
+    }
+
+    /// Same as [`Self::connect`], with a configurable advisory-lock wait bound so tests
+    /// can prove the retry-then-give-up behavior without waiting the full production
+    /// timeout.
+    async fn connect_with_lock_timeout(
+        url: &str,
+        instance_id: &str,
+        lock_timeout: std::time::Duration,
+    ) -> DbResult<Self> {
         if instance_id.is_empty() || instance_id.len() > 255 {
             return Err(db_error!(
                 "audit: --audit-instance-id must be between 1 and 255 characters"
@@ -171,21 +197,7 @@ impl PgAuditSink {
 
         // Acquired BEFORE ensure_schema/resume/HTTP startup — see the module docs.
         let lock_session = connect_dedicated_session(url).await?;
-        let acquired: bool = lock_session
-            .query_one(
-                get_audit_query!("select-audit-advisory-lock"),
-                &[&instance_id],
-            )
-            .await
-            .map_err(DbError::from)?
-            .get(0);
-        if !acquired {
-            return Err(db_error!(
-                "audit: another writer already holds the advisory lock for \
-                 instance_id={instance_id} — two KMS instances must not share an audit \
-                 instance_id; set a distinct --audit-instance-id on each"
-            ));
-        }
+        Self::acquire_advisory_lock(&lock_session, instance_id, lock_timeout).await?;
 
         Self::ensure_schema(&pool).await?;
 
@@ -195,6 +207,47 @@ impl PgAuditSink {
             lock_session,
             active_generation: 0,
         })
+    }
+
+    /// Polls `pg_try_advisory_lock` for `instance_id` on `lock_session` until it
+    /// succeeds or `timeout` elapses.
+    async fn acquire_advisory_lock(
+        lock_session: &tokio_postgres::Client,
+        instance_id: &str,
+        timeout: std::time::Duration,
+    ) -> DbResult<()> {
+        let deadline = tokio::time::Instant::now() + timeout;
+        let mut contention_logged = false;
+        loop {
+            let acquired: bool = lock_session
+                .query_one(
+                    get_audit_query!("select-audit-advisory-lock"),
+                    &[&instance_id],
+                )
+                .await
+                .map_err(DbError::from)?
+                .get(0);
+            if acquired {
+                return Ok(());
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Err(db_error!(
+                    "audit: another writer still holds the advisory lock for \
+                     instance_id={instance_id} after {timeout:?} — two KMS instances must \
+                     not share an audit instance_id; set a distinct --audit-instance-id \
+                     on each"
+                ));
+            }
+            if !contention_logged {
+                error!(
+                    "audit: advisory lock for instance_id={instance_id} held by another \
+                     writer — waiting up to {timeout:?} (e.g. a rolling update's outgoing \
+                     instance)"
+                );
+                contention_logged = true;
+            }
+            tokio::time::sleep(LOCK_RETRY_INTERVAL.min(timeout)).await;
+        }
     }
 
     /// Ensures `kms_audit_events` exists and is current, running the full idempotent DDL
@@ -844,6 +897,8 @@ impl PgAuditReader {
     clippy::indexing_slicing
 )]
 mod live_tests {
+    use std::time::Duration;
+
     use cosmian_kms_access::audit::{AuditEvent, AuditResult, audit_now, compute_row_hash};
     use cosmian_kms_interfaces::{AuditSink, ChainHead, WriteOutcome};
     use tokio_postgres::NoTls;
@@ -1285,11 +1340,51 @@ mod live_tests {
         let url = audit_url();
 
         let _sink_a = PgAuditSink::connect(&url, &instance_id).await.unwrap();
-        let result_b = PgAuditSink::connect(&url, &instance_id).await;
+        // A short lock-acquire timeout keeps this test fast: the first instance never
+        // releases its lock, so the second must still eventually give up and error.
+        let result_b =
+            PgAuditSink::connect_with_lock_timeout(&url, &instance_id, Duration::from_millis(200))
+                .await;
         assert!(
             result_b.is_err(),
             "a second writer must be rejected while the first still holds the \
              instance's advisory lock"
+        );
+    }
+
+    /// H4: a rolling update where the incoming instance starts before the outgoing
+    /// instance's `PostgreSQL` session (and its advisory lock) has ended must not
+    /// hard-abort — the incoming instance must retry and succeed once the lock is
+    /// released, within the bounded wait.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_connect_retries_and_succeeds_after_lock_release() {
+        let instance_id = unique_instance_id("lock-retry-release");
+        let url = audit_url();
+
+        let sink_a = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+
+        let url_for_b = url.clone();
+        let instance_id_for_b = instance_id.clone();
+        let handle_b = tokio::spawn(async move {
+            PgAuditSink::connect_with_lock_timeout(
+                &url_for_b,
+                &instance_id_for_b,
+                Duration::from_secs(5),
+            )
+            .await
+        });
+
+        // Release the outgoing instance's lock shortly after the incoming instance
+        // starts waiting, well within its 5s bound.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        drop(sink_a);
+
+        let result_b = handle_b.await.unwrap();
+        assert!(
+            result_b.is_ok(),
+            "connect must retry and succeed once the stale lock is released: {:?}",
+            result_b.err()
         );
     }
 
