@@ -286,12 +286,15 @@ mod tests {
     use cosmian_kms_access::audit::{
         AuditEvent, AuditEventDraft, AuditResult, compute_row_hash, verify_event,
     };
-    use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult};
+    use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult, WriteOutcome};
     use time::OffsetDateTime;
     use tokio::sync::mpsc;
 
     use super::{AuditStore, WriterMsg};
-    use crate::core::audit::{file_sink::lock_file_path, writer::writer_loop};
+    use crate::core::audit::{
+        file_sink::lock_file_path,
+        writer::{write_draft_to_chain, writer_loop},
+    };
 
     /// Small channel capacity used in all tests.  Large enough for the ≤5-event
     /// functional tests; small enough to fill quickly in the saturation test.
@@ -1030,7 +1033,7 @@ mod tests {
             Ok(ChainHead::EMPTY)
         }
 
-        async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<()> {
+        async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<WriteOutcome> {
             let idx = self.call_count;
             self.call_count += 1;
             if (self.should_fail)(idx) {
@@ -1039,7 +1042,7 @@ mod tests {
                 ));
             }
             self.events.push(event.clone());
-            Ok(())
+            Ok(WriteOutcome::Written)
         }
     }
 
@@ -1103,6 +1106,71 @@ mod tests {
             sink.events.is_empty(),
             "no event should be persisted when every write fails"
         );
+    }
+
+    /// A mock `AuditSink` whose write reports `Resynced` exactly once, at a configured
+    /// id, as if a prior write (whose acknowledgement was lost) already durably occupies
+    /// that slot with different content — the H1 scenario. Every other write succeeds
+    /// normally.
+    struct ResyncingSink {
+        events: Vec<AuditEvent>,
+        resync_once_at_id: i64,
+        resync_to: ChainHead,
+        resynced: bool,
+    }
+
+    #[async_trait]
+    impl AuditSink for ResyncingSink {
+        fn name(&self) -> &'static str {
+            "resyncing"
+        }
+
+        async fn resume(&mut self) -> InterfaceResult<ChainHead> {
+            Ok(ChainHead::EMPTY)
+        }
+
+        async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<WriteOutcome> {
+            if event.id == self.resync_once_at_id && !self.resynced {
+                self.resynced = true;
+                return Ok(WriteOutcome::Resynced(self.resync_to));
+            }
+            self.events.push(event.clone());
+            Ok(WriteOutcome::Written)
+        }
+    }
+
+    /// `write_draft_to_chain` must retry the *same* draft at the corrected position when
+    /// the sink reports `Resynced`, instead of dropping it or leaving the chain wedged on
+    /// a slot nothing will ever fill again — the core of the H1 fix.
+    #[tokio::test]
+    async fn resync_outcome_retries_same_draft_at_corrected_position() {
+        let resync_to = ChainHead {
+            next_id: 5,
+            prev_hash: [0x42_u8; 32],
+        };
+        let mut sink = ResyncingSink {
+            events: Vec::new(),
+            resync_once_at_id: 0,
+            resync_to,
+            resynced: false,
+        };
+        let draft = make_draft();
+        let mut prev_hash = [0_u8; 32];
+
+        let next_id = write_draft_to_chain(&mut sink, draft, 0, &mut prev_hash).await;
+
+        assert_eq!(
+            next_id, 6,
+            "must continue past the resynced position, not the original one"
+        );
+        assert_eq!(
+            sink.events.len(),
+            1,
+            "exactly one event must be durably written, not a duplicate at the old slot"
+        );
+        assert_eq!(sink.events[0].id, 5);
+        assert_eq!(sink.events[0].prev_hash, [0x42_u8; 32]);
+        assert_eq!(prev_hash, sink.events[0].row_hash);
     }
 }
 

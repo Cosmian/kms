@@ -71,10 +71,24 @@ impl ChainHead {
     };
 }
 
+/// Outcome of [`AuditSink::write_event_atomic`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteOutcome {
+    /// The event was durably written at the position it was given.
+    Written,
+    /// The requested slot was already durably occupied by a valid link in this same
+    /// chain — see the implementing backend for when this can happen (e.g. a prior
+    /// write whose acknowledgement was lost). The caller must retry the *same* draft
+    /// at the returned chain head instead of advancing past it or dropping it.
+    Resynced(ChainHead),
+}
+
 /// A durable destination for finalised audit events.
 ///
 /// # Contract
-/// * On `write_event_atomic` success, the event is durable. On error, nothing is persisted.
+/// * On `write_event_atomic` success, the event is durable (either at the position
+///   given, or — on [`WriteOutcome::Resynced`] — the caller must retry at the returned
+///   position). On error, nothing is persisted.
 /// * A sink **must never update or delete** a previously written event.
 #[async_trait]
 pub trait AuditSink: Send {
@@ -93,7 +107,7 @@ pub trait AuditSink: Send {
     /// # Errors
     /// Returns an error when the event could not be persisted. On error, the caller must
     /// not consider the event committed (see the trait-level contract).
-    async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<()>;
+    async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<WriteOutcome>;
 
     /// Whether the writer should drop events without calling
     /// [`Self::write_event_atomic`].
