@@ -1,7 +1,7 @@
 # KMS Performance Comparison
 
-**Versions**: `v5.27.0`
-**Generated**: 2026-09-08
+**Versions**: `v5.27.1`  
+**Generated**: 2026-09-22
 
 ---
 
@@ -9,14 +9,14 @@
 
 | Field | Value |
 |---|---|
-| Date | 2026-09-08 12:00:59 UTC |
+| Date | 2026-09-22 17:17:32 UTC |
 | Build | release / non-fips |
 | HTTP workers (Actix-web) | 32 |
 | Database | SQLite (temporary, single benchmark run) |
-| CPU | Intel(R) Core(TM) i9-14900T @ 1,184 MHz |
+| CPU | Intel(R) Core(TM) i9-14900T @ 800 MHz |
 | CPU cores | 24 physical / 32 logical (HT) |
 | RAM | 31.1 GB |
-| OS | Ubuntu 24.04.4 LTS |
+| OS | Ubuntu 24.04.5 LTS |
 | Kernel | 6.8.0-139-generic |
 
 ### Load test parameters
@@ -47,7 +47,7 @@ Thread(s) per core:                      2
 Core(s) per socket:                      24
 Socket(s):                               1
 Stepping:                                1
-CPU(s) scaling MHz:                      41%
+CPU(s) scaling MHz:                      29%
 CPU max MHz:                             5500,0000
 CPU min MHz:                             800,0000
 BogoMIPS:                                2227,20
@@ -78,6 +78,7 @@ Vulnerability Tsx async abort:           Not affected
 Vulnerability Vmscape:                   Mitigation; IBPB before exit to userspace
 ```
 
+
 ---
 
 ## Protocols
@@ -93,6 +94,7 @@ This report benchmarks cryptographic operations delegated to an HSM (PKCS#11) vi
 **ttlv-bytes is not benchmarked here.** Measuring it would require running it either against the same HSM-resident key/token as the ttlv-json sweep (strictly after it completes) or on a fresh token started specifically for that purpose. The former was tried first and rejected: cumulative SoftHSM2 token load from the preceding ttlv-json sweep contaminated every ttlv-bytes measurement, making ttlv-json appear *faster* than ttlv-bytes in every single operation — the opposite of the software baseline (where ttlv-bytes is consistently faster, as expected, since it skips JSON parsing). Rather than publish numbers that are measurement artefacts of test ordering, ttlv-bytes is omitted from this report until the harness can measure both protocols under equivalent conditions (e.g. independent tokens per protocol).
 
 **JOSE is not benchmarked here.** The JOSE REST key-creation endpoint (`POST /v1/crypto/keys`) has no parameter to request a caller-chosen `kid`, and HSM-resident key delegation requires the client to choose the `hsm::<slot>::<uuid>` unique identifier up front (the HSM has no server-assigned ID scheme) — so an HSM-resident key cannot be created through the JOSE endpoints at all.
+
 
 ---
 
@@ -151,6 +153,7 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 > **Infrastructure note:** The load test and criterion benchmarks both use a **local SQLite** backend (temporary, discarded after the run) for the KMS server's own metadata store — the key material itself resides on the HSM, never in SQLite. Throughput figures will differ on a production deployment backed by PostgreSQL or Redis-Findex, and even more so against a hardware HSM instead of SoftHSM2.
 
+
 ---
 
 ## Load Tests
@@ -159,9 +162,9 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 41 |
-| 2 | 30 |
-| 4 | 21 |
+| 1 | 53 |
+| 2 | 39 |
+| 4 | 25 |
 
 ![Throughput — hsm/key-creation/aes-256](load/hsm_key-creation_aes-256.svg)
 
@@ -171,9 +174,9 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 2 |
-| 2 | 4 |
-| 4 | 5 |
+| 1 | 4 |
+| 2 | 5 |
+| 4 | 7 |
 
 ![Throughput — hsm/key-creation/rsa-2048](load/hsm_key-creation_rsa-2048.svg)
 
@@ -183,11 +186,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 932 |
-| 2 | 1,480 |
-| 4 | 1,950 |
-| 8 | 1,980 |
-| 16 | 1,937 |
+| 1 | 1,455 |
+| 2 | 2,196 |
+| 4 | 2,775 |
+| 8 | 2,823 |
+| 16 | 1,551 |
 
 ![Throughput — hsm/encrypt/aes-gcm](load/hsm_encrypt_aes-gcm.svg)
 
@@ -197,11 +200,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 1,369 |
-| 2 | 2,037 |
-| 4 | 2,107 |
-| 8 | 2,067 |
-| 16 | 2,029 |
+| 1 | 1,820 |
+| 2 | 2,510 |
+| 4 | 2,166 |
+| 8 | 2,045 |
+| 16 | 1,695 |
 
 ![Throughput — hsm/encrypt/rsa-oaep](load/hsm_encrypt_rsa-oaep.svg)
 
@@ -211,11 +214,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 1,354 |
-| 2 | 2,073 |
-| 4 | 2,216 |
-| 8 | 2,071 |
-| 16 | 2,014 |
+| 1 | 1,405 |
+| 2 | 2,000 |
+| 4 | 2,526 |
+| 8 | 2,692 |
+| 16 | 1,468 |
 
 ![Throughput — hsm/encrypt/rsa-oaep-sha1](load/hsm_encrypt_rsa-oaep-sha1.svg)
 
@@ -225,11 +228,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 1,352 |
-| 2 | 2,016 |
-| 4 | 2,249 |
-| 8 | 2,075 |
-| 16 | 2,032 |
+| 1 | 2,054 |
+| 2 | 3,170 |
+| 4 | 3,368 |
+| 8 | 3,000 |
+| 16 | 808 |
 
 ![Throughput — hsm/encrypt/rsa-pkcs1v15](load/hsm_encrypt_rsa-pkcs1v15.svg)
 
@@ -239,11 +242,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 888 |
-| 2 | 1,479 |
-| 4 | 2,067 |
-| 8 | 1,966 |
-| 16 | 1,929 |
+| 1 | 1,409 |
+| 2 | 2,211 |
+| 4 | 2,773 |
+| 8 | 2,028 |
+| 16 | 1,021 |
 
 ![Throughput — hsm/encrypt/aes-cbc](load/hsm_encrypt_aes-cbc.svg)
 
@@ -253,11 +256,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 394 |
-| 2 | 629 |
-| 4 | 766 |
-| 8 | 737 |
-| 16 | 712 |
+| 1 | 165 |
+| 2 | 266 |
+| 4 | 311 |
+| 8 | 243 |
+| 16 | 250 |
 
 ![Throughput — hsm/sign-verify/rsa-pss](load/hsm_sign-verify_rsa-pss.svg)
 
@@ -267,11 +270,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 388 |
-| 2 | 654 |
-| 4 | 762 |
-| 8 | 729 |
-| 16 | 710 |
+| 1 | 228 |
+| 2 | 671 |
+| 4 | 901 |
+| 8 | 846 |
+| 16 | 756 |
 
 ![Throughput — hsm/sign-verify/rsa-pkcs1v15-sha1](load/hsm_sign-verify_rsa-pkcs1v15-sha1.svg)
 
@@ -281,11 +284,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 385 |
-| 2 | 642 |
-| 4 | 777 |
-| 8 | 717 |
-| 16 | 701 |
+| 1 | 484 |
+| 2 | 923 |
+| 4 | 1,104 |
+| 8 | 1,025 |
+| 16 | 776 |
 
 ![Throughput — hsm/sign-verify/rsa-pkcs1v15-sha256](load/hsm_sign-verify_rsa-pkcs1v15-sha256.svg)
 
@@ -295,11 +298,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 384 |
-| 2 | 637 |
-| 4 | 787 |
-| 8 | 710 |
-| 16 | 688 |
+| 1 | 586 |
+| 2 | 972 |
+| 4 | 1,118 |
+| 8 | 992 |
+| 16 | 574 |
 
 ![Throughput — hsm/sign-verify/rsa-pkcs1v15-sha384](load/hsm_sign-verify_rsa-pkcs1v15-sha384.svg)
 
@@ -309,11 +312,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 391 |
-| 2 | 631 |
-| 4 | 804 |
-| 8 | 711 |
-| 16 | 689 |
+| 1 | 595 |
+| 2 | 944 |
+| 4 | 1,183 |
+| 8 | 1,028 |
+| 16 | 735 |
 
 ![Throughput — hsm/sign-verify/rsa-pkcs1v15-sha512](load/hsm_sign-verify_rsa-pkcs1v15-sha512.svg)
 
@@ -323,11 +326,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 582 |
-| 2 | 729 |
-| 4 | 863 |
-| 8 | 687 |
-| 16 | 659 |
+| 1 | 887 |
+| 2 | 1,144 |
+| 4 | 1,336 |
+| 8 | 862 |
+| 16 | 272 |
 
 ![Throughput — hsm/sign-verify/ecdsa-p256](load/hsm_sign-verify_ecdsa-p256.svg)
 
@@ -337,11 +340,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 543 |
-| 2 | 712 |
-| 4 | 839 |
-| 8 | 699 |
-| 16 | 672 |
+| 1 | 839 |
+| 2 | 1,100 |
+| 4 | 1,292 |
+| 8 | 925 |
+| 16 | 266 |
 
 ![Throughput — hsm/sign-verify/eddsa-ed25519](load/hsm_sign-verify_eddsa-ed25519.svg)
 
@@ -351,11 +354,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 467 |
-| 2 | 667 |
-| 4 | 825 |
-| 8 | 710 |
-| 16 | 669 |
+| 1 | 729 |
+| 2 | 1,022 |
+| 4 | 1,311 |
+| 8 | 1,041 |
+| 16 | 272 |
 
 ![Throughput — hsm/sign-verify/eddsa-ed448](load/hsm_sign-verify_eddsa-ed448.svg)
 
@@ -367,8 +370,9 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Benchmark | ttlv-json |
 |---|---|
-| hsm-aes-cbc/encrypt/256 | 2.51 ms |
-| hsm-aes-gcm/encrypt/256 | 2.44 ms |
+| hsm-aes-cbc/encrypt/256 | 5.42 ms |
+| hsm-aes-gcm/encrypt/256 | 4.52 ms |
+
 
 ---
 
@@ -376,9 +380,10 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Benchmark | ttlv-json |
 |---|---|
-| hsm-rsa-oaep-sha1/encrypt/2048 | 2.54 ms |
-| hsm-rsa-oaep/encrypt/2048 | 3.11 ms |
-| hsm-rsa-pkcs1v15/encrypt/2048 | 3.17 ms |
+| hsm-rsa-oaep-sha1/encrypt/2048 | 5.89 ms |
+| hsm-rsa-oaep/encrypt/2048 | 6.07 ms |
+| hsm-rsa-pkcs1v15/encrypt/2048 | 6.31 ms |
+
 
 ---
 
@@ -386,11 +391,12 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Benchmark | ttlv-json |
 |---|---|
-| hsm-aes-256/create | 76.93 ms |
-| hsm-ec-p256/create | 226.21 ms |
-| hsm-ed25519/create | 228.03 ms |
-| hsm-ed448/create | 232.36 ms |
-| hsm-rsa-2048/create | 418.10 ms |
+| hsm-aes-256/create | 61.59 ms |
+| hsm-ec-p256/create | 184.40 ms |
+| hsm-ed25519/create | 185.10 ms |
+| hsm-ed448/create | 188.05 ms |
+| hsm-rsa-2048/create | 315.20 ms |
+
 
 ---
 
@@ -398,14 +404,16 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Benchmark | ttlv-json |
 |---|---|
-| hsm-ecdsa-p256/sign | 6.31 ms |
-| hsm-ecdsa-p384/sign | 6.68 ms |
-| hsm-eddsa-ed25519/sign | 7.82 ms |
-| hsm-eddsa-ed448/sign | 6.92 ms |
-| hsm-rsa-pkcs1v15-sha1/sign/2048 | 6.63 ms |
-| hsm-rsa-pkcs1v15-sha256/sign/2048 | 6.80 ms |
-| hsm-rsa-pkcs1v15-sha384/sign/2048 | 6.70 ms |
-| hsm-rsa-pkcs1v15-sha512/sign/2048 | 6.02 ms |
-| hsm-rsa-pss/sign/2048 | 6.36 ms |
+| hsm-ecdsa-p256/sign | 3.27 ms |
+| hsm-ecdsa-p384/sign | 4.07 ms |
+| hsm-eddsa-ed25519/sign | 4.20 ms |
+| hsm-eddsa-ed448/sign | 4.10 ms |
+| hsm-rsa-pkcs1v15-sha1/sign/2048 | 3.53 ms |
+| hsm-rsa-pkcs1v15-sha256/sign/2048 | 5.42 ms |
+| hsm-rsa-pkcs1v15-sha384/sign/2048 | 4.53 ms |
+| hsm-rsa-pkcs1v15-sha512/sign/2048 | 3.54 ms |
+| hsm-rsa-pss/sign/2048 | 4.85 ms |
+
 
 ---
+
