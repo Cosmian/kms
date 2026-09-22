@@ -40,6 +40,15 @@ DROP TRIGGER IF EXISTS kms_audit_no_delete ON kms_audit_events;
 -- name: create-audit-trigger-no-delete-create
 CREATE TRIGGER kms_audit_no_delete BEFORE DELETE ON kms_audit_events FOR EACH ROW EXECUTE FUNCTION kms_audit_reject_mutation();
 
+-- PostgreSQL never fires row-level triggers for TRUNCATE; only a statement-level
+-- trigger can reject it, and this is what stops the table owner (exempt from REVOKE)
+-- from truncating the table with its own ordinary credentials.
+-- name: create-audit-trigger-no-truncate
+DROP TRIGGER IF EXISTS kms_audit_no_truncate ON kms_audit_events;
+
+-- name: create-audit-trigger-no-truncate-create
+CREATE TRIGGER kms_audit_no_truncate BEFORE TRUNCATE ON kms_audit_events FOR EACH STATEMENT EXECUTE FUNCTION kms_audit_reject_mutation();
+
 -- name: create-audit-revoke-mutations
 REVOKE UPDATE, DELETE, TRUNCATE ON kms_audit_events FROM PUBLIC;
 

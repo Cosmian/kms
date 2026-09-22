@@ -222,6 +222,8 @@ impl PgAuditSink {
             "create-audit-trigger-no-update-create",
             "create-audit-trigger-no-delete",
             "create-audit-trigger-no-delete-create",
+            "create-audit-trigger-no-truncate",
+            "create-audit-trigger-no-truncate-create",
             "create-audit-revoke-mutations",
         ] {
             let sql = AUDIT_QUERIES
@@ -1211,6 +1213,31 @@ mod live_tests {
             .expect_err("DELETE must be rejected by the append-only trigger");
         assert_eq!(
             delete_err.as_db_error().map(|e| e.code().code().to_owned()),
+            Some("23001".to_owned())
+        );
+    }
+
+    /// `TRUNCATE` fires only statement-level triggers, and `REVOKE` doesn't bind the
+    /// table owner — the ordinary connecting role, per the module docs. A row-level-only
+    /// guard would let `TRUNCATE` silently erase the whole table; the dedicated
+    /// statement-level trigger must reject it too.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_truncate_is_rejected() {
+        let instance_id = unique_instance_id("no-truncate");
+        let url = audit_url();
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        sink.resume().await.unwrap();
+        let ev = make_event(0, [0_u8; 32]);
+        sink.write_event_atomic(&ev).await.unwrap();
+
+        let raw = raw_client(&url).await;
+        let truncate_err = raw
+            .execute("TRUNCATE kms_audit_events", &[])
+            .await
+            .expect_err("TRUNCATE must be rejected by the append-only trigger");
+        assert_eq!(
+            truncate_err.as_db_error().map(|e| e.code().code().to_owned()),
             Some("23001".to_owned())
         );
     }
