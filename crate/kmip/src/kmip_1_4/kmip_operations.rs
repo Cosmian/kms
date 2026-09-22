@@ -68,7 +68,7 @@ debug_from_display!(
 /// This operation requests the server to generate a new managed cryptographic object. The request
 /// contains information about the type of object being created, and some of the attributes to be
 /// assigned to the object.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Create {
     /// Determines the type of object to be created
@@ -94,7 +94,7 @@ impl From<Create> for kmip_2_1::kmip_operations::Create {
 }
 
 /// Response to a Create request
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateResponse {
     /// Type of Object created
@@ -384,7 +384,7 @@ impl TryFrom<kmip_2_1::kmip_operations::ReKeyKeyPairResponse> for ReKeyKeyPairRe
 /// 4.6 Derive Key
 /// This operation requests the server to derive a symmetric key or secret data from a key or
 /// secret data that is already known to the key management system.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeriveKey {
     /// Unique identifiers of the object or objects to derive from.
@@ -1150,7 +1150,7 @@ impl From<DeleteAttribute> for kmip_2_1::kmip_operations::DeleteAttribute {
 
         let name = v.attribute_name.trim();
         let cleaned = name.replace(' ', "");
-        let aref = Tag::from_str(&cleaned).map_or_else(
+        let a_ref = Tag::from_str(&cleaned).map_or_else(
             |_| {
                 // Custom attributes must be referenced exactly as `Attribute::CustomAttribute`
                 // stores them (see the `CustomAttribute` -> `VendorAttribute` conversion in
@@ -1179,7 +1179,7 @@ impl From<DeleteAttribute> for kmip_2_1::kmip_operations::DeleteAttribute {
         Self {
             unique_identifier: Some(UniqueIdentifier::TextString(v.unique_identifier)),
             current_attribute: None,
-            attribute_references: Some(vec![aref]),
+            attribute_references: Some(vec![a_ref]),
         }
     }
 }
