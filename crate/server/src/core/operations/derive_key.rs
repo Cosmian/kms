@@ -138,14 +138,17 @@ async fn derive_key_symmetric(
         )))
     };
 
+    // Check that the user has permission to derive from the base key
     let has_permission =
         user_has_permission(user, Some(&base_key_owm), &KmipOperation::DeriveKey, kms).await?;
+
     if !has_permission {
         kms_bail!(KmsError::Unauthorized(format!(
             "User {user} does not have DeriveKey permission on object {base_key_handle}"
         )));
     }
 
+    // Unwrap the base key if it's wrapped
     base_key_owm.set_object(
         Box::pin(kms.get_unwrapped(base_key_owm.id(), base_key_owm.object(), user))
             .await
@@ -157,6 +160,7 @@ async fn derive_key_symmetric(
             })?,
     );
 
+    // Check that the base object has the Derive Key bit set in its Cryptographic Usage Mask
     if !base_key_owm
         .attributes()
         .is_usage_authorized_for(CryptographicUsageMask::DeriveKey)?
@@ -166,12 +170,14 @@ async fn derive_key_symmetric(
         ));
     }
 
+    // Extract the key material from the base object (supports both SymmetricKey and SecretData)
     let base_key_bytes = match base_key_owm.object() {
         Object::SymmetricKey(SymmetricKey { key_block })
         | Object::SecretData(SecretData { key_block, .. }) => key_block.key_bytes()?,
         _ => kms_bail!("DeriveKey: base object must be a SymmetricKey or SecretData"),
     };
 
+    // Validate that required attributes are provided for the derived object
     let cryptographic_length_bits = request.attributes.cryptographic_length.ok_or_else(|| {
         KmsError::InvalidRequest("DeriveKey: Cryptographic Length must be specified".to_owned())
     })?;
@@ -179,6 +185,7 @@ async fn derive_key_symmetric(
         KmsError::InvalidRequest("DeriveKey: Invalid cryptographic length".to_owned())
     })? / 8;
 
+    // For symmetric keys, cryptographic algorithm must also be specified
     if request.object_type == ObjectType::SymmetricKey
         && request.attributes.cryptographic_algorithm.is_none()
     {
@@ -187,6 +194,7 @@ async fn derive_key_symmetric(
         ));
     }
 
+    // Get the hashing algorithm from cryptographic parameters, default to SHA-256
     let hashing_algorithm = request
         .derivation_parameters
         .cryptographic_parameters
@@ -194,6 +202,7 @@ async fn derive_key_symmetric(
         .and_then(|cp| cp.hashing_algorithm)
         .unwrap_or(HashingAlgorithm::SHA256);
 
+    // Derive the new key based on the method
     let derived_key_bytes = match request.derivation_method {
         DerivationMethod::PBKDF2 => {
             let salt = request
