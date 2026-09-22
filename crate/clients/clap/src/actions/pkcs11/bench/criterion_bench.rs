@@ -9,14 +9,12 @@
 
 use std::{cell::Cell, time::Duration};
 
-use ckms::reexport::cosmian_kms_cli_actions::reexport::{
-    cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier, cosmian_kms_client::KmsClient,
-};
+use cosmian_kms_client::{KmsClient, cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier};
 use criterion::Criterion;
 use tokio::runtime::Runtime;
 
-use crate::{
-    error::BenchResult,
+use super::{
+    error::{BenchError, BenchResult},
     load::{ConcreteMode, PreparedOp, prepare_ops},
     loader::Pkcs11Session,
     overhead::add_overhead_benchmarks,
@@ -75,7 +73,7 @@ pub(crate) fn run_criterion(
 ) -> BenchResult<()> {
     let session = pool
         .first()
-        .ok_or_else(|| crate::error::BenchError::Setup("empty PKCS#11 session pool".to_owned()))?;
+        .ok_or_else(|| BenchError::Setup("empty PKCS#11 session pool".to_owned()))?;
 
     let mut c = match config.speed {
         BenchSpeed::Sanity => Criterion::default()
@@ -94,7 +92,7 @@ pub(crate) fn run_criterion(
 
     let overhead_metadata = if config.overhead && modes.contains(&ConcreteMode::SignEdDsa) {
         let private_key_id = ed25519_private_key_id.ok_or_else(|| {
-            crate::error::BenchError::Setup(
+            BenchError::Setup(
                 "Ed25519 overhead benchmark requires a provisioned private key".to_owned(),
             )
         })?;
@@ -155,7 +153,7 @@ pub(crate) fn run_criterion(
             });
             group.finish();
             if failed.get() {
-                return Err(crate::error::BenchError::Setup(format!(
+                return Err(BenchError::Setup(format!(
                     "criterion benchmark {label} observed at least one failed operation"
                 )));
             }
@@ -170,7 +168,7 @@ pub(crate) fn run_criterion(
                 });
             });
             if failed.get() {
-                return Err(crate::error::BenchError::Setup(format!(
+                return Err(BenchError::Setup(format!(
                     "criterion benchmark {label} observed at least one failed operation"
                 )));
             }
@@ -179,6 +177,9 @@ pub(crate) fn run_criterion(
     c.final_summary();
 
     report::write_criterion_json()?;
+    if config.overhead {
+        report::append_bracket_averaged_entries()?;
+    }
     if let Some(metadata) = overhead_metadata {
         report::write_overhead_json(&metadata)?;
     }

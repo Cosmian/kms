@@ -87,14 +87,14 @@ fn count_baseline_recursive(dir: fs::ReadDir, baseline: &str, count: &mut usize)
     }
 }
 
-pub(super) fn criterion_home() -> PathBuf {
+pub(crate) fn criterion_home() -> PathBuf {
     std::env::var("CRITERION_HOME")
         .map(PathBuf::from)
         .or_else(|_| std::env::var("CARGO_TARGET_DIR").map(|p| PathBuf::from(p).join("criterion")))
         .unwrap_or_else(|_| PathBuf::from("target/criterion"))
 }
 
-pub(super) fn collect_json_output(
+pub(crate) fn collect_json_output(
     version_label: Option<&str>,
     protocol_slug: &str,
 ) -> KmsCliResult<()> {

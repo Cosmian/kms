@@ -5,11 +5,15 @@
 /// communicate with the KMS server.
 use std::path::PathBuf;
 
+pub(crate) mod bench;
+pub(crate) mod capabilities;
+pub(crate) mod verify;
+
+pub use bench::Pkcs11BenchAction;
 use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
 
 use crate::error::result::KmsCliResult;
-
 /// Commands for verifying the Cosmian PKCS#11 provider library.
 #[derive(Subcommand, Debug)]
 pub enum Pkcs11Commands {
@@ -79,6 +83,11 @@ pub enum Pkcs11Commands {
         #[arg(long, default_value = "false")]
         keep_keys: bool,
     },
+
+    /// Benchmark the PKCS#11 provider's real Cryptoki C API: a concurrency-sweep
+    /// load test, optional Criterion statistical micro-benchmarks, and an optional
+    /// Ed25519 differential overhead ladder.
+    Bench(Pkcs11BenchAction),
 }
 
 impl Pkcs11Commands {
@@ -90,7 +99,7 @@ impl Pkcs11Commands {
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
             Self::Verify { dll, conf, token } => {
-                super::pkcs11_verify::run_verify(dll, conf.as_deref(), token.as_deref())
+                verify::run_verify(dll, conf.as_deref(), token.as_deref())
             }
             Self::Capabilities {
                 dll,
@@ -98,7 +107,7 @@ impl Pkcs11Commands {
                 token,
                 keep_keys,
             } => {
-                super::pkcs11_capabilities::run_capabilities(
+                capabilities::run_capabilities(
                     dll,
                     conf.as_deref(),
                     token.as_deref(),
@@ -107,6 +116,7 @@ impl Pkcs11Commands {
                 )
                 .await
             }
+            Self::Bench(action) => Box::pin(action.process(kms_rest_client)).await,
         }
     }
 }

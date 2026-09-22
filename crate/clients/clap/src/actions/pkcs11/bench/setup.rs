@@ -1,29 +1,25 @@
 //! Provisions the KMS objects used by the benchmark hot loops.
 //!
-//! Reuses the KMIP request builders exposed through the `ckms` crate's reexport
-//! chain (the same ones used by `cosmian_pkcs11`'s own `tests.rs`), so the created
-//! objects are tagged/typed exactly the way the PKCS#11 provider's backend expects
-//! (`crate/kmip/src/kmip_2_1/requests/{create,create_key_pair}.rs` already insert the
-//! system tags the provider's `find_all_*` functions look for).
+//! Reuses the KMIP request builders exposed through the client crate's reexport
+//! chain, so the created objects are tagged/typed exactly the way the PKCS#11
+//! provider's backend expects (`crate/kmip/src/kmip_2_1/requests/{create,create_key_pair}.rs`
+//! already insert the system tags the provider's `find_all_*` functions look for).
 
-use ckms::reexport::cosmian_kms_cli_actions::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        extra::VENDOR_ID_COSMIAN,
+use cosmian_kms_client::{
+    KmsClient,
+    cosmian_kmip::kmip_2_1::extra::VENDOR_ID_COSMIAN,
+    kmip_2_1::{
         kmip_types::{CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
         requests::{
             create_ec_key_pair_request, create_rsa_key_pair_request, symmetric_key_create_request,
         },
     },
-    cosmian_kms_client::{
-        KmsClient, KmsClientConfig, reexport::cosmian_http_client::HttpClientConfig,
-    },
 };
 
-use crate::error::{BenchError, BenchResult};
+use super::error::{BenchError, BenchResult};
 
-/// KMS client and object identifiers provisioned for one benchmark process.
+/// Object identifiers provisioned for one benchmark process.
 pub(crate) struct BenchSetup {
-    pub(crate) client: KmsClient,
     pub(crate) ed25519_private_key_id: Option<UniqueIdentifier>,
 }
 
@@ -45,18 +41,12 @@ const DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 
 /// Creates one AES secret key, one RSA key pair, one EC P-256 key pair, and
 /// (opt-in) one Ed25519 and/or one secp256k1 key pair in the KMS pointed at by
-/// `http_config`, returning the client and identifiers needed by the differential
-/// overhead benchmarks.
+/// `client`, returning the identifiers needed by the differential overhead benchmarks.
 pub(crate) async fn provision_bench_keys(
-    http_config: HttpClientConfig,
+    client: &KmsClient,
     provision_ed25519: bool,
     provision_secp256k1: bool,
 ) -> BenchResult<BenchSetup> {
-    let config = KmsClientConfig {
-        http_config,
-        ..KmsClientConfig::default()
-    };
-    let client = KmsClient::new_with_config(config)?;
     let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
         .unwrap_or_else(|_| DISK_ENCRYPTION_TAG.to_owned());
 
@@ -99,6 +89,7 @@ pub(crate) async fn provision_bench_keys(
         .create_key_pair(create_ecdsa_key_pair_request)
         .await?;
 
+    #[cfg(feature = "non-fips")]
     let ed25519_private_key_id = if provision_ed25519 {
         // Tagged exactly like the RSA key pair so the provider's
         // `find_all_private_keys` discovers it.
@@ -121,10 +112,17 @@ pub(crate) async fn provision_bench_keys(
         None
     };
 
+    #[cfg(not(feature = "non-fips"))]
+    let ed25519_private_key_id = {
+        let _ = provision_ed25519;
+        None
+    };
+
     // secp256k1 is not FIPS-approved (unlike P-256 above), so this key pair is
     // only provisioned when `sign-secp256k1`/`verify-secp256k1` (or an aggregate
     // `sign`/`verify`/`all` mode under a non-FIPS build) was requested — mirroring
     // how the Ed25519 key pair above is opt-in.
+    #[cfg(feature = "non-fips")]
     if provision_secp256k1 {
         let request = create_ec_key_pair_request(
             VENDOR_ID_COSMIAN,
@@ -138,8 +136,10 @@ pub(crate) async fn provision_bench_keys(
         client.create_key_pair(request).await?;
     }
 
+    #[cfg(not(feature = "non-fips"))]
+    let _ = provision_secp256k1;
+
     Ok(BenchSetup {
-        client,
         ed25519_private_key_id,
     })
 }

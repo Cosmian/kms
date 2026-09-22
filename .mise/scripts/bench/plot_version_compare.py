@@ -1150,7 +1150,7 @@ def _render_methodology_section(
             '',
             '### Real Cryptoki C ABI, one session per worker',
             '',
-            'The benchmark binary (`cosmian_pkcs11_bench`, driven by'
+            'The benchmark subcommand `ckms pkcs11 bench` (driven by'
             ' `mise bench:load-pkcs11`) `dlopen()`s the built `cosmian_pkcs11` shared'
             ' library, resolves the v3.1 function table through `C_GetInterface`,'
             ' and calls it directly — the same'

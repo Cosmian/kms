@@ -18,7 +18,6 @@ members = [
   "crate/clients/k8s/csi_provider",
   "crate/clients/pkcs11/module",
   "crate/clients/pkcs11/provider",
-  "crate/clients/pkcs11/bench",
   "crate/clients/cng",
   # Server crates
   "crate/access",
