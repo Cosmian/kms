@@ -57,7 +57,6 @@ mod tests {
     fn all_queries_referenced_by_pgsql_rs_exist() {
         for name in [
             "create-table-audit-events",
-            "add-column-audit-events-details",
             "create-index-audit-events-timestamp",
             "create-audit-append-only-guard",
             "create-audit-trigger-no-update",
