@@ -286,7 +286,9 @@ mod tests {
     use cosmian_kms_access::audit::{
         AuditEvent, AuditEventDraft, AuditResult, compute_row_hash, verify_event,
     };
-    use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult, WriteOutcome};
+    use cosmian_kms_interfaces::{
+        AuditSink, ChainHead, InterfaceError, InterfaceResult, WriteOutcome,
+    };
     use time::OffsetDateTime;
     use tokio::sync::mpsc;
 
@@ -1033,7 +1035,10 @@ mod tests {
             Ok(ChainHead::EMPTY)
         }
 
-        async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<WriteOutcome> {
+        async fn write_event_atomic(
+            &mut self,
+            event: &AuditEvent,
+        ) -> InterfaceResult<WriteOutcome> {
             let idx = self.call_count;
             self.call_count += 1;
             if (self.should_fail)(idx) {
@@ -1129,7 +1134,10 @@ mod tests {
             Ok(ChainHead::EMPTY)
         }
 
-        async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<WriteOutcome> {
+        async fn write_event_atomic(
+            &mut self,
+            event: &AuditEvent,
+        ) -> InterfaceResult<WriteOutcome> {
             if event.id == self.resync_once_at_id && !self.resynced {
                 self.resynced = true;
                 return Ok(WriteOutcome::Resynced(self.resync_to));

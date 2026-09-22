@@ -1426,10 +1426,9 @@ mod live_tests {
         ev0_different.row_hash = compute_row_hash(&ev0_different);
         assert_ne!(ev0_different.row_hash, ev0.row_hash);
 
-        let outcome =
-            PgAuditSink::write_event_once(&sink.pool, &instance_id, 0, &ev0_different)
-                .await
-                .unwrap();
+        let outcome = PgAuditSink::write_event_once(&sink.pool, &instance_id, 0, &ev0_different)
+            .await
+            .unwrap();
         match outcome {
             WriteOutcome::Resynced(head) => {
                 assert_eq!(head.next_id, 1);
@@ -1588,7 +1587,9 @@ mod live_tests {
             .await
             .expect_err("TRUNCATE must be rejected by the append-only trigger");
         assert_eq!(
-            truncate_err.as_db_error().map(|e| e.code().code().to_owned()),
+            truncate_err
+                .as_db_error()
+                .map(|e| e.code().code().to_owned()),
             Some("23001".to_owned())
         );
     }
