@@ -22,6 +22,9 @@ path = "src/main.rs"
 [lints]
 workspace = true
 
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
 [lib]
 # doc test linking as a separate binary is extremely slow
 # and is not needed for internal lib
