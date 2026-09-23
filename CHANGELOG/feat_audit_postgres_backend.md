@@ -20,6 +20,8 @@
 - The file backend's interior-scan classification is refined: a row that verifies on its own but
   doesn't chain to its predecessor is now reported as `broken_link` instead of `hash_mismatch`,
   matching the more precise vocabulary the `PostgreSQL` backend also uses.
+- The file audit backend now records a final `audit:size-cap-reached` event before stopping at its
+  configured size limit.
 - The `PostgreSQL` audit connection now honors `sslmode=verify-ca`/`verify-full` (plus
   `sslrootcert`/`sslcert`/`sslkey`) the same way the main database connection does. Previously
   any non-`disable` `sslmode` silently skipped certificate verification.

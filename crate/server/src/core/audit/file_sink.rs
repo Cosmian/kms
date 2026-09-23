@@ -14,7 +14,7 @@ use cosmian_kms_access::audit::{AuditEvent, AuditEventDraft};
 use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult, WriteOutcome};
 use cosmian_logger::{debug, error};
 
-use super::recovery::recover_and_open;
+use super::{SIZE_CAP_SENTINEL_OPERATION, recovery::recover_and_open};
 
 const LOCK_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 
@@ -116,6 +116,14 @@ impl FileSink {
         self.needs_repair = false;
         Ok(())
     }
+
+    fn would_reach_size_cap(&self, row_len: usize) -> bool {
+        let Some(cap) = self.write_state.max_size_bytes else {
+            return false;
+        };
+        let row_len = u64::try_from(row_len).unwrap_or(u64::MAX);
+        self.committed_len.saturating_add(row_len) >= cap
+    }
 }
 
 #[async_trait]
@@ -204,6 +212,11 @@ impl AuditSink for FileSink {
             .map_err(|e| InterfaceError::Default(format!("audit: cannot serialise event: {e}")))?;
         row.push(b'\n');
 
+        let is_size_cap_sentinel = event.operation == SIZE_CAP_SENTINEL_OPERATION;
+        if !is_size_cap_sentinel && self.would_reach_size_cap(row.len()) {
+            return Ok(WriteOutcome::CapacityReached);
+        }
+
         self.repair_if_needed().map_err(|e| InterfaceError::Io {
             context: "audit: torn-tail repair failed".to_owned(),
             source: e,
@@ -217,7 +230,18 @@ impl AuditSink for FileSink {
         match file.write_all(&row).and_then(|()| file.sync_data()) {
             Ok(()) => {
                 self.committed_len += u64::try_from(row.len()).unwrap_or(u64::MAX);
-                enforce_size_cap(self.committed_len, &self.write_state, &self.path);
+                if is_size_cap_sentinel {
+                    if let Some(cap) = self.write_state.max_size_bytes {
+                        mark_size_cap_reached(
+                            self.committed_len,
+                            cap,
+                            &self.write_state,
+                            &self.path,
+                        );
+                    }
+                } else {
+                    enforce_size_cap(self.committed_len, &self.write_state, &self.path);
+                }
                 Ok(WriteOutcome::Written)
             }
             Err(e) => {
@@ -258,11 +282,15 @@ fn enforce_size_cap(len: u64, write_state: &AuditWriteState, path: &Path) {
     if len < cap {
         return;
     }
+    mark_size_cap_reached(len, cap, write_state, path);
+}
+
+fn mark_size_cap_reached(len: u64, cap: u64, write_state: &AuditWriteState, path: &Path) {
     let was_already_capped = write_state.size_limit_reached.swap(true, Ordering::Relaxed);
     if !was_already_capped {
         error!(
-            "AuditFileStore: audit log {} reached its configured max_size_bytes cap \
-             ({len} bytes >= {cap}) — audit writing is blocked until the log is safely \
+            "AuditFileStore: audit log {} stopped at its configured max_size_bytes cap \
+             ({len} bytes, cap {cap}) — audit writing is blocked until the log is safely \
              remediated and the KMS is restarted",
             path.display()
         );
