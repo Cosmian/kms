@@ -729,7 +729,6 @@ Crate path: `crate/server`
 | `error` | `AWS XKS: failed to start key access migration runtime: {error}` | `src/start_kms_server.rs` | `error` | - |
 | `error` | `AWS XKS: pre-existing key access migration failed: {error}` | `src/start_kms_server.rs` | `error` | - |
 | `error` | `AuditFileStore: channel full, dropping audit event` | `src/core/audit/store.rs` | - | Channel at capacity; event dropped, accounted for by an eviction sentinel on next successful write |
-| `error` | `AuditFileStore: failed to write event id={}: {e} — event dropped` | `src/core/audit/writer.rs` | `id`, `e` | `id`/`prev_hash` not advanced; next event reuses this slot to preserve chain continuity |
 | `error` | `AuditFileStore: final sync failed: {e}` | `src/core/audit/writer.rs` | `e` | `fsync` failure during graceful shutdown |
 | `error` | `AuditFileStore: id counter overflow at i64::MAX —                      audit logging stopped. Rotate the log file and restart.` | `src/core/audit/writer.rs` | - | id space exhausted; audit logging halts until the log file is rotated |
 | `error` | `AuditFileStore: writer task has stopped, audit event dropped` | `src/core/audit/store.rs` | - | Channel closed; `enqueue` silently drops the event |
@@ -738,7 +737,6 @@ Crate path: `crate/server`
 | `error` | `audit: event not queued — rejecting response (reject mode)` | `src/middlewares/audit/mod.rs` | - | Audit failure in reject mode: single event failed to queue (channel full or closed). HTTP response is 503 ServiceUnavailable. |
 | `error` | `audit: event(s) not queued — rejecting response (reject mode)` | `src/middlewares/audit/mod.rs` | - | Audit failure in reject mode: batch request (one or more events) failed to queue. HTTP response is 503 ServiceUnavailable. |
 | `error` | `AuditFileStore: audit log lock {} held by another instance ({e}) —                          buffering events until it is released` | `src/core/audit/file_sink.rs` | `e`: lock acquisition error | Normal in HA deployments: another KMS instance holds the audit log lock. Events buffered (up to channel capacity) and file open will retry periodically. |
-| `error` | `AuditFileStore: cannot open audit log {} ({e}) — retrying` | `src/core/audit/file_sink.rs` | `e`: file I/O error | File not readable (permissions, missing, corrupted header). Events buffered; retrying periodically. |
 | `error` | `AuditFileStore: sealed corrupted audit log as {} (reason={}, sha256={sha256_hex},          size={size}, claimed_last_id={claimed_last_id:?}, failure_offset={failure_offset}) —          starting a fresh chain` | `src/core/audit/recovery.rs` | `sha256_hex`: SHA256 of sealed file<br>`size`: file size in bytes<br>`claimed_last_id`: last event ID if readable<br>`failure_offset`: byte offset where corruption detected | **Security:** Corrupted log sealed as forensic evidence with RFC3339 timestamp. New chain started at id=0 (`audit:reanchor` event). Offline verification: run `ckms audit verify` on the live log (or its containing directory) — it cross-checks the sealed file's SHA-256 through the live log's reanchor event; running it directly on the sealed file fails chain verification instead, since the sealed file is an intentionally broken chain. |
 | `error` | `AuditFileStore: torn write recovered — discarded {bytes_discarded} byte(s) at offset          {discard_offset} (process likely killed mid-write); resuming chain at id={next_id}` | `src/core/audit/recovery.rs` | `bytes_discarded`: incomplete bytes dropped<br>`discard_offset`: offset in file<br>`next_id`: resuming event ID | Process killed mid-write (crash/SIGKILL). Incomplete event discarded; hash chain preserved. |
 | `debug` | `AuditFileStore: still waiting on audit log lock {} ({e})` | `src/core/audit/file_sink.rs` | `e`: lock acquisition error | Debug: subsequent retry attempt (not the first). Implies a preceding "audit log lock held by another instance" error. |
@@ -750,10 +748,15 @@ Crate path: `crate/server`
 | `warn` | `[kms-init] Failed to seed kms.keys.active.count: {e}` | `src/core/kms/mod.rs` | `e` | - |
 | `warn` | `[metrics-cron] Failed to sync kms.keys.active.count: {}` | `src/cron.rs` | - | - |
 | `error` | `AuditFileStore: audit sink failed to resume ({e}) — audit logging is disabled for this process` | `src/core/audit/store.rs` | `e` | Only reachable if the recovered log file's metadata cannot be `stat`'d at all (lock acquisition and recovery/open faults retry indefinitely and never reach here). The writer task exits and audit logging stays off for the rest of the process lifetime — it is not retried. |
-| `error` | `AuditFileStore: cannot stat recovered log file {} ({e}) — retrying` | `src/core/audit/file_sink.rs` | `e`: I/O error from `File::metadata()` | Retried in place inside `FileSink::resume()`'s recovery loop; a transient stat failure self-heals and does not disable audit logging. |
 | `error` | `AuditFileStore: failed to write recovery sentinel id={}: {e} — event dropped` | `src/core/audit/file_sink.rs` | `id`: sentinel event ID<br>`e`: I/O error | A torn-write-recovered or reanchor sentinel written during recovery (before the writer task exists) failed to persist; the chain does not advance past this `id` and the sentinel is dropped. |
 | `debug` | `AuditFileStore: sink '{}' is at capacity — event dropped` | `src/core/audit/writer.rs` | sink name (`AuditSink::name()`) | Throttled to at most once every 500ms while blocked events keep arriving after the sink reports `is_write_capacity_exceeded() == true`. |
 | `error` | `AuditFileStore: recovery sentinel id counter overflow at i64::MAX` | `src/core/audit/file_sink.rs` | - | - |
+| `error` | `AuditFileStore: cannot open or stat audit log {} ({e}) — retrying` | `src/core/audit/file_sink.rs` | `e` | - |
+| `error` | `AuditFileStore: exhausted resync attempts at id={id} — event dropped` | `src/core/audit/writer.rs` | `id` | - |
+| `error` | `AuditFileStore: failed to write event id={id}: {e} — event dropped` | `src/core/audit/writer.rs` | `id`, `e` | - |
+| `error` | `AuditFileStore: sink rejected size-cap sentinel at id={id}` | `src/core/audit/writer.rs` | `id` | - |
+| `warn` | `Connected to the PostgreSQL audit backend; ignoring --audit-file-path ({}) since both were set` | `src/core/kms/mod.rs` | - | - |
+| `warn` | `PostgreSQL audit backend unavailable ({e}); --audit-file-path ({}) is set but is NOT used as a runtime fallback — startup aborts` | `src/core/kms/mod.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -800,6 +803,7 @@ Crate path: `crate/server_database`
 | `debug` | `SQLite transient lock encountered, retrying in {backoff:?}: {e}` | `src/stores/sql/sqlite.rs` | `backoff`: delay before the next retry attempt<br>`e`: the underlying "database is locked" error | Emitted while retrying a transient SQLite lock contention error; not an operator-actionable warning by itself, only relevant if retries are repeatedly exhausted. |
 | `error` | `audit: dedicated advisory-lock session ended unexpectedly: {e}` | `src/stores/audit/pgsql.rs` | `e` | ×2 in this file |
 | `error` | `audit: instance_id={} sealed generation {sealed_generation} (reason={}, first_failure_id={}, evidence={evidence}) — starting generation {new_generation}` | `src/stores/audit/pgsql.rs` | `sealed_generation`, `evidence`, `new_generation` | - |
+| `error` | `audit: advisory lock for instance_id={instance_id} held by another writer — waiting up to {timeout:?} (e.g. a rolling update's outgoing instance)` | `src/stores/audit/pgsql.rs` | `instance_id`, `timeout` | - |
 
 ### `cosmian_kms_crypto`
 
