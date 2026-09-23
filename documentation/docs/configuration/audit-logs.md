@@ -113,9 +113,11 @@ max_size_bytes = 1073741824 # 1 GiB
 Behavior:
 
 - Omitted (the default): unlimited, today's behavior.
-- The event that pushes the file to or past the cap is still persisted — only events **after**
-  that one are dropped (subject to `--audit-failure-mode`, exactly like a full channel or a dead
-  writer).
+- The event that would make the file reach or exceed the cap is replaced by a final
+  `audit:size-cap-reached` event.
+  The sentinel may cross the cap and makes the reason for stopping visible in the hash chain.
+- Later events are dropped, subject to `--audit-failure-mode`, like a full channel or dead writer.
+- If the file is already at or past the cap on startup, no sentinel is added and all writes remain blocked.
 - Once capped, the condition does **not** clear itself: an external process truncating or
   rotating the file does not resume writing. The KMS must be restarted after the log is safely
   remediated. KMS-aware rotation/reopen is a possible future improvement.

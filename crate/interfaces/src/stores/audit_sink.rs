@@ -81,6 +81,9 @@ impl ChainHead {
 pub enum WriteOutcome {
     /// The event was durably written at the position it was given.
     Written,
+    /// The event was not written because it would reach the sink's capacity.
+    /// The caller must write a terminal event at the same chain position.
+    CapacityReached,
     /// The requested slot was already durably occupied by a valid link in this same
     /// chain — see the implementing backend for when this can happen (e.g. a prior
     /// write whose acknowledgement was lost). The caller must retry the *same* draft
@@ -91,9 +94,9 @@ pub enum WriteOutcome {
 /// A durable destination for finalised audit events.
 ///
 /// # Contract
-/// * On `write_event_atomic` success, the event is durable (either at the position
-///   given, or — on [`WriteOutcome::Resynced`] — the caller must retry at the returned
-///   position). On error, nothing is persisted.
+/// * [`WriteOutcome::Written`] means the event is durable at the given position.
+///   [`WriteOutcome::CapacityReached`] and [`WriteOutcome::Resynced`] require the caller
+///   to retry as documented. On error, nothing is persisted.
 /// * A sink **must never update or delete** a previously written event.
 #[async_trait]
 pub trait AuditSink: Send {
