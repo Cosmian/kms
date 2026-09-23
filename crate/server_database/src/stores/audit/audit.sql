@@ -57,20 +57,12 @@ DROP TRIGGER IF EXISTS kms_audit_no_delete ON kms_audit_events;
 -- name: create-audit-trigger-no-delete-create
 CREATE TRIGGER kms_audit_no_delete BEFORE DELETE ON kms_audit_events FOR EACH ROW EXECUTE FUNCTION kms_audit_reject_mutation();
 
--- PostgreSQL never fires row-level triggers for TRUNCATE; only a statement-level
--- trigger can reject it, and this is what stops the table owner (exempt from REVOKE)
--- from truncating the table with its own ordinary credentials.
 -- name: create-audit-trigger-no-truncate
 DROP TRIGGER IF EXISTS kms_audit_no_truncate ON kms_audit_events;
 
 -- name: create-audit-trigger-no-truncate-create
 CREATE TRIGGER kms_audit_no_truncate BEFORE TRUNCATE ON kms_audit_events FOR EACH STATEMENT EXECUTE FUNCTION kms_audit_reject_mutation();
 
--- Rejects an INSERT whose chain_generation is not exactly the control table's current
--- active_generation for that instance_id — blocking both appends to an already-sealed
--- generation and inserts into a fabricated future one. A missing control row (never
--- happens once PgAuditSink::connect/resume has run at least once) fails open so schema
--- bootstrap on a brand-new table is never blocked by its own guard.
 -- name: create-audit-reject-sealed-insert
 CREATE OR REPLACE FUNCTION kms_audit_reject_sealed_insert() RETURNS trigger LANGUAGE plpgsql AS $BODY$ DECLARE active BIGINT; BEGIN SELECT active_generation INTO active FROM kms_audit_control WHERE instance_id = NEW.instance_id; IF active IS NOT NULL AND NEW.chain_generation <> active THEN RAISE EXCEPTION 'kms_audit_events: cannot insert into sealed or unknown generation % (active is %)', NEW.chain_generation, active USING ERRCODE = '23001'; END IF; RETURN NEW; END; $BODY$;
 

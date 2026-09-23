@@ -1263,11 +1263,8 @@ mod live_tests {
         .map(|_| ())
     }
 
-    /// H2: once `seal_and_roll` has advanced the control row past generation 0, a raw
-    /// `INSERT` targeting the now-sealed generation must be rejected by the database
-    /// itself — ordinary `INSERT` privilege must not be enough to forge evidence into a
-    /// generation the KMS itself no longer considers active. The now-active generation
-    /// must still accept inserts normally.
+    /// A raw `INSERT` into a sealed generation must be rejected by the database itself,
+    /// while the now-active generation still accepts inserts normally.
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
     async fn pg_audit_sealed_generation_rejects_direct_insert() {
@@ -1304,9 +1301,8 @@ mod live_tests {
             .expect("insert into the active generation must still succeed");
     }
 
-    /// H2: a brand-new instance's control row must be initialized to generation 0 before
-    /// `resume()` returns, so the very first write (which the guard also checks) is never
-    /// blocked by its own bootstrap.
+    /// A brand-new instance's control row must be initialized to generation 0 before
+    /// `resume()` returns, so the first write is never blocked by its own bootstrap.
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
     async fn pg_audit_control_table_initialized_for_new_instance() {
@@ -1355,10 +1351,8 @@ mod live_tests {
         );
     }
 
-    /// H4: a rolling update where the incoming instance starts before the outgoing
-    /// instance's `PostgreSQL` session (and its advisory lock) has ended must not
-    /// hard-abort — the incoming instance must retry and succeed once the lock is
-    /// released, within the bounded wait.
+    /// A rolling update where the incoming instance starts before the outgoing one's
+    /// advisory lock is released must retry and succeed within the bounded wait.
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
     async fn pg_audit_connect_retries_and_succeeds_after_lock_release() {
@@ -1406,11 +1400,10 @@ mod live_tests {
         sink.write_event_atomic(&ev).await.unwrap();
     }
 
-    /// H1: when a lost-ack retry's slot already durably holds a *different* event from
-    /// this same writer (the draft that used to target this id was abandoned, but its
-    /// write actually landed), `write_event_once` must report `Resynced` onto the real
-    /// stored chain head instead of misreporting a competing writer — and the original
-    /// row must remain untouched (never-update contract).
+    /// When a lost-ack retry's slot already durably holds a *different* event from the
+    /// same writer, `write_event_once` must report `Resynced` onto the real stored chain
+    /// head instead of misreporting a competing writer, and the original row must stay
+    /// untouched.
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
     async fn pg_audit_collision_resyncs_after_lost_ack_with_different_content() {
@@ -1505,8 +1498,8 @@ mod live_tests {
         assert_eq!(events_b.len(), 1);
     }
 
-    /// L9: `list_instances`/`list_generations` had no test coverage at all. Seeds two
-    /// instances, one of which rolls to a second generation, and checks both listings.
+    /// Seeds two instances, one of which rolls to a second generation, and checks both
+    /// `list_instances`/`list_generations` listings.
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
     async fn pg_audit_reader_lists_instances_and_generations() {
@@ -1581,9 +1574,9 @@ mod live_tests {
         );
     }
 
-    /// L3: a chain longer than one page (`AUDIT_PAGE_SIZE` rows) must page correctly at
-    /// the boundary — both for `PgAuditReader::events_page` (one page at a time) and for
-    /// `resume()`'s own internal, unconditional whole-chain verification loop.
+    /// A chain longer than one page (`AUDIT_PAGE_SIZE` rows) must page correctly at the
+    /// boundary, both for `PgAuditReader::events_page` and for `resume()`'s own
+    /// whole-chain verification loop.
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
     async fn pg_audit_pagination_spans_page_boundary() {

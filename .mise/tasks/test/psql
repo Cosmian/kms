@@ -141,10 +141,9 @@ _run_postgresql_failover_test() {
 # bootstrap DDL each call -> concurrent runs race it ("tuple concurrently updated").
 
 # Every `pg_audit_*`/`postgres_*` test uses a fresh, random instance_id, so rows never
-# collide across runs — but they never get cleaned up either, and the append-only guard
-# (deliberately, see fix C1) rejects TRUNCATE/DELETE even for the table owner. DROP TABLE
-# is DDL, not a row mutation, so it bypasses the guard entirely; ensure_schema()
-# recreates the table on the very next PgAuditSink::connect() call.
+# collide across runs but also never get cleaned up. The append-only guard rejects
+# TRUNCATE/DELETE even for the table owner, so use DROP TABLE instead; ensure_schema()
+# recreates it on the next PgAuditSink::connect() call.
 _reset_postgres_audit_tables() {
   print_status "Dropping kms_audit_events/kms_audit_control to reset accumulated test rows..."
   psql "${KMS_AUDIT_POSTGRES_URL}" -v ON_ERROR_STOP=1 \
