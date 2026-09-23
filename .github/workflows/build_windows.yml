@@ -147,7 +147,7 @@ jobs:
       files-folder-filter: exe
       artifact-name: ${{ inputs.archive-name }}-release-signed
       signing-account-name: cosmian-codesigning-test
-      certificate-profile-name: cosmian-test-profile
+      certificate-profile-name: cosmian-public-profile
     secrets:
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID_POC }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_POC }}
