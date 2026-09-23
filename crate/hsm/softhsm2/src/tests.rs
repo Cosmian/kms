@@ -69,7 +69,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     #[cfg(feature = "non-fips")]
     shared::eddsa_sign_all_curves(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA1, cfg.threads)?;
-    shared::get_key_metadata(&slot)?;
+    shared::get_key_metadata(&slot, true)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
@@ -280,7 +280,7 @@ fn test_hsm_softhsm2_list_objects() -> HResult<()> {
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_get_key_metadata() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot)
+    shared::get_key_metadata(&slot, true)
 }
 
 #[test]

@@ -200,42 +200,56 @@ pub fn destroy_all(slot: &Arc<SlotManager>) -> HResult<()> {
 
 #[allow(clippy::panic, clippy::unwrap_used)]
 pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
+    generate_aes_key_with_exportability(slot, true)
+}
+
+#[allow(clippy::panic, clippy::unwrap_used)]
+pub fn generate_aes_key_with_exportability(
+    slot: &Arc<SlotManager>,
+    supports_exportable_keys: bool,
+) -> HResult<()> {
     log_init(None);
-    let key_id = Uuid::new_v4().to_string();
     let session = slot.open_session(true)?;
-    let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false)?;
-    info!("Generated exportable AES key: {}", key_id);
-    // assert the key handles are identical
-    assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
-    // assert CKA_ID is set and matches the key label bytes
-    let cka_id = session.get_object_id(key_handle)?;
-    assert_eq!(
-        cka_id.as_deref(),
-        Some(key_id.as_bytes()),
-        "CKA_ID must be set to the key id bytes"
-    );
-    // try export if allowed
-    if let Ok(Some(key)) = session.export_key(key_handle) {
-        let KeyMaterial::AesKey(key_bytes) = key.key_material() else {
-            panic!("Expected an AES key")
-        };
-        assert_eq!(key_bytes.len() * 8, 256);
-        assert_eq!(key.id(), key_id.as_str());
-        if let KeyMaterial::AesKey(v) = key.key_material() {
-            assert_eq!(v.len(), 32);
-        }
-    }
-    // a non-sensitive (exportable) key must have CKA_EXTRACTABLE = true
-    if let Some(extractable) = session.is_extractable(key_handle)? {
-        assert!(
-            extractable,
-            "A non-sensitive AES key must have CKA_EXTRACTABLE=true"
+    if supports_exportable_keys {
+        let key_id = Uuid::new_v4().to_string();
+        let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false)?;
+        info!("Generated exportable AES key: {}", key_id);
+        // assert the key handles are identical
+        assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
+        // assert CKA_ID is set and matches the key label bytes
+        let cka_id = session.get_object_id(key_handle)?;
+        assert_eq!(
+            cka_id.as_deref(),
+            Some(key_id.as_bytes()),
+            "CKA_ID must be set to the key id bytes"
         );
+        // try export if allowed
+        if let Ok(Some(key)) = session.export_key(key_handle) {
+            let KeyMaterial::AesKey(key_bytes) = key.key_material() else {
+                panic!("Expected an AES key")
+            };
+            assert_eq!(key_bytes.len() * 8, 256);
+            assert_eq!(key.id(), key_id.as_str());
+            if let KeyMaterial::AesKey(v) = key.key_material() {
+                assert_eq!(v.len(), 32);
+            }
+        }
+        // a non-sensitive (exportable) key must have CKA_EXTRACTABLE = true
+        if let Some(extractable) = session.is_extractable(key_handle)? {
+            assert!(
+                extractable,
+                "A non-sensitive AES key must have CKA_EXTRACTABLE=true"
+            );
+        }
     }
 
     // Generate a sensitive AES key
     let key_id = Uuid::new_v4().to_string();
-    let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
+    let key_handle = if supports_exportable_keys {
+        session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?
+    } else {
+        session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?
+    };
     info!("Generated sensitive AES key: {}", key_id);
     // assert the key handles are identical
     assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
@@ -248,13 +262,14 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     );
     // it should not be exportable
     session.export_key(key_handle).unwrap_err();
-    // a sensitive key must have CKA_EXTRACTABLE = false at the PKCS#11 level,
-    // not just be rejected by the KMS software check
-    if let Some(extractable) = session.is_extractable(key_handle)? {
-        assert!(
-            !extractable,
-            "A sensitive AES key must have CKA_EXTRACTABLE=false"
-        );
+    // CloudHSM reports CKA_EXTRACTABLE=true for keys that cannot be exported.
+    if supports_exportable_keys {
+        if let Some(extractable) = session.is_extractable(key_handle)? {
+            assert!(
+                !extractable,
+                "A sensitive AES key must have CKA_EXTRACTABLE=false"
+            );
+        }
     }
     Ok(())
 }
@@ -392,9 +407,9 @@ pub fn rsa_key_wrap(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResult<(
     let session = slot.open_session(true)?;
     // The AES key being wrapped (extracted from the HSM in wrapped form) must be
     // extractable: a sensitive (non-extractable) key cannot be wrapped via
-    // C_WrapKey per PKCS#11 semantics, now that CKA_EXTRACTABLE correctly follows
-    // the `sensitive` flag.
-    let symmetric_key = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false)?;
+    // C_WrapKey per PKCS#11 semantics.
+    let symmetric_key =
+        session.generate_exportable_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk";
     let (sk, pk) = session.generate_rsa_key_pair(
@@ -485,7 +500,7 @@ pub fn aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
     let key_id = Uuid::new_v4().to_string();
-    let sk = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
+    let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     info!("AES key handle: {sk}");
     let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data)?;
     assert_eq!(enc.ciphertext.len(), data.len());
@@ -512,7 +527,7 @@ pub fn aes_cbc_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
     let key_id = Uuid::new_v4().to_string();
-    let sk = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
+    let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     info!("AES key handle: {sk}");
     let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, data)?;
     assert_eq!(enc.ciphertext.len(), 16);
@@ -538,7 +553,7 @@ pub fn aes_cbc_multi_round(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
     let key_id = Uuid::new_v4().to_string();
-    let sk = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
+    let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     info!("AES key handle: {sk}");
     let data_1k = generate_random_data::<1024>()?;
     let data_8k = generate_random_data::<8192>()?;
@@ -1278,7 +1293,7 @@ pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
     assert_eq!(objects.len(), 0);
     // add an AES key
     let key_id = Uuid::new_v4().to_string();
-    let _key = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false)?;
+    let _key = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     assert_eq!(objects.len(), base_count + 5);
@@ -1288,13 +1303,24 @@ pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
     Ok(())
 }
 
-pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
+/// `supports_sensitivity_attribute` - if `false` (AWS `CloudHSM`), the key is
+/// generated without an explicit `CKA_SENSITIVE` attribute, relying on the
+/// HSM's own default instead (`CloudHSM` defaults to sensitive; PKCS#11 default
+/// is non-sensitive).
+pub fn get_key_metadata(
+    slot: &Arc<SlotManager>,
+    supports_sensitivity_attribute: bool,
+) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
 
     // generate an AES key
     let key_id = Uuid::new_v4().to_string();
-    let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
+    let key_handle = if supports_sensitivity_attribute {
+        session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?
+    } else {
+        session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?
+    };
     // get the key basics
     let key_type = session
         .get_key_type(key_handle)?
@@ -1370,17 +1396,17 @@ where
         block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any)).unwrap_or(vec![]);
 
     let valid_key_handle_0 =
-        session.generate_aes_key(valid_key_id_0.as_bytes(), AesKeySize::Aes128, false)?;
+        session.generate_sensitive_aes_key(valid_key_id_0.as_bytes(), AesKeySize::Aes128)?;
     let valid_key_handle_1 =
-        session.generate_aes_key(valid_key_id_1.as_bytes(), AesKeySize::Aes128, false)?;
+        session.generate_sensitive_aes_key(valid_key_id_1.as_bytes(), AesKeySize::Aes128)?;
     let Ok((sk, pk)) = generate_incompatible_key_pair(&session) else {
         info!("Failed to generate incompatible key. Skipping invalid object search test");
         return Ok(());
     };
     let valid_key_handle_2 =
-        session.generate_aes_key(valid_key_id_2.as_bytes(), AesKeySize::Aes128, false)?;
+        session.generate_sensitive_aes_key(valid_key_id_2.as_bytes(), AesKeySize::Aes128)?;
     let valid_key_handle_3 =
-        session.generate_aes_key(valid_key_id_3.as_bytes(), AesKeySize::Aes128, false)?;
+        session.generate_sensitive_aes_key(valid_key_id_3.as_bytes(), AesKeySize::Aes128)?;
 
     let object_list_test = session.list_objects(HsmObjectFilter::Any)?;
     let object_find_test =

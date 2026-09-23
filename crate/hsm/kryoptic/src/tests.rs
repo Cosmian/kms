@@ -271,7 +271,7 @@ fn test_hsm_kryoptic_all() -> HResult<()> {
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA1, test_cfg.threads)?;
-    shared::get_key_metadata(&slot)?;
+    shared::get_key_metadata(&slot, true)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &test_cfg)?;
     shared::destroy_all(&slot)?;

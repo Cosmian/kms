@@ -48,7 +48,7 @@ fn test_hsm_aws_cloudhsm_all() -> HResult<()> {
     shared::get_mechanisms_and_hashes(&slot)?;
     drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
     shared::destroy_all(&slot)?;
-    shared::generate_aes_key(&slot)?;
+    shared::generate_aes_key_with_exportability(&slot, false)?;
     shared::generate_rsa_keypair(&slot)?;
     shared::generate_ec_keypair(&slot)?;
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)?;
@@ -62,7 +62,7 @@ fn test_hsm_aws_cloudhsm_all() -> HResult<()> {
     #[cfg(feature = "non-fips")]
     shared::eddsa_sign_all_curves(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
-    shared::get_key_metadata(&slot)?;
+    shared::get_key_metadata(&slot, false)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
@@ -200,7 +200,7 @@ fn test_hsm_aws_cloudhsm_list_objects() -> HResult<()> {
 #[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
 fn test_hsm_aws_cloudhsm_get_key_metadata() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot)
+    shared::get_key_metadata(&slot, false)
 }
 
 #[test]
