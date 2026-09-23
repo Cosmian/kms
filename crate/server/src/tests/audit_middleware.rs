@@ -785,10 +785,9 @@ async fn reject_mode_passes_through_when_audit_works() -> KResult<()> {
 
 // ── max_size_bytes write-stop cap ──────────────────────────────────────────
 
-/// In `reject` mode, once the writer has observed that the configured
-/// `max_size_bytes` cap is reached, the next audited request must return HTTP
-/// 503 — exactly like a full/closed channel. The request that crosses the cap
-/// is itself allowed through and persisted (documented "one final event" rule).
+/// In `reject` mode, the request that triggers the size cap completes because it was
+/// queued, but its audit row is replaced by a terminal sentinel. The next request fails
+/// with HTTP 503.
 #[tokio::test]
 async fn reject_mode_returns_503_after_size_cap_reached() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
@@ -812,7 +811,7 @@ async fn reject_mode_returns_503_after_size_cap_reached() -> KResult<()> {
         )
     };
 
-    // First request: crosses the cap but is itself allowed through and persisted.
+    // First request is queued before the writer detects the cap.
     let req1 = actix_test::TestRequest::post()
         .uri("/kmip/2_1")
         .set_json(to_ttlv(&create_req()?)?)
@@ -821,7 +820,7 @@ async fn reject_mode_returns_503_after_size_cap_reached() -> KResult<()> {
     assert_eq!(
         res1.status(),
         StatusCode::OK,
-        "the event that crosses the cap must still be allowed through"
+        "the request that triggers the cap was queued successfully"
     );
 
     // Synchronize on the writer having processed that event (and observed the cap)
@@ -841,20 +840,23 @@ async fn reject_mode_returns_503_after_size_cap_reached() -> KResult<()> {
     );
 
     let file = std::fs::File::open(&path).expect("audit file must exist");
-    let event_count = std::io::BufRead::lines(std::io::BufReader::new(file))
-        .filter_map(|l| {
-            let l = l.unwrap();
-            if l.trim().is_empty() {
-                None
-            } else {
-                Some(serde_json::from_str::<cosmian_kms_access::audit::AuditEvent>(&l).unwrap())
-            }
-        })
-        .count();
+    let events: Vec<cosmian_kms_access::audit::AuditEvent> =
+        std::io::BufRead::lines(std::io::BufReader::new(file))
+            .filter_map(|l| {
+                let l = l.unwrap();
+                if l.trim().is_empty() {
+                    None
+                } else {
+                    Some(serde_json::from_str::<cosmian_kms_access::audit::AuditEvent>(&l).unwrap())
+                }
+            })
+            .collect();
     assert_eq!(
-        event_count, 1,
-        "only the crossing event may be persisted, the rejected request adds none"
+        events.len(),
+        1,
+        "the rejected request must not add another audit row"
     );
+    assert_eq!(events[0].operation, "audit:size-cap-reached");
 
     std::fs::remove_file(&path).ok();
     Ok(())
@@ -906,20 +908,23 @@ async fn continue_mode_succeeds_after_size_cap_reached_without_new_audit_row() -
     );
 
     let file = std::fs::File::open(&path).expect("audit file must exist");
-    let event_count = std::io::BufRead::lines(std::io::BufReader::new(file))
-        .filter_map(|l| {
-            let l = l.unwrap();
-            if l.trim().is_empty() {
-                None
-            } else {
-                Some(serde_json::from_str::<cosmian_kms_access::audit::AuditEvent>(&l).unwrap())
-            }
-        })
-        .count();
+    let events: Vec<cosmian_kms_access::audit::AuditEvent> =
+        std::io::BufRead::lines(std::io::BufReader::new(file))
+            .filter_map(|l| {
+                let l = l.unwrap();
+                if l.trim().is_empty() {
+                    None
+                } else {
+                    Some(serde_json::from_str::<cosmian_kms_access::audit::AuditEvent>(&l).unwrap())
+                }
+            })
+            .collect();
     assert_eq!(
-        event_count, 1,
+        events.len(),
+        1,
         "the second request must not add a new audit row once the cap is reached"
     );
+    assert_eq!(events[0].operation, "audit:size-cap-reached");
 
     std::fs::remove_file(&path).ok();
     Ok(())

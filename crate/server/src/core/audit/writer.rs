@@ -9,7 +9,7 @@ use cosmian_kms_interfaces::{AuditSink, WriteOutcome};
 use cosmian_logger::{debug, error};
 use tokio::sync::mpsc;
 
-use super::store::WriterMsg;
+use super::{SIZE_CAP_SENTINEL_OPERATION, store::WriterMsg};
 
 /// Minimum interval between capacity warnings.
 const CAPPED_DEBUG_LOG_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
@@ -55,12 +55,7 @@ pub(super) async fn writer_loop<S: AuditSink>(
             let sentinel = make_eviction_sentinel(n_dropped);
             next_id = write_draft_to_chain(&mut sink, sentinel, next_id, &mut prev_hash).await;
         }
-        if sink.is_write_capacity_exceeded() {
-            // The sentinel write alone just crossed the cap: writing the real draft too
-            // would overshoot the documented "one final event may cross" rule by a
-            // second event. Count it as dropped so a future sentinel reports it.
-            dropped_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        } else {
+        if !sink.is_write_capacity_exceeded() {
             next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut prev_hash).await;
         }
     }
@@ -88,6 +83,8 @@ pub(super) async fn write_draft_to_chain<S: AuditSink>(
     // against a pathologically/adversarially pre-filled range of slots.
     const MAX_RESYNC_ATTEMPTS: u32 = 8;
 
+    let mut draft = draft;
+    let mut writing_size_cap_sentinel = false;
     let mut id = next_id;
     let mut ph = *prev_hash;
     for _ in 0..MAX_RESYNC_ATTEMPTS {
@@ -102,6 +99,14 @@ pub(super) async fn write_draft_to_chain<S: AuditSink>(
                     );
                     id
                 });
+            }
+            Ok(WriteOutcome::CapacityReached) if !writing_size_cap_sentinel => {
+                draft = make_size_cap_sentinel();
+                writing_size_cap_sentinel = true;
+            }
+            Ok(WriteOutcome::CapacityReached) => {
+                error!("AuditFileStore: sink rejected size-cap sentinel at id={id}");
+                return id;
             }
             Ok(WriteOutcome::Resynced(head)) => {
                 id = head.next_id;
@@ -131,6 +136,21 @@ fn make_eviction_sentinel(n_dropped: u64) -> AuditEventDraft {
         algorithm: None,
         client_ip: None,
         result: AuditResult::Failure(format!("{n_dropped} events dropped (channel full)")),
+        duration_ms: 0,
+        request_id: None,
+        details: None,
+    }
+}
+
+fn make_size_cap_sentinel() -> AuditEventDraft {
+    AuditEventDraft {
+        timestamp: audit_now(),
+        operation: SIZE_CAP_SENTINEL_OPERATION.to_owned(),
+        user: "server".to_owned(),
+        object_uid: None,
+        algorithm: None,
+        client_ip: None,
+        result: AuditResult::Failure("audit file size limit reached".to_owned()),
         duration_ms: 0,
         request_id: None,
         details: None,

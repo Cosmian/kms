@@ -1431,6 +1431,7 @@ mod live_tests {
                 assert_eq!(head.prev_hash, ev0.row_hash);
             }
             WriteOutcome::Written => panic!("expected a resync, not a plain write"),
+            WriteOutcome::CapacityReached => panic!("PostgreSQL has no write-capacity limit"),
         }
 
         let reader = PgAuditReader::connect(&url).await.unwrap();

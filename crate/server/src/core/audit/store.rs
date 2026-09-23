@@ -294,6 +294,7 @@ mod tests {
 
     use super::{AuditStore, WriterMsg};
     use crate::core::audit::{
+        SIZE_CAP_SENTINEL_OPERATION,
         file_sink::lock_file_path,
         writer::{write_draft_to_chain, writer_loop},
     };
@@ -950,11 +951,10 @@ mod tests {
         std::fs::remove_file(&path).ok();
     }
 
-    /// The event that pushes the file to/past the cap is still persisted (the "one
-    /// final event may cross" rule); every event enqueued afterward is rejected and
-    /// never written. The chain stays valid through the crossing event.
+    /// The event that would reach the cap is replaced by a final sentinel. Later events
+    /// are rejected and the chain remains valid through the sentinel.
     #[tokio::test]
-    async fn size_cap_allows_crossing_event_then_blocks_further_writes() {
+    async fn size_cap_writes_terminal_sentinel_then_blocks_further_writes() {
         let path = temp_path("size_cap_crossing");
         std::fs::remove_file(&path).ok();
 
@@ -981,9 +981,15 @@ mod tests {
         assert_eq!(
             events_after_crossing.len(),
             4,
-            "the event that crosses the cap must still be persisted"
+            "the size-cap sentinel must be the final persisted event"
         );
         assert_valid_chain(&events_after_crossing);
+        let sentinel = events_after_crossing.last().expect("size-cap sentinel");
+        assert_eq!(sentinel.operation, SIZE_CAP_SENTINEL_OPERATION);
+        assert_eq!(
+            sentinel.result,
+            AuditResult::Failure("audit file size limit reached".to_owned())
+        );
 
         let queued = store.enqueue(std::iter::once(make_draft()));
         assert!(
@@ -997,7 +1003,7 @@ mod tests {
         assert_eq!(
             events_final.len(),
             4,
-            "no event may be written once the cap has been crossed"
+            "no event may be written after the size-cap sentinel"
         );
         assert_valid_chain(&events_final);
 

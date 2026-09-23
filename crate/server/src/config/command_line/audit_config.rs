@@ -29,9 +29,9 @@ pub struct AuditFileConfig {
 
     /// Stops all further writes once the audit file reaches this many bytes.
     ///
-    /// The event that pushes the file to or past this size is still persisted; every event
-    /// after that is dropped (subject to `--audit-failure-mode`) until the log is remediated
-    /// and the KMS is restarted.
+    /// The event that would reach this size is replaced by a final
+    /// `audit:size-cap-reached` event. Later events are dropped according to
+    /// `--audit-failure-mode` until the log is remediated and the KMS is restarted.
     ///
     /// Omitted (the default) means unlimited. Must be > 0 when set.
     #[clap(
