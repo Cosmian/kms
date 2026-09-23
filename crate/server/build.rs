@@ -1,6 +1,8 @@
 // Embeds a Windows VERSIONINFO resource in cosmian_kms.exe (Explorer Properties > Details tab).
+#[cfg_attr(not(windows), allow(clippy::unnecessary_wraps))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+    #[cfg(windows)]
+    {
         let mut res = winresource::WindowsResource::new();
         // FileVersion, ProductVersion and FileDescription are pre-filled by winresource
         // from `package.version` and `package.description`.

@@ -2,8 +2,10 @@
 // `ProductVersion`, `CompanyName`, `LegalCopyright`, `Language`) into ckms.exe so that
 // Windows Explorer's Properties > Details tab is populated. Without this, the fields
 // stay empty because plain `cargo build` never emits a Windows resource section.
+#[cfg_attr(not(windows), allow(clippy::unnecessary_wraps))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+    #[cfg(windows)]
+    {
         let mut res = winresource::WindowsResource::new();
         // FileVersion, ProductVersion, ProductName and FileDescription are pre-filled by
         // winresource from `package.version`, `package.name` and `package.description`.
