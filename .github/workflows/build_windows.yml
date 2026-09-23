@@ -133,7 +133,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.archive-name }}-release
-          path: target/release/*.exe
+          path: |
+            README.md
+            target/release/*.exe
           retention-days: 1
           if-no-files-found: error
 
