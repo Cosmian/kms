@@ -162,16 +162,20 @@ impl AuditSink for FileSink {
         };
         self._lock = Some(lock);
 
-        let (file, next_id, prev_hash) = loop {
+        let (file, next_id, prev_hash, committed_len) = loop {
             // Recovery scans the file and may rename it, so keep it off the async worker.
             let path_for_recovery = self.path.clone();
-            let recovered =
-                tokio::task::spawn_blocking(move || recover_and_open(&path_for_recovery)).await;
+            let recovered = tokio::task::spawn_blocking(move || {
+                let (file, next_id, prev_hash) = recover_and_open(&path_for_recovery)?;
+                let committed_len = file.metadata()?.len();
+                Ok::<_, crate::error::KmsError>((file, next_id, prev_hash, committed_len))
+            })
+            .await;
             match recovered {
-                Ok(Ok(triple)) => break triple,
+                Ok(Ok(quadruple)) => break quadruple,
                 Ok(Err(e)) => {
                     error!(
-                        "AuditFileStore: cannot open audit log {} ({e}) — retrying",
+                        "AuditFileStore: cannot open or stat audit log {} ({e}) — retrying",
                         self.path.display()
                     );
                     tokio::time::sleep(OPEN_RETRY_INTERVAL).await;
@@ -183,18 +187,7 @@ impl AuditSink for FileSink {
             }
         };
 
-        self.committed_len = loop {
-            match file.metadata() {
-                Ok(meta) => break meta.len(),
-                Err(e) => {
-                    error!(
-                        "AuditFileStore: cannot stat recovered log file {} ({e}) — retrying",
-                        self.path.display()
-                    );
-                    tokio::time::sleep(OPEN_RETRY_INTERVAL).await;
-                }
-            }
-        };
+        self.committed_len = committed_len;
         enforce_size_cap(self.committed_len, &self.write_state, &self.path);
         self.file = Some(file);
         Ok(ChainHead { next_id, prev_hash })
