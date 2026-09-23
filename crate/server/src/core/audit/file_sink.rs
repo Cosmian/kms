@@ -407,7 +407,7 @@ mod tests {
         let mut sink = make_sink(read_only, 0);
 
         let event = sample_event(0, [0_u8; 32]);
-        assert!(sink.write_event_atomic(&event).await.is_err());
+        sink.write_event_atomic(&event).await.unwrap_err();
         assert!(sink.needs_repair);
 
         // The underlying handle becomes writable again — mirrors the process
