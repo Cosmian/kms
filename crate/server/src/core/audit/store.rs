@@ -1114,9 +1114,8 @@ mod tests {
     }
 
     /// A mock `AuditSink` whose write reports `Resynced` exactly once, at a configured
-    /// id, as if a prior write (whose acknowledgement was lost) already durably occupies
-    /// that slot with different content — the H1 scenario. Every other write succeeds
-    /// normally.
+    /// id, as if a prior write with a lost acknowledgement already durably occupies that
+    /// slot with different content. Every other write succeeds normally.
     struct ResyncingSink {
         events: Vec<AuditEvent>,
         resync_once_at_id: i64,
@@ -1149,7 +1148,7 @@ mod tests {
 
     /// `write_draft_to_chain` must retry the *same* draft at the corrected position when
     /// the sink reports `Resynced`, instead of dropping it or leaving the chain wedged on
-    /// a slot nothing will ever fill again — the core of the H1 fix.
+    /// a slot nothing will ever fill again.
     #[tokio::test]
     async fn resync_outcome_retries_same_draft_at_corrected_position() {
         let resync_to = ChainHead {
