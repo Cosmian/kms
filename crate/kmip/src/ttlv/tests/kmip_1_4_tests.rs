@@ -521,12 +521,12 @@ fn test_derive_key_1_4_single_identifier_round_trip() {
     let ttlv = to_ttlv(&request).expect("DeriveKey 1.4 TTLV serialization failed");
     let ttlv_roundtrip: DeriveKey =
         from_ttlv(ttlv).expect("DeriveKey 1.4 TTLV deserialization failed");
-    assert_eq!(ttlv_roundtrip, request);
+    assert!(ttlv_roundtrip == request);
 
     let json = serde_json::to_string_pretty(&request).expect("DeriveKey 1.4 JSON serialization");
     let json_roundtrip: DeriveKey =
         serde_json::from_str(&json).expect("DeriveKey 1.4 JSON deserialization");
-    assert_eq!(json_roundtrip, request);
+    assert!(json_roundtrip == request);
 
     let request_2_1: crate::kmip_2_1::kmip_operations::DeriveKey = request.into();
     assert_eq!(request_2_1.object_unique_identifier.len(), 1);
