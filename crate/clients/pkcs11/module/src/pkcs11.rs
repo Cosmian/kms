@@ -695,7 +695,12 @@ cryptoki_fn!(
         initialized!();
         valid_session!(hSession);
         validate_login_user_type(hSession, userType)?;
-        parse_utf8_argument(pUsername, ulUsernameLen, "C_LoginUser: pUsername")?;
+        parse_utf8_argument(
+            pUsername,
+            ulUsernameLen,
+            MAX_USERNAME_LEN,
+            "C_LoginUser: pUsername",
+        )?;
         login_with_pin(pPin, ulPinLen, "C_LoginUser")?;
         Ok(())
     }
@@ -716,17 +721,28 @@ const fn validate_login_user_type(
     }
 }
 
-/// Defense-in-depth cap on `pPin`/`pUsername` argument lengths accepted by
-/// `C_Login`/`C_LoginUser`: no legitimate PIN or username is anywhere near this size, so a
-/// caller-supplied `ulPinLen`/`ulUsernameLen` far larger than this is refused before any
-/// allocation or `slice::from_raw_parts` call, rather than trusting an arbitrarily large
-/// native `CK_ULONG` and exhausting process memory (threat-model finding: FFI argument-length
-/// denial of service).
-const MAX_UTF8_ARGUMENT_LEN: usize = 4096;
+/// Defense-in-depth cap on `pUsername` argument lengths accepted by `C_LoginUser`: no
+/// legitimate username is anywhere near this size, so a caller-supplied `ulUsernameLen` far
+/// larger than this is refused before any allocation or `slice::from_raw_parts` call, rather
+/// than trusting an arbitrarily large native `CK_ULONG` and exhausting process memory
+/// (threat-model finding: FFI argument-length denial of service).
+const MAX_USERNAME_LEN: usize = 4096;
+
+/// Defense-in-depth cap on `pPin` argument lengths accepted by `C_Login`/`C_LoginUser`,
+/// serving the same purpose as [`MAX_USERNAME_LEN`] but deliberately far larger.
+///
+/// When `pkcs11_use_pin_as_access_token = true` is set in `ckms.toml`, the "PIN" is not a PIN
+/// at all: it carries a full OAuth2/OIDC bearer token. Signed JWTs carrying group, role or
+/// `wids` claims routinely exceed 4 KiB — this is precisely why identity providers implement
+/// group-overage indirection and why HTTP servers commonly allow 8 KiB headers — so reusing
+/// the username cap here would reject those logins outright with `CKR_ARGUMENTS_BAD`. 64 KiB
+/// keeps the single allocation trivially bounded while covering any realistic token.
+const MAX_PIN_LEN: usize = 65_536;
 
 fn parse_utf8_argument(
     ptr: CK_UTF8CHAR_PTR,
     len: CK_ULONG,
+    max_len: usize,
     name: &str,
 ) -> ModuleResult<Option<String>> {
     if len == 0 {
@@ -736,10 +752,10 @@ fn parse_utf8_argument(
         return Err(ModuleError::BadArguments(format!("{name} is null")));
     }
     let len = usize::try_from(len)?;
-    if len > MAX_UTF8_ARGUMENT_LEN {
+    if len > max_len {
         return Err(ModuleError::BadArguments(format!(
-            "{name} length {len} exceeds the plausible maximum of {MAX_UTF8_ARGUMENT_LEN} \
-             bytes; refusing to allocate (possible misbehaving or malicious caller)"
+            "{name} length {len} exceeds the maximum of {max_len} bytes; refusing to \
+             allocate (possible misbehaving or malicious caller)"
         )));
     }
     // SAFETY: PKCS#11 requires callers to provide `len` readable bytes when `ptr` is non-null.
@@ -751,7 +767,7 @@ fn parse_utf8_argument(
 }
 
 fn login_with_pin(pin: CK_UTF8CHAR_PTR, pin_len: CK_ULONG, function: &str) -> ModuleResult<()> {
-    let token = parse_utf8_argument(pin, pin_len, &format!("{function}: pPin"))?;
+    let token = parse_utf8_argument(pin, pin_len, MAX_PIN_LEN, &format!("{function}: pPin"))?;
     if use_pin_as_access_token() {
         invoke_login_fn(
             token
