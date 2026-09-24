@@ -749,6 +749,7 @@ Crate path: `crate/server`
 | `debug` | `DeriveKey asymmetric operation completed successfully` | `src/core/operations/derive_key.rs` | - | Emitted after a non-FIPS X25519 ECDH `DeriveKey` request has validated both referenced keys, derived the shared secret, and persisted the resulting `SecretData` object. |
 | `warn` | `[kms-init] Failed to seed kms.keys.active.count: {e}` | `src/core/kms/mod.rs` | `e` | - |
 | `warn` | `[metrics-cron] Failed to sync kms.keys.active.count: {}` | `src/cron.rs` | - | - |
+| `warn` | `JWK serialization failed uid={uid}: {e}` | `src/routes/jwks.rs` | `uid`: unique identifier of the key object being published in the JWKS; `e`: the `serde_json` serialization error | Emitted when a typed `Jwk` fails to serialize to JSON; the affected key is skipped and omitted from the JWKS `keys` array rather than emitting an invalid `null` entry. |
 
 ### `cosmian_kms_server_database`
 

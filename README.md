@@ -429,12 +429,12 @@ The following table shows transparent key structure support across all KMIP vers
 | EC Public Key            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | ECDSA Private Key        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
 | ECDSA Public Key         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
-| ECDH Private Key         |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
-| ECDH Public Key          |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
+| ECDH Private Key         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
+| ECDH Public Key          |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
 | ECMQV Private Key        |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
 | ECMQV Public Key         |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
 
-Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
+Note: EC/ECDSA/ECDH support is present; DH/DSA/ECMQV are not implemented.
 
 #### Attributes
 

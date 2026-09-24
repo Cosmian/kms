@@ -1235,7 +1235,7 @@ Create, destroy, import, and export FPE keys
 
 ### Subcommands
 
-**`create`** [[7.1.1]](#711-ckms-fpe-keys-create) 
+**`create`** [[7.1.1]](#711-ckms-fpe-keys-create)
 **`export`** [[7.1.2]](#712-ckms-fpe-keys-export)  Export a key or secret data from the KMS
 
 **`import`** [[7.1.3]](#713-ckms-fpe-keys-import)  Import a secret data or a key in the KMS.
@@ -4710,6 +4710,10 @@ Split an existing symmetric key into multiple shares using XOR-based split knowl
 
 `--method [-m] <METHOD>` The splitting method. Accepted value: `xor` (XOR n-of-n, all shares required)
 
+`--ceremony <CEREMONY>` Stamp the `x-cosmian-crypto-officer-ceremony` vendor attribute on the key before splitting. The server will distribute shares to different Crypto Officer candidates instead of assigning them all to the caller
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
 `--ceremony` Stamp the `x-cosmian-crypto-officer-ceremony` vendor attribute on the key before splitting. The server will distribute shares to different Crypto Officer candidates instead of assigning them all to the caller
 
 
@@ -5266,6 +5270,3 @@ Configure the KMS CLI (create ckms.toml)
 
 ### Usage
 `ckms configure`
-
-
-
