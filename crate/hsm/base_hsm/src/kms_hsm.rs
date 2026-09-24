@@ -33,11 +33,12 @@
 //! - Zero-copy cleanup for sensitive data using `Zeroizing`
 use async_trait::async_trait;
 use cosmian_kms_interfaces::{
-    CryptoAlgorithm, EcCurve, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm,
-    HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
-    SigningAlgorithm,
+    CryptoAlgorithm, EcCurve, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeyPairIds,
+    HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata,
+    KeyType, SigningAlgorithm,
 };
 use cosmian_logger::debug;
+use std::collections::HashSet;
 use zeroize::Zeroizing;
 
 use crate::{AesKeySize, BaseHsm, RsaKeySize, hsm_capabilities::HsmProvider};
@@ -55,13 +56,14 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         Ok(self.get_algorithms(slot_id)?)
     }
 
-    async fn create_key(
-        &self,
+    async fn create_key<'a>(
+        &'a self,
         slot_id: usize,
-        id: &[u8],
+        id: &'a [u8],
         algorithm: HsmKeyAlgorithm,
         key_length_in_bits: usize,
         sensitive: bool,
+        tags: &'a HashSet<String>,
     ) -> InterfaceResult<()> {
         let slot = self.get_slot(slot_id)?;
         let session = slot.open_session(true)?;
@@ -83,21 +85,25 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
                         )));
                     }
                 };
-                let _ = session.generate_aes_key(id, key_size, sensitive)?;
+                let _ = session.generate_aes_key(id, key_size, sensitive, Some(tags))?;
                 Ok(())
             }
         }
     }
 
-    async fn create_keypair(
-        &self,
+    async fn create_keypair<'a>(
+        &'a self,
         slot_id: usize,
-        sk_id: &[u8],
-        pk_id: &[u8],
+        ids: HsmKeyPairIds<'a>,
         algorithm: HsmKeypairAlgorithm,
         key_length_in_bits: usize,
         sensitive: bool,
+        tags: &'a HashSet<String>,
     ) -> InterfaceResult<()> {
+        let HsmKeyPairIds {
+            private: sk_id,
+            public: pk_id,
+        } = ids;
         let slot = self.get_slot(slot_id)?;
         let session = slot.open_session(true)?;
 
@@ -126,23 +132,52 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
                         )));
                     }
                 };
-                session.generate_rsa_key_pair(sk_id, pk_id, key_length_in_bits, sensitive)?;
+                session.generate_rsa_key_pair(
+                    sk_id,
+                    pk_id,
+                    key_length_in_bits,
+                    sensitive,
+                    Some(tags),
+                )?;
                 Ok(())
             }
             HsmKeypairAlgorithm::EC => {
                 let curve = EcCurve::from_key_length_in_bits(key_length_in_bits)
                     .map_err(|e| InterfaceError::Default(e.to_string()))?;
-                session.generate_ec_key_pair(sk_id, pk_id, curve, sensitive)?;
+                session.generate_ec_key_pair(sk_id, pk_id, curve, sensitive, Some(tags))?;
+                Ok(())
+            }
+            #[cfg(feature = "non-fips")]
+            HsmKeypairAlgorithm::Secp256k1 => {
+                session.generate_ec_key_pair(
+                    sk_id,
+                    pk_id,
+                    EcCurve::Secp256k1,
+                    sensitive,
+                    Some(tags),
+                )?;
                 Ok(())
             }
             #[cfg(feature = "non-fips")]
             HsmKeypairAlgorithm::Ed25519 => {
-                session.generate_ec_key_pair(sk_id, pk_id, EcCurve::Ed25519, sensitive)?;
+                session.generate_ec_key_pair(
+                    sk_id,
+                    pk_id,
+                    EcCurve::Ed25519,
+                    sensitive,
+                    Some(tags),
+                )?;
                 Ok(())
             }
             #[cfg(feature = "non-fips")]
             HsmKeypairAlgorithm::Ed448 => {
-                session.generate_ec_key_pair(sk_id, pk_id, EcCurve::Ed448, sensitive)?;
+                session.generate_ec_key_pair(
+                    sk_id,
+                    pk_id,
+                    EcCurve::Ed448,
+                    sensitive,
+                    Some(tags),
+                )?;
                 Ok(())
             }
             #[cfg(feature = "non-fips")]
@@ -194,17 +229,23 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         Ok(object_ids)
     }
 
-    async fn encrypt(
-        &self,
+    async fn encrypt<'a>(
+        &'a self,
         slot_id: usize,
-        key_id: &[u8],
+        key_id: &'a [u8],
         algorithm: CryptoAlgorithm,
-        data: &[u8],
+        data: &'a [u8],
+        iv_counter_nonce: &'a [u8],
     ) -> InterfaceResult<EncryptedContent> {
         let slot = self.get_slot(slot_id)?;
         let session = slot.open_session(true)?;
         let handle = session.get_object_handle(key_id)?;
-        let encrypted_content = session.encrypt(handle, algorithm.into(), data)?;
+        let encrypted_content = session.encrypt(
+            handle,
+            algorithm.into(),
+            data,
+            (!iv_counter_nonce.is_empty()).then_some(iv_counter_nonce),
+        )?;
         Ok(encrypted_content)
     }
 

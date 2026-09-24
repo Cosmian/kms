@@ -104,6 +104,25 @@ impl CliBackend {
         )))
     }
 
+    fn create_public_key_from_id(&self, id: &str) -> Option<Arc<dyn PublicKey>> {
+        let attributes = get_kms_object_attributes(&self.kms_rest_client, id).ok()?;
+        if attributes.object_type != Some(ObjectType::PublicKey) {
+            warn!(
+                "create_public_key_from_id: {id} has type {:?} (expected PublicKey), skipping",
+                attributes.object_type
+            );
+            return None;
+        }
+        let (_key_size, algorithm) = match Self::get_key_size_and_algorithm(&attributes) {
+            Ok(result) => result,
+            Err(error) => {
+                warn!("create_public_key_from_id: unsupported key {id}: {error}, skipping");
+                return None;
+            }
+        };
+        Some(Arc::new(Pkcs11PublicKey::new(id.to_owned(), algorithm)))
+    }
+
     /// Helper function to create a symmetric key from an ID
     fn create_symmetric_key_from_id(&self, id: &str) -> Option<Arc<dyn SymmetricKey>> {
         let attributes = get_kms_object_attributes(&self.kms_rest_client, id).ok()?;
@@ -345,35 +364,10 @@ impl Backend for CliBackend {
             &[SYSTEM_TAG_PUBLIC_KEY.to_owned()],
         )
         .unwrap_or_default();
-        let mut public_keys = Vec::with_capacity(ids.len());
-        for id in ids {
-            let kms_object = match get_kms_object(
-                &self.kms_rest_client,
-                &self.vendor_id,
-                &id,
-                KeyFormatType::PKCS8,
-            ) {
-                Ok(o) => o,
-                Err(e) => {
-                    warn!(
-                        "find_all_public_keys: failed to export public key {id}: {e}, \
-                             skipping"
-                    );
-                    continue;
-                }
-            };
-            match Pkcs11PublicKey::try_from_kms_object(&kms_object) {
-                Ok(pk) => {
-                    let arc_pk: Arc<dyn PublicKey> = Arc::new(pk);
-                    public_keys.push(arc_pk);
-                }
-                Err(e) => warn!(
-                    "find_all_public_keys: failed to build Pkcs11PublicKey for {id}: {e}, \
-                     skipping"
-                ),
-            }
-        }
-        Ok(public_keys)
+        Ok(ids
+            .into_iter()
+            .filter_map(|id| self.create_public_key_from_id(&id))
+            .collect())
     }
 
     fn find_all_data_objects(&self) -> ModuleResult<Vec<Arc<dyn DataObject>>> {
@@ -621,6 +615,9 @@ impl Backend for CliBackend {
     }
 
     fn revoke_object(&self, remote_id: &str) -> ModuleResult<()> {
+        if remote_id.starts_with("hsm::") {
+            return Ok(());
+        }
         Ok(kms_revoke_object(&self.kms_rest_client, remote_id)?)
     }
 

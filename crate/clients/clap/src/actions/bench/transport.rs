@@ -33,11 +33,34 @@ use cosmian_kms_client::{
 use criterion::BenchmarkId;
 use tokio::runtime::Runtime;
 
+use super::types::BenchFilter;
+
 thread_local! {
     /// Maximum wall-clock time budget for a single benchmark group.
     static MAX_GROUP_TIME: Cell<Option<Duration>> = const { Cell::new(None) };
     /// Instant at which the current benchmark group started.
     static GROUP_START: Cell<Option<Instant>> = const { Cell::new(None) };
+    /// Name of the current benchmark group.
+    static CURRENT_GROUP_NAME: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    /// Active benchmark filter for algorithms and key sizes.
+    static BENCH_FILTER: std::cell::RefCell<Option<BenchFilter>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Set the active benchmark filter for algorithms and key sizes.
+pub(super) fn set_bench_filter(filter: Option<BenchFilter>) {
+    BENCH_FILTER.with(|f| *f.borrow_mut() = filter);
+}
+
+/// Check whether an algorithm and key size matches the active benchmark filter.
+pub(super) fn bench_filter_matches(algo_or_name: &str, key_size_or_curve: Option<&str>) -> bool {
+    BENCH_FILTER.with(|f| {
+        f.borrow().as_ref().is_none_or(|filter| {
+            // Combine with current group name if available to match algorithm category
+            let group = CURRENT_GROUP_NAME.with(|g| g.borrow().clone()).unwrap_or_default();
+            let full_label = format!("{group}/{algo_or_name}");
+            filter.matches(&full_label, key_size_or_curve) || filter.matches(algo_or_name, key_size_or_curve)
+        })
+    })
 }
 
 /// Set the per-group wall-clock time budget (call once before running benchmarks).
@@ -54,8 +77,10 @@ pub(super) fn timed_group(
     c: &mut criterion::Criterion,
     name: impl Into<String>,
 ) -> criterion::BenchmarkGroup<'_, criterion::measurement::WallTime> {
+    let name_str = name.into();
+    CURRENT_GROUP_NAME.with(|g| *g.borrow_mut() = Some(name_str.clone()));
     GROUP_START.with(|s| s.set(Some(Instant::now())));
-    c.benchmark_group(name)
+    c.benchmark_group(name_str)
 }
 
 /// Returns `true` once the current group has exhausted its time budget.
@@ -209,11 +234,12 @@ pub(super) fn bench_op(
     name: impl Into<String>,
     op: Operation,
 ) {
-    if group_over_budget() {
+    let name_str = name.into();
+    if !bench_filter_matches(&name_str, None) || group_over_budget() {
         return;
     }
     let (url, body, content_type) = prepare_op(transport, client, op);
-    group.bench_function(name.into(), |b| {
+    group.bench_function(name_str, |b| {
         b.to_async(rt)
             .iter(|| client.client.post_bytes(&url, body.clone(), content_type));
     });
@@ -225,10 +251,12 @@ pub(super) fn bench_op_id(
     client: &KmsClient,
     rt: &Runtime,
     transport: Transport,
+    param_label: impl AsRef<str>,
     id: BenchmarkId,
     op: Operation,
 ) {
-    if group_over_budget() {
+    let param_str = param_label.as_ref();
+    if !bench_filter_matches(param_str, Some(param_str)) || group_over_budget() {
         return;
     }
     let (url, body, content_type) = prepare_op(transport, client, op);
@@ -244,10 +272,12 @@ pub(super) fn bench_message_id(
     client: &KmsClient,
     rt: &Runtime,
     transport: Transport,
+    param_label: impl AsRef<str>,
     id: BenchmarkId,
     msg: &RequestMessage,
 ) {
-    if group_over_budget() {
+    let param_str = param_label.as_ref();
+    if !bench_filter_matches(param_str, Some(param_str)) || group_over_budget() {
         return;
     }
     let (url, body, content_type) = prepare_message(transport, client, msg);

@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use cosmian_kmip::kmip_2_1::{
     kmip_attributes::Attributes, kmip_objects::ObjectType, kmip_types::CryptographicAlgorithm,
 };
+use std::collections::HashSet;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -22,56 +23,45 @@ pub enum HsmKeyAlgorithm {
 #[derive(Debug, Clone, Copy)]
 pub enum HsmKeypairAlgorithm {
     RSA,
-    /// Elliptic Curve. The specific FIPS-approved NIST curve (P-224/P-256/P-384/P-521) is
-    /// selected via the `key_length_in_bits` parameter of `HSM::create_keypair`, mirroring how
-    /// RSA selects its modulus size, so no new parameter is added to the trait.
+    /// FIPS-approved NIST elliptic curve selected by `key_length_in_bits`.
     EC,
-    /// Ed25519 (`CKM_EC_EDWARDS_KEY_PAIR_GEN`), for `EdDSA` signing. Non-FIPS: mirrors the
-    /// gating of `Ed25519` in `crate::crypto::elliptic_curves::sign` (issue #1157).
+    /// secp256k1 (`CKM_EC_KEY_PAIR_GEN`) for non-FIPS ECDSA signing.
+    #[cfg(feature = "non-fips")]
+    Secp256k1,
+    /// Ed25519 (`CKM_EC_EDWARDS_KEY_PAIR_GEN`) for `EdDSA` signing.
     #[cfg(feature = "non-fips")]
     Ed25519,
-    /// Ed448 (`CKM_EC_EDWARDS_KEY_PAIR_GEN`), for `EdDSA` signing. Non-FIPS: see `Ed25519` above.
+    /// Ed448 (`CKM_EC_EDWARDS_KEY_PAIR_GEN`) for `EdDSA` signing.
     #[cfg(feature = "non-fips")]
     Ed448,
-    /// X25519 (`CKM_EC_MONTGOMERY_KEY_PAIR_GEN`), for ECDH key agreement. Non-FIPS: see
-    /// `Ed25519` above.
+    /// X25519 (`CKM_EC_MONTGOMERY_KEY_PAIR_GEN`) for ECDH key agreement.
     #[cfg(feature = "non-fips")]
     X25519,
 }
 
-/// FIPS-approved NIST elliptic curves supported for HSM-delegated EC key generation and ECDSA
-/// signing, plus (behind the `non-fips` feature) the Edwards/Montgomery curves used for
-/// `EdDSA` signing and X25519 ECDH key agreement (issue #1157). Only prime curves over `GF(p)`
-/// are supported for ECDSA, matching the software EC key generation gating in
-/// `crate::crypto::elliptic_curves::operation` (`P192`/`SECP256K1`/`SECP224K1` remain
-/// non-fips-only and are intentionally not exposed for HSM delegation).
+/// Elliptic curves supported for HSM-delegated key generation and signing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EcCurve {
     P224,
     P256,
     P384,
     P521,
-    /// Edwards curve used for `EdDSA` signing (`CKM_EDDSA` / `CKM_EC_EDWARDS_KEY_PAIR_GEN`).
-    /// Non-FIPS: mirrors the gating of `Ed25519`/`Ed448` in
-    /// `crate::crypto::elliptic_curves::sign` (issue #1157).
+    /// secp256k1, used for non-FIPS ECDSA signing.
+    #[cfg(feature = "non-fips")]
+    Secp256k1,
+    /// Edwards curve used for `EdDSA` signing.
     #[cfg(feature = "non-fips")]
     Ed25519,
-    /// Edwards curve used for `EdDSA` signing. Non-FIPS: see `Ed25519` above.
+    /// Edwards curve used for `EdDSA` signing.
     #[cfg(feature = "non-fips")]
     Ed448,
-    /// Montgomery curve used for X25519 ECDH key agreement
-    /// (`CKM_EC_MONTGOMERY_KEY_PAIR_GEN` / `CKM_ECDH1_DERIVE`). Non-FIPS: see `Ed25519` above.
+    /// Montgomery curve used for X25519 ECDH key agreement.
     #[cfg(feature = "non-fips")]
     X25519,
 }
 
 impl EcCurve {
-    /// Select a curve from a requested key length in bits, mirroring the RSA key-size
-    /// selection convention used by `HSM::create_keypair`.
-    ///
-    /// Only selects among the FIPS-approved NIST prime curves; Edwards/Montgomery curves are
-    /// selected explicitly (e.g. `EcCurve::Ed25519`), not by key length, since key length alone
-    /// does not disambiguate them (Ed25519 and X25519 share a 256-bit field size).
+    /// Select a FIPS-approved NIST curve from a requested key length in bits.
     pub fn from_key_length_in_bits(key_length_in_bits: usize) -> InterfaceResult<Self> {
         match key_length_in_bits {
             224 => Ok(Self::P224),
@@ -85,7 +75,7 @@ impl EcCurve {
         }
     }
 
-    /// The curve's field size, in bits (matches the `key_length_in_bits` used to select it).
+    /// Return the curve field size in bits.
     #[must_use]
     pub const fn key_length_in_bits(self) -> usize {
         match self {
@@ -94,7 +84,7 @@ impl EcCurve {
             Self::P384 => 384,
             Self::P521 => 521,
             #[cfg(feature = "non-fips")]
-            Self::Ed25519 | Self::X25519 => 256,
+            Self::Secp256k1 | Self::Ed25519 | Self::X25519 => 256,
             #[cfg(feature = "non-fips")]
             Self::Ed448 => 456,
         }
@@ -238,14 +228,16 @@ pub enum KeyMaterial {
 pub struct HsmObject {
     key_material: KeyMaterial,
     id: String,
+    tags: HashSet<String>,
 }
 
 impl HsmObject {
     #[must_use]
-    pub const fn new(key_material: KeyMaterial, label: String) -> Self {
+    pub const fn new(key_material: KeyMaterial, label: String, tags: HashSet<String>) -> Self {
         Self {
             key_material,
             id: label,
+            tags,
         }
     }
 
@@ -258,6 +250,20 @@ impl HsmObject {
     pub fn id(&self) -> &str {
         &self.id
     }
+
+    #[must_use]
+    pub const fn tags(&self) -> &HashSet<String> {
+        &self.tags
+    }
+}
+
+/// Borrowed identifiers for an HSM key pair.
+#[derive(Clone, Copy)]
+pub struct HsmKeyPairIds<'a> {
+    /// Private-key identifier.
+    pub private: &'a [u8],
+    /// Public-key identifier.
+    pub public: &'a [u8],
 }
 
 /// HSM trait
@@ -298,15 +304,17 @@ pub trait HSM: Send + Sync {
     /// * `algorithm` - the key algorithm to use
     /// * `key_length_in_bits` - the length of the key in bits
     /// * `sensitive` - whether the key should be exportable
+    /// * `tags` - tags persisted with the key
     /// # Returns
     /// * `PluginResult<usize>` - the ID of the key
-    async fn create_key(
-        &self,
+    async fn create_key<'a>(
+        &'a self,
         slot_id: usize,
-        id: &[u8],
+        id: &'a [u8],
         algorithm: HsmKeyAlgorithm,
         key_length_in_bits: usize,
         sensitive: bool,
+        tags: &'a HashSet<String>,
     ) -> InterfaceResult<()>;
 
     /// Create the given key pair in the HSM.
@@ -316,21 +324,21 @@ pub trait HSM: Send + Sync {
     /// The key pair will not be exportable from the HSM if the sensitive flag is set to true.
     /// # Arguments
     /// * `slot_id` - the slot ID of the HSM
-    /// * `sk_id` - the ID of the private key
-    /// * `pk_id` - the ID of the public key
+    /// * `ids` - the private and public key identifiers
     /// * `algorithm` - the key pair algorithm to use
     /// * `key_length_in_bits` - the length of the key in bits
     /// * `sensitive` - whether the key pair should be exportable
+    /// * `tags` - tags persisted with both keys
     /// # Returns
     /// * `PluginResult<(usize, usize)>` - the IDs of the private and public keys
-    async fn create_keypair(
-        &self,
+    async fn create_keypair<'a>(
+        &'a self,
         slot_id: usize,
-        sk_id: &[u8],
-        pk_id: &[u8],
+        ids: HsmKeyPairIds<'a>,
         algorithm: HsmKeypairAlgorithm,
         key_length_in_bits: usize,
         sensitive: bool,
+        tags: &'a HashSet<String>,
     ) -> InterfaceResult<()>;
 
     /// Export objects from the HSN.
@@ -369,14 +377,16 @@ pub trait HSM: Send + Sync {
     /// * `key_id` - the ID of the key to use for encryption
     /// * `algorithm` - the encryption algorithm to use
     /// * `data` - the data to encrypt
+    /// * `iv_counter_nonce` - caller-supplied IV or nonce
     /// # Returns
     /// * `PluginResult<Vec<u8>>` - the encrypted data
-    async fn encrypt(
-        &self,
+    async fn encrypt<'a>(
+        &'a self,
         slot_id: usize,
-        key_id: &[u8],
+        key_id: &'a [u8],
         algorithm: CryptoAlgorithm,
-        data: &[u8],
+        data: &'a [u8],
+        iv_counter_nonce: &'a [u8],
     ) -> InterfaceResult<EncryptedContent>;
 
     /// Decrypt data using the given key in the HSM.

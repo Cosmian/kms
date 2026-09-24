@@ -1432,6 +1432,7 @@ dependencies = [
  "openssl",
  "pkcs11-sys",
  "rand 0.10.2",
+ "serde_json",
  "thiserror 2.0.19",
  "time",
  "uuid",

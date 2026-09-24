@@ -144,6 +144,7 @@ impl CryptoOpSpec for EncryptOp {
                 data,
                 ca.clone(),
                 request.authenticated_encryption_additional_data.as_deref(),
+                request.i_v_counter_nonce.as_deref(),
             )
             .await?;
         debug!(

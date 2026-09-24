@@ -15,6 +15,8 @@ use pkcs11_sys::{
     CKO_PUBLIC_KEY, CKO_SECRET_KEY,
 };
 
+use crate::actions::bench::types::{BenchFilter, BenchMode};
+
 use super::{
     error::{BenchError, BenchResult},
     loader::Pkcs11Session,
@@ -22,110 +24,24 @@ use super::{
 
 const ED25519_SIGNATURE_LEN: usize = 64;
 const RSA_2048_SIGNATURE_LEN: usize = 256;
-/// DER-encoded `SEQUENCE { INTEGER r, INTEGER s }` for a P-256 signature is at most
-/// 2 (SEQUENCE tag+len) + 2 * (2 (INTEGER tag+len) + 33 (sign byte + 32-byte scalar))
-/// = 72 bytes. The actual encoded length varies call-to-call (leading zero bytes are
-/// stripped), so callers must size the buffer to this maximum and use the length
-/// `C_Sign` actually returns, not this constant, when reading the result. secp256k1
-/// shares the same 256-bit order bit-length, so this bound is reused for it too.
 const ECDSA_P256_SIGNATURE_MAX_LEN: usize = 72;
-/// DER-encoded OID for NIST P-256 (`1.2.840.10045.3.1.7`), matching
-/// `KeyAlgorithm::EccP256::to_oid()` on the module side
-/// (`crate/clients/pkcs11/module/src/traits/key_algorithm.rs`). Used to
-/// disambiguate the P-256 EC key pair from the secp256k1 one when both are
-/// provisioned — both report `CKK_EC` as their `CK_KEY_TYPE`.
 const P256_EC_PARAMS_DER: [u8; 10] = [0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07];
-/// DER-encoded OID for secp256k1 (`1.3.132.0.10`), matching
-/// `KeyAlgorithm::Secp256k1::to_oid()` on the module side. See
-/// [`P256_EC_PARAMS_DER`]'s doc comment for why this disambiguation is needed.
 const SECP256K1_EC_PARAMS_DER: [u8; 7] = [0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x0A];
-
-/// Which Cryptoki operation family to load-test (CLI-facing; `All` expands to every
-/// [`ConcreteMode`] via [`BenchMode::expand`]).
-///
-/// Each mode is measured **independently** — mirroring `mise bench:load`'s own
-/// per-operation granularity (one named `PreparedLoadOp` per algorithm/operation,
-/// never a combined round trip) — so `encrypt`, `decrypt`, `sign`, and `verify` each
-/// get their own concurrency sweep and their own row/chart in the report, instead of
-/// being timed together as a single "encrypt-decrypt" round trip.
-#[derive(Clone, Copy, Debug, clap::ValueEnum, PartialEq, Eq)]
-pub(crate) enum BenchMode {
-    /// Run every mode below in sequence.
-    All,
-    /// `C_EncryptInit`/`C_Encrypt` on an AES key.
-    Encrypt,
-    /// `C_DecryptInit`/`C_Decrypt` on an AES key (using ciphertext produced once
-    /// during setup, not timed).
-    Decrypt,
-    /// Every signature algorithm the provider supports, one after another: RSA
-    /// PKCS#1 v1.5-SHA256 (`CKM_SHA256_RSA_PKCS`), ECDSA P-256
-    /// (`CKM_ECDSA`, pre-hashed), and — in `non-fips` builds — `EdDSA` Ed25519
-    /// (`CKM_EDDSA`, PKCS#11 v3 message-signing). Expands to
-    /// [`ConcreteMode::SignRsa`], [`ConcreteMode::SignEcdsa`], and (non-FIPS only)
-    /// [`ConcreteMode::SignEdDsa`]; use `sign-rsa`/`sign-ecdsa`/`sign-eddsa` to
-    /// benchmark a single algorithm instead.
-    Sign,
-    /// The `C_Verify` counterpart to [`Self::Sign`]: every verify algorithm the
-    /// provider supports, one after another. Any algorithm not implemented by the
-    /// loaded provider is skipped with a console notice (see
-    /// [`ConcreteMode::VerifyRsa`]).
-    Verify,
-    /// `C_SignInit`/`C_Sign` on an RSA private key (`CKM_SHA256_RSA_PKCS`).
-    #[value(name = "sign-rsa")]
-    SignRsa,
-    /// `C_VerifyInit`/`C_Verify` on an RSA public key (`CKM_SHA256_RSA_PKCS`).
-    /// Skipped with a console notice if the loaded provider does not implement it
-    /// (see [`ConcreteMode::VerifyRsa`]).
-    #[value(name = "verify-rsa")]
-    VerifyRsa,
-    /// `C_SignInit`/`C_Sign` on an EC P-256 private key (`CKM_ECDSA`, a pre-computed
-    /// SHA-256 digest — the mechanism itself performs no hashing).
-    #[value(name = "sign-ecdsa")]
-    SignEcdsa,
-    /// `C_VerifyInit`/`C_Verify` on an EC P-256 public key (`CKM_ECDSA`). Skipped
-    /// with a console notice if the loaded provider does not implement it (see
-    /// [`ConcreteMode::VerifyRsa`]).
-    #[value(name = "verify-ecdsa")]
-    VerifyEcdsa,
-    /// `C_SignInit`/`C_Sign` on an EC secp256k1 private key (`CKM_ECDSA`, a
-    /// pre-computed SHA-256 digest). Non-FIPS only: secp256k1 is not a
-    /// FIPS-approved curve (`algorithm_policy::validate_curve`).
-    #[value(name = "sign-secp256k1")]
-    SignSecp256k1,
-    /// `C_VerifyInit`/`C_Verify` on an EC secp256k1 public key (`CKM_ECDSA`).
-    /// Skipped with a console notice if the loaded provider does not implement it
-    /// (see [`ConcreteMode::VerifyRsa`]). Non-FIPS only, see
-    /// [`Self::SignSecp256k1`].
-    #[value(name = "verify-secp256k1")]
-    VerifySecp256k1,
-    /// PKCS#11 v3 `C_MessageSignInit` once, then `C_SignMessage` per Ed25519
-    /// message (`CKM_EDDSA`).
-    #[value(name = "sign-eddsa")]
-    SignEdDsa,
-    /// `C_VerifyInit`/`C_Verify` on an Ed25519 public key (`CKM_EDDSA`). Skipped with
-    /// a console notice if the loaded provider does not implement it (see
-    /// [`ConcreteMode::VerifyRsa`]).
-    #[value(name = "verify-eddsa")]
-    VerifyEdDsa,
-    /// `C_GenerateKey` + `C_DestroyObject` (ephemeral AES key per iteration).
-    KeyCreation,
-}
-
-/// The concrete (non-`All`, non-`Sign`/`Verify`) operation families `run_all`
-/// actually knows how to execute — kept as a separate type (rather than reusing
-/// [`BenchMode`]) so that dispatch in [`run_all`] is exhaustive without an `All`
-/// (or aggregate `Sign`/`Verify`) arm that could never be reached at that point.
+/// The concrete operation families `run_all` actually knows how to execute.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ConcreteMode {
-    Encrypt,
-    Decrypt,
-    SignRsa,
-    VerifyRsa,
-    SignEcdsa,
-    VerifyEcdsa,
-    // Only ever constructed by the non-FIPS `expand()` impl below (secp256k1 is not
-    // FIPS-approved); the FIPS `expand()` impl only pattern-matches these variants
-    // (to return an empty list), which the dead-code lint doesn't count as use.
+    EncryptAesCbc,
+    EncryptAesGcm,
+    EncryptRsaPkcs,
+    DecryptAesCbc,
+    DecryptAesGcm,
+    DecryptRsaPkcs,
+    SignRsaPkcs,
+    SignRsaPss,
+    VerifyRsaPkcs,
+    VerifyRsaPss,
+    SignEcdsaP256,
+    VerifyEcdsaP256,
     #[cfg_attr(not(feature = "non-fips"), allow(dead_code))]
     SignSecp256k1,
     #[cfg_attr(not(feature = "non-fips"), allow(dead_code))]
@@ -133,103 +49,128 @@ pub(crate) enum ConcreteMode {
     SignEdDsa,
     VerifyEdDsa,
     KeyCreation,
+    Batch,
 }
 
 impl ConcreteMode {
     /// The operation name used in report output (also becomes the report's
     /// `### <label>` section heading and SVG chart file name).
-    const fn label(self) -> &'static str {
+    pub(crate) const fn label(self) -> &'static str {
         match self {
-            Self::Encrypt => "encrypt/aes-cbc",
-            Self::Decrypt => "decrypt/aes-cbc",
-            Self::SignRsa => "sign/rsa-pkcs-sha256",
-            Self::VerifyRsa => "verify/rsa-pkcs-sha256",
-            Self::SignEcdsa => "sign/ecdsa-p256",
-            Self::VerifyEcdsa => "verify/ecdsa-p256",
+            Self::EncryptAesCbc => "encrypt/aes-cbc",
+            Self::EncryptAesGcm => "encrypt/aes-gcm",
+            Self::EncryptRsaPkcs => "encrypt/rsa-pkcs",
+            Self::DecryptAesCbc => "decrypt/aes-cbc",
+            Self::DecryptAesGcm => "decrypt/aes-gcm",
+            Self::DecryptRsaPkcs => "decrypt/rsa-pkcs",
+            Self::SignRsaPkcs => "sign/rsa-pkcs-sha256",
+            Self::SignRsaPss => "sign/rsa-pss-sha256",
+            Self::VerifyRsaPkcs => "verify/rsa-pkcs-sha256",
+            Self::VerifyRsaPss => "verify/rsa-pss-sha256",
+            Self::SignEcdsaP256 => "sign/ecdsa-p256",
+            Self::VerifyEcdsaP256 => "verify/ecdsa-p256",
             Self::SignSecp256k1 => "sign/ecdsa-secp256k1",
             Self::VerifySecp256k1 => "verify/ecdsa-secp256k1",
             Self::SignEdDsa => "sign/eddsa-ed25519",
             Self::VerifyEdDsa => "verify/eddsa-ed25519",
             Self::KeyCreation => "key-creation/aes",
+            Self::Batch => "batch/aes-cbc",
         }
     }
 }
 
-impl BenchMode {
-    /// Expands `All`/`Sign`/`Verify` to the concrete list of modes they represent;
-    /// any other variant expands to the single matching [`ConcreteMode`].
-    #[cfg(feature = "non-fips")]
-    pub(crate) const fn expand(self) -> &'static [ConcreteMode] {
-        match self {
-            Self::All => &[
-                ConcreteMode::Encrypt,
-                ConcreteMode::Decrypt,
-                ConcreteMode::SignRsa,
-                ConcreteMode::SignEcdsa,
-                ConcreteMode::SignSecp256k1,
-                ConcreteMode::SignEdDsa,
-                ConcreteMode::VerifyRsa,
-                ConcreteMode::VerifyEcdsa,
-                ConcreteMode::VerifySecp256k1,
-                ConcreteMode::VerifyEdDsa,
-                ConcreteMode::KeyCreation,
-            ],
-            Self::Encrypt => &[ConcreteMode::Encrypt],
-            Self::Decrypt => &[ConcreteMode::Decrypt],
-            Self::Sign => &[
-                ConcreteMode::SignRsa,
-                ConcreteMode::SignEcdsa,
-                ConcreteMode::SignSecp256k1,
-                ConcreteMode::SignEdDsa,
-            ],
-            Self::Verify => &[
-                ConcreteMode::VerifyRsa,
-                ConcreteMode::VerifyEcdsa,
-                ConcreteMode::VerifySecp256k1,
-                ConcreteMode::VerifyEdDsa,
-            ],
-            Self::SignRsa => &[ConcreteMode::SignRsa],
-            Self::VerifyRsa => &[ConcreteMode::VerifyRsa],
-            Self::SignEcdsa => &[ConcreteMode::SignEcdsa],
-            Self::VerifyEcdsa => &[ConcreteMode::VerifyEcdsa],
-            Self::SignSecp256k1 => &[ConcreteMode::SignSecp256k1],
-            Self::VerifySecp256k1 => &[ConcreteMode::VerifySecp256k1],
-            Self::SignEdDsa => &[ConcreteMode::SignEdDsa],
-            Self::VerifyEdDsa => &[ConcreteMode::VerifyEdDsa],
-            Self::KeyCreation => &[ConcreteMode::KeyCreation],
-        }
-    }
-
-    /// FIPS expansion excludes Ed25519 and secp256k1 modes (`Sign`/`Verify`/`All`
-    /// silently drop them, since neither is FIPS-approved); selecting
-    /// `sign-eddsa`/`verify-eddsa`/`sign-secp256k1`/`verify-secp256k1` explicitly
-    /// returns an empty list so `main` can surface a clear feature-gating error
-    /// instead.
-    #[cfg(not(feature = "non-fips"))]
-    pub(crate) const fn expand(self) -> &'static [ConcreteMode] {
-        match self {
-            Self::All => &[
-                ConcreteMode::Encrypt,
-                ConcreteMode::Decrypt,
-                ConcreteMode::SignRsa,
-                ConcreteMode::SignEcdsa,
-                ConcreteMode::VerifyRsa,
-                ConcreteMode::VerifyEcdsa,
-                ConcreteMode::KeyCreation,
-            ],
-            Self::Encrypt => &[ConcreteMode::Encrypt],
-            Self::Decrypt => &[ConcreteMode::Decrypt],
-            Self::Sign => &[ConcreteMode::SignRsa, ConcreteMode::SignEcdsa],
-            Self::Verify => &[ConcreteMode::VerifyRsa, ConcreteMode::VerifyEcdsa],
-            Self::SignRsa => &[ConcreteMode::SignRsa],
-            Self::VerifyRsa => &[ConcreteMode::VerifyRsa],
-            Self::SignEcdsa => &[ConcreteMode::SignEcdsa],
-            Self::VerifyEcdsa => &[ConcreteMode::VerifyEcdsa],
-            Self::SignEdDsa | Self::VerifyEdDsa | Self::SignSecp256k1 | Self::VerifySecp256k1 => {
-                &[]
+/// Expands standard `BenchMode` to concrete PKCS#11 benchmark modes.
+#[must_use]
+pub(crate) fn expand_bench_mode(mode: BenchMode, filter: Option<&BenchFilter>) -> Vec<ConcreteMode> {
+    let modes = match mode {
+        BenchMode::All => {
+            #[cfg(feature = "non-fips")]
+            {
+                vec![
+                    ConcreteMode::EncryptAesCbc,
+                    ConcreteMode::EncryptAesGcm,
+                    ConcreteMode::EncryptRsaPkcs,
+                    ConcreteMode::DecryptAesCbc,
+                    ConcreteMode::DecryptAesGcm,
+                    ConcreteMode::DecryptRsaPkcs,
+                    ConcreteMode::SignRsaPkcs,
+                    ConcreteMode::SignRsaPss,
+                    ConcreteMode::SignEcdsaP256,
+                    ConcreteMode::SignSecp256k1,
+                    ConcreteMode::SignEdDsa,
+                    ConcreteMode::VerifyRsaPkcs,
+                    ConcreteMode::VerifyRsaPss,
+                    ConcreteMode::VerifyEcdsaP256,
+                    ConcreteMode::VerifySecp256k1,
+                    ConcreteMode::VerifyEdDsa,
+                    ConcreteMode::KeyCreation,
+                    ConcreteMode::Batch,
+                ]
             }
-            Self::KeyCreation => &[ConcreteMode::KeyCreation],
+            #[cfg(not(feature = "non-fips"))]
+            {
+                vec![
+                    ConcreteMode::EncryptAesCbc,
+                    ConcreteMode::EncryptAesGcm,
+                    ConcreteMode::EncryptRsaPkcs,
+                    ConcreteMode::DecryptAesCbc,
+                    ConcreteMode::DecryptAesGcm,
+                    ConcreteMode::DecryptRsaPkcs,
+                    ConcreteMode::SignRsaPkcs,
+                    ConcreteMode::SignRsaPss,
+                    ConcreteMode::SignEcdsaP256,
+                    ConcreteMode::VerifyRsaPkcs,
+                    ConcreteMode::VerifyRsaPss,
+                    ConcreteMode::VerifyEcdsaP256,
+                    ConcreteMode::KeyCreation,
+                    ConcreteMode::Batch,
+                ]
+            }
         }
+        BenchMode::Encrypt => vec![
+            ConcreteMode::EncryptAesCbc,
+            ConcreteMode::EncryptAesGcm,
+            ConcreteMode::EncryptRsaPkcs,
+            ConcreteMode::DecryptAesCbc,
+            ConcreteMode::DecryptAesGcm,
+            ConcreteMode::DecryptRsaPkcs,
+        ],
+        BenchMode::SignVerify => {
+            #[cfg(feature = "non-fips")]
+            {
+                vec![
+                    ConcreteMode::SignRsaPkcs,
+                    ConcreteMode::SignRsaPss,
+                    ConcreteMode::SignEcdsaP256,
+                    ConcreteMode::SignSecp256k1,
+                    ConcreteMode::SignEdDsa,
+                    ConcreteMode::VerifyRsaPkcs,
+                    ConcreteMode::VerifyRsaPss,
+                    ConcreteMode::VerifyEcdsaP256,
+                    ConcreteMode::VerifySecp256k1,
+                    ConcreteMode::VerifyEdDsa,
+                ]
+            }
+            #[cfg(not(feature = "non-fips"))]
+            {
+                vec![
+                    ConcreteMode::SignRsaPkcs,
+                    ConcreteMode::SignRsaPss,
+                    ConcreteMode::SignEcdsaP256,
+                    ConcreteMode::VerifyRsaPkcs,
+                    ConcreteMode::VerifyRsaPss,
+                    ConcreteMode::VerifyEcdsaP256,
+                ]
+            }
+        }
+        BenchMode::KeyCreation => vec![ConcreteMode::KeyCreation],
+        BenchMode::Batch => vec![ConcreteMode::Batch],
+    };
+
+    if let Some(f) = filter {
+        modes.into_iter().filter(|m| f.matches(m.label(), None)).collect()
+    } else {
+        modes
     }
 }
 
@@ -419,29 +360,46 @@ pub(crate) fn prepare_ops<'a>(
         .first()
         .ok_or_else(|| BenchError::Setup("empty PKCS#11 session pool".to_owned()))?;
 
-    let secret_key = if modes
-        .iter()
-        .any(|mode| matches!(mode, ConcreteMode::Encrypt | ConcreteMode::Decrypt))
-    {
+    let secret_key = if modes.iter().any(|mode| {
+        matches!(
+            mode,
+            ConcreteMode::EncryptAesCbc
+                | ConcreteMode::EncryptAesGcm
+                | ConcreteMode::DecryptAesCbc
+                | ConcreteMode::DecryptAesGcm
+                | ConcreteMode::Batch
+        )
+    }) {
         Some(setup_session.find_first_by_class(CKO_SECRET_KEY)?)
     } else {
         None
     };
-    // Three private/public key pairs (RSA, EC P-256, and Ed25519) are provisioned
-    // by `setup.rs`, so — unlike `secret_key` above — these must be disambiguated
-    // by `CK_KEY_TYPE`, not just `CK_OBJECT_CLASS`.
-    let private_key = if modes
-        .iter()
-        .any(|mode| matches!(mode, ConcreteMode::SignRsa | ConcreteMode::VerifyRsa))
-    {
+    let rsa_public_key = if modes.iter().any(|mode| {
+        matches!(
+            mode,
+            ConcreteMode::EncryptRsaPkcs | ConcreteMode::VerifyRsaPkcs | ConcreteMode::VerifyRsaPss
+        )
+    }) {
+        Some(setup_session.find_first_by_class_and_key_type(CKO_PUBLIC_KEY, CKK_RSA)?)
+    } else {
+        None
+    };
+    let rsa_private_key = if modes.iter().any(|mode| {
+        matches!(
+            mode,
+            ConcreteMode::DecryptRsaPkcs | ConcreteMode::SignRsaPkcs | ConcreteMode::SignRsaPss
+        )
+    }) {
         Some(setup_session.find_first_by_class_and_key_type(CKO_PRIVATE_KEY, CKK_RSA)?)
     } else {
         None
     };
-    let ecdsa_private_key = if modes
-        .iter()
-        .any(|mode| matches!(mode, ConcreteMode::SignEcdsa | ConcreteMode::VerifyEcdsa))
-    {
+    let ecdsa_private_key = if modes.iter().any(|mode| {
+        matches!(
+            mode,
+            ConcreteMode::SignEcdsaP256 | ConcreteMode::VerifyEcdsaP256
+        )
+    }) {
         Some(setup_session.find_first_by_class_key_type_and_ec_params(
             CKO_PRIVATE_KEY,
             CKK_EC,
@@ -464,48 +422,63 @@ pub(crate) fn prepare_ops<'a>(
     } else {
         None
     };
-    let eddsa_private_key = if modes
-        .iter()
-        .any(|mode| matches!(mode, ConcreteMode::SignEdDsa | ConcreteMode::VerifyEdDsa))
-    {
+    let eddsa_private_key = if modes.iter().any(|mode| {
+        matches!(mode, ConcreteMode::SignEdDsa | ConcreteMode::VerifyEdDsa)
+    }) {
         Some(setup_session.find_first_by_class_and_key_type(CKO_PRIVATE_KEY, CKK_EC_EDWARDS)?)
     } else {
         None
     };
     let plaintext = vec![0x42_u8; 4096];
-    // Match `ckms bench --criterion`'s Ed25519 payload exactly so the raw-HTTP,
-    // typed-client, and full PKCS#11 tiers differ only by client-side layers. Also
-    // reused as the pre-computed digest for `CKM_ECDSA` (32 bytes ==
-    // `signature_algorithm_to_kmip_params`'s SHA-256 default,
-    // `crate/clients/pkcs11/provider/src/kms_object.rs`).
     let message = vec![0x42_u8; 32];
 
-    // Ciphertext for the `Decrypt` sweep is produced once here (not timed) so the
-    // sweep measures `C_Decrypt` alone, independent of `C_Encrypt`.
-    let ciphertext = if modes.contains(&ConcreteMode::Decrypt) {
+    let ciphertext_cbc = if modes.contains(&ConcreteMode::DecryptAesCbc) {
         let key = secret_key.ok_or_else(|| {
-            BenchError::Setup("Decrypt mode requires a provisioned secret key".to_owned())
+            BenchError::Setup("DecryptAesCbc requires a provisioned secret key".to_owned())
         })?;
         Some(setup_session.encrypt(key, &plaintext)?)
     } else {
         None
     };
+    let ciphertext_gcm = if modes.contains(&ConcreteMode::DecryptAesGcm) {
+        let key = secret_key.ok_or_else(|| {
+            BenchError::Setup("DecryptAesGcm requires a provisioned secret key".to_owned())
+        })?;
+        Some(setup_session.encrypt_gcm(key, &plaintext)?)
+    } else {
+        None
+    };
+    let ciphertext_rsa = if modes.contains(&ConcreteMode::DecryptRsaPkcs) {
+        let key = rsa_public_key.ok_or_else(|| {
+            BenchError::Setup("DecryptRsaPkcs requires a provisioned RSA public key".to_owned())
+        })?;
+        Some(setup_session.encrypt_rsa(key, &message)?)
+    } else {
+        None
+    };
 
-    // The signature for the `VerifyRsa` sweep is produced once here (not timed), and
-    // also doubles as the probe call that detects whether `C_Verify` is supported at
-    // all by the loaded provider.
-    let verify_signature = if modes.contains(&ConcreteMode::VerifyRsa) {
-        let key = private_key.ok_or_else(|| {
-            BenchError::Setup("VerifyRsa mode requires a provisioned RSA private key".to_owned())
+    let verify_rsa_signature = if modes.contains(&ConcreteMode::VerifyRsaPkcs) {
+        let key = rsa_private_key.ok_or_else(|| {
+            BenchError::Setup("VerifyRsaPkcs mode requires a provisioned RSA private key".to_owned())
         })?;
         Some(setup_session.sign(key, &message, CKM_SHA256_RSA_PKCS, RSA_2048_SIGNATURE_LEN)?)
     } else {
         None
     };
+    let verify_rsa_pss_signature = if modes.contains(&ConcreteMode::VerifyRsaPss) {
+        let key = rsa_private_key.ok_or_else(|| {
+            BenchError::Setup("VerifyRsaPss mode requires a provisioned RSA private key".to_owned())
+        })?;
+        let mut sig = vec![0_u8; RSA_2048_SIGNATURE_LEN];
+        setup_session.sign_pss_into(key, &message, &mut sig)?;
+        Some(sig)
+    } else {
+        None
+    };
     // Likewise for `VerifyEcdsa`, signing the same 32-byte digest used by `SignEcdsa`.
-    let verify_ecdsa_signature = if modes.contains(&ConcreteMode::VerifyEcdsa) {
+    let verify_ecdsa_signature = if modes.contains(&ConcreteMode::VerifyEcdsaP256) {
         let key = ecdsa_private_key.ok_or_else(|| {
-            BenchError::Setup("VerifyEcdsa mode requires a provisioned EC P-256 key".to_owned())
+            BenchError::Setup("VerifyEcdsaP256 mode requires a provisioned EC P-256 key".to_owned())
         })?;
         Some(setup_session.sign(key, &message, CKM_ECDSA, ECDSA_P256_SIGNATURE_MAX_LEN)?)
     } else {
@@ -541,7 +514,7 @@ pub(crate) fn prepare_ops<'a>(
     for mode in modes {
         let mut setup: Option<Box<SetupOp<'a>>> = None;
         let op: Box<Op<'a>> = match mode {
-            ConcreteMode::Encrypt => {
+            ConcreteMode::EncryptAesCbc => {
                 let Some(secret_key) = secret_key else {
                     continue;
                 };
@@ -551,12 +524,31 @@ pub(crate) fn prepare_ops<'a>(
                     Ok(())
                 })
             }
-            ConcreteMode::Decrypt => {
+            ConcreteMode::EncryptAesGcm => {
                 let Some(secret_key) = secret_key else {
                     continue;
                 };
-                // Checked above: `ciphertext` is `Some` whenever `Decrypt` is requested.
-                let Some(ciphertext) = ciphertext.clone() else {
+                let plaintext = plaintext.clone();
+                Box::new(move |session: &Pkcs11Session<'a>| {
+                    session.encrypt_gcm(secret_key, &plaintext)?;
+                    Ok(())
+                })
+            }
+            ConcreteMode::EncryptRsaPkcs => {
+                let Some(rsa_public_key) = rsa_public_key else {
+                    continue;
+                };
+                let message = message.clone();
+                Box::new(move |session: &Pkcs11Session<'a>| {
+                    session.encrypt_rsa(rsa_public_key, &message)?;
+                    Ok(())
+                })
+            }
+            ConcreteMode::DecryptAesCbc => {
+                let Some(secret_key) = secret_key else {
+                    continue;
+                };
+                let Some(ciphertext) = ciphertext_cbc.clone() else {
                     continue;
                 };
                 Box::new(move |session: &Pkcs11Session<'a>| {
@@ -564,8 +556,32 @@ pub(crate) fn prepare_ops<'a>(
                     Ok(())
                 })
             }
-            ConcreteMode::SignRsa => {
-                let Some(private_key) = private_key else {
+            ConcreteMode::DecryptAesGcm => {
+                let Some(secret_key) = secret_key else {
+                    continue;
+                };
+                let Some(ciphertext) = ciphertext_gcm.clone() else {
+                    continue;
+                };
+                Box::new(move |session: &Pkcs11Session<'a>| {
+                    session.decrypt_gcm(secret_key, &ciphertext)?;
+                    Ok(())
+                })
+            }
+            ConcreteMode::DecryptRsaPkcs => {
+                let Some(rsa_private_key) = rsa_private_key else {
+                    continue;
+                };
+                let Some(ciphertext) = ciphertext_rsa.clone() else {
+                    continue;
+                };
+                Box::new(move |session: &Pkcs11Session<'a>| {
+                    session.decrypt_rsa(rsa_private_key, &ciphertext)?;
+                    Ok(())
+                })
+            }
+            ConcreteMode::SignRsaPkcs => {
+                let Some(private_key) = rsa_private_key else {
                     continue;
                 };
                 let message = message.clone();
@@ -580,7 +596,18 @@ pub(crate) fn prepare_ops<'a>(
                     Ok(())
                 })
             }
-            ConcreteMode::SignEcdsa => {
+            ConcreteMode::SignRsaPss => {
+                let Some(private_key) = rsa_private_key else {
+                    continue;
+                };
+                let message = message.clone();
+                Box::new(move |session: &Pkcs11Session<'a>| {
+                    let mut signature = [0_u8; RSA_2048_SIGNATURE_LEN];
+                    session.sign_pss_into(private_key, &message, &mut signature)?;
+                    Ok(())
+                })
+            }
+            ConcreteMode::SignEcdsaP256 => {
                 let Some(ecdsa_private_key) = ecdsa_private_key else {
                     continue;
                 };
@@ -623,20 +650,17 @@ pub(crate) fn prepare_ops<'a>(
                     Ok(())
                 })
             }
-            ConcreteMode::VerifyRsa => {
-                // Checked above: `verify_signature` is `Some` whenever `VerifyRsa`
-                // is requested.
-                let Some(signature) = verify_signature.clone() else {
+            ConcreteMode::VerifyRsaPkcs => {
+                let Some(signature) = verify_rsa_signature.clone() else {
                     continue;
                 };
                 let public_key =
                     setup_session.find_first_by_class_and_key_type(CKO_PUBLIC_KEY, CKK_RSA)?;
                 match setup_session.verify(public_key, &message, &signature, CKM_SHA256_RSA_PKCS) {
-                    Ok(()) => { /* supported: fall through to the closure below */ }
+                    Ok(()) => {}
                     Err(e) if e.is_function_not_supported() => {
                         eprintln!(
-                            "[bench:load-pkcs11] '{}' — C_Verify is not implemented by the \
-                             loaded provider (CKR_FUNCTION_NOT_SUPPORTED); skipping",
+                            "[bench:load-pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
                             mode.label()
                         );
                         continue;
@@ -648,9 +672,18 @@ pub(crate) fn prepare_ops<'a>(
                     session.verify(public_key, &message, &signature, CKM_SHA256_RSA_PKCS)
                 })
             }
-            ConcreteMode::VerifyEcdsa => {
-                // Checked above: `verify_ecdsa_signature` is `Some` whenever
-                // `VerifyEcdsa` is requested.
+            ConcreteMode::VerifyRsaPss => {
+                let Some(signature) = verify_rsa_pss_signature.clone() else {
+                    continue;
+                };
+                let public_key =
+                    setup_session.find_first_by_class_and_key_type(CKO_PUBLIC_KEY, CKK_RSA)?;
+                let message = message.clone();
+                Box::new(move |session: &Pkcs11Session<'a>| {
+                    session.verify_pss(public_key, &message, &signature)
+                })
+            }
+            ConcreteMode::VerifyEcdsaP256 => {
                 let Some(signature) = verify_ecdsa_signature.clone() else {
                     continue;
                 };
@@ -660,11 +693,10 @@ pub(crate) fn prepare_ops<'a>(
                     &P256_EC_PARAMS_DER,
                 )?;
                 match setup_session.verify(public_key, &message, &signature, CKM_ECDSA) {
-                    Ok(()) => { /* supported: fall through to the closure below */ }
+                    Ok(()) => {}
                     Err(e) if e.is_function_not_supported() => {
                         eprintln!(
-                            "[bench:load-pkcs11] '{}' — C_Verify is not implemented by the \
-                             loaded provider (CKR_FUNCTION_NOT_SUPPORTED); skipping",
+                            "[bench:load-pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
                             mode.label()
                         );
                         continue;
@@ -677,8 +709,6 @@ pub(crate) fn prepare_ops<'a>(
                 })
             }
             ConcreteMode::VerifySecp256k1 => {
-                // Checked above: `verify_secp256k1_signature` is `Some` whenever
-                // `VerifySecp256k1` is requested.
                 let Some(signature) = verify_secp256k1_signature.clone() else {
                     continue;
                 };
@@ -688,11 +718,10 @@ pub(crate) fn prepare_ops<'a>(
                     &SECP256K1_EC_PARAMS_DER,
                 )?;
                 match setup_session.verify(public_key, &message, &signature, CKM_ECDSA) {
-                    Ok(()) => { /* supported: fall through to the closure below */ }
+                    Ok(()) => {}
                     Err(e) if e.is_function_not_supported() => {
                         eprintln!(
-                            "[bench:load-pkcs11] '{}' — C_Verify is not implemented by the \
-                             loaded provider (CKR_FUNCTION_NOT_SUPPORTED); skipping",
+                            "[bench:load-pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
                             mode.label()
                         );
                         continue;
@@ -705,19 +734,16 @@ pub(crate) fn prepare_ops<'a>(
                 })
             }
             ConcreteMode::VerifyEdDsa => {
-                // Checked above: `eddsa_verify_signature` is `Some` whenever
-                // `VerifyEdDsa` is requested.
                 let Some(signature) = eddsa_verify_signature.clone() else {
                     continue;
                 };
                 let public_key = setup_session
                     .find_first_by_class_and_key_type(CKO_PUBLIC_KEY, CKK_EC_EDWARDS)?;
                 match setup_session.verify(public_key, &message, &signature, CKM_EDDSA) {
-                    Ok(()) => { /* supported: fall through to the closure below */ }
+                    Ok(()) => {}
                     Err(e) if e.is_function_not_supported() => {
                         eprintln!(
-                            "[bench:load-pkcs11] '{}' — C_Verify is not implemented by the \
-                             loaded provider (CKR_FUNCTION_NOT_SUPPORTED); skipping",
+                            "[bench:load-pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
                             mode.label()
                         );
                         continue;
@@ -731,6 +757,18 @@ pub(crate) fn prepare_ops<'a>(
             }
             ConcreteMode::KeyCreation => {
                 Box::new(move |session: &Pkcs11Session<'a>| session.generate_and_destroy_key())
+            }
+            ConcreteMode::Batch => {
+                let Some(secret_key) = secret_key else {
+                    continue;
+                };
+                let plaintext = plaintext.clone();
+                Box::new(move |session: &Pkcs11Session<'a>| {
+                    for _ in 0..10 {
+                        session.encrypt(secret_key, &plaintext)?;
+                    }
+                    Ok(())
+                })
             }
         };
         prepared.push(PreparedOp {

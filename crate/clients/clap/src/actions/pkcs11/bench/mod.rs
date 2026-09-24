@@ -25,16 +25,21 @@ pub(crate) mod overhead;
 pub(crate) mod report;
 pub(crate) mod setup;
 
-use std::{env, path::PathBuf, sync::Mutex, time::Duration};
+use std::{
+    env,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
+use crate::actions::bench::types::{BenchFilter, BenchMode};
+use crate::error::{KmsCliError, result::KmsCliResult};
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 use criterion_bench::{BenchSpeed, CriterionRunConfig, PayloadMode, run_criterion};
 pub(crate) use error::{BenchError, BenchResult};
-use load::{BenchMode, LoadResult, SweepConfig, run_all};
+use load::{LoadResult, SweepConfig, expand_bench_mode, run_all};
 use loader::{Pkcs11Lib, Pkcs11Session};
-
-use crate::error::{KmsCliError, result::KmsCliResult};
 
 // Thread-safe configuration for CKMS_CONF environment variable
 static CKMS_CONF_LOCK: Mutex<()> = Mutex::new(());
@@ -62,6 +67,18 @@ pub struct Pkcs11BenchAction {
     /// Which operation family to benchmark.
     #[arg(long, value_enum, default_value_t = BenchMode::All)]
     pub(crate) mode: BenchMode,
+    /// Algorithm and key-size filtering options
+    #[clap(flatten)]
+    pub(crate) filter: BenchFilter,
+
+    /// Benchmark crypto operations executed directly on the HSM (`CryptoOracle`)
+    /// via HSM-resident keys (`hsm::<slot>::...`), instead of software keys.
+    #[arg(long, short = 'd')]
+    pub(crate) delegated: bool,
+
+    /// HSM slot ID used to build `hsm::<slot>::` unique identifiers with `--delegated`.
+    #[arg(long, default_value_t = 0)]
+    pub(crate) hsm_slot: usize,
 
     /// Comma-separated concurrency levels to sweep, e.g. "1,2,4,8,16".
     #[arg(long, default_value = "1,2,4,8,16")]
@@ -185,10 +202,10 @@ impl Pkcs11BenchAction {
             cooldown_time: Duration::from_secs(cooldown),
         };
 
-        let modes = self.mode.expand();
+        let modes = expand_bench_mode(self.mode, Some(&self.filter));
         if modes.is_empty() {
             return Err(KmsCliError::Default(
-                "EdDSA benchmark modes require the non-fips feature".to_owned(),
+                "No benchmark operations matched the selected mode and filter".to_owned(),
             ));
         }
 
@@ -214,6 +231,8 @@ impl Pkcs11BenchAction {
         let overhead = self.overhead;
         let overhead_payload_size = self.overhead_payload_size;
         let overhead_payload_mode = self.overhead_payload_mode;
+        let delegated = self.delegated;
+        let hsm_slot = self.hsm_slot;
 
         tokio::task::spawn_blocking(move || -> KmsCliResult<()> {
             let rt = tokio::runtime::Runtime::new()
@@ -226,6 +245,8 @@ impl Pkcs11BenchAction {
                     &client,
                     provision_ed25519,
                     provision_secp256k1,
+                    delegated,
+                    hsm_slot,
                 ))
                 .map_err(|e| KmsCliError::Default(e.to_string()))?;
 
@@ -252,19 +273,20 @@ impl Pkcs11BenchAction {
                     .max()
                     .unwrap_or(1)
             };
+            let hsm_prefix = delegated.then(|| Arc::<str>::from(format!("hsm::{hsm_slot}")));
             let pool = (0..pool_size)
-                .map(|_| Pkcs11Session::open(&lib))
+                .map(|_| Pkcs11Session::open(&lib, hsm_prefix.clone()))
                 .collect::<BenchResult<Vec<_>>>()
                 .map_err(|e| KmsCliError::Default(e.to_string()))?;
 
-            let results = run_all(modes, &pool, &sweep_config)
+            let results = run_all(&modes, &pool, &sweep_config)
                 .map_err(|e| KmsCliError::Default(e.to_string()))?;
             print_results(&results);
             report::write_load_json(&results).map_err(|e| KmsCliError::Default(e.to_string()))?;
 
             if criterion {
                 run_criterion(
-                    modes,
+                    &modes,
                     &pool,
                     &rt,
                     &client,
@@ -289,7 +311,9 @@ impl Pkcs11BenchAction {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_concurrency;
+    use clap::Parser;
+
+    use super::{Pkcs11BenchAction, parse_concurrency};
 
     #[test]
     fn rejects_zero_concurrency() {
@@ -307,5 +331,23 @@ mod tests {
     #[test]
     fn parses_positive_concurrency_levels() {
         assert_eq!(parse_concurrency("1, 2,8").ok(), Some(vec![1, 2, 8]));
+    }
+
+    #[test]
+    fn parses_delegated_hsm_slot() {
+        let action = Pkcs11BenchAction::try_parse_from([
+            "bench",
+            "--dll",
+            "/tmp/libcosmian_pkcs11.so",
+            "--delegated",
+            "--hsm-slot",
+            "42",
+        ]);
+        assert!(action.is_ok());
+        let Ok(action) = action else {
+            return;
+        };
+        assert!(action.delegated);
+        assert_eq!(action.hsm_slot, 42);
     }
 }

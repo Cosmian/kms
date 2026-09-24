@@ -26,6 +26,7 @@ use ckms::{
                     DigitalSignatureAlgorithm, KeyFormatType, QueryFunction, RecommendedCurve, Tag,
                     UniqueIdentifier, ValidityIndicator,
                 },
+                requests::symmetric_key_create_request,
             },
         },
         cosmian_kms_client::{
@@ -581,28 +582,43 @@ pub(crate) async fn kms_import_symmetric_key_async(
             key_wrapping_data: None,
         },
     });
-    let response = kms_rest_client
-        .import(Import {
-            unique_identifier: label
-                .map(|l| UniqueIdentifier::TextString(l.to_owned()))
-                .unwrap_or_default(),
-            object_type: cosmian_kmip::kmip_2_1::kmip_objects::ObjectType::SymmetricKey,
-            replace_existing: Some(true),
-            key_wrap_type: None,
-            attributes: attributes.clone(),
-            object: object.clone(),
-        })
-        .await?;
+    let is_hsm_key = label.is_some_and(|label| label.starts_with("hsm::"));
+    let remote_id = if is_hsm_key {
+        let request = symmetric_key_create_request(
+            vendor_id,
+            label.map(|label| UniqueIdentifier::TextString(label.to_owned())),
+            key_length * 8,
+            cryptographic_algorithm,
+            &tags,
+            sensitive,
+            None,
+        )?;
+        kms_rest_client.create(request).await?.unique_identifier
+    } else {
+        let response = kms_rest_client
+            .import(Import {
+                unique_identifier: label
+                    .map(|l| UniqueIdentifier::TextString(l.to_owned()))
+                    .unwrap_or_default(),
+                object_type: cosmian_kmip::kmip_2_1::kmip_objects::ObjectType::SymmetricKey,
+                replace_existing: Some(true),
+                key_wrap_type: None,
+                attributes: attributes.clone(),
+                object: object.clone(),
+            })
+            .await?;
 
-    // Activate the key so it moves from PreActive → Active state and can be used for Encrypt/Decrypt.
-    kms_rest_client
-        .activate(Activate {
-            unique_identifier: response.unique_identifier.clone(),
-        })
-        .await?;
+        // Imported software keys start PreActive and must be activated before use.
+        kms_rest_client
+            .activate(Activate {
+                unique_identifier: response.unique_identifier.clone(),
+            })
+            .await?;
+        response.unique_identifier
+    };
 
     let res = KmsObject {
-        remote_id: response.unique_identifier.to_string(),
+        remote_id: remote_id.to_string(),
         object,
         attributes,
         other_tags: tags,

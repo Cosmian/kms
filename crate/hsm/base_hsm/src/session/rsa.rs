@@ -1,4 +1,4 @@
-use std::ptr;
+use std::{collections::HashSet, ptr};
 
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_PTR,
@@ -10,6 +10,8 @@ use pkcs11_sys::{
 };
 
 use crate::{HResult, hsm_call, session::Session};
+
+use super::serialize_tagged_label;
 
 #[derive(Debug, Clone, Copy)]
 pub enum RsaKeySize {
@@ -45,6 +47,7 @@ impl Session {
         pk_id: &[u8],
         key_size: RsaKeySize,
         sensitive: bool,
+        tags: Option<&HashSet<String>>,
     ) -> HResult<(CK_OBJECT_HANDLE, CK_OBJECT_HANDLE)> {
         let key_type = CKK_RSA;
         let true_value = CK_TRUE;
@@ -59,6 +62,10 @@ impl Session {
         // A sensitive private key must not be extractable: derive CKA_EXTRACTABLE
         // from the `sensitive` flag instead of hard-coding it to CK_TRUE.
         let extractable = if sensitive { CK_FALSE } else { CK_TRUE };
+        let tagged_sk_label = serialize_tagged_label(sk_id, tags)?;
+        let sk_label = tagged_sk_label.as_deref().unwrap_or(sk_id);
+        let tagged_pk_label = serialize_tagged_label(pk_id, tags)?;
+        let pk_label = tagged_pk_label.as_deref().unwrap_or(pk_id);
         let mut pub_key_template = vec![
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
@@ -105,8 +112,8 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_LABEL,
-                pValue: pk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
-                ulValueLen: CK_ULONG::try_from(pk_id.len())?,
+                pValue: pk_label.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: CK_ULONG::try_from(pk_label.len())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_ID,
@@ -160,8 +167,8 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_LABEL,
-                pValue: sk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
-                ulValueLen: CK_ULONG::try_from(sk_id.len())?,
+                pValue: sk_label.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: CK_ULONG::try_from(sk_label.len())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_ID,

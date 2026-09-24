@@ -625,12 +625,10 @@ PYEOF
 #   Protocols/Methodology sections keep the generic software-bench text but
 #   are prefixed with a short note that the KEK (not the benchmarked keys)
 #   is HSM-resident. Ignored if is_hsm is "true".
-#   is_pkcs11 ("true"/"false", default "false"): when "true" (and is_hsm and
-#   is_hsm_kek are both "false"), passes --pkcs11 to plot_version_compare.py
-#   so the report's Protocols/Methodology sections describe the real
-#   dlopen()-based Cryptoki C API benchmark (see `bench/load-pkcs11`) instead
-#   of the generic KMIP-wire-protocol text. Ignored if is_hsm or is_hsm_kek
-#   is "true".
+#   is_pkcs11 ("true"/"false", default "false"): when "true", passes
+#   --pkcs11 to plot_version_compare.py so the report describes the real
+#   dlopen()-based Cryptoki C API benchmark. May be combined with is_hsm=true
+#   for PKCS#11 operations delegated to HSM-resident keys.
 # Reads:  $CRITERION_HOME/load_*.json  (load tests)
 #         $CRITERION_HOME/criterion.json  (criterion benchmarks)
 #         $CRITERION_HOME/pkcs11_overhead.json  (PKCS#11 overhead breakdown)
@@ -698,7 +696,8 @@ bench_generate_report() {
     plot_args+=("--hsm")
   elif [ "${is_hsm_kek}" = "true" ]; then
     plot_args+=("--kek")
-  elif [ "${is_pkcs11}" = "true" ]; then
+  fi
+  if [ "${is_pkcs11}" = "true" ]; then
     plot_args+=("--pkcs11")
   fi
   python3 "${plot_script}" "${plot_args[@]}" || {
