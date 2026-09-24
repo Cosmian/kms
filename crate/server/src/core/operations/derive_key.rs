@@ -138,17 +138,14 @@ async fn derive_key_symmetric(
         )))
     };
 
-    // Check that the user has permission to derive from the base key
     let has_permission =
         user_has_permission(user, Some(&base_key_owm), &KmipOperation::DeriveKey, kms).await?;
-
     if !has_permission {
         kms_bail!(KmsError::Unauthorized(format!(
             "User {user} does not have DeriveKey permission on object {base_key_handle}"
         )));
     }
 
-    // Unwrap the base key if it's wrapped
     base_key_owm.set_object(
         Box::pin(kms.get_unwrapped(base_key_owm.id(), base_key_owm.object(), user))
             .await
@@ -185,7 +182,6 @@ async fn derive_key_symmetric(
         KmsError::InvalidRequest("DeriveKey: Invalid cryptographic length".to_owned())
     })? / 8;
 
-    // For symmetric keys, cryptographic algorithm must also be specified
     if request.object_type == ObjectType::SymmetricKey
         && request.attributes.cryptographic_algorithm.is_none()
     {
@@ -194,7 +190,6 @@ async fn derive_key_symmetric(
         ));
     }
 
-    // Get the hashing algorithm from cryptographic parameters, default to SHA-256
     let hashing_algorithm = request
         .derivation_parameters
         .cryptographic_parameters
@@ -202,7 +197,6 @@ async fn derive_key_symmetric(
         .and_then(|cp| cp.hashing_algorithm)
         .unwrap_or(HashingAlgorithm::SHA256);
 
-    // Derive the new key based on the method
     let derived_key_bytes = match request.derivation_method {
         DerivationMethod::PBKDF2 => {
             let salt = request
