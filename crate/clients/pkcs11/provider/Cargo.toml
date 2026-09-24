@@ -13,6 +13,12 @@ description = "HSM PKCS#11 provider for Cosmian KMS"
 [lints]
 workspace = true
 
+[package.metadata.cargo-machete]
+ignored = ["winresource"]
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
 [lib]
 name = "cosmian_pkcs11"
 crate-type = ["rlib", "cdylib"]
