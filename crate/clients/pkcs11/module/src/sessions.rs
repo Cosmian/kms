@@ -230,6 +230,27 @@ impl Session {
                 _ => return self.load_find_context_by_class(attributes, pkcs11_sys::CKO_PROFILE),
             }
         }
+        if attributes
+            .get(crate::core::attribute::AttributeType::ProfileId)
+            .is_some()
+        {
+            // A template combining `CKA_PROFILE_ID` with an explicit, *different*
+            // `CKA_CLASS` (e.g. `CKO_PRIVATE_KEY`) asks for an object that is
+            // simultaneously a profile object and something else: no object in this
+            // module's model ever satisfies both (profile objects carry no other
+            // class-identifying attributes, and non-profile objects never carry
+            // `CKA_PROFILE_ID`), so it correctly yields no matches instead of being
+            // incorrectly routed to the profile-only fast path below, which would
+            // otherwise ignore the requested class and any other template attributes
+            // entirely.
+            match attributes.get_class() {
+                Ok(class) if class != pkcs11_sys::CKO_PROFILE => {
+                    self.clear_find_objects_ctx();
+                    return Ok(());
+                }
+                _ => return self.load_find_context_by_class(attributes, pkcs11_sys::CKO_PROFILE),
+            }
+        }
         // Find all objects
         for object in backend()?.find_all_objects()? {
             self.update_find_objects_context(object)?;
@@ -631,8 +652,11 @@ impl Session {
                 return Err(ModuleError::BufferTooSmall);
             }
         }
-        // Variable-length algorithms (currently ECDSA) must still sign to discover
-        // the exact encoded length. The signature produced on the FIRST call that
+        let data = data
+            .or(sign_ctx.payload.as_deref())
+            .ok_or(ModuleError::OperationNotInitialized(0))?;
+        // Variable-length algorithms (currently ECDSA) must sign to discover
+        // the exact encoded length. The signature produced on the first call that
         // reaches this point (whether a NULL-buffer length query or a direct
         // one-call C_Sign) is cached in `pending_signature` and reused by every
         // subsequent call for this same operation. Re-signing on a later call
@@ -644,9 +668,6 @@ impl Session {
         let signature = if let Some(cached) = sign_ctx.pending_signature.clone() {
             cached
         } else {
-            let data = data
-                .or(sign_ctx.payload.as_deref())
-                .ok_or(ModuleError::OperationNotInitialized(0))?;
             let private_key_sign = profiling::phase(SignPhase::PrivateKeySign);
             let signature = match sign_ctx.private_key.sign(&sign_ctx.algorithm, data) {
                 Ok(sig) => sig,

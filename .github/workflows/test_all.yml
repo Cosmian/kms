@@ -339,7 +339,7 @@ jobs:
         hsm-type:
           - proteccio
           - crypt2pay
-          # - aws-cloudhsm
+          - aws-cloudhsm
         # non-fips only: parallel connections on proteccio are not supported, non-fips is
         # sufficient for crypt2pay, and aws-cloudhsm FIPS-mode compatibility is not yet
         # confirmed against the cluster's supported mechanism list.
