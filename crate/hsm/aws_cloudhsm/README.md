@@ -78,8 +78,9 @@ mise run test:hsm-aws-cloudhsm --variant non-fips
 
 This sources `.github/reusable_scripts/prepare_aws_cloudhsm.sh`, which installs the CloudHSM
 PKCS#11 client package, fetches the cluster CA certificate via the AWS CLI, registers the
-cluster with `configure-pkcs11 add-cluster`, and runs the full
-`aws_cloudhsm_pkcs11_loader` test battery against it.
+cluster with `configure-pkcs11 add-cluster`, and runs two test suites against it: the
+low-level `aws_cloudhsm_pkcs11_loader` PKCS#11 session battery, then `cosmian_kms_server`'s
+`tests::hsm::test_hsm_all` (the real KMIP `Create`/`HsmStore` path used by clients).
 
 ## Manual validation (without CI cluster access)
 
