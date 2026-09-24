@@ -1610,6 +1610,7 @@ version = "5.27.1"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
+ "cosmian_kms_access",
  "cosmian_logger",
  "mockall",
  "num-bigint-dig",
@@ -1686,6 +1687,7 @@ dependencies = [
  "actix-tls",
  "actix-web",
  "async-recursion",
+ "async-trait",
  "base64 0.22.1",
  "chrono",
  "clap",
