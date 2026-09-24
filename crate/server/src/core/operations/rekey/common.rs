@@ -523,6 +523,13 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
         })
         .collect();
     kms.database.atomic(user, &persist_ops).await?;
+    for r in replacements.as_ref() {
+        if let Some(rotate_name) = &r.attributes.rotate_name {
+            kms.database
+                .invalidate_rotate_name_cache(rotate_name, user)
+                .await;
+        }
+    }
     op.finalize_dependants(kms, user, &candidates, &replacements)
         .await?;
     Ok(op.build_response(&replacements))

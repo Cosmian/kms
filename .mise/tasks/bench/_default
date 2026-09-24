@@ -71,7 +71,7 @@ if [ "${REMOTE_MODE}" = "false" ]; then
   run_bench "bench:load-hsm" "${TASK_DIR}/load-hsm" "${COMMON_ARGS[@]}"
 
   # 3. mise bench:load-hsm --criterion --delegated
-  run_bench "bench:load-hsm --delegated" "${TASK_DIR}/load-hsm" "${COMMON_ARGS[@]}" --delegated
+  run_bench "bench:load-hsm --delegated" "${}/load-hsm" "${COMMON_ARGS[@]}" --delegated
 else
   print_warning "Skipping bench:load-hsm (requires local HSM control)"
   print_warning "Skipping bench:load-hsm --delegated (requires local HSM control)"
