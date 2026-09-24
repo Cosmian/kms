@@ -237,6 +237,23 @@ jobs:
       PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # Job 2b — Sync log-reference.md with source call-sites.
+  #
+  # Delegated to the local reusable workflow update-log-index.yml. Sequenced
+  # after update-nix-hashes so the two do not push to the release branch
+  # concurrently (both still rebase before pushing, but this avoids the race
+  # in the common case).
+  # ─────────────────────────────────────────────────────────────────────────────
+  update-log-index:
+    name: Update log index
+    needs: [prepare, update-nix-hashes]
+    uses: ./.github/workflows/update-log-index.yml
+    with:
+      ref: ${{ needs.prepare.outputs.release_branch }}
+    secrets:
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # Job 3 — Trigger packaging CI on the release branch and wait for completion
   #
   # packaging.yml supports `workflow_dispatch` which allows us to trigger it on
@@ -248,7 +265,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   trigger-packaging:
     name: Trigger & await packaging CI
-    needs: [prepare, update-nix-hashes]
+    needs: [prepare, update-nix-hashes, update-log-index]
     # nix-update-hashes.yml runs a Linux+macOS matrix internally; GitHub waits
     # for all instances before starting trigger-packaging.
     runs-on: ubuntu-latest
