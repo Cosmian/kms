@@ -4,13 +4,12 @@
 
 use std::sync::{Arc, atomic::AtomicU64};
 
-use cosmian_kms_access::audit::{AuditEventDraft, AuditResult};
-use cosmian_kms_interfaces::AuditSink;
+use cosmian_kms_access::audit::{AuditEventDraft, AuditResult, audit_now};
+use cosmian_kms_interfaces::{AuditSink, WriteOutcome};
 use cosmian_logger::{debug, error};
-use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
-use super::store::WriterMsg;
+use super::{SIZE_CAP_SENTINEL_OPERATION, store::WriterMsg};
 
 /// Minimum interval between capacity warnings.
 const CAPPED_DEBUG_LOG_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
@@ -56,12 +55,7 @@ pub(super) async fn writer_loop<S: AuditSink>(
             let sentinel = make_eviction_sentinel(n_dropped);
             next_id = write_draft_to_chain(&mut sink, sentinel, next_id, &mut prev_hash).await;
         }
-        if sink.is_write_capacity_exceeded() {
-            // The sentinel write alone just crossed the cap: writing the real draft too
-            // would overshoot the documented "one final event may cross" rule by a
-            // second event. Count it as dropped so a future sentinel reports it.
-            dropped_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        } else {
+        if !sink.is_write_capacity_exceeded() {
             next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut prev_hash).await;
         }
     }
@@ -73,47 +67,90 @@ pub(super) async fn writer_loop<S: AuditSink>(
     sink
 }
 
-/// Writes one draft and advances the chain head only on success.
+/// Writes one draft and advances the chain head only on success. If the sink reports
+/// that the requested slot was already durably occupied by a valid link in this same
+/// chain (see [`WriteOutcome::Resynced`] — e.g. a prior write whose acknowledgement was
+/// lost), the same draft is retried at the corrected position instead of being dropped
+/// or permanently wedging the chain on a slot nothing will ever fill again.
 pub(super) async fn write_draft_to_chain<S: AuditSink>(
     sink: &mut S,
     draft: AuditEventDraft,
     next_id: i64,
     prev_hash: &mut [u8; 32],
 ) -> i64 {
-    let event = draft.finalize(next_id, *prev_hash);
+    // A resync can only ever move `id` forward, and the composite primary key means at
+    // most one is ever expected per draft; this bound only guarantees termination
+    // against a pathologically/adversarially pre-filled range of slots.
+    const MAX_RESYNC_ATTEMPTS: u32 = 8;
 
-    match sink.write_event_atomic(&event).await {
-        Ok(()) => {
-            *prev_hash = event.row_hash;
-            next_id.checked_add(1).unwrap_or_else(|| {
-                error!(
-                    "AuditFileStore: id counter overflow at i64::MAX — \
-                     audit logging stopped. Rotate the log file and restart."
-                );
-                next_id
-            })
-        }
-        Err(e) => {
-            error!(
-                "AuditFileStore: failed to write event id={}: {e} — event dropped",
-                event.id
-            );
-            // Reuse this chain position after a failed write.
-            next_id
+    let mut draft = draft;
+    let mut writing_size_cap_sentinel = false;
+    let mut id = next_id;
+    let mut ph = *prev_hash;
+    for _ in 0..MAX_RESYNC_ATTEMPTS {
+        let event = draft.clone().finalize(id, ph);
+        match sink.write_event_atomic(&event).await {
+            Ok(WriteOutcome::Written) => {
+                *prev_hash = event.row_hash;
+                return id.checked_add(1).unwrap_or_else(|| {
+                    error!(
+                        "AuditFileStore: id counter overflow at i64::MAX — \
+                         audit logging stopped. Rotate the log file and restart."
+                    );
+                    id
+                });
+            }
+            Ok(WriteOutcome::CapacityReached) if !writing_size_cap_sentinel => {
+                draft = make_size_cap_sentinel();
+                writing_size_cap_sentinel = true;
+            }
+            Ok(WriteOutcome::CapacityReached) => {
+                error!("AuditFileStore: sink rejected size-cap sentinel at id={id}");
+                return id;
+            }
+            Ok(WriteOutcome::Resynced(head)) => {
+                id = head.next_id;
+                ph = head.prev_hash;
+            }
+            Err(e) => {
+                error!("AuditFileStore: failed to write event id={id}: {e} — event dropped");
+                // Reuse this chain position after a failed write.
+                return id;
+            }
         }
     }
+    error!("AuditFileStore: exhausted resync attempts at id={id} — event dropped");
+    id
 }
 
 /// Builds a chained sentinel recording events dropped by channel saturation.
 fn make_eviction_sentinel(n_dropped: u64) -> AuditEventDraft {
     AuditEventDraft {
-        timestamp: OffsetDateTime::now_utc(),
+        // Every other production draft uses `audit_now()`, truncated to the microsecond
+        // resolution PostgreSQL's TIMESTAMPTZ stores — a nanosecond timestamp here would
+        // re-hash differently after a PostgreSQL round trip and falsely report tampering.
+        timestamp: audit_now(),
         operation: "audit:eviction".to_owned(),
         user: "server".to_owned(),
         object_uid: None,
         algorithm: None,
         client_ip: None,
         result: AuditResult::Failure(format!("{n_dropped} events dropped (channel full)")),
+        duration_ms: 0,
+        request_id: None,
+        details: None,
+    }
+}
+
+fn make_size_cap_sentinel() -> AuditEventDraft {
+    AuditEventDraft {
+        timestamp: audit_now(),
+        operation: SIZE_CAP_SENTINEL_OPERATION.to_owned(),
+        user: "server".to_owned(),
+        object_uid: None,
+        algorithm: None,
+        client_ip: None,
+        result: AuditResult::Failure("audit file size limit reached".to_owned()),
         duration_ms: 0,
         request_id: None,
         details: None,

@@ -21,6 +21,7 @@ use std::{
 use cosmian_kms_access::audit::{
     AuditEvent, AuditEventDraft, AuditResult, verify_chain_link, verify_event,
 };
+use cosmian_kms_interfaces::SealReason;
 use cosmian_logger::{debug, error};
 use time::OffsetDateTime;
 
@@ -31,28 +32,6 @@ use crate::{error::KmsError, result::KResult};
 /// at startup.  64 KiB comfortably covers many events; a single serialised
 /// `AuditEventFull` is typically <2 KiB.
 const TAIL_WINDOW: u64 = 65_536;
-
-/// Why a row triggered seal-and-roll instead of resuming or truncating.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SealReason {
-    /// A complete, well-formed row whose `row_hash` doesn't match its own bytes.
-    HashMismatch,
-    /// Bytes that don't deserialize as an `AuditEvent` at all.
-    Unparsable,
-    /// A valid, verified row whose `id` is `i64::MAX` — incrementing it for the next
-    /// event would overflow, so recovery cannot safely resume the chain in place.
-    IdOverflow,
-}
-
-impl SealReason {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::HashMismatch => "hash_mismatch",
-            Self::Unparsable => "unparsable",
-            Self::IdOverflow => "id_overflow",
-        }
-    }
-}
 
 /// Result of parsing+verifying one candidate JSONL row.
 enum RowCheck {
@@ -263,7 +242,12 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
                     },
                 }
             }
-            RowCheck::Verified(event) | RowCheck::HashMismatch(event) => TailOutcome::SealAndRoll {
+            RowCheck::Verified(event) => TailOutcome::SealAndRoll {
+                reason: SealReason::BrokenLink,
+                claimed_last_id: Some(event.id),
+                failure_offset: last_start,
+            },
+            RowCheck::HashMismatch(event) => TailOutcome::SealAndRoll {
                 reason: SealReason::HashMismatch,
                 claimed_last_id: Some(event.id),
                 failure_offset: last_start,
@@ -282,7 +266,7 @@ fn classify_tail(path: &Path, previous_event: Option<&AuditEvent>) -> KResult<Ta
     if let RowCheck::Verified(event) = check_row(&last_line) {
         return Ok(if !verify_chain_link(&event, previous_event) {
             TailOutcome::SealAndRoll {
-                reason: SealReason::HashMismatch,
+                reason: SealReason::BrokenLink,
                 claimed_last_id: Some(event.id),
                 failure_offset: last_start,
             }
@@ -403,7 +387,7 @@ fn verify_interior_chain(path: &Path) -> KResult<InteriorChainVerification> {
                             return Ok(InteriorChainVerification {
                                 previous_event: None,
                                 failure: Some(InteriorChainFailure {
-                                    reason: SealReason::HashMismatch,
+                                    reason: SealReason::BrokenLink,
                                     claimed_last_id: Some(event.id),
                                     failure_offset: pending_offset,
                                 }),

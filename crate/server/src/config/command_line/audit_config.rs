@@ -29,9 +29,9 @@ pub struct AuditFileConfig {
 
     /// Stops all further writes once the audit file reaches this many bytes.
     ///
-    /// The event that pushes the file to or past this size is still persisted; every event
-    /// after that is dropped (subject to `--audit-failure-mode`) until the log is remediated
-    /// and the KMS is restarted.
+    /// The event that would reach this size is replaced by a final
+    /// `audit:size-cap-reached` event. Later events are dropped according to
+    /// `--audit-failure-mode` until the log is remediated and the KMS is restarted.
     ///
     /// Omitted (the default) means unlimited. Must be > 0 when set.
     #[clap(
@@ -41,6 +41,47 @@ pub struct AuditFileConfig {
     )]
     #[serde(rename = "max_size_bytes")]
     pub audit_file_max_size_bytes: Option<u64>,
+}
+
+/// Configuration for the `PostgreSQL` audit log sub-section.
+#[derive(Debug, Default, Args, Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct AuditPostgresConfig {
+    /// `PostgreSQL` connection URL for the audit database.
+    ///
+    /// When set, audit events are written to this `PostgreSQL` database instead of the
+    /// JSONL file — backend selection is config-time only, based solely on whether this
+    /// is set; there is no runtime fallback between the two: a connectivity failure at
+    /// startup still aborts the server. If `--audit-file-path` is also set, it is only
+    /// used to log a warning that it's ignored (or, on connection failure, that it is
+    /// NOT used as a fallback). This database MUST be a different database than the
+    /// main object-storage database (`--database-url`) when that database is also
+    /// `PostgreSQL` — the server refuses to start otherwise, since sharing one database
+    /// would let the KMS's own object-store role bypass the audit database's
+    /// append-only grants.
+    #[clap(
+        long = "audit-postgres-url",
+        env = "KMS_AUDIT_POSTGRES_URL",
+        verbatim_doc_comment
+    )]
+    #[serde(rename = "url")]
+    pub audit_postgres_url: Option<String>,
+
+    /// Identifies this KMS instance's audit hash chain when using the `PostgreSQL`
+    /// backend.
+    ///
+    /// Must be STABLE across restarts and UNIQUE per KMS instance sharing the same audit
+    /// database — a second instance reusing an `instance_id` is rejected at startup by an
+    /// advisory-lock check, before any event is written. Required (no default) when
+    /// `--audit-postgres-url` is set. Kubernetes deployments should set this from the
+    /// `StatefulSet` ordinal or the downward API, not an ephemeral pod hostname.
+    #[clap(
+        long = "audit-instance-id",
+        env = "KMS_AUDIT_INSTANCE_ID",
+        verbatim_doc_comment
+    )]
+    #[serde(rename = "instance_id")]
+    pub audit_instance_id: Option<String>,
 }
 
 /// Configuration for the structured audit event pipeline.
@@ -73,6 +114,10 @@ pub struct AuditConfig {
     #[clap(flatten)]
     #[serde(rename = "file")]
     pub file: AuditFileConfig,
+
+    #[clap(flatten)]
+    #[serde(rename = "postgres")]
+    pub postgres: AuditPostgresConfig,
 
     /// Capacity of the bounded in-memory channel between request threads and the
     /// audit writer task.

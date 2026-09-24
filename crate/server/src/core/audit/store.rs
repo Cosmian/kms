@@ -1,7 +1,21 @@
-//! Non-blocking handle to the file audit writer.
+//! `AuditStore`: a cheaply cloneable handle to the audit writer task.
 //!
-//! One task owns the sink and chain head. Producers communicate through a bounded
-//! channel; overflowed events are dropped and counted.
+//! * `AuditStore` is a cheaply cloneable handle (wraps a channel `Sender`) shared by
+//!   every backend — File (`start_with_max_size`) and `PostgreSQL` (`start_postgres`).
+//! * A single background tokio task is the **sole owner** of the sink (see
+//!   `file_sink::FileSink` / `cosmian_kms_server_database::PgAuditSink`), the monotonic
+//!   event counter, and the previous-row hash. This design avoids any mutex around the
+//!   sink and guarantees write order under concurrent requests.
+//! * Initialization policy intentionally differs per backend: the File backend always
+//!   starts immediately (`start_with_max_size()` returns synchronously; recovery and lock
+//!   acquisition happen inside the spawned task, self-healing in the background — see
+//!   `FileSink::resume`). The `PostgreSQL` backend connects, acquires its advisory lock,
+//!   and verifies the chain SYNCHRONOUSLY inside `start_postgres()` — a failure there
+//!   propagates up to `Kms::create_audit_store`, which falls back to the file backend
+//!   (logging a warning) instead of aborting server startup.
+//! * The middleware calls `enqueue()` which is a non-blocking `try_send`.  If the
+//!   channel is full (beyond the configured capacity) the draft is silently dropped
+//!   and an error is logged — we never block the request path.
 
 use std::{
     path::Path,
@@ -38,7 +52,7 @@ pub(super) enum WriterMsg {
 
 /// Cloneable handle to the file audit writer task.
 #[derive(Clone)]
-pub(crate) struct AuditFileStore {
+pub(crate) struct AuditStore {
     sender: mpsc::Sender<WriterMsg>,
     /// Counts events dropped because the channel was full.
     /// Checked by the writer loop to emit a sentinel event before the next real event.
@@ -47,9 +61,19 @@ pub(crate) struct AuditFileStore {
     write_state: Arc<AuditWriteState>,
 }
 
-impl AuditFileStore {
-    /// Spawns the writer and returns without waiting for file recovery.
-    /// `max_size_bytes = None` disables the size limit.
+impl AuditStore {
+    /// Initialises the audit file store and spawns the background writer task.
+    ///
+    /// Returns immediately: the channel is created and handed back synchronously so the
+    /// middleware can start enqueueing events right away, even before the writer has
+    /// acquired the lock or opened the file. `channel_capacity` is the number of events
+    /// that can be buffered before new events are dropped. Must be ≥ 1.
+    ///
+    /// `max_size_bytes`, when `Some`, stops all writes once the file reaches that many
+    /// bytes — see `AuditFileConfig::audit_file_max_size_bytes`. `None` is unlimited.
+    ///
+    /// Recovery, locking, and opening all happen inside `FileSink::resume`, awaited by
+    /// the spawned writer task. This call never blocks on file I/O or lock contention.
     ///
     /// # Errors
     /// Returns an error if `channel_capacity` is zero.
@@ -91,6 +115,68 @@ impl AuditFileStore {
                     );
                 }
             }
+        });
+
+        Ok(Self {
+            sender: tx,
+            dropped_count,
+            write_state,
+        })
+    }
+
+    /// Connects to the `PostgreSQL` audit backend, acquires `instance_id`'s advisory
+    /// lock, ensures the schema is current, and verifies the entire existing chain —
+    /// all SYNCHRONOUSLY, before returning. Unlike [`Self::start_with_max_size`] (File),
+    /// a failure at any of these steps propagates as an error here. The caller
+    /// (`Kms::create_audit_store`) falls back to the file backend rather than aborting
+    /// server startup on this error.
+    ///
+    /// `channel_capacity` is the number of events that can be buffered before new events
+    /// are dropped once steady-state writing begins. Must be ≥ 1.
+    ///
+    /// # Errors
+    /// Returns an error if `channel_capacity` is 0, the connection/advisory
+    /// lock/schema-validation fails, or the existing chain fails full verification.
+    pub(crate) async fn start_postgres(
+        url: &str,
+        instance_id: &str,
+        channel_capacity: usize,
+    ) -> KResult<Self> {
+        if channel_capacity == 0 {
+            return Err(KmsError::ServerError(
+                "audit: channel_capacity must be at least 1".to_owned(),
+            ));
+        }
+
+        let mut sink = cosmian_kms_server_database::PgAuditSink::connect(url, instance_id)
+            .await
+            .map_err(|e| {
+                KmsError::ServerError(format!(
+                    "audit: cannot connect to the PostgreSQL audit backend: {e}"
+                ))
+            })?;
+        let chain_head = sink.resume().await.map_err(|e| {
+            KmsError::ServerError(format!(
+                "audit: cannot resume the PostgreSQL audit chain: {e}"
+            ))
+        })?;
+
+        let (tx, rx) = mpsc::channel::<WriterMsg>(channel_capacity);
+        let dropped_count = Arc::new(AtomicU64::new(0));
+        let dropped_count_for_writer = Arc::clone(&dropped_count);
+        // The PostgreSQL backend has no size-cap concept; `AuditWriteState::default()`
+        // (`max_size_bytes: None`) makes `enqueue()`'s fast pre-check a permanent no-op.
+        let write_state = Arc::new(AuditWriteState::default());
+
+        tokio::spawn(async move {
+            writer_loop(
+                sink,
+                chain_head.next_id,
+                chain_head.prev_hash,
+                rx,
+                dropped_count_for_writer,
+            )
+            .await;
         });
 
         Ok(Self {
@@ -157,9 +243,9 @@ impl AuditFileStore {
     }
 }
 
-/// Test-only constructors on `AuditFileStore`.
+/// Test-only constructors on `AuditStore`.
 #[cfg(test)]
-impl AuditFileStore {
+impl AuditStore {
     /// Same as [`Self::start_with_max_size`] with no file-size cap (unlimited, the
     /// current/default behavior). Only production code goes through
     /// `start_with_max_size` directly (it always has an `Option<u64>` cap to pass,
@@ -200,12 +286,18 @@ mod tests {
     use cosmian_kms_access::audit::{
         AuditEvent, AuditEventDraft, AuditResult, compute_row_hash, verify_event,
     };
-    use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult};
+    use cosmian_kms_interfaces::{
+        AuditSink, ChainHead, InterfaceError, InterfaceResult, WriteOutcome,
+    };
     use time::OffsetDateTime;
     use tokio::sync::mpsc;
 
-    use super::{AuditFileStore, WriterMsg};
-    use crate::core::audit::{file_sink::lock_file_path, writer::writer_loop};
+    use super::{AuditStore, WriterMsg};
+    use crate::core::audit::{
+        SIZE_CAP_SENTINEL_OPERATION,
+        file_sink::lock_file_path,
+        writer::{write_draft_to_chain, writer_loop},
+    };
 
     /// Small channel capacity used in all tests.  Large enough for the ≤5-event
     /// functional tests; small enough to fill quickly in the saturation test.
@@ -271,7 +363,7 @@ mod tests {
         let path = temp_path("capacity");
         std::fs::remove_file(&path).ok();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+        let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
         for _ in 0..(TEST_CAPACITY * 2) {
             store.enqueue(std::iter::once(make_draft()));
         }
@@ -306,7 +398,7 @@ mod tests {
         let path = temp_path("sentinel");
         std::fs::remove_file(&path).ok();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+        let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
         // Saturate: send 2× capacity so the second half is dropped.
         for _ in 0..(TEST_CAPACITY * 2) {
             store.enqueue(std::iter::once(make_draft()));
@@ -347,7 +439,7 @@ mod tests {
 
         // Phase 1: write 3 events
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             for _ in 0..3 {
                 store.enqueue(std::iter::once(make_draft()));
             }
@@ -356,7 +448,7 @@ mod tests {
 
         // Phase 2: resume from the same file, write 2 more
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             for _ in 0..2 {
                 store.enqueue(std::iter::once(make_draft()));
             }
@@ -385,7 +477,7 @@ mod tests {
         let path = temp_path("no_advance");
         std::fs::remove_file(&path).ok();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+        let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
         for _ in 0..5 {
             store.enqueue(std::iter::once(make_draft()));
         }
@@ -413,7 +505,7 @@ mod tests {
 
         // Write 2 valid events
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             store.enqueue(std::iter::once(make_draft()));
             store.enqueue(std::iter::once(make_draft()));
             store.flush().await;
@@ -427,7 +519,7 @@ mod tests {
         *lines.last_mut().unwrap() = serde_json::to_string(&last_ev).unwrap();
         std::fs::write(&path, lines.join("\n") + "\n").unwrap();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+        let store = AuditStore::start(&path, TEST_CAPACITY)
             .expect("start() must always succeed, even on a tampered log tail");
         store.flush().await;
         drop(store);
@@ -471,7 +563,7 @@ mod tests {
         std::fs::remove_file(&path).ok();
 
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             store.enqueue(std::iter::once(make_draft()));
             store.enqueue(std::iter::once(make_draft()));
             store.flush().await;
@@ -486,7 +578,7 @@ mod tests {
         lines[last_index] = serde_json::to_string(&last_event).unwrap();
         std::fs::write(&path, lines.join("\n") + "\n").unwrap();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+        let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
         store.flush().await;
         drop(store);
 
@@ -516,7 +608,7 @@ mod tests {
         // `blocker` is a file, so treating it as a parent directory fails until removed.
         let bogus_path = blocker.join("audit.jsonl");
 
-        let store = AuditFileStore::start(&bogus_path, TEST_CAPACITY)
+        let store = AuditStore::start(&bogus_path, TEST_CAPACITY)
             .expect("start() must always succeed, even for an unwritable path");
 
         // While broken, enqueued events are dropped (logged), never causing a panic.
@@ -569,7 +661,7 @@ mod tests {
             .unwrap();
         fs4::fs_std::FileExt::try_lock_exclusive(&held).unwrap();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+        let store = AuditStore::start(&path, TEST_CAPACITY)
             .expect("start() must always succeed even when the lock is held by a peer");
 
         store.enqueue(std::iter::once(make_draft()));
@@ -603,7 +695,7 @@ mod tests {
         let path = temp_path("zero_capacity");
         std::fs::remove_file(&path).ok();
 
-        let result = AuditFileStore::start(&path, 0);
+        let result = AuditStore::start(&path, 0);
         assert!(result.is_err(), "start() must reject channel_capacity == 0");
         let err = result.err().unwrap().to_string();
         assert!(
@@ -623,7 +715,7 @@ mod tests {
         std::fs::remove_file(&path).ok();
         std::fs::write(&path, b"{not valid json at all\n").unwrap();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+        let store = AuditStore::start(&path, TEST_CAPACITY)
             .expect("start() must always succeed, even on structural garbage");
         store.flush().await;
         drop(store);
@@ -650,7 +742,7 @@ mod tests {
         std::fs::remove_file(&path).ok();
 
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             for _ in 0..3 {
                 store.enqueue(std::iter::once(make_draft()));
             }
@@ -666,7 +758,7 @@ mod tests {
         lines[0] = serde_json::to_string(&row0).unwrap();
         std::fs::write(&path, lines.join("\n") + "\n").unwrap();
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+        let store = AuditStore::start(&path, TEST_CAPACITY)
             .expect("start() must always succeed, even on a mid-chain tamper");
         store.flush().await;
         drop(store);
@@ -710,7 +802,7 @@ mod tests {
         std::fs::remove_file(&path).ok();
 
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             store.enqueue(std::iter::once(make_draft()));
             store.enqueue(std::iter::once(make_draft()));
             store.flush().await;
@@ -728,7 +820,7 @@ mod tests {
             write!(f, "{{\"id\":2,\"timestamp\":\"broken-mid-write").unwrap();
         }
 
-        let store = AuditFileStore::start(&path, TEST_CAPACITY)
+        let store = AuditStore::start(&path, TEST_CAPACITY)
             .expect("start() must always succeed, even after a torn write");
         store.flush().await;
         drop(store);
@@ -764,7 +856,7 @@ mod tests {
         std::fs::remove_file(&path).ok();
 
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             store.enqueue(std::iter::once(make_draft()));
             store.enqueue(std::iter::once(make_draft()));
             store.flush().await;
@@ -775,7 +867,7 @@ mod tests {
         std::fs::write(&path, content.trim_end_matches('\n')).unwrap();
 
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY)
+            let store = AuditStore::start(&path, TEST_CAPACITY)
                 .expect("start() must always succeed on a missing trailing newline");
             store.enqueue(std::iter::once(make_draft()));
             store.flush().await;
@@ -802,7 +894,7 @@ mod tests {
         let path = temp_path("size_cap_none");
         std::fs::remove_file(&path).ok();
 
-        let store = AuditFileStore::start_with_max_size(&path, TEST_CAPACITY, None).unwrap();
+        let store = AuditStore::start_with_max_size(&path, TEST_CAPACITY, None).unwrap();
         for _ in 0..5 {
             store.enqueue(std::iter::once(make_draft()));
         }
@@ -826,7 +918,7 @@ mod tests {
 
         // Baseline: 2 valid events, unbounded.
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             store.enqueue(std::iter::once(make_draft()));
             store.enqueue(std::iter::once(make_draft()));
             store.flush().await;
@@ -836,7 +928,7 @@ mod tests {
         let cap = std::fs::metadata(&path).unwrap().len();
 
         // Cap set to exactly the current file length: already at (>=) the cap.
-        let store = AuditFileStore::start_with_max_size(&path, TEST_CAPACITY, Some(cap)).unwrap();
+        let store = AuditStore::start_with_max_size(&path, TEST_CAPACITY, Some(cap)).unwrap();
         // Synchronize on the writer having performed its startup cap check.
         store.flush().await;
 
@@ -859,17 +951,16 @@ mod tests {
         std::fs::remove_file(&path).ok();
     }
 
-    /// The event that pushes the file to/past the cap is still persisted (the "one
-    /// final event may cross" rule); every event enqueued afterward is rejected and
-    /// never written. The chain stays valid through the crossing event.
+    /// The event that would reach the cap is replaced by a final sentinel. Later events
+    /// are rejected and the chain remains valid through the sentinel.
     #[tokio::test]
-    async fn size_cap_allows_crossing_event_then_blocks_further_writes() {
+    async fn size_cap_writes_terminal_sentinel_then_blocks_further_writes() {
         let path = temp_path("size_cap_crossing");
         std::fs::remove_file(&path).ok();
 
         // Baseline: 3 valid events, unbounded.
         {
-            let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
+            let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
             for _ in 0..3 {
                 store.enqueue(std::iter::once(make_draft()));
             }
@@ -882,7 +973,7 @@ mod tests {
         let cap = len_before + 1;
 
         // `len_before < cap`: the writer must not be capped on startup.
-        let store = AuditFileStore::start_with_max_size(&path, TEST_CAPACITY, Some(cap)).unwrap();
+        let store = AuditStore::start_with_max_size(&path, TEST_CAPACITY, Some(cap)).unwrap();
         store.enqueue(std::iter::once(make_draft()));
         store.flush().await;
 
@@ -890,9 +981,15 @@ mod tests {
         assert_eq!(
             events_after_crossing.len(),
             4,
-            "the event that crosses the cap must still be persisted"
+            "the size-cap sentinel must be the final persisted event"
         );
         assert_valid_chain(&events_after_crossing);
+        let sentinel = events_after_crossing.last().expect("size-cap sentinel");
+        assert_eq!(sentinel.operation, SIZE_CAP_SENTINEL_OPERATION);
+        assert_eq!(
+            sentinel.result,
+            AuditResult::Failure("audit file size limit reached".to_owned())
+        );
 
         let queued = store.enqueue(std::iter::once(make_draft()));
         assert!(
@@ -906,7 +1003,7 @@ mod tests {
         assert_eq!(
             events_final.len(),
             4,
-            "no event may be written once the cap has been crossed"
+            "no event may be written after the size-cap sentinel"
         );
         assert_valid_chain(&events_final);
 
@@ -944,7 +1041,10 @@ mod tests {
             Ok(ChainHead::EMPTY)
         }
 
-        async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<()> {
+        async fn write_event_atomic(
+            &mut self,
+            event: &AuditEvent,
+        ) -> InterfaceResult<WriteOutcome> {
             let idx = self.call_count;
             self.call_count += 1;
             if (self.should_fail)(idx) {
@@ -953,7 +1053,7 @@ mod tests {
                 ));
             }
             self.events.push(event.clone());
-            Ok(())
+            Ok(WriteOutcome::Written)
         }
     }
 
@@ -1016,6 +1116,247 @@ mod tests {
         assert!(
             sink.events.is_empty(),
             "no event should be persisted when every write fails"
+        );
+    }
+
+    /// A mock `AuditSink` whose write reports `Resynced` exactly once, at a configured
+    /// id, as if a prior write with a lost acknowledgement already durably occupies that
+    /// slot with different content. Every other write succeeds normally.
+    struct ResyncingSink {
+        events: Vec<AuditEvent>,
+        resync_once_at_id: i64,
+        resync_to: ChainHead,
+        resynced: bool,
+    }
+
+    #[async_trait]
+    impl AuditSink for ResyncingSink {
+        fn name(&self) -> &'static str {
+            "resyncing"
+        }
+
+        async fn resume(&mut self) -> InterfaceResult<ChainHead> {
+            Ok(ChainHead::EMPTY)
+        }
+
+        async fn write_event_atomic(
+            &mut self,
+            event: &AuditEvent,
+        ) -> InterfaceResult<WriteOutcome> {
+            if event.id == self.resync_once_at_id && !self.resynced {
+                self.resynced = true;
+                return Ok(WriteOutcome::Resynced(self.resync_to));
+            }
+            self.events.push(event.clone());
+            Ok(WriteOutcome::Written)
+        }
+    }
+
+    /// `write_draft_to_chain` must retry the *same* draft at the corrected position when
+    /// the sink reports `Resynced`, instead of dropping it or leaving the chain wedged on
+    /// a slot nothing will ever fill again.
+    #[tokio::test]
+    async fn resync_outcome_retries_same_draft_at_corrected_position() {
+        let resync_to = ChainHead {
+            next_id: 5,
+            prev_hash: [0x42_u8; 32],
+        };
+        let mut sink = ResyncingSink {
+            events: Vec::new(),
+            resync_once_at_id: 0,
+            resync_to,
+            resynced: false,
+        };
+        let draft = make_draft();
+        let mut prev_hash = [0_u8; 32];
+
+        let next_id = write_draft_to_chain(&mut sink, draft, 0, &mut prev_hash).await;
+
+        assert_eq!(
+            next_id, 6,
+            "must continue past the resynced position, not the original one"
+        );
+        assert_eq!(
+            sink.events.len(),
+            1,
+            "exactly one event must be durably written, not a duplicate at the old slot"
+        );
+        assert_eq!(sink.events[0].id, 5);
+        assert_eq!(sink.events[0].prev_hash, [0x42_u8; 32]);
+        assert_eq!(prev_hash, sink.events[0].row_hash);
+    }
+}
+
+/// Live tests for the real, crate-private `PostgreSQL` controlling path
+/// (`AuditStore::start_postgres`/`enqueue`/`flush`) — proving the server's own startup
+/// call site actually recovers content corruption, not just the
+/// `cosmian_kms_server_database` sink underneath it in isolation.
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+mod live_postgres_tests {
+    use cosmian_kms_access::audit::{AuditEventDraft, AuditResult, audit_now};
+    use cosmian_kms_interfaces::AuditSink;
+    use cosmian_kms_server_database::{PgAuditReader, PgAuditSink};
+    use tokio_postgres::NoTls;
+    use uuid::Uuid;
+
+    use super::AuditStore;
+
+    const TEST_CAPACITY: usize = 16;
+
+    /// Live audit database URL — same convention and default as the
+    /// `cosmian_kms_server_database` audit live tests.
+    fn audit_url() -> String {
+        option_env!("KMS_AUDIT_POSTGRES_URL")
+            .unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms")
+            .to_owned()
+    }
+
+    fn unique_instance_id(label: &str) -> String {
+        format!("test-store-{label}-{}", Uuid::new_v4())
+    }
+
+    fn make_draft() -> AuditEventDraft {
+        AuditEventDraft {
+            timestamp: audit_now(),
+            operation: "Encrypt".to_owned(),
+            user: "alice".to_owned(),
+            object_uid: Some("obj-1".to_owned()),
+            algorithm: Some("AES-256-GCM".to_owned()),
+            client_ip: Some("127.0.0.1".to_owned()),
+            result: AuditResult::Success,
+            duration_ms: 5,
+            request_id: None,
+            details: None,
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn postgres_corruption_starts_on_next_generation() {
+        let instance_id = unique_instance_id("recovery");
+        let url = audit_url();
+
+        // Seed a clean 3-row generation 0 directly through the sink, exactly as the real
+        // writer task would.
+        {
+            let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+            sink.resume().await.unwrap();
+            let d0 = make_draft().finalize(0, [0_u8; 32]);
+            sink.write_event_atomic(&d0).await.unwrap();
+            let d1 = make_draft().finalize(1, d0.row_hash);
+            sink.write_event_atomic(&d1).await.unwrap();
+            let d2 = make_draft().finalize(2, d1.row_hash);
+            sink.write_event_atomic(&d2).await.unwrap();
+        }
+
+        // Corrupt the tail row's own hash, bypassing the append-only trigger — the same
+        // administrator-bypass threat model every other tamper test in this repository
+        // uses.
+        let (raw, connection) = tokio_postgres::connect(&url, NoTls).await.unwrap();
+        tokio::spawn(async move {
+            drop(connection.await);
+        });
+        raw.batch_execute("ALTER TABLE kms_audit_events DISABLE TRIGGER kms_audit_no_update;")
+            .await
+            .unwrap();
+        raw.execute(
+            "UPDATE kms_audit_events SET row_hash = $2 WHERE instance_id = $1 AND \
+             chain_generation = 0 AND id = 2",
+            &[&instance_id, &vec![0_u8; 32]],
+        )
+        .await
+        .unwrap();
+        raw.batch_execute("ALTER TABLE kms_audit_events ENABLE TRIGGER kms_audit_no_update;")
+            .await
+            .unwrap();
+
+        // Forensic baseline: captured after corruption, before recovery.
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        let sealed_before = reader.events_page(&instance_id, 0, -1).await.unwrap();
+
+        let store = AuditStore::start_postgres(&url, &instance_id, TEST_CAPACITY)
+            .await
+            .expect("start_postgres() must recover content corruption, not abort startup");
+
+        store.enqueue(std::iter::once(make_draft()));
+        store.flush().await;
+        drop(store);
+
+        let sealed_after = reader.events_page(&instance_id, 0, -1).await.unwrap();
+        assert_eq!(
+            sealed_before.len(),
+            sealed_after.len(),
+            "sealed generation 0 must not gain or lose rows"
+        );
+        for (before, after) in sealed_before.iter().zip(sealed_after.iter()) {
+            assert_eq!(
+                before.row_hash, after.row_hash,
+                "sealed generation 0 must not change"
+            );
+        }
+
+        let gen1 = reader.events_page(&instance_id, 1, -1).await.unwrap();
+        assert_eq!(
+            gen1.len(),
+            2,
+            "generation 1 must contain the reanchor plus the one enqueued event"
+        );
+        assert_eq!(gen1[0].operation, "audit:reanchor");
+        assert_eq!(gen1[0].id, 0);
+        assert_eq!(gen1[0].prev_hash, [0_u8; 32]);
+        let details: serde_json::Value =
+            serde_json::from_str(gen1[0].details.as_deref().unwrap()).unwrap();
+        assert_eq!(details["sealed_generation"], 0);
+        assert_eq!(details["new_generation"], 1);
+        assert_eq!(details["first_failure_id"], 2);
+        assert_eq!(details["reason"], "hash_mismatch");
+
+        assert_eq!(gen1[1].id, 1);
+        assert_eq!(
+            gen1[1].prev_hash, gen1[0].row_hash,
+            "the event enqueued after recovery must link to the reanchor"
+        );
+    }
+
+    /// A channel-full eviction sentinel's timestamp must survive a real `PostgreSQL`
+    /// round trip: if it doesn't (a nanosecond-precision timestamp re-hashes differently
+    /// after `TIMESTAMPTZ` truncates it to microseconds), `resume()` would wrongly seal
+    /// generation 0 as tampered instead of resuming it cleanly.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn postgres_eviction_sentinel_survives_round_trip() {
+        let instance_id = unique_instance_id("eviction");
+        let url = audit_url();
+
+        let store = AuditStore::start_postgres(&url, &instance_id, 1)
+            .await
+            .unwrap();
+
+        // `enqueue` is synchronous (plain `try_send`, no `.await`), so this loop never
+        // yields to the writer task — with channel_capacity=1, only the first draft is
+        // buffered and every other one is deterministically dropped, forcing an
+        // eviction sentinel before the writer's next successful write.
+        store.enqueue((0..20).map(|_| make_draft()));
+        store.enqueue(std::iter::once(make_draft()));
+        store.flush().await;
+        drop(store);
+
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        let head = sink
+            .resume()
+            .await
+            .expect("resume must succeed after a clean sentinel round trip");
+        assert!(
+            head.next_id > 0,
+            "resume must continue generation 0, not reanchor after a false hash mismatch"
+        );
+
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        assert_eq!(
+            reader.list_generations(&instance_id).await.unwrap(),
+            vec![0],
+            "no seal-and-roll should have occurred — generation 0 must still be the only one"
         );
     }
 }

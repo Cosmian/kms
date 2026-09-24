@@ -151,6 +151,7 @@ jobs:
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
           KMS_POSTGRES_URL: postgresql://kms:kms@127.0.0.1:5432/kms
+          KMS_AUDIT_POSTGRES_URL: postgresql://kms:kms@127.0.0.1:5432/kms
 
           MYSQL_DATABASE: kms
           MYSQL_ROOT_PASSWORD: kms
@@ -216,7 +217,8 @@ jobs:
     # give them fixed concurrency groups so only one job runs at a time across all PRs.
     # utimaco and softhsm2 use a per-run group so they are never blocked by other PRs.
     concurrency:
-      group: ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || format('hsm-{0}-{1}', matrix.hsm-type,
+      group:
+        ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || format('hsm-{0}-{1}', matrix.hsm-type,
         github.run_id) }}
       queue: max
       cancel-in-progress: false

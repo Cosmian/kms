@@ -140,6 +140,7 @@ native-tls = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 pem = { workspace = true }
 tempfile = { workspace = true }
+tokio-postgres = { workspace = true }
 
 [build-dependencies]
 actix-http = { workspace = true }
