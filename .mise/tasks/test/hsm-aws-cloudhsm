@@ -72,4 +72,21 @@ cargo test \
   --features "${FEATURES}" \
   -- --nocapture tests::test_hsm_aws_cloudhsm_all --ignored --exact
 
+# Exercise the real KMIP `Create`/HsmStore path (crate/server), not just the low-level
+# PKCS#11 session helpers above: this is the path that broke in production (COSMIAN
+# CKA_SENSITIVE regression) while the loader-level test above stayed green.
+# `cosmian_kms_server` has no `aws_cloudhsm` feature (unlike the loader crate above) —
+# only `non-fips` gates its optional HSM code.
+SERVER_FEATURES=""
+if [ "${VARIANT_NAME}" = "non-fips" ]; then
+  SERVER_FEATURES="non-fips"
+fi
+
+HSM_MODEL=aws_cloudhsm \
+  cargo test \
+  -p cosmian_kms_server \
+  --lib \
+  --features "${SERVER_FEATURES}" \
+  -- --nocapture tests::hsm::test_hsm_all --ignored --exact
+
 print_success "AWS CloudHSM tests completed"
