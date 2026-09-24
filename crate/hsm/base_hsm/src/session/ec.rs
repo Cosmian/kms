@@ -302,6 +302,12 @@ impl Session {
         // CKA_ENCRYPT/CKA_DECRYPT/CKA_WRAP/CKA_UNWRAP are intentionally omitted for EC keys —
         // ECDSA private keys are used only for CKA_SIGN, matching the KMIP EC private key usage
         // mask set by the software EC key generation path.
+        // AWS CloudHSM workaround: remove CKA_SENSITIVE attribute entirely
+        // since it explicitly rejects any explicit value for EC keys.
+        // Rely on CKA_EXTRACTABLE alone to control sensitivity/extractability.
+        if !self.hsm_capabilities().supports_ec_sensitive_attribute {
+            priv_key_template.retain(|attr| attr.type_ != CKA_SENSITIVE);
+        }
 
         let mut mechanism = CK_MECHANISM {
             mechanism: curve_key_pair_gen_mechanism(curve),

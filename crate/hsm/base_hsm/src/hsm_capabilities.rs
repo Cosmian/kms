@@ -15,6 +15,16 @@ pub struct HsmCapabilities {
     /// `CKR_ATTRIBUTE_VALUE_INVALID`; its own PKCS#11 default already yields a
     /// non-extractable key, so `CKA_EXTRACTABLE` alone is sent instead when `false`.
     pub supports_aes_sensitive_attribute: bool,
+
+    /// Whether `C_GenerateKeyPair` for RSA accepts an explicit `CKA_SENSITIVE` attribute.
+    /// AWS `CloudHSM` rejects any explicit `CKA_SENSITIVE=false` value with
+    /// `CKR_ATTRIBUTE_VALUE_INVALID`; its keys are inherently sensitive.
+    pub supports_rsa_sensitive_attribute: bool,
+
+    /// Whether `C_GenerateKeyPair` for EC accepts an explicit `CKA_SENSITIVE` attribute.
+    /// AWS `CloudHSM` rejects any explicit `CKA_SENSITIVE=false` value with
+    /// `CKR_ATTRIBUTE_VALUE_INVALID`; its keys are inherently sensitive.
+    pub supports_ec_sensitive_attribute: bool,
 }
 
 impl Default for HsmCapabilities {
@@ -23,6 +33,8 @@ impl Default for HsmCapabilities {
             max_cbc_data_size: None,
             find_max_object_count: 1,
             supports_aes_sensitive_attribute: true,
+            supports_rsa_sensitive_attribute: true,
+            supports_ec_sensitive_attribute: true,
         }
     }
 }

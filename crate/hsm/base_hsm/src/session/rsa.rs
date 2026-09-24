@@ -198,6 +198,13 @@ impl Session {
             },
         ];
 
+        // AWS CloudHSM workaround: remove CKA_SENSITIVE attribute entirely
+        // since it explicitly rejects any explicit value for RSA keys.
+        // Rely on CKA_EXTRACTABLE alone to control sensitivity/extractability.
+        if !self.hsm_capabilities().supports_rsa_sensitive_attribute {
+            priv_key_template.retain(|attr| attr.type_ != CKA_SENSITIVE);
+        }
+
         let mut mechanism = CK_MECHANISM {
             mechanism: CKM_RSA_PKCS_KEY_PAIR_GEN,
             pParameter: ptr::null_mut(),

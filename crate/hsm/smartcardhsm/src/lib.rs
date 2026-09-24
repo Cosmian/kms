@@ -33,6 +33,8 @@ impl HsmProvider for SmartcardHsmCapabilityProvider {
             max_cbc_data_size: Some(1024),
             find_max_object_count: 16, // Don't overwhelm the smart card
             supports_aes_sensitive_attribute: true,
+            supports_rsa_sensitive_attribute: true,
+            supports_ec_sensitive_attribute: true,
         }
     }
 }
