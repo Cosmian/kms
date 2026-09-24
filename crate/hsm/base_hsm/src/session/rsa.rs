@@ -9,9 +9,8 @@ use pkcs11_sys::{
     CKM_SHA_1, CKM_SHA256, CKO_SECRET_KEY, CKZ_DATA_SPECIFIED,
 };
 
-use crate::{HResult, hsm_call, session::Session};
-
 use super::serialize_tagged_label;
+use crate::{HResult, hsm_call, session::Session};
 
 #[derive(Debug, Clone, Copy)]
 pub enum RsaKeySize {

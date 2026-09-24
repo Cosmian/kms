@@ -907,7 +907,15 @@ pub(super) fn bench_load(
     hsm_prefix: Option<&str>,
     filter: Option<&super::types::BenchFilter>,
 ) -> Vec<LoadResult> {
-    let ops = prepare_load_ops(rt, client, mode, protocol, plaintext_size, hsm_prefix, filter);
+    let ops = prepare_load_ops(
+        rt,
+        client,
+        mode,
+        protocol,
+        plaintext_size,
+        hsm_prefix,
+        filter,
+    );
     if ops.is_empty() {
         eprintln!("[load] No operations prepared for mode {mode:?}");
         return Vec::new();

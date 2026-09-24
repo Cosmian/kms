@@ -1254,6 +1254,117 @@ pub fn multi_threaded_rsa(
     Ok(())
 }
 
+/// Assert that concurrent HSM signing does not experience throughput collapse under concurrency (8 threads vs 1 thread).
+pub fn concurrent_sign_does_not_degrade(slot: &Arc<SlotManager>) -> HResult<()> {
+    use std::{
+        sync::atomic::{AtomicBool, AtomicU64, Ordering},
+        time::{Duration, Instant},
+    };
+
+    log_init(None);
+    let supported_mechanisms = slot.get_supported_mechanisms()?;
+
+    let sk_id = Uuid::new_v4().to_string();
+    let pk_id = sk_id.clone() + "_pk";
+    let session0 = slot.open_session(true)?;
+    let (sk, _pk) = session0.generate_ec_key_pair(
+        sk_id.as_bytes(),
+        pk_id.as_bytes(),
+        EcCurve::P256,
+        true,
+        None,
+    )?;
+    drop(session0);
+
+    let data = b"test data for concurrent ECDSA signing regression test";
+    let (sign_algorithm, signing_input): (_, std::borrow::Cow<'_, [u8]>) =
+        if supported_mechanisms.contains(&CKM_ECDSA_SHA256) {
+            (
+                HsmSigningAlgorithm::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: false,
+                },
+                data.as_slice().into(),
+            )
+        } else if supported_mechanisms.contains(&CKM_ECDSA) {
+            let digest = MessageDigest::from_nid(Nid::SHA256)
+                .ok_or_else(|| HError::Default(format!("Unknown digest NID: {:?}", Nid::SHA256)))?;
+            let hashed = hash(digest, data)
+                .map_err(|e| HError::Default(format!("OpenSSL hash error: {e}")))?;
+            (
+                HsmSigningAlgorithm::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: true,
+                },
+                hashed.to_vec().into(),
+            )
+        } else {
+            return Err(HError::Default(
+                "CKM_ECDSA_SHA256 or raw CKM_ECDSA mechanism not supported by HSM".to_owned(),
+            ));
+        };
+
+    let mut rates = Vec::new();
+    for threads in [1, 8] {
+        let stop_flag = Arc::new(AtomicBool::new(false));
+        let ops_counter = Arc::new(AtomicU64::new(0));
+        let mut handles = Vec::with_capacity(threads);
+
+        let duration = Duration::from_secs(3);
+        let start = Instant::now();
+
+        for _ in 0..threads {
+            let slot = Arc::clone(slot);
+            let stop = Arc::clone(&stop_flag);
+            let ops = Arc::clone(&ops_counter);
+            let signing_input = signing_input.clone().into_owned();
+
+            let handle = thread::spawn(move || -> HResult<()> {
+                while !stop.load(Ordering::Relaxed) {
+                    let session = slot.checkout_session(true)?;
+                    let _sig = {
+                        let res = session.sign(sk, sign_algorithm, &signing_input)?;
+                        slot.checkin_session(session);
+                        res
+                    };
+                    ops.fetch_add(1, Ordering::Relaxed);
+                }
+                Ok(())
+            });
+            handles.push(handle);
+        }
+
+        thread::sleep(duration);
+        stop_flag.store(true, Ordering::Relaxed);
+
+        for handle in handles {
+            handle
+                .join()
+                .map_err(|e| HError::Default(format!("Thread panicked: {e:?}")))??;
+        }
+
+        let elapsed = start.elapsed().as_secs_f64();
+        let count = ops_counter.load(Ordering::Relaxed);
+        #[allow(clippy::as_conversions, clippy::cast_precision_loss)]
+        // u64 op-count -> f64 for a throughput ratio; precision loss is acceptable here
+        let ops_per_sec = (count as f64) / elapsed;
+        rates.push(ops_per_sec);
+    }
+
+    let rate_1 = *rates
+        .first()
+        .ok_or_else(|| HError::Default("Missing 1-thread rate sample".to_owned()))?;
+    let rate_8 = *rates
+        .get(1)
+        .ok_or_else(|| HError::Default("Missing 8-thread rate sample".to_owned()))?;
+    info!("Concurrent sign rates: 1 thread = {rate_1:.1} ops/s, 8 threads = {rate_8:.1} ops/s");
+    assert!(
+        rate_8 >= rate_1 * 0.8,
+        "Concurrent sign degraded at 8 threads ({rate_8:.1} ops/s) vs 1 thread ({rate_1:.1} ops/s)"
+    );
+    Ok(())
+}
+
 pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;

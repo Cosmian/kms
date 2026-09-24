@@ -114,7 +114,6 @@ impl BenchFilter {
     }
 }
 
-
 /// Benchmark protocol / transport selection.
 #[derive(Clone, Debug, Default, PartialEq, Eq, ValueEnum)]
 pub(crate) enum BenchProtocol {
@@ -179,7 +178,6 @@ pub struct BenchAction {
     /// Algorithm and key-size filtering options
     #[clap(flatten)]
     pub(super) filter: BenchFilter,
-
 
     /// Protocol / transport to benchmark (default: all).
     /// - `ttlv-json`: KMIP over JSON TTLV (`POST /kmip/2_1`)

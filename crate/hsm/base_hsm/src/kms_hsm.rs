@@ -31,6 +31,8 @@
 //! - Support for sensitive key material handling
 //! - Secure session management
 //! - Zero-copy cleanup for sensitive data using `Zeroizing`
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EcCurve, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeyPairIds,
@@ -38,7 +40,6 @@ use cosmian_kms_interfaces::{
     KeyType, SigningAlgorithm,
 };
 use cosmian_logger::debug;
-use std::collections::HashSet;
 use zeroize::Zeroizing;
 
 use crate::{AesKeySize, BaseHsm, RsaKeySize, hsm_capabilities::HsmProvider};
@@ -238,15 +239,31 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         iv_counter_nonce: &'a [u8],
     ) -> InterfaceResult<EncryptedContent> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let handle = session.get_object_handle(key_id)?;
-        let encrypted_content = session.encrypt(
-            handle,
-            algorithm.into(),
-            data,
-            (!iv_counter_nonce.is_empty()).then_some(iv_counter_nonce),
-        )?;
-        Ok(encrypted_content)
+        let key_id = key_id.to_vec();
+        let data = data.to_vec();
+        let iv_counter_nonce = iv_counter_nonce.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = slot.checkout_session(true)?;
+            let handle = match session.get_object_handle(&key_id) {
+                Ok(h) => h,
+                Err(e) => return Err(e.into()),
+            };
+            let encrypted_content = match session.encrypt(
+                handle,
+                algorithm.into(),
+                &data,
+                (!iv_counter_nonce.is_empty()).then_some(&iv_counter_nonce),
+            ) {
+                Ok(res) => {
+                    slot.checkin_session(session);
+                    res
+                }
+                Err(e) => return Err(e.into()),
+            };
+            Ok(encrypted_content)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn decrypt(
@@ -257,10 +274,25 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         data: &[u8],
     ) -> InterfaceResult<Zeroizing<Vec<u8>>> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let handle = session.get_object_handle(key_id)?;
-        let plaintext = session.decrypt(handle, algorithm.into(), data)?;
-        Ok(plaintext)
+        let key_id = key_id.to_vec();
+        let data = data.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = slot.checkout_session(true)?;
+            let handle = match session.get_object_handle(&key_id) {
+                Ok(h) => h,
+                Err(e) => return Err(e.into()),
+            };
+            let plaintext = match session.decrypt(handle, algorithm.into(), &data) {
+                Ok(res) => {
+                    slot.checkin_session(session);
+                    res
+                }
+                Err(e) => return Err(e.into()),
+            };
+            Ok(plaintext)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn sign(
@@ -271,10 +303,25 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         data: &[u8],
     ) -> InterfaceResult<Vec<u8>> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let handle = session.get_object_handle(key_id)?;
-        let signature = session.sign(handle, algorithm.into(), data)?;
-        Ok(signature)
+        let key_id = key_id.to_vec();
+        let data = data.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = slot.checkout_session(true)?;
+            let handle = match session.get_object_handle(&key_id) {
+                Ok(h) => h,
+                Err(e) => return Err(e.into()),
+            };
+            let signature = match session.sign(handle, algorithm.into(), &data) {
+                Ok(res) => {
+                    slot.checkin_session(session);
+                    res
+                }
+                Err(e) => return Err(e.into()),
+            };
+            Ok(signature)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn verify(
@@ -286,10 +333,26 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         signature: &[u8],
     ) -> InterfaceResult<bool> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let handle = session.get_object_handle(key_id)?;
-        let is_valid = session.verify(handle, algorithm.into(), data, signature)?;
-        Ok(is_valid)
+        let key_id = key_id.to_vec();
+        let data = data.to_vec();
+        let signature = signature.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = slot.checkout_session(true)?;
+            let handle = match session.get_object_handle(&key_id) {
+                Ok(h) => h,
+                Err(e) => return Err(e.into()),
+            };
+            let is_valid = match session.verify(handle, algorithm.into(), &data, &signature) {
+                Ok(res) => {
+                    slot.checkin_session(session);
+                    res
+                }
+                Err(e) => return Err(e.into()),
+            };
+            Ok(is_valid)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn get_key_type(
@@ -298,10 +361,24 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyType>> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let handle = session.get_object_handle(key_id)?;
-        let key_type = session.get_key_type(handle)?;
-        Ok(key_type)
+        let key_id = key_id.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = slot.checkout_session(true)?;
+            let handle = match session.get_object_handle(&key_id) {
+                Ok(h) => h,
+                Err(e) => return Err(e.into()),
+            };
+            let key_type = match session.get_key_type(handle) {
+                Ok(res) => {
+                    slot.checkin_session(session);
+                    res
+                }
+                Err(e) => return Err(e.into()),
+            };
+            Ok(key_type)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn get_key_metadata(
@@ -310,16 +387,36 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyMetadata>> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let handle = session.get_object_handle(key_id)?;
-        let metadata = session.get_key_metadata(handle)?;
-        Ok(metadata)
+        let key_id = key_id.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = slot.checkout_session(true)?;
+            let handle = match session.get_object_handle(&key_id) {
+                Ok(h) => h,
+                Err(e) => return Err(e.into()),
+            };
+            let metadata = match session.get_key_metadata(handle) {
+                Ok(res) => {
+                    slot.checkin_session(session);
+                    res
+                }
+                Err(e) => return Err(e.into()),
+            };
+            Ok(metadata)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn generate_random(&self, slot_id: usize, len: usize) -> InterfaceResult<Vec<u8>> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let bytes = session.generate_random(len)?;
+        let session = slot.checkout_session(true)?;
+        let bytes = match session.generate_random(len) {
+            Ok(res) => {
+                slot.checkin_session(session);
+                res
+            }
+            Err(e) => return Err(e.into()),
+        };
         Ok(bytes)
     }
 

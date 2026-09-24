@@ -843,25 +843,23 @@ impl CryptoOracle for HsmStore {
         input_is_digest: bool,
     ) -> InterfaceResult<Vec<u8>> {
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
-        let key_type = match self.hsm.get_key_type(slot_id, key_id.as_bytes()).await? {
-            Some(KeyType::RsaPrivateKey) => KeyType::RsaPrivateKey,
-            Some(KeyType::EcPrivateKey) => KeyType::EcPrivateKey,
-            Some(other) => {
+        let metadata = self
+            .hsm
+            .get_key_metadata(slot_id, key_id.as_bytes())
+            .await?
+            .ok_or_else(|| {
+                InterfaceError::InvalidRequest(format!("Sign: key {uid} not found on the HSM"))
+            })?;
+        let key_type = match metadata.key_type {
+            KeyType::RsaPrivateKey => KeyType::RsaPrivateKey,
+            KeyType::EcPrivateKey => KeyType::EcPrivateKey,
+            other => {
                 return Err(InterfaceError::InvalidRequest(format!(
                     "Sign: key {uid} is a {other:?}, expected an RSA or EC private key"
                 )));
             }
-            None => {
-                return Err(InterfaceError::InvalidRequest(format!(
-                    "Sign: key {uid} not found on the HSM"
-                )));
-            }
         };
-        let curve = self
-            .hsm
-            .get_key_metadata(slot_id, key_id.as_bytes())
-            .await?
-            .and_then(|metadata| metadata.curve);
+        let curve = metadata.curve;
         let algorithm = SigningAlgorithm::from_kmip(
             cryptographic_parameters,
             key_type,
@@ -886,33 +884,30 @@ impl CryptoOracle for HsmStore {
         input_is_digest: bool,
     ) -> InterfaceResult<bool> {
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
-        let key_type = match self.hsm.get_key_type(slot_id, key_id.as_bytes()).await? {
+        let metadata = self
+            .hsm
+            .get_key_metadata(slot_id, key_id.as_bytes())
+            .await?
+            .ok_or_else(|| {
+                InterfaceError::InvalidRequest(format!(
+                    "SignatureVerify: key {uid} not found on the HSM"
+                ))
+            })?;
+        let key_type = match metadata.key_type {
             // Accept both public and private keys, mirroring the KMIP `SignatureVerify`
             // operation's `is_key_eligible` acceptance (imported keys may lack a paired
             // public key object).
-            Some(
-                key_type @ (KeyType::RsaPublicKey
-                | KeyType::RsaPrivateKey
-                | KeyType::EcPublicKey
-                | KeyType::EcPrivateKey),
-            ) => key_type,
-            Some(other) => {
+            key_type @ (KeyType::RsaPublicKey
+            | KeyType::RsaPrivateKey
+            | KeyType::EcPublicKey
+            | KeyType::EcPrivateKey) => key_type,
+            other => {
                 return Err(InterfaceError::InvalidRequest(format!(
                     "SignatureVerify: key {uid} is a {other:?}, expected an RSA or EC key"
                 )));
             }
-            None => {
-                return Err(InterfaceError::InvalidRequest(format!(
-                    "SignatureVerify: key {uid} not found on the HSM"
-                )));
-            }
         };
-        let curve = self
-            .hsm
-            .get_key_metadata(slot_id, key_id.as_bytes())
-            .await?
-            .and_then(|metadata| metadata.curve);
-        // `SignatureVerify` has no KMIP `digested_data` flag (unlike `Sign`): the data passed
+        let curve = metadata.curve;
         // here is always the original signed message, never a caller-supplied digest.
         let algorithm = SigningAlgorithm::from_kmip(
             cryptographic_parameters,
@@ -2272,8 +2267,6 @@ mod tests {
     #[tokio::test]
     async fn test_signature_verify_delegates_to_hsm_verify() -> InterfaceResult<()> {
         let mut mock = MockHsm::new();
-        mock.expect_get_key_type()
-            .returning(|_slot_id, _key_id| Ok(Some(KeyType::RsaPublicKey)));
         mock.expect_get_key_metadata().returning(|_, _| {
             Ok(Some(KeyMetadata {
                 key_type: KeyType::RsaPublicKey,
@@ -2308,8 +2301,6 @@ mod tests {
     #[tokio::test]
     async fn test_signature_verify_preserves_digested_data() -> InterfaceResult<()> {
         let mut mock = MockHsm::new();
-        mock.expect_get_key_type()
-            .returning(|_, _| Ok(Some(KeyType::EcPublicKey)));
         mock.expect_get_key_metadata().returning(|_, _| {
             Ok(Some(KeyMetadata {
                 key_type: KeyType::EcPublicKey,
@@ -2367,9 +2358,21 @@ mod tests {
     #[tokio::test]
     async fn test_signature_verify_rejects_non_rsa_key_type() -> InterfaceResult<()> {
         let mut mock = MockHsm::new();
-        mock.expect_get_key_type()
-            .returning(|_slot_id, _key_id| Ok(Some(KeyType::AesKey)));
-
+        mock.expect_get_key_metadata()
+            .returning(|_slot_id, _key_id| {
+                Ok(Some(KeyMetadata {
+                    key_type: KeyType::AesKey,
+                    key_length_in_bits: 256,
+                    sensitive: true,
+                    id: "key1".to_owned(),
+                    tags: HashSet::new(),
+                    curve: None,
+                    start_date: None,
+                    end_date: None,
+                    rotate_name: None,
+                    rotate_generation: None,
+                }))
+            });
         let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
 
         let result = store

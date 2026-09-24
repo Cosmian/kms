@@ -2390,6 +2390,7 @@ impl Session {
     fn decode_key_label(label_bytes: Vec<u8>) -> HResult<(String, HashSet<String>)> {
         deserialize_tagged_label(label_bytes)
     }
+
     fn export_rsa_private_key(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<HsmObject>> {
         // Get the key size
         let mut template = [

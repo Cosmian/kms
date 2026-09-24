@@ -3,7 +3,8 @@
 #USAGE flag "-v --variant <v>"      env="BENCH_VARIANT"       default="non-fips"       help="FIPS variant"                              { choices "fips" "non-fips" }
 #USAGE flag "-l --link <l>"         env="BENCH_LINK"          default="static"          help="Linkage type"                              { choices "static" "dynamic" }
 #USAGE flag "-r --release"          env="BENCH_RELEASE"       default="true"            help="Build optimized benchmark binaries (workspace bench profile: opt-level=3, debug symbols)"
-#USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "decrypt" "sign" "verify" "sign-rsa" "verify-rsa" "sign-ecdsa" "verify-ecdsa" "sign-secp256k1" "verify-secp256k1" "sign-eddsa" "verify-eddsa" "key-creation" }
+#USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "key-creation" "sign-verify" "batch" }
+#USAGE flag "-a --algorithm <a>"    env="BENCH_ALGORITHM"     default=""                help="Filter algorithms by substring, comma-separated (e.g. ecdsa,eddsa)"
 #USAGE flag "-t --time <t>"         env="BENCH_TIME"          default="20"              help="Measurement time per level (seconds)"
 #USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16"  help="Comma-separated concurrency levels"
 #USAGE flag "-w --http-workers <n>" env="BENCH_HTTP_WORKERS"  default=""            help="Number of Actix-web HTTP worker threads (empty = server default: total logical core count)"
@@ -19,6 +20,7 @@
 #USAGE flag "-s --sanity"           env="BENCH_SANITY"                                  help="Quick sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt"
 #USAGE flag "--shared-session"      env="BENCH_SHARED_SESSION"                          help="Force every worker thread to share one Cryptoki session (pre-fix behavior), instead of one dedicated session per thread (default) — for before/after comparison only"
 #USAGE flag "-d --delegated"        env="BENCH_DELEGATED"                               help="Benchmark crypto operations executed DIRECTLY on the HSM (CryptoOracle) via HSM-resident keys"
+#USAGE flag "--hsm-slot <s>"          env="BENCH_HSM_SLOT"                                 help="HSM slot ID for HSM-resident keys (used with --delegated and remote --server-url)"
 #USAGE flag "--criterion"           env="BENCH_CRITERION"                               help="Also run real criterion-crate single-operation micro-benchmarks, on top of the concurrency sweep that always runs — writes criterion.json alongside load_pkcs11.json, so the report gets both a Load Tests and a Criterion Benchmarks section"
 #USAGE flag "--speed <speed>"         env="BENCH_SPEED"         default="quick"           help="Criterion speed preset (with --criterion)" { choices "sanity" "quick" "normal" }
 #USAGE flag "--overhead"            env="BENCH_OVERHEAD"                                help="Also run the Ed25519-specific differential overhead ladder (with --criterion) and write pkcs11_overhead.json — a standalone local diagnostic, never rendered into report.md"
@@ -34,6 +36,7 @@ BENCH_VARIANT="${usage_variant:-non-fips}"
 BENCH_LINK="${usage_link:-static}"
 BENCH_RELEASE="${usage_release:-true}"
 BENCH_MODE="${usage_mode:-all}"
+BENCH_ALGORITHM="${usage_algorithm:-}"
 BENCH_TIME="${usage_time:-20}"
 BENCH_CONCURRENCY="${usage_concurrency:-1,2,4,8,16}"
 BENCH_HTTP_WORKERS="${usage_http_workers:-}"
@@ -49,6 +52,7 @@ BENCH_COOLDOWN="${usage_cooldown:-2}"
 BENCH_SANITY="${usage_sanity:-}"
 BENCH_SHARED_SESSION="${usage_shared_session:-}"
 BENCH_DELEGATED="${usage_delegated:-}"
+BENCH_HSM_SLOT="${usage_hsm_slot:-}"
 BENCH_CRITERION="${usage_criterion:-}"
 BENCH_SPEED="${usage_speed:-quick}"
 BENCH_OVERHEAD="${usage_overhead:-}"
@@ -57,9 +61,13 @@ BENCH_OVERHEAD_PAYLOAD_MODE="${usage_overhead_payload_mode:-fixed}"
 
 
 if [ "${BENCH_DELEGATED}" = "true" ]; then
-  source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
   if [ -n "${BENCH_SERVER_URL}" ]; then
-    print_error "--server-url is not supported with --delegated because this task owns the SoftHSM2 token and local KMS server."
+    if [ -z "${BENCH_HSM_SLOT}" ]; then
+      print_error "--hsm-slot is required when using --delegated with --server-url."
+    fi
+    SOFTHSM2_HSM_SLOT_ID="${BENCH_HSM_SLOT}"
+  else
+    source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
   fi
 fi
 kms_init_env "${BENCH_VARIANT}" "${BENCH_LINK}"
@@ -126,7 +134,7 @@ export KMS_BIN
 
 PKCS11_LIB="$(get_cosmian_pkcs11_lib "${CARGO_TARGET_DIR}" "${BUILD_DIR}")"
 
-if [ "${BENCH_DELEGATED}" != "true" ]; then
+if [ "${BENCH_DELEGATED}" != "true" ] || [ -n "${BENCH_SERVER_URL}" ]; then
   if [ -n "${BENCH_SERVER_URL}" ]; then
     KMS_BASE_URL="${BENCH_SERVER_URL%/}"
     print_status "Using existing KMS server at ${KMS_BASE_URL}"
@@ -179,6 +187,8 @@ fi
 ACCEPT_INVALID_CERTS_ARGS=()
 [ "${BENCH_ACCEPT_INVALID_CERTS}" = "true" ] && ACCEPT_INVALID_CERTS_ARGS+=(--accept-invalid-certs)
 
+ALGORITHM_ARGS=()
+[ -n "${BENCH_ALGORITHM}" ] && ALGORITHM_ARGS+=(--algorithm "${BENCH_ALGORITHM}")
 run_pkcs11_bench() {
   local base_url="$1" conf="$2" mode="$3"
   local delegated_args=()
@@ -199,17 +209,16 @@ run_pkcs11_bench() {
     --cooldown "${BENCH_COOLDOWN}" \
     ${delegated_args[@]+"${delegated_args[@]}"} \
     ${SHARED_SESSION_ARGS[@]+"${SHARED_SESSION_ARGS[@]}"} \
-    ${CRITERION_ARGS[@]+"${CRITERION_ARGS[@]}"}
+    ${CRITERION_ARGS[@]+"${CRITERION_ARGS[@]}"} \
+    ${ALGORITHM_ARGS[@]+"${ALGORITHM_ARGS[@]}"}
 }
-
-if [ "${BENCH_DELEGATED}" = "true" ] && [ "${BENCH_MODE}" = "all" ]; then
+if [ "${BENCH_DELEGATED}" = "true" ] && [ -z "${BENCH_SERVER_URL}" ] && [ "${BENCH_MODE}" = "all" ]; then
   CRITERION_ROOT="${CRITERION_HOME}"
   MERGED_DIR="${TMP_DIR}/merged"
   mkdir -p "${MERGED_DIR}"
-  SUB_MODES="key-creation encrypt sign verify"
+  SUB_MODES="key-creation encrypt sign-verify"
   SUB_COUNT=$(printf '%s\n' "${SUB_MODES}" | wc -w)
   SUB_INDEX=0
-
   for SUB_MODE in ${SUB_MODES}; do
     SUB_INDEX=$((SUB_INDEX + 1))
     SUB_TMP="${TMP_DIR}/${SUB_MODE}"
@@ -241,7 +250,7 @@ if [ "${BENCH_DELEGATED}" = "true" ] && [ "${BENCH_MODE}" = "all" ]; then
 
   export CRITERION_HOME="${CRITERION_ROOT}"
   cp "${MERGED_DIR}"/* "${CRITERION_HOME}/"
-elif [ "${BENCH_DELEGATED}" = "true" ]; then
+elif [ "${BENCH_DELEGATED}" = "true" ] && [ -z "${BENCH_SERVER_URL}" ]; then
   BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
   bench_start_server_hsm_resident "${BENCH_PORT}" "${TMP_DIR}" "${BENCH_HTTP_WORKERS}"
   KMS_BASE_URL="http://127.0.0.1:${BENCH_PORT}"
@@ -252,6 +261,9 @@ elif [ "${BENCH_DELEGATED}" = "true" ]; then
     cat "${TMP_DIR}/kms.log" >&2 || true
     exit 1
   fi
+elif [ "${BENCH_DELEGATED}" = "true" ]; then
+  BENCH_PORT=0
+  run_pkcs11_bench "${KMS_BASE_URL}" "${CKMS_CONF}" "${BENCH_MODE}"
 else
   run_pkcs11_bench "${KMS_BASE_URL}" "${CKMS_CONF}" "${BENCH_MODE}"
 fi

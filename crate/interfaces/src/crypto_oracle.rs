@@ -4,6 +4,8 @@
 //! Once implemented, a crypto oracle must be registered on the KMS instance for that prefix.
 //! HSMs that implement the `HSM` interface have a blanket implementation of this interface called
 //! `HsmCryptoOracle`.
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
@@ -11,7 +13,6 @@ use cosmian_kmip::{
         CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
     },
 };
-use std::collections::HashSet;
 use zeroize::Zeroizing;
 
 use crate::{InterfaceError, KeyType, error::InterfaceResult};

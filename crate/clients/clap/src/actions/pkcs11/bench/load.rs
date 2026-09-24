@@ -15,12 +15,11 @@ use pkcs11_sys::{
     CKO_PUBLIC_KEY, CKO_SECRET_KEY,
 };
 
-use crate::actions::bench::types::{BenchFilter, BenchMode};
-
 use super::{
     error::{BenchError, BenchResult},
     loader::Pkcs11Session,
 };
+use crate::actions::bench::types::{BenchFilter, BenchMode};
 
 const ED25519_SIGNATURE_LEN: usize = 64;
 const RSA_2048_SIGNATURE_LEN: usize = 256;
@@ -81,7 +80,10 @@ impl ConcreteMode {
 
 /// Expands standard `BenchMode` to concrete PKCS#11 benchmark modes.
 #[must_use]
-pub(crate) fn expand_bench_mode(mode: BenchMode, filter: Option<&BenchFilter>) -> Vec<ConcreteMode> {
+pub(crate) fn expand_bench_mode(
+    mode: BenchMode,
+    filter: Option<&BenchFilter>,
+) -> Vec<ConcreteMode> {
     let modes = match mode {
         BenchMode::All => {
             #[cfg(feature = "non-fips")]
@@ -168,7 +170,10 @@ pub(crate) fn expand_bench_mode(mode: BenchMode, filter: Option<&BenchFilter>) -
     };
 
     if let Some(f) = filter {
-        modes.into_iter().filter(|m| f.matches(m.label(), None)).collect()
+        modes
+            .into_iter()
+            .filter(|m| f.matches(m.label(), None))
+            .collect()
     } else {
         modes
     }
@@ -422,9 +427,10 @@ pub(crate) fn prepare_ops<'a>(
     } else {
         None
     };
-    let eddsa_private_key = if modes.iter().any(|mode| {
-        matches!(mode, ConcreteMode::SignEdDsa | ConcreteMode::VerifyEdDsa)
-    }) {
+    let eddsa_private_key = if modes
+        .iter()
+        .any(|mode| matches!(mode, ConcreteMode::SignEdDsa | ConcreteMode::VerifyEdDsa))
+    {
         Some(setup_session.find_first_by_class_and_key_type(CKO_PRIVATE_KEY, CKK_EC_EDWARDS)?)
     } else {
         None
@@ -459,7 +465,9 @@ pub(crate) fn prepare_ops<'a>(
 
     let verify_rsa_signature = if modes.contains(&ConcreteMode::VerifyRsaPkcs) {
         let key = rsa_private_key.ok_or_else(|| {
-            BenchError::Setup("VerifyRsaPkcs mode requires a provisioned RSA private key".to_owned())
+            BenchError::Setup(
+                "VerifyRsaPkcs mode requires a provisioned RSA private key".to_owned(),
+            )
         })?;
         Some(setup_session.sign(key, &message, CKM_SHA256_RSA_PKCS, RSA_2048_SIGNATURE_LEN)?)
     } else {

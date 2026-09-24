@@ -599,6 +599,7 @@ impl<'lib> Pkcs11Session<'lib> {
         output.truncate(output_len as usize);
         Ok(output)
     }
+
     /// `C_EncryptInit` + `C_Encrypt` with `CKM_AES_GCM` (v3.0).
     pub(crate) fn encrypt_gcm(
         &self,

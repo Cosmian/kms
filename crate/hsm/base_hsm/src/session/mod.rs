@@ -30,8 +30,9 @@ pub(crate) fn deserialize_tagged_label(bytes: Vec<u8>) -> HResult<(String, HashS
 
 #[cfg(test)]
 mod tests {
-    use super::{deserialize_tagged_label, serialize_tagged_label};
     use std::collections::HashSet;
+
+    use super::{deserialize_tagged_label, serialize_tagged_label};
 
     #[test]
     fn tagged_label_round_trip() {

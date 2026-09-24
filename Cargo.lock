@@ -1435,6 +1435,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.19",
  "time",
+ "tokio",
  "uuid",
  "zeroize",
 ]
@@ -1624,7 +1625,6 @@ dependencies = [
  "num-bigint-dig",
  "openssl",
  "serde",
- "serde_json",
  "thiserror 2.0.19",
  "time",
  "tokio",

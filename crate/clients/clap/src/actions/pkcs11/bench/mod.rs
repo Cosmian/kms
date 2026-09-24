@@ -32,14 +32,17 @@ use std::{
     time::Duration,
 };
 
-use crate::actions::bench::types::{BenchFilter, BenchMode};
-use crate::error::{KmsCliError, result::KmsCliResult};
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 use criterion_bench::{BenchSpeed, CriterionRunConfig, PayloadMode, run_criterion};
 pub(crate) use error::{BenchError, BenchResult};
 use load::{LoadResult, SweepConfig, expand_bench_mode, run_all};
 use loader::{Pkcs11Lib, Pkcs11Session};
+
+use crate::{
+    actions::bench::types::{BenchFilter, BenchMode},
+    error::{KmsCliError, result::KmsCliResult},
+};
 
 // Thread-safe configuration for CKMS_CONF environment variable
 static CKMS_CONF_LOCK: Mutex<()> = Mutex::new(());

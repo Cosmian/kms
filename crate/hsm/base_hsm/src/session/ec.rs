@@ -12,9 +12,8 @@ use pkcs11_sys::{
     CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKM_EC_EDWARDS_KEY_PAIR_GEN, CKM_EC_MONTGOMERY_KEY_PAIR_GEN,
 };
 
-use crate::{HError, HResult, hsm_call, session::Session};
-
 use super::serialize_tagged_label;
+use crate::{HError, HResult, hsm_call, session::Session};
 
 /// PKCS#11 `CKA_EC_PARAMS` value for each curve supported for HSM-delegated EC key generation.
 /// FIPS-approved NIST prime curves always use the DER-encoded `ASN.1 OBJECT IDENTIFIER`.
@@ -355,9 +354,9 @@ mod tests {
 
     #[test]
     fn unsupported_oid_is_rejected() {
-        // secp256k1 (1.3.132.0.10) is intentionally not supported for HSM delegation.
-        let secp256k1_oid = [0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x0A];
-        curve_from_der_oid(&secp256k1_oid).unwrap_err();
+        // secp192r1 (1.2.840.10045.3.1.1) is not supported for HSM delegation.
+        let unsupported_oid = [0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x01];
+        curve_from_der_oid(&unsupported_oid).unwrap_err();
     }
 }
 

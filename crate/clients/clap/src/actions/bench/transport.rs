@@ -56,9 +56,12 @@ pub(super) fn bench_filter_matches(algo_or_name: &str, key_size_or_curve: Option
     BENCH_FILTER.with(|f| {
         f.borrow().as_ref().is_none_or(|filter| {
             // Combine with current group name if available to match algorithm category
-            let group = CURRENT_GROUP_NAME.with(|g| g.borrow().clone()).unwrap_or_default();
+            let group = CURRENT_GROUP_NAME
+                .with(|g| g.borrow().clone())
+                .unwrap_or_default();
             let full_label = format!("{group}/{algo_or_name}");
-            filter.matches(&full_label, key_size_or_curve) || filter.matches(algo_or_name, key_size_or_curve)
+            filter.matches(&full_label, key_size_or_curve)
+                || filter.matches(algo_or_name, key_size_or_curve)
         })
     })
 }

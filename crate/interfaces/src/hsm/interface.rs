@@ -2,11 +2,12 @@
 //! This module defines the interface that an HSM must implement to be used as an object store and
 //! a crypto oracle.
 
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use cosmian_kmip::kmip_2_1::{
     kmip_attributes::Attributes, kmip_objects::ObjectType, kmip_types::CryptographicAlgorithm,
 };
-use std::collections::HashSet;
 use zeroize::Zeroizing;
 
 use crate::{

@@ -5,9 +5,8 @@ use pkcs11_sys::{
     CK_ULONG, CKM_AES_KEY_GEN,
 };
 
-use crate::{HError, HResult, aes_key_template, hsm_call, session::Session};
-
 use super::serialize_tagged_label;
+use crate::{HError, HResult, aes_key_template, hsm_call, session::Session};
 
 #[derive(Debug, Clone, Copy)]
 pub enum AesKeySize {
