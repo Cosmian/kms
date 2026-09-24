@@ -644,7 +644,7 @@ bench_generate_report() {
   local is_hsm="${3:-false}"
   local is_hsm_kek="${4:-false}"
   local is_pkcs11="${5:-false}"
-
+  local base_url_override="${6:-}"
   # Compute criterion home step-by-step to avoid deeply nested expansions.
   local crit_home
   if [ -n "${CRITERION_HOME:-}" ]; then

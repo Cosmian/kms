@@ -55,14 +55,10 @@ impl Session {
             RsaKeySize::Rsa4096 => 4096,
         };
         let public_exponent: [u8; 3] = [0x01, 0x00, 0x01];
-        let sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
+        let is_sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
         // A sensitive private key must not be extractable: derive CKA_EXTRACTABLE
         // from the `sensitive` flag instead of hard-coding it to CK_TRUE.
-        let extractable = if sensitive == CK_TRUE {
-            CK_FALSE
-        } else {
-            CK_TRUE
-        };
+        let extractable = if sensitive { CK_FALSE } else { CK_TRUE };
         let mut pub_key_template = vec![
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
@@ -188,7 +184,7 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_SENSITIVE,
-                pValue: std::ptr::from_ref(&true_value)
+                pValue: std::ptr::from_ref(&is_sensitive)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,

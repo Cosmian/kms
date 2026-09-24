@@ -233,38 +233,6 @@ pub(crate) fn call_get_function_list(lib: &Library) -> KmsCliResult<*mut CK_FUNC
     Ok(func_list_ptr)
 }
 
-/// Resolve the PKCS#11 v3.0 function table through the default interface.
-pub(crate) fn call_get_function_list_3_0(
-    lib: &Library,
-) -> KmsCliResult<*const pkcs11_sys::CK_FUNCTION_LIST_3_0> {
-    let get_interface: Symbol<GetInterfaceFn> =
-        unsafe { lib.get(b"C_GetInterface\0") }.map_err(|e| {
-            KmsCliError::Default(format!(
-                "FAIL [C_GetInterface]: symbol not found in .so: {e}"
-            ))
-        })?;
-
-    let mut iface_ptr: CK_INTERFACE_PTR = ptr::null_mut();
-    let rv = unsafe { get_interface(ptr::null_mut(), ptr::null_mut(), &raw mut iface_ptr, 0) };
-    check_rv(rv, "C_GetInterface (default lookup)")?;
-    if iface_ptr.is_null() {
-        return Err(KmsCliError::Default(
-            "FAIL [C_GetInterface]: default lookup returned CKR_OK but a null interface pointer"
-                .to_owned(),
-        ));
-    }
-    // SAFETY: iface_ptr was checked non-null and returned by successful C_GetInterface call.
-    let iface = unsafe { &*iface_ptr };
-    if iface.pFunctionList.is_null() {
-        return Err(KmsCliError::Default(
-            "FAIL [C_GetInterface]: interface reports a null function list".to_owned(),
-        ));
-    }
-    Ok(iface
-        .pFunctionList
-        .cast::<pkcs11_sys::CK_FUNCTION_LIST_3_0>())
-}
-
 pub(crate) fn call_get_slot_list(func_list: &CK_FUNCTION_LIST) -> KmsCliResult<CK_SLOT_ID> {
     let c_get_slot_list = func_list.C_GetSlotList.ok_or_else(|| {
         KmsCliError::Default("FAIL [C_GetSlotList]: not present in function list".to_owned())
@@ -369,6 +337,42 @@ type GetInterfaceFn =
 /// The one interface name this provider is required to expose (see
 /// `cosmian_pkcs11_provider::PKCS11_INTERFACE_NAME`), NUL-terminated.
 const PKCS11_INTERFACE_NAME: &[u8] = b"PKCS 11\0";
+
+/// Resolves the v3.0 `CK_FUNCTION_LIST_3_0` function table via `C_GetInterface`
+/// (default lookup). The legacy `C_GetFunctionList` entry point only returns a
+/// v2.40-sized `CK_FUNCTION_LIST`, which does not include the v3.0 message-based
+/// signing functions (`C_MessageSignInit`/`C_SignMessage`/`C_MessageSignFinal`).
+pub(crate) fn call_get_function_list_3_0(
+    lib: &Library,
+) -> KmsCliResult<*const pkcs11_sys::CK_FUNCTION_LIST_3_0> {
+    let get_interface: Symbol<GetInterfaceFn> =
+        unsafe { lib.get(b"C_GetInterface\0") }.map_err(|e| {
+            KmsCliError::Default(format!(
+                "FAIL [C_GetInterface]: symbol not found in .so: {e}"
+            ))
+        })?;
+
+    let mut iface_ptr: CK_INTERFACE_PTR = ptr::null_mut();
+    let rv = unsafe { get_interface(ptr::null_mut(), ptr::null_mut(), &raw mut iface_ptr, 0) };
+    check_rv(rv, "C_GetInterface (default lookup)")?;
+    if iface_ptr.is_null() {
+        return Err(KmsCliError::Default(
+            "FAIL [C_GetInterface]: default lookup returned CKR_OK but a null interface pointer"
+                .to_owned(),
+        ));
+    }
+    // SAFETY: `iface_ptr` was just checked to be non-null and was populated by a
+    // successful `C_GetInterface` call, per the PKCS#11 v3.1 §5.2 contract.
+    let iface = unsafe { &*iface_ptr };
+    if iface.pFunctionList.is_null() {
+        return Err(KmsCliError::Default(
+            "FAIL [C_GetInterface]: interface reports a null function list".to_owned(),
+        ));
+    }
+    Ok(iface
+        .pFunctionList
+        .cast::<pkcs11_sys::CK_FUNCTION_LIST_3_0>())
+}
 
 /// Exercises the v3.0 Interfaces API surface: `C_GetInterfaceList` (two-call convention) and
 /// `C_GetInterface` (default lookup, exact-name lookup, backward-compatible v3.0 version

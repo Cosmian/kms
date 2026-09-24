@@ -89,7 +89,6 @@ pub mod key_management_service_client {
         missing_docs,
         clippy::wildcard_imports,
         clippy::let_unit_value,
-        clippy::result_large_err,
     )]
     use tonic::codegen::*;
     use tonic::codegen::http::Uri;

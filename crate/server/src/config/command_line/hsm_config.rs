@@ -68,7 +68,7 @@ pub struct HsmConfig {
             "softhsm2",
             "smartcardhsm",
             "aws_cloudhsm",
-        "kryoptic",
+            "kryoptic",
             "other"
         ]),
         default_value = "proteccio"
