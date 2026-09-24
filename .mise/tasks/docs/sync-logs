@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Update log-reference.md from source call-sites"
+#MISE description="Sync log-reference.md documentation from source log callsites"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 

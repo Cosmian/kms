@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Regenerate ckms CLI markdown documentation"
+#MISE description="Sync ckms CLI markdown documentation from source"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 

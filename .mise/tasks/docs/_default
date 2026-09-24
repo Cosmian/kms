@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Run all documentation sync and build tasks"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Running all documentation tasks"
+
+# Run all sync tasks and checks
+print_status "Building documentation site..."
+mise run docs:mdbook-build
+
+print_status "Syncing all generated documentation..."
+mise run docs:sync-all
+
+print_status "Syncing test vector README..."
+mise run docs:sync-vectors
+
+print_status "Checking logs are in sync..."
+mise run docs:check-logs
+
+print_success "All documentation tasks completed"
