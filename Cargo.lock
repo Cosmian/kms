@@ -1713,6 +1713,7 @@ dependencies = [
  "dotenvy",
  "fs4",
  "futures",
+ "gcp_cloud_hsm_pkcs11_loader",
  "governor",
  "hex",
  "hmac 0.12.1",
@@ -2899,6 +2900,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "54614a3312934d066701a80f20f15fa3b56d67ac7722b39eea5b4c9dd1d66c94"
 dependencies = [
  "thread_local",
+]
+
+[[package]]
+name = "gcp_cloud_hsm_pkcs11_loader"
+version = "5.27.1"
+dependencies = [
+ "cosmian_kms_base_hsm",
 ]
 
 [[package]]
