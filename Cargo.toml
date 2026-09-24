@@ -23,6 +23,7 @@ members = [
   "crate/access",
   "crate/crypto",
   "crate/hsm/base_hsm",
+  "crate/hsm/aws_cloudhsm",
   "crate/hsm/crypt2pay",
   "crate/hsm/kryoptic",
   "crate/hsm/proteccio",

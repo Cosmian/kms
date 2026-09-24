@@ -46,47 +46,54 @@ impl Session {
         key_size: RsaKeySize,
         sensitive: bool,
     ) -> HResult<(CK_OBJECT_HANDLE, CK_OBJECT_HANDLE)> {
-        let key_size: usize = match key_size {
+        let key_type = CKK_RSA;
+        let true_value = CK_TRUE;
+        let modulus_bits: CK_ULONG = match key_size {
             RsaKeySize::Rsa1024 => 1024,
             RsaKeySize::Rsa2048 => 2048,
             RsaKeySize::Rsa3072 => 3072,
             RsaKeySize::Rsa4096 => 4096,
         };
         let public_exponent: [u8; 3] = [0x01, 0x00, 0x01];
-        let sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
+        let is_sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
         // A sensitive private key must not be extractable: derive CKA_EXTRACTABLE
         // from the `sensitive` flag instead of hard-coding it to CK_TRUE.
-        let extractable = if sensitive == CK_TRUE {
-            CK_FALSE
-        } else {
-            CK_TRUE
-        };
+        let extractable = if sensitive { CK_FALSE } else { CK_TRUE };
         let mut pub_key_template = vec![
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
-                pValue: std::ptr::from_ref(&CKK_RSA)
+                pValue: std::ptr::from_ref(&key_type)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_TOKEN,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_PRIVATE,
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_ENCRYPT,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_MODULUS_BITS,
-                pValue: (&raw const key_size).cast::<std::ffi::c_void>().cast_mut(),
-                ulValueLen: CK_ULONG::try_from(size_of::<CK_ULONG>())?,
+                pValue: std::ptr::from_ref(&modulus_bits)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of_val(&modulus_bits))?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_PUBLIC_EXPONENT,
@@ -108,14 +115,14 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_WRAP,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_VERIFY,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
@@ -125,28 +132,28 @@ impl Session {
         let mut priv_key_template = vec![
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
-                pValue: std::ptr::from_ref(&CKK_RSA)
+                pValue: std::ptr::from_ref(&key_type)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_TOKEN,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_PRIVATE,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_DECRYPT,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
@@ -163,21 +170,23 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_UNWRAP,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_SIGN,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_SENSITIVE,
-                pValue: (&raw const sensitive).cast::<std::ffi::c_void>().cast_mut(),
+                pValue: std::ptr::from_ref(&is_sensitive)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
@@ -188,6 +197,13 @@ impl Session {
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
         ];
+
+        // AWS CloudHSM workaround: remove CKA_SENSITIVE attribute entirely
+        // since it explicitly rejects any explicit value for RSA keys.
+        // Rely on CKA_EXTRACTABLE alone to control sensitivity/extractability.
+        if !self.hsm_capabilities().supports_rsa_sensitive_attribute {
+            priv_key_template.retain(|attr| attr.type_ != CKA_SENSITIVE);
+        }
 
         let mut mechanism = CK_MECHANISM {
             mechanism: CKM_RSA_PKCS_KEY_PAIR_GEN,

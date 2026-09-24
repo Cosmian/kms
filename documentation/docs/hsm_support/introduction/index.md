@@ -9,6 +9,7 @@ the [Proteccio](https://eviden.com/solutions/digital-security/data-encryption/tr
 the [Utimaco general purpose](https://utimaco.com/),
 the [Smartcard HSM](https://www.smartcard-hsm.com/features.html),
 the [Kryoptic PKCS#11 v3.0 software token](https://github.com/latchset/kryoptic),
+[AWS CloudHSM](https://aws.amazon.com/cloudhsm/),
 and any HSM that has a standard PKCS#11 interface such as [SoftHSMv2](https://github.com/softhsm/SoftHSMv2).
 
 ## Integration Workflow

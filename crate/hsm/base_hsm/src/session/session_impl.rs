@@ -160,7 +160,7 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
         }
     }
 }
-/// Return true if the given PKCS#11 return code indicates that a mechanism (or its
+/// Returns `true` for return codes that indicate the requested mechanism (or its
 /// parameters) is simply not supported by the loaded PKCS#11 library — as opposed to
 /// a hard failure. Callers use this to gracefully degrade (e.g. report the mechanism
 /// as unavailable) instead of surfacing a generic HSM error, mirroring the additive,
@@ -203,6 +203,11 @@ impl Session {
     /// Get the HSM library interface
     pub(crate) fn hsm(&self) -> Arc<crate::hsm_lib::HsmLib> {
         self.hsm.clone()
+    }
+
+    /// Get the HSM vendor capability flags (e.g. attribute quirks, size limits).
+    pub(crate) const fn hsm_capabilities(&self) -> &HsmCapabilities {
+        &self.hsm_capabilities
     }
 
     /// Get the PKCS#11 session handle
@@ -276,7 +281,7 @@ impl Session {
         let (sk_handle, pk_handle) = self.generate_rsa_key_pair(
             sk_id.as_bytes(),
             pk_id.as_bytes(),
-            RsaKeySize::Rsa1024, //As the specific key size doesn't matter, use the smallest (fastest) algorithm supported.
+            RsaKeySize::Rsa2048,
             false,
         )?;
 
@@ -799,34 +804,74 @@ impl Session {
     ) -> HResult<EncryptedContent> {
         Ok(match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
-                let mut nonce = generate_random_nonce::<12>()?;
-                let mut params = CK_AES_GCM_PARAMS {
-                    pIv: nonce.as_mut_ptr(),
-                    ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
-                    ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
-                    pAAD: ptr::null_mut(),
-                    ulAADLen: 0,
-                    ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
-                };
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_AES_GCM,
-                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
-                    ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
-                };
-                let ciphertext =
-                    self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
-                EncryptedContent {
-                    iv: Some(nonce.to_vec()),
-                    ciphertext: ciphertext
-                        .get(..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH)
-                        .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?
-                        .to_vec(),
-                    tag: Some(
-                        ciphertext
-                            .get(ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH..)
-                            .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
+                // AWS CloudHSM workaround: rejects non-zero IVs for GCM, requiring HSM-generated IVs
+                if self.hsm_capabilities.supports_aes_gcm_caller_iv {
+                    // Standard path: caller-provided random IV
+                    let mut nonce = generate_random_nonce::<12>()?;
+                    let mut params = CK_AES_GCM_PARAMS {
+                        pIv: nonce.as_mut_ptr(),
+                        ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
+                        ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
+                        pAAD: ptr::null_mut(),
+                        ulAADLen: 0,
+                        ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
+                    };
+                    let mut mechanism = CK_MECHANISM {
+                        mechanism: CKM_AES_GCM,
+                        pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+                        ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
+                    };
+                    let ciphertext =
+                        self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
+                    EncryptedContent {
+                        iv: Some(nonce.to_vec()),
+                        ciphertext: ciphertext
+                            .get(..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH)
+                            .ok_or_else(|| {
+                                HError::Default("Failed to extract ciphertext".to_owned())
+                            })?
                             .to_vec(),
-                    ),
+                        tag: Some(
+                            ciphertext
+                                .get(ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH..)
+                                .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
+                                .to_vec(),
+                        ),
+                    }
+                } else {
+                    // AWS CloudHSM path: zero IV, HSM generates and writes it back to the buffer
+                    let mut zero_iv = vec![0_u8; AES_GCM_IV_LENGTH];
+                    let mut params = CK_AES_GCM_PARAMS {
+                        pIv: zero_iv.as_mut_ptr(),
+                        ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
+                        ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
+                        pAAD: ptr::null_mut(),
+                        ulAADLen: 0,
+                        ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
+                    };
+                    let mut mechanism = CK_MECHANISM {
+                        mechanism: CKM_AES_GCM,
+                        pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+                        ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
+                    };
+                    let ciphertext =
+                        self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
+                    // HSM has written generated IV back to zero_iv buffer
+                    EncryptedContent {
+                        iv: Some(zero_iv),
+                        ciphertext: ciphertext
+                            .get(..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH)
+                            .ok_or_else(|| {
+                                HError::Default("Failed to extract ciphertext".to_owned())
+                            })?
+                            .to_vec(),
+                        tag: Some(
+                            ciphertext
+                                .get(ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH..)
+                                .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
+                                .to_vec(),
+                        ),
+                    }
                 }
             }
             HsmEncryptionAlgorithm::AesCbc => {
@@ -2870,27 +2915,13 @@ impl Session {
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_DATE>())?,
             },
         ];
-        // Some PKCS#11 libraries (e.g. Crypt2Pay) reject CKA_START_DATE/CKA_END_DATE on
-        // secret-key objects with CKR_ATTRIBUTE_TYPE_INVALID rather than returning an empty
-        // value. Treat that case, like an unsupported object, as "no dates" instead of
-        // failing the whole metadata lookup.
-        #[expect(unsafe_code)]
-        let rv = match self.hsm.C_GetAttributeValue {
-            Some(func) => unsafe {
-                func(
-                    self.handle,
-                    key_handle,
-                    template.as_mut_ptr(),
-                    CK_ULONG::try_from(template.len())?,
-                )
-            },
-            None => {
-                return Err(HError::Default(
-                    "C_GetAttributeValue not available on library".to_owned(),
-                ));
-            }
-        };
-        if rv == CKR_ATTRIBUTE_TYPE_INVALID || rv == CKR_OBJECT_HANDLE_INVALID {
+        // If the HSM doesn't support these attributes (some PKCS#11 implementations — e.g.
+        // Crypt2pay — report `CKR_ATTRIBUTE_TYPE_INVALID` for `CKA_START_DATE`/`CKA_END_DATE` on
+        // secret keys, since these attributes are only meaningful for certificates in the base
+        // PKCS#11 spec) or the key itself is gone (`CKR_OBJECT_HANDLE_INVALID`), just return None
+        // for both rather than hard-failing metadata retrieval for a purely informational field.
+        let rv = self.raw_get_attributes(key_handle, &mut template)?;
+        if rv == CKR_OBJECT_HANDLE_INVALID || rv == CKR_ATTRIBUTE_TYPE_INVALID {
             return Ok((None, None));
         }
         if rv != CKR_OK {
@@ -3406,12 +3437,15 @@ impl Session {
     /// # Returns
     /// * `Result<Option<Vec<u8>>>` - The key object id if the object exists
     ///
-    /// Reads `CKA_ID` first (set by Cosmian KMS on every key it creates); if absent or
-    /// empty, falls back to `CKA_LABEL` (for externally provisioned keys).
+    /// Reads `CKA_LABEL` first for public keys so paired keys can share `CKA_ID`; for
+    /// private and symmetric keys, reads `CKA_ID` first and falls back to `CKA_LABEL`.
     /// For RSA public keys read via `CKA_LABEL`, the `_pk` suffix is appended if missing.
     pub fn get_object_id(&self, object_handle: CK_OBJECT_HANDLE) -> HResult<Option<Vec<u8>>> {
-        // Try CKA_ID first, then CKA_LABEL
-        for attr_type in [CKA_ID, CKA_LABEL] {
+        let attr_types = match self.get_key_type(object_handle)? {
+            Some(KeyType::RsaPublicKey | KeyType::EcPublicKey) => [CKA_LABEL, CKA_ID],
+            _ => [CKA_ID, CKA_LABEL],
+        };
+        for attr_type in attr_types {
             let mut template = [CK_ATTRIBUTE {
                 type_: attr_type,
                 pValue: ptr::null_mut(),
@@ -3442,8 +3476,7 @@ impl Session {
             if id.is_empty() {
                 continue;
             }
-            // When read via CKA_LABEL, append _pk for RSA public keys lacking the suffix.
-            // (When read via CKA_ID, KMS already stored the _pk suffix in the id.)
+            // When read via CKA_LABEL, append _pk for public keys lacking the suffix.
             if attr_type == CKA_LABEL
                 && self.get_key_type(object_handle)? == Some(KeyType::RsaPublicKey)
                 && !id.ends_with(b"_pk")
