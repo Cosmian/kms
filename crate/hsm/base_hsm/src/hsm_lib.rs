@@ -24,6 +24,29 @@ use crate::{
     pkcs11_v3::{self, CkInterface, InterfaceDescriptor},
 };
 
+const fn pkcs11_return_code_name(rv: pkcs11_sys::CK_RV) -> &'static str {
+    match rv {
+        0x0000_0000 => "CKR_OK",
+        0x0000_0002 => "CKR_HOST_MEMORY",
+        0x0000_0003 => "CKR_SLOT_ID_INVALID",
+        0x0000_0005 => "CKR_GENERAL_ERROR",
+        0x0000_0006 => "CKR_FUNCTION_FAILED",
+        0x0000_0007 => "CKR_ARGUMENTS_BAD",
+        0x0000_000a => "CKR_CANT_LOCK",
+        0x0000_0030 => "CKR_DEVICE_ERROR",
+        0x0000_0032 => "CKR_DEVICE_REMOVED",
+        0x0000_0054 => "CKR_FUNCTION_NOT_SUPPORTED",
+        0x0000_00e0 => "CKR_TOKEN_NOT_PRESENT",
+        0x0000_00e1 => "CKR_TOKEN_NOT_RECOGNIZED",
+        0x0000_00e2 => "CKR_TOKEN_WRITE_PROTECTED",
+        0x0000_00a0 => "CKR_PIN_INCORRECT",
+        0x0000_0101 => "CKR_USER_NOT_LOGGED_IN",
+        0x0000_0190 => "CKR_CRYPTOKI_NOT_INITIALIZED",
+        0x0000_0191 => "CKR_CRYPTOKI_ALREADY_INITIALIZED",
+        _ => "CKR_UNKNOWN",
+    }
+}
+
 /// Defense-in-depth cap on the PKCS#11 v3.0 interface count reported by
 /// `C_GetInterfaceList` before allocating a buffer for it (see threat-model finding
 /// T-101). No conformant library is expected to exceed this by orders of magnitude.
@@ -379,7 +402,10 @@ impl HsmLib {
             warn!("HSM library already initialized (CKR_CRYPTOKI_ALREADY_INITIALIZED); continuing");
         } else if rv != CKR_OK {
             return Err(crate::HError::Default(format!(
-                "Failed initializing the HSM. Return code: {rv}"
+                "Failed initializing the HSM. Return code: {} ({:#010x}, {})",
+                rv,
+                rv,
+                pkcs11_return_code_name(rv)
             )));
         }
         Ok(())

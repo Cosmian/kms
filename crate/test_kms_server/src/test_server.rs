@@ -713,7 +713,7 @@ pub async fn start_default_test_kms_server_with_hsm_and_kek() -> &'static TestsC
         );
 
         let config_path = hsm_config_path("hsm_kek.toml");
-        let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
+        let (mut config, http_listener) = load_test_config_from_toml(&config_path)?;
         config.hsm.hsm_model = model;
         config.hsm.hsm_slot = vec![slot];
         config.hsm.hsm_password = vec![password];
@@ -725,7 +725,7 @@ pub async fn start_default_test_kms_server_with_hsm_and_kek() -> &'static TestsC
         // Switch DB backend to match KMS_TEST_DB (postgresql/mysql/redis).
         // `clear_database = false` above ensures the KEK persists for non-SQLite.
         apply_test_db_override(&mut config);
-        start_server_from_config(config, &config_path, listeners).await
+        start_server_from_config(config, &config_path, http_listener).await
     }))
     .await
     .unwrap_or_else(|e| {

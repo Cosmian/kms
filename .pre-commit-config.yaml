@@ -480,6 +480,14 @@ repos:
         pass_filenames: false
         require_serial: true
 
+      - id: test-aws_cloudhsm_pkcs11_loader
+        name: cargo test aws_cloudhsm_pkcs11_loader
+        entry: cargo test -p aws_cloudhsm_pkcs11_loader --lib --quiet
+        language: system
+        files: ^crate/hsm/aws_cloudhsm/
+        pass_filenames: false
+        require_serial: true
+
       # ── Workspace-wide fallback (Cargo.lock or root Cargo.toml changed) ─
       # ulimit bump: the ckms integration test suite spins up many concurrent
       # TLS-enabled actix-web test servers (PQC certificate tests, access-control

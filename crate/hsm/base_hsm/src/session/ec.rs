@@ -184,12 +184,9 @@ impl Session {
     ) -> HResult<(CK_OBJECT_HANDLE, CK_OBJECT_HANDLE)> {
         let ec_params = curve_der_oid(curve);
         let key_type = curve_key_type(curve);
-        let sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
-        let extractable = if sensitive == CK_TRUE {
-            CK_FALSE
-        } else {
-            CK_TRUE
-        };
+        let true_value = CK_TRUE;
+        let is_sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
+        let extractable = if sensitive { CK_FALSE } else { CK_TRUE };
         // Montgomery curves (X25519) are derive-only: CKA_DERIVE replaces CKA_SIGN/CKA_VERIFY.
         let is_montgomery = curve_is_montgomery(curve);
         let usage_attribute_type = if is_montgomery {
@@ -209,7 +206,14 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_TOKEN,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_PRIVATE,
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
@@ -231,7 +235,7 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: usage_attribute_type,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
@@ -251,14 +255,14 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_TOKEN,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_PRIVATE,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
@@ -275,14 +279,16 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: priv_usage_attribute_type,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_SENSITIVE,
-                pValue: (&raw const sensitive).cast::<std::ffi::c_void>().cast_mut(),
+                pValue: std::ptr::from_ref(&is_sensitive)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
@@ -296,6 +302,12 @@ impl Session {
         // CKA_ENCRYPT/CKA_DECRYPT/CKA_WRAP/CKA_UNWRAP are intentionally omitted for EC keys —
         // ECDSA private keys are used only for CKA_SIGN, matching the KMIP EC private key usage
         // mask set by the software EC key generation path.
+        // AWS CloudHSM workaround: remove CKA_SENSITIVE attribute entirely
+        // since it explicitly rejects any explicit value for EC keys.
+        // Rely on CKA_EXTRACTABLE alone to control sensitivity/extractability.
+        if !self.hsm_capabilities().supports_ec_sensitive_attribute {
+            priv_key_template.retain(|attr| attr.type_ != CKA_SENSITIVE);
+        }
 
         let mut mechanism = CK_MECHANISM {
             mechanism: curve_key_pair_gen_mechanism(curve),

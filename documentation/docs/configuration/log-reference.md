@@ -1036,8 +1036,8 @@ Crate path: `crate/interfaces`
 | `debug` | `encrypt: an RSA private key {uid} was specified. Trying to use                              public key {pk_uid} for encryption`                                        | `src/hsm/hsm_store.rs`        | `uid`, `pk_uid`                                                | —                                                                                        |
 | `debug` | `HSM count_non_destroyed_keys: slot {slot_id} query failed: {e}`                                                                                                        | `src/hsm/hsm_store.rs`        | `slot_id`, `e`                                                 | —                                                                                        |
 | `debug` | `HSM key {uid} export failed ({e}); falling back to metadata-only stub for                      attribute operations`                                                   | `src/hsm/hsm_store.rs`        | `uid`, `e`                                                     | —                                                                                        |
-| `debug` | `signature_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 | `debug` | `Creating {algorithm:?} keypair with uid: {uid}` | `src/hsm/hsm_store.rs` | `algorithm`: KMIP `CryptographicAlgorithm` requested for the keypair (RSA, ECDSA, Ed25519, ...); `uid`: HSM-resident unique identifier the keypair will be stored under | Logged before delegating `CreateKeyPair` to the HSM; generalized from an RSA-only message to cover the EC/Ed25519 keypair creation support added in this change |
+| `debug` | `signature_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 
 ### `cosmian_kms_access`
 
@@ -1239,8 +1239,8 @@ Crate path: `crate/clients/pkcs11/provider`
 | `error` | `ensure_backend_registered: failed to load ckms.toml: {}.                  Check that ckms.toml exists alongside the DLL                  (C:\opt\oracle\extapi\64\pkcs11\ckms.toml),                  at ~/.cosmian/ckms.toml, or set CKMS_CONF to its path.` | `src/lib.rs` | `{}`: caught error reading/parsing ckms.toml | Renamed from `C_GetFunctionList: failed to load ckms.toml: {}...`. Configuration file missing or invalid; verify the search paths listed in the message. |
 | `error` | `remote_verify failed for Pkcs11PublicKey with remote_id {}: {e}` | `src/pkcs11_public_key.rs` | `e` | - |
 | `debug` | `remote_verify: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`, `algorithm` | - |
-| `warn` | `find_all_objects: failed to build Certificate object: {e}, skipping` | `src/backend.rs` | `e`: error building a `Pkcs11Certificate` from an exported KMS object (e.g. missing `PrivateKeyLink`) | The matching certificate is skipped, not the whole listing |
-| `warn` | `find_all_objects: failed to fetch Certificate objects: {e}, skipping certificates` | `src/backend.rs` | `e`: error from the KMS Locate/Get/GetAttributes batch export of `_cert`-tagged objects | All certificates are skipped for this listing call; other object types are unaffected |
+| `warn` | `find_all_objects: failed to build Certificate object: {e}, skipping` | `src/backend.rs` | `e` | - |
+| `warn` | `find_all_objects: failed to fetch Certificate objects: {e}, skipping certificates` | `src/backend.rs` | `e` | - |
 
 ### `cosmian_pkcs11_module`
 
