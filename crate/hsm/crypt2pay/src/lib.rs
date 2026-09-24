@@ -17,6 +17,7 @@ impl HsmProvider for Crypt2payCapabilityProvider {
             supports_aes_sensitive_attribute: true,
             supports_rsa_sensitive_attribute: true,
             supports_ec_sensitive_attribute: true,
+            supports_aes_gcm_caller_iv: true,
         }
     }
 }

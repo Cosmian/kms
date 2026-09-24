@@ -804,34 +804,74 @@ impl Session {
     ) -> HResult<EncryptedContent> {
         Ok(match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
-                let mut nonce = generate_random_nonce::<12>()?;
-                let mut params = CK_AES_GCM_PARAMS {
-                    pIv: nonce.as_mut_ptr(),
-                    ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
-                    ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
-                    pAAD: ptr::null_mut(),
-                    ulAADLen: 0,
-                    ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
-                };
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_AES_GCM,
-                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
-                    ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
-                };
-                let ciphertext =
-                    self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
-                EncryptedContent {
-                    iv: Some(nonce.to_vec()),
-                    ciphertext: ciphertext
-                        .get(..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH)
-                        .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?
-                        .to_vec(),
-                    tag: Some(
-                        ciphertext
-                            .get(ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH..)
-                            .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
+                // AWS CloudHSM workaround: rejects non-zero IVs for GCM, requiring HSM-generated IVs
+                if self.hsm_capabilities.supports_aes_gcm_caller_iv {
+                    // Standard path: caller-provided random IV
+                    let mut nonce = generate_random_nonce::<12>()?;
+                    let mut params = CK_AES_GCM_PARAMS {
+                        pIv: nonce.as_mut_ptr(),
+                        ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
+                        ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
+                        pAAD: ptr::null_mut(),
+                        ulAADLen: 0,
+                        ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
+                    };
+                    let mut mechanism = CK_MECHANISM {
+                        mechanism: CKM_AES_GCM,
+                        pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+                        ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
+                    };
+                    let ciphertext =
+                        self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
+                    EncryptedContent {
+                        iv: Some(nonce.to_vec()),
+                        ciphertext: ciphertext
+                            .get(..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH)
+                            .ok_or_else(|| {
+                                HError::Default("Failed to extract ciphertext".to_owned())
+                            })?
                             .to_vec(),
-                    ),
+                        tag: Some(
+                            ciphertext
+                                .get(ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH..)
+                                .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
+                                .to_vec(),
+                        ),
+                    }
+                } else {
+                    // AWS CloudHSM path: zero IV, HSM generates and writes it back to the buffer
+                    let mut zero_iv = vec![0_u8; AES_GCM_IV_LENGTH];
+                    let mut params = CK_AES_GCM_PARAMS {
+                        pIv: zero_iv.as_mut_ptr(),
+                        ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
+                        ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
+                        pAAD: ptr::null_mut(),
+                        ulAADLen: 0,
+                        ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
+                    };
+                    let mut mechanism = CK_MECHANISM {
+                        mechanism: CKM_AES_GCM,
+                        pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+                        ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
+                    };
+                    let ciphertext =
+                        self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
+                    // HSM has written generated IV back to zero_iv buffer
+                    EncryptedContent {
+                        iv: Some(zero_iv),
+                        ciphertext: ciphertext
+                            .get(..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH)
+                            .ok_or_else(|| {
+                                HError::Default("Failed to extract ciphertext".to_owned())
+                            })?
+                            .to_vec(),
+                        tag: Some(
+                            ciphertext
+                                .get(ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH..)
+                                .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
+                                .to_vec(),
+                        ),
+                    }
                 }
             }
             HsmEncryptionAlgorithm::AesCbc => {
