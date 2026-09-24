@@ -35,6 +35,7 @@ impl HsmProvider for AwsCloudHsmCapabilityProvider {
             max_cbc_data_size: None,
             // Conservative default, in line with the other proprietary HSM vendors (Utimaco).
             find_max_object_count: 64,
+            supports_aes_sensitive_attribute: false,
         }
     }
 }

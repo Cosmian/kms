@@ -14,6 +14,7 @@ impl HsmProvider for Crypt2payCapabilityProvider {
         HsmCapabilities {
             max_cbc_data_size: None,
             find_max_object_count: 64,
+            supports_aes_sensitive_attribute: true,
         }
     }
 }

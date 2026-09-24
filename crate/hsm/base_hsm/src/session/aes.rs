@@ -101,6 +101,16 @@ impl Session {
         size: AesKeySize,
         sensitive: bool,
     ) -> HResult<CK_OBJECT_HANDLE> {
+        // Some vendors (AWS CloudHSM) reject any explicit value for CKA_SENSITIVE on
+        // C_GenerateKey; fall back to the attribute-free/extractable-only templates,
+        // which reach the same effective non-extractable/extractable state on those HSMs.
+        if !self.hsm_capabilities().supports_aes_sensitive_attribute {
+            return if sensitive {
+                self.generate_sensitive_aes_key(id, size)
+            } else {
+                self.generate_exportable_aes_key(id, size)
+            };
+        }
         {
             let size = CK_ULONG::try_from(match size {
                 AesKeySize::Aes128 => 16_u64,

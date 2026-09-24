@@ -205,6 +205,11 @@ impl Session {
         self.hsm.clone()
     }
 
+    /// Get the HSM vendor capability flags (e.g. attribute quirks, size limits).
+    pub(crate) const fn hsm_capabilities(&self) -> &HsmCapabilities {
+        &self.hsm_capabilities
+    }
+
     /// Get the PKCS#11 session handle
     pub(crate) const fn session_handle(&self) -> CK_SESSION_HANDLE {
         self.handle
