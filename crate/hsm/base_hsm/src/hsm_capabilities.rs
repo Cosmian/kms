@@ -34,7 +34,7 @@ pub struct HsmCapabilities {
     /// When false, encryption proceeds without caller IV (HSM generates internally).
     pub supports_aes_gcm_caller_iv: bool,
 
-    /// Maximum length allowed for CKA_LABEL on HSM objects.
+    /// Maximum length allowed for `CKA_LABEL` on HSM objects.
     /// If `None`, there is no enforced limit.
     pub max_label_len: Option<usize>,
 }

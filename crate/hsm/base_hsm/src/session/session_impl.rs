@@ -3506,9 +3506,19 @@ impl Session {
             if id.is_empty() {
                 continue;
             }
+            let (decoded_id, _) = if attr_type == CKA_LABEL {
+                Self::decode_key_label(id)?
+            } else {
+                (
+                    String::from_utf8(id).map_err(|e| HError::Default(e.to_string()))?,
+                    HashSet::new(),
+                )
+            };
+            let mut id = decoded_id.into_bytes();
             // When read via CKA_LABEL, append _pk for public keys lacking the suffix.
             if attr_type == CKA_LABEL
-                && self.get_key_type(object_handle)? == Some(KeyType::RsaPublicKey)
+                && (self.get_key_type(object_handle)? == Some(KeyType::RsaPublicKey)
+                    || self.get_key_type(object_handle)? == Some(KeyType::EcPublicKey))
                 && !id.ends_with(b"_pk")
             {
                 id.extend_from_slice(b"_pk");

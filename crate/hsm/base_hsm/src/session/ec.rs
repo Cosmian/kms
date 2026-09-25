@@ -102,9 +102,13 @@ pub(crate) fn curve_from_der_oid(oid: &[u8]) -> HResult<EcCurve> {
     // If the DER OID starts with tag 0x06, decode the exact length of the ASN.1 TLV
     // in case the HSM padded the buffer with trailing zeroes.
     let trimmed_oid = if oid.first() == Some(&0x06) && oid.len() >= 2 {
-        let len = oid[1] as usize;
-        if oid.len() >= 2 + len {
-            &oid[..2 + len]
+        if let Some(&len_byte) = oid.get(1) {
+            let len = usize::from(len_byte);
+            if oid.len() >= 2 + len {
+                oid.get(..2 + len).unwrap_or(oid)
+            } else {
+                oid
+            }
         } else {
             oid
         }

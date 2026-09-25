@@ -414,34 +414,118 @@ EOF
 #   - bench_build_binaries (or bench_build_ckms) must have run, so KMS_BIN and
 #     CKMS_BIN are set.
 #
-# Usage: bench_start_server_hsm_resident <port> <tmp_dir> [http_workers]
+# Usage: bench_start_server_hsm_resident <port> <tmp_dir> [http_workers] [hsm_model] [hsm_slot] [hsm_password]
 # Sets:  KMS_PID, SOFTHSM2_HSM_SLOT_ID
 bench_start_server_hsm_resident() {
   local port="$1" tmp_dir="$2" http_workers="${3:-}"
+  local hsm_model="${4:-softhsm2}"
+  local custom_slot="${5:-}"
+  local custom_password="${6:-}"
   local sqlite_path="${tmp_dir}/kms-data"
   local kms_conf="${tmp_dir}/kms.toml"
   local kms_log="${tmp_dir}/kms.log"
-
-  require_cmd softhsm2-util \
-    "SoftHSM2 (softhsm2-util) is required for HSM benchmarks. Install: brew install softhsm (macOS) or apt install softhsm2 (Linux)"
-
-  # Initialize a fresh single-token SoftHSM2 environment.
-  softhsm2_setup "${tmp_dir}/softhsm2/tokens" "${tmp_dir}/softhsm2/softhsm2.conf"
-  local init_out
-  init_out=$(softhsm2_init_token "bench_resident" "${HSM_USER_PASSWORD}" "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
-  SOFTHSM2_HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_resident")
-  export SOFTHSM2_HSM_SLOT_ID
+  local env_vars=()
 
   mkdir -p "$sqlite_path"
 
-  # Write kms.toml with the HSM backend registered but no key_encryption_key:
-  # hsm::softhsm2::<slot>:: keys route to the HSM; every other key stays on
-  # the (temporary) SQLite backend, unwrapped.
+  if [ "${hsm_model}" = "kryoptic" ]; then
+    source "${MISE_CONFIG_ROOT:-$(get_repo_root)}/.mise/lib/kryoptic.sh"
+    kryoptic_build_cdylib
+    kryoptic_setup "${tmp_dir}/kryoptic"
+    python3 -c "
+import ctypes, os, sys
+lib_path = sys.argv[1]
+conf_path = sys.argv[2]
+os.environ['KRYOPTIC_CONF'] = conf_path
+lib = ctypes.CDLL(lib_path)
+CK_ULONG = ctypes.c_ulong
+CK_RV = CK_ULONG
+CK_SLOT_ID = CK_ULONG
+CK_SESSION_HANDLE = CK_ULONG
+FUNC_TYPES = [
+    ('version', ctypes.c_char * 8),
+    ('C_Initialize', ctypes.CFUNCTYPE(CK_RV, ctypes.c_void_p)),
+    ('C_Finalize', ctypes.CFUNCTYPE(CK_RV, ctypes.c_void_p)),
+    ('C_GetInfo', ctypes.c_void_p),
+    ('C_GetFunctionList', ctypes.c_void_p),
+    ('C_GetSlotList', ctypes.c_void_p),
+    ('C_GetSlotInfo', ctypes.c_void_p),
+    ('C_GetTokenInfo', ctypes.c_void_p),
+    ('C_GetMechanismList', ctypes.c_void_p),
+    ('C_GetMechanismInfo', ctypes.c_void_p),
+    ('C_InitToken', ctypes.CFUNCTYPE(CK_RV, CK_SLOT_ID, ctypes.c_char_p, CK_ULONG, ctypes.c_char_p)),
+    ('C_InitPIN', ctypes.CFUNCTYPE(CK_RV, CK_SESSION_HANDLE, ctypes.c_char_p, CK_ULONG)),
+    ('C_SetPIN', ctypes.c_void_p),
+    ('C_OpenSession', ctypes.CFUNCTYPE(CK_RV, CK_SLOT_ID, CK_ULONG, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(CK_SESSION_HANDLE))),
+    ('C_CloseSession', ctypes.CFUNCTYPE(CK_RV, CK_SESSION_HANDLE)),
+    ('C_CloseAllSessions', ctypes.c_void_p),
+    ('C_GetSessionInfo', ctypes.c_void_p),
+    ('C_GetOperationState', ctypes.c_void_p),
+    ('C_SetOperationState', ctypes.c_void_p),
+    ('C_Login', ctypes.CFUNCTYPE(CK_RV, CK_SESSION_HANDLE, CK_ULONG, ctypes.c_char_p, CK_ULONG)),
+    ('C_Logout', ctypes.CFUNCTYPE(CK_RV, CK_SESSION_HANDLE)),
+]
+class CK_FUNCTION_LIST(ctypes.Structure):
+    _fields_ = FUNC_TYPES
+p_fn_list = ctypes.POINTER(CK_FUNCTION_LIST)()
+lib.C_GetFunctionList.argtypes = [ctypes.POINTER(ctypes.POINTER(CK_FUNCTION_LIST))]
+lib.C_GetFunctionList.restype = CK_RV
+assert lib.C_GetFunctionList(ctypes.byref(p_fn_list)) == 0
+fns = p_fn_list.contents
+class CK_C_INITIALIZE_ARGS(ctypes.Structure):
+    _fields_ = [('CreateMutex', ctypes.c_void_p), ('DestroyMutex', ctypes.c_void_p), ('LockMutex', ctypes.c_void_p), ('UnlockMutex', ctypes.c_void_p), ('flags', CK_ULONG), ('pReserved', ctypes.c_void_p)]
+init_args = CK_C_INITIALIZE_ARGS(0, 0, 0, 0, 2, None)
+assert fns.C_Initialize(ctypes.byref(init_args)) == 0
+so_pin = b'87654321'
+label = b'Cosmian Kryoptic Token          '
+assert fns.C_InitToken(1, so_pin, len(so_pin), label) == 0
+session = CK_SESSION_HANDLE(0)
+assert fns.C_OpenSession(1, 6, None, None, ctypes.byref(session)) == 0
+assert fns.C_Login(session, 0, so_pin, len(so_pin)) == 0
+user_pin = b'12345678'
+assert fns.C_InitPIN(session, user_pin, len(user_pin)) == 0
+assert fns.C_Logout(session) == 0
+assert fns.C_CloseSession(session) == 0
+assert fns.C_Finalize(None) == 0
+" "${KRYOPTIC_PKCS11_LIB}" "${KRYOPTIC_CONF}"
+
+    SOFTHSM2_HSM_SLOT_ID="${KRYOPTIC_HSM_SLOT_ID}"
+    export SOFTHSM2_HSM_SLOT_ID
+    env_vars+=(
+      "KRYOPTIC_PKCS11_LIB=${KRYOPTIC_PKCS11_LIB}"
+      "KRYOPTIC_CONF=${KRYOPTIC_CONF}"
+    )
+    hsm_password="${HSM_USER_PASSWORD}"
+  elif [ "${hsm_model}" = "softhsm2" ]; then
+    require_cmd softhsm2-util \
+      "SoftHSM2 (softhsm2-util) is required for HSM benchmarks. Install: brew install softhsm (macOS) or apt install softhsm2 (Linux)"
+    softhsm2_setup "${tmp_dir}/softhsm2/tokens" "${tmp_dir}/softhsm2/softhsm2.conf"
+    local init_out
+    init_out=$(softhsm2_init_token "bench_resident" "${HSM_USER_PASSWORD}" "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
+    SOFTHSM2_HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_resident")
+    export SOFTHSM2_HSM_SLOT_ID
+    local lib_path_var lib_path
+    lib_path_var=$(softhsm2_lib_path_var)
+    lib_path=$(softhsm2_lib_search_path)
+    env_vars+=(
+      "${lib_path_var}=${lib_path}"
+      "SOFTHSM2_PKCS11_LIB=${SOFTHSM2_PKCS11_LIB_PATH}"
+      "SOFTHSM2_CONF=${SOFTHSM2_CONF}"
+    )
+    hsm_password="${HSM_USER_PASSWORD}"
+  else
+    SOFTHSM2_HSM_SLOT_ID="${custom_slot:-1}"
+    export SOFTHSM2_HSM_SLOT_ID
+    hsm_password="${custom_password}"
+  fi
+
   cat >"${kms_conf}" <<EOF
-hsm_model    = "softhsm2"
+default_username = "admin"
+
+hsm_model    = "${hsm_model}"
 hsm_admin    = ["admin"]
 hsm_slot     = [${SOFTHSM2_HSM_SLOT_ID}]
-hsm_password = ["${HSM_USER_PASSWORD}"]
+hsm_password = ["${hsm_password}"]
 
 [db]
 database_type = "sqlite"
@@ -456,16 +540,10 @@ EOF
     printf 'http_workers = %s\n' "${http_workers}" >>"${kms_conf}"
   fi
 
-  echo "Starting KMS server (HSM-resident, no KEK) on port ${port}..."
-  local lib_path_var
-  lib_path_var=$(softhsm2_lib_path_var)
-  local lib_path
-  lib_path=$(softhsm2_lib_search_path)
+  echo "Starting KMS server (HSM-resident [${hsm_model}], no KEK) on port ${port}..."
 
   env \
-    "${lib_path_var}=${lib_path}" \
-    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH}" \
-    SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
+    ${env_vars[@]+"${env_vars[@]}"} \
     "${KMS_BIN}" --config "${kms_conf}" \
     >"${kms_log}" 2>&1 &
   KMS_PID=$!

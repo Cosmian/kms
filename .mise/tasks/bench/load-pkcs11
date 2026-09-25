@@ -20,6 +20,7 @@
 #USAGE flag "-s --sanity"           env="BENCH_SANITY"                                  help="Quick sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt"
 #USAGE flag "--shared-session"      env="BENCH_SHARED_SESSION"                          help="Force every worker thread to share one Cryptoki session (pre-fix behavior), instead of one dedicated session per thread (default) — for before/after comparison only"
 #USAGE flag "-d --delegated"        env="BENCH_DELEGATED"                               help="Benchmark crypto operations executed DIRECTLY on the HSM (CryptoOracle) via HSM-resident keys"
+#USAGE flag "--hsm-model <m>"        env="BENCH_HSM_MODEL"     default="softhsm2"        help="HSM model for delegated benchmarking"      { choices "softhsm2" "kryoptic" "proteccio" "crypt2pay" "utimaco" "smartcardhsm" "aws_cloudhsm" "other" }
 #USAGE flag "--hsm-slot <s>"          env="BENCH_HSM_SLOT"                                 help="HSM slot ID for HSM-resident keys (used with --delegated and remote --server-url)"
 #USAGE flag "--criterion"           env="BENCH_CRITERION"                               help="Also run real criterion-crate single-operation micro-benchmarks, on top of the concurrency sweep that always runs — writes criterion.json alongside load_pkcs11.json, so the report gets both a Load Tests and a Criterion Benchmarks section"
 #USAGE flag "--speed <speed>"         env="BENCH_SPEED"         default="quick"           help="Criterion speed preset (with --criterion)" { choices "sanity" "quick" "normal" }
@@ -52,6 +53,7 @@ BENCH_COOLDOWN="${usage_cooldown:-2}"
 BENCH_SANITY="${usage_sanity:-}"
 BENCH_SHARED_SESSION="${usage_shared_session:-}"
 BENCH_DELEGATED="${usage_delegated:-}"
+BENCH_HSM_MODEL="${usage_hsm_model:-softhsm2}"
 BENCH_HSM_SLOT="${usage_hsm_slot:-}"
 BENCH_CRITERION="${usage_criterion:-}"
 BENCH_SPEED="${usage_speed:-quick}"
@@ -66,7 +68,10 @@ if [ "${BENCH_DELEGATED}" = "true" ]; then
       print_error "--hsm-slot is required when using --delegated with --server-url."
     fi
     SOFTHSM2_HSM_SLOT_ID="${BENCH_HSM_SLOT}"
-  else
+  elif [ "${BENCH_HSM_MODEL}" = "kryoptic" ]; then
+    source "${MISE_CONFIG_ROOT}/.mise/lib/kryoptic.sh"
+    SOFTHSM2_HSM_SLOT_ID=1
+  elif [ "${BENCH_HSM_MODEL}" = "softhsm2" ]; then
     source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
   fi
 fi
@@ -225,7 +230,7 @@ if [ "${BENCH_DELEGATED}" = "true" ] && [ -z "${BENCH_SERVER_URL}" ] && [ "${BEN
     mkdir -p "${SUB_TMP}"
     SUB_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
     print_status "[${SUB_INDEX}/${SUB_COUNT}] delegated PKCS#11 submode: ${SUB_MODE}"
-    bench_start_server_hsm_resident "${SUB_PORT}" "${SUB_TMP}" "${BENCH_HTTP_WORKERS}"
+    bench_start_server_hsm_resident "${SUB_PORT}" "${SUB_TMP}" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}" "${BENCH_HSM_SLOT}"
     KMS_BASE_URL="http://127.0.0.1:${SUB_PORT}"
     CKMS_CONF="${SUB_TMP}/ckms.toml"
     bench_write_ckms_tls_conf "${CKMS_CONF}" "${KMS_BASE_URL}" "false" "" "" "" "" ""
@@ -252,7 +257,7 @@ if [ "${BENCH_DELEGATED}" = "true" ] && [ -z "${BENCH_SERVER_URL}" ] && [ "${BEN
   cp "${MERGED_DIR}"/* "${CRITERION_HOME}/"
 elif [ "${BENCH_DELEGATED}" = "true" ] && [ -z "${BENCH_SERVER_URL}" ]; then
   BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
-  bench_start_server_hsm_resident "${BENCH_PORT}" "${TMP_DIR}" "${BENCH_HTTP_WORKERS}"
+  bench_start_server_hsm_resident "${BENCH_PORT}" "${TMP_DIR}" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}" "${BENCH_HSM_SLOT}"
   KMS_BASE_URL="http://127.0.0.1:${BENCH_PORT}"
   CKMS_CONF="${TMP_DIR}/ckms.toml"
   bench_write_ckms_tls_conf "${CKMS_CONF}" "${KMS_BASE_URL}" "false" "" "" "" "" ""
