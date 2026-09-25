@@ -67,10 +67,16 @@ if [ "${BENCH_DELEGATED}" = "true" ]; then
     if [ -z "${BENCH_HSM_SLOT}" ]; then
       print_error "--hsm-slot is required when using --delegated with --server-url."
     fi
-    SOFTHSM2_HSM_SLOT_ID="${BENCH_HSM_SLOT}"
+    HSM_SLOT_ID="${BENCH_HSM_SLOT}"
   elif [ "${BENCH_HSM_MODEL}" = "kryoptic" ]; then
     source "${MISE_CONFIG_ROOT}/.mise/lib/kryoptic.sh"
-    SOFTHSM2_HSM_SLOT_ID=1
+    HSM_SLOT_ID=1
+  elif [ "${BENCH_HSM_MODEL}" = "proteccio" ]; then
+    source "${HOME}/.cosmian/proteccio.sh"
+    HSM_SLOT_ID="${PROTECCIO_SLOT:-5}"
+  elif [ "${BENCH_HSM_MODEL}" = "crypt2pay" ]; then
+    source "${HOME}/.cosmian/crypt2pay.sh"
+    HSM_SLOT_ID="${CRYPT2PAY_SLOT_ID:-1}"
   elif [ "${BENCH_HSM_MODEL}" = "softhsm2" ]; then
     source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
   fi
@@ -198,7 +204,7 @@ run_pkcs11_bench() {
   local base_url="$1" conf="$2" mode="$3"
   local delegated_args=()
   if [ "${BENCH_DELEGATED}" = "true" ]; then
-    delegated_args=(--delegated --hsm-slot "${SOFTHSM2_HSM_SLOT_ID}")
+    delegated_args=(--delegated --hsm-slot "${HSM_SLOT_ID}")
   fi
 
   "${CKMS_BIN}" \

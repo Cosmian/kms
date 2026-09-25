@@ -337,10 +337,12 @@ bench_start_server_hsm() {
   softhsm2_setup "${tmp_dir}/softhsm2/tokens" "${tmp_dir}/softhsm2/softhsm2.conf"
   local init_out
   init_out=$(softhsm2_init_token "bench_kek" "${HSM_USER_PASSWORD}" "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
-  SOFTHSM2_HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_kek")
+  HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_kek")
+  export HSM_SLOT_ID
+  SOFTHSM2_HSM_SLOT_ID="${HSM_SLOT_ID}"
   export SOFTHSM2_HSM_SLOT_ID
 
-  HSM_KEK_UID="hsm::${SOFTHSM2_HSM_SLOT_ID}::bench_kek"
+  HSM_KEK_UID="hsm::${HSM_SLOT_ID}::bench_kek"
   export HSM_KEK_UID
 
   mkdir -p "$sqlite_path"
@@ -352,7 +354,7 @@ key_encryption_key = "${HSM_KEK_UID}"
 
 hsm_model    = "softhsm2"
 hsm_admin    = ["admin"]
-hsm_slot     = [${SOFTHSM2_HSM_SLOT_ID}]
+hsm_slot     = [${HSM_SLOT_ID}]
 hsm_password = ["${HSM_USER_PASSWORD}"]
 
 [db]
@@ -415,7 +417,7 @@ EOF
 #     CKMS_BIN are set.
 #
 # Usage: bench_start_server_hsm_resident <port> <tmp_dir> [http_workers] [hsm_model] [hsm_slot] [hsm_password]
-# Sets:  KMS_PID, SOFTHSM2_HSM_SLOT_ID
+# Sets:  KMS_PID, HSM_SLOT_ID
 bench_start_server_hsm_resident() {
   local port="$1" tmp_dir="$2" http_workers="${3:-}"
   local hsm_model="${4:-softhsm2}"
@@ -489,21 +491,36 @@ assert fns.C_CloseSession(session) == 0
 assert fns.C_Finalize(None) == 0
 " "${KRYOPTIC_PKCS11_LIB}" "${KRYOPTIC_CONF}"
 
-    SOFTHSM2_HSM_SLOT_ID="${KRYOPTIC_HSM_SLOT_ID}"
-    export SOFTHSM2_HSM_SLOT_ID
+    HSM_SLOT_ID="${KRYOPTIC_HSM_SLOT_ID}"
+    export HSM_SLOT_ID
     env_vars+=(
       "KRYOPTIC_PKCS11_LIB=${KRYOPTIC_PKCS11_LIB}"
       "KRYOPTIC_CONF=${KRYOPTIC_CONF}"
     )
     hsm_password="${HSM_USER_PASSWORD}"
+  elif [ "${hsm_model}" = "proteccio" ]; then
+    HSM_SLOT_ID="${custom_slot:-${PROTECCIO_SLOT:-5}}"
+    export HSM_SLOT_ID
+    hsm_password="${custom_password:-${PROTECCIO_PASSWORD:-}}"
+    env_vars+=(
+      "PROTECCIO_PKCS11_LIB=${PROTECCIO_PKCS11_LIB:-/lib/libnethsm.so}"
+    )
+  elif [ "${hsm_model}" = "crypt2pay" ]; then
+    HSM_SLOT_ID="${custom_slot:-${CRYPT2PAY_SLOT_ID:-1}}"
+    export HSM_SLOT_ID
+    hsm_password="${custom_password:-${CRYPT2PAY_PASSWORD:-}}"
+    env_vars+=(
+      "CRYPT2PAY_PKCS11_LIB=${CRYPT2PAY_PKCS11_LIB:-/lib/libpkcs11c2p.so}"
+      "C2P_CONF=${C2P_CONF:-/etc/c2p/c2p.xml}"
+    )
   elif [ "${hsm_model}" = "softhsm2" ]; then
     require_cmd softhsm2-util \
       "SoftHSM2 (softhsm2-util) is required for HSM benchmarks. Install: brew install softhsm (macOS) or apt install softhsm2 (Linux)"
     softhsm2_setup "${tmp_dir}/softhsm2/tokens" "${tmp_dir}/softhsm2/softhsm2.conf"
     local init_out
     init_out=$(softhsm2_init_token "bench_resident" "${HSM_USER_PASSWORD}" "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
-    SOFTHSM2_HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_resident")
-    export SOFTHSM2_HSM_SLOT_ID
+    HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_resident")
+    export HSM_SLOT_ID
     local lib_path_var lib_path
     lib_path_var=$(softhsm2_lib_path_var)
     lib_path=$(softhsm2_lib_search_path)
@@ -514,8 +531,8 @@ assert fns.C_Finalize(None) == 0
     )
     hsm_password="${HSM_USER_PASSWORD}"
   else
-    SOFTHSM2_HSM_SLOT_ID="${custom_slot:-1}"
-    export SOFTHSM2_HSM_SLOT_ID
+    HSM_SLOT_ID="${custom_slot:-1}"
+    export HSM_SLOT_ID
     hsm_password="${custom_password}"
   fi
 
@@ -524,7 +541,7 @@ default_username = "admin"
 
 hsm_model    = "${hsm_model}"
 hsm_admin    = ["admin"]
-hsm_slot     = [${SOFTHSM2_HSM_SLOT_ID}]
+hsm_slot     = [${HSM_SLOT_ID}]
 hsm_password = ["${hsm_password}"]
 
 [db]
