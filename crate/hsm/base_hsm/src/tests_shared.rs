@@ -212,7 +212,8 @@ pub fn generate_aes_key_with_exportability(
     let session = slot.open_session(true)?;
     if supports_exportable_keys {
         let key_id = Uuid::new_v4().to_string();
-        let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false)?;
+        let key_handle =
+            session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false, None)?;
         info!("Generated exportable AES key: {}", key_id);
         // assert the key handles are identical
         assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
@@ -246,7 +247,7 @@ pub fn generate_aes_key_with_exportability(
     // Generate a sensitive AES key
     let key_id = Uuid::new_v4().to_string();
     let key_handle = if supports_exportable_keys {
-        session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?
+        session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true, None)?
     } else {
         session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?
     };
@@ -1449,7 +1450,7 @@ pub fn get_key_metadata(
     // generate an AES key
     let key_id = Uuid::new_v4().to_string();
     let key_handle = if supports_sensitivity_attribute {
-        session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?
+        session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true, None)?
     } else {
         session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?
     };

@@ -813,14 +813,14 @@ impl Session {
                 if self.hsm_capabilities.supports_aes_gcm_caller_iv {
                     // Standard path: caller-provided random IV
                     let mut nonce: [u8; AES_GCM_IV_LENGTH] = match iv_counter_nonce {
-                    Some(iv) => iv.try_into().map_err(|_invalid_length| {
-                        HError::Default(format!(
-                            "Invalid AES-GCM IV length: expected {AES_GCM_IV_LENGTH}, got {}",
-                            iv.len()
-                        ))
-                    })?,
-                    None => generate_random_nonce::<AES_GCM_IV_LENGTH>()?,
-                };
+                        Some(iv) => iv.try_into().map_err(|_invalid_length| {
+                            HError::Default(format!(
+                                "Invalid AES-GCM IV length: expected {AES_GCM_IV_LENGTH}, got {}",
+                                iv.len()
+                            ))
+                        })?,
+                        None => generate_random_nonce::<AES_GCM_IV_LENGTH>()?,
+                    };
                     let mut params = CK_AES_GCM_PARAMS {
                         pIv: nonce.as_mut_ptr(),
                         ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,

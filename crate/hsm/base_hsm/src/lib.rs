@@ -168,7 +168,7 @@ macro_rules! aes_key_template {
             },
         ]
     };
-    ($id:expr, $size:expr, $sensitive:expr, $extractable:expr) => {
+    ($id:expr, $label:expr, $size:expr, $sensitive:expr, $extractable:expr) => {
         [
             pkcs11_sys::CK_ATTRIBUTE {
                 type_: pkcs11_sys::CKA_CLASS,
