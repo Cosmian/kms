@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#MISE description="Run Azure Dedicated HSM (Thales Luna 7) PKCS#11 tests (Linux only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "static"
+setup_test_logging
+
+if [[ "$(uname -s)" != "Linux" ]]; then
+  print_error "Azure Dedicated HSM tests require Linux"
+fi
+
+require_cmd cargo
+: "${AZURE_DEDICATED_HSM_PKCS11_LIB:?Set AZURE_DEDICATED_HSM_PKCS11_LIB to libCryptoki2_64.so}"
+: "${HSM_USER_PASSWORD:?Set HSM_USER_PASSWORD to the Luna partition password}"
+
+print_header "Running Azure Dedicated HSM tests (${VARIANT_NAME})"
+
+cargo test -p azure_dedicated_hsm_pkcs11_loader \
+  --features azure_dedicated_hsm \
+  -- --nocapture tests::test_hsm_azure_dedicated_hsm_all --ignored --exact
+
+print_success "Azure Dedicated HSM tests completed"

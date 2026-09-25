@@ -13,6 +13,8 @@ use std::{
 // AWS CloudHSM's PKCS#11 client (Client SDK 5) supports Linux x86_64 and arm64, but not macOS.
 #[cfg(target_os = "linux")]
 use aws_cloudhsm_pkcs11_loader::{AWS_CLOUDHSM_PKCS11_LIB, AwsCloudhsm};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use azure_dedicated_hsm_pkcs11_loader::{AZURE_DEDICATED_HSM_PKCS11_LIB, AzureDedicatedHsm};
 use cosmian_kms_server_database::{
     CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
     reexport::{
@@ -489,6 +491,14 @@ impl KMS {
                 "AwsCloudhsm",
                 slot_passwords
             )),
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            "azure_dedicated_hsm" => Ok(instantiate_hsm_with_env!(
+                AzureDedicatedHsm,
+                "AZURE_DEDICATED_HSM_PKCS11_LIB",
+                AZURE_DEDICATED_HSM_PKCS11_LIB,
+                "Azure Dedicated HSM",
+                slot_passwords
+            )),
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             "other" => Ok(instantiate_hsm_with_env!(
                 Softhsm2,
@@ -499,7 +509,8 @@ impl KMS {
             )),
             _ => kms_bail!(
                 "Unsupported HSM model: {model}. Supported values: \
-                 proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, softhsm2, utimaco, kryoptic, other"
+                 proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, azure_dedicated_hsm, \
+                 softhsm2, utimaco, kryoptic, other"
             ),
         }
     }
