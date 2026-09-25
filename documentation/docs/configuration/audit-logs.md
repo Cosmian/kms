@@ -21,6 +21,7 @@ spawned until the feature is explicitly enabled.
     path = "/var/log/cosmian-kms/audit.jsonl"
     ```
 
+// IMPORTANT TODO: FIX THIS
 === "Command line"
 
     ```bash
