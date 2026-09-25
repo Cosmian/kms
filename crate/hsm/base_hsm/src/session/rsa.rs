@@ -61,9 +61,11 @@ impl Session {
         // A sensitive private key must not be extractable: derive CKA_EXTRACTABLE
         // from the `sensitive` flag instead of hard-coding it to CK_TRUE.
         let extractable = if sensitive { CK_FALSE } else { CK_TRUE };
-        let tagged_sk_label = serialize_tagged_label(sk_id, tags)?;
+        let tagged_sk_label =
+            serialize_tagged_label(sk_id, tags, self.hsm_capabilities.max_label_len)?;
         let sk_label = tagged_sk_label.as_deref().unwrap_or(sk_id);
-        let tagged_pk_label = serialize_tagged_label(pk_id, tags)?;
+        let tagged_pk_label =
+            serialize_tagged_label(pk_id, tags, self.hsm_capabilities.max_label_len)?;
         let pk_label = tagged_pk_label.as_deref().unwrap_or(pk_id);
         let mut pub_key_template = vec![
             CK_ATTRIBUTE {

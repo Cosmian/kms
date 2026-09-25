@@ -180,7 +180,7 @@ pub struct Session {
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
     logging_in: bool,
-    hsm_capabilities: HsmCapabilities,
+    pub(crate) hsm_capabilities: HsmCapabilities,
 }
 
 impl Session {
@@ -3115,7 +3115,11 @@ impl Session {
         let tags = self
             .get_key_metadata(key_handle)?
             .map_or_else(HashSet::new, |metadata| metadata.tags);
-        let tagged_label = serialize_tagged_label(label.as_bytes(), Some(&tags))?;
+        let tagged_label = serialize_tagged_label(
+            label.as_bytes(),
+            Some(&tags),
+            self.hsm_capabilities.max_label_len,
+        )?;
         let label_bytes = tagged_label.as_deref().unwrap_or(label.as_bytes());
         let mut template = vec![CK_ATTRIBUTE {
             type_: CKA_LABEL,

@@ -33,6 +33,10 @@ pub struct HsmCapabilities {
     /// AWS `CloudHSM` rejects any non-zero IV for GCM with error 0x71 ("Iv invalid").
     /// When false, encryption proceeds without caller IV (HSM generates internally).
     pub supports_aes_gcm_caller_iv: bool,
+
+    /// Maximum length allowed for CKA_LABEL on HSM objects.
+    /// If `None`, there is no enforced limit.
+    pub max_label_len: Option<usize>,
 }
 
 impl Default for HsmCapabilities {
@@ -44,6 +48,7 @@ impl Default for HsmCapabilities {
             supports_rsa_sensitive_attribute: true,
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
+            max_label_len: None,
         }
     }
 }

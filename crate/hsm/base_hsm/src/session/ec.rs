@@ -99,12 +99,27 @@ pub(crate) fn curve_from_der_oid(oid: &[u8]) -> HResult<EcCurve> {
         EcCurve::Ed448,
         EcCurve::X25519,
     ];
+    // If the DER OID starts with tag 0x06, decode the exact length of the ASN.1 TLV
+    // in case the HSM padded the buffer with trailing zeroes.
+    let trimmed_oid = if oid.first() == Some(&0x06) && oid.len() >= 2 {
+        let len = oid[1] as usize;
+        if oid.len() >= 2 + len {
+            &oid[..2 + len]
+        } else {
+            oid
+        }
+    } else {
+        oid
+    };
+
     for curve in curves {
-        if curve_der_oid(curve) == oid {
+        if curve_der_oid(curve) == oid || curve_der_oid(curve) == trimmed_oid {
             return Ok(curve);
         }
         #[cfg(feature = "non-fips")]
-        if curve_der_named_curve_oid(curve).is_some_and(|candidate| candidate == oid) {
+        if curve_der_named_curve_oid(curve)
+            .is_some_and(|candidate| candidate == oid || candidate == trimmed_oid)
+        {
             return Ok(curve);
         }
     }
@@ -177,9 +192,11 @@ impl Session {
             CKA_VERIFY
         };
         let priv_usage_attribute_type = if is_montgomery { CKA_DERIVE } else { CKA_SIGN };
-        let tagged_sk_label = serialize_tagged_label(sk_id, tags)?;
+        let tagged_sk_label =
+            serialize_tagged_label(sk_id, tags, self.hsm_capabilities.max_label_len)?;
         let sk_label = tagged_sk_label.as_deref().unwrap_or(sk_id);
-        let tagged_pk_label = serialize_tagged_label(pk_id, tags)?;
+        let tagged_pk_label =
+            serialize_tagged_label(pk_id, tags, self.hsm_capabilities.max_label_len)?;
         let pk_label = tagged_pk_label.as_deref().unwrap_or(pk_id);
 
         let mut pub_key_template = vec![
