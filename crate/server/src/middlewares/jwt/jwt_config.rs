@@ -106,7 +106,7 @@ pub(crate) struct UserClaim {
     pub email: Option<String>,
     pub iss: Option<String>,
     pub sub: Option<String>,
-    #[serde(deserialize_with = "deserialize_aud")]
+    #[serde(default, deserialize_with = "deserialize_aud")]
     pub aud: Option<Vec<String>>,
     pub iat: Option<usize>,
     pub exp: Option<usize>,
