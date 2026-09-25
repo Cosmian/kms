@@ -21,6 +21,7 @@ spawned until the feature is explicitly enabled.
     path = "/var/log/cosmian-kms/audit.jsonl"
     ```
 
+// IMPORTANT TODO: FIX THIS
 === "Command line"
 
     ```bash
@@ -276,6 +277,209 @@ id=0  2026-05-06T20:31:15Z  Create   chain=ok
 id=1  2026-05-06T20:31:15Z  Encrypt  chain=ok
 ...
 ```
+
+---
+
+## PostgreSQL backend
+
+For a centralized, multi-writer-safe audit trail across a fleet of KMS instances, use the
+`PostgreSQL` backend instead of the JSONL file. Each KMS instance still owns an independent hash
+chain, scoped by an `instance_id` — but all chains live in one shared, append-only database that
+every instance, and every auditor, can read.
+
+=== "TOML configuration file"
+
+    ```toml
+    [audit]
+    enabled = true
+
+    [audit.postgres]
+    url = "postgresql://kms_audit:password@db-host:5432/kms_audit"
+    instance_id = "kms-eu-west-1a"
+    ```
+
+=== "Command line"
+
+    ```bash
+    cosmian_kms --audit-enable \
+      --audit-postgres-url postgresql://kms_audit:password@db-host:5432/kms_audit \
+      --audit-instance-id kms-eu-west-1a
+    ```
+
+=== "Environment variables"
+
+    ```bash
+    export KMS_AUDIT_ENABLE=true
+    export KMS_AUDIT_POSTGRES_URL=postgresql://kms_audit:password@db-host:5432/kms_audit
+    export KMS_AUDIT_INSTANCE_ID=kms-eu-west-1a
+    cosmian_kms
+    ```
+
+Backend selection is config-time only: setting `audit.postgres.url` (or
+`--audit-postgres-url`/`KMS_AUDIT_POSTGRES_URL`) selects the `PostgreSQL` backend instead of the
+file backend. There is no runtime fallback between the two.
+
+| CLI flag               | Environment variable    | Required | Description                                                                                                                                                                                                       |
+| ----------------------- | ------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--audit-postgres-url` | `KMS_AUDIT_POSTGRES_URL` | Yes\*    | `PostgreSQL` connection URL for the audit database. Must be a **different database** than `--database-url` — the server refuses to start otherwise.                                                             |
+| `--audit-instance-id`  | `KMS_AUDIT_INSTANCE_ID`  | No       | Identifies this instance's chain. Must be stable across restarts and unique per instance sharing the database — a reused id is rejected at startup by an advisory-lock check. Defaults to the machine hostname; Kubernetes deployments should set this explicitly (e.g. from the `StatefulSet` ordinal) rather than rely on an ephemeral pod hostname. |
+
+<small>\* Required only when using this backend (i.e. `--audit-postgres-url` is set).</small>
+
+`--audit-postgres-url` supports the same `sslmode`/`sslrootcert`/`sslcert`/`sslkey` query
+parameters as `--database-url` — see [PostgreSQL TLS / mTLS](./database/configuration.md#postgresql-tls-mtls).
+
+If `--audit-file-path` is also set, it's never used as a fallback — `PostgreSQL` always takes
+precedence, and a connectivity failure still aborts startup. The KMS only logs a warning in
+this case, either confirming the file path is ignored (connection succeeded) or noting that it's
+not used as a fallback (connection failed, startup aborts).
+
+!!! warning "The audit database must not be the main object-storage database"
+    Sharing one database between `--database-url` and `--audit-postgres-url` would let the
+    KMS's own object-store role bypass the audit database's append-only grants, defeating the
+    tamper-evidence guarantee. The server validates this at startup (a structural host/port/
+    database-name comparison, ignoring credentials and query parameters) and refuses to start
+    if they resolve to the same database.
+
+### Startup behavior and chain generations
+
+Unlike the file backend (which always starts immediately and self-heals in the background), the
+`PostgreSQL` backend connects, acquires its instance's advisory lock, and verifies the chain
+synchronously **before** the KMS starts serving traffic. A connectivity failure, another
+instance already holding the `instance_id`'s lock, or a schema that cannot be created/validated
+still **aborts startup** — an audit backend that cannot be trusted must not silently leave the
+KMS running unaudited.
+
+**Content corruption**, however, follows the same
+[always-start recovery policy](../adr/2026-08-14-006-audit-log-always-start-recovery.md) as the
+file backend, using immutable chain **generations** instead of renamed files. A stable
+`--audit-instance-id` owns a sequence of generations (`chain_generation`, starting at 0), keyed
+by `(instance_id, chain_generation, id)`. Exactly one generation accepts writes at a time; every
+older generation is sealed and never modified again.
+
+On startup only the **latest** generation is verified. A clean generation resumes normally. A
+corrupted row is classified by cause, recorded in the reanchor `details` below:
+
+| Reason          | Meaning                                                                   |
+| ---------------- | ---------------------------------------------------------------------------- |
+| `hash_mismatch` | A complete row whose own hash doesn't match its stored bytes.             |
+| `broken_link`   | A row that verifies on its own but doesn't chain to its predecessor.      |
+| `unparsable`   | A column doesn't decode as an audit event at all.                        |
+| `id_overflow`   | A valid tail row at `id = i64::MAX` — continuing in place would overflow. |
+
+The corrupted generation is preserved unchanged. A fresh generation starts with a row-0
+`audit:reanchor` event whose `details` record:
+
+```json
+{
+  "sealed_generation": 0,
+  "new_generation": 1,
+  "first_failure_id": 2,
+  "reason": "hash_mismatch",
+  "evidence": "v1:sha256:<64 hex chars>"
+}
+```
+
+A seal-and-roll recovery is logged at `error!` level; monitor server logs for it the same way
+you would for a file-backend seal-and-roll.
+
+### Multi-writer safety
+
+Two independent mechanisms prevent two KMS instances from sharing an `instance_id` and
+corrupting each other's chain:
+
+1. **Advisory lock** (primary defense): the server acquires a session-level `PostgreSQL`
+   advisory lock keyed by `instance_id`, held for as long as the server runs. A second instance
+   configured with the same `instance_id` fails to start.
+2. **Composite primary key** (defense in depth): every row's primary key is
+   `(instance_id, chain_generation, id)`, making a genuine chain fork structurally impossible —
+   a lost write-acknowledgement retry (same writer, same row) is distinguished from a genuine
+   second writer (same slot, different content) by comparing the stored row's hash.
+
+### Schema
+
+The KMS creates and maintains the `kms_audit_events` table automatically on first connection,
+including append-only triggers that reject any `UPDATE`/`DELETE`/`TRUNCATE` — even by the table
+owner. Schema creation/migration runs on every boot and is fully idempotent (safe to run
+repeatedly), so upgrading the KMS to a version with a newer schema self-heals an older table
+automatically.
+
+!!! warning "Schema is not release-stable yet"
+    The `PostgreSQL` audit schema has no migration path between versions yet. If you are
+    developing against it and upgrade the KMS across a schema change, drop and let the KMS
+    recreate `kms_audit_events` rather than expecting an in-place upgrade:
+    `psql "$KMS_AUDIT_POSTGRES_URL" -c 'DROP TABLE IF EXISTS kms_audit_events CASCADE'`.
+
+For a hardened production deployment where the KMS role should only have `INSERT`/`SELECT`
+rights (not schema-modification rights) on a table provisioned separately by a database
+administrator, run the setup SQL below once as a privileged role, then grant the KMS role
+`INSERT, SELECT` only:
+
+```sql
+-- See crate/server_database/src/stores/audit/audit.sql for the exact, versioned DDL.
+CREATE TABLE kms_audit_events ( ... );
+CREATE TRIGGER kms_audit_no_update BEFORE UPDATE ON kms_audit_events
+  EXECUTE FUNCTION kms_audit_reject_mutation();
+CREATE TRIGGER kms_audit_no_delete BEFORE DELETE ON kms_audit_events
+  EXECUTE FUNCTION kms_audit_reject_mutation();
+REVOKE UPDATE, DELETE, TRUNCATE ON kms_audit_events FROM PUBLIC;
+
+GRANT INSERT, SELECT ON kms_audit_events TO kms_audit_role;
+```
+
+The KMS detects a permission-denied error on the schema-migration attempt and falls back to a
+read-only check that every required column is present, rather than failing startup.
+
+### Verify and export
+
+`ckms audit verify`/`ckms audit export` accept `--audit-postgres-url` as an alternative to
+`--path`. Omit `--audit-instance-id` to verify/export every instance's chain in the database:
+
+```bash
+ckms audit verify --audit-postgres-url postgresql://kms_audit:password@db-host:5432/kms_audit
+ckms audit export --audit-postgres-url postgresql://kms_audit:password@db-host:5432/kms_audit \
+  --audit-instance-id kms-eu-west-1a --format cef
+```
+
+`verify` checks every row's hash and its link to the previous row, per generation. Unlike the
+file backend, it does not yet cross-check a reanchor's recorded `evidence` digest against the
+sealed generation's current contents — that automated check is planned as a follow-up; today,
+reproduce it manually (see below).
+
+See [ckms audit](../kms_clients/audit.md) for the full CLI reference.
+
+### Reproducing the evidence digest independently
+
+The `evidence` digest is SHA-256 over a deterministic SQL projection of every row in the sealed
+generation (one canonical line per row, in `id` order), plus a footer recording the generation
+number and row count. It is reproducible without trusting the KMS's own hashing — run the same
+projection through `psql` and pipe it to `sha256sum`:
+
+```bash
+QUERY="SELECT 'v1' || '|' || encode(convert_to(instance_id, 'UTF8'), 'hex') || '|' ||
+  chain_generation || '|' || id || '|' ||
+  to_char(timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') || '|' ||
+  encode(convert_to(operation, 'UTF8'), 'hex') || '|' ||
+  encode(convert_to(username, 'UTF8'), 'hex') || '|' ||
+  COALESCE(encode(convert_to(object_uid, 'UTF8'), 'hex'), '-') || '|' ||
+  COALESCE(encode(convert_to(algorithm, 'UTF8'), 'hex'), '-') || '|' ||
+  COALESCE(encode(convert_to(client_ip, 'UTF8'), 'hex'), '-') || '|' ||
+  encode(convert_to(result, 'UTF8'), 'hex') || '|' || duration_ms || '|' ||
+  COALESCE(request_id::text, '-') || '|' ||
+  COALESCE(encode(convert_to(details, 'UTF8'), 'hex'), '-') || '|' ||
+  encode(prev_hash, 'hex') || '|' || encode(row_hash, 'hex')
+  FROM kms_audit_events
+  WHERE instance_id = '<instance_id>' AND chain_generation = <sealed_generation>
+  ORDER BY id ASC"
+
+{
+  psql "$KMS_AUDIT_POSTGRES_URL" -qtA -c "$QUERY"
+  printf 'v1|end|%s|%s\n' "<sealed_generation>" "<row_count>"
+} | sha256sum
+```
+
+The resulting hex digest, prefixed with `v1:sha256:`, must match the `evidence` field recorded
+in the corresponding `audit:reanchor` event.
 
 ---
 
