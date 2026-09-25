@@ -1,10 +1,11 @@
-use std::ptr;
+use std::{collections::HashSet, ptr};
 
 use pkcs11_sys::{
     CK_ATTRIBUTE_PTR, CK_FALSE, CK_MECHANISM, CK_MECHANISM_PTR, CK_OBJECT_HANDLE, CK_TRUE,
     CK_ULONG, CKM_AES_KEY_GEN,
 };
 
+use super::serialize_tagged_label;
 use crate::{HError, HResult, aes_key_template, hsm_call, session::Session};
 
 #[derive(Debug, Clone, Copy)]
@@ -104,6 +105,7 @@ impl Session {
         id: &[u8],
         size: AesKeySize,
         sensitive: bool,
+        tags: Option<&HashSet<String>>,
     ) -> HResult<CK_OBJECT_HANDLE> {
         // Some vendors (AWS CloudHSM) reject any explicit value for CKA_SENSITIVE on
         // C_GenerateKey; fall back to the attribute-free/extractable-only templates,
@@ -130,7 +132,11 @@ impl Session {
             // A sensitive key must not be extractable: derive CKA_EXTRACTABLE from
             // the `sensitive` flag instead of hard-coding it to CK_TRUE.
             let is_extractable = if sensitive { CK_FALSE } else { CK_TRUE };
-            let mut template = aes_key_template!(id, size, is_sensitive, is_extractable);
+            let tagged_label =
+                serialize_tagged_label(id, tags, self.hsm_capabilities.max_label_len)?;
+            let label = tagged_label.as_deref().unwrap_or(id);
+            let mut template =
+                aes_key_template!(id, label, size, is_sensitive, is_extractable).to_vec();
             let p_mechanism: CK_MECHANISM_PTR = &raw mut mechanism;
             let p_mut_template: CK_ATTRIBUTE_PTR = template.as_mut_ptr();
             let mut aes_key_handle = CK_OBJECT_HANDLE::default();

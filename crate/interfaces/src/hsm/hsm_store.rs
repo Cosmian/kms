@@ -24,7 +24,7 @@ use num_bigint_dig::{BigInt, Sign};
 use zeroize::Zeroizing;
 
 use crate::{
-    AtomicOperation, CryptoAlgorithm, CryptoOracle, EcCurve, HSM, HsmKeyAlgorithm,
+    AtomicOperation, CryptoAlgorithm, CryptoOracle, EcCurve, HSM, HsmKeyAlgorithm, HsmKeyPairIds,
     HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMaterial,
     KeyType, ObjectWithMetadata, ObjectsStore, SigningAlgorithm, UserId,
     crypto_oracle::{EncryptedContent, KeyMetadata},
@@ -40,6 +40,8 @@ const fn ec_curve_to_recommended_curve(curve: EcCurve) -> RecommendedCurve {
         EcCurve::P384 => RecommendedCurve::P384,
         EcCurve::P521 => RecommendedCurve::P521,
         #[cfg(feature = "non-fips")]
+        EcCurve::Secp256k1 => RecommendedCurve::SECP256K1,
+        #[cfg(feature = "non-fips")]
         EcCurve::Ed25519 => RecommendedCurve::CURVEED25519,
         #[cfg(feature = "non-fips")]
         EcCurve::Ed448 => RecommendedCurve::CURVEED448,
@@ -51,6 +53,8 @@ const fn ec_curve_to_recommended_curve(curve: EcCurve) -> RecommendedCurve {
 const fn ec_curve_to_algorithm(curve: EcCurve) -> CryptographicAlgorithm {
     match curve {
         EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 => CryptographicAlgorithm::EC,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Secp256k1 => CryptographicAlgorithm::EC,
         #[cfg(feature = "non-fips")]
         EcCurve::Ed25519 => CryptographicAlgorithm::Ed25519,
         #[cfg(feature = "non-fips")]
@@ -144,15 +148,14 @@ impl HsmStore {
 impl ObjectsStore for HsmStore {
     // Only single keys are created using this call,
     // keypair creation goes through the atomic operations
-    /// Create a key on the HSM
-    /// `tags` are not available on HSMs
+    /// Create a key on the HSM.
     async fn create(
         &self,
         uid: Option<String>,
         owner: &UserId,
         object: &Object,
         attributes: &Attributes,
-        _tags: &HashSet<String>,
+        tags: &HashSet<String>,
     ) -> InterfaceResult<String> {
         if !self.is_admin(owner) {
             return Err(InterfaceError::Unauthorized(
@@ -195,6 +198,7 @@ impl ObjectsStore for HsmStore {
                     InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
                 })?,
                 attributes.sensitive.unwrap_or(false),
+                tags,
             )
             .await?;
         debug!("Created HSM AES Key of length {key_length} with id {uid}",);
@@ -265,9 +269,13 @@ impl ObjectsStore for HsmStore {
         }
     }
 
-    async fn retrieve_tags(&self, _uid: &str) -> InterfaceResult<HashSet<String>> {
-        // Not supported for HSMs
-        Ok(HashSet::new())
+    async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        Ok(self
+            .hsm
+            .get_key_metadata(slot_id, key_id.as_bytes())
+            .await?
+            .map_or_else(HashSet::new, |metadata| metadata.tags))
     }
 
     async fn update_object(
@@ -308,7 +316,7 @@ impl ObjectsStore for HsmStore {
         user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
-        if let Some((uid, _object, attributes, _tags, algorithm)) =
+        if let Some((uid, _object, attributes, mut tags, algorithm)) =
             is_asymmetric_keypair_creation(operations)
         {
             debug!("Creating {algorithm:?} keypair with uid: {uid}");
@@ -323,15 +331,23 @@ impl ObjectsStore for HsmStore {
                 HsmKeypairAlgorithm::RSA => 2048,
                 HsmKeypairAlgorithm::EC => 256,
                 #[cfg(feature = "non-fips")]
-                HsmKeypairAlgorithm::Ed25519 | HsmKeypairAlgorithm::X25519 => 256,
+                HsmKeypairAlgorithm::Secp256k1
+                | HsmKeypairAlgorithm::Ed25519
+                | HsmKeypairAlgorithm::X25519 => 256,
                 #[cfg(feature = "non-fips")]
                 HsmKeypairAlgorithm::Ed448 => 456,
             };
+            // PKCS#11 generates both key objects from one shared tag set. Include both
+            // system tags so private and public provider discovery can find the pair.
+            tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
+            tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
             self.hsm
                 .create_keypair(
                     slot_id,
-                    sk_id.as_bytes(),
-                    pk_id.as_bytes(),
+                    HsmKeyPairIds {
+                        private: sk_id.as_bytes(),
+                        public: pk_id.as_bytes(),
+                    },
                     algorithm,
                     usize::try_from(
                         attributes
@@ -342,6 +358,7 @@ impl ObjectsStore for HsmStore {
                         InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
                     })?,
                     attributes.sensitive.unwrap_or_default(),
+                    &tags,
                 )
                 .await?;
             return Ok(vec![
@@ -377,12 +394,25 @@ impl ObjectsStore for HsmStore {
         Ok(is_admin)
     }
 
-    async fn list_uids_for_tags(
-        &self,
-        _tags: &HashSet<String>,
-    ) -> InterfaceResult<HashSet<String>> {
-        // Not Tags on the HSM
-        Ok(HashSet::new())
+    async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
+        let mut uids = HashSet::new();
+        for slot_id in self.hsm.get_available_slot_list().await? {
+            for object_id in self.hsm.find(slot_id, HsmObjectFilter::Any).await? {
+                let Some(metadata) = self.hsm.get_key_metadata(slot_id, &object_id).await? else {
+                    continue;
+                };
+                if !tags.is_subset(&metadata.tags) {
+                    continue;
+                }
+                let object_id = str::from_utf8(&object_id).map_err(|error| {
+                    InterfaceError::InvalidRequest(format!(
+                        "Failed decoding HSM object ID as UTF-8: {error}"
+                    ))
+                })?;
+                uids.insert(format!("{}::{slot_id}::{object_id}", self.prefix));
+            }
+        }
+        Ok(uids)
     }
 
     async fn find(
@@ -423,6 +453,7 @@ impl ObjectsStore for HsmStore {
             }
         };
         let key_size_filter = search_attributes.get_cryptographic_length();
+        let requested_tags = search_attributes.get_tags(vendor_id);
         let key_id_filter = match search_attributes.unique_identifier {
             Some(unique_identifier) => {
                 let Some(str) = unique_identifier.as_str() else {
@@ -446,6 +477,13 @@ impl ObjectsStore for HsmStore {
                     .get_key_metadata(slot_id, &object_id)
                     .await
                     .unwrap_or_default();
+                if !requested_tags.is_empty()
+                    && object_meta
+                        .as_ref()
+                        .is_none_or(|metadata| !requested_tags.is_subset(&metadata.tags))
+                {
+                    continue;
+                }
                 if let Some(expected_key_size) = key_size_filter {
                     if let Some(ref meta) = object_meta {
                         if meta.key_length_in_bits != expected_key_size {
@@ -674,6 +712,7 @@ impl CryptoOracle for HsmStore {
         data: &[u8],
         cryptographic_algorithm: Option<CryptoAlgorithm>,
         authenticated_encryption_additional_data: Option<&[u8]>,
+        iv_counter_nonce: Option<&[u8]>,
     ) -> InterfaceResult<EncryptedContent> {
         if authenticated_encryption_additional_data.is_some() {
             return Err(InterfaceError::InvalidRequest(
@@ -726,7 +765,13 @@ impl CryptoOracle for HsmStore {
             }
         };
         self.hsm
-            .encrypt(slot_id, key_id.as_bytes(), cryptographic_algorithm, data)
+            .encrypt(
+                slot_id,
+                key_id.as_bytes(),
+                cryptographic_algorithm,
+                data,
+                iv_counter_nonce.unwrap_or_default(),
+            )
             .await
     }
 
@@ -798,25 +843,23 @@ impl CryptoOracle for HsmStore {
         input_is_digest: bool,
     ) -> InterfaceResult<Vec<u8>> {
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
-        let key_type = match self.hsm.get_key_type(slot_id, key_id.as_bytes()).await? {
-            Some(KeyType::RsaPrivateKey) => KeyType::RsaPrivateKey,
-            Some(KeyType::EcPrivateKey) => KeyType::EcPrivateKey,
-            Some(other) => {
+        let metadata = self
+            .hsm
+            .get_key_metadata(slot_id, key_id.as_bytes())
+            .await?
+            .ok_or_else(|| {
+                InterfaceError::InvalidRequest(format!("Sign: key {uid} not found on the HSM"))
+            })?;
+        let key_type = match metadata.key_type {
+            KeyType::RsaPrivateKey => KeyType::RsaPrivateKey,
+            KeyType::EcPrivateKey => KeyType::EcPrivateKey,
+            other => {
                 return Err(InterfaceError::InvalidRequest(format!(
                     "Sign: key {uid} is a {other:?}, expected an RSA or EC private key"
                 )));
             }
-            None => {
-                return Err(InterfaceError::InvalidRequest(format!(
-                    "Sign: key {uid} not found on the HSM"
-                )));
-            }
         };
-        let curve = self
-            .hsm
-            .get_key_metadata(slot_id, key_id.as_bytes())
-            .await?
-            .and_then(|metadata| metadata.curve);
+        let curve = metadata.curve;
         let algorithm = SigningAlgorithm::from_kmip(
             cryptographic_parameters,
             key_type,
@@ -838,41 +881,39 @@ impl CryptoOracle for HsmStore {
         cryptographic_parameters: Option<
             &cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters,
         >,
+        input_is_digest: bool,
     ) -> InterfaceResult<bool> {
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
-        let key_type = match self.hsm.get_key_type(slot_id, key_id.as_bytes()).await? {
+        let metadata = self
+            .hsm
+            .get_key_metadata(slot_id, key_id.as_bytes())
+            .await?
+            .ok_or_else(|| {
+                InterfaceError::InvalidRequest(format!(
+                    "SignatureVerify: key {uid} not found on the HSM"
+                ))
+            })?;
+        let key_type = match metadata.key_type {
             // Accept both public and private keys, mirroring the KMIP `SignatureVerify`
             // operation's `is_key_eligible` acceptance (imported keys may lack a paired
             // public key object).
-            Some(
-                key_type @ (KeyType::RsaPublicKey
-                | KeyType::RsaPrivateKey
-                | KeyType::EcPublicKey
-                | KeyType::EcPrivateKey),
-            ) => key_type,
-            Some(other) => {
+            key_type @ (KeyType::RsaPublicKey
+            | KeyType::RsaPrivateKey
+            | KeyType::EcPublicKey
+            | KeyType::EcPrivateKey) => key_type,
+            other => {
                 return Err(InterfaceError::InvalidRequest(format!(
                     "SignatureVerify: key {uid} is a {other:?}, expected an RSA or EC key"
                 )));
             }
-            None => {
-                return Err(InterfaceError::InvalidRequest(format!(
-                    "SignatureVerify: key {uid} not found on the HSM"
-                )));
-            }
         };
-        let curve = self
-            .hsm
-            .get_key_metadata(slot_id, key_id.as_bytes())
-            .await?
-            .and_then(|metadata| metadata.curve);
-        // `SignatureVerify` has no KMIP `digested_data` flag (unlike `Sign`): the data passed
+        let curve = metadata.curve;
         // here is always the original signed message, never a caller-supplied digest.
         let algorithm = SigningAlgorithm::from_kmip(
             cryptographic_parameters,
             key_type,
             curve,
-            false,
+            input_is_digest,
             data.len(),
         )?;
         debug!("signature_verify: using algorithm {algorithm:?} for key {uid}");
@@ -1191,7 +1232,7 @@ fn build_find_attributes(meta: &Option<KeyMetadata>, filter: &HsmObjectFilter) -
 }
 
 fn check_basic_compatibility(
-    vendor_id: &str,
+    _vendor_id: &str,
     researched_attributes: &Attributes,
     state: Option<State>,
 ) -> InterfaceResult<()> {
@@ -1207,12 +1248,6 @@ fn check_basic_compatibility(
     if researched_attributes.link.is_some() {
         return Err(InterfaceError::Default(
             "Unsupported attribute for HSMs: link".to_owned(),
-        ));
-    }
-
-    if !researched_attributes.get_tags(vendor_id).is_empty() {
-        return Err(InterfaceError::Default(
-            "Unsupported attribute for HSMs: tags".to_owned(),
         ));
     }
 
@@ -1357,6 +1392,21 @@ fn is_asymmetric_keypair_creation(
                 {
                     HsmKeypairAlgorithm::X25519
                 }
+                #[cfg(feature = "non-fips")]
+                Some(
+                    CryptographicAlgorithm::EC
+                    | CryptographicAlgorithm::ECDH
+                    | CryptographicAlgorithm::ECDSA,
+                ) if matches!(
+                    attributes
+                        .cryptographic_domain_parameters
+                        .as_ref()
+                        .and_then(|parameters| parameters.recommended_curve),
+                    Some(RecommendedCurve::SECP256K1)
+                ) =>
+                {
+                    HsmKeypairAlgorithm::Secp256k1
+                }
                 Some(
                     CryptographicAlgorithm::EC
                     | CryptographicAlgorithm::ECDH
@@ -1424,8 +1474,7 @@ fn to_object_with_metadata(
                 ),
                 ..Attributes::default()
             };
-            let mut tags: HashSet<String> =
-                serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
+            let mut tags = hsm_object.tags().clone();
             tags.insert(SYSTEM_TAG_SYMMETRIC_KEY.to_owned());
             attributes
                 .set_tags(vendor_id, tags)
@@ -1473,8 +1522,7 @@ fn to_object_with_metadata(
                 ),
                 ..Attributes::default()
             };
-            let mut tags: HashSet<String> =
-                serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
+            let mut tags = hsm_object.tags().clone();
             tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
             attributes
                 .set_tags(vendor_id, tags)
@@ -1542,8 +1590,7 @@ fn to_object_with_metadata(
                 ),
                 ..Attributes::default()
             };
-            let mut tags: HashSet<String> =
-                serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
+            let mut tags = hsm_object.tags().clone();
             tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
             attributes
                 .set_tags(vendor_id, tags)
@@ -1597,8 +1644,7 @@ fn to_object_with_metadata(
                 cryptographic_domain_parameters: Some(ec_domain_parameters_for_curve(km.curve)),
                 ..Attributes::default()
             };
-            let mut tags: HashSet<String> =
-                serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
+            let mut tags = hsm_object.tags().clone();
             tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
             attributes
                 .set_tags(vendor_id, tags)
@@ -1649,8 +1695,7 @@ fn to_object_with_metadata(
                 cryptographic_domain_parameters: Some(ec_domain_parameters_for_curve(km.curve)),
                 ..Attributes::default()
             };
-            let mut tags: HashSet<String> =
-                serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
+            let mut tags = hsm_object.tags().clone();
             tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
             attributes
                 .set_tags(vendor_id, tags)
@@ -1689,15 +1734,19 @@ fn to_object_with_metadata(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{collections::HashSet, sync::Arc};
 
     use async_trait::async_trait;
     #[cfg(feature = "non-fips")]
     use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
     use cosmian_kmip::kmip_2_1::{
+        extra::tagging::SYSTEM_TAG_SYMMETRIC_KEY,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_types::{CryptographicAlgorithm, Name, NameType, RecommendedCurve},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm, Name,
+            NameType, RecommendedCurve,
+        },
     };
     #[cfg(feature = "non-fips")]
     use cosmian_kmip::kmip_2_1::{
@@ -1707,18 +1756,17 @@ mod tests {
     };
     use zeroize::Zeroizing;
 
-    use super::check_basic_compatibility;
     #[cfg(feature = "non-fips")]
-    use super::{
-        build_sensitive_stub_attributes, build_sensitive_stub_object, to_object_with_metadata,
-    };
+    use super::{build_sensitive_stub_attributes, build_sensitive_stub_object};
+    use super::{check_basic_compatibility, to_object_with_metadata};
+    #[cfg(feature = "non-fips")]
+    use crate::EcPrivateKeyMaterial;
     use crate::{
-        CryptoAlgorithm, CryptoOracle, EcCurve, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm,
-        HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
-        ObjectsStore, SigningAlgorithm, crypto_oracle::EncryptedContent, hsm::HsmStore,
+        CryptoAlgorithm, CryptoOracle, EcCurve, HSM, HsmKeyAlgorithm, HsmKeyPairIds,
+        HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult,
+        KeyMaterial, KeyMetadata, KeyType, ObjectsStore, SigningAlgorithm, UserId,
+        crypto_oracle::EncryptedContent, hsm::HsmStore,
     };
-    #[cfg(feature = "non-fips")]
-    use crate::{EcPrivateKeyMaterial, KeyMaterial};
 
     // ── mockall-generated test double for HSM ─────────────────────────────────
 
@@ -1741,22 +1789,23 @@ mod tests {
                 &self,
                 slot_id: usize,
             ) -> InterfaceResult<Vec<CryptoAlgorithm>>;
-            async fn create_key(
-                &self,
+            async fn create_key<'a>(
+                &'a self,
                 slot_id: usize,
-                id: &[u8],
+                id: &'a [u8],
                 algorithm: HsmKeyAlgorithm,
                 key_length_in_bits: usize,
                 sensitive: bool,
+                tags: &'a HashSet<String>,
             ) -> InterfaceResult<()>;
-            async fn create_keypair(
-                &self,
+            async fn create_keypair<'a>(
+                &'a self,
                 slot_id: usize,
-                sk_id: &[u8],
-                pk_id: &[u8],
+                ids: HsmKeyPairIds<'a>,
                 algorithm: HsmKeypairAlgorithm,
                 key_length_in_bits: usize,
                 sensitive: bool,
+                tags: &'a HashSet<String>,
             ) -> InterfaceResult<()>;
             async fn export(
                 &self,
@@ -1764,12 +1813,13 @@ mod tests {
                 object_id: &[u8],
             ) -> InterfaceResult<Option<HsmObject>>;
             async fn delete(&self, slot_id: usize, object_id: &[u8]) -> InterfaceResult<()>;
-            async fn encrypt(
-                &self,
+            async fn encrypt<'a>(
+                &'a self,
                 slot_id: usize,
-                key_id: &[u8],
+                key_id: &'a [u8],
                 algorithm: CryptoAlgorithm,
-                data: &[u8],
+                data: &'a [u8],
+                iv_counter_nonce: &'a [u8],
             ) -> InterfaceResult<EncryptedContent>;
             async fn decrypt(
                 &self,
@@ -1827,6 +1877,120 @@ mod tests {
     }
 
     // ── Tests ─────────────────────────────────────────────────────────────────
+
+    fn test_metadata(id: &str, tags: HashSet<String>) -> KeyMetadata {
+        KeyMetadata {
+            key_type: KeyType::AesKey,
+            key_length_in_bits: 256,
+            sensitive: false,
+            id: id.to_owned(),
+            tags,
+            curve: None,
+            start_date: None,
+            end_date: None,
+            rotate_name: None,
+            rotate_generation: None,
+        }
+    }
+
+    #[test]
+    fn test_tag_filter_compatible() {
+        let mut attrs = Attributes::default();
+        let set_tags = attrs.set_tags("cosmian", HashSet::from(["bench".to_owned()]));
+        assert!(set_tags.is_ok(), "setting test tags failed: {set_tags:?}");
+        let compatibility = check_basic_compatibility("cosmian", &attrs, None);
+        assert!(
+            compatibility.is_ok(),
+            "tag filters should be compatible with HSM searches: {compatibility:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_find_requires_all_requested_tags() {
+        let mut mock = MockHsm::new();
+        mock.expect_get_available_slot_list()
+            .return_once(|| Ok(vec![7]));
+        mock.expect_find()
+            .return_once(|_, _| Ok(vec![b"matching".to_vec(), b"partial".to_vec()]));
+        mock.expect_get_key_metadata().returning(|_, key_id| {
+            let tags = if key_id == b"matching" {
+                HashSet::from(["bench".to_owned(), "disk".to_owned()])
+            } else {
+                HashSet::from(["bench".to_owned()])
+            };
+            Ok(Some(test_metadata("key", tags)))
+        });
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        let mut attrs = Attributes::default();
+        let set_tags = attrs.set_tags(
+            "cosmian",
+            HashSet::from(["bench".to_owned(), "disk".to_owned()]),
+        );
+        assert!(set_tags.is_ok(), "setting test tags failed: {set_tags:?}");
+        let found = store
+            .find(Some(&attrs), None, &UserId::from("admin"), false, "cosmian")
+            .await;
+        assert!(found.is_ok(), "tagged HSM search failed: {found:?}");
+        let Ok(found) = found else {
+            return;
+        };
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            found.first().map(|(uid, _, _)| uid.as_str()),
+            Some("hsm::7::matching")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_list_and_retrieve_tags_use_hsm_metadata() {
+        let mut mock = MockHsm::new();
+        mock.expect_get_available_slot_list()
+            .return_once(|| Ok(vec![3]));
+        mock.expect_find()
+            .return_once(|_, _| Ok(vec![b"key".to_vec()]));
+        mock.expect_get_key_metadata().times(2).returning(|_, _| {
+            Ok(Some(test_metadata(
+                "key",
+                HashSet::from(["bench".to_owned(), "disk".to_owned()]),
+            )))
+        });
+
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        let requested = HashSet::from(["bench".to_owned()]);
+        let uids = store.list_uids_for_tags(&requested).await;
+        assert!(uids.is_ok(), "listing HSM tags failed: {uids:?}");
+        let Ok(uids) = uids else {
+            return;
+        };
+        assert_eq!(uids, HashSet::from(["hsm::3::key".to_owned()]));
+        let retrieved = store.retrieve_tags("hsm::3::key").await;
+        assert!(
+            retrieved.is_ok(),
+            "retrieving HSM tags failed: {retrieved:?}"
+        );
+        assert_eq!(
+            retrieved.ok(),
+            Some(HashSet::from(["bench".to_owned(), "disk".to_owned()]))
+        );
+    }
+
+    #[test]
+    fn test_exported_object_preserves_hsm_tags() {
+        let hsm_object = HsmObject::new(
+            KeyMaterial::AesKey(Zeroizing::new(vec![0; 32])),
+            "key".to_owned(),
+            HashSet::from(["bench".to_owned()]),
+        );
+        let object = to_object_with_metadata(&hsm_object, "hsm::0::key", "admin", "cosmian");
+        assert!(object.is_ok(), "HSM object conversion failed");
+        let Ok(object) = object else {
+            return;
+        };
+        let tags = object.attributes().get_tags("cosmian");
+        assert!(tags.contains("bench"));
+        assert!(tags.contains(SYSTEM_TAG_SYMMETRIC_KEY));
+    }
 
     /// Locate with a Name filter must not match any HSM key (issue #935):
     /// HSM keys have no KMIP Name, so the filter should yield empty results
@@ -1933,6 +2097,7 @@ mod tests {
                 key_length_in_bits: 256,
                 sensitive: false,
                 id: "key".to_owned(),
+                tags: HashSet::new(),
                 curve: Some(EcCurve::P256),
                 start_date: None,
                 end_date: None,
@@ -1961,6 +2126,7 @@ mod tests {
                 key_length_in_bits: 256,
                 sensitive: true,
                 id: "key".to_owned(),
+                tags: HashSet::new(),
                 curve: Some(EcCurve::P256),
                 start_date: None,
                 end_date: None,
@@ -2012,6 +2178,7 @@ mod tests {
             key_length_in_bits: 256,
             sensitive: true,
             id: "x25519".to_owned(),
+            tags: HashSet::new(),
             curve: Some(EcCurve::X25519),
             start_date: None,
             end_date: None,
@@ -2068,6 +2235,7 @@ mod tests {
                 d: Zeroizing::new(vec![1; 32]),
             }),
             "[]".to_owned(),
+            HashSet::new(),
         );
         let owm_result =
             to_object_with_metadata(&hsm_object, "hsm::1::ed25519", "admin", "cosmian");
@@ -2099,14 +2267,13 @@ mod tests {
     #[tokio::test]
     async fn test_signature_verify_delegates_to_hsm_verify() -> InterfaceResult<()> {
         let mut mock = MockHsm::new();
-        mock.expect_get_key_type()
-            .returning(|_slot_id, _key_id| Ok(Some(KeyType::RsaPublicKey)));
         mock.expect_get_key_metadata().returning(|_, _| {
             Ok(Some(KeyMetadata {
                 key_type: KeyType::RsaPublicKey,
                 key_length_in_bits: 2048,
                 sensitive: false,
                 id: "key1".to_owned(),
+                tags: HashSet::new(),
                 curve: None,
                 start_date: None,
                 end_date: None,
@@ -2120,7 +2287,7 @@ mod tests {
         let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
 
         let valid = store
-            .signature_verify("hsm::0::key1", b"data", b"signature", None)
+            .signature_verify("hsm::0::key1", b"data", b"signature", None, false)
             .await?;
 
         if !valid {
@@ -2131,18 +2298,85 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn test_signature_verify_preserves_digested_data() -> InterfaceResult<()> {
+        let mut mock = MockHsm::new();
+        mock.expect_get_key_metadata().returning(|_, _| {
+            Ok(Some(KeyMetadata {
+                key_type: KeyType::EcPublicKey,
+                key_length_in_bits: 256,
+                sensitive: false,
+                id: "key1".to_owned(),
+                tags: HashSet::new(),
+                curve: Some(EcCurve::P256),
+                start_date: None,
+                end_date: None,
+                rotate_name: None,
+                rotate_generation: None,
+            }))
+        });
+        mock.expect_verify().returning(|_, _, algorithm, _, _| {
+            if matches!(
+                algorithm,
+                SigningAlgorithm::Ecdsa {
+                    prehashed: true,
+                    ..
+                }
+            ) {
+                Ok(true)
+            } else {
+                Err(InterfaceError::Default(format!(
+                    "expected prehashed ECDSA verification, got {algorithm:?}"
+                )))
+            }
+        });
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        let parameters = CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            ..CryptographicParameters::default()
+        };
+
+        let valid = store
+            .signature_verify(
+                "hsm::0::key1",
+                &[0_u8; 32],
+                b"signature",
+                Some(&parameters),
+                true,
+            )
+            .await?;
+        if !valid {
+            return Err(InterfaceError::Default(
+                "expected a valid prehashed ECDSA signature".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
     /// `CryptoOracle::signature_verify` must reject a non-RSA key type before ever
     /// calling `HSM::verify`, mirroring `sign`'s existing key-type guard.
     #[tokio::test]
     async fn test_signature_verify_rejects_non_rsa_key_type() -> InterfaceResult<()> {
         let mut mock = MockHsm::new();
-        mock.expect_get_key_type()
-            .returning(|_slot_id, _key_id| Ok(Some(KeyType::AesKey)));
-
+        mock.expect_get_key_metadata()
+            .returning(|_slot_id, _key_id| {
+                Ok(Some(KeyMetadata {
+                    key_type: KeyType::AesKey,
+                    key_length_in_bits: 256,
+                    sensitive: true,
+                    id: "key1".to_owned(),
+                    tags: HashSet::new(),
+                    curve: None,
+                    start_date: None,
+                    end_date: None,
+                    rotate_name: None,
+                    rotate_generation: None,
+                }))
+            });
         let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
 
         let result = store
-            .signature_verify("hsm::0::key1", b"data", b"signature", None)
+            .signature_verify("hsm::0::key1", b"data", b"signature", None, false)
             .await;
 
         if !matches!(result, Err(InterfaceError::InvalidRequest(_))) {

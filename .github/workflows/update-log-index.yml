@@ -1,0 +1,81 @@
+---
+# Local reusable workflow — Update log-reference.md.
+#
+# Runs `mise run docs:log-index` (non-interactive, deletes stale entries) and
+# commits the result back to `ref`. Mirrors nix-update-hashes.yml's
+# checkout → run → commit-if-changed → rebase → push flow.
+#
+# Callers / triggers
+# ──────────────────
+# nightly.yml — non-tag refs only (branches/schedule/workflow_dispatch); tag
+#               refs are already in sync via release.yml.
+# release.yml — Job: runs on the release branch after `prepare` (and after
+#               `update-nix-hashes`, to avoid two independent workflows
+#               pushing to the same release branch at once).
+
+name: Update log index
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: >
+          Branch to update (leave empty to use the dispatched branch).
+        required: false
+        type: string
+        default: ''
+
+  workflow_call:
+    inputs:
+      ref:
+        description: >
+          Git ref (branch name) to check out and push the updated
+          log-reference.md to.
+        required: true
+        type: string
+    secrets:
+      PAT_TOKEN:
+        description: >
+          Personal Access Token with `repo` + `workflow` scopes.
+          Required so that the push re-triggers other workflows
+          (GITHUB_TOKEN cannot do this).
+        required: true
+
+jobs:
+  update-log-index:
+    name: Update log index
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref_name }}
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Update log-reference.md
+        run: mise run docs:log-index
+
+      - name: Commit updated log index
+        run: |
+          REF="${{ inputs.ref || github.ref_name }}"
+          git add documentation/docs/configuration/log-reference.md
+          if git diff --cached --quiet; then
+            echo "log-reference.md is already up-to-date, nothing to commit."
+          else
+            # [skip ci] prevents push-triggered workflows (e.g. nightly.yml)
+            # from re-running on this automated commit and creating a loop.
+            git commit -m "docs: sync log-reference.md [skip ci]"
+            # Pull after committing to avoid "index contains uncommitted
+            # changes" errors if another job pushed to the same ref meanwhile.
+            git pull --rebase origin "$REF"
+            git push origin "$REF"
+          fi

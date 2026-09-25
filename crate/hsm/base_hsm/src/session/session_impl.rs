@@ -2,6 +2,7 @@
 
 use std::{
     cmp::min,
+    collections::HashSet,
     ops::Add,
     ptr,
     sync::{Arc, Mutex},
@@ -41,7 +42,9 @@ pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
 use crate::{
     HError, HResult, ObjectHandlesCache, hsm_call,
     hsm_capabilities::HsmCapabilities,
-    session::{curve_byte_size, curve_from_der_oid},
+    session::{
+        curve_byte_size, curve_from_der_oid, deserialize_tagged_label, serialize_tagged_label,
+    },
 };
 
 /// AES block size in bytes
@@ -177,7 +180,7 @@ pub struct Session {
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
     logging_in: bool,
-    hsm_capabilities: HsmCapabilities,
+    pub(crate) hsm_capabilities: HsmCapabilities,
 }
 
 impl Session {
@@ -283,6 +286,7 @@ impl Session {
             pk_id.as_bytes(),
             RsaKeySize::Rsa2048,
             false,
+            None,
         )?;
 
         let candidates: &[(CK_MECHANISM_TYPE, CK_RSA_PKCS_MGF_TYPE)] = &[
@@ -801,13 +805,22 @@ impl Session {
         key_handle: CK_OBJECT_HANDLE,
         algorithm: HsmEncryptionAlgorithm,
         plaintext: &[u8],
+        iv_counter_nonce: Option<&[u8]>,
     ) -> HResult<EncryptedContent> {
         Ok(match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
                 // AWS CloudHSM workaround: rejects non-zero IVs for GCM, requiring HSM-generated IVs
                 if self.hsm_capabilities.supports_aes_gcm_caller_iv {
                     // Standard path: caller-provided random IV
-                    let mut nonce = generate_random_nonce::<12>()?;
+                    let mut nonce: [u8; AES_GCM_IV_LENGTH] = match iv_counter_nonce {
+                        Some(iv) => iv.try_into().map_err(|_invalid_length| {
+                            HError::Default(format!(
+                                "Invalid AES-GCM IV length: expected {AES_GCM_IV_LENGTH}, got {}",
+                                iv.len()
+                            ))
+                        })?,
+                        None => generate_random_nonce::<AES_GCM_IV_LENGTH>()?,
+                    };
                     let mut params = CK_AES_GCM_PARAMS {
                         pIv: nonce.as_mut_ptr(),
                         ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
@@ -875,7 +888,15 @@ impl Session {
                 }
             }
             HsmEncryptionAlgorithm::AesCbc => {
-                let mut iv = generate_random_nonce::<AES_CBC_IV_LENGTH>()?;
+                let mut iv: [u8; AES_CBC_IV_LENGTH] = match iv_counter_nonce {
+                    Some(iv) => iv.try_into().map_err(|_invalid_length| {
+                        HError::Default(format!(
+                            "Invalid AES-CBC IV length: expected {AES_CBC_IV_LENGTH}, got {}",
+                            iv.len()
+                        ))
+                    })?,
+                    None => generate_random_nonce::<AES_CBC_IV_LENGTH>()?,
+                };
                 if let Some(max_cbc_data_size) = self.hsm_capabilities.max_cbc_data_size {
                     if plaintext.len() > max_cbc_data_size {
                         debug!("Performing multi round AES CBC encryption");
@@ -2366,6 +2387,10 @@ impl Session {
         }
     }
 
+    fn decode_key_label(label_bytes: Vec<u8>) -> HResult<(String, HashSet<String>)> {
+        deserialize_tagged_label(label_bytes)
+    }
+
     fn export_rsa_private_key(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<HsmObject>> {
         // Get the key size
         let mut template = [
@@ -2492,8 +2517,7 @@ impl Session {
         {
             return Ok(None);
         }
-        let label = String::from_utf8(label_bytes)
-            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
+        let (label, tags) = Self::decode_key_label(label_bytes)?;
         Ok(Some(HsmObject::new(
             KeyMaterial::RsaPrivateKey(RsaPrivateKeyMaterial {
                 modulus,
@@ -2506,6 +2530,7 @@ impl Session {
                 coefficient: Zeroizing::new(coefficient),
             }),
             label,
+            tags,
         )))
     }
 
@@ -2563,8 +2588,7 @@ impl Session {
         {
             return Ok(None);
         }
-        let mut label = String::from_utf8(label_bytes)
-            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
+        let (mut label, tags) = Self::decode_key_label(label_bytes)?;
         if !label.trim().ends_with("_pk") {
             label = label.trim().to_owned().add("_pk");
         }
@@ -2574,6 +2598,7 @@ impl Session {
                 public_exponent,
             }),
             label,
+            tags,
         )))
     }
 
@@ -2631,8 +2656,7 @@ impl Session {
             return Ok(None);
         }
         let curve = curve_from_der_oid(&ec_params)?;
-        let label = String::from_utf8(label_bytes)
-            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
+        let (label, tags) = Self::decode_key_label(label_bytes)?;
         // Left-pad the private scalar to the curve's field size, in case the token stripped
         // leading zero bytes.
         let byte_size = curve_byte_size(curve);
@@ -2644,6 +2668,7 @@ impl Session {
                 d: Zeroizing::new(d),
             }),
             label,
+            tags,
         )))
     }
 
@@ -2701,8 +2726,7 @@ impl Session {
             return Ok(None);
         }
         let curve = curve_from_der_oid(&ec_params)?;
-        let mut label = String::from_utf8(label_bytes)
-            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
+        let (mut label, tags) = Self::decode_key_label(label_bytes)?;
         if !label.trim().ends_with("_pk") {
             label = label.trim().to_owned().add("_pk");
         }
@@ -2710,6 +2734,7 @@ impl Session {
         Ok(Some(HsmObject::new(
             KeyMaterial::EcPublicKey(EcPublicKeyMaterial { curve, q }),
             label,
+            tags,
         )))
     }
 
@@ -2810,11 +2835,11 @@ impl Session {
         {
             return Ok(None);
         }
-        let label = String::from_utf8(label_bytes)
-            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
+        let (label, tags) = Self::decode_key_label(label_bytes)?;
         Ok(Some(HsmObject::new(
             KeyMaterial::AesKey(Zeroizing::new(key_value)),
             label,
+            tags,
         )))
     }
 
@@ -3085,9 +3110,17 @@ impl Session {
         }
     }
 
-    /// Set `CKA_LABEL` on a key object via `C_SetAttributeValue`.
+    /// Set `CKA_LABEL` on a key object while preserving embedded tags.
     pub fn set_label(&self, key_handle: CK_OBJECT_HANDLE, label: &str) -> HResult<()> {
-        let label_bytes = label.as_bytes();
+        let tags = self
+            .get_key_metadata(key_handle)?
+            .map_or_else(HashSet::new, |metadata| metadata.tags);
+        let tagged_label = serialize_tagged_label(
+            label.as_bytes(),
+            Some(&tags),
+            self.hsm_capabilities.max_label_len,
+        )?;
+        let label_bytes = tagged_label.as_deref().unwrap_or(label.as_bytes());
         let mut template = vec![CK_ATTRIBUTE {
             type_: CKA_LABEL,
             pValue: label_bytes.as_ptr().cast_mut().cast(),
@@ -3154,8 +3187,8 @@ impl Session {
                     .first()
                     .ok_or_else(|| HError::Default("Failed to get label length".to_owned()))?
                     .ulValueLen;
-                let label = if label_len == 0 {
-                    String::new()
+                let (label, tags) = if label_len == 0 {
+                    (String::new(), HashSet::new())
                 } else {
                     let mut label_bytes: Vec<u8> = vec![0_u8; usize::try_from(label_len)?];
                     let mut template = [CK_ATTRIBUTE {
@@ -3169,9 +3202,7 @@ impl Session {
                     {
                         return Ok(None);
                     }
-                    String::from_utf8(label_bytes).map_err(|e| {
-                        HError::Default(format!("Failed to convert label to string: {e}"))
-                    })?
+                    Self::decode_key_label(label_bytes)?
                 };
                 let (start_date, end_date) = self.get_key_dates(key_handle)?;
                 let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
@@ -3182,6 +3213,7 @@ impl Session {
                     })? * 8,
                     sensitive: sensitive == CK_TRUE,
                     id: label,
+                    tags,
                     curve: None,
                     start_date,
                     end_date,
@@ -3239,12 +3271,10 @@ impl Session {
                 }
                 let key_length_in_bits = modulus.len() * 8;
 
-                let mut label = if label_len == 0 {
-                    String::new()
+                let (mut label, tags) = if label_len == 0 {
+                    (String::new(), HashSet::new())
                 } else {
-                    String::from_utf8(label_bytes).map_err(|e| {
-                        HError::Default(format!("Failed to convert label to string: {e}"))
-                    })?
+                    Self::decode_key_label(label_bytes)?
                 };
                 if key_type == KeyType::RsaPublicKey && !label.trim().ends_with("_pk") {
                     label = label.trim().to_owned().add("_pk");
@@ -3257,6 +3287,7 @@ impl Session {
                     key_length_in_bits,
                     sensitive,
                     id: label,
+                    tags,
                     curve: None,
                     start_date,
                     end_date,
@@ -3315,12 +3346,10 @@ impl Session {
                 let curve = curve_from_der_oid(&ec_params)?;
                 let key_length_in_bits = curve.key_length_in_bits();
 
-                let mut label = if label_len == 0 {
-                    String::new()
+                let (mut label, tags) = if label_len == 0 {
+                    (String::new(), HashSet::new())
                 } else {
-                    String::from_utf8(label_bytes).map_err(|e| {
-                        HError::Default(format!("Failed to convert label to string: {e}"))
-                    })?
+                    Self::decode_key_label(label_bytes)?
                 };
                 if key_type == KeyType::EcPublicKey && !label.trim().ends_with("_pk") {
                     label = label.trim().to_owned().add("_pk");
@@ -3333,6 +3362,7 @@ impl Session {
                     key_length_in_bits,
                     sensitive,
                     id: label,
+                    tags,
                     curve: Some(curve),
                     start_date,
                     end_date,
@@ -3476,9 +3506,19 @@ impl Session {
             if id.is_empty() {
                 continue;
             }
+            let (decoded_id, _) = if attr_type == CKA_LABEL {
+                Self::decode_key_label(id)?
+            } else {
+                (
+                    String::from_utf8(id).map_err(|e| HError::Default(e.to_string()))?,
+                    HashSet::new(),
+                )
+            };
+            let mut id = decoded_id.into_bytes();
             // When read via CKA_LABEL, append _pk for public keys lacking the suffix.
             if attr_type == CKA_LABEL
-                && self.get_key_type(object_handle)? == Some(KeyType::RsaPublicKey)
+                && (self.get_key_type(object_handle)? == Some(KeyType::RsaPublicKey)
+                    || self.get_key_type(object_handle)? == Some(KeyType::EcPublicKey))
                 && !id.ends_with(b"_pk")
             {
                 id.extend_from_slice(b"_pk");

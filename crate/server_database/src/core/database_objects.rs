@@ -673,12 +673,24 @@ impl Database {
     /// Find objects by their `x-rotate-name` vendor attribute.
     ///
     /// Queries all registered object stores and returns matching `(uid, attributes)` pairs.
+    ///
+    /// Backed by a short-TTL [`crate::core::RotateNameCache`] (see its module docs): every
+    /// delegated PKCS#11 Sign/Verify call resolves a keyset reference this way, even for a
+    /// plain (non-rotated) HSM UID, and for an HSM-backed store this otherwise means a full
+    /// `C_FindObjects` scan plus a `C_GetAttributeValue` round-trip per object on *every*
+    /// cryptographic operation. Rotation is a rare, explicit administrative action, so a
+    /// worst-case few-second staleness window before a new generation becomes visible is an
+    /// accepted trade-off (`rotate` operations additionally call
+    /// [`crate::core::RotateNameCache::invalidate`] to shrink that window in practice).
     pub async fn find_by_rotate_name(
         &self,
         name: &str,
         generation: Option<i32>,
         owner: &UserId,
     ) -> DbResult<Vec<(String, Attributes)>> {
+        if let Some(cached) = self.rotate_name_cache.get(name, generation, owner).await {
+            return Ok(cached);
+        }
         let map = self.objects.read().await;
         let mut results: Vec<(String, Attributes)> = Vec::new();
         for db in map.values() {
@@ -688,7 +700,19 @@ impl Database {
                     .unwrap_or_default(),
             );
         }
+        drop(map);
+        self.rotate_name_cache
+            .insert(name, generation, owner, results.clone())
+            .await;
         Ok(results)
+    }
+
+    /// Invalidate the cached `find_by_rotate_name` entry for `name`/`owner`.
+    ///
+    /// Call this after a rotation (rekey) creates a new generation so the next
+    /// resolution sees it immediately instead of waiting out the cache's TTL.
+    pub async fn invalidate_rotate_name_cache(&self, name: &str, owner: &UserId) {
+        self.rotate_name_cache.invalidate(name, owner).await;
     }
 
     /// Set the `CKA_LABEL` (or equivalent) on a key identified by `uid`.

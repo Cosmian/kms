@@ -4,6 +4,8 @@
 //! Once implemented, a crypto oracle must be registered on the KMS instance for that prefix.
 //! HSMs that implement the `HSM` interface have a blanket implementation of this interface called
 //! `HsmCryptoOracle`.
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
@@ -21,6 +23,8 @@ pub struct KeyMetadata {
     pub key_length_in_bits: usize,
     pub sensitive: bool,
     pub id: String,
+    /// Application tags persisted with the key.
+    pub tags: HashSet<String>,
     /// Curve metadata for EC-family keys, including Edwards/Montgomery curves when enabled.
     pub curve: Option<crate::EcCurve>,
     /// PKCS#11 `CKA_START_DATE` — when the key became active.
@@ -177,33 +181,6 @@ impl SigningAlgorithm {
 
         // 1. explicit digital_signature_algorithm
         if let Some(dsa) = &params.digital_signature_algorithm {
-            // Reject up-front any explicit algorithm family that does not match the actual key
-            // type: without this check an RSA key requested with an ECDSA algorithm (or vice
-            // versa) would fall through to the HSM, which rejects the mismatched mechanism with
-            // an opaque low-level PKCS#11 return code instead of a clear KMIP error.
-            let is_rsa_dsa = matches!(
-                dsa,
-                DigitalSignatureAlgorithm::SHA1WithRSAEncryption
-                    | DigitalSignatureAlgorithm::SHA224WithRSAEncryption
-                    | DigitalSignatureAlgorithm::SHA256WithRSAEncryption
-                    | DigitalSignatureAlgorithm::SHA384WithRSAEncryption
-                    | DigitalSignatureAlgorithm::SHA512WithRSAEncryption
-                    | DigitalSignatureAlgorithm::RSASSAPSS
-            );
-            let is_ecdsa = matches!(
-                dsa,
-                DigitalSignatureAlgorithm::ECDSAWithSHA256
-                    | DigitalSignatureAlgorithm::ECDSAWithSHA384
-                    | DigitalSignatureAlgorithm::ECDSAWithSHA512
-            );
-            if (is_rsa_dsa && key_type != KeyType::RsaPrivateKey)
-                || (is_ecdsa && key_type != KeyType::EcPrivateKey)
-            {
-                return Err(InterfaceError::InvalidRequest(format!(
-                    "Unsupported digital signature algorithm for HSM signing: {dsa:?}"
-                )));
-            }
-
             // Reject up-front any explicit algorithm family that does not match the actual key
             // type: without this check an RSA key requested with an ECDSA algorithm (or vice
             // versa) would fall through to the HSM, which rejects the mismatched mechanism with
@@ -409,6 +386,11 @@ impl SigningAlgorithm {
                 Some(crate::EcCurve::X25519) => Err(InterfaceError::InvalidRequest(
                     "X25519 keys support key agreement, not signing".to_owned(),
                 )),
+                #[cfg(feature = "non-fips")]
+                Some(crate::EcCurve::Secp256k1) => Ok(Self::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: input_is_digest,
+                }),
                 Some(crate::EcCurve::P224 | crate::EcCurve::P256) | None => Ok(Self::Ecdsa {
                     hashing_algorithm: HashingAlgorithm::SHA256,
                     prehashed: input_is_digest,
@@ -517,6 +499,7 @@ pub trait CryptoOracle: Send + Sync {
     /// * `data` - the data to encrypt.
     /// * `cryptographic_algorithm` - the cryptographic algorithm to use for encryption.
     /// * `authenticated_encryption_additional_data` - the additional data to use for authenticated encryption.
+    /// * `iv_counter_nonce` - caller-supplied IV or nonce, when required by the protocol.
     /// # Returns
     /// * `Vec<u8>` - the encrypted data
     async fn encrypt(
@@ -525,6 +508,7 @@ pub trait CryptoOracle: Send + Sync {
         data: &[u8],
         cryptographic_algorithm: Option<CryptoAlgorithm>,
         authenticated_encryption_additional_data: Option<&[u8]>,
+        iv_counter_nonce: Option<&[u8]>,
     ) -> InterfaceResult<EncryptedContent>;
 
     /// Decrypt data
@@ -582,6 +566,7 @@ pub trait CryptoOracle: Send + Sync {
     /// * `data` - the data that was signed
     /// * `signature` - the signature to verify
     /// * `cryptographic_parameters` - optional cryptographic parameters (algorithm, padding, …)
+    /// * `input_is_digest` - whether `data` is already a message digest.
     /// # Returns
     /// * `InterfaceResult<bool>` - `true` if the signature is valid
     async fn signature_verify(
@@ -590,6 +575,7 @@ pub trait CryptoOracle: Send + Sync {
         data: &[u8],
         signature: &[u8],
         cryptographic_parameters: Option<&CryptographicParameters>,
+        input_is_digest: bool,
     ) -> InterfaceResult<bool>;
 
     /// Compute a MAC (Message Authentication Code) using the key identified by `uid`.

@@ -19,16 +19,19 @@ doctest = false
 [dependencies]
 async-trait = { workspace = true }
 cosmian_kms_interfaces = { path = "../../interfaces", version = "5.27.1" }
+cosmian_crypto_core = { workspace = true }
 cosmian_logger = { workspace = true }
 futures = { workspace = true }
 libloading = { workspace = true }
 lru = { workspace = true }
 pkcs11-sys = { workspace = true }
 rand = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zeroize = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
 # Used exclusively by the shared HSM test suite (`tests_shared.rs`, always compiled into this
 # crate's public lib so vendor crates can reuse it) to independently verify HSM-signed ECDSA
 # signatures against the exported public key. Production signing/keygen code (`session/`,

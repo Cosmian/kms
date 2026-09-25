@@ -115,6 +115,7 @@ pub struct SlotManager {
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
     _login_session: Option<Session>,
+    session_pool: Arc<Mutex<Vec<Session>>>,
     hsm_capabilities: HsmCapabilities,
 }
 
@@ -146,6 +147,7 @@ impl SlotManager {
     ) -> HResult<Self> {
         let object_handles_cache = Arc::new(ObjectHandlesCache::new());
         let supported_oaep_hash_cache = Arc::new(Mutex::new(None));
+        let session_pool = Arc::new(Mutex::new(Vec::new()));
         if let Some(password) = login_password {
             let login_session = Self::open_session_(
                 &hsm_lib,
@@ -162,6 +164,7 @@ impl SlotManager {
                 object_handles_cache,
                 supported_oaep_hash_cache,
                 _login_session: Some(login_session),
+                session_pool,
                 hsm_capabilities,
             })
         } else {
@@ -171,9 +174,16 @@ impl SlotManager {
                 object_handles_cache,
                 supported_oaep_hash_cache,
                 _login_session: None,
+                session_pool,
                 hsm_capabilities,
             })
         }
+    }
+
+    /// Get the HSM capabilities configured for this slot manager.
+    #[must_use]
+    pub const fn capabilities(&self) -> &HsmCapabilities {
+        &self.hsm_capabilities
     }
 
     /// Retrieve the list of supported cryptographic mechanisms for this HSM slot.
@@ -283,6 +293,29 @@ impl SlotManager {
             None, // Do Not Log In
             self.hsm_capabilities.clone(),
         )
+    }
+
+    /// Check out a pooled session if available, otherwise open a new one.
+    pub fn checkout_session(&self, read_write: bool) -> HResult<Session> {
+        let pooled = {
+            let mut pool = self
+                .session_pool
+                .lock()
+                .map_err(|e| HError::Default(format!("Failed to lock session pool: {e}")))?;
+            pool.pop()
+        };
+        pooled.map_or_else(|| self.open_session(read_write), Ok)
+    }
+
+    /// Return a healthy session to the pool for reuse.
+    pub fn checkin_session(&self, session: Session) {
+        const MAX_POOL_SIZE: usize = 32;
+        if let Ok(mut pool) = self.session_pool.lock() {
+            if pool.len() < MAX_POOL_SIZE {
+                pool.push(session);
+            }
+            // Otherwise session drops and closes
+        }
     }
 
     fn open_session_(

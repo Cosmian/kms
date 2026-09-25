@@ -254,10 +254,11 @@ pub(super) fn parse_concurrency_levels(s: &str) -> KmsCliResult<Vec<usize>> {
 fn prepare_load_ops(
     rt: &Runtime,
     client: &KmsClient,
-    mode: &BenchMode,
+    mode: BenchMode,
     protocol: &BenchProtocol,
     plaintext_size: usize,
     hsm_prefix: Option<&str>,
+    filter: Option<&super::types::BenchFilter>,
 ) -> Vec<PreparedLoadOp> {
     if let Some(hsm_prefix) = hsm_prefix {
         return prepare_hsm_load_ops(rt, client, mode, protocol, plaintext_size, hsm_prefix);
@@ -503,6 +504,9 @@ fn prepare_load_ops(
         }
     }
 
+    if let Some(filter) = filter {
+        ops.retain(|op| filter.matches(op.name(), None));
+    }
     ops
 }
 
@@ -520,7 +524,7 @@ fn prepare_load_ops(
 fn prepare_hsm_load_ops(
     rt: &Runtime,
     client: &KmsClient,
-    mode: &BenchMode,
+    mode: BenchMode,
     protocol: &BenchProtocol,
     plaintext_size: usize,
     hsm_prefix: &str,
@@ -893,7 +897,7 @@ fn run_load_level(
 pub(super) fn bench_load(
     rt: &Runtime,
     client: &KmsClient,
-    mode: &BenchMode,
+    mode: BenchMode,
     protocol: &BenchProtocol,
     concurrency_levels: &[usize],
     warmup: Duration,
@@ -901,8 +905,17 @@ pub(super) fn bench_load(
     cooldown: Duration,
     plaintext_size: usize,
     hsm_prefix: Option<&str>,
+    filter: Option<&super::types::BenchFilter>,
 ) -> Vec<LoadResult> {
-    let ops = prepare_load_ops(rt, client, mode, protocol, plaintext_size, hsm_prefix);
+    let ops = prepare_load_ops(
+        rt,
+        client,
+        mode,
+        protocol,
+        plaintext_size,
+        hsm_prefix,
+        filter,
+    );
     if ops.is_empty() {
         eprintln!("[load] No operations prepared for mode {mode:?}");
         return Vec::new();

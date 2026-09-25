@@ -13,6 +13,7 @@ nav:
   - HSM Support:
       - Introduction: hsm_support/introduction/index.md
       - HSM keys & operations: hsm_support/hsm_operations.md
+      - HSM key labeling & tagging: hsm_support/tagging.md
       - Multi-HSM support: hsm_support/multi_hsm.md
       - Trustway Crypt2pay: hsm_support/crypt2pay.md
       - Trustway Proteccio: hsm_support/proteccio.md
@@ -175,6 +176,7 @@ nav:
   - Benchmarks:
       - Software: benchmarks/ckms_bench/report.md
       - PKCS#11: benchmarks/ckms_bench_pkcs11/report.md
+      - PKCS#11 HSM Delegated: benchmarks/ckms_bench_pkcs11_delegated/report.md
       - HSM KEK-Wrap: benchmarks/ckms_bench_hsm_kek/report.md
       - HSM Delegated Crypto: benchmarks/ckms_bench_delegated_crypto_operations/report.md
       - CPU Scaling & Flamegraphs: benchmarks/cpu_scaling.md

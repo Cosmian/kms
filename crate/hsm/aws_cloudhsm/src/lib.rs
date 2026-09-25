@@ -39,6 +39,7 @@ impl HsmProvider for AwsCloudHsmCapabilityProvider {
             supports_rsa_sensitive_attribute: false,
             supports_ec_sensitive_attribute: false,
             supports_aes_gcm_caller_iv: false,
+            max_label_len: None,
         }
     }
 }

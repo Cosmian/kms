@@ -3,7 +3,8 @@
 #USAGE flag "-v --variant <v>"      env="BENCH_VARIANT"       default="non-fips"       help="FIPS variant"                              { choices "fips" "non-fips" }
 #USAGE flag "-l --link <l>"         env="BENCH_LINK"          default="static"          help="Linkage type"                              { choices "static" "dynamic" }
 #USAGE flag "-r --release"          env="BENCH_RELEASE"       default="true"            help="Build optimized benchmark binaries (workspace bench profile: opt-level=3, debug symbols)"
-#USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "decrypt" "sign" "verify" "sign-rsa" "verify-rsa" "sign-ecdsa" "verify-ecdsa" "sign-secp256k1" "verify-secp256k1" "sign-eddsa" "verify-eddsa" "key-creation" }
+#USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "key-creation" "sign-verify" "batch" }
+#USAGE flag "-a --algorithm <a>"    env="BENCH_ALGORITHM"     default=""                help="Filter algorithms by substring, comma-separated (e.g. ecdsa,eddsa)"
 #USAGE flag "-t --time <t>"         env="BENCH_TIME"          default="20"              help="Measurement time per level (seconds)"
 #USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16"  help="Comma-separated concurrency levels"
 #USAGE flag "-w --http-workers <n>" env="BENCH_HTTP_WORKERS"  default=""            help="Number of Actix-web HTTP worker threads (empty = server default: total logical core count)"
@@ -18,6 +19,9 @@
 #USAGE flag "-C --cooldown <s>"     env="BENCH_COOLDOWN"      default="2"               help="Cooldown between concurrency levels (seconds)"
 #USAGE flag "-s --sanity"           env="BENCH_SANITY"                                  help="Quick sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt"
 #USAGE flag "--shared-session"      env="BENCH_SHARED_SESSION"                          help="Force every worker thread to share one Cryptoki session (pre-fix behavior), instead of one dedicated session per thread (default) — for before/after comparison only"
+#USAGE flag "-d --delegated"        env="BENCH_DELEGATED"                               help="Benchmark crypto operations executed DIRECTLY on the HSM (CryptoOracle) via HSM-resident keys"
+#USAGE flag "--hsm-model <m>"        env="BENCH_HSM_MODEL"     default="softhsm2"        help="HSM model for delegated benchmarking"      { choices "softhsm2" "kryoptic" "proteccio" "crypt2pay" "utimaco" "smartcardhsm" "aws_cloudhsm" "other" }
+#USAGE flag "--hsm-slot <s>"          env="BENCH_HSM_SLOT"                                 help="HSM slot ID for HSM-resident keys (used with --delegated and remote --server-url)"
 #USAGE flag "--criterion"           env="BENCH_CRITERION"                               help="Also run real criterion-crate single-operation micro-benchmarks, on top of the concurrency sweep that always runs — writes criterion.json alongside load_pkcs11.json, so the report gets both a Load Tests and a Criterion Benchmarks section"
 #USAGE flag "--speed <speed>"         env="BENCH_SPEED"         default="quick"           help="Criterion speed preset (with --criterion)" { choices "sanity" "quick" "normal" }
 #USAGE flag "--overhead"            env="BENCH_OVERHEAD"                                help="Also run the Ed25519-specific differential overhead ladder (with --criterion) and write pkcs11_overhead.json — a standalone local diagnostic, never rendered into report.md"
@@ -33,6 +37,7 @@ BENCH_VARIANT="${usage_variant:-non-fips}"
 BENCH_LINK="${usage_link:-static}"
 BENCH_RELEASE="${usage_release:-true}"
 BENCH_MODE="${usage_mode:-all}"
+BENCH_ALGORITHM="${usage_algorithm:-}"
 BENCH_TIME="${usage_time:-20}"
 BENCH_CONCURRENCY="${usage_concurrency:-1,2,4,8,16}"
 BENCH_HTTP_WORKERS="${usage_http_workers:-}"
@@ -47,15 +52,42 @@ BENCH_WARMUP="${usage_warmup:-5}"
 BENCH_COOLDOWN="${usage_cooldown:-2}"
 BENCH_SANITY="${usage_sanity:-}"
 BENCH_SHARED_SESSION="${usage_shared_session:-}"
+BENCH_DELEGATED="${usage_delegated:-}"
+BENCH_HSM_MODEL="${usage_hsm_model:-softhsm2}"
+BENCH_HSM_SLOT="${usage_hsm_slot:-}"
 BENCH_CRITERION="${usage_criterion:-}"
 BENCH_SPEED="${usage_speed:-quick}"
 BENCH_OVERHEAD="${usage_overhead:-}"
 BENCH_OVERHEAD_PAYLOAD_SIZE="${usage_overhead_payload_size:-32}"
 BENCH_OVERHEAD_PAYLOAD_MODE="${usage_overhead_payload_mode:-fixed}"
 
+
+if [ "${BENCH_DELEGATED}" = "true" ]; then
+  if [ -n "${BENCH_SERVER_URL}" ]; then
+    if [ -z "${BENCH_HSM_SLOT}" ]; then
+      print_error "--hsm-slot is required when using --delegated with --server-url."
+    fi
+    HSM_SLOT_ID="${BENCH_HSM_SLOT}"
+  elif [ "${BENCH_HSM_MODEL}" = "kryoptic" ]; then
+    source "${MISE_CONFIG_ROOT}/.mise/lib/kryoptic.sh"
+    HSM_SLOT_ID=1
+  elif [ "${BENCH_HSM_MODEL}" = "proteccio" ]; then
+    source "${HOME}/.cosmian/proteccio.sh"
+    HSM_SLOT_ID="${PROTECCIO_SLOT:-5}"
+  elif [ "${BENCH_HSM_MODEL}" = "crypt2pay" ]; then
+    source "${HOME}/.cosmian/crypt2pay.sh"
+    HSM_SLOT_ID="${CRYPT2PAY_SLOT_ID:-1}"
+  elif [ "${BENCH_HSM_MODEL}" = "softhsm2" ]; then
+    source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
+  fi
+fi
 kms_init_env "${BENCH_VARIANT}" "${BENCH_LINK}"
-print_header "Running PKCS#11 load benchmark (${VARIANT_NAME})"
-[ -n "${BENCH_SERVER_URL}" ] && echo "Target KMS server: ${BENCH_SERVER_URL} (external, not started by this task)"
+if [ "${BENCH_DELEGATED}" = "true" ]; then
+  print_header "Running HSM-delegated PKCS#11 load benchmark (${VARIANT_NAME})"
+else
+  print_header "Running PKCS#11 load benchmark (${VARIANT_NAME})"
+fi
+[ -n "${BENCH_SERVER_URL}" ] && print_status "Target KMS server: ${BENCH_SERVER_URL} (external, not started by this task)"
 
 # ── Variables ────────────────────────────────────────────────────────────────
 TMP_DIR="$(mktemp -d /tmp/kms-bench-pkcs11-XXXXXX)"
@@ -89,7 +121,9 @@ bench_register_cleanup
 
 # Build the server (if local), the cosmian_pkcs11 cdylib, and the ckms binary.
 BUILD_ARGS=(-p cosmian_pkcs11 -p ckms)
-[ -z "${BENCH_SERVER_URL}" ] && BUILD_ARGS=(-p cosmian_kms_server "${BUILD_ARGS[@]}")
+if [ -z "${BENCH_SERVER_URL}" ] || [ "${BENCH_DELEGATED}" = "true" ]; then
+  BUILD_ARGS=(-p cosmian_kms_server "${BUILD_ARGS[@]}")
+fi
 BUILD_FEATURES=()
 [ "${BENCH_VARIANT}" = "non-fips" ] && BUILD_FEATURES+=(non-fips)
 BUILD_FEATURE_ARGS=()
@@ -111,26 +145,24 @@ export KMS_BIN
 
 PKCS11_LIB="$(get_cosmian_pkcs11_lib "${CARGO_TARGET_DIR}" "${BUILD_DIR}")"
 
-if [ -n "${BENCH_SERVER_URL}" ]; then
-  KMS_BASE_URL="${BENCH_SERVER_URL%/}"
-  echo "Using existing KMS server at ${KMS_BASE_URL} (no local server will be started)..."
-  bench_wait_ready_tls "${KMS_BASE_URL}/kmip/2_1" "${BENCH_ACCEPT_INVALID_CERTS}" "${BENCH_TLS_CA_CERT}" "${BENCH_TLS_CLIENT_PEM_CERT}" "${BENCH_TLS_CLIENT_PEM_KEY}" 15
-else
-  BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
-  bench_start_server "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}"
-  KMS_BASE_URL="http://127.0.0.1:${BENCH_PORT}"
-fi
+if [ "${BENCH_DELEGATED}" != "true" ] || [ -n "${BENCH_SERVER_URL}" ]; then
+  if [ -n "${BENCH_SERVER_URL}" ]; then
+    KMS_BASE_URL="${BENCH_SERVER_URL%/}"
+    print_status "Using existing KMS server at ${KMS_BASE_URL}"
+    bench_wait_ready_tls "${KMS_BASE_URL}/kmip/2_1" "${BENCH_ACCEPT_INVALID_CERTS}" "${BENCH_TLS_CA_CERT}" "${BENCH_TLS_CLIENT_PEM_CERT}" "${BENCH_TLS_CLIENT_PEM_KEY}" 15
+  else
+    BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+    bench_start_server "${BENCH_PORT}" "${TMP_DIR}" "${BENCH_HTTP_WORKERS}"
+    KMS_BASE_URL="http://127.0.0.1:${BENCH_PORT}"
+  fi
 
-# The cosmian_pkcs11 provider resolves its own KMS server URL from a ckms.toml
-# (CKMS_CONF env var > ckms.toml next to the DLL > default search path) — it does
-# NOT read the benchmark binary's --kms-url flag. Without this, C_Initialize would
-# connect to the default http://localhost:9998 instead of the temporary server
-# started above.
-CKMS_CONF="${TMP_DIR}/ckms.toml"
-bench_write_ckms_tls_conf "${CKMS_CONF}" "${KMS_BASE_URL}" "${BENCH_ACCEPT_INVALID_CERTS}" \
-  "${BENCH_TLS_CA_CERT}" "${BENCH_TLS_CLIENT_PEM_CERT}" "${BENCH_TLS_CLIENT_PEM_KEY}" \
-  "${BENCH_TLS_CLIENT_PKCS12}" "${BENCH_TLS_CLIENT_PKCS12_PASSWORD}"
-export CKMS_CONF
+  # The provider resolves its server from CKMS_CONF, not the benchmark's --url.
+  CKMS_CONF="${TMP_DIR}/ckms.toml"
+  bench_write_ckms_tls_conf "${CKMS_CONF}" "${KMS_BASE_URL}" "${BENCH_ACCEPT_INVALID_CERTS}" \
+    "${BENCH_TLS_CA_CERT}" "${BENCH_TLS_CLIENT_PEM_CERT}" "${BENCH_TLS_CLIENT_PEM_KEY}" \
+    "${BENCH_TLS_CLIENT_PKCS12}" "${BENCH_TLS_CLIENT_PKCS12_PASSWORD}"
+  export CKMS_CONF
+fi
 # CRITERION_HOME is where the benchmark binary writes load_pkcs11.json and where
 # bench_generate_report reads it from — same variable, same directory convention as
 # `bench/load` and `bench/load-hsm`. Always start from a clean slate so results are
@@ -166,25 +198,91 @@ fi
 ACCEPT_INVALID_CERTS_ARGS=()
 [ "${BENCH_ACCEPT_INVALID_CERTS}" = "true" ] && ACCEPT_INVALID_CERTS_ARGS+=(--accept-invalid-certs)
 
-"${CKMS_BIN}" \
-  --url "${KMS_BASE_URL}" \
-  ${ACCEPT_INVALID_CERTS_ARGS[@]+"${ACCEPT_INVALID_CERTS_ARGS[@]}"} \
-  pkcs11 bench \
-  --dll "${PKCS11_LIB}" \
-  --conf "${CKMS_CONF}" \
-  --mode "${BENCH_MODE}" \
-  --concurrency "${BENCH_CONCURRENCY}" \
-  --time "${BENCH_TIME}" \
-  --warmup "${BENCH_WARMUP}" \
-  --cooldown "${BENCH_COOLDOWN}" \
-  ${SHARED_SESSION_ARGS[@]+"${SHARED_SESSION_ARGS[@]}"} \
-  ${CRITERION_ARGS[@]+"${CRITERION_ARGS[@]}"}
+ALGORITHM_ARGS=()
+[ -n "${BENCH_ALGORITHM}" ] && ALGORITHM_ARGS+=(--algorithm "${BENCH_ALGORITHM}")
+run_pkcs11_bench() {
+  local base_url="$1" conf="$2" mode="$3"
+  local delegated_args=()
+  if [ "${BENCH_DELEGATED}" = "true" ]; then
+    delegated_args=(--delegated --hsm-slot "${HSM_SLOT_ID}")
+  fi
 
-# Dedicated report directory (documentation/docs/benchmarks/ckms_bench_pkcs11/) so
-# this never clobbers the ckms_bench / ckms_bench_hsm_kek / ckms_bench_delegated_crypto_operations reports
-# generated by bench/load and bench/load-hsm. is_pkcs11=true selects the PKCS#11
-# Protocols/Methodology report text in plot_version_compare.py instead of the
-# generic KMIP-wire-protocol text.
-bench_generate_report "${BENCH_PORT:-0}" "ckms_bench_pkcs11" "false" "false" "true" "${KMS_BASE_URL}"
+  "${CKMS_BIN}" \
+    --url "${base_url}" \
+    ${ACCEPT_INVALID_CERTS_ARGS[@]+"${ACCEPT_INVALID_CERTS_ARGS[@]}"} \
+    pkcs11 bench \
+    --dll "${PKCS11_LIB}" \
+    --conf "${conf}" \
+    --mode "${mode}" \
+    --concurrency "${BENCH_CONCURRENCY}" \
+    --time "${BENCH_TIME}" \
+    --warmup "${BENCH_WARMUP}" \
+    --cooldown "${BENCH_COOLDOWN}" \
+    ${delegated_args[@]+"${delegated_args[@]}"} \
+    ${SHARED_SESSION_ARGS[@]+"${SHARED_SESSION_ARGS[@]}"} \
+    ${CRITERION_ARGS[@]+"${CRITERION_ARGS[@]}"} \
+    ${ALGORITHM_ARGS[@]+"${ALGORITHM_ARGS[@]}"}
+}
+if [ "${BENCH_DELEGATED}" = "true" ] && [ -z "${BENCH_SERVER_URL}" ] && [ "${BENCH_MODE}" = "all" ]; then
+  CRITERION_ROOT="${CRITERION_HOME}"
+  MERGED_DIR="${TMP_DIR}/merged"
+  mkdir -p "${MERGED_DIR}"
+  SUB_MODES="key-creation encrypt sign-verify"
+  SUB_COUNT=$(printf '%s\n' "${SUB_MODES}" | wc -w)
+  SUB_INDEX=0
+  for SUB_MODE in ${SUB_MODES}; do
+    SUB_INDEX=$((SUB_INDEX + 1))
+    SUB_TMP="${TMP_DIR}/${SUB_MODE}"
+    mkdir -p "${SUB_TMP}"
+    SUB_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+    print_status "[${SUB_INDEX}/${SUB_COUNT}] delegated PKCS#11 submode: ${SUB_MODE}"
+    bench_start_server_hsm_resident "${SUB_PORT}" "${SUB_TMP}" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}" "${BENCH_HSM_SLOT}"
+    KMS_BASE_URL="http://127.0.0.1:${SUB_PORT}"
+    CKMS_CONF="${SUB_TMP}/ckms.toml"
+    bench_write_ckms_tls_conf "${CKMS_CONF}" "${KMS_BASE_URL}" "false" "" "" "" "" ""
+    export CKMS_CONF
+    export CRITERION_HOME="${CRITERION_ROOT}/${SUB_MODE}"
+    rm -rf "${CRITERION_HOME}"
+    mkdir -p "${CRITERION_HOME}"
 
-print_success "PKCS#11 load benchmark completed"
+    if ! run_pkcs11_bench "${KMS_BASE_URL}" "${CKMS_CONF}" "${SUB_MODE}"; then
+      cat "${SUB_TMP}/kms.log" >&2 || true
+      exit 1
+    fi
+    [ -f "${CRITERION_HOME}/load_pkcs11.json" ] && cat "${CRITERION_HOME}/load_pkcs11.json" >>"${MERGED_DIR}/load_pkcs11.json"
+    [ -f "${CRITERION_HOME}/criterion.json" ] && cat "${CRITERION_HOME}/criterion.json" >>"${MERGED_DIR}/criterion.json"
+
+    if [ "${SUB_INDEX}" -lt "${SUB_COUNT}" ]; then
+      bench_stop_server
+    else
+      BENCH_PORT="${SUB_PORT}"
+    fi
+  done
+
+  export CRITERION_HOME="${CRITERION_ROOT}"
+  cp "${MERGED_DIR}"/* "${CRITERION_HOME}/"
+elif [ "${BENCH_DELEGATED}" = "true" ] && [ -z "${BENCH_SERVER_URL}" ]; then
+  BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+  bench_start_server_hsm_resident "${BENCH_PORT}" "${TMP_DIR}" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}" "${BENCH_HSM_SLOT}"
+  KMS_BASE_URL="http://127.0.0.1:${BENCH_PORT}"
+  CKMS_CONF="${TMP_DIR}/ckms.toml"
+  bench_write_ckms_tls_conf "${CKMS_CONF}" "${KMS_BASE_URL}" "false" "" "" "" "" ""
+  export CKMS_CONF
+  if ! run_pkcs11_bench "${KMS_BASE_URL}" "${CKMS_CONF}" "${BENCH_MODE}"; then
+    cat "${TMP_DIR}/kms.log" >&2 || true
+    exit 1
+  fi
+elif [ "${BENCH_DELEGATED}" = "true" ]; then
+  BENCH_PORT=0
+  run_pkcs11_bench "${KMS_BASE_URL}" "${CKMS_CONF}" "${BENCH_MODE}"
+else
+  run_pkcs11_bench "${KMS_BASE_URL}" "${CKMS_CONF}" "${BENCH_MODE}"
+fi
+
+if [ "${BENCH_DELEGATED}" = "true" ]; then
+  bench_generate_report "${BENCH_PORT}" "ckms_bench_pkcs11_delegated" "true" "false" "true" "${KMS_BASE_URL}"
+  print_success "HSM-delegated PKCS#11 load benchmark completed"
+else
+  bench_generate_report "${BENCH_PORT:-0}" "ckms_bench_pkcs11" "false" "false" "true" "${KMS_BASE_URL}"
+  print_success "PKCS#11 load benchmark completed"
+fi

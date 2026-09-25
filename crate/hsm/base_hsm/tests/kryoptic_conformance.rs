@@ -313,7 +313,7 @@ fn check_message_based_aes_gcm_round_trip(hsm: &BaseHsm<KryopticCapabilityProvid
     let slot = hsm.get_slot(SLOT_ID).expect("failed to get slot");
     let session = slot.open_session(true).expect("failed to open session");
     let key = session
-        .generate_aes_key(b"aead-key", AesKeySize::Aes256, false)
+        .generate_aes_key(b"aead-key", AesKeySize::Aes256, false, None)
         .expect("failed to generate AES key");
     assert!(
         hsm.hsm_lib().supports_message_encrypt(),

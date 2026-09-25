@@ -22,10 +22,6 @@ doctest = false
 non-fips = ["cosmian_kms_client/non-fips", "cosmian_kms_server/non-fips"]
 
 [[bench]]
-name = "benches"
-harness = false
-
-[[bench]]
 name = "http_throughput"
 harness = false
 

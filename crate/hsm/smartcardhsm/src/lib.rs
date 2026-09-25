@@ -36,6 +36,7 @@ impl HsmProvider for SmartcardHsmCapabilityProvider {
             supports_rsa_sensitive_attribute: true,
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
+            max_label_len: None,
         }
     }
 }

@@ -1424,6 +1424,7 @@ version = "5.27.1"
 dependencies = [
  "async-trait",
  "cc",
+ "cosmian_crypto_core",
  "cosmian_kms_interfaces",
  "cosmian_logger",
  "futures",
@@ -1432,8 +1433,10 @@ dependencies = [
  "openssl",
  "pkcs11-sys",
  "rand 0.10.2",
+ "serde_json",
  "thiserror 2.0.19",
  "time",
+ "tokio",
  "uuid",
  "zeroize",
 ]
@@ -1623,7 +1626,6 @@ dependencies = [
  "num-bigint-dig",
  "openssl",
  "serde",
- "serde_json",
  "thiserror 2.0.19",
  "time",
  "tokio",

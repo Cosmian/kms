@@ -15,6 +15,7 @@ use cosmian_kms_client::{
         },
     },
 };
+use uuid::Uuid;
 
 use super::error::{BenchError, BenchResult};
 
@@ -39,20 +40,28 @@ const BENCH_TAG: &str = "pkcs11-bench";
 /// it.
 const DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 
+fn benchmark_key_uid(delegated: bool, hsm_slot: usize, name: &str) -> Option<UniqueIdentifier> {
+    delegated.then(|| {
+        UniqueIdentifier::TextString(format!("hsm::{hsm_slot}::{name}_{}", Uuid::new_v4()))
+    })
+}
+
 /// Creates one AES secret key, one RSA key pair, one EC P-256 key pair, and
 /// (opt-in) one Ed25519 and/or one secp256k1 key pair in the KMS pointed at by
-/// `client`, returning the identifiers needed by the differential overhead benchmarks.
+/// `client`. With `delegated`, all keys are created in `hsm_slot`.
 pub(crate) async fn provision_bench_keys(
     client: &KmsClient,
     provision_ed25519: bool,
     provision_secp256k1: bool,
+    delegated: bool,
+    hsm_slot: usize,
 ) -> BenchResult<BenchSetup> {
     let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
         .unwrap_or_else(|_| DISK_ENCRYPTION_TAG.to_owned());
 
     let create_request = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
-        None,
+        benchmark_key_uid(delegated, hsm_slot, "pkcs11_sym"),
         AES_KEY_BITS,
         CryptographicAlgorithm::AES,
         [BENCH_TAG],
@@ -64,7 +73,7 @@ pub(crate) async fn provision_bench_keys(
 
     let create_key_pair_request = create_rsa_key_pair_request(
         VENDOR_ID_COSMIAN,
-        None,
+        benchmark_key_uid(delegated, hsm_slot, "pkcs11_rsa"),
         [BENCH_TAG, disk_encryption_tag.as_str()],
         RSA_KEY_BITS,
         false,
@@ -78,7 +87,7 @@ pub(crate) async fn provision_bench_keys(
     // (and the aggregate `sign`/`verify`/`all` modes) must work in every build.
     let create_ecdsa_key_pair_request = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,
-        None,
+        benchmark_key_uid(delegated, hsm_slot, "pkcs11_ec"),
         [BENCH_TAG, disk_encryption_tag.as_str()],
         RecommendedCurve::P256,
         false,
@@ -95,7 +104,7 @@ pub(crate) async fn provision_bench_keys(
         // `find_all_private_keys` discovers it.
         let request = create_ec_key_pair_request(
             VENDOR_ID_COSMIAN,
-            None,
+            benchmark_key_uid(delegated, hsm_slot, "pkcs11_ed25519"),
             [BENCH_TAG, disk_encryption_tag.as_str()],
             RecommendedCurve::CURVEED25519,
             false,
@@ -126,7 +135,7 @@ pub(crate) async fn provision_bench_keys(
     if provision_secp256k1 {
         let request = create_ec_key_pair_request(
             VENDOR_ID_COSMIAN,
-            None,
+            benchmark_key_uid(delegated, hsm_slot, "pkcs11_secp256k1"),
             [BENCH_TAG, disk_encryption_tag.as_str()],
             RecommendedCurve::SECP256K1,
             false,
@@ -142,4 +151,21 @@ pub(crate) async fn provision_bench_keys(
     Ok(BenchSetup {
         ed25519_private_key_id,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::benchmark_key_uid;
+
+    #[test]
+    fn delegated_uid_targets_requested_slot() {
+        let uid = benchmark_key_uid(true, 42, "pkcs11_sym");
+        assert!(uid.is_some());
+        assert!(uid.is_some_and(|uid| uid.to_string().starts_with("hsm::42::pkcs11_sym_")));
+    }
+
+    #[test]
+    fn software_uid_is_server_generated() {
+        assert!(benchmark_key_uid(false, 42, "pkcs11_sym").is_none());
+    }
 }

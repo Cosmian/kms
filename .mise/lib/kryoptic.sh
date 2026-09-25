@@ -158,11 +158,14 @@ kryoptic_build_cdylib() {
   # probe at this workspace's own OpenSSL 3.6.2 instead of the ambient system
   # one.
   print_status "Building kryoptic cdylib (cargo build --release --features standard)"
-  (cd "$src_dir" && cargo build --release --features standard)
+  (cd "$src_dir" && env -u CARGO_TARGET_DIR cargo build --release --features standard)
 
   local cdylib_name artifact
   cdylib_name="$(_kryoptic_cdylib_filename)"
   artifact="${src_dir}/target/release/${cdylib_name}"
+  if [ ! -f "$artifact" ] && [ -n "${CARGO_TARGET_DIR:-}" ] && [ -f "${CARGO_TARGET_DIR}/release/${cdylib_name}" ]; then
+    artifact="${CARGO_TARGET_DIR}/release/${cdylib_name}"
+  fi
   if [ ! -f "$artifact" ]; then
     print_error "kryoptic cdylib artifact not found at expected path ${artifact} after build"
   fi

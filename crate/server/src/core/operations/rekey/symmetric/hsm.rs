@@ -267,6 +267,10 @@ impl KMS {
                         "Failed to set CKA_LABEL on new HSM key '{new_uid}': {e}"
                     ))
                 })?;
+            // Make the new generation visible to Sign/Verify/Encrypt/Decrypt immediately
+            // instead of waiting out the cache's TTL (see `RotateNameCache` module docs) —
+            // this is the commit point: CKA_LABEL on both keys now reflects the rotation.
+            self.database.invalidate_rotate_name_cache(name, user).await;
         }
 
         trace!("HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}");

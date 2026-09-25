@@ -142,6 +142,7 @@ pub(super) fn bench_encrypt_aes_gcm(
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("encrypt", bits),
             Operation::Encrypt(Box::new(enc_req)),
         );
@@ -159,6 +160,7 @@ pub(super) fn bench_encrypt_aes_gcm(
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("decrypt", bits),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -265,6 +267,7 @@ fn bench_rsa_encrypt_family(
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("encrypt", bits),
             Operation::Encrypt(Box::new(enc_req.clone())),
         );
@@ -284,6 +287,7 @@ fn bench_rsa_encrypt_family(
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("decrypt", bits),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -326,6 +330,7 @@ pub(super) fn bench_encrypt_aes_xts(
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("encrypt", label),
             Operation::Encrypt(Box::new(enc_req.clone())),
         );
@@ -345,6 +350,7 @@ pub(super) fn bench_encrypt_aes_xts(
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("decrypt", label),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -384,6 +390,7 @@ pub(super) fn bench_encrypt_aes_gcm_siv(
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("encrypt", bits),
             Operation::Encrypt(Box::new(enc_req.clone())),
         );
@@ -404,6 +411,7 @@ pub(super) fn bench_encrypt_aes_gcm_siv(
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("decrypt", bits),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -447,6 +455,7 @@ pub(super) fn bench_encrypt_ecies(
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("encrypt", label),
             Operation::Encrypt(Box::new(enc_req.clone())),
         );
@@ -461,6 +470,7 @@ pub(super) fn bench_encrypt_ecies(
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("decrypt", label),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -696,6 +706,7 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("encapsulate", label),
             Operation::Encrypt(Box::new(enc_req.clone())),
         );
@@ -717,6 +728,7 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("decapsulate", label),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -758,6 +770,7 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport:
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("encapsulate", label),
             Operation::Encrypt(Box::new(enc_req)),
         );
@@ -772,6 +785,7 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport:
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("decapsulate", label),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -1271,6 +1285,7 @@ fn bench_rsa_pss_sign(c: &mut Criterion, client: &KmsClient, rt: &Runtime, trans
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("sign", bits),
             Operation::Sign(sign_req),
         );
@@ -1279,6 +1294,7 @@ fn bench_rsa_pss_sign(c: &mut Criterion, client: &KmsClient, rt: &Runtime, trans
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("verify", bits),
             Operation::SignatureVerify(verify_req),
         );
@@ -1332,6 +1348,7 @@ fn bench_pqc_sign(
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("sign", label),
             Operation::Sign(sign_req),
         );
@@ -1340,6 +1357,7 @@ fn bench_pqc_sign(
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("verify", label),
             Operation::SignatureVerify(verify_req),
         );
@@ -1868,6 +1886,7 @@ pub(super) fn bench_batch_aes_bulk(
                 client,
                 rt,
                 transport,
+                bits.to_string(),
                 BenchmarkId::new(format!("{bits}-bit key encrypt"), &parameter_name),
                 Operation::Encrypt(Box::new(req)),
             );
@@ -1876,6 +1895,7 @@ pub(super) fn bench_batch_aes_bulk(
                 client,
                 rt,
                 transport,
+                bits.to_string(),
                 BenchmarkId::new(format!("{bits}-bit key decrypt"), &parameter_name),
                 Operation::Decrypt(Box::new(dec_req)),
             );
@@ -1972,6 +1992,7 @@ pub(super) fn bench_batch_rsa_message(
                 client,
                 rt,
                 transport,
+                bits.to_string(),
                 BenchmarkId::new(format!("{bits}-bit key encrypt"), &parameter_name),
                 &enc_msg,
             );
@@ -2008,6 +2029,7 @@ pub(super) fn bench_batch_rsa_message(
                 client,
                 rt,
                 transport,
+                bits.to_string(),
                 BenchmarkId::new(format!("{bits}-bit key decrypt"), &parameter_name),
                 &dec_msg,
             );

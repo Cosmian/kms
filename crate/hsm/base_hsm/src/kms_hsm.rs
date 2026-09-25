@@ -31,11 +31,13 @@
 //! - Support for sensitive key material handling
 //! - Secure session management
 //! - Zero-copy cleanup for sensitive data using `Zeroizing`
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use cosmian_kms_interfaces::{
-    CryptoAlgorithm, EcCurve, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm,
-    HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
-    SigningAlgorithm,
+    CryptoAlgorithm, EcCurve, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeyPairIds,
+    HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata,
+    KeyType, SigningAlgorithm,
 };
 use cosmian_logger::debug;
 use zeroize::Zeroizing;
@@ -55,13 +57,14 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         Ok(self.get_algorithms(slot_id)?)
     }
 
-    async fn create_key(
-        &self,
+    async fn create_key<'a>(
+        &'a self,
         slot_id: usize,
-        id: &[u8],
+        id: &'a [u8],
         algorithm: HsmKeyAlgorithm,
         key_length_in_bits: usize,
         sensitive: bool,
+        tags: &'a HashSet<String>,
     ) -> InterfaceResult<()> {
         let slot = self.get_slot(slot_id)?;
         let session = slot.open_session(true)?;
@@ -83,21 +86,25 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
                         )));
                     }
                 };
-                let _ = session.generate_aes_key(id, key_size, sensitive)?;
+                let _ = session.generate_aes_key(id, key_size, sensitive, Some(tags))?;
                 Ok(())
             }
         }
     }
 
-    async fn create_keypair(
-        &self,
+    async fn create_keypair<'a>(
+        &'a self,
         slot_id: usize,
-        sk_id: &[u8],
-        pk_id: &[u8],
+        ids: HsmKeyPairIds<'a>,
         algorithm: HsmKeypairAlgorithm,
         key_length_in_bits: usize,
         sensitive: bool,
+        tags: &'a HashSet<String>,
     ) -> InterfaceResult<()> {
+        let HsmKeyPairIds {
+            private: sk_id,
+            public: pk_id,
+        } = ids;
         let slot = self.get_slot(slot_id)?;
         let session = slot.open_session(true)?;
 
@@ -126,23 +133,52 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
                         )));
                     }
                 };
-                session.generate_rsa_key_pair(sk_id, pk_id, key_length_in_bits, sensitive)?;
+                session.generate_rsa_key_pair(
+                    sk_id,
+                    pk_id,
+                    key_length_in_bits,
+                    sensitive,
+                    Some(tags),
+                )?;
                 Ok(())
             }
             HsmKeypairAlgorithm::EC => {
                 let curve = EcCurve::from_key_length_in_bits(key_length_in_bits)
                     .map_err(|e| InterfaceError::Default(e.to_string()))?;
-                session.generate_ec_key_pair(sk_id, pk_id, curve, sensitive)?;
+                session.generate_ec_key_pair(sk_id, pk_id, curve, sensitive, Some(tags))?;
+                Ok(())
+            }
+            #[cfg(feature = "non-fips")]
+            HsmKeypairAlgorithm::Secp256k1 => {
+                session.generate_ec_key_pair(
+                    sk_id,
+                    pk_id,
+                    EcCurve::Secp256k1,
+                    sensitive,
+                    Some(tags),
+                )?;
                 Ok(())
             }
             #[cfg(feature = "non-fips")]
             HsmKeypairAlgorithm::Ed25519 => {
-                session.generate_ec_key_pair(sk_id, pk_id, EcCurve::Ed25519, sensitive)?;
+                session.generate_ec_key_pair(
+                    sk_id,
+                    pk_id,
+                    EcCurve::Ed25519,
+                    sensitive,
+                    Some(tags),
+                )?;
                 Ok(())
             }
             #[cfg(feature = "non-fips")]
             HsmKeypairAlgorithm::Ed448 => {
-                session.generate_ec_key_pair(sk_id, pk_id, EcCurve::Ed448, sensitive)?;
+                session.generate_ec_key_pair(
+                    sk_id,
+                    pk_id,
+                    EcCurve::Ed448,
+                    sensitive,
+                    Some(tags),
+                )?;
                 Ok(())
             }
             #[cfg(feature = "non-fips")]
@@ -194,18 +230,40 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         Ok(object_ids)
     }
 
-    async fn encrypt(
-        &self,
+    async fn encrypt<'a>(
+        &'a self,
         slot_id: usize,
-        key_id: &[u8],
+        key_id: &'a [u8],
         algorithm: CryptoAlgorithm,
-        data: &[u8],
+        data: &'a [u8],
+        iv_counter_nonce: &'a [u8],
     ) -> InterfaceResult<EncryptedContent> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let handle = session.get_object_handle(key_id)?;
-        let encrypted_content = session.encrypt(handle, algorithm.into(), data)?;
-        Ok(encrypted_content)
+        let key_id = key_id.to_vec();
+        let data = data.to_vec();
+        let iv_counter_nonce = iv_counter_nonce.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = slot.checkout_session(true)?;
+            let handle = match session.get_object_handle(&key_id) {
+                Ok(h) => h,
+                Err(e) => return Err(e.into()),
+            };
+            let encrypted_content = match session.encrypt(
+                handle,
+                algorithm.into(),
+                &data,
+                (!iv_counter_nonce.is_empty()).then_some(&iv_counter_nonce),
+            ) {
+                Ok(res) => {
+                    slot.checkin_session(session);
+                    res
+                }
+                Err(e) => return Err(e.into()),
+            };
+            Ok(encrypted_content)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn decrypt(
@@ -216,10 +274,25 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         data: &[u8],
     ) -> InterfaceResult<Zeroizing<Vec<u8>>> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let handle = session.get_object_handle(key_id)?;
-        let plaintext = session.decrypt(handle, algorithm.into(), data)?;
-        Ok(plaintext)
+        let key_id = key_id.to_vec();
+        let data = data.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = slot.checkout_session(true)?;
+            let handle = match session.get_object_handle(&key_id) {
+                Ok(h) => h,
+                Err(e) => return Err(e.into()),
+            };
+            let plaintext = match session.decrypt(handle, algorithm.into(), &data) {
+                Ok(res) => {
+                    slot.checkin_session(session);
+                    res
+                }
+                Err(e) => return Err(e.into()),
+            };
+            Ok(plaintext)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn sign(
@@ -230,10 +303,25 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         data: &[u8],
     ) -> InterfaceResult<Vec<u8>> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let handle = session.get_object_handle(key_id)?;
-        let signature = session.sign(handle, algorithm.into(), data)?;
-        Ok(signature)
+        let key_id = key_id.to_vec();
+        let data = data.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = slot.checkout_session(true)?;
+            let handle = match session.get_object_handle(&key_id) {
+                Ok(h) => h,
+                Err(e) => return Err(e.into()),
+            };
+            let signature = match session.sign(handle, algorithm.into(), &data) {
+                Ok(res) => {
+                    slot.checkin_session(session);
+                    res
+                }
+                Err(e) => return Err(e.into()),
+            };
+            Ok(signature)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn verify(
@@ -245,10 +333,26 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         signature: &[u8],
     ) -> InterfaceResult<bool> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let handle = session.get_object_handle(key_id)?;
-        let is_valid = session.verify(handle, algorithm.into(), data, signature)?;
-        Ok(is_valid)
+        let key_id = key_id.to_vec();
+        let data = data.to_vec();
+        let signature = signature.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = slot.checkout_session(true)?;
+            let handle = match session.get_object_handle(&key_id) {
+                Ok(h) => h,
+                Err(e) => return Err(e.into()),
+            };
+            let is_valid = match session.verify(handle, algorithm.into(), &data, &signature) {
+                Ok(res) => {
+                    slot.checkin_session(session);
+                    res
+                }
+                Err(e) => return Err(e.into()),
+            };
+            Ok(is_valid)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn get_key_type(
@@ -257,10 +361,24 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyType>> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let handle = session.get_object_handle(key_id)?;
-        let key_type = session.get_key_type(handle)?;
-        Ok(key_type)
+        let key_id = key_id.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = slot.checkout_session(true)?;
+            let handle = match session.get_object_handle(&key_id) {
+                Ok(h) => h,
+                Err(e) => return Err(e.into()),
+            };
+            let key_type = match session.get_key_type(handle) {
+                Ok(res) => {
+                    slot.checkin_session(session);
+                    res
+                }
+                Err(e) => return Err(e.into()),
+            };
+            Ok(key_type)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn get_key_metadata(
@@ -269,16 +387,36 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyMetadata>> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let handle = session.get_object_handle(key_id)?;
-        let metadata = session.get_key_metadata(handle)?;
-        Ok(metadata)
+        let key_id = key_id.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = slot.checkout_session(true)?;
+            let handle = match session.get_object_handle(&key_id) {
+                Ok(h) => h,
+                Err(e) => return Err(e.into()),
+            };
+            let metadata = match session.get_key_metadata(handle) {
+                Ok(res) => {
+                    slot.checkin_session(session);
+                    res
+                }
+                Err(e) => return Err(e.into()),
+            };
+            Ok(metadata)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn generate_random(&self, slot_id: usize, len: usize) -> InterfaceResult<Vec<u8>> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
-        let bytes = session.generate_random(len)?;
+        let session = slot.checkout_session(true)?;
+        let bytes = match session.generate_random(len) {
+            Ok(res) => {
+                slot.checkin_session(session);
+                res
+            }
+            Err(e) => return Err(e.into()),
+        };
         Ok(bytes)
     }
 

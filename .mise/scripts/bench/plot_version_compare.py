@@ -1011,6 +1011,224 @@ def _render_pkcs11_overhead_section(
     return lines
 
 
+def _render_architecture_section(
+    *, is_hsm: bool = False, is_hsm_kek: bool = False, is_pkcs11: bool = False
+) -> list[str]:
+    """Render ## Architecture section with Mermaid diagram based on benchmark type."""
+    if is_pkcs11:
+        if is_hsm:
+            # PKCS#11 HSM-delegated
+            return [
+                '## Architecture',
+                '',
+                '```mermaid',
+                'graph TB',
+                '    subgraph cli["Local Machine"]',
+                '        ckms["<b>ckms pkcs11 bench</b>"]',
+                '        lib["<b>cosmian_pkcs11.so</b>"]',
+                '    end',
+                '    ',
+                '    subgraph srv["KMS Server"]',
+                '        kmip["KMIP 2.1"]',
+                '        oracle["CryptoOracle"]',
+                '    end',
+                '    ',
+                '    subgraph hsm["SoftHSM2"]',
+                '        slot["PKCS#11 Slot"]',
+                '        keys["HSM Keys<br/>(Resident)"]',
+                '    end',
+                '    ',
+                '    ckms -->|C_Sign/C_Encrypt| lib',
+                '    lib -->|HTTP| kmip',
+                '    kmip --> oracle',
+                '    oracle -->|PKCS#11| slot',
+                '    slot --> keys',
+                '    ',
+                '    style ckms fill:#4A90E2',
+                '    style lib fill:#FF6B6B',
+                '    style kmip fill:#7ED321',
+                '    style oracle fill:#F5A623',
+                '    style slot fill:#BD10E0',
+                '```',
+                '',
+                '**Components**:',
+                '- **ckms**: PKCS#11 load test driver',
+                '- **cosmian_pkcs11.so**: PKCS#11 provider bridge',
+                '- **KMIP Endpoint**: Server-side protocol handler',
+                '- **CryptoOracle**: Routes operations to HSM-resident keys (C_Sign, C_Encrypt directly on hardware)',
+                '- **PKCS#11 Slot**: HSM backend for key storage and cryptographic ops',
+                '',
+                '',
+            ]
+        else:
+            # PKCS#11 software
+            return [
+                '## Architecture',
+                '',
+                '```mermaid',
+                'graph TB',
+                '    subgraph cli["Local Machine"]',
+                '        ckms["<b>ckms pkcs11 bench</b>"]',
+                '        lib["<b>cosmian_pkcs11.so</b><br/>(PKCS#11 Provider)"]',
+                '    end',
+                '    ',
+                '    subgraph srv["KMS Server"]',
+                '        kmip["KMIP 2.1<br/>(HTTP/TLS)"]',
+                '        crypto["Software Crypto<br/>(OpenSSL 3.6.2)"]',
+                '    end',
+                '    ',
+                '    subgraph hsm["SoftHSM2"]',
+                '        slot["PKCS#11 Slot"]',
+                '        keys["Test Keys"]',
+                '    end',
+                '    ',
+                '    ckms -->|C_Initialize/C_Sign| lib',
+                '    lib -->|HTTP| kmip',
+                '    lib -->|PKCS#11| slot',
+                '    kmip --> crypto',
+                '    slot --> keys',
+                '    ',
+                '    style ckms fill:#4A90E2',
+                '    style lib fill:#FF6B6B',
+                '    style kmip fill:#7ED321',
+                '    style crypto fill:#F5A623',
+                '    style slot fill:#BD10E0',
+                '```',
+                '',
+                '**Components**:',
+                '- **ckms**: PKCS#11 load test generator',
+                '- **cosmian_pkcs11.so**: Bridge between PKCS#11 callers and KMIP server',
+                '- **KMIP Endpoint**: Server-side request/response marshaling',
+                '- **Software Crypto**: AES/RSA/ECDSA operations via OpenSSL',
+                '- **PKCS#11 Slot**: HSM backend for key storage',
+                '',
+                '',
+            ]
+    elif is_hsm:
+        # HSM-resident keys (bench:load-hsm --delegated)
+        return [
+            '## Architecture',
+            '',
+            '```mermaid',
+            'graph TB',
+            '    subgraph cli["Local: ckms CLI"]',
+            '        ckms["<b>ckms bench --hsm</b>"]',
+            '    end',
+            '    ',
+            '    subgraph srv["Local KMS Server"]',
+            '        kmip["KMIP 2.1<br/>(HTTP)"]',
+            '        oracle["CryptoOracle<br/>(HSM Router)"]',
+            '    end',
+            '    ',
+            '    subgraph hsm["SoftHSM2"]',
+            '        pkcs11["PKCS#11 Slot"]',
+            '        hsm_keys["RSA-2048<br/>ECDSA-P256<br/>(HSM-resident)"]',
+            '    end',
+            '    ',
+            '    ckms -->|HTTP| kmip',
+            '    kmip --> oracle',
+            '    oracle -->|C_Sign/C_Encrypt| pkcs11',
+            '    pkcs11 --> hsm_keys',
+            '    ',
+            '    style ckms fill:#4A90E2',
+            '    style kmip fill:#7ED321',
+            '    style oracle fill:#FF6B6B',
+            '    style pkcs11 fill:#BD10E0',
+            '```',
+            '',
+            '**Components**:',
+            '- **ckms**: Concurrent load generator',
+            '- **KMIP Endpoint**: HTTP protocol handler',
+            '- **CryptoOracle**: Routes crypto ops directly to HSM (no software fallback)',
+            '- **PKCS#11 Slot**: HSM engine for sign/encrypt operations',
+            '- **HSM-Resident Keys**: Keys generated on and never leave hardware',
+            '',
+            '',
+        ]
+    elif is_hsm_kek:
+        # HSM KEK-wrapped keys (bench:load-hsm without --delegated)
+        return [
+            '## Architecture',
+            '',
+            '```mermaid',
+            'graph TB',
+            '    subgraph cli["Local: ckms CLI"]',
+            '        ckms["<b>ckms load</b>"]',
+            '    end',
+            '    ',
+            '    subgraph srv["Local KMS Server + SoftHSM2"]',
+            '        kmip["KMIP 2.1<br/>(HTTP)"]',
+            '        crypto["Software Crypto"]',
+            '        kek["KEK<br/>(HSM-resident)"]',
+            '    end',
+            '    ',
+            '    subgraph hsm["SoftHSM2"]',
+            '        pkcs11["PKCS#11 Slot"]',
+            '        kek_material["KEK Material"]',
+            '    end',
+            '    ',
+            '    db["Key Storage<br/>(wrapped)"]',
+            '    ',
+            '    ckms -->|HTTP| kmip',
+            '    kmip --> crypto',
+            '    crypto -->|unwrap| kek',
+            '    kek -->|C_Decrypt| pkcs11',
+            '    pkcs11 --> kek_material',
+            '    crypto --> db',
+            '    ',
+            '    style ckms fill:#4A90E2',
+            '    style kmip fill:#7ED321',
+            '    style crypto fill:#F5A623',
+            '    style kek fill:#FF6B6B',
+            '    style pkcs11 fill:#BD10E0',
+            '```',
+            '',
+            '**Components**:',
+            '- **ckms**: Concurrent load generator',
+            '- **KMIP Endpoint**: HTTP protocol handler',
+            '- **Software Crypto**: Handles data encryption/decryption with unwrapped keys',
+            '- **KEK**: HSM-resident Key Encryption Key (used to wrap/unwrap data keys)',
+            '- **PKCS#11 Slot**: HSM backend for KEK unwrap operations',
+            '- **Key Storage**: Database of wrapped keys',
+            '',
+            '',
+        ]
+    else:
+        # Software baseline (bench:load)
+        return [
+            '## Architecture',
+            '',
+            '```mermaid',
+            'graph TB',
+            '    subgraph cli["Local: ckms CLI"]',
+            '        ckms["<b>ckms load</b><br/>(concurrent load driver)"]',
+            '    end',
+            '    ',
+            '    subgraph srv["KMS Server"]',
+            '        kmip["KMIP 2.1<br/>(HTTP/TLS)"]',
+            '        crypto["Software Crypto<br/>(OpenSSL 3.6.2)"]',
+            '        db["Key Storage<br/>(SQLite/PostgreSQL)"]',
+            '    end',
+            '    ',
+            '    ckms -->|HTTP/TLS| kmip',
+            '    kmip --> crypto',
+            '    crypto --> db',
+            '    ',
+            '    style ckms fill:#4A90E2',
+            '    style kmip fill:#7ED321',
+            '    style crypto fill:#F5A623',
+            '    style db fill:#BD10E0',
+            '```',
+            '',
+            '**Components**:',
+            '- **ckms**: Configurable concurrent load generator (ops/sec sweep)',
+            '- **KMIP Endpoint**: Protocol handler for request/response marshaling',
+            '- **Software Crypto**: AES-GCM, RSA-PKCS, ECDSA-P256, EdDSA-Ed25519 via OpenSSL 3.6.2',
+            '- **Key Storage**: Key material persistence (SQLite or PostgreSQL)',
+            '',
+            '',
+        ]
+
 def _render_protocol_section(
     *, is_hsm: bool = False, is_hsm_kek: bool = False, is_pkcs11: bool = False
 ) -> list[str]:
@@ -1027,8 +1245,8 @@ def _render_protocol_section(
     report for that).
 
     When `is_pkcs11` is set, the caller-facing protocol is the real Cryptoki C
-    ABI. The provider's remote Sign implementation then uses KMIP 2.1 binary
-    TTLV over the `/kmip` octet-stream endpoint.
+    ABI. The provider uses KMIP 2.1 binary TTLV over `/kmip`; when `is_hsm` is
+    also set, KMS executes the operation through its HSM CryptoOracle backend.
     """
     if is_pkcs11:
         return [
@@ -1045,6 +1263,17 @@ def _render_protocol_section(
             ' `RequestMessage`, serializes binary TTLV, and sends'
             ' `application/octet-stream` to `POST /kmip`; the binary TTLV response is'
             ' fully deserialized before `C_SignMessage` returns.',
+            *(
+                [
+                    '',
+                    'This delegated variant provisions `hsm::<slot>::...` keys.'
+                    ' After the provider sends each KMIP request, KMS routes the key to'
+                    ' its `CryptoOracle`; the cryptographic operation executes through'
+                    ' the server-side SoftHSM2 PKCS#11 backend rather than software crypto.',
+                ]
+                if is_hsm
+                else []
+            ),
             '',
             '| Interface | Transport | Description |',
             '|---|---|---|',
@@ -1054,6 +1283,14 @@ def _render_protocol_section(
             ' `C_GenerateKey` |',
             '| **Provider → KMS Sign** | KMIP 2.1 binary TTLV over HTTP |'
             ' `POST /kmip`, `application/octet-stream` |',
+            *(
+                [
+                    '| **KMS → HSM** | PKCS#11 via `CryptoOracle` | HSM-resident key'
+                    ' generation and cryptographic operations |',
+                ]
+                if is_hsm
+                else []
+            ),
             '',
             '',
         ]
@@ -1144,16 +1381,21 @@ def _render_methodology_section(
     *, is_hsm: bool = False, is_hsm_kek: bool = False, is_pkcs11: bool = False
 ) -> list[str]:
     """Render the static ## Benchmark Methodology section."""
+    pkcs11_task = (
+        '`mise bench:load-pkcs11 --delegated`'
+        if is_hsm
+        else '`mise bench:load-pkcs11`'
+    )
     if is_pkcs11:
         return [
             '## Benchmark Methodology',
             '',
             '### Real Cryptoki C ABI, one session per worker',
             '',
-            'The benchmark subcommand `ckms pkcs11 bench` (driven by'
-            ' `mise bench:load-pkcs11`) `dlopen()`s the built `cosmian_pkcs11` shared'
-            ' library, resolves the v3.1 function table through `C_GetInterface`,'
-            ' and calls it directly — the same'
+            'The benchmark subcommand `ckms pkcs11 bench` (driven by '
+            f'{pkcs11_task}) `dlopen()`s the built `cosmian_pkcs11` shared library,'
+            ' resolves the v3.1 function table through `C_GetInterface`, and calls it'
+            ' directly — the same'
             ' code path a real PKCS#11 consumer application uses, as opposed to'
             ' `mise bench:load`, which drives the KMIP REST API directly through the'
             ' `ckms` client library.',
@@ -1172,6 +1414,23 @@ def _render_methodology_section(
             ' serializes it as binary TTLV, sends it to the `/kmip` octet-stream'
             ' endpoint, and parses the binary TTLV response before copying the'
             ' signature into the caller-owned buffer.',
+            *(
+                [
+                    '',
+                    '### HSM-resident key execution',
+                    '',
+                    'With `--delegated`, provisioning assigns `hsm::<slot>::...` UIDs and'
+                    ' persists discovery tags in a versioned PKCS#11 `CKA_LABEL` envelope'
+                    ' while retaining the raw key ID in `CKA_ID`. The provider locates those'
+                    ' tagged keys through KMS, while Encrypt, Decrypt, Sign,'
+                    ' Verify, and key generation are executed by the KMS `CryptoOracle` on'
+                    ' the SoftHSM2 token. For `--mode all`, key-creation, encrypt, sign, and'
+                    ' verify run against separate fresh tokens so cumulative SoftHSM2 key'
+                    ' generation does not contaminate later measurements.',
+                ]
+                if is_hsm
+                else []
+            ),
             '',
             '### Independent operations',
             '',
@@ -1195,7 +1454,7 @@ def _render_methodology_section(
             ' covers the one Cryptoki key-creation path the provider does support:'
             ' symmetric `C_GenerateKey`.',
             '',
-            '### Load test (`mise bench:load-pkcs11`)',
+            f'### Load test ({pkcs11_task})',
             '',
             'The load test sweeps a configurable list of concurrency levels, mirroring'
             ' `mise bench:load`'
@@ -1442,6 +1701,14 @@ def generate_report(
         if env_lines:
             lines += env_lines
             lines += sep
+    # ── Architecture ──────────────────────────────────────────────────────────
+    arch_lines = _render_architecture_section(
+        is_hsm=is_hsm, is_hsm_kek=is_hsm_kek, is_pkcs11=is_pkcs11
+    )
+    if arch_lines:
+        lines += arch_lines
+        lines += sep
+
 
     # ── Protocols ─────────────────────────────────────────────────────────────
     lines += _render_protocol_section(
@@ -1550,27 +1817,20 @@ def generate_report(
 
 
 def main() -> None:
-    # Optional --hsm flag: may appear anywhere in argv. When set, the report
-    # documents the HSM/CryptoOracle delegation model (Protocols/Methodology
-    # sections) instead of the generic software-bench text.
-    # Optional --kek flag: may appear anywhere in argv. When set, the report
-    # is otherwise identical to the plain software-bench text but prefixed
-    # with a short note that the KEK (not the benchmarked keys themselves)
-    # is HSM-resident. Mutually exclusive with --hsm (--hsm takes priority).
-    # Optional --pkcs11 flag: may appear anywhere in argv. When set, the report
-    # documents the real dlopen()-based Cryptoki C ABI benchmark (see
-    # `bench/load-pkcs11`) instead of any KMIP-wire-protocol text. Mutually
-    # exclusive with --hsm/--kek (either of those takes priority).
+    # --hsm documents HSM/CryptoOracle execution. --kek documents software
+    # crypto with an HSM-resident wrapping key. --pkcs11 documents the real
+    # dlopen()-based Cryptoki C ABI and may be combined with --hsm for delegated
+    # PKCS#11 benchmarks.
     argv = sys.argv[1:]
     is_hsm = '--hsm' in argv
     is_hsm_kek = '--kek' in argv and not is_hsm
-    is_pkcs11 = '--pkcs11' in argv and not is_hsm and not is_hsm_kek
+    is_pkcs11 = '--pkcs11' in argv
     argv = [a for a in argv if a not in ('--hsm', '--kek', '--pkcs11')]
 
     if len(argv) < 2:
         print(
             f"Usage: {sys.argv[0]} <results_dir> <version1> [version2] ... "
-            '[--hsm|--kek|--pkcs11]'
+            '[--hsm] [--kek] [--pkcs11]'
         )
         sys.exit(1)
 

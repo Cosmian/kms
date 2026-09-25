@@ -54,19 +54,64 @@ pub(crate) enum BenchSpeed {
 }
 
 /// Benchmark mode selection (operation category).
-#[derive(Clone, Debug, Default, ValueEnum)]
-pub(crate) enum BenchMode {
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
+pub enum BenchMode {
     /// Run ALL benchmark categories in order
     #[default]
     All,
-    /// Encrypt/decrypt: AES-GCM, `ChaCha20` (non-FIPS), RSA-OAEP, RSA-AES-KWP, RSA-PKCS1v15 (non-FIPS)
+    /// Encrypt/decrypt: AES-GCM, AES-XTS, `AES-GCM-SIV`/`ChaCha20`/ECIES/Salsa/Covercrypt/KEM/PQC-KEM (non-FIPS), RSA-OAEP, RSA-AES-KWP, RSA-PKCS1v15 (non-FIPS)
     Encrypt,
-    /// Key creation: symmetric, RSA, EC key pairs
+    /// Key creation: symmetric (AES, `ChaCha20` non-FIPS), RSA (2048, 4096), EC (P-256, P-384, P-521, secp256k1/Ed25519/Ed448 non-FIPS), ML-KEM/PQC-KEM (non-FIPS)
     KeyCreation,
-    /// Sign/verify: ECDSA, `EdDSA` (non-FIPS), RSA-PSS, ML-DSA, SLH-DSA (non-FIPS)
+    /// Sign/verify: ECDSA (P-256, P-384, P-521), `EdDSA` (Ed25519, Ed448 non-FIPS), ECDSA secp256k1 (non-FIPS), RSA-PSS, ML-DSA (non-FIPS), SLH-DSA (non-FIPS)
+    #[value(alias = "sign")]
     SignVerify,
-    /// KMIP Message batch: AES `BulkData`, RSA KMIP Message
+    /// KMIP Message batch: AES `BulkData`, RSA KMIP Message (OAEP, KWP)
     Batch,
+}
+
+/// Filter criteria for benchmark algorithms and key sizes.
+#[derive(Clone, Debug, Default, clap::Args)]
+pub struct BenchFilter {
+    /// Filter benchmark algorithms by name substring (case-insensitive, comma-separated, e.g. "aes-gcm,rsa-pss,ecdsa").
+    #[clap(long = "algorithm", short = 'a', value_delimiter = ',')]
+    pub algorithms: Vec<String>,
+
+    /// Filter benchmark key sizes or curves by substring/number (comma-separated, e.g. "128,256,2048,p256").
+    #[clap(long = "key-size", short = 'k', value_delimiter = ',')]
+    pub key_sizes: Vec<String>,
+}
+
+impl BenchFilter {
+    /// Check whether an algorithm name and optional key size / curve label match this filter.
+    #[must_use]
+    pub fn matches(&self, algo: &str, key_size_or_curve: Option<&str>) -> bool {
+        let algo_matches = if self.algorithms.is_empty() {
+            true
+        } else {
+            let algo_lower = algo.to_ascii_lowercase();
+            self.algorithms
+                .iter()
+                .any(|a| algo_lower.contains(&a.trim().to_ascii_lowercase()))
+        };
+
+        let size_matches = if self.key_sizes.is_empty() {
+            true
+        } else if let Some(ks) = key_size_or_curve {
+            let ks_lower = ks.to_ascii_lowercase();
+            self.key_sizes
+                .iter()
+                .any(|k| ks_lower.contains(&k.trim().to_ascii_lowercase()))
+        } else {
+            // If key size filter was specified but this item has no key size, check if algo matches key_size
+            let algo_lower = algo.to_ascii_lowercase();
+            self.key_sizes
+                .iter()
+                .any(|k| algo_lower.contains(&k.trim().to_ascii_lowercase()))
+        };
+
+        algo_matches && size_matches
+    }
 }
 
 /// Benchmark protocol / transport selection.
@@ -130,6 +175,9 @@ pub struct BenchAction {
     /// Benchmark category (default: all)
     #[clap(long = "mode", short = 'm', default_value = "all")]
     pub(super) mode: BenchMode,
+    /// Algorithm and key-size filtering options
+    #[clap(flatten)]
+    pub(super) filter: BenchFilter,
 
     /// Protocol / transport to benchmark (default: all).
     /// - `ttlv-json`: KMIP over JSON TTLV (`POST /kmip/2_1`)

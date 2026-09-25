@@ -1,4 +1,4 @@
-use std::ptr;
+use std::{collections::HashSet, ptr};
 
 use cosmian_kms_interfaces::EcCurve;
 use pkcs11_sys::{
@@ -12,6 +12,7 @@ use pkcs11_sys::{
     CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKM_EC_EDWARDS_KEY_PAIR_GEN, CKM_EC_MONTGOMERY_KEY_PAIR_GEN,
 };
 
+use super::serialize_tagged_label;
 use crate::{HError, HResult, hsm_call, session::Session};
 
 /// PKCS#11 `CKA_EC_PARAMS` value for each curve supported for HSM-delegated EC key generation.
@@ -26,25 +27,20 @@ use crate::{HError, HResult, hsm_call, session::Session};
 #[must_use]
 pub(crate) const fn curve_der_oid(curve: EcCurve) -> &'static [u8] {
     match curve {
-        // secp224r1 (1.3.132.0.33)
         EcCurve::P224 => &[0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x21],
-        // prime256v1 / secp256r1 (1.2.840.10045.3.1.7)
         EcCurve::P256 => &[0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07],
-        // secp384r1 (1.3.132.0.34)
         EcCurve::P384 => &[0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x22],
-        // secp521r1 (1.3.132.0.35)
         EcCurve::P521 => &[0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x23],
-        // PrintableString "edwards25519"
+        #[cfg(feature = "non-fips")]
+        EcCurve::Secp256k1 => &[0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x0A],
         #[cfg(feature = "non-fips")]
         EcCurve::Ed25519 => &[
             0x13, 0x0C, 0x65, 0x64, 0x77, 0x61, 0x72, 0x64, 0x73, 0x32, 0x35, 0x35, 0x31, 0x39,
         ],
-        // PrintableString "edwards448"
         #[cfg(feature = "non-fips")]
         EcCurve::Ed448 => &[
             0x13, 0x0A, 0x65, 0x64, 0x77, 0x61, 0x72, 0x64, 0x73, 0x34, 0x34, 0x38,
         ],
-        // PrintableString "curve25519"
         #[cfg(feature = "non-fips")]
         EcCurve::X25519 => &[
             0x13, 0x0A, 0x63, 0x75, 0x72, 0x76, 0x65, 0x32, 0x35, 0x35, 0x31, 0x39,
@@ -52,30 +48,23 @@ pub(crate) const fn curve_der_oid(curve: EcCurve) -> &'static [u8] {
     }
 }
 
-/// Some PKCS#11 tokens store Edwards/Montgomery `CKA_EC_PARAMS` as a DER `OBJECT IDENTIFIER`
-/// instead of the printable-string form used during key generation on `SoftHSM2`.
 #[cfg(feature = "non-fips")]
 #[must_use]
 const fn curve_der_named_curve_oid(curve: EcCurve) -> Option<&'static [u8]> {
     match curve {
-        EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 => None,
-        // id-X25519 (1.3.101.110)
+        EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 | EcCurve::Secp256k1 => None,
         EcCurve::X25519 => Some(&[0x06, 0x03, 0x2B, 0x65, 0x6E]),
-        // id-Ed25519 (1.3.101.112)
         EcCurve::Ed25519 => Some(&[0x06, 0x03, 0x2B, 0x65, 0x70]),
-        // id-Ed448 (1.3.101.113)
         EcCurve::Ed448 => Some(&[0x06, 0x03, 0x2B, 0x65, 0x71]),
     }
 }
 
-/// The `CK_MECHANISM_TYPE` used by `C_GenerateKeyPair` to create a key pair on `curve`.
-/// FIPS-approved NIST prime curves use the generic `CKM_EC_KEY_PAIR_GEN`; Edwards curves
-/// (`Ed25519`/`Ed448`) use `CKM_EC_EDWARDS_KEY_PAIR_GEN`; the Montgomery curve (`X25519`) uses
-/// `CKM_EC_MONTGOMERY_KEY_PAIR_GEN` (PKCS#11 v3.0 §2.3.7/§2.3.8, issue #1157).
 #[must_use]
 pub(crate) const fn curve_key_pair_gen_mechanism(curve: EcCurve) -> CK_MECHANISM_TYPE {
     match curve {
         EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 => CKM_EC_KEY_PAIR_GEN,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Secp256k1 => CKM_EC_KEY_PAIR_GEN,
         #[cfg(feature = "non-fips")]
         EcCurve::Ed25519 | EcCurve::Ed448 => CKM_EC_EDWARDS_KEY_PAIR_GEN,
         #[cfg(feature = "non-fips")]
@@ -83,14 +72,12 @@ pub(crate) const fn curve_key_pair_gen_mechanism(curve: EcCurve) -> CK_MECHANISM
     }
 }
 
-/// The `CKA_KEY_TYPE` value the generated key pair's objects must carry. FIPS-approved NIST
-/// prime curves use the generic `CKK_EC`; Edwards curves use `CKK_EC_EDWARDS`; the Montgomery
-/// curve uses `CKK_EC_MONTGOMERY` — mismatching this against the key-pair-gen mechanism causes
-/// `CKR_TEMPLATE_INCONSISTENT` on at least `SoftHSM2` (empirically verified, issue #1157).
 #[must_use]
 pub(crate) const fn curve_key_type(curve: EcCurve) -> CK_KEY_TYPE {
     match curve {
         EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 => CKK_EC,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Secp256k1 => CKK_EC,
         #[cfg(feature = "non-fips")]
         EcCurve::Ed25519 | EcCurve::Ed448 => CKK_EC_EDWARDS,
         #[cfg(feature = "non-fips")]
@@ -98,7 +85,6 @@ pub(crate) const fn curve_key_type(curve: EcCurve) -> CK_KEY_TYPE {
     }
 }
 
-/// Recover the `EcCurve` matching a DER-encoded `CKA_EC_PARAMS` value read back from the HSM.
 pub(crate) fn curve_from_der_oid(oid: &[u8]) -> HResult<EcCurve> {
     #[cfg(not(feature = "non-fips"))]
     let curves = [EcCurve::P224, EcCurve::P256, EcCurve::P384, EcCurve::P521];
@@ -108,16 +94,36 @@ pub(crate) fn curve_from_der_oid(oid: &[u8]) -> HResult<EcCurve> {
         EcCurve::P256,
         EcCurve::P384,
         EcCurve::P521,
+        EcCurve::Secp256k1,
         EcCurve::Ed25519,
         EcCurve::Ed448,
         EcCurve::X25519,
     ];
+    // If the DER OID starts with tag 0x06, decode the exact length of the ASN.1 TLV
+    // in case the HSM padded the buffer with trailing zeroes.
+    let trimmed_oid = if oid.first() == Some(&0x06) && oid.len() >= 2 {
+        if let Some(&len_byte) = oid.get(1) {
+            let len = usize::from(len_byte);
+            if oid.len() >= 2 + len {
+                oid.get(..2 + len).unwrap_or(oid)
+            } else {
+                oid
+            }
+        } else {
+            oid
+        }
+    } else {
+        oid
+    };
+
     for curve in curves {
-        if curve_der_oid(curve) == oid {
+        if curve_der_oid(curve) == oid || curve_der_oid(curve) == trimmed_oid {
             return Ok(curve);
         }
         #[cfg(feature = "non-fips")]
-        if curve_der_named_curve_oid(curve).is_some_and(|candidate| candidate == oid) {
+        if curve_der_named_curve_oid(curve)
+            .is_some_and(|candidate| candidate == oid || candidate == trimmed_oid)
+        {
             return Ok(curve);
         }
     }
@@ -126,17 +132,14 @@ pub(crate) fn curve_from_der_oid(oid: &[u8]) -> HResult<EcCurve> {
     )))
 }
 
-/// The curve's field element size, in bytes (used to size the `CKA_VALUE` private scalar and
-/// to split the raw `r || s` ECDSA signature). Not meaningful for `EdDSA` signatures, which are
-/// always `2 * curve_byte_size` for the Edwards curves below (64 bytes for Ed25519, 114 bytes
-/// for Ed448) and are sized directly by `Session::sign`.
 #[must_use]
 pub(crate) const fn curve_byte_size(curve: EcCurve) -> usize {
     match curve {
         EcCurve::P224 => 28,
         EcCurve::P256 => 32,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Secp256k1 => 32,
         EcCurve::P384 => 48,
-        // 521 bits -> ceil(521 / 8) = 66 bytes
         EcCurve::P521 => 66,
         #[cfg(feature = "non-fips")]
         EcCurve::Ed25519 | EcCurve::X25519 => 32,
@@ -145,15 +148,12 @@ pub(crate) const fn curve_byte_size(curve: EcCurve) -> usize {
     }
 }
 
-/// `true` for the Montgomery curve (`X25519`), which is used only for ECDH key agreement
-/// (`CKA_DERIVE`) and does not support `CKA_SIGN`/`CKA_VERIFY`, unlike every other curve here
-/// (issue #1157). Always `false` in FIPS-only builds, where `EcCurve::X25519` does not exist.
 #[must_use]
 pub(crate) const fn curve_is_montgomery(curve: EcCurve) -> bool {
     match curve {
         EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 => false,
         #[cfg(feature = "non-fips")]
-        EcCurve::Ed25519 | EcCurve::Ed448 => false,
+        EcCurve::Secp256k1 | EcCurve::Ed25519 | EcCurve::Ed448 => false,
         #[cfg(feature = "non-fips")]
         EcCurve::X25519 => true,
     }
@@ -181,6 +181,7 @@ impl Session {
         pk_id: &[u8],
         curve: EcCurve,
         sensitive: bool,
+        tags: Option<&HashSet<String>>,
     ) -> HResult<(CK_OBJECT_HANDLE, CK_OBJECT_HANDLE)> {
         let ec_params = curve_der_oid(curve);
         let key_type = curve_key_type(curve);
@@ -195,6 +196,12 @@ impl Session {
             CKA_VERIFY
         };
         let priv_usage_attribute_type = if is_montgomery { CKA_DERIVE } else { CKA_SIGN };
+        let tagged_sk_label =
+            serialize_tagged_label(sk_id, tags, self.hsm_capabilities.max_label_len)?;
+        let sk_label = tagged_sk_label.as_deref().unwrap_or(sk_id);
+        let tagged_pk_label =
+            serialize_tagged_label(pk_id, tags, self.hsm_capabilities.max_label_len)?;
+        let pk_label = tagged_pk_label.as_deref().unwrap_or(pk_id);
 
         let mut pub_key_template = vec![
             CK_ATTRIBUTE {
@@ -225,8 +232,8 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_LABEL,
-                pValue: pk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
-                ulValueLen: CK_ULONG::try_from(pk_id.len())?,
+                pValue: pk_label.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: CK_ULONG::try_from(pk_label.len())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_ID,
@@ -269,8 +276,8 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_LABEL,
-                pValue: sk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
-                ulValueLen: CK_ULONG::try_from(sk_id.len())?,
+                pValue: sk_label.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: CK_ULONG::try_from(sk_label.len())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_ID,
@@ -368,9 +375,9 @@ mod tests {
 
     #[test]
     fn unsupported_oid_is_rejected() {
-        // secp256k1 (1.3.132.0.10) is intentionally not supported for HSM delegation.
-        let secp256k1_oid = [0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x0A];
-        curve_from_der_oid(&secp256k1_oid).unwrap_err();
+        // secp192r1 (1.2.840.10045.3.1.1) is not supported for HSM delegation.
+        let unsupported_oid = [0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x01];
+        curve_from_der_oid(&unsupported_oid).unwrap_err();
     }
 }
 
