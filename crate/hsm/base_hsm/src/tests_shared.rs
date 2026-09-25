@@ -517,7 +517,11 @@ pub fn aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data, Some(&iv))?;
     assert_eq!(enc.ciphertext.len(), data.len());
     assert_eq!(enc.tag.clone().unwrap_or_default().len(), 16);
-    assert_eq!(enc.iv.as_deref(), Some(iv.as_slice()));
+    if slot.capabilities().supports_aes_gcm_caller_iv {
+        assert_eq!(enc.iv.as_deref(), Some(iv.as_slice()));
+    } else {
+        assert!(enc.iv.is_some());
+    }
     let plaintext = session.decrypt(
         sk,
         HsmEncryptionAlgorithm::AesGcm,

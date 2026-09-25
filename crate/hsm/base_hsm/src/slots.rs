@@ -180,6 +180,12 @@ impl SlotManager {
         }
     }
 
+    /// Get the HSM capabilities configured for this slot manager.
+    #[must_use]
+    pub const fn capabilities(&self) -> &HsmCapabilities {
+        &self.hsm_capabilities
+    }
+
     /// Retrieve the list of supported cryptographic mechanisms for this HSM slot.
     ///
     /// This function queries the HSM to determine which mechanisms (such as AES, RSA, or EC algorithms)
