@@ -1,2 +1,3 @@
 # idx  pkcs11/5.27.1  label
-0  427.37  "aes-cbc"
+0  433.82  "aes-cbc"
+1  486.05  "aes-gcm"
