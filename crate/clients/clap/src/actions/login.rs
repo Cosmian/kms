@@ -59,6 +59,13 @@ pub enum LoginCredential {
 /// Vault-compatible token at `POST {server_url}/v1/auth/approle/login`, which
 /// the KMS proxies to the auth-verifier. The token is stored and sent as an
 /// `X-Vault-Token` header on subsequent requests.
+///
+/// **spire** — Fetch a SPIFFE JWT-SVID directly from the local SPIRE Agent's Workload
+/// API (via a Unix domain socket, using the standard `SPIFFE_ENDPOINT_SOCKET`
+/// environment variable unless `--socket-path` is given) and store it as the KMS
+/// access token. Requires `--audience`, which must match a `--jwt-auth-provider`
+/// audience configured on the KMS server (which must also be started with
+/// `--jwt-svid-auth`).
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct LoginAction {
@@ -102,6 +109,25 @@ pub enum LoginSubcommand {
         /// it interactively without echoing it to the terminal.
         #[clap(long)]
         secret_id: Option<String>,
+    },
+    /// Fetch a SPIFFE JWT-SVID from the local SPIRE Agent's Workload API and use it as
+    /// the KMS access token.
+    Spire {
+        /// The JWT audience value, forwarded to the Workload API's JWT-SVID fetch call.
+        /// Must match a `--jwt-auth-provider` audience configured on the KMS server.
+        #[clap(long)]
+        audience: String,
+        /// The SPIFFE ID of the JWT-SVID to request, when the local agent serves more
+        /// than one identity to this workload (optional — omit to accept whichever
+        /// identity the agent returns).
+        #[clap(long)]
+        spiffe_id: Option<String>,
+        /// Path to the local SPIRE Agent Workload API Unix domain socket (e.g.
+        /// `/tmp/spire-agent/public/api.sock` or a `unix:...` endpoint string accepted
+        /// by `spiffe::WorkloadApiClient::connect_to`). When omitted, connects using the
+        /// standard `SPIFFE_ENDPOINT_SOCKET` environment variable.
+        #[clap(long)]
+        socket_path: Option<String>,
     },
 }
 
@@ -221,6 +247,41 @@ impl LoginAction {
                 println!("\nSuccess! The AppRole token was saved to the KMS client configuration.");
 
                 Ok(LoginCredential::VaultToken(vault_token))
+            }
+            LoginSubcommand::Spire {
+                audience,
+                spiffe_id,
+                socket_path,
+            } => {
+                let client = if let Some(path) = socket_path {
+                    spiffe::WorkloadApiClient::connect_to(path).await
+                } else {
+                    spiffe::WorkloadApiClient::connect_env().await
+                }
+                .map_err(|e| {
+                    KmsCliError::Default(format!(
+                        "failed to connect to the local SPIRE Agent Workload API: {e}"
+                    ))
+                })?;
+
+                let spiffe_id = spiffe_id
+                    .as_deref()
+                    .map(str::parse::<spiffe::SpiffeId>)
+                    .transpose()
+                    .map_err(|e| KmsCliError::Default(format!("invalid --spiffe-id: {e}")))?;
+
+                let jwt = client
+                    .fetch_jwt_token([audience.as_str()], spiffe_id.as_ref())
+                    .await
+                    .map_err(|e| {
+                        KmsCliError::Default(format!(
+                            "failed to fetch a JWT-SVID from the local SPIRE Agent: {e}"
+                        ))
+                    })?;
+
+                println!("\nSuccess! The JWT-SVID was saved to the KMS client configuration.");
+
+                Ok(LoginCredential::AccessToken(jwt))
             }
         }
     }

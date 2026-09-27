@@ -1636,18 +1636,14 @@ pub async fn prepare_kms_server(
             // Ordered list of UI login methods, highest priority first. The Web UI
             // renders the first entry as the primary login action and the rest as
             // secondary actions (a button when a single alternative exists, a
-            // Priority is JWT > SPIFFE > AUTH_VERIFIER > CERT:
+            // Priority is JWT > AUTH_VERIFIER > CERT:
             // the interactive, per-user methods come before the ambient client
             // certificate probe. AUTH_VERIFIER is only offered when its UI login is
             // enabled. The singular `auth_method` served by `get_auth_method` is
             // derived as the first entry for backward compatibility.
             let mut auth_methods: Vec<String> = Vec::new();
-            if use_jwt_auth {
+            if oidc_runtime_config.discovered.is_some() {
                 auth_methods.push("JWT".to_owned());
-            }
-            let use_jwt_svid_ui_auth = jwt_configurations.iter().any(|c| c.accept_spiffe_subject);
-            if use_jwt_svid_ui_auth {
-                auth_methods.push("SPIFFE".to_owned());
             }
             if use_auth_verifier
                 && kms_server_for_http
