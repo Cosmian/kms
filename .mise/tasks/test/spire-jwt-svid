@@ -154,6 +154,17 @@ kill "${KMS_PID}" 2>/dev/null || true
 wait "${KMS_PID}" 2>/dev/null || true
 KMS_PID=""
 
+# The KMS only registers the /ui auth routes (login_svid, whoami, ...) when the
+# configured UI index folder contains an index.html. CI runners start from a
+# clean checkout and never build ui/dist, so provision a placeholder index so
+# the BFF endpoints used below are served. The real SPA assets are not needed:
+# the Playwright and curl steps only exercise the JSON /ui endpoints.
+mkdir -p "${REPO_ROOT}/ui/dist"
+if [[ ! -f "${REPO_ROOT}/ui/dist/index.html" ]]; then
+  echo '<!doctype html><html><body>SPIRE JWT-SVID test placeholder</body></html>' \
+    >"${REPO_ROOT}/ui/dist/index.html"
+fi
+
 JWT_PROVIDER_SPEC="https://${TRUST_DOMAIN},http://127.0.0.1:8088/jwks.json,${AUDIENCE}"
 KMS_SVID_LOG="/tmp/kms-spire-jwt-svid-server.log"
 
