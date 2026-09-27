@@ -321,6 +321,13 @@ export PLAYWRIGHT_KMS_URL="https://127.0.0.1:9998"
 export TEST_JWT_SVID_TOKEN="${JWT_TOKEN}"
 export TEST_SPIFFE_ID="${WORKLOAD_SPIFFE_ID}"
 
+# The UI lockfile requires pnpm >= 10, which is not pre-installed on CI runners
+# used by the spire job. Bootstrap it from npm when it is missing or too old.
+ensure_pnpm_v10
+if ! command -v pnpm >/dev/null 2>&1; then
+  print_error "pnpm is required for the Playwright E2E test (Step 10) but could not be provisioned."
+fi
+
 if (cd "${REPO_ROOT}/ui" && ([ -d node_modules ] || pnpm install --frozen-lockfile) && CI=true pnpm run test:e2e -- spiffe-jwt-svid-auth.spec.ts); then
   print_success "Playwright E2E test for SPIFFE JWT-SVID passed."
 else
