@@ -141,6 +141,10 @@ print_header "Running PostgreSQL tests (${VARIANT_NAME})"
 check_and_test_db "PostgreSQL" "postgresql" "POSTGRES_HOST" "POSTGRES_PORT"
 run_db_softhsm2_tests "postgresql_softhsm2"
 
+# Run the PostgreSQL monotonic state merge test against the running PostgreSQL container.
+cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
+  -- --ignored --nocapture test_db_postgresql_state_monotonic_merge
+
 _run_postgresql_failover_test
 
 print_success "PostgreSQL tests completed"

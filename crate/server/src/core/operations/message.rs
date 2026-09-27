@@ -309,9 +309,10 @@ async fn revert_activation_to_preactive(kms: &KMS, uid: &str, user: &UserId) -> 
         .update_object(owm.id(), owm.object(), owm.attributes(), None)
         .await?;
 
-    // Update the state in the database (separate column)
+    // Update the state in the database (separate column), using allow_downgrade
+    // to bypass the monotonic state guard for this legitimate batch UNDO revert.
     kms.database
-        .update_state(owm.id(), State::PreActive)
+        .update_state_allow_downgrade(owm.id(), State::PreActive)
         .await?;
 
     Ok(())
