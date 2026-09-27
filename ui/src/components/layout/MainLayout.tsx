@@ -140,7 +140,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                         {userId}
                                     </Tag>
                                 )}
-                                <Button onClick={handleLogout} className="w-18 ml-4" data-testid="logout-btn">
+                                <Button onClick={handleLogout} className="ml-4 whitespace-nowrap" data-testid="logout-btn">
                                     {t("main.logout")}
                                 </Button>
                             </div>
@@ -152,8 +152,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                     </Tag>
                                 )}
                                 {onCertLogout && (
-                                    <Button onClick={onCertLogout} className="w-18 ml-4" data-testid="logout-btn">
-                                        Logout
+                                    <Button onClick={onCertLogout} className="ml-4 whitespace-nowrap" data-testid="logout-btn">
+                                        {t("main.logout")}
                                     </Button>
                                 )}
                             </div>

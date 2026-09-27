@@ -29,7 +29,7 @@ set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_build.sh"
-
+source "${MISE_CONFIG_ROOT}/.mise/lib/spire_test.sh"
 if [ "${usage_variant:-non-fips}" != "non-fips" ]; then
   print_error "spire-kmip-upstream-authority tests require non-fips variant (got: ${usage_variant})"
 fi
@@ -48,35 +48,6 @@ KMS_KMIP_PORT=5697
 SPIRE_BIND_PORT=18082
 SPIRE_HEALTH_PORT=19081
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-listener_pids_for_port() { lsof -ti tcp:"$1" 2>/dev/null | sort -u || true; }
-port_is_listening() { lsof -i tcp:"$1" -sTCP:LISTEN 2>/dev/null | grep -q . 2>/dev/null; }
-
-wait_for_port_closed() {
-  local port="$1" timeout_secs="$2" elapsed=0
-  while port_is_listening "${port}"; do
-    [[ "${elapsed}" -ge "${timeout_secs}" ]] && return 1
-    sleep 1
-    elapsed=$((elapsed + 1))
-  done
-}
-
-stop_listener_on_port() {
-  local port="$1" label="$2" pids pid
-  pids="$(listener_pids_for_port "${port}")"
-  [[ -z "${pids}" ]] && return 0
-  print_info "Stopping stale ${label} listener(s) on port ${port}"
-  while IFS= read -r pid; do
-    [[ -n "${pid}" ]] && kill "${pid}" 2>/dev/null || true
-  done <<<"${pids}"
-  wait_for_port_closed "${port}" 10 || {
-    while IFS= read -r pid; do
-      [[ -n "${pid}" ]] && kill -9 "${pid}" 2>/dev/null || true
-    done <<<"${pids}"
-    wait_for_port_closed "${port}" 5 || print_error "Port ${port} still in use."
-  }
-}
-
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 SPIRE_PID=""
 _TMP_DIR=""
@@ -87,7 +58,7 @@ cleanup() {
   kms_stop
   [[ -n "${_TMP_DIR}" ]] && rm -rf "${_TMP_DIR}" 2>/dev/null || true
   for p in ${KMS_HTTPS_PORT} ${KMS_KMIP_PORT} ${SPIRE_BIND_PORT} ${SPIRE_HEALTH_PORT}; do
-    stop_listener_on_port "${p}" "spire-kmip-ua" 2>/dev/null || true
+    spire_stop_port "${p}" "spire-kmip-ua" 2>/dev/null || true
   done
 }
 trap cleanup EXIT
@@ -101,7 +72,7 @@ require_cmd openssl
 # ── Clean state ───────────────────────────────────────────────────────────────
 print_status "Resetting spire-kmip-upstream-authority test state..."
 for p in ${KMS_HTTPS_PORT} ${KMS_KMIP_PORT} ${SPIRE_BIND_PORT} ${SPIRE_HEALTH_PORT}; do
-  stop_listener_on_port "${p}" "spire-kmip-ua" 2>/dev/null || true
+  spire_stop_port "${p}" "spire-kmip-ua" 2>/dev/null || true
 done
 
 print_header "SPIRE kmip UpstreamAuthority Plugin E2E — Binary KMIP 2.1 TCP/TLS"

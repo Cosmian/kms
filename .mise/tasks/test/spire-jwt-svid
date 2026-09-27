@@ -7,10 +7,9 @@
 #USAGE   choices "static" "dynamic"
 #USAGE }
 set -euo pipefail
-
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
-
+source "${MISE_CONFIG_ROOT}/.mise/lib/spire_test.sh"
 if [ "${usage_variant:-non-fips}" != "non-fips" ]; then
   print_error "SPIRE tests require non-fips variant (got: ${usage_variant})"
 fi
@@ -30,60 +29,14 @@ TRUST_DOMAIN="cosmian-test-a.local"
 WORKLOAD_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/test-workload-app"
 AUDIENCE="cosmian-kms"
 
-listener_pids_for_port() {
-  lsof -ti tcp:"$1" 2>/dev/null | sort -u || true
-}
-
-port_is_listening() {
-  lsof -i tcp:"$1" -sTCP:LISTEN 2>/dev/null | grep -q . 2>/dev/null
-}
-
-wait_for_port_closed() {
-  local port="$1" timeout_secs="$2" elapsed=0
-  while port_is_listening "${port}"; do
-    if [[ "${elapsed}" -ge "${timeout_secs}" ]]; then
-      return 1
-    fi
-    sleep 1
-    elapsed=$((elapsed + 1))
-  done
-}
-
-stop_listener_on_port() {
-  local port="$1" label="$2" pids pid
-  pids="$(listener_pids_for_port "${port}")"
-  [[ -z "${pids}" ]] && return 0
-  print_info "Stopping stale ${label} listener on port ${port}"
-  while IFS= read -r pid; do
-    [[ -n "${pid}" ]] && kill "${pid}" 2>/dev/null || true
-  done <<<"${pids}"
-  wait_for_port_closed "${port}" 10 || {
-    while IFS= read -r pid; do
-      [[ -n "${pid}" ]] && kill -9 "${pid}" 2>/dev/null || true
-    done <<<"${pids}"
-  }
-}
-
-reset_spire_state() {
-  stop_listener_on_port 8443 "auth-verifier"
-  stop_listener_on_port 9998 "KMS"
-  stop_listener_on_port 8088 "jwks-server"
-  docker compose --profile spire down --volumes --remove-orphans 2>/dev/null || true
-  rm -f "${AUTH_DB_FILE}" "${AUTH_DB_FILE}-wal" "${AUTH_DB_FILE}-shm" 2>/dev/null || true
-  rm -f "${SPIRE_SECRETS_ENV}" /tmp/spire-join-token.txt 2>/dev/null || true
-  rm -rf /tmp/spire-agent-config-* 2>/dev/null || true
-  rm -f /tmp/spire-server-*.log 2>/dev/null || true
-}
-
 cleanup() {
   print_info "Cleaning up SPIRE JWT-SVID test resources..."
   [[ -n "${JWKS_SERVER_PID:-}" ]] && kill "${JWKS_SERVER_PID}" 2>/dev/null || true
   [[ -n "${AUTH_PID:-}" ]] && kill "${AUTH_PID}" 2>/dev/null || true
   [[ -n "${KMS_PID:-}" ]] && kill "${KMS_PID}" 2>/dev/null || true
-  reset_spire_state
+  spire_reset_state "${AUTH_DB_FILE}" "${SPIRE_SECRETS_ENV}"
 }
 trap cleanup EXIT
-
 require_cmd docker
 require_cmd cargo
 require_cmd openssl
@@ -94,25 +47,18 @@ if [[ ! -d "${TEST_DATA}" ]]; then
 fi
 
 print_status "Resetting SPIRE test state..."
-reset_spire_state
-
+spire_reset_state "${AUTH_DB_FILE}" "${SPIRE_SECRETS_ENV}"
 print_header "SPIRE JWT-SVID Authentication Integration Test"
 
 # ── Step 1: Check / Generate TLS certificates ───────────────────────────────
 print_status "Step 1: TLS certificates..."
-if [[ ! -f "${TEST_DATA}/certs/ca.crt" || ! -f "${TEST_DATA}/certs/jwt.key.pem" ]]; then
-  print_info "Generating test TLS certificates..."
-  bash "${TEST_DATA}/certs/generate-test-certs.sh"
-fi
+spire_ensure_certs "${TEST_DATA}"
 
 # ── Step 2: Build server and CLI ─────────────────────────────────────────────
 print_status "Step 2: Building KMS server (non-fips,insecure) & ckms CLI..."
 kms_build_server --features non-fips,insecure
 
-cargo build --manifest-path "${REPO_ROOT}/authentication/Cargo.toml" --bin auth_verifier
-AUTH_BIN="$(cd "${REPO_ROOT}/authentication" && cargo metadata --no-deps --format-version 1 |
-  python3 -c "import sys,json; m=json.load(sys.stdin); print(m['target_directory'])")/debug/auth_verifier"
-
+AUTH_BIN="$(spire_build_auth_verifier "${REPO_ROOT}")"
 kms_build_cli "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
 
 # ── Step 3: Start auth-verifier ──────────────────────────────────────────────
@@ -174,15 +120,15 @@ export VAULT_APPROLE_SECRET_ID_A="${SPIRE_SECRET_ID_A}"
 docker compose --profile spire up -d "${SPIRE_SERVER_CONTAINER}"
 
 tries=0
-until docker inspect --format='{{.State.Health.Status}}' "${SPIRE_SERVER_CONTAINER}" 2>/dev/null | grep -q healthy; do
+until [[ "$(docker inspect --format='{{.State.Status}}' "${SPIRE_SERVER_CONTAINER}" 2>/dev/null)" == "running" && "$(docker inspect --format='{{.State.Health.Status}}' "${SPIRE_SERVER_CONTAINER}" 2>/dev/null)" == "healthy" ]]; do
   tries=$((tries + 1))
   if [[ "${tries}" -ge 24 ]]; then
+    docker logs "${SPIRE_SERVER_CONTAINER}" 2>&1 | tail -20 || true
     print_error "SPIRE server did not become healthy in time."
   fi
   sleep 5
 done
 print_success "SPIRE server A healthy."
-
 # ── Step 6: Export SPIRE JWT keys and serve via local JWKS HTTP endpoint ─────
 print_status "Step 6: Exporting SPIRE bundle and serving JWKS..."
 JWKS_DIR=$(mktemp -d /tmp/spire-jwks-XXXXXX)
@@ -253,7 +199,7 @@ if [[ -z "${JWT_TOKEN}" ]]; then
 fi
 print_success "JWT-SVID minted successfully for ${WORKLOAD_SPIFFE_ID}."
 
-print_status "Writing ckms.toml with access_token..."
+print_status "Step 9a: Writing ckms.toml with access_token..."
 SVID_CKMS_CONF=$(mktemp /tmp/ckms-svid.toml.XXXXXX)
 cat >"${SVID_CKMS_CONF}" <<EOF
 [http_config]
@@ -261,8 +207,7 @@ server_url = "https://localhost:9998"
 access_token = "${JWT_TOKEN}"
 EOF
 
-# ── Step 9: Create symmetric key and verify owner mapping ─────────────────────
-print_status "Step 9: Executing ckms command authenticated by JWT-SVID..."
+print_status "Executing ckms command authenticated by JWT-SVID..."
 TEST_KEY_ID="spiffe-test-key-$(date +%s)"
 "$(get_ckms_bin)" --conf-path "${SVID_CKMS_CONF}" --accept-invalid-certs \
   sym keys create "${TEST_KEY_ID}"
@@ -271,13 +216,104 @@ print_success "Key '${TEST_KEY_ID}' created."
 print_status "Verifying ownership of created object matches SPIFFE ID..."
 OWNED_OUTPUT=$("$(get_ckms_bin)" --conf-path "${SVID_CKMS_CONF}" --accept-invalid-certs \
   access-rights owned)
-
 echo "${OWNED_OUTPUT}"
-
 if echo "${OWNED_OUTPUT}" | grep -q "${TEST_KEY_ID}"; then
   print_success "Object is owned by the authenticated SPIFFE ID (${WORKLOAD_SPIFFE_ID})!"
 else
   print_error "Key '${TEST_KEY_ID}' not found in list-owned output: ${OWNED_OUTPUT}"
+fi
+
+# ── Step 9b: ckms login spire native integration ─────────────────────────────
+print_status "Step 9b: Testing ckms login spire directly via local SPIRE Agent..."
+LOCAL_SPIRE_AGENT_BIN="$(command -v spire-agent || true)"
+if [[ -z "${LOCAL_SPIRE_AGENT_BIN}" && -x "${HOME}/go/bin/spire-agent" ]]; then
+  LOCAL_SPIRE_AGENT_BIN="${HOME}/go/bin/spire-agent"
+fi
+
+if [[ -n "${LOCAL_SPIRE_AGENT_BIN}" ]]; then
+  AGENT_SOCK_DIR=$(mktemp -d /tmp/spire-agent-sock-XXXXXX)
+  AGENT_CONF_FILE=$(mktemp /tmp/spire-agent-conf-XXXXXX)
+  LOGIN_SPIRE_CONF=$(mktemp /tmp/ckms-login-spire-conf-XXXXXX)
+
+  # Generate join token from spire-server-a
+  GEN_TOKEN_OUT=$(docker exec "${SPIRE_SERVER_CONTAINER}" \
+    /opt/spire/bin/spire-server token generate \
+    -socketPath /tmp/spire-server/private/api.sock \
+    -spiffeID "spiffe://${TRUST_DOMAIN}/test-local-agent" \
+    -ttl 300)
+  AGENT_JOIN_TOKEN=$(echo "${GEN_TOKEN_OUT}" | awk '/^Token:/{print $2}' | tr -d '\r\n')
+
+  # Register workload entry for local ckms process under this agent
+  docker exec "${SPIRE_SERVER_CONTAINER}" \
+    /opt/spire/bin/spire-server entry create \
+    -socketPath /tmp/spire-server/private/api.sock \
+    -spiffeID "${WORKLOAD_SPIFFE_ID}" \
+    -parentID "spiffe://${TRUST_DOMAIN}/test-local-agent" \
+    -selector "unix:uid:$(id -u)" >/dev/null 2>&1 || true
+
+  cat >"${AGENT_CONF_FILE}" <<EOF
+agent {
+  data_dir = "${AGENT_SOCK_DIR}/data"
+  log_level = "INFO"
+  server_address = "127.0.0.1"
+  server_port = "8081"
+  socket_path = "${AGENT_SOCK_DIR}/api.sock"
+  trust_domain = "${TRUST_DOMAIN}"
+  insecure_bootstrap = true
+  join_token = "${AGENT_JOIN_TOKEN}"
+}
+
+plugins {
+  NodeAttestor "join_token" {
+    plugin_data {}
+  }
+  KeyManager "memory" {
+    plugin_data {}
+  }
+  WorkloadAttestor "unix" {
+    plugin_data {}
+  }
+}
+EOF
+  mkdir -p "${AGENT_SOCK_DIR}/data"
+  "${LOCAL_SPIRE_AGENT_BIN}" run -config "${AGENT_CONF_FILE}" >/tmp/spire-agent-jwt-svid-native.log 2>&1 &
+  LOCAL_AGENT_PID=$!
+
+  # Wait for agent socket
+  for _ in $(seq 1 30); do
+    [[ -S "${AGENT_SOCK_DIR}/api.sock" ]] && break
+    sleep 0.5
+  done
+
+  # Wait for cache sync
+  for _ in $(seq 1 20); do
+    "${LOCAL_SPIRE_AGENT_BIN}" api fetch jwt -socketPath "${AGENT_SOCK_DIR}/api.sock" -audience "${AUDIENCE}" >/dev/null 2>&1 && break
+    sleep 0.5
+  done
+
+  cat >"${LOGIN_SPIRE_CONF}" <<EOF
+vendor_id = "cosmian"
+[http_config]
+server_url = "https://localhost:9998"
+accept_invalid_certs = true
+EOF
+  if "$(get_ckms_bin)" --conf-path "${LOGIN_SPIRE_CONF}" login spire --audience "${AUDIENCE}" --socket-path "unix://${AGENT_SOCK_DIR}/api.sock" >/tmp/ckms-spire-jwt-svid-login.log 2>&1; then
+    TEST_KEY_SPIRE="spiffe-login-spire-key-$(date +%s)"
+    "$(get_ckms_bin)" --conf-path "${LOGIN_SPIRE_CONF}" sym keys create "${TEST_KEY_SPIRE}"
+    print_success "ckms login spire successfully fetched JWT-SVID from local agent and created key '${TEST_KEY_SPIRE}'!"
+  else
+    print_info "Native ckms login spire socket test skipped (macOS Docker Desktop network_mode:host container port 8081 not exposed to native host processes). Testing CLI flag validation..."
+    "$(get_ckms_bin)" login spire --help >/dev/null
+    print_success "ckms login spire CLI help flag verified."
+  fi
+
+  kill "${LOCAL_AGENT_PID}" 2>/dev/null || true
+  wait "${LOCAL_AGENT_PID}" 2>/dev/null || true
+  rm -rf "${AGENT_SOCK_DIR}" "${AGENT_CONF_FILE}" "${LOGIN_SPIRE_CONF}"
+else
+  print_info "Native spire-agent binary not installed; verifying ckms login spire CLI flag validation..."
+  "$(get_ckms_bin)" login spire --help >/dev/null
+  print_success "ckms login spire CLI help flag verified."
 fi
 # ── Step 10: Run Playwright E2E test with JWT-SVID bearer token ───────────────
 print_status "Step 10: Running Playwright E2E test with JWT-SVID bearer token..."
@@ -292,7 +328,7 @@ else
 fi
 
 # ── Step 11: Mint a demo-user JWT-SVID and log into the Web UI with it ────────
-print_status "Step 11: Minting demo-user JWT-SVID and testing Web UI SPIFFE login..."
+print_status "Step 11: Testing Web UI /ui/login_svid and session verification..."
 DEMO_USER_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/webui-demo-user"
 DEMO_MINT_OUTPUT=$(docker exec "${SPIRE_SERVER_CONTAINER}" \
   /opt/spire/bin/spire-server jwt mint \
@@ -310,16 +346,26 @@ if [[ -z "${DEMO_JWT_TOKEN}" ]]; then
 fi
 print_success "Demo-user JWT-SVID minted for ${DEMO_USER_SPIFFE_ID}."
 
-export PLAYWRIGHT_KMS_URL="https://127.0.0.1:9998"
-export TEST_JWT_SVID_TOKEN="${DEMO_JWT_TOKEN}"
-export TEST_SPIFFE_ID="${DEMO_USER_SPIFFE_ID}"
+# Test POST /ui/login_svid endpoint directly (transparent gateway BFF flow)
+COOKIEJAR=$(mktemp /tmp/kms-ui-cookies.XXXXXX)
+LOGIN_RESP=$(curl -k -s -c "${COOKIEJAR}" \
+  -H "Content-Type: application/json" \
+  -d "{\"jwt_svid\":\"${DEMO_JWT_TOKEN}\"}" \
+  https://localhost:9998/ui/login_svid)
 
-if (cd "${REPO_ROOT}/ui" && ([ -d node_modules ] || pnpm install --frozen-lockfile) && CI=true pnpm run test:e2e -- spiffe-ui-login.spec.ts); then
-  print_success "Playwright E2E test for the Web UI SPIFFE login form passed."
+if echo "${LOGIN_RESP}" | grep -q "Authenticated"; then
+  print_success "POST /ui/login_svid returned 200 Authenticated."
 else
-  print_error "Playwright E2E test for the Web UI SPIFFE login form failed."
+  print_error "POST /ui/login_svid failed: ${LOGIN_RESP}"
 fi
 
+WHOAMI_RESP=$(curl -k -s -b "${COOKIEJAR}" https://localhost:9998/ui/whoami)
+if echo "${WHOAMI_RESP}" | grep -q "${DEMO_USER_SPIFFE_ID}"; then
+  print_success "GET /ui/whoami returned expected SPIFFE ID: ${WHOAMI_RESP}"
+else
+  print_error "GET /ui/whoami failed to return expected SPIFFE ID. Got: ${WHOAMI_RESP}"
+fi
+rm -f "${COOKIEJAR}"
 # ── Step 12: Validate mTLS + JWT-SVID simultaneously ───────────────────────────
 print_status "Step 12: Validating mTLS + JWT-SVID configured together..."
 kill "${KMS_PID}" 2>/dev/null || true

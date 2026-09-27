@@ -3417,6 +3417,8 @@ Login to the KMS server identity provider.
 
 **`approle`** [[17.3]](#173-ckms-login-approle)  Login using a Vault-compatible `AppRole` identity
 
+**`spire`** [[17.4]](#174-ckms-login-spire)  Fetch a SPIFFE JWT-SVID from the local SPIRE Agent's Workload API and use it as the KMS access token
+
 ---
 
 ## 17.1 ckms login oauth
@@ -3454,6 +3456,23 @@ Login using a Vault-compatible `AppRole` identity
 `--role-id <ROLE_ID>` The stable `role_id` of the `AppRole`
 
 `--secret-id <SECRET_ID>` The `secret_id` credential. Omit for roles with `bind_secret_id = false`
+
+
+
+---
+
+## 17.4 ckms login spire
+
+Fetch a SPIFFE JWT-SVID from the local SPIRE Agent's Workload API and use it as the KMS access token
+
+### Usage
+`ckms login spire [options]`
+### Arguments
+`--audience <AUDIENCE>` The JWT audience value, forwarded to the Workload API's JWT-SVID fetch call. Must match a `--jwt-auth-provider` audience configured on the KMS server
+
+`--spiffe-id <SPIFFE_ID>` The SPIFFE ID of the JWT-SVID to request, when the local agent serves more than one identity to this workload (optional — omit to accept whichever identity the agent returns)
+
+`--socket-path <SOCKET_PATH>` Path to the local SPIRE Agent Workload API Unix domain socket (e.g. `/tmp/spire-agent/public/api.sock` or a `unix:...` endpoint string accepted by `spiffe::WorkloadApiClient::connect_to`). When omitted, connects using the standard `SPIFFE_ENDPOINT_SOCKET` environment variable
 
 
 
