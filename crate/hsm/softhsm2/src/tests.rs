@@ -59,6 +59,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     }
     #[cfg(feature = "non-fips")]
     shared::rsa_pkcs_encrypt(&slot)?;
+    #[cfg(feature = "non-fips")]
     shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
     shared::aes_gcm_encrypt(&slot)?;
     shared::aes_cbc_encrypt(&slot)?;
@@ -183,10 +184,14 @@ fn test_hsm_softhsm2_rsa_pkcs_encrypt() -> HResult<()> {
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_rsa_oaep_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)
+    #[cfg(not(feature = "non-fips"))]
+    return Ok(());
+    #[cfg(feature = "non-fips")]
+    {
+        let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+        shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)
+    }
 }
-
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_aes_gcm_encrypt() -> HResult<()> {
