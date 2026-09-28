@@ -27,8 +27,8 @@ use std::{
 
 use cosmian_logger::{debug, error, info, trace};
 use pkcs11_sys::{
-    CK_ATTRIBUTE_PTR, CK_BBOOL, CK_BYTE_PTR, CK_C_INITIALIZE_ARGS_PTR, CK_FLAGS, CK_FUNCTION_LIST,
-    CK_FUNCTION_LIST_3_0, CK_INFO, CK_INFO_PTR, CK_INTERFACE, CK_MECHANISM_INFO,
+    CK_ATTRIBUTE_PTR, CK_BBOOL, CK_BYTE, CK_BYTE_PTR, CK_C_INITIALIZE_ARGS_PTR, CK_FLAGS,
+    CK_FUNCTION_LIST, CK_FUNCTION_LIST_3_0, CK_INFO, CK_INFO_PTR, CK_INTERFACE, CK_MECHANISM_INFO,
     CK_MECHANISM_INFO_PTR, CK_MECHANISM_PTR, CK_MECHANISM_TYPE, CK_MECHANISM_TYPE_PTR, CK_NOTIFY,
     CK_OBJECT_HANDLE, CK_OBJECT_HANDLE_PTR, CK_RV, CK_SESSION_HANDLE, CK_SESSION_HANDLE_PTR,
     CK_SESSION_INFO, CK_SESSION_INFO_PTR, CK_SLOT_ID, CK_SLOT_ID_PTR, CK_SLOT_INFO,
@@ -214,11 +214,11 @@ pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
     C_WaitForSlotEvent: Some(C_WaitForSlotEvent),
 };
 
-/// PKCS#11 v3.1 Interfaces API gap-fill (issue #1153 follow-up): the sole `CK_FUNCTION_LIST_3_0`
-/// returned via the "PKCS 11" v3.0 interface (see `PKCS11_INTERFACE` below). It carries every
-/// v2.x function pointer already exposed via `FUNC_LIST` above, plus the new v3.0-only
-/// functions. Per the PKCS#11 v3.0 spec, unimplemented v3.0 functions must be non-null stubs
-/// returning `CKR_FUNCTION_NOT_SUPPORTED` (never a null pointer) — see the
+/// PKCS#11 v3.1 Interfaces API gap-fill (issue #1153 follow-up): the shared body of every
+/// `CK_FUNCTION_LIST_3_0` this module exposes (see `FUNC_LIST_3_0` and `FUNC_LIST_3_0_V3_0`
+/// below). It carries every v2.x function pointer already exposed via `FUNC_LIST` above, plus
+/// the new v3.0-only functions. Per the PKCS#11 v3.0 spec, unimplemented v3.0 functions must be
+/// non-null stubs returning `CKR_FUNCTION_NOT_SUPPORTED` (never a null pointer) — see the
 /// `cryptoki_fn_not_supported!` stubs near the end of this file for `C_SessionCancel` and the
 /// "message-based" bulk encrypt/decrypt/sign/verify functions (this module does not implement
 /// PKCS#11 v3.0 message operations). `C_LoginUser` is fully implemented (see above), unlike the
@@ -226,7 +226,7 @@ pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
 /// patched at runtime by the `cosmian_pkcs11` provider crate (mirroring how
 /// `FUNC_LIST.C_GetFunctionList` is patched above), since their real implementations must
 /// perform KMS backend/config initialization that only the provider crate knows how to do.
-pub static mut FUNC_LIST_3_0: CK_FUNCTION_LIST_3_0 = CK_FUNCTION_LIST_3_0 {
+const FUNC_LIST_3_0_TEMPLATE: CK_FUNCTION_LIST_3_0 = CK_FUNCTION_LIST_3_0 {
     version: CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: CRYPTOKI_VERSION_MINOR,
@@ -325,19 +325,60 @@ pub static mut FUNC_LIST_3_0: CK_FUNCTION_LIST_3_0 = CK_FUNCTION_LIST_3_0 {
     C_MessageVerifyFinal: Some(C_MessageVerifyFinal),
 };
 
-/// ASCII name of the sole interface this module exposes, as required by the PKCS#11 v3.0 spec
-/// (§5.2). NUL-terminated so that `C_GetInterface` can compare it safely without trusting an
-/// externally supplied length (the spec's `pInterfaceName` parameter carries none).
+/// The function list behind the newest "PKCS 11" interface this module exposes
+/// (`PKCS11_INTERFACE`), declaring the Cryptoki version actually implemented.
+pub static mut FUNC_LIST_3_0: CK_FUNCTION_LIST_3_0 = FUNC_LIST_3_0_TEMPLATE;
+
+/// The function list behind the v3.0-versioned "PKCS 11" interface
+/// (`PKCS11_INTERFACE_V3_0`): byte-for-byte the same function pointers as `FUNC_LIST_3_0`, but
+/// declaring `{major: 3, minor: 0}` in its `version` field.
+///
+/// This exists because OASIS Cryptoki v3.0/v3.1 §5.4.6 rule 2 is an *exact*-match rule — "if
+/// `pVersion` is not `NULL_PTR`, the version of the interface returned must match" — so a caller
+/// requesting `{3, 0}` (exactly what the spec's own `C_GetInterface` example does) must receive
+/// an interface whose `pFunctionList->version` really is `{3, 0}`, not a `{3, 1}` one. Answering
+/// such a request with the newer table would satisfy the caller's intent but violate the rule,
+/// and a conformance suite that re-reads the returned version would flag it. Publishing both
+/// versions as separate interface entries — which §5.4.5 explicitly allows, since a library may
+/// expose any number of interfaces — keeps v3.0 consumers working *and* keeps the matching rule
+/// exact. The two tables are interchangeable in practice: the v3.0 and v3.1 base function-list
+/// layouts are identical (3.1 added mechanisms and attributes, not functions).
+pub static mut FUNC_LIST_3_0_V3_0: CK_FUNCTION_LIST_3_0 = CK_FUNCTION_LIST_3_0 {
+    version: CK_VERSION {
+        major: CRYPTOKI_VERSION_MAJOR,
+        minor: PKCS11_INTERFACE_V3_0_MINOR,
+    },
+    ..FUNC_LIST_3_0_TEMPLATE
+};
+
+/// Minor version declared by [`FUNC_LIST_3_0_V3_0`]/[`PKCS11_INTERFACE_V3_0`]. Named rather than
+/// spelled `0` inline so `C_GetInterface`'s version dispatch stays greppable.
+pub const PKCS11_INTERFACE_V3_0_MINOR: CK_BYTE = 0;
+
+/// ASCII name of the "PKCS 11" interface this module exposes, as required by the PKCS#11 v3.0
+/// spec (§5.4.6). NUL-terminated so that `C_GetInterface` can compare it safely without trusting
+/// an externally supplied length (the spec's `pInterfaceName` parameter carries none). Shared by
+/// both versioned entries: §5.4.6 matches on name *and* version independently, so two interfaces
+/// may legitimately share a name while differing in version.
 pub const PKCS11_INTERFACE_NAME: &[u8] = b"PKCS 11\0";
 
-/// The sole `CK_INTERFACE` this module exposes through `C_GetInterfaceList`/`C_GetInterface`: the
-/// standard "PKCS 11" v3.0 interface, backed by `FUNC_LIST_3_0`. `pFunctionList` points at a
-/// `static mut`, so its target may be patched at runtime (see the provider crate), but the pointer
-/// value itself never changes. `static mut` (rather than `static`) is required here because
-/// `CK_INTERFACE` contains raw pointers, which are not `Sync`.
+/// The newest "PKCS 11" interface this module exposes through
+/// `C_GetInterfaceList`/`C_GetInterface`, backed by `FUNC_LIST_3_0`, and the one returned for a
+/// `pVersion = NULL_PTR` request (§5.4.6 rule 2 leaves that choice to the library).
+/// `pFunctionList` points at a `static mut`, so its target may be patched at runtime (see the
+/// provider crate), but the pointer value itself never changes. `static mut` (rather than
+/// `static`) is required here because `CK_INTERFACE` contains raw pointers, which are not `Sync`.
 pub static mut PKCS11_INTERFACE: CK_INTERFACE = CK_INTERFACE {
     pInterfaceName: PKCS11_INTERFACE_NAME.as_ptr().cast_mut(),
     pFunctionList: (&raw mut FUNC_LIST_3_0).cast::<std::ffi::c_void>(),
+    flags: 0,
+};
+
+/// The v3.0-versioned "PKCS 11" interface, backed by `FUNC_LIST_3_0_V3_0`. See that table for
+/// why this second entry exists.
+pub static mut PKCS11_INTERFACE_V3_0: CK_INTERFACE = CK_INTERFACE {
+    pInterfaceName: PKCS11_INTERFACE_NAME.as_ptr().cast_mut(),
+    pFunctionList: (&raw mut FUNC_LIST_3_0_V3_0).cast::<std::ffi::c_void>(),
     flags: 0,
 };
 
