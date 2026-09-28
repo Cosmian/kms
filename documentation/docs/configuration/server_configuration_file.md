@@ -331,6 +331,15 @@ hostname = "0.0.0.0"
 #   "https://keycloak.example.com/auth/realms/myrealm,,"
 # ]
 
+# Accept SPIFFE JWT-SVIDs from the configured `--jwt-auth-provider` issuers.
+#
+# A SPIFFE JWT-SVID carries no `email` claim, only a `sub` claim shaped as `spiffe://<trust-domain>/<workload-path>`. When this flag is enabled, a JWT that validates successfully (signature, issuer, audience, expiry) against a configured issuer but has no `email` claim is authenticated using its `sub` claim **only if** `sub` starts with `spiffe://`; every other JWT still requires `email` as before.
+#
+# The flag is global: it applies to every `--jwt-auth-provider`. Every provider MUST specify an audience (`issuer,jwks_uri,audience`), and the SVID MUST carry a matching `aud` claim; otherwise the server refuses to start, since an SVID minted for another service could be replayed against the KMS.
+#
+# Disabled by default: enabling it only makes sense when the configured issuer(s) are a SPIFFE-aware JWKS source (e.g. a SPIRE OIDC Discovery Provider).
+# jwt_svid_auth = false
+
 [workspace]
 # The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory
 # root_data_path = "./cosmian-kms"

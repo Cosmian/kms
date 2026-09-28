@@ -406,6 +406,16 @@ impl ServerParams {
         // Capture before `conf.idp_auth` is consumed by `extract_idp_configs` below.
         let jwt_svid_auth_enabled = conf.idp_auth.jwt_svid_auth;
 
+        // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
+        let identity_provider_configurations = conf
+            .idp_auth
+            .extract_idp_configs()
+            .context("failed initializing IdPs from idp_auth")?;
+
+        if jwt_svid_auth_enabled {
+            ensure_svid_providers_have_audience(identity_provider_configurations.as_deref())?;
+        }
+
         // Determine whether CO users will come from the deprecated `privileged_users` path.
         // Used after `res` is built to preserve v5.26.0 behaviour: if the operator had
         // `force_default_username = true` AND `privileged_users = [...]` (nonsensical but
@@ -414,12 +424,7 @@ impl ServerParams {
             conf.roles.crypto_officer_users.is_none() && conf.privileged_users.is_some();
 
         let res = Self {
-            identity_provider_configurations: {
-                // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
-                conf.idp_auth
-                    .extract_idp_configs()
-                    .context("failed initializing IdPs from idp_auth")?
-            },
+            identity_provider_configurations,
             jwt_svid_auth_enabled,
             ui_index_html_folder,
             ui_enable: conf.ui_config.enable,
@@ -834,6 +839,27 @@ fn parse_default_unwrap_types(types: Option<Vec<String>>) -> KResult<Option<Vec<
         .transpose()
 }
 
+/// `--jwt-svid-auth` is global: it makes EVERY `--jwt-auth-provider` issuer accept SPIFFE
+/// subjects. A JWT-SVID is minted for a specific audience and workloads hold SVIDs for many
+/// services, so without an expected audience any SVID issued for another service could be
+/// replayed against the KMS. Refuse to start rather than silently accept them.
+fn ensure_svid_providers_have_audience(providers: Option<&[IdpConfig]>) -> KResult<()> {
+    let Some(providers) = providers else {
+        return Err(KmsError::ServerError(
+            "`jwt_svid_auth` is enabled but no `jwt_auth_provider` is configured".to_owned(),
+        ));
+    };
+    if let Some(provider) = providers.iter().find(|idp| idp.jwt_audience.is_none()) {
+        return Err(KmsError::ServerError(format!(
+            "`jwt_svid_auth` requires an audience on every `jwt_auth_provider`, but the \
+             provider for issuer `{}` has none. Append the expected audience \
+             (`issuer,jwks_uri,audience`) so SVIDs minted for other services are rejected.",
+            provider.jwt_issuer_uri
+        )));
+    }
+    Ok(())
+}
+
 impl fmt::Debug for ServerParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut debug_struct = f.debug_struct("ServerParams");
@@ -1139,11 +1165,37 @@ impl fmt::Debug for ServerParams {
 mod tests {
     use tempfile::TempDir;
 
-    use super::ServerParams;
+    use super::{ServerParams, ensure_svid_providers_have_audience};
     use crate::{
-        config::{ClapConfig, HttpConfig, command_line::MainDBConfig},
+        config::{ClapConfig, HttpConfig, IdpConfig, command_line::MainDBConfig},
         tests::test_utils::https_clap_config,
     };
+
+    fn provider(issuer: &str, audience: Option<&str>) -> IdpConfig {
+        IdpConfig {
+            jwt_issuer_uri: issuer.to_owned(),
+            jwks_uri: None,
+            jwt_audience: audience.map(|a| vec![a.to_owned()]),
+        }
+    }
+
+    /// `--jwt-svid-auth` is global, so a single provider without an audience would let
+    /// SVIDs minted for other services through: startup must be refused and name the issuer.
+    #[test]
+    fn jwt_svid_auth_requires_audience_on_every_provider() {
+        let providers = [
+            provider("https://with-aud.example.org", Some("cosmian-kms")),
+            provider("https://no-aud.example.org", None),
+        ];
+        let error = ensure_svid_providers_have_audience(Some(&providers))
+            .expect_err("provider without audience must be refused");
+        assert!(error.to_string().contains("https://no-aud.example.org"));
+
+        ensure_svid_providers_have_audience(Some(&providers[..1]))
+            .expect("all providers have an audience");
+        ensure_svid_providers_have_audience(None)
+            .expect_err("jwt_svid_auth without any provider must be refused");
+    }
 
     /// Build a minimal [`ClapConfig`] that uses a `SQLite` database in `tmp_dir`.
     fn minimal_config(tmp_dir: &TempDir) -> ClapConfig {

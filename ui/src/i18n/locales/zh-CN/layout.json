@@ -37,8 +37,7 @@
         "certificate": "客户端证书",
         "authVerifier": "用户名与密码",
         "spiffe": "SPIFFE JWT-SVID",
-        "spiffeSvidPlaceholder": "粘贴您的 SPIFFE JWT-SVID",
-        "spiffeLoginFailed": "SPIFFE JWT-SVID 登录失败",
+        "spiffeGatewayNotice": "此服务器使用 SPIFFE JWT-SVID 对浏览器会话进行身份验证。会话由 KMS 前端的入口网关建立，请通过该网关打开 Web 界面。",
         "accessKms": "访问 KMS",
         "certErrorDescription": "未提供客户端证书或证书无效。如果问题持续存在，请关闭浏览器的所有实例，并使用之前加载的正确客户端证书重新启动。"
     }

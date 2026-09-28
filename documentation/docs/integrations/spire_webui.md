@@ -1,127 +1,114 @@
-# Web UI SPIFFE Authentication & Ingress Gateway Architecture
+# Web UI SPIFFE Authentication via a Gateway/BFF
 
-Eviden KMS provides native zero-trust support for **SPIFFE** (Secure Production Identity Framework For Everyone) within browser and gateway environments. This architecture combines two distinct SPIFFE credentials to achieve end-to-end security without requiring individual user credential provisioning or local password databases:
+Eviden KMS can establish a Web UI session from a **SPIFFE JWT-SVID** posted by a trusted
+gateway (or backend-for-frontend, BFF) to `POST /ui/login_svid`. Browsers cannot reach the SPIRE
+Workload API, so the gateway is the component that holds SPIFFE credentials; the browser never
+sees the JWT-SVID.
 
-1. **Hop Transport Security (X.509-SVID mTLS)**: Guarantees mutual cryptographic authentication and attestation between the Ingress Gateway (e.g., Apache APISIX or Envoy) and the KMS upstream.
-2. **Workload / Application Identity (JWT-SVID)**: Establishes a verified, cookie-backed KMS session (`auth_session`) tied to a SPIFFE identity via the native `POST /ui/login_svid` endpoint.
+There is **no** login form or paste box for an SVID in the Web UI. A browser without a
+session sees only an informational notice that the deployment uses SPIFFE sessions
+established by a gateway.
+
+!!! warning "A session is only as specific as the identity behind it"
+
+    The session identity is the `sub` (`spiffe://<trust-domain>/<path>`) of the JWT-SVID that
+    the gateway posts. If the gateway posts **its own** JWT-SVID whenever a browser has no
+    cookie, every anonymous browser receives a session as **one shared SPIFFE identity**:
+    there is no per-user authentication, authorization or audit. This is the same anti-pattern
+    as forcing every client onto a single `admin` account (rejected in
+    [ADR-2026-09-19](../adr/2026-09-19-spiffe-jwt-svid-authentication.md), ALT-003/ALT-004).
+    The gateway **must authenticate the end user first** (for example OIDC at the gateway)
+    and only then relay a session, ideally with an identity scoped to that user or group.
 
 ---
 
-## Architecture Overview
+## Server behaviour
+
+| Aspect | Behaviour |
+|---|---|
+| Enablement | `--jwt-svid-auth` (`[idp_auth] jwt_svid_auth = true`), global to all `--jwt-auth-provider` entries |
+| Audience | Mandatory on every `--jwt-auth-provider` entry (server refuses to start otherwise); the SVID must carry a non-empty `aud` |
+| Advertisement | `GET /ui/auth_method` lists `"SPIFFE"` in `auth_methods` (priority JWT > SPIFFE > AUTH_VERIFIER > CERT) |
+| Session identity | Read by the UI via `GET /ui/whoami` |
+| No session | The browser shows an informational notice, no form |
+
+### `POST /ui/login_svid`
+
+Request body:
+
+```json
+{ "jwt_svid": "<token>" }
+```
+
+| Status | Meaning |
+|---|---|
+| `200` | `{"next_step":"Authenticated"}`; the `auth_session` cookie is set |
+| `401` | The SVID is invalid (bad signature, issuer, expiry, audience, or not a SPIFFE subject) |
+| `500` | `--jwt-svid-auth` is not enabled, or the session could not be stored |
+
+Rules applied by the endpoint:
+
+- Only tokens whose `sub` starts with `spiffe://` are accepted. A token with an `email` claim
+  but a non-SPIFFE `sub` is rejected.
+- If validation fails, the JWKS is refreshed once and validation is retried, to cope with
+  SPIRE key rotation.
+- The full SPIFFE ID becomes the session `user_id`. The cookie (`auth_session`) is encrypted,
+  `HttpOnly` and `SameSite=Lax`.
+
+---
+
+## Reference design (illustrative)
+
+!!! note
+
+    The components below (Apache APISIX, `spiffe-helper`, `spiffe-mtls-reloader`) are an
+    **illustrative** deployment. They are not shipped or tested in this repository; only the
+    KMS side (`/ui/login_svid`, `/ui/whoami`, `/ui/auth_method`) is implemented and covered here.
+    Any gateway able to authenticate users and call the endpoint can be used.
 
 ```mermaid
 flowchart LR
-    subgraph Client["Client Browser"]
-        Browser["Web Browser"]
-    end
-
-    subgraph GatewayPod["APISIX Gateway Pod"]
-        APISIX["APISIX Engine<br/>(L7 Reverse Proxy)"]
-        Reloader["spiffe-mtls-reloader<br/>(Admin API Sync)"]
-        Helper["spiffe-helper<br/>(Daemon)"]
-        CertVol[("EmptyDir<br/>/run/spiffe-certs")]
-    end
-
-    subgraph SPIRE["SPIRE Infrastructure"]
-        Agent["SPIRE Agent<br/>(Workload API)"]
-        Server["SPIRE Server"]
-        OIDC["SPIRE OIDC<br/>Discovery Provider"]
-    end
-
-    subgraph KMSPod["Cosmian KMS Pod"]
-        KMS["Cosmian KMS<br/>(/ui/login_svid)"]
-    end
-
-    Agent -->|UNIX Socket| Helper
-    Helper -->|Write SVID & Key| CertVol
-    CertVol -->|Read PEM| Reloader
-    Reloader -->|PUT /admin/ssls| APISIX
-
-    Browser --> APISIX
-    APISIX --> KMS
-    APISIX <-.-> KMS
-    KMS --> OIDC
-    KMS --> APISIX
-    APISIX --> Browser
+    Browser["Web Browser"] -->|"1. authenticate user (e.g. OIDC)"| GW["Gateway / BFF"]
+    Agent["SPIRE Agent<br/>(Workload API)"] -->|"X.509-SVID + JWT-SVID"| GW
+    GW -->|"2. POST /ui/login_svid"| KMS["Eviden KMS"]
+    KMS -->|"JWKS"| OIDC["SPIRE OIDC<br/>Discovery Provider"]
+    KMS -->|"Set-Cookie auth_session"| GW
+    GW -->|"3. proxy with cookie"| KMS
 ```
-
----
-
-## Detailed Sequence Flow: X.509-SVID & JWT-SVID Transport
-
-The lifecycle consists of three distinct phases: background X.509 rotation, initial transparent JWT-SVID session bootstrap, and subsequent authenticated browser requests.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Browser as Client Browser
-    participant APISIX as APISIX Gateway Engine
-    participant Reloader as spiffe-mtls-reloader
-    participant Helper as spiffe-helper
-    participant Agent as SPIRE Agent (Host Socket)
+    participant Browser
+    participant GW as Gateway / BFF
     participant OIDC as SPIRE OIDC Discovery Provider
-    participant KMS as Eviden KMS Server
+    participant KMS as Eviden KMS
 
-    %% Phase 1: X.509-SVID Transport & Rotation Loop
-    Note over Helper,KMS: Phase 1: Continuous X.509-SVID mTLS Transport Setup & Rotation
-    Helper->>Agent: Workload API call via /spiffe-workload-api/spire-agent.sock
-    Agent-->>Helper: Mint and return X.509-SVID (svid.pem, svid_key.pem, svid_bundle.pem)
-    Helper->>Helper: Write certs to shared volume (/run/spiffe-certs/)
-    Reloader->>Helper: Read certs from /run/spiffe-certs/
-    Reloader->>APISIX: PUT /apisix/admin/ssls/upstream-client-cert (Local Admin API :9180)
-    APISIX-->>Reloader: 200 OK (Upstream client certificate updated in memory)
-
-    %% Phase 2: Web UI Browser Access & JWT-SVID Session Injection
-    Note over Browser,KMS: Phase 2: Transparent JWT-SVID Application Authentication
-    Browser->>APISIX: GET https://gateway:4443/
-
-    critical APISIX serverless-pre-function (Lua Access Phase)
-        APISIX->>APISIX: Check cookie auth_session (absent)
-        APISIX->>KMS: POST https://kms:9998/ui/login_svid
-    end
-
-    KMS->>OIDC: Fetch JWKS from https://spire-oidc:8443/keys (Cached)
-    OIDC-->>KMS: Public keys (EC / RSA)
-    KMS->>KMS: Validate JWT-SVID (signature, issuer, expiry, audience)
-    KMS->>KMS: Set user_id in encrypted session
-    KMS-->>APISIX: 200 OK (Set-Cookie auth_session)
-
-    critical APISIX Cookie Relay
-        APISIX->>APISIX: Relay Set-Cookie header and set Cookie on upstream request
-    end
-
-    APISIX->>KMS: GET /ui/ (Proxied over SPIFFE X.509 mTLS with auth_session cookie)
-    KMS-->>APISIX: 200 OK (Web UI HTML, JS, CSS Assets)
-    APISIX-->>Browser: 200 OK (Set-Cookie auth_session)
-
-    %% Phase 3: Authenticated Subsequent Requests
-    Note over Browser,KMS: Phase 3: Subsequent Authenticated Requests
-    Browser->>APISIX: GET /ui/whoami (Cookie: auth_session)
-    APISIX->>KMS: Forward over SPIFFE X.509 mTLS with auth_session cookie
-    KMS-->>APISIX: 200 OK (user_id response)
-    APISIX-->>Browser: 200 OK (user_id response)
+    Browser->>GW: GET / (no auth_session cookie)
+    GW->>Browser: Authenticate the end user (e.g. OIDC login)
+    Browser-->>GW: User authenticated
+    GW->>KMS: POST /ui/login_svid {"jwt_svid": "..."}
+    KMS->>OIDC: Fetch JWKS (cached; refreshed once on failure)
+    OIDC-->>KMS: Public keys
+    KMS->>KMS: Validate signature, issuer, expiry, audience, spiffe:// sub
+    KMS-->>GW: 200 {"next_step":"Authenticated"} + Set-Cookie auth_session
+    GW->>KMS: GET /ui/ (auth_session cookie)
+    KMS-->>GW: Web UI assets
+    GW-->>Browser: Web UI
+    Browser->>GW: GET /ui/whoami
+    GW->>KMS: Forward with cookie
+    KMS-->>Browser: 200 {"user_id": "spiffe://..."}
 ```
 
----
+### Transport (optional mTLS)
 
-## Security & Architectural Invariants
+The gateway may connect to the KMS with an X.509-SVID
+(`clients_ca_cert_file = "/etc/kms/certs/spire-bundle.crt"`). Client-certificate
+authentication runs **before** the JWT middleware: if the presented certificate has a CN,
+the request is authenticated as that CN and any JWT-SVID or session cookie is ignored. Use
+CN-less client certificates, or separate listeners, if the SPIFFE session identity must win.
 
-### 1. Transport-Layer Isolation (mTLS)
-
-- **Credential**: X.509-SVID with SAN `spiffe://<trust-domain>/<gateway-service>`.
-- **Rotation**: `spiffe-helper` acts as a sidecar alongside the ingress gateway, interacting with the SPIRE Agent through the Workload API UNIX domain socket.
-- **Zero Reload**: Certificates are pushed to the APISIX Admin API dynamically, eliminating proxy downtime or connection drops during rotation.
-- **Upstream Validation**: Cosmian KMS validates the client certificate against its trust bundle (`clients_ca_cert_file = "/etc/kms/certs/spire-bundle.crt"`).
-
-### 2. Application-Layer Identity (JWT-SVID)
-
-- **Credential**: JWT-SVID with `sub: spiffe://<trust-domain>/<gateway-identity>` and `aud: <kms-audience>`.
-- **Validation**: KMS validates the token using its `--jwt-auth-provider` configuration pointed at the SPIRE OIDC Discovery Provider (`https://<spire-oidc>:<port>/keys`).
-- **Session Boundary (BFF)**: The browser never receives or stores the raw JWT-SVID. The KMS issues an encrypted, `HttpOnly`, `SameSite=Lax` session cookie (`auth_session`).
-
-### 3. Server Configuration Reference
-
-In `kms.toml`:
+### Server configuration
 
 ```toml
 [ui_config]
@@ -136,5 +123,4 @@ jwt_svid_auth = true
 [tls]
 tls_cert_file = "/etc/kms/certs/tls.crt"
 tls_key_file = "/etc/kms/certs/tls.key"
-clients_ca_cert_file = "/etc/kms/certs/spire-bundle.crt"
 ```

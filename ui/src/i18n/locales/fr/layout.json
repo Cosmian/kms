@@ -37,8 +37,7 @@
         "certificate": "Certificat client",
         "authVerifier": "Nom d'utilisateur et mot de passe",
         "spiffe": "SPIFFE JWT-SVID",
-        "spiffeSvidPlaceholder": "Collez votre JWT-SVID SPIFFE",
-        "spiffeLoginFailed": "Échec de la connexion SPIFFE JWT-SVID",
+        "spiffeGatewayNotice": "Ce serveur authentifie les sessions du navigateur avec des JWT-SVID SPIFFE. La session est établie par la passerelle d'entrée placée devant le KMS ; ouvrez l'interface web via cette passerelle.",
         "accessKms": "ACCÉDER AU KMS",
         "certErrorDescription": "Aucun certificat client n'a été fourni ou il est invalide. Si le problème persiste, fermez toutes les instances de votre navigateur et relancez-le avec le certificat client correct préalablement chargé."
     }

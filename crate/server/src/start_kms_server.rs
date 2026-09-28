@@ -1636,14 +1636,28 @@ pub async fn prepare_kms_server(
             // Ordered list of UI login methods, highest priority first. The Web UI
             // renders the first entry as the primary login action and the rest as
             // secondary actions (a button when a single alternative exists, a
-            // Priority is JWT > AUTH_VERIFIER > CERT:
+            // dropdown when several do). Priority is JWT > SPIFFE > AUTH_VERIFIER > CERT:
             // the interactive, per-user methods come before the ambient client
             // certificate probe. AUTH_VERIFIER is only offered when its UI login is
             // enabled. The singular `auth_method` served by `get_auth_method` is
             // derived as the first entry for backward compatibility.
+            //
+            // SPIFFE is not an interactive login: the browser session is established by a
+            // gateway that posts a JWT-SVID to `/ui/login_svid`. It is advertised so the UI
+            // resolves the identity through `/ui/whoami` instead of reporting that
+            // authentication is disabled.
+            let use_spiffe_ui_auth = jwt_configurations
+                .iter()
+                .any(|config| config.accept_spiffe_subject);
             let mut auth_methods: Vec<String> = Vec::new();
-            if oidc_runtime_config.discovered.is_some() {
+            // Without a discovered UI OIDC provider the "JWT" login redirect cannot work; on a
+            // SPIFFE deployment (bearer JWT-SVIDs, no UI OIDC) it would only be a broken
+            // button, so it is offered only when OIDC is discovered or SPIFFE is not in use.
+            if use_jwt_auth && (oidc_runtime_config.discovered.is_some() || !use_spiffe_ui_auth) {
                 auth_methods.push("JWT".to_owned());
+            }
+            if use_spiffe_ui_auth {
+                auth_methods.push("SPIFFE".to_owned());
             }
             if use_auth_verifier
                 && kms_server_for_http

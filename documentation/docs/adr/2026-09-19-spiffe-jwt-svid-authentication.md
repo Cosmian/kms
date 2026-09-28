@@ -56,12 +56,25 @@ validated token that has **no** `email` claim, provided its `sub` claim starts w
 (no truncation), which becomes the acting principal for every subsequent authorization
 check.
 
-mTLS, when enabled, remains strictly a **transport-level** control: the peer certificate is
-verified against the SPIFFE trust bundle via the existing `client_ca_cert_pem` mechanism,
-but its content (CN or SAN) is **not** used to derive application identity.
-`tls_auth.rs` is intentionally left unmodified. All application identity for this flow
-comes from the JWT-SVID's `sub` claim, keeping a single source of truth for "who is
-calling" regardless of whether mTLS or plain TLS is used at the transport level.
+**Audience is mandatory.** The SPIFFE JWT-SVID specification requires a validator to
+reject any SVID whose `aud` does not include the validator's own identifier; otherwise a
+token minted for service A can be replayed against service B. `jsonwebtoken` only checks
+`aud` when the claim is present, so the SPIFFE `sub` path (Bearer and `POST /ui/login_svid`)
+additionally requires a present, non-empty `aud` claim, and the server **refuses to start**
+when `--jwt-svid-auth` is set and any `--jwt-auth-provider` entry has no audience (third
+field `issuer,jwks_uri,audience`). Because the flag is global, this applies to every
+configured provider. Google CSE issuers never accept SPIFFE subjects.
+
+**mTLS precedence.** `tls_auth.rs` is left unmodified and does not read the SPIFFE SAN, but
+mTLS is *not* purely transport-level when combined with JWT-SVID. Actix runs `wrap`ped
+middleware last-in-first-out, and `start_kms_server.rs` wraps the client-certificate
+middleware after the JWT middleware, so it runs **first**. If the presented client
+certificate has a CN, the request is authenticated as that CN (`AuthMethod::Mtls`); the JWT
+middleware then sees an already-authenticated user and ignores any JWT-SVID, as does the
+session cookie. A certificate without a usable CN (missing, empty or `*`) does not
+authenticate, and the request falls through to the JWT-SVID. Operators wanting the SPIFFE ID
+to be the identity must therefore issue CN-less client certificates (SPIRE-issued X.509-SVIDs
+typically carry no CN; verify for your SPIRE version), use separate listeners/paths, or knowingly accept CN precedence.
 
 Priority order in the JWT middleware is: `email` (existing OIDC/IdP behavior, unchanged)
 first; `sub` (SPIFFE-only fallback, opt-in) second; otherwise reject with the pre-existing
@@ -71,8 +84,8 @@ JWT/OIDC and Google CSE configuration, none of which set the new flag.
 The Web UI and `ckms` CLI are fully integrated with SPIFFE JWT-SVID authentication:
 
 - **`ckms` CLI**: Implements native Workload API gRPC integration via `ckms login spire --audience <aud>` (`crate/clients/clap/src/actions/login.rs`), which connects directly to the local SPIRE Agent's Unix Domain Socket (discovered via `SPIFFE_ENDPOINT_SOCKET` or `--socket-path`), attests the process via kernel peer credentials (`SO_PEERCRED`), fetches a JWT-SVID, and persists it into `http_config.access_token` in `ckms.toml`.
-- **Web UI (Gateway-Assisted BFF)**: Solves the browser Workload API accessibility barrier via an Ingress Gateway pattern (APISIX / Envoy sidecar). The gateway acquires an X.509-SVID for transport mTLS and injects a transparent JWT-SVID into the KMS BFF endpoint (`POST /ui/login_svid`), establishing an encrypted, cookie-backed `auth_session` for the user's browser.
-- **Is `jwt_svid_auth` still mandatory?**: **Yes, `jwt_svid_auth` remains mandatory on the KMS server.** It acts as an indispensable explicit security gate. Without this flag, a standard OIDC provider could allow tokens with missing or forged `email` claims to fall back to arbitrary `sub` identities, violating standard OIDC trust invariants. Furthermore, both `validate_jwt_svid` (used by `POST /ui/login_svid`) and the bearer middleware `handle_jwt` strictly enforce `accept_spiffe_subject == true` before permitting `sub: spiffe://...` resolution.
+- **Web UI (Gateway/BFF session)**: Browsers cannot reach the Workload API, and the Web UI has **no** paste-your-SVID login form. When `--jwt-svid-auth` is set the server advertises `"SPIFFE"` in the `auth_methods` of `GET /ui/auth_method` (priority JWT > SPIFFE > AUTH_VERIFIER > CERT). A trusted gateway/BFF posts a JWT-SVID to `POST /ui/login_svid` (`{"jwt_svid":"<token>"}`), which establishes an encrypted, cookie-backed `auth_session`; the UI resolves the identity via `GET /ui/whoami`. A browser with no session only sees an informational notice. The gateway MUST authenticate the end user first (see NEG-004).
+- **Is `jwt_svid_auth` still mandatory?**: **Yes, `jwt_svid_auth` remains mandatory on the KMS server.** It acts as an indispensable explicit security gate. Without this flag, a standard OIDC provider could allow tokens with missing or forged `email` claims to fall back to arbitrary `sub` identities, violating standard OIDC trust invariants. Furthermore, both `validate_jwt_svid` (used only by `POST /ui/login_svid`) and the bearer path (`jwt_auth_middleware` → `handle_jwt` → `resolve_authenticated_user`) enforce `accept_spiffe_subject == true` before permitting `sub: spiffe://...` resolution.
 
 ## Consequences
 
@@ -88,7 +101,7 @@ The Web UI and `ckms` CLI are fully integrated with SPIFFE JWT-SVID authenticati
   Discovery Provider is consumed through the existing generic `--jwt-auth-provider`
   mechanism.
 - **POS-004**: `ckms` CLI natively supports acquiring and using SPIFFE JWT-SVIDs via `ckms login spire`, operating over standard Unix domain sockets without shelling out to external binaries or requiring long-lived credentials.
-- **POS-005**: Web UI supports transparent SPIFFE authentication via the Ingress Gateway BFF architecture (`POST /ui/login_svid`), eliminating manual credential entry in the browser while maintaining end-to-end cryptographic traceability.
+- **POS-005**: The Web UI can be fronted by a gateway/BFF that establishes a cookie-backed session through `POST /ui/login_svid`, so raw JWT-SVIDs never reach the browser. No credential is ever typed or pasted into the UI.
 
 ### Negative
 
@@ -96,7 +109,10 @@ The Web UI and `ckms` CLI are fully integrated with SPIFFE JWT-SVID authenticati
   human-readable usernames for audit/reporting will see SPIFFE URIs instead (mitigated by
   documenting this mapping clearly; no truncation/aliasing is performed, by design, to
   avoid silently colliding two distinct workload identities).
-- **NEG-002**: Direct in-browser attestation against the SPIRE Workload API remains architecturally impossible due to browser sandbox constraints; transparent Web UI authentication requires an Ingress Gateway (or sidecar) with access to the Workload API socket to bridge into `POST /ui/login_svid`.
+- **NEG-002**: Direct in-browser attestation against the SPIRE Workload API remains architecturally impossible due to browser sandbox constraints; Web UI sessions require a gateway (or sidecar) with access to the Workload API socket to bridge into `POST /ui/login_svid`.
+- **NEG-004**: A session obtained with the *gateway's own* JWT-SVID is a session as one shared SPIFFE identity: every browser that receives it shares one user, with no per-user authorization or audit, which is the anti-pattern rejected in ALT-003/ALT-004. The gateway must authenticate the end user (e.g. OIDC at the gateway) before relaying a session, and the session identity should be scoped accordingly.
+- **NEG-005**: When mTLS (`clients_ca_cert_file`) and `--jwt-svid-auth` are both enabled, a client certificate with a CN takes precedence over any JWT-SVID or session cookie (see Decision).
+- **NEG-006**: Operators must configure an audience on every `--jwt-auth-provider` entry when enabling `--jwt-svid-auth`; the server refuses to start otherwise.
 - **NEG-003**: The JWT middleware now carries an additional branch (SPIFFE `sub` fallback),
   slightly increasing its cyclomatic complexity; mitigated by extracting the decision logic
   into a small, independently unit-tested pure function
@@ -133,19 +149,21 @@ The Web UI and `ckms` CLI are fully integrated with SPIFFE JWT-SVID authenticati
 
 - **IMP-001**: New `AuthMethod::JwtSvid` variant distinguishes SPIFFE JWT-SVID
   authentication from standard OIDC JWT (`AuthMethod::OidcJwt`) in audit logs.
-- **IMP-002**: `JwtConfig.accept_spiffe_subject: bool` is carried per JWT provider
-  configuration (not globally), so only providers derived from
-  `--jwt-auth-provider` + `--jwt-svid-auth` are affected; Google CSE's internally
-  constructed `JwtConfig` entries always set it to `false`.
+- **IMP-002**: `JwtConfig.accept_spiffe_subject: bool` is set from the single global
+  `--jwt-svid-auth` flag on every `--jwt-auth-provider`-derived entry (there is no
+  per-provider switch); Google CSE's internally constructed `JwtConfig` entries always set
+  it to `false`. Startup fails if any such entry lacks an audience, and the SPIFFE `sub`
+  path requires a non-empty `aud` claim (SPIFFE JWT-SVID spec: validators must reject SVIDs
+  whose `aud` does not include their own identifier, preventing cross-service replay).
 - **IMP-003**: `resolve_authenticated_user` (pure function, no HTTP/actix dependency) holds
   the identity-resolution decision and is covered by unit tests in
   `jwt_token_auth.rs` (email priority, SPIFFE acceptance/rejection, non-SPIFFE
   `sub` rejection, reserved-identity defense-in-depth).
 - **IMP-004**: Integration test harnesses (`.mise/tasks/test/spire-jwt-svid` in this repository, as well as the reference Kubernetes deployment smoke test) validate the end-to-end flow:
   1. Native `ckms login spire --audience <aud>` connects to the SPIRE Agent Workload API socket and persists the JWT-SVID.
-  2. Ingress Gateway calls `POST /ui/login_svid` to obtain a cookie-backed session.
+  2. A gateway/BFF calls `POST /ui/login_svid` to obtain a cookie-backed session.
   3. Authenticated requests create KMS cryptographic keys owned by the full SPIFFE URI.
-- **IMP-005**: The Web UI backend exposes `POST /ui/login_svid` (`crate/server/src/routes/ui_auth.rs`), which requires at least one provider with `accept_spiffe_subject: true` (configured via `--jwt-svid-auth`) and validates the JWT-SVID against the cached OIDC JWKS before establishing the `auth_session` cookie.
+- **IMP-005**: The Web UI backend exposes `POST /ui/login_svid` (`crate/server/src/routes/ui_auth.rs`), which requires `--jwt-svid-auth` (HTTP 500 otherwise), accepts only tokens whose `sub` starts with `spiffe://` (a token with an `email` claim but a non-SPIFFE `sub` is rejected), and validates the JWT-SVID against the cached JWKS, refreshing the JWKS once and retrying on failure (SPIRE key rotation). Success returns 200 `{"next_step":"Authenticated"}` and sets the `auth_session` cookie; an invalid SVID returns 401. `GET /ui/auth_method` advertises `SPIFFE` when the flag is set.
 - **IMP-006**: Wizard (`auth_wizard.rs`) prompts operators configuring a JWT/OIDC provider whether it issues SPIFFE JWT-SVIDs, populating `jwt_svid_auth` accordingly.
 
 ## References

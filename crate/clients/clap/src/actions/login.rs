@@ -122,10 +122,9 @@ pub enum LoginSubcommand {
         /// identity the agent returns).
         #[clap(long)]
         spiffe_id: Option<String>,
-        /// Path to the local SPIRE Agent Workload API Unix domain socket (e.g.
-        /// `/tmp/spire-agent/public/api.sock` or a `unix:...` endpoint string accepted
-        /// by `spiffe::WorkloadApiClient::connect_to`). When omitted, connects using the
-        /// standard `SPIFFE_ENDPOINT_SOCKET` environment variable.
+        /// Local SPIRE Agent Workload API endpoint: an absolute socket path (e.g.
+        /// `/tmp/spire-agent/public/api.sock`) or a `unix:///path` / `tcp://host:port`
+        /// URI. When omitted, the `SPIFFE_ENDPOINT_SOCKET` environment variable is used.
         #[clap(long)]
         socket_path: Option<String>,
     },
@@ -254,7 +253,7 @@ impl LoginAction {
                 socket_path,
             } => {
                 let client = if let Some(path) = socket_path {
-                    spiffe::WorkloadApiClient::connect_to(path).await
+                    spiffe::WorkloadApiClient::connect_to(workload_api_endpoint(path)?).await
                 } else {
                     spiffe::WorkloadApiClient::connect_env().await
                 }
@@ -283,6 +282,50 @@ impl LoginAction {
 
                 Ok(LoginCredential::AccessToken(jwt))
             }
+        }
+    }
+}
+
+/// Turn the `--socket-path` value into an endpoint URI understood by the SPIFFE Workload
+/// API client, which only accepts `unix:` / `tcp:` URIs: a `unix:` / `tcp:` URI is passed
+/// through unchanged and an absolute filesystem path gets the `unix://` scheme prepended.
+/// Relative paths are rejected: `unix://./api.sock` would parse `.` as the host.
+fn workload_api_endpoint(socket_path: &str) -> KmsCliResult<String> {
+    if socket_path.starts_with("unix:") || socket_path.starts_with("tcp:") {
+        Ok(socket_path.to_owned())
+    } else if socket_path.starts_with('/') {
+        Ok(format!("unix://{socket_path}"))
+    } else {
+        Err(KmsCliError::Default(format!(
+            "invalid --socket-path `{socket_path}`: expected an absolute path or a unix:/tcp: URI"
+        )))
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)] // test assertions on known-good inputs
+mod tests {
+    use super::workload_api_endpoint;
+
+    #[test]
+    fn bare_socket_path_becomes_unix_uri() {
+        assert_eq!(
+            workload_api_endpoint("/tmp/spire-agent/public/api.sock").unwrap(),
+            "unix:///tmp/spire-agent/public/api.sock"
+        );
+    }
+
+    #[test]
+    fn uris_are_passed_through() {
+        for uri in ["unix:///run/spire/api.sock", "tcp://127.0.0.1:8081"] {
+            assert_eq!(workload_api_endpoint(uri).unwrap(), uri);
+        }
+    }
+
+    #[test]
+    fn relative_paths_are_rejected() {
+        for path in ["./api.sock", "api.sock", ""] {
+            assert!(workload_api_endpoint(path).is_err(), "{path}");
         }
     }
 }
