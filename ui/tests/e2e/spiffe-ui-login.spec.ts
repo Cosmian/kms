@@ -35,6 +35,19 @@ test.describe("SPIFFE JWT-SVID Web UI session", () => {
         expect(response.status()).toBe(401);
     });
 
+    // Only meaningful when the KMS really verifies signatures (strict mode, exported by the
+    // mise task on Linux/CI); an `insecure` build decodes tokens without checking them.
+    test("rejects a JWT-SVID with a tampered signature", async ({ page }) => {
+        test.skip(!process.env.TEST_JWT_STRICT, "TEST_JWT_STRICT not set (KMS built without signature validation)");
+        const [header, payload, signature] = JWT_SVID_TOKEN!.split(".");
+        const tampered = `${header}.${payload}.${signature.startsWith("A") ? "B" : "A"}${signature.slice(1)}`;
+        const response = await page.request.post(`${KMS_URL}/ui/login_svid`, {
+            data: { jwt_svid: tampered },
+            ignoreHTTPSErrors: true,
+        });
+        expect(response.status()).toBe(401);
+    });
+
     test("gateway-established session is picked up by the UI", async ({ page }) => {
         const login = await page.request.post(`${KMS_URL}/ui/login_svid`, {
             data: { jwt_svid: JWT_SVID_TOKEN },
