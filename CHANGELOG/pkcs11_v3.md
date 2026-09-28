@@ -1,6 +1,28 @@
-# PKCS#11 v3.0 review follow-ups: OIDC PIN length and `C_GetInterface` version matching
+# PKCS#11 v3.0 review follow-ups: OIDC PIN length, `C_GetInterface` version matching, and message-AEAD IV handling
 
 ## Bug Fixes
+
+### HSM
+
+- Fix `Session::encrypt_message_aes_gcm()`/`decrypt_message_aes_gcm()` issuing **two**
+  `C_EncryptMessage`/`C_DecryptMessage` calls per operation — a NULL-output-buffer size
+  probe followed by the real call — while presenting the same `CK_GCM_MESSAGE_PARAMS`, and
+  therefore the same IV, to both. OASIS Cryptoki v3.0 §5.9.2/§5.11.2 state that such a call
+  "begins and terminates a message encryption operation", so a token legitimately sees two
+  distinct messages sharing one IV, against current-mechanisms §2.13.5's requirement that
+  "each IV must be
+  unique for a given session". No nonce was actually reused — §5.2's convention makes the
+  NULL-buffer call compute a length only, and `ivGenerator = CKG_NO_GENERATE` means the IV
+  is ours rather than token-generated — but a token that enforces per-message IV uniqueness,
+  or that treats the probe as having terminated the operation, was entitled to reject the
+  second call. Both paths now issue exactly one call, sizing the output buffer locally: in
+  message mode the GCM tag is returned detached in `CK_GCM_MESSAGE_PARAMS.pTag`
+  (current-mechanisms §2.13.2)
+  rather than appended, and `CKM_AES_GCM` is CTR-based, so ciphertext and plaintext are
+  necessarily the same length. This also matches the init → one `C_EncryptMessage` → final
+  flow the spec prescribes. A `CKR_BUFFER_TOO_SMALL` response is now reported with a
+  diagnostic naming the invariant rather than retried, since retrying would re-present the
+  same IV
 
 ### PKCS#11 provider
 
@@ -33,6 +55,9 @@
 - Correct the `C_GetInterface` spec citations in `pkcs11_v3.rs` from "§5.2" to "§5.4.6"
   (§5.2 covers variable-length output buffers; §5.4.5/§5.4.6 are
   `C_GetInterfaceList`/`C_GetInterface`), and quote rule 2 verbatim
+- Correct the message-AEAD spec citations in `message_aead.rs` from "§5.20"/"§5.21" to
+  "§5.9"/"§5.11" (§5.20 is parallel function management and §5.21 is callback functions;
+  the message-based encryption and decryption function families are §5.9 and §5.11)
 
 # PKCS#11 v3.0 consumer-side mechanisms (EdDSA, HKDF, message-AEAD) and Kryoptic conformance suite
 
