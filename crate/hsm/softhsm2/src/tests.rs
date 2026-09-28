@@ -6,7 +6,7 @@
 use std::{collections::HashMap, ptr};
 
 use cosmian_kms_base_hsm::{
-    HResult, RsaOaepDigest,
+    HResult,
     test_helpers::{get_hsm_password, get_hsm_slot_id},
     tests_shared as shared,
 };

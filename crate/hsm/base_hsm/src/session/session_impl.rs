@@ -877,7 +877,9 @@ impl Session {
                             .to_owned(),
                     ));
                 }
-                if self.hsm().supports_message_encrypt() {
+                if self.hsm_capabilities.supports_aes_gcm_message
+                    && self.hsm().supports_message_encrypt()
+                {
                     self.encrypt_message_aes_gcm(key_handle, &[], plaintext)?
                 } else if self.hsm_capabilities.supports_aes_gcm_caller_iv {
                     self.encrypt_aes_gcm_classic(key_handle, plaintext)?

@@ -5,6 +5,9 @@
 //! provider's backend expects (`crate/kmip/src/kmip_2_1/requests/{create,create_key_pair}.rs`
 //! already insert the system tags the provider's `find_all_*` functions look for).
 
+#[cfg(not(feature = "non-fips"))]
+use std::future::Future;
+
 use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::kmip_2_1::extra::VENDOR_ID_COSMIAN,
@@ -84,14 +87,14 @@ async fn provision_optional_keys(
 }
 
 #[cfg(not(feature = "non-fips"))]
-async fn provision_optional_keys(
+fn provision_optional_keys(
     client: &KmsClient,
     provision_ed25519: bool,
     provision_secp256k1: bool,
     delegated: bool,
     hsm_slot: usize,
     disk_encryption_tag: &str,
-) -> BenchResult<Option<UniqueIdentifier>> {
+) -> impl Future<Output = BenchResult<Option<UniqueIdentifier>>> {
     let _ = (
         client,
         provision_ed25519,
@@ -100,7 +103,7 @@ async fn provision_optional_keys(
         hsm_slot,
         disk_encryption_tag,
     );
-    Ok(None)
+    std::future::ready(Ok(None))
 }
 
 fn benchmark_key_uid(delegated: bool, hsm_slot: usize, name: &str) -> Option<UniqueIdentifier> {

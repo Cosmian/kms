@@ -34,6 +34,9 @@ pub struct HsmCapabilities {
     /// When false, encryption proceeds without caller IV (HSM generates internally).
     pub supports_aes_gcm_caller_iv: bool,
 
+    /// Whether the HSM supports PKCS#11 v3.0 message-based AES-GCM encryption.
+    pub supports_aes_gcm_message: bool,
+
     /// Maximum length allowed for `CKA_LABEL` on HSM objects.
     /// If `None`, there is no enforced limit.
     pub max_label_len: Option<usize>,
@@ -48,6 +51,7 @@ impl Default for HsmCapabilities {
             supports_rsa_sensitive_attribute: true,
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
+            supports_aes_gcm_message: true,
             max_label_len: None,
         }
     }
