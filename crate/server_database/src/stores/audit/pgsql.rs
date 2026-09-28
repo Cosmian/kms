@@ -371,8 +371,8 @@ impl PgAuditSink {
     /// defined exactly once. Returns the raw `tokio_postgres` error (not [`DbError`]): the
     /// caller needs the original `SqlState` to disambiguate a unique-violation retry from
     /// a genuine competing writer, which [`DbError::from`] collapses into one message.
-    async fn insert_event_row(
-        client: &tokio_postgres::Client,
+    async fn insert_event_row<C: tokio_postgres::GenericClient>(
+        client: &C,
         query: &str,
         instance_id: &str,
         generation: i64,
@@ -430,7 +430,9 @@ impl PgAuditSink {
     ) -> DbResult<WriteOutcome> {
         let client = pool.get().await.map_err(DbError::from)?;
         let query = get_audit_query!("insert-audit-event");
-        let res = Self::insert_event_row(&client, query, instance_id, generation, event).await;
+        // Double deref: `Object` -> `ClientWrapper` -> `tokio_postgres::Client`, generic
+        // inference won't apply that coercion chain on its own.
+        let res = Self::insert_event_row(&**client, query, instance_id, generation, event).await;
 
         let Err(e) = res else {
             return Ok(WriteOutcome::Written);
@@ -469,28 +471,6 @@ impl PgAuditSink {
         }
 
         Err(DbError::from(e))
-    }
-
-    /// Inserts `event` directly on [`Self::lock_session`] rather than through `pool` —
-    /// see the module docs for why this is what makes the reanchor insert safe against
-    /// advisory-lock loss, instead of merely checking the lock is held immediately
-    /// beforehand (which would still race the loss against the write).
-    async fn insert_reanchor_on_lock_session(
-        &self,
-        generation: i64,
-        event: &AuditEvent,
-    ) -> DbResult<()> {
-        let query = get_audit_query!("insert-audit-event");
-        Self::insert_event_row(
-            &self.lock_session,
-            query,
-            &self.instance_id,
-            generation,
-            event,
-        )
-        .await
-        .map_err(DbError::from)?;
-        Ok(())
     }
 
     /// Returns the generation this instance should resume writing into: the
@@ -716,24 +696,41 @@ impl PgAuditSink {
         };
         let reanchor = draft.finalize(0, [0_u8; 32]);
 
-        // Must happen before the reanchor insert, on the same lock-held session: the
-        // `kms_audit_no_insert_sealed` trigger checks the control row's active_generation
-        // for every INSERT, including this one.
-        self.lock_session
-            .execute(
-                get_audit_query!("upsert-audit-control-generation"),
-                &[&self.instance_id, &new_generation],
-            )
+        // One transaction on the lock-held session: the control-row bump and the reanchor
+        // insert become visible atomically, so a crash between them can never leave an
+        // active, evidence-less generation. The `kms_audit_no_insert_sealed` trigger sees
+        // the control-row write under READ COMMITTED (same transaction, same session), so
+        // ordering the update before the insert still satisfies its generation check.
+        let tx = self
+            .lock_session
+            .transaction()
             .await
-            .map_err(|e| {
-                InterfaceError::from(DbError::DatabaseError(format!(
-                    "audit: failed to advance control row to generation {new_generation}: {e}"
-                )))
-            })?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
 
-        self.insert_reanchor_on_lock_session(new_generation, &reanchor)
+        tx.execute(
+            get_audit_query!("upsert-audit-control-generation"),
+            &[&self.instance_id, &new_generation],
+        )
+        .await
+        .map_err(|e| {
+            InterfaceError::from(DbError::DatabaseError(format!(
+                "audit: failed to advance control row to generation {new_generation}: {e}"
+            )))
+        })?;
+
+        Self::insert_event_row(
+            &tx,
+            get_audit_query!("insert-audit-event"),
+            &self.instance_id,
+            new_generation,
+            &reanchor,
+        )
+        .await
+        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+
+        tx.commit()
             .await
-            .map_err(InterfaceError::from)?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
 
         error!(
             "audit: instance_id={} sealed generation {sealed_generation} (reason={}, \
