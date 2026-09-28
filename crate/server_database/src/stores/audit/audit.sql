@@ -1,5 +1,12 @@
 -- Never put a `--` comment between a `-- name:` tag and its query's closing `;`: the rawsql loader joins a query's lines with spaces, so a mid-body `--` would comment out the rest, including the `;`.
 
+-- Held only for the duration of `ensure_schema`'s transaction (`pg_advisory_xact_lock`,
+-- auto-released on commit/rollback): serializes the DDL bundle across concurrently-starting
+-- instances so their DROP/CREATE TRIGGER pairs (and CREATE OR REPLACE FUNCTION, REVOKE) can
+-- never interleave. Independent of the per-instance_id session lock in select-audit-advisory-lock.
+-- name: acquire-audit-schema-lock
+SELECT pg_advisory_xact_lock(hashtextextended('kms_audit_schema_bootstrap', 0));
+
 -- name: create-table-audit-events
 CREATE TABLE IF NOT EXISTS kms_audit_events (
     instance_id      TEXT        NOT NULL CHECK (length(instance_id) BETWEEN 1 AND 255),

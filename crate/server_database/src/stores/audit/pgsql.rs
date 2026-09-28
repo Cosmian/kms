@@ -257,17 +257,28 @@ impl PgAuditSink {
     /// bootstraps a fresh table and self-heals a table missing a column or trigger added
     /// by a later KMS version.
     ///
+    /// The whole bundle runs in one transaction, opened with `acquire-audit-schema-lock`
+    /// (`pg_advisory_xact_lock`, auto-released on commit/rollback): without it, two
+    /// instances calling this concurrently (e.g. two pods starting together with
+    /// different `instance_id`s — the per-instance advisory lock above doesn't cover
+    /// this) can interleave DROP/CREATE TRIGGER pairs and hit "tuple concurrently
+    /// updated", or run for a moment with the append-only guard absent.
+    ///
     /// A hardened production deployment whose KMS role has only `INSERT`/`SELECT` on a
     /// table owned by someone else gets a permission-denied error here (`SQLSTATE 42501`)
-    /// — expected, not fatal: falls back to a read-only check that every required column
-    /// is present, trusting the documented setup SQL to have configured
-    /// triggers/constraints correctly.
+    /// — expected, not fatal: the transaction is rolled back and this falls back to a
+    /// read-only check that every required column is present, trusting the documented
+    /// setup SQL to have configured triggers/constraints correctly.
     ///
     /// # Errors
     /// Returns an error if a non-permission DDL failure occurs, or if the read-only
     /// fallback check finds a required column missing.
     async fn ensure_schema(pool: &Pool) -> DbResult<()> {
-        let client = pool.get().await.map_err(DbError::from)?;
+        let mut client = pool.get().await.map_err(DbError::from)?;
+        let tx = client.transaction().await.map_err(DbError::from)?;
+        tx.batch_execute(get_audit_query!("acquire-audit-schema-lock"))
+            .await
+            .map_err(DbError::from)?;
 
         for name in [
             "create-table-audit-events",
@@ -288,15 +299,23 @@ impl PgAuditSink {
             let sql = AUDIT_QUERIES
                 .get(name)
                 .ok_or_else(|| db_error!("{} SQL query can't be found", name))?;
-            if let Err(e) = client.batch_execute(sql).await {
+            if let Err(e) = tx.batch_execute(sql).await {
                 if e.as_db_error()
                     .is_some_and(|db| *db.code() == SqlState::INSUFFICIENT_PRIVILEGE)
                 {
+                    // The transaction is poisoned by the failed statement: drop it
+                    // (rolls back and releases the advisory lock) before falling back
+                    // to a read-only check on a fresh connection.
+                    drop(tx);
+                    drop(client);
+                    let client = pool.get().await.map_err(DbError::from)?;
                     return Self::verify_schema_columns(&client).await;
                 }
                 return Err(DbError::from(e));
             }
         }
+
+        tx.commit().await.map_err(DbError::from)?;
         Ok(())
     }
 

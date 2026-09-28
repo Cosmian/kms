@@ -25,9 +25,3 @@
 - The `PostgreSQL` audit connection now honors `sslmode=verify-ca`/`verify-full` (plus
   `sslrootcert`/`sslcert`/`sslkey`) the same way the main database connection does. Previously
   any non-`disable` `sslmode` silently skipped certificate verification.
-
-## Breaking Changes
-
-- The `PostgreSQL` audit schema's primary key changed from `(instance_id, id)` to
-  `(instance_id, chain_generation, id)`. This backend has no released migration path yet —
-  drop and let the KMS recreate `kms_audit_events` rather than expecting an in-place upgrade.

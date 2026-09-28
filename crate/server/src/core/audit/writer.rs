@@ -111,6 +111,10 @@ pub(super) async fn write_draft_to_chain<S: AuditSink>(
             Ok(WriteOutcome::Resynced(head)) => {
                 id = head.next_id;
                 ph = head.prev_hash;
+                // Propagate immediately: if every remaining attempt then errors or is
+                // exhausted, the caller must still resume from the corrected hash, not
+                // the stale one it called us with.
+                *prev_hash = ph;
             }
             Err(e) => {
                 error!("AuditFileStore: failed to write event id={id}: {e} — event dropped");

@@ -192,11 +192,13 @@ There is no configuration toggle that changes recovery into a startup failure.
   mechanism. It correctly resolves the transient rolling-update overlap (old pod exits, new pod
   acquires), but it is **not a multi-writer backend**: if multiple long-lived KMS instances point
   at the same shared audit file (e.g. a `ReadWriteMany` volume across Kubernetes replicas), only
-  the instance holding the lock ever writes — the others retry indefinitely and their events are
-  never recorded, silently. Sustained horizontal scaling must use one audit file per instance
-  (the default), not a shared one. A genuinely multi-writer-safe, centrally consolidated audit
-  trail uses the `PostgreSQL` audit backend instead, where a unique constraint on
-  `(instance_id, chain_generation, id)` — not a file lock — structurally arbitrates concurrent
+  the instance holding the lock ever writes. The others' events are buffered in their own bounded
+  channel while waiting for the lock, not recorded to disk; only overflow past that channel's
+  capacity is dropped, and that overflow is operator-visible — a logged error and a chained
+  `audit:eviction` sentinel — never silent. Sustained horizontal scaling must use one audit file
+  per instance (the default), not a shared one. A genuinely multi-writer-safe, centrally
+  consolidated audit trail uses the `PostgreSQL` audit backend instead, where a unique constraint
+  on `(instance_id, chain_generation, id)` — not a file lock — structurally arbitrates concurrent
   writers; see "PostgreSQL backend: seal-and-roll via immutable generations" above.
 
 ## Alternatives Considered
@@ -230,9 +232,11 @@ There is no configuration toggle that changes recovery into a startup failure.
 
 ## Implementation Notes
 
-- **IMP-001**: Core implementation: `crate/server/src/core/audit/file_store.rs`
-  (`classify_tail`, `TailOutcome`, `truncate_and_continue`, `seal_and_roll`, `writer_supervisor`,
-  `try_acquire_lock`, `verify_interior_chain`).
+- **IMP-001**: Core implementation, split across `crate/server/src/core/audit/`:
+  `recovery.rs` (`classify_tail`, `TailOutcome`, `truncate_and_continue`, `seal_and_roll`,
+  `verify_interior_chain`), `file_sink.rs` (`FileSink`, `try_acquire_lock`), `store.rs`
+  (`AuditStore`, `start_with_max_size`), and `writer.rs` (the shared writer loop, now generic
+  over every backend via `AuditSink` — see IMP-007).
 - **IMP-003**: New `AuditEvent.details: Option<String>` field:
   `crate/access/src/audit/event.rs`; canonical-hash encoding (backward-compatible trailing
   optional segment, following the `request_id` precedent):

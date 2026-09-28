@@ -11,8 +11,8 @@
 //!   acquisition happen inside the spawned task, self-healing in the background — see
 //!   `FileSink::resume`). The `PostgreSQL` backend connects, acquires its advisory lock,
 //!   and verifies the chain SYNCHRONOUSLY inside `start_postgres()` — a failure there
-//!   propagates up to `Kms::create_audit_store`, which falls back to the file backend
-//!   (logging a warning) instead of aborting server startup.
+//!   propagates up to `Kms::create_audit_store`, which aborts server startup; unlike the
+//!   file backend, there is no runtime fallback between the two (config-time only).
 //! * The middleware calls `enqueue()` which is a non-blocking `try_send`.  If the
 //!   channel is full (beyond the configured capacity) the draft is silently dropped
 //!   and an error is logged — we never block the request path.
