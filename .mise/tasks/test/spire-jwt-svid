@@ -324,7 +324,7 @@ done
 print_success "SPIRE server A healthy."
 
 # ── Step 6: Export the SPIRE trust bundle and serve it as an HTTPS JWKS ──────
-print_status "Step 6: Exporting SPIRE bundle and serving the JWKS over HTTPS..."
+print_status "Step 6: Exporting SPIRE bundle and serving the JWKS (${JWKS_URI})..."
 JWKS_DIR="${WORK_DIR}/jwks"
 mkdir -p "${JWKS_DIR}"
 JWKS_FILE="${JWKS_DIR}/jwks.json"
