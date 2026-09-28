@@ -68,6 +68,21 @@
 - Correct the message-AEAD spec citations in `message_aead.rs` from "§5.20"/"§5.21" to
   "§5.9"/"§5.11" (§5.20 is parallel function management and §5.21 is callback functions;
   the message-based encryption and decryption function families are §5.9 and §5.11)
+- Document `KryopticCapabilityProvider`, which was public but undocumented, recording *why* it
+  takes `HsmCapabilities::default()` where every vendor loader sets explicit values — Kryoptic
+  is a conformance oracle rather than a supported backend, so its limits were never measured —
+  and noting that the defaulted `find_max_object_count = 1` makes `C_FindObjects` return one
+  handle per call. Also attach the existing `KRYOPTIC_PKCS11_LIB` doc comment to the
+  non-macOS definition, where it was missing (so the constant was undocumented on the Linux
+  builds that actually run the suite)
+- Narrow the `kryoptic` test module's lint allowances from 10 blanket `#[allow]`s — copied from
+  `softhsm2`, and reaching `cargo clippy-all` because `--all-features` enables the `kryoptic`
+  feature — to the 3 lints that actually fire (`unsafe_code`, `clippy::expect_used`,
+  `clippy::panic`), as a single `#[expect]` with a `reason`, matching the style already used for
+  the `cosmian_pkcs11` test module. `#[expect]` rather than `#[allow]` so the allowance is
+  flagged if it ever stops being needed; the 7 dropped entries (`panic_in_result_fn`,
+  `unwrap_used`, `assertions_on_result_states`, `as_conversions`, `map_err_ignore`,
+  `redundant_clone`, `explicit_iter_loop`) were already dead
 
 # PKCS#11 v3.0 consumer-side mechanisms (EdDSA, HKDF, message-AEAD) and Kryoptic conformance suite
 
