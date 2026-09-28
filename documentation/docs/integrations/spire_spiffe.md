@@ -1480,13 +1480,17 @@ Do you want workload authentication via SPIFFE?
 │   └── Requires `jwt_svid_auth = true` (--jwt-svid-auth).
 └── Option C: Dual Layer (mTLS Transport + JWT-SVID Application)
     ├── Server configures both `[tls] clients_ca_cert_file` and `[idp_auth] jwt_svid_auth`
-    └── Transport TLS handshake validates CA cert; Bearer header authenticates workload SPIFFE ID.
+    ├── Client-certificate auth runs BEFORE the JWT middleware: a client cert with a CN
+    │   authenticates as that CN and any JWT-SVID / session cookie is ignored.
+    └── For the SPIFFE ID to be the identity, use client certs without a CN (or separate
+        listeners); otherwise expect CN precedence.
 ```
 
 ### Architecture & Claim Mapping
 
 - **Standard OIDC vs. SPIFFE JWT-SVID**: Standard OIDC/IdP tokens carry an `email` claim. SPIFFE JWT-SVIDs contain no `email` claim; they identify workloads via `sub = spiffe://<trust-domain>/<workload-path>`.
-- **Opt-In Flag (`--jwt-svid-auth` / `jwt_svid_auth = true`)**: When enabled, the KMS JWT authentication middleware accepts tokens with no `email` claim provided `sub` begins with `spiffe://`. The full SPIFFE URI is used as the KMS `UserId` / object owner.
+- **Opt-In Flag (`--jwt-svid-auth` / `jwt_svid_auth = true`)**: When enabled, the KMS JWT authentication middleware accepts tokens with no `email` claim provided `sub` begins with `spiffe://`. The full SPIFFE URI is used as the KMS `UserId` / object owner. The flag is **global**: it applies to all `--jwt-auth-provider` entries (there is no per-provider setting).
+- **Audience is mandatory**: with `--jwt-svid-auth`, the server refuses to start if any `--jwt-auth-provider` entry has no audience (`issuer,jwks_uri,audience`), and a SPIFFE `sub` token without a non-empty `aud` claim is rejected. This follows the SPIFFE JWT-SVID specification (validators must reject SVIDs not addressed to them) and prevents cross-service replay.
 
 ### KMS Server Configuration
 
@@ -1503,6 +1507,12 @@ jwt_svid_auth = true
 ```
 
 #### 2. Dual Configuration (mTLS + JWT-SVID)
+
+> **Precedence**: actix runs wrapped middleware last-in-first-out, and the client-certificate
+> middleware runs **before** the JWT middleware. A client certificate with a CN authenticates
+> the request as that CN (`AuthMethod::Mtls`); the JWT-SVID (and any session cookie) is then
+> ignored. A certificate without a usable CN falls through to the JWT-SVID. To make the SPIFFE
+> ID the identity, present CN-less client certificates or use separate listeners.
 
 In `kms.toml`:
 
@@ -1561,7 +1571,7 @@ curl -k -H "Authorization: Bearer ${JWT_SVID}" https://kms.example.com:9998/me
 - When JWT-SVID authentication succeeds:
 
   ```text
-  [DEBUG] cosmian_kms_server::middlewares::jwt::jwt_token_auth: JWT-SVID Access granted to spiffe://cosmian-test-a.local/my-workload!
+  [DEBUG] cosmian_kms_server::middlewares::jwt::jwt_token_auth: JWT-SVID access granted to spiffe://cosmian-test-a.local/my-workload!
   ```
 
 - When client certificate authentication succeeds:
@@ -1570,5 +1580,7 @@ curl -k -H "Authorization: Bearer ${JWT_SVID}" https://kms.example.com:9998/me
   [TRACE] cosmian_kms_server::middlewares::tls_auth: Client certificate common name: spire-client
   ```
 
-> **Note on Web UI**: The Web UI supports SPIFFE JWT-SVID login via a dedicated login form
-> (`POST /ui/login_svid`) when `--jwt-svid-auth` is enabled.
+> **Note on Web UI**: With `--jwt-svid-auth` the server advertises `SPIFFE` in `/ui/auth_method`
+> and accepts a JWT-SVID posted by a trusted gateway to `POST /ui/login_svid`. There is no
+> login form. See [Web UI SPIFFE authentication](spire_webui.md), including the shared-identity
+> caveat.

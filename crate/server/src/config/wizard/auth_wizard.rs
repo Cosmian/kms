@@ -13,6 +13,22 @@ use crate::{
     result::KResult,
 };
 
+/// `true` when a `ISSUER_URI[,JWKS_URI[,AUDIENCE...]]` provider string has a non-empty audience.
+fn provider_has_audience(provider: &str) -> bool {
+    provider
+        .split(',')
+        .skip(2)
+        .any(|audience| !audience.trim().is_empty())
+}
+
+/// Append `audience` to a provider string that has none, keeping the (possibly empty) JWKS URI.
+fn with_audience(provider: &str, audience: &str) -> String {
+    let mut parts = provider.split(',');
+    let issuer = parts.next().unwrap_or_default().trim();
+    let jwks_uri = parts.next().unwrap_or_default().trim();
+    format!("{issuer},{jwks_uri},{audience}")
+}
+
 pub struct AuthWizardResult {
     pub idp_auth: IdpAuthConfig,
     /// Auth Verifier server configuration to wire into `ClapConfig.auth_verifier`.
@@ -90,6 +106,23 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
             .default(false)
             .interact()
             .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+
+        // The server refuses to start with `jwt_svid_auth` unless every provider has an
+        // audience: ask for the missing ones rather than writing a config that cannot start.
+        if jwt_svid_auth {
+            for provider in &mut jwt_providers {
+                if provider_has_audience(provider) {
+                    continue;
+                }
+                let audience: String = Input::with_theme(&theme)
+                    .with_prompt(format!(
+                        "Audience required for SPIFFE JWT-SVIDs, provider `{provider}`"
+                    ))
+                    .interact_text()
+                    .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                *provider = with_audience(provider, audience.trim());
+            }
+        }
 
         // UI OIDC
         let configure_ui_oidc = Confirm::with_theme(&theme)
@@ -215,4 +248,31 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
         default_username,
         force_default_username,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{provider_has_audience, with_audience};
+
+    #[test]
+    fn detects_missing_audience() {
+        assert!(!provider_has_audience("https://issuer"));
+        assert!(!provider_has_audience("https://issuer,https://issuer/jwks"));
+        assert!(!provider_has_audience(
+            "https://issuer,https://issuer/jwks, ,"
+        ));
+        assert!(provider_has_audience("https://issuer,,cosmian-kms"));
+    }
+
+    #[test]
+    fn with_audience_keeps_issuer_and_jwks_uri() {
+        assert_eq!(
+            with_audience("https://issuer", "aud"),
+            "https://issuer,,aud"
+        );
+        assert_eq!(
+            with_audience("https://issuer,https://issuer/jwks", "aud"),
+            "https://issuer,https://issuer/jwks,aud"
+        );
+    }
 }

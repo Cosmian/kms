@@ -544,15 +544,15 @@ pub(crate) async fn login_as(
     }
 }
 
-/// SPIFFE JWT-SVID Web UI login.
+/// SPIFFE JWT-SVID session login, meant for a gateway / BFF in front of the Web UI.
 ///
-/// The browser posts a JWT-SVID minted by `spire-server jwt mint` (or obtained
-/// via the SPIRE Workload API). Validated against the SPIFFE-enabled JWT
+/// The caller posts `{ "jwt_svid": "<token>" }` with a JWT-SVID minted by SPIRE (Workload
+/// API or `spire-server jwt mint`). The token is validated against the SPIFFE-enabled JWT
 /// issuers configured via `--jwt-auth-provider` + `--jwt-svid-auth` — the same
-/// configuration already used for bearer-token API/KMIP authentication. On
-/// success the `sub` claim (`spiffe://<trust-domain>/<path>`) becomes the
-/// session's `user_id`, exactly like the OIDC `callback` and Auth Verifier
-/// `login_as` flows above.
+/// configuration used for bearer-token API/KMIP authentication — and its `sub` MUST be a
+/// `spiffe://` ID (a token that only carries an `email` claim is rejected). On success the
+/// `sub` claim (`spiffe://<trust-domain>/<path>`) becomes the session's `user_id`, exactly
+/// like the OIDC `callback` and Auth Verifier `login_as` flows above.
 #[post("/login_svid")]
 pub(crate) async fn login_svid(
     session: Session,
@@ -565,7 +565,7 @@ pub(crate) async fn login_svid(
         );
     }
 
-    let authenticated = match validate_jwt_svid(&jwt_configurations, body.jwt_svid.trim()) {
+    let authenticated = match validate_jwt_svid(&jwt_configurations, body.jwt_svid.trim()).await {
         Ok(user) => user,
         Err(e) => {
             return HttpResponse::Unauthorized()

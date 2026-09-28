@@ -44,14 +44,15 @@ graph TB
         DB["db:_default"]
         HSM["hsm:_default"]
         K8S["k8s:_default"]
-        Cloud["azure-ekm<br/>google-cse<br/>gcp-cmek<br/>xks<br/>xks-remote"]
+        Cloud["azure-ekm<br/>google-cse<br/>gcp-cmek<br/>xks<br/>xks-remote<br/>secret_aws<br/>secret_azure"]
         OCSP["ocsp<br/>pki-revocation"]
         Audit["audit<br/>monitoring<br/>otel"]
-        TDE["ase<br/>db2<br/>edb-tde<br/>iris"]
+        TDE["edb-tde<br/>docker-oracle"]
         Client["jose<br/>kmip-go<br/>luks<br/>openssh<br/>pykmip<br/>veracrypt"]
-        UI["ui<br/>wasm<br/>spire*"]
-        Docker["docker<br/>helm"]
-        Misc["vectors-rekey<br/>load-balancer"]
+        UI["ui<br/>wasm"]
+        Spire["spire<br/>spire-kmip"]
+        Docker["docker<br/>iris<br/>secret_vault"]
+        Local["helm<br/>vectors-rekey<br/>load-balancer<br/>secret_cosmian_kms"]
     end
 
     run --> DB
@@ -63,8 +64,9 @@ graph TB
     run --> TDE
     run --> Client
     run --> UI
+    run --> Spire
     run --> Docker
-    run --> Misc
+    run --> Local
 ```
 
 #### Sequence Diagram
@@ -77,14 +79,13 @@ sequenceDiagram
 
     User->>Def: mise run test:_default --variant fips
     loop For each test group
-        Def->>Sub: bash sub-task --variant fips --link static
-        Sub-->>Def: exit 0 | exit 1
-        alt exit 0
-            Def->>Def: PASSED += 1
-        else exit 1
-            Def->>Def: FAILED += 1 (continue)
-        else missing infra
-            Def->>Def: SKIPPED += 1
+        Def->>Def: evaluate gate for the group
+        alt gate reports missing infra / credentials / tool
+            Def->>Def: SKIPPED += 1 (sub-task not run)
+        else gate satisfied
+            Def->>Sub: run sub-task
+            Sub-->>Def: exit 0 | non-zero
+            Def->>Def: PASSED += 1 or FAILED += 1 (continue)
         end
     end
     Def-->>User: Summary: pass / fail / skip counts
@@ -234,11 +235,11 @@ sequenceDiagram
 
 | Task | Cloud | FIPS? | Credential requirement |
 |------|-------|-------|------------------------|
-| `azure-ekm` | Azure EKM | no | Nix shell, Azure creds |
+| `azure-ekm` | Azure EKM | no | Nix shell; runs the plain + mTLS scripts against a local KMS |
 | `google-cse` | Google CSE | yes | OAuth client + service account key |
-| `gcp-cmek` | GCP CMEK wrapping | yes | GCP project + IAM |
+| `gcp-cmek` | GCP CMEK wrapping | yes | Nix shell; `cargo test tests::gcp_cmek --ignored` against a local KMS |
 | `xks` | AWS XKS (local) | no | KMS build + SigV4 test script |
-| `xks-remote` | AWS XKS (remote) | no | `WITH_XKS=1`, remote URL |
+| `xks-remote` | AWS XKS (remote) | no | Nix shell (`WITH_XKS=1`), `KMS_XKS_SIGV4_ACCESS_KEY_ID` / `KMS_XKS_SIGV4_SECRET_ACCESS_KEY`, no build |
 
 ### Architecture Overview
 
@@ -267,7 +268,7 @@ graph TB
     TestScripts --> AWSXKS
 ```
 
-### Sequence Diagram ( representative — `test:xks` )
+### Sequence Diagram (representative — `test:xks`)
 
 ```mermaid
 sequenceDiagram
@@ -345,6 +346,8 @@ sequenceDiagram
 
 **Description:** SPIRE + Mistral client full integration (non-FIPS only). Multi-tenant topology with two independent SPIRE deployments against the same KMS.
 
+After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire-pki` (17), `test:spire-jwt-svid` (18) and `test:spire-kmip` (19).
+
 #### Architecture Overview
 
 ```mermaid
@@ -403,7 +406,9 @@ sequenceDiagram
 
 ### `test:spire-jwt-svid`
 
-**Description:** SPIFFE JWT-SVID end-to-end authentication via SPIRE + ckms CLI.
+**Description:** SPIFFE JWT-SVID end-to-end authentication via SPIRE + ckms CLI, with **real** JWT validation on Linux/CI. Non-FIPS only. On macOS native-tls ignores `SSL_CERT_FILE`, so the KMS cannot trust the test CA: the task then builds the KMS with the `insecure` feature, serves the JWKS over http, and skips the checks that need signature/audience validation (wrong audience, tampered signature) and the native `spire-agent` login step (Docker Desktop host networking). Those checks are covered by the Rust `real_validation` unit tests.
+
+On Linux the KMS is built **without** the `insecure` feature: signature, issuer, audience and expiry are all verified, and the JWKS URI must be `https`. The exported SPIRE trust bundle (x509-svid and jwt-svid keys, served unfiltered) is published by a small `python3` HTTPS server (`http.server` + `ssl`, `test_data/spire/certs/kms.crt|kms.key`, SAN `localhost`) at `https://localhost:8088/jwks.json`; only the KMS process gets `SSL_CERT_FILE=test_data/spire/certs/ca.crt`. Every temporary file (bearer-token configs, cookie jar, generated TOML, SPIRE agent state, the ckms config directory) is removed by the EXIT trap.
 
 #### Architecture Overview
 
@@ -412,7 +417,7 @@ graph TB
     subgraph Host["Host"]
         CKMS2["ckms CLI"]
         Playwright["Playwright E2E"]
-        JWKS["Python JWKS<br/>HTTP server :8088"]
+        JWKS["Python JWKS<br/>HTTPS server :8088"]
         Agent["SPIRE Agent<br/>unix socket"]
         AuthVrf2["auth-verifier<br/>:8443"]
     end
@@ -424,16 +429,19 @@ graph TB
     subgraph KMS_Host["KMS"]
         K0["KMS bootstrap<br/>:9998"]
         K1["KMS jwt_svid_auth<br/>:9998"]
+        K3["KMS jwt_svid_auth=false<br/>:9998"]
         K2["KMS mTLS + jwt_svid<br/>:9998"]
     end
 
     AuthVrf2 --> |AppRole provisioning| K0
     SPIRE_Srv --> |bundle show| JWKS
-    K1 --> |GET /jwks.json| JWKS
+    K1 --> |GET https jwks.json<br/>trust SSL_CERT_FILE=ca.crt| JWKS
     CKMS2 --> |access_token JWT-SVID| K1
+    CKMS2 --> |wrong aud / bad signature: 401| K1
+    CKMS2 --> |valid JWT-SVID rejected| K3
     CKMS2 --> |login spire| Agent
     Agent --> |Attest and fetch| SPIRE_Srv
-    Playwright --> |Bearer token| K1
+    Playwright --> |Bearer token + /ui/login_svid session| K1
     CKMS2 --> |mTLS client cert| K2
 ```
 
@@ -445,37 +453,51 @@ sequenceDiagram
     participant Auth as auth-verifier
     participant K0 as KMS bootstrap
     participant SP as SPIRE Server A
-    participant JWKS as JWKS Server
+    participant JWKS as JWKS HTTPS Server
     participant K1 as KMS jwt_svid
     participant Agent as SPIRE Agent
     participant PW as Playwright
+    participant K3 as KMS no jwt_svid
     participant K2 as KMS dual auth
 
+    CKMS->>CKMS: build KMS (no insecure feature), ckms, auth-verifier
     CKMS->>Auth: start auth-verifier on :8443
     CKMS->>K0: start KMS bootstrap
     CKMS->>K0: certify vault_pki_ca_cert
     CKMS->>Auth: provision AppRoles
     Auth-->>CKMS: ROLE_ID_A, SECRET_ID_A
     CKMS->>SP: docker compose up spire-server-a
-    SP->>SP: export bundle JWKS
-    CKMS->>JWKS: python3 http.server 8088
+    SP-->>CKMS: bundle show (SPIFFE JWKS)
+    CKMS->>JWKS: python3 HTTPS server :8088 (test CA cert)
     CKMS->>K0: stop bootstrap KMS
-    CKMS->>K1: start KMS with idp_auth jwt_svid_auth=true
-    K1->>JWKS: fetch JWKS for trust domain
+    CKMS->>K1: start KMS, jwt_svid_auth=true, provider without audience
+    K1-->>CKMS: exits non-zero, log mentions the missing audience
+    CKMS->>K1: start KMS with idp_auth jwt_svid_auth=true and audience
+    K1->>JWKS: fetch JWKS over HTTPS (SSL_CERT_FILE=ca.crt)
     CKMS->>SP: spire-server jwt mint
     SP-->>CKMS: JWT-SVID token
     CKMS->>K1: sym keys create access_token=JWT
     K1-->>CKMS: key created, owned by SPIFFE ID
-    CKMS->>Agent: optional spire-agent start
-    CKMS->>Agent: ckms login spire
+    CKMS->>SP: mint SVID for another audience
+    CKMS->>K1: bearer + POST /ui/login_svid with wrong-audience SVID
+    K1-->>CKMS: ckms fails, HTTP 401
+    CKMS->>K1: bearer + POST /ui/login_svid with tampered signature
+    K1-->>CKMS: ckms fails, HTTP 401
+    CKMS->>Agent: spire-agent start (join token, workload entry)
+    CKMS->>Agent: ckms login spire (must succeed if spire-agent is installed)
     Agent->>SP: fetch JWT-SVID via Workload API
     Agent-->>CKMS: token stored in ckms config
-    PW->>K1: E2E test with TEST_JWT_SVID_TOKEN
+    PW->>K1: E2E with TEST_JWT_SVID_TOKEN (spiffe-jwt-svid-auth.spec.ts)
+    PW->>K1: session via POST /ui/login_svid then SPA (spiffe-ui-login.spec.ts, only with a real ui/dist)
     CKMS->>SP: mint demo-user JWT-SVID
     SP-->>CKMS: demo JWT token
     CKMS->>K1: POST /ui/login_svid + GET /ui/whoami
     K1-->>CKMS: Authenticated + SPIFFE ID
     CKMS->>K1: stop KMS
+    CKMS->>K3: start KMS with jwt_svid_auth=false
+    CKMS->>K3: valid JWT-SVID as bearer / POST /ui/login_svid
+    K3-->>CKMS: ckms fails, bearer HTTP 401, login_svid not 200
+    CKMS->>K3: stop KMS
     CKMS->>K2: start KMS with mTLS + jwt_svid_auth
     CKMS->>K2: sym keys create via JWT-SVID
     CKMS->>K2: sym keys create via mTLS cert
@@ -688,7 +710,7 @@ sequenceDiagram
 
 ### `test:spire-pki`
 
-**Description:** KMS PKI capability validation — M-01 through M-08 from Aembit Capability Validation Test Plan.
+**Description:** KMS PKI capability validation — M-01 through M-10 from Aembit Capability Validation Test Plan.
 
 #### Architecture Overview
 
@@ -930,7 +952,7 @@ sequenceDiagram
 
 ### `test:audit`
 
-**Description:** Tamper-evident JSONL audit log + HTTP audit middleware capture. Optionally runs OpenSearch and Splunk compatibility sub-tasks.
+**Description:** Tamper-evident JSONL audit log + HTTP audit middleware capture, followed by the OpenSearch compatibility sub-task (always) and the Splunk one (only when `SPLUNK_PASSWORD` is set).
 
 #### Architecture Overview
 
@@ -953,8 +975,8 @@ graph TB
     TestAudit --> KMS10
     KMS10 --> JSONL
     TestAudit --> JSONL
-    TestAudit --> |optional| OpenSearch
-    TestAudit --> |optional| Splunk
+    TestAudit --> OpenSearch
+    TestAudit --> |only if SPLUNK_PASSWORD| Splunk
 ```
 
 #### Sequence Diagram
@@ -1183,10 +1205,10 @@ sequenceDiagram
 
 | Task | Database | Protocol | FIPS? | Requirement |
 |------|----------|----------|-------|-------------|
-| `ase` | SAP ASE | KMIP | no | Docker |
+| `ase` | SAP ASE | KMIP | no | Docker (builds the `cosmian-ase-kmip` image on the fly) |
 | `db2` | IBM Db2 LUW | KMIP | no | Docker |
 | `edb-tde` | EDB Postgres | KMIP | no | Docker + EDB_SUBSCRIPTION_TOKEN |
-| `docker-oracle` | Oracle | TDE | no | Docker amd64 only |
+| `docker-oracle` | Oracle | TDE | no | Docker, non-fips amd64 only; `DOCKER_IMAGE_NAME`, `ORACLE_KMS_DEMO_USER_PASS`, `COSMIAN_HSM_PIN` |
 | `iris` | InterSystems IRIS | mTLS | no | Docker |
 
 ### Architecture Overview
@@ -1258,7 +1280,7 @@ sequenceDiagram
 | `luks` | LUKS disk encryption PKCS#11 | no | WITH_LUKS=1, HSM |
 | `openssh` | OpenSSH PKCS#11 | no | WITH_OPENSSH=1, HSM |
 | `pykmip` | PyKMIP + Synology DSM | no | WITH_PYTHON=1 |
-| `veracrypt` | VeraCrypt PKCS#11 | no | Nix shell |
+| `veracrypt` | VeraCrypt PKCS#11 | no | `veracrypt` binary on PATH |
 
 ### Architecture Overview
 
@@ -1314,7 +1336,7 @@ sequenceDiagram
 
 ### `test:k8s:_default`
 
-**Description:** Orchestrator that runs all Kubernetes E2E tests (plugin, operator, CSI provider).
+**Description:** Orchestrator that runs all Kubernetes E2E tests (plugin, plugin with `--mtls`, operator, CSI provider); a failing step is recorded and the remaining ones still run.
 
 #### Architecture Overview
 
@@ -1344,7 +1366,7 @@ graph TB
 
 ### `test:k8s:plugin`
 
-**Description:** Kubernetes KMS Provider Plugin — etcd Secret encryption. Deploys KMS in-cluster, creates a KEK, installs the plugin binary on the Minikube node as a systemd service, and verifies etcd Secret encryption.
+**Description:** Kubernetes KMS Provider Plugin — etcd Secret encryption. Deploys KMS in-cluster, creates a KEK, installs the plugin binary on the Minikube node as a systemd service, and verifies etcd Secret encryption. gRPC is used only between kube-apiserver and the plugin (KMS v2 API over a unix socket); the plugin talks to the KMS over plain HTTP, or over HTTPS with client certificates when the task runs with `--mtls`.
 
 #### Architecture Overview
 
@@ -1360,8 +1382,8 @@ graph TB
         KMS_Pod2["Cosmian KMS Pod<br/>Helm"]
     end
 
-    K8sAPI --> |encryption provider config| PluginSvc
-    PluginSvc --> |gRPC / mTLS| KMS_Pod2
+    K8sAPI --> |gRPC KMS v2<br/>unix socket| PluginSvc
+    PluginSvc --> |HTTP, or HTTPS + client certs with --mtls| KMS_Pod2
     K8sAPI --> |encrypted write| etcd
 ```
 
@@ -1374,6 +1396,8 @@ sequenceDiagram
     participant KMS as KMS Pod
     participant Node as Minikube node
     participant Plugin as kubernetes-kms-plugin
+    participant API as kube-apiserver
+    participant etcd as etcd
 
     Test->>Helm: deploy KMS in namespace
     Helm-->>Test: ClusterIP known
@@ -1381,14 +1405,20 @@ sequenceDiagram
     KMS-->>Test: KEK UID
     Test->>Node: install plugin binary + config
     Test->>Node: systemctl start plugin
-    Plugin->>KMS: gRPC Encrypt / Decrypt
-    KMS-->>Plugin: ciphertext / plaintext
-    Test->>Node: kubectl create secret
-    Node->>Plugin: encrypt secret data
-    Plugin->>KMS: Encrypt
-    KMS-->>Plugin: ciphertext
-    Plugin-->>Node: encrypted DEK
-    Node->>etcd: write encrypted Secret
+    Test->>Node: enable etcd encryption on kube-apiserver
+    Test->>API: kubectl create secret
+    API->>Plugin: gRPC Encrypt (unix socket)
+    Plugin->>KMS: KMIP Encrypt with the KEK (HTTP, or HTTPS + client certs with --mtls)
+    KMS-->>Plugin: encrypted DEK
+    Plugin-->>API: encrypted DEK
+    API->>etcd: write encrypted Secret
+    Test->>etcd: read raw value, expect k8s:enc:kms:v2 prefix
+    Test->>API: kubectl get secret
+    API->>Plugin: gRPC Decrypt (unix socket)
+    Plugin->>KMS: KMIP Decrypt with the KEK
+    KMS-->>Plugin: plaintext DEK
+    Plugin-->>API: plaintext DEK
+    API-->>Test: decrypted secret
 ```
 
 ---
@@ -1406,7 +1436,7 @@ graph TB
         Job["Kubernetes Job<br/>initContainer inject<br/>+ busybox verify"]
     end
 
-    KMS_Pod3 --> |HTTP| Job
+    Job --> |HTTP inject: read SecretData| KMS_Pod3
 ```
 
 #### Sequence Diagram
@@ -1421,8 +1451,9 @@ sequenceDiagram
     Test->>KMS: deploy + create SecretData
     KMS-->>Test: Secret UID
     Test->>Job: kubectl apply Job
-    Job->>KMS: initContainer: inject secret
-    KMS-->>Job: plaintext written to /output
+    Job->>KMS: initContainer inject: read SecretData over HTTP
+    KMS-->>Job: SecretData value
+    Job->>Job: write /output/injected-secret (shared emptyDir)
     Job->>Verify: cat /output/injected-secret
     Verify-->>Test: value matches
 ```
@@ -1487,7 +1518,7 @@ sequenceDiagram
 
 **Tasks:** `test:ui`, `test:ui-auth`, `test:ui-oidc`, `test:wasm`
 
-**Orchestrator:** `test:ui` (runs standard + auth + OIDC sequentially)
+**Orchestrator:** `test:ui` (runs standard + auth + OIDC sequentially). The auth suite is skipped in FIPS mode (the auth-verifier is not FIPS-aware) or when the `authentication` submodule is absent; the OIDC suite needs Auth0 secrets and skips cleanly without them.
 
 ### Architecture Overview
 
@@ -1544,7 +1575,7 @@ sequenceDiagram
     participant Build as wasm-pack build --target web
     participant UI as UI source tree
 
-    Test->>Nix: ensure_nix_shell WITH_WASM=1
+    Test->>Nix: ensure_nix_shell WITH_WASM=1 (only if wasm-pack is missing or Node < 22)
     Test->>Rust: run wasm-bindgen unit tests
     Rust-->>Test: pass
     Test->>Build: build web-target WASM package
@@ -1562,46 +1593,53 @@ sequenceDiagram
 
 ### `test:docker`
 
-**Description:** Docker image smoke tests. Builds the Nix-produced image, starts a container, and validates TLS handshake + cipher suites.
+**Description:** Docker image smoke tests. Does **not** build an image: it exports `KMS_TLS_CONFIG_FLAVOR` (`fips` or `non_fips`, derived from `--variant`) and runs `.mise/scripts/test/test_docker_image.sh`, which starts the already-built and already-loaded image named by `DOCKER_IMAGE_NAME` through `docker compose -f .mise/scripts/docker-compose.yml up -d --wait`, probes TLS with `openssl s_client`, drives the stack with `ckms` (run through `cargo run -p ckms`), and checks the FIPS/non-FIPS variant reported by `/version`. The image itself is produced beforehand (Nix build via `mise run build:docker --load`, or the packaging CI workflow).
 
 #### Architecture Overview
 
 ```mermaid
 graph TB
     subgraph Host17["Host"]
-        Nix7["Nix build<br/>docker image"]
-        Docker2["Docker daemon"]
         TestScript2["test_docker_image.sh"]
+        Docker2["Docker daemon<br/>image already loaded<br/>DOCKER_IMAGE_NAME"]
+        Ckms["ckms via cargo run"]
+        OpenSSL["openssl s_client"]
     end
 
-    subgraph Container["Docker Container"]
-        KMS18["Cosmian KMS<br/>binary + OpenSSL"]
+    subgraph Compose["docker compose<br/>.mise/scripts/docker-compose.yml"]
+        KMS18["KMS services<br/>no-auth, TLS 1.2/1.3, kms-no-conf,<br/>non-root, oracle profile, ..."]
     end
 
-    Nix7 --> |load| Docker2
+    TestScript2 --> |up -d --wait| Docker2
     Docker2 --> KMS18
-    TestScript2 --> |run + probe| KMS18
+    OpenSSL --> |TLS 1.2 / 1.3 handshakes| KMS18
+    Ckms --> |sym keys create| KMS18
+    TestScript2 --> |curl /version, /ui/index.html| KMS18
 ```
 
 #### Sequence Diagram
 
 ```mermaid
 sequenceDiagram
-    participant Test as docker test script
-    participant Nix as Nix build
-    participant Docker as Docker
-    participant KMS as KMS container
+    participant Task as test:docker task
+    participant Script as test_docker_image.sh
+    participant Compose as docker compose
+    participant KMS as KMS containers
+    participant Ckms as ckms (cargo run)
 
-    Test->>Nix: build Docker image
-    Nix-->>Test: image loaded
-    Test->>Docker: run container
-    Docker->>KMS: start process
-    Test->>KMS: curl /health
-    KMS-->>Test: HTTP 200
-    Test->>KMS: openssl s_client -connect
-    KMS-->>Test: TLS 1.3 handshake OK
-    Test->>KMS: verify cipher suite per variant
-    KMS-->>Test: FIPS or non-FIPS ciphers
+    Task->>Task: export KMS_TLS_CONFIG_FLAVOR
+    Task->>Script: run
+    Script->>Compose: up -d --wait (image from DOCKER_IMAGE_NAME)
+    Compose->>KMS: start services
+    KMS-->>Compose: healthchecks pass
+    Script->>Ckms: sym keys create (HTTP and mTLS configs)
+    Ckms->>KMS: create keys
+    Script->>KMS: openssl s_client TLS 1.2 / 1.3 (TLS 1.2 rejected on TLS 1.3-only ports)
+    KMS-->>Script: handshake results
+    Script->>KMS: curl /ui/index.html, /version (no-config, non-root)
+    KMS-->>Script: HTTP 200 + version JSON
+    Script->>KMS: assert FIPS or non-FIPS build in /version
+    Script->>Compose: load balancer shutdown + Oracle TDE HSM tests
 ```
 
 ---
@@ -1685,42 +1723,52 @@ sequenceDiagram
 
 ### `test:load-balancer`
 
-**Description:** nginx load-balancer graceful shutdown test. Validates that in-flight requests complete during a rolling KMS restart behind nginx.
+**Description:** nginx load-balancer graceful shutdown test. Runs three KMS containers (`kms1`..`kms3`, sharing one PostgreSQL) behind `nginx-load-balancer` from `.mise/scripts/docker-compose.yml` and checks that `/health` through nginx stays 200 while at least one backend is up, answers 502/504 with none, and recovers to 200 once the backends are restored. The same script also runs at the end of `test:docker`.
 
 #### Architecture Overview
 
 ```mermaid
 graph TB
-    subgraph Host19["Host"]
-        Nginx["nginx<br/>reverse proxy"]
-        KMS_A["KMS instance A"]
-        KMS_B["KMS instance B"]
+    subgraph Compose2["docker compose<br/>.mise/scripts/docker-compose.yml"]
+        Nginx["nginx-load-balancer"]
+        KMS_1["kms1"]
+        KMS_2["kms2"]
+        KMS_3["kms3"]
+        PG[("postgres")]
     end
 
-    Nginx --> |upstream| KMS_A
-    Nginx --> |upstream| KMS_B
+    Nginx --> |upstream| KMS_1
+    Nginx --> |upstream| KMS_2
+    Nginx --> |upstream| KMS_3
+    KMS_1 --> PG
+    KMS_2 --> PG
+    KMS_3 --> PG
 ```
 
 #### Sequence Diagram
 
 ```mermaid
 sequenceDiagram
-    participant Test as load-balancer script
-    participant Nginx as nginx
-    participant KMS_A as KMS A
-    participant KMS_B as KMS B
+    participant Test as test_lb_kms_shutdown.sh
+    participant Nginx as nginx-load-balancer
+    participant KMS as kms1 / kms2 / kms3
 
-    Test->>KMS_A: start
-    Test->>KMS_B: start
-    Test->>Nginx: configure upstream A+B
-    Test->>Nginx: flood concurrent requests
-    loop rolling restart
-        Test->>KMS_A: SIGTERM
-        KMS_A->>KMS_A: drain in-flight
-        KMS_A-->>Test: connections closed gracefully
-        Test->>KMS_A: restart
-    end
-    Nginx-->>Test: zero failed requests
+    Test->>Nginx: recreate to pick up nginx.conf
+    Test->>KMS: start postgres, kms1, kms2, kms3 (if not running)
+    Test->>Nginx: GET /health
+    Nginx-->>Test: 200 (baseline)
+    Test->>KMS: docker compose stop kms3
+    Test->>Nginx: GET /health
+    Nginx-->>Test: 200
+    Test->>KMS: docker compose stop kms2
+    Test->>Nginx: GET /health
+    Nginx-->>Test: 200
+    Test->>KMS: docker compose stop kms1
+    Test->>Nginx: GET /health
+    Nginx-->>Test: 502 or 504 (no backend)
+    Test->>KMS: start kms1, kms2, kms3
+    Test->>Nginx: poll GET /health (up to 20 s)
+    Nginx-->>Test: 200 (recovered)
 ```
 
 ---

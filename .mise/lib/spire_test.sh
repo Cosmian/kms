@@ -109,12 +109,21 @@ spire_ensure_certs() {
 }
 
 # Build auth_verifier and echo the binary path.
+#
+# Callers invoke this inside `$(...)`, where `set -e` is not inherited, so every
+# step reports failure explicitly: a failed build must never fall back to a stale
+# `target/debug/auth_verifier`. `print_error` exits the command-substitution
+# subshell with status 1, which the caller's `VAR="$(...)"` assignment propagates.
 spire_build_auth_verifier() {
   local repo_root="$1"
-  cargo build --manifest-path "${repo_root}/authentication/Cargo.toml" --bin auth_verifier >&2
+  local manifest="${repo_root}/authentication/Cargo.toml"
+  cargo build --manifest-path "${manifest}" --bin auth_verifier >&2 ||
+    print_error "cargo build of auth_verifier failed (${manifest})"
   local target_dir bin
   target_dir="$(cd "${repo_root}/authentication" && cargo metadata --no-deps --format-version 1 |
-    python3 -c "import sys,json; m=json.load(sys.stdin); print(m['target_directory'])")"
+    python3 -c "import sys,json; m=json.load(sys.stdin); print(m['target_directory'])")" ||
+    print_error "cannot determine the cargo target directory of ${manifest}"
+  [[ -n "${target_dir}" ]] || print_error "empty cargo target directory for ${manifest}"
   bin="${target_dir}/debug/auth_verifier"
   [[ -x "${bin}" ]] || print_error "auth-verifier binary not found after build: ${bin}"
   echo "${bin}"

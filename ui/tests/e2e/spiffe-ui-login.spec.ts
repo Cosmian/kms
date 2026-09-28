@@ -1,10 +1,13 @@
 /**
- * SPIFFE JWT-SVID — Web UI browser login E2E test.
+ * SPIFFE JWT-SVID — Web UI session E2E test.
  *
- * Validates that a user can paste a SPIRE-issued JWT-SVID into the Web UI's
- * "SPIFFE JWT-SVID" login form (POST /ui/login_svid) and reach the
- * authenticated application, with the session identity resolved to the
- * SPIFFE ID carried by the token's `sub` claim.
+ * The Web UI has no SPIFFE login form: the session is established by a gateway that
+ * posts a JWT-SVID to `POST /ui/login_svid`. This test plays the gateway (the request
+ * shares its cookie jar with the browser context), then loads the SPA and checks that
+ * it resolves the session identity to the SPIFFE ID carried by the token's `sub` claim.
+ *
+ * Requires a real UI build served by the KMS (`ui/dist`); a placeholder index.html
+ * cannot render the SPA.
  */
 import { expect, test } from "@playwright/test";
 
@@ -12,38 +15,32 @@ const KMS_URL = process.env.PLAYWRIGHT_KMS_URL ?? "https://127.0.0.1:9998";
 const JWT_SVID_TOKEN = process.env.TEST_JWT_SVID_TOKEN;
 const EXPECTED_SPIFFE_ID = process.env.TEST_SPIFFE_ID ?? "spiffe://cosmian-test-a.local/webui-demo-user";
 
-test.describe("SPIFFE JWT-SVID Web UI login", () => {
+test.describe("SPIFFE JWT-SVID Web UI session", () => {
     test.skip(!JWT_SVID_TOKEN, "TEST_JWT_SVID_TOKEN environment variable not set");
 
-    test("logs in via the SPIFFE JWT-SVID form and reaches the authenticated UI", async ({ page }) => {
-        await page.goto(`${KMS_URL}/ui/login`, { waitUntil: "domcontentloaded" });
+    test("advertises the SPIFFE auth method", async ({ request }) => {
+        const response = await request.get(`${KMS_URL}/ui/auth_method`, { ignoreHTTPSErrors: true });
+        expect(response.status()).toBe(200);
+        const data = await response.json();
+        expect(data.auth_methods).toContain("SPIFFE");
+    });
 
-        // The SPIFFE method may be primary (form shown directly) or secondary
-        // (behind a button or dropdown), depending on server auth_methods order.
-        const spiffeForm = page.getByTestId("spiffe-login-form");
-        const secondaryBtn = page.getByTestId("login-secondary-btn");
-        const secondaryDropdown = page.getByTestId("login-secondary-dropdown");
+    test("rejects an invalid JWT-SVID on /ui/login_svid", async ({ page }) => {
+        const response = await page.request.post(`${KMS_URL}/ui/login_svid`, {
+            data: { jwt_svid: `${JWT_SVID_TOKEN}tampered` },
+            ignoreHTTPSErrors: true,
+        });
+        expect(response.status()).toBe(401);
+    });
 
-        // Wait for at least one auth control to render
-        await Promise.race([
-            spiffeForm.waitFor({ state: "visible" }),
-            secondaryBtn.waitFor({ state: "visible" }),
-            secondaryDropdown.waitFor({ state: "visible" }),
-        ]).catch(() => {});
+    test("gateway-established session is picked up by the UI", async ({ page }) => {
+        const login = await page.request.post(`${KMS_URL}/ui/login_svid`, {
+            data: { jwt_svid: JWT_SVID_TOKEN },
+            ignoreHTTPSErrors: true,
+        });
+        expect(login.status()).toBe(200);
 
-        if (!(await spiffeForm.isVisible().catch(() => false))) {
-            if (await secondaryBtn.isVisible().catch(() => false)) {
-                await secondaryBtn.click();
-            } else if (await secondaryDropdown.isVisible().catch(() => false)) {
-                await secondaryDropdown.click();
-                await page.getByRole("menuitem", { name: /SPIFFE/i }).click();
-            }
-        }
-
-        await page.getByTestId("spiffe-svid-input").fill(JWT_SVID_TOKEN!);
-        await page.getByTestId("spiffe-login-submit").click();
-
-        await page.waitForURL(/\/ui\/locate/);
+        await page.goto(`${KMS_URL}/ui/locate`, { waitUntil: "domcontentloaded" });
         await expect(page.getByTestId("session-user-tag")).toContainText(EXPECTED_SPIFFE_ID);
     });
 });

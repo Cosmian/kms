@@ -3584,6 +3584,48 @@ paths:
         '502':
           description: Cosmian authentication server unreachable or returned an unexpected response
 
+  /ui/login_svid:
+    post:
+      tags: [UI Auth]
+      summary: Establish a Web UI session from a SPIFFE JWT-SVID
+      description: |
+        Intended for a gateway / BFF in front of the Web UI. Validates the posted JWT-SVID
+        (signature, issuer, expiry and audience) against the JWT issuers configured with
+        `--jwt-auth-provider` when `--jwt-svid-auth` is enabled, then stores the SPIFFE ID
+        (the `sub` claim, which must start with `spiffe://`) in the session cookie. Tokens
+        without a `spiffe://` subject (for example ordinary OIDC tokens carrying only an
+        `email`) and tokens without an `aud` claim are rejected. If validation fails the JWKS
+        is refreshed once and the token re-validated, so a SPIRE signing-key rotation does
+        not require a restart.
+      operationId: uiLoginSvid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jwt_svid]
+              properties:
+                jwt_svid:
+                  type: string
+                  description: The raw JWT-SVID (no `Bearer ` prefix)
+      responses:
+        '200':
+          description: Session established
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [next_step]
+                properties:
+                  next_step:
+                    type: string
+                    enum: [Authenticated]
+        '401':
+          description: The JWT-SVID is invalid, expired, has the wrong audience or is not a SPIFFE JWT-SVID
+        '500':
+          description: '`--jwt-svid-auth` is not enabled, or the session could not be stored'
+
   /ui/callback:
     get:
       tags: [UI Auth]
@@ -3646,8 +3688,10 @@ paths:
       summary: Auth method configuration
       description: >-
         Returns the authentication methods configured for the web UI as an ordered
-        `auth_methods` array (priority first: OIDC/JWT, then auth-verifier
-        username/password, then client certificate). The singular `auth_method`
+        `auth_methods` array (priority first: OIDC/JWT, then SPIFFE, then auth-verifier
+        username/password, then client certificate). `SPIFFE` is advertised when
+        `--jwt-svid-auth` is enabled; the session is established out of band through
+        `/ui/login_svid`. The singular `auth_method`
         field is the primary method (auth_methods[0]) or `None`, retained for
         backward compatibility.
       operationId: uiAuthMethod

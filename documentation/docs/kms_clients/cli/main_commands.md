@@ -3472,7 +3472,7 @@ Fetch a SPIFFE JWT-SVID from the local SPIRE Agent's Workload API and use it as 
 
 `--spiffe-id <SPIFFE_ID>` The SPIFFE ID of the JWT-SVID to request, when the local agent serves more than one identity to this workload (optional — omit to accept whichever identity the agent returns)
 
-`--socket-path <SOCKET_PATH>` Path to the local SPIRE Agent Workload API Unix domain socket (e.g. `/tmp/spire-agent/public/api.sock` or a `unix:...` endpoint string accepted by `spiffe::WorkloadApiClient::connect_to`). When omitted, connects using the standard `SPIFFE_ENDPOINT_SOCKET` environment variable
+`--socket-path <SOCKET_PATH>` Local SPIRE Agent Workload API endpoint: an absolute socket path (e.g. `/tmp/spire-agent/public/api.sock`) or a `unix:///path` / `tcp://host:port` URI. When omitted, the `SPIFFE_ENDPOINT_SOCKET` environment variable is used
 
 
 
