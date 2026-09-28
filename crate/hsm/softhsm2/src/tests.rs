@@ -26,8 +26,8 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
         slot_id_for_tests: slot,
         rsa_oaep_digest: Some(shared::TEST_RSA_OAEP_DIGEST),
         threads: 4,
-        // SoftHSM2 rejects RSA-OAEP C_WrapKey and RSA encryption with
-        // CKR_ARGUMENTS_BAD in its FIPS build; OAEP encryption remains covered.
+        // SoftHSM2 2.6.1 returns CKR_ARGUMENTS_BAD from CKM_RSA_PKCS_OAEP
+        // C_WrapKey even with a preallocated RSA-sized output buffer.
         supports_rsa_wrap: false,
     })
 }
@@ -57,10 +57,6 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     if cfg.supports_rsa_wrap {
         shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
     }
-    #[cfg(feature = "non-fips")]
-    shared::rsa_pkcs_encrypt(&slot)?;
-    #[cfg(feature = "non-fips")]
-    shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
     shared::aes_gcm_encrypt(&slot)?;
     shared::aes_cbc_encrypt(&slot)?;
     shared::aes_cbc_multi_round(&slot)?;
@@ -71,6 +67,11 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
     #[cfg(feature = "non-fips")]
     shared::eddsa_sign_all_curves(&slot)?;
+    // SoftHSM2 FIPS rejects RSA-OAEP-SHA256 encryption with CKR_ARGUMENTS_BAD(7);
+    // only SHA1 OAEP is supported (see resident_rsa2048_encrypt_oaep_sha256
+    // manifest). multi_threaded_rsa uses TEST_RSA_OAEP_DIGEST, which is SHA256 in
+    // FIPS and SHA1 in non-fips, so gate it behind non-fips.
+    #[cfg(feature = "non-fips")]
     shared::multi_threaded_rsa(&slot, shared::TEST_RSA_OAEP_DIGEST, cfg.threads)?;
     shared::get_key_metadata(&slot, true)?;
     shared::list_objects(&slot)?;
@@ -173,24 +174,14 @@ fn test_hsm_softhsm2_rsa_key_wrap() -> HResult<()> {
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_rsa_pkcs_encrypt() -> HResult<()> {
-    #[cfg(not(feature = "non-fips"))]
-    return Ok(());
-    #[cfg(feature = "non-fips")]
-    {
-        let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-        shared::rsa_pkcs_encrypt(&slot)
-    }
+    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::rsa_pkcs_encrypt(&slot)
 }
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_rsa_oaep_encrypt() -> HResult<()> {
-    #[cfg(not(feature = "non-fips"))]
-    return Ok(());
-    #[cfg(feature = "non-fips")]
-    {
-        let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-        shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)
-    }
+    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)
 }
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
@@ -276,6 +267,10 @@ fn test_hsm_softhsm2_eddsa_sign_all_curves() -> HResult<()> {
     shared::eddsa_sign_all_curves(&slot)
 }
 
+// SoftHSM2 FIPS rejects RSA-OAEP-SHA256 (multi_threaded_rsa uses
+// TEST_RSA_OAEP_DIGEST = SHA256 in FIPS), so gate behind non-fips where the
+// digest is SHA1 (supported).
+#[cfg(feature = "non-fips")]
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {

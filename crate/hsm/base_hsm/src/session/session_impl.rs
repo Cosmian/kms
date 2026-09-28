@@ -2819,7 +2819,11 @@ impl Session {
             }
         };
 
-        if trailing.is_empty() && content.first() == Some(&0x04) {
+        // A well-formed DER OCTET STRING (tag 0x04, exact length, no trailing
+        // bytes) wraps the raw point regardless of its first byte: NIST curves
+        // produce uncompressed points (`0x04 || X || Y`), while Ed25519/Ed448
+        // points are bare 32/57-byte encodings with no `0x04` prefix.
+        if trailing.is_empty() {
             Ok(content.to_vec())
         } else {
             Ok(der.to_vec())
