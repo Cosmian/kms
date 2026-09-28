@@ -1,4 +1,4 @@
-# PKCS#11 v3.0 review follow-ups: OIDC PIN length, `C_GetInterface` version matching, and message-AEAD IV handling
+# PKCS#11 v3.0 review follow-ups: OIDC PIN length, `C_GetInterface` version matching and name bounds, and message-AEAD IV handling
 
 ## Bug Fixes
 
@@ -49,6 +49,16 @@
   entries rather than 1, so a caller passing a 1-slot buffer receives `CKR_BUFFER_TOO_SMALL`
   (with `*pulCount` set to 2) where it previously succeeded — the spec's two-call convention
   handles this correctly, but a caller with a hardcoded 1-entry buffer must be rebuilt
+- Harden `C_GetInterface`'s `pInterfaceName` comparison, which used `CStr::from_ptr` and so
+  walked caller-supplied memory until it found a NUL. Unlike `pPin`/`pUsername`, §5.4.6's
+  `pInterfaceName` carries no length argument, leaving nothing but the caller's promise of a
+  terminator to bound the read — a host that passes an unterminated buffer turned a name
+  comparison into an unbounded out-of-bounds read, inconsistent with the deliberate
+  `MAX_USERNAME_LEN`/`MAX_PIN_LEN` caps already applied to the length-carrying arguments. The
+  comparison now runs against `PKCS11_INTERFACE_NAME` one byte at a time, stopping at the first
+  difference, so at most 8 bytes — the length of `"PKCS 11"` with its terminator, and never more
+  than a legitimately matching caller would have supplied — are ever read. No behavioural change:
+  the same names are accepted and the same ones rejected with `CKR_ARGUMENTS_BAD`
 
 ## Documentation
 
