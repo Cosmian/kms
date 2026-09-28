@@ -601,6 +601,9 @@ print_status "Step 10: Running Playwright E2E tests with JWT-SVID..."
 export PLAYWRIGHT_KMS_URL="https://127.0.0.1:9998"
 export TEST_JWT_SVID_TOKEN="${JWT_TOKEN}"
 export TEST_SPIFFE_ID="${WORKLOAD_SPIFFE_ID}"
+if [[ "${STRICT}" -eq 1 ]]; then
+  export TEST_JWT_STRICT=1
+fi
 
 # The UI lockfile requires pnpm >= 10, which is not pre-installed on CI runners
 # used by the spire job. Bootstrap it from npm when it is missing or too old.
