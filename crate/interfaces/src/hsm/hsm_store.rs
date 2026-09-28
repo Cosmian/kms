@@ -1370,7 +1370,7 @@ fn check_basic_compatibility(
 /// - the attributes of the private key
 /// - the `HsmKeypairAlgorithm` to delegate key generation to (RSA or EC)
 #[cfg(not(feature = "non-fips"))]
-fn hsm_keypair_algorithm(attributes: &Attributes) -> Option<HsmKeypairAlgorithm> {
+const fn hsm_keypair_algorithm(attributes: &Attributes) -> Option<HsmKeypairAlgorithm> {
     match attributes.cryptographic_algorithm {
         Some(CryptographicAlgorithm::RSA) => Some(HsmKeypairAlgorithm::RSA),
         Some(

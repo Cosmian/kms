@@ -65,6 +65,14 @@ pub struct HsmTestConfig {
     pub supports_rsa_wrap: bool, // whether RSA OAEP wrap/unwrap is supported
 }
 
+/// RSA-OAEP digest used by shared HSM tests for the selected build variant.
+#[cfg(feature = "non-fips")]
+pub const TEST_RSA_OAEP_DIGEST: RsaOaepDigest = RsaOaepDigest::SHA1;
+
+/// RSA-OAEP digest used by shared HSM tests for the selected build variant.
+#[cfg(not(feature = "non-fips"))]
+pub const TEST_RSA_OAEP_DIGEST: RsaOaepDigest = RsaOaepDigest::SHA256;
+
 fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0_u8; T];
     SysRng
@@ -783,6 +791,10 @@ pub fn rsa_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
     ];
     let mut tested = 0;
     for (name, algorithm, ckm) in &algorithms {
+        #[cfg(not(feature = "non-fips"))]
+        if matches!(algorithm, HsmSigningAlgorithm::Sha1WithRsa) {
+            continue;
+        }
         if !supported_mechanisms.contains(ckm) {
             warn!("{name} (CKM {ckm}) not supported by HSM, skipping");
             continue;
