@@ -1,3 +1,39 @@
+# PKCS#11 v3.0 review follow-ups: OIDC PIN length and `C_GetInterface` version matching
+
+## Bug Fixes
+
+### PKCS#11 provider
+
+- Fix `C_Login`/`C_LoginUser` rejecting valid logins with `CKR_ARGUMENTS_BAD` when
+  `pkcs11_use_pin_as_access_token = true` is set in `ckms.toml`. In that mode the "PIN" is
+  not a PIN but a full OAuth2/OIDC bearer token, and the shared 4 KiB defense-in-depth cap
+  on FFI argument lengths refused any JWT above that size — Entra/Azure AD access tokens
+  carrying group, role or `wids` claims routinely exceed 4 KiB. The cap is now split in two:
+  `MAX_USERNAME_LEN` (4 KiB, unchanged, for `pUsername`) and `MAX_PIN_LEN` (64 KiB, for
+  `pPin`), so the allocation stays trivially bounded while covering any realistic token
+- Fix `C_GetInterface` reading OASIS Cryptoki v3.0/v3.1 §5.4.6's version rule in the
+  opposite direction from the HSM loader side of this codebase
+  (`cosmian_kms_base_hsm::pkcs11_v3::get_v3_function_list`). Rule 2 — "if `pVersion` is not
+  `NULL_PTR`, the version of the interface returned must match" — is an *exact*-match rule,
+  but the provider accepted any minor version at or below the one it implements and answered
+  with its newest function table, so a caller requesting `{3, 0}` (exactly what the spec's
+  own `C_GetInterface` example does) received a table declaring `{3, 1}` in its `version`
+  field. Rather than keep the relaxation, the module now publishes the same "PKCS 11"
+  function table as *two* interface entries — one at the implemented version, one at
+  `{3, 0}` — which §5.4.5 explicitly allows, since a library may expose any number of
+  interfaces. v3.0 consumers keep working, a conformance suite re-reading
+  `pFunctionList->version` now sees `{3, 0}`, and both halves of the codebase implement the
+  same reading of the same rule. Behavioural change: `C_GetInterfaceList` now reports **2**
+  entries rather than 1, so a caller passing a 1-slot buffer receives `CKR_BUFFER_TOO_SMALL`
+  (with `*pulCount` set to 2) where it previously succeeded — the spec's two-call convention
+  handles this correctly, but a caller with a hardcoded 1-entry buffer must be rebuilt
+
+## Documentation
+
+- Correct the `C_GetInterface` spec citations in `pkcs11_v3.rs` from "§5.2" to "§5.4.6"
+  (§5.2 covers variable-length output buffers; §5.4.5/§5.4.6 are
+  `C_GetInterfaceList`/`C_GetInterface`), and quote rule 2 verbatim
+
 # PKCS#11 v3.0 consumer-side mechanisms (EdDSA, HKDF, message-AEAD) and Kryoptic conformance suite
 
 ## Features
@@ -33,7 +69,7 @@
   `CKK_GENERIC_SECRET`
 - Fix `get_v3_function_list()` requesting the "PKCS 11" interface from
   `C_GetInterface` with a hardcoded `pVersion = {major: 3, minor: 0}` (an exact-match
-  request per OASIS Cryptoki v3.1 §5.2). This rejected any strictly conformant
+  request per OASIS Cryptoki v3.1 §5.4.6). This rejected any strictly conformant
   library whose "PKCS 11" interface is versioned 3.1 or 3.2 rather than exactly 3.0,
   causing `HsmLib` to wrongly report *no* v3.0 support at all for a fully
   v3.1/v3.2-capable library. Now requests `pVersion = NULL_PTR` (any version, per

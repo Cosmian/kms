@@ -604,9 +604,9 @@ fn test_ssh_key_discovery() -> Pkcs11Result<()> {
 }
 
 /// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): `C_GetInterfaceList` must
-/// implement the standard two-call convention and return the sole "PKCS 11" v3.0 interface;
-/// `C_GetInterface` must resolve that same interface both when `pInterfaceName`/`pVersion` are
-/// null (any interface/version accepted) and when they exactly match.
+/// implement the standard two-call convention and return both "PKCS 11" interface entries;
+/// `C_GetInterface` must resolve an interface both when `pInterfaceName`/`pVersion` are null
+/// (any interface/version accepted) and when they exactly match.
 #[test]
 #[serial]
 #[expect(unsafe_code)]
@@ -629,38 +629,43 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
         unsafe { C_GetInterfaceList(std::ptr::null_mut(), &raw mut count) },
         CKR_OK
     );
-    assert_eq!(count, 1, "this module exposes exactly one interface");
+    assert_eq!(
+        count, 2,
+        "this module exposes the same function table under two interface versions"
+    );
 
     // Second call: too-small buffer must report CKR_BUFFER_TOO_SMALL and the required count.
-    let mut zero_count: CK_ULONG = 0;
+    let mut short_count: CK_ULONG = 1;
     let mut interfaces = [CK_INTERFACE {
         pInterfaceName: std::ptr::null_mut(),
         pFunctionList: std::ptr::null_mut(),
         flags: 0,
-    }; 1];
+    }; 2];
     assert_eq!(
-        // SAFETY: `interfaces` is a valid 1-element buffer; `zero_count` (0) under-reports its
+        // SAFETY: `interfaces` is a valid 2-element buffer; `short_count` (1) under-reports its
         // capacity on purpose to exercise the too-small path.
-        unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut zero_count) },
+        unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut short_count) },
         CKR_BUFFER_TOO_SMALL
     );
-    assert_eq!(zero_count, 1);
+    assert_eq!(short_count, 2);
 
-    // Third call: correctly sized buffer must succeed and return the "PKCS 11" interface.
-    let mut full_count: CK_ULONG = 1;
+    // Third call: correctly sized buffer must succeed and return the "PKCS 11" interfaces.
+    let mut full_count: CK_ULONG = 2;
     assert_eq!(
-        // SAFETY: `interfaces` is a valid 1-element buffer, matching `full_count`.
+        // SAFETY: `interfaces` is a valid 2-element buffer, matching `full_count`.
         unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut full_count) },
         CKR_OK
     );
-    assert_eq!(full_count, 1);
-    assert!(!interfaces[0].pInterfaceName.is_null());
-    // SAFETY: `pInterfaceName` was just populated by a successful `C_GetInterfaceList` call
-    // above, and is guaranteed NUL-terminated by `PKCS11_INTERFACE_NAME`.
-    let name = unsafe { std::ffi::CStr::from_ptr(interfaces[0].pInterfaceName.cast()) };
-    assert_eq!(name.to_bytes(), b"PKCS 11");
+    assert_eq!(full_count, 2);
+    for interface in &interfaces {
+        assert!(!interface.pInterfaceName.is_null());
+        // SAFETY: `pInterfaceName` was just populated by a successful `C_GetInterfaceList` call
+        // above, and is guaranteed NUL-terminated by `PKCS11_INTERFACE_NAME`.
+        let name = unsafe { std::ffi::CStr::from_ptr(interface.pInterfaceName.cast()) };
+        assert_eq!(name.to_bytes(), b"PKCS 11");
+    }
 
-    // `C_GetInterface` with null name/version must resolve to the same sole interface.
+    // `C_GetInterface` with null name/version must resolve to the default (newest) interface.
     let mut interface_ptr: *mut CK_INTERFACE = std::ptr::null_mut();
     assert_eq!(
         // SAFETY: `pp_interface` is a valid stack out-parameter; name/version are
@@ -677,7 +682,8 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
     );
     assert!(!interface_ptr.is_null());
 
-    // `C_GetInterface` with a matching name and major version must also succeed.
+    // `C_GetInterface` with a matching name and the implemented version must also succeed, and
+    // — per §5.4.6 rule 2 — the interface handed back must really declare that version.
     let mut name_bytes = b"PKCS 11\0".to_vec();
     let mut version = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
@@ -696,12 +702,31 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
         },
         CKR_OK
     );
+    assert_eq!(
+        returned_version(interface_ptr),
+        (CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR)
+    );
+
     let backend_after_discovery = registered_backend()?;
     assert!(
         std::sync::Arc::ptr_eq(&backend_before_discovery, &backend_after_discovery),
         "interface discovery must not replace an already authenticated backend"
     );
     Ok(())
+}
+
+/// Reads back the `CK_VERSION` an interface declares in the first two bytes of its
+/// `pFunctionList`, the field every `CK_FUNCTION_LIST*` layout has carried since v2.0 and the one
+/// the spec's own `C_GetInterface` example prints. This is what a conformance suite inspects to
+/// check that §5.4.6 rule 2's "the version of the interface returned must match" was honoured.
+#[expect(unsafe_code)]
+fn returned_version(interface_ptr: *mut CK_INTERFACE) -> (u8, u8) {
+    assert!(!interface_ptr.is_null());
+    // SAFETY: `interface_ptr` was returned as non-null by a successful `C_GetInterface` call and
+    // points at one of this module's `static mut` `CK_INTERFACE`s, whose `pFunctionList` points
+    // at a `CK_FUNCTION_LIST_3_0` that begins with a `CK_VERSION`.
+    let version = unsafe { *(*interface_ptr).pFunctionList.cast::<CK_VERSION>() };
+    (version.major, version.minor)
 }
 
 /// `C_GetInterface` must reject an unknown interface name, an unsupported major version, and any
@@ -751,28 +776,29 @@ fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
         CKR_ARGUMENTS_BAD
     );
 
-    // A minor version *below* the implemented one (e.g. a v3.0 request against this v3.1
-    // implementation) is backward-compatible and must be accepted, not rejected — a v3.1
-    // interface is a superset of v3.0. Only a minor version *above* the implemented one is
-    // truly unsupported.
-    let mut compatible_minor = CK_VERSION {
+    // An exact `{3, 0}` request — the call the spec's own `C_GetInterface` example makes — must
+    // succeed and, per §5.4.6 rule 2, hand back an interface that really declares `{3, 0}`,
+    // not the newer table under a relaxed "backward-compatible" match.
+    let mut v3_0 = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: 0,
     };
     assert_eq!(
-        // SAFETY: `compatible_minor` and `interface_ptr` are valid stack values.
+        // SAFETY: `v3_0` and `interface_ptr` are valid stack values.
         unsafe {
             C_GetInterface(
                 std::ptr::null_mut(),
-                &raw mut compatible_minor,
+                &raw mut v3_0,
                 &raw mut interface_ptr,
                 0,
             )
         },
         CKR_OK
     );
-    assert!(!interface_ptr.is_null());
+    assert_eq!(returned_version(interface_ptr), (CRYPTOKI_VERSION_MAJOR, 0));
 
+    // A minor version this module publishes no interface for must be rejected: §5.4.6 rule 2 is
+    // an exact match, so there is nothing to return.
     let mut unsupported_minor = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: CRYPTOKI_VERSION_MINOR.saturating_add(1),
