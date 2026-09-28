@@ -44,7 +44,7 @@ pub struct AuditFileConfig {
 }
 
 /// Configuration for the `PostgreSQL` audit log sub-section.
-#[derive(Debug, Default, Args, Deserialize, Serialize, Clone)]
+#[derive(Default, Args, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct AuditPostgresConfig {
     /// `PostgreSQL` connection URL for the audit database.
@@ -82,6 +82,23 @@ pub struct AuditPostgresConfig {
     )]
     #[serde(rename = "instance_id")]
     pub audit_instance_id: Option<String>,
+}
+
+// Manual impl so `audit_postgres_url` is never printed in plaintext: keep this in sync
+// with `AuditBackendParams`'s own redacted `Debug` impl.
+impl std::fmt::Debug for AuditPostgresConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuditPostgresConfig")
+            .field(
+                "audit_postgres_url",
+                &self
+                    .audit_postgres_url
+                    .as_deref()
+                    .map(cosmian_kms_server_database::redact_connection_string),
+            )
+            .field("audit_instance_id", &self.audit_instance_id)
+            .finish()
+    }
 }
 
 /// Configuration for the structured audit event pipeline.
