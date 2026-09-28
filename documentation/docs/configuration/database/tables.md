@@ -110,6 +110,8 @@ Stores the tags attached to objects. Tags are used to locate objects by tag.
 The pair (`id`, `tag`) is unique.
 In PostgreSQL and SQLite it is declared `UNIQUE (id, tag)`; in MySQL (since 5.13.0) it is the composite `PRIMARY KEY (id, tag)`.
 
+A secondary index `idx_tags_tag_id` on (`tag`, `id`) supports Locate-by-tags lookups.
+
 ## parameters
 
 A generic key/value store used internally by the KMS for database metadata.

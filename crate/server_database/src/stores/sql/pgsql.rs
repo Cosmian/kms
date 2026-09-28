@@ -422,6 +422,7 @@ impl PgPool {
             "create-index-objects-state",
             "create-index-read_access-userid",
             "create-index-objects-wrapping-key-id",
+            "create-index-tags-tag-id",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;

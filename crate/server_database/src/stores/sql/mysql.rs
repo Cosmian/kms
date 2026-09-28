@@ -328,6 +328,7 @@ impl MySqlPool {
                 "idx_objects_wrapping_key_id",
                 "create-index-objects-wrapping-key-id",
             ),
+            ("tags", "idx_tags_tag_id", "create-index-tags-tag-id"),
         ] {
             let existing: Vec<mysql_async::Row> = conn
                 .exec(has_index_sql, (table, index_name))

@@ -183,6 +183,7 @@ impl SqlitePool {
         let idx_read_access_userid = pool
             .get_query("create-index-read_access-userid")?
             .to_owned();
+        let idx_tags_tag_id = pool.get_query("create-index-tags-tag-id")?.to_owned();
         let create_crypto_officer_activations = pool
             .get_query("create-table-crypto_officer_activations")?
             .to_owned();
@@ -202,6 +203,7 @@ impl SqlitePool {
             let idx_objects_owner = idx_objects_owner.clone();
             let idx_objects_state = idx_objects_state.clone();
             let idx_read_access_userid = idx_read_access_userid.clone();
+            let idx_tags_tag_id = idx_tags_tag_id.clone();
             let create_crypto_officer_activations = create_crypto_officer_activations.clone();
             let create_crls = create_crls.clone();
             let clean_objects = clean_objects.clone();
@@ -219,6 +221,7 @@ impl SqlitePool {
                             tx.execute(&idx_objects_owner, [])?;
                             tx.execute(&idx_objects_state, [])?;
                             tx.execute(&idx_read_access_userid, [])?;
+                            tx.execute(&idx_tags_tag_id, [])?;
                             tx.execute(
                                 &replace_dollars_with_qn(&create_crypto_officer_activations),
                                 [],
