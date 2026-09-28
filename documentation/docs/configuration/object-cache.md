@@ -1,20 +1,21 @@
-# Object Cache and Unwrapped Cache
+# Object, Unwrapped, and RotateName Caches
 
-The KMS server uses two in-memory caches backed by
+The KMS server uses three in-memory caches backed by
 [`moka::future::Cache`](https://docs.rs/moka/latest/moka/future/struct.Cache.html),
-a lock-free concurrent hash map. Both caches use sharding so multiple
+a lock-free concurrent hash map. All three caches use sharding so multiple
 Actix-web worker threads can read simultaneously without serialization.
 
----
+`ObjectCache` and `UnwrappedCache` serve software-backed object retrieval and
+key unwrapping. `RotateNameCache` serves keyset-generation resolution,
+especially for delegated HSM operations.
 
 ## Architecture overview
 
 ```mermaid
 graph TD
-    CALLER[Caller]
-
     CALLER -->|retrieve_object| DB[Database]
     CALLER -->|get_unwrapped| GU[get_unwrapped]
+    CALLER -->|find_by_rotate_name| RNC[RotateNameCache]
 
     DB -->|get| OC[ObjectCache]
     OC -->|miss| BS[(Backing Store<br/>SQLite / Postgres)]
@@ -22,19 +23,41 @@ graph TD
     GU -->|peek| UC[UnwrappedCache]
     UC -->|miss| CRYPTO[unwrap_object<br/>KEK unwrap]
 
+    RNC -->|miss| RESOLVE[Keyset resolution<br/>SQL / HSM scan]
+
     OC -->|stores| OC_VAL["wrapped ObjectWithMetadata<br/>+ fingerprint"]
     UC -->|stores| UC_VAL["unwrapped key material<br/>+ fingerprint of wrapped"]
+    RNC -->|stores| RNC_VAL["matching UIDs + attributes"]
 
     style BS fill:#f9f,stroke:#333
     style CRYPTO fill:#f99,stroke:#333
+    style RESOLVE fill:#f99,stroke:#333
     style OC fill:#9f9,stroke:#333
     style UC fill:#9f9,stroke:#333
+    style RNC fill:#9f9,stroke:#333
 ```
 
 | Cache | Key | Value | Miss path |
 |---|---|---|---|
 | **ObjectCache** | UID string | `Arc<ObjectWithMetadata>` (wrapped) + fingerprint | DB fetch → insert → return |
 | **UnwrappedCache** | UID string | unwrapped `Object` + fingerprint of wrapped | Crypto unwrap → insert → return |
+| **RotateNameCache** | `(name, generation, owner)` | matching UIDs + KMIP attributes | SQL query or HSM scan → insert → return |
+
+`RotateNameCache` is an implementation cache; it has no operator-facing
+configuration. It is bounded to 10,000 entries and uses a 2-second TTL. The
+cache is populated by `Database::find_by_rotate_name`, which resolves a keyset
+name to its generations across the configured object stores. For HSM-backed
+objects, a miss can require a PKCS#11 `C_FindObjects` scan followed by
+`C_GetAttributeValue` calls; a hit avoids that scan on the delegated
+Sign/Verify/Encrypt/Decrypt hot path.
+
+The cache key includes the requesting owner so one user's resolution cannot be
+reused for another user's objects. Explicit generation filters are also
+isolated from bare/latest lookups. After a rotation commits, the relevant
+bare/latest entry is invalidated immediately; the TTL remains a bounded
+staleness safeguard for paths that do not explicitly invalidate it. A rotation
+can therefore become visible immediately through the normal commit paths, while
+uncovered mutation paths are stale for at most the TTL.
 
 ---
 
@@ -155,6 +178,43 @@ moka eviction requires no explicit call:
 |---|---|---|
 | LRU | `max_capacity` exceeded | Least-recently-used entry evicted |
 | TTL | `time_to_idle` elapsed without access | Entry evicted |
+
+---
+
+## RotateNameCache
+
+**Source:** `crate/server_database/src/core/rotate_name_cache.rs`
+
+Caches the result of `Database::find_by_rotate_name`, the shared keyset lookup
+used to resolve `RotateName` and generation selectors. This is distinct from
+`ObjectCache`: it caches a multi-object keyset query, not an individual object.
+
+### Behavior
+
+| Property | Behavior |
+|---|---|
+| Key | `(name, generation, owner)` |
+| Value | `Vec<(UID, Attributes)>` for matching generations |
+| Default capacity | 10,000 entries |
+| TTL | 2 seconds |
+| Concurrency | Lock-free `moka::future::Cache` |
+| Invalidation | Bare/latest entry invalidated after rotation commit |
+
+On a miss, the existing multi-store lookup runs unchanged. On a hit, the
+database query or HSM slot scan is skipped. The owner is part of the key to
+preserve access isolation, and `generation` is part of the key to prevent an
+explicit historical lookup from sharing the bare/latest result.
+
+### Rotation visibility
+
+The SQL re-key/re-certify orchestrator and the dedicated HSM symmetric re-key
+path invalidate the keyset's bare/latest entry after the new generation is
+committed. New operations therefore see the new head immediately through those
+paths. The 2-second TTL bounds staleness for any future rotation path that does
+not yet perform explicit invalidation.
+
+`RotateNameCache` is internal and is not configurable through the server
+configuration file or command-line options.
 
 ---
 
