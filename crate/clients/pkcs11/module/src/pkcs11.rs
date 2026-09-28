@@ -356,11 +356,49 @@ pub static mut FUNC_LIST_3_0_V3_0: CK_FUNCTION_LIST_3_0 = CK_FUNCTION_LIST_3_0 {
 pub const PKCS11_INTERFACE_V3_0_MINOR: CK_BYTE = 0;
 
 /// ASCII name of the "PKCS 11" interface this module exposes, as required by the PKCS#11 v3.0
-/// spec (§5.4.6). NUL-terminated so that `C_GetInterface` can compare it safely without trusting
-/// an externally supplied length (the spec's `pInterfaceName` parameter carries none). Shared by
-/// both versioned entries: §5.4.6 matches on name *and* version independently, so two interfaces
-/// may legitimately share a name while differing in version.
+/// spec (§5.4.6). NUL-terminated, and its length doubles as the read bound
+/// [`interface_name_matches`] applies to the caller's `pInterfaceName` — the spec's parameter
+/// carries no length of its own. Shared by both versioned entries: §5.4.6 matches on name *and*
+/// version independently, so two interfaces may legitimately share a name while differing in
+/// version.
 pub const PKCS11_INTERFACE_NAME: &[u8] = b"PKCS 11\0";
+
+/// Compares a caller-supplied `pInterfaceName` against [`PKCS11_INTERFACE_NAME`] without
+/// reading more of it than a matching name would occupy.
+///
+/// `C_GetInterface`'s `pInterfaceName` (§5.4.6) carries no length argument, unlike every other
+/// caller-supplied string this module accepts, so the only thing bounding a read of it is a NUL
+/// the host promises to have written. `CStr::from_ptr` trusts that promise unconditionally and
+/// walks memory until it finds one, which turns a buggy host's unterminated buffer into an
+/// *unbounded* out-of-bounds read. The length-carrying arguments are already capped against the
+/// same class of caller bug — see [`MAX_USERNAME_LEN`] and [`MAX_PIN_LEN`] — and this is their
+/// no-length counterpart.
+///
+/// The bound is the tightest one this parameter admits: the only name that can ever match is
+/// [`PKCS11_INTERFACE_NAME`], so the comparison stops at the first differing byte and never
+/// looks past that constant's terminating NUL. A mismatched, truncated or unterminated buffer is
+/// therefore read for at most `PKCS11_INTERFACE_NAME.len()` bytes — never more than a
+/// legitimately matching caller would have supplied. This cannot make an unterminated buffer
+/// *sound* to pass (no C-string API can: the pointer has to be readable for at least one byte),
+/// but it converts an unbounded walk into a fixed, auditable 8-byte one.
+///
+/// # Safety
+/// `ptr` must be non-null and readable up to and including its first NUL byte, or for
+/// <code>[PKCS11_INTERFACE_NAME].len()</code> bytes, whichever comes first.
+pub unsafe fn interface_name_matches(ptr: CK_UTF8CHAR_PTR) -> bool {
+    PKCS11_INTERFACE_NAME
+        .iter()
+        .enumerate()
+        .all(|(index, expected)| {
+            // SAFETY: `all` short-circuits, so `index` is only reached once every preceding byte
+            // compared equal to `PKCS11_INTERFACE_NAME`'s — all of which are non-NUL, the
+            // terminator being the final element. The caller's first NUL is therefore at `index`
+            // or later, so this byte is within the range the caller guarantees is readable.
+            #[expect(unsafe_code)]
+            let actual = unsafe { *ptr.add(index) };
+            actual == *expected
+        })
+}
 
 /// The newest "PKCS 11" interface this module exposes through
 /// `C_GetInterfaceList`/`C_GetInterface`, backed by `FUNC_LIST_3_0`, and the one returned for a
@@ -1869,3 +1907,49 @@ cryptoki_fn_not_supported!(
 );
 
 cryptoki_fn_not_supported!(C_MessageVerifyFinal, hSession: CK_SESSION_HANDLE);
+
+#[cfg(test)]
+#[expect(unsafe_code)]
+mod tests {
+    use super::{PKCS11_INTERFACE_NAME, interface_name_matches};
+
+    /// Calls the helper with `bytes` standing in for the caller's *entire* allocation.
+    ///
+    /// Each case below is sized so that reading one byte further than the helper is supposed
+    /// to would be a genuine out-of-bounds read. Plain `cargo test` will not fault on that —
+    /// these assertions check the boolean result, and the bound is established by reading the
+    /// helper — but the sizing means a sanitizer or Miri run would flag a regression, and it
+    /// keeps the intent of each case unambiguous.
+    fn matches(bytes: &[u8]) -> bool {
+        unsafe { interface_name_matches(bytes.as_ptr().cast_mut()) }
+    }
+
+    #[test]
+    fn accepts_only_the_exact_interface_name() {
+        assert!(matches(PKCS11_INTERFACE_NAME));
+        assert!(matches(b"PKCS 11\0trailing garbage"));
+    }
+
+    #[test]
+    fn rejects_other_names_without_reading_past_their_nul() {
+        // Differs at byte 0: only that byte is read.
+        assert!(!matches(b"\0"));
+        assert!(!matches(b"Vendor 11\0"));
+        // A prefix: the caller's NUL at index 4 differs from the expected ' ', so the
+        // comparison stops there rather than running into whatever follows.
+        assert!(!matches(b"PKCS\0"));
+        // Longer than the expected name: byte 7 is the caller's '1' against the expected
+        // terminating NUL, so the comparison ends inside the caller's own buffer.
+        assert!(!matches(b"PKCS 111\0"));
+    }
+
+    #[test]
+    fn stops_at_the_length_of_the_expected_name_when_unterminated() {
+        // Worst case: a buffer with no NUL at all whose bytes match throughout. The helper
+        // must stop after `PKCS11_INTERFACE_NAME.len()` bytes; sizing the allocation to
+        // exactly that makes any further read out of bounds.
+        let unterminated = *b"PKCS 111";
+        assert_eq!(unterminated.len(), PKCS11_INTERFACE_NAME.len());
+        assert!(!matches(&unterminated));
+    }
+}

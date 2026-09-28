@@ -690,8 +690,9 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
         minor: CRYPTOKI_VERSION_MINOR,
     };
     assert_eq!(
-        // SAFETY: `name_bytes` is NUL-terminated and well within `MAX_INTERFACE_NAME_LEN`;
-        // `version` is a valid, properly-aligned `CK_VERSION` on the stack.
+        // SAFETY: `name_bytes` is NUL-terminated, so it satisfies `C_GetInterface`'s
+        // `pInterfaceName` contract; `version` is a valid, properly-aligned `CK_VERSION` on
+        // the stack.
         unsafe {
             C_GetInterface(
                 name_bytes.as_mut_ptr().cast::<CK_UTF8CHAR>(),
@@ -747,8 +748,8 @@ fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
     // Unknown interface name.
     let mut bad_name = b"NOT PKCS 11\0".to_vec();
     assert_eq!(
-        // SAFETY: `bad_name` is NUL-terminated and within `MAX_INTERFACE_NAME_LEN`;
-        // `interface_ptr` is a valid stack out-parameter.
+        // SAFETY: `bad_name` is NUL-terminated, so it satisfies `C_GetInterface`'s
+        // `pInterfaceName` contract; `interface_ptr` is a valid stack out-parameter.
         unsafe {
             C_GetInterface(
                 bad_name.as_mut_ptr().cast::<CK_UTF8CHAR>(),

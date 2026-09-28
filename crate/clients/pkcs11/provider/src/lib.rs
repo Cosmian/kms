@@ -14,8 +14,8 @@ use cosmian_logger::reexport::tracing::Level;
 use cosmian_pkcs11_module::{
     ModuleError,
     pkcs11::{
-        FUNC_LIST, FUNC_LIST_3_0, FUNC_LIST_3_0_V3_0, PKCS11_INTERFACE, PKCS11_INTERFACE_NAME,
-        PKCS11_INTERFACE_V3_0, PKCS11_INTERFACE_V3_0_MINOR,
+        FUNC_LIST, FUNC_LIST_3_0, FUNC_LIST_3_0_V3_0, PKCS11_INTERFACE, PKCS11_INTERFACE_V3_0,
+        PKCS11_INTERFACE_V3_0_MINOR, interface_name_matches,
     },
     traits::{register_backend, register_backend_if_absent, register_login_fn, register_pin_mode},
 };
@@ -331,9 +331,11 @@ pub unsafe extern "C" fn C_GetInterfaceList(
 ///   fork-safety claim), and a non-zero request must be matched by *all* supplied flags.
 ///
 /// # Safety
-/// `ppInterface` must be non-null and writable. If non-null, `pInterfaceName` must point to a
-/// exact NUL-terminated string `"PKCS 11"`; if
-/// non-null, `pVersion` must point to a valid `CK_VERSION`.
+/// `ppInterface` must be non-null and writable. If non-null, `pInterfaceName` must be readable
+/// up to and including a NUL byte, or for 8 bytes (the length of `"PKCS 11"` with its
+/// terminator), whichever comes first — a name *other* than `"PKCS 11"` is not undefined
+/// behavior, it is simply rejected with `CKR_ARGUMENTS_BAD`. If non-null, `pVersion` must point
+/// to a valid `CK_VERSION`.
 #[unsafe(no_mangle)]
 #[expect(unsafe_code)]
 pub unsafe extern "C" fn C_GetInterface(
@@ -351,12 +353,11 @@ pub unsafe extern "C" fn C_GetInterface(
         return CKR_ARGUMENTS_BAD;
     }
     if !p_interface_name.is_null() {
-        // SAFETY: PKCS#11 requires `pInterfaceName` to reference a valid NUL-terminated string.
-        let matches = unsafe {
-            std::ffi::CStr::from_ptr(p_interface_name.cast()).to_bytes_with_nul()
-                == PKCS11_INTERFACE_NAME
-        };
-        if !matches {
+        // SAFETY: PKCS#11 requires `pInterfaceName` to reference a NUL-terminated string.
+        // `interface_name_matches` additionally stops at the length of the only name that
+        // could match, so a host that forgets the terminator causes a bounded read rather
+        // than the unbounded walk `CStr::from_ptr` would perform.
+        if !unsafe { interface_name_matches(p_interface_name) } {
             return CKR_ARGUMENTS_BAD;
         }
     }
