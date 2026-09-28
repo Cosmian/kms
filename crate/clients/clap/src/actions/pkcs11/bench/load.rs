@@ -78,6 +78,82 @@ impl ConcreteMode {
     }
 }
 
+/// Expands the `all` benchmark mode for a FIPS build.
+#[cfg(not(feature = "non-fips"))]
+fn all_modes() -> Vec<ConcreteMode> {
+    vec![
+        ConcreteMode::EncryptAesCbc,
+        ConcreteMode::EncryptAesGcm,
+        ConcreteMode::EncryptRsaPkcs,
+        ConcreteMode::DecryptAesCbc,
+        ConcreteMode::DecryptAesGcm,
+        ConcreteMode::DecryptRsaPkcs,
+        ConcreteMode::SignRsaPkcs,
+        ConcreteMode::SignRsaPss,
+        ConcreteMode::SignEcdsaP256,
+        ConcreteMode::VerifyRsaPkcs,
+        ConcreteMode::VerifyRsaPss,
+        ConcreteMode::VerifyEcdsaP256,
+        ConcreteMode::KeyCreation,
+        ConcreteMode::Batch,
+    ]
+}
+
+/// Expands the `all` benchmark mode for a non-FIPS build.
+#[cfg(feature = "non-fips")]
+fn all_modes() -> Vec<ConcreteMode> {
+    vec![
+        ConcreteMode::EncryptAesCbc,
+        ConcreteMode::EncryptAesGcm,
+        ConcreteMode::EncryptRsaPkcs,
+        ConcreteMode::DecryptAesCbc,
+        ConcreteMode::DecryptAesGcm,
+        ConcreteMode::DecryptRsaPkcs,
+        ConcreteMode::SignRsaPkcs,
+        ConcreteMode::SignRsaPss,
+        ConcreteMode::SignEcdsaP256,
+        ConcreteMode::SignSecp256k1,
+        ConcreteMode::SignEdDsa,
+        ConcreteMode::VerifyRsaPkcs,
+        ConcreteMode::VerifyRsaPss,
+        ConcreteMode::VerifyEcdsaP256,
+        ConcreteMode::VerifySecp256k1,
+        ConcreteMode::VerifyEdDsa,
+        ConcreteMode::KeyCreation,
+        ConcreteMode::Batch,
+    ]
+}
+
+/// Expands the `sign-verify` benchmark mode for a FIPS build.
+#[cfg(not(feature = "non-fips"))]
+fn sign_verify_modes() -> Vec<ConcreteMode> {
+    vec![
+        ConcreteMode::SignRsaPkcs,
+        ConcreteMode::SignRsaPss,
+        ConcreteMode::SignEcdsaP256,
+        ConcreteMode::VerifyRsaPkcs,
+        ConcreteMode::VerifyRsaPss,
+        ConcreteMode::VerifyEcdsaP256,
+    ]
+}
+
+/// Expands the `sign-verify` benchmark mode for a non-FIPS build.
+#[cfg(feature = "non-fips")]
+fn sign_verify_modes() -> Vec<ConcreteMode> {
+    vec![
+        ConcreteMode::SignRsaPkcs,
+        ConcreteMode::SignRsaPss,
+        ConcreteMode::SignEcdsaP256,
+        ConcreteMode::SignSecp256k1,
+        ConcreteMode::SignEdDsa,
+        ConcreteMode::VerifyRsaPkcs,
+        ConcreteMode::VerifyRsaPss,
+        ConcreteMode::VerifyEcdsaP256,
+        ConcreteMode::VerifySecp256k1,
+        ConcreteMode::VerifyEdDsa,
+    ]
+}
+
 /// Expands standard `BenchMode` to concrete PKCS#11 benchmark modes.
 #[must_use]
 pub(crate) fn expand_bench_mode(
@@ -85,50 +161,7 @@ pub(crate) fn expand_bench_mode(
     filter: Option<&BenchFilter>,
 ) -> Vec<ConcreteMode> {
     let modes = match mode {
-        BenchMode::All => {
-            #[cfg(feature = "non-fips")]
-            {
-                vec![
-                    ConcreteMode::EncryptAesCbc,
-                    ConcreteMode::EncryptAesGcm,
-                    ConcreteMode::EncryptRsaPkcs,
-                    ConcreteMode::DecryptAesCbc,
-                    ConcreteMode::DecryptAesGcm,
-                    ConcreteMode::DecryptRsaPkcs,
-                    ConcreteMode::SignRsaPkcs,
-                    ConcreteMode::SignRsaPss,
-                    ConcreteMode::SignEcdsaP256,
-                    ConcreteMode::SignSecp256k1,
-                    ConcreteMode::SignEdDsa,
-                    ConcreteMode::VerifyRsaPkcs,
-                    ConcreteMode::VerifyRsaPss,
-                    ConcreteMode::VerifyEcdsaP256,
-                    ConcreteMode::VerifySecp256k1,
-                    ConcreteMode::VerifyEdDsa,
-                    ConcreteMode::KeyCreation,
-                    ConcreteMode::Batch,
-                ]
-            }
-            #[cfg(not(feature = "non-fips"))]
-            {
-                vec![
-                    ConcreteMode::EncryptAesCbc,
-                    ConcreteMode::EncryptAesGcm,
-                    ConcreteMode::EncryptRsaPkcs,
-                    ConcreteMode::DecryptAesCbc,
-                    ConcreteMode::DecryptAesGcm,
-                    ConcreteMode::DecryptRsaPkcs,
-                    ConcreteMode::SignRsaPkcs,
-                    ConcreteMode::SignRsaPss,
-                    ConcreteMode::SignEcdsaP256,
-                    ConcreteMode::VerifyRsaPkcs,
-                    ConcreteMode::VerifyRsaPss,
-                    ConcreteMode::VerifyEcdsaP256,
-                    ConcreteMode::KeyCreation,
-                    ConcreteMode::Batch,
-                ]
-            }
-        }
+        BenchMode::All => all_modes(),
         BenchMode::Encrypt => vec![
             ConcreteMode::EncryptAesCbc,
             ConcreteMode::EncryptAesGcm,
@@ -137,34 +170,7 @@ pub(crate) fn expand_bench_mode(
             ConcreteMode::DecryptAesGcm,
             ConcreteMode::DecryptRsaPkcs,
         ],
-        BenchMode::SignVerify => {
-            #[cfg(feature = "non-fips")]
-            {
-                vec![
-                    ConcreteMode::SignRsaPkcs,
-                    ConcreteMode::SignRsaPss,
-                    ConcreteMode::SignEcdsaP256,
-                    ConcreteMode::SignSecp256k1,
-                    ConcreteMode::SignEdDsa,
-                    ConcreteMode::VerifyRsaPkcs,
-                    ConcreteMode::VerifyRsaPss,
-                    ConcreteMode::VerifyEcdsaP256,
-                    ConcreteMode::VerifySecp256k1,
-                    ConcreteMode::VerifyEdDsa,
-                ]
-            }
-            #[cfg(not(feature = "non-fips"))]
-            {
-                vec![
-                    ConcreteMode::SignRsaPkcs,
-                    ConcreteMode::SignRsaPss,
-                    ConcreteMode::SignEcdsaP256,
-                    ConcreteMode::VerifyRsaPkcs,
-                    ConcreteMode::VerifyRsaPss,
-                    ConcreteMode::VerifyEcdsaP256,
-                ]
-            }
-        }
+        BenchMode::SignVerify => sign_verify_modes(),
         BenchMode::KeyCreation => vec![ConcreteMode::KeyCreation],
         BenchMode::Batch => vec![ConcreteMode::Batch],
     };

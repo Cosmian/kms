@@ -12,7 +12,7 @@ use pkcs11_sys::{
     CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKM_EC_EDWARDS_KEY_PAIR_GEN, CKM_EC_MONTGOMERY_KEY_PAIR_GEN,
 };
 
-use super::serialize_tagged_label;
+use super::{serialize_tagged_label, utf8_label};
 use crate::{HError, HResult, hsm_call, session::Session};
 
 /// PKCS#11 `CKA_EC_PARAMS` value for each curve supported for HSM-delegated EC key generation.
@@ -196,12 +196,10 @@ impl Session {
             CKA_VERIFY
         };
         let priv_usage_attribute_type = if is_montgomery { CKA_DERIVE } else { CKA_SIGN };
-        let tagged_sk_label =
-            serialize_tagged_label(sk_id, tags, self.hsm_capabilities.max_label_len)?;
-        let sk_label = tagged_sk_label.as_deref().unwrap_or(sk_id);
-        let tagged_pk_label =
-            serialize_tagged_label(pk_id, tags, self.hsm_capabilities.max_label_len)?;
-        let pk_label = tagged_pk_label.as_deref().unwrap_or(pk_id);
+        let sk_label = serialize_tagged_label(sk_id, tags, self.hsm_capabilities.max_label_len)?
+            .unwrap_or_else(|| utf8_label(sk_id));
+        let pk_label = serialize_tagged_label(pk_id, tags, self.hsm_capabilities.max_label_len)?
+            .unwrap_or_else(|| utf8_label(pk_id));
 
         let mut pub_key_template = vec![
             CK_ATTRIBUTE {

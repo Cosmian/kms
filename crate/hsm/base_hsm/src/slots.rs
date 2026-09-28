@@ -94,6 +94,41 @@ impl ObjectHandlesCache {
     }
 }
 
+/// A checked-out HSM session that is returned to its slot pool only after a
+/// successful operation.
+///
+/// Dropping the guard without calling [`Self::checkin`] drops the underlying
+/// session, which closes it instead of returning a potentially failed session
+/// to the pool.
+pub(crate) struct SessionGuard<'a> {
+    slot: &'a SlotManager,
+    session: Option<Session>,
+}
+
+impl<'a> SessionGuard<'a> {
+    /// Wrap a session checked out from `slot`.
+    pub(crate) const fn new(slot: &'a SlotManager, session: Session) -> Self {
+        Self {
+            slot,
+            session: Some(session),
+        }
+    }
+
+    /// Borrow the checked-out session while it remains owned by this guard.
+    pub(crate) fn session(&self) -> HResult<&Session> {
+        self.session
+            .as_ref()
+            .ok_or_else(|| HError::Default("HSM session guard is empty".to_owned()))
+    }
+
+    /// Return a successfully used session to its slot pool.
+    pub(crate) fn checkin(mut self) {
+        if let Some(session) = self.session.take() {
+            self.slot.checkin_session(session);
+        }
+    }
+}
+
 /// A manager for a specific PKCS#11 slot in a Hardware Security Module (HSM).
 ///
 /// This structure maintains the connection to a specific slot within an HSM,

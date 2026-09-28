@@ -5,7 +5,7 @@ use pkcs11_sys::{
     CK_ULONG, CKM_AES_KEY_GEN,
 };
 
-use super::serialize_tagged_label;
+use super::{serialize_tagged_label, utf8_label};
 use crate::{HError, HResult, aes_key_template, hsm_call, session::Session};
 
 #[derive(Debug, Clone, Copy)]
@@ -132,9 +132,8 @@ impl Session {
             // A sensitive key must not be extractable: derive CKA_EXTRACTABLE from
             // the `sensitive` flag instead of hard-coding it to CK_TRUE.
             let is_extractable = if sensitive { CK_FALSE } else { CK_TRUE };
-            let tagged_label =
-                serialize_tagged_label(id, tags, self.hsm_capabilities.max_label_len)?;
-            let label = tagged_label.as_deref().unwrap_or(id);
+            let label = serialize_tagged_label(id, tags, self.hsm_capabilities.max_label_len)?
+                .unwrap_or_else(|| utf8_label(id));
             let mut template =
                 aes_key_template!(id, label, size, is_sensitive, is_extractable).to_vec();
             let p_mechanism: CK_MECHANISM_PTR = &raw mut mechanism;

@@ -163,16 +163,31 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
         }
     }
 }
-/// Returns `true` for return codes that indicate the requested mechanism (or its
-/// parameters) is simply not supported by the loaded PKCS#11 library — as opposed to
-/// a hard failure. Callers use this to gracefully degrade (e.g. report the mechanism
-/// as unavailable) instead of surfacing a generic HSM error, mirroring the additive,
-/// non-breaking philosophy already established for the v3.0 capability probes in
-/// `HsmLib` (issue #1153).
+
+#[cfg(not(feature = "non-fips"))]
+const fn is_encryption_algorithm_supported(algorithm: HsmEncryptionAlgorithm) -> bool {
+    !matches!(algorithm, HsmEncryptionAlgorithm::RsaOaepSha1)
+}
+
+#[cfg(feature = "non-fips")]
+const fn is_encryption_algorithm_supported(_: HsmEncryptionAlgorithm) -> bool {
+    true
+}
+
+#[cfg(not(feature = "non-fips"))]
+const fn is_signing_algorithm_supported(algorithm: HsmSigningAlgorithm) -> bool {
+    !matches!(algorithm, HsmSigningAlgorithm::Sha1WithRsa)
+}
+
+#[cfg(feature = "non-fips")]
+const fn is_signing_algorithm_supported(_: HsmSigningAlgorithm) -> bool {
+    true
+}
+
+/// Returns whether a PKCS#11 return code means a mechanism is unsupported.
 const fn is_mechanism_unsupported_rv(rv: pkcs11_sys::CK_RV) -> bool {
     rv == CKR_MECHANISM_INVALID || rv == CKR_MECHANISM_PARAM_INVALID
 }
-
 /// An active PKCS#11 session with an HSM.
 pub struct Session {
     hsm: Arc<crate::hsm_lib::HsmLib>,
@@ -799,6 +814,47 @@ impl Session {
         Ok(unpadded)
     }
 
+    fn encrypt_aes_gcm_classic(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        plaintext: &[u8],
+    ) -> HResult<EncryptedContent> {
+        let mut nonce = generate_random_nonce::<AES_GCM_IV_LENGTH>()?;
+        let mut params = CK_AES_GCM_PARAMS {
+            pIv: nonce.as_mut_ptr(),
+            ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
+            ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
+            pAAD: ptr::null_mut(),
+            ulAADLen: 0,
+            ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_GCM,
+            pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+            ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
+        };
+        let ciphertext = self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
+        let split_at = ciphertext
+            .len()
+            .checked_sub(AES_GCM_AUTH_TAG_LENGTH)
+            .ok_or_else(|| {
+                HError::Default("Failed to extract GCM authentication tag".to_owned())
+            })?;
+        Ok(EncryptedContent {
+            iv: Some(nonce.to_vec()),
+            ciphertext: ciphertext
+                .get(..split_at)
+                .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?
+                .to_vec(),
+            tag: Some(
+                ciphertext
+                    .get(split_at..)
+                    .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
+                    .to_vec(),
+            ),
+        })
+    }
+
     /// Encrypt data using the specified key and algorithm
     pub fn encrypt(
         &self,
@@ -807,84 +863,28 @@ impl Session {
         plaintext: &[u8],
         iv_counter_nonce: Option<&[u8]>,
     ) -> HResult<EncryptedContent> {
+        if !is_encryption_algorithm_supported(algorithm) {
+            return Err(HError::Default(
+                "RSA-OAEP with SHA-1 is unavailable in FIPS mode".to_owned(),
+            ));
+        }
         Ok(match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
-                // AWS CloudHSM workaround: rejects non-zero IVs for GCM, requiring HSM-generated IVs
-                if self.hsm_capabilities.supports_aes_gcm_caller_iv {
-                    // Standard path: caller-provided random IV
-                    let mut nonce: [u8; AES_GCM_IV_LENGTH] = match iv_counter_nonce {
-                        Some(iv) => iv.try_into().map_err(|_invalid_length| {
-                            HError::Default(format!(
-                                "Invalid AES-GCM IV length: expected {AES_GCM_IV_LENGTH}, got {}",
-                                iv.len()
-                            ))
-                        })?,
-                        None => generate_random_nonce::<AES_GCM_IV_LENGTH>()?,
-                    };
-                    let mut params = CK_AES_GCM_PARAMS {
-                        pIv: nonce.as_mut_ptr(),
-                        ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
-                        ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
-                        pAAD: ptr::null_mut(),
-                        ulAADLen: 0,
-                        ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
-                    };
-                    let mut mechanism = CK_MECHANISM {
-                        mechanism: CKM_AES_GCM,
-                        pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
-                        ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
-                    };
-                    let ciphertext =
-                        self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
-                    EncryptedContent {
-                        iv: Some(nonce.to_vec()),
-                        ciphertext: ciphertext
-                            .get(..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH)
-                            .ok_or_else(|| {
-                                HError::Default("Failed to extract ciphertext".to_owned())
-                            })?
-                            .to_vec(),
-                        tag: Some(
-                            ciphertext
-                                .get(ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH..)
-                                .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
-                                .to_vec(),
-                        ),
-                    }
+                if iv_counter_nonce.is_some() {
+                    return Err(HError::Default(
+                        "Caller-supplied AES-GCM IVs are not accepted by HSM encryption; \
+                         the HSM integration generates a fresh nonce"
+                            .to_owned(),
+                    ));
+                }
+                if self.hsm().supports_message_encrypt() {
+                    self.encrypt_message_aes_gcm(key_handle, &[], plaintext)?
+                } else if self.hsm_capabilities.supports_aes_gcm_caller_iv {
+                    self.encrypt_aes_gcm_classic(key_handle, plaintext)?
                 } else {
-                    // AWS CloudHSM path: zero IV, HSM generates and writes it back to the buffer
-                    let mut zero_iv = vec![0_u8; AES_GCM_IV_LENGTH];
-                    let mut params = CK_AES_GCM_PARAMS {
-                        pIv: zero_iv.as_mut_ptr(),
-                        ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
-                        ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
-                        pAAD: ptr::null_mut(),
-                        ulAADLen: 0,
-                        ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
-                    };
-                    let mut mechanism = CK_MECHANISM {
-                        mechanism: CKM_AES_GCM,
-                        pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
-                        ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
-                    };
-                    let ciphertext =
-                        self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
-                    // HSM has written generated IV back to zero_iv buffer
-                    EncryptedContent {
-                        iv: Some(zero_iv),
-                        ciphertext: ciphertext
-                            .get(..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH)
-                            .ok_or_else(|| {
-                                HError::Default("Failed to extract ciphertext".to_owned())
-                            })?
-                            .to_vec(),
-                        tag: Some(
-                            ciphertext
-                                .get(ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH..)
-                                .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
-                                .to_vec(),
-                        ),
-                    }
+                    return Err(HError::Default(
+                        "The HSM does not support a safe AES-GCM nonce-generation path".to_owned(),
+                    ));
                 }
             }
             HsmEncryptionAlgorithm::AesCbc => {
@@ -996,14 +996,40 @@ impl Session {
         algorithm: HsmEncryptionAlgorithm,
         ciphertext: &[u8],
     ) -> HResult<Zeroizing<Vec<u8>>> {
+        if !is_encryption_algorithm_supported(algorithm) {
+            return Err(HError::Default(
+                "RSA-OAEP with SHA-1 is unavailable in FIPS mode".to_owned(),
+            ));
+        }
         match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
-                if ciphertext.len() < AES_GCM_IV_LENGTH {
+                if ciphertext.len() < AES_GCM_IV_LENGTH + AES_GCM_AUTH_TAG_LENGTH {
                     return Err(HError::Default("Invalid AES GCM ciphertext".to_owned()));
                 }
-                let mut nonce: [u8; AES_GCM_IV_LENGTH] = ciphertext
+                let iv = ciphertext
                     .get(..AES_GCM_IV_LENGTH)
-                    .ok_or_else(|| HError::Default("Failed to extract nonce".to_owned()))?
+                    .ok_or_else(|| HError::Default("Failed to extract nonce".to_owned()))?;
+                let encrypted = ciphertext
+                    .get(AES_GCM_IV_LENGTH..)
+                    .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?;
+                if self.hsm().supports_message_decrypt() {
+                    let split_at = encrypted
+                        .len()
+                        .checked_sub(AES_GCM_AUTH_TAG_LENGTH)
+                        .ok_or_else(|| HError::Default("Failed to extract GCM tag".to_owned()))?;
+                    return self.decrypt_message_aes_gcm(
+                        key_handle,
+                        &[],
+                        iv,
+                        encrypted.get(split_at..).ok_or_else(|| {
+                            HError::Default("Failed to extract GCM tag".to_owned())
+                        })?,
+                        encrypted.get(..split_at).ok_or_else(|| {
+                            HError::Default("Failed to extract ciphertext".to_owned())
+                        })?,
+                    );
+                }
+                let mut nonce: [u8; AES_GCM_IV_LENGTH] = iv
                     .try_into()
                     .map_err(|e| HError::Default(format!("Invalid AES GCM nonce: {e}")))?;
                 let mut params = CK_AES_GCM_PARAMS {
@@ -1395,6 +1421,11 @@ impl Session {
         algorithm: HsmSigningAlgorithm,
         data: &[u8],
     ) -> HResult<Vec<u8>> {
+        if !is_signing_algorithm_supported(algorithm) {
+            return Err(HError::Default(
+                "RSA signatures with SHA-1 are unavailable in FIPS mode".to_owned(),
+            ));
+        }
         match algorithm {
             HsmSigningAlgorithm::RsaPkcsV15 => {
                 self.sign_with_simple_mechanism(key_handle, CKM_RSA_PKCS, data)
@@ -1765,6 +1796,11 @@ impl Session {
         data: &[u8],
         signature: &[u8],
     ) -> HResult<bool> {
+        if !is_signing_algorithm_supported(algorithm) {
+            return Err(HError::Default(
+                "RSA signatures with SHA-1 are unavailable in FIPS mode".to_owned(),
+            ));
+        }
         match algorithm {
             HsmSigningAlgorithm::RsaPkcsV15 => {
                 self.verify_with_simple_mechanism(key_handle, CKM_RSA_PKCS, data, signature)

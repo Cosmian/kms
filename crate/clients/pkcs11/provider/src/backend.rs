@@ -367,8 +367,7 @@ impl Backend for CliBackend {
             &self.kms_rest_client,
             &self.vendor_id,
             &[SYSTEM_TAG_PUBLIC_KEY.to_owned()],
-        )
-        .unwrap_or_default();
+        )?;
         Ok(ids
             .into_iter()
             .filter_map(|id| self.create_public_key_from_id(&id))
@@ -401,14 +400,7 @@ impl Backend for CliBackend {
             &self.kms_rest_client,
             &self.vendor_id,
             &disk_encryption_tag,
-        )
-        .unwrap_or_else(|e| {
-            warn!(
-                "find_all_data_objects: failed to fetch disk-encryption data objects: {e}, \
-                 returning empty list"
-            );
-            vec![]
-        });
+        )?;
         for kms_obj in disk_enc_objects {
             match Pkcs11DataObject::try_from(kms_obj) {
                 Ok(data_object) => {
@@ -495,8 +487,7 @@ impl Backend for CliBackend {
             SYSTEM_TAG_COVER_CRYPT_USER_KEY,
         ] {
             let kms_ids =
-                locate_kms_objects(&self.kms_rest_client, &self.vendor_id, &[tag.to_owned()])
-                    .unwrap_or_default();
+                locate_kms_objects(&self.kms_rest_client, &self.vendor_id, &[tag.to_owned()])?;
             for id in kms_ids {
                 if seen_ids.insert(id.clone()) {
                     if let Ok(attributes) = get_kms_object_attributes(&self.kms_rest_client, &id) {
@@ -556,14 +547,7 @@ impl Backend for CliBackend {
             &self.kms_rest_client,
             &self.vendor_id,
             &disk_encryption_tag,
-        )
-        .unwrap_or_else(|e| {
-            warn!(
-                "find_all_objects: failed to fetch disk-encryption data objects: {e}, \
-                 returning empty list"
-            );
-            vec![]
-        });
+        )?;
         for kms_obj in disk_enc_data_objects {
             match Pkcs11DataObject::try_from(kms_obj) {
                 Ok(data_object) => {

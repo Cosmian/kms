@@ -64,11 +64,11 @@ impl RotateNameCache {
 
     /// Create a new cache with an explicit TTL and capacity (used in tests).
     #[must_use]
-    #[allow(clippy::as_conversions)]
     pub fn with_config(ttl: Duration, max_capacity: NonZeroUsize) -> Self {
+        let max_capacity = u64::try_from(max_capacity.get()).map_or(u64::MAX, |capacity| capacity);
         Self {
             inner: Cache::builder()
-                .max_capacity(max_capacity.get() as u64)
+                .max_capacity(max_capacity)
                 .time_to_live(ttl)
                 .build(),
         }

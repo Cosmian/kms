@@ -513,15 +513,10 @@ pub fn aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     let key_id = Uuid::new_v4().to_string();
     let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     info!("AES key handle: {sk}");
-    let iv = [7_u8; 12];
-    let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data, Some(&iv))?;
+    let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data, None)?;
     assert_eq!(enc.ciphertext.len(), data.len());
     assert_eq!(enc.tag.clone().unwrap_or_default().len(), 16);
-    if slot.capabilities().supports_aes_gcm_caller_iv {
-        assert_eq!(enc.iv.as_deref(), Some(iv.as_slice()));
-    } else {
-        assert!(enc.iv.is_some());
-    }
+    assert!(enc.iv.is_some());
     let plaintext = session.decrypt(
         sk,
         HsmEncryptionAlgorithm::AesGcm,
@@ -1350,9 +1345,11 @@ pub fn concurrent_sign_does_not_degrade(slot: &Arc<SlotManager>) -> HResult<()> 
 
         let elapsed = start.elapsed().as_secs_f64();
         let count = ops_counter.load(Ordering::Relaxed);
-        #[allow(clippy::as_conversions, clippy::cast_precision_loss)]
-        // u64 op-count -> f64 for a throughput ratio; precision loss is acceptable here
-        let ops_per_sec = (count as f64) / elapsed;
+        let count_as_f64 = count
+            .to_string()
+            .parse::<f64>()
+            .map_err(|e| HError::Default(format!("Failed converting operation count: {e}")))?;
+        let ops_per_sec = count_as_f64 / elapsed;
         rates.push(ops_per_sec);
     }
 

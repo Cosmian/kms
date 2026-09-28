@@ -9,12 +9,11 @@ use pkcs11_sys::{
     CKM_SHA_1, CKM_SHA256, CKO_SECRET_KEY, CKZ_DATA_SPECIFIED,
 };
 
-use super::serialize_tagged_label;
+use super::{serialize_tagged_label, utf8_label};
 use crate::{HResult, hsm_call, session::Session};
 
 #[derive(Debug, Clone, Copy)]
 pub enum RsaKeySize {
-    Rsa1024,
     Rsa2048,
     Rsa3072,
     Rsa4096,
@@ -51,7 +50,6 @@ impl Session {
         let key_type = CKK_RSA;
         let true_value = CK_TRUE;
         let modulus_bits: CK_ULONG = match key_size {
-            RsaKeySize::Rsa1024 => 1024,
             RsaKeySize::Rsa2048 => 2048,
             RsaKeySize::Rsa3072 => 3072,
             RsaKeySize::Rsa4096 => 4096,
@@ -61,12 +59,10 @@ impl Session {
         // A sensitive private key must not be extractable: derive CKA_EXTRACTABLE
         // from the `sensitive` flag instead of hard-coding it to CK_TRUE.
         let extractable = if sensitive { CK_FALSE } else { CK_TRUE };
-        let tagged_sk_label =
-            serialize_tagged_label(sk_id, tags, self.hsm_capabilities.max_label_len)?;
-        let sk_label = tagged_sk_label.as_deref().unwrap_or(sk_id);
-        let tagged_pk_label =
-            serialize_tagged_label(pk_id, tags, self.hsm_capabilities.max_label_len)?;
-        let pk_label = tagged_pk_label.as_deref().unwrap_or(pk_id);
+        let sk_label = serialize_tagged_label(sk_id, tags, self.hsm_capabilities.max_label_len)?
+            .unwrap_or_else(|| utf8_label(sk_id));
+        let pk_label = serialize_tagged_label(pk_id, tags, self.hsm_capabilities.max_label_len)?
+            .unwrap_or_else(|| utf8_label(pk_id));
         let mut pub_key_template = vec![
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,

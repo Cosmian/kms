@@ -65,13 +65,11 @@ impl EcCurve {
     /// Select a FIPS-approved NIST curve from a requested key length in bits.
     pub fn from_key_length_in_bits(key_length_in_bits: usize) -> InterfaceResult<Self> {
         match key_length_in_bits {
-            224 => Ok(Self::P224),
             256 => Ok(Self::P256),
             384 => Ok(Self::P384),
             521 => Ok(Self::P521),
             x => Err(InterfaceError::Default(format!(
-                "Invalid key length: {x} bits, for an HSM EC key (valid values are 224, 256, \
-                 384, 521)"
+                "Invalid key length: {x} bits, for an HSM EC key (valid values are 256, 384, 521)"
             ))),
         }
     }

@@ -17,7 +17,7 @@ use cosmian_kms_client::{
 };
 use uuid::Uuid;
 
-use super::error::{BenchError, BenchResult};
+use super::error::BenchResult;
 
 /// Object identifiers provisioned for one benchmark process.
 pub(crate) struct BenchSetup {
@@ -39,6 +39,69 @@ const BENCH_TAG: &str = "pkcs11-bench";
 /// with its own system tag), so the benchmark's RSA and Ed25519 keys must both carry
 /// it.
 const DISK_ENCRYPTION_TAG: &str = "disk-encryption";
+
+#[cfg(feature = "non-fips")]
+async fn provision_optional_keys(
+    client: &KmsClient,
+    provision_ed25519: bool,
+    provision_secp256k1: bool,
+    delegated: bool,
+    hsm_slot: usize,
+    disk_encryption_tag: &str,
+) -> BenchResult<Option<UniqueIdentifier>> {
+    let ed25519_private_key_id = if provision_ed25519 {
+        let request = create_ec_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            benchmark_key_uid(delegated, hsm_slot, "pkcs11_ed25519"),
+            [BENCH_TAG, disk_encryption_tag],
+            RecommendedCurve::CURVEED25519,
+            false,
+            None,
+        )?;
+        Some(
+            client
+                .create_key_pair(request)
+                .await?
+                .private_key_unique_identifier,
+        )
+    } else {
+        None
+    };
+
+    if provision_secp256k1 {
+        let request = create_ec_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            benchmark_key_uid(delegated, hsm_slot, "pkcs11_secp256k1"),
+            [BENCH_TAG, disk_encryption_tag],
+            RecommendedCurve::SECP256K1,
+            false,
+            None,
+        )?;
+        client.create_key_pair(request).await?;
+    }
+
+    Ok(ed25519_private_key_id)
+}
+
+#[cfg(not(feature = "non-fips"))]
+async fn provision_optional_keys(
+    client: &KmsClient,
+    provision_ed25519: bool,
+    provision_secp256k1: bool,
+    delegated: bool,
+    hsm_slot: usize,
+    disk_encryption_tag: &str,
+) -> BenchResult<Option<UniqueIdentifier>> {
+    let _ = (
+        client,
+        provision_ed25519,
+        provision_secp256k1,
+        delegated,
+        hsm_slot,
+        disk_encryption_tag,
+    );
+    Ok(None)
+}
 
 fn benchmark_key_uid(delegated: bool, hsm_slot: usize, name: &str) -> Option<UniqueIdentifier> {
     delegated.then(|| {
@@ -67,8 +130,7 @@ pub(crate) async fn provision_bench_keys(
         [BENCH_TAG],
         false,
         None,
-    )
-    .map_err(|e| BenchError::Kmip(e.to_string()))?;
+    )?;
     client.create(create_request).await?;
 
     let create_key_pair_request = create_rsa_key_pair_request(
@@ -78,8 +140,7 @@ pub(crate) async fn provision_bench_keys(
         RSA_KEY_BITS,
         false,
         None,
-    )
-    .map_err(|e| BenchError::Kmip(e.to_string()))?;
+    )?;
     client.create_key_pair(create_key_pair_request).await?;
 
     // EC P-256 is FIPS-approved (unlike Ed25519 below), so this key pair is always
@@ -92,61 +153,22 @@ pub(crate) async fn provision_bench_keys(
         RecommendedCurve::P256,
         false,
         None,
-    )
-    .map_err(|e| BenchError::Kmip(e.to_string()))?;
+    )?;
     client
         .create_key_pair(create_ecdsa_key_pair_request)
         .await?;
 
-    #[cfg(feature = "non-fips")]
-    let ed25519_private_key_id = if provision_ed25519 {
-        // Tagged exactly like the RSA key pair so the provider's
-        // `find_all_private_keys` discovers it.
-        let request = create_ec_key_pair_request(
-            VENDOR_ID_COSMIAN,
-            benchmark_key_uid(delegated, hsm_slot, "pkcs11_ed25519"),
-            [BENCH_TAG, disk_encryption_tag.as_str()],
-            RecommendedCurve::CURVEED25519,
-            false,
-            None,
-        )
-        .map_err(|e| BenchError::Kmip(e.to_string()))?;
-        Some(
-            client
-                .create_key_pair(request)
-                .await?
-                .private_key_unique_identifier,
-        )
-    } else {
-        None
-    };
-
-    #[cfg(not(feature = "non-fips"))]
-    let ed25519_private_key_id = {
-        let _ = provision_ed25519;
-        None
-    };
-
-    // secp256k1 is not FIPS-approved (unlike P-256 above), so this key pair is
-    // only provisioned when `sign-secp256k1`/`verify-secp256k1` (or an aggregate
-    // `sign`/`verify`/`all` mode under a non-FIPS build) was requested — mirroring
-    // how the Ed25519 key pair above is opt-in.
-    #[cfg(feature = "non-fips")]
-    if provision_secp256k1 {
-        let request = create_ec_key_pair_request(
-            VENDOR_ID_COSMIAN,
-            benchmark_key_uid(delegated, hsm_slot, "pkcs11_secp256k1"),
-            [BENCH_TAG, disk_encryption_tag.as_str()],
-            RecommendedCurve::SECP256K1,
-            false,
-            None,
-        )
-        .map_err(|e| BenchError::Kmip(e.to_string()))?;
-        client.create_key_pair(request).await?;
-    }
-
-    #[cfg(not(feature = "non-fips"))]
-    let _ = provision_secp256k1;
+    // Non-FIPS-only keys are provisioned by a module-level cfg helper so the
+    // feature boundary does not split the body of this function.
+    let ed25519_private_key_id = provision_optional_keys(
+        client,
+        provision_ed25519,
+        provision_secp256k1,
+        delegated,
+        hsm_slot,
+        &disk_encryption_tag,
+    )
+    .await?;
 
     Ok(BenchSetup {
         ed25519_private_key_id,
