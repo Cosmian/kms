@@ -1014,7 +1014,9 @@ impl Session {
                 let encrypted = ciphertext
                     .get(AES_GCM_IV_LENGTH..)
                     .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?;
-                if self.hsm().supports_message_decrypt() {
+                if self.hsm_capabilities.supports_aes_gcm_message
+                    && self.hsm().supports_message_decrypt()
+                {
                     let split_at = encrypted
                         .len()
                         .checked_sub(AES_GCM_AUTH_TAG_LENGTH)
