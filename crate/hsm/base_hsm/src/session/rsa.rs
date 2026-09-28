@@ -80,7 +80,7 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_PRIVATE,
-                pValue: std::ptr::from_ref(&true_value)
+                pValue: std::ptr::from_ref(&CK_FALSE)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
@@ -247,7 +247,6 @@ impl Session {
         aes_key_handle: CK_OBJECT_HANDLE,
         digest: RsaOaepDigest,
     ) -> HResult<Vec<u8>> {
-        // Initialize the RSA-OAEP mechanism
         let mut oaep_params = match digest {
             RsaOaepDigest::SHA256 => CK_RSA_PKCS_OAEP_PARAMS {
                 hashAlg: CKM_SHA256,
@@ -271,24 +270,12 @@ impl Session {
             ulParameterLen: CK_ULONG::try_from(size_of::<CK_RSA_PKCS_OAEP_PARAMS>())?,
         };
 
-        // Determine the length of the wrapped key
-        let mut wrapped_key_len: CK_ULONG = 0;
-        hsm_call!(
-            self.hsm(),
-            "Failed to get wrapped key length",
-            C_WrapKey,
-            self.session_handle(),
-            &raw mut mechanism,
-            wrapping_key_handle,
-            aes_key_handle,
-            ptr::null_mut(),
-            &raw mut wrapped_key_len
-        );
+        // SoftHSM2 rejects the PKCS#11 two-call length probe for RSA-OAEP
+        // wrapping. Allocate the largest supported RSA ciphertext buffer
+        // directly; C_WrapKey returns the actual length.
+        let mut wrapped_key = vec![0_u8; 4096 / 8];
+        let mut wrapped_key_len = CK_ULONG::try_from(wrapped_key.len())?;
 
-        // Allocate buffer for the wrapped key
-        let mut wrapped_key = vec![0_u8; usize::try_from(wrapped_key_len)?];
-
-        // Wrap the key
         hsm_call!(
             self.hsm(),
             "Failed to wrap key",
@@ -301,7 +288,6 @@ impl Session {
             &raw mut wrapped_key_len
         );
 
-        // Truncate the buffer to the actual size of the wrapped key
         wrapped_key.truncate(usize::try_from(wrapped_key_len)?);
         Ok(wrapped_key)
     }
@@ -314,20 +300,22 @@ impl Session {
         digest: RsaOaepDigest,
     ) -> HResult<CK_OBJECT_HANDLE> {
         let mut wrapped_key = wrapped_aes_key.to_vec();
-        // Initialize the RSA-OAEP mechanism
+        // SoftHSM2 requires a non-null source pointer for CKZ_DATA_SPECIFIED,
+        // even when the OAEP label is empty.
+        let mut oaep_label = 0_u8;
         let mut oaep_params = match digest {
             RsaOaepDigest::SHA256 => CK_RSA_PKCS_OAEP_PARAMS {
                 hashAlg: CKM_SHA256,
                 mgf: CKG_MGF1_SHA256,
                 source: CKZ_DATA_SPECIFIED,
-                pSourceData: ptr::null_mut(),
+                pSourceData: (&raw mut oaep_label).cast::<std::ffi::c_void>(),
                 ulSourceDataLen: 0,
             },
             RsaOaepDigest::SHA1 => CK_RSA_PKCS_OAEP_PARAMS {
                 hashAlg: CKM_SHA_1,
                 mgf: CKG_MGF1_SHA1,
                 source: CKZ_DATA_SPECIFIED,
-                pSourceData: ptr::null_mut(),
+                pSourceData: (&raw mut oaep_label).cast::<std::ffi::c_void>(),
                 ulSourceDataLen: 0,
             },
         };

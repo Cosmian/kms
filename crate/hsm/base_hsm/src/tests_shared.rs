@@ -417,11 +417,10 @@ pub fn rsa_key_wrap(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResult<(
     log_init(None);
     let key_id = Uuid::new_v4().to_string();
     let session = slot.open_session(true)?;
-    // The AES key being wrapped (extracted from the HSM in wrapped form) must be
-    // extractable: a sensitive (non-extractable) key cannot be wrapped via
-    // C_WrapKey per PKCS#11 semantics.
+    // The AES key being wrapped must be explicitly non-sensitive as well as
+    // extractable. SoftHSM2 rejects C_WrapKey otherwise in its FIPS setup.
     let symmetric_key =
-        session.generate_exportable_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
+        session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false, None)?;
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk";
     let (sk, pk) = session.generate_rsa_key_pair(

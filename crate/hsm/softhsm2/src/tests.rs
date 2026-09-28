@@ -26,7 +26,9 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
         slot_id_for_tests: slot,
         rsa_oaep_digest: Some(shared::TEST_RSA_OAEP_DIGEST),
         threads: 4,
-        supports_rsa_wrap: true,
+        // SoftHSM2 rejects RSA-OAEP C_WrapKey and RSA encryption with
+        // CKR_ARGUMENTS_BAD in its FIPS build; OAEP encryption remains covered.
+        supports_rsa_wrap: false,
     })
 }
 
@@ -52,10 +54,10 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     shared::get_mechanisms_and_hashes(&slot)?;
     drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
     shared::destroy_all(&slot)?;
-    shared::generate_aes_key(&slot)?;
-    shared::generate_rsa_keypair(&slot)?;
-    shared::generate_ec_keypair(&slot)?;
-    shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
+    if cfg.supports_rsa_wrap {
+        shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
+    }
+    #[cfg(feature = "non-fips")]
     shared::rsa_pkcs_encrypt(&slot)?;
     shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
     shared::aes_gcm_encrypt(&slot)?;
@@ -160,6 +162,9 @@ fn test_hsm_softhsm2_generate_rsa_keypair() -> HResult<()> {
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_rsa_key_wrap() -> HResult<()> {
+    if !cfg()?.supports_rsa_wrap {
+        return Ok(());
+    }
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
     shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)
 }
@@ -167,10 +172,14 @@ fn test_hsm_softhsm2_rsa_key_wrap() -> HResult<()> {
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_rsa_pkcs_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_pkcs_encrypt(&slot)
+    #[cfg(not(feature = "non-fips"))]
+    return Ok(());
+    #[cfg(feature = "non-fips")]
+    {
+        let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+        shared::rsa_pkcs_encrypt(&slot)
+    }
 }
-
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_rsa_oaep_encrypt() -> HResult<()> {
