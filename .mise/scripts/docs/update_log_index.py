@@ -1064,12 +1064,23 @@ def _parse_args() -> argparse.Namespace:
             'Implies --non-interactive.'
         ),
     )
+    p.add_argument(
+        '--repo-root',
+        type=Path,
+        help='Repository root to scan and update instead of the script parent repository.',
+    )
     return p.parse_args()
 
 
 def main() -> None:
-    global _USE_COLOR
+    global _USE_COLOR, REPO_ROOT, CARGO_TOML, DOC_FILE
     args = _parse_args()
+    if args.repo_root is not None:
+        REPO_ROOT = args.repo_root.resolve()
+        CARGO_TOML = REPO_ROOT / 'Cargo.toml'
+        DOC_FILE = (
+            REPO_ROOT / 'documentation' / 'docs' / 'configuration' / 'log-reference.md'
+        )
     if args.no_color:
         _USE_COLOR = False
     check_only = args.check

@@ -815,3 +815,23 @@ pre-existing `#[ignore]`), and `cargo clippy --all-targets --features non-fips
 build) before the fix, and confirmed it now completes cleanly after; also ran the
 full `--mode all` sweep (9 operations, concurrency 1/2/4, including
 `key-creation`) end-to-end with no failures.
+
+### `mise bench -s` fixed and run per HSM in CI
+
+- `bench:load-pkcs11 --delegated` no longer sources `~/.cosmian/proteccio.sh` /
+  `~/.cosmian/crypt2pay.sh` unconditionally (they do not exist by default). HSM
+  preparation moved to a new `bench_prepare_hsm` helper
+  (`.mise/lib/bench_helpers.sh`) that reuses the `test:hsm-<model>` prepare
+  scripts (Proteccio/Crypt2Pay libraries, Utimaco simulator, AWS CloudHSM
+  client + VPN, torn down on exit) and only sources `~/.cosmian/<model>.sh`
+  when present
+- `ckms pkcs11 bench --delegated` skips the AES-GCM modes: single-part
+  `CKM_AES_GCM` requires a caller-supplied IV, which the KMS rejects for
+  HSM-resident keys. This made `mise bench -s` fail on
+  `bench:load-pkcs11 --delegated`
+- Sanity runs (`--sanity`) no longer overwrite the committed reports under
+  `documentation/docs/benchmarks/`
+- `mise bench` gains `--hsm-model`: `softhsm2` (default) runs the full suite,
+  any other model runs `bench:load-pkcs11 --delegated` against that HSM. The
+  `hsm` matrix in `test_all.yml` now runs `mise run bench --sanity
+  --hsm-model <type>` on every non-fips entry

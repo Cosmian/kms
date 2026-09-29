@@ -43,8 +43,8 @@ use crate::{
     objects_store::{OBJECTS_STORE, ObjectsStore},
     profiling::{self, SignPhase},
     traits::{
-        DecryptContext, EncryptContext, KeyAlgorithm, SearchOptions, SignContext, SignOperation,
-        VerifyContext, backend, use_pin_as_access_token,
+        DecryptContext, EncryptContext, KeyAlgorithm, PendingSignature, SearchOptions, SignContext,
+        SignOperation, VerifyContext, backend, use_pin_as_access_token,
     },
 };
 
@@ -665,7 +665,12 @@ impl Session {
         // length reported by an earlier query call inconsistent with the bytes
         // actually produced later - causing a spurious CKR_BUFFER_TOO_SMALL on
         // the caller's second, real-buffer call.
-        let signature = if let Some(cached) = sign_ctx.pending_signature.clone() {
+        let cached = sign_ctx
+            .pending_signature
+            .as_ref()
+            .filter(|pending| pending.data == data)
+            .map(|pending| pending.signature.clone());
+        let signature = if let Some(cached) = cached {
             cached
         } else {
             let private_key_sign = profiling::phase(SignPhase::PrivateKeySign);
@@ -684,7 +689,10 @@ impl Session {
                 }
             };
             drop(private_key_sign);
-            sign_ctx.pending_signature = Some(signature.clone());
+            sign_ctx.pending_signature = Some(PendingSignature {
+                data: data.to_vec(),
+                signature: signature.clone(),
+            });
             signature
         };
         if pSignature.is_null() {
@@ -1178,6 +1186,126 @@ mod tests {
         assert_eq!(signature_len, 64);
         assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 1);
         assert!(session.sign_ctx.is_none());
+    }
+
+    /// Variable-length (ECDSA) test key whose "signature" is the signed data itself, so a
+    /// test can tell which data a returned signature was computed over.
+    #[derive(Debug)]
+    struct EchoEcdsaPrivateKey {
+        sign_calls: Arc<AtomicUsize>,
+    }
+
+    impl crate::traits::PrivateKey for EchoEcdsaPrivateKey {
+        fn remote_id(&self) -> &'static str {
+            "echo-ecdsa"
+        }
+
+        fn sign(
+            &self,
+            _algorithm: &crate::traits::SignatureAlgorithm,
+            data: &[u8],
+        ) -> ModuleResult<Vec<u8>> {
+            self.sign_calls.fetch_add(1, AtomicOrdering::Relaxed);
+            Ok(data.to_vec())
+        }
+
+        fn algorithm(&self) -> KeyAlgorithm {
+            KeyAlgorithm::EccP256
+        }
+
+        fn key_size(&self) -> usize {
+            256
+        }
+
+        fn pkcs8_der_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+
+        fn rsa_public_exponent(&self) -> ModuleResult<Vec<u8>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+    }
+
+    #[test]
+    fn variable_length_cached_signature_is_bound_to_its_data() {
+        let sign_calls = Arc::new(AtomicUsize::new(0));
+        let mut session = Session {
+            sign_ctx: Some(SignContext {
+                algorithm: crate::traits::SignatureAlgorithm::Ecdsa,
+                private_key: Arc::new(EchoEcdsaPrivateKey {
+                    sign_calls: Arc::clone(&sign_calls),
+                }),
+                operation: SignOperation::Classic,
+                payload: None,
+                pending_signature: None,
+            }),
+            ..Default::default()
+        };
+        let first = [0x11_u8; 8];
+        let second = [0x22_u8; 8];
+        let mut signature_len: CK_ULONG = 0;
+
+        // SAFETY: the data slice and output-length pointer remain valid for the call;
+        // a null signature pointer is the standard PKCS#11 length-query convention.
+        unsafe {
+            session
+                .sign(Some(&first), std::ptr::null_mut(), &raw mut signature_len)
+                .unwrap();
+        }
+        assert_eq!(signature_len, 8);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 1);
+
+        // The follow-up call changes the data: the signature cached for `first` must not
+        // be returned for `second`.
+        let mut signature = [0_u8; 8];
+        // SAFETY: `signature` has the queried capacity and both pointers remain valid.
+        unsafe {
+            session
+                .sign(
+                    Some(&second),
+                    signature.as_mut_ptr(),
+                    &raw mut signature_len,
+                )
+                .unwrap();
+        }
+        assert_eq!(signature, second);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 2);
+        assert!(session.sign_ctx.is_none());
+    }
+
+    #[test]
+    fn variable_length_cached_signature_is_reused_for_the_same_data() {
+        let sign_calls = Arc::new(AtomicUsize::new(0));
+        let mut session = Session {
+            sign_ctx: Some(SignContext {
+                algorithm: crate::traits::SignatureAlgorithm::Ecdsa,
+                private_key: Arc::new(EchoEcdsaPrivateKey {
+                    sign_calls: Arc::clone(&sign_calls),
+                }),
+                operation: SignOperation::Classic,
+                payload: None,
+                pending_signature: None,
+            }),
+            ..Default::default()
+        };
+        let data = [0x33_u8; 8];
+        let mut signature_len: CK_ULONG = 0;
+
+        // SAFETY: see `variable_length_cached_signature_is_bound_to_its_data`.
+        unsafe {
+            session
+                .sign(Some(&data), std::ptr::null_mut(), &raw mut signature_len)
+                .unwrap();
+        }
+        let mut signature = [0_u8; 8];
+        // SAFETY: `signature` has the queried capacity and both pointers remain valid.
+        unsafe {
+            session
+                .sign(Some(&data), signature.as_mut_ptr(), &raw mut signature_len)
+                .unwrap();
+        }
+        assert_eq!(signature, data);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 1);
     }
 
     #[test]
