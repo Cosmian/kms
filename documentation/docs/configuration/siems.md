@@ -4,8 +4,8 @@ The Eviden KMS produces audit events that can be ingested by any SIEM (Security 
 and Event Management) system. This page describes the available integration models and
 provides configuration examples for common SIEM products.
 
-For details on the CEF format itself — field mapping, severity rules, escaping, and
-specification reference — see [CEF export format](./cef-export.md).
+For the CEF format itself (field mapping, severity rules, escaping, and specification
+reference), see [CEF export](./cef-export.md).
 
 ---
 
@@ -16,15 +16,18 @@ The KMS supports two integration models:
 | Model | How it works | Format | Continuous? |
 | ----- | ------------ | ------ | ----------- |
 | **File tailing** | SIEM agent tails the JSONL audit file directly | JSON | Yes |
-| **CEF export** | `ckms audit export` converts JSONL → CEF on stdout | CEF v27 | Manual / scripted |
+| **CEF export** | `ckms audit export` converts events to CEF on stdout | CEF v27 | Manual / scripted |
 
-> The JSONL file is the **authoritative audit store** (see [Audit logs](./audit-logs.md)).
-> CEF is a serialisation *view* — it does not replace the JSONL file and does not include
-> hash-chain fields (`prev_hash`, `row_hash`).
+> The audit trail itself is authoritative (see [Audit logs](./audit-logs.md)); CEF is a
+> serialisation view and does not include the hash-chain fields (`prev_hash`, `row_hash`).
 >
-> For SIEM ingestion, prefer **file tailing**: a dedicated agent reads the JSONL file from
-> its last committed offset and forwards events with guaranteed delivery, surviving restarts
-> without event loss.
+> File tailing needs the file backend, since it reads the JSONL file directly. With the
+> PostgreSQL backend, export events with `ckms audit export --audit-postgres-url` instead, or
+> query the database directly.
+>
+> For SIEM ingestion from the file backend, prefer file tailing: a dedicated agent reads the
+> file from its last committed offset and forwards events with guaranteed delivery, surviving
+> restarts without event loss.
 
 ### Model 1 — File tailing
 
@@ -56,7 +59,7 @@ sequenceDiagram
     participant Syslog as Syslog (rsyslog / SIEM listener)
 
     Note over File,Transport: Run on demand or via cron
-    ckms->>File: read JSONL (optional --since / --until range)
+    ckms->>File: read JSONL (optional --since range)
     ckms->>Transport: CEF lines on stdout
     Transport->>Syslog: forward frames over wire (TCP RFC 6587 or UDP)
     Note over Transport,Syslog: TCP uses RFC 6587 octet-counting framing
@@ -69,9 +72,8 @@ Supported targets: rsyslog, ArcSight, Splunk, nc listener.
 
 ## File tailing (recommended for continuous ingestion)
 
-The simplest and most reliable integration: a SIEM agent monitors the JSONL audit file
-and forwards events as they are written. No format conversion is needed, and delivery
-state is tracked by the agent.
+A SIEM agent monitors the JSONL audit file and forwards events as they are written. No format
+conversion is needed, and delivery state is tracked by the agent.
 
 ### Splunk
 
@@ -174,29 +176,13 @@ After the pipeline runs, each indexed document has:
 
 ### JSONL field reference for SIEM mapping
 
-All SIEM integrations above ingest the same JSONL schema. Use this table to configure
-field extraction, facets, or dashboards:
+See [Audit events](./audit-events.md#fields) for the canonical field list. Two SIEM-specific
+notes:
 
-| Field | Type | Nullable | SIEM mapping suggestion |
-|-------|------|----------|------------------------|
-| `id` | integer | No | Event sequence number |
-| `timestamp` | string (RFC 3339) | No | Event time |
-| `operation` | string | No | Action / event type (e.g. `Encrypt`, `Create`, `Destroy`) |
-| `user` | string | No | Source user identity |
-| `object_uid` | string | Yes | Target object identifier (KMIP `UniqueIdentifier`) |
-| `algorithm` | string | Yes | Cryptographic algorithm (e.g. `AES`, `RSA`) |
-| `client_ip` | string | Yes | Source IP address (direct TCP peer unless configured behind trusted proxies; see [Client IP and reverse proxies](./audit-logs.md#client-ip-and-reverse-proxies)) |
-| `result` | `"Success"` or `{"Failure": "..."}` | No | Polymorphic — normalize with the ingest pipeline described above into `result_status` + `result_error` |
-| `result_status` | `"Success"` or `"Failure"` | No | Normalized outcome (after pipeline); use for facets and alerts |
-| `result_error` | string | Yes | Normalized error message (after pipeline); present only on Failure events |
-| `duration_ms` | integer | No | Operation latency |
-| `request_id` | string (UUID) | Yes | Correlation ID across batch operations |
-| `prev_hash` | string (64 hex) | No | Hash-chain link (integrity only — ignore in SIEM) |
-| `row_hash` | string (64 hex) | No | Row integrity hash (integrity only — ignore in SIEM) |
-
-> **Note**: `prev_hash` and `row_hash` are tamper-evidence fields for offline chain
-> verification (see [Audit logs](./audit-logs.md)). They carry no semantic meaning for
-> SIEM correlation and can be excluded from indexing to save storage.
+- `result` is polymorphic (`"Success"` or `{"Failure": "..."}`); normalize it with the ingest
+  pipeline above into `result_status` and `result_error` for facets and alerts.
+- `prev_hash` and `row_hash` are tamper-evidence fields for offline chain verification; they
+  carry no semantic meaning for SIEM correlation and can be excluded from indexing.
 
 ### Generic file tailing (rsyslog, Filebeat, Fluent Bit)
 
@@ -311,24 +297,9 @@ exercised with a live container.
 | **ArcSight / QRadar** | CEF over TCP syslog | CEF format + TCP transport proven by rsyslog test; only destination endpoint differs |
 | **OpenSearch** | File tailing or Filebeat | Elasticsearch-compatible API; Filebeat test uses the same ingest pipeline |
 
-### Monitoring stack integrations
-
-These products consume KMS **metrics** (not audit events). See
-[Monitoring stack setup](./monitoring-setup.md) for configuration details.
-
-| Product | Role | What is proven |
-|---|---|---|
-| **OpenTelemetry Collector** | Metrics pipeline | KMS gRPC OTLP push received; KMS metric lines confirmed on Prometheus endpoint (count varies by version) |
-| **VictoriaMetrics** | Metrics backend | Receives KMS metrics from OTel Collector via remote_write |
-| **Grafana** | Dashboarding | Full monitoring stack operational; `/api/health` returns `database=ok` |
-
 ---
 
 ## Access restriction
 
-!!! warning "Restrict access to the audit file"
-
-    The audit file contains actor identities, client IP addresses, object identifiers, and
-    operation metadata. Restrict file ownership to the KMS process user and grant read access
-    only to the collection agent. Do not expose the file over untrusted networks without
-    encryption.
+See [Protecting the file](./audit-file-backend.md#protecting-the-file) for restricting access
+to the audit file. The same principle applies to the PostgreSQL backend's database.

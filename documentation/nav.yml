@@ -154,6 +154,9 @@ nav:
           - Monitoring stack (Grafana): configuration/monitoring-setup.md
       - Audit & SIEM:
           - Audit logs: configuration/audit-logs.md
+          - File backend: configuration/audit-file-backend.md
+          - PostgreSQL backend: configuration/audit-postgresql-backend.md
+          - Audit events reference: configuration/audit-events.md
           - CEF export format: configuration/cef-export.md
           - SIEM integration: configuration/siems.md
       - User interface: configuration/ui.md

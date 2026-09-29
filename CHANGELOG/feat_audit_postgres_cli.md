@@ -27,3 +27,13 @@
   interface shared by the file and `PostgreSQL` backends; the audit event
   schema gained a `details` field (already used by file-backend recovery
   sentinels) that now round-trips through `PostgreSQL` as well.
+
+### Documentation
+
+- Reorganized the Audit & SIEM docs: a shared overview with a backend
+  comparison, dedicated file backend and `PostgreSQL` backend pages, and a
+  new audit events reference (fields, system events, hash chain) that the
+  CEF export and SIEM integration pages now link to instead of duplicating.
+  Corrected several inaccuracies along the way (the `--audit-instance-id`
+  default, the CEF version reference, and stale wording that predated the
+  `PostgreSQL` backend).
