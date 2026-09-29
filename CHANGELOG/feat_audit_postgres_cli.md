@@ -28,6 +28,24 @@
   schema gained a `details` field (already used by file-backend recovery
   sentinels) that now round-trips through `PostgreSQL` as well.
 
+### PostgreSQL audit backend — fixes and test hardening
+
+- Fixed: the seal-and-roll recovery write (advancing the active generation and
+  inserting the `audit:reanchor` event) is now atomic. A failure between the
+  two steps could previously leave the control row pointing at a generation
+  with no reanchor event.
+- Fixed: `ckms audit verify --audit-postgres-url ... --audit-instance-id <id>`
+  now fails with a clear error when `<id>` has no events, instead of reporting
+  a vacuously verified empty chain.
+- Fixed: the dedicated `test:audit-postgres` CI job now runs the `PostgreSQL`
+  audit test suite (it previously only ran on a pre-populated schema, so a
+  first-time/clean run failed).
+- Known issue, not yet fixed: several KMS instances connecting to the same,
+  previously-schema-less audit database at the same moment can fail to start
+  — the schema bootstrap re-applied on every connection is not safe under
+  concurrency. Tracked with a `#[ignore]`d regression test measuring the
+  failure rate; not run in CI yet.
+
 ### Documentation
 
 - Reorganized the Audit & SIEM docs: a shared overview with a backend
