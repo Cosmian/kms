@@ -21,10 +21,21 @@
 //! administrative action, so a worst-case few-second delay before a freshly
 //! rotated generation becomes visible to new Sign/Verify calls is an accepted
 //! trade-off for removing a full HSM slot scan from the per-operation hot path.
+//!
+//! # Invalidation
+//!
+//! Local writes invalidate eagerly and by keyset *name* (every owner and every
+//! generation filter), or by member UID when the name is not known (delete,
+//! state change). Empty results are never cached, so a freshly created keyset
+//! is visible immediately. Writes made by *other* KMS nodes sharing the same
+//! database are only picked up once the TTL expires, which is why correctness-
+//! critical paths (re-key eligibility and generation allocation) must bypass
+//! this cache via `Database::find_by_rotate_name_uncached`.
 
-use std::{num::NonZeroUsize, time::Duration};
+use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 
 use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
+use cosmian_logger::warn;
 use moka::future::Cache;
 
 /// Bounded staleness window for cached `find_by_rotate_name` results.
@@ -46,12 +57,14 @@ struct RotateNameKey {
     owner: String,
 }
 
+type RotateNameResults = Arc<Vec<(String, Attributes)>>;
+
 /// Concurrent, short-TTL cache for [`crate::Database::find_by_rotate_name`] results.
 ///
 /// Backed by [`moka::future::Cache`] — lookups are lock-free, so concurrent
 /// Sign/Verify calls on distinct HSM sessions never serialize on a shared lock.
 pub struct RotateNameCache {
-    inner: Cache<RotateNameKey, Vec<(String, Attributes)>>,
+    inner: Cache<RotateNameKey, RotateNameResults>,
 }
 
 impl RotateNameCache {
@@ -70,6 +83,7 @@ impl RotateNameCache {
             inner: Cache::builder()
                 .max_capacity(max_capacity)
                 .time_to_live(ttl)
+                .support_invalidation_closures()
                 .build(),
         }
     }
@@ -86,10 +100,13 @@ impl RotateNameCache {
             generation,
             owner: owner.to_owned(),
         };
-        self.inner.get(&key).await
+        self.inner.get(&key).await.map(|results| (*results).clone())
     }
 
     /// Insert a freshly computed result for `(name, generation, owner)`.
+    ///
+    /// Empty results are not cached: a keyset that does not exist yet must become
+    /// visible as soon as its first member is created, not after the TTL.
     pub async fn insert(
         &self,
         name: &str,
@@ -97,31 +114,52 @@ impl RotateNameCache {
         owner: &str,
         results: Vec<(String, Attributes)>,
     ) {
+        if results.is_empty() {
+            return;
+        }
         let key = RotateNameKey {
             name: name.to_owned(),
             generation,
             owner: owner.to_owned(),
         };
-        self.inner.insert(key, results).await;
+        self.inner.insert(key, Arc::new(results)).await;
     }
 
-    /// Invalidate every cached generation-filter variant for `name`/`owner`.
+    /// Invalidate every cached entry for keyset `name`, for all owners and all
+    /// generation filters.
     ///
     /// Called after a rotation (rekey) so the next resolution sees the new
-    /// generation immediately instead of waiting out the TTL. Since the
-    /// generation filter is part of the key but rotations only add a new
-    /// generation (they never need `invalidate_entries_if` to be exhaustive
-    /// for correctness — the TTL bounds worst-case staleness regardless),
-    /// this clears the unfiltered (`None`) entry that `resolve_keyset_to_single_uid`
-    /// and `walk_keyset_chain` actually populate for `SingleLatest`/`Bare`/`Latest`
-    /// lookups, which is the entry every delegated Sign/Verify call reads.
-    pub async fn invalidate(&self, name: &str, owner: &str) {
-        let key = RotateNameKey {
-            name: name.to_owned(),
-            generation: None,
-            owner: owner.to_owned(),
-        };
-        self.inner.invalidate(&key).await;
+    /// generation immediately instead of waiting out the TTL.
+    pub fn invalidate_name(&self, name: &str) {
+        let name = name.to_owned();
+        self.invalidate_if(move |key, _| key.name == name);
+    }
+
+    /// Invalidate every cached entry that may be affected by a local write to `uid`:
+    /// entries for keyset `rotate_name` (when known) and any entry listing `uid` as a member.
+    ///
+    /// Used for writes where the keyset name is unknown or may have changed (delete,
+    /// state change, attribute update), so that e.g. a destroyed or revoked generation
+    /// is not returned as the keyset's latest member for the rest of the TTL.
+    pub fn invalidate_member(&self, uid: &str, rotate_name: Option<&str>) {
+        let uid = uid.to_owned();
+        let rotate_name = rotate_name.map(ToOwned::to_owned);
+        self.invalidate_if(move |key, results| {
+            rotate_name.as_deref() == Some(key.name.as_str())
+                || results.iter().any(|(member, _)| *member == uid)
+        });
+    }
+
+    fn invalidate_if<F>(&self, predicate: F)
+    where
+        F: Fn(&RotateNameKey, &RotateNameResults) -> bool + Send + Sync + 'static,
+    {
+        if let Err(e) = self.inner.invalidate_entries_if(predicate) {
+            // Only possible if invalidation closures were not enabled at build time;
+            // fall back to dropping everything rather than serving stale results.
+            warn!("RotateNameCache: predicate invalidation failed ({e}); clearing cache");
+            self.inner.invalidate_all();
+        }
     }
 }
 
@@ -141,23 +179,34 @@ mod tests {
         Attributes::default()
     }
 
-    #[tokio::test]
-    async fn hit_miss_and_key_isolation() {
-        let cache = RotateNameCache::with_config(Duration::from_secs(60), NonZeroUsize::MIN);
-        assert!(cache.get("keyset-a", None, "alice").await.is_none());
+    fn cache() -> RotateNameCache {
+        RotateNameCache::with_config(
+            Duration::from_secs(60),
+            NonZeroUsize::new(100).unwrap_or(NonZeroUsize::MIN),
+        )
+    }
 
+    async fn seed(cache: &RotateNameCache, name: &str, generation: Option<i32>, owner: &str) {
         cache
             .insert(
-                "keyset-a",
-                None,
-                "alice",
-                vec![("uid-1".to_owned(), attrs())],
+                name,
+                generation,
+                owner,
+                vec![(format!("{name}-uid"), attrs())],
             )
             .await;
+    }
+
+    #[tokio::test]
+    async fn hit_miss_and_key_isolation() {
+        let cache = cache();
+        assert!(cache.get("keyset-a", None, "alice").await.is_none());
+
+        seed(&cache, "keyset-a", None, "alice").await;
 
         assert_eq!(
             cache.get("keyset-a", None, "alice").await,
-            Some(vec![("uid-1".to_owned(), attrs())])
+            Some(vec![("keyset-a-uid".to_owned(), attrs())])
         );
         // Different owner, different generation, different name: all distinct keys.
         assert!(cache.get("keyset-a", None, "bob").await.is_none());
@@ -166,31 +215,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invalidate_clears_the_bare_entry() {
-        let cache = RotateNameCache::with_config(Duration::from_secs(60), NonZeroUsize::MIN);
-        cache
-            .insert(
-                "keyset-a",
-                None,
-                "alice",
-                vec![("uid-1".to_owned(), attrs())],
-            )
-            .await;
-        cache.invalidate("keyset-a", "alice").await;
+    async fn empty_results_are_not_cached() {
+        let cache = cache();
+        cache.insert("keyset-a", Some(2), "alice", vec![]).await;
+        assert!(cache.get("keyset-a", Some(2), "alice").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn invalidate_name_clears_all_owners_and_generations() {
+        let cache = cache();
+        seed(&cache, "keyset-a", None, "alice").await;
+        seed(&cache, "keyset-a", None, "bob").await;
+        seed(&cache, "keyset-a", Some(0), "alice").await;
+        seed(&cache, "keyset-b", None, "alice").await;
+
+        cache.invalidate_name("keyset-a");
+
         assert!(cache.get("keyset-a", None, "alice").await.is_none());
+        assert!(cache.get("keyset-a", None, "bob").await.is_none());
+        assert!(cache.get("keyset-a", Some(0), "alice").await.is_none());
+        assert!(cache.get("keyset-b", None, "alice").await.is_some());
+    }
+
+    #[tokio::test]
+    async fn invalidate_member_clears_entries_listing_the_uid() {
+        let cache = cache();
+        seed(&cache, "keyset-a", None, "alice").await;
+        seed(&cache, "keyset-b", None, "alice").await;
+
+        cache.invalidate_member("keyset-a-uid", None);
+
+        assert!(cache.get("keyset-a", None, "alice").await.is_none());
+        assert!(cache.get("keyset-b", None, "alice").await.is_some());
+    }
+
+    #[tokio::test]
+    async fn invalidate_member_clears_entries_for_the_given_name() {
+        let cache = cache();
+        seed(&cache, "keyset-a", Some(3), "bob").await;
+
+        cache.invalidate_member("some-new-uid", Some("keyset-a"));
+
+        assert!(cache.get("keyset-a", Some(3), "bob").await.is_none());
     }
 
     #[tokio::test]
     async fn entries_expire_after_ttl() {
         let cache = RotateNameCache::with_config(Duration::from_millis(20), NonZeroUsize::MIN);
-        cache
-            .insert(
-                "keyset-a",
-                None,
-                "alice",
-                vec![("uid-1".to_owned(), attrs())],
-            )
-            .await;
+        seed(&cache, "keyset-a", None, "alice").await;
         assert!(cache.get("keyset-a", None, "alice").await.is_some());
         tokio::time::sleep(Duration::from_millis(80)).await;
         assert!(cache.get("keyset-a", None, "alice").await.is_none());

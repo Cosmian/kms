@@ -198,20 +198,30 @@ used to resolve `RotateName` and generation selectors. This is distinct from
 | Default capacity | 10,000 entries |
 | TTL | 2 seconds |
 | Concurrency | Lock-free `moka::future::Cache` |
-| Invalidation | Bare/latest entry invalidated after rotation commit |
+| Invalidation | By keyset name (all owners and generations) or by member UID on local writes |
+| Empty results | Never cached |
 
 On a miss, the existing multi-store lookup runs unchanged. On a hit, the
 database query or HSM slot scan is skipped. The owner is part of the key to
 preserve access isolation, and `generation` is part of the key to prevent an
 explicit historical lookup from sharing the bare/latest result.
 
-### Rotation visibility
+### Invalidation and consistency
 
-The SQL re-key/re-certify orchestrator and the dedicated HSM symmetric re-key
-path invalidate the keyset's bare/latest entry after the new generation is
-committed. New operations therefore see the new head immediately through those
-paths. The 2-second TTL bounds staleness for any future rotation path that does
-not yet perform explicit invalidation.
+Every local write through `Database` invalidates the affected entries eagerly:
+
+- creating an object with a `RotateName` (including a re-key's new generation)
+  clears every entry for that keyset name, for all owners and generation filters;
+- updating, re-labelling (HSM `CKA_LABEL`), changing the state of (revoke,
+  destroy) or deleting an object clears every entry that lists it as a member.
+
+Empty results are not cached, so a newly created keyset is visible at once.
+
+Writes performed by *other* KMS nodes sharing the same database are only seen
+once the 2-second TTL expires. Paths whose correctness depends on the current
+keyset state — re-key eligibility (`enforce_keyset_latest`) and HSM
+latest-generation selection — therefore bypass the cache through
+`Database::find_by_rotate_name_uncached`.
 
 `RotateNameCache` is internal and is not configurable through the server
 configuration file or command-line options.

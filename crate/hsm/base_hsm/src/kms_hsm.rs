@@ -275,7 +275,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let data = data.to_vec();
         let iv_counter_nonce = iv_counter_nonce.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session(true)?);
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
             let handle = session.session()?.get_object_handle(&key_id)?;
             let result = session.session()?.encrypt(
                 handle,
@@ -301,7 +301,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let key_id = key_id.to_vec();
         let data = data.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session(true)?);
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
             let handle = session.session()?.get_object_handle(&key_id)?;
             let result = session
                 .session()?
@@ -324,7 +324,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let key_id = key_id.to_vec();
         let data = data.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session(true)?);
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
             let handle = session.session()?.get_object_handle(&key_id)?;
             let result = session.session()?.sign(handle, algorithm.into(), &data)?;
             session.checkin();
@@ -347,7 +347,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let data = data.to_vec();
         let signature = signature.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session(true)?);
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
             let handle = session.session()?.get_object_handle(&key_id)?;
             let result = session
                 .session()?
@@ -367,7 +367,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let slot = self.get_slot(slot_id)?;
         let key_id = key_id.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session(true)?);
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
             let handle = session.session()?.get_object_handle(&key_id)?;
             let result = session.session()?.get_key_type(handle)?;
             session.checkin();
@@ -385,7 +385,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let slot = self.get_slot(slot_id)?;
         let key_id = key_id.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session(true)?);
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
             let handle = session.session()?.get_object_handle(&key_id)?;
             let result = session.session()?.get_key_metadata(handle)?;
             session.checkin();
@@ -397,7 +397,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
 
     async fn generate_random(&self, slot_id: usize, len: usize) -> InterfaceResult<Vec<u8>> {
         let slot = self.get_slot(slot_id)?;
-        let session = SessionGuard::new(&slot, slot.checkout_session(true)?);
+        let session = SessionGuard::new(&slot, slot.checkout_session()?);
         let result = session.session()?.generate_random(len)?;
         session.checkin();
         Ok(result)

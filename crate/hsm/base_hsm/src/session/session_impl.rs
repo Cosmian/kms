@@ -176,7 +176,15 @@ const fn is_encryption_algorithm_supported(_: HsmEncryptionAlgorithm) -> bool {
 
 #[cfg(not(feature = "non-fips"))]
 const fn is_signing_algorithm_supported(algorithm: HsmSigningAlgorithm) -> bool {
-    !matches!(algorithm, HsmSigningAlgorithm::Sha1WithRsa)
+    // Both the hashing mechanism and the pre-hashed `DigestInfo` path must be rejected:
+    // otherwise a 20-byte SHA-1 digest signed through raw `CKM_RSA_PKCS` bypasses the gate.
+    !matches!(
+        algorithm,
+        HsmSigningAlgorithm::Sha1WithRsa
+            | HsmSigningAlgorithm::RsaPkcsV15Digest {
+                hashing_algorithm: HashingAlgorithm::SHA1
+            }
+    )
 }
 
 #[cfg(feature = "non-fips")]
@@ -1426,9 +1434,9 @@ impl Session {
         data: &[u8],
     ) -> HResult<Vec<u8>> {
         if !is_signing_algorithm_supported(algorithm) {
-            return Err(HError::Default(
-                "RSA signatures with SHA-1 are unavailable in FIPS mode".to_owned(),
-            ));
+            return Err(HError::Default(format!(
+                "Signing algorithm {algorithm:?} is unavailable in FIPS mode"
+            )));
         }
         match algorithm {
             HsmSigningAlgorithm::RsaPkcsV15 => {
@@ -1497,12 +1505,7 @@ impl Session {
                 // domain separator, even with a zero-length context), which not every
                 // conformant library implements — do not pass params unless a context
                 // string or the prehash flag is actually required.
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_EDDSA,
-                    pParameter: ptr::null_mut(),
-                    ulParameterLen: 0,
-                };
-                self.sign_with_mechanism(key_handle, &mut mechanism, data)
+                self.sign_with_simple_mechanism(key_handle, CKM_EDDSA, data)
             }
         }
     }
@@ -1801,9 +1804,9 @@ impl Session {
         signature: &[u8],
     ) -> HResult<bool> {
         if !is_signing_algorithm_supported(algorithm) {
-            return Err(HError::Default(
-                "RSA signatures with SHA-1 are unavailable in FIPS mode".to_owned(),
-            ));
+            return Err(HError::Default(format!(
+                "Signing algorithm {algorithm:?} is unavailable in FIPS mode"
+            )));
         }
         match algorithm {
             HsmSigningAlgorithm::RsaPkcsV15 => {
@@ -1864,7 +1867,12 @@ impl Session {
                 // (matching the software ECDSA verify convention). Convert it back,
                 // using the key's own `CKA_EC_PARAMS` to determine the field size.
                 let curve = self.ec_curve_for_key(key_handle)?;
-                let raw_signature = Self::ecdsa_der_to_raw(signature, curve_byte_size(curve))?;
+                // A signature that is not a well-formed `ECDSA-Sig-Value` for this curve is
+                // simply invalid (as in the software verify path), not an operation error.
+                let Ok(raw_signature) = Self::ecdsa_der_to_raw(signature, curve_byte_size(curve))
+                else {
+                    return Ok(false);
+                };
                 self.verify_with_simple_mechanism(key_handle, mechanism, data, &raw_signature)
             }
             // EdDSA (Ed25519/Ed448) is a pure, un-hashed signature scheme (RFC 8032): the raw
@@ -1876,12 +1884,7 @@ impl Session {
             HsmSigningAlgorithm::Eddsa => {
                 // See the matching comment in `sign()`: omit `CK_EDDSA_PARAMS` to
                 // request the pure Ed25519 variant (RFC 8032), not `Ed25519ctx`.
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_EDDSA,
-                    pParameter: ptr::null_mut(),
-                    ulParameterLen: 0,
-                };
-                self.verify_with_mechanism(key_handle, &mut mechanism, data, signature)
+                self.verify_with_simple_mechanism(key_handle, CKM_EDDSA, data, signature)
             }
         }
     }

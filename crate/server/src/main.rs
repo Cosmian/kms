@@ -53,6 +53,13 @@ fn main() {
     // deep KMIP/TTLV + middleware call chains under concurrent load otherwise overflow
     // the small platform default stack (observed: "actix-server worker N ... stack
     // overflow" under >16 concurrent clients).
+    //
+    // This minimum applies to *every* std-spawned thread without an explicit stack size,
+    // including each actix worker's Tokio blocking pool (where HSM PKCS#11 calls run via
+    // `spawn_blocking`; ~512 threads in total by default). Stacks are reserved as virtual
+    // memory and only committed on use, so the resident cost is unchanged, but hosts that
+    // cap address space (`ulimit -v`, `RLIMIT_AS`) must budget for it. Operators can set
+    // `RUST_MIN_STACK` explicitly to override this default.
     if std::env::var_os("RUST_MIN_STACK").is_none() {
         unsafe {
             std::env::set_var("RUST_MIN_STACK", (16 * 1024 * 1024).to_string());

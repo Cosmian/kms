@@ -916,7 +916,8 @@ impl CryptoOracle for HsmStore {
             }
         };
         let curve = metadata.curve;
-        // here is always the original signed message, never a caller-supplied digest.
+        // `data` is the caller-supplied digest when `input_is_digest` is set (KMIP
+        // `digested_data`), otherwise the original signed message.
         let algorithm = SigningAlgorithm::from_kmip(
             cryptographic_parameters,
             key_type,
