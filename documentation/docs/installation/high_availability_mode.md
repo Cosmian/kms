@@ -211,4 +211,4 @@ Using Keepalived (with at least two HAProxy instances) avoids the SPOF by provid
     across nodes. Pointing several replicas at the same audit file means only one of them will
     ever actually write to it — the others sit idle, so you silently lose their events.
     A centrally consolidated, multi-writer-safe audit trail requires the
-    [PostgreSQL audit backend](../configuration/audit-logs.md#postgresql-backend) instead.
+    [PostgreSQL audit backend](../configuration/audit-postgresql-backend.md) instead.

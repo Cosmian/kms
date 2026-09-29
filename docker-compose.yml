@@ -4,7 +4,7 @@
 # Source .mise/lib/test_slots.sh to compute KMS_SLOT_* variables automatically.
 services:
   postgres:
-    image: postgres:16
+    image: postgres:18
     ports:
       - ${KMS_SLOT_POSTGRES_PORT:-5432}:5432
     environment:
@@ -20,7 +20,7 @@ services:
   # `postgres` service on purpose: the audit backend refuses to start if its
   # database is the same as the main object-storage database.
   postgres-audit:
-    image: postgres:16
+    image: postgres:18
     ports:
       - ${KMS_SLOT_AUDIT_POSTGRES_PORT:-5436}:5432
     environment:
@@ -35,7 +35,7 @@ services:
   # The container names (pg1, pg2) are referenced by docker stop/start inside
   # the test to simulate a primary failure and recovery.
   pg-failover-1:
-    image: postgres:16
+    image: postgres:18
     container_name: pg1
     profiles: [pg-failover]
     ports:
@@ -47,7 +47,7 @@ services:
       - PGDATA=/tmp/postgres-fo1
 
   pg-failover-2:
-    image: postgres:16
+    image: postgres:18
     container_name: pg2
     profiles: [pg-failover]
     ports:
@@ -87,7 +87,7 @@ services:
       - MYSQL_USER=kms
       - MYSQL_PASSWORD=kms
   postgres-mtls:
-    image: postgres:16
+    image: postgres:18
     ports:
       - ${KMS_SLOT_POSTGRES_MTLS_PORT:-5433}:5432
     environment:

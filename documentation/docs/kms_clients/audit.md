@@ -45,39 +45,20 @@ The value must be an RFC 3339 timestamp, e.g. `2026-05-01T00:00:00Z`.
 `--format <FORMAT>` Output format. One of `json` (default) or `cef`.
 
 `--kms-version <STRING>` KMS version string to embed in the CEF device version header.
-If omitted the field is left blank. Useful when merging exports from multiple nodes.
+Defaults to the `ckms` binary's own version. Useful when merging exports from multiple nodes.
 
 ### Output formats
 
 **`json`** — Emits one JSON object per line on stdout (JSONL). Same schema as the log file.
 
-**`cef`** — Emits one CEF line per event on stdout (`CEF:0` header, Common Event Format spec 0.1):
+**`cef`** — Emits one CEF line per event on stdout, per the ArcSight CEF Implementation
+Standard v27:
 
 ```text
 CEF:0|Cosmian|KMS|<version>|<operation>|<operation>|<severity>|rt=<epoch_ms> suser=<user> ...
 ```
 
-### CEF field mapping
-
-The CEF header fields (`Device Vendor`, `Device Product`, `Device Version`, `Signature ID`, `Name`, `Severity`)
-are set automatically. Extension fields carry the structured event data:
-
-| CEF extension key | Label        | Value                                                              |
-| ----------------- | ------------ | ------------------------------------------------------------------ |
-| `rt`              | —            | Event time as Unix epoch milliseconds.                             |
-| `suser`           | —            | Authenticated username.                                            |
-| `src`             | —            | Client IP. **Omitted** when the IP is not available.               |
-| `outcome`         | —            | `"Success"` or `"Failure"`.                                        |
-| `reason`          | —            | Failure reason string. **Omitted** on success.                     |
-| `act`             | —            | KMIP operation name (e.g. `"Encrypt"`, `"Create+Destroy"`).        |
-| `cn1`             | `durationMs` | Wall-clock operation duration in milliseconds.                     |
-| `cs1`             | `objectUID`  | KMIP `UniqueIdentifier`. **Omitted** when `null`.                  |
-| `cs2`             | `algorithm`  | Cryptographic algorithm. **Omitted** when `null`.                  |
-| `externalId`      | —            | Monotonically increasing event ID (integer, from `event.id`).      |
-| `devicePayloadId` | —            | Request correlation UUID. **Omitted** when no request ID is set.   |
-
-> **CEF severity** is derived from the result: `5` (Medium) for `Success`; `7` (High) for
-> authorization failures (401 / 403); `6` (Medium-High) for all other failures.
+See [CEF export](../configuration/cef-export.md) for the full field mapping and severity rules.
 
 ### Examples
 
@@ -94,7 +75,7 @@ ckms audit export \
   --path /var/log/cosmian-kms/audit.jsonl \
   --format cef \
   --since "2026-05-01T00:00:00Z" \
-  | nc -u splunk-host 514
+  | nc splunk-host 5514
 ```
 
 Export a single instance's events from a `PostgreSQL` audit database:
@@ -117,9 +98,12 @@ Checks that:
 1. Each event's `row_hash` matches a freshly computed hash of its fields.
 2. Each event's `prev_hash` matches the `row_hash` of the previous event (or is all-zeros for the first event).
 3. (File source only) every `audit:reanchor` event's sealed evidence file still exists next to
-   the log and its SHA-256 still matches the digest recorded in the event — this is what makes
-   deleting or altering sealed evidence after the fact detectable. The `PostgreSQL` backend has
-   no equivalent: its writes are atomic, so it has no torn-write/reanchor recovery path.
+   the log and its SHA-256 still matches the digest recorded in the event. This is what makes
+   deleting or altering sealed evidence after the fact detectable. The `PostgreSQL` backend also
+   seals a corrupted chain and starts a fresh one with its own `audit:reanchor` event, but this
+   command does not yet check its recorded evidence digest against the sealed generation; see
+   [PostgreSQL backend](../configuration/audit-postgresql-backend.md#checking-sealed-evidence-by-hand)
+   for the manual check.
 
 Exits with code **0** when every chain is intact, or **1** when a broken link, tampered event, or
 altered/missing sealed-evidence file is detected.

@@ -1,4 +1,4 @@
-# CEF export format
+# CEF export
 
 The KMS can export audit events in the **Common Event Format (CEF)** — a text-based,
 vendor-neutral log format widely ingested by SIEM products (ArcSight, Splunk, IBM QRadar,
@@ -8,21 +8,9 @@ CEF export is a **serialisation view** of the tamper-evident JSONL audit log (se
 [Audit logs](./audit-logs.md)). It does not replace the JSONL file, which remains the
 authoritative, hash-chain-verifiable record.
 
----
-
-## Specification
-
 The KMS produces **CEF version 0** (`CEF:0`) as defined by the
 [ArcSight CEF Implementation Standard, version 27](https://www.microfocus.com/documentation/arcsight/arcsight-smartconnectors-24.2/pdfdoc/cef-implementation-standard/cef-implementation-standard.pdf)
 (OpenText/ArcSight, April 2024).
-
-> **Reference links**
->
-> - [CEF Implementation Standard v27 (PDF)](https://www.microfocus.com/documentation/arcsight/arcsight-smartconnectors-24.2/pdfdoc/cef-implementation-standard/cef-implementation-standard.pdf)
-> - [jc CEF parser (kellyjonbrazil/jc)](https://github.com/kellyjonbrazil/jc) — independent,
->   third-party CEF parser used for interoperability validation
-
----
 
 ## Format overview
 
@@ -159,18 +147,4 @@ For the full CLI reference, see [Audit log management](../kms_clients/audit.md).
 ## Interoperability validation
 
 The KMS CEF output is validated against [jc](https://github.com/kellyjonbrazil/jc)
-(kellyjonbrazil/jc, 8.7k+ GitHub stars, MIT licence) — an independent, widely used,
-actively maintained CEF parser.
-
-The interop test (`mise test:cef`) verifies:
-
-1. **Structural parse** — jc can parse every CEF line and extracts exactly one record
-2. **Field round-trip** — every field value matches the original JSONL source event
-3. **CEF v27 compliance** — header field lengths within spec limits, severity in 0–10
-   range, all extension keys exist in the CEF v27 dictionary
-4. **Type validation** — `rt` is a valid epoch-ms integer, `cn1` is numeric, `src` is
-   a valid IP address
-5. **Escaping round-trip** — jc correctly unescapes values with special characters
-   (`=`, `|`, `\`, newlines) back to the originals
-6. **Injection hardening** — no raw newlines in CEF output; malicious input cannot
-   inject forged CEF records
+(kellyjonbrazil/jc, MIT licence), an independent CEF parser.
