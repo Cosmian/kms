@@ -37,6 +37,11 @@ pub struct HsmCapabilities {
     /// Whether the HSM supports PKCS#11 v3.0 message-based AES-GCM encryption.
     pub supports_aes_gcm_message: bool,
 
+    /// Whether RSA-OAEP `C_UnwrapKey` needs a non-null `pSourceData` pointer for an
+    /// empty `CKZ_DATA_SPECIFIED` label. `SoftHSM2` rejects `NULL`, while AWS `CloudHSM`
+    /// rejects anything but `NULL` (the PKCS#11 default for an empty label).
+    pub rsa_oaep_requires_source_data_ptr: bool,
+
     /// Maximum length allowed for `CKA_LABEL` on HSM objects.
     /// If `None`, there is no enforced limit.
     pub max_label_len: Option<usize>,
@@ -52,6 +57,7 @@ impl Default for HsmCapabilities {
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
             supports_aes_gcm_message: true,
+            rsa_oaep_requires_source_data_ptr: false,
             max_label_len: None,
         }
     }

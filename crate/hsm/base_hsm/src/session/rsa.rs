@@ -300,22 +300,27 @@ impl Session {
         digest: RsaOaepDigest,
     ) -> HResult<CK_OBJECT_HANDLE> {
         let mut wrapped_key = wrapped_aes_key.to_vec();
-        // SoftHSM2 requires a non-null source pointer for CKZ_DATA_SPECIFIED,
-        // even when the OAEP label is empty.
+        // Empty OAEP label: SoftHSM2 requires a non-null source pointer, AWS
+        // CloudHSM requires NULL (see `rsa_oaep_requires_source_data_ptr`).
         let mut oaep_label = 0_u8;
+        let source_data = if self.hsm_capabilities().rsa_oaep_requires_source_data_ptr {
+            (&raw mut oaep_label).cast::<std::ffi::c_void>()
+        } else {
+            ptr::null_mut()
+        };
         let mut oaep_params = match digest {
             RsaOaepDigest::SHA256 => CK_RSA_PKCS_OAEP_PARAMS {
                 hashAlg: CKM_SHA256,
                 mgf: CKG_MGF1_SHA256,
                 source: CKZ_DATA_SPECIFIED,
-                pSourceData: (&raw mut oaep_label).cast::<std::ffi::c_void>(),
+                pSourceData: source_data,
                 ulSourceDataLen: 0,
             },
             RsaOaepDigest::SHA1 => CK_RSA_PKCS_OAEP_PARAMS {
                 hashAlg: CKM_SHA_1,
                 mgf: CKG_MGF1_SHA1,
                 source: CKZ_DATA_SPECIFIED,
-                pSourceData: (&raw mut oaep_label).cast::<std::ffi::c_void>(),
+                pSourceData: source_data,
                 ulSourceDataLen: 0,
             },
         };

@@ -43,6 +43,7 @@ impl HsmProvider for SofthsmCapabilityProvider {
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
             supports_aes_gcm_message: false,
+            rsa_oaep_requires_source_data_ptr: true,
             max_label_len: None,
         }
     }
