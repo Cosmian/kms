@@ -128,6 +128,13 @@ flowchart TB
 | proteccio | ✓    | ✗        | FIPS only |
 | softhsm2  | ✓    | ✓        |           |
 
+> **Upstream-only jobs**: test types that need upstream-only secrets or infrastructure run in
+> dedicated jobs gated by `if: github.repository == 'Cosmian/kms'`, so they are skipped on
+> forks: `test-nix-upstream` (`google-cse`, `secret_vault`, `secret_aws`, `secret_azure`),
+> `hsm-upstream` (`proteccio`, `crypt2pay`, `aws-cloudhsm` hardware HSMs) and `xks-remote`
+> (AWS XKS — remote server). They are separate jobs
+> because a job-level `if` cannot read the `matrix` context.
+
 ---
 
 ## 5. Windows Test Workflow (`test_windows.yml`)

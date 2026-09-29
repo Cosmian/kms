@@ -210,13 +210,18 @@ impl Database {
         if let Some(ref uid) = uid {
             reject_reserved_uid(uid)?;
         }
-        self.record("create", async move {
-            let db = self
-                .get_object_store(uid.as_deref().unwrap_or_default())
-                .await?;
-            Ok(db.create(uid, owner, object, attributes, tags).await?)
-        })
-        .await
+        let uid = self
+            .record("create", async move {
+                let db = self
+                    .get_object_store(uid.as_deref().unwrap_or_default())
+                    .await?;
+                Ok(db.create(uid, owner, object, attributes, tags).await?)
+            })
+            .await?;
+        if let Some(name) = attributes.rotate_name.as_deref() {
+            self.rotate_name_cache.invalidate_name(name);
+        }
+        Ok(uid)
     }
 
     /// Retrieve objects from the database.
@@ -421,6 +426,8 @@ impl Database {
         .await?;
         // Invalidate the object cache since attributes or key material may have changed.
         self.object_cache.invalidate(uid).await;
+        self.rotate_name_cache
+            .invalidate_member(uid, attributes.rotate_name.as_deref());
         // Validate the unwrapped cache: if the object fingerprint changed (e.g. a
         // re-wrap), evict the stale unwrapped entry so the next get_unwrapped call
         // performs a fresh unwrap instead of returning stale key material.
@@ -436,6 +443,7 @@ impl Database {
         })
         .await?;
         self.object_cache.invalidate(uid).await;
+        self.rotate_name_cache.invalidate_member(uid, None);
         Ok(())
     }
 
@@ -448,6 +456,7 @@ impl Database {
         .await?;
         self.object_cache.invalidate(uid).await;
         self.unwrapped_cache.clear_cache(uid).await;
+        self.rotate_name_cache.invalidate_member(uid, None);
         Ok(())
     }
 
@@ -680,8 +689,11 @@ impl Database {
     /// `C_FindObjects` scan plus a `C_GetAttributeValue` round-trip per object on *every*
     /// cryptographic operation. Rotation is a rare, explicit administrative action, so a
     /// worst-case few-second staleness window before a new generation becomes visible is an
-    /// accepted trade-off (`rotate` operations additionally call
-    /// [`crate::core::RotateNameCache::invalidate`] to shrink that window in practice).
+    /// accepted trade-off for key *resolution*. Local writes invalidate the cache eagerly;
+    /// writes from other KMS nodes sharing the database are only seen after the TTL.
+    ///
+    /// Paths whose correctness depends on the current keyset state (re-key eligibility,
+    /// next-generation allocation) must use [`Self::find_by_rotate_name_uncached`] instead.
     pub async fn find_by_rotate_name(
         &self,
         name: &str,
@@ -691,6 +703,23 @@ impl Database {
         if let Some(cached) = self.rotate_name_cache.get(name, generation, owner).await {
             return Ok(cached);
         }
+        let results = self
+            .find_by_rotate_name_uncached(name, generation, owner)
+            .await?;
+        self.rotate_name_cache
+            .insert(name, generation, owner, results.clone())
+            .await;
+        Ok(results)
+    }
+
+    /// Same as [`Self::find_by_rotate_name`], but always queries the object stores,
+    /// bypassing (and not populating) the [`crate::core::RotateNameCache`].
+    pub async fn find_by_rotate_name_uncached(
+        &self,
+        name: &str,
+        generation: Option<i32>,
+        owner: &UserId,
+    ) -> DbResult<Vec<(String, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, Attributes)> = Vec::new();
         for db in map.values() {
@@ -700,19 +729,16 @@ impl Database {
                     .unwrap_or_default(),
             );
         }
-        drop(map);
-        self.rotate_name_cache
-            .insert(name, generation, owner, results.clone())
-            .await;
         Ok(results)
     }
 
-    /// Invalidate the cached `find_by_rotate_name` entry for `name`/`owner`.
+    /// Invalidate every cached `find_by_rotate_name` entry for keyset `name`
+    /// (all owners, all generation filters).
     ///
     /// Call this after a rotation (rekey) creates a new generation so the next
     /// resolution sees it immediately instead of waiting out the cache's TTL.
-    pub async fn invalidate_rotate_name_cache(&self, name: &str, owner: &UserId) {
-        self.rotate_name_cache.invalidate(name, owner).await;
+    pub fn invalidate_rotate_name_cache(&self, name: &str) {
+        self.rotate_name_cache.invalidate_name(name);
     }
 
     /// Set the `CKA_LABEL` (or equivalent) on a key identified by `uid`.
@@ -720,7 +746,10 @@ impl Database {
     /// Routes to the object store responsible for `uid`. SQL stores silently ignore this.
     pub async fn set_key_label(&self, uid: &str, label: &str) -> DbResult<()> {
         let store = self.get_object_store(uid).await?;
-        store.set_key_label(uid, label).await.map_err(Into::into)
+        store.set_key_label(uid, label).await?;
+        // On HSM stores the label carries the keyset name and generation.
+        self.rotate_name_cache.invalidate_member(uid, None);
+        Ok(())
     }
 
     /// Rewrite the PKCS#11 rotation dates on an HSM key identified by `uid`.
@@ -783,23 +812,30 @@ impl Database {
         // invalidate of clear cache for all operations
         for op in operations {
             match op {
-                AtomicOperation::Create((uid, _owner, object, ..)) => {
+                AtomicOperation::Create((uid, _owner, object, attributes, ..)) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.validate_cache(uid, object).await?;
+                    if let Some(name) = attributes.rotate_name.as_deref() {
+                        self.rotate_name_cache.invalidate_name(name);
+                    }
                 }
-                AtomicOperation::UpdateObject((uid, object, ..))
-                | AtomicOperation::Upsert((uid, object, ..)) => {
+                AtomicOperation::UpdateObject((uid, object, attributes, ..))
+                | AtomicOperation::Upsert((uid, object, attributes, ..)) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.validate_cache(uid, object).await?;
+                    self.rotate_name_cache
+                        .invalidate_member(uid, attributes.rotate_name.as_deref());
                 }
                 AtomicOperation::Delete(uid) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.clear_cache(uid).await;
+                    self.rotate_name_cache.invalidate_member(uid, None);
                 }
                 AtomicOperation::UpdateState((uid, _)) => {
                     // Evict the stale object so the new lifecycle state is
                     // visible immediately on the next retrieve_object call.
                     self.object_cache.invalidate(uid).await;
+                    self.rotate_name_cache.invalidate_member(uid, None);
                 }
             }
         }

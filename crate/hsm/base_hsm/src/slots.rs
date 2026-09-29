@@ -330,8 +330,11 @@ impl SlotManager {
         )
     }
 
-    /// Check out a pooled session if available, otherwise open a new one.
-    pub fn checkout_session(&self, read_write: bool) -> HResult<Session> {
+    /// Check out a pooled read-write session if available, otherwise open a new one.
+    ///
+    /// The pool only ever holds read-write sessions, so callers can never receive a
+    /// session with different access rights than the ones it was opened with.
+    pub fn checkout_session(&self) -> HResult<Session> {
         let pooled = {
             let mut pool = self
                 .session_pool
@@ -339,7 +342,7 @@ impl SlotManager {
                 .map_err(|e| HError::Default(format!("Failed to lock session pool: {e}")))?;
             pool.pop()
         };
-        pooled.map_or_else(|| self.open_session(read_write), Ok)
+        pooled.map_or_else(|| self.open_session(true), Ok)
     }
 
     /// Return a healthy session to the pool for reuse.

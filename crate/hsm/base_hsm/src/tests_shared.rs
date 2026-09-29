@@ -1332,7 +1332,7 @@ pub fn concurrent_sign_does_not_degrade(slot: &Arc<SlotManager>) -> HResult<()> 
 
             let handle = thread::spawn(move || -> HResult<()> {
                 while !stop.load(Ordering::Relaxed) {
-                    let session = slot.checkout_session(true)?;
+                    let session = slot.checkout_session()?;
                     let _sig = {
                         let res = session.sign(sk, sign_algorithm, &signing_input)?;
                         slot.checkin_session(session);
