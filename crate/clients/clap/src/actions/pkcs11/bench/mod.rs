@@ -205,7 +205,7 @@ impl Pkcs11BenchAction {
             cooldown_time: Duration::from_secs(cooldown),
         };
 
-        let modes = expand_bench_mode(self.mode, Some(&self.filter));
+        let modes = expand_bench_mode(self.mode, Some(&self.filter), self.delegated);
         if modes.is_empty() {
             return Err(KmsCliError::Default(
                 "No benchmark operations matched the selected mode and filter".to_owned(),

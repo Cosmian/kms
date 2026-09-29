@@ -13,11 +13,13 @@
 #   bench_wait_ready_tls <url> <accept_invalid_certs> <ca_cert> <client_cert> <client_key> [<timeout_secs>]
 #   bench_write_ckms_tls_conf <out_path> <server_url> <accept_invalid_certs> <ca_cert_path> <client_pem_cert> <client_pem_key> <client_pkcs12> <client_pkcs12_password>
 #   bench_register_cleanup
+#   bench_prepare_hsm <hsm_model>
 #   bench_write_md <out_path> <kms_port> <criterion_md_path> [page_title]
 # Globals set:
 #   CARGO_TARGET_DIR, KMS_BIN, CKMS_BIN, KMS_PID, TMP_DIR
 #   BENCH_DEB_BINARY, BENCH_DEB_OSSL_MODS  (after bench_download_server)
 #   OPENSSL_MODULES_DIR                    (set by caller for deb-based server)
+#   BENCH_HSM_SLOT, BENCH_HSM_PASSWORD      (after bench_prepare_hsm)
 
 # ── Guard ─────────────────────────────────────────────────────────────────────
 [ -n "${_MISE_BENCH_HELPERS_SH_LOADED:-}" ] && return 0
@@ -36,6 +38,8 @@ TMP_DIR=""
 BENCH_DEB_BINARY=""
 BENCH_DEB_OSSL_MODS=""
 OPENSSL_MODULES_DIR=""
+BENCH_HSM_PASSWORD=""
+BENCH_VPN_PID_FILES=()
 
 # Build only the ckms CLI (no server).
 # Usage: bench_build_ckms [release|debug]
@@ -303,6 +307,12 @@ _bench_cleanup() {
     kill "${KMS_PID}" 2>/dev/null || true
     wait "${KMS_PID}" 2>/dev/null || true
   }
+  local pid_file
+  for pid_file in ${BENCH_VPN_PID_FILES[@]+"${BENCH_VPN_PID_FILES[@]}"}; do
+    [ -f "${pid_file}" ] || continue
+    sudo kill "$(cat "${pid_file}")" 2>/dev/null || true
+    sudo rm -f "${pid_file}"
+  done
   rm -rf "${TMP_DIR:-}"
 }
 
@@ -402,6 +412,64 @@ EOF
     --number-of-bits 256 \
     "${HSM_KEK_UID}"
   echo "KEK created: ${HSM_KEK_UID}"
+}
+
+# Prepare the host once for HSM-resident benchmarks on <hsm_model>, reusing the
+# same .github/reusable_scripts/prepare_*.sh scripts as the `test:hsm-<model>`
+# tasks (library install, simulator start, VPN tunnel). Call it after
+# bench_register_cleanup so any VPN it opens is torn down on exit.
+#
+# Credentials come from the environment (CI secrets) or, locally, from an
+# optional ~/.cosmian/<hsm_model>.sh (e.g. PROTECCIO_PASSWORD, CRYPT2PAY_SLOT_ID).
+#
+# Usage: bench_prepare_hsm <hsm_model>
+# Sets:  BENCH_HSM_SLOT (unless already set), BENCH_HSM_PASSWORD
+bench_prepare_hsm() {
+  local hsm_model="$1"
+  local scripts_dir
+  # shellcheck disable=SC2119
+  scripts_dir="${MISE_CONFIG_ROOT:-$(get_repo_root)}/.github/reusable_scripts"
+
+  if [ -f "${HOME}/.cosmian/${hsm_model}.sh" ]; then
+    # shellcheck source=/dev/null
+    source "${HOME}/.cosmian/${hsm_model}.sh"
+  fi
+
+  case "${hsm_model}" in
+    softhsm2)
+      source "${MISE_CONFIG_ROOT:-$(get_repo_root)}/.mise/lib/softhsm2.sh"
+      ;;
+    kryoptic)
+      # Built and initialised per server by bench_start_server_hsm_resident.
+      ;;
+    proteccio)
+      bash "${scripts_dir}/prepare_proteccio.sh"
+      ;;
+    crypt2pay)
+      BENCH_VPN_PID_FILES+=("${CRYPT2PAY_OPENVPN_PID_FILE:-/tmp/crypt2pay-openvpn.pid}")
+      bash "${scripts_dir}/prepare_crypt2pay.sh"
+      ;;
+    utimaco)
+      # Starts the simulator and exports UTIMACO_PKCS11_LIB + CS_PKCS11_R3_CFG;
+      # the token is initialised on slot 0 with user PIN 12345678.
+      # shellcheck source=/dev/null
+      source "${scripts_dir}/prepare_utimaco.sh"
+      BENCH_HSM_SLOT="${BENCH_HSM_SLOT:-0}"
+      BENCH_HSM_PASSWORD="12345678"
+      ;;
+    aws_cloudhsm)
+      BENCH_VPN_PID_FILES+=("${CLOUDHSM_OPENVPN_PID_FILE:-/tmp/cloudhsm-openvpn.pid}")
+      # Exports AWS_CLOUDHSM_PKCS11_LIB, HSM_USER_PASSWORD and (optionally) HSM_SLOT_ID.
+      # shellcheck source=/dev/null
+      source "${scripts_dir}/prepare_aws_cloudhsm.sh"
+      BENCH_HSM_SLOT="${BENCH_HSM_SLOT:-${HSM_SLOT_ID:-}}"
+      BENCH_HSM_PASSWORD="${HSM_USER_PASSWORD}"
+      ;;
+    *)
+      # smartcardhsm / other: the caller provides the library env and --hsm-slot.
+      ;;
+  esac
+  export BENCH_HSM_SLOT BENCH_HSM_PASSWORD
 }
 
 # Start a KMS server with an HSM backend registered for HSM-*resident* key
@@ -807,7 +875,12 @@ bench_generate_report() {
 
   # Mirror the freshly generated report into the documentation tree so the
   # checked-in docs always reflect the latest run (committed by the CI job or
-  # the developer's local run).
+  # the developer's local run). Sanity runs (2 s/level, debug build) only
+  # smoke-test the pipeline: never let them overwrite the published reports.
+  if [ "${BENCH_SANITY:-}" = "true" ]; then
+    echo "Sanity run: leaving documentation/docs/benchmarks/${docs_subdir} untouched."
+    return 0
+  fi
   local docs_bench_dir
   # shellcheck disable=SC2119
   docs_bench_dir="$(get_repo_root)/documentation/docs/benchmarks/${docs_subdir}"

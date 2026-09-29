@@ -105,6 +105,7 @@ flowchart TB
         hsm_types["HSM types: utimaco · proteccio (fips) · softhsm2"]
         hsm_feat["Features: fips · non-fips (proteccio: fips only)"]
         hsm_steps["1. Install Nix · 2. Checkout · 3. nix.sh test hsm <type>"]
+        hsm_bench["non-fips: mise run bench --sanity --hsm-model <type><br/>(softhsm2: full suite · others: load-pkcs11 --delegated)"]
     end
     win["windows-2022<br/>Calls: test_windows.yml"]
     clean["cleanup<br/>Calls: cleanup_cache.yml (reusable)"]

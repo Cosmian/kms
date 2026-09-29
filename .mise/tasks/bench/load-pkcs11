@@ -62,24 +62,12 @@ BENCH_OVERHEAD_PAYLOAD_SIZE="${usage_overhead_payload_size:-32}"
 BENCH_OVERHEAD_PAYLOAD_MODE="${usage_overhead_payload_mode:-fixed}"
 
 
-if [ "${BENCH_DELEGATED}" = "true" ]; then
-  if [ -n "${BENCH_SERVER_URL}" ]; then
-    if [ -z "${BENCH_HSM_SLOT}" ]; then
-      print_error "--hsm-slot is required when using --delegated with --server-url."
-    fi
-    HSM_SLOT_ID="${BENCH_HSM_SLOT}"
-  elif [ "${BENCH_HSM_MODEL}" = "kryoptic" ]; then
-    source "${MISE_CONFIG_ROOT}/.mise/lib/kryoptic.sh"
-    HSM_SLOT_ID=1
-  elif [ "${BENCH_HSM_MODEL}" = "proteccio" ]; then
-    source "${HOME}/.cosmian/proteccio.sh"
-    HSM_SLOT_ID="${PROTECCIO_SLOT:-5}"
-  elif [ "${BENCH_HSM_MODEL}" = "crypt2pay" ]; then
-    source "${HOME}/.cosmian/crypt2pay.sh"
-    HSM_SLOT_ID="${CRYPT2PAY_SLOT_ID:-1}"
-  elif [ "${BENCH_HSM_MODEL}" = "softhsm2" ]; then
-    source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
-  fi
+# A remote server needs an explicit --hsm-slot; for a local server the HSM is
+# prepared by bench_prepare_hsm below and HSM_SLOT_ID is resolved (and
+# exported) by bench_start_server_hsm_resident.
+if [ "${BENCH_DELEGATED}" = "true" ] && [ -n "${BENCH_SERVER_URL}" ]; then
+  [ -n "${BENCH_HSM_SLOT}" ] || print_error "--hsm-slot is required when using --delegated with --server-url."
+  HSM_SLOT_ID="${BENCH_HSM_SLOT}"
 fi
 kms_init_env "${BENCH_VARIANT}" "${BENCH_LINK}"
 if [ "${BENCH_DELEGATED}" = "true" ]; then
@@ -118,6 +106,9 @@ if [ "${BENCH_SANITY}" = "true" ]; then
 fi
 
 bench_register_cleanup
+if [ "${BENCH_DELEGATED}" = "true" ] && [ -z "${BENCH_SERVER_URL}" ]; then
+  bench_prepare_hsm "${BENCH_HSM_MODEL}"
+fi
 
 # Build the server (if local), the cosmian_pkcs11 cdylib, and the ckms binary.
 BUILD_ARGS=(-p cosmian_pkcs11 -p ckms)
@@ -236,7 +227,7 @@ if [ "${BENCH_DELEGATED}" = "true" ] && [ -z "${BENCH_SERVER_URL}" ] && [ "${BEN
     mkdir -p "${SUB_TMP}"
     SUB_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
     print_status "[${SUB_INDEX}/${SUB_COUNT}] delegated PKCS#11 submode: ${SUB_MODE}"
-    bench_start_server_hsm_resident "${SUB_PORT}" "${SUB_TMP}" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}" "${BENCH_HSM_SLOT}"
+    bench_start_server_hsm_resident "${SUB_PORT}" "${SUB_TMP}" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}" "${BENCH_HSM_SLOT}" "${BENCH_HSM_PASSWORD}"
     KMS_BASE_URL="http://127.0.0.1:${SUB_PORT}"
     CKMS_CONF="${SUB_TMP}/ckms.toml"
     bench_write_ckms_tls_conf "${CKMS_CONF}" "${KMS_BASE_URL}" "false" "" "" "" "" ""
@@ -263,7 +254,7 @@ if [ "${BENCH_DELEGATED}" = "true" ] && [ -z "${BENCH_SERVER_URL}" ] && [ "${BEN
   cp "${MERGED_DIR}"/* "${CRITERION_HOME}/"
 elif [ "${BENCH_DELEGATED}" = "true" ] && [ -z "${BENCH_SERVER_URL}" ]; then
   BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
-  bench_start_server_hsm_resident "${BENCH_PORT}" "${TMP_DIR}" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}" "${BENCH_HSM_SLOT}"
+  bench_start_server_hsm_resident "${BENCH_PORT}" "${TMP_DIR}" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}" "${BENCH_HSM_SLOT}" "${BENCH_HSM_PASSWORD}"
   KMS_BASE_URL="http://127.0.0.1:${BENCH_PORT}"
   CKMS_CONF="${TMP_DIR}/ckms.toml"
   bench_write_ckms_tls_conf "${CKMS_CONF}" "${KMS_BASE_URL}" "false" "" "" "" "" ""

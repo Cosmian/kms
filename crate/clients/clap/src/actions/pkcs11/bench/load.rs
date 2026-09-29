@@ -155,10 +155,15 @@ fn sign_verify_modes() -> Vec<ConcreteMode> {
 }
 
 /// Expands standard `BenchMode` to concrete PKCS#11 benchmark modes.
+///
+/// With `delegated`, AES-GCM modes are dropped: single-part `CKM_AES_GCM`
+/// requires a caller-supplied IV (`CK_GCM_PARAMS.pIv`), which the KMS rejects
+/// for HSM-resident keys (the HSM integration always generates the nonce).
 #[must_use]
 pub(crate) fn expand_bench_mode(
     mode: BenchMode,
     filter: Option<&BenchFilter>,
+    delegated: bool,
 ) -> Vec<ConcreteMode> {
     let modes = match mode {
         BenchMode::All => all_modes(),
@@ -175,14 +180,13 @@ pub(crate) fn expand_bench_mode(
         BenchMode::Batch => vec![ConcreteMode::Batch],
     };
 
-    if let Some(f) = filter {
-        modes
-            .into_iter()
-            .filter(|m| f.matches(m.label(), None))
-            .collect()
-    } else {
-        modes
-    }
+    modes
+        .into_iter()
+        .filter(|m| {
+            !(delegated && matches!(m, ConcreteMode::EncryptAesGcm | ConcreteMode::DecryptAesGcm))
+        })
+        .filter(|m| filter.is_none_or(|f| f.matches(m.label(), None)))
+        .collect()
 }
 
 /// Sweep parameters, mirroring `bench/load`'s CLI flags.

@@ -6,6 +6,7 @@
 #USAGE flag "-s --sanity"           env="BENCH_SANITY"                     help="Quick sanity check"
 #USAGE flag "-u --server-url <u>"   env="BENCH_SERVER_URL"                 help="Target KMS server URL (e.g. http://192.168.1.17:9090); omit to build local"
 #USAGE flag "--speed <speed>"       env="BENCH_SPEED"   default="quick"    help="Criterion speed preset" { choices "quick" "normal" "sanity" }
+#USAGE flag "--hsm-model <m>"       env="BENCH_HSM_MODEL" default="softhsm2" help="HSM for the delegated PKCS#11 benchmark. softhsm2 runs the full suite; any other model runs only bench:load-pkcs11 --delegated against that HSM (the software and HSM-KEK benchmarks are SoftHSM2-bound and HSM-independent)" { choices "softhsm2" "kryoptic" "proteccio" "crypt2pay" "utimaco" "aws_cloudhsm" }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
@@ -38,6 +39,7 @@ if [ "${usage_sanity:-false}" = "true" ]; then
 fi
 
 FAILED=()
+HSM_MODEL="${usage_hsm_model:-softhsm2}"
 
 # Determine which tasks to run based on whether a remote server URL was provided
 # Remote servers don't support load-hsm (which creates its own local HSM)
@@ -62,34 +64,24 @@ run_bench() {
   fi
 }
 
-# 1. mise bench:load --criterion
-run_bench "bench:load" "${TASK_DIR}/load" "${COMMON_ARGS[@]}"
-
-# 2-3. Load-HSM tasks only run in LOCAL mode (not with remote --server-url)
-if [ "${REMOTE_MODE}" = "false" ]; then
-  # 2. mise bench:load-hsm --criterion
-  run_bench "bench:load-hsm" "${TASK_DIR}/load-hsm" "${COMMON_ARGS[@]}"
-
-  # 3. mise bench:load-hsm --criterion --delegated
-  run_bench "bench:load-hsm --delegated" "${TASK_DIR}/load-hsm" "${COMMON_ARGS[@]}" --delegated
+if [ "${HSM_MODEL}" != "softhsm2" ]; then
+  # Only the delegated PKCS#11 benchmark targets a selectable HSM.
+  [ "${REMOTE_MODE}" = "false" ] || print_error "--hsm-model ${HSM_MODEL} requires a local server (no --server-url)"
+  run_bench "bench:load-pkcs11 --delegated --hsm-model ${HSM_MODEL}" \
+    "${TASK_DIR}/load-pkcs11" "${COMMON_ARGS[@]}" --delegated --hsm-model "${HSM_MODEL}"
 else
-  print_warning "Skipping bench:load-hsm (requires local HSM control)"
-  print_warning "Skipping bench:load-hsm --delegated (requires local HSM control)"
-fi
+  # 1. mise bench:load --criterion
+  run_bench "bench:load" "${TASK_DIR}/load" "${COMMON_ARGS[@]}"
 
-# 4. mise bench:load-pkcs11 --criterion (only in LOCAL mode)
-# Remote mode: bench:load-pkcs11 fails with HSM crypto errors; requires investigation/fix
-if [ "${REMOTE_MODE}" = "false" ]; then
-  run_bench "bench:load-pkcs11" "${TASK_DIR}/load-pkcs11" "${COMMON_ARGS[@]}"
-else
-  print_warning "Skipping bench:load-pkcs11 (fails on remote HSM setup; investigate HSM backend configuration)"
-fi
-
-# 5. mise bench:load-pkcs11 --criterion --delegated (only in LOCAL mode)
-if [ "${REMOTE_MODE}" = "false" ]; then
-  run_bench "bench:load-pkcs11 --delegated" "${TASK_DIR}/load-pkcs11" "${COMMON_ARGS[@]}" --delegated
-else
-  print_warning "Skipping bench:load-pkcs11 --delegated (requires local SoftHSM2 token control)"
+  # 2-5. HSM and PKCS#11 tasks only run in LOCAL mode (not with remote --server-url)
+  if [ "${REMOTE_MODE}" = "false" ]; then
+    run_bench "bench:load-hsm" "${TASK_DIR}/load-hsm" "${COMMON_ARGS[@]}"
+    run_bench "bench:load-hsm --delegated" "${TASK_DIR}/load-hsm" "${COMMON_ARGS[@]}" --delegated
+    run_bench "bench:load-pkcs11" "${TASK_DIR}/load-pkcs11" "${COMMON_ARGS[@]}"
+    run_bench "bench:load-pkcs11 --delegated" "${TASK_DIR}/load-pkcs11" "${COMMON_ARGS[@]}" --delegated
+  else
+    print_warning "Skipping bench:load-hsm / bench:load-pkcs11 (require local HSM control)"
+  fi
 fi
 
 echo ''
