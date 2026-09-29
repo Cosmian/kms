@@ -14,8 +14,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, UserId,
+    AtomicOperation, FindOptions, InterfaceError, InterfaceResult, ObjectWithMetadata,
+    ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
 use rawsql::Loader;
@@ -25,8 +25,8 @@ use tokio_rusqlite::Connection;
 use uuid::Uuid;
 
 use super::locate_query::{
-    SqlitePlaceholder, find_by_rotate_name_query, find_due_for_rotation_query,
-    query_all_from_attributes, query_from_attributes,
+    LocateParam, LocateQuery, SqlitePlaceholder, find_by_rotate_name_query,
+    find_due_for_rotation_query, query_all_from_attributes, query_from_attributes,
 };
 use crate::{
     db_error,
@@ -827,50 +827,35 @@ impl ObjectsStore for SqlitePool {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        self.find_with_options(
+            researched_attributes,
+            state,
+            user,
+            user_must_be_owner,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    async fn find_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        user: &UserId,
+        user_must_be_owner: bool,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let locate = query_from_attributes::<SqlitePlaceholder>(
             researched_attributes,
             state,
             user,
             user_must_be_owner,
             vendor_id,
+            options,
         );
-        let sql_conversion = replace_dollars_with_qn(&locate.sql);
-        let locate_params = locate.params;
-        let rows = self.reader()
-            .call(move |c: &mut rusqlite::Connection| -> Result<Vec<(String, State, Attributes)>, rusqlite::Error> {
-                let mut stmt = c.prepare_cached(&sql_conversion)?;
-                let values: Vec<rusqlite::types::Value> = locate_params
-                    .into_iter()
-                    .map(|p| match p {
-                        crate::stores::sql::locate_query::LocateParam::Text(s) => {
-                            rusqlite::types::Value::Text(s)
-                        }
-                        crate::stores::sql::locate_query::LocateParam::I64(i) => {
-                            rusqlite::types::Value::Integer(i)
-                        }
-                    })
-                    .collect();
-                let mut q = stmt.query(rusqlite::params_from_iter(values.iter()))?;
-                let mut out = Vec::new();
-                while let Some(r) = q.next()? {
-                    let id: String = r.get(0)?;
-                    let state_str: String = r.get(1)?;
-                    let state = State::try_from(state_str.as_str())
-                        .map_err(|_err| rusqlite::Error::InvalidQuery)?;
-                    let raw: String = r.get(2)?;
-                    let attrs = if raw.is_empty() {
-                        Attributes::default()
-                    } else {
-                        serde_json::from_str::<Attributes>(&raw)
-                            .map_err(|_err| rusqlite::Error::InvalidQuery)?
-                    };
-                    out.push((id, state, attrs));
-                }
-                Ok(out)
-            })
-            .await
-            .map_err(DbError::from)?;
-        Ok(rows)
+        Ok(self.run_locate_query(locate).await?)
     }
 
     async fn find_wrapped_by(
@@ -1006,45 +991,29 @@ impl ObjectsStore for SqlitePool {
         state: Option<State>,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        let locate =
-            query_all_from_attributes::<SqlitePlaceholder>(researched_attributes, state, vendor_id);
-        let sql_conversion = replace_dollars_with_qn(&locate.sql);
-        let locate_params = locate.params;
-        let rows = self.reader()
-            .call(move |c: &mut rusqlite::Connection| -> Result<Vec<(String, State, Attributes)>, rusqlite::Error> {
-                let mut stmt = c.prepare(&sql_conversion)?;
-                let values: Vec<rusqlite::types::Value> = locate_params
-                    .into_iter()
-                    .map(|p| match p {
-                        crate::stores::sql::locate_query::LocateParam::Text(s) => {
-                            rusqlite::types::Value::Text(s)
-                        }
-                        crate::stores::sql::locate_query::LocateParam::I64(i) => {
-                            rusqlite::types::Value::Integer(i)
-                        }
-                    })
-                    .collect();
-                let mut q = stmt.query(rusqlite::params_from_iter(values.iter()))?;
-                let mut out = Vec::new();
-                while let Some(r) = q.next()? {
-                    let id: String = r.get(0)?;
-                    let state_str: String = r.get(1)?;
-                    let state = State::try_from(state_str.as_str())
-                        .map_err(|_err| rusqlite::Error::InvalidQuery)?;
-                    let raw: String = r.get(2)?;
-                    let attrs = if raw.is_empty() {
-                        Attributes::default()
-                    } else {
-                        serde_json::from_str::<Attributes>(&raw)
-                            .map_err(|_err| rusqlite::Error::InvalidQuery)?
-                    };
-                    out.push((id, state, attrs));
-                }
-                Ok(out)
-            })
-            .await
-            .map_err(DbError::from)?;
-        Ok(rows)
+        self.find_all_with_options(
+            researched_attributes,
+            state,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    async fn find_all_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let locate = query_all_from_attributes::<SqlitePlaceholder>(
+            researched_attributes,
+            state,
+            vendor_id,
+            options,
+        );
+        Ok(self.run_locate_query(locate).await?)
     }
 
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
@@ -1548,6 +1517,51 @@ impl PermissionsStore for SqlitePool {
 }
 
 impl SqlitePool {
+    /// Run a query built by the locate query builders and decode its
+    /// `(id, state, attributes)` rows.
+    async fn run_locate_query(
+        &self,
+        locate: LocateQuery,
+    ) -> DbResult<Vec<(String, State, Attributes)>> {
+        let sql = replace_dollars_with_qn(&locate.sql);
+        let values: Vec<rusqlite::types::Value> = locate
+            .params
+            .into_iter()
+            .map(|p| match p {
+                LocateParam::Text(s) => rusqlite::types::Value::Text(s),
+                LocateParam::I64(i) => rusqlite::types::Value::Integer(i),
+            })
+            .collect();
+        Ok(self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<
+                    Vec<(String, State, Attributes)>,
+                    rusqlite::Error,
+                > {
+                    let mut stmt = c.prepare_cached(&sql)?;
+                    let mut q = stmt.query(params_from_iter(values.iter()))?;
+                    let mut out = Vec::new();
+                    while let Some(r) = q.next()? {
+                        let id: String = r.get(0)?;
+                        let state_str: String = r.get(1)?;
+                        let state = State::try_from(state_str.as_str())
+                            .map_err(|_err| rusqlite::Error::InvalidQuery)?;
+                        let raw: String = r.get(2)?;
+                        let attrs = if raw.is_empty() {
+                            Attributes::default()
+                        } else {
+                            serde_json::from_str::<Attributes>(&raw)
+                                .map_err(|_err| rusqlite::Error::InvalidQuery)?
+                        };
+                        out.push((id, state, attrs));
+                    }
+                    Ok(out)
+                },
+            )
+            .await?)
+    }
+
     async fn perms(&self, uid: &str, userid: &str) -> DbResult<HashSet<KmipOperation>> {
         let sql = get_sqlite_query!("select-user-accesses-for-object").to_string();
         let uid_s = uid.to_owned();

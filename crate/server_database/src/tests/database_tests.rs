@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, State},
     kmip_2_1::{
+        KmipOperation,
         extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType, OpaqueObject, SymmetricKey},
@@ -16,7 +17,9 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore, UserId};
+use cosmian_kms_interfaces::{
+    AtomicOperation, FindOptions, ObjectsStore, PermissionsStore, UserId,
+};
 use cosmian_logger::log_init;
 use uuid::Uuid;
 
@@ -718,6 +721,157 @@ pub(super) async fn count_non_destroyed_keys_test<DB: ObjectsStore>(db: &DB) -> 
         db.delete(uid).await?;
     }
 
+    Ok(())
+}
+
+/// Compare the uids of `rows` with `expected`, duplicates included.
+fn check_found(
+    label: &str,
+    rows: &[(String, State, Attributes)],
+    expected: &[&String],
+) -> DbResult<()> {
+    let mut got: Vec<&String> = rows.iter().map(|(uid, _, _)| uid).collect();
+    got.sort();
+    let mut expected = expected.to_vec();
+    expected.sort();
+    if got != expected {
+        return Err(DbError::ServerError(format!(
+            "{label}: expected {expected:?}, got {got:?}"
+        )));
+    }
+    Ok(())
+}
+
+/// Verify the Locate listing queries (`find_with_options` /
+/// `find_all_with_options`):
+/// - a tag search returns the objects carrying *all* the searched tags, once each;
+/// - a user sees the objects granted to them directly or through the wildcard
+///   user `*`, once each even when both grants exist, and nothing else;
+/// - `exclude_destroyed` hides destroyed objects unless that state is requested;
+/// - `limit` caps the number of rows.
+pub(super) async fn find_with_options_test<DB: ObjectsStore + PermissionsStore>(
+    db: &DB,
+) -> DbResult<()> {
+    let owner = UserId::from("find_options_owner");
+    let grantee = UserId::from("find_options_grantee");
+    // Tags unique to this run, so that objects left by other tests never match.
+    let run = Uuid::new_v4();
+    let [t1, t2, t3] = ["t1", "t2", "t3"].map(|t| format!("{t}-{run}"));
+    let search = |tags: &[&String]| -> DbResult<Attributes> {
+        let mut attributes = Attributes::default();
+        attributes.set_tags(VENDOR_ID_COSMIAN, tags)?;
+        Ok(attributes)
+    };
+
+    // uids[0]: t1 t2 t3 | uids[1]: t1 t2 | uids[2]: t1 t3 | uids[3]: t1 t2, destroyed
+    let mut rng = CsRng::from_entropy();
+    let mut uids = Vec::with_capacity(4);
+    for (tags, destroyed) in [
+        (vec![&t1, &t2, &t3], false),
+        (vec![&t1, &t2], false),
+        (vec![&t1, &t3], false),
+        (vec![&t1, &t2], true),
+    ] {
+        let mut bytes = vec![0_u8; 32];
+        rng.fill_bytes(&mut bytes);
+        let key = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            bytes.as_slice(),
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )
+        .map_err(|e| DbError::ServerError(e.to_string()))?;
+        let uid = Uuid::new_v4().to_string();
+        let tags: HashSet<String> = tags.into_iter().cloned().collect();
+        db.create(Some(uid.clone()), &owner, &key, key.attributes()?, &tags)
+            .await?;
+        if destroyed {
+            db.update_state(&uid, State::Destroyed).await?;
+        }
+        uids.push(uid);
+    }
+    // uids[0] granted both directly and through `*`, uids[1] only through `*`.
+    let get = HashSet::from([KmipOperation::Get]);
+    db.grant_operations(&uids[0], &grantee, get.clone()).await?;
+    db.grant_operations(&uids[0], &UserId::from("*"), get.clone())
+        .await?;
+    db.grant_operations(&uids[1], &UserId::from("*"), get)
+        .await?;
+
+    let unbounded = FindOptions::default();
+    let live = FindOptions {
+        exclude_destroyed: true,
+        ..FindOptions::default()
+    };
+    let find = |tags: Attributes, state: Option<State>, user: &UserId, options: FindOptions| {
+        let user = user.clone();
+        async move {
+            db.find_with_options(
+                Some(&tags),
+                state,
+                &user,
+                false,
+                VENDOR_ID_COSMIAN,
+                &options,
+            )
+            .await
+        }
+    };
+
+    let rows = find(search(&[&t1, &t2, &t3])?, None, &owner, unbounded).await?;
+    check_found("all three tags", &rows, &[&uids[0]])?;
+    let rows = find(search(&[&t1, &t2])?, None, &owner, unbounded).await?;
+    check_found("two tags", &rows, &[&uids[0], &uids[1], &uids[3]])?;
+    let rows = find(search(&[&t1, &t2])?, None, &owner, live).await?;
+    check_found("two tags, destroyed excluded", &rows, &[&uids[0], &uids[1]])?;
+    let rows = find(search(&[&t1, &t2])?, Some(State::Destroyed), &owner, live).await?;
+    check_found("two tags, destroyed requested", &rows, &[&uids[3]])?;
+    let rows = find(search(&[&t1])?, None, &grantee, unbounded).await?;
+    check_found("grantee", &rows, &[&uids[0], &uids[1]])?;
+    let rows = find(
+        search(&[&t1])?,
+        None,
+        &owner,
+        FindOptions {
+            limit: Some(2),
+            ..FindOptions::default()
+        },
+    )
+    .await?;
+    if rows.len() != 2 {
+        return Err(DbError::ServerError(format!(
+            "limit 2: expected 2 rows, got {}",
+            rows.len()
+        )));
+    }
+
+    let rows = db
+        .find_all_with_options(Some(&search(&[&t1, &t3])?), None, VENDOR_ID_COSMIAN, &live)
+        .await?;
+    check_found("find_all, two tags", &rows, &[&uids[0], &uids[2]])?;
+    let rows = db
+        .find_all_with_options(
+            Some(&search(&[&t1])?),
+            None,
+            VENDOR_ID_COSMIAN,
+            &FindOptions {
+                limit: Some(3),
+                ..FindOptions::default()
+            },
+        )
+        .await?;
+    if rows.len() != 3 {
+        return Err(DbError::ServerError(format!(
+            "find_all limit 3: expected 3 rows, got {}",
+            rows.len()
+        )));
+    }
+
+    for uid in &uids {
+        db.delete(uid).await?;
+    }
     Ok(())
 }
 

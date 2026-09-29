@@ -32,6 +32,23 @@ indexes build; PostgreSQL blocks writes to `objects` during each build.
 The active-keys COUNT now filters on the `ObjectType` attribute instead of
 parsing the full serialized `object` JSON column of every row.
 
+### PostgreSQL / SQLite / MySQL: Locate-by-tags no longer scans every tag row
+
+The `(tag, id)` index only helped rare tags: the generated tag lookup
+(`WHERE tag IN (…) GROUP BY id HAVING COUNT(DISTINCT tag) = N`) still had to
+read and aggregate every row of every searched tag, so a request combining a
+rare tag with a common tag (or a system tag such as `_kk`) was slow regardless
+of the index. On large tables this made tag-based `Locate` take seconds and,
+because the server fetched and deserialized every match before cutting the
+result to `MaximumItems`, the cost scaled with the number of matches.
+
+The tag filter is now emitted as one `INNER JOIN tags` per searched tag (the
+planner starts from the rarest tag and probes `UNIQUE (id, tag)` for the
+others), the owner/grant check is an `EXISTS` probe of `read_access` instead of
+a `LEFT JOIN` plus `DISTINCT`, and the `Locate` path pushes the
+`MaximumItems`/server cap (`LIMIT`) and the destroyed-object exclusion into the
+query so the database stops after the requested page.
+
 ## Features
 
 ### Config

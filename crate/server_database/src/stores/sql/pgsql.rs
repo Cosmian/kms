@@ -6,8 +6,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, UserId,
+    AtomicOperation, FindOptions, InterfaceError, InterfaceResult, ObjectWithMetadata,
+    ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
 use deadpool_postgres::{Config as PgConfig, GenericClient, ManagerConfig, Pool, RecyclingMethod};
@@ -28,7 +28,13 @@ use crate::{
     stores::{
         PGSQL_QUERIES,
         migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
-        sql::database::SqlDatabase,
+        sql::{
+            database::SqlDatabase,
+            locate_query::{
+                LocateParam, LocateQuery, PgSqlPlaceholder, query_all_from_attributes,
+                query_from_attributes,
+            },
+        },
     },
 };
 
@@ -517,6 +523,46 @@ impl PgPool {
             .map(|_| ())
             .map_err(|e| DbError::DatabaseError(e.to_string()))
     }
+
+    /// Run a query built by the locate query builders and decode its
+    /// `(id, state, attributes)` rows.
+    async fn run_locate_query(
+        &self,
+        locate: &LocateQuery,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(&locate.sql)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let params: Vec<&(dyn ToSql + Sync)> = locate
+                .params
+                .iter()
+                .map(|p| -> &(dyn ToSql + Sync) {
+                    match p {
+                        LocateParam::Text(s) => s,
+                        LocateParam::I64(i) => i,
+                    }
+                })
+                .collect();
+            let rows = client
+                .query(&stmt, &params)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut out = Vec::with_capacity(rows.len());
+            for row in rows {
+                let uid: String = row.get(0);
+                let state_str: String = row.get(1);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let attrs_val: Value = row.get(2);
+                let attrs: Attributes = serde_json::from_value(attrs_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                out.push((uid, state, attrs));
+            }
+            Ok(out)
+        })
+    }
 }
 
 impl SqlDatabase for PgPool {
@@ -961,51 +1007,36 @@ impl ObjectsStore for PgPool {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        pg_retry!(self.pool, |client| {
-            let locate = crate::stores::sql::locate_query::query_from_attributes::<
-                crate::stores::sql::locate_query::PgSqlPlaceholder,
-            >(
-                researched_attributes,
-                state,
-                user,
-                user_must_be_owner,
-                vendor_id,
-            );
-            cosmian_logger::debug!("PG find query: {}", locate.sql);
-            let stmt = client
-                .prepare(&locate.sql)
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut owned: Vec<Box<dyn ToSql + Sync>> = Vec::with_capacity(locate.params.len());
-            for p in locate.params {
-                match p {
-                    crate::stores::sql::locate_query::LocateParam::Text(s) => {
-                        owned.push(Box::new(s));
-                    }
-                    crate::stores::sql::locate_query::LocateParam::I64(i) => {
-                        owned.push(Box::new(i));
-                    }
-                }
-            }
-            let params: Vec<&(dyn ToSql + Sync)> =
-                owned.iter().map(std::convert::AsRef::as_ref).collect();
-            let rows = client
-                .query(&stmt, &params)
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut out = Vec::new();
-            for row in rows {
-                let uid: String = row.get(0);
-                let state_str: String = row.get(1);
-                let state = State::try_from(state_str.as_str())
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                let attrs_val: Value = row.get(2);
-                let attrs: Attributes = serde_json::from_value(attrs_val)
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                out.push((uid, state, attrs));
-            }
-            Ok(out)
-        })
+        self.find_with_options(
+            researched_attributes,
+            state,
+            user,
+            user_must_be_owner,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    async fn find_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        user: &UserId,
+        user_must_be_owner: bool,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let locate = query_from_attributes::<PgSqlPlaceholder>(
+            researched_attributes,
+            state,
+            user,
+            user_must_be_owner,
+            vendor_id,
+            options,
+        );
+        cosmian_logger::debug!("PG find query: {}", locate.sql);
+        self.run_locate_query(&locate).await
     }
 
     async fn find_wrapped_by(
@@ -1111,45 +1142,30 @@ impl ObjectsStore for PgPool {
         state: Option<State>,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        pg_retry!(self.pool, |client| {
-            let locate = crate::stores::sql::locate_query::query_all_from_attributes::<
-                crate::stores::sql::locate_query::PgSqlPlaceholder,
-            >(researched_attributes, state, vendor_id);
-            cosmian_logger::debug!("PG find_all query: {}", locate.sql);
-            let stmt = client
-                .prepare(&locate.sql)
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut owned: Vec<Box<dyn ToSql + Sync>> = Vec::with_capacity(locate.params.len());
-            for p in locate.params {
-                match p {
-                    crate::stores::sql::locate_query::LocateParam::Text(s) => {
-                        owned.push(Box::new(s));
-                    }
-                    crate::stores::sql::locate_query::LocateParam::I64(i) => {
-                        owned.push(Box::new(i));
-                    }
-                }
-            }
-            let params: Vec<&(dyn ToSql + Sync)> =
-                owned.iter().map(std::convert::AsRef::as_ref).collect();
-            let rows = client
-                .query(&stmt, &params)
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut out = Vec::new();
-            for row in rows {
-                let uid: String = row.get(0);
-                let state_str: String = row.get(1);
-                let state = State::try_from(state_str.as_str())
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                let attrs_val: Value = row.get(2);
-                let attrs: Attributes = serde_json::from_value(attrs_val)
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                out.push((uid, state, attrs));
-            }
-            Ok(out)
-        })
+        self.find_all_with_options(
+            researched_attributes,
+            state,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    async fn find_all_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let locate = query_all_from_attributes::<PgSqlPlaceholder>(
+            researched_attributes,
+            state,
+            vendor_id,
+            options,
+        );
+        cosmian_logger::debug!("PG find_all query: {}", locate.sql);
+        self.run_locate_query(&locate).await
     }
 
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {

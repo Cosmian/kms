@@ -7,6 +7,7 @@ use cosmian_kmip::{
         kmip_types::{LinkedObjectIdentifier::TextString, NameType, UniqueIdentifier},
     },
 };
+use cosmian_kms_interfaces::FindOptions;
 
 /// Handle different placeholders naming (bind parameter or
 /// function) in SQL databases.
@@ -454,102 +455,135 @@ fn apply_attribute_conditions<P: PlaceholderTrait>(
     where_added
 }
 
-/// to search for items in database.
-/// Returns a tuple containing the stringified query and the values to bind with.
-/// The different placeholder for variable binding is handled by trait specification.
+/// Build `SELECT … FROM objects` with one `INNER JOIN tags` per searched tag,
+/// followed by the JSON-array `FROM` items required by the Link / Name filters.
+///
+/// Each tag join probes `UNIQUE (id, tag)`, so it matches at most one row per
+/// object: no duplicates, and the planner can start from the rarest tag instead
+/// of aggregating every row of every searched tag. Only the JSON-array `FROM`
+/// items (one row per Link / Name element) can repeat an object, so `DISTINCT`
+/// is emitted only when one of them is present.
+fn select_from_objects<P: PlaceholderTrait>(
+    qb: &mut LocateQueryBuilder<P>,
+    attributes: Option<&Attributes>,
+    vendor_id: &str,
+) -> String {
+    let links_from = attributes
+        .and_then(|a| a.link.as_ref())
+        .filter(|links| !links.is_empty())
+        .and_then(|_| P::links_additional_rq_from());
+    let names_from = attributes
+        .and_then(|a| a.name.as_ref())
+        .filter(|names| !names.is_empty())
+        .and_then(|_| P::names_additional_rq_from());
+    let distinct = if links_from.is_some() || names_from.is_some() {
+        "DISTINCT "
+    } else {
+        ""
+    };
+    let mut query = format!(
+        "SELECT {distinct}objects.id as id, objects.state as state, objects.attributes as attrs \
+         FROM objects"
+    );
+    if let Some(attributes) = attributes {
+        for (i, tag) in attributes.get_tags(vendor_id).into_iter().enumerate() {
+            let tag = qb.bind_text(tag);
+            let _ = write!(
+                query,
+                " INNER JOIN tags t{i} ON t{i}.id = objects.id AND t{i}.tag = {tag}"
+            );
+        }
+    }
+    for from in [links_from, names_from].into_iter().flatten() {
+        let _ = write!(query, ", {from}");
+    }
+    query
+}
+
+/// Append the state filter: an exact match when `state` is set, otherwise the
+/// exclusion of destroyed objects when `options.exclude_destroyed` is set.
+/// Returns the updated `where_added` flag.
+fn apply_state_condition<P: PlaceholderTrait>(
+    qb: &mut LocateQueryBuilder<P>,
+    query: &mut String,
+    where_added: bool,
+    state: Option<State>,
+    options: &FindOptions,
+) -> bool {
+    let keyword = if where_added { "AND" } else { "WHERE" };
+    if let Some(state) = state {
+        let state_s: &'static str = state.into();
+        let _ = write!(
+            query,
+            " {keyword} objects.state = {}",
+            qb.bind_text(state_s)
+        );
+        true
+    } else if options.exclude_destroyed {
+        let destroyed: &'static str = State::Destroyed.into();
+        let destroyed_compromised: &'static str = State::Destroyed_Compromised.into();
+        let _ = write!(
+            query,
+            " {keyword} objects.state NOT IN ({}, {})",
+            qb.bind_text(destroyed),
+            qb.bind_text(destroyed_compromised)
+        );
+        true
+    } else {
+        where_added
+    }
+}
+
+/// Append `LIMIT` when `options.limit` is set. Must be the last clause.
+fn apply_limit<P: PlaceholderTrait>(
+    qb: &mut LocateQueryBuilder<P>,
+    query: &mut String,
+    options: &FindOptions,
+) {
+    if let Some(limit) = options.limit {
+        let limit = qb.bind_i64(i64::try_from(limit).unwrap_or(i64::MAX));
+        let _ = write!(query, " LIMIT {limit}");
+    }
+}
+
+/// Build the query searching the objects the `user` owns or (unless
+/// `user_must_be_owner`) has been granted an access right on, and possibly
+/// matching `attributes` and `state`, restricted by `options`.
+///
+/// Returns the SQL text with engine-specific placeholders and the values to bind.
 pub(super) fn query_from_attributes<P: PlaceholderTrait>(
     attributes: Option<&Attributes>,
     state: Option<State>,
     user: &str,
     user_must_be_owner: bool,
     vendor_id: &str,
+    options: &FindOptions,
 ) -> LocateQuery {
     let mut qb = LocateQueryBuilder::<P>::new();
-    let mut query =
-        "SELECT DISTINCT objects.id as id, objects.state as state, objects.attributes as attrs \
-                     FROM objects"
-            .to_owned();
+    let mut query = select_from_objects(&mut qb, attributes, vendor_id);
 
-    if let Some(attributes) = attributes {
-        // tags
-        let tags = attributes.get_tags(vendor_id);
-        let tags_len = tags.len();
-        if tags_len > 0 {
-            let tag_placeholders = tags
-                .iter()
-                .map(|t| qb.bind_text(t.clone()))
-                .collect::<Vec<String>>()
-                .join(", ");
-            let tags_len_i64 = i64::try_from(tags_len).unwrap_or(0);
-            let tags_len_placeholder = qb.bind_i64(tags_len_i64);
-            query = format!(
-                "{query} INNER JOIN (
-    SELECT id
-    FROM tags
-    WHERE tag IN ({tag_placeholders})
-    GROUP BY id
-    HAVING COUNT(DISTINCT tag) = {tags_len_placeholder}
-) AS matched_tags
-ON objects.id = matched_tags.id"
-            );
-        }
-    }
-
-    if !user_must_be_owner {
-        // Select objects for which the user is the owner or has been granted an
-        // access right, either directly or via the wildcard user `*` (a grant to
-        // `*` is inherited by every user, so it must be visible here just like it
-        // already is in the "obtained access rights" listing).
-        query = format!(
-            "{query}\n LEFT JOIN read_access ON objects.id = read_access.id AND \
-             (read_access.userid = {} OR read_access.userid = {})",
+    if user_must_be_owner {
+        let _ = write!(query, " WHERE objects.owner = {}", qb.bind_text(user));
+    } else {
+        // The owner, or a user holding a grant, either directly or via the
+        // wildcard user `*` (a grant to `*` is inherited by every user). An
+        // `EXISTS` probe of `UNIQUE (id, userid)` cannot repeat an object, unlike
+        // a join that could match both the direct and the wildcard grant.
+        let _ = write!(
+            query,
+            " WHERE (objects.owner = {} OR EXISTS (SELECT 1 FROM read_access WHERE \
+             read_access.id = objects.id AND read_access.userid IN ({}, {})))",
+            qb.bind_text(user),
             qb.bind_text(user),
             qb.bind_text("*")
         );
     }
 
+    let _ = apply_state_condition(&mut qb, &mut query, true, state, options);
     if let Some(attributes) = attributes {
-        // Links
-        if let Some(links) = &attributes.link {
-            if !links.is_empty() {
-                if let Some(additional_rq_from) = P::links_additional_rq_from() {
-                    query = format!("{query}, {additional_rq_from}");
-                }
-            }
-        }
-        if let Some(names) = &attributes.name {
-            if !names.is_empty() {
-                if let Some(additional_rq_from) = P::names_additional_rq_from() {
-                    query = format!("{query}, {additional_rq_from}");
-                }
-            }
-        }
-    }
-
-    if user_must_be_owner {
-        // only select objects for which the user is the owner
-        query = format!("{query} WHERE objects.owner = {}", qb.bind_text(user));
-    } else {
-        // `read_access.id` is only non-NULL when the LEFT JOIN above matched a
-        // grant to the user or to the wildcard user `*`.
-        query = format!(
-            "{query} WHERE (objects.owner = {} OR read_access.id IS NOT NULL)",
-            qb.bind_text(user)
-        );
-    }
-
-    if let Some(state) = state {
-        // Bind state as text to avoid injection and keep DB representation consistent.
-        let state_s: &'static str = state.into();
-        query = format!("{query} AND state = {}", qb.bind_text(state_s));
-    }
-
-    #[allow(clippy::collapsible_match)]
-    // nested match in apply_attribute_conditions handles UniqueIdentifier variant
-    if let Some(attributes) = attributes {
-        // WHERE clause is always present at this point (user ownership filter was added above).
         let _ = apply_attribute_conditions::<P>(&mut qb, &mut query, true, attributes);
     }
+    apply_limit(&mut qb, &mut query, options);
 
     qb.finish(query)
 }
@@ -560,71 +594,16 @@ pub(super) fn query_all_from_attributes<P: PlaceholderTrait>(
     attributes: Option<&Attributes>,
     state: Option<State>,
     vendor_id: &str,
+    options: &FindOptions,
 ) -> LocateQuery {
     let mut qb = LocateQueryBuilder::<P>::new();
+    let mut query = select_from_objects(&mut qb, attributes, vendor_id);
 
-    // Add additional FROM clauses for link/name JSON iteration if needed
-    let links_from = P::links_additional_rq_from();
-    let names_from = P::names_additional_rq_from();
-
-    // Determine which extra FROMs are actually needed
-    let needs_links = attributes.is_some_and(|a| a.link.is_some());
-    let needs_names = attributes.is_some_and(|a| a.name.is_some());
-
-    let mut from_clause = "FROM objects".to_owned();
-    if needs_links {
-        if let Some(ref lf) = links_from {
-            let _ = write!(from_clause, ", {lf}");
-        }
-    }
-    if needs_names {
-        if let Some(ref nf) = names_from {
-            let _ = write!(from_clause, ", {nf}");
-        }
-    }
-
-    let mut query = format!(
-        "SELECT DISTINCT objects.id as id, objects.state as state, objects.attributes as attrs \
-         {from_clause}"
-    );
-
+    let where_added = apply_state_condition(&mut qb, &mut query, false, state, options);
     if let Some(attributes) = attributes {
-        // Tags JOIN (same as query_from_attributes)
-        let tags = attributes.get_tags(vendor_id);
-        let tags_len = tags.len();
-        if tags_len > 0 {
-            let tag_placeholders = tags
-                .iter()
-                .map(|t| qb.bind_text(t.clone()))
-                .collect::<Vec<String>>()
-                .join(", ");
-            let tags_len_i64 = i64::try_from(tags_len).unwrap_or(0);
-            let tags_len_placeholder = qb.bind_i64(tags_len_i64);
-            query = format!(
-                "{query} INNER JOIN (
-    SELECT id
-    FROM tags
-    WHERE tag IN ({tag_placeholders})
-    GROUP BY id
-    HAVING COUNT(DISTINCT tag) = {tags_len_placeholder}
-) AS matched_tags
-ON objects.id = matched_tags.id"
-            );
-        }
+        let _ = apply_attribute_conditions::<P>(&mut qb, &mut query, where_added, attributes);
     }
-
-    // No user-based WHERE clause — return all objects.
-    // Apply state and attribute filters with the same logic as query_from_attributes.
-
-    let where_added = state.is_some_and(|s| {
-        let state_s: &'static str = s.into();
-        query = format!("{query} WHERE state = {}", qb.bind_text(state_s));
-        true
-    });
-
-    if let Some(attributes) = attributes {
-        apply_attribute_conditions::<P>(&mut qb, &mut query, where_added, attributes);
-    }
+    apply_limit(&mut qb, &mut query, options);
 
     qb.finish(query)
 }
@@ -720,4 +699,100 @@ pub(crate) fn is_due_for_rotation(attrs: &Attributes, now: time::OffsetDateTime)
     };
 
     now >= next_rotation
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmian_kmip::kmip_2_1::{extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes};
+    use cosmian_kms_interfaces::FindOptions;
+
+    use super::{MySqlPlaceholder, PgSqlPlaceholder, SqlitePlaceholder, query_from_attributes};
+
+    fn tagged_attributes() -> Attributes {
+        let mut attributes = Attributes::default();
+        // Setting two string tags cannot fail; the error arm is unreachable.
+        match attributes.set_tags(VENDOR_ID_COSMIAN, ["a", "b"]) {
+            Ok(()) => attributes,
+            Err(_) => Attributes::default(),
+        }
+    }
+
+    #[test]
+    fn pg_query_joins_per_tag_and_uses_numbered_placeholders() {
+        let query = query_from_attributes::<PgSqlPlaceholder>(
+            Some(&tagged_attributes()),
+            None,
+            "alice",
+            false,
+            VENDOR_ID_COSMIAN,
+            &FindOptions {
+                limit: Some(1000),
+                exclude_destroyed: true,
+            },
+        );
+        let sql = &query.sql;
+        assert!(sql.contains("INNER JOIN tags t0"), "{sql}");
+        assert!(sql.contains("INNER JOIN tags t1"), "{sql}");
+        assert!(sql.contains("EXISTS (SELECT 1 FROM read_access"), "{sql}");
+        assert!(sql.contains("objects.state NOT IN"), "{sql}");
+        assert!(sql.contains("LIMIT $"), "{sql}");
+        assert!(!sql.contains('?'), "PG uses numbered placeholders: {sql}");
+        assert_eq!(sql.matches('$').count(), query.params.len(), "{sql}");
+    }
+
+    #[test]
+    fn pg_query_default_options_omit_limit_and_exclusion() {
+        let query = query_from_attributes::<PgSqlPlaceholder>(
+            Some(&tagged_attributes()),
+            None,
+            "alice",
+            false,
+            VENDOR_ID_COSMIAN,
+            &FindOptions::default(),
+        );
+        assert!(!query.sql.contains("LIMIT"), "{}", query.sql);
+        assert!(!query.sql.contains("NOT IN"), "{}", query.sql);
+    }
+
+    #[test]
+    fn mysql_query_uses_question_placeholders() {
+        let query = query_from_attributes::<MySqlPlaceholder>(
+            Some(&tagged_attributes()),
+            None,
+            "alice",
+            false,
+            VENDOR_ID_COSMIAN,
+            &FindOptions {
+                limit: Some(10),
+                exclude_destroyed: true,
+            },
+        );
+        let sql = &query.sql;
+        assert!(!sql.contains('$'), "MySQL uses `?`: {sql}");
+        assert!(sql.contains("INNER JOIN tags t0"), "{sql}");
+        assert!(sql.contains("LIMIT ?"), "{sql}");
+        assert_eq!(sql.matches('?').count(), query.params.len(), "{sql}");
+    }
+
+    #[test]
+    fn sqlite_query_uses_numbered_placeholders() {
+        let query = query_from_attributes::<SqlitePlaceholder>(
+            Some(&tagged_attributes()),
+            None,
+            "alice",
+            false,
+            VENDOR_ID_COSMIAN,
+            &FindOptions {
+                limit: Some(10),
+                exclude_destroyed: true,
+            },
+        );
+        let sql = &query.sql;
+        assert!(
+            !sql.contains('?'),
+            "SQLite uses $n (converted later): {sql}"
+        );
+        assert!(sql.contains("INNER JOIN tags t0"), "{sql}");
+        assert!(sql.contains("LIMIT $"), "{sql}");
+    }
 }
