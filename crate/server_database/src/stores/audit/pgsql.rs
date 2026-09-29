@@ -47,7 +47,7 @@ use deadpool_postgres::{
     Config as PgConfig, GenericClient as _, ManagerConfig, Pool, RecyclingMethod,
 };
 use openssl::hash::{Hasher, MessageDigest};
-use tokio_postgres::{NoTls, error::SqlState};
+use tokio_postgres::{GenericClient, NoTls, error::SqlState};
 
 use super::{AUDIT_QUERIES, row::event_from_row};
 use crate::{
@@ -65,6 +65,13 @@ macro_rules! get_audit_query {
             .get($name)
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
     };
+}
+
+/// `tokio_postgres::Error`'s `Display` only prints a generic "db error" for a server-side
+/// failure (e.g. a `RAISE EXCEPTION`); the actual message is on the nested `DbError`.
+fn pg_error_detail(e: &tokio_postgres::Error) -> String {
+    e.as_db_error()
+        .map_or_else(|| e.to_string(), |db| db.message().to_owned())
 }
 
 /// The audit writer is a single task awaiting one `write_event_atomic` at a time, so it can
@@ -371,7 +378,7 @@ impl PgAuditSink {
     /// defined exactly once. Returns the raw `tokio_postgres` error (not [`DbError`]): the
     /// caller needs the original `SqlState` to disambiguate a unique-violation retry from
     /// a genuine competing writer, which [`DbError::from`] collapses into one message.
-    async fn insert_event_row<C: tokio_postgres::GenericClient>(
+    async fn insert_event_row<C: GenericClient>(
         client: &C,
         query: &str,
         instance_id: &str,
@@ -430,8 +437,9 @@ impl PgAuditSink {
     ) -> DbResult<WriteOutcome> {
         let client = pool.get().await.map_err(DbError::from)?;
         let query = get_audit_query!("insert-audit-event");
-        // Double deref: `Object` -> `ClientWrapper` -> `tokio_postgres::Client`, generic
-        // inference won't apply that coercion chain on its own.
+        // Deref past the pool wrapper (`Object<Manager>` -> `ClientWrapper` -> `Client`):
+        // `insert_event_row` is generic over `tokio_postgres::GenericClient`, which the
+        // pool wrapper itself does not implement, only the plain client does.
         let res = Self::insert_event_row(&**client, query, instance_id, generation, event).await;
 
         let Err(e) = res else {
@@ -518,8 +526,9 @@ impl PgAuditSink {
 
     /// Upserts the control row to `generation` on the pooled connection. Used only for a
     /// brand-new instance's first-ever generation — [`Self::seal_and_roll`] updates the
-    /// control row on [`Self::lock_session`] instead, before its reanchor insert, so both
-    /// happen on the session that provably holds the instance's advisory lock.
+    /// control row on [`Self::lock_session`] instead, in the same transaction as its
+    /// reanchor insert, so both happen atomically on the session that provably holds the
+    /// instance's advisory lock.
     async fn set_active_generation(&self, generation: i64) -> DbResult<()> {
         let client = self.pool.get().await.map_err(DbError::from)?;
         client
@@ -696,16 +705,18 @@ impl PgAuditSink {
         };
         let reanchor = draft.finalize(0, [0_u8; 32]);
 
-        // One transaction on the lock-held session: the control-row bump and the reanchor
-        // insert become visible atomically, so a crash between them can never leave an
-        // active, evidence-less generation. The `kms_audit_no_insert_sealed` trigger sees
-        // the control-row write under READ COMMITTED (same transaction, same session), so
-        // ordering the update before the insert still satisfies its generation check.
-        let tx = self
-            .lock_session
-            .transaction()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        // One transaction on the lock-held session: advancing the control row and
+        // inserting the reanchor must both happen or neither must — a commit between the
+        // two would let a restart follow the new pointer into a generation that never
+        // received its reanchor. The `kms_audit_no_insert_sealed` trigger reads the
+        // control row for every INSERT, including this one, so the control-row write
+        // must precede the reanchor insert within the transaction.
+        let tx = self.lock_session.transaction().await.map_err(|e| {
+            InterfaceError::from(DbError::DatabaseError(format!(
+                "audit: failed to start the seal-and-roll transaction: {}",
+                pg_error_detail(&e)
+            )))
+        })?;
 
         tx.execute(
             get_audit_query!("upsert-audit-control-generation"),
@@ -714,7 +725,8 @@ impl PgAuditSink {
         .await
         .map_err(|e| {
             InterfaceError::from(DbError::DatabaseError(format!(
-                "audit: failed to advance control row to generation {new_generation}: {e}"
+                "audit: failed to advance control row to generation {new_generation}: {}",
+                pg_error_detail(&e)
             )))
         })?;
 
@@ -726,11 +738,19 @@ impl PgAuditSink {
             &reanchor,
         )
         .await
-        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        .map_err(|e| {
+            InterfaceError::from(DbError::DatabaseError(format!(
+                "audit: failed to insert the reanchor event for generation {new_generation}: {}",
+                pg_error_detail(&e)
+            )))
+        })?;
 
-        tx.commit()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        tx.commit().await.map_err(|e| {
+            InterfaceError::from(DbError::DatabaseError(format!(
+                "audit: failed to commit the seal-and-roll transaction: {}",
+                pg_error_detail(&e)
+            )))
+        })?;
 
         error!(
             "audit: instance_id={} sealed generation {sealed_generation} (reason={}, \
@@ -925,12 +945,12 @@ mod live_tests {
 
     use super::{AUDIT_PAGE_SIZE, PgAuditReader, PgAuditSink};
 
-    /// Live audit database URL. Defaults to the repository's shared `docker-compose`
-    /// `PostgreSQL` service (see `.mise/lib/test_slots.sh`'s `KMS_AUDIT_POSTGRES_URL`), so a
-    /// local `docker compose up -d postgres` is enough to run these tests.
+    /// Live audit database URL. Defaults to the repository's dedicated `docker-compose`
+    /// `postgres-audit` service (see `.mise/lib/test_slots.sh`'s `KMS_AUDIT_POSTGRES_URL`), so a
+    /// local `docker compose up -d postgres-audit` is enough to run these tests.
     fn audit_url() -> String {
         option_env!("KMS_AUDIT_POSTGRES_URL")
-            .unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms")
+            .unwrap_or("postgresql://kms_audit:kms_audit@127.0.0.1:5436/kms_audit?sslmode=disable")
             .to_owned()
     }
 
@@ -1240,6 +1260,89 @@ mod live_tests {
         );
     }
 
+    /// T4: if the reanchor insert fails after the control row already advanced to the
+    /// new generation, `resume()` must fail (not silently leave the pointer dangling),
+    /// and a later retry must recover cleanly — the control-row advance and the reanchor
+    /// insert must be atomic. Simulated with a temporary trigger that rejects only this
+    /// instance's reanchor insert, so the transaction rolls back.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_seal_and_roll_is_atomic_when_reanchor_insert_fails() {
+        let instance_id = unique_instance_id("seal-roll-atomic");
+        let url = audit_url();
+
+        let sink = seed_generation_zero(&url, &instance_id).await;
+        drop(sink);
+        tamper_row(
+            &url,
+            "UPDATE kms_audit_events SET row_hash = $2 WHERE instance_id = $1 AND \
+             chain_generation = 0 AND id = 2",
+            &[&instance_id, &vec![0_u8; 32]],
+        )
+        .await;
+
+        let raw = raw_client(&url).await;
+        let fn_name = format!(
+            "kms_audit_test_reject_reanchor_{}",
+            instance_id.replace('-', "_")
+        );
+        let trigger_name = format!("zzz_{fn_name}");
+        raw.batch_execute(&format!(
+            "CREATE FUNCTION {fn_name}() RETURNS trigger LANGUAGE plpgsql AS $BODY$ BEGIN \
+             IF NEW.instance_id = '{instance_id}' AND NEW.operation = 'audit:reanchor' THEN \
+             RAISE EXCEPTION 'injected failure: reanchor insert rejected for test'; END IF; \
+             RETURN NEW; END; $BODY$; \
+             CREATE TRIGGER {trigger_name} BEFORE INSERT ON kms_audit_events FOR EACH ROW \
+             EXECUTE FUNCTION {fn_name}();"
+        ))
+        .await
+        .unwrap();
+
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        let resume_err = sink
+            .resume()
+            .await
+            .expect_err("resume() must fail, not silently advance the control row alone");
+        assert!(
+            resume_err.to_string().contains("injected failure"),
+            "unexpected error: {resume_err}"
+        );
+        drop(sink);
+
+        // Postconditions while the injected trigger is still active: the transaction
+        // must have rolled back both statements, not just the failing one.
+        let control_row = raw
+            .query_one(
+                "SELECT active_generation FROM kms_audit_control WHERE instance_id = $1",
+                &[&instance_id],
+            )
+            .await
+            .unwrap();
+        let active_generation: i64 = control_row.get(0);
+        assert_eq!(
+            active_generation, 0,
+            "control row must not advance when the reanchor insert failed"
+        );
+
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        assert_eq!(
+            reader.list_generations(&instance_id).await.unwrap(),
+            vec![0],
+            "no generation 1 may exist when the reanchor insert failed"
+        );
+
+        raw.batch_execute(&format!(
+            "DROP TRIGGER {trigger_name} ON kms_audit_events; DROP FUNCTION {fn_name}();"
+        ))
+        .await
+        .unwrap();
+
+        // With the injected failure gone, a fresh connect+resume must recover cleanly.
+        let sealed_before = reader.events_page(&instance_id, 0, -1).await.unwrap();
+        assert_recovers_into_generation_1(&url, &instance_id, 2, "hash_mismatch", &sealed_before)
+            .await;
+    }
+
     /// Inserts an event directly into `kms_audit_events`, bypassing `PgAuditSink`
     /// entirely — used to simulate a raw client (or a compromised process sharing the
     /// audit role's credentials) attempting to forge a row.
@@ -1416,6 +1519,47 @@ mod live_tests {
         sink.write_event_atomic(&ev).await.unwrap();
     }
 
+    /// Terminating every other backend on the database (simulating a network blip or a
+    /// PostgreSQL-side connection kill) must not permanently break writes: the pool's
+    /// retry-with-fresh-connection logic must recover, and a later reconnect must see
+    /// every event, none lost or duplicated.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_write_recovers_after_server_side_disconnect() {
+        let instance_id = unique_instance_id("disconnect-recovery");
+        let url = audit_url();
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        sink.resume().await.unwrap();
+
+        let ev0 = make_event(0, [0_u8; 32]);
+        sink.write_event_atomic(&ev0).await.unwrap();
+
+        // Kill every other backend on this database — including the sink's pooled write
+        // connection and its dedicated lock session — but not this query's own connection.
+        let raw = raw_client(&url).await;
+        raw.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = \
+             current_database() AND pid <> pg_backend_pid()",
+            &[],
+        )
+        .await
+        .unwrap();
+
+        let ev1 = make_event(1, ev0.row_hash);
+        sink.write_event_atomic(&ev1)
+            .await
+            .expect("write must recover via the pool's reconnect-and-retry logic");
+        drop(sink);
+
+        let mut sink2 = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        let head = sink2.resume().await.unwrap();
+        assert_eq!(
+            head.next_id, 2,
+            "both events must be present, none duplicated"
+        );
+        assert_eq!(head.prev_hash, ev1.row_hash);
+    }
+
     /// When a lost-ack retry's slot already durably holds a *different* event from the
     /// same writer, `write_event_once` must report `Resynced` onto the real stored chain
     /// head instead of misreporting a competing writer, and the original row must stay
@@ -1513,6 +1657,167 @@ mod live_tests {
         let events_b = reader.events_page(&id_b, 0, -1).await.unwrap();
         assert_eq!(events_a.len(), 1);
         assert_eq!(events_b.len(), 1);
+    }
+
+    /// Connects, resumes, and writes one event for a single instance, returning `Err` (not
+    /// panicking) on any failure — used by the concurrent-startup measurement tests below
+    /// so every task's outcome can be collected, not just the first one to fail.
+    async fn connect_resume_write_once(url: &str, instance_id: &str) -> Result<(), String> {
+        let mut sink = PgAuditSink::connect(url, instance_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        sink.resume().await.map_err(|e| e.to_string())?;
+        let ev = make_event(0, [0_u8; 32]);
+        sink.write_event_atomic(&ev)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Counts the append-only guard triggers currently installed on `kms_audit_events`
+    /// (`kms_audit_no_update`/`_delete`/`_truncate`/`_insert_sealed`) — used to confirm
+    /// concurrent bootstrap DDL didn't leave the table with a guard missing.
+    async fn count_audit_guard_triggers(url: &str) -> i64 {
+        let raw = raw_client(url).await;
+        raw.query_one(
+            "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'kms_audit_events'::regclass \
+             AND NOT tgisinternal",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0)
+    }
+
+    /// MEASUREMENT ONLY, not a correctness guarantee: several KMS instances can start at
+    /// the same moment against a brand-new, schema-less database. `ensure_schema()` reruns
+    /// its full DDL bundle on every `connect()`, and concurrent DDL against the same
+    /// objects is a documented `PostgreSQL` race (`tuple concurrently updated`); this test
+    /// exists to observe whether that race is actually hit in practice, not to assert it
+    /// never is. See `.mise/tasks/test/psql`'s `--test-threads=1` comment for the same
+    /// concern in this test suite's own execution.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL); \
+                MEASUREMENT ONLY — concurrent bootstrap DDL is a known race, see doc comment"]
+    async fn pg_audit_concurrent_startup_on_empty_database() {
+        const N: usize = 8;
+
+        let url = audit_url();
+        let raw = raw_client(&url).await;
+        raw.batch_execute("DROP TABLE IF EXISTS kms_audit_events, kms_audit_control CASCADE;")
+            .await
+            .unwrap();
+
+        let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(N));
+        let mut handles = Vec::with_capacity(N);
+        for i in 0..N {
+            let url = url.clone();
+            let barrier = std::sync::Arc::clone(&barrier);
+            let instance_id = unique_instance_id(&format!("concurrent-empty-{i}"));
+            handles.push(tokio::spawn(async move {
+                barrier.wait().await;
+                let result = connect_resume_write_once(&url, &instance_id).await;
+                (instance_id, result)
+            }));
+        }
+
+        let mut errors = Vec::new();
+        for h in handles {
+            let (instance_id, result) = h.await.unwrap();
+            if let Err(e) = result {
+                errors.push(format!("{instance_id}: {e}"));
+            }
+        }
+
+        eprintln!(
+            "pg_audit_concurrent_startup_on_empty_database: {}/{N} succeeded, errors: {errors:?}",
+            N - errors.len()
+        );
+        assert!(errors.is_empty(), "concurrent startup errors: {errors:#?}");
+        assert_eq!(
+            count_audit_guard_triggers(&url).await,
+            4,
+            "all 4 append-only guard triggers must survive concurrent bootstrap"
+        );
+    }
+
+    /// MEASUREMENT ONLY (see the sibling empty-database test's doc comment for why): new
+    /// instances starting at the same moment while another instance is already writing
+    /// steadily — the schema already exists here, so this measures whether a live writer
+    /// is disrupted by other instances' bootstrap re-run of the DDL bundle, not the
+    /// initial-creation race the other test targets.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 9)]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL); \
+                MEASUREMENT ONLY — concurrent bootstrap DDL is a known race, see doc comment"]
+    async fn pg_audit_concurrent_startup_with_active_writer() {
+        const N: usize = 8;
+        const ACTIVE_WRITES: i64 = 200;
+
+        let url = audit_url();
+        let active_instance_id = unique_instance_id("concurrent-active-writer");
+        let mut active_sink = PgAuditSink::connect(&url, &active_instance_id)
+            .await
+            .unwrap();
+        active_sink.resume().await.unwrap();
+
+        let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(N + 1));
+
+        let active_barrier = std::sync::Arc::clone(&barrier);
+        let active_handle = tokio::spawn(async move {
+            active_barrier.wait().await;
+            let mut prev_hash = [0_u8; 32];
+            for id in 0..ACTIVE_WRITES {
+                let ev = make_event(id, prev_hash);
+                active_sink
+                    .write_event_atomic(&ev)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                prev_hash = ev.row_hash;
+            }
+            Ok::<_, String>(())
+        });
+
+        let mut handles = Vec::with_capacity(N);
+        for i in 0..N {
+            let url = url.clone();
+            let barrier = std::sync::Arc::clone(&barrier);
+            let instance_id = unique_instance_id(&format!("concurrent-new-{i}"));
+            handles.push(tokio::spawn(async move {
+                barrier.wait().await;
+                let result = connect_resume_write_once(&url, &instance_id).await;
+                (instance_id, result)
+            }));
+        }
+
+        let active_result = active_handle.await.unwrap();
+        let mut errors = Vec::new();
+        if let Err(e) = active_result {
+            errors.push(format!("active writer: {e}"));
+        }
+        for h in handles {
+            let (instance_id, result) = h.await.unwrap();
+            if let Err(e) = result {
+                errors.push(format!("{instance_id}: {e}"));
+            }
+        }
+
+        eprintln!(
+            "pg_audit_concurrent_startup_with_active_writer: {}/{} succeeded, errors: {errors:?}",
+            N + 1 - errors.len(),
+            N + 1
+        );
+        assert!(errors.is_empty(), "concurrent startup errors: {errors:#?}");
+
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        let active_events = reader
+            .events_page(&active_instance_id, 0, -1)
+            .await
+            .unwrap();
+        assert_eq!(
+            i64::try_from(active_events.len()).unwrap(),
+            ACTIVE_WRITES,
+            "the active writer's chain must have no gaps or duplicates"
+        );
     }
 
     /// Seeds two instances, one of which rolls to a second generation, and checks both

@@ -615,4 +615,44 @@ mod tests {
         );
         Ok(())
     }
+
+    /// The `PostgreSQL` audit backend has no runtime fallback to the file backend: a
+    /// connection failure at startup must abort `KMS::instantiate`, even when
+    /// `--audit-file-path` is also set. Uses a connection-refused address (no live
+    /// database needed) so this test runs everywhere, unlike the `#[ignore]`-gated live
+    /// PostgreSQL tests.
+    #[tokio::test]
+    async fn postgres_audit_connection_failure_aborts_startup_without_file_fallback() -> KResult<()>
+    {
+        let mut conf = crate::tests::test_utils::https_clap_config();
+        conf.audit.audit_enable = true;
+        // `https_clap_config()` builds via `Default`, which does not apply clap's
+        // `default_value_t` — must set explicitly or `AuditStore::start_postgres`
+        // rejects it before ever attempting the connection.
+        conf.audit.audit_channel_capacity = 1;
+        conf.audit.postgres.audit_postgres_url =
+            Some("postgresql://kms:kms@127.0.0.1:1/audit?sslmode=disable".to_owned());
+        conf.audit.postgres.audit_instance_id = Some("startup-abort-test".to_owned());
+
+        let file_path = std::env::temp_dir().join(format!(
+            "kms-audit-fallback-probe-{}.jsonl",
+            uuid::Uuid::new_v4()
+        ));
+        conf.audit.file.audit_file_path = Some(file_path.clone());
+
+        let server_params = ServerParams::try_from(conf)?;
+        let result = KMS::instantiate(Arc::new(server_params)).await;
+        let Err(err) = result else {
+            panic!("a PostgreSQL connection failure at startup must abort instantiate()");
+        };
+        assert!(
+            err.to_string().contains("PostgreSQL"),
+            "error should name the PostgreSQL audit backend: {err}"
+        );
+        assert!(
+            !file_path.exists(),
+            "the file backend must never be used as a fallback"
+        );
+        Ok(())
+    }
 }

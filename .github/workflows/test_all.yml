@@ -46,6 +46,7 @@ jobs:
           - pki-revocation
           - siem
           - audit
+          - audit-postgres
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips

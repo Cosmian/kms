@@ -105,8 +105,9 @@ Checks that:
    [PostgreSQL backend](../configuration/audit-postgresql-backend.md#checking-sealed-evidence-by-hand)
    for the manual check.
 
-Exits with code **0** when every chain is intact, or **1** when a broken link, tampered event, or
-altered/missing sealed-evidence file is detected.
+Exits with code **0** when every chain is intact, or **1** when a broken link, tampered event,
+altered/missing sealed-evidence file, or an unknown `--audit-instance-id` (no events found) is
+detected.
 
 ### Usage
 

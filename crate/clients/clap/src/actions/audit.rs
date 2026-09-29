@@ -594,6 +594,12 @@ impl VerifyAuditAction {
             }
         }
 
+        if total == 0 {
+            return Err(crate::error::KmsCliError::InvalidRequest(format!(
+                "no audit events found for instance_id={instance_id}"
+            )));
+        }
+
         writeln!(
             out,
             "instance_id={instance_id}: chain OK: {total} event{} verified",
@@ -1181,8 +1187,14 @@ mod tests {
     }
 
     /// Seeds a fresh instance with `n` events via `PgAuditSink`, returning its
-    /// `instance_id`.
-    async fn seed_postgres_chain(url: &str, n: i64) -> String {
+    /// `instance_id`. `mutate` runs on each event just before it is written, letting a
+    /// caller deliberately corrupt one event (see the tamper/broken-link tests below)
+    /// while reusing the same well-formed chain construction as the happy-path tests.
+    async fn seed_postgres_chain_with(
+        url: &str,
+        n: i64,
+        mut mutate: impl FnMut(i64, &mut AuditEvent),
+    ) -> String {
         use cosmian_kms_server_database::{
             PgAuditSink, reexport::cosmian_kms_interfaces::AuditSink as _,
         };
@@ -1209,10 +1221,100 @@ mod tests {
                 row_hash: [0_u8; 32],
             };
             event.row_hash = compute_row_hash(&event);
+            mutate(i, &mut event);
             sink.write_event_atomic(&event).await.unwrap();
             prev_hash = event.row_hash;
         }
         instance_id
+    }
+
+    async fn seed_postgres_chain(url: &str, n: i64) -> String {
+        seed_postgres_chain_with(url, n, |_, _| {}).await
+    }
+
+    #[test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    fn verify_postgres_source_detects_tampered_row() {
+        let url = audit_pg_url();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        // Event 1's own row_hash no longer matches its content — a self-consistency
+        // failure, independent of its neighbors.
+        let instance_id = rt.block_on(seed_postgres_chain_with(&url, 3, |i, event| {
+            if i == 1 {
+                event.row_hash = [0xAA_u8; 32];
+            }
+        }));
+
+        let action = VerifyAuditAction {
+            source: AuditSourceArgs {
+                audit_postgres_url: Some(url),
+                audit_instance_id: Some(instance_id.clone()),
+                ..Default::default()
+            },
+            verbose: false,
+        };
+        let mut out = Vec::new();
+        let err = action.run_with_writer(&mut out).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("TAMPERED"), "{msg}");
+        assert!(msg.contains(&instance_id), "{msg}");
+        assert!(msg.contains("generation=0"), "{msg}");
+        assert!(msg.contains("id=1"), "{msg}");
+    }
+
+    #[test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    fn verify_postgres_source_detects_broken_link() {
+        let url = audit_pg_url();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        // Event 1's own hash still matches its (now-wrong) prev_hash — it verifies on
+        // its own, but no longer chains onto event 0.
+        let instance_id = rt.block_on(seed_postgres_chain_with(&url, 3, |i, event| {
+            if i == 1 {
+                event.prev_hash = [0xBB_u8; 32];
+                event.row_hash = compute_row_hash(event);
+            }
+        }));
+
+        let action = VerifyAuditAction {
+            source: AuditSourceArgs {
+                audit_postgres_url: Some(url),
+                audit_instance_id: Some(instance_id.clone()),
+                ..Default::default()
+            },
+            verbose: false,
+        };
+        let mut out = Vec::new();
+        let err = action.run_with_writer(&mut out).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("CHAIN BROKEN"), "{msg}");
+        assert!(msg.contains(&instance_id), "{msg}");
+        assert!(msg.contains("id=1"), "{msg}");
+    }
+
+    #[test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    fn verify_postgres_source_rejects_unknown_instance() {
+        let url = audit_pg_url();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        // Seed a real instance so the database is non-empty, then ask for a different,
+        // never-seeded instance_id — must not report a vacuously verified empty chain.
+        rt.block_on(seed_postgres_chain(&url, 1));
+        let unknown_instance_id = format!("cli-test-unknown-{}", uuid::Uuid::new_v4());
+
+        let action = VerifyAuditAction {
+            source: AuditSourceArgs {
+                audit_postgres_url: Some(url),
+                audit_instance_id: Some(unknown_instance_id.clone()),
+                ..Default::default()
+            },
+            verbose: false,
+        };
+        let mut out = Vec::new();
+        let err = action.run_with_writer(&mut out).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("no audit events found"), "{msg}");
+        assert!(msg.contains(&unknown_instance_id), "{msg}");
     }
 
     #[test]

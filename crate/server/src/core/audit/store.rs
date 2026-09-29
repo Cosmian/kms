@@ -11,8 +11,8 @@
 //!   acquisition happen inside the spawned task, self-healing in the background — see
 //!   `FileSink::resume`). The `PostgreSQL` backend connects, acquires its advisory lock,
 //!   and verifies the chain SYNCHRONOUSLY inside `start_postgres()` — a failure there
-//!   propagates up to `Kms::create_audit_store`, which aborts server startup; unlike the
-//!   file backend, there is no runtime fallback between the two (config-time only).
+//!   propagates up to `Kms::create_audit_store`, which aborts server startup: there is
+//!   no runtime fallback to the file backend, even if `--audit-file-path` is also set.
 //! * The middleware calls `enqueue()` which is a non-blocking `try_send`.  If the
 //!   channel is full (beyond the configured capacity) the draft is silently dropped
 //!   and an error is logged — we never block the request path.
@@ -127,9 +127,9 @@ impl AuditStore {
     /// Connects to the `PostgreSQL` audit backend, acquires `instance_id`'s advisory
     /// lock, ensures the schema is current, and verifies the entire existing chain —
     /// all SYNCHRONOUSLY, before returning. Unlike [`Self::start_with_max_size`] (File),
-    /// a failure at any of these steps propagates as an error here. The caller
-    /// (`Kms::create_audit_store`) falls back to the file backend rather than aborting
-    /// server startup on this error.
+    /// a failure at any of these steps propagates as an error here, and
+    /// `Kms::create_audit_store` aborts server startup on it — there is no runtime
+    /// fallback to the file backend, even if `--audit-file-path` is also set.
     ///
     /// `channel_capacity` is the number of events that can be buffered before new events
     /// are dropped once steady-state writing begins. Must be ≥ 1.
@@ -1208,7 +1208,7 @@ mod live_postgres_tests {
     /// `cosmian_kms_server_database` audit live tests.
     fn audit_url() -> String {
         option_env!("KMS_AUDIT_POSTGRES_URL")
-            .unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms")
+            .unwrap_or("postgresql://kms_audit:kms_audit@127.0.0.1:5436/kms_audit?sslmode=disable")
             .to_owned()
     }
 
@@ -1357,6 +1357,20 @@ mod live_postgres_tests {
             reader.list_generations(&instance_id).await.unwrap(),
             vec![0],
             "no seal-and-roll should have occurred — generation 0 must still be the only one"
+        );
+
+        // The premise of this test is that a sentinel actually got written and survived
+        // the round trip — without this, `resume()` succeeding proves nothing (an empty
+        // or sentinel-free generation would pass the assertions above just as well).
+        let events = reader.events_page(&instance_id, 0, -1).await.unwrap();
+        let sentinel = events
+            .iter()
+            .find(|e| e.operation == "audit:eviction")
+            .expect("an audit:eviction sentinel must be present in generation 0");
+        assert!(
+            matches!(&sentinel.result, AuditResult::Failure(msg) if msg.contains("dropped")),
+            "sentinel result should record the drop: {:?}",
+            sentinel.result
         );
     }
 }
