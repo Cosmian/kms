@@ -23,9 +23,7 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
         lib_path: shared::lib_path("UTIMACO_PKCS11_LIB", UTIMACO_PKCS11_LIB),
         slot_ids_and_passwords: HashMap::from([(slot, Some(user_password))]),
         slot_id_for_tests: slot,
-        rsa_oaep_digest: Some(RsaOaepDigest::SHA256),
         threads: 4,
-        supports_rsa_wrap: true,
     })
 }
 
@@ -52,7 +50,7 @@ fn test_hsm_utimaco_all() -> HResult<()> {
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
-    shared::get_key_metadata(&slot, true)?;
+    shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
@@ -161,7 +159,7 @@ fn test_hsm_utimaco_list_objects() -> HResult<()> {
 #[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
 fn test_hsm_utimaco_get_key_metadata() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<UtimacoCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot, true)
+    shared::get_key_metadata(&slot)
 }
 
 #[test]

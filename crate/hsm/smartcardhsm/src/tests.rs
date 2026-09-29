@@ -25,9 +25,7 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
         lib_path: shared::lib_path("SMARTCARDHSM_PKCS11_LIB", SMARTCARDHSM_PKCS11_LIB),
         slot_ids_and_passwords: HashMap::from([(slot, Some(user_password))]),
         slot_id_for_tests: slot,
-        rsa_oaep_digest: Some(shared::TEST_RSA_OAEP_DIGEST),
         threads: 2,
-        supports_rsa_wrap: true,
     })
 }
 
@@ -46,7 +44,7 @@ fn test_hsm_smartcardhsm_all() -> HResult<()> {
     shared::destroy_all(&slot)?;
     shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
-    // rsa_key_wrap not supported on SmartcardHSM
+    shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
     shared::rsa_pkcs_encrypt(&slot)?;
     shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
     shared::aes_cbc_encrypt(&slot)?;
@@ -55,7 +53,7 @@ fn test_hsm_smartcardhsm_all() -> HResult<()> {
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
     shared::multi_threaded_rsa(&slot, shared::TEST_RSA_OAEP_DIGEST, cfg.threads)?;
-    shared::get_key_metadata(&slot, true)?;
+    shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
@@ -192,7 +190,7 @@ fn test_hsm_smartcardhsm_list_objects() -> HResult<()> {
 #[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
 fn test_hsm_smartcardhsm_get_key_metadata() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot, true)
+    shared::get_key_metadata(&slot)
 }
 
 #[test]

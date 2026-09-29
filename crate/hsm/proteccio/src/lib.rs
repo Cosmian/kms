@@ -21,6 +21,9 @@ impl HsmProvider for ProteccioCapabilityProvider {
             supports_aes_gcm_message: true,
             rsa_oaep_requires_source_data_ptr: false,
             max_label_len: Some(128),
+            supports_key_dates: true,
+            supports_rsa_oaep_key_wrap: true,
+            enforces_ecdsa_digest_strength: false,
         }
     }
 }

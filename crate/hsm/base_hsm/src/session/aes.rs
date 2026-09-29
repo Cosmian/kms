@@ -132,7 +132,7 @@ impl Session {
             // A sensitive key must not be extractable: derive CKA_EXTRACTABLE from
             // the `sensitive` flag instead of hard-coding it to CK_TRUE.
             let is_extractable = if sensitive { CK_FALSE } else { CK_TRUE };
-            let label = serialize_tagged_label(id, tags, self.hsm_capabilities.max_label_len)?
+            let label = serialize_tagged_label(id, tags, self.hsm_capabilities().max_label_len)?
                 .unwrap_or_else(|| utf8_label(id));
             let mut template =
                 aes_key_template!(id, label, size, is_sensitive, is_extractable).to_vec();

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # .mise/lib/kryoptic.sh — Out-of-tree build helper for the published `kryoptic`
 # PKCS#11 v3.0 software token (https://github.com/latchset/kryoptic), used
-# exclusively as a v3.0 conformance-test oracle by
-# crate/hsm/base_hsm/tests/kryoptic_conformance.rs.
+# as the PKCS#11 v3.0 test token by crate/hsm/kryoptic
+# (`mise run test:hsm-kryoptic`).
 #
 # `kryoptic` is deliberately NOT a [dev-dependencies] entry in
 # crate/hsm/base_hsm/Cargo.toml: its `kryoptic-lib` dependency requires

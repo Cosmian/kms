@@ -55,6 +55,5 @@ non-fips = ["cosmian_kms_interfaces/non-fips"]
 # `hsm_lib::function_table_fallback_tests`), so this dispatch logic is
 # regression-tested on every `cargo test -p cosmian_kms_base_hsm --lib` run —
 # fast, deterministic, and offline — without depending on Kryoptic itself
-# (which is a separate, opt-in, out-of-tree conformance suite; see the NOTE
-# below).
+# (exercised end-to-end by `crate/hsm/kryoptic` via `mise run test:hsm-kryoptic`).
 cc = { workspace = true }

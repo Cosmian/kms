@@ -168,9 +168,7 @@ fn test_hsm_kryoptic_all() -> HResult<()> {
         lib_path: lib_path.to_string_lossy().into_owned(),
         slot_ids_and_passwords: HashMap::from([(SLOT_ID, Some(USER_PIN.to_owned()))]),
         slot_id_for_tests: SLOT_ID,
-        rsa_oaep_digest: Some(shared::TEST_RSA_OAEP_DIGEST),
         threads: 4,
-        supports_rsa_wrap: true,
     };
 
     let hsm = shared::instantiate::<KryopticCapabilityProvider>(&test_cfg)?;
@@ -191,7 +189,7 @@ fn test_hsm_kryoptic_all() -> HResult<()> {
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
     shared::multi_threaded_rsa(&slot, shared::TEST_RSA_OAEP_DIGEST, test_cfg.threads)?;
-    shared::get_key_metadata(&slot, true)?;
+    shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &test_cfg)?;
     shared::destroy_all(&slot)?;

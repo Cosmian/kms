@@ -48,9 +48,6 @@ jobs:
           - audit
         features: [fips, non-fips]
         exclude:
-          # kryoptic-conformance only needs to be validated once (fips)
-          - type: hsm-kryoptic-conformance
-            features: non-fips
           # redis is exclusively for non-fips
           - type: redis
             features: fips

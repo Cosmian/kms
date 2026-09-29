@@ -24,11 +24,7 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
         lib_path: shared::lib_path("SOFTHSM2_PKCS11_LIB", SOFTHSM2_PKCS11_LIB),
         slot_ids_and_passwords: HashMap::from([(slot, Some(user_password))]),
         slot_id_for_tests: slot,
-        rsa_oaep_digest: Some(shared::TEST_RSA_OAEP_DIGEST),
         threads: 4,
-        // SoftHSM2 2.6.1 returns CKR_ARGUMENTS_BAD from CKM_RSA_PKCS_OAEP
-        // C_WrapKey even with a preallocated RSA-sized output buffer.
-        supports_rsa_wrap: false,
     })
 }
 
@@ -54,9 +50,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     shared::get_mechanisms_and_hashes(&slot)?;
     drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
     shared::destroy_all(&slot)?;
-    if cfg.supports_rsa_wrap {
-        shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
-    }
+    shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
     shared::aes_gcm_encrypt(&slot)?;
     shared::aes_cbc_encrypt(&slot)?;
     shared::aes_cbc_multi_round(&slot)?;
@@ -73,7 +67,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     // FIPS and SHA1 in non-fips, so gate it behind non-fips.
     #[cfg(feature = "non-fips")]
     shared::multi_threaded_rsa(&slot, shared::TEST_RSA_OAEP_DIGEST, cfg.threads)?;
-    shared::get_key_metadata(&slot, true)?;
+    shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
@@ -164,9 +158,6 @@ fn test_hsm_softhsm2_generate_rsa_keypair() -> HResult<()> {
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_rsa_key_wrap() -> HResult<()> {
-    if !cfg()?.supports_rsa_wrap {
-        return Ok(());
-    }
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
     shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)
 }
@@ -289,7 +280,7 @@ fn test_hsm_softhsm2_list_objects() -> HResult<()> {
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_get_key_metadata() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot, true)
+    shared::get_key_metadata(&slot)
 }
 
 #[test]

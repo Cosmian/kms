@@ -10,7 +10,7 @@ use pkcs11_sys::{
 };
 
 use super::{serialize_tagged_label, utf8_label};
-use crate::{HResult, hsm_call, session::Session};
+use crate::{HError, HResult, hsm_call, session::Session};
 
 #[derive(Debug, Clone, Copy)]
 pub enum RsaKeySize {
@@ -59,9 +59,9 @@ impl Session {
         // A sensitive private key must not be extractable: derive CKA_EXTRACTABLE
         // from the `sensitive` flag instead of hard-coding it to CK_TRUE.
         let extractable = if sensitive { CK_FALSE } else { CK_TRUE };
-        let sk_label = serialize_tagged_label(sk_id, tags, self.hsm_capabilities.max_label_len)?
+        let sk_label = serialize_tagged_label(sk_id, tags, self.hsm_capabilities().max_label_len)?
             .unwrap_or_else(|| utf8_label(sk_id));
-        let pk_label = serialize_tagged_label(pk_id, tags, self.hsm_capabilities.max_label_len)?
+        let pk_label = serialize_tagged_label(pk_id, tags, self.hsm_capabilities().max_label_len)?
             .unwrap_or_else(|| utf8_label(pk_id));
         let mut pub_key_template = vec![
             CK_ATTRIBUTE {
@@ -247,6 +247,13 @@ impl Session {
         aes_key_handle: CK_OBJECT_HANDLE,
         digest: RsaOaepDigest,
     ) -> HResult<Vec<u8>> {
+        if !self.hsm_capabilities().supports_rsa_oaep_key_wrap {
+            return Err(HError::Default(
+                "RSA-OAEP key wrapping (CKM_RSA_PKCS_OAEP C_WrapKey/C_UnwrapKey) is not \
+                 supported by this HSM"
+                    .to_owned(),
+            ));
+        }
         let mut oaep_params = match digest {
             RsaOaepDigest::SHA256 => CK_RSA_PKCS_OAEP_PARAMS {
                 hashAlg: CKM_SHA256,
@@ -299,6 +306,13 @@ impl Session {
         aes_key_label: &str,
         digest: RsaOaepDigest,
     ) -> HResult<CK_OBJECT_HANDLE> {
+        if !self.hsm_capabilities().supports_rsa_oaep_key_wrap {
+            return Err(HError::Default(
+                "RSA-OAEP key wrapping (CKM_RSA_PKCS_OAEP C_WrapKey/C_UnwrapKey) is not \
+                 supported by this HSM"
+                    .to_owned(),
+            ));
+        }
         let mut wrapped_key = wrapped_aes_key.to_vec();
         // Empty OAEP label: SoftHSM2 requires a non-null source pointer, AWS
         // CloudHSM requires NULL (see `rsa_oaep_requires_source_data_ptr`).

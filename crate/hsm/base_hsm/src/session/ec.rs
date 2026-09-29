@@ -196,9 +196,9 @@ impl Session {
             CKA_VERIFY
         };
         let priv_usage_attribute_type = if is_montgomery { CKA_DERIVE } else { CKA_SIGN };
-        let sk_label = serialize_tagged_label(sk_id, tags, self.hsm_capabilities.max_label_len)?
+        let sk_label = serialize_tagged_label(sk_id, tags, self.hsm_capabilities().max_label_len)?
             .unwrap_or_else(|| utf8_label(sk_id));
-        let pk_label = serialize_tagged_label(pk_id, tags, self.hsm_capabilities.max_label_len)?
+        let pk_label = serialize_tagged_label(pk_id, tags, self.hsm_capabilities().max_label_len)?
             .unwrap_or_else(|| utf8_label(pk_id));
 
         let mut pub_key_template = vec![
