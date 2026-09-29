@@ -29,9 +29,7 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
         lib_path: shared::lib_path("AWS_CLOUDHSM_PKCS11_LIB", AWS_CLOUDHSM_PKCS11_LIB),
         slot_ids_and_passwords: HashMap::from([(slot, Some(user_password))]),
         slot_id_for_tests: slot,
-        rsa_oaep_digest: Some(RsaOaepDigest::SHA256),
         threads: 4,
-        supports_rsa_wrap: true,
     })
 }
 
@@ -48,7 +46,7 @@ fn test_hsm_aws_cloudhsm_all() -> HResult<()> {
     shared::get_mechanisms_and_hashes(&slot)?;
     drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
     shared::destroy_all(&slot)?;
-    shared::generate_aes_key_with_exportability(&slot, false)?;
+    shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
     shared::generate_ec_keypair(&slot)?;
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)?;
@@ -62,7 +60,7 @@ fn test_hsm_aws_cloudhsm_all() -> HResult<()> {
     #[cfg(feature = "non-fips")]
     shared::eddsa_sign_all_curves(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
-    shared::get_key_metadata(&slot, false)?;
+    shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
@@ -114,13 +112,6 @@ fn test_hsm_aws_cloudhsm_generate_ec_keypair() -> HResult<()> {
 fn test_hsm_aws_cloudhsm_rsa_key_wrap() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_rsa_pkcs_encrypt() {
-    // AWS CloudHSM FIPS clusters reject CKM_RSA_PKCS encryption for newly generated keys.
-    // OAEP encryption is covered by test_hsm_aws_cloudhsm_rsa_oaep_encrypt.
 }
 
 #[test]
@@ -200,7 +191,7 @@ fn test_hsm_aws_cloudhsm_list_objects() -> HResult<()> {
 #[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
 fn test_hsm_aws_cloudhsm_get_key_metadata() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot, false)
+    shared::get_key_metadata(&slot)
 }
 
 #[test]

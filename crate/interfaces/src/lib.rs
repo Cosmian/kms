@@ -11,8 +11,9 @@ pub use crypto_oracle::{
 };
 pub use error::{InterfaceError, InterfaceResult};
 pub use hsm::{
-    EcCurve, EcPrivateKeyMaterial, EcPublicKeyMaterial, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm,
-    HsmObject, HsmObjectFilter, HsmStore, KeyMaterial, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
+    EcCurve, EcPrivateKeyMaterial, EcPublicKeyMaterial, HSM, HsmKeyAlgorithm, HsmKeyPairIds,
+    HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, HsmStore, KeyMaterial, RsaPrivateKeyMaterial,
+    RsaPublicKeyMaterial,
 };
 pub use object_handle::{HsmUidParts, ObjectHandle};
 pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore};

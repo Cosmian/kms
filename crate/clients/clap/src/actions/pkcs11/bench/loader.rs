@@ -4,14 +4,15 @@
 //! `VeraCrypt`, ...) drives the module: `dlopen()` the shared library, resolve
 //! the standard v3 interface through `C_GetInterface`, and call its function table.
 
-use std::ptr;
+use std::{ptr, sync::Arc};
 
 use pkcs11_sys::{
-    CK_ATTRIBUTE, CK_BBOOL, CK_FLAGS, CK_FUNCTION_LIST_3_0, CK_INTERFACE_PTR, CK_KEY_TYPE,
-    CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RV, CK_SESSION_HANDLE,
-    CK_SLOT_ID, CK_TRUE, CK_ULONG, CK_USER_TYPE, CK_VERSION, CKA_CLASS, CKA_EC_PARAMS,
-    CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_SENSITIVE, CKA_VALUE_LEN, CKF_RW_SESSION,
-    CKF_SERIAL_SESSION, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKR_OK, CKU_USER,
+    CK_ATTRIBUTE, CK_BBOOL, CK_FLAGS, CK_FUNCTION_LIST_3_0, CK_GCM_PARAMS, CK_INTERFACE_PTR,
+    CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE,
+    CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CK_TRUE, CK_ULONG, CK_USER_TYPE,
+    CK_VERSION, CKA_CLASS, CKA_EC_PARAMS, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_SENSITIVE,
+    CKA_VALUE_LEN, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKG_MGF1_SHA256, CKK_AES, CKM_AES_CBC_PAD,
+    CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKM_SHA256, CKR_OK, CKU_USER,
 };
 
 use super::error::{BenchError, BenchResult};
@@ -239,6 +240,7 @@ impl Pkcs11Lib {
 pub(crate) struct Pkcs11Session<'lib> {
     lib: &'lib Pkcs11Lib,
     handle: CK_SESSION_HANDLE,
+    hsm_prefix: Option<Arc<str>>,
 }
 
 /// `C_Initialize` is a process-wide, one-time Cryptoki call — a second call returns
@@ -272,7 +274,7 @@ impl<'lib> Pkcs11Session<'lib> {
     /// slot, and opens one read/write serial session, logging in as the normal user
     /// (a no-op unless the provider is configured for OIDC-pin mode, which this
     /// benchmark does not use).
-    pub(crate) fn open(lib: &'lib Pkcs11Lib) -> BenchResult<Self> {
+    pub(crate) fn open(lib: &'lib Pkcs11Lib, hsm_prefix: Option<Arc<str>>) -> BenchResult<Self> {
         let f = &lib.functions;
 
         if !CRYPTOKI_INITIALIZED.swap(true, std::sync::atomic::Ordering::SeqCst) {
@@ -316,7 +318,11 @@ impl<'lib> Pkcs11Session<'lib> {
             check("C_Login", rv)?;
         }
 
-        Ok(Self { lib, handle })
+        Ok(Self {
+            lib,
+            handle,
+            hsm_prefix,
+        })
     }
 
     /// Finds the first object of the given `CK_OBJECT_CLASS` (e.g. `CKO_SECRET_KEY`,
@@ -594,6 +600,240 @@ impl<'lib> Pkcs11Session<'lib> {
         Ok(output)
     }
 
+    /// `C_EncryptInit` + `C_Encrypt` with `CKM_AES_GCM` (v3.0).
+    pub(crate) fn encrypt_gcm(
+        &self,
+        key: CK_OBJECT_HANDLE,
+        plaintext: &[u8],
+    ) -> BenchResult<Vec<u8>> {
+        let f = &self.lib.functions;
+        let mut iv = [0_u8; 12];
+        let mut gcm_params = CK_GCM_PARAMS {
+            pIv: iv.as_mut_ptr(),
+            ulIvLen: 12,
+            ulIvBits: 96,
+            pAAD: ptr::null_mut(),
+            ulAADLen: 0,
+            ulTagBits: 128,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_GCM,
+            pParameter: (&raw mut gcm_params).cast::<std::ffi::c_void>(),
+            ulParameterLen: size_of::<CK_GCM_PARAMS>() as CK_ULONG,
+        };
+        let c_encrypt_init = f.C_EncryptInit.ok_or_else(|| missing("C_EncryptInit"))?;
+        // SAFETY: `mechanism` and `gcm_params` are stack-allocated and valid for the duration of this call.
+        check("C_EncryptInit(CKM_AES_GCM)", unsafe {
+            c_encrypt_init(self.handle, &raw mut mechanism, key)
+        })?;
+        let c_encrypt = f.C_Encrypt.ok_or_else(|| missing("C_Encrypt"))?;
+        let mut input = plaintext.to_vec();
+        let mut output = vec![0_u8; plaintext.len() + 16];
+        let mut output_len = output.len() as CK_ULONG;
+        // SAFETY: `input` and `output` buffers are valid and `output_len` reflects the allocated capacity.
+        check("C_Encrypt(CKM_AES_GCM)", unsafe {
+            c_encrypt(
+                self.handle,
+                input.as_mut_ptr(),
+                input.len() as CK_ULONG,
+                output.as_mut_ptr(),
+                &raw mut output_len,
+            )
+        })?;
+        output.truncate(output_len as usize);
+        Ok(output)
+    }
+
+    /// `C_DecryptInit` + `C_Decrypt` with `CKM_AES_GCM` (v3.0).
+    pub(crate) fn decrypt_gcm(
+        &self,
+        key: CK_OBJECT_HANDLE,
+        ciphertext_and_tag: &[u8],
+    ) -> BenchResult<Vec<u8>> {
+        let f = &self.lib.functions;
+        let mut iv = [0_u8; 12];
+        let mut gcm_params = CK_GCM_PARAMS {
+            pIv: iv.as_mut_ptr(),
+            ulIvLen: 12,
+            ulIvBits: 96,
+            pAAD: ptr::null_mut(),
+            ulAADLen: 0,
+            ulTagBits: 128,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_GCM,
+            pParameter: (&raw mut gcm_params).cast::<std::ffi::c_void>(),
+            ulParameterLen: size_of::<CK_GCM_PARAMS>() as CK_ULONG,
+        };
+        let c_decrypt_init = f.C_DecryptInit.ok_or_else(|| missing("C_DecryptInit"))?;
+        // SAFETY: `mechanism` and `gcm_params` are stack-allocated and valid for the duration of this call.
+        check("C_DecryptInit(CKM_AES_GCM)", unsafe {
+            c_decrypt_init(self.handle, &raw mut mechanism, key)
+        })?;
+        let c_decrypt = f.C_Decrypt.ok_or_else(|| missing("C_Decrypt"))?;
+        let mut input = ciphertext_and_tag.to_vec();
+        let mut output = vec![0_u8; ciphertext_and_tag.len()];
+        let mut output_len = output.len() as CK_ULONG;
+        // SAFETY: `input` and `output` buffers are valid and `output_len` reflects the allocated capacity.
+        check("C_Decrypt(CKM_AES_GCM)", unsafe {
+            c_decrypt(
+                self.handle,
+                input.as_mut_ptr(),
+                input.len() as CK_ULONG,
+                output.as_mut_ptr(),
+                &raw mut output_len,
+            )
+        })?;
+        output.truncate(output_len as usize);
+        Ok(output)
+    }
+
+    /// `C_EncryptInit` + `C_Encrypt` with `CKM_RSA_PKCS`.
+    pub(crate) fn encrypt_rsa(
+        &self,
+        public_key: CK_OBJECT_HANDLE,
+        plaintext: &[u8],
+    ) -> BenchResult<Vec<u8>> {
+        let f = &self.lib.functions;
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_RSA_PKCS,
+            pParameter: ptr::null_mut(),
+            ulParameterLen: 0,
+        };
+        let c_encrypt_init = f.C_EncryptInit.ok_or_else(|| missing("C_EncryptInit"))?;
+        // SAFETY: `mechanism` is stack-allocated and valid for the duration of this call.
+        check("C_EncryptInit(CKM_RSA_PKCS)", unsafe {
+            c_encrypt_init(self.handle, &raw mut mechanism, public_key)
+        })?;
+        let c_encrypt = f.C_Encrypt.ok_or_else(|| missing("C_Encrypt"))?;
+        let mut input = plaintext.to_vec();
+        let mut output = vec![0_u8; 512];
+        let mut output_len = output.len() as CK_ULONG;
+        // SAFETY: `output` is pre-allocated with 512 bytes (sufficient for RSA-4096).
+        check("C_Encrypt(CKM_RSA_PKCS)", unsafe {
+            c_encrypt(
+                self.handle,
+                input.as_mut_ptr(),
+                input.len() as CK_ULONG,
+                output.as_mut_ptr(),
+                &raw mut output_len,
+            )
+        })?;
+        output.truncate(output_len as usize);
+        Ok(output)
+    }
+
+    /// `C_DecryptInit` + `C_Decrypt` with `CKM_RSA_PKCS`.
+    pub(crate) fn decrypt_rsa(
+        &self,
+        private_key: CK_OBJECT_HANDLE,
+        ciphertext: &[u8],
+    ) -> BenchResult<Vec<u8>> {
+        let f = &self.lib.functions;
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_RSA_PKCS,
+            pParameter: ptr::null_mut(),
+            ulParameterLen: 0,
+        };
+        let c_decrypt_init = f.C_DecryptInit.ok_or_else(|| missing("C_DecryptInit"))?;
+        // SAFETY: `mechanism` is stack-allocated and valid for the duration of this call.
+        check("C_DecryptInit(CKM_RSA_PKCS)", unsafe {
+            c_decrypt_init(self.handle, &raw mut mechanism, private_key)
+        })?;
+        let c_decrypt = f.C_Decrypt.ok_or_else(|| missing("C_Decrypt"))?;
+        let mut input = ciphertext.to_vec();
+        let mut output = vec![0_u8; ciphertext.len()];
+        let mut output_len = output.len() as CK_ULONG;
+        // SAFETY: `output` is sized to at least the ciphertext length.
+        check("C_Decrypt(CKM_RSA_PKCS)", unsafe {
+            c_decrypt(
+                self.handle,
+                input.as_mut_ptr(),
+                input.len() as CK_ULONG,
+                output.as_mut_ptr(),
+                &raw mut output_len,
+            )
+        })?;
+        output.truncate(output_len as usize);
+        Ok(output)
+    }
+
+    /// `C_SignInit` + `C_Sign` with `CKM_RSA_PKCS_PSS` (SHA-256 MGF1).
+    pub(crate) fn sign_pss_into(
+        &self,
+        private_key: CK_OBJECT_HANDLE,
+        digest: &[u8],
+        signature: &mut [u8],
+    ) -> BenchResult<usize> {
+        let f = &self.lib.functions;
+        let mut pss_params = CK_RSA_PKCS_PSS_PARAMS {
+            hashAlg: CKM_SHA256,
+            mgf: CKG_MGF1_SHA256,
+            sLen: 32,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_RSA_PKCS_PSS,
+            pParameter: (&raw mut pss_params).cast::<std::ffi::c_void>(),
+            ulParameterLen: size_of::<CK_RSA_PKCS_PSS_PARAMS>() as CK_ULONG,
+        };
+        let c_sign_init = f.C_SignInit.ok_or_else(|| missing("C_SignInit"))?;
+        // SAFETY: `mechanism` and `pss_params` are stack-allocated and valid for the duration of this call.
+        check("C_SignInit(CKM_RSA_PKCS_PSS)", unsafe {
+            c_sign_init(self.handle, &raw mut mechanism, private_key)
+        })?;
+        let c_sign = f.C_Sign.ok_or_else(|| missing("C_Sign"))?;
+        let mut sig_len = signature.len() as CK_ULONG;
+        // SAFETY: `signature` buffer is mutable and sized to accommodate the resulting RSA signature.
+        check("C_Sign(CKM_RSA_PKCS_PSS)", unsafe {
+            c_sign(
+                self.handle,
+                digest.as_ptr().cast_mut(),
+                digest.len() as CK_ULONG,
+                signature.as_mut_ptr(),
+                &raw mut sig_len,
+            )
+        })?;
+        Ok(sig_len as usize)
+    }
+
+    /// `C_VerifyInit` + `C_Verify` with `CKM_RSA_PKCS_PSS` (SHA-256 MGF1).
+    pub(crate) fn verify_pss(
+        &self,
+        public_key: CK_OBJECT_HANDLE,
+        digest: &[u8],
+        signature: &[u8],
+    ) -> BenchResult<()> {
+        let f = &self.lib.functions;
+        let mut pss_params = CK_RSA_PKCS_PSS_PARAMS {
+            hashAlg: CKM_SHA256,
+            mgf: CKG_MGF1_SHA256,
+            sLen: 32,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_RSA_PKCS_PSS,
+            pParameter: (&raw mut pss_params).cast::<std::ffi::c_void>(),
+            ulParameterLen: size_of::<CK_RSA_PKCS_PSS_PARAMS>() as CK_ULONG,
+        };
+        let c_verify_init = f.C_VerifyInit.ok_or_else(|| missing("C_VerifyInit"))?;
+        // SAFETY: `mechanism` and `pss_params` are stack-allocated and valid for this call.
+        check("C_VerifyInit(CKM_RSA_PKCS_PSS)", unsafe {
+            c_verify_init(self.handle, &raw mut mechanism, public_key)
+        })?;
+        let c_verify = f.C_Verify.ok_or_else(|| missing("C_Verify"))?;
+        let mut input = digest.to_vec();
+        let mut sig = signature.to_vec();
+        // SAFETY: `input` and `sig` buffers are valid and properly sized.
+        check("C_Verify(CKM_RSA_PKCS_PSS)", unsafe {
+            c_verify(
+                self.handle,
+                input.as_mut_ptr(),
+                input.len() as CK_ULONG,
+                sig.as_mut_ptr(),
+                sig.len() as CK_ULONG,
+            )
+        })
+    }
+
     /// `C_SignInit` + one `C_Sign` call into a caller-owned, pre-sized buffer.
     ///
     /// The benchmark knows the exact signature sizes of its two configured keys
@@ -841,10 +1081,14 @@ impl<'lib> Pkcs11Session<'lib> {
         // threads' still-live handles silently collapsing onto one entry) and causing sporadic
         // `C_DestroyObject` failures (`CKR_OBJECT_HANDLE_INVALID`) once concurrency > 1. Suffix
         // with a process-wide monotonic counter so every generated key gets its own identity.
-        let label = format!(
+        let key_name = format!(
             "pkcs11-bench-key-creation-{}",
             NEXT_KEY_CREATION_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         );
+        let label = match &self.hsm_prefix {
+            Some(prefix) => format!("{prefix}::{key_name}"),
+            None => key_name,
+        };
         let mut template = [
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,

@@ -63,7 +63,7 @@ source "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_aws_cloudhsm.sh"
 require_cmd cargo
 
 FEATURES="aws_cloudhsm"
-if [ "${VARIANT_NAME}" = "non-fips" ]; then
+if [ "$VARIANT" = "non-fips" ]; then
   FEATURES="aws_cloudhsm,non-fips"
 fi
 
@@ -78,7 +78,7 @@ cargo test \
 # `cosmian_kms_server` has no `aws_cloudhsm` feature (unlike the loader crate above) —
 # only `non-fips` gates its optional HSM code.
 SERVER_FEATURES=""
-if [ "${VARIANT_NAME}" = "non-fips" ]; then
+if [ "$VARIANT" = "non-fips" ]; then
   SERVER_FEATURES="non-fips"
 fi
 

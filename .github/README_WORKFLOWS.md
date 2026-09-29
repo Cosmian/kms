@@ -105,6 +105,7 @@ flowchart TB
         hsm_types["HSM types: utimaco · proteccio (fips) · softhsm2"]
         hsm_feat["Features: fips · non-fips (proteccio: fips only)"]
         hsm_steps["1. Install Nix · 2. Checkout · 3. nix.sh test hsm <type>"]
+        hsm_bench["non-fips: mise run bench --sanity --hsm-model <type><br/>(softhsm2: full suite · others: load-pkcs11 --delegated)"]
     end
     win["windows-2022<br/>Calls: test_windows.yml"]
     clean["cleanup<br/>Calls: cleanup_cache.yml (reusable)"]
@@ -127,6 +128,13 @@ flowchart TB
 | utimaco   | ✓    | ✓        |           |
 | proteccio | ✓    | ✗        | FIPS only |
 | softhsm2  | ✓    | ✓        |           |
+
+> **Upstream-only jobs**: test types that need upstream-only secrets or infrastructure run in
+> dedicated jobs gated by `if: github.repository == 'Cosmian/kms'`, so they are skipped on
+> forks: `test-nix-upstream` (`google-cse`, `secret_vault`, `secret_aws`, `secret_azure`),
+> `hsm-upstream` (`proteccio`, `crypt2pay`, `aws-cloudhsm` hardware HSMs) and `xks-remote`
+> (AWS XKS — remote server). They are separate jobs
+> because a job-level `if` cannot read the `matrix` context.
 
 ---
 

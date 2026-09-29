@@ -4658,6 +4658,7 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    #[cfg(feature = "non-fips")]
     async fn test_vec_hsm_resident_rsa2048_encrypt_oaep_sha1() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/resident_rsa2048_encrypt_oaep_sha1").await
@@ -4678,6 +4679,7 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    #[cfg(feature = "non-fips")]
     async fn test_vec_hsm_resident_rsa2048_sign_sha1() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_sha1").await

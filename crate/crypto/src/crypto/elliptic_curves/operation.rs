@@ -104,6 +104,20 @@ fn check_ecc_mask_algorithm_compliance(
     Ok(())
 }
 
+#[must_use]
+pub(crate) const fn curve_bits(curve: RecommendedCurve) -> u32 {
+    match curve {
+        RecommendedCurve::P192 => 192,
+        RecommendedCurve::P224 | RecommendedCurve::SECP224K1 => 224,
+        RecommendedCurve::P384 => 384,
+        RecommendedCurve::P521 => 521,
+        RecommendedCurve::CURVE448 => 448,
+        RecommendedCurve::CURVEED448 => 456,
+        // All 256-bit curves (P-256, Secp256k1, X25519, Ed25519) and fallback
+        _ => 256,
+    }
+}
+
 /// Convert to an Elliptic Curve KMIP Public Key.
 /// Supported curves are:
 /// X25519, Ed25519, X448, Ed448, P-192, P-224, P-256, P-384, P-521.
@@ -121,13 +135,15 @@ pub fn to_ec_public_key(
     algorithm: Option<CryptographicAlgorithm>,
     public_key_mask: Option<CryptographicUsageMask>,
 ) -> CryptoResult<Object> {
-    let cryptographic_length = Some(i32::try_from(bytes.len())? * 8);
+    let cryptographic_length = Some(i32::try_from(curve_bits(curve))?);
     trace!(
-        "bytes len: {:?}, bits: {}",
-        cryptographic_length, pkey_bits_number
+        "bytes len: {}, bits: {}, curve_bits: {:?}",
+        bytes.len(),
+        pkey_bits_number,
+        cryptographic_length
     );
 
-    let q_length = Some(i32::try_from(pkey_bits_number)?);
+    let q_length = cryptographic_length;
     Ok(Object::PublicKey(PublicKey {
         key_block: KeyBlock {
             cryptographic_algorithm: algorithm,
@@ -186,14 +202,16 @@ pub fn to_ec_private_key(
     private_key_mask: Option<CryptographicUsageMask>,
     sensitive: bool,
 ) -> CryptoResult<Object> {
-    let cryptographic_length = Some(i32::try_from(bytes.len())? * 8);
+    let cryptographic_length = Some(i32::try_from(curve_bits(curve))?);
 
     trace!(
-        "bytes len: {:?}, bits: {}",
-        cryptographic_length, pkey_bits_number
+        "bytes len: {}, bits: {}, curve_bits: {:?}",
+        bytes.len(),
+        pkey_bits_number,
+        cryptographic_length
     );
 
-    let q_length = Some(i32::try_from(pkey_bits_number)?);
+    let q_length = cryptographic_length;
     Ok(Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: algorithm,

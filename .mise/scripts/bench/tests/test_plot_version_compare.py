@@ -141,6 +141,22 @@ class Pkcs11OverheadReportTests(unittest.TestCase):
             'PKCS#11 Ed25519 signing overhead', write_text.call_args.args[0]
         )
 
+    def test_delegated_pkcs11_report_describes_both_boundaries(self) -> None:
+        protocols = '\n'.join(
+            MODULE._render_protocol_section(is_hsm=True, is_pkcs11=True)
+        )
+        methodology = '\n'.join(
+            MODULE._render_methodology_section(is_hsm=True, is_pkcs11=True)
+        )
+
+        self.assertIn('PKCS#11 v3.1 Cryptoki C ABI', protocols)
+        self.assertIn('KMS → HSM', protocols)
+        self.assertIn('server-side SoftHSM2 PKCS#11 backend', protocols)
+        self.assertIn('HSM-resident key execution', methodology)
+        self.assertIn('PKCS#11 `CKA_LABEL` envelope', methodology)
+        self.assertIn('key-creation, encrypt, sign, and verify', methodology)
+        self.assertIn('mise bench:load-pkcs11 --delegated', methodology)
+
 
 if __name__ == '__main__':
     unittest.main()

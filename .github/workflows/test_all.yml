@@ -23,7 +23,6 @@ jobs:
           - mariadb
           - psql
           - otel
-          - google-cse
           - redis
           - pykmip
           - wasm
@@ -38,9 +37,6 @@ jobs:
           - iris
           - db2
           - ase
-          - secret_vault
-          - secret_aws
-          - secret_azure
           - secret_cosmian_kms
           - spire
           - kmip-go
@@ -52,9 +48,6 @@ jobs:
           - audit
         features: [fips, non-fips]
         exclude:
-          # kryoptic-conformance only needs to be validated once (fips)
-          - type: hsm-kryoptic-conformance
-            features: non-fips
           # redis is exclusively for non-fips
           - type: redis
             features: fips
@@ -89,13 +82,8 @@ jobs:
           - type: ase
             features: fips
           # secret_cosmian_kms runs against a local KMS server — works with both fips and non-fips
-          # secret_vault, secret_aws, secret_azure require external services — run non-fips only
-          - type: secret_vault
-            features: fips
-          - type: secret_aws
-            features: fips
-          - type: secret_azure
-            features: fips
+          # google-cse, secret_vault, secret_aws and secret_azure need upstream-only secrets:
+          # they run in the `test-nix-upstream` job, which is skipped on forks.
           # spire relies on the Vault API which is non-fips only
           - type: spire
             features: fips
@@ -222,39 +210,29 @@ jobs:
         run: |
           mise run test:pkcs11:support --variant non-fips
 
-  hsm:
-    name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
+  # Test types that depend on upstream-only secrets / external services. Kept out of
+  # `test-nix` because a job-level `if` cannot read the `matrix` context: the whole
+  # job is skipped on forks, where those secrets do not exist.
+  test-nix-upstream:
+    name: Test on ${{ matrix.type }} - ${{ matrix.features }}
     runs-on: ubuntu-latest
-    # proteccio, crypt2pay, and aws-cloudhsm hardware do not support concurrent connections
-    # from multiple CI runs; give them fixed concurrency groups so only one job runs at a time
-    # across all PRs. utimaco and softhsm2 use a per-run group so they are never blocked by
-    # other PRs.
-    concurrency:
-      group: ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || (matrix.hsm-type == 'aws-cloudhsm'
-        && 'hsm-aws-cloudhsm') || format('hsm-{0}-{1}', matrix.hsm-type, github.run_id) }}
-      queue: max
-      cancel-in-progress: false
+    if: github.repository == 'Cosmian/kms'
     strategy:
       fail-fast: false
       matrix:
-        hsm-type:
-          - utimaco
-          - proteccio
-          - softhsm2
-          - kryoptic
-          - crypt2pay
-          - aws-cloudhsm
+        type:
+          - google-cse
+          - secret_vault
+          - secret_aws
+          - secret_azure
         features: [fips, non-fips]
         exclude:
-          # parallel connections on proteccio is not supported
-          - hsm-type: proteccio
+          # secret_vault, secret_aws, secret_azure require external services — run non-fips only
+          - type: secret_vault
             features: fips
-          # Not required - testing non-fips is sufficient
-          - hsm-type: crypt2pay
+          - type: secret_aws
             features: fips
-          # Not required until FIPS-mode compatibility is confirmed against the cluster's
-          # supported mechanism list - testing non-fips is sufficient for now
-          - hsm-type: aws-cloudhsm
+          - type: secret_azure
             features: fips
 
     steps:
@@ -270,33 +248,66 @@ jobs:
 
       - name: Test
         env:
-          # HSM
-          PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
-          PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
-          PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
-          CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
-          # AWS CloudHSM: persistent CI cluster (see crate/hsm/aws_cloudhsm/README.md)
-          AWS_CLOUDHSM_CLUSTER_ID: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CLUSTER_ID }}
-          AWS_CLOUDHSM_CU_USERNAME: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CU_USERNAME }}
-          AWS_CLOUDHSM_CU_PASSWORD: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CU_PASSWORD }}
-          AWS_CLOUDHSM_SLOT_ID: ${{ secrets.KMS_CI_AWS_CLOUDHSM_SLOT_ID }}
-          AWS_CLOUDHSM_CA_CERT: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CA_CERT }}
-          AWS_CLOUDHSM_HSM_IPS: ${{ secrets.KMS_CI_AWS_CLOUDHSM_HSM_IPS }}
-          # AWS Client VPN profile (.ovpn, cert-based mutual auth): GitHub-hosted
-          # runners have no route to the HSM's private VPC IP; prepare_aws_cloudhsm.sh
-          # starts this tunnel only if the HSM is not already directly reachable.
-          AWS_CLOUDHSM_OVPN_CONF: ${{ secrets.KMS_CI_AWS_CLOUDHSM_OVPN_CONF }}
-          # Reused generic AWS credentials (read-only `cloudhsm:DescribeClusters` is enough)
+          # Google variables (google-cse test type)
+          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+          GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+
+          # AWS secret backend variables (secret_aws test type)
           AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+
+          # Azure Key Vault secret backend variables (secret_azure test type)
+          AZURE_TENANT_ID: ${{ secrets.KMS_CI_AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.KMS_CI_AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.KMS_CI_AZURE_CLIENT_SECRET }}
+          AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}
+
+          # Provide an authenticated token so mise can install tools from
+          # GitHub releases without hitting the unauthenticated rate limit.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -ex
+          mise run test:${{ matrix.type }} --variant ${{ matrix.features }}
+
+  hsm:
+    name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
+    runs-on: ubuntu-latest
+    # Software/simulated HSMs: a per-run group so they are never blocked by other PRs.
+    # Hardware HSMs (proteccio, crypt2pay, aws-cloudhsm) run in the `hsm-upstream` job.
+    concurrency:
+      group: ${{ format('hsm-{0}-{1}', matrix.hsm-type, github.run_id) }}
+      queue: max
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        hsm-type:
+          - utimaco
+          - softhsm2
+          - kryoptic
+        features: [fips, non-fips]
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/cleanup-runner
+
+      - uses: ./.github/actions/setup-nix
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Test
+        env:
           # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
           GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
-          # OVPN for Crypt2Pay HSM tests
-          OVPN_CONF: ${{ secrets.OVPN_CONF }}
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
@@ -313,6 +324,69 @@ jobs:
         if: matrix.hsm-type == 'softhsm2'
         run: |
           mise run test:hsm-pkcs11-tool --variant ${{ matrix.features }}
+
+  # Hardware HSMs reachable only with upstream-only secrets and infrastructure (Proteccio
+  # network HSM, Crypt2Pay over OpenVPN, the AWS CloudHSM CI cluster). They live in their
+  # own job (a job-level `if` cannot read the `matrix` context) and are skipped on forks.
+  hsm-upstream:
+    name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
+    runs-on: ubuntu-latest
+    if: github.repository == 'Cosmian/kms'
+    # This hardware does not support concurrent connections from multiple CI runs: a fixed
+    # group per HSM so only one job runs at a time across all PRs.
+    concurrency:
+      group: ${{ format('hsm-{0}', matrix.hsm-type) }}
+      queue: max
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        hsm-type:
+          - proteccio
+          - crypt2pay
+          - aws-cloudhsm
+        # non-fips only: parallel connections on proteccio are not supported, non-fips is
+        # sufficient for crypt2pay, and aws-cloudhsm FIPS-mode compatibility is not yet
+        # confirmed against the cluster's supported mechanism list.
+        features: [non-fips]
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/cleanup-runner
+
+      - uses: ./.github/actions/setup-nix
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Test
+        env:
+          # Proteccio
+          PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
+          PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
+          PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
+          # Crypt2Pay (reached through OpenVPN)
+          CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
+          OVPN_CONF: ${{ secrets.OVPN_CONF }}
+          # AWS CloudHSM: persistent CI cluster (see crate/hsm/aws_cloudhsm/README.md)
+          AWS_CLOUDHSM_CLUSTER_ID: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CLUSTER_ID }}
+          AWS_CLOUDHSM_CU_USERNAME: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CU_USERNAME }}
+          AWS_CLOUDHSM_CU_PASSWORD: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CU_PASSWORD }}
+          AWS_CLOUDHSM_SLOT_ID: ${{ secrets.KMS_CI_AWS_CLOUDHSM_SLOT_ID }}
+          AWS_CLOUDHSM_CA_CERT: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CA_CERT }}
+          AWS_CLOUDHSM_HSM_IPS: ${{ secrets.KMS_CI_AWS_CLOUDHSM_HSM_IPS }}
+          # AWS Client VPN profile (.ovpn, cert-based mutual auth): GitHub-hosted
+          # runners have no route to the HSM's private VPC IP; prepare_aws_cloudhsm.sh
+          # starts this tunnel only if the HSM is not already directly reachable.
+          AWS_CLOUDHSM_OVPN_CONF: ${{ secrets.KMS_CI_AWS_CLOUDHSM_OVPN_CONF }}
+          # Reused generic AWS credentials (read-only `cloudhsm:DescribeClusters` is enough)
+          AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+        run: |
+          mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
   helm:
     name: Helm chart E2E (minikube)
@@ -351,7 +425,9 @@ jobs:
     permissions:
       contents: read
     environment: xks-remote-approval
+    # Upstream only: needs the XKS test server and its secrets, which forks do not have.
     if: >-
+      github.repository == 'Cosmian/kms' &&
       github.actor != 'dependabot[bot]' &&
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
@@ -410,8 +486,13 @@ jobs:
   cargo-publish:
     needs:
       - test-nix
+      - test-nix-upstream
       - hsm
+      - hsm-upstream
       - helm
+    # The upstream-only jobs are skipped on forks: a skipped dependency must not skip the
+    # publish dry-run, but any failed or cancelled dependency still blocks it.
+    if: ${{ !failure() && !cancelled() }}
     uses: ./.github/workflows/cargo-publish.yml
     with:
       toolchain: 1.97.0

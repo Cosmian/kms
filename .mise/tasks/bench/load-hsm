@@ -167,7 +167,7 @@ run_hsm_load() {
     bench \
     --load \
     --hsm \
-    --hsm-slot "${SOFTHSM2_HSM_SLOT_ID}" \
+    --hsm-slot "${HSM_SLOT_ID:-${SOFTHSM2_HSM_SLOT_ID}}" \
     --mode "${sub_mode}" \
     --protocol "${BENCH_PROTOCOL}" \
     --time "${BENCH_TIME}" \
@@ -182,7 +182,7 @@ run_hsm_criterion() {
     --url "http://127.0.0.1:${port}" \
     bench \
     --hsm \
-    --hsm-slot "${SOFTHSM2_HSM_SLOT_ID}" \
+    --hsm-slot "${HSM_SLOT_ID:-${SOFTHSM2_HSM_SLOT_ID}}" \
     --speed "${BENCH_SPEED}" \
     --format json \
     --mode "${sub_mode}" \

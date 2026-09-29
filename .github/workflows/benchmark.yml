@@ -112,14 +112,31 @@ jobs:
             --mode "${PKCS11_MODE}" \
             --criterion
 
+      - name: Run HSM-delegated PKCS#11 benchmark (bench:load-pkcs11 --delegated)
+        run: |
+          # Same PKCS11_MODE fallback logic for the delegated step
+          PKCS11_MODE_DELEGATED="${{ inputs.bench_mode }}"
+          case "${PKCS11_MODE_DELEGATED}" in
+            all | encrypt | key-creation) ;;
+            *)
+              echo "NOTE: bench_mode '${PKCS11_MODE_DELEGATED}' is not a valid bench:load-pkcs11 mode; using 'all' instead."
+              PKCS11_MODE_DELEGATED="all"
+              ;;
+          esac
+          mise run bench:load-pkcs11 --delegated \
+            --variant "${{ inputs.variant }}" \
+            --mode "${PKCS11_MODE_DELEGATED}" \
+            --criterion
+
+
       - name: Upload benchmark report folder
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
-          # All four reports: ckms_bench/, ckms_bench_hsm_kek/, ckms_bench_delegated_crypto_operations/,
-          # ckms_bench_pkcs11/ — each report.md + load/ + criterion/ + raw JSON, mirroring the
-          # existing pattern in .github/workflows/flamegraph.yml.
+          # All five reports: ckms_bench/, ckms_bench_hsm_kek/, ckms_bench_delegated_crypto_operations/,
+          # ckms_bench_pkcs11/, ckms_bench_pkcs11_delegated/ — each report.md + load/ + criterion/ + raw JSON,
+          # mirroring the existing pattern in .github/workflows/flamegraph.yml.
           path: documentation/docs/benchmarks/
           retention-days: 30
 
@@ -161,3 +178,4 @@ jobs:
           echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_hsm_kek/report.md"
           echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_delegated_crypto_operations/report.md"
           echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_pkcs11/report.md"
+          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_pkcs11_delegated/report.md"
