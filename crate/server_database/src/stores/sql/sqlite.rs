@@ -184,6 +184,14 @@ impl SqlitePool {
             .get_query("create-index-read_access-userid")?
             .to_owned();
         let idx_tags_tag_id = pool.get_query("create-index-tags-tag-id")?.to_owned();
+        // JSON-expression indexes use SQLite `json_extract` syntax: load them from the
+        // SQLite overrides (`pool.get_query` only reads the PostgreSQL query file).
+        let idx_objects_rotate_name =
+            get_sqlite_query!("create-index-objects-rotate-lookup").to_owned();
+        let idx_objects_rotate_auto =
+            get_sqlite_query!("create-index-objects-rotate-auto").to_owned();
+        let idx_objects_type_state =
+            get_sqlite_query!("create-index-objects-type-state").to_owned();
         let create_crypto_officer_activations = pool
             .get_query("create-table-crypto_officer_activations")?
             .to_owned();
@@ -204,6 +212,9 @@ impl SqlitePool {
             let idx_objects_state = idx_objects_state.clone();
             let idx_read_access_userid = idx_read_access_userid.clone();
             let idx_tags_tag_id = idx_tags_tag_id.clone();
+            let idx_objects_rotate_name = idx_objects_rotate_name.clone();
+            let idx_objects_rotate_auto = idx_objects_rotate_auto.clone();
+            let idx_objects_type_state = idx_objects_type_state.clone();
             let create_crypto_officer_activations = create_crypto_officer_activations.clone();
             let create_crls = create_crls.clone();
             let clean_objects = clean_objects.clone();
@@ -222,6 +233,9 @@ impl SqlitePool {
                             tx.execute(&idx_objects_state, [])?;
                             tx.execute(&idx_read_access_userid, [])?;
                             tx.execute(&idx_tags_tag_id, [])?;
+                            tx.execute(&idx_objects_rotate_name, [])?;
+                            tx.execute(&idx_objects_rotate_auto, [])?;
+                            tx.execute(&idx_objects_type_state, [])?;
                             tx.execute(
                                 &replace_dollars_with_qn(&create_crypto_officer_activations),
                                 [],
@@ -363,6 +377,21 @@ impl SqlitePool {
                              WHERE revoked_at IS NULL;",
                         )?;
                         Ok(())
+                    },
+                )
+                .await
+                .map_err(DbError::from)
+        })
+        .await?;
+
+        // Refresh planner statistics so the selective JSON-expression indexes are
+        // preferred over idx_objects_state. analysis_limit bounds ANALYZE to a sample,
+        // keeping this cheap on very large databases.
+        retry_on_transient_lock(|| async {
+            pool.writer
+                .call(
+                    |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                        c.execute_batch("PRAGMA analysis_limit=1000; PRAGMA optimize=0x10002;")
                     },
                 )
                 .await
@@ -1033,8 +1062,8 @@ impl ObjectsStore for SqlitePool {
     }
 
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
-        // Object JSON is stored as {"SymmetricKey": {...}} — the variant
-        // name is the top-level key.  Use json_type() to check presence.
+        // Filters on the ObjectType attribute (served by idx_objects_type_state)
+        // instead of parsing the full object JSON.
         let sql = get_sqlite_query!("count-non-destroyed-keys");
         let count = self
             .reader()

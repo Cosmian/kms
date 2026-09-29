@@ -875,8 +875,8 @@ impl ObjectsStore for MySqlPool {
 
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
-        // Object JSON is stored as {"SymmetricKey": {...}} — use JSON_TYPE to
-        // check for key presence.
+        // Filters on the ObjectType attribute instead of parsing the full
+        // object JSON.
         let count: Option<u64> = conn
             .query_first(get_mysql_query!("count-non-destroyed-keys"))
             .await

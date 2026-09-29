@@ -417,12 +417,17 @@ impl PgPool {
             .map_err(DbError::from)?;
         // Create the read-path indexes (idempotent). PostgreSQL supports
         // `CREATE INDEX IF NOT EXISTS`, so these are safe to run on every start.
+        // They are built synchronously: on a large existing table, the first start
+        // after an upgrade blocks writes to `objects` while each new index builds.
         for name in [
             "create-index-objects-owner",
             "create-index-objects-state",
             "create-index-read_access-userid",
             "create-index-objects-wrapping-key-id",
             "create-index-tags-tag-id",
+            "create-index-objects-rotate-lookup",
+            "create-index-objects-rotate-auto",
+            "create-index-objects-type-state",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -1160,8 +1165,7 @@ impl ObjectsStore for PgPool {
 
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
         pg_retry!(self.pool, |client| {
-            // Object JSON is stored as {"SymmetricKey": {...}} — use the JSONB ?
-            // operator to check for key presence.
+            // Filters on the ObjectType attribute; avoids parsing the object JSON.
             let row = client
                 .query_one(get_pgsql_query!("count-non-destroyed-keys"), &[])
                 .await

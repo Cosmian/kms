@@ -663,6 +663,15 @@ Options:
 
           [default: 0]
 
+      --metrics-count-interval-secs <METRICS_COUNT_INTERVAL_SECS>
+          Interval in seconds between background refreshes of the `kms.objects.total`
+          and `kms.keys.active.count` metrics. Each refresh runs a full COUNT over the
+          objects table, which is expensive on very large databases.
+          Set to 0 to disable both the startup seed and the periodic refresh.
+          Default: 30.
+
+          [default: 30]
+
       --keyset-warn-depth <KEYSET_WARN_DEPTH>
           Depth at which a successful keyset chain decryption triggers a server-side warning.
           Keyset chain traversal is unbounded (stopped only by cycle detection);

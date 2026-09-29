@@ -50,6 +50,11 @@ default_username = "admin"
 # Default: 5.
 # keyset_warn_depth = 5
 
+# Interval (seconds) between refreshes of the kms.objects.total and
+# kms.keys.active.count metrics; each refresh runs a full COUNT on the objects table.
+# Set to 0 to disable these counts on very large databases. Default: 30.
+# metrics_count_interval_secs = 30
+
 [http]
 port = 9998
 hostname = "0.0.0.0"

@@ -77,11 +77,16 @@ The central table. One row per KMIP object.
 
 The following secondary indexes are created on `objects`:
 
-| Index | Columns |
-| ----- | ------- |
-| `idx_objects_owner` | `owner` |
-| `idx_objects_state` | `state` |
-| `idx_objects_wrapping_key_id` | `wrapping_key_id` |
+| Index | Columns | Backends |
+| ----- | ------- | -------- |
+| `idx_objects_owner` | `owner` | all |
+| `idx_objects_state` | `state` | all |
+| `idx_objects_wrapping_key_id` | `wrapping_key_id` | all |
+| `idx_objects_rotate_name` | `RotateName` attribute, `owner` (partial: `RotateName` present) | PostgreSQL, SQLite |
+| `idx_objects_rotate_auto` | `state` (partial: `RotateAutomatic` = true) | PostgreSQL, SQLite |
+| `idx_objects_type_state` | `ObjectType` attribute, `state` | PostgreSQL, SQLite |
+
+Indexes are created at server startup. On an existing large database, the first start after an upgrade takes proportionally longer, and PostgreSQL blocks writes to `objects` while each new index builds.
 
 ## read_access
 

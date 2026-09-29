@@ -274,12 +274,7 @@ SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';
 -- name: count-non-destroyed-keys
 SELECT COUNT(*) FROM objects
 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
-AND (
-    JSON_TYPE(JSON_EXTRACT(object, '$.SymmetricKey')) IS NOT NULL OR
-    JSON_TYPE(JSON_EXTRACT(object, '$.PrivateKey'))   IS NOT NULL OR
-    JSON_TYPE(JSON_EXTRACT(object, '$.PublicKey'))    IS NOT NULL OR
-    JSON_TYPE(JSON_EXTRACT(object, '$.SplitKey'))     IS NOT NULL
-);
+AND JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.ObjectType')) IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
 
 -- ── CRL persistence (MySQL-specific) ─────────────────────────────────────────
 -- MySQL uses LONGBLOB for binary data and REPLACE INTO for upsert.

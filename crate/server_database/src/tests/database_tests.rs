@@ -5,8 +5,10 @@ use cosmian_kmip::{
     kmip_2_1::{
         extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
-        kmip_objects::{Object, SymmetricKey},
-        kmip_types::{CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier},
+        kmip_objects::{Object, ObjectType, OpaqueObject, SymmetricKey},
+        kmip_types::{
+            CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, OpaqueDataType,
+        },
         requests::create_symmetric_key_kmip_object,
     },
 };
@@ -631,6 +633,90 @@ pub(super) async fn find_due_for_rotation_test<DB: ObjectsStore>(db: &DB) -> DbR
     db.delete(&uid_due).await?;
     db.delete(&uid_not_due).await?;
     db.delete(&uid_no_auto).await?;
+
+    Ok(())
+}
+
+/// Verify that `count_non_destroyed_keys` counts key objects by their
+/// `ObjectType` attribute and state:
+/// - `Active` and `Deactivated` keys are counted
+/// - `Destroyed` and `Destroyed_Compromised` keys are not
+/// - non-key objects (`OpaqueObject`) are not
+pub(super) async fn count_non_destroyed_keys_test<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
+    let owner = UserId::from("count_keys_test_owner");
+    let baseline = db.count_non_destroyed_keys().await?;
+
+    let mut rng = CsRng::from_entropy();
+    let key_attributes = Attributes {
+        object_type: Some(ObjectType::SymmetricKey),
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        state: Some(State::Active),
+        ..Default::default()
+    };
+    let mut uids = Vec::with_capacity(5);
+    // key_active, key_deactivated, key_destroyed, key_destroyed_compromised
+    for final_state in [
+        State::Active,
+        State::Deactivated,
+        State::Destroyed,
+        State::Destroyed_Compromised,
+    ] {
+        let mut bytes = vec![0_u8; 32];
+        rng.fill_bytes(&mut bytes);
+        let key = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            bytes.as_slice(),
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )
+        .map_err(|e| DbError::ServerError(e.to_string()))?;
+        let uid = Uuid::new_v4().to_string();
+        db.create(
+            Some(uid.clone()),
+            &owner,
+            &key,
+            &key_attributes,
+            &HashSet::new(),
+        )
+        .await?;
+        if final_state != State::Active {
+            db.update_state(&uid, final_state).await?;
+        }
+        uids.push(uid);
+    }
+
+    // opaque: a non-key object must never be counted
+    let uid_opaque = Uuid::new_v4().to_string();
+    db.create(
+        Some(uid_opaque.clone()),
+        &owner,
+        &Object::OpaqueObject(OpaqueObject {
+            opaque_data_type: OpaqueDataType::Unknown,
+            opaque_data_value: b"count-test".to_vec(),
+        }),
+        &Attributes {
+            object_type: Some(ObjectType::OpaqueObject),
+            state: Some(State::Active),
+            ..Default::default()
+        },
+        &HashSet::new(),
+    )
+    .await?;
+    uids.push(uid_opaque);
+
+    let got = db.count_non_destroyed_keys().await?;
+    let expected = baseline + 2;
+    if got != expected {
+        return Err(DbError::ServerError(format!(
+            "count_non_destroyed_keys: expected {expected}, got {got}"
+        )));
+    }
+
+    for uid in &uids {
+        db.delete(uid).await?;
+    }
 
     Ok(())
 }
