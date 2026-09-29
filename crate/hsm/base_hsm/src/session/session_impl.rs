@@ -822,12 +822,51 @@ impl Session {
         Ok(unpadded)
     }
 
+    /// AES-GCM encryption with a caller-generated random 96-bit IV.
     fn encrypt_aes_gcm_classic(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         plaintext: &[u8],
     ) -> HResult<EncryptedContent> {
-        let mut nonce = generate_random_nonce::<AES_GCM_IV_LENGTH>()?;
+        self.encrypt_aes_gcm_with_iv_buffer(
+            key_handle,
+            generate_random_nonce::<AES_GCM_IV_LENGTH>()?,
+            plaintext,
+        )
+    }
+
+    /// AES-GCM encryption where the HSM generates the IV (AWS `CloudHSM`): a zeroed
+    /// `pIv` buffer is passed and the HSM writes the IV it drew from its own RNG back
+    /// into it. An IV still all-zero afterwards means the HSM did not generate one;
+    /// it is rejected to rule out nonce reuse under a constant IV.
+    fn encrypt_aes_gcm_hsm_generated_iv(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        plaintext: &[u8],
+    ) -> HResult<EncryptedContent> {
+        let content =
+            self.encrypt_aes_gcm_with_iv_buffer(key_handle, [0_u8; AES_GCM_IV_LENGTH], plaintext)?;
+        if content
+            .iv
+            .as_deref()
+            .is_none_or(|iv| iv.iter().all(|&b| b == 0))
+        {
+            return Err(HError::Default(
+                "The HSM did not generate an AES-GCM IV; refusing to use an all-zero nonce"
+                    .to_owned(),
+            ));
+        }
+        Ok(content)
+    }
+
+    /// Runs `CKM_AES_GCM` with `nonce` as the `pIv` buffer and returns the IV as it
+    /// reads after the call (HSMs that generate the IV write it back into the buffer).
+    fn encrypt_aes_gcm_with_iv_buffer(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        mut nonce: [u8; AES_GCM_IV_LENGTH],
+        plaintext: &[u8],
+    ) -> HResult<EncryptedContent> {
         let mut params = CK_AES_GCM_PARAMS {
             pIv: nonce.as_mut_ptr(),
             ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
@@ -892,9 +931,7 @@ impl Session {
                 } else if self.hsm_capabilities.supports_aes_gcm_caller_iv {
                     self.encrypt_aes_gcm_classic(key_handle, plaintext)?
                 } else {
-                    return Err(HError::Default(
-                        "The HSM does not support a safe AES-GCM nonce-generation path".to_owned(),
-                    ));
+                    self.encrypt_aes_gcm_hsm_generated_iv(key_handle, plaintext)?
                 }
             }
             HsmEncryptionAlgorithm::AesCbc => {
