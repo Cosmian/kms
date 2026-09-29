@@ -22,7 +22,7 @@ use super::{
         collect_json_output, count_baseline_files, criterion_home, generate_compact_output,
         generate_markdown_output,
     },
-    transport::{Transport, set_max_group_time},
+    transport::{Transport, set_bench_filter, set_max_group_time},
     types::{BenchAction, BenchFormat, BenchMode, BenchProtocol, BenchSpeed, bench_ko_reset},
 };
 use crate::error::{KmsCliError, result::KmsCliResult};
@@ -35,7 +35,8 @@ impl BenchAction {
     /// benchmark groups.
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let config = kms_rest_client.config.clone();
-        let mode = self.mode.clone();
+        let mode = self.mode;
+        let filter = self.filter.clone();
         let protocol = self.protocol.clone();
         let format = self.format.clone();
         let speed = self.speed.clone();
@@ -50,7 +51,6 @@ impl BenchAction {
         let cooldown_time = self.cooldown_time;
         let load_plaintext_size = self.load_plaintext_size;
         let hsm_prefix = self.hsm.then(|| format!("hsm::{}", self.hsm_slot));
-
         // Drop the existing client (bound to the current runtime)
         drop(kms_rest_client);
 
@@ -95,7 +95,7 @@ impl BenchAction {
                     let results = bench_load(
                         &rt,
                         &client,
-                        &mode,
+                        mode,
                         proto,
                         &concurrency_levels,
                         warmup,
@@ -103,6 +103,7 @@ impl BenchAction {
                         cooldown,
                         load_plaintext_size,
                         hsm_prefix.as_deref(),
+                        Some(&filter),
                     );
                     if results.is_empty() {
                         continue;
@@ -201,12 +202,13 @@ impl BenchAction {
 
             // Apply the optional per-group wall-clock budget (KMIP groups only).
             set_max_group_time(max_group_time.map(Duration::from_secs));
+            set_bench_filter(Some(filter.clone()));
 
             if run_json {
                 if let Some(ref hsm_prefix) = hsm_prefix {
-                    run_hsm_kmip_benches(&mut c, &client, &rt, &mode, Transport::Json, hsm_prefix);
+                    run_hsm_kmip_benches(&mut c, &client, &rt, mode, Transport::Json, hsm_prefix);
                 } else {
-                    run_kmip_benches(&mut c, &client, &rt, &mode, Transport::Json, is_sanity);
+                    run_kmip_benches(&mut c, &client, &rt, mode, Transport::Json, is_sanity);
                 }
             }
 
@@ -220,7 +222,7 @@ impl BenchAction {
                          skipping ttlv-bytes"
                     );
                 } else {
-                    run_kmip_benches(&mut c, &client, &rt, &mode, Transport::Bytes, is_sanity);
+                    run_kmip_benches(&mut c, &client, &rt, mode, Transport::Bytes, is_sanity);
                 }
             }
 
@@ -305,7 +307,7 @@ fn run_kmip_benches(
     c: &mut Criterion,
     client: &KmsClient,
     rt: &Runtime,
-    mode: &BenchMode,
+    mode: BenchMode,
     transport: Transport,
     is_sanity: bool,
 ) {
@@ -332,7 +334,7 @@ fn run_hsm_kmip_benches(
     c: &mut Criterion,
     client: &KmsClient,
     rt: &Runtime,
-    mode: &BenchMode,
+    mode: BenchMode,
     transport: Transport,
     hsm_prefix: &str,
 ) {

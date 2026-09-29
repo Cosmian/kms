@@ -104,6 +104,30 @@ impl CliBackend {
         )))
     }
 
+    fn create_public_key_from_id(&self, id: &str) -> Option<Arc<dyn PublicKey>> {
+        let kms_object = match get_kms_object(
+            &self.kms_rest_client,
+            &self.vendor_id,
+            id,
+            KeyFormatType::PKCS8,
+        ) {
+            Ok(o) => o,
+            Err(e) => {
+                warn!("create_public_key_from_id: failed to export public key {id}: {e}, skipping");
+                return None;
+            }
+        };
+        match Pkcs11PublicKey::try_from_kms_object(&kms_object) {
+            Ok(pk) => Some(Arc::new(pk)),
+            Err(e) => {
+                warn!(
+                    "create_public_key_from_id: failed to build Pkcs11PublicKey for {id}: {e}, skipping"
+                );
+                None
+            }
+        }
+    }
+
     /// Helper function to create a symmetric key from an ID
     fn create_symmetric_key_from_id(&self, id: &str) -> Option<Arc<dyn SymmetricKey>> {
         let attributes = get_kms_object_attributes(&self.kms_rest_client, id).ok()?;
@@ -343,37 +367,11 @@ impl Backend for CliBackend {
             &self.kms_rest_client,
             &self.vendor_id,
             &[SYSTEM_TAG_PUBLIC_KEY.to_owned()],
-        )
-        .unwrap_or_default();
-        let mut public_keys = Vec::with_capacity(ids.len());
-        for id in ids {
-            let kms_object = match get_kms_object(
-                &self.kms_rest_client,
-                &self.vendor_id,
-                &id,
-                KeyFormatType::PKCS8,
-            ) {
-                Ok(o) => o,
-                Err(e) => {
-                    warn!(
-                        "find_all_public_keys: failed to export public key {id}: {e}, \
-                             skipping"
-                    );
-                    continue;
-                }
-            };
-            match Pkcs11PublicKey::try_from_kms_object(&kms_object) {
-                Ok(pk) => {
-                    let arc_pk: Arc<dyn PublicKey> = Arc::new(pk);
-                    public_keys.push(arc_pk);
-                }
-                Err(e) => warn!(
-                    "find_all_public_keys: failed to build Pkcs11PublicKey for {id}: {e}, \
-                     skipping"
-                ),
-            }
-        }
-        Ok(public_keys)
+        )?;
+        Ok(ids
+            .into_iter()
+            .filter_map(|id| self.create_public_key_from_id(&id))
+            .collect())
     }
 
     fn find_all_data_objects(&self) -> ModuleResult<Vec<Arc<dyn DataObject>>> {
@@ -402,14 +400,7 @@ impl Backend for CliBackend {
             &self.kms_rest_client,
             &self.vendor_id,
             &disk_encryption_tag,
-        )
-        .unwrap_or_else(|e| {
-            warn!(
-                "find_all_data_objects: failed to fetch disk-encryption data objects: {e}, \
-                 returning empty list"
-            );
-            vec![]
-        });
+        )?;
         for kms_obj in disk_enc_objects {
             match Pkcs11DataObject::try_from(kms_obj) {
                 Ok(data_object) => {
@@ -496,8 +487,7 @@ impl Backend for CliBackend {
             SYSTEM_TAG_COVER_CRYPT_USER_KEY,
         ] {
             let kms_ids =
-                locate_kms_objects(&self.kms_rest_client, &self.vendor_id, &[tag.to_owned()])
-                    .unwrap_or_default();
+                locate_kms_objects(&self.kms_rest_client, &self.vendor_id, &[tag.to_owned()])?;
             for id in kms_ids {
                 if seen_ids.insert(id.clone()) {
                     if let Ok(attributes) = get_kms_object_attributes(&self.kms_rest_client, &id) {
@@ -557,14 +547,7 @@ impl Backend for CliBackend {
             &self.kms_rest_client,
             &self.vendor_id,
             &disk_encryption_tag,
-        )
-        .unwrap_or_else(|e| {
-            warn!(
-                "find_all_objects: failed to fetch disk-encryption data objects: {e}, \
-                 returning empty list"
-            );
-            vec![]
-        });
+        )?;
         for kms_obj in disk_enc_data_objects {
             match Pkcs11DataObject::try_from(kms_obj) {
                 Ok(data_object) => {
@@ -621,6 +604,9 @@ impl Backend for CliBackend {
     }
 
     fn revoke_object(&self, remote_id: &str) -> ModuleResult<()> {
+        if remote_id.starts_with("hsm::") {
+            return Ok(());
+        }
         Ok(kms_revoke_object(&self.kms_rest_client, remote_id)?)
     }
 

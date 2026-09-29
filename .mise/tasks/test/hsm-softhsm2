@@ -117,7 +117,7 @@ else
 fi
 
 # ── Run softhsm2 loader tests ───────────────────────────────────────────────
-# Note: softhsm2_pkcs11_loader has no feature flags — never pass --features here
+# The loader crate forwards the variant feature to `cosmian_kms_base_hsm`.
 print_header "Running softhsm2_pkcs11_loader tests"
 env \
   PATH="$PATH" \
@@ -130,6 +130,7 @@ env \
   cargo test \
   -p softhsm2_pkcs11_loader \
   --features softhsm2 \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
   -- --nocapture tests::test_hsm_softhsm2_all --ignored --exact
 
 print_success "SoftHSM2 tests completed"

@@ -9,6 +9,7 @@ pub use pkcs11_v3::InterfaceDescriptor;
 pub use session::{
     AesKeySize, HsmEncryptionAlgorithm, HsmSigningAlgorithm, RsaKeySize, RsaOaepDigest, Session,
 };
+pub(crate) use slots::SessionGuard;
 pub use slots::{ObjectHandlesCache, SlotManager};
 
 mod base_hsm;
@@ -168,7 +169,7 @@ macro_rules! aes_key_template {
             },
         ]
     };
-    ($id:expr, $size:expr, $sensitive:expr, $extractable:expr) => {
+    ($id:expr, $label:expr, $size:expr, $sensitive:expr, $extractable:expr) => {
         [
             pkcs11_sys::CK_ATTRIBUTE {
                 type_: pkcs11_sys::CKA_CLASS,
@@ -214,8 +215,8 @@ macro_rules! aes_key_template {
             },
             pkcs11_sys::CK_ATTRIBUTE {
                 type_: pkcs11_sys::CKA_LABEL,
-                pValue: $id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
-                ulValueLen: pkcs11_sys::CK_ULONG::try_from($id.len())?,
+                pValue: $label.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: pkcs11_sys::CK_ULONG::try_from($label.len())?,
             },
             pkcs11_sys::CK_ATTRIBUTE {
                 type_: pkcs11_sys::CKA_ID,

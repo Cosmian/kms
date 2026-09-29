@@ -7,7 +7,10 @@ use cosmian_kms_client::{
 use criterion::{BenchmarkId, Criterion, Throughput};
 use tokio::runtime::Runtime;
 
-use super::types::bench_ko;
+use super::{
+    transport::{bench_filter_matches, timed_group},
+    types::bench_ko,
+};
 
 // =============================================================================
 // JOSE BENCHMARKS (REST /v1/crypto/* endpoints)
@@ -80,10 +83,13 @@ pub(super) fn jose_try_create_okp_kp(rt: &Runtime, client: &KmsClient) -> Option
 // ─── JOSE encrypt / decrypt (dir + AES-GCM) ────────────────────────────────
 
 pub(super) fn bench_jose_encrypt(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
-    let mut group = c.benchmark_group("jose/encrypt");
+    let mut group = timed_group(c, "jose/encrypt");
     let payload = b64url(&[1_u8; 64]);
 
     for enc in ["A128GCM", "A192GCM", "A256GCM"] {
+        if !bench_filter_matches(enc, None) {
+            continue;
+        }
         let Some(kid) = jose_create_sym_key(rt, client, enc) else {
             eprintln!("[bench] JOSE encrypt {enc} key creation failed, skipping");
             bench_ko("jose/encrypt");
@@ -139,10 +145,12 @@ pub(super) fn bench_jose_encrypt(c: &mut Criterion, client: &KmsClient, rt: &Run
 /// Plaintext: 64 bytes (same as other JOSE JWE benchmarks).
 fn bench_jose_encrypt_rsa_oaep(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
     let payload = b64url(&[1_u8; 64]);
-    let mut group = c.benchmark_group("jose/encrypt/rsa-oaep");
-
+    let mut group = timed_group(c, "jose/encrypt/rsa-oaep");
     for bits in [2048_usize, 4096] {
-        // Create an RSA key pair; re-use the existing helper (any JWS alg works
+        let bits_str = bits.to_string();
+        if !bench_filter_matches("rsa-oaep", Some(&bits_str)) {
+            continue;
+        }
         // to provision an RSA key — we use RS256 for key-creation only).
         let Some((_priv_kid, pub_kid)) = jose_try_create_rsa_kp(rt, client, "RS256", bits) else {
             eprintln!("[bench] JOSE RSA-OAEP: {bits}-bit key creation failed, skipping");
@@ -251,6 +259,9 @@ pub(super) fn bench_jose_sign_verify_one(
     payload: &str,
 ) {
     let label = jwa_sig_to_kmip_label(alg);
+    if !bench_filter_matches(label, None) && !bench_filter_matches(alg, None) {
+        return;
+    }
     let sign_req = JoseSignReq {
         kid: priv_kid.to_owned(),
         alg,
@@ -263,7 +274,7 @@ pub(super) fn bench_jose_sign_verify_one(
         return;
     };
 
-    let mut group = c.benchmark_group(format!("jose/sign-verify/{label}"));
+    let mut group = timed_group(c, format!("jose/sign-verify/{label}"));
     group.bench_function("sign", |b| {
         b.to_async(rt).iter(|| client.jose_sign(sign_req.clone()));
     });
@@ -283,10 +294,13 @@ pub(super) fn bench_jose_sign_verify_one(
 // ─── JOSE MAC (HMAC) ────────────────────────────────────────────────────────
 
 pub(super) fn bench_jose_mac(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
-    let mut group = c.benchmark_group("jose/mac");
+    let mut group = timed_group(c, "jose/mac");
     let payload = b64url(&[0xAB_u8; 64]);
 
     for alg in ["HS256", "HS384", "HS512"] {
+        if !bench_filter_matches(alg, None) {
+            continue;
+        }
         let Some(kid) = jose_create_sym_key(rt, client, alg) else {
             eprintln!("[bench] JOSE MAC {alg} key creation failed, skipping");
             bench_ko("jose/mac");
@@ -329,10 +343,13 @@ pub(super) fn bench_jose_mac(c: &mut Criterion, client: &KmsClient, rt: &Runtime
 // ─── JOSE key creation ──────────────────────────────────────────────────────
 
 pub(super) fn bench_jose_key_creation(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
-    let mut group = c.benchmark_group("jose/key-creation");
+    let mut group = timed_group(c, "jose/key-creation");
 
     // Symmetric keys
     for alg in ["A128GCM", "A256GCM"] {
+        if !bench_filter_matches(alg, None) {
+            continue;
+        }
         let req = JoseKeyReq {
             kty: "oct",
             alg: Some(alg),
@@ -351,6 +368,9 @@ pub(super) fn bench_jose_key_creation(c: &mut Criterion, client: &KmsClient, rt:
 
     // EC keys
     for (alg, crv) in [("ES256", "P-256"), ("ES384", "P-384")] {
+        if !bench_filter_matches(alg, Some(crv)) {
+            continue;
+        }
         let req = JoseKeyReq {
             kty: "EC",
             alg: Some(alg),
@@ -374,13 +394,15 @@ pub(super) fn bench_jose_key_creation(c: &mut Criterion, client: &KmsClient, rt:
         crv: None,
         bits: Some(2048),
     };
-    if rt.block_on(client.jose_create_key(rsa_req)).is_ok() {
-        group.bench_function(BenchmarkId::new("RSA", "2048"), |b| {
-            b.to_async(rt).iter(|| client.jose_create_key(rsa_req));
-        });
-    } else {
-        eprintln!("[bench] JOSE key-creation RSA/2048 not supported, skipping");
-        bench_ko("jose/key-creation");
+    if bench_filter_matches("rsa", Some("2048")) {
+        if rt.block_on(client.jose_create_key(rsa_req)).is_ok() {
+            group.bench_function(BenchmarkId::new("RSA", "2048"), |b| {
+                b.to_async(rt).iter(|| client.jose_create_key(rsa_req));
+            });
+        } else {
+            eprintln!("[bench] JOSE key-creation RSA/2048 not supported, skipping");
+            bench_ko("jose/key-creation");
+        }
     }
 
     group.finish();
@@ -391,8 +413,10 @@ pub(super) fn bench_jose_key_creation(c: &mut Criterion, client: &KmsClient, rt:
 // =============================================================================
 
 pub(super) fn bench_jose_batch(c: &mut Criterion, client: &KmsClient, rt: &Runtime, sanity: bool) {
-    let mut group = c.benchmark_group("jose/batch");
-
+    if !bench_filter_matches("batch", None) {
+        return;
+    }
+    let mut group = timed_group(c, "jose/batch");
     let Some(kid) = jose_create_sym_key(rt, client, "A256GCM") else {
         eprintln!("[bench] JOSE batch key creation failed, skipping");
         bench_ko("jose/batch");

@@ -1,3 +1,4 @@
+use cosmian_kmip::KmipError;
 use cosmian_kms_client::KmsClientError;
 use pkcs11_sys::{CK_RV, CKR_FUNCTION_NOT_SUPPORTED};
 
@@ -22,7 +23,7 @@ pub(crate) enum BenchError {
 
     /// A KMIP request/response type failed to build.
     #[error("failed to build KMIP request: {0}")]
-    Kmip(String),
+    Kmip(#[from] KmipError),
 
     /// Benchmark setup or argument-parsing error.
     #[error("benchmark error: {0}")]

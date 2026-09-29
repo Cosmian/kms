@@ -20,10 +20,12 @@ mod main_db_params;
 pub use main_db_params::{AdditionalObjectStoresParams, MainDbParams};
 pub(crate) mod fingerprinter;
 mod object_cache;
+mod rotate_name_cache;
 mod unwrapped_cache;
 
 pub use crate::core::{
     object_cache::ObjectCache,
+    rotate_name_cache::RotateNameCache,
     unwrapped_cache::{CachedObject, UnwrappedCache},
 };
 #[cfg(feature = "non-fips")]
@@ -45,6 +47,11 @@ pub struct Database {
     /// LRU cache for `retrieve_object` results, eliminating repeated DB round-trips
     /// when the same key is used for consecutive cryptographic operations.
     object_cache: ObjectCache,
+
+    /// Short-TTL cache for `find_by_rotate_name` results, eliminating repeated
+    /// full HSM-slot scans (or SQL round-trips) when the same keyset is resolved
+    /// on every delegated Sign/Verify call (see `rotate_name_cache` module docs).
+    rotate_name_cache: RotateNameCache,
 
     /// The database kind for the default store (sqlite/postgres/mysql/redis-findex).
     kind: MainDbKind,
@@ -243,6 +250,10 @@ impl Database {
         &self.object_cache
     }
 
+    pub const fn rotate_name_cache(&self) -> &RotateNameCache {
+        &self.rotate_name_cache
+    }
+
     /// Create a new Objects Store
     ///
     /// This function registers a new object store with the given prefix.
@@ -276,6 +287,7 @@ impl Database {
                 disable_unwrapped_cache,
             ),
             object_cache: ObjectCache::new(cache_max_age, cache_max_size, cache_max_ttl),
+            rotate_name_cache: RotateNameCache::new(),
             kind,
             health,
             recorder: None,

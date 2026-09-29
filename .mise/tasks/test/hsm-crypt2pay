@@ -45,6 +45,7 @@ CRYPT2PAY_PKCS11_LIB=/lib/libpkcs11c2p.so \
   cargo test \
   -p crypt2pay_pkcs11_loader \
   --features crypt2pay \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
   -- --nocapture tests::test_hsm_crypt2pay_all --ignored --exact
 
 print_success "Crypt2Pay HSM tests completed"
