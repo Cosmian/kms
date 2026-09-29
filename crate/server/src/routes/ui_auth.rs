@@ -573,6 +573,9 @@ pub(crate) async fn login_svid(
         }
     };
 
+    // Issue a fresh session ID on login so a session ID planted before authentication
+    // (session fixation) never becomes an authenticated session.
+    session.renew();
     if session.insert("user_id", &authenticated.username).is_err() {
         return HttpResponse::InternalServerError()
             .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
