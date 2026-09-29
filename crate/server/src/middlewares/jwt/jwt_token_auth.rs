@@ -550,6 +550,14 @@ mod real_validation {
         })
     }
 
+    /// Overwrite one claim of a claim set built by [`valid_claims`].
+    fn set_claim(claims: &mut Value, name: &str, value: Value) {
+        claims
+            .as_object_mut()
+            .expect("object")
+            .insert(name.to_owned(), value);
+    }
+
     fn sign(key: &TestKey, kid: &str, alg: Algorithm, claims: &Value) -> String {
         let mut header = Header::new(alg);
         header.kid = Some(kid.to_owned());
@@ -579,7 +587,7 @@ mod real_validation {
         let key = generate_key();
         let config = config(&key).await;
         let mut claims = valid_claims();
-        claims["aud"] = json!(["some-other-service"]);
+        set_claim(&mut claims, "aud", json!(["some-other-service"]));
         let token = sign(&key, KID, Algorithm::ES256, &claims);
         accept(&config, &token).expect_err("wrong audience must be rejected");
     }
@@ -601,7 +609,7 @@ mod real_validation {
         let key = generate_key();
         let config = config(&key).await;
         let mut claims = valid_claims();
-        claims["exp"] = json!(now() - 3600);
+        set_claim(&mut claims, "exp", json!(now() - 3600));
         let token = sign(&key, KID, Algorithm::ES256, &claims);
         accept(&config, &token).expect_err("expired SVID must be rejected");
     }
@@ -611,7 +619,7 @@ mod real_validation {
         let key = generate_key();
         let config = config(&key).await;
         let mut claims = valid_claims();
-        claims["iss"] = json!("https://evil.example.org");
+        set_claim(&mut claims, "iss", json!("https://evil.example.org"));
         let token = sign(&key, KID, Algorithm::ES256, &claims);
         accept(&config, &token).expect_err("wrong issuer must be rejected");
     }
