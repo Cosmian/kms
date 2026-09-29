@@ -1,0 +1,24 @@
+# EDB Postgres Advanced Server with PyKMIP installed for TDE testing.
+#
+# The base image ships edb_tde_kmip_client.py at
+#   /usr/edb/kmip/client/edb_tde_kmip_client.py
+# and already has PyKMIP 0.10.0 pre-installed, but it was written for Python ≤3.11
+# which has ssl.wrap_socket().  Python 3.12 removed ssl.wrap_socket — we restore
+# it via a sitecustomize.py shim so the pre-installed PyKMIP works unchanged.
+#
+# Build is triggered automatically by docker compose.
+
+FROM docker.enterprisedb.com/k8s/edb-postgres-advanced:17
+
+USER root
+
+# sitecustomize.py is executed automatically by Python on every startup.
+# It restores ssl.wrap_socket (removed in Python 3.12) so that PyKMIP 0.10.0 works.
+COPY sitecustomize.py /usr/local/lib/python3.12/site-packages/sitecustomize.py
+
+# Install PyKMIP for Python 3.12.
+# The base image only has PyKMIP for Python 3.6 (/usr/lib/python3.6/site-packages).
+# cryptography is a transitive dependency; pin it for reproducibility.
+RUN pip3 install --no-cache-dir "PyKMIP>=0.10.0" "cryptography>=41.0.0"
+
+USER enterprisedb

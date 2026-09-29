@@ -14,6 +14,7 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_operations::{Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Locate},
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     },
@@ -23,6 +24,7 @@ use cosmian_logger::log_init;
 use crate::{
     config::{MainDBConfig, ServerParams},
     core::KMS,
+    middlewares::UserId,
     result::KResult,
     tests::test_utils::{https_clap_config, post_2_1, test_app},
 };
@@ -31,7 +33,7 @@ use crate::{
 async fn test_locate() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let owner = "mt_owner";
+    let owner = UserId::from("mt_owner");
     let mut clap_config = https_clap_config();
     clap_config.db = MainDBConfig {
         database_type: Some("sqlite".to_owned()),
@@ -57,6 +59,7 @@ async fn test_locate() -> KResult<()> {
         batch_item: vec![RequestMessageBatchItemVersioned::V21(
             RequestMessageBatchItem::new(Operation::CreateKeyPair(Box::new(
                 create_ec_key_pair_request(
+                    VENDOR_ID_COSMIAN,
                     None,
                     vec!["cat"], // changed this line
                     RecommendedCurve::P256,
@@ -67,7 +70,7 @@ async fn test_locate() -> KResult<()> {
         )],
     };
 
-    let response = kms.message(request, owner, None).await?;
+    let response = kms.message(request, &owner).await?;
     assert_eq!(response.response_header.batch_count, 1);
 
     // Verify specific individual keys can be retrieved
@@ -83,13 +86,13 @@ async fn test_locate() -> KResult<()> {
             object_type: expected_object_type,
             ..Default::default()
         };
-        key_attrs.set_tags(expected_tags)?;
+        key_attrs.set_tags(VENDOR_ID_COSMIAN, expected_tags)?;
 
         let locate_specific = Locate {
             attributes: key_attrs,
             ..Locate::default()
         };
-        let specific_response = kms.locate(locate_specific, owner, None).await?;
+        let specific_response = kms.locate(locate_specific, &owner).await?;
         let found_count = specific_response.located_items.unwrap();
         assert_eq!(
             found_count, expected_result,
@@ -103,7 +106,7 @@ async fn test_locate() -> KResult<()> {
 #[actix_rt::test]
 async fn test_locate_key_pair_and_sym_key() -> KResult<()> {
     // Use sqlite-backed test app
-    let app = test_app(None, None).await;
+    let app = test_app(None).await;
 
     // Create EC keypair (FIPS-approved curve and usage mask)
     let create = CreateKeyPair {
@@ -131,7 +134,7 @@ async fn test_locate_key_pair_and_sym_key() -> KResult<()> {
         object_type: Some(ObjectType::PublicKey),
         ..Default::default()
     };
-    attrs_pub.set_tags(vec!["cat".to_owned()])?;
+    attrs_pub.set_tags(VENDOR_ID_COSMIAN, vec!["cat".to_owned()])?;
     let res_pub: Vec<UniqueIdentifier> = post_2_1(
         &app,
         Locate {
@@ -191,7 +194,7 @@ async fn test_locate_key_pair_and_sym_key() -> KResult<()> {
 #[actix_rt::test]
 async fn test_locate_filters_by_object_type_and_and_semantics() -> KResult<()> {
     // Start test app (KMIP 2.1 endpoint)
-    let app = test_app(None, None).await;
+    let app = test_app(None).await;
 
     // Create an EC key pair
     let create = CreateKeyPair {

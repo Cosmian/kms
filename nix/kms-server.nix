@@ -1,10 +1,12 @@
 {
   pkgs ? import <nixpkgs> { },
-  pkgs228 ? pkgs, # Older nixpkgs with glibc 2.27 (for flake builds)
+  pkgs234 ? pkgs, # nixpkgs 22.05 with glibc 2.34 (Rocky Linux 9 compatibility)
   lib ? pkgs.lib,
-  openssl312,
-  # Provide a rustPlatform that uses the desired Rust (e.g., 1.90.0) but
-  # links against pkgs228 (glibc 2.27) on Linux for maximum compatibility.
+  # Optional external overrides; if null, will be constructed from nix/openssl.nix
+  openssl36 ? null,
+  openssl312 ? null,
+  # Provide a rustPlatform that uses the desired Rust (e.g., 1.97.0) but
+  # links against pkgs234 (glibc 2.34) on Linux for Rocky Linux 9 compatibility.
   rustPlatform ? pkgs.rustPlatform,
   # KMS version (from Cargo.toml)
   version,
@@ -12,105 +14,50 @@
   ui ? null, # Pre-built UI derivation providing dist/
   # Linkage mode: true for static OpenSSL, false for dynamic OpenSSL
   static ? true,
-  # Allow callers (e.g., Docker image build) to bypass deterministic hash
-  # enforcement when the container build environment cannot yet reproduce
-  # the committed expected hashes. Default remains strict (true) for
-  # packaging and CI flows.
-  enforceDeterministicHash ? false,
 }:
 
 let
-  isFips = (builtins.length features) == 0 || !(builtins.elem "non-fips" features);
-  baseVariant = if isFips then "fips" else "non-fips";
-  # Combine base variant with suffix for hash file lookup
-  # Using -static-openssl or -dynamic-openssl for backward compatibility with existing hash files
-  variant-suffix = if static then "-static-openssl" else "-dynamic-openssl";
-  variant = if variant-suffix == "" then baseVariant else "${baseVariant}${variant-suffix}";
-
-  # Expected deterministic sha256 of the final installed binary (cosmian_kms)
-  # Naming convention (matches repository files):
-  #   cosmian-kms-server.<fips|non-fips>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256
-  expectedHashPath =
-    _unused:
-    let
-      sys = pkgs.stdenv.hostPlatform.system; # e.g., x86_64-linux
-      parts = lib.splitString "-" sys;
-      arch = builtins.elemAt parts 0;
-      os = builtins.elemAt parts 1;
-      # Match binary expected-hash file naming: static => static-openssl, dynamic => dynamic-openssl
-      impl = if static then "static-openssl" else "dynamic-openssl";
-      file1 = ./expected-hashes + "/cosmian-kms-server.${baseVariant}.${impl}.${arch}.${os}.sha256";
-    in
-    if builtins.pathExists file1 then
-      file1
-    else
-      builtins.throw ''
-        Expected hash file not found for variant ${baseVariant} (impl ${impl}) on system ${sys}.
-        Missing tried paths:
-            - expected-hashes/cosmian-kms-server.${baseVariant}.${impl}.${arch}.${os}.sha256
-        Please add the appropriate file with the expected SHA-256 of the built binary.
-      '';
-
-  # Compute the actual hash file path for writing during build
-
-  # Only compute and validate expected hash path if enforcement is enabled
-  expectedHashPathVariant = if enforceDeterministicHash then expectedHashPath variant else null;
-  # Only read the hash file if enforcement is enabled to avoid errors when file doesn't exist
-  expectedHashRaw =
-    if enforceDeterministicHash && expectedHashPathVariant != null then
-      builtins.readFile expectedHashPathVariant
-    else
-      "";
-  sanitizeHash =
-    s:
-    let
-      noWS = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] s;
-    in
-    lib.strings.removeSuffix "\n" noWS;
-  expectedHash = sanitizeHash expectedHashRaw;
-
-  # Force rebuild marker - increment to invalidate cache when only Nix expressions change
-  rebuildMarker = "1";
-
-  srcRoot = ../.;
-  # Whitelist only files needed to build the Rust workspace
-  filteredSrc = lib.cleanSourceWith {
-    src = srcRoot;
-    filter =
-      path: type:
-      let
-        rel = lib.removePrefix (toString srcRoot + "/") (toString path);
-        # Exclude ephemeral/build artifacts from host workspace to keep builds deterministic
-        isEphemeral =
-          lib.hasInfix "/target/" rel
-          || lib.hasSuffix "/target" rel
-          || lib.hasPrefix "crate/server/ui/dist" rel
-          || lib.hasPrefix "crate/server/ui_non_fips/dist" rel;
-      in
-      lib.cleanSourceFilter path type
-      && (!isEphemeral)
-      && (
-        rel == "Cargo.toml"
-        || rel == "Cargo.lock"
-        || rel == "LICENSE"
-        || rel == "README.md"
-        || rel == "CHANGELOG.md"
-        || rel == "crate"
-        || lib.hasPrefix "crate/" rel
-        || rel == "resources"
-        || lib.hasPrefix "resources/" rel
-        || rel == "pkg"
-        || lib.hasPrefix "pkg/" rel
-        || rel == "test_data"
-        || lib.hasPrefix "test_data/" rel
-        || rel == "documentation"
-        || lib.hasPrefix "documentation/" rel
-      );
+  common = import ./common.nix {
+    inherit
+      pkgs
+      pkgs234
+      lib
+      openssl36
+      openssl312
+      static
+      features
+      ;
   };
+  inherit (common)
+    isFips
+    baseVariant
+    openssl36_
+    openssl312_
+    opensslLink
+    mkFilteredSrc
+    ;
 
-  # Helper to embed boolean as string for shell script
+  variant = "${baseVariant}${if static then "-static-openssl" else "-dynamic-openssl"}";
 
-  # Install check phase - simplified version verification
+  # Binary hash naming convention (matches repository files):
+  #   cosmian-kms-server.<fips|non-fips>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256
+  # The hash is written to $out/bin/ during installCheckPhase so that
+  # the packaging script can copy it into nix/expected-hashes/ for cross-run tracking.
+  # NOTE: reading these hash files back into the Nix derivation at eval time (to enforce
+  # determinism inside installCheckPhase) was removed because it made the derivation hash
+  # depend on nix/expected-hashes/ contents.  When the packaging script writes the hash
+  # after the first `nix-build`, subsequent `nix-build` calls within the same CI step
+  # (deb → rpm → pkcs11-zip) saw a changed source, triggered a full rebuild, and produced
+  # a different binary on bistable non-deterministic builds — causing a hash mismatch on
+  # every other invocation.  Hash enforcement is now handled solely by enforce_binary_hash()
+  # in .mise/scripts/package/package_common.sh.
+  linkTag = if static then "static-openssl" else "dynamic-openssl";
+
+  filteredSrc = mkFilteredSrc [
+    "test_data"
+    "documentation"
+  ];
+
   installCheckPhase = ''
     runHook preInstallCheck
 
@@ -129,7 +76,7 @@ let
     # For non-static builds, check if libraries are available
     ${lib.optionalString (!static) ''
       echo "Checking dynamic library dependencies..."
-      export LD_LIBRARY_PATH="${openssl312}/lib:$LD_LIBRARY_PATH"
+      export LD_LIBRARY_PATH="${openssl36_}/lib:$LD_LIBRARY_PATH"
       echo "LD_LIBRARY_PATH set to: $LD_LIBRARY_PATH"
       if [ "$(uname)" = "Linux" ]; then
         ldd "$BIN" || true
@@ -163,38 +110,31 @@ let
         ldd "$BIN" | grep -qi "libssl\|libcrypto" || { echo "ERROR: Missing dynamic OpenSSL"; exit 1; }
       ''}
 
-      # Check GLIBC version <= 2.28 (Linux only)
+      # Check GLIBC version <= 2.34 (Linux only, Rocky Linux 9 compatibility)
       MAX_VER=$(readelf -sW "$BIN" | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/^GLIBC_//' | sort -V | tail -n1)
-      [ "$(printf '%s\n' "$MAX_VER" "2.28" | sort -V | tail -n1)" = "2.28" ] || {
-        echo "ERROR: GLIBC $MAX_VER > 2.28"; exit 1;
+      [ "$(printf '%s\n' "$MAX_VER" "2.34" | sort -V | tail -n1)" = "2.34" ] || {
+        echo "ERROR: GLIBC $MAX_VER > 2.34"; exit 1;
       }
 
-      # Deterministic hash check
-      ${lib.optionalString enforceDeterministicHash ''
-        ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
-        [ "$ACTUAL" = "${expectedHash}" ] || {
-          echo "ERROR: Hash mismatch. Expected ${expectedHash}, got $ACTUAL" >&2; exit 1;
-        }
-        echo "Hash OK: $ACTUAL"
-      ''}
-
-      # Always write actual hash to output for reference/updates
+      # Compute actual binary hash
       ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
       echo "$ACTUAL" > "$out/bin/cosmian_kms.sha256"
       echo "Binary hash: $ACTUAL (saved to $out/bin/cosmian_kms.sha256)"
 
-      # Write the expected hash filename for easy copying
+      # Write the binary hash for the packaging script to pick up.
+      # Hash enforcement (determinism gate) is handled by enforce_binary_hash() in
+      # .mise/scripts/package/package_common.sh — reading it back here at Nix eval
+      # time would bake the hash into the derivation, causing a new store path on
+      # every subsequent nix-build call within the same CI step (deb→rpm→pkcs11-zip).
       ARCH_LINUX="$(uname -m)"
       case "$ARCH_LINUX" in
         x86_64) ARCH_TAG="x86_64" ;;
         aarch64|arm64) ARCH_TAG="aarch64" ;;
         *) ARCH_TAG="$ARCH_LINUX" ;;
       esac
-      HASH_FILENAME="cosmian-kms-server.${baseVariant}.${
-        if static then "static-openssl" else "dynamic-openssl"
-      }.$ARCH_TAG.linux.sha256"
+      HASH_FILENAME="cosmian-kms-server.${baseVariant}.${linkTag}.$ARCH_TAG.linux.sha256"
       echo "$ACTUAL" > "$out/bin/$HASH_FILENAME"
-      echo "Expected hash file saved to: $out/bin/$HASH_FILENAME"
+      echo "Binary hash saved to: $out/bin/$HASH_FILENAME"
       echo "To update repository, copy this file to: nix/expected-hashes/$HASH_FILENAME"
     elif [ "$(uname)" = "Darwin" ]; then
       # macOS-specific checks
@@ -212,29 +152,28 @@ let
         echo "WARNING: Binary has Nix store dylib references"
       fi
 
-      # Always write actual hash to output for reference/updates
+      # Compute actual binary hash
       ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
       echo "$ACTUAL" > "$out/bin/cosmian_kms.sha256"
       echo "Binary hash: $ACTUAL (saved to $out/bin/cosmian_kms.sha256)"
 
-      # Write the expected hash filename for easy copying
+      # Write the binary hash for the packaging script to pick up.
+      # See Linux section comment above for why hash enforcement was moved out of Nix.
       ARCH="$(uname -m)"
-      HASH_FILENAME="cosmian-kms-server.${baseVariant}.${
-        if static then "static-openssl" else "dynamic-openssl"
-      }.$ARCH.darwin.sha256"
+      HASH_FILENAME="cosmian-kms-server.${baseVariant}.${linkTag}.$ARCH.darwin.sha256"
       echo "$ACTUAL" > "$out/bin/$HASH_FILENAME"
-      echo "Expected hash file saved to: $out/bin/$HASH_FILENAME"
+      echo "Binary hash saved to: $out/bin/$HASH_FILENAME"
       echo "To update repository, copy this file to: nix/expected-hashes/$HASH_FILENAME"
     fi
 
-    # For FIPS builds with static linkage, verify binary was built against OpenSSL 3.1.2
+    # Verify binary was built against the expected OpenSSL version
     # Note: For dynamic builds, the version string is in the shared library, not the binary
     # OPENSSLDIR is baked into OpenSSL at compile time and will show the Nix store path.
     # At runtime, we override it with OPENSSL_CONF environment variable to use /usr/local/cosmian/lib/ssl
     # Full FIPS validation happens in smoke test with proper environment variables set
     ${lib.optionalString (static && pkgs.stdenv.isLinux) ''
-      strings "$BIN" | grep -q "OpenSSL 3.1.2" || { echo "ERROR: Binary not statically linked against OpenSSL 3.1.2"; exit 1; }
-      echo "Binary validation OK (OpenSSL 3.1.2 statically linked)"
+      strings "$BIN" | grep -q "OpenSSL 3.6.2" || { echo "ERROR: Binary not statically linked against OpenSSL 3.6.2"; exit 1; }
+      echo "Binary validation OK (OpenSSL 3.6.2 statically linked)"
     ''}
     ${lib.optionalString (static && pkgs.stdenv.isDarwin) ''
       echo "Skipping static OpenSSL string check on macOS (validation handled via FIPS modules and runtime tests)"
@@ -248,50 +187,29 @@ let
   '';
 in
 rustPlatform.buildRustPackage rec {
-  pname = "cosmian-kms-server${if static then "" else "-dynamic"}-rebuild-${rebuildMarker}";
+  pname = "cosmian-kms-server${if static then "" else "-dynamic"}";
   inherit version;
   # Disable cargo-auditable wrapper; it doesn't understand edition=2024 yet
   auditable = false;
-  # Run tests only for static builds; skip for dynamic to avoid runtime libssl issues
-  doCheck = static;
 
   # Provide the whole workspace but filtered; build only the server crate.
   src = filteredSrc;
 
-  # Deterministic vendoring: pinned cargo hash for workspace vendoring
-  # Support cargoHash for compatibility across nixpkgs versions.
-  # Platform-specific vendor hashes (target-dependent deps). If out-of-date, temporarily set to ""
-  # and rebuild to obtain the new suggested value from Nix ("got: sha256-...").
+  # Vendor hash is per linkage mode (static/dynamic), platform-stable.
   cargoHash =
     let
-      sys = pkgs.stdenv.hostPlatform.system; # e.g., x86_64-linux
-      parts = lib.splitString "-" sys;
-      os = builtins.elemAt parts 1;
-      # Darwin uses separate vendor files for static/dynamic; Linux uses one shared file
-      linkSuffix = if pkgs.stdenv.isDarwin then (if static then "static" else "dynamic") else "";
-      vendorFile =
-        if linkSuffix != "" then
-          ./expected-hashes + "/server.vendor.${linkSuffix}.${os}.sha256"
-        else
-          ./expected-hashes + "/server.vendor.${os}.sha256";
+      linkSuffix = if static then "static" else "dynamic";
+      vendorFile = ./expected-hashes + "/server.vendor.${linkSuffix}.sha256";
       placeholder = "sha256-BBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
     in
     if builtins.pathExists vendorFile then
       let
-        raw = builtins.readFile vendorFile;
-        trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
+        trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] (builtins.readFile vendorFile);
       in
-      if enforceDeterministicHash then
-        (
-          assert trimmed != placeholder && trimmed != "";
-          trimmed
-        )
-      else
-        trimmed
-    else if enforceDeterministicHash then
-      builtins.throw ("Expected server vendor cargo hash file not found: " + vendorFile)
+      assert trimmed != placeholder && trimmed != "";
+      trimmed
     else
-      placeholder;
+      builtins.throw "Expected server vendor cargo hash file not found: nix/expected-hashes/server.vendor.${linkSuffix}.sha256";
   cargoSha256 = cargoHash;
 
   # Use release profile by default
@@ -307,13 +225,14 @@ rustPlatform.buildRustPackage rec {
     ]
     ++ lib.optionals pkgs.stdenv.isLinux [
       binutils # provides readelf and ldd used during installCheckPhase
+      patchelf
     ]
     ++ lib.optionals pkgs.stdenv.isDarwin [
       darwin.cctools # provides otool used during installCheckPhase
     ];
 
   buildInputs = [
-    openssl312
+    opensslLink
   ]
   ++ lib.optionals pkgs.stdenv.isDarwin (
     let
@@ -328,9 +247,9 @@ rustPlatform.buildRustPackage rec {
   );
 
   # Environment for openssl-sys to pick our OpenSSL
-  OPENSSL_DIR = openssl312;
-  OPENSSL_LIB_DIR = "${openssl312}/lib";
-  OPENSSL_INCLUDE_DIR = "${openssl312}/include";
+  OPENSSL_DIR = opensslLink;
+  OPENSSL_LIB_DIR = "${opensslLink}/lib";
+  OPENSSL_INCLUDE_DIR = "${opensslLink}/include";
   OPENSSL_NO_VENDOR = 1;
 
   # Custom build/install to re-link the final binary with the system dynamic
@@ -340,9 +259,18 @@ rustPlatform.buildRustPackage rec {
     echo "== cargo build cosmian_kms_server (release) =="
     cargo build --release -p cosmian_kms_server --no-default-features \
       ${lib.optionalString (features != [ ]) "--features ${lib.concatStringsSep "," features}"}
+    # Note: NOT running postBuild hook to avoid test execution
+  '';
 
+  installPhase = ''
+    runHook preInstall
+    mkdir -p "$out/bin"
+    # Copy the server binary
+    install -m755 target/release/cosmian_kms "$out/bin/cosmian_kms"
+
+    # Ensure the final artifact uses the system dynamic linker (not the Nix store one).
+    # Do this as a deterministic post-link patch rather than an impure re-link.
     if [ "$(uname)" = "Linux" ]; then
-      # Determine system dynamic linker path by architecture (avoid Nix-side interpolation on Darwin)
       DL=""
       ARCH="$(uname -m)"
       if [ "$ARCH" = "x86_64" ]; then
@@ -351,57 +279,102 @@ rustPlatform.buildRustPackage rec {
         DL="/lib/ld-linux-aarch64.so.1"
       fi
       if [ -n "$DL" ]; then
-        echo "== Re-linking final binary with system dynamic linker: $DL =="
-        export NIX_ENFORCE_PURITY=0
-        export NIX_DONT_SET_RPATH=1
-        export NIX_LDFLAGS=""
-        export NIX_CFLAGS_LINK=""
-        # Re-link the final binary (no rebuild of deps/build-scripts)
-        cargo rustc --release -p cosmian_kms_server --bin cosmian_kms \
-          ${lib.optionalString (features != [ ]) "--features ${lib.concatStringsSep "," features}"} \
-          -- -C link-arg=-Wl,--dynamic-linker,$DL
+        patchelf --set-interpreter "$DL" "$out/bin/cosmian_kms"
       fi
     fi
-    # Note: NOT running postBuild hook to avoid test execution
-  '';
-
-  installPhase = ''
-    runHook preInstall
-    mkdir -p "$out/bin"
-    # Copy the re-linked server binary
-    install -m755 target/release/cosmian_kms "$out/bin/cosmian_kms"
     runHook postInstall
   '';
 
   # Add UI assets and FIPS modules in postInstall
   postInstall = ''
-    ${lib.optionalString (ui != null) ''
-      mkdir -p "$out/usr/local/cosmian/ui/dist"
-      cp -R "${ui}/dist/"* "$out/usr/local/cosmian/ui/dist/"
-    ''}
+      ${lib.optionalString (ui != null) ''
+        mkdir -p "$out/usr/local/cosmian/ui/dist"
+        cp -R "${ui}/dist/"* "$out/usr/local/cosmian/ui/dist/"
+      ''}
 
     ${lib.optionalString isFips ''
       mkdir -p "$out/usr/local/cosmian/lib"
-      cp -r "${openssl312}/usr/local/cosmian/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
-      cp -r "${openssl312}/usr/local/cosmian/lib/ssl" "$out/usr/local/cosmian/lib/"
+      # Use OpenSSL 3.1.2 for FIPS provider and configs
+      cp -r "${openssl312_}/usr/local/cosmian/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
+      cp -r "${openssl312_}/usr/local/cosmian/lib/ssl" "$out/usr/local/cosmian/lib/"
     ''}
 
-    # Write build info
-    cat > "$out/bin/build-info.txt" <<EOF
-    KMS Server ${variant} (${if static then "static" else "dynamic"} OpenSSL)
-    Version: ${version}
-    OpenSSL: ${openssl312}
-    ${lib.optionalString isFips "FIPS: usr/local/cosmian/lib/ossl-modules/"}
-    EOF
+    ${lib.optionalString (!isFips && static) ''
+      # Non-FIPS static: ship OpenSSL 3.6.2 provider modules (legacy, default)
+      # and a non-FIPS openssl.cnf that activates default+legacy (not fips) providers.
+      # This is needed for PKCS#12 parsing and other legacy algorithms at runtime.
+      mkdir -p "$out/usr/local/cosmian/lib/ossl-modules"
+      mkdir -p "$out/usr/local/cosmian/lib/ssl"
+      if [ -d "${openssl36_}/usr/local/cosmian/lib/ossl-modules" ]; then
+        cp -r "${openssl36_}/usr/local/cosmian/lib/ossl-modules/"* "$out/usr/local/cosmian/lib/ossl-modules/" 2>/dev/null || true
+      elif [ -d "${openssl36_}/lib/ossl-modules" ]; then
+        cp -r "${openssl36_}/lib/ossl-modules/"* "$out/usr/local/cosmian/lib/ossl-modules/" 2>/dev/null || true
+      fi
+      # Ship non-FIPS openssl.cnf (generated by openssl.nix with enableLegacy)
+      if [ -f "${openssl36_}/usr/local/cosmian/lib/ssl/openssl.cnf" ]; then
+        cp "${openssl36_}/usr/local/cosmian/lib/ssl/openssl.cnf" "$out/usr/local/cosmian/lib/ssl/"
+      fi
+    ''}
+
+      ${lib.optionalString (!static) ''
+        # Dynamic linkage variant: ship libssl and libcrypto
+        mkdir -p "$out/usr/local/cosmian/lib"
+        # For FIPS dynamic builds, use OpenSSL 3.1.2 to match the FIPS provider version
+        # For non-FIPS dynamic builds, use OpenSSL 3.6.2
+        ${
+          if isFips then
+            ''
+              opensslSrc="${openssl312_}"
+            ''
+          else
+            ''
+              opensslSrc="${openssl36_}"
+            ''
+        }
+        if [ "$(uname)" = "Darwin" ]; then
+          # macOS: copy versioned dylibs if present; fall back to unversioned names
+          for dylib in libssl.3.dylib libcrypto.3.dylib libssl.dylib libcrypto.dylib; do
+            if [ -f "$opensslSrc/lib/$dylib" ]; then
+              cp "$opensslSrc/lib/$dylib" "$out/usr/local/cosmian/lib/$dylib"
+            fi
+          done
+        else
+          # Linux: copy .so.3 versioned shared libraries
+          for so in libssl.so.3 libcrypto.so.3; do
+            if [ -f "$opensslSrc/lib/$so" ]; then
+              cp "$opensslSrc/lib/$so" "$out/usr/local/cosmian/lib/$so"
+            fi
+          done
+        fi
+        # For non-FIPS dynamic builds, also include provider modules from OpenSSL 3.6.2 (e.g., legacy)
+        ${lib.optionalString (!isFips) ''
+          mkdir -p "$out/usr/local/cosmian/lib/ossl-modules"
+          if [ -d "${openssl36_}/usr/local/cosmian/lib/ossl-modules" ]; then
+            cp -r "${openssl36_}/usr/local/cosmian/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
+          elif [ -d "${openssl36_}/lib/ossl-modules" ]; then
+            cp -r "${openssl36_}/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
+          else
+            echo "WARNING: OpenSSL 3.6.2 ossl-modules directory not found; legacy provider may be missing"
+          fi
+        ''}
+      ''}
+
+      # Write build info
+      cat > "$out/bin/build-info.txt" <<EOF
+      KMS Server ${variant} (${if static then "static" else "dynamic"} OpenSSL)
+      Version: ${version}
+      OpenSSL (link): ${opensslLink}
+      ${lib.optionalString isFips "FIPS provider: from OpenSSL 3.1.2 (usr/local/cosmian/lib)"}
+      EOF
   '';
 
   passthru = {
     inherit variant isFips;
-    opensslPath = openssl312;
+    opensslPath = opensslLink;
     uiPath = ui;
     src = filteredSrc;
     inherit version;
-    hostTriple = pkgs228.stdenv.hostPlatform.config;
+    hostTriple = pkgs234.stdenv.hostPlatform.config;
   };
 
   meta = with lib; {
@@ -410,7 +383,7 @@ rustPlatform.buildRustPackage rec {
     license = {
       shortName = "BUSL-1.1";
       fullName = "Business Source License 1.1";
-      url = "https://mariadb.com/bsl11/";
+      url = "https://github.com/Cosmian/kms/blob/develop/LICENSE";
       free = false;
     };
     platforms = [
@@ -433,8 +406,10 @@ rustPlatform.buildRustPackage rec {
         "/build=/cosmian-src"
         "--remap-path-prefix"
         "/tmp=/cosmian-src"
-        "--remap-path-prefix"
-        "${toString ../.}=/cosmian-src"
+      ];
+      # Additional flags for determinism
+      determinism = lib.concatStringsSep " " [
+        "-C symbol-mangling-version=v0"
       ];
       linuxOnly = lib.concatStringsSep " " (
         [
@@ -450,19 +425,64 @@ rustPlatform.buildRustPackage rec {
         !static && pkgs.stdenv.isLinux
       ) "-C link-arg=-Wl,-rpath,/usr/local/cosmian/lib";
     in
-    if pkgs.stdenv.isLinux then remap + " " + linuxOnly + " " + dynamicOnly else remap;
+    if pkgs.stdenv.isLinux then
+      remap + " " + determinism + " " + linuxOnly + " " + dynamicOnly
+    else
+      remap + " " + determinism;
   NIX_DONT_SET_RPATH = lib.optionalString pkgs.stdenv.isLinux "1";
-  NIX_LDFLAGS = lib.optionalString pkgs.stdenv.isLinux "";
-  NIX_CFLAGS_LINK = lib.optionalString pkgs.stdenv.isLinux "";
-  NIX_ENFORCE_PURITY = lib.optionalString pkgs.stdenv.isLinux "0";
+  NIX_ENFORCE_PURITY = lib.optionalString pkgs.stdenv.isLinux "1";
   dontCargoCheck = true;
-  dontCheck = !static;
+  # Run tests only for static builds (self-contained OpenSSL); dynamic builds
+  # lack runtime libssl in the Nix sandbox. Use doCheck (not dontCheck) for
+  # reliable behaviour across nixpkgs versions.
+  doCheck = static;
   dontUseCargoParallelTests = true;
   doInstallCheck = true; # Always run install checks to generate/verify hashes
   dontInstallCheck = false;
   cargoCheckHook = "";
   cargoNextestHook = "";
-  checkPhase = ":";
+  checkPhase =
+    if static then
+      ''
+        runHook preCheck
+        echo "== cargo test cosmian_kms_server (release) =="
+        export RUST_BACKTRACE=1
+      ''
+      + (
+        if isFips then
+          ''
+            # FIPS: tests use the 3.1.2 provider
+            export OPENSSL_DIR="${openssl312_}"
+            export OPENSSL_LIB_DIR="${openssl312_}/lib"
+            export OPENSSL_INCLUDE_DIR="${openssl312_}/include"
+            export OPENSSL_CONF="${openssl312_}/ssl/openssl.cnf"
+            export OPENSSL_MODULES="${openssl312_}/lib/ossl-modules"
+          ''
+        else
+          ''
+            # Non-FIPS: the binary needs the legacy provider at runtime.
+            # Point OPENSSL_CONF/MODULES to the Nix-store copy so legacy.so
+            # is found (compiled-in OPENSSLDIR=/usr/local/cosmian/… doesn't
+            # exist in the sandbox).
+            export OPENSSL_DIR="${openssl36_}"
+            export OPENSSL_LIB_DIR="${openssl36_}/lib"
+            export OPENSSL_INCLUDE_DIR="${openssl36_}/include"
+            export OPENSSL_CONF="${openssl36_}/ssl/openssl.cnf"
+            export OPENSSL_MODULES="${openssl36_}/lib/ossl-modules"
+          ''
+      )
+      + ''
+        export OPENSSL_NO_VENDOR=1
+
+        cargo test --release -p cosmian_kms_server --no-default-features \
+          ${lib.optionalString (features != [ ]) "--features ${lib.concatStringsSep "," features}"}
+
+        runHook postCheck
+      ''
+    else
+      ''
+        echo "== Skipping cargo test for dynamic build (libssl.so.3 unavailable in Nix sandbox) =="
+      '';
   configurePhase = ''
     export CARGO_HOME="$(pwd)/.cargo-home"
   '';

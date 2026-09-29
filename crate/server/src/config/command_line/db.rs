@@ -1,6 +1,7 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
+use clap_config_fallback::ConfigArgs;
 use cosmian_kms_server_database::MainDbParams;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::redis_master_key_from_password;
@@ -15,9 +16,80 @@ use crate::{
 
 pub const DEFAULT_SQLITE_PATH: &str = "./sqlite-data";
 
+/// Mask the password component of a database connection URL before logging.
+///
+/// Uses [`url::Url::parse`] for standard single-host URLs; falls back to a simple
+/// string scan for multi-host `PostgreSQL` connection strings
+/// (e.g. `postgresql://user:pass@host1,host2/db`) that [`url::Url`] cannot parse.
+///
+/// Returns the original string unchanged when no password is detected.
+fn mask_db_url_password(url: &str) -> String {
+    // Fast path: standard URL that `url::Url` can parse (MySQL, single-host Postgres, Redis)
+    if let Ok(mut parsed) = url::Url::parse(url) {
+        if parsed.password().is_some() {
+            // `set_password` can only fail if the URL has no host (e.g. `data:`), which
+            // won't happen for a database URL, so the error is intentionally discarded.
+            let _ = parsed.set_password(Some("****"));
+        }
+        return parsed.to_string();
+    }
+    // Slow path: multi-host PostgreSQL URL — scan manually
+    // Pattern: scheme://[user[:pass]@]... → replace :pass@ with :****@
+    if let Some(at_pos) = url.rfind('@') {
+        if let Some(scheme_end) = url.find("://") {
+            let creds = &url[scheme_end + 3..at_pos];
+            if let Some(colon_pos) = creds.find(':') {
+                let user = &creds[..colon_pos];
+                let scheme = &url[..scheme_end];
+                let rest = &url[at_pos + 1..];
+                return format!("{scheme}://{user}:****@{rest}");
+            }
+        }
+    }
+    url.to_owned()
+}
+
+/// Supported database backends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatabaseType {
+    Sqlite,
+    Postgresql,
+    Mysql,
+    #[cfg(feature = "non-fips")]
+    RedisFindex,
+}
+
+impl DatabaseType {
+    pub const FIPS_VARIANTS: &'static [Self] = &[Self::Sqlite, Self::Postgresql, Self::Mysql];
+    #[cfg(feature = "non-fips")]
+    pub const NON_FIPS_VARIANTS: &'static [Self] = &[
+        Self::Sqlite,
+        Self::Postgresql,
+        Self::Mysql,
+        Self::RedisFindex,
+    ];
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Sqlite => "sqlite",
+            Self::Postgresql => "postgresql",
+            Self::Mysql => "mysql",
+            #[cfg(feature = "non-fips")]
+            Self::RedisFindex => "redis-findex",
+        }
+    }
+}
+
+impl Display for DatabaseType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Configuration for the database
-#[derive(Args, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[derive(Args, ConfigArgs, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct MainDBConfig {
     /// The main database of the KMS server that holds default cryptographic objects and permissions.
     /// - postgresql: `PostgreSQL`. The database URL must be provided
@@ -71,20 +143,6 @@ pub struct MainDBConfig {
     )]
     pub redis_master_password: Option<String>,
 
-    /// redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts
-    /// without changing the key
-    #[deprecated(
-        since = "5.12.0",
-        note = "!IMPORTANT if this KMS is launched with a non-empty Redis store that with \
-                versions prior to 5.12.0, you MUST provide the same label as before, otherwise the \
-                migration might fail and data can be forever lost. If you are launching a fresh \
-                KMS with an empty Redis store, or one that was already used with version 5.12.0 or \
-                later, you can safely discard this parameter."
-    )]
-    #[cfg(feature = "non-fips")]
-    #[clap(long, env = "KMS_REDIS_FINDEX_LABEL")]
-    pub redis_findex_label: Option<String>,
-
     /// Clear the database on start.
     /// WARNING: This will delete ALL the data in the database
     #[clap(long, env = "KMS_CLEAR_DATABASE", verbatim_doc_comment)]
@@ -111,6 +169,40 @@ pub struct MainDBConfig {
         verbatim_doc_comment
     )]
     pub unwrapped_cache_max_age: u64,
+
+    /// Maximum number of entries in the unwrapped key cache.
+    /// When the cache is full, the least-recently-used entry is evicted.
+    /// Set this above the number of distinct wrapped keys in your deployment
+    /// to avoid LRU thrashing. The default is 1000.
+    #[clap(
+        long,
+        env = "KMS_UNWRAPPED_CACHE_MAX_SIZE",
+        default_value = "1000",
+        verbatim_doc_comment
+    )]
+    pub unwrapped_cache_max_size: usize,
+
+    /// Absolute time-to-live in minutes for entries in the unwrapped key cache.
+    /// When set, a cached unwrapped key is evicted at most this many minutes after
+    /// it was first inserted, regardless of how frequently it is accessed.
+    /// This caps plaintext key residency for continuously-used (hot) keys and
+    /// satisfies compliance policies that require a hard upper bound on in-memory
+    /// key material exposure.
+    /// When not set (the default), only the time-to-idle window applies and hot
+    /// keys may remain cached indefinitely.
+    /// When set, value must be ≥ `unwrapped-cache-max-age`.
+    #[clap(long, env = "KMS_UNWRAPPED_CACHE_MAX_TTL", verbatim_doc_comment)]
+    pub unwrapped_cache_max_ttl: Option<u64>,
+
+    /// Disable the unwrapped key cache entirely.
+    /// When set, every operation that needs plaintext key material will perform
+    /// a full KEK-unwrap (or HSM call) on every request instead of serving the
+    /// key from memory.
+    /// Use this in high-security environments where no plaintext key material
+    /// should persist in process memory beyond a single operation.
+    /// Disabling the cache significantly increases CPU and HSM load.
+    #[clap(long, env = "KMS_DISABLE_UNWRAPPED_CACHE", verbatim_doc_comment)]
+    pub disable_unwrapped_cache: bool,
 }
 
 impl Default for MainDBConfig {
@@ -122,11 +214,11 @@ impl Default for MainDBConfig {
             clear_database: false,
             max_connections: None,
             unwrapped_cache_max_age: 15,
+            unwrapped_cache_max_size: 1000,
+            unwrapped_cache_max_ttl: None,
+            disable_unwrapped_cache: false,
             #[cfg(feature = "non-fips")]
             redis_master_password: None,
-            #[cfg(feature = "non-fips")]
-            #[allow(deprecated)] // Label will still be accepted until all data is migrated
-            redis_findex_label: None,
         }
     }
 }
@@ -135,40 +227,30 @@ impl Display for MainDBConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(database_type) = &self.database_type {
             match database_type.as_str() {
-                "postgresql" => write!(
-                    f,
-                    "postgresql: {}",
-                    &self
+                "postgresql" => {
+                    let masked = self
                         .database_url
-                        .as_ref()
-                        .map_or("[INVALID URL]", |url| url.as_str())
-                ),
-                "mysql" => write!(
-                    f,
-                    "mysql: {}",
-                    &self
+                        .as_deref()
+                        .map_or_else(|| "[INVALID URL]".to_owned(), mask_db_url_password);
+                    write!(f, "postgresql: {masked}")
+                }
+                "mysql" => {
+                    let masked = self
                         .database_url
-                        .as_ref()
-                        .map_or("[INVALID URL]", |url| url.as_str())
-                ),
+                        .as_deref()
+                        .map_or_else(|| "[INVALID URL]".to_owned(), mask_db_url_password);
+                    write!(f, "mysql: {masked}")
+                }
                 "sqlite" => write!(f, "sqlite: {}", self.sqlite_path.display()),
                 #[cfg(feature = "non-fips")]
                 #[allow(deprecated)]
                 // Label will still be accepted until all data is migrated
                 "redis-findex" => write!(
                     f,
-                    "redis-findex: {}, password: [****]{}",
-                    &self
-                        .database_url
+                    "redis-findex: {}, password: [****]",
+                    self.database_url
                         .as_ref()
                         .map_or("[INVALID URL]", |url| url.as_str()),
-                    self.redis_findex_label
-                        .as_ref()
-                        .map_or_else(String::new, |label| format!(
-                            ", label: 0x{} (the label parameter is deprecated and will be removed \
-                             in future versions, use it only to migrate existing data)",
-                            hex::encode(label.as_bytes())
-                        ))
                 ),
                 unknown => write!(f, "Unknown database type: {unknown}"),
             }?;
@@ -181,7 +263,7 @@ impl Display for MainDBConfig {
 
 impl std::fmt::Debug for MainDBConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}", &self))
+        f.write_fmt(format_args!("{self}"))
     }
 }
 
@@ -201,7 +283,7 @@ impl MainDBConfig {
         if let Some(database_type) = &self.database_type {
             return Ok(match database_type.as_str() {
                 "postgresql" => {
-                    let url = ensure_url(self.database_url.as_deref(), "KMS_POSTGRES_URL")
+                    let url = ensure_url_string(self.database_url.as_deref(), "KMS_POSTGRES_URL")
                         .context("db:init")?;
                     MainDbParams::Postgres(url, self.max_connections)
                 }
@@ -220,8 +302,6 @@ impl MainDBConfig {
                 #[allow(deprecated)]
                 // Label will still be accepted until all data is migrated
                 "redis-findex" => {
-                    use cosmian_kms_server_database::reexport::cloudproof_findex::Label;
-
                     let url = ensure_url(self.database_url.as_deref(), "KMS_REDIS_URL")
                         .context("db:init")?;
                     // Check if a Redis master password was provided
@@ -233,17 +313,7 @@ impl MainDBConfig {
                     // Generate the symmetric key from the master password
                     let master_key = redis_master_key_from_password(&redis_master_password)
                         .context("db:init")?;
-                    let old_label = self.redis_findex_label.as_deref().map_or_else(
-                        || {
-                            use cosmian_kms_server_database::reexport::cloudproof_findex::Label;
-
-                            std::env::var("KMS_REDIS_FINDEX_LABEL")
-                                .ok()
-                                .map(|s| Label::from(s.as_bytes()))
-                        },
-                        |value| Some(Label::from(value.as_bytes())),
-                    );
-                    MainDbParams::RedisFindex(url, master_key, old_label)
+                    MainDbParams::RedisFindex(url, master_key)
                 }
                 unknown => kms_bail!("Unknown database type: {unknown}"),
             });
@@ -254,6 +324,33 @@ impl MainDBConfig {
             .context("db:init; workspace finalize")?;
         Ok(MainDbParams::Sqlite(path, self.max_connections))
     }
+}
+
+/// Resolve the database URL from the command-line option or an environment variable,
+/// returning the raw string.  This avoids `Url::parse()` which cannot handle
+/// multi-host `PostgreSQL` connection strings
+/// (e.g. `postgresql://host1:5432,host2:5432/db?target_session_attrs=read-write`).
+fn ensure_url_string(database_url: Option<&str>, alternate_env_variable: &str) -> KResult<String> {
+    let url = database_url.map_or_else(
+        || {
+            std::env::var(alternate_env_variable).map_err(|_e| {
+                kms_error!(
+                    "No database URL supplied either using the 'database-url' option, or the \
+                     KMS_DATABASE_URL or the {alternate_env_variable} environment variables",
+                )
+            })
+        },
+        |url| Ok(url.to_owned()),
+    )?;
+    if url.is_empty() {
+        return Err(kms_error!("Database URL must not be empty"));
+    }
+    if !url.starts_with("postgresql://") && !url.starts_with("postgres://") {
+        return Err(kms_error!(
+            "PostgreSQL URL must start with 'postgresql://' or 'postgres://'"
+        ));
+    }
+    Ok(url)
 }
 
 fn ensure_url(database_url: Option<&str>, alternate_env_variable: &str) -> KResult<Url> {
@@ -290,4 +387,127 @@ fn ensure_value(
         },
         |value| Ok(value.to_owned()),
     )
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::unwrap_in_result,
+    clippy::assertions_on_result_states
+)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ensure_url_string_valid_postgresql_scheme() {
+        let result = ensure_url_string(Some("postgresql://host/db"), "UNUSED_ENV");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "postgresql://host/db");
+    }
+
+    #[test]
+    fn test_ensure_url_string_valid_postgres_scheme() {
+        let result = ensure_url_string(Some("postgres://host/db"), "UNUSED_ENV");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_ensure_url_string_invalid_mysql_scheme() {
+        let result = ensure_url_string(Some("mysql://host/db"), "UNUSED_ENV");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("postgresql://"));
+    }
+
+    #[test]
+    fn test_ensure_url_string_invalid_http_scheme() {
+        let result = ensure_url_string(Some("http://host/db"), "UNUSED_ENV");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("postgresql://"));
+    }
+
+    #[test]
+    fn test_ensure_url_string_not_a_url() {
+        let result = ensure_url_string(Some("not-a-url"), "UNUSED_ENV");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("postgresql://"));
+    }
+
+    #[test]
+    fn test_ensure_url_string_empty() {
+        let result = ensure_url_string(Some(""), "UNUSED_ENV");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("empty"));
+    }
+
+    // ── N1–N5: Database URL password masking (OSSTMM Visibility · NIST PR.DS-5) ─
+
+    /// N1: Standard single-host `PostgreSQL` URL – password must be replaced with `****`.
+    #[test]
+    fn n01_postgres_single_host_password_masked() {
+        let url = "postgresql://user:secret@localhost:5432/db";
+        let masked = mask_db_url_password(url);
+        assert!(
+            !masked.contains("secret"),
+            "Password must not appear in masked URL: {masked}"
+        );
+        assert!(
+            masked.contains("****"),
+            "Masked URL must contain ****: {masked}"
+        );
+        assert!(
+            masked.contains("user:"),
+            "Username must be preserved: {masked}"
+        );
+    }
+
+    /// N2: `MySQL` URL – password must be masked.
+    #[test]
+    fn n02_mysql_password_masked() {
+        let url = "mysql://admin:pass@127.0.0.1:3306/kms";
+        let masked = mask_db_url_password(url);
+        assert!(
+            !masked.contains("pass"),
+            "Password must not appear: {masked}"
+        );
+        assert!(masked.contains("****"), "Must contain ****: {masked}");
+    }
+
+    /// N3: Multi-host `PostgreSQL` URL that `url::Url` cannot parse – slow-path masking.
+    #[test]
+    fn n03_postgres_multi_host_password_masked() {
+        let url = "postgresql://user:secret@host1,host2,host3/db";
+        let masked = mask_db_url_password(url);
+        assert!(
+            !masked.contains("secret"),
+            "Password must not appear in multi-host URL: {masked}"
+        );
+        assert!(masked.contains("****"), "Must contain ****: {masked}");
+    }
+
+    /// N4: URL without a password – string must be unchanged.
+    #[test]
+    fn n04_no_password_unchanged() {
+        let url = "postgresql://user@localhost/db";
+        let masked = mask_db_url_password(url);
+        assert_eq!(
+            url, masked,
+            "URL without password must be returned unchanged"
+        );
+    }
+
+    /// N5: Completely invalid URL – must not panic, return unchanged string.
+    #[test]
+    fn n05_invalid_url_no_panic() {
+        let url = "not-a-url-at-all";
+        let masked = mask_db_url_password(url);
+        assert_eq!(
+            url, masked,
+            "Invalid URL must be returned unchanged without panic"
+        );
+    }
 }

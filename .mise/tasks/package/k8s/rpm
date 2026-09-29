@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Build RPM (.rpm) package for the Cosmian KMS Kubernetes Plugin"
+set -euo pipefail
+REPO_ROOT="${MISE_CONFIG_ROOT}"
+exec bash "${REPO_ROOT}/.mise/scripts/package/package_k8s_plugin.sh" --format rpm

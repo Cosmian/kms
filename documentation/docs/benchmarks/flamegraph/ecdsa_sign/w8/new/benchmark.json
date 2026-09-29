@@ -1,0 +1,1 @@
+{"group_id":"kms_bench","function_id":"ecdsa_sign","value_str":"w8","throughput":{"Elements":16},"full_id":"kms_bench/ecdsa_sign/w8","directory_name":"kms_bench/ecdsa_sign/w8","title":"kms_bench/ecdsa_sign/w8"}

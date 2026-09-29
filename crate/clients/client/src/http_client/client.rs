@@ -1,0 +1,706 @@
+use std::time::Duration;
+
+use bytes::Bytes;
+use http::header::{HeaderMap, HeaderName, HeaderValue};
+use http_body_util::{BodyExt, Full};
+use hyper::body::Incoming;
+use hyper_openssl::client::legacy::HttpsConnector;
+use hyper_util::{
+    client::legacy::Client,
+    rt::{TokioExecutor, TokioTimer},
+};
+use serde::{Deserialize, Deserializer, Serialize};
+use tracing::{info, warn};
+
+use super::{
+    AuthVerifierLoginConfig, Oauth2LoginConfig, ProxyParams,
+    error::{HttpClientError, result::HttpClientResult},
+    proxy::SmartConnector,
+    tls::build_ssl_connector,
+};
+
+/// Configuration for the HTTP client
+///
+/// # Examples
+///
+/// ## Basic HTTP client
+/// ```rust
+/// use cosmian_kms_client::http_client::HttpClientConfig;
+///
+/// let config = HttpClientConfig::default();
+/// ```
+///
+/// ## HTTP client with custom cipher suites
+/// ```rust
+/// use cosmian_kms_client::http_client::HttpClientConfig;
+///
+/// let mut config = HttpClientConfig::default();
+/// config.cipher_suites = Some("TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256".to_string());
+/// ```
+///
+/// ## Supported cipher suites
+/// - TLS 1.3: `TLS_AES_256_GCM_SHA384`, `TLS_AES_128_GCM_SHA256`,
+///   `TLS_CHACHA20_POLY1305_SHA256`
+/// - TLS 1.2 ECDHE-ECDSA: `TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384`,
+///   `TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256`,
+///   `TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256`
+/// - TLS 1.2 ECDHE-RSA: `TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384`,
+///   `TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256`,
+///   `TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256`
+#[derive(Serialize, Eq, PartialEq, Debug, Clone)]
+pub struct HttpClientConfig {
+    // accept_invalid_certs is useful if the cli needs to connect to an HTTPS server
+    // running an invalid or insecure TLS certificate
+    #[serde(default)]
+    #[serde(skip_serializing_if = "not")]
+    pub accept_invalid_certs: bool,
+    pub server_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verified_cert: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access_token: Option<String>,
+    /// Vault-compatible token obtained via `ckms login approle`.
+    ///
+    /// When set, it is forwarded as an `X-Vault-Token` header on every request
+    /// so the KMS SPIRE-token middleware can authenticate the caller.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tls_client_pkcs12_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tls_client_pkcs12_password: Option<String>,
+    /// Optional path to a client certificate in PEM format.
+    /// If provided along with `tls_client_pem_key_path`, it will be used for
+    /// client authentication instead of PKCS#12.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tls_client_pem_cert_path: Option<String>,
+    /// Optional path to a client private key in PEM format.
+    /// Used together with `tls_client_pem_cert_path` for client authentication.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tls_client_pem_key_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub database_secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oauth2_conf: Option<Oauth2LoginConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cosmian_conf: Option<AuthVerifierLoginConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proxy_params: Option<ProxyParams>,
+    /// Colon-separated list of cipher suites to use for TLS connections.
+    /// Note: Custom cipher suites are not supported with native-tls.
+    /// Server-side cipher suite configuration is available through server
+    /// configuration.
+    ///
+    /// Example: "`TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256`"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cipher_suites: Option<String>,
+    /// Custom HTTP headers to add to every request.
+    /// Each entry must be in `"Header-Name: value"` format (same as curl's `-H`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub custom_headers: Option<Vec<String>>,
+}
+
+impl Default for HttpClientConfig {
+    fn default() -> Self {
+        Self {
+            accept_invalid_certs: false,
+            server_url: "http://127.0.0.1:9998".to_owned(),
+            verified_cert: None,
+            access_token: None,
+            vault_token: None,
+            database_secret: None,
+            tls_client_pkcs12_path: None,
+            tls_client_pkcs12_password: None,
+            tls_client_pem_cert_path: None,
+            tls_client_pem_key_path: None,
+            oauth2_conf: None,
+            cosmian_conf: None,
+            proxy_params: None,
+            cipher_suites: None,
+            custom_headers: None,
+        }
+    }
+}
+
+/// used for serialization
+#[allow(clippy::trivially_copy_pass_by_ref)]
+const fn not(b: &bool) -> bool {
+    !*b
+}
+
+/// Intermediate struct used to deserialise `HttpClientConfig` from TOML/JSON.
+///
+/// Keeping both the canonical `tls_client_*` names and the legacy `ssl_client_*`
+/// names as distinct fields lets us detect which key was actually present in the
+/// config file and emit a deprecation warning before merging the values.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HttpClientConfigDeserHelper {
+    #[serde(default)]
+    accept_invalid_certs: bool,
+    server_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verified_cert: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    access_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vault_token: Option<String>,
+    // Canonical (new) names
+    tls_client_pkcs12_path: Option<String>,
+    tls_client_pkcs12_password: Option<String>,
+    tls_client_pem_cert_path: Option<String>,
+    tls_client_pem_key_path: Option<String>,
+    // Legacy (deprecated) names — accepted but trigger a warning
+    ssl_client_pkcs12_path: Option<String>,
+    ssl_client_pkcs12_password: Option<String>,
+    ssl_client_pem_cert_path: Option<String>,
+    ssl_client_pem_key_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    database_secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    oauth2_conf: Option<Oauth2LoginConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cosmian_conf: Option<AuthVerifierLoginConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proxy_params: Option<ProxyParams>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cipher_suites: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    custom_headers: Option<Vec<String>>,
+}
+
+impl<'de> Deserialize<'de> for HttpClientConfig {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = HttpClientConfigDeserHelper::deserialize(deserializer)?;
+
+        // Emit deprecation warnings for legacy ssl_ fields and merge into tls_ fields.
+        macro_rules! merge_deprecated {
+            ($new:expr, $old:expr, $old_name:literal, $new_name:literal) => {{
+                if $old.is_some() {
+                    warn!(
+                        "ckms config: `{}` is deprecated — rename it to `{}` in your \
+                         ckms.toml to silence this warning.",
+                        $old_name, $new_name
+                    );
+                }
+                // New name takes precedence if both are set.
+                $new.or($old)
+            }};
+        }
+
+        Ok(Self {
+            accept_invalid_certs: raw.accept_invalid_certs,
+            server_url: raw.server_url,
+            verified_cert: raw.verified_cert,
+            access_token: raw.access_token,
+            vault_token: raw.vault_token,
+            tls_client_pkcs12_path: merge_deprecated!(
+                raw.tls_client_pkcs12_path,
+                raw.ssl_client_pkcs12_path,
+                "ssl_client_pkcs12_path",
+                "tls_client_pkcs12_path"
+            ),
+            tls_client_pkcs12_password: merge_deprecated!(
+                raw.tls_client_pkcs12_password,
+                raw.ssl_client_pkcs12_password,
+                "ssl_client_pkcs12_password",
+                "tls_client_pkcs12_password"
+            ),
+            tls_client_pem_cert_path: merge_deprecated!(
+                raw.tls_client_pem_cert_path,
+                raw.ssl_client_pem_cert_path,
+                "ssl_client_pem_cert_path",
+                "tls_client_pem_cert_path"
+            ),
+            tls_client_pem_key_path: merge_deprecated!(
+                raw.tls_client_pem_key_path,
+                raw.ssl_client_pem_key_path,
+                "ssl_client_pem_key_path",
+                "tls_client_pem_key_path"
+            ),
+            database_secret: raw.database_secret,
+            oauth2_conf: raw.oauth2_conf,
+            cosmian_conf: raw.cosmian_conf,
+            proxy_params: raw.proxy_params,
+            cipher_suites: raw.cipher_suites,
+            custom_headers: raw.custom_headers,
+        })
+    }
+}
+
+/// An HTTP response from the server.
+pub struct HttpResponse {
+    /// HTTP status code.
+    pub status: http::StatusCode,
+    /// Response headers.
+    headers: HeaderMap,
+    /// Response body as raw bytes.
+    body: Bytes,
+}
+
+impl HttpResponse {
+    /// Return the response headers.
+    #[must_use]
+    pub const fn headers(&self) -> &HeaderMap {
+        &self.headers
+    }
+
+    /// Deserialize the response body as JSON.
+    ///
+    /// # Errors
+    /// Returns an error if the body is not valid JSON for type `T`.
+    pub fn json<T: serde::de::DeserializeOwned>(&self) -> HttpClientResult<T> {
+        serde_json::from_slice(&self.body).map_err(|e| {
+            HttpClientError::Default(format!("Failed to deserialize response body as JSON: {e}"))
+        })
+    }
+
+    /// Return the response body as a UTF-8 string.
+    ///
+    /// # Errors
+    /// Returns an error if the body is not valid UTF-8.
+    pub fn text(&self) -> HttpClientResult<String> {
+        String::from_utf8(self.body.to_vec())
+            .map_err(|e| HttpClientError::Default(format!("Response body is not UTF-8: {e}")))
+    }
+
+    /// Return the raw response body bytes.
+    #[must_use]
+    pub const fn bytes(&self) -> &Bytes {
+        &self.body
+    }
+}
+
+/// The inner hyper client type used by [`HttpClient`].
+type InnerClient = Client<HttpsConnector<SmartConnector>, Full<Bytes>>;
+
+/// A struct implementing some of the 50+ operations a KMIP client should
+/// implement: <https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip>
+#[derive(Clone)]
+pub struct HttpClient {
+    pub server_url: String,
+    client: InnerClient,
+    default_headers: HeaderMap,
+}
+
+impl std::fmt::Debug for HttpClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpClient")
+            .field("server_url", &self.server_url)
+            .finish_non_exhaustive()
+    }
+}
+
+impl HttpClient {
+    /// Pool idle timeout — must stay below the server keep-alive window (120 s, see
+    /// `start_kms_server.rs`) so idle connections are evicted before the server closes them.
+    const POOL_IDLE_TIMEOUT_SECS: u64 = 90;
+
+    /// Instantiate a new HTTP(S) Client backed by OpenSSL for TLS.
+    ///
+    /// Supports PQC algorithms (ML-DSA, ML-KEM, SLH-DSA) via OpenSSL 3.6.2.
+    ///
+    /// # Errors
+    /// Will return an error if the client cannot be instantiated
+    pub fn instantiate(http_conf: &HttpClientConfig) -> Result<Self, HttpClientError> {
+        // Validate client authentication configuration: either PKCS#12 (with password)
+        // or PEM (cert + key), but not both or partially provided
+        let pem_cert_set = http_conf.tls_client_pem_cert_path.is_some();
+        let pem_key_set = http_conf.tls_client_pem_key_path.is_some();
+        let pkcs12_set = http_conf.tls_client_pkcs12_path.is_some();
+        let pkcs12_pwd_set = http_conf.tls_client_pkcs12_password.is_some();
+
+        if (pem_cert_set || pem_key_set) && (pkcs12_set || pkcs12_pwd_set) {
+            return Err(HttpClientError::Default(
+                "Invalid configuration: cannot use both PKCS#12 and PEM client authentication"
+                    .to_owned(),
+            ));
+        }
+
+        if pem_cert_set ^ pem_key_set {
+            return Err(HttpClientError::Default(
+                "Invalid configuration: both PEM certificate and key paths must be provided"
+                    .to_owned(),
+            ));
+        }
+
+        if pkcs12_set && !pkcs12_pwd_set {
+            return Err(HttpClientError::Default(
+                "Invalid configuration: PKCS#12 password must be provided with PKCS#12 path"
+                    .to_owned(),
+            ));
+        }
+
+        // Ensure the server URL does not end with a slash
+        let server_url = http_conf
+            .server_url
+            .strip_suffix('/')
+            .map_or_else(|| http_conf.server_url.clone(), str::to_owned);
+        info!("Using server URL: {}", server_url);
+
+        // Build default headers
+        let mut headers = HeaderMap::new();
+        if let Some(bearer_token) = http_conf.access_token.clone() {
+            headers.insert(
+                "Authorization",
+                HeaderValue::from_str(format!("Bearer {bearer_token}").as_str())?,
+            );
+        }
+        if let Some(vault_token) = http_conf.vault_token.clone() {
+            headers.insert(
+                "X-Vault-Token",
+                HeaderValue::from_str(vault_token.as_str())?,
+            );
+        }
+        if let Some(database_secret) = http_conf.database_secret.clone() {
+            headers.insert("DatabaseSecret", HeaderValue::from_str(&database_secret)?);
+        }
+
+        // Apply any user-supplied custom headers
+        if let Some(ref custom_headers) = http_conf.custom_headers {
+            for header_str in custom_headers {
+                let (name, value) = header_str.split_once(':').ok_or_else(|| {
+                    HttpClientError::Default(format!(
+                        "Invalid custom header '{header_str}': expected 'Name: Value' format"
+                    ))
+                })?;
+                let header_name = HeaderName::from_bytes(name.trim().as_bytes()).map_err(|e| {
+                    HttpClientError::Default(format!("Invalid header name '{name}': {e}"))
+                })?;
+                let header_value = HeaderValue::from_str(value.trim()).map_err(|e| {
+                    HttpClientError::Default(format!("Invalid header value for '{name}': {e}"))
+                })?;
+                headers.insert(header_name, header_value);
+            }
+        }
+
+        // Build OpenSSL connector
+        let ssl_builder = build_ssl_connector(http_conf)?;
+
+        // Build the smart connector (handles proxy or direct connections)
+        let connector =
+            http_conf
+                .proxy_params
+                .as_ref()
+                .map_or_else(SmartConnector::direct, |proxy_params| {
+                    info!("Using proxy: {:?}", proxy_params);
+                    SmartConnector::with_proxy(proxy_params.clone())
+                });
+
+        // Wrap with HTTPS (OpenSSL TLS)
+        let https_connector =
+            HttpsConnector::with_connector(connector, ssl_builder).map_err(|e| {
+                HttpClientError::Default(format!("Failed to build HTTPS connector: {e}"))
+            })?;
+
+        // Evict idle connections before the server's keep-alive window closes them.
+        let client = Client::builder(TokioExecutor::new())
+            .pool_idle_timeout(Duration::from_secs(Self::POOL_IDLE_TIMEOUT_SECS))
+            .pool_timer(TokioTimer::new())
+            .build(https_connector);
+
+        Ok(Self {
+            server_url,
+            client,
+            default_headers: headers,
+        })
+    }
+
+    /// Apply the client's default headers to a request builder.
+    fn apply_default_headers(&self, mut builder: http::request::Builder) -> http::request::Builder {
+        for (name, value) in &self.default_headers {
+            builder = builder.header(name, value);
+        }
+        builder
+    }
+
+    /// Send an HTTP GET request.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn get(&self, url: &str) -> HttpClientResult<HttpResponse> {
+        let mut builder = http::Request::builder().method("GET").uri(url);
+        builder = self.apply_default_headers(builder);
+        let request = builder
+            .body(Full::new(Bytes::new()))
+            .map_err(|e| HttpClientError::Default(format!("Failed to build GET request: {e}")))?;
+
+        self.send(request).await
+    }
+
+    /// Send an HTTP GET request with query parameters serialized from `query`.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn get_with_query<Q: Serialize>(
+        &self,
+        url: &str,
+        query: &Q,
+    ) -> HttpClientResult<HttpResponse> {
+        let query_string = serde_urlencoded::to_string(query).map_err(|e| {
+            HttpClientError::Default(format!("Failed to serialize query params: {e}"))
+        })?;
+        let full_url = if query_string.is_empty() {
+            url.to_owned()
+        } else {
+            format!("{url}?{query_string}")
+        };
+        self.get(&full_url).await
+    }
+
+    /// Send an HTTP POST request with a JSON body.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn post_json<B: Serialize>(
+        &self,
+        url: &str,
+        body: &B,
+    ) -> HttpClientResult<HttpResponse> {
+        let json_bytes = serde_json::to_vec(body).map_err(|e| {
+            HttpClientError::Default(format!("Failed to serialize request body: {e}"))
+        })?;
+
+        let mut builder = http::Request::builder()
+            .method("POST")
+            .uri(url)
+            .header("Content-Type", "application/json");
+        builder = self.apply_default_headers(builder);
+        let request = builder
+            .body(Full::new(Bytes::from(json_bytes)))
+            .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
+
+        self.send(request).await
+    }
+
+    /// Send an HTTP POST request with raw bytes and a specified content type.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn post_bytes(
+        &self,
+        url: &str,
+        body: Vec<u8>,
+        content_type: &str,
+    ) -> HttpClientResult<HttpResponse> {
+        let mut builder = http::Request::builder()
+            .method("POST")
+            .uri(url)
+            .header("Content-Type", content_type);
+        builder = self.apply_default_headers(builder);
+        let request = builder
+            .body(Full::new(Bytes::from(body)))
+            .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
+
+        self.send(request).await
+    }
+
+    /// Send an HTTP POST request without a body.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn post_empty(&self, url: &str) -> HttpClientResult<HttpResponse> {
+        let mut builder = http::Request::builder().method("POST").uri(url);
+        builder = self.apply_default_headers(builder);
+        let request = builder
+            .body(Full::new(Bytes::new()))
+            .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
+
+        self.send(request).await
+    }
+
+    /// Send an HTTP DELETE request with a JSON body.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn delete_json<B: Serialize>(
+        &self,
+        url: &str,
+        body: &B,
+    ) -> HttpClientResult<HttpResponse> {
+        let json_bytes = serde_json::to_vec(body).map_err(|e| {
+            HttpClientError::Default(format!("Failed to serialize request body: {e}"))
+        })?;
+
+        let mut builder = http::Request::builder()
+            .method("DELETE")
+            .uri(url)
+            .header("Content-Type", "application/json");
+        builder = self.apply_default_headers(builder);
+        let request = builder
+            .body(Full::new(Bytes::from(json_bytes)))
+            .map_err(|e| {
+                HttpClientError::Default(format!("Failed to build DELETE request: {e}"))
+            })?;
+
+        self.send(request).await
+    }
+
+    /// Send an HTTP POST with form-urlencoded body (for `OAuth2` token exchange).
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn post_form(
+        &self,
+        url: &str,
+        form_body: &str,
+        extra_headers: &HeaderMap,
+    ) -> HttpClientResult<HttpResponse> {
+        let mut builder = http::Request::builder()
+            .method("POST")
+            .uri(url)
+            .header("Content-Type", "application/x-www-form-urlencoded");
+        builder = self.apply_default_headers(builder);
+        for (name, value) in extra_headers {
+            builder = builder.header(name, value);
+        }
+        let request = builder
+            .body(Full::new(Bytes::from(form_body.to_owned())))
+            .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
+
+        self.send(request).await
+    }
+
+    /// Send a prepared HTTP request and collect the response.
+    ///
+    /// Retries a connection-level error (`is_connect()`) a few times with a short backoff.
+    /// This covers both a stale idle connection handed back by hyper's connection pool
+    /// (already closed by the server after a keep-alive timeout) and a server that briefly
+    /// refuses new connections — the latter happens intermittently in CI against the
+    /// in-process test server.  A `Connect` error means the TCP connection was never
+    /// established, so the request body is untouched and retrying is always safe.
+    async fn send(&self, request: http::Request<Full<Bytes>>) -> HttpClientResult<HttpResponse> {
+        let (req, mut retry_req) = Self::split_for_retry(request)?;
+        let response = match self.client.request(req).await {
+            Ok(r) => r,
+            Err(e) if e.is_connect() => {
+                tracing::debug!("Connection error, retrying with backoff (is_connect): {e}");
+                let mut last_err = e;
+                for attempt in 1..=3 {
+                    let (retry, next) = Self::split_for_retry(*retry_req)?;
+                    tokio::time::sleep(Duration::from_millis(100 * attempt)).await;
+                    match self.client.request(retry).await {
+                        Ok(r) => return Self::collect_response(r).await,
+                        Err(e) => {
+                            last_err = e;
+                            retry_req = next;
+                        }
+                    }
+                }
+                return Err(HttpClientError::Default(format!(
+                    "HTTP request failed: {last_err}"
+                )));
+            }
+            Err(e) => {
+                return Err(HttpClientError::Default(format!(
+                    "HTTP request failed: {e}"
+                )));
+            }
+        };
+
+        Self::collect_response(response).await
+    }
+
+    /// Clone `request` for a potential retry and return both the original and
+    /// the boxed copy.
+    ///
+    /// [`http::request::Parts`] does not implement `Clone` (extensions are
+    /// type-erased), so method, URI, version, and headers are copied
+    /// individually.  The copy is `Box`ed so the async state machine in
+    /// [`send`](Self::send) only stores a pointer (8 bytes) across the first
+    /// `.await`, avoiding `clippy::large_futures` in callers.
+    #[expect(
+        clippy::type_complexity,
+        reason = "Box is load-bearing for state machine compactness; a type alias would obscure this"
+    )]
+    fn split_for_retry(
+        request: http::Request<Full<Bytes>>,
+    ) -> HttpClientResult<(http::Request<Full<Bytes>>, Box<http::Request<Full<Bytes>>>)> {
+        let mut builder = http::Request::builder()
+            .method(request.method().clone())
+            .uri(request.uri().clone())
+            .version(request.version());
+        for (name, value) in request.headers() {
+            builder = builder.header(name, value);
+        }
+        let retry = builder
+            .body(request.body().clone())
+            .map_err(|e| HttpClientError::Default(format!("Failed to build request: {e}")))?;
+        Ok((request, Box::new(retry)))
+    }
+
+    /// Consume a hyper response and convert it to [`HttpResponse`].
+    async fn collect_response(
+        response: http::Response<Incoming>,
+    ) -> HttpClientResult<HttpResponse> {
+        let status = response.status();
+        let headers = response.headers().clone();
+        let body = response
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| HttpClientError::Default(format!("Failed to read response body: {e}")))?
+            .to_bytes();
+
+        Ok(HttpResponse {
+            status,
+            headers,
+            body,
+        })
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod default_header_tests {
+    use super::{HttpClient, HttpClientConfig};
+
+    /// A `vault_token` must be injected as a raw `X-Vault-Token` header so the
+    /// KMS SPIRE-token middleware can authenticate the caller.
+    #[test]
+    fn test_vault_token_injects_x_vault_token_header() {
+        let config = HttpClientConfig {
+            vault_token: Some("hvs.deadbeef".to_owned()),
+            ..Default::default()
+        };
+        let client = HttpClient::instantiate(&config).expect("client should instantiate");
+        let value = client
+            .default_headers
+            .get("X-Vault-Token")
+            .expect("X-Vault-Token header must be present when vault_token is set");
+        assert_eq!(value.to_str().unwrap(), "hvs.deadbeef");
+        // A vault-token login must not set an Authorization header.
+        assert!(
+            client.default_headers.get("Authorization").is_none(),
+            "no Authorization header expected when only vault_token is set"
+        );
+    }
+
+    /// An `access_token` must be injected as an `Authorization: Bearer` header.
+    #[test]
+    fn test_access_token_injects_bearer_header() {
+        let config = HttpClientConfig {
+            access_token: Some("jwt-token".to_owned()),
+            ..Default::default()
+        };
+        let client = HttpClient::instantiate(&config).expect("client should instantiate");
+        let value = client
+            .default_headers
+            .get("Authorization")
+            .expect("Authorization header must be present when access_token is set");
+        assert_eq!(value.to_str().unwrap(), "Bearer jwt-token");
+        assert!(
+            client.default_headers.get("X-Vault-Token").is_none(),
+            "no X-Vault-Token header expected when only access_token is set"
+        );
+    }
+
+    /// With neither credential set, neither auth header must be present.
+    #[test]
+    fn test_no_tokens_no_auth_headers() {
+        let client =
+            HttpClient::instantiate(&HttpClientConfig::default()).expect("client instantiates");
+        assert!(client.default_headers.get("Authorization").is_none());
+        assert!(client.default_headers.get("X-Vault-Token").is_none());
+    }
+}

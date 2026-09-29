@@ -1,8 +1,9 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
@@ -13,23 +14,24 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};
+use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, UserId};
 use uuid::Uuid;
 
-use crate::{db_error, error::DbResult};
+use crate::{
+    db_error,
+    error::{DbResult, DbResultHelper},
+};
 
-pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
-    db: &DB,
-    db_params: Option<Arc<dyn SessionParams>>,
-) -> DbResult<()> {
+pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbResult<()> {
     cosmian_logger::log_init(None);
 
     let mut rng = CsRng::from_entropy();
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
     let symmetric_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         &symmetric_key_bytes,
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -41,23 +43,25 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
 
     db.create(
         Some(uid.clone()),
-        owner,
+        &owner,
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::new(),
-        db_params.clone(),
     )
-    .await?;
+    .await
+    .context("create")?;
 
     assert!(
-        db.is_object_owned_by(&uid, owner, db_params.clone())
-            .await?
+        db.is_object_owned_by(&uid, &owner)
+            .await
+            .context("is_object_owned_by")?
     );
 
     // Retrieve object with valid owner with `Get` operation type - OK
     let obj = db
-        .retrieve(&uid, db_params.clone())
-        .await?
+        .retrieve(&uid)
+        .await
+        .context("retrieve")?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(State::PreActive, obj.state());
     assert_eq!(&symmetric_key, obj.object());
@@ -73,11 +77,12 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
-            db_params.clone(),
+            VENDOR_ID_COSMIAN,
         )
-        .await?;
+        .await
+        .context("find (cryptographic_algorithm)")?;
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].0, uid);
 
@@ -92,11 +97,12 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
-            db_params.clone(),
+            VENDOR_ID_COSMIAN,
         )
-        .await?;
+        .await
+        .context("find (cryptographic_length)")?;
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].0, uid);
 
@@ -112,11 +118,12 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
-            db_params.clone(),
+            VENDOR_ID_COSMIAN,
         )
-        .await?;
+        .await
+        .context("find (cryptographic_algorithm + cryptographic_length)")?;
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].0, uid);
 
@@ -131,11 +138,12 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
-            db_params.clone(),
+            VENDOR_ID_COSMIAN,
         )
-        .await?;
+        .await
+        .context("find (key_format_type)")?;
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].0, uid);
 
@@ -153,11 +161,12 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
-            db_params.clone(),
+            VENDOR_ID_COSMIAN,
         )
-        .await?;
+        .await
+        .context("find (all attributes)")?;
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].0, uid);
 
@@ -172,11 +181,12 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
-            db_params.clone(),
+            VENDOR_ID_COSMIAN,
         )
-        .await?;
+        .await
+        .context("find (bad cryptographic_algorithm)")?;
     assert!(found.is_empty());
 
     // Find bad key format type
@@ -190,11 +200,12 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
         .find(
             researched_attributes.as_ref(),
             Some(State::PreActive),
-            owner,
+            &owner,
             true,
-            db_params,
+            VENDOR_ID_COSMIAN,
         )
-        .await?;
+        .await
+        .context("find (bad key_format_type)")?;
     assert!(found.is_empty());
 
     Ok(())

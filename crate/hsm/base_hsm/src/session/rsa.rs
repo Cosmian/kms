@@ -3,7 +3,7 @@ use std::ptr;
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_PTR,
     CK_OBJECT_HANDLE, CK_RSA_PKCS_OAEP_PARAMS, CK_TRUE, CK_ULONG, CKA_CLASS, CKA_DECRYPT,
-    CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS_BITS, CKA_PRIVATE,
+    CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS_BITS, CKA_PRIVATE,
     CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP,
     CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKK_AES, CKK_RSA, CKM_RSA_PKCS_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP,
     CKM_SHA_1, CKM_SHA256, CKO_SECRET_KEY, CKZ_DATA_SPECIFIED,
@@ -95,6 +95,11 @@ impl Session {
                 ulValueLen: CK_ULONG::try_from(pk_id.len())?,
             },
             CK_ATTRIBUTE {
+                type_: CKA_ID,
+                pValue: pk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: CK_ULONG::try_from(pk_id.len())?,
+            },
+            CK_ATTRIBUTE {
                 type_: CKA_WRAP,
                 pValue: std::ptr::from_ref(&CK_TRUE)
                     .cast::<std::ffi::c_void>()
@@ -141,6 +146,11 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_LABEL,
+                pValue: sk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: CK_ULONG::try_from(sk_id.len())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_ID,
                 pValue: sk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
                 ulValueLen: CK_ULONG::try_from(sk_id.len())?,
             },

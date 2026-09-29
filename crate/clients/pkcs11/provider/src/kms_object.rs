@@ -1,0 +1,1009 @@
+use std::{fmt, path::PathBuf, sync::OnceLock, vec};
+
+use ckms::{
+    config::ClientConfig,
+    reexport::cosmian_kms_cli_actions::reexport::{
+        cosmian_kmip::{
+            self,
+            kmip_0::kmip_types::{
+                BlockCipherMode, CryptographicUsageMask, HashingAlgorithm, MaskGenerator,
+                PaddingMethod, RevocationReason, RevocationReasonCode, SecretDataType,
+            },
+            kmip_2_1::{
+                extra::{VENDOR_ID_COSMIAN, tagging::SYSTEM_TAG_SYMMETRIC_KEY},
+                kmip_attributes::Attributes,
+                kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+                kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
+                kmip_operations::{
+                    Activate, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, Query,
+                    Revoke, Sign,
+                },
+                kmip_types::{
+                    CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
+                    KeyFormatType, QueryFunction, RecommendedCurve, UniqueIdentifier,
+                },
+            },
+        },
+        cosmian_kms_client::{
+            ExportObjectParams, KmsClient, KmsClientConfig, batch_export_objects, export_object,
+        },
+        cosmian_kms_crypto::reexport::cosmian_crypto_core::{
+            CsRng,
+            reexport::rand_core::{RngCore, SeedableRng},
+        },
+    },
+};
+use cosmian_logger::{debug, error, trace};
+use cosmian_pkcs11_module::traits::{
+    DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
+    SignatureAlgorithm,
+};
+use zeroize::Zeroizing;
+
+use crate::error::{Pkcs11Error, result::Pkcs11Result};
+
+/// Shared Tokio runtime — created once, reused for every blocking KMS call.
+/// Avoids the overhead (and potential `io::Error`) of spinning up a runtime per call.
+///
+/// Also entered (via `RUNTIME.enter()`) around synchronous `KmsClient` construction in
+/// `C_GetFunctionList`: that entrypoint is invoked directly by PKCS#11 consumers (e.g. SAP
+/// ASE) with no Tokio runtime active, and the underlying `hyper` client requires one.
+pub(crate) static RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> =
+    std::sync::LazyLock::new(|| {
+        tokio::runtime::Runtime::new().unwrap_or_else(|e| {
+            // Runtime creation can only fail due to OS resource exhaustion; no
+            // recovery is possible, so terminate the process immediately.
+            eprintln!("FATAL: failed to create Tokio runtime: {e}");
+            std::process::abort()
+        })
+    });
+
+/// Query the KMS server for its vendor identification string.
+///
+/// Falls back to `VENDOR_ID_COSMIAN` if the server doesn't report one.
+pub(crate) fn query_vendor_id(client: &KmsClient) -> String {
+    RUNTIME
+        .block_on(async {
+            let request = Query {
+                query_function: Some(vec![QueryFunction::QueryServerInformation]),
+            };
+            client
+                .query(request)
+                .await
+                .ok()
+                .and_then(|resp| resp.vendor_identification)
+        })
+        .unwrap_or_else(|| VENDOR_ID_COSMIAN.to_owned())
+}
+
+/// Write-once, read-many holder for sensitive key material.
+///
+/// Replaces the `Arc<RwLock<Zeroizing<Vec<u8>>>>` + empty-vec sentinel pattern
+/// with a lock-free `OnceLock`, removing the poisonable mutex and clarifying
+/// the "set at most once" semantics.
+pub(crate) struct LazyKeyMaterial(OnceLock<Zeroizing<Vec<u8>>>);
+
+impl LazyKeyMaterial {
+    /// Unloaded — material will be fetched on first access.
+    pub(crate) const fn new() -> Self {
+        Self(OnceLock::new())
+    }
+
+    /// Pre-populated — material is already available.
+    pub(crate) fn preloaded(bytes: Zeroizing<Vec<u8>>) -> Self {
+        let cell = OnceLock::new();
+        // cell is freshly created, so set() always succeeds.
+        drop(cell.set(bytes));
+        Self(cell)
+    }
+
+    /// Return the key material, calling `fetch` exactly once if not yet loaded.
+    /// Thread-safe: concurrent calls are serialised by `OnceLock`; the loser's
+    /// fetched copy is dropped (and therefore zeroized) automatically.
+    pub(crate) fn get_or_fetch<E, F>(&self, fetch: F) -> Result<Zeroizing<Vec<u8>>, E>
+    where
+        F: FnOnce() -> Result<Zeroizing<Vec<u8>>, E>,
+    {
+        if let Some(bytes) = self.0.get() {
+            return Ok(bytes.clone());
+        }
+        let fetched = fetch()?;
+        // Clone before calling set() so we always have a value to return,
+        // regardless of whether this thread wins or loses a concurrent race.
+        let to_return = fetched.clone();
+        // Best-effort store: if another thread already filled the cell,
+        // set() returns Err(fetched) which is explicitly dropped (and zeroed).
+        drop(self.0.set(fetched));
+        Ok(to_return)
+    }
+}
+
+impl fmt::Debug for LazyKeyMaterial {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("LazyKeyMaterial")
+            .field(&if self.0.get().is_some() {
+                "loaded"
+            } else {
+                "unloaded"
+            })
+            .finish()
+    }
+}
+
+/// A wrapper around a KMS KMIP object.
+#[allow(dead_code)]
+pub(crate) struct KmsObject {
+    pub remote_id: String,
+    pub object: Object,
+    pub attributes: Attributes,
+    pub other_tags: Vec<String>,
+}
+
+/// Load the `KmsClientConfig` from `ckms.toml` without creating a `KmsClient`.
+/// Used by `C_GetFunctionList` when OIDC-pin mode is active (mode 2).
+pub(crate) fn get_kms_config(conf_path: Option<PathBuf>) -> Pkcs11Result<KmsClientConfig> {
+    Ok(ClientConfig::load(conf_path)?.kms_config)
+}
+
+pub(crate) fn locate_kms_objects(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    tags: &[String],
+) -> Pkcs11Result<Vec<String>> {
+    RUNTIME.block_on(locate_kms_objects_async(kms_rest_client, vendor_id, tags))
+}
+
+pub(crate) async fn locate_kms_objects_async(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    tags: &[String],
+) -> Pkcs11Result<Vec<String>> {
+    locate_objects(kms_rest_client, vendor_id, tags).await
+}
+
+/// Locate and export only `SecretData` objects with the given tags.
+/// This is stricter than `get_kms_objects` because it adds an `ObjectType=SecretData`
+/// filter to the Locate request, preventing false matches with `SymmetricKey` objects that
+/// happen to carry the same tag (e.g. old TDE master keys tagged with `_sd`).
+pub(crate) fn get_kms_secret_data_objects(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    tags: &[String],
+) -> Pkcs11Result<Vec<KmsObject>> {
+    RUNTIME.block_on(get_kms_secret_data_objects_async(
+        kms_rest_client,
+        vendor_id,
+        tags,
+    ))
+}
+
+/// Locate and export only `Certificate` objects with the given tags.
+/// This adds an `ObjectType=Certificate` filter to the Locate request, preventing
+/// false matches with non-certificate objects (e.g. symmetric disk-encryption keys
+/// that share the same disk-encryption tag) which cannot be exported as X509 and
+/// would otherwise cause the entire batch export to fail with `CKR_GENERAL_ERROR`.
+pub(crate) fn get_kms_certificate_objects(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    tags: &[String],
+) -> Pkcs11Result<Vec<KmsObject>> {
+    RUNTIME.block_on(get_kms_certificate_objects_async(
+        kms_rest_client,
+        vendor_id,
+        tags,
+    ))
+}
+
+async fn get_kms_certificate_objects_async(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    tags: &[String],
+) -> Pkcs11Result<Vec<KmsObject>> {
+    let key_ids = locate_objects_of_type(
+        kms_rest_client,
+        vendor_id,
+        tags,
+        Some(ObjectType::Certificate),
+    )
+    .await?;
+    if key_ids.is_empty() {
+        trace!(
+            "get_kms_certificate_objects_async: no Certificate objects found for tags: {:?}",
+            tags
+        );
+        return Ok(vec![]);
+    }
+    let export_object_params = ExportObjectParams {
+        unwrap: true,
+        key_format_type: Some(KeyFormatType::X509),
+        ..Default::default()
+    };
+    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    trace!(
+        "get_kms_certificate_objects_async: found {} Certificate objects",
+        responses.len()
+    );
+    let mut results = vec![];
+    for (id, object, attributes) in responses {
+        let other_tags = attributes
+            .get_tags(vendor_id)
+            .into_iter()
+            .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
+            .collect::<Vec<String>>();
+        results.push(KmsObject {
+            remote_id: id.to_string(),
+            object,
+            attributes,
+            other_tags,
+        });
+    }
+    Ok(results)
+}
+
+async fn get_kms_secret_data_objects_async(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    tags: &[String],
+) -> Pkcs11Result<Vec<KmsObject>> {
+    let key_ids = locate_objects_of_type(
+        kms_rest_client,
+        vendor_id,
+        tags,
+        Some(ObjectType::SecretData),
+    )
+    .await?;
+    if key_ids.is_empty() {
+        trace!(
+            "get_kms_secret_data_objects_async: no SecretData objects found for tags: {:?}",
+            tags
+        );
+        return Ok(vec![]);
+    }
+    let export_object_params = ExportObjectParams {
+        unwrap: true,
+        key_format_type: Some(KeyFormatType::Raw),
+        ..Default::default()
+    };
+    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    trace!(
+        "get_kms_secret_data_objects_async: found {} SecretData objects",
+        responses.len()
+    );
+    let mut results = vec![];
+    for (id, object, attributes) in responses {
+        let other_tags = attributes
+            .get_tags(vendor_id)
+            .into_iter()
+            .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
+            .collect::<Vec<String>>();
+        results.push(KmsObject {
+            remote_id: id.to_string(),
+            object,
+            attributes,
+            other_tags,
+        });
+    }
+    Ok(results)
+}
+
+/// Locate disk-encryption symmetric keys and return them as `KmsObject`s suitable
+/// for wrapping as PKCS#11 `CKO_DATA` objects.
+///
+/// `VeraCrypt` discovers keyfiles via `C_FindObjects` with `CKA_CLASS = CKO_DATA`.
+/// This function locates `SymmetricKey` objects tagged with `disk_encryption_tag`,
+/// exports them, and rewrites `remote_id` to the first user-visible tag (e.g. `"vol1"`)
+/// so the label shown in the `VeraCrypt` GUI is meaningful.
+pub(crate) fn get_kms_disk_encryption_data_objects(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    disk_encryption_tag: &str,
+) -> Pkcs11Result<Vec<KmsObject>> {
+    RUNTIME.block_on(get_kms_disk_encryption_data_objects_async(
+        kms_rest_client,
+        vendor_id,
+        disk_encryption_tag,
+    ))
+}
+
+async fn get_kms_disk_encryption_data_objects_async(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    disk_encryption_tag: &str,
+) -> Pkcs11Result<Vec<KmsObject>> {
+    let tags = [
+        disk_encryption_tag.to_owned(),
+        SYSTEM_TAG_SYMMETRIC_KEY.to_owned(),
+    ];
+    let key_ids = locate_objects_of_type(
+        kms_rest_client,
+        vendor_id,
+        &tags,
+        Some(ObjectType::SymmetricKey),
+    )
+    .await?;
+    if key_ids.is_empty() {
+        trace!(
+            "get_kms_disk_encryption_data_objects_async: no SymmetricKey objects found for tag: \
+             {disk_encryption_tag}",
+        );
+        return Ok(vec![]);
+    }
+    let export_object_params = ExportObjectParams {
+        unwrap: true,
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        ..Default::default()
+    };
+    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    trace!(
+        "get_kms_disk_encryption_data_objects_async: found {} SymmetricKey objects",
+        responses.len()
+    );
+    let mut results = vec![];
+    for (id, object, attributes) in responses {
+        // Extract user-visible tags (exclude system tags and the disk-encryption tag itself).
+        // Sorted so that label selection is deterministic regardless of HashSet iteration order.
+        let mut other_tags: Vec<String> = attributes
+            .get_tags(vendor_id)
+            .into_iter()
+            .filter(|t| !t.is_empty() && !t.starts_with('_') && t != disk_encryption_tag)
+            .collect();
+        other_tags.sort();
+        // Use the first user label (sorted, e.g. "vol1") as remote_id so VeraCrypt displays it
+        let label = other_tags
+            .first()
+            .cloned()
+            .unwrap_or_else(|| id.to_string());
+        results.push(KmsObject {
+            remote_id: label,
+            object,
+            attributes,
+            other_tags,
+        });
+    }
+    Ok(results)
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+pub(crate) async fn get_kms_objects_async(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    tags: &[String],
+    key_format_type: Option<KeyFormatType>,
+) -> Pkcs11Result<Vec<KmsObject>> {
+    let key_ids = locate_objects(kms_rest_client, vendor_id, tags).await?;
+    let export_object_params = ExportObjectParams {
+        unwrap: true,
+        key_format_type,
+        ..Default::default()
+    };
+    if key_ids.is_empty() {
+        trace!(
+            "get_kms_objects_async: no objects found for tags: {:?}",
+            tags
+        );
+        return Ok(vec![]);
+    }
+
+    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    trace!("Found {} objects", responses.len());
+
+    let mut results = vec![];
+    for (id, object, attributes) in responses {
+        let other_tags = attributes
+            .get_tags(vendor_id)
+            .into_iter()
+            .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
+            .collect::<Vec<String>>();
+        results.push(KmsObject {
+            remote_id: id.to_string(),
+            object,
+            attributes,
+            other_tags,
+        });
+    }
+    Ok(results)
+}
+
+pub(crate) fn get_kms_object(
+    kms_client: &KmsClient,
+    vendor_id: &str,
+    object_id_or_tags: &str,
+    key_format_type: KeyFormatType,
+) -> Pkcs11Result<KmsObject> {
+    RUNTIME.block_on(get_kms_object_async(
+        kms_client,
+        vendor_id,
+        object_id_or_tags,
+        key_format_type,
+    ))
+}
+
+pub(crate) async fn get_kms_object_async(
+    kms_client: &KmsClient,
+    vendor_id: &str,
+    object_id_or_tags: &str,
+    key_format_type: KeyFormatType,
+) -> Pkcs11Result<KmsObject> {
+    let (id, object, _) = export_object(
+        kms_client,
+        object_id_or_tags,
+        ExportObjectParams {
+            unwrap: true,
+            key_format_type: Some(key_format_type),
+            ..Default::default()
+        },
+    )
+    .await?;
+
+    // Get request does not return attributes, try to get them form the object
+    let attributes = object.attributes().cloned().unwrap_or_default();
+    let other_tags = attributes
+        .get_tags(vendor_id)
+        .into_iter()
+        .filter(|t| !t.is_empty() && !t.starts_with('_'))
+        .collect::<Vec<String>>();
+    Ok(KmsObject {
+        remote_id: id.to_string(),
+        object,
+        attributes,
+        other_tags,
+    })
+}
+
+async fn locate_objects(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    tags: &[String],
+) -> Pkcs11Result<Vec<String>> {
+    locate_objects_of_type(kms_rest_client, vendor_id, tags, None).await
+}
+
+/// Locate KMS objects by tags, optionally filtering by `ObjectType`.
+/// This avoids returning objects of wrong type when multiple object types share the same tag.
+async fn locate_objects_of_type(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    tags: &[String],
+    object_type: Option<ObjectType>,
+) -> Pkcs11Result<Vec<String>> {
+    let mut attributes = Attributes::default();
+    attributes.set_tags(vendor_id, tags)?;
+    attributes.object_type = object_type;
+
+    let locate = Locate {
+        attributes,
+        ..Default::default()
+    };
+    let response = kms_rest_client.locate(locate).await?;
+    debug!("Locate response: ids: {:?}", response.unique_identifier);
+    let uniques_identifiers = response
+        .unique_identifier
+        .unwrap_or_default()
+        .iter()
+        .map(std::string::ToString::to_string)
+        .filter(|id| !id.is_empty())
+        .collect();
+    debug!("Located objects: tags: {tags:?}, type: {object_type:?} => {uniques_identifiers:?}");
+    Ok(uniques_identifiers)
+}
+
+pub(crate) fn kms_import_symmetric_key(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    algorithm: KeyAlgorithm,
+    key_length: usize,
+    sensitive: bool,
+    label: Option<&str>,
+) -> Pkcs11Result<KmsObject> {
+    RUNTIME.block_on(kms_import_symmetric_key_async(
+        kms_rest_client,
+        vendor_id,
+        algorithm,
+        key_length,
+        sensitive,
+        label,
+    ))
+}
+
+/// Creates a new KMS key.
+/// At first, the key is locally created and then imported to the KMS. There are 2 reasons why:
+/// - 1/ a key with `sensitive` flag cannot be extracted and then cannot be exported afterwards
+/// - 2/ is that the content of the key must be kept in cache to be reused later.
+pub(crate) async fn kms_import_symmetric_key_async(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    algorithm: KeyAlgorithm,
+    key_length: usize,
+    sensitive: bool,
+    label: Option<&str>,
+) -> Pkcs11Result<KmsObject> {
+    let cryptographic_algorithm = if algorithm == KeyAlgorithm::Aes256 {
+        CryptographicAlgorithm::AES
+    } else {
+        error!("Unsupported key algorithm: {:?}", algorithm);
+        return Err(Pkcs11Error::Default(format!(
+            "unsupported key algorithm: {algorithm:?}"
+        )));
+    };
+    let tags = label.map(|l| vec![l.to_owned()]).unwrap_or_default();
+
+    let mut rng = CsRng::from_entropy();
+    let mut key = vec![0_u8; key_length];
+    rng.fill_bytes(&mut key);
+
+    let cryptographic_length = Some(i32::try_from(key_length * 8)?);
+
+    let mut attributes = Attributes {
+        cryptographic_algorithm: Some(cryptographic_algorithm),
+        cryptographic_length,
+        cryptographic_parameters: None,
+        cryptographic_usage_mask: Some(
+            CryptographicUsageMask::Encrypt
+                | CryptographicUsageMask::Decrypt
+                | CryptographicUsageMask::WrapKey
+                | CryptographicUsageMask::UnwrapKey
+                | CryptographicUsageMask::KeyAgreement,
+        ),
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        object_type: Some(ObjectType::SymmetricKey),
+        unique_identifier: label.map(|l| UniqueIdentifier::TextString(l.to_owned())),
+        sensitive: if sensitive { Some(true) } else { None },
+        ..Attributes::default()
+    };
+    attributes.set_tags(vendor_id, tags.clone())?;
+    let object = Object::SymmetricKey(SymmetricKey {
+        key_block: KeyBlock {
+            cryptographic_algorithm: Some(cryptographic_algorithm),
+            key_format_type: KeyFormatType::TransparentSymmetricKey,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::TransparentSymmetricKey {
+                    key: Zeroizing::new(key),
+                },
+                attributes: Some(attributes.clone()),
+            }),
+            cryptographic_length,
+            key_wrapping_data: None,
+        },
+    });
+    let response = kms_rest_client
+        .import(Import {
+            unique_identifier: label
+                .map(|l| UniqueIdentifier::TextString(l.to_owned()))
+                .unwrap_or_default(),
+            object_type: cosmian_kmip::kmip_2_1::kmip_objects::ObjectType::SymmetricKey,
+            replace_existing: Some(true),
+            key_wrap_type: None,
+            attributes: attributes.clone(),
+            object: object.clone(),
+        })
+        .await?;
+
+    // Activate the key so it moves from PreActive → Active state and can be used for Encrypt/Decrypt.
+    kms_rest_client
+        .activate(Activate {
+            unique_identifier: response.unique_identifier.clone(),
+        })
+        .await?;
+
+    let res = KmsObject {
+        remote_id: response.unique_identifier.to_string(),
+        object,
+        attributes,
+        other_tags: tags,
+    };
+
+    Ok(res)
+}
+
+pub(crate) fn kms_import_object(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    label: &str,
+    data: &[u8],
+) -> Pkcs11Result<KmsObject> {
+    RUNTIME.block_on(kms_import_object_async(
+        kms_rest_client,
+        vendor_id,
+        label,
+        data,
+    ))
+}
+
+pub(crate) async fn kms_import_object_async(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    label: &str,
+    data: &[u8],
+) -> Pkcs11Result<KmsObject> {
+    debug!(
+        "kms_import_object_async: label: {label}, data (length): {}",
+        data.len()
+    );
+    let tags = vec![label.to_owned()];
+    let unique_identifier = UniqueIdentifier::TextString(label.to_owned());
+
+    let secret_data_value = data.to_vec();
+
+    let cryptographic_length = Some(i32::try_from(secret_data_value.len() * 8)?);
+
+    let mut attributes = Attributes::default();
+    attributes.set_tags(vendor_id, tags.clone())?;
+
+    let object = Object::SecretData(SecretData {
+        secret_data_type: SecretDataType::Password,
+        key_block: KeyBlock {
+            cryptographic_length,
+            key_format_type: KeyFormatType::Raw,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(Zeroizing::new(secret_data_value)),
+                attributes: Some(attributes.clone()),
+            }),
+            key_compression_type: None,
+            cryptographic_algorithm: None,
+            key_wrapping_data: None,
+        },
+    });
+
+    let response = kms_rest_client
+        .import(Import {
+            unique_identifier,
+            object_type: ObjectType::SecretData,
+            replace_existing: Some(true),
+            key_wrap_type: None,
+            attributes: attributes.clone(),
+            object: object.clone(),
+        })
+        .await?;
+
+    let res = KmsObject {
+        remote_id: response.unique_identifier.to_string(),
+        object,
+        attributes,
+        other_tags: tags,
+    };
+
+    Ok(res)
+}
+
+pub(crate) fn kms_revoke_object(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+) -> Pkcs11Result<()> {
+    RUNTIME.block_on(kms_revoke_object_async(kms_rest_client, unique_identifier))
+}
+
+pub(crate) async fn kms_revoke_object_async(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+) -> Pkcs11Result<()> {
+    kms_rest_client
+        .revoke(Revoke {
+            unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
+            revocation_reason: RevocationReason {
+                revocation_reason_code: RevocationReasonCode::CessationOfOperation,
+                revocation_message: None,
+            },
+            compromise_occurrence_date: None,
+            cascade: true,
+        })
+        .await?;
+
+    Ok(())
+}
+
+pub(crate) fn kms_destroy_object(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+) -> Pkcs11Result<()> {
+    RUNTIME.block_on(kms_destroy_object_async(kms_rest_client, unique_identifier))
+}
+
+pub(crate) async fn kms_destroy_object_async(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+) -> Pkcs11Result<()> {
+    kms_rest_client
+        .destroy(Destroy {
+            unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
+            remove: false,
+            cascade: true,
+            expected_object_type: None,
+        })
+        .await?;
+
+    Ok(())
+}
+
+pub(crate) fn kms_encrypt(
+    kms_rest_client: &KmsClient,
+    encrypt_ctx: &EncryptContext,
+    data: Vec<u8>,
+) -> Pkcs11Result<Vec<u8>> {
+    RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data))
+}
+
+pub(crate) async fn kms_encrypt_async(
+    kms_rest_client: &KmsClient,
+    encrypt_ctx: &EncryptContext,
+    data: Vec<u8>,
+) -> Pkcs11Result<Vec<u8>> {
+    let cryptographic_parameters = match encrypt_ctx.algorithm {
+        EncryptionAlgorithm::AesCbcPad => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(BlockCipherMode::CBC),
+            padding_method: Some(PaddingMethod::PKCS5),
+            ..Default::default()
+        },
+        EncryptionAlgorithm::AesCbc => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(BlockCipherMode::CBC),
+            padding_method: Some(PaddingMethod::None),
+            ..Default::default()
+        },
+        EncryptionAlgorithm::RsaPkcs1v15 => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::PKCS1v15),
+            ..Default::default()
+        },
+    };
+    let encryption_request = Encrypt {
+        unique_identifier: Some(UniqueIdentifier::TextString(
+            encrypt_ctx.remote_object_id.clone(),
+        )),
+        cryptographic_parameters: Some(cryptographic_parameters),
+        data: Some(Zeroizing::new(data)),
+        i_v_counter_nonce: encrypt_ctx.iv.clone(),
+        ..Default::default()
+    };
+    let response = kms_rest_client.encrypt(encryption_request).await?;
+    let ciphertext = response.data.ok_or_else(|| {
+        Pkcs11Error::ServerError("Encryption response does not contain data".to_owned())
+    })?;
+
+    debug!(
+        "kms_encrypt_async: ciphertext: {}",
+        hex::encode(ciphertext.clone())
+    );
+    Ok(ciphertext)
+}
+
+pub(crate) fn kms_decrypt(
+    kms_rest_client: &KmsClient,
+    decrypt_ctx: &DecryptContext,
+    data: Vec<u8>,
+) -> Pkcs11Result<Zeroizing<Vec<u8>>> {
+    RUNTIME.block_on(kms_decrypt_async(kms_rest_client, decrypt_ctx, data))
+}
+
+pub(crate) async fn kms_decrypt_async(
+    kms_rest_client: &KmsClient,
+    decrypt_ctx: &DecryptContext,
+    data: Vec<u8>,
+) -> Pkcs11Result<Zeroizing<Vec<u8>>> {
+    let cryptographic_parameters = match decrypt_ctx.algorithm {
+        EncryptionAlgorithm::AesCbcPad => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(BlockCipherMode::CBC),
+            padding_method: Some(PaddingMethod::PKCS5),
+            ..Default::default()
+        },
+        EncryptionAlgorithm::AesCbc => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(BlockCipherMode::CBC),
+            padding_method: Some(PaddingMethod::None),
+            ..Default::default()
+        },
+        EncryptionAlgorithm::RsaPkcs1v15 => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::PKCS1v15),
+            ..Default::default()
+        },
+    };
+    let decryption_request = Decrypt {
+        unique_identifier: Some(UniqueIdentifier::TextString(
+            decrypt_ctx.remote_object_id.clone(),
+        )),
+        cryptographic_parameters: Some(cryptographic_parameters),
+        data: Some(data),
+        i_v_counter_nonce: decrypt_ctx.iv.clone(),
+        ..Default::default()
+    };
+    let response = kms_rest_client.decrypt(decryption_request).await?;
+    response.data.ok_or_else(|| {
+        Pkcs11Error::ServerError("Decryption response does not contain data".to_owned())
+    })
+}
+
+pub(crate) fn kms_sign(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: &SignatureAlgorithm,
+    data: &[u8],
+) -> Pkcs11Result<Vec<u8>> {
+    RUNTIME.block_on(kms_sign_async(
+        kms_rest_client,
+        unique_identifier,
+        algorithm,
+        data,
+    ))
+}
+
+/// Map a PKCS#11 `DigestType` to its KMIP `HashingAlgorithm` counterpart.
+const fn digest_type_to_hashing_algorithm(digest: &DigestType) -> HashingAlgorithm {
+    match digest {
+        DigestType::Sha1 => HashingAlgorithm::SHA1,
+        DigestType::Sha224 => HashingAlgorithm::SHA224,
+        DigestType::Sha256 => HashingAlgorithm::SHA256,
+        DigestType::Sha384 => HashingAlgorithm::SHA384,
+        DigestType::Sha512 => HashingAlgorithm::SHA512,
+    }
+}
+
+pub(crate) async fn kms_sign_async(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: &SignatureAlgorithm,
+    data: &[u8],
+) -> Pkcs11Result<Vec<u8>> {
+    // Map the PKCS#11 mechanism to KMIP CryptographicParameters.
+    // For CKM_ECDSA (SignatureAlgorithm::Ecdsa), the data is a pre-computed hash
+    // passed by OpenSSH — send it as `digested_data` to prevent double-hashing on
+    // the server side.
+    let (cryptographic_parameters, data_bytes, digested_data_bytes) = match algorithm {
+        SignatureAlgorithm::Ecdsa => {
+            // CKM_ECDSA: caller (OpenSSH) provides a pre-computed hash
+            let digital_signature_algorithm = match data.len() {
+                48 => Some(DigitalSignatureAlgorithm::ECDSAWithSHA384),
+                64 => Some(DigitalSignatureAlgorithm::ECDSAWithSHA512),
+                _ => Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            };
+            let cp = CryptographicParameters {
+                digital_signature_algorithm,
+                ..Default::default()
+            };
+            (Some(cp), None, Some(data.to_vec()))
+        }
+        SignatureAlgorithm::EdDsa => {
+            // CKM_EDDSA: raw message, Ed25519/Ed448 handles hashing internally
+            (None, Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaRaw | SignatureAlgorithm::RsaPkcs1v15Raw => {
+            // CKM_RSA_PKCS: pass raw bytes, server uses stored key attributes
+            (None, Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPkcs1v15Sha1 => {
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::SHA1WithRSAEncryption),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPkcs1v15Sha256 => {
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(
+                    DigitalSignatureAlgorithm::SHA256WithRSAEncryption,
+                ),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPkcs1v15Sha384 => {
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(
+                    DigitalSignatureAlgorithm::SHA384WithRSAEncryption,
+                ),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPkcs1v15Sha512 => {
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(
+                    DigitalSignatureAlgorithm::SHA512WithRSAEncryption,
+                ),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPss {
+            digest,
+            mask_generation_function,
+            salt_length,
+        } => {
+            let hashing_algorithm = Some(digest_type_to_hashing_algorithm(digest));
+            let mask_generator_hashing_algorithm =
+                Some(digest_type_to_hashing_algorithm(mask_generation_function));
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
+                hashing_algorithm,
+                mask_generator: Some(MaskGenerator::MFG1),
+                mask_generator_hashing_algorithm,
+                salt_length: Some(i32::try_from(*salt_length)?),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+    };
+
+    let sign_request = Sign {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
+        cryptographic_parameters,
+        data: data_bytes.map(zeroize::Zeroizing::new),
+        digested_data: digested_data_bytes,
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+
+    let response = kms_rest_client.sign(sign_request).await?;
+    response.signature_data.ok_or_else(|| {
+        Pkcs11Error::ServerError("Sign response does not contain signature data".to_owned())
+    })
+}
+
+pub(crate) fn get_kms_object_attributes(
+    kms_client: &KmsClient,
+    object_id: &str,
+) -> Pkcs11Result<Attributes> {
+    RUNTIME.block_on(get_kms_object_attributes_async(kms_client, object_id))
+}
+
+pub(crate) async fn get_kms_object_attributes_async(
+    kms_client: &KmsClient,
+    object_id: &str,
+) -> Pkcs11Result<Attributes> {
+    let response = kms_client
+        .get_attributes(GetAttributes {
+            unique_identifier: Some(UniqueIdentifier::TextString(object_id.to_owned())),
+            attribute_reference: None,
+        })
+        .await?;
+    Ok(response.attributes)
+}
+
+pub(crate) fn key_algorithm_from_attributes(attributes: &Attributes) -> Pkcs11Result<KeyAlgorithm> {
+    let algorithm = match attributes.cryptographic_algorithm.ok_or_else(|| {
+        Pkcs11Error::Default("missing cryptographic algorithm in attributes".to_owned())
+    })? {
+        CryptographicAlgorithm::AES => KeyAlgorithm::Aes256,
+        CryptographicAlgorithm::RSA => KeyAlgorithm::Rsa,
+        CryptographicAlgorithm::ECDH | CryptographicAlgorithm::EC => {
+            let curve = attributes
+                .cryptographic_domain_parameters
+                .ok_or_else(|| {
+                    Pkcs11Error::Default(
+                        "missing cryptographic domain parameters in attributes".to_owned(),
+                    )
+                })?
+                .recommended_curve
+                .ok_or_else(|| {
+                    Pkcs11Error::Default("missing recommended curve in attributes".to_owned())
+                })?;
+            match curve {
+                RecommendedCurve::P256 => KeyAlgorithm::EccP256,
+                RecommendedCurve::P384 => KeyAlgorithm::EccP384,
+                RecommendedCurve::P521 => KeyAlgorithm::EccP521,
+                RecommendedCurve::CURVE448 => KeyAlgorithm::X448,
+                RecommendedCurve::CURVEED448 => KeyAlgorithm::Ed448,
+                RecommendedCurve::CURVE25519 => KeyAlgorithm::X25519,
+                RecommendedCurve::CURVEED25519 => KeyAlgorithm::Ed25519,
+                RecommendedCurve::SECP224K1 => KeyAlgorithm::Secp224k1,
+                RecommendedCurve::SECP256K1 => KeyAlgorithm::Secp256k1,
+                _ => {
+                    return Err(Pkcs11Error::Default(format!(
+                        "unsupported curve for EC key: {curve}"
+                    )));
+                }
+            }
+        }
+        x => {
+            error!("Unsupported cryptographic algorithm: {:?}", x);
+            return Err(Pkcs11Error::Default(format!(
+                "unsupported cryptographic algorithm: {x:?}"
+            )));
+        }
+    };
+    Ok(algorithm)
+}

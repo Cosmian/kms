@@ -1,41 +1,13 @@
 # Cosmian KMS Server
 
-The **KMS Server** is the main component of the Cosmian Key Management System, providing secure key management, cryptographic operations, and KMIP protocol support.
+Main KMS application: Actix-web HTTP/KMIP server, routes KMIP operations, manages cryptographic keys and objects, enforces access control, persists to database backends (SQLite, PostgreSQL, MySQL, Redis-findex).
 
-## Overview
+**Build modes:**
 
-The KMS server is a high-performance, FIPS 140-3 compliant server application that provides comprehensive key management services. It supports multiple database backends, HSM integration, and offers both REST API and KMIP protocol interfaces.
+- `cargo build` — FIPS mode (default; no PQC, Covercrypt, or Redis-findex)
+- `cargo build --features non-fips` — All algorithms enabled
 
-## Features
-
-### Core Functionality
-
-- **Key Management**: Generate, store, and manage cryptographic keys
-- **Certificate Management**: Handle X.509 certificates and PKI operations
-- **Cryptographic Operations**: Encryption, decryption, signing, and verification
-- **KMIP Protocol**: Full KMIP 1.0-2.1 compliance
-- **REST API**: Modern HTTP API for easy integration
-- **Web UI**: Browser-based management interface
-
-### Security Features
-
-- **FIPS 140-3 Compliance**: Certified cryptographic modules
-- **Multi-Factor Authentication**: Support for various authentication methods
-- **Access Control**: Fine-grained permissions and role-based access
-- **Audit Logging**: Comprehensive logging of all operations
-- **HSM Integration**: Hardware Security Module support
-
-### Compilation Features
-
-The KMS server provides several features which can be enabled at compilation time:
-
-| Feature    | Description                                                                                                         | Development | Production |
-| ---------- | ------------------------------------------------------------------------------------------------------------------- | ----------- | ---------- |
-| `non-fips` | Enable non-FIPS cryptographic algorithms and features                                                              | ✅          |            |
-| `insecure` | Disable authentication and use HTTP (development only)                                                             | ✅          |            |
-| `timeout`  | Binary stops after 3 months from compilation date                                                                  |             |            |
-
-**Legend**: ✅ = Recommended for this environment
+See `src/routes/`, `src/core/operations/`, and `start_kms_server.rs` for entry points.
 
 ### Development Mode
 
@@ -96,11 +68,11 @@ The KMS server relies on an OAuth2 authentication provided by Auth0 to authentic
 Example of how to run for test authentication:
 
 ```sh
-KMS_JWT_ISSUER_URI="demo-kms.eu.auth0.com" cargo run
+KMS_JWT_AUTH_PROVIDER="https://demo-kms.eu.auth0.com" cargo run
 ```
 
 This authentication enables the KMS to deal with several users with the same database.
-If there is no `KMS_JWT_ISSUER_URI` provided, the KMS disables the authentication. Only one user is allowed.
+If there is no `KMS_JWT_AUTH_PROVIDER` provided, the KMS disables the authentication. Only one user is allowed.
 If so, `admin` will be the user id.
 
 ## In-depth understanding

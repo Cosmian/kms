@@ -2,58 +2,22 @@
 
 The main documentation of the KMS is in [docs/index.md](./docs/index.md)
 
-## Installing Rendering Tools
+## Rendering the documentation
 
-You do not need these tools to author the documentation and should probably not install LaTeX.
-VS Code has all the necessary support for it.
+This documentation is built with [mdBook](https://rust-lang.github.io/mdBook/).
 
-However, if you want to see how it looks fully rendered, you must install `mkdocs`
-
-### Installing mkdocs
-
-#### Ubuntu pre-requisites
+Install the toolchain:
 
 ```sh
-## Ubuntu 22.04
-sudo apt-get install fonts-noto-mono fonts-noto pandoc-citeproc librsvg2-bin
-
-## Ubuntu 23.10
-sudo apt-get install fonts-noto-mono fonts-noto pandoc librsvg2-bin
+cargo install mdbook --version 0.4.52 --locked
+cargo install mdbook-admonish --version 1.20.0
+cargo install mdbook-mermaid --version 0.16.0
 ```
 
-#### MacOS pre-requisites
+The mdBook `src/` is generated from `docs/` by the converter in the
+`public_documentation` repository. To render this module standalone:
 
 ```sh
-brew install pandoc librsvg
-brew install font-noto-mono
+python3 <public_documentation>/migration/build_standalone.py .
+mdbook serve     # live preview; static output is written to book/
 ```
-
-#### mkdocs
-
-```sh
-cd documentation
-python3 -m venv .venv
-
-source .venv/bin/activate
-
-pip3 install pydoc-markdown git+https://github.com/twardoch/mkdocs-combine.git \
-mkdocs-kroki-plugin mkdocs-meta-descriptions-plugin mkdocs-enumerate-headings-plugin \
-mkdocs-material mkdocs-mermaid2-plugin pandoc-latex-admonition markdown-katex \
-git+https://gitlab.com/myriacore/pandoc-kroki-filter.git
-```
-
-### Using mkdocs
-
-From the root of the project, run:
-
-```bash
-cd documentation/
-
-# Run the server on all interfaces
-source .venv/bin/activate
-mkdocs serve -a 0.0.0.0:8003
-```
-
-Open a browser window at `http://[MACHINE_IP / LOCALHOST]:8003`
-
-The doc is live-rendered when editing the Markdown files.

@@ -1,0 +1,44 @@
+---
+name: Setup Nix and warm store
+description: >
+  Install Nix via cachix/install-nix-action with sensible timeout defaults,
+  then pre-fetch the nixpkgs tarballs declared in default.nix into the Nix
+  store so subsequent nix-shell calls are fast even on a cold runner.
+  Requires the repository to be checked out before this action runs
+  (default.nix must be present in the workspace).
+
+inputs:
+  extra-nix-config:
+    description: >
+      Additional nix.conf lines appended after the base timeout config.
+      Example: "http-connections = 8"
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Nix installation
+      uses: cachix/install-nix-action@v31
+      with:
+        extra_nix_config: |
+          connect-timeout = 15
+          stalled-download-timeout = 15
+          narinfo-cache-negative-ttl = 0
+          ${{ inputs.extra-nix-config }}
+
+    - name: Warm Nix store
+      shell: bash
+      run: |
+        sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
+          dest="/tmp/$(basename "$url")"
+          fallback=$(echo "$url" | sed 's|https://package.cosmian.com/nixpkgs/|https://github.com/NixOS/nixpkgs/archive/|')
+          echo "Downloading $(basename "$url") …"
+          if ! curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"; then
+            echo "Mirror failed, falling back to GitHub …"
+            curl --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors -fsSL -o "$dest" "$fallback"
+          fi
+          echo "Injecting into Nix store …"
+          nix-prefetch-url --unpack --name source "file://$dest"
+          rm -f "$dest"
+        done

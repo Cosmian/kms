@@ -5,9 +5,7 @@
   # KMS version (from Cargo.toml)
   version,
   features ? [ ], # [ "non-fips" ] or []
-  rustToolchain ? null, # Optional custom Rust toolchain (e.g., 1.90.0 for edition2024 support)
-  # Allow callers to bypass strict enforcement for NPM deps hash discovery
-  enforceDeterministicHash ? false,
+  rustToolchain ? null, # Optional custom Rust toolchain (e.g., 1.97.0 for edition2024 support)
 }:
 
 let
@@ -36,17 +34,10 @@ let
         raw = builtins.readFile hashFile;
         trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
       in
-      if enforceDeterministicHash then
-        (
-          assert trimmed != placeholder && trimmed != "";
-          trimmed
-        )
-      else
-        trimmed
-    else if enforceDeterministicHash then
-      builtins.throw ("Expected UI vendor cargo hash file not found: " + hashFile)
+      assert trimmed != placeholder && trimmed != "";
+      trimmed
     else
-      placeholder;
+      builtins.throw ("Expected UI vendor cargo hash file not found: " + hashFile);
 
   # Filter source to exclude large directories
   sourceFilter =
@@ -77,17 +68,23 @@ let
     else
       pkgs.rustPlatform;
 
-  # Build a matching wasm-bindgen-cli to the version used by the crates
+  # Build a matching wasm-bindgen-cli to the version used by the crates.
+  # This version MUST match the exact `wasm-bindgen` pin in
+  # crate/clients/wasm/Cargo.toml.  If you upgrade either one, update both
+  # (and regenerate src sha256 + cargoHash below via nix-prefetch-url).
   wasmBindgenCli = rustPlatform.buildRustPackage rec {
     pname = "wasm-bindgen-cli";
-    version = "0.2.106";
+    version = "0.2.108";
 
-    src = pkgs.fetchCrate {
-      inherit pname version;
-      sha256 = "sha256-M6WuGl7EruNopHZbqBpucu4RWz44/MSdv6f0zkYw+44=";
+    # Use fetchurl with .tar.gz name so Nix's unpackPhase recognizes the archive format
+    # (.crate files are gzip'd tarballs but Nix doesn't recognize the .crate extension)
+    src = pkgs.fetchurl {
+      url = "https://static.crates.io/crates/${pname}/${pname}-${version}.crate";
+      name = "${pname}-${version}.tar.gz";
+      hash = "sha256-ROxo4izYh4w04BtV/FFOr3W9OxwtCV3usCL6b4hW0XQ=";
     };
 
-    cargoHash = "sha256-/zJzxtzOZuGyvDLdJNEQFPzFHC6IbEiWOeZYrKgGxEk=";
+    cargoHash = "sha256-4TrLIGLubOjppAGz2AIYfZ4LFuUhbObrVEQIYBwQRHg=";
     doCheck = false;
   };
 
@@ -134,6 +131,7 @@ let
     nativeBuildInputs = [
       wasmBindgenCli
       pkgs.llvmPackages.lld
+      pkgs.binaryen
     ];
     # Ensure wasm linking uses lld provided by Nix
     CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${pkgs.llvmPackages.lld}/bin/wasm-ld";
@@ -172,6 +170,16 @@ let
         --out-dir $out/pkg \
         "$WASM_PATH"
 
+      # Optional size optimization: shrink the emitted wasm-bindgen binary.
+      # binaryen is provided by Nix, so this is deterministic.
+      if command -v wasm-opt >/dev/null 2>&1; then
+        echo "Optimizing WASM with wasm-opt -Oz"
+        wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int "$out/pkg/cosmian_kms_client_wasm_bg.wasm" -o "$out/pkg/cosmian_kms_client_wasm_bg.wasm.opt"
+        mv "$out/pkg/cosmian_kms_client_wasm_bg.wasm.opt" "$out/pkg/cosmian_kms_client_wasm_bg.wasm"
+      else
+        echo "WARNING: wasm-opt not found; skipping wasm optimization" >&2
+      fi
+
       # Basic sanity check
       test -f "$out/pkg/cosmian_kms_client_wasm_bg.wasm"
       test -f "$out/pkg/cosmian_kms_client_wasm.js"
@@ -179,10 +187,14 @@ let
     '';
   };
 
-  # Build the UI using buildNpmPackage for proper dependency management
-  uiBuild = pkgs.buildNpmPackage {
+  # Build the UI pnpm dependency store for reproducible offline installs
+  uiBuild = stdenv.mkDerivation {
     pname = "cosmian-kms-ui-deps-${finalVariant}";
     inherit version;
+
+    # Use Node.js 22 to satisfy engine requirements of vite@7 and eslint-visitor-keys@5
+    # (both require node >=20.19 / >=22.12, while the nixpkgs default nodejs_20 is 20.18)
+    nodejs = pkgs.nodejs_22;
 
     src = lib.cleanSourceWith {
       src = ../ui;
@@ -194,28 +206,46 @@ let
         baseName != "node_modules" && baseName != "dist";
     };
 
-    # Read NPM dependencies hash from external file
-    npmDepsHash =
-      let
-        placeholder = "sha256-DDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-        hashFile = ../nix/expected-hashes + "/ui.npm.sha256";
-      in
-      if builtins.pathExists hashFile then
+    # pnpmDeps is read by pnpm_9.configHook to set up the offline virtual store
+    # pnpm_9 is the latest available in the pinned nixpkgs; it supports lockfile
+    # format 9.0 (used by both pnpm 9 and pnpm 10) and silently ignores the
+    # "packageManager" field in package.json when it specifies a different version.
+    pnpmDeps = pkgs.pnpm_9.fetchDeps {
+      pname = "cosmian-kms-ui-deps-${finalVariant}";
+      inherit version;
+
+      src = lib.cleanSourceWith {
+        src = ../ui;
+        filter =
+          path: _type:
+          let
+            baseName = baseNameOf path;
+          in
+          baseName != "node_modules" && baseName != "dist";
+      };
+
+      hash =
         let
-          raw = builtins.readFile hashFile;
-          trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
+          placeholder = "sha256-DDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+          platformSuffix = if stdenv.hostPlatform.isDarwin then "darwin" else "linux";
+          hashFile = ../nix/expected-hashes + "/ui.pnpm." + platformSuffix + ".sha256";
         in
-        if enforceDeterministicHash then
-          (
-            assert trimmed != placeholder && trimmed != "";
-            trimmed
-          )
-        else
+        if builtins.pathExists hashFile then
+          let
+            raw = builtins.readFile hashFile;
+            trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
+          in
+          assert trimmed != placeholder && trimmed != "";
           trimmed
-      else if enforceDeterministicHash then
-        builtins.throw ("Expected UI npm deps hash file not found: " + hashFile)
-      else
-        placeholder;
+        else
+          builtins.throw ("Expected UI pnpm deps hash file not found: " + hashFile);
+    };
+
+    # configHook runs pnpm install --offline --frozen-lockfile, creating node_modules
+    nativeBuildInputs = [
+      pkgs.nodejs_22
+      pkgs.pnpm_9.configHook
+    ];
 
     # Disable build phase - we only want dependencies installed
     dontBuild = true;
@@ -223,7 +253,6 @@ let
     installPhase = ''
       mkdir -p $out
       cp -r node_modules $out/
-      cp package*.json $out/
     '';
   };
 
@@ -240,7 +269,10 @@ stdenv.mkDerivation {
   };
 
   # Vite requires Node >= 20.19; use a recent Node to avoid warnings
-  nativeBuildInputs = with pkgs; [ nodejs_22 ];
+  nativeBuildInputs = with pkgs; [
+    nodejs_22
+    pnpm_9
+  ];
 
   buildPhase = ''
       export HOME=$TMPDIR
@@ -280,7 +312,7 @@ stdenv.mkDerivation {
     export default init;
     EOF
 
-      npm run build
+      pnpm run build:vite
 
       # Return to root directory after build
       cd ..

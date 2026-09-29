@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Oracle TDE remote upgrade and smoke test (non-fips amd64 only)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Running Oracle TDE remote upgrade and smoke test"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/test/test_docker_oracle.sh"
+
+print_success "Oracle TDE remote upgrade and smoke test completed"

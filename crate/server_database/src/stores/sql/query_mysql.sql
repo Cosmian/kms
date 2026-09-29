@@ -24,11 +24,12 @@ WHERE name = ?;
 -- name: create-table-objects
 CREATE TABLE IF NOT EXISTS objects
 (
-    id         VARCHAR(128) PRIMARY KEY,
-    object     LONGTEXT NOT NULL,
-    attributes json NOT NULL,
-    state      VARCHAR(32),
-    owner      VARCHAR(255)
+    id              VARCHAR(128) PRIMARY KEY,
+    object          LONGTEXT NOT NULL,
+    attributes      json NOT NULL,
+    state           VARCHAR(32),
+    owner           VARCHAR(255),
+    wrapping_key_id VARCHAR(128)
 );
 
 -- name: add-column-attributes
@@ -37,6 +38,18 @@ ALTER TABLE objects
 
 -- name: has-column-attributes
 SHOW COLUMNS FROM objects LIKE 'attributes';
+
+-- name: has-column-wrapping-key-id
+SHOW COLUMNS FROM objects LIKE 'wrapping_key_id';
+
+-- name: add-column-wrapping-key-id
+ALTER TABLE objects ADD COLUMN wrapping_key_id VARCHAR(128);
+
+-- name: has-column-co-activated-by
+SHOW COLUMNS FROM crypto_officer_activations LIKE 'activated_by';
+
+-- name: add-column-co-activated-by
+ALTER TABLE crypto_officer_activations ADD COLUMN activated_by VARCHAR(255);
 
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access
@@ -69,18 +82,28 @@ FROM tags;
 
 
 -- name: insert-objects
-INSERT INTO objects (id, object, attributes, state, owner)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id)
+VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: select-object
 SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
 FROM objects
 WHERE objects.id = ?;
 
+-- name: select-object-state
+SELECT objects.state, objects.attributes FROM objects WHERE objects.id = ?;
+
+-- name: select-object-for-update
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
+FROM objects
+WHERE objects.id = ?
+FOR UPDATE;
+
 -- name: update-object-with-object
 UPDATE objects
 SET object=?,
-    attributes=?
+    attributes=?,
+    wrapping_key_id=?
 WHERE id = ?;
 
 -- name: update-object-with-state
@@ -94,12 +117,13 @@ FROM objects
 WHERE id = ?;
 
 -- name: upsert-object
-INSERT INTO objects (id, object, attributes, state, owner)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id)
+VALUES (?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE object=VALUES(object),
                         attributes=VALUES(attributes),
                         state=VALUES(state),
-                        owner=VALUES(owner);
+                        owner=VALUES(owner),
+                        wrapping_key_id=VALUES(wrapping_key_id);
 
 -- name: select-user-accesses-for-object
 SELECT permissions
@@ -119,6 +143,11 @@ FROM read_access
 WHERE id = ?
   AND userid = ?;
 
+-- name: delete-read-access-for-object
+DELETE
+FROM read_access
+WHERE id = ?;
+
 -- name: has-row-objects
 SELECT 1
 FROM objects
@@ -137,11 +166,11 @@ FROM read_access
 WHERE id = ?;
 
 -- name: select-objects-access-obtained
-SELECT objects.id, owner, state, permissions
-FROM objects
-         INNER JOIN read_access
+SELECT read_access.id, COALESCE(objects.owner, ''), COALESCE(objects.state, 'Active'), read_access.permissions
+FROM read_access
+         LEFT JOIN objects
                     ON objects.id = read_access.id
-WHERE read_access.userid = ?;
+WHERE read_access.userid = ? OR read_access.userid = '*';
 
 -- name: insert-tags
 INSERT INTO tags (id, tag)
@@ -176,3 +205,102 @@ FROM tags
 WHERE tag IN (@TAGS)
 GROUP BY id
 HAVING COUNT(DISTINCT tag) = ?;
+
+-- name: find-wrapped-by
+SELECT DISTINCT objects.id, objects.state, objects.attributes
+FROM objects
+LEFT JOIN read_access ON objects.id = read_access.id AND read_access.userid = ?
+WHERE (objects.owner = ? OR read_access.userid = ?)
+  AND objects.wrapping_key_id = ?;
+
+-- name: select-objects-null-wrapping-key
+SELECT id, object FROM objects WHERE wrapping_key_id IS NULL;
+
+-- name: update-wrapping-key-id
+UPDATE objects SET wrapping_key_id = ? WHERE id = ?;
+
+-- name: has-index
+SELECT 1
+FROM information_schema.statistics
+WHERE table_schema = DATABASE()
+  AND table_name = ?
+  AND index_name = ?
+LIMIT 1;
+
+-- name: create-index-objects-owner
+CREATE INDEX idx_objects_owner ON objects (owner);
+
+-- name: create-index-objects-state
+CREATE INDEX idx_objects_state ON objects (state);
+
+-- name: create-index-read_access-userid
+CREATE INDEX idx_read_access_userid ON read_access (userid);
+
+-- name: create-index-objects-wrapping-key-id
+CREATE INDEX idx_objects_wrapping_key_id ON objects (wrapping_key_id);
+
+-- name: create-table-crypto_officer_activations
+CREATE TABLE IF NOT EXISTS crypto_officer_activations (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        activated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        activated_by VARCHAR(255),
+        sealed_record TEXT NOT NULL,
+        revoked_at TIMESTAMP NULL DEFAULT NULL,
+        revoked_by VARCHAR(255)
+);
+
+-- name: insert-crypto-officer-activation
+INSERT INTO crypto_officer_activations (sealed_record, activated_by)
+        VALUES (?, ?);
+
+-- name: select-active-crypto-officer-activation-by
+SELECT sealed_record FROM crypto_officer_activations
+        WHERE activated_by = ? AND revoked_at IS NULL
+        ORDER BY activated_at DESC LIMIT 1;
+
+-- name: select-any-active-crypto-officer-activation
+SELECT COUNT(*) FROM crypto_officer_activations WHERE revoked_at IS NULL;
+
+-- name: revoke-crypto-officer-activation
+UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP, revoked_by = ?
+        WHERE activated_by = ? AND revoked_at IS NULL;
+
+-- name: count-all-non-destroyed
+SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';
+
+-- name: count-non-destroyed-keys
+SELECT COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
+AND (
+    JSON_TYPE(JSON_EXTRACT(object, '$.SymmetricKey')) IS NOT NULL OR
+    JSON_TYPE(JSON_EXTRACT(object, '$.PrivateKey'))   IS NOT NULL OR
+    JSON_TYPE(JSON_EXTRACT(object, '$.PublicKey'))    IS NOT NULL OR
+    JSON_TYPE(JSON_EXTRACT(object, '$.SplitKey'))     IS NOT NULL
+);
+
+-- ── CRL persistence (MySQL-specific) ─────────────────────────────────────────
+-- MySQL uses LONGBLOB for binary data and REPLACE INTO for upsert.
+
+-- name: create-table-crls
+CREATE TABLE IF NOT EXISTS crls (
+    issuer_id    VARCHAR(128) NOT NULL PRIMARY KEY,
+    crl_der      LONGBLOB     NOT NULL,
+    crl_number   BIGINT       NOT NULL,
+    generated_at VARCHAR(32)  NOT NULL,
+    next_update  VARCHAR(32)  NOT NULL
+);
+
+-- name: upsert-crl
+INSERT INTO crls (issuer_id, crl_der, crl_number, generated_at, next_update)
+    VALUES (?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+        crl_der      = VALUES(crl_der),
+        crl_number   = VALUES(crl_number),
+        generated_at = VALUES(generated_at),
+        next_update  = VALUES(next_update);
+
+-- name: select-crl
+SELECT crl_der, generated_at FROM crls WHERE issuer_id = ?;
+
+-- name: list-crl-issuers
+SELECT issuer_id, next_update FROM crls ORDER BY issuer_id;

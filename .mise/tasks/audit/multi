@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Run multi-framework security audit (NIST, CIS, ISO 27034, OSSTMM)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Running multi-framework audit"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/audit/multi_framework.sh"
+
+print_success "Multi-framework audit completed"

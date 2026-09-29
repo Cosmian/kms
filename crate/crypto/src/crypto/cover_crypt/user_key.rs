@@ -3,6 +3,7 @@ use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        extra::tagging::SYSTEM_TAG_COVER_CRYPT_USER_KEY,
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey},
@@ -75,17 +76,17 @@ impl<'a> UserDecryptionKeysHandler<'a> {
     /// see `cover_crypt_unwrap_user_decryption_key` for the reverse operation
     pub fn create_usk_object(
         &mut self,
-        access_policy_str: &str,
+        vendor_id: &str,
+        access_policy: &str,
         create_attributes: &Attributes,
         msk_id: &str,
     ) -> Result<Object, CryptoError> {
         // Generate a fresh user decryption key
         //
-        let access_policy = AccessPolicy::parse(access_policy_str)?;
         trace!("Access Policy: {access_policy:?}");
         let uk = self
             .cover_crypt
-            .generate_user_secret_key(self.msk, &access_policy)
+            .generate_user_secret_key(self.msk, &AccessPolicy::parse(access_policy)?)
             .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
         trace!("Created user decryption key with access policy: {access_policy:?}");
@@ -95,8 +96,8 @@ impl<'a> UserDecryptionKeysHandler<'a> {
         let user_decryption_key_len = user_decryption_key_bytes.len();
 
         // Tag the object as a private key
-        let mut tags = create_attributes.get_tags();
-        tags.insert("_uk".to_owned());
+        let mut tags = create_attributes.get_tags(vendor_id);
+        tags.insert(SYSTEM_TAG_COVER_CRYPT_USER_KEY.to_owned());
 
         // Set the unique identifier, if not provided, generate a new one
         let uid = match create_attributes
@@ -115,12 +116,12 @@ impl<'a> UserDecryptionKeysHandler<'a> {
         // Covercrypt keys are set to have unrestricted usage.
         attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
         // set the tags in the attributes
-        attributes.set_tags(tags.clone())?;
+        attributes.set_tags(vendor_id, tags.clone())?;
         // set the unique identifier
         attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid));
 
         // Add the access policy to the attributes
-        upsert_access_policy_in_attributes(&mut attributes, access_policy_str)?;
+        upsert_access_policy_in_attributes(vendor_id, &mut attributes, access_policy)?;
 
         // Add the link to the master secret key
         attributes.link = Some(vec![Link {

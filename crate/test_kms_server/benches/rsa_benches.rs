@@ -17,6 +17,7 @@ use cosmian_kms_client::{
         kmip_types::{HashingAlgorithm, PaddingMethod, ProtocolVersion},
     },
     kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_messages::RequestMessageBatchItem,
         kmip_operations::Operation,
         kmip_types::{CryptographicAlgorithm, CryptographicParameters},
@@ -270,8 +271,15 @@ pub(crate) async fn create_rsa_keypair(
     kms_rest_client: &KmsClient,
     cryptographic_length: usize,
 ) -> (String, String) {
-    let create_key_pair_request =
-        create_rsa_key_pair_request(None, ["bench"], cryptographic_length, false, None).unwrap();
+    let create_key_pair_request = create_rsa_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        ["bench"],
+        cryptographic_length,
+        false,
+        None,
+    )
+    .unwrap();
     // Query the KMS with your kmip data and get the key pair ids
     let response = kms_rest_client
         .create_key_pair(create_key_pair_request)

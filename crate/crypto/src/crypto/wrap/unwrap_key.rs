@@ -25,6 +25,7 @@ use crate::{
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_unwrap,
         },
         symmetric::{
+            rfc3394::rfc3394_unwrap,
             rfc5649::rfc5649_unwrap,
             symmetric_ciphers::{SymCipher, decrypt},
         },
@@ -289,11 +290,14 @@ fn unwrap_with_symmetric_key(
         .key_bytes()
         .context("unwrapping key bytes:")?;
 
-    // If not AES GCM, unwrap using RFC 5649 (a.k.a NIST Key Wrap)
+    // If AES GCM, use GCM decryption; if AES Key Wrap RFC 3394 (NISTKeyWrap) is
+    // explicitly specified, use rfc3394_unwrap; otherwise default to RFC 5649
+    // (AESKeyWrapPadding) for backward compatibility with stored wrapped keys.
     if block_cipher_mode == Some(BlockCipherMode::GCM) {
         aes_gcm_unwrap(ciphertext, &unwrap_secret)
+    } else if block_cipher_mode == Some(BlockCipherMode::NISTKeyWrap) {
+        rfc3394_unwrap(ciphertext, &unwrap_secret)
     } else {
-        // unwrap using rfc_5649
         rfc5649_unwrap(ciphertext, &unwrap_secret)
     }
 }

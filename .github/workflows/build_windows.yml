@@ -10,16 +10,23 @@ on:
       archive-name:
         required: true
         type: string
+    secrets:
+      AZURE_TENANT_ID_POC:
+        required: true
+      AZURE_CLIENT_ID_POC:
+        required: true
+      AZURE_CLIENT_SECRET_POC:
+        required: true
 
 jobs:
   cargo-build:
-    name: windows-2022-non-fips
+    name: ${{ inputs.archive-name }} - 2022-non-fips
     runs-on: windows-2022
     steps:
       - name: Print ENV
         run: printenv
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -38,16 +45,20 @@ jobs:
         run: |
           Get-ChildItem $env:VCPKG_INSTALLATION_ROOT
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: pnpm/action-setup@v6.1.0
         with:
-          node-version: '20'
+          version: 10.17.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
 
       - name: Build UI
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          . .\.github\scripts\windows_ui.ps1
+          . .\.mise\scripts\windows\windows_ui.ps1
           Build-UI -Variant non-fips
 
       - name: Copy UI to server directory
@@ -67,16 +78,25 @@ jobs:
           vcpkg install --triplet x64-windows-static
           vcpkg integrate install
 
-          Get-ChildItem -Recurse "$env:VCPKG_INSTALLATION_ROOT\packages"
+          # vcpkg manifest mode (vcpkg.json present) installs to vcpkg_installed/<triplet>
+          # relative to the project root, not under VCPKG_INSTALLATION_ROOT\packages.
+          $manifestDir = "vcpkg_installed\x64-windows-static"
+          if (Test-Path $manifestDir) {
+            Write-Host "vcpkg manifest-mode install found at: $manifestDir"
+            Get-ChildItem -Recurse $manifestDir
+          } else {
+            Write-Host "Falling back to classic-mode path under VCPKG_INSTALLATION_ROOT"
+            Get-ChildItem -Recurse "$env:VCPKG_INSTALLATION_ROOT\packages"
+          }
 
       - name: Build
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          . .\.github\scripts\cargo_build.ps1
+          . .\.mise\scripts\windows\cargo_build.ps1
           BuildProject
 
-      - name: Rename installer to new convention
+      - name: Rename installers to new convention
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -91,46 +111,113 @@ jobs:
           }
           if (-not $version) { throw "Unable to parse version from Cargo.toml" }
           $arch = "x86_64"
-          Get-ChildItem -Path "target/release" -Filter "*setup.exe" | ForEach-Object {
+
+          # Rename KMS server NSIS installer
+          # cargo-packager names it after the binary: cosmian_kms_{version}_{arch}-setup.exe
+          Get-ChildItem -Path "target/release" -Filter "cosmian_kms_*setup.exe" | ForEach-Object {
             $newName = "cosmian-kms-server-non-fips-static-openssl_${version}_${arch}.exe"
             $dest = Join-Path $_.DirectoryName $newName
             Move-Item -Force $_.FullName $dest
             Write-Host "Renamed $($_.Name) -> $newName"
           }
 
+          # Rename ckms CLI NSIS installer
+          Get-ChildItem -Path "target/release" -Filter "ckms*setup.exe" | ForEach-Object {
+            $newName = "cosmian-kms-cli-non-fips-static-openssl_${version}_${arch}.exe"
+            $dest = Join-Path $_.DirectoryName $newName
+            Move-Item -Force $_.FullName $dest
+            Write-Host "Renamed $($_.Name) -> $newName"
+          }
+
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.archive-name }}-release
           path: |
             README.md
-            target/release/*server*.exe
+            target/release/*.exe
           retention-days: 1
           if-no-files-found: error
 
-  test:
+  sign:
+    name: ${{ inputs.archive-name }} - sign installers
     needs: cargo-build
-    name: windows-2022 - test on clean env. ${{ inputs.archive-name }}
+    uses: Cosmian/reusable_scripts/.github/workflows/sign-windows-artifacts.yml@develop
+    with:
+      artifact-to-download: ${{ inputs.archive-name }}-release
+      files-folder: to-sign
+      files-folder-filter: exe
+      artifact-name: ${{ inputs.archive-name }}-release-signed
+      signing-account-name: cosmian-codesigning-test
+      certificate-profile-name: cosmian-public-profile
+    secrets:
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID_POC }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_POC }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET_POC }}
+
+  test:
+    needs: sign
+    name: ${{ inputs.archive-name }} - test on clean env.
     runs-on: windows-2022
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
-          name: ${{ inputs.archive-name }}-release
+          name: ${{ inputs.archive-name }}-release-signed
 
       - name: List files recursively
         shell: pwsh
         run: Get-ChildItem -Recurse
 
-      - name: Launch binaries
+      - name: Verify Authenticode signatures
+        shell: pwsh
         run: |
-          Get-ChildItem -Filter "cosmian*.exe" | ForEach-Object {
-            Write-Host "Testing $_..."
-            & $_.FullName -V
+          $executables = @(
+            Get-ChildItem -Recurse -Filter "cosmian-kms-server*.exe"
+            Get-ChildItem -Recurse -Filter "cosmian-kms-cli*.exe"
+          )
+          if ($executables.Count -ne 2) {
+            Write-Error "Expected two signed Windows installers, found $($executables.Count)"
+            exit 1
           }
 
+          $invalidSignatures = @()
+          foreach ($executable in $executables) {
+            $signature = Get-AuthenticodeSignature -FilePath $executable.FullName
+            $signer = $signature.SignerCertificate
+            $status = "$($signature.Status)"
+            $subject = if ($null -ne $signer) { $signer.Subject } else { "<none>" }
+            Write-Host "$($executable.Name): status=$status signer=$subject"
+
+            # Azure Trusted Signing test profiles can return UnknownError when
+            # the runner cannot build the public trust chain. The signer
+            # certificate is still present; reject missing certificates and
+            # cryptographic/hash failures, but allow this trust-only status.
+            $trustOnlyStatus = $signature.Status -eq "UnknownError" -and $null -ne $signer
+            if ($signature.Status -ne "Valid" -and -not $trustOnlyStatus) {
+              $invalidSignatures += "$($executable.FullName) ($($signature.Status))"
+            }
+          }
+
+          if ($invalidSignatures.Count -gt 0) {
+            Write-Error "Invalid Authenticode signatures: $($invalidSignatures -join ', ')"
+            exit 1
+          }
+
+      - name: Launch binaries
+        run: |
+          # Both artifacts are NSIS installers (not bare binaries), so we
+          # verify they exist rather than trying to execute them with -V.
+          $serverExe = Get-ChildItem -Recurse -Filter "cosmian-kms-server*.exe" | Select-Object -First 1
+          if ($null -eq $serverExe) { Write-Error "Server installer not found"; exit 1 }
+          Write-Host "Server installer present: $($serverExe.FullName)"
+
+          $cliExe = Get-ChildItem -Recurse -Filter "cosmian-kms-cli*.exe" | Select-Object -First 1
+          if ($null -eq $cliExe) { Write-Error "CLI installer not found"; exit 1 }
+          Write-Host "CLI installer present: $($cliExe.FullName)"
+
   publish-windows-release:
-    name: Publish Windows assets (self-hosted container)
-    needs: cargo-build
+    name: ${{ inputs.archive-name }} - publish assets
+    needs: sign
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
@@ -139,14 +226,14 @@ jobs:
 
     steps:
       - name: Checkout repository (for release metadata)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
 
       - name: Download Windows build artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
-          name: ${{ inputs.archive-name }}-release
+          name: ${{ inputs.archive-name }}-release-signed
           path: .
 
       - name: List downloaded files
@@ -155,7 +242,7 @@ jobs:
           ls -la
           find . -maxdepth 3 -type f -print
 
-      - name: Push installer to package.cosmian.com
+      - name: Push installers to package.cosmian.com
         shell: bash
         run: |
           set -ex
@@ -167,15 +254,17 @@ jobs:
           fi
           DEST_DIR="/mnt/package/kms/${BRANCH}/windows/x86_64/non-fips/static-openssl"
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$DEST_DIR"
+          # Upload both server and CLI installers
           while IFS= read -r -d '' exe; do
             echo "Uploading ${exe} to ${DEST_DIR}"
             scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$exe" "cosmian@package.cosmian.com:${DEST_DIR}"
-          done < <(find . -maxdepth 3 -type f -name 'cosmian-kms-server*.exe' -print0)
+          done < <(find . -maxdepth 3 -type f \( -name 'cosmian-kms-server*.exe' -o -name 'cosmian-kms-cli*.exe' \) -print0)
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             cosmian-kms-server*.exe
+            cosmian-kms-cli*.exe
             ./nix/signing-keys/cosmian-kms-public.asc

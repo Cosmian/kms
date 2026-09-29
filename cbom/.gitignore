@@ -1,0 +1,3 @@
+# Sensor run outputs — overwritten on each run, not committed
+sensor/
+runtime/

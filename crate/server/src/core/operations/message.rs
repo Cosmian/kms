@@ -1,33 +1,29 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        KmipResultHelper,
-        kmip_0::{
-            kmip_messages::{
-                RequestMessage, RequestMessageBatchItemVersioned, ResponseMessage,
-                ResponseMessageBatchItemVersioned, ResponseMessageHeader,
-            },
-            kmip_types::{
-                BatchErrorContinuationOption, ErrorReason, ResultStatusEnumeration, State,
-            },
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    KmipResultHelper,
+    kmip_0::{
+        kmip_messages::{
+            RequestMessage, RequestMessageBatchItemVersioned, ResponseMessage,
+            ResponseMessageBatchItemVersioned, ResponseMessageHeader,
         },
-        kmip_2_1::{
-            extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
-            kmip_messages::ResponseMessageBatchItem,
-            kmip_operations::{InteropResponse, LogResponse, Operation},
-            kmip_types::{OperationEnumeration, UniqueIdentifier, UniqueIdentifierEnumeration},
+        kmip_types::{
+            BatchErrorContinuationOption, ErrorReason, ProtocolVersion, ResultStatusEnumeration,
+            State,
         },
-        time_normalize,
-        ttlv::KmipFlavor,
     },
-    cosmian_kms_interfaces::SessionParams,
+    kmip_2_1::{
+        extra::tagging::VENDOR_ATTR_TAG,
+        kmip_messages::ResponseMessageBatchItem,
+        kmip_operations::{InteropResponse, LogResponse, Operation},
+        kmip_types::{OperationEnumeration, UniqueIdentifier, UniqueIdentifierEnumeration},
+    },
+    time_normalize,
+    ttlv::KmipFlavor,
 };
 use cosmian_logger::{info, trace};
 use strum::IntoEnumIterator;
 
 use super::modify_attribute;
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
 /// Processing of an input KMIP Message
 ///
@@ -39,11 +35,10 @@ use crate::{core::KMS, error::KmsError, result::KResult};
 pub(crate) async fn message(
     kms: &KMS,
     request: RequestMessage,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
 ) -> KResult<ResponseMessage> {
     info!(
-        user = user,
+        user = user.as_str(),
         "KMIP Request message with {} operation(s): {:?}",
         request.batch_item.len(),
         request
@@ -59,7 +54,7 @@ pub(crate) async fn message(
     );
     trace!("Entering message KMIP operation: {request}");
 
-    let mut response_items = Vec::new();
+    let mut response_items = Vec::with_capacity(request.batch_item.len());
     // Track the KMIP ID Placeholder within this RequestMessage. Multiple operations set
     // or clear it (e.g., Create, Register, CreateKeyPair, DeriveKey, Export set it; Locate
     // sets it iff exactly one UID is returned, otherwise clears it). Subsequent operations
@@ -76,7 +71,7 @@ pub(crate) async fn message(
     // Capture batch error continuation option (same location in 1.4 / 2.1 header structures after normalization)
     let batch_error_mode = request.request_header.batch_error_continuation_option;
     // Stash original successful indices so we can undo them if needed
-    let mut success_indices: Vec<usize> = Vec::new();
+    let mut success_indices: Vec<usize> = Vec::with_capacity(request.batch_item.len());
     // When in Undo mode, once a failure occurs we mark all prior successes as OperationUndone
     let mut undo_triggered: Option<(ErrorReason, String)> = None;
 
@@ -107,10 +102,11 @@ pub(crate) async fn message(
         let response_operation = Box::pin(process_operation(
             kms,
             user,
-            params.clone(),
             request_operation,
+            Some(request.request_header.protocol_version),
         ))
         .await;
+
         // 3) Optionally enforce MaximumResponseSize for Query
         let forced_size_error =
             enforce_max_response_size_for_query(&response_operation, remaining_max_response_size)?;
@@ -134,6 +130,24 @@ pub(crate) async fn message(
                     Err(KmsError::Kmip21Error(reason, error_message)) => (
                         ResultStatusEnumeration::OperationFailed,
                         Some(reason),
+                        Some(error_message),
+                        None,
+                    ),
+                    Err(KmsError::ItemNotFound(error_message)) => (
+                        ResultStatusEnumeration::OperationFailed,
+                        Some(ErrorReason::Item_Not_Found),
+                        Some(error_message),
+                        None,
+                    ),
+                    Err(KmsError::CryptographicError(error_message)) => (
+                        ResultStatusEnumeration::OperationFailed,
+                        Some(ErrorReason::Cryptographic_Failure),
+                        Some(error_message),
+                        None,
+                    ),
+                    Err(KmsError::Unauthorized(error_message)) => (
+                        ResultStatusEnumeration::OperationFailed,
+                        Some(ErrorReason::Permission_Denied),
                         Some(error_message),
                         None,
                     ),
@@ -168,6 +182,7 @@ pub(crate) async fn message(
             get_attrs_requested_refs
                 .as_ref()
                 .is_some_and(|v| !v.is_empty()),
+            kms.vendor_id(),
         );
 
         // Update ID placeholder after successful operations that yield a clear target UID.
@@ -241,13 +256,7 @@ pub(crate) async fn message(
     // If UNDO mode was triggered, revert side-effects for operations that had already mutated state.
     if undo_triggered.is_some() {
         for uid in undo_activate_uids {
-            Box::pin(revert_activation_to_preactive(
-                kms,
-                &uid,
-                user,
-                params.clone(),
-            ))
-            .await?;
+            Box::pin(revert_activation_to_preactive(kms, &uid, user)).await?;
         }
     }
 
@@ -272,22 +281,18 @@ pub(crate) async fn message(
 
 /// Revert an Activate operation by setting the object's state back to `PreActive` and clearing
 /// the `activation_date`. This is a best-effort revert used when batch UNDO is triggered.
-async fn revert_activation_to_preactive(
-    kms: &KMS,
-    uid: &str,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
-) -> KResult<()> {
+async fn revert_activation_to_preactive(kms: &KMS, uid: &str, user: &UserId) -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::KmipOperation;
 
-    use crate::core::retrieve_object_utils::retrieve_object_for_operation;
+    use crate::core::{
+        retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
+    };
 
     let mut owm = Box::pin(retrieve_object_for_operation(
-        uid,
+        ObjectHandle::from(uid),
         KmipOperation::GetAttributes,
         kms,
         user,
-        params.clone(),
     ))
     .await?;
 
@@ -301,18 +306,12 @@ async fn revert_activation_to_preactive(
     owm.attributes_mut().activation_date = None;
 
     kms.database
-        .update_object(
-            owm.id(),
-            owm.object(),
-            owm.attributes(),
-            None,
-            params.clone(),
-        )
+        .update_object(owm.id(), owm.object(), owm.attributes(), None)
         .await?;
 
     // Update the state in the database (separate column)
     kms.database
-        .update_state(owm.id(), State::PreActive, params)
+        .update_state(owm.id(), State::PreActive)
         .await?;
 
     Ok(())
@@ -342,6 +341,7 @@ fn get_operation_name(operation: &Operation) -> &'static str {
         Operation::MAC(_) => "MAC",
         Operation::Query(_) => "Query",
         Operation::Register(_) => "Register",
+        Operation::ReCertify(_) => "ReCertify",
         Operation::ReKey(_) => "ReKey",
         Operation::ReKeyKeyPair(_) => "ReKeyKeyPair",
         Operation::Revoke(_) => "Revoke",
@@ -355,20 +355,25 @@ fn get_operation_name(operation: &Operation) -> &'static str {
 
 async fn process_operation(
     kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
+
     request_operation: Operation,
+    protocol_version: Option<ProtocolVersion>,
 ) -> Result<Operation, KmsError> {
     // Get operation name for metrics
     let operation_name = get_operation_name(&request_operation);
     trace!("Processing KMIP operation: {operation_name} with user: {user:?}");
 
-    let start_time = std::time::Instant::now();
+    // Only capture start time when metrics are enabled to avoid unconditional syscall overhead.
+    let start_time = kms.metrics.as_ref().map(|_| std::time::Instant::now());
 
-    let privileged_users = kms.params.privileged_users.clone();
+    // Enforce role-based access control for the RequestMessage path.
+    // This mirrors the check in dispatch_inner() for the single-operation TTLV path.
+    super::dispatch::check_role_permission(kms, user, operation_name, &kms.params.crypto_officer)
+        .await?;
 
     // Process the operation and capture the result
-    let result: Result<Operation, KmsError> = async {
+    let result: Result<Operation, KmsError> = Box::pin(async {
         Ok(match request_operation {
         // New operations currently unsupported server-side: return explicit not supported errors
     Operation::PKCS11Response(_) // response variants unsupported as requests
@@ -384,19 +389,19 @@ async fn process_operation(
         }
         Operation::RNGRetrieve(kmip_request) => {
             let resp = kms
-                .rng_retrieve(kmip_request, user, params.clone())
+                .rng_retrieve(kmip_request, user, )
                 .await?;
             Operation::RNGRetrieveResponse(resp)
         }
         Operation::RNGSeed(kmip_request) => {
             // Delegate to KMS method for consistent policy enforcement
             let resp = kms
-                .rng_seed(kmip_request, user, params.clone())
+                .rng_seed(kmip_request, user)
                 .await?;
             Operation::RNGSeedResponse(resp)
         }
         Operation::PKCS11(pkcs_req) => {
-            let resp = kms.pkcs11(pkcs_req, user, params.clone()).await?;
+            let resp = kms.pkcs11(pkcs_req, user).await?;
             Operation::PKCS11Response(resp)
         }
         Operation::Interop(_kmip_request) => {
@@ -411,110 +416,130 @@ async fn process_operation(
         }
         Operation::InteropResponse(r) => Operation::InteropResponse(r),
         Operation::GetAttributeList(kmip_request) => Operation::GetAttributeListResponse(
-            crate::core::operations::get_attribute_list::get_attribute_list(
+            crate::core::operations::attributes::get_attribute_list_with_protocol_version(
                 kms,
                 kmip_request,
                 user,
-                params,
+                protocol_version,
             )
             .await?,
         ),
             Operation::Activate(activate) => {
-                Operation::ActivateResponse(kms.activate(activate, user, params).await?)
+                Operation::ActivateResponse(kms.activate(activate, user).await?)
             }
             Operation::AddAttribute(add_attribute) => Operation::AddAttributeResponse(
-                kms.add_attribute(add_attribute, user, params).await?,
+                kms.add_attribute(add_attribute, user).await?,
             ),
-        Operation::ModifyAttribute(kmip_request) => Operation::ModifyAttributeResponse(
-            modify_attribute(kms, kmip_request, user, params).await?,
-        ),
+        Operation::ModifyAttribute(kmip_request) => {
+            let echoed_attribute = Some(kmip_request.new_attribute.clone());
+            let mut resp = modify_attribute(kms, kmip_request, user).await?;
+            resp.echoed_attribute = echoed_attribute;
+            Operation::ModifyAttributeResponse(resp)
+        }
         Operation::Check(kmip_request) => {
             use crate::core::operations::check;
-            Operation::CheckResponse(check(kms, kmip_request, user, params).await?)
+            Operation::CheckResponse(check(kms, kmip_request, user).await?)
         }
             Operation::Certify(kmip_request) => Operation::CertifyResponse(
-                kms.certify(*kmip_request, user, params, privileged_users)
+                kms.certify(*kmip_request, user)
                     .await?,
             ),
             Operation::Create(kmip_request) => Operation::CreateResponse(
-                kms.create(kmip_request, user, params, privileged_users)
+                kms.create(kmip_request, user)
                     .await?,
             ),
             Operation::CreateKeyPair(kmip_request) => Operation::CreateKeyPairResponse(
-                kms.create_key_pair(*kmip_request, user, params, privileged_users)
+                kms.create_key_pair(*kmip_request, user)
                     .await?,
             ),
             Operation::Decrypt(kmip_request) => {
-                Operation::DecryptResponse(kms.decrypt(*kmip_request, user, params).await?)
+                Operation::DecryptResponse(
+                    crate::core::operations::decrypt(kms, *kmip_request, user).await?,
+                )
             }
             Operation::DeleteAttribute(kmip_request) => Operation::DeleteAttributeResponse(
-                kms.delete_attribute(kmip_request, user, params).await?,
+                kms.delete_attribute(kmip_request, user).await?,
             ),
             Operation::DeriveKey(kmip_request) => Operation::DeriveKeyResponse(
-                Box::pin(kms.derive_key(kmip_request, user, params)).await?,
+                Box::pin(kms.derive_key(kmip_request, user)).await?,
             ),
             Operation::Destroy(kmip_request) => {
-                Operation::DestroyResponse(kms.destroy(kmip_request, user, params).await?)
+                Operation::DestroyResponse(kms.destroy(kmip_request, user).await?)
             }
             Operation::DiscoverVersions(kmip_request) => Operation::DiscoverVersionsResponse(
-                kms.discover_versions(kmip_request, user, params).await,
+                kms.discover_versions(kmip_request, user).await,
             ),
             Operation::Encrypt(kmip_request) => {
-                Operation::EncryptResponse(kms.encrypt(*kmip_request, user, params).await?)
+                Operation::EncryptResponse(
+                    Box::pin(crate::core::operations::encrypt(kms, *kmip_request, user))
+                        .await?,
+                )
             }
             Operation::Export(kmip_request) => {
-                Operation::ExportResponse(Box::new(kms.export(kmip_request, user, params).await?))
+                Operation::ExportResponse(Box::new(kms.export(kmip_request, user).await?))
             }
             Operation::Get(kmip_request) => {
-                Operation::GetResponse(kms.get(kmip_request, user, params).await?)
+                Operation::GetResponse(kms.get(kmip_request, user).await?)
             }
             Operation::GetAttributes(kmip_request) => Operation::GetAttributesResponse(Box::new(
-                kms.get_attributes(kmip_request, user, params).await?,
+                kms.get_attributes(kmip_request, user).await?,
             )),
             Operation::Hash(kmip_request) => {
-                Operation::HashResponse(kms.hash(kmip_request, user, params).await?)
+                Operation::HashResponse(kms.hash(kmip_request, user).await?)
             }
             Operation::Import(kmip_request) => Operation::ImportResponse(
-                kms.import(*kmip_request, user, params, privileged_users)
+                kms.import(*kmip_request, user)
                     .await?,
             ),
             Operation::Locate(kmip_request) => {
-                Operation::LocateResponse(kms.locate(*kmip_request, user, params).await?)
+                Operation::LocateResponse(kms.locate(*kmip_request, user).await?)
             }
             Operation::MAC(kmip_request) => {
-                Operation::MACResponse(kms.mac(kmip_request, user, params).await?)
+                Operation::MACResponse(
+                    crate::core::operations::mac(kms, kmip_request, user).await?,
+                )
             }
-        Operation::MACVerify(kmip_request) => Operation::MACVerifyResponse(
-            crate::core::operations::mac::mac_verify(kms, kmip_request, user, params).await?,
-        ),
+        Operation::MACVerify(kmip_request) => {
+            Operation::MACVerifyResponse(
+                crate::core::operations::mac_verify(kms, kmip_request, user).await?,
+            )
+        }
             Operation::Query(kmip_request) => {
                 Operation::QueryResponse(Box::new(kms.query(kmip_request).await?))
             }
             Operation::Register(kmip_request) => Operation::RegisterResponse(
-                kms.register(*kmip_request, user, params, privileged_users)
+                kms.register(*kmip_request, user)
+                    .await?,
+            ),
+            Operation::ReCertify(kmip_request) => Operation::ReCertifyResponse(
+                kms.recertify(*kmip_request, user)
                     .await?,
             ),
             Operation::ReKey(kmip_request) => {
-                Operation::ReKeyResponse(kms.rekey(kmip_request, user, params).await?)
+                Operation::ReKeyResponse(kms.rekey(kmip_request, user).await?)
             }
             Operation::ReKeyKeyPair(kmip_request) => Operation::ReKeyKeyPairResponse(
-                kms.rekey_keypair(*kmip_request, user, params, privileged_users)
+                kms.rekey_keypair(*kmip_request, user)
                     .await?,
             ),
             Operation::Revoke(kmip_request) => {
-                Operation::RevokeResponse(kms.revoke(kmip_request, user, params).await?)
+                Operation::RevokeResponse(kms.revoke(kmip_request, user).await?)
             }
             Operation::SetAttribute(kmip_request) => Operation::SetAttributeResponse(
-                kms.set_attribute(kmip_request, user, params).await?,
+                kms.set_attribute(kmip_request, user).await?,
             ),
             Operation::Sign(kmip_request) => {
-                Operation::SignResponse(kms.sign(kmip_request, user, params).await?)
+                Operation::SignResponse(
+                    crate::core::operations::sign(kms, kmip_request, user).await?,
+                )
             }
-            Operation::SignatureVerify(kmip_request) => Operation::SignatureVerifyResponse(
-                kms.signature_verify(kmip_request, user, params).await?,
-            ),
+            Operation::SignatureVerify(kmip_request) => {
+                Operation::SignatureVerifyResponse(
+                    crate::core::operations::signature_verify(kms, kmip_request, user).await?,
+                )
+            }
             Operation::Validate(kmip_request) => {
-                Operation::ValidateResponse(kms.validate(kmip_request, user, params).await?)
+                Operation::ValidateResponse(kms.validate(kmip_request, user).await?)
             }
         Operation::ModifyAttributeResponse(r) => Operation::ModifyAttributeResponse(r),
             Operation::ActivateResponse(_)
@@ -537,6 +562,7 @@ async fn process_operation(
             | Operation::MACResponse(_)
         | Operation::MACVerifyResponse(_)
             | Operation::QueryResponse(_)
+            | Operation::ReCertifyResponse(_)
             | Operation::RegisterResponse(_)
             | Operation::ReKeyKeyPairResponse(_)
             | Operation::ReKeyResponse(_)
@@ -544,19 +570,27 @@ async fn process_operation(
             | Operation::SetAttributeResponse(_)
             | Operation::SignResponse(_)
             | Operation::SignatureVerifyResponse(_)
-            | Operation::ValidateResponse(_) => {
+            | Operation::ValidateResponse(_)
+            | Operation::CreateSplitKeyResponse(_)
+            | Operation::JoinSplitKeyResponse(_) => {
                 return Err(KmsError::Kmip21Error(
                     ErrorReason::Operation_Not_Supported,
                     format!("Operation: {request_operation} not supported"),
                 ));
             }
+            Operation::CreateSplitKey(req) => {
+                Operation::CreateSplitKeyResponse(Box::pin(kms.create_split_key(req, user)).await?)
+            }
+            Operation::JoinSplitKey(req) => {
+                Operation::JoinSplitKeyResponse(Box::pin(kms.join_split_key(req, user)).await?)
+            }
         })
-    }
+    })
     .await;
 
     // Record metrics if enabled
-    if let Some(ref metrics) = kms.metrics {
-        let duration = start_time.elapsed().as_secs_f64();
+    if let (Some(metrics), Some(start)) = (kms.metrics.as_ref(), start_time) {
+        let duration = start.elapsed().as_secs_f64();
         metrics.record_kmip_operation(operation_name, user);
         metrics.record_kmip_operation_duration(operation_name, duration);
 
@@ -684,45 +718,45 @@ fn shape_kmip1_get_attributes_response(
     kmip_version: KmipFlavor,
     item: &mut V21ResponseMessageBatchItem,
     explicit_request: bool,
+    vendor_id: &str,
 ) {
     if !matches!(kmip_version, KmipFlavor::Kmip1)
         || item.result_status != ResultStatusEnumeration::Success
     {
         return;
     }
-    if let Some(Operation::GetAttributesResponse(ref mut gar)) = item.response_payload {
-        let attrs = &mut gar.attributes;
-        if explicit_request {
-            // Still remove internal Cosmian tagging attribute if present
-            if let Some(vas) = attrs.vendor_attributes.as_mut() {
-                vas.retain(|va| {
-                    !(va.vendor_identification == VENDOR_ID_COSMIAN
-                        && va.attribute_name == VENDOR_ATTR_TAG)
-                });
-                if vas.is_empty() {
-                    attrs.vendor_attributes = None;
-                }
-            }
-        } else {
-            // Drop TL-omitted standard attributes
-            attrs.always_sensitive = None;
-            attrs.extractable = None;
-            attrs.sensitive = None;
-            attrs.never_extractable = None;
-            attrs.short_unique_identifier = None;
-            attrs.key_format_type = None;
+    let Some(Operation::GetAttributesResponse(ref mut gar)) = item.response_payload else {
+        return;
+    };
+    let attrs = &mut gar.attributes;
 
-            // Filter vendor attributes to those intended for TL profiles.
-            if let Some(vas) = attrs.vendor_attributes.as_mut() {
-                vas.retain(|va| {
-                    va.vendor_identification == "x"
-                        && !(va.vendor_identification == VENDOR_ID_COSMIAN
-                            && va.attribute_name == VENDOR_ATTR_TAG)
-                });
-                if vas.is_empty() {
-                    attrs.vendor_attributes = None;
-                }
-            }
+    // A KMIP 1.x `GetAttributes` carrying no attribute name returns the TL profile set.
+    // Per the OASIS mandatory test vector `TL-M-3-14.xml`, that set excludes `Sensitive`,
+    // `Always Sensitive`, `Extractable` and `Never Extractable` even for KMIP 1.4 — they
+    // are only returned when explicitly requested (they remain advertised by
+    // `GetAttributeList`, as the same vector shows). `Short Unique Identifier` has no
+    // KMIP 1.x counterpart and `Key Format Type` belongs to the Key Block, not the
+    // attribute list.
+    //
+    // Version gating of attributes that a pre-1.4 client cannot decode is applied later,
+    // for both explicit and default requests, by `strip_kmip1_version_unsupported_attrs`.
+    if !explicit_request {
+        attrs.always_sensitive = None;
+        attrs.extractable = None;
+        attrs.sensitive = None;
+        attrs.never_extractable = None;
+        attrs.short_unique_identifier = None;
+        attrs.key_format_type = None;
+    }
+
+    // The Cosmian-internal tagging vendor attribute is never part of a KMIP response.
+    // All other vendor attributes (e.g. `KMIP1:__Operation Policy Name__`) are preserved.
+    if let Some(vas) = attrs.vendor_attributes.as_mut() {
+        vas.retain(|va| {
+            !(va.vendor_identification == vendor_id && va.attribute_name == VENDOR_ATTR_TAG)
+        });
+        if vas.is_empty() {
+            attrs.vendor_attributes = None;
         }
     }
 }
@@ -743,6 +777,12 @@ fn update_id_placeholder_from_response(
         // CreateKeyPair returns public+private UIDs; prefer the private key as placeholder
         Some(Operation::CreateKeyPairResponse(ckpr)) => {
             *id_placeholder = Some(ckpr.private_key_unique_identifier.clone());
+        }
+        // CreateSplitKey returns a list of split key part UIDs; per KMIP spec the ID
+        // Placeholder SHALL be set to the Unique Identifier of the split whose Key Part
+        // Identifier is 1 (i.e., the first entry in the list).
+        Some(Operation::CreateSplitKeyResponse(cskr)) => {
+            *id_placeholder = cskr.unique_identifier.first().cloned();
         }
         // Locate may return a list of UIDs; per KMIP ID Placeholder semantics we only
         // set the placeholder when exactly one UID is located. Otherwise, clear it.
@@ -768,7 +808,7 @@ fn mark_successes_undone(
     for &idx in success_indices {
         let item = response_items
             .get_mut(idx)
-            .ok_or_else(|| KmsError::UnsupportedPlaceholder)?;
+            .ok_or(KmsError::UnsupportedPlaceholder)?;
         if let ResponseMessageBatchItemVersioned::V21(bi) = item {
             if bi.result_status == ResultStatusEnumeration::Success {
                 bi.result_status = ResultStatusEnumeration::OperationUndone;

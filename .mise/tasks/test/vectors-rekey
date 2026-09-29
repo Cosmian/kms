@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Generate ReKey and ReKeyKeyPair test vectors into test_data/"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Generating ReKey / ReKeyKeyPair test vectors"
+
+REPO_ROOT="$(get_repo_root)"
+
+bash "${REPO_ROOT}/.mise/scripts/test/generate_rekey_vectors.sh"
+
+print_success "ReKey test vectors generated"

@@ -1,48 +1,63 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::State,
-        kmip_2_1::{
-            kmip_operations::{Locate, LocateResponse},
-            kmip_types::UniqueIdentifier,
-        },
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_operations::{Locate, LocateResponse},
+        kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_crypto::crypto::access_policy_from_attributes,
-    cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::trace;
 
-use crate::{core::KMS, result::KResult};
+use crate::{
+    core::{KMS, uid_utils::ObjectHandle},
+    middlewares::UserId,
+    result::KResult,
+};
+
+/// Server-side cap on Locate result sets (A04-3 / EXT2-4).
+///
+/// Prevents unbounded database queries and oversized response payloads when a client
+/// omits `MaximumItems` or requests more objects than this threshold.
+const MAX_LOCATE_ITEMS: u32 = 1000;
 
 pub(crate) async fn locate(
     kms: &KMS,
     request: Locate,
     state: Option<State>,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
 ) -> KResult<LocateResponse> {
     trace!("{}", request);
     // Determine the effective state filter: prefer explicit parameter, else Attributes.state
     let effective_state = state.or(request.attributes.state);
-    // Find all the objects that match the attributes
-    let uids_attrs = kms
-        .database
-        .find(
-            Some(&request.attributes),
-            effective_state,
-            user,
-            false,
-            params,
-        )
-        .await?;
+    // Find all the objects that match the attributes.
+    // CryptoOfficer ownership bypass: active COs call find_all (no user filter) and
+    // receive *all* matching objects in the database, while non-COs call find which
+    // restricts to objects they own or hold explicit grants on.
+    // NOTE: the bypass only manifests as a difference in the *returned UID list*,
+    // not in the exit code. Observing the bypass requires diffing the result set across
+    // CO vs non-CO callers against the same seeded objects, not just checking success/error.
+    let uids_attrs = if kms.is_crypto_officer(user).await? {
+        // CryptoOfficer: bypass user filtering and return all matching objects
+        kms.database
+            .find_all(Some(&request.attributes), effective_state, kms.vendor_id())
+            .await?
+    } else {
+        kms.database
+            .find(
+                Some(&request.attributes),
+                effective_state,
+                user,
+                false,
+                kms.vendor_id(),
+            )
+            .await?
+    };
     for (uid, _, attributes) in &uids_attrs {
         trace!("Found uid: {}, attributes: {}", uid, attributes);
     }
-    // Filter the uids that match the access structure.
-    // If no explicit state is requested, exclude Destroyed objects by default per KMIP.
-    let mut uids = Vec::new();
-    if access_policy_from_attributes(&request.attributes).is_err() {
+
+    #[cfg(not(feature = "non-fips"))]
+    let mut uids = {
+        let mut uids = Vec::new();
         for (uid, state_found, attributes) in uids_attrs {
             trace!(
                 "UID: {:?}, State: {:?}, Attributes: {}",
@@ -59,17 +74,86 @@ pub(crate) async fn locate(
                     continue;
                 }
             }
-            // If there is no access structure, accept; otherwise would compare the access policies
+            // If there is no access structure, accept; otherwise would compare
+            // the access policies
             uids.push(UniqueIdentifier::TextString(uid));
         }
+        uids
+    };
+
+    #[cfg(feature = "non-fips")]
+    let mut uids = {
+        // Filter the uids that match the access structure.
+        //
+        // If no explicit state is requested, exclude Destroyed objects by
+        // default per KMIP.
+        use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
+
+        let mut uids = Vec::new();
+        if access_policy_from_attributes(kms.vendor_id(), &request.attributes).is_err() {
+            for (uid, state_found, attributes) in uids_attrs {
+                trace!(
+                    "UID: {:?}, State: {:?}, Attributes: {}",
+                    uid, state_found, attributes
+                );
+                // If an explicit state filter is provided, enforce it strictly.
+                if let Some(s) = effective_state {
+                    if state_found != s {
+                        continue;
+                    }
+                } else {
+                    // Otherwise, exclude destroyed objects
+                    if matches!(state_found, State::Destroyed | State::Destroyed_Compromised) {
+                        continue;
+                    }
+                }
+                // If there is no access structure, accept; otherwise would
+                // compare the access policies
+                uids.push(UniqueIdentifier::TextString(uid));
+            }
+        }
+        uids
+    };
+
+    // HSM key visibility filtering: non-admin users only see HSM keys they
+    // have been explicitly granted at least one operation on.
+    let is_hsm_admin = kms
+        .params
+        .hsm_instances
+        .iter()
+        .any(|inst| inst.admin.iter().any(|a| a == "*" || a == user));
+    if !is_hsm_admin {
+        let mut filtered = Vec::with_capacity(uids.len());
+        for uid in uids {
+            let uid_str = uid.as_str().unwrap_or_default();
+            if ObjectHandle::from(uid_str).is_hsm() {
+                // Check if user has any granted operation on this HSM key
+                let ops = kms
+                    .database
+                    .list_user_operations_on_object(uid_str, user, false)
+                    .await?;
+                if ops.is_empty() {
+                    trace!("Locate: filtering out HSM key {uid_str} — user {user} has no grants");
+                    continue;
+                }
+            }
+            filtered.push(uid);
+        }
+        uids = filtered;
     }
 
-    // Respect MaximumItems only when explicitly provided. If absent, return all matches.
-    if let Some(mi) = request.maximum_items {
-        let max_items = usize::try_from(mi.max(0))?;
-        if uids.len() > max_items {
-            uids.truncate(max_items);
-        }
+    // Apply a server-side cap on result set size (A04-3 / EXT2-4).
+    // The effective limit is the smaller of: client-supplied MaximumItems (if any)
+    // and the server-side MAX_LOCATE_ITEMS constant.  When MaximumItems is absent
+    // the server cap is applied automatically to prevent unbounded DB result sets.
+    let server_cap = usize::try_from(MAX_LOCATE_ITEMS)?;
+    let effective_max = request.maximum_items.map_or(server_cap, |mi| {
+        usize::try_from(mi.max(0))
+            .unwrap_or(server_cap)
+            .min(server_cap)
+    });
+    if uids.len() > effective_max {
+        uids.truncate(effective_max);
     }
     trace!("UIDs count (post-truncate): {}", uids.len());
     let response = LocateResponse {

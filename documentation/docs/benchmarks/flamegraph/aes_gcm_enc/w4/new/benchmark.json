@@ -1,0 +1,1 @@
+{"group_id":"kms_bench","function_id":"aes_gcm_enc","value_str":"w4","throughput":{"Elements":16},"full_id":"kms_bench/aes_gcm_enc/w4","directory_name":"kms_bench/aes_gcm_enc/w4","title":"kms_bench/aes_gcm_enc/w4"}

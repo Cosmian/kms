@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#MISE description="Extract changelog notes and create or update the GitHub Release for a tag"
+#USAGE arg "<version>" help="Version / tag to publish (e.g. 5.24.0)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+# shellcheck disable=SC2154  # usage_* vars are set by the MISE USAGE framework
+print_header "Publishing GitHub Release ${usage_version}"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/release/publish_github_release.sh" \
+  "${usage_version}"
+
+print_success "GitHub Release ${usage_version} published"

@@ -1,23 +1,181 @@
 # SBOM (Software Bill of Materials)
 
-This directory contains a comprehensive Software Bill of Materials (SBOM) for the Cosmian KMS server, generated using industry-standard tools and formats.
+This directory contains Software Bill of Materials (SBOM) reports for Cosmian KMS builds generated from Nix outputs, using industry-standard tools and formats.
 
 ## 📋 Overview
 
-An SBOM is a formal record containing the details and supply chain relationships of components used in building software. This SBOM was generated from the Nix build output, providing a complete and reproducible view of all runtime dependencies.
+An SBOM is a formal record containing the details and supply chain relationships of components used in building software. These SBOMs are generated from the Nix build outputs, providing a complete and reproducible view of dependencies.
 
-## 📁 Generated Files
+### Component coverage
 
-| File | Format | Standard | Description |
-|------|--------|----------|-------------|
-| `bom.cdx.json` | CycloneDX 1.5 | OWASP | Industry-standard SBOM format, compatible with Dependency-Track |
-| `bom.spdx.json` | SPDX 2.3 | ISO/IEC 5962:2021 | ISO-standard SBOM format, widely used for compliance |
-| `sbom.csv` | CSV | - | Simple tabular format for spreadsheet analysis |
-| `vulns.csv` | CSV | - | Vulnerability scan results from multiple sources |
-| `graph.png` | PNG | - | Visual dependency graph showing relationships |
-| `meta.json` | JSON | - | Build metadata (variant, timestamp, component counts) |
+The generation pipeline covers **three layers** of components:
+
+| Layer | Tool | Scope |
+|-------|------|-------|
+| System / Nix runtime | sbomnix | Shared libraries linked at runtime (glibc, openssl, libidn2…) |
+| Rust crates | `enrich_sbom_authors.py` | ~670 third-party crates compiled into the binary (from `Cargo.lock`) |
+| npm/pnpm packages | `enrich_sbom_authors.py` | ~310 third-party UI packages (from `ui/pnpm-lock.yaml`) |
+
+The `bom.cdx.json` and `bom.spdx.json` files produced by `generate_sbom.sh` are
+automatically enriched in-place by `.mise/scripts/sbom/enrich_sbom_authors.py`
+(supplier/author fields) and then by `.mise/scripts/sbom/enrich_cpe.py`
+(CPE 2.3 identifiers — see section below).
+
+## 🏷️ CPE 2.3 Identifiers
+
+### What is CPE?
+
+**Common Platform Enumeration (CPE)** is a structured naming scheme for IT systems,
+software, and packages, standardised by NIST in
+[NISTIR 7695](https://nvlpubs.nist.gov/nistpubs/Legacy/IR/nistir7695.pdf).
+CPE 2.3 is the version required by the NVD (National Vulnerability Database) and
+by the **Eviden PSIRT tooling service** (slide 10, "Eviden PSIRT Tooling V3", 2026-07-24).
+
+### Why it matters
+
+CVE scanners — Grype, Vulnix, Dependency-Track — use the CPE field to match SBOM
+components against NVD vulnerability records.  **Without a CPE, a component is
+invisible to CPE-based vulnerability matching**, meaning known CVEs may go
+undetected.
+
+### CPE 2.3 format
+
+```text
+cpe:2.3:<part>:<vendor>:<product>:<version>:*:*:*:*:*:*:*
+```
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `part` | `a` | Always `a` (application) for Rust crates and npm packages |
+| `vendor` | organisation name | Lower-cased, dashes → underscores |
+| `product` | component base name | Lower-cased, dashes → underscores |
+| `version` | exact semver | No `v` prefix |
+
+**CPE dictionary reference:** <https://nvd.nist.gov/feeds/json/cpe/2.0/nvdcpe-2.0.zip>
+
+### Coverage in this SBOM
+
+All **988 components** in `bom.cdx.json` carry a CPE 2.3 identifier after generation:
+
+| Layer | Count | CPE source |
+|-------|-------|-----------|
+| System / Nix libs | ~4 | Hand-crafted (glibc, openssl, libidn2, libunistring) |
+| Rust crates | ~670 | Auto-derived via `enrich_cpe.py` |
+| npm/pnpm packages | ~310 | Auto-derived via `enrich_cpe.py` |
+
+### Vendor derivation rules
+
+`enrich_cpe.py` derives the `vendor` field using the following priority order:
+
+1. **`cpe_overrides.json`** — manual table for crates/packages whose NVD vendor
+   is known and differs from the auto-derived value.  Examples: `ring` → `ring-project`,
+   `tokio` → `tokio_rs`, `serde` → `serde_rs`.  Edit
+   `.mise/scripts/sbom/cpe_overrides.json` to add or correct entries.
+
+2. **GitHub organisation** from the `vcs` external-reference URL emitted by
+   [`cargo-sbom`](https://github.com/psastras/sbom-rs).  For example,
+   `https://github.com/actix/actix-web` → vendor `actix`.
+   Coverage: ~99 % of Rust crates.
+
+3. **First author name** from the `author` field emitted by `cargo-sbom`,
+   taking the text before the first `<` or `(`, lower-cased.
+   Coverage: ~83 % of Rust crates.
+
+4. **Fallback**: the component name itself, lower-cased with dashes replaced by
+   underscores (NVD convention for personal/small crates).
+
+### Rust tooling evaluated
+
+| Tool | Version | CPE output | Role in this pipeline |
+|------|---------|-----------|----------------------|
+| [`cargo-cyclonedx`](https://github.com/CycloneDX/cyclonedx-rust-cargo) | 0.5.9 | ❌ None | — |
+| [`cargo-sbom`](https://github.com/psastras/sbom-rs) | 0.10.0 | ❌ None | ✅ **VCS + author data source** for vendor derivation |
+| [`cpe`](https://crates.io/crates/cpe) crate | 0.1.5 | Parsing/validation only | — |
+| [`get-cpe`](https://crates.io/crates/get-cpe) | 0.6.7 | NVD dictionary lookup | Too slow for 988 components |
+
+None of the available Rust tools generate CPE 2.3 fields automatically.
+`enrich_cpe.py` fills this gap using `cargo-sbom` as a metadata source.
+
+### Updating overrides
+
+When a CPE for a well-known crate is incorrect or missing, add it to
+`.mise/scripts/sbom/cpe_overrides.json`:
+
+```json
+{
+  "crate-name": "cpe:2.3:a:<vendor>:<product>:{version}:*:*:*:*:*:*:*"
+}
+```
+
+Use `{version}` as a placeholder — it is substituted at generation time.
+Look up the correct vendor/product in the
+[NVD CPE search](https://nvd.nist.gov/products/cpe/search).
+
+Report locations:
+
+- `sbom/openssl_3_1_2/` — SBOM + vulnerability scan for the OpenSSL 3.1.2 (FIPS) derivation
+- `sbom/openssl_3_6_2/` — SBOM + vulnerability scan for the OpenSSL 3.6.2 (non-FIPS) derivation
+- `sbom/server/<variant>/<link>/` — SBOM + vulnerability scan for the server derivation
+    - `<variant>`: `fips` | `non-fips`
+    - `<link>`: `static` | `dynamic`
+
+## 📁 Reports (and purpose)
+
+The SBOM generator produces several "base" reports.
+
+Important: folders are kept clean on purpose. Each SBOM output directory contains only **two CSV files**:
+
+- `sbom.csv` — component inventory
+- `vulns.csv` — vulnerability rows
+
+| Report | Where | Purpose |
+|------|------|---------|
+| `bom.cdx.json` | `sbom/**/` | CycloneDX 1.5 SBOM — enriched with supplier, Rust crates and npm packages |
+| `bom.spdx.json` | `sbom/**/` | SPDX 2.3 SBOM — enriched with originator/supplier, Rust crates and npm packages |
+| `sbom.csv` | `sbom/**/` | Tabular component inventory (package name/version/system metadata) |
+| `vulns.csv` | `sbom/**/` | Vulnerability rows from `vulnxscan` |
+| `graph.png` | `sbom/**/` | Visual dependency graph |
+| `meta.json` | `sbom/**/` | Build metadata (target/variant/link, counts, timestamps) |
 
 ## 🔧 Tools Used
+
+### enrich_sbom_authors.py (Cosmian — built-in)
+
+**Purpose:** Enrich `bom.cdx.json` and `bom.spdx.json` with author/supplier data and add Rust + npm components that sbomnix does not capture.
+
+**Script:** `.mise/scripts/sbom/enrich_sbom_authors.py`
+
+**How it works (no external tool required — only Python 3.6+):**
+
+1. **Rust crates** — parses `Cargo.lock`, resolves author metadata from the local
+   cargo registry cache (`~/.cargo/registry`) already populated by `cargo build`.
+   Falls back to the [crates.io REST API](https://crates.io/api/v1/crates/{name}/owners)
+   for crates whose `Cargo.toml` has no `authors` field (opt-in via `--api-limit N`).
+2. **npm packages** — parses `ui/pnpm-lock.yaml`, reads `author` from each
+   `ui/node_modules/<pkg>/package.json`.
+3. **Enrichment** — adds `supplier` (CycloneDX) / `originator` + `supplier` (SPDX)
+   to every component, including the system-level ones from sbomnix.
+
+**Data sources (in priority order):**
+
+| Priority | Source | Requires network? | Coverage |
+|----------|--------|------------------|----------|
+| 1 | Local `~/.cargo/registry` Cargo.toml | ❌ No | ~98% of crates after `cargo build` |
+| 2 | `ui/node_modules/*/package.json` | ❌ No | ~100% of npm packages after `pnpm install` |
+| 3 | crates.io API owners endpoint | ✅ Yes (opt-in) | Remaining crates |
+| 4 | Hard-coded mapping (system libs) | ❌ No | glibc, openssl, libidn2… |
+
+**Result:** `bom.cdx.json` (CycloneDX 1.5) and `bom.spdx.json` (SPDX 2.3) grow
+from ~4 Nix components to ~900 components (4 system + ~580 Rust + ~320 npm),
+each with a `supplier` / `originator` field identifying the author or organization.
+
+**Invocation:** enrichment runs automatically at the end of `mise run sbom:generate`
+(for the `server` target it adds Rust + npm components; for OpenSSL-only targets it
+enriches the system-level components). It is not a separate command.
+
+**crates.io rate limit:** 100 req/s. The script uses a 100 ms delay between
+calls and a disk cache (`/tmp/cosmian-kms-sbom-authors.json`) to avoid redundant
+requests across runs.
 
 ### [sbomnix](https://github.com/tiiuae/sbomnix)
 
@@ -43,6 +201,8 @@ An SBOM is a formal record containing the details and supply chain relationships
 - Provides unified vulnerability reports
 - Filters false positives and patched vulnerabilities
 
+Note: the current `vulns.csv` includes an `osv` column as well, since `vulnxscan` also queries OSV.
+
 ### [Vulnix](https://github.com/nix-community/vulnix)
 
 **Purpose:** NixOS vulnerability scanner
@@ -67,6 +227,11 @@ An SBOM is a formal record containing the details and supply chain relationships
 - Supports multiple package ecosystems
 - Detailed CVE reporting with CVSS scores
 
+### [OSV](https://osv.dev/)
+
+**Purpose:** Vulnerability database and API
+**Description:** `vulnxscan` queries OSV to enrich vulnerability coverage across multiple ecosystems.
+
 ### [nixgraph](https://github.com/tiiuae/sbomnix)
 
 **Purpose:** Nix dependency graph visualization
@@ -82,6 +247,8 @@ An SBOM is a formal record containing the details and supply chain relationships
 ## 📊 Usage Examples
 
 ### Import to Dependency-Track
+
+Pick the `bom.cdx.json` you want to import (for example, `sbom/server/fips/static/bom.cdx.json` or `sbom/openssl_3_1_2/bom.cdx.json`).
 
 ```bash
 curl -X POST "https://dtrack.example.com/api/v1/bom" \
@@ -132,12 +299,13 @@ awk -F',' '$5 > 7.0' vulns.csv | column -t -s,
 tail -n +2 vulns.csv | cut -d',' -f3 | sort | uniq -c | sort -rn
 ```
 
-## 🔍 Vulnerability Analysis
+## 🔍 Vulnerability analysis notes
 
 The vulnerability scan combines results from multiple sources:
 
 - **Grype**: Scans against NVD, GitHub Security Advisories, and other databases
 - **Vulnix**: Scans against NixOS security tracker and NVD with Nix-specific context
+- **OSV**: Queries the OSV database (<https://osv.dev>)
 - **Combined Coverage**: Both scanners complement each other, with Vulnix excelling at Nix packages and Grype providing broader coverage
 
 ### Vulnerability Report Structure
@@ -160,7 +328,7 @@ CVE-2024-XXXX,https://...,package-name,1.2.3,7.5,1,0,1,2,2024A...
 
 ## 🔒 Security Notes
 
-1. **OpenSSL**: Statically linked in the binary (not a runtime dependency)
+1. **OpenSSL**: For server `--link static`, OpenSSL is statically linked; for `--link dynamic`, it is a runtime dependency
 2. **Nix Store**: All dependencies are from Nix store with cryptographically verified, pinned versions
 3. **Reproducibility**: The SBOM reflects the exact build output, ensuring reproducibility
 4. **Coverage**: SBOM includes runtime dependencies only (build-time dependencies excluded)
@@ -169,14 +337,25 @@ CVE-2024-XXXX,https://...,package-name,1.2.3,7.5,1,0,1,2,2024A...
 ## 🔄 Regenerating the SBOM
 
 ```bash
-# From repository root
-bash .github/scripts/nix.sh sbom
+# From repository root (generates OpenSSL + all server combinations)
+mise run sbom:generate
 
-# For non-FIPS variant
-bash .github/scripts/nix.sh --variant non-fips sbom
+# OpenSSL 3.1.2 derivation only (writes under sbom/openssl_3_1_2)
+mise run sbom:generate --target openssl_3_1_2
 
-# Custom output directory
-nix/scripts/generate_sbom.sh --output /custom/path
+# OpenSSL 3.6.2 derivation only (writes under sbom/openssl_3_6_2)
+mise run sbom:generate --target openssl_3_6_2
+
+# All server combinations (writes under sbom/server/<variant>/<link>)
+mise run sbom:generate --target server
+
+# One specific server combination
+mise run sbom:generate --target server --variant fips --link static
+
+# Notes:
+# - --variant/--link are only valid with: --target server (otherwise the command errors)
+# - No extra CSV/TXT reports are generated (folders are kept clean)
+# - Generation is run from an isolated temporary work directory to avoid accidental `sbom.*` files being written to the repository root
 ```
 
 ## 📚 Standards & Specifications
@@ -199,7 +378,7 @@ nix/scripts/generate_sbom.sh --output /custom/path
 
 ```yaml
 - name: Generate SBOM
-  run: bash .github/scripts/nix.sh sbom
+  run: mise run sbom:generate
 
 - name: Upload SBOM to Dependency-Track
   uses: DependencyTrack/gh-upload-sbom@v1
@@ -207,7 +386,8 @@ nix/scripts/generate_sbom.sh --output /custom/path
     serverhostname: 'dtrack.example.com'
     apikey: ${{ secrets.DTRACK_API_KEY }}
     project: 'cosmian-kms'
-    bomfilename: 'sbom/bom.cdx.json'
+    # Choose one SBOM artifact to upload (example: server fips/static)
+    bomfilename: 'sbom/server/fips/static/bom.cdx.json'
 
 - name: Archive SBOM artifacts
   uses: actions/upload-artifact@v3

@@ -1,34 +1,78 @@
+# Rust / Cargo
 target/
 .cargo_check/
-.history/
-*.swp
-TODO.md
-data/html
+rustc-ice*.txt
+crate/server/Cargo.toml.bak
+vendor/
+
+# Security / Secrets
 data/keys
 .env
-.venv/
+audit-results
+
+# Runtime Artifacts / Local Data
+data/html
+crate/cli/*.sqlite
+http_cache.sqlite
+**/*cosmian-kms*
+**/*cosmian-kms/sqlite-data*
+# Helm chart source is tracked despite the broad runtime-artifact rule above
+!charts/cosmian-kms/
+!charts/cosmian-kms/**
 **/data/private
 **/data/public
 **/data/shared
-crate/cli/*.sqlite
-.DS_Store
-.idea/
-rustc-ice*.txt
-node_modules/
-# this directory may contain sqlite data when the KMS is launched locally
-**/*cosmian-kms/sqlite-data*
-run.sh
-.aider/
+result*
+sbom.*
+resources/cli.zip
 .cache
-.local
+
+# HSM / Crypto Libraries
 .openssl
 resources/tarballs/openssl-3.1.2.tar.gz
+resources/tarballs/openssl-3.6.2.tar.gz
 .utimaco
-.softhsm2
+.softhsm2*
 *.xz*
-result*
-crate/server/Cargo.toml.bak
+
+# UI / Node
+node_modules/
 crate/server/ui*
-vendor/
-http_cache.sqlite
-sbom.*
+ui_non_fips/
+ui/test-results
+
+# OS / IDE / AI Tools
+.DS_Store
+._*
+.idea/
+.vscode/
+*.swp
+.history/
+.aider/
+.claude
+.agent/
+.agents/
+.qwen/tmp/
+.github/agents/
+
+# Misc
+TODO.md
+.venv/
+.local
+**/*__pycache__*
+run.sh
+
+# Windows (vcpkg OpenSSL)
+vcpkg_installed/
+
+# Linux perf profiling artifacts
+perf.data
+perf.data.old
+target/flamegraphs/
+REVIEW_REPORT*.md
+
+/scripts/
+
+# Review
+/threat-model*
+/review*

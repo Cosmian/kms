@@ -1,259 +1,379 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_operations::DiscoverVersions,
-        kmip_2_1::kmip_operations::{
-            Activate, AddAttribute, Certify, Check, Create, CreateKeyPair, Decrypt,
+use cosmian_kms_access::access::{CryptoOfficerConfig, Role};
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_operations::DiscoverVersions,
+    kmip_2_1::{
+        KmipOperation,
+        kmip_operations::{
+            Activate, AddAttribute, Certify, Check, Create, CreateKeyPair, CreateSplitKey, Decrypt,
             DeleteAttribute, DeriveKey, Destroy, Encrypt, Export, Get, GetAttributeList,
-            GetAttributes, Hash, Import, Locate, MAC, MACVerify, ModifyAttribute, Operation, Query,
-            RNGRetrieve, RNGSeed, ReKey, ReKeyKeyPair, Register, Revoke, SetAttribute, Sign,
-            SignatureVerify, Validate,
+            GetAttributes, Hash, Import, JoinSplitKey, Locate, MAC, MACVerify, ModifyAttribute,
+            Operation, Query, RNGRetrieve, RNGSeed, ReCertify, ReKey, ReKeyKeyPair, Register,
+            Revoke, SetAttribute, Sign, SignatureVerify, Validate,
         },
-        ttlv::{TTLV, from_ttlv},
     },
-    cosmian_kms_interfaces::SessionParams,
+    ttlv::{TTLV, from_ttlv},
 };
-use cosmian_logger::debug;
 
 use crate::{
     core::{
         KMS,
         operations::{
-            get_attribute_list::get_attribute_list, mac::mac_verify,
-            modify_attribute::modify_attribute, query::query as query_op,
+            algorithm_policy::enforce_kmip_algorithm_policy_for_operation,
+            attributes::get_attribute_list, check, mac::mac_verify, query::query as query_op,
         },
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
-/// Dispatch operation depending on the TTLV tag
-pub(crate) async fn dispatch(
+/// Generate a match arm that deserializes TTLV, calls `kms.$method(req, user)`, and wraps in
+/// `Operation::$Response`.
+macro_rules! op {
+    ($ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = $kms.$method(req, $user).await?;
+        Operation::$Resp(resp)
+    }};
+    // Variant for operations returning a boxed response
+    (boxed $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = $kms.$method(req, $user).await?;
+        Operation::$Resp(Box::new(resp))
+    }};
+    // Variant for operations that need Box::pin (deep recursion)
+    (pin $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = Box::pin($kms.$method(req, $user)).await?;
+        Operation::$Resp(resp)
+    }};
+    // Variant for free functions: fn(kms, req, user) -> Result<Resp>
+    (fn $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $func:expr, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = $func($kms, req, $user).await?;
+        Operation::$Resp(resp)
+    }};
+    // Variant for free functions with Box::pin
+    (pin_fn $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $func:expr, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = Box::pin($func($kms, req, $user)).await?;
+        Operation::$Resp(resp)
+    }};
+    // Variant for infallible KMS methods (no `?`)
+    (infallible $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = $kms.$method(req, $user).await;
+        Operation::$Resp(resp)
+    }};
+    // Variant for free functions: fn(req, extra) -> Result<Resp> with boxed response
+    (query $ttlv:expr, $kms:expr, $Req:ty, $func:expr, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = $func(req, $kms.vendor_id()).await?;
+        Operation::$Resp(Box::new(resp))
+    }};
+}
+
+/// Enforce role-based access control before dispatching a KMIP operation.
+///
+/// ## Design
+///
+/// This function enforces [`Role::allowed_operations()`] for all roles.
+/// Two enforcement layers work together:
+///
+/// 1. **Dispatch-level (this function)**: blocks requests whose operation is not in the
+///    role's `allowed_operations()` set. This prevents, e.g., an `Operator` from calling
+///    `Get`/`Export` (key output is a Crypto Officer service per ISO/IEC 19790 §7.4).
+///
+/// 2. **Handler-level ownership/grant checks** (`retrieve_object_for_operation`,
+///    `user_has_permission`): even if dispatch allows the operation (e.g., `Get` for a
+///    `CryptoOfficer`), the user must still own the object or hold an explicit per-object
+///    grant (unless `CryptoOfficer` is active, which grants ownership bypass).
+///
+/// Lifecycle operations without a [`KmipOperation`] mapping (`CreateKeyPair`, `Register`,
+/// `ReKeyKeyPair`, `CreateSplitKey`) are additionally blocked for `Operator` users unless
+/// they hold an explicit `Create` grant.
+///
+/// Users not listed in any role default to `Operator` when role enforcement is active
+/// (fail-secure per NIST SP 800-57 Part 2 Rev 1 §4.8).
+///
+/// # Errors
+/// Returns [`KmsError::Unauthorized`] when the user's role does not permit the requested
+/// operation.
+pub(crate) async fn check_role_permission(
     kms: &KMS,
-    ttlv: TTLV,
     user: &str,
-    database_params: Option<Arc<dyn SessionParams>>,
-) -> KResult<Operation> {
+    operation_tag: &str,
+    crypto_officer: &CryptoOfficerConfig,
+) -> KResult<()> {
+    // If no role lists are configured, skip role enforcement entirely.
+    if !crypto_officer.is_configured() {
+        return Ok(());
+    }
+
+    // Ceremony candidate exemption: users in crypto_officer.users can perform
+    // Create, Import, CreateSplitKey, and JoinSplitKey even before completing
+    // the ceremony. This breaks the vicious circle where they need to create
+    // a master key and split it to complete the ceremony, but can't create
+    // anything without being CO first.
+    // Security: only ceremony candidates (not arbitrary Operators) are exempt,
+    // and only for operations that are prerequisites for ceremony completion.
+    // Full CO privileges (ownership bypass) still require ceremony completion.
+    let is_ceremony_candidate = crypto_officer.require_ceremony
+        && crypto_officer.users.iter().any(|u| u == user)
+        && KmipOperation::is_ceremony_prerequisite_tag(operation_tag);
+
+    if is_ceremony_candidate {
+        return Ok(());
+    }
+
+    let mut effective_role = crypto_officer
+        .role_for(user)
+        // Fail-secure: unenrolled users default to Operator when roles are configured
+        .unwrap_or(Role::Operator);
+
+    // When the Crypto Officer ceremony is required, role_for() cannot determine CO status
+    // from config alone. Check the database for a completed ceremony activation.
+    if effective_role != Role::CryptoOfficer
+        && crypto_officer.require_ceremony
+        && crypto_officer.users.iter().any(|u| u == user)
+    {
+        match kms.database.is_crypto_officer_activated_by(user).await {
+            Ok(true) => effective_role = Role::CryptoOfficer,
+            Ok(false) => {}
+            Err(e) => {
+                tracing::warn!(
+                    "ceremony check DB error for user {user}: {e}; \
+                     falling back to Operator role"
+                );
+            }
+        }
+    }
+
+    match effective_role {
+        Role::CryptoOfficer => {
+            // CryptoOfficer: enforce allowed_operations(). Ownership bypass is handled
+            // at handler level (retrieve_object_utils.rs / locate.rs).
+            if let Some(kmip_op) = KmipOperation::from_tag(operation_tag) {
+                let allowed = Role::CryptoOfficer.allowed_operations();
+                if !allowed.contains(&kmip_op) {
+                    kms_bail!(KmsError::Unauthorized(format!(
+                        "User `{user}` (role: CryptoOfficer) is not authorized to perform \
+                         operation `{operation_tag}` (not in CryptoOfficer allowed operations)"
+                    )))
+                }
+                return Ok(());
+            }
+            // Lifecycle operations without a KmipOperation mapping
+            // (CreateKeyPair, Register, ReKeyKeyPair, CreateSplitKey, JoinSplitKey):
+            // route through enforce_create_permission, which handles default_username,
+            // CO-user membership, ceremony-candidate exemption, and explicit Create grants.
+            // COs always satisfy this gate (they are listed in crypto_officer.users),
+            // making this equivalent to an unconditional allow — but the explicit call
+            // ensures consistent audit and error paths instead of a silent fall-through.
+            if KmipOperation::is_restricted_lifecycle_tag(operation_tag)
+                || operation_tag == "JoinSplitKey"
+            {
+                return kms.enforce_create_permission(&UserId::from(user)).await;
+            }
+            Ok(())
+        }
+        Role::Operator => {
+            // Enforce allowed_operations() for Operator at dispatch.
+            if let Some(kmip_op) = KmipOperation::from_tag(operation_tag) {
+                let allowed = Role::Operator.allowed_operations();
+                if !allowed.contains(&kmip_op) {
+                    // Lifecycle operations (Create, Import): delegate to enforce_create_permission
+                    // which correctly handles default_username, CO-user membership, and explicit grants.
+                    if matches!(kmip_op, KmipOperation::Create | KmipOperation::Import) {
+                        return kms.enforce_create_permission(&UserId::from(user)).await;
+                    }
+                    // Per-object operations (Get, Export, Activate, Revoke, Destroy, etc.)
+                    // are not blocked at dispatch — they rely on handler-level ownership/grant checks.
+                    return Ok(());
+                }
+                return Ok(());
+            }
+
+            // Lifecycle operations without KmipOperation mapping (CreateKeyPair, Register,
+            // ReKeyKeyPair, CreateSplitKey): delegate to enforce_create_permission which
+            // handles default_username, CO-user membership, and explicit grants.
+            if KmipOperation::is_restricted_lifecycle_tag(operation_tag) {
+                return kms.enforce_create_permission(&UserId::from(user)).await;
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Dispatch operation depending on the TTLV tag
+pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &UserId) -> KResult<Operation> {
     let operation_tag = ttlv.tag.clone();
-    let start_time = std::time::Instant::now();
 
-    let result = dispatch_inner(kms, ttlv, user, database_params.clone(), &operation_tag).await;
-
-    // Record metrics if enabled
     if let Some(ref metrics) = kms.metrics {
-        let duration = start_time.elapsed().as_secs_f64();
+        let start = std::time::Instant::now();
+        let result = Box::pin(dispatch_inner(kms, ttlv, user, &operation_tag)).await;
+        let duration = start.elapsed().as_secs_f64();
         metrics.record_kmip_operation(&operation_tag, user);
         metrics.record_kmip_operation_duration(&operation_tag, duration);
-
-        // Record error if operation failed
         if result.is_err() {
             metrics.record_error(&operation_tag);
         }
-
-        // Active keys metric refresh moved to standalone background task
+        result
+    } else {
+        Box::pin(dispatch_inner(kms, ttlv, user, &operation_tag)).await
     }
-
-    result
 }
 
 async fn dispatch_inner(
     kms: &KMS,
     ttlv: TTLV,
-    user: &str,
-    database_params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
     operation_tag: &str,
 ) -> KResult<Operation> {
+    // Enforce role-based access control before any other check.
+    check_role_permission(kms, user, operation_tag, &kms.params.crypto_officer).await?;
+
+    // For operations where the request carries algorithm choices, validate them
+    // before executing any cryptographic action.  Skip entirely when no policy
+    // is configured — avoids a function call + match on every dispatch.
+    if kms.params.kmip_policy.policy_id.is_some() {
+        enforce_kmip_algorithm_policy_for_operation(&kms.params, operation_tag, &ttlv)?;
+    }
+
     Ok(match operation_tag {
-        "Activate" => {
-            let req = from_ttlv::<Activate>(ttlv)?;
-            let resp = kms.activate(req, user, database_params).await?;
-            Operation::ActivateResponse(resp)
-        }
-        "AddAttribute" => {
-            let req = from_ttlv::<AddAttribute>(ttlv)?;
-            let resp = kms.add_attribute(req, user, database_params).await?;
-            Operation::AddAttributeResponse(resp)
-        }
-        "Certify" => {
-            let req = from_ttlv::<Certify>(ttlv)?;
-            let privileged_users = kms.params.privileged_users.clone();
-            let resp = kms
-                .certify(req, user, database_params, privileged_users)
-                .await?;
-            Operation::CertifyResponse(resp)
-        }
+        "Activate" => op!(ttlv, kms, user, Activate, activate, ActivateResponse),
+        "AddAttribute" => op!(
+            ttlv,
+            kms,
+            user,
+            AddAttribute,
+            add_attribute,
+            AddAttributeResponse
+        ),
+        "Certify" => op!(ttlv, kms, user, Certify, certify, CertifyResponse),
         "Check" => {
-            let req = from_ttlv::<Check>(ttlv)?;
-            let resp =
-                crate::core::operations::check::check(kms, req, user, database_params).await?;
-            Operation::CheckResponse(resp)
+            op!(fn ttlv, kms, user, Check, check, CheckResponse)
         }
-        "Create" => {
-            let req = from_ttlv::<Create>(ttlv)?;
-            let privileged_users = kms.params.privileged_users.clone();
-            let resp = kms
-                .create(req, user, database_params, privileged_users)
-                .await?;
-            Operation::CreateResponse(resp)
-        }
+        "Create" => op!(ttlv, kms, user, Create, create, CreateResponse),
         "CreateKeyPair" => {
-            let req = from_ttlv::<CreateKeyPair>(ttlv)?;
-            let privileged_users = kms.params.privileged_users.clone();
-            let resp = kms
-                .create_key_pair(req, user, database_params, privileged_users)
-                .await?;
-            Operation::CreateKeyPairResponse(resp)
+            op!(
+                ttlv,
+                kms,
+                user,
+                CreateKeyPair,
+                create_key_pair,
+                CreateKeyPairResponse
+            )
         }
-        "Decrypt" => {
-            let req = from_ttlv::<Decrypt>(ttlv)?;
-            let resp = kms.decrypt(req, user, database_params).await?;
-            Operation::DecryptResponse(resp)
+        "CreateSplitKey" => {
+            op!(
+                ttlv,
+                kms,
+                user,
+                CreateSplitKey,
+                create_split_key,
+                CreateSplitKeyResponse
+            )
         }
+        "Decrypt" => op!(ttlv, kms, user, Decrypt, decrypt, DecryptResponse),
         "DeleteAttribute" => {
-            let req = from_ttlv::<DeleteAttribute>(ttlv)?;
-            let resp = kms.delete_attribute(req, user, database_params).await?;
-            Operation::DeleteAttributeResponse(resp)
+            op!(
+                ttlv,
+                kms,
+                user,
+                DeleteAttribute,
+                delete_attribute,
+                DeleteAttributeResponse
+            )
         }
-        "DeriveKey" => {
-            let req = from_ttlv::<DeriveKey>(ttlv)?;
-            let resp = Box::pin(kms.derive_key(req, user, database_params)).await?;
-            Operation::DeriveKeyResponse(resp)
-        }
-        "Destroy" => {
-            let req = from_ttlv::<Destroy>(ttlv)?;
-            let resp = kms.destroy(req, user, database_params).await?;
-            Operation::DestroyResponse(resp)
-        }
+        "DeriveKey" => op!(pin ttlv, kms, user, DeriveKey, derive_key, DeriveKeyResponse),
+        "Destroy" => op!(ttlv, kms, user, Destroy, destroy, DestroyResponse),
         "DiscoverVersions" => {
-            let req = from_ttlv::<DiscoverVersions>(ttlv)?;
-            let resp = kms.discover_versions(req, user, database_params).await;
-            Operation::DiscoverVersionsResponse(resp)
+            op!(infallible ttlv, kms, user, DiscoverVersions, discover_versions, DiscoverVersionsResponse)
         }
-        "Encrypt" => {
-            let req = from_ttlv::<Encrypt>(ttlv)?;
-            let resp = kms.encrypt(req, user, database_params).await?;
-            Operation::EncryptResponse(resp)
-        }
-        "Export" => {
-            let req = from_ttlv::<Export>(ttlv)?;
-            let resp = kms.export(req, user, database_params).await?;
-            Operation::ExportResponse(Box::new(resp))
-        }
-        "Get" => {
-            let req = from_ttlv::<Get>(ttlv)?;
-            let resp = kms.get(req, user, database_params).await?;
-            Operation::GetResponse(resp)
-        }
+        "Encrypt" => op!(ttlv, kms, user, Encrypt, encrypt, EncryptResponse),
+        "Export" => op!(boxed ttlv, kms, user, Export, export, ExportResponse),
+        "Get" => op!(ttlv, kms, user, Get, get, GetResponse),
         "GetAttributeList" => {
-            let req = from_ttlv::<GetAttributeList>(ttlv)?;
-            let resp = Box::pin(get_attribute_list(kms, req, user, database_params)).await?;
-            Operation::GetAttributeListResponse(resp)
+            op!(pin_fn ttlv, kms, user, GetAttributeList, get_attribute_list, GetAttributeListResponse)
         }
         "GetAttributes" => {
-            let req = from_ttlv::<GetAttributes>(ttlv)?;
-            let resp = kms.get_attributes(req, user, database_params).await?;
-            Operation::GetAttributesResponse(Box::new(resp))
+            op!(boxed ttlv, kms, user, GetAttributes, get_attributes, GetAttributesResponse)
         }
-        "Hash" => {
-            let req = from_ttlv::<Hash>(ttlv)?;
-            let resp = kms.hash(req, user, database_params).await?;
-            Operation::HashResponse(resp)
+        "Hash" => op!(ttlv, kms, user, Hash, hash, HashResponse),
+        "RNGRetrieve" => op!(
+            ttlv,
+            kms,
+            user,
+            RNGRetrieve,
+            rng_retrieve,
+            RNGRetrieveResponse
+        ),
+        "RNGSeed" => op!(ttlv, kms, user, RNGSeed, rng_seed, RNGSeedResponse),
+        "Import" => op!(ttlv, kms, user, Import, import, ImportResponse),
+        "JoinSplitKey" => {
+            op!(
+                ttlv,
+                kms,
+                user,
+                JoinSplitKey,
+                join_split_key,
+                JoinSplitKeyResponse
+            )
         }
-        "RNGRetrieve" => {
-            let req = from_ttlv::<RNGRetrieve>(ttlv)?;
-            let resp = kms.rng_retrieve(req, user, database_params).await?;
-            Operation::RNGRetrieveResponse(resp)
-        }
-        "RNGSeed" => {
-            let req = from_ttlv::<RNGSeed>(ttlv)?;
-            let resp = kms.rng_seed(req, user, database_params).await?;
-            Operation::RNGSeedResponse(resp)
-        }
-        "Import" => {
-            let req = from_ttlv::<Import>(ttlv)?;
-            let privileged_users = kms.params.privileged_users.clone();
-            let resp = kms
-                .import(req, user, database_params, privileged_users)
-                .await?;
-            Operation::ImportResponse(resp)
-        }
-        "Locate" => {
-            let req = from_ttlv::<Locate>(ttlv)?;
-            let resp = kms.locate(req, user, database_params).await?;
-            Operation::LocateResponse(resp)
-        }
-        "Mac" | "MAC" => {
-            let req = from_ttlv::<MAC>(ttlv)?;
-            let resp = kms.mac(req, user, database_params).await?;
-            Operation::MACResponse(resp)
-        }
+        "Locate" => op!(ttlv, kms, user, Locate, locate, LocateResponse),
+        "Mac" | "MAC" => op!(ttlv, kms, user, MAC, mac, MACResponse),
         "MACVerify" => {
-            let req = from_ttlv::<MACVerify>(ttlv)?;
-            let resp = Box::pin(mac_verify(kms, req, user, database_params)).await?;
-            Operation::MACVerifyResponse(resp)
+            op!(pin_fn ttlv, kms, user, MACVerify, mac_verify, MACVerifyResponse)
         }
-        "Query" => {
-            let req = from_ttlv::<Query>(ttlv)?;
-            // Use operation-level query to keep parity with message.rs
-            let resp = query_op(req).await?;
-            Operation::QueryResponse(Box::new(resp))
-        }
+        "Query" => op!(query ttlv, kms, Query, query_op, QueryResponse),
         "ModifyAttribute" => {
-            let req = from_ttlv::<ModifyAttribute>(ttlv)?;
-            let resp = modify_attribute(kms, req, user, database_params).await?;
-            Operation::ModifyAttributeResponse(resp)
+            op!(
+                ttlv,
+                kms,
+                user,
+                ModifyAttribute,
+                modify_attribute,
+                ModifyAttributeResponse
+            )
         }
-        "ReKey" => {
-            let req = from_ttlv::<ReKey>(ttlv)?;
-            let resp = kms.rekey(req, user, database_params).await?;
-            Operation::ReKeyResponse(resp)
-        }
+        "ReKey" => op!(ttlv, kms, user, ReKey, rekey, ReKeyResponse),
         "ReKeyKeyPair" => {
-            let req = from_ttlv::<ReKeyKeyPair>(ttlv)?;
-            let privileged_users = kms.params.privileged_users.clone();
-
-            let resp = kms
-                .rekey_keypair(req, user, database_params, privileged_users)
-                .await?;
-            Operation::ReKeyKeyPairResponse(resp)
+            op!(
+                ttlv,
+                kms,
+                user,
+                ReKeyKeyPair,
+                rekey_keypair,
+                ReKeyKeyPairResponse
+            )
         }
-        "Register" => {
-            let req = from_ttlv::<Register>(ttlv)?;
-            let privileged_users = kms.params.privileged_users.clone();
-            let resp = kms
-                .register(req, user, database_params, privileged_users)
-                .await?;
-            Operation::RegisterResponse(resp)
+        "ReCertify" => {
+            op!(ttlv, kms, user, ReCertify, recertify, ReCertifyResponse)
         }
-        "Revoke" => {
-            let req = from_ttlv::<Revoke>(ttlv)?;
-            let resp = kms.revoke(req, user, database_params).await?;
-            Operation::RevokeResponse(resp)
-        }
-        "SetAttribute" => {
-            debug!("SetAttribute TTLV {ttlv:#?}");
-            let req = from_ttlv::<SetAttribute>(ttlv)?;
-            debug!("SetAttribute request received");
-            let resp = kms.set_attribute(req, user, database_params).await?;
-            Operation::SetAttributeResponse(resp)
-        }
-        "Sign" => {
-            let req = from_ttlv::<Sign>(ttlv)?;
-            let resp = kms.sign(req, user, database_params).await?;
-            Operation::SignResponse(resp)
-        }
+        "Register" => op!(ttlv, kms, user, Register, register, RegisterResponse),
+        "Revoke" => op!(ttlv, kms, user, Revoke, revoke, RevokeResponse),
+        "SetAttribute" => op!(
+            ttlv,
+            kms,
+            user,
+            SetAttribute,
+            set_attribute,
+            SetAttributeResponse
+        ),
+        "Sign" => op!(ttlv, kms, user, Sign, sign, SignResponse),
         "SignatureVerify" => {
-            let req = from_ttlv::<SignatureVerify>(ttlv)?;
-            let resp = kms.signature_verify(req, user, database_params).await?;
-            Operation::SignatureVerifyResponse(resp)
+            op!(
+                ttlv,
+                kms,
+                user,
+                SignatureVerify,
+                signature_verify,
+                SignatureVerifyResponse
+            )
         }
-        "Validate" => {
-            let req = from_ttlv::<Validate>(ttlv)?;
-            let resp = kms.validate(req, user, database_params).await?;
-            Operation::ValidateResponse(resp)
-        }
+        "Validate" => op!(ttlv, kms, user, Validate, validate, ValidateResponse),
         x => kms_bail!(KmsError::RouteNotFound(format!("Operation: {x}"))),
     })
 }

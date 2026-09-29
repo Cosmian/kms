@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+#MISE description="SPIRE kmip plugins e2e — KeyManager + UpstreamAuthority (non-FIPS only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+
+# End-to-end test for the SPIRE `kmip` built-in plugins (KeyManager + UpstreamAuthority)
+# speaking KMIP 2.1 binary TTLV over TCP/TLS to a locally-built KMS.
+#
+# The two plugins live on separate branches of the Cosmian/spire fork (the
+# source of trust):
+#   - KeyManager        → feature/eviden-kms-plugins
+#   - UpstreamAuthority → feature/kmip-upstream-authority
+# so no single branch carries both built-in plugins. This task therefore
+# orchestrates the two per-plugin e2e suites sequentially:
+#   - test:spire-kmip-key-manager         (KeyManager only)
+#   - test:spire-kmip-upstream-authority  (UpstreamAuthority only)
+#
+# The SPIRE plugins use ovh/kmip-go (binary TTLV/TCP) — NOT the Cosmian HTTPS client.
+
+set -euo pipefail
+
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+VARIANT="${usage_variant:-non-fips}"
+LINK="${usage_link:-static}"
+
+if [ "${VARIANT}" != "non-fips" ]; then
+  print_error "spire-kmip tests require non-fips variant (got: ${VARIANT})"
+fi
+
+print_header "SPIRE kmip plugins E2E — KeyManager + UpstreamAuthority"
+
+FAILED=()
+
+run_suite() {
+  local name="$1" task="$2"
+  print_status "▶ ${name}"
+  if mise run "${task}" --variant "${VARIANT}" --link "${LINK}"; then
+    print_success "✓ ${name}"
+  else
+    print_status "✗ ${name} FAILED"
+    FAILED+=("${name}")
+  fi
+}
+
+run_suite "KeyManager" "test:spire-kmip-key-manager"
+run_suite "UpstreamAuthority" "test:spire-kmip-upstream-authority"
+
+if [ "${#FAILED[@]}" -gt 0 ]; then
+  echo ""
+  echo "FAILED suites:"
+  for f in "${FAILED[@]}"; do echo "  ✗ $f"; done
+  exit 1
+fi
+
+print_success "All SPIRE kmip plugin tests passed"

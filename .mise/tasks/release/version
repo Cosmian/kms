@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Extract workspace version from Cargo.toml"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+REPO_ROOT="$(get_repo_root)"
+grep '^version' "$REPO_ROOT/Cargo.toml" | head -1 | sed 's/.*"\(.*\)".*/\1/'

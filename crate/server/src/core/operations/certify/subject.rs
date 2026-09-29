@@ -14,11 +14,12 @@ use openssl::{
     pkey::{PKey, Public},
     x509::{X509, X509Extension, X509Name, X509NameRef, X509Req},
 };
+use x509_parser::prelude::{FromDer, X509Certificate};
 
 use crate::{kms_error, result::KResult};
 
 /// This holds `KeyPair` information when one is created for the subject
-pub(super) struct KeyPairData {
+pub(crate) struct KeyPairData {
     pub(crate) private_key_id: UniqueIdentifier,
     pub(crate) private_key_object: Object,
     pub(crate) private_key_tags: HashSet<String>,
@@ -45,7 +46,7 @@ impl Display for KeyPairData {
 
 /// The party that gets signed by the issuer and gets the certificate
 #[expect(clippy::large_enum_variant)]
-pub(super) enum Subject {
+pub(crate) enum Subject {
     X509Req(
         /// Unique identifier of the certificate to create
         UniqueIdentifier,
@@ -118,9 +119,46 @@ impl Subject {
         }
     }
 
-    pub(crate) fn tags(&self) -> HashSet<String> {
+    /// Returns `true` when the subject already carries a `crlDistributionPoints` extension
+    /// (OID `2.5.29.31`, DER bytes `55 1d 1f`).
+    ///
+    /// This prevents [`crate::core::operations::certify::build_certificate`] from injecting
+    /// a duplicate CDP when re-certifying a certificate that was previously issued with one.
+    pub(crate) fn has_crl_distribution_points(&self) -> bool {
+        // OID 2.5.29.31 — id-ce-cRLDistributionPoints DER bytes
+        const CDP_OID: &[u8] = &[0x55, 0x1d, 0x1f];
         match self {
-            Self::Certificate(_, _, attributes) => attributes.get_tags(),
+            Self::Certificate(_, x509, _) => {
+                let Ok(der) = x509.to_der() else { return false };
+                let Ok((_, parsed)) = X509Certificate::from_der(&der) else {
+                    return false;
+                };
+                parsed
+                    .extensions()
+                    .iter()
+                    .any(|ext| ext.oid.as_bytes() == CDP_OID)
+            }
+            Self::X509Req(_, req) => {
+                // CSR extensions live inside a requestedExtensions attribute
+                req.extensions().is_ok_and(|stack| {
+                    // Check if any extension OID matches id-ce-cRLDistributionPoints.
+                    // We cannot inspect the OID bytes from openssl::x509::X509Extension
+                    // directly, so we encode each extension to DER and search for the OID.
+                    stack.iter().any(|ext| {
+                        ext.to_der().is_ok_and(|der| {
+                            // OID appears near the start; simple byte search suffices.
+                            der.windows(CDP_OID.len()).any(|w| w == CDP_OID)
+                        })
+                    })
+                })
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn tags(&self, vendor_id: &str) -> HashSet<String> {
+        match self {
+            Self::Certificate(_, _, attributes) => attributes.get_tags(vendor_id),
             // It is an open question whether the tags from an existing public key should be
             // added to those of the certificate. For now, we return an empty set.
             _ => HashSet::new(),

@@ -68,11 +68,10 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_> {
     where
         T: DeserializeSeed<'de>,
     {
+        let at_root = *self.de.at_root.read().context("failed to read at_root")?;
         trace!(
             "newtype_variant_seed: child index: {}, at root: {}, current tag: {:?}",
-            self.de.child_index,
-            *self.de.at_root.read().context("failed to read at_root")?,
-            self.de.current.tag
+            self.de.child_index, at_root, self.de.current.tag
         );
         seed.deserialize(&mut TtlvDeserializer {
             current: self.de.current.clone(),

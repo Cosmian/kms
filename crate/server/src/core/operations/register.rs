@@ -1,17 +1,11 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        self,
-        kmip_0::kmip_types::State,
-        kmip_2_1::{
-            kmip_objects::ObjectType,
-            kmip_operations::{Register, RegisterResponse},
-            kmip_types::UniqueIdentifier,
-        },
-        time_normalize,
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_objects::ObjectType,
+        kmip_operations::{Register, RegisterResponse},
+        kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_interfaces::SessionParams,
+    time_normalize,
 };
 use cosmian_logger::{debug, trace};
 
@@ -23,43 +17,21 @@ use crate::{
             process_certificate, process_private_key, process_public_key, process_secret_data,
             process_symmetric_key,
         },
-        retrieve_object_utils::user_has_permission,
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
 pub(crate) async fn register(
     kms: &KMS,
     mut request: Register,
-    owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
-    privileged_users: Option<Vec<String>>,
+    owner: &UserId,
 ) -> KResult<RegisterResponse> {
     trace!("{request}");
-    if request.protection_storage_masks.is_some() {
-        kms_bail!(KmsError::UnsupportedPlaceholder)
-    }
-
-    // To register an object, check that the user has `Create` access right
-    // The `Create` right implicitly grants permission for Create, Import, and Register operations.
-    if let Some(users) = privileged_users.clone() {
-        let has_permission = user_has_permission(
-            owner,
-            None,
-            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
-            kms,
-            params.clone(),
-        )
-        .await?;
-
-        if !has_permission && !users.iter().any(|u| u == owner) {
-            kms_bail!(KmsError::Unauthorized(
-                "User does not have create access-right to register objects.".to_owned()
-            ))
-        }
-    }
+    KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
+    kms.enforce_create_permission(owner).await?;
 
     if request.object_type != request.object.object_type() {
         kms_bail!(KmsError::InconsistentOperation(
@@ -72,8 +44,6 @@ pub(crate) async fn register(
     // - If ActivationDate is absent or in the future → PreActive state
     // - If ActivationDate is present and <= now → Active state
     let now = time_normalize()?;
-
-    // Determine the desired initial state based on ActivationDate
     let activation_allows_active = request.attributes.activation_date.is_some_and(|d| d <= now);
     let desired_state = if activation_allows_active {
         debug!(
@@ -90,56 +60,24 @@ pub(crate) async fn register(
     request.attributes.state = Some(desired_state);
 
     // Also set it in the object's attributes for consistency
-    // Zero milliseconds for KMIP serialization compatibility
     let now_stored = time_normalize()?;
     if let Ok(object_attributes) = request.object.attributes_mut() {
         object_attributes.state = Some(desired_state);
-        // update the last change date
         object_attributes.last_change_date = Some(now_stored);
     }
 
     // Process the request based on the object type,
     let (uid, operations) = match request.object.object_type() {
         ObjectType::SymmetricKey => {
-            Box::pin(process_symmetric_key(
-                kms,
-                request.into(),
-                owner,
-                params.clone(),
-            ))
-            .await?
+            Box::pin(process_symmetric_key(kms, request.into(), owner)).await?
         }
-        ObjectType::Certificate => process_certificate(request.into())?,
-        ObjectType::PublicKey => {
-            Box::pin(process_public_key(
-                kms,
-                request.into(),
-                owner,
-                params.clone(),
-            ))
-            .await?
-        }
-        ObjectType::PrivateKey => {
-            Box::pin(process_private_key(
-                kms,
-                request.into(),
-                owner,
-                params.clone(),
-            ))
-            .await?
-        }
-        ObjectType::SecretData => {
-            Box::pin(process_secret_data(
-                kms,
-                request.into(),
-                owner,
-                params.clone(),
-            ))
-            .await?
-        }
+        ObjectType::Certificate => process_certificate(kms.vendor_id(), request.into(), owner)?,
+        ObjectType::PublicKey => Box::pin(process_public_key(kms, request.into(), owner)).await?,
+        ObjectType::PrivateKey => Box::pin(process_private_key(kms, request.into(), owner)).await?,
+        ObjectType::SecretData => Box::pin(process_secret_data(kms, request.into(), owner)).await?,
         ObjectType::OpaqueObject => {
             // Reuse the import path logic (no unwrap/wrap for opaque objects)
-            let (uid, ops) = process_opaque_object(request.into())?;
+            let (uid, ops) = process_opaque_object(kms.vendor_id(), request.into(), owner)?;
             (uid, ops)
         }
         x => {
@@ -148,7 +86,7 @@ pub(crate) async fn register(
             )));
         }
     };
-    kms.database.atomic(owner, &operations, params).await?;
+    kms.database.atomic(owner, &operations).await?;
     debug!("Registered object with uid: {}", uid);
     Ok(RegisterResponse {
         unique_identifier: UniqueIdentifier::TextString(uid),

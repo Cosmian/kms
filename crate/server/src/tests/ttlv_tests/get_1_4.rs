@@ -13,7 +13,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_operations::{Get, Operation},
         kmip_types::{KeyFormatType, ObjectType, OperationEnumeration},
     },
-    ttlv::KmipFlavor,
+    ttlv::{KmipFlavor, TTLV, from_ttlv, to_ttlv},
 };
 use cosmian_logger::{info, log_init};
 
@@ -37,6 +37,7 @@ fn test_get_1_4() {
 
 pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
     let protocol_major = 1;
+    let protocol_minor = 4;
     let kmip_flavor = if protocol_major == 2 {
         KmipFlavor::Kmip2
     } else {
@@ -47,7 +48,7 @@ pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: protocol_major,
-                protocol_version_minor: 1,
+                protocol_version_minor: protocol_minor,
             },
             batch_count: 1,
             ..Default::default()
@@ -72,11 +73,28 @@ pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
         .send_request::<RequestMessage, ResponseMessage>(kmip_flavor, &request_message)
         .expect("Failed to send request");
 
+    // KMIP 1.4 behavior check: `Fresh` is supported for KMIP > 1.0.
+    let response_ttlv: TTLV = to_ttlv(&response).expect("Failed to convert response to TTLV");
+    let response_bytes = response_ttlv
+        .to_bytes(kmip_flavor)
+        .expect("Failed to serialize response TTLV");
+    assert!(
+        response_bytes
+            .windows(b"Fresh".len())
+            .any(|w| w == b"Fresh"),
+        "KMIP 1.4 Get response should include Fresh when present (TTLV missing \"Fresh\")"
+    );
+
+    // Safety: ensure the TTLV roundtrip decoding still works.
+    let decoded_ttlv = TTLV::from_bytes(&response_bytes, kmip_flavor)
+        .expect("Failed to decode serialized response TTLV");
+    let _decoded: ResponseMessage = from_ttlv(decoded_ttlv).expect("Failed to decode response");
+
     assert_eq!(
         response.response_header.protocol_version,
         ProtocolVersion {
             protocol_version_major: protocol_major,
-            protocol_version_minor: 1,
+            protocol_version_minor: protocol_minor,
         }
     );
     assert_eq!(response.batch_item.len(), 1);

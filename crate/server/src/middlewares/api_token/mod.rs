@@ -5,4 +5,4 @@
 mod api_token_auth;
 mod api_token_middleware;
 
-pub(crate) use api_token_middleware::ApiTokenAuth;
+pub(crate) use api_token_middleware::api_token_middleware;

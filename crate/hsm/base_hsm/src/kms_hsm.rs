@@ -34,7 +34,7 @@
 use async_trait::async_trait;
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
-    HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
+    HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType, SigningAlgorithm,
 };
 use cosmian_logger::debug;
 use zeroize::Zeroizing;
@@ -160,6 +160,11 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let mut object_ids = Vec::with_capacity(handles.len());
         for handle in handles {
             if let Ok(Some(object_id)) = session.get_object_id(handle) {
+                // Pre-populate the object handle cache so that subsequent
+                // export()/get_object_handle() calls get a cache hit instead of
+                // re-searching via find_by_id_or_label() which may fail due to
+                // CKA_ID/CKA_LABEL asymmetry.
+                drop(session.cache_object_handle(&object_id, handle));
                 object_ids.push(object_id);
             } else {
                 debug!("Invalid object, skipping");
@@ -194,6 +199,20 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let handle = session.get_object_handle(key_id)?;
         let plaintext = session.decrypt(handle, algorithm.into(), data)?;
         Ok(plaintext)
+    }
+
+    async fn sign(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        algorithm: SigningAlgorithm,
+        data: &[u8],
+    ) -> InterfaceResult<Vec<u8>> {
+        let slot = self.get_slot(slot_id)?;
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(key_id)?;
+        let signature = session.sign(handle, algorithm.into(), data)?;
+        Ok(signature)
     }
 
     async fn get_key_type(
@@ -231,6 +250,35 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let slot = self.get_slot(slot_id)?;
         let session = slot.open_session(true)?;
         let () = session.seed_random(seed)?;
+        Ok(())
+    }
+
+    /// Sets `CKA_START_DATE` and `CKA_END_DATE` on the key identified by `key_id`. Pass `None` to clear a date.
+    async fn set_key_dates(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        start_date: Option<time::Date>,
+        end_date: Option<time::Date>,
+    ) -> InterfaceResult<()> {
+        let slot = self.get_slot(slot_id)?;
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(key_id)?;
+        session.set_key_dates(handle, start_date, end_date)?;
+        Ok(())
+    }
+
+    /// Sets `CKA_LABEL` on the key identified by `key_id`.
+    async fn set_key_label(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        label: &str,
+    ) -> InterfaceResult<()> {
+        let slot = self.get_slot(slot_id)?;
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(key_id)?;
+        session.set_label(handle, label)?;
         Ok(())
     }
 

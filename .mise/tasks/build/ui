@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#MISE description="Build the web UI (depends on WASM)"
+#MISE depends=["build:wasm"]
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "static"
+
+print_header "Building Web UI (${VARIANT_NAME})"
+
+require_cmd pnpm
+
+REPO_ROOT="$(get_repo_root)"
+UI_DIR="${REPO_ROOT}/ui"
+
+cd "$UI_DIR"
+run_isolated pnpm install
+run_isolated pnpm run build
+run_isolated pnpm run test:unit
+
+print_success "Web UI built"

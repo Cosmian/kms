@@ -1,0 +1,86 @@
+import { defineConfig, devices } from "@playwright/test";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+type GlobalWithProcess = typeof globalThis & {
+    process?: {
+        env?: Record<string, string | undefined>;
+    };
+};
+
+const env = (globalThis as GlobalWithProcess).process?.env ?? {};
+
+// mTLS certificate paths (set by test_ui.sh via PLAYWRIGHT_CERT_DIR).
+const certDir = env.PLAYWRIGHT_CERT_DIR ?? path.resolve(__dirname, "../test_data/certificates/client_server");
+const kmsUrl = env.PLAYWRIGHT_KMS_URL ?? "https://127.0.0.1:9998";
+
+/**
+ * Playwright configuration for KMS UI E2E tests.
+ *
+ * The test suite exercises real browser flows against a locally running KMS
+ * server (port 9998) and a Vite preview server (port 5173).
+ *
+ * For CI the CI script (test_ui.sh / test_ui.ps1) is responsible for:
+ *   1. Building the WASM package with the non-fips feature.
+ *   2. Building the UI with VITE_KMS_URL=http://127.0.0.1:9998.
+ *   3. Starting the KMS server and the Vite preview server.
+ *   4. Running `pnpm run test:e2e` with `CI=true` – Playwright sees `CI` is
+ *      set and skips the `webServer` block below (servers already started).
+ *
+ * For local development, set VITE_KMS_URL and build the UI first:
+ *   VITE_KMS_URL=http://127.0.0.1:9998 pnpm run build
+ * Then either start `pnpm preview` manually or let Playwright start it
+ * via the webServer config below (reuseExistingServer: true).
+ */
+export default defineConfig({
+    testDir: "./tests/e2e",
+    timeout: 90_000,
+    // Retry once on both CI and local: transient "Failed to fetch" flakiness is
+    // rare but real when 10 workers share a single KMS server.
+    retries: 1,
+    // Number of concurrent Playwright workers.  Set PLAYWRIGHT_WORKERS to an
+    // integer to run tests in parallel (the KMS server handles concurrent load
+    // well – see https://github.com/Cosmian/kms/issues/749).  Defaults to 10
+    // so that CI runs serially without requiring per-test key cleanup.
+    workers: env.PLAYWRIGHT_WORKERS ? parseInt(env.PLAYWRIGHT_WORKERS, 10) : 10,
+    use: {
+        baseURL: env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173",
+        headless: true,
+        actionTimeout: 30_000,
+        navigationTimeout: 30_000,
+        // Capture screenshot on failure for debugging.
+        screenshot: "only-on-failure",
+        trace: "retain-on-failure",
+        // Accept self-signed server certificate for mTLS KMS.
+        ignoreHTTPSErrors: true,
+        // Present the owner client certificate for mTLS connections to KMS.
+        clientCertificates: [
+            {
+                origin: kmsUrl,
+                certPath: path.join(certDir, "owner/owner.client.acme.com.crt"),
+                keyPath: path.join(certDir, "owner/owner.client.acme.com.key"),
+            },
+        ],
+    },
+    projects: [
+        {
+            name: "chromium",
+            // Pin the browser locale so E2E assertions on English UI text stay
+            // stable regardless of the host/browser default language.
+            use: { ...devices["Desktop Chrome"], locale: "en-US" },
+        },
+    ],
+    // In CI the preview server is started by the CI script; do not start a
+    // second preview instance from Playwright.
+    webServer: env.CI
+        ? undefined
+        : {
+              command: "pnpm preview --port 5173 --host 127.0.0.1 --strictPort",
+              url: "http://localhost:5173/ui/",
+              reuseExistingServer: true,
+              timeout: 60_000,
+          },
+});

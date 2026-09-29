@@ -10,16 +10,13 @@ on:
       archive-name:
         required: true
         type: string
-      debug_or_release:
-        required: true
-        type: string
 
 jobs:
   cargo-test:
-    name: cargo test - ${{ inputs.archive-name }}
+    name: ${{ inputs.archive-name }} - cargo test
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -28,20 +25,173 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
-      - name: Build static OpenSSL
+      - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
         shell: pwsh
         run: |
+          # VS 2022 ships Ninja under the CMake integration path.
+          # If we add it to PATH now, vcpkg_find_acquire_program(NINJA)
+          # will find it there instead of attempting a network download.
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -products '*' `
+            -requires 'Microsoft.VisualStudio.Component.VC.CMake.Project' `
+            -property installationPath 2>$null
+          if ($vsInstall) {
+            $ninjaDir = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
+            if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
+              Add-Content $env:GITHUB_PATH $ninjaDir
+              Write-Host "Added VS Ninja to PATH: $ninjaDir"
+              return
+            }
+          }
+          # Fallback: install via chocolatey (fast, <5 MB binary)
+          choco install ninja -y --no-progress
+
+      - name: Build static OpenSSL
+        shell: pwsh
+        env:
+          # Use the pre-installed Strawberry Perl so vcpkg does not attempt to
+          # download it from GitHub (which fails with 504 under rate-limiting).
+          PERL: C:\Strawberry\perl\bin\perl.exe
+          PERL_ROOT: C:\Strawberry\perl
+        run: |
+          $ErrorActionPreference = "Stop"
           vcpkg install --triplet x64-windows-static
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           vcpkg integrate install
 
       - name: Tests
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          . .\.github\scripts\cargo_test.ps1
-          TestProject -BuildType ${{ inputs.debug_or_release }}
+          . .\.mise\scripts\windows\cargo_test.ps1
+          TestProject
         env:
           # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+
+  test-ui:
+    name: ${{ inputs.archive-name }} - UI E2E tests
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          targets: wasm32-unknown-unknown
+
+      - uses: pnpm/action-setup@v6.1.0
+        with:
+          version: 10.17.1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -products '*' `
+            -requires 'Microsoft.VisualStudio.Component.VC.CMake.Project' `
+            -property installationPath 2>$null
+          if ($vsInstall) {
+            $ninjaDir = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
+            if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
+              Add-Content $env:GITHUB_PATH $ninjaDir
+              Write-Host "Added VS Ninja to PATH: $ninjaDir"
+              return
+            }
+          }
+          choco install ninja -y --no-progress
+
+      - name: Build static OpenSSL
+        shell: pwsh
+        env:
+          PERL: C:\Strawberry\perl\bin\perl.exe
+          PERL_ROOT: C:\Strawberry\perl
+        run: |
+          $ErrorActionPreference = "Stop"
+          vcpkg install --triplet x64-windows-static
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          vcpkg integrate install
+
+      - name: Install wasm-pack
+        shell: pwsh
+        run: cargo install wasm-pack --locked
+
+      - name: Run UI E2E tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\.mise\scripts\windows\test_ui.ps1
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-test-logs-windows
+          path: |
+            ${{ runner.temp }}\kms-stdout.log
+            ${{ runner.temp }}\kms-stderr.log
+            ui\test-results\
+            ui\playwright-report\
+
+  test-cng-ksp:
+    name: ${{ inputs.archive-name }} - CNG KSP integration tests
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+
+      - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -products '*' `
+            -requires 'Microsoft.VisualStudio.Component.VC.CMake.Project' `
+            -property installationPath 2>$null
+          if ($vsInstall) {
+            $ninjaDir = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
+            if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
+              Add-Content $env:GITHUB_PATH $ninjaDir
+              Write-Host "Added VS Ninja to PATH: $ninjaDir"
+              return
+            }
+          }
+          choco install ninja -y --no-progress
+
+      - name: Build static OpenSSL
+        shell: pwsh
+        env:
+          PERL: C:\Strawberry\perl\bin\perl.exe
+          PERL_ROOT: C:\Strawberry\perl
+        run: |
+          $ErrorActionPreference = "Stop"
+          vcpkg install --triplet x64-windows-static
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          vcpkg integrate install
+
+      - name: Run CNG KSP integration tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\.mise\scripts\windows\test_cng_ksp.ps1
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cng-ksp-test-logs
+          path: |
+            ${{ runner.temp }}\kms-cng-test-server.log
+            ${{ runner.temp }}\kms-cng-test-server.log.err

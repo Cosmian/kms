@@ -1,5 +1,7 @@
 mod deserialize;
+pub mod enum_lookup;
 mod error;
+pub mod interval;
 mod kmip_big_int;
 mod kmip_ttlv_deserializer;
 mod normalize;
@@ -10,12 +12,15 @@ mod wire;
 pub mod xml;
 
 pub use error::TtlvError;
+pub use interval::{INTERVAL_NEWTYPE, Interval};
 pub(crate) use kmip_big_int::KmipBigInt;
 pub use kmip_ttlv_deserializer::{TtlvDeserializer, from_ttlv};
 pub(super) mod kmip_ttlv_serializer;
 pub use kmip_ttlv_serializer::{TtlvSerializer, to_ttlv};
 pub(crate) use normalize::{collapse_adjacently_tagged_structure, normalize_ttlv};
 pub use ttlv_struct::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, TtlvType};
+#[cfg(test)]
+pub(crate) use wire::MAX_TTLV_DEPTH;
 pub use wire::{TTLVBytesDeserializer, TTLVBytesSerializer};
 
 #[expect(

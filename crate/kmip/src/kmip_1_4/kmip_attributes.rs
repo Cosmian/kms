@@ -29,7 +29,9 @@ pub use crate::{
         kmip_types::{VendorAttribute, VendorAttributeValue},
     },
 };
-use crate::{kmip_0::kmip_types::HashingAlgorithm, kmip_1_4::kmip_types::CustomAttribute};
+use crate::{
+    kmip_0::kmip_types::HashingAlgorithm, kmip_1_4::kmip_types::CustomAttribute, ttlv::Interval,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Attribute {
@@ -65,7 +67,7 @@ pub enum Attribute {
     KeyValueLocation(KeyValueLocationType),
     KeyValuePresent(bool),
     LastChangeDate(OffsetDateTime),
-    LeaseTime(u32),
+    LeaseTime(Interval),
     Link(Link),
     Name(Name),
     NeverExtractable(bool),
@@ -498,7 +500,7 @@ impl<'de> Deserialize<'de> for Attribute {
                         Ok(Attribute::StorageStatusMask(value))
                     }
                     "Lease Time" => {
-                        let value: u32 = map.next_value()?;
+                        let value: Interval = map.next_value()?;
                         Ok(Attribute::LeaseTime(value))
                     }
                     "Usage Limits" => {
@@ -670,9 +672,15 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::CryptographicLength(v) => Self::CryptographicLength(v),
             Attribute::CryptographicParameters(v) => Self::CryptographicParameters(v.into()),
             Attribute::CryptographicUsageMask(v) => Self::CryptographicUsageMask(v),
-            Attribute::StorageStatusMask(_v) => {
+            Attribute::StorageStatusMask(v) => {
+                // StorageStatusMask is a Locate filter field — not an object attribute in KMIP 2.1.
+                // Preserve as VendorAttribute to avoid corrupting the Comment attribute slot.
                 warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
-                Self::Comment("Unsupported KMIP 1.4 attribute".to_owned())
+                Self::VendorAttribute(VendorAttribute {
+                    vendor_identification: "KMIP1".to_owned(),
+                    attribute_name: "__Storage Status Mask__".to_owned(),
+                    attribute_value: VendorAttributeValue::TextString(format!("{v:?}")),
+                })
             }
             Attribute::CustomAttribute(ca) => {
                 if ca.name.starts_with("x-") {
@@ -728,15 +736,36 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::Description(v) => Self::Description(v),
             Attribute::DestroyDate(v) => Self::DestroyDate(v),
             Attribute::Digest(v) => Self::Digest(v.into()),
-            Attribute::Pkcs12FriendlyName(_)
-            | Attribute::X509CertificateIdentifier(_)
-            | Attribute::X509CertificateIssuer(_)
-            | Attribute::X509CertificateSubject(_)
-            | Attribute::CertificateIdentifier(_)
-            | Attribute::CertificateIssuer(_)
-            | Attribute::CertificateSubject(_) => {
+            // KMIP 2.1 preserves these attributes directly.
+            Attribute::Pkcs12FriendlyName(v) => Self::Pkcs12FriendlyName(v),
+            Attribute::X509CertificateIdentifier(v) => Self::X509CertificateIdentifier(v),
+            Attribute::X509CertificateIssuer(v) => Self::X509CertificateIssuer(v),
+            Attribute::X509CertificateSubject(v) => Self::X509CertificateSubject(v),
+            // The non-X509 certificate attributes were removed in KMIP 2.0+;
+            // preserve as VendorAttribute so the value is not lost.
+            Attribute::CertificateIdentifier(ref v) => {
                 warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
-                Self::Comment("Unsupported KMIP 1.4 attribute".to_owned())
+                Self::VendorAttribute(VendorAttribute {
+                    vendor_identification: "KMIP1".to_owned(),
+                    attribute_name: "__Certificate Identifier__".to_owned(),
+                    attribute_value: VendorAttributeValue::TextString(v.clone()),
+                })
+            }
+            Attribute::CertificateIssuer(ref v) => {
+                warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
+                Self::VendorAttribute(VendorAttribute {
+                    vendor_identification: "KMIP1".to_owned(),
+                    attribute_name: "__Certificate Issuer__".to_owned(),
+                    attribute_value: VendorAttributeValue::TextString(v.clone()),
+                })
+            }
+            Attribute::CertificateSubject(ref v) => {
+                warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
+                Self::VendorAttribute(VendorAttribute {
+                    vendor_identification: "KMIP1".to_owned(),
+                    attribute_name: "__Certificate Subject__".to_owned(),
+                    attribute_value: VendorAttributeValue::TextString(v.clone()),
+                })
             }
             Attribute::DigitalSignatureAlgorithm(v) => Self::DigitalSignatureAlgorithm(v.into()),
             Attribute::Extractable(v) => Self::Extractable(v),
@@ -745,19 +774,19 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::KeyValueLocation(v) => Self::KeyValueLocation(v),
             Attribute::KeyValuePresent(v) => Self::KeyValuePresent(v),
             Attribute::LastChangeDate(v) => Self::LastChangeDate(v),
-            // KMIP 1.4 uses u32 (Interval); KMIP 2.1 uses i32.
-            Attribute::LeaseTime(v) => Self::LeaseTime(i32::try_from(v).unwrap_or_else(|_| {
-                warn!(
-                    "KMIP 1.4 Lease Time ({v}) exceeds i32::MAX; clamping to {}",
-                    i32::MAX
-                );
-                i32::MAX
-            })),
+            // Both KMIP 1.4 (§3.20) and KMIP 2.1 (§4.29) type Lease Time as Interval.
+            Attribute::LeaseTime(v) => Self::LeaseTime(v),
             Attribute::Link(v) => Self::Link(v.into()),
             Attribute::Name(v) => Self::Name(v.into()),
             Attribute::NeverExtractable(v) => Self::NeverExtractable(v),
             Attribute::ObjectGroup(v) => Self::ObjectGroup(v),
             Attribute::ObjectType(v) => Self::ObjectType(v.into()),
+            // OperationPolicyName was deprecated in KMIP 1.3 and removed in KMIP 2.0+.
+            // Convert to a synthetic VendorAttribute so the value survives the TTLV round-trip
+            // (e.g. AddAttribute → server handler) rather than causing a deserialization error.
+            // The server-side AddAttribute handler explicitly ignores this VendorAttribute with
+            // its own guard, so the attribute is never persisted.  The bulk conversion path
+            // (Create/Register) emits a WARN and discards the attribute entirely.
             Attribute::OperationPolicyName(v) => Self::VendorAttribute(VendorAttribute {
                 vendor_identification: "KMIP1".to_owned(),
                 attribute_name: "__Operation Policy Name__".to_owned(),
@@ -827,10 +856,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             kmip_2_1::kmip_attributes::Attribute::DigitalSignatureAlgorithm(v) => {
                 Ok(Self::DigitalSignatureAlgorithm(v.try_into()?))
             }
-            kmip_2_1::kmip_attributes::Attribute::LeaseTime(v) => {
-                // KMIP 2.1 uses i32, KMIP 1.4 uses u32. Convert safely.
-                Ok(Self::LeaseTime(u32::try_from(v).unwrap_or(0)))
-            }
+            kmip_2_1::kmip_attributes::Attribute::LeaseTime(v) => Ok(Self::LeaseTime(v)),
             kmip_2_1::kmip_attributes::Attribute::UsageLimits(v) => Ok(Self::UsageLimits(v.into())),
             kmip_2_1::kmip_attributes::Attribute::State(v) => Ok(Self::State(v)),
             kmip_2_1::kmip_attributes::Attribute::InitialDate(v) => Ok(Self::InitialDate(v)),
@@ -856,15 +882,23 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             kmip_2_1::kmip_attributes::Attribute::VendorAttribute(vendor_attribute) => {
                 let vendor_id = vendor_attribute.vendor_identification;
                 if vendor_id.as_str() == "KMIP1" {
-                    if vendor_attribute.attribute_name.as_str() == "__Operation Policy Name__" {
-                        Ok(Self::OperationPolicyName(
+                    match vendor_attribute.attribute_name.as_str() {
+                        "__Operation Policy Name__" => Ok(Self::OperationPolicyName(
                             vendor_attribute.attribute_value.to_string(),
-                        ))
-                    } else {
-                        Ok(Self::CustomAttribute(CustomAttribute {
+                        )),
+                        "__Certificate Identifier__" => Ok(Self::CertificateIdentifier(
+                            vendor_attribute.attribute_value.to_string(),
+                        )),
+                        "__Certificate Issuer__" => Ok(Self::CertificateIssuer(
+                            vendor_attribute.attribute_value.to_string(),
+                        )),
+                        "__Certificate Subject__" => Ok(Self::CertificateSubject(
+                            vendor_attribute.attribute_value.to_string(),
+                        )),
+                        _ => Ok(Self::CustomAttribute(CustomAttribute {
                             name: vendor_attribute.attribute_name,
                             value: vendor_attribute.attribute_value.into(),
-                        }))
+                        })),
                     }
                 } else if vendor_id.as_str() == "x" {
                     // KMIP 1.x TL vectors expect vendor attributes with the synthetic
@@ -920,6 +954,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             | kmip_2_1::kmip_attributes::Attribute::ProtectionPeriod(_)
             | kmip_2_1::kmip_attributes::Attribute::ProtectionStorageMasks(_)
             | kmip_2_1::kmip_attributes::Attribute::QuantumSafe(_)
+            | kmip_2_1::kmip_attributes::Attribute::RotateAutomatic(_)
             | kmip_2_1::kmip_attributes::Attribute::RotateDate(_)
             | kmip_2_1::kmip_attributes::Attribute::RotateGeneration(_)
             | kmip_2_1::kmip_attributes::Attribute::RotateInterval(_)
@@ -1050,17 +1085,63 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                 Attribute::CertificateLength(v) => {
                     attributes.certificate_length = Some(v);
                 }
-                Attribute::X509CertificateIdentifier(_)
-                | Attribute::X509CertificateSubject(_)
-                | Attribute::X509CertificateIssuer(_)
-                | Attribute::CertificateIdentifier(_)
-                | Attribute::CertificateSubject(_)
-                | Attribute::CertificateIssuer(_)
-                | Attribute::Digest(_)
-                | Attribute::OperationPolicyName(_)
-                | Attribute::Pkcs12FriendlyName(_) => {
-                    // Not supported in KMIP 2.1
+                Attribute::OperationPolicyName(ref v) => {
+                    // OperationPolicyName was deprecated in KMIP 1.3 and removed in KMIP 2.0+.
+                    // Preserve it as a VendorAttribute so the value is not lost and can be
+                    // returned if a KMIP 1.x client later requests it via GetAttributes.
+                    // The WARN is kept so operators can identify legacy KMIP 1.x clients.
                     warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
+                    let vas = attributes.vendor_attributes.get_or_insert(vec![]);
+                    vas.push(VendorAttribute {
+                        vendor_identification: "KMIP1".to_owned(),
+                        attribute_name: "__Operation Policy Name__".to_owned(),
+                        attribute_value: VendorAttributeValue::TextString(v.clone()),
+                    });
+                }
+                // KMIP 2.1 supports these attributes directly — map to the corresponding fields.
+                Attribute::X509CertificateIdentifier(v) => {
+                    attributes.x_509_certificate_identifier = Some(v);
+                }
+                Attribute::X509CertificateSubject(v) => {
+                    attributes.x_509_certificate_subject = Some(v);
+                }
+                Attribute::X509CertificateIssuer(v) => {
+                    attributes.x_509_certificate_issuer = Some(v);
+                }
+                Attribute::Digest(v) => {
+                    attributes.digest = Some(v.into());
+                }
+                Attribute::Pkcs12FriendlyName(v) => {
+                    attributes.pkcs_12_friendly_name = Some(v);
+                }
+                // The non-X509 certificate attributes were removed in KMIP 2.0+;
+                // preserve as VendorAttribute so the value is not silently dropped.
+                Attribute::CertificateIdentifier(ref v) => {
+                    warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
+                    let vas = attributes.vendor_attributes.get_or_insert(vec![]);
+                    vas.push(VendorAttribute {
+                        vendor_identification: "KMIP1".to_owned(),
+                        attribute_name: "__Certificate Identifier__".to_owned(),
+                        attribute_value: VendorAttributeValue::TextString(v.clone()),
+                    });
+                }
+                Attribute::CertificateSubject(ref v) => {
+                    warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
+                    let vas = attributes.vendor_attributes.get_or_insert(vec![]);
+                    vas.push(VendorAttribute {
+                        vendor_identification: "KMIP1".to_owned(),
+                        attribute_name: "__Certificate Subject__".to_owned(),
+                        attribute_value: VendorAttributeValue::TextString(v.clone()),
+                    });
+                }
+                Attribute::CertificateIssuer(ref v) => {
+                    warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
+                    let vas = attributes.vendor_attributes.get_or_insert(vec![]);
+                    vas.push(VendorAttribute {
+                        vendor_identification: "KMIP1".to_owned(),
+                        attribute_name: "__Certificate Issuer__".to_owned(),
+                        attribute_value: VendorAttributeValue::TextString(v.clone()),
+                    });
                 }
                 Attribute::StorageStatusMask(_v) => {
                     // Not supported in KMIP 2.1 attribute set; this is typically a Locate payload field.
@@ -1071,13 +1152,7 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                 }
 
                 Attribute::LeaseTime(v) => {
-                    attributes.lease_time = Some(i32::try_from(v).unwrap_or_else(|_| {
-                        warn!(
-                            "KMIP 1.4 Lease Time ({v}) exceeds i32::MAX; clamping to {}",
-                            i32::MAX
-                        );
-                        i32::MAX
-                    }));
+                    attributes.lease_time = Some(v);
                 }
                 Attribute::UsageLimits(v) => {
                     attributes.usage_limits = Some(v.into());
@@ -1162,5 +1237,35 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
             }
         }
         attributes
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::indexing_slicing, clippy::unwrap_used)]
+mod tests {
+    use crate::{
+        kmip_1_4::kmip_attributes::Attribute,
+        kmip_2_1::kmip_attributes::Attributes as Kmip21Attributes,
+    };
+
+    /// Regression test for <https://github.com/Cosmian/kms/issues/796>.
+    ///
+    /// Synology DSM 7.x sends `OperationPolicyName="default"` in its KMIP 1.0
+    /// Register/Create requests.  The attribute was deprecated in KMIP 1.3 and
+    /// removed entirely in KMIP 2.0+.  The server emits a `WARN` log entry and
+    /// preserves the value as a `VendorAttribute(KMIP1, __Operation Policy Name__)`
+    /// so that it survives round-trip storage and can be returned if a KMIP 1.x
+    /// client later requests it via `GetAttributes`.
+    #[test]
+    fn test_operation_policy_name_preserved_as_vendor_attribute() {
+        let attrs = vec![Attribute::OperationPolicyName("default".to_owned())];
+        let kmip21: Kmip21Attributes = attrs.into();
+        // Must be stored as a VendorAttribute, not silently discarded.
+        let vas = kmip21
+            .vendor_attributes
+            .expect("OperationPolicyName must be preserved as a vendor attribute");
+        let va = vas.first().expect("expected one vendor attribute");
+        assert_eq!(va.vendor_identification, "KMIP1");
+        assert_eq!(va.attribute_name, "__Operation Policy Name__");
     }
 }

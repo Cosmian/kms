@@ -16,9 +16,9 @@ pub(crate) use sql::{MySqlPool, PgPool, SqlitePool};
 
 const PGSQL_FILE_QUERIES: &str = include_str!("sql/query.sql");
 const MYSQL_FILE_QUERIES: &str = include_str!("sql/query_mysql.sql");
-const SQLITE_FILE_QUERIES: &str = include_str!("sql/query.sql");
+const SQLITE_FILE_QUERIES: &str = include_str!("sql/query_sqlite.sql");
 
-static PGSQL_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
+pub(crate) static PGSQL_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
     // SAFETY: SQL files are included at compile time and should be valid
     #[expect(clippy::expect_used)]
     Loader::get_queries_from(PGSQL_FILE_QUERIES).expect("Can't parse the SQL file")
@@ -28,11 +28,10 @@ static MYSQL_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
     #[expect(clippy::expect_used)]
     Loader::get_queries_from(MYSQL_FILE_QUERIES).expect("Can't parse the SQL file")
 });
-static SQLITE_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
+/// SQLite-specific query overrides.  Loaded before `PGSQL_QUERIES` so that
+/// SQLite-divergent SQL (e.g. JSON functions) takes precedence.
+pub(crate) static SQLITE_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
     // SAFETY: SQL files are included at compile time and should be valid
     #[expect(clippy::expect_used)]
-    Loader::get_queries_from(SQLITE_FILE_QUERIES).expect("Can't parse the SQL file")
+    Loader::get_queries_from(SQLITE_FILE_QUERIES).expect("Can't parse the SQLite SQL file")
 });
-
-#[cfg(feature = "non-fips")]
-pub(crate) use crate::stores::redis::migrations::legacy_cloudproof_redis_findex::LegacyDbError;

@@ -239,7 +239,7 @@ fn ec_private_key_from_scalar(
         RecommendedCurve::SECP224K1 => (Nid::SECP224K1, 28),
         x => crypto_bail!("Unsupported curve: {:?} in this KMIP implementation", x),
     };
-    let big_num_context = BigNumContext::new()?;
+    let mut big_num_context = BigNumContext::new()?;
 
     let mut scalar_vec = scalar.to_bytes_be();
     pad_be_bytes(&mut scalar_vec, privkey_size);
@@ -247,7 +247,7 @@ fn ec_private_key_from_scalar(
 
     let ec_group = EcGroup::from_curve_name(nid)?;
     let mut ec_public_key = EcPoint::new(&ec_group)?;
-    ec_public_key.mul_generator(&ec_group, &scalar, &big_num_context)?;
+    ec_public_key.mul_generator2(&ec_group, &scalar, &mut big_num_context)?;
     Ok(PKey::from_ec_key(EcKey::from_private_components(
         &ec_group,
         &scalar,
@@ -359,6 +359,7 @@ pub fn openssl_private_key_to_kmip(
                             Nid::X9_62_PRIME256V1 => RecommendedCurve::P256,
                             Nid::SECP384R1 => RecommendedCurve::P384,
                             Nid::SECP521R1 => RecommendedCurve::P521,
+                            Nid::SECP256K1 => RecommendedCurve::SECP256K1,
                             _ => {
                                 crypto_bail!(
                                     "Unsupported openssl curve: {:?} in this KMIP implementation",
@@ -849,6 +850,30 @@ mod tests {
             Some(&ec_public_key),
             Some(&ec_group),
             RecommendedCurve::P192,
+            Id::EC,
+            key_size,
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "non-fips")]
+    fn test_conversion_ec_k_256_private_key() {
+        log_init(option_env!("RUST_LOG"));
+
+        let key_size = 256;
+        let ec_group = EcGroup::from_curve_name(Nid::SECP256K1).unwrap();
+        let ec_key = EcKey::generate(&ec_group).unwrap();
+        let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
+        let private_key = PKey::from_ec_key(ec_key).unwrap();
+
+        test_private_key_conversion_pkcs(&private_key, Id::EC, key_size, KeyFormatType::PKCS8);
+        test_private_key_conversion_sec1(&private_key, Id::EC, key_size);
+
+        test_private_key_conversion_transparent_ec(
+            &private_key,
+            Some(&ec_public_key),
+            Some(&ec_group),
+            RecommendedCurve::SECP256K1,
             Id::EC,
             key_size,
         );

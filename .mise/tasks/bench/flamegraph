@@ -1,0 +1,31 @@
+#!/usr/bin/env -S usage bash
+#MISE description="CPU-scaling flamegraph benchmark (requires Linux perf)"
+#USAGE flag "-v --variant <v>"     env="FG_VARIANT"   default="non-fips"         help="Build variant"                                { choices "fips" "non-fips" }
+#USAGE flag "-w --workers <w>"     env="FG_WORKERS"   default="1,2,4,8"          help="Comma-separated worker counts to sweep"
+#USAGE flag "-t --time <t>"        env="FG_TIME"      default="15"               help="Profiling window per worker count (seconds)"
+#USAGE flag "-O --operations <ops>" env="FG_OPERATIONS" default="aes_gcm_enc,rsa_oaep_dec,ecdsa_sign" help="Comma-separated Criterion bench IDs — one flamegraph series per operation"
+#USAGE flag "-f --freq <hz>"       env="FG_FREQ"      default="500"              help="perf sampling frequency in Hz"
+#USAGE flag "--skip-flamegraph"    env="FG_SKIP_FG"                               help="Skip flamegraph generation (throughput bench only)"
+#USAGE flag "--skip-throughput"    env="FG_SKIP_TP"                               help="Skip throughput bench (flamegraphs only)"
+#USAGE flag "--out-md <path>"      env="FG_OUT_MD"                                help="Output markdown path (default: documentation/docs/benchmarks/cpu_scaling.md)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+VARIANT="${usage_variant:-non-fips}"
+kms_init_env "${VARIANT}" "static"
+print_header "KMS CPU Scaling Flamegraph (${VARIANT_NAME})"
+
+# Map usage flags → canonical env vars read by bench_run_flamegraph.sh.
+export VARIANT
+# Comma-separated → space-separated (script uses `for workers in ${WORKER_COUNTS}`).
+export WORKER_COUNTS="${usage_workers:-1,2,4,8}"
+WORKER_COUNTS="${WORKER_COUNTS//,/ }"
+export PROFILE_TIME="${usage_time:-15}"
+# Left comma-separated — the script splits it with `IFS=',' read -r -a`.
+export BENCH_OPERATIONS="${usage_operations:-aes_gcm_enc,rsa_oaep_dec,ecdsa_sign}"
+export PERF_FREQ="${usage_freq:-500}"
+export SKIP_FLAMEGRAPH=$( [ "${usage_skip_flamegraph:-}" = "true" ] && echo 1 || echo 0 )
+export SKIP_THROUGHPUT=$( [ "${usage_skip_throughput:-}" = "true" ] && echo 1 || echo 0 )
+[ -n "${usage_out_md:-}" ] && export OUT_MD="${usage_out_md}"
+
+exec "${MISE_CONFIG_ROOT}/.mise/scripts/bench/bench_run_flamegraph.sh"

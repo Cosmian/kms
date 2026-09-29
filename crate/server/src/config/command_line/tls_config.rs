@@ -1,17 +1,23 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
+use clap_config_fallback::ConfigArgs;
 use serde::{Deserialize, Serialize};
 
-#[derive(Args, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[derive(Args, ConfigArgs, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
 #[derive(Default)]
 pub struct TlsConfig {
-    /// The KMS server optional PKCS#12 Certificates and Key file.
-    /// Mandatory when starting the socket server.
+    /// The KMS server optional PKCS#12 Certificates and Key file as an alternative
+    /// to providing the key, certificate and chain in PEM format.
     /// When provided, the Socket and HTTP server will start in TLS Mode.
     #[cfg(feature = "non-fips")]
-    #[clap(long, env = "KMS_TLS_P12_FILE", verbatim_doc_comment)]
+    #[clap(
+        long,
+        env = "KMS_TLS_P12_FILE",
+        requires = "tls_p12_password",
+        verbatim_doc_comment
+    )]
     pub tls_p12_file: Option<PathBuf>,
 
     /// The password to open the PKCS#12 Certificates and Key file
@@ -20,22 +26,22 @@ pub struct TlsConfig {
     pub tls_p12_password: Option<String>,
 
     /// The server's X.509 certificate in PEM format.
-    /// Only used in FIPS mode (default build). Provide a PEM containing the server leaf certificate,
+    /// Provide a PEM containing the server leaf certificate,
     /// optionally followed by intermediate certificates (full chain). When provided along with
     /// `--tls-key-file`, the servers will start in TLS mode.
-    #[cfg(not(feature = "non-fips"))]
+    /// Do not use in combination with `--tls-p12-file`.
     #[clap(long, env = "KMS_TLS_CERT_FILE", verbatim_doc_comment)]
     pub tls_cert_file: Option<PathBuf>,
 
     /// The server's private key in PEM format (PKCS#8 or traditional format).
-    /// Only used in FIPS mode (default build). Must correspond to the certificate in `--tls-cert-file`.
-    #[cfg(not(feature = "non-fips"))]
+    /// Must correspond to the certificate in `--tls-cert-file`.
+    /// Do not use in combination with `--tls-p12-file`.
     #[clap(long, env = "KMS_TLS_KEY_FILE", verbatim_doc_comment)]
     pub tls_key_file: Option<PathBuf>,
 
     /// Optional certificate chain in PEM format (intermediate CAs).
-    /// Only used in FIPS mode. If not provided, the chain may be appended to `--tls-cert-file` instead.
-    #[cfg(not(feature = "non-fips"))]
+    /// If not provided, the chain may be appended to `--tls-cert-file` instead.
+    /// Do not use in combination with `--tls-p12-file`.
     #[clap(long, env = "KMS_TLS_CHAIN_FILE", verbatim_doc_comment)]
     pub tls_chain_file: Option<PathBuf>,
 
@@ -56,13 +62,30 @@ pub struct TlsConfig {
     /// DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA:\
     /// EDH-RSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:\
     /// AES256-SHA:DES-CBC3-SHA:!DSS"
-    /// Otherwise, ANSSI-recommended cipher suites (RFC 8446 compliant) are:
-    /// - For TLS 1.3 (preferred): `TLS_AES_256_GCM_SHA384`, `TLS_AES_128_GCM_SHA256`, `TLS_CHACHA20_POLY1305_SHA256`, `TLS_AES_128_CCM_SHA256`, `TLS_AES_128_CCM_8_SHA256`
-    /// - For TLS 1.2 (compatibility): `TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384`, `TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256`,
-    ///   `TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256`, `TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384`,
-    ///   `TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256`, `TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256`
+    /// Otherwise, the ANSSI TLS 1.2 guide recommends prioritizing AEAD suites using ECDHE
+    /// key exchange, with AES-GCM/AES-CCM (preferred) and ChaCha20-Poly1305 as an acceptable
+    /// alternative.
+    ///
+    /// Example (TLS 1.2):
+    /// `TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_CCM:TLS_ECDHE_ECDSA_WITH_AES_128_CCM:TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256`
     #[clap(long, env = "KMS_TLS_CIPHER_SUITES", verbatim_doc_comment)]
     pub tls_cipher_suites: Option<String>,
+}
+
+impl TlsConfig {
+    /// Returns `true` if TLS will be active on the HTTP listener.
+    ///
+    /// TLS is active when either:
+    /// - A PEM certificate **and** private key are both configured, or
+    /// - A PKCS#12 bundle is configured (non-FIPS only).
+    #[must_use]
+    pub const fn is_tls_enabled(&self) -> bool {
+        #[cfg(feature = "non-fips")]
+        if self.tls_p12_file.is_some() {
+            return true;
+        }
+        self.tls_cert_file.is_some() && self.tls_key_file.is_some()
+    }
 }
 
 impl Display for TlsConfig {
@@ -71,8 +94,8 @@ impl Display for TlsConfig {
         {
             if self.tls_p12_file.is_some() {
                 write!(f, "Pkcs12 file: {:?}, ", self.tls_p12_file.as_ref())?;
-                if let Some(https_p12_password) = &self.tls_p12_password {
-                    write!(f, "password: {}, ", https_p12_password.replace('.', "*"))?;
+                if self.tls_p12_password.is_some() {
+                    write!(f, "password: [****], ")?;
                 }
                 return write!(
                     f,
@@ -82,7 +105,6 @@ impl Display for TlsConfig {
                 );
             }
         }
-        #[cfg(not(feature = "non-fips"))]
         {
             if self.tls_cert_file.is_some() && self.tls_key_file.is_some() {
                 return write!(
@@ -102,6 +124,6 @@ impl Display for TlsConfig {
 
 impl std::fmt::Debug for TlsConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}", &self))
+        f.write_fmt(format_args!("{self}"))
     }
 }

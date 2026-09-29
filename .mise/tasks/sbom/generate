@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#MISE description="Generate SBOM (Software Bill of Materials)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "--target <target>" help="SBOM target" {
+#USAGE   choices "openssl_3_1_2" "openssl_3_6_2" "server" "ckms"
+#USAGE }
+#USAGE flag "--retrieve" help="Download SBOMs instead of generating"
+#USAGE flag "--branch <branch>" help="Remote branch/tag to retrieve"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+
+print_header "Generating SBOM"
+
+REPO_ROOT="$(get_repo_root)"
+
+# Forward all args to the existing sbom script
+ARGS=()
+[ -n "${usage_target:-}" ] && ARGS+=(--target "$usage_target")
+[ -n "${usage_variant:-}" ] && ARGS+=(--variant "$usage_variant")
+[ -n "${usage_link:-}" ] && ARGS+=(--link "$usage_link")
+[ "${usage_retrieve:-false}" = "true" ] && ARGS+=(--retrieve)
+[ -n "${usage_branch:-}" ] && ARGS+=(--branch "$usage_branch")
+
+bash "${REPO_ROOT}/.mise/scripts/sbom/generate_sbom.sh" "${ARGS[@]}"
+
+print_success "SBOM generation completed"

@@ -1,0 +1,108 @@
+[package]
+name = "cosmian_kms_k8s_plugin"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords = ["kms", "kubernetes", "k8s", "cosmian", "grpc"]
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Kubernetes KMS Provider Plugin v2 for Cosmian KMS (etcd Secret encryption)"
+readme = "../../../../README.md"
+
+[[bin]]
+name = "kubernetes-kms-plugin"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+# prost is a false positive: it is used by code generated in src/v2.rs
+[package.metadata.cargo-machete]
+ignored = ["prost"]
+
+[dependencies]
+clap = { workspace = true, features = [
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
+] }
+cosmian_kms_client = { path = "../../client", version = "5.25.0" }
+cosmian_logger = { workspace = true }
+prost = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = [
+  "rt-multi-thread",
+  "macros",
+  "net",
+  "signal",
+] }
+tokio-stream = { workspace = true, features = ["net"] }
+tonic = { workspace = true, features = ["transport"] }
+tracing = { workspace = true }
+zeroize = { workspace = true, features = ["zeroize_derive"] }
+
+[dev-dependencies]
+test_kms_server = { path = "../../../test_kms_server" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+hyper-util = { workspace = true, features = ["tokio"] }
+tower = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+# ------------------------------------------------------------------------------
+# DEB PACKAGING (cargo-deb)
+# cargo-deb --no-build --no-strip -p cosmian_kms_k8s_plugin
+# ------------------------------------------------------------------------------
+[package.metadata.deb]
+maintainer = "Cosmian support team <tech@cosmian.com>"
+copyright = "2026, Cosmian Tech SAS <tech@cosmian.com>"
+license-file = ["../../../../LICENSE", "0"]
+changelog = "../../../../CHANGELOG.md"
+section = "security"
+priority = "optional"
+depends = ""
+maintainer-scripts = "../../../../pkg/k8s-plugin/deb/"
+systemd-units = [
+  { unit-name = "kubernetes-kms-plugin", unit-scripts = "../../../../pkg/k8s-plugin/deb", enable = false, start = false },
+]
+assets = [
+  [
+    "target/release/kubernetes-kms-plugin",
+    "usr/local/bin/kubernetes-kms-plugin",
+    "755",
+  ],
+  [
+    "../../../../pkg/kubernetes_kms_plugin.service",
+    "lib/systemd/system/kubernetes-kms-plugin.service",
+    "644",
+  ],
+  [
+    "../../../../README.md",
+    "usr/share/doc/cosmian/kubernetes-kms-plugin/README.md",
+    "644",
+  ],
+]
+
+# ------------------------------------------------------------------------------
+# RPM PACKAGING (cargo-generate-rpm)
+# cargo-generate-rpm --no-build -p crate/clients/k8s/plugin
+# ------------------------------------------------------------------------------
+[package.metadata.generate-rpm]
+license = "BUSL-1.1"
+auto-req = "no"
+require-sh = true
+assets = [
+  { source = "target/release/kubernetes-kms-plugin", dest = "/usr/local/bin/kubernetes-kms-plugin", mode = "755" },
+  { source = "../../../../pkg/kubernetes_kms_plugin.service", dest = "/lib/systemd/system/kubernetes-kms-plugin.service", mode = "644" },
+  { source = "../../../../README.md", dest = "/usr/share/doc/cosmian/kubernetes-kms-plugin/README.md", mode = "644", doc = true },
+]
+
+[package.metadata.generate-rpm.scriptlets]
+file = "../../../../pkg/k8s-plugin/rpm/scriptlets.toml"

@@ -1,19 +1,50 @@
 ---
-# Only used for local development and testing
+# Only used for local development and testing.
+# Port isolation: set KMS_TEST_SLOT=N to shift all host ports by N×1000.
+# Source .mise/lib/test_slots.sh to compute KMS_SLOT_* variables automatically.
 services:
   postgres:
-    image: postgres
+    image: postgres:16
     ports:
-      - 5432:5432
+      - ${KMS_SLOT_POSTGRES_PORT:-5432}:5432
     environment:
       - POSTGRES_USER=kms
       - POSTGRES_DB=kms
       - POSTGRES_PASSWORD=kms
       - PGDATA=/tmp/postgres2
-  mysql:
-    image: mysql
+
+  # ── PostgreSQL failover-retry test nodes ────────────────────────────────────
+  # Two independent PostgreSQL instances used by test_db_postgresql_failover.
+  # Start with: docker compose --profile pg-failover up -d
+  # The container names (pg1, pg2) are referenced by docker stop/start inside
+  # the test to simulate a primary failure and recovery.
+  pg-failover-1:
+    image: postgres:16
+    container_name: pg1
+    profiles: [pg-failover]
     ports:
-      - 3306:3306
+      - ${KMS_SLOT_PG_FAILOVER_1_PORT:-5434}:5432
+    environment:
+      - POSTGRES_USER=kms
+      - POSTGRES_DB=kms
+      - POSTGRES_PASSWORD=kms
+      - PGDATA=/tmp/postgres-fo1
+
+  pg-failover-2:
+    image: postgres:16
+    container_name: pg2
+    profiles: [pg-failover]
+    ports:
+      - ${KMS_SLOT_PG_FAILOVER_2_PORT:-5435}:5432
+    environment:
+      - POSTGRES_USER=kms
+      - POSTGRES_DB=kms
+      - POSTGRES_PASSWORD=kms
+      - PGDATA=/tmp/postgres-fo2
+  mysql:
+    image: mysql:8.0
+    ports:
+      - ${KMS_SLOT_MYSQL_PORT:-3306}:3306
     environment:
       - MYSQL_USER=kms
       - MYSQL_PASSWORD=kms
@@ -22,7 +53,7 @@ services:
   percona:
     image: percona/percona-xtradb-cluster:8.0
     ports:
-      - 3307:3306
+      - ${KMS_SLOT_PERCONA_PORT:-3307}:3306
     environment:
       - MYSQL_ROOT_PASSWORD=kms
       - MYSQL_DATABASE=kms
@@ -31,22 +62,556 @@ services:
       - CLUSTER_NAME=test-cluster
       - PXC_STRICT_MODE=ENFORCING
   mariadb:
-    image: mariadb:latest
+    image: mariadb:11.4
     ports:
-      - 3308:3306
+      - ${KMS_SLOT_MARIADB_PORT:-3308}:3306
     environment:
       - MYSQL_ROOT_PASSWORD=kms
       - MYSQL_DATABASE=kms
       - MYSQL_USER=kms
       - MYSQL_PASSWORD=kms
+  postgres-mtls:
+    image: postgres:16
+    ports:
+      - ${KMS_SLOT_POSTGRES_MTLS_PORT:-5433}:5432
+    environment:
+      - POSTGRES_USER=kms
+      - POSTGRES_DB=kms
+      - POSTGRES_PASSWORD=kms
+      - PGDATA=/var/lib/postgresql/data
+    volumes:
+      - ./test_data/certificates/client_server/db/postgres-server.crt:/var/lib/postgresql/certs-ro/server.crt:ro
+      - ./test_data/certificates/client_server/db/postgres-server.key:/var/lib/postgresql/certs-ro/server.key:ro
+      - ./test_data/certificates/client_server/ca/ca.crt:/var/lib/postgresql/certs-ro/ca.crt:ro
+    entrypoint:
+      - bash
+      - -lc
+      - |
+        set -euo pipefail
+        BIN_DIR=$$(ls -1d /usr/lib/postgresql/*/bin 2>/dev/null | head -n1)
+        if [ -n "$$BIN_DIR" ]; then
+          export PATH="$$BIN_DIR:$$PATH"
+        fi
+        # Copy TLS materials from read-only mounts to a writable location
+        cp /var/lib/postgresql/certs-ro/server.crt /var/lib/postgresql/server.crt
+        cp /var/lib/postgresql/certs-ro/server.key /var/lib/postgresql/server.key
+        cp /var/lib/postgresql/certs-ro/ca.crt /var/lib/postgresql/ca.crt
+        chown postgres:postgres /var/lib/postgresql/server.key /var/lib/postgresql/server.crt /var/lib/postgresql/ca.crt || true
+        chmod 600 /var/lib/postgresql/server.key || true
+        exec docker-entrypoint.sh postgres \
+          -c ssl=on \
+          -c ssl_cert_file=/var/lib/postgresql/server.crt \
+          -c ssl_key_file=/var/lib/postgresql/server.key \
+          -c ssl_ca_file=/var/lib/postgresql/ca.crt \
+          -c ssl_min_protocol_version=TLSv1.2 \
+          -c listen_addresses='*'
+  mysql-mtls:
+    image: mysql:8.0
+    ports:
+      - ${KMS_SLOT_MYSQL_MTLS_PORT:-3309}:3306
+    environment:
+      - MYSQL_USER=kms
+      - MYSQL_PASSWORD=kms
+      - MYSQL_DATABASE=kms
+      - MYSQL_ROOT_PASSWORD=kms
+    volumes:
+      - ./test_data/certificates/client_server/db/mysql-server.crt:/etc/mysql/certs/server-cert.pem:ro
+      - ./test_data/certificates/client_server/db/mysql-server.key:/etc/mysql/certs/server-key.pem:ro
+      - ./test_data/certificates/client_server/ca/ca.crt:/etc/mysql/certs/ca.pem:ro
+    command: >
+      --require-secure-transport=ON
+      --ssl-cert=/etc/mysql/certs/server-cert.pem
+      --ssl-key=/etc/mysql/certs/server-key.pem
+      --ssl-ca=/etc/mysql/certs/ca.pem
   redis:
-    image: redis:latest
+    image: redis:7.2
     ports:
-      - 6379:6379
+      - ${KMS_SLOT_REDIS_PORT:-6379}:6379
+
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.55
     ports:
-      - 16686:16686
-      - 4317:4317
+      - ${KMS_SLOT_JAEGER_PORT:-16686}:16686
     environment:
       - COLLECTOR_OTLP_ENABLED=true
+
+  # Minimal OTEL stack for integration tests:
+  # KMS -> otel-collector -> scrape collector Prometheus endpoint
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.144.0
+    command: [--config=/etc/otel-collector-config.yaml]
+    volumes:
+      - ./monitoring/ci-otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    environment:
+      # Kept for local setups that also export somewhere else; not used by test assertions.
+      - OTLP_ENDPOINT=jaeger:4317
+      - ENVIRONMENT=test
+      - KMS_VERSION=dev
+    ports:
+      - ${KMS_SLOT_OTEL_GRPC_PORT:-4317}:4317   # OTLP gRPC receiver (host)
+      - ${KMS_SLOT_OTEL_HTTP_PORT:-4318}:4318   # OTLP HTTP receiver (host)
+      - ${KMS_SLOT_OTEL_METRICS_PORT:-8889}:8889   # Prometheus metrics endpoint (host)
+
+  # ── rsyslog (SIEM TCP syslog integration test) ────────────────────────────
+  #
+  # Used by: mise run test:siem-cef-tcp-syslog, mise run test:siem
+  # No special startup needed — the test script manages the container lifecycle
+  # with the .mise/scripts/test/rsyslog.conf config.
+  #
+  # Start manually for debugging:
+  #   docker run --rm --name kms-rsyslog -p 51514:514 \
+  #     -v ./.mise/scripts/test/rsyslog.conf:/etc/rsyslog.conf:ro \
+  #     -v /tmp/rsyslog:/var/log:rw \
+  #     rsyslog/syslog_appliance_alpine:latest
+
+  # ── Elasticsearch 8.x (SIEM integration tests) ───────────────────────────
+  #
+  # WARNING: FOR LOCAL TEST AND CI AUTOMATION ONLY. DO NOT USE IN PRODUCTION.
+  # Authentication and TLS are disabled (xpack.security.enabled=false) to simplify ephemeral test runs.
+  #
+  # Used by: mise run test:siem-filebeat, mise run test:siem
+  # Start with: docker compose up -d elasticsearch
+  #
+  elasticsearch:
+    profiles: [test, siem]
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - ${KMS_SLOT_ES_PORT:-9200}:9200
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf http://localhost:9200/_cluster/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # ── EDB Postgres Advanced Server 17 with Transparent Data Encryption ──────
+  #
+  # Requires:
+  #   - EDB subscription token (free): https://www.enterprisedb.com/accounts/register
+  #   - Login before use:
+  #       echo "$EDB_SUBSCRIPTION_TOKEN" | docker login --username k8s --password-stdin docker.enterprisedb.com
+  #   - Cosmian KMS running with KMIP port 15696
+  #   - EDB_MASTER_KEY_UID exported (UID of an Active AES-256 key in the KMS)
+  #
+  # Used automatically by:  mise run test:edb-tde --variant non-fips
+  # (when EDB_SUBSCRIPTION_TOKEN is set; the test script handles login and lifecycle)
+  edb-tde:
+    profiles:
+      - edb-tde
+    # Build locally to install PyKMIP (not shipped in the base image).
+    build:
+      context: .mise/scripts/edb_tde
+      dockerfile: Dockerfile.edb
+    # Base image is x86_64-only.
+    platform: linux/amd64
+    ports:
+      - ${KMS_SLOT_EDB_PORT:-5444}:5444
+    environment:
+      PGPASSWORD: ${EDB_PGPASSWORD:-kms_test}
+
+      # Called by initdb --data-encryption to seal the cluster DEK.
+      # Wire format: [16-byte IV][ciphertext]  (AES-256-CBC + PKCS5)
+      PGDATAKEYWRAPCMD: >-
+        python3 /usr/edb/kmip/client/edb_tde_kmip_client.py encrypt
+        --pykmip-config-file=/kmip-certs/pykmip.conf
+        --key-uid=${EDB_MASTER_KEY_UID:-}
+        --variant=pykmip
+        --out-file=%p
+
+      # Called by pg_ctl start to unseal the DEK on every restart.
+      PGDATAKEYUNWRAPCMD: >-
+        python3 /usr/edb/kmip/client/edb_tde_kmip_client.py decrypt
+        --pykmip-config-file=/kmip-certs/pykmip.conf
+        --key-uid=${EDB_MASTER_KEY_UID:-}
+        --variant=pykmip
+        --in-file=%p
+
+    # Startup script: runs initdb with TDE (calls the real edb_tde_kmip_client.py
+    # to wrap the cluster DEK) then starts postgres in the foreground.
+    command: [/bin/bash, /startup/edb_startup.sh]
+
+    volumes:
+      - ./test_data/certificates/client_server/ca/ca.crt:/kmip-certs/ca.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/kmip-certs/client.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.key:/kmip-certs/client.key:ro
+      - ./.mise/scripts/edb_tde/pykmip_docker.conf:/kmip-certs/pykmip.conf:ro
+      - ./.mise/scripts/edb_tde/edb_startup.sh:/startup/edb_startup.sh:ro
+
+    extra_hosts:
+      # Resolves to the Docker host (host.docker.internal is natively available
+      # on macOS/Windows Docker Desktop; on Linux Docker the special value
+      # "host-gateway" maps to the host IP).
+      - host.docker.internal:host-gateway
+
+  # IBM Db2 LUW — KMIP TDE integration test
+  # Started on demand with: docker compose up -d db2-tde
+  # Requires Docker privileged mode. Startup takes up to 5 minutes.
+  # LICENSE=accept is required to run the Community Edition image.
+  db2-tde:
+    image: ${DB2_DOCKER_IMAGE:-icr.io/db2_community/db2}
+    container_name: ${DB2_CONTAINER_NAME:-db2-kmip-test}
+    privileged: true
+    profiles:
+      - db2
+    ports:
+      - ${KMS_SLOT_DB2_PORT:-50000}:50000
+    environment:
+      - LICENSE=accept
+      - DB2INST1_PASSWORD=${DB2_INSTANCE_PWD:-Db2KmipTest1}
+      - DBNAME=${DB2_DBNAME:-KMIPDB}
+      - ARCHIVE_LOGS=false
+      - AUTOCONFIG=false
+    volumes:
+      - ./test_data/certificates/client_server/ca/ca.crt:/db2-kmip-certs/ca.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/db2-kmip-certs/client.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.key:/db2-kmip-certs/client.key:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+      - kmserver.acme.com:host-gateway
+
+  # InterSystems IRIS — mTLS integration test
+  # Started on demand with: docker compose up -d iris
+  # The profile keeps it out of the default `docker compose up -d` that runs
+  iris:
+    image: ${IRIS_DOCKER_IMAGE:-intersystems/iris-community:2026.1}
+    container_name: ${IRIS_CONTAINER_NAME:-iris-kmip-test}
+    # The Community image is amd64-only; Rosetta handles this on Apple Silicon.
+    platform: linux/amd64
+    pull_policy: always
+    profiles:
+      - iris
+    ports:
+      - ${KMS_SLOT_IRIS_WEB_PORT:-52773}:52773     # IRIS Management Portal
+      - ${KMS_SLOT_IRIS_SUPER_PORT:-1972}:1972      # IRIS SuperServer
+    volumes:
+      - ./test_data/certificates/client_server/ca/ca.crt:/iris-kmip-certs/ca.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/iris-kmip-certs/client.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.key:/iris-kmip-certs/client.key:ro
+    environment:
+      # Inject an ISC license key when provided (optional; Community image has a built-in key).
+      - ISC_PACKAGE_LICENSEKEY=${IRIS_LICENSE_KEY:-}
+    extra_hosts:
+      # Allow IRIS to reach the KMS running on the Docker host.
+      # The KMS server certificate CN is kmserver.acme.com, so IRIS TLS
+      # hostname verification requires this alias to resolve to the host.
+      - host.docker.internal:host-gateway
+      - kmserver.acme.com:host-gateway
+
+  # ── SPIRE integration test services (multi-tenant) ──────────────────────────
+  # Start with: docker compose --profile spire up -d
+  # cosmian-kms and auth-verifier run on the host via `cargo run`.
+  # KMS proxies /v1/auth/* to auth-verifier; no nginx vault-proxy needed.
+  #
+  # Two INDEPENDENT SPIRE deployments (tenants "a" and "b") run against the SAME
+  # KMS, each with its own trust domain, its own AppRole, its own agent, and its
+  # own intermediate CA — all signed by the same KMS root CA (tag vault_pki_ca).
+  # This proves the KMS is a valid multi-tenant Vault upstream authority.
+
+  # ── Tenant A: trust domain cosmian-test-a.local ─────────────────────────────
+  spire-server-a:
+    image: ghcr.io/spiffe/spire-server:1.15.2
+    profiles: [spire]
+    container_name: spire-server-a
+    # SPIRE 1.15+ images run as non-root (uid 1000); run as root for writes.
+    user: 0:0
+    network_mode: host
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ${SPIRE_SERVER_CONFIG_FILE_A:-./test_data/spire/config/spire-server-a.conf}:/etc/spire/server/server.conf:ro
+      - ./test_data/spire/certs/ca.crt:/etc/spire/server/ca.crt:ro
+      - spire-data-a:/data/spire-server
+    environment:
+      # AppRole credentials injected by the mise task from /tmp/spire-secrets.env.
+      # SPIRE vault plugin reads VAULT_APPROLE_ID and VAULT_APPROLE_SECRET_ID;
+      # each server sees its OWN tenant role under those fixed names.
+      - VAULT_APPROLE_ID=${VAULT_APPROLE_ID_A:-}
+      - VAULT_APPROLE_SECRET_ID=${VAULT_APPROLE_SECRET_ID_A:-}
+    command: [-config, /etc/spire/server/server.conf]
+    healthcheck:
+      test:
+        - CMD
+        - /opt/spire/bin/spire-server
+        - healthcheck
+      interval: 10s
+      timeout: 30s
+      retries: 12
+
+  spire-agent-a:
+    image: ghcr.io/spiffe/spire-agent:1.15.2
+    profiles: [spire]
+    container_name: spire-agent-a
+    # See spire-server-a: run as root for 1.15+ non-root image.
+    user: 0:0
+    network_mode: host
+    depends_on:
+      spire-server-a:
+        condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      # SPIRE_AGENT_CONFIG_FILE_A is overridden by the mise task to inject a
+      # real join token (generated at runtime). Defaults to the template
+      # config with a placeholder token.
+      - ${SPIRE_AGENT_CONFIG_FILE_A:-./test_data/spire/config/spire-agent-a.conf}:/etc/spire/agent/agent.conf:ro
+      - ./test_data/spire/certs/ca.crt:/etc/spire/agent/ca.crt:ro
+      # Named volume (not a host bind mount) so the unix socket at
+      # /tmp/spire-agent/public/api.sock is correctly shared with the
+      # mistral-agent containers on all platforms, including macOS Docker
+      # Desktop where host-bind-mount unix sockets are not accessible
+      # between containers.
+      - spire-agent-socket-a:/tmp/spire-agent
+    command: [-config, /etc/spire/agent/agent.conf]
+    pid: host
+    healthcheck:
+      # Use the SPIRE agent binary itself: the image is distroless and has no
+      # shell or 'test' utility. Reports healthy once the workload API socket
+      # is ready and accepting connections.
+      test:
+        - CMD
+        - /opt/spire/bin/spire-agent
+        - healthcheck
+        - -socketPath
+        - /tmp/spire-agent/public/api.sock
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 15s
+
+  mistral-agent-a1:
+    build:
+      context: ./test_data/spire/mistral-client
+    profiles: [spire]
+    container_name: mistral-agent-a1
+    depends_on:
+      spire-agent-a:
+        condition: service_healthy
+    volumes:
+      - spire-agent-socket-a:/tmp/spire-agent:ro
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - AGENT_ID=mistral-agent-a1
+      - TRUST_DOMAIN=cosmian-test-a.local
+      - EXPECTED_SPIFFE_PATH=/mistral-agent
+      - JWT_AUDIENCE=cosmian-kms
+      - MAX_SVID_TTL_SECONDS=7200
+
+  mistral-agent-a2:
+    build:
+      context: ./test_data/spire/mistral-client
+    profiles: [spire]
+    container_name: mistral-agent-a2
+    depends_on:
+      spire-agent-a:
+        condition: service_healthy
+    volumes:
+      - spire-agent-socket-a:/tmp/spire-agent:ro
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - AGENT_ID=mistral-agent-a2
+      - TRUST_DOMAIN=cosmian-test-a.local
+      - EXPECTED_SPIFFE_PATH=/mistral-agent
+      - JWT_AUDIENCE=cosmian-kms
+      - MAX_SVID_TTL_SECONDS=7200
+
+  # ── Tenant B: trust domain cosmian-test-b.local ─────────────────────────────
+  spire-server-b:
+    image: ghcr.io/spiffe/spire-server:1.15.2
+    profiles: [spire]
+    container_name: spire-server-b
+    # See spire-server-a: run as root for 1.15+ non-root image.
+    user: 0:0
+    network_mode: host
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ${SPIRE_SERVER_CONFIG_FILE_B:-./test_data/spire/config/spire-server-b.conf}:/etc/spire/server/server.conf:ro
+      - ./test_data/spire/certs/ca.crt:/etc/spire/server/ca.crt:ro
+      - spire-data-b:/data/spire-server
+    environment:
+      - VAULT_APPROLE_ID=${VAULT_APPROLE_ID_B:-}
+      - VAULT_APPROLE_SECRET_ID=${VAULT_APPROLE_SECRET_ID_B:-}
+    command: [-config, /etc/spire/server/server.conf]
+    healthcheck:
+      test:
+        - CMD
+        - /opt/spire/bin/spire-server
+        - healthcheck
+      interval: 10s
+      timeout: 30s
+      retries: 12
+
+  spire-agent-b:
+    image: ghcr.io/spiffe/spire-agent:1.15.2
+    profiles: [spire]
+    container_name: spire-agent-b
+    # See spire-server-a: run as root for 1.15+ non-root image.
+    user: 0:0
+    network_mode: host
+    depends_on:
+      spire-server-b:
+        condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ${SPIRE_AGENT_CONFIG_FILE_B:-./test_data/spire/config/spire-agent-b.conf}:/etc/spire/agent/agent.conf:ro
+      - ./test_data/spire/certs/ca.crt:/etc/spire/agent/ca.crt:ro
+      - spire-agent-socket-b:/tmp/spire-agent
+    command: [-config, /etc/spire/agent/agent.conf]
+    pid: host
+    healthcheck:
+      test:
+        - CMD
+        - /opt/spire/bin/spire-agent
+        - healthcheck
+        - -socketPath
+        - /tmp/spire-agent/public/api.sock
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 15s
+
+  mistral-agent-b1:
+    build:
+      context: ./test_data/spire/mistral-client
+    profiles: [spire]
+    container_name: mistral-agent-b1
+    depends_on:
+      spire-agent-b:
+        condition: service_healthy
+    volumes:
+      - spire-agent-socket-b:/tmp/spire-agent:ro
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - AGENT_ID=mistral-agent-b1
+      - TRUST_DOMAIN=cosmian-test-b.local
+      - EXPECTED_SPIFFE_PATH=/mistral-agent
+      - JWT_AUDIENCE=cosmian-kms
+      - MAX_SVID_TTL_SECONDS=7200
+
+  mistral-agent-b2:
+    build:
+      context: ./test_data/spire/mistral-client
+    profiles: [spire]
+    container_name: mistral-agent-b2
+    depends_on:
+      spire-agent-b:
+        condition: service_healthy
+    volumes:
+      - spire-agent-socket-b:/tmp/spire-agent:ro
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - AGENT_ID=mistral-agent-b2
+      - TRUST_DOMAIN=cosmian-test-b.local
+      - EXPECTED_SPIFFE_PATH=/mistral-agent
+      - JWT_AUDIENCE=cosmian-kms
+      - MAX_SVID_TTL_SECONDS=7200
+
+  # ── SDS test services (profile: spire-sds) ───────────────────────────────
+  # Tests PKI-10: deliver certificates to a mesh sidecar via the standard SDS
+  # interface (Envoy Secret Discovery Service). Envoy fetches its X.509-SVID
+  # and trust bundle directly from the SPIRE agent — no static cert files.
+  #
+  # Topology:
+  #   socat-probe → envoy-sds-downstream (mTLS client, cert from SDS)
+  #               ──►  envoy-sds-upstream (mTLS server, cert from SDS)
+  #                           ──► socat-echo (plain TCP echo backend)
+
+  socat-echo:
+    image: alpine/socat:latest
+    profiles: [spire-sds]
+    container_name: socat-echo
+    # Echo back any TCP input on port 8000
+    command:
+      - -d
+      - -d
+      - TCP-LISTEN:8000,fork,reuseaddr
+      - EXEC:cat
+
+  envoy-sds-upstream:
+    image: envoyproxy/envoy:v1.32-latest
+    profiles: [spire-sds]
+    container_name: envoy-sds-upstream
+    # NOTE: depends_on spire-agent-a is intentionally omitted — spire-agent-a
+    # belongs to the 'spire' profile.  test_sds.sh verifies the agent is running
+    # and the socket volume is populated before starting the Envoy containers.
+    depends_on:
+      socat-echo:
+        condition: service_started
+    volumes:
+      # SPIRE agent socket — Envoy is attested as a workload via this socket
+      - spire-agent-socket-a:/tmp/spire-agent:ro
+      # Envoy config (SDS-only, no static cert files)
+      - ./test_data/spire/config/envoy-upstream.yaml:/etc/envoy/envoy.yaml:ro
+    # Admin port exposed on a high port to avoid conflicts and allow host-side health checks.
+    ports:
+      - 19901:9901
+    # Envoy official image (v1.32+) does not have wget/curl.
+    # The binary drops to uid=101 (envoy) at startup; workload entry uses unix:uid:101.
+    command: [-c, /etc/envoy/envoy.yaml, --log-level, info]
+    healthcheck:
+      # Use bash /dev/tcp to check the admin /ready endpoint (no wget/curl in image).
+      test: [CMD, bash, -c, "exec 3<>/dev/tcp/127.0.0.1/9901 2>/dev/null && printf 'GET /ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -1\
+            \ <&3 | grep -q ' 200 '"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  envoy-sds-downstream:
+    image: envoyproxy/envoy:v1.32-latest
+    profiles: [spire-sds]
+    container_name: envoy-sds-downstream
+    depends_on:
+      envoy-sds-upstream:
+        condition: service_started  # test_sds.sh waits explicitly via wait_envoy_ready
+    volumes:
+      - spire-agent-socket-a:/tmp/spire-agent:ro
+      - ./test_data/spire/config/envoy-downstream.yaml:/etc/envoy/envoy.yaml:ro
+    ports:
+      - 19902:9902
+    command: [-c, /etc/envoy/envoy.yaml, --log-level, info]
+    healthcheck:
+      test: [CMD, bash, -c, "exec 3<>/dev/tcp/127.0.0.1/9902 2>/dev/null && printf 'GET /ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -1\
+            \ <&3 | grep -q ' 200 '"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  socat-probe:
+    image: alpine/socat:latest
+    profiles: [spire-sds]
+    container_name: socat-probe
+    depends_on:
+      envoy-sds-downstream:
+        condition: service_started  # test_sds.sh waits for Envoy readiness before running the probe
+    # Send a single probe string through the mTLS proxy and capture the echo.
+    # Exit 0 if the response matches, non-zero otherwise.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        MSG="spire-sds-probe-ok"
+        RESPONSE=$(printf '%s' "$$MSG" | socat -T5 - TCP:envoy-sds-downstream:8001 2>/dev/null)
+        if [ "$$RESPONSE" = "$$MSG" ]; then
+          echo "SDS probe PASSED: mTLS connection established via SPIRE SDS certificates"
+          exit 0
+        else
+          echo "SDS probe FAILED: expected '$$MSG', got '$$RESPONSE'" >&2
+          exit 1
+        fi
+
+volumes:
+  spire-data-a:
+  spire-data-b:
+  spire-agent-socket-a:
+  spire-agent-socket-b:

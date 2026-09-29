@@ -1,0 +1,560 @@
+use std::path::PathBuf;
+
+use clap::{CommandFactory, Parser, Subcommand};
+use cosmian_config_utils::ConfigUtils;
+use cosmian_kms_cli_actions::{
+    actions::kms_actions::KmsActions,
+    reexport::cosmian_kms_client::{
+        GmailApiConf, KmsClient,
+        reexport::cosmian_http_client::{HttpClientConfig, ProxyParams},
+    },
+};
+use cosmian_logger::{info, log_init, trace};
+use dialoguer::{Confirm, Input, Password, Select};
+use url::Url;
+
+use crate::{
+    actions::markdown::MarkdownAction, cli_error, config::ClientConfig,
+    error::result::CosmianResult, headers_config::HeadersConfig, proxy_config::ProxyConfig,
+};
+
+/// Prompts for an optional string field. Sets `$field` to `Some(value)` if non-empty, `None` otherwise.
+macro_rules! prompt_optional {
+    ($field:expr, $prompt:expr) => {{
+        let value: String = Input::new()
+            .with_prompt($prompt)
+            .allow_empty(true)
+            .with_initial_text($field.clone().unwrap_or_default())
+            .interact_text()
+            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+        $field = if value.is_empty() { None } else { Some(value) };
+    }};
+}
+
+/// Prompts for an optional password field. Sets `$field` to `Some(value)` if non-empty, `None` otherwise.
+macro_rules! prompt_password {
+    ($field:expr, $prompt:expr) => {{
+        let value: String = Password::new()
+            .with_prompt($prompt)
+            .allow_empty_password(true)
+            .interact()
+            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+        $field = if value.is_empty() { None } else { Some(value) };
+    }};
+}
+
+/// Prompts for a required string field. Assigns the result directly to `$field`.
+macro_rules! prompt_required {
+    ($field:expr, $prompt:expr) => {
+        $field = Input::new()
+            .with_prompt($prompt)
+            .with_initial_text($field)
+            .interact_text()
+            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+    };
+}
+
+/// Updates proxy configuration for the KMS client
+///
+/// # Arguments
+/// * `config` - Mutable reference to the client configuration
+/// * `proxy_config` - The proxy configuration from CLI arguments
+///
+/// # Errors
+/// Returns an error if the proxy URL cannot be parsed
+/// Merges custom HTTP headers from the CLI into the client configuration.
+fn update_headers_config(config: &mut ClientConfig, headers_config: &HeadersConfig) {
+    if !headers_config.custom_headers.is_empty() {
+        let existing = config
+            .kms_config
+            .http_config
+            .custom_headers
+            .get_or_insert_with(Vec::new);
+        existing.extend(headers_config.custom_headers.clone());
+    }
+}
+
+fn update_proxy_config(config: &mut ClientConfig, proxy_config: &ProxyConfig) -> CosmianResult<()> {
+    let proxy_params: Option<ProxyParams> = if let Some(url) = &proxy_config.proxy_url {
+        let exclusion_list = proxy_config
+            .proxy_exclusion_list
+            .clone()
+            .unwrap_or_default();
+        Some(ProxyParams {
+            url: Url::parse(url).map_err(|e| cli_error!("Failed parsing the Proxy URL: {e}"))?,
+            basic_auth_username: proxy_config.proxy_basic_auth_username.clone(),
+            basic_auth_password: proxy_config.proxy_basic_auth_password.clone(),
+            custom_auth_header: proxy_config.proxy_custom_auth_header.clone(),
+            exclusion_list,
+        })
+    } else {
+        None
+    };
+
+    if let Some(proxy_params) = proxy_params {
+        config.kms_config.http_config.proxy_params = Some(proxy_params);
+    }
+
+    Ok(())
+}
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+pub struct Cli {
+    /// Configuration file location
+    ///
+    /// This is an alternative to the env variable `CKMS_CONF_PATH`.
+    /// Takes precedence over `CKMS_CONF_PATH` env variable.
+    #[arg(short, env = "CKMS_CONF_PATH", long)]
+    conf_path: Option<PathBuf>,
+
+    #[command(subcommand)]
+    pub command: CliCommands,
+
+    /// The URL of the KMS
+    #[arg(long, env = "KMS_DEFAULT_URL", action)]
+    pub url: Option<String>,
+
+    /// Output the KMS JSON KMIP request and response.
+    /// This is useful to understand JSON POST requests and responses
+    /// required to programmatically call the KMS on the `/kmip/2_1` endpoint
+    #[arg(long)]
+    pub print_json: bool,
+
+    /// Allow to connect using a self-signed cert or untrusted cert chain
+    ///
+    /// `accept_invalid_certs` is useful if the CLI needs to connect to an HTTPS
+    /// KMS server running an invalid or insecure SSL certificate
+    #[arg(long)]
+    pub accept_invalid_certs: bool,
+
+    #[clap(flatten)]
+    pub headers: HeadersConfig,
+
+    #[clap(flatten)]
+    pub proxy: ProxyConfig,
+}
+
+#[derive(Subcommand)]
+#[allow(clippy::large_enum_variant)]
+pub enum CliCommands {
+    /// Handle KMS actions
+    #[clap(flatten)]
+    Kms(KmsActions),
+    /// Regenerate the CLI documentation in Markdown format.
+    ///
+    /// Writes a Markdown file documenting all subcommands and their options.
+    /// Example: `ckms markdown documentation/docs/cli/main_commands.md`
+    Markdown(MarkdownAction),
+    /// Configure the KMS CLI (create ckms.toml)
+    Configure,
+}
+
+/// Main function for the KMS CLI application.
+///
+/// This function initializes logging, parses command-line arguments, and
+/// executes the appropriate command based on the provided arguments. It
+/// supports various subcommands for interacting with the KMS CLI, such as login,
+/// logout, locating objects, and more.
+///
+/// # Errors
+///
+/// This function will return an error if:
+/// - The logging initialization fails.
+/// - The command-line arguments cannot be parsed.
+/// - The configuration file cannot be located or loaded.
+/// - Any of the subcommands fail during their execution.
+pub async fn ckms_main() -> CosmianResult<()> {
+    log_init(None);
+    info!("Starting KMS CLI");
+    let cli = Cli::parse();
+
+    // Short-circuit: audit commands read the file directly — no server connection
+    // or ckms.toml needed.
+    if let CliCommands::Kms(KmsActions::Audit(audit_action)) = &cli.command {
+        return audit_action.process().map_err(Into::into);
+    }
+
+    let mut config = ClientConfig::load(cli.conf_path.clone())?;
+
+    // Handle KMS configuration
+    if let Some(url) = cli.url.clone() {
+        config.kms_config.http_config.server_url = url;
+    }
+    if cli.accept_invalid_certs {
+        config.kms_config.http_config.accept_invalid_certs = true;
+    }
+    config.kms_config.print_json = Some(cli.print_json);
+
+    update_headers_config(&mut config, &cli.headers);
+    update_proxy_config(&mut config, &cli.proxy)?;
+
+    trace!("Configuration: {config:#?}");
+
+    // Instantiate the KMS client
+    let kms_rest_client = KmsClient::new_with_config(config.kms_config.clone())?;
+
+    match &cli.command {
+        CliCommands::Markdown(action) => {
+            action.process(&Cli::command())?;
+            return Ok(());
+        }
+        CliCommands::Configure => {
+            run_configure_wizard(config.clone())?;
+            return Ok(());
+        }
+        CliCommands::Kms(kms_actions) => {
+            let new_kms_config = Box::pin(kms_actions.process(kms_rest_client)).await?;
+            if config.kms_config != new_kms_config {
+                config.kms_config = new_kms_config;
+                config.save(cli.conf_path.clone())?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[allow(clippy::print_stdout)]
+fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()> {
+    println!("-- {label} HTTP settings --");
+
+    http.server_url = Input::new()
+        .with_prompt("Server URL")
+        .default(http.server_url.clone())
+        .validate_with(|input: &String| -> Result<(), String> {
+            Url::parse(input)
+                .map_err(|e| format!("Invalid URL: {e}"))
+                .map(|_| ())
+        })
+        .interact_text()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+
+    http.accept_invalid_certs = Confirm::new()
+        .with_prompt("Accept invalid TLS certificates?")
+        .default(http.accept_invalid_certs)
+        .interact()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+
+    let current_auth_index = match (
+        http.tls_client_pem_cert_path.is_some(),
+        http.tls_client_pkcs12_path.is_some(),
+        http.access_token.is_some(),
+    ) {
+        (false, false, true) => 1,
+        (true, false, false) => 2,
+        (false, true, false) => 3,
+        (true, false, true) => 4,
+        (false, true, true) => 5,
+        _ => 0,
+    };
+    let choice = Select::new()
+        .with_prompt("Authentication method")
+        .items(&[
+            "None",
+            "Bearer token",
+            "Client certificate (PEM)",
+            "Client certificate (PKCS#12)",
+            "Both (PEM cert + token)",
+            "Both (PKCS#12 cert + token)",
+        ])
+        .default(current_auth_index)
+        .interact()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+
+    // Reset auth fields before applying the chosen method
+    http.access_token = None;
+    http.tls_client_pkcs12_path = None;
+    http.tls_client_pkcs12_password = None;
+    http.tls_client_pem_cert_path = None;
+    http.tls_client_pem_key_path = None;
+
+    match choice {
+        0 => {}
+        1 => {
+            http.access_token = prompt_optional_text("Bearer token (leave empty to skip)", "")?;
+        }
+        2 => {
+            if let Some(cert) =
+                prompt_optional_text("Client PEM certificate path (.crt / .pem)", "")?
+            {
+                http.tls_client_pem_key_path = Some(prompt_required_text(
+                    "Client PEM key path (.key / .pem)",
+                    "",
+                )?);
+                http.tls_client_pem_cert_path = Some(cert);
+            }
+        }
+        3 => {
+            if let Some(path) = prompt_optional_text("Client PKCS#12 path (.p12)", "")? {
+                http.tls_client_pkcs12_password =
+                    prompt_optional_password("Client PKCS#12 password (leave empty if none)")?;
+                http.tls_client_pkcs12_path = Some(path);
+            }
+        }
+        4 => {
+            http.access_token = Some(prompt_required_text("Bearer token", "")?);
+            http.tls_client_pem_cert_path = Some(prompt_required_text(
+                "Client PEM certificate path (.crt / .pem)",
+                "",
+            )?);
+            http.tls_client_pem_key_path = Some(prompt_required_text(
+                "Client PEM key path (.key / .pem)",
+                "",
+            )?);
+        }
+        5 => {
+            http.access_token = Some(prompt_required_text("Bearer token", "")?);
+            http.tls_client_pkcs12_path =
+                Some(prompt_required_text("Client PKCS#12 path (.p12)", "")?);
+            http.tls_client_pkcs12_password =
+                prompt_optional_password("Client PKCS#12 password (leave empty if none)")?;
+        }
+        #[allow(clippy::unreachable)]
+        _ => unreachable!(),
+    }
+
+    configure_proxy(http)?;
+
+    prompt_optional!(
+        http.verified_cert,
+        "CA certificate for server TLS verification (PEM path, leave empty to use system roots)"
+    );
+    prompt_password!(
+        http.database_secret,
+        "Database secret (Redis-findex client-side encryption key, leave empty to skip)"
+    );
+    prompt_optional!(
+        http.cipher_suites,
+        "TLS cipher suites (colon-separated, e.g. TLS_AES_256_GCM_SHA384, leave empty for default)"
+    );
+
+    let add_headers = Confirm::new()
+        .with_prompt("Add custom HTTP headers to every request?")
+        .default(http.custom_headers.as_ref().is_some_and(|h| !h.is_empty()))
+        .interact()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+    if add_headers {
+        let raw: String = Input::new()
+            .with_prompt("Custom headers (comma-separated \"Header-Name: value\" entries)")
+            .allow_empty(true)
+            .with_initial_text(http.custom_headers.clone().unwrap_or_default().join(", "))
+            .interact_text()
+            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+        let headers: Vec<String> = raw
+            .split(',')
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty())
+            .collect();
+        http.custom_headers = if headers.is_empty() {
+            None
+        } else {
+            Some(headers)
+        };
+    } else {
+        http.custom_headers = None;
+    }
+
+    Ok(())
+}
+
+/// Prompt the user for proxy settings and update `http.proxy_params`.
+fn configure_proxy(http: &mut HttpClientConfig) -> CosmianResult<()> {
+    let use_proxy = Confirm::new()
+        .with_prompt("Use an HTTP proxy?")
+        .default(http.proxy_params.is_some())
+        .interact()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+
+    if !use_proxy {
+        http.proxy_params = None;
+        return Ok(());
+    }
+
+    let current = http.proxy_params.clone();
+    let init_url = current
+        .as_ref()
+        .map(|p| p.url.as_str().to_owned())
+        .unwrap_or_default();
+    let url_s = prompt_required_text("Proxy URL (e.g., http://host:port)", &init_url)?;
+    let url = Url::parse(&url_s).map_err(|e| cli_error!("Invalid proxy URL: {e}"))?;
+
+    let init_excl = current
+        .as_ref()
+        .map(|p| p.exclusion_list.join(","))
+        .unwrap_or_default();
+    let excl_s = prompt_optional_text(
+        "Proxy exclusion list (comma-separated hosts) [optional]",
+        &init_excl,
+    )?
+    .unwrap_or_default();
+    let exclusion_list: Vec<String> = excl_s
+        .split(',')
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let init_user = current
+        .as_ref()
+        .and_then(|p| p.basic_auth_username.clone())
+        .unwrap_or_default();
+    let basic_auth_username =
+        prompt_optional_text("Proxy basic auth username [optional]", &init_user)?;
+    let basic_auth_password = prompt_optional_password("Proxy basic auth password [optional]")?;
+
+    let init_header = current
+        .as_ref()
+        .and_then(|p| p.custom_auth_header.clone())
+        .unwrap_or_default();
+    let custom_auth_header =
+        prompt_optional_text("Proxy custom auth header [optional]", &init_header)?;
+
+    http.proxy_params = Some(ProxyParams {
+        url,
+        basic_auth_username,
+        basic_auth_password,
+        custom_auth_header,
+        exclusion_list,
+    });
+    Ok(())
+}
+
+/// Prompt for a required (non-empty) text field.
+fn prompt_required_text(prompt: &str, initial: &str) -> CosmianResult<String> {
+    Input::new()
+        .with_prompt(prompt)
+        .allow_empty(false)
+        .with_initial_text(initial)
+        .interact_text()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))
+}
+
+/// Prompt for an optional text field; returns `None` if the user leaves it empty.
+fn prompt_optional_text(prompt: &str, initial: &str) -> CosmianResult<Option<String>> {
+    let value: String = Input::new()
+        .with_prompt(prompt)
+        .allow_empty(true)
+        .with_initial_text(initial)
+        .interact_text()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+    Ok(if value.is_empty() { None } else { Some(value) })
+}
+
+/// Prompt for an optional password; returns `None` if the user leaves it empty.
+fn prompt_optional_password(prompt: &str) -> CosmianResult<Option<String>> {
+    let pw: String = Password::new()
+        .with_prompt(prompt)
+        .allow_empty_password(true)
+        .interact()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+    Ok(if pw.is_empty() { None } else { Some(pw) })
+}
+
+#[allow(clippy::print_stdout)]
+fn run_configure_wizard(mut config: ClientConfig) -> CosmianResult<()> {
+    use cosmian_config_utils::get_default_conf_path;
+
+    info!("Starting KMS CLI configuration wizard");
+
+    // KMS
+    configure_http("KMS", &mut config.kms_config.http_config)?;
+
+    // KMS print_json
+    let print_json: bool = Confirm::new()
+        .with_prompt("Print KMS JSON KMIP requests/responses during operations?")
+        .default(config.kms_config.print_json.unwrap_or(false))
+        .interact()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+    config.kms_config.print_json = Some(print_json);
+
+    // Gmail API optional configuration
+    let configure_gmail: bool = Confirm::new()
+        .with_prompt("Configure Gmail API settings (for Google/Gmail integrations)?")
+        .default(config.kms_config.gmail_api_conf.is_some())
+        .interact()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+    if configure_gmail {
+        // Option to import from JSON file
+        let import_from_json: bool = Confirm::new()
+            .with_prompt("Import from a Google service account JSON file?")
+            .default(true)
+            .interact()
+            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+        if import_from_json {
+            let path: String = Input::new()
+                .with_prompt("Path to service account JSON file")
+                .interact_text()
+                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+            let contents = std::fs::read_to_string(path)
+                .map_err(|e| cli_error!("Failed to read JSON file: {e}"))?;
+            let conf: GmailApiConf = serde_json::from_str(&contents)
+                .map_err(|e| cli_error!("Failed to parse Gmail JSON: {e}"))?;
+            config.kms_config.gmail_api_conf = Some(conf);
+        } else {
+            let mut g = config
+                .kms_config
+                .gmail_api_conf
+                .clone()
+                .unwrap_or_else(|| GmailApiConf {
+                    account_type: String::new(),
+                    project_id: String::new(),
+                    private_key_id: String::new(),
+                    private_key: String::new(),
+                    client_email: String::new(),
+                    client_id: String::new(),
+                    auth_uri: String::new(),
+                    token_uri: String::new(),
+                    auth_provider_x509_cert_url: String::new(),
+                    client_x509_cert_url: String::new(),
+                    universe_domain: String::new(),
+                });
+            prompt_required!(g.account_type, "Gmail account type");
+            prompt_required!(g.project_id, "Gmail project_id");
+            prompt_required!(g.private_key_id, "Gmail private_key_id");
+            g.private_key = Password::new()
+                .with_prompt("Gmail private_key")
+                .with_confirmation("Confirm private_key", "Keys do not match")
+                .interact()
+                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+            prompt_required!(g.client_email, "Gmail client_email");
+            prompt_required!(g.client_id, "Gmail client_id");
+            prompt_required!(g.auth_uri, "Gmail auth_uri");
+            prompt_required!(g.token_uri, "Gmail token_uri");
+            prompt_required!(
+                g.auth_provider_x509_cert_url,
+                "Gmail auth_provider_x509_cert_url"
+            );
+            prompt_required!(g.client_x509_cert_url, "Gmail client_x509_cert_url");
+            prompt_required!(g.universe_domain, "Gmail universe_domain");
+            config.kms_config.gmail_api_conf = Some(g);
+        }
+    } else {
+        config.kms_config.gmail_api_conf = None;
+    }
+
+    // Save to default path explicitly (ignore env override to satisfy requirement)
+    let default_path = get_default_conf_path(crate::config::CKMS_CONF_PATH)
+        .map_err(|e| cli_error!("Failed to get default config path: {e}"))?;
+
+    // Create parent directory if it does not exist (covers all platforms).
+    if let Some(parent) = default_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| cli_error!("Cannot create directory '{}': {e}", parent.display()))?;
+    }
+
+    println!(
+        "\nWriting configuration to default path: {}",
+        default_path.display()
+    );
+    config
+        .to_toml(
+            default_path
+                .to_str()
+                .ok_or_else(|| cli_error!("Invalid default path encoding"))?,
+        )
+        .map_err(|e| cli_error!("Failed to write configuration: {e}"))?;
+
+    info!("Configuration saved at {}", default_path.display());
+    println!("Configuration saved. You're ready to go.");
+    Ok(())
+}

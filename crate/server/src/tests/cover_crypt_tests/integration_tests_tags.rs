@@ -7,6 +7,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
         kmip_2_1::{
+            extra::tagging::VENDOR_ID_COSMIAN,
             kmip_operations::{
                 CreateKeyPairResponse, CreateResponse, DecryptResponse, Destroy, DestroyResponse,
                 EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
@@ -27,14 +28,19 @@ use crate::{
 
 #[tokio::test]
 async fn test_re_key_with_tags() -> KResult<()> {
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
-    let create_key_pair =
-        build_create_covercrypt_master_keypair_request(access_structure, [mkp_tag], false, None)?;
+    let create_key_pair = build_create_covercrypt_master_keypair_request(
+        VENDOR_ID_COSMIAN,
+        access_structure,
+        [mkp_tag],
+        false,
+        None,
+    )?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post_2_1(&app, &create_key_pair).await?;
 
@@ -44,12 +50,19 @@ async fn test_re_key_with_tags() -> KResult<()> {
 
     // Re_key all key pairs with matching access policy
     let request = build_rekey_keypair_request(
+        VENDOR_ID_COSMIAN,
         &mkp_json_tag,
         &RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_owned()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post_2_1(&app, &request).await?;
-    assert!(&rekey_keypair_response.private_key_unique_identifier == private_key_unique_identifier);
-    assert!(&rekey_keypair_response.public_key_unique_identifier == public_key_unique_identifier);
+    assert_eq!(
+        &rekey_keypair_response.private_key_unique_identifier,
+        private_key_unique_identifier
+    );
+    assert_eq!(
+        &rekey_keypair_response.public_key_unique_identifier,
+        public_key_unique_identifier
+    );
 
     // Encrypt with the re-keyed public key
     let authentication_data = b"cc the uid".to_vec();
@@ -75,14 +88,19 @@ async fn test_re_key_with_tags() -> KResult<()> {
 async fn integration_tests_with_tags() -> KResult<()> {
     cosmian_logger::log_init(None);
 
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
-    let create_key_pair =
-        build_create_covercrypt_master_keypair_request(access_structure, [mkp_tag], false, None)?;
+    let create_key_pair = build_create_covercrypt_master_keypair_request(
+        VENDOR_ID_COSMIAN,
+        access_structure,
+        [mkp_tag],
+        false,
+        None,
+    )?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post_2_1(&app, &create_key_pair).await?;
 
@@ -113,6 +131,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let udk_json_tag = serde_json::to_string(&[udk_tag.to_owned()])?;
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Top Secret";
     let request = build_create_covercrypt_usk_request(
+        VENDOR_ID_COSMIAN,
         access_policy,
         &private_key_unique_identifier.to_string(),
         [udk_tag],
@@ -164,6 +183,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let udk1_json_tag = serde_json::to_string(&[udk1_tag.to_owned()])?;
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Confidential";
     let request = build_create_covercrypt_usk_request(
+        VENDOR_ID_COSMIAN,
         access_policy,
         &private_key_unique_identifier.to_string(),
         [udk1_tag],
@@ -177,6 +197,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let udk2_json_tag = serde_json::to_string(&[udk2_tag.to_owned()])?;
     let access_policy = "Department::MKG && Security Level::Confidential";
     let request = build_create_covercrypt_usk_request(
+        VENDOR_ID_COSMIAN,
         access_policy,
         &private_key_unique_identifier.to_string(),
         [udk2_tag],
@@ -236,12 +257,19 @@ async fn integration_tests_with_tags() -> KResult<()> {
 
     // Rekey all key pairs with matching access policy
     let request = build_rekey_keypair_request(
+        VENDOR_ID_COSMIAN,
         &mkp_json_tag,
         &RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_owned()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post_2_1(&app, &request).await?;
-    assert!(&rekey_keypair_response.private_key_unique_identifier == private_key_unique_identifier);
-    assert!(&rekey_keypair_response.public_key_unique_identifier == public_key_unique_identifier);
+    assert_eq!(
+        &rekey_keypair_response.private_key_unique_identifier,
+        private_key_unique_identifier
+    );
+    assert_eq!(
+        &rekey_keypair_response.public_key_unique_identifier,
+        public_key_unique_identifier
+    );
 
     // ReEncrypt with same ABE attribute (which has been previously incremented)
     let authentication_data = b"cc the uid".to_vec();
@@ -292,6 +320,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.clone())),
         remove: false,
         cascade: true,
+        expected_object_type: None,
     };
     let destroy_response: DestroyResponse = test_utils::post_2_1(&app, &request).await?;
     assert_eq!(

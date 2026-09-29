@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#MISE description="Extract a version's changelog entry from CHANGELOG.md into a file"
+#USAGE arg "<version>" help="Version to extract (e.g. 5.24.0)"
+#USAGE flag "--changelog <file>" default="CHANGELOG.md" help="Path to CHANGELOG.md"
+#USAGE flag "--output <file>" default="/tmp/release_notes.md" help="Destination file for the extracted notes"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+# shellcheck disable=SC2154  # usage_* vars are set by the MISE USAGE framework
+print_header "Extracting changelog for ${usage_version}"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/release/extract_changelog.sh" \
+  "${usage_version}" \
+  "${usage_changelog:-CHANGELOG.md}" \
+  "${usage_output:-/tmp/release_notes.md}"
+
+print_success "Changelog entry written to ${usage_output:-/tmp/release_notes.md}"

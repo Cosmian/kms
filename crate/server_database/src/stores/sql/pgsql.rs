@@ -1,123 +1,519 @@
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    str::FromStr,
-    sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_0::kmip_types::State,
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, SessionParams,
+    PermissionsStore, UserId,
 };
-use cosmian_logger::{debug, trace};
+use cosmian_logger::reexport::tracing;
+use deadpool_postgres::{Config as PgConfig, GenericClient, ManagerConfig, Pool, RecyclingMethod};
+use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
+use postgres_openssl::MakeTlsConnector;
 use rawsql::Loader;
 use serde_json::Value;
-use sqlx::{
-    ConnectOptions, Executor, Pool, Postgres, Row, Transaction,
-    postgres::{PgConnectOptions, PgPoolOptions, PgRow},
+use tokio_postgres::{
+    NoTls,
+    types::{Json, ToSql},
 };
 use uuid::Uuid;
 
 use crate::{
-    db_bail, db_error,
-    error::{DbError, DbResult, DbResultHelper},
+    db_error,
+    error::{DbError, DbResult},
+    migrate_block_cipher_mode_if_needed,
     stores::{
         PGSQL_QUERIES,
-        migrate::HasDatabase,
-        sql::{
-            database::SqlDatabase,
-            locate_query::{PgSqlPlaceholder, query_from_attributes},
-            main_store::SqlMainStore,
-        },
+        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
+        sql::database::SqlDatabase,
     },
 };
 
-#[macro_export]
+// Retry parameters for transient PostgreSQL errors (deadlocks, serialization,
+// and connection failures during failover).
+const PG_MAX_RETRIES: u32 = 6;
+
+fn is_pg_retryable_error(msg: &str) -> bool {
+    let lower = msg.to_ascii_lowercase();
+    // Deadlock / serialization (SQLSTATE 40P01, 40001)
+    lower.contains("deadlock detected")
+        || lower.contains("40p01")
+        || lower.contains("serialization failure")
+        || lower.contains("40001")
+        // Connection errors (failover / network)
+        || lower.contains("connection refused")
+        || lower.contains("connection reset")
+        || lower.contains("connection closed")
+        || lower.contains("broken pipe")
+        || lower.contains("server closed the connection unexpectedly")
+        || lower.contains("terminating connection")
+        || lower.contains("could not connect to server")
+        || lower.contains("08003") // SQLSTATE connection_does_not_exist
+        || lower.contains("08006") // SQLSTATE connection_failure
+        || lower.contains("57p01") // SQLSTATE admin_shutdown
+        || lower.contains("08001") // SQLSTATE connection_exception
+        || lower.contains("08004") // SQLSTATE connection_rejected
+        || lower.contains("57p02") // SQLSTATE crash_shutdown
+        || lower.contains("57p03") // SQLSTATE cannot_connect_now
+}
+
+fn pg_retry_backoff_ms(attempt: u32) -> u64 {
+    let cap = attempt.min(PG_MAX_RETRIES);
+    50_u64 * (1_u64 << cap)
+}
+
+fn decode_pg_ssl_file_query_value(value: &str) -> String {
+    // Keep the common fast path allocation-free.
+    if !value.as_bytes().iter().any(|b| *b == b'%' || *b == b'+') {
+        return value.to_owned();
+    }
+
+    // Decode query value semantics (`%xx` and `+`) without reparsing the full URL.
+    // This is required when PostgreSQL URLs are split manually (multi-host support),
+    // otherwise OpenSSL receives encoded file paths like `%2Fhome%2F...`.
+    let encoded = format!("v={value}");
+    url::form_urlencoded::parse(encoded.as_bytes())
+        .find_map(|(k, v)| (k == "v").then(|| v.into_owned()))
+        .unwrap_or_else(|| value.to_owned())
+}
+
+/// Get a client from the pool, retrying on transient connection errors.
+/// Used by Migrate trait methods for startup resilience.
+async fn pg_get_client(pool: &deadpool_postgres::Pool) -> DbResult<deadpool_postgres::Object> {
+    for attempt in 0..PG_MAX_RETRIES {
+        match pool.get().await {
+            Ok(client) => return Ok(client),
+            Err(e) if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES => {
+                let delay = pg_retry_backoff_ms(attempt);
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            }
+            Err(e) => return Err(DbError::from(e)),
+        }
+    }
+    Err(DbError::DatabaseError("too many retry attempts".to_owned()))
+}
+
+/// Single-attempt connection acquisition for use inside `pg_retry_tx!`.
+/// On retryable failure, sleeps (backoff) then returns Err so the outer loop
+/// can check retryability and continue. On non-retryable failure, returns Err
+/// immediately.
+async fn pg_get_client_for_tx(
+    pool: &deadpool_postgres::Pool,
+    attempt: u32,
+) -> DbResult<deadpool_postgres::Object> {
+    match pool.get().await {
+        Ok(client) => Ok(client),
+        Err(e) if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES => {
+            let delay = pg_retry_backoff_ms(attempt);
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            Err(DbError::from(e))
+        }
+        Err(e) => Err(DbError::from(e)),
+    }
+}
+
+/// Retry an operation on transient connection errors (e.g. during failover).
+/// Each attempt gets a fresh connection from the pool so multi-host URLs can resolve
+/// to the new primary. With `RecyclingMethod::Verified` the pool itself discards
+/// dead connections during `pool.get()`, so every retry receives a live connection.
+macro_rules! pg_retry {
+    ($pool:expr, | $client:ident | $body:expr) => {{
+        let mut last_err: Option<InterfaceError> = None;
+        for attempt in 0..PG_MAX_RETRIES {
+            match $pool.get().await {
+                Ok($client) => {
+                    let result: InterfaceResult<_> = (async { $body }).await;
+                    match result {
+                        Ok(v) => return Ok(v),
+                        Err(e) => {
+                            if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES
+                            {
+                                let delay_ms = pg_retry_backoff_ms(attempt);
+                                tracing::warn!(
+                                    attempt,
+                                    delay_ms,
+                                    error = %e,
+                                    "PostgreSQL retryable error — retrying"
+                                );
+                                // Release the connection before sleeping through the back-off.
+                                drop($client);
+                                tokio::time::sleep(std::time::Duration::from_millis(delay_ms))
+                                    .await;
+                                last_err = Some(e);
+                                continue;
+                            }
+                            return Err(e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    if is_pg_retryable_error(&msg) && attempt + 1 < PG_MAX_RETRIES {
+                        let delay_ms = pg_retry_backoff_ms(attempt);
+                        tracing::warn!(
+                            attempt,
+                            delay_ms,
+                            error = %msg,
+                            "PostgreSQL pool error — retrying"
+                        );
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        last_err = Some(InterfaceError::from(DbError::from(e)));
+                        continue;
+                    }
+                    return Err(InterfaceError::from(DbError::from(e)));
+                }
+            }
+        }
+        Err(last_err.unwrap_or_else(|| {
+            InterfaceError::from(DbError::DatabaseError("too many retry attempts".to_owned()))
+        }))
+    }};
+}
+
+/// Retry a transactional operation on transient errors.
+/// Gets a fresh connection and starts a new transaction on each retry.
+/// Uses `pg_get_client_for_tx` for connection acquisition with backoff.
+/// With `RecyclingMethod::Verified` the pool discards dead connections at
+/// `pool.get()` time, guaranteeing a live connection for every retry.
+macro_rules! pg_retry_tx {
+    ($pool:expr, | $tx:ident | $body:expr) => {{
+        'retry: for attempt in 0..PG_MAX_RETRIES {
+            // `client` (and `$tx`, when bound) live only inside this block, so both
+            // are dropped — and the connection returned to the pool — before the
+            // `sleep` below runs, instead of being held across the back-off.
+            let delay_ms: u64 = 'release_connection: {
+                let mut client = match pg_get_client_for_tx(&$pool, attempt).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
+                            continue 'retry; // pg_get_client_for_tx already slept; no client to release
+                        }
+                        return Err(InterfaceError::from(e)); // bail out of the whole function
+                    }
+                };
+                let $tx = match client.transaction().await {
+                    Ok(tx) => tx,
+                    Err(e) => {
+                        if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
+                            let delay_ms = pg_retry_backoff_ms(attempt);
+                            tracing::warn!(
+                                attempt,
+                                delay_ms,
+                                error = %e,
+                                "PostgreSQL BEGIN failed — retrying"
+                            );
+                            break 'release_connection delay_ms; // <-- here
+                        }
+                        return Err(InterfaceError::from(DbError::from(e)));
+                    }
+                };
+                match (async { $body }).await {
+                    Ok(v) => match $tx.commit().await {
+                        Ok(()) => return Ok(v), // success: return straight out
+                        Err(e) => {
+                            let msg = e.to_string();
+                            if is_pg_retryable_error(&msg) && attempt + 1 < PG_MAX_RETRIES {
+                                let delay_ms = pg_retry_backoff_ms(attempt);
+                                tracing::warn!(
+                                    attempt,
+                                    delay_ms,
+                                    error = %msg,
+                                    "PostgreSQL COMMIT failed — retrying"
+                                );
+                                break 'release_connection delay_ms; // <-- here too
+                            }
+                            return Err(InterfaceError::from(DbError::from(e)));
+                        }
+                    },
+                    Err(e) => {
+                        if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
+                            let delay_ms = pg_retry_backoff_ms(attempt);
+                            tracing::warn!(
+                                attempt,
+                                delay_ms,
+                                error = %e,
+                                "PostgreSQL transaction body failed — retrying"
+                            );
+                            break 'release_connection delay_ms; // <-- and here
+                        }
+                        return Err(InterfaceError::from(e));
+                    }
+                }
+            };
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
+    }};
+}
+
 macro_rules! get_pgsql_query {
     ($name:literal) => {
         PGSQL_QUERIES
             .get($name)
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
     };
-    ($name:expr) => {
-        PGSQL_QUERIES
-            .get($name)
-            .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
-    };
-}
-
-/// Convert a row from the database into an `ObjectWithMetadata`
-/// This function is used to convert the result of a `SELECT` query
-/// into an `ObjectWithMetadata`
-fn pg_row_to_owm(row: &PgRow) -> Result<ObjectWithMetadata, DbError> {
-    let id = row.get::<String, _>(0);
-    let object: Object = serde_json::from_str(&row.get::<String, _>(1))
-        .context("failed deserializing the object")?;
-    let attributes: Attributes = serde_json::from_value(row.get::<Value, _>(2))
-        .context("failed deserializing the Attributes")?;
-    let owner = row.get::<String, _>(3);
-    let state = State::try_from(row.get::<String, _>(4).as_str()).map_err(|e| {
-        DbError::ConversionError(format!("failed converting the state: {e}").into())
-    })?;
-    Ok(ObjectWithMetadata::new(
-        id, object, owner, state, attributes,
-    ))
 }
 
 #[derive(Clone)]
 pub(crate) struct PgPool {
-    pool: Pool<Postgres>,
-}
-
-impl HasDatabase for PgPool {
-    type Database = Postgres;
+    pool: Pool,
 }
 
 impl PgPool {
-    /// Instantiate a new `Postgres` database
-    /// and create the appropriate table(s) if need be
     pub(crate) async fn instantiate(
         connection_url: &str,
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
-        let options = PgConnectOptions::from_str(connection_url)?
-            // disable logging of each query
-            .disable_statement_logging();
+        // Extract query parameters manually instead of using Url::parse(),
+        // which cannot handle multi-host PostgreSQL connection strings
+        // (e.g. "host1:5432,host2:5432/db?target_session_attrs=read-write").
+        let query_params = extract_query_params(connection_url);
 
-        // Default rationale: small, CPU-aware pool. Postgres handles concurrency well,
-        // but oversized pools increase contention and idle resource usage. Using
-        // min(10, 2 × CPU cores) provides enough parallelism for typical APIs while
-        // staying below common server max_connections and avoiding oversubscription.
-        let default_conns: u32 = u32::try_from(num_cpus::get())
-            .map(|c| c.saturating_mul(2).min(10))
-            .unwrap_or(10);
-        let max_conns: u32 = max_connections.unwrap_or(default_conns);
-        let pool = PgPoolOptions::new()
-            .max_connections(max_conns)
-            .connect_with(options)
-            .await?;
+        // Build a URL that strips only SSL-related params (handled via MakeTlsConnector)
+        // but preserves other params like target_session_attrs for tokio-postgres.
+        let clean_url_str = rebuild_url_without_ssl_params(connection_url, &query_params);
 
-        // Instantiate the pool
-        let pgsql_pool = Self { pool };
+        let mut cfg = PgConfig::new();
+        cfg.url = Some(clean_url_str);
+        cfg.manager = Some(ManagerConfig {
+            // Verified runs `simple_query("")` on every recycled connection.
+            // This fails immediately at the OS level (ECONNRESET) for any dead
+            // connection, even in the race window where `is_closed()` still
+            // returns `false`. Without this, a dropped dead connection is pushed
+            // back to the idle pool without any check, and the next `pool.get()`
+            // re-validates only via `is_closed()`—which races against the
+            // tokio-postgres background task that sets the flag. Verified
+            // eliminates that race and ensures failover to a live host.
+            recycling_method: RecyclingMethod::Verified,
+        });
 
-        // Blanket implementation of SqlMainStore for SqlDatabase
-        pgsql_pool.start(clear_database).await?;
+        // Pool sizing defaults: conservative pool tuned to CPU.
+        // Keep behavior consistent with the MySQL backend.
+        let default_conns: usize = std::thread::available_parallelism()
+            .map_or(1, usize::from)
+            .saturating_mul(2)
+            .min(10);
+        let max_conns: usize = max_connections
+            .and_then(|v| usize::try_from(v).ok())
+            .unwrap_or(default_conns);
+        cfg.pool = Some(deadpool_postgres::PoolConfig {
+            max_size: max_conns,
+            ..Default::default()
+        });
 
-        Ok(pgsql_pool)
+        // Check sslmode parameter (disable, allow, prefer, require, verify-ca, verify-full)
+        let sslmode = query_params.get("sslmode").map_or("prefer", String::as_str);
+
+        let pool = if sslmode == "disable" {
+            // Explicitly no TLS
+            cfg.create_pool(None, NoTls)
+                .map_err(|e| DbError::DatabaseError(e.to_string()))?
+        } else {
+            // Build TLS connector for require, verify-ca, verify-full, prefer, allow
+            let mut builder = SslConnector::builder(SslMethod::tls())
+                .map_err(|e| DbError::DatabaseError(format!("TLS setup failed: {e}")))?;
+
+            // Set verification mode based on sslmode
+            match sslmode {
+                "verify-full" => {
+                    // verify-full: verify certificate AND hostname
+                    builder.set_verify(SslVerifyMode::PEER);
+                }
+                "verify-ca" => {
+                    // verify-ca: verify certificate but NOT hostname
+                    builder.set_verify(SslVerifyMode::PEER);
+                    // For verify-ca, we don't want hostname verification
+                    // This is handled by not setting any hostname verification parameters
+                }
+                _ => {
+                    // require, prefer, allow: connect with TLS but don't verify cert
+                    builder.set_verify(SslVerifyMode::NONE);
+                }
+            }
+
+            // Load CA cert if provided (sslrootcert)
+            if let Some(ca_file) = query_params.get("sslrootcert") {
+                let ca_file = decode_pg_ssl_file_query_value(ca_file.as_ref());
+                builder
+                    .set_ca_file(ca_file.as_str())
+                    .map_err(|e| DbError::DatabaseError(format!("Failed to load CA: {e}")))?;
+            }
+
+            // Load client cert/key for mutual TLS (sslcert, sslkey)
+            if let Some(cert_file) = query_params.get("sslcert") {
+                let cert_file = decode_pg_ssl_file_query_value(cert_file.as_ref());
+                builder
+                    .set_certificate_file(cert_file.as_str(), SslFiletype::PEM)
+                    .map_err(|e| {
+                        DbError::DatabaseError(format!("Failed to load client cert: {e}"))
+                    })?;
+            }
+            if let Some(key_file) = query_params.get("sslkey") {
+                let key_file = decode_pg_ssl_file_query_value(key_file.as_ref());
+                builder
+                    .set_private_key_file(key_file.as_str(), SslFiletype::PEM)
+                    .map_err(|e| {
+                        DbError::DatabaseError(format!("Failed to load client key: {e}"))
+                    })?;
+            }
+
+            let connector = MakeTlsConnector::new(builder.build());
+            cfg.create_pool(None, connector)
+                .map_err(|e| DbError::DatabaseError(e.to_string()))?
+        };
+
+        let mut client = pool.get().await.map_err(DbError::from)?;
+        // Bootstrap schema if needed: create tables if they don't exist
+        let tmp_loader = Self { pool: pool.clone() };
+        for name in [
+            "create-table-parameters",
+            "create-table-objects",
+            "create-table-read_access",
+            "create-table-tags",
+            "create-table-crypto_officer_activations",
+            "create-table-crls",
+        ] {
+            let sql = tmp_loader.get_query(name)?;
+            client.batch_execute(sql).await.map_err(DbError::from)?;
+        }
+        // Ensure attributes column is jsonb (and convert if needed)
+        client
+            .batch_execute(
+                "ALTER TABLE objects ALTER COLUMN attributes TYPE jsonb USING attributes::jsonb;",
+            )
+            .await
+            .map_err(DbError::from)?;
+        // Add wrapping_key_id column if not present (idempotent).
+        client
+            .batch_execute(
+                "ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);",
+            )
+            .await
+            .map_err(DbError::from)?;
+        // Add activated_by column to crypto_officer_activations (idempotent).
+        // PostgreSQL supports ADD COLUMN IF NOT EXISTS since 9.6.
+        client
+            .batch_execute(
+                "ALTER TABLE crypto_officer_activations \
+                 ADD COLUMN IF NOT EXISTS activated_by VARCHAR(255);",
+            )
+            .await
+            .map_err(DbError::from)?;
+        // Unique partial index: at most one active activation record per user.
+        // Prevents duplicate active records even under concurrent JoinSplitKey requests.
+        client
+            .batch_execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active \
+                 ON crypto_officer_activations (activated_by) \
+                 WHERE revoked_at IS NULL;",
+            )
+            .await
+            .map_err(DbError::from)?;
+        // Create the read-path indexes (idempotent). PostgreSQL supports
+        // `CREATE INDEX IF NOT EXISTS`, so these are safe to run on every start.
+        for name in [
+            "create-index-objects-owner",
+            "create-index-objects-state",
+            "create-index-read_access-userid",
+            "create-index-objects-wrapping-key-id",
+        ] {
+            let sql = tmp_loader.get_query(name)?;
+            client.batch_execute(sql).await.map_err(DbError::from)?;
+        }
+        // One-time `wrapping_key_id` backfill for pre-existing objects, gated by a
+        // completion marker so the O(N) scan runs at most once per database. The
+        // scan, updates and marker share a transaction: an interrupted run leaves
+        // the marker unset and re-executes cleanly on the next boot.
+        let backfill_done = client
+            .query_opt(
+                get_pgsql_query!("select-parameter"),
+                &[&WRAPPING_KEY_BACKFILL_PARAM],
+            )
+            .await
+            .map_err(DbError::from)?
+            .map(|row| row.get::<usize, String>(0))
+            == Some("true".to_owned());
+        if !backfill_done {
+            let tx = client.transaction().await.map_err(DbError::from)?;
+            let update_stmt = tx
+                .prepare(get_pgsql_query!("update-wrapping-key-id"))
+                .await
+                .map_err(DbError::from)?;
+            let null_rows = tx
+                .query(get_pgsql_query!("select-objects-null-wrapping-key"), &[])
+                .await
+                .map_err(DbError::from)?;
+            for row in &null_rows {
+                let id: String = row.get(0);
+                let object_json: String = row.get(1);
+                match serde_json::from_str::<Object>(&object_json) {
+                    Ok(obj) => {
+                        if let Some(wrapping_uid) = obj.wrapping_key_uid() {
+                            tx.execute(&update_stmt, &[&wrapping_uid, &id])
+                                .await
+                                .map_err(DbError::from)?;
+                        }
+                    }
+                    Err(e) => tracing::warn!(
+                        uid = %id,
+                        error = %e,
+                        "wrapping_key_id backfill: skipping object that failed to deserialize"
+                    ),
+                }
+            }
+            tx.execute(
+                get_pgsql_query!("upsert-parameter"),
+                &[&WRAPPING_KEY_BACKFILL_PARAM, &"true"],
+            )
+            .await
+            .map_err(DbError::from)?;
+            tx.commit().await.map_err(DbError::from)?;
+        }
+
+        // Optionally clear any existing data (useful for tests)
+        if clear_database {
+            for name in [
+                // Remove dependent rows first to avoid potential constraints if present
+                "clean-table-read_access",
+                "clean-table-tags",
+                "clean-table-objects",
+            ] {
+                let sql = tmp_loader.get_query(name)?;
+                client.batch_execute(sql).await.map_err(DbError::from)?;
+            }
+            // Release the connection before requesting another one below — with a
+            // pool sized to a single connection, holding `client` here would
+            // self-deadlock the following `pg_get_client` calls.
+            drop(client);
+            let tmp = Self { pool: pool.clone() };
+            tmp.set_current_db_version(env!("CARGO_PKG_VERSION"))
+                .await?;
+            tmp.set_db_state(DbState::Ready).await?;
+        }
+        Ok(Self { pool })
+    }
+
+    pub(crate) async fn health_check(&self) -> DbResult<()> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        client
+            .query_one("SELECT 1", &[])
+            .await
+            .map(|_| ())
+            .map_err(|e| DbError::DatabaseError(e.to_string()))
     }
 }
 
-impl SqlDatabase<Postgres> for PgPool {
-    fn get_pool(&self) -> &Pool<Postgres> {
-        &self.pool
-    }
-
+impl SqlDatabase for PgPool {
     fn get_loader(&self) -> &Loader {
         &PGSQL_QUERIES
     }
@@ -125,53 +521,132 @@ impl SqlDatabase<Postgres> for PgPool {
 
 #[async_trait(?Send)]
 impl ObjectsStore for PgPool {
-    fn filename(&self, _group_id: u128) -> Option<PathBuf> {
-        None
-    }
-
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<String> {
-        let mut tx = self
-            .pool
-            .begin()
+        async fn transact(
+            tx: &deadpool_postgres::Transaction<'_>,
+            uid: &str,
+            owner: &str,
+            object: &Object,
+            attributes: &Attributes,
+            tags: &HashSet<String>,
+        ) -> DbResult<String> {
+            let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+            let attributes_json = serde_json::to_value(attributes).map_err(DbError::from)?;
+            let state = attributes.state.unwrap_or(State::PreActive).to_string();
+            let wrapping_key_id = object.wrapping_key_uid();
+            let stmt = tx
+                .prepare_cached(get_pgsql_query!("insert-objects"))
+                .await
+                .map_err(DbError::from)?;
+            let attrs_param = Json(&attributes_json);
+            tx.execute(
+                &stmt,
+                &[
+                    &uid,
+                    &object_json,
+                    &attrs_param,
+                    &state,
+                    &owner,
+                    &wrapping_key_id,
+                ],
+            )
             .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        let uid = match create_(uid, owner, object, attributes, tags, &mut tx).await {
-            Ok(uid) => uid,
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                return Err(InterfaceError::Db(format!(
-                    "creation of object failed: {e}"
-                )));
+            .map_err(DbError::from)?;
+            if !tags.is_empty() {
+                let transaction_stmt = tx
+                    .prepare_cached(get_pgsql_query!("insert-tags"))
+                    .await
+                    .map_err(DbError::from)?;
+                for tag in tags {
+                    tx.execute(&transaction_stmt, &[&uid, tag])
+                        .await
+                        .map_err(DbError::from)?;
+                }
             }
-        };
-        tx.commit()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to commit the transaction: {e}")))?;
-        Ok(uid)
+            Ok(uid.to_owned())
+        }
+
+        let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
+        pg_retry_tx!(self.pool, |tx| {
+            transact(&tx, &uid, owner, object, attributes, tags).await
+        })
     }
 
-    async fn retrieve(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<Option<ObjectWithMetadata>> {
-        Ok(retrieve_(uid, &self.pool).await?)
+    async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare_cached(get_pgsql_query!("select-object"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&uid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            if let Some(row) = rows.first() {
+                let id: String = row.get(0);
+                let object_json: String = row.get(1);
+                let object: Object = serde_json::from_str(&object_json)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let object = migrate_block_cipher_mode_if_needed(object);
+                let attributes_val: Value = row.get(2);
+                let attributes: Attributes = serde_json::from_value(attributes_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let owner: String = row.get(3);
+                let state_str: String = row.get(4);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                Ok(Some(ObjectWithMetadata::new(
+                    id, object, owner, state, attributes,
+                )))
+            } else {
+                Ok(None)
+            }
+        })
     }
 
-    async fn retrieve_tags(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashSet<String>> {
-        Ok(retrieve_tags_(uid, &self.pool).await?)
+    async fn retrieve_state(&self, uid: &str) -> InterfaceResult<Option<(State, Attributes)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare_cached(get_pgsql_query!("select-object-state"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&uid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            if let Some(row) = rows.first() {
+                let state_str: String = row.get(0);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let attrs_val: Value = row.get(1);
+                let attrs: Attributes = serde_json::from_value(attrs_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                Ok(Some((state, attrs)))
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
+    async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare_cached(get_pgsql_query!("select-tags"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&uid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows.iter().map(|r| r.get::<_, String>(0)).collect())
+        })
     }
 
     async fn update_object(
@@ -180,136 +655,568 @@ impl ObjectsStore for PgPool {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        match update_object_(uid, object, attributes, tags, &mut tx).await {
-            Ok(()) => {
-                tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
-                })?;
-                Ok(())
+        async fn transact(
+            tx: &deadpool_postgres::Transaction<'_>,
+            uid: &str,
+            object: &Object,
+            attributes: &Attributes,
+            tags: Option<&HashSet<String>>,
+        ) -> DbResult<()> {
+            let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+            let attributes_json = serde_json::to_value(attributes).map_err(DbError::from)?;
+            let wrapping_key_id = object.wrapping_key_uid();
+            let stmt = tx
+                .prepare_cached(get_pgsql_query!("update-object-with-object"))
+                .await
+                .map_err(DbError::from)?;
+            let attrs_param = Json(&attributes_json);
+            tx.execute(&stmt, &[&object_json, &attrs_param, &wrapping_key_id, &uid])
+                .await
+                .map_err(DbError::from)?;
+            if let Some(tags) = tags {
+                let delete_stmt = tx
+                    .prepare_cached(get_pgsql_query!("delete-tags"))
+                    .await
+                    .map_err(DbError::from)?;
+                tx.execute(&delete_stmt, &[&uid])
+                    .await
+                    .map_err(DbError::from)?;
+                let insert_stmt = tx
+                    .prepare_cached(get_pgsql_query!("insert-tags"))
+                    .await
+                    .map_err(DbError::from)?;
+                for tag in tags {
+                    tx.execute(&insert_stmt, &[&uid, tag])
+                        .await
+                        .map_err(DbError::from)?;
+                }
             }
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                Err(InterfaceError::Db(format!("update of object failed: {e}")))
-            }
+            Ok(())
         }
+
+        pg_retry_tx!(self.pool, |tx| {
+            transact(&tx, uid, object, attributes, tags).await
+        })
     }
 
-    async fn update_state(
-        &self,
-        uid: &str,
-        state: State,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        match update_state_(uid, state, &mut tx).await {
-            Ok(()) => {
-                tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
-                })?;
-                Ok(())
-            }
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                Err(InterfaceError::Db(format!(
-                    "update of the state of object {uid} failed: {e}"
-                )))
-            }
-        }
+    async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare_cached(get_pgsql_query!("update-object-with-state"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let s = state.to_string();
+            client
+                .execute(&stmt, &[&s, &uid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
     }
 
-    async fn delete(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        match delete_(uid, &mut tx).await {
-            Ok(()) => {
-                tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
-                })?;
-                Ok(())
-            }
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                Err(InterfaceError::Db(format!("delete of object failed: {e}")))
-            }
+    async fn delete(&self, uid: &str) -> InterfaceResult<()> {
+        async fn transact(tx: &deadpool_postgres::Transaction<'_>, uid: &str) -> DbResult<()> {
+            let d1 = tx
+                .prepare_cached(get_pgsql_query!("delete-object"))
+                .await
+                .map_err(DbError::from)?;
+            tx.execute(&d1, &[&uid]).await.map_err(DbError::from)?;
+            let d2 = tx
+                .prepare_cached(get_pgsql_query!("delete-tags"))
+                .await
+                .map_err(DbError::from)?;
+            tx.execute(&d2, &[&uid]).await.map_err(DbError::from)?;
+            let d3 = tx
+                .prepare_cached(get_pgsql_query!("delete-read-access-for-object"))
+                .await
+                .map_err(DbError::from)?;
+            tx.execute(&d3, &[&uid]).await.map_err(DbError::from)?;
+            Ok(())
         }
+        pg_retry_tx!(self.pool, |tx| transact(&tx, uid).await)
     }
 
     async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<String>> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        match atomic_(user, operations, &mut tx).await {
-            Ok(v) => {
-                tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
-                })?;
-                Ok(v)
+        async fn transact(
+            tx: &deadpool_postgres::Transaction<'_>,
+            user: &str,
+            operations: &[AtomicOperation],
+        ) -> DbResult<Vec<String>> {
+            let mut uids = Vec::with_capacity(operations.len());
+            for op in operations {
+                match op {
+                    AtomicOperation::Create((uid, owner, object, attributes, tags)) => {
+                        // inline create within same transaction
+                        let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+                        let attributes_json =
+                            serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let state = attributes.state.unwrap_or(State::PreActive).to_string();
+                        let wrapping_key_id = object.wrapping_key_uid();
+                        let stmt = tx
+                            .prepare_cached(get_pgsql_query!("insert-objects"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let attrs_param = Json(&attributes_json);
+                        let owner_s: &str = owner;
+                        tx.execute(
+                            &stmt,
+                            &[
+                                &uid,
+                                &object_json,
+                                &attrs_param,
+                                &state,
+                                &owner_s,
+                                &wrapping_key_id,
+                            ],
+                        )
+                        .await
+                        .map_err(DbError::from)?;
+                        if !tags.is_empty() {
+                            let insert_stmt = tx
+                                .prepare_cached(get_pgsql_query!("insert-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            for tag in tags {
+                                tx.execute(&insert_stmt, &[&uid, tag])
+                                    .await
+                                    .map_err(DbError::from)?;
+                            }
+                        }
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
+                        let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+                        let attributes_json =
+                            serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let wrapping_key_id = object.wrapping_key_uid();
+                        let stmt = tx
+                            .prepare_cached(get_pgsql_query!("update-object-with-object"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let attrs_param = Json(&attributes_json);
+                        tx.execute(&stmt, &[&object_json, &attrs_param, &wrapping_key_id, &uid])
+                            .await
+                            .map_err(DbError::from)?;
+                        if let Some(tags) = tags {
+                            let delete_stmt = tx
+                                .prepare_cached(get_pgsql_query!("delete-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            tx.execute(&delete_stmt, &[&uid])
+                                .await
+                                .map_err(DbError::from)?;
+                            let insert_stmt = tx
+                                .prepare_cached(get_pgsql_query!("insert-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            for tag in tags {
+                                tx.execute(&insert_stmt, &[&uid, tag])
+                                    .await
+                                    .map_err(DbError::from)?;
+                            }
+                        }
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::UpdateState((uid, state)) => {
+                        let stmt = tx
+                            .prepare_cached(get_pgsql_query!("update-object-with-state"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let st = state.to_string();
+                        tx.execute(&stmt, &[&st, &uid])
+                            .await
+                            .map_err(DbError::from)?;
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
+                        let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+                        let attributes_json =
+                            serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let wrapping_key_id = object.wrapping_key_uid();
+                        let stmt = tx
+                            .prepare_cached(get_pgsql_query!("upsert-object"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let st = state.to_string();
+                        let attrs_param = Json(&attributes_json);
+                        let rows_affected = tx
+                            .execute(
+                                &stmt,
+                                &[
+                                    &uid,
+                                    &object_json,
+                                    &attrs_param,
+                                    &st,
+                                    &user,
+                                    &wrapping_key_id,
+                                ],
+                            )
+                            .await
+                            .map_err(DbError::from)?;
+                        if rows_affected == 0 {
+                            return Err(DbError::Unauthorized(format!(
+                                "User '{user}' does not own object '{uid}' and cannot overwrite it"
+                            )));
+                        }
+                        if let Some(tags) = tags {
+                            let delete_stmt = tx
+                                .prepare_cached(get_pgsql_query!("delete-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            tx.execute(&delete_stmt, &[&uid])
+                                .await
+                                .map_err(DbError::from)?;
+                            let insert_stmt = tx
+                                .prepare_cached(get_pgsql_query!("insert-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            for tag in tags {
+                                tx.execute(&insert_stmt, &[&uid, tag])
+                                    .await
+                                    .map_err(DbError::from)?;
+                            }
+                        }
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::Delete(uid) => {
+                        let d1 = tx
+                            .prepare_cached(get_pgsql_query!("delete-object"))
+                            .await
+                            .map_err(DbError::from)?;
+                        tx.execute(&d1, &[&uid]).await.map_err(DbError::from)?;
+                        let d2 = tx
+                            .prepare_cached(get_pgsql_query!("delete-tags"))
+                            .await
+                            .map_err(DbError::from)?;
+                        tx.execute(&d2, &[&uid]).await.map_err(DbError::from)?;
+                        let d3 = tx
+                            .prepare_cached(get_pgsql_query!("delete-read-access-for-object"))
+                            .await
+                            .map_err(DbError::from)?;
+                        tx.execute(&d3, &[&uid]).await.map_err(DbError::from)?;
+                        uids.push(uid.clone());
+                    }
+                }
             }
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                Err(InterfaceError::Db(format!("atomic operation failed: {e}")))
-            }
+            Ok(uids)
         }
+
+        pg_retry_tx!(self.pool, |tx| transact(&tx, user, operations).await)
     }
 
-    async fn is_object_owned_by(
-        &self,
-        uid: &str,
-        owner: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<bool> {
-        Ok(is_object_owned_by_(uid, owner, &self.pool).await?)
+    async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> InterfaceResult<bool> {
+        let owner_s: &str = owner;
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare_cached(get_pgsql_query!("has-row-objects"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let row = client
+                .query_opt(&stmt, &[&uid, &owner_s])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(row.is_some())
+        })
     }
 
-    async fn list_uids_for_tags(
-        &self,
-        tags: &HashSet<String>,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashSet<String>> {
-        Ok(list_uids_from_tags_(tags, &self.pool).await?)
+    async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
+        pg_retry!(self.pool, |client| {
+            let mut tag_vec: Vec<String> = tags.iter().cloned().collect();
+            tag_vec.sort();
+            let tag_refs: Vec<&str> = tag_vec.iter().map(String::as_str).collect();
+            let len_i32: i32 =
+                i32::try_from(tags.len()).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            let stmt = client
+                .prepare_cached(get_pgsql_query!("list-uids-for-tags"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&&tag_refs[..], &len_i32])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut out = HashSet::new();
+            for r in rows {
+                out.insert(r.get::<_, String>(0));
+            }
+            Ok(out)
+        })
     }
 
     async fn find(
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
-        _params: Option<Arc<dyn SessionParams>>,
+        vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        Ok(find_(
-            researched_attributes,
-            state,
-            user,
-            user_must_be_owner,
-            &self.pool,
-        )
-        .await?)
+        pg_retry!(self.pool, |client| {
+            let locate = crate::stores::sql::locate_query::query_from_attributes::<
+                crate::stores::sql::locate_query::PgSqlPlaceholder,
+            >(
+                researched_attributes,
+                state,
+                user,
+                user_must_be_owner,
+                vendor_id,
+            );
+            cosmian_logger::debug!("PG find query: {}", locate.sql);
+            let stmt = client
+                .prepare(&locate.sql)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut owned: Vec<Box<dyn ToSql + Sync>> = Vec::with_capacity(locate.params.len());
+            for p in locate.params {
+                match p {
+                    crate::stores::sql::locate_query::LocateParam::Text(s) => {
+                        owned.push(Box::new(s));
+                    }
+                    crate::stores::sql::locate_query::LocateParam::I64(i) => {
+                        owned.push(Box::new(i));
+                    }
+                }
+            }
+            let params: Vec<&(dyn ToSql + Sync)> =
+                owned.iter().map(std::convert::AsRef::as_ref).collect();
+            let rows = client
+                .query(&stmt, &params)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut out = Vec::new();
+            for row in rows {
+                let uid: String = row.get(0);
+                let state_str: String = row.get(1);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let attrs_val: Value = row.get(2);
+                let attrs: Attributes = serde_json::from_value(attrs_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                out.push((uid, state, attrs));
+            }
+            Ok(out)
+        })
+    }
+
+    async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &UserId,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let user_s: &str = user;
+        pg_retry!(self.pool, |client| {
+            let sql = get_pgsql_query!("find-wrapped-by");
+            let rows = client
+                .query(sql, &[&wrapping_key_uid, &user_s])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut out = Vec::new();
+            for row in rows {
+                let uid: String = row.get(0);
+                let state_str: String = row.get(1);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let attrs_val: Value = row.get(2);
+                let attrs: Attributes = serde_json::from_value(attrs_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                out.push((uid, state, attrs));
+            }
+            Ok(out)
+        })
+    }
+
+    async fn find_due_for_rotation(
+        &self,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<Vec<(String, String)>> {
+        pg_retry!(self.pool, |client| {
+            let sql = crate::stores::sql::locate_query::find_due_for_rotation_query::<
+                crate::stores::sql::locate_query::PgSqlPlaceholder,
+            >();
+            let rows = client
+                .query(&sql, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut due = Vec::new();
+            for row in rows {
+                let uid: String = row.get(0);
+                let owner: String = row.get(1);
+                let attrs_val: Value = row.get(2);
+                let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
+                if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
+                    due.push((uid, owner));
+                }
+            }
+            Ok(due)
+        })
+    }
+
+    async fn find_by_rotate_name(
+        &self,
+        name: &str,
+        generation: Option<i32>,
+        owner: &UserId,
+    ) -> InterfaceResult<Vec<(String, Attributes)>> {
+        let name = name.to_owned();
+        let owner = owner.to_owned();
+        pg_retry!(self.pool, |client| {
+            let locate = crate::stores::sql::locate_query::find_by_rotate_name_query::<
+                crate::stores::sql::locate_query::PgSqlPlaceholder,
+            >(&name, generation, &owner);
+            let stmt = client
+                .prepare(&locate.sql)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut owned: Vec<Box<dyn ToSql + Sync>> = Vec::with_capacity(locate.params.len());
+            for p in locate.params {
+                match p {
+                    crate::stores::sql::locate_query::LocateParam::Text(s) => {
+                        owned.push(Box::new(s));
+                    }
+                    crate::stores::sql::locate_query::LocateParam::I64(i) => {
+                        owned.push(Box::new(i));
+                    }
+                }
+            }
+            let params: Vec<&(dyn ToSql + Sync)> =
+                owned.iter().map(std::convert::AsRef::as_ref).collect();
+            let rows = client
+                .query(&stmt, &params)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut results = Vec::new();
+            for row in rows {
+                let uid: String = row.get(0);
+                let attrs_val: Value = row.get(1);
+                let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
+                results.push((uid, attrs));
+            }
+            Ok(results)
+        })
+    }
+
+    async fn find_all(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        pg_retry!(self.pool, |client| {
+            let locate = crate::stores::sql::locate_query::query_all_from_attributes::<
+                crate::stores::sql::locate_query::PgSqlPlaceholder,
+            >(researched_attributes, state, vendor_id);
+            cosmian_logger::debug!("PG find_all query: {}", locate.sql);
+            let stmt = client
+                .prepare(&locate.sql)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut owned: Vec<Box<dyn ToSql + Sync>> = Vec::with_capacity(locate.params.len());
+            for p in locate.params {
+                match p {
+                    crate::stores::sql::locate_query::LocateParam::Text(s) => {
+                        owned.push(Box::new(s));
+                    }
+                    crate::stores::sql::locate_query::LocateParam::I64(i) => {
+                        owned.push(Box::new(i));
+                    }
+                }
+            }
+            let params: Vec<&(dyn ToSql + Sync)> =
+                owned.iter().map(std::convert::AsRef::as_ref).collect();
+            let rows = client
+                .query(&stmt, &params)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut out = Vec::new();
+            for row in rows {
+                let uid: String = row.get(0);
+                let state_str: String = row.get(1);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let attrs_val: Value = row.get(2);
+                let attrs: Attributes = serde_json::from_value(attrs_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                out.push((uid, state, attrs));
+            }
+            Ok(out)
+        })
+    }
+
+    async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
+        pg_retry!(self.pool, |client| {
+            let row = client
+                .query_one(get_pgsql_query!("count-all-non-destroyed"), &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let count: i64 = row.get(0);
+            Ok(u64::try_from(count).unwrap_or(0))
+        })
+    }
+
+    async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
+        pg_retry!(self.pool, |client| {
+            // Object JSON is stored as {"SymmetricKey": {...}} — use the JSONB ?
+            // operator to check for key presence.
+            let row = client
+                .query_one(get_pgsql_query!("count-non-destroyed-keys"), &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let count: i64 = row.get(0);
+            Ok(u64::try_from(count).unwrap_or(0))
+        })
+    }
+}
+
+#[async_trait(?Send)]
+impl Migrate for PgPool {
+    async fn get_db_state(&self) -> DbResult<Option<DbState>> {
+        let client = pg_get_client(&self.pool).await?;
+        let sql = get_pgsql_query!("select-parameter");
+        let row_opt = client
+            .query_opt(sql, &[&"db_state"])
+            .await
+            .map_err(DbError::from)?;
+        if let Some(row) = row_opt {
+            let s: String = row.get(0);
+            Ok(Some(serde_json::from_str(&s)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn set_db_state(&self, state: DbState) -> DbResult<()> {
+        let client = pg_get_client(&self.pool).await?;
+        let sql = get_pgsql_query!("upsert-parameter");
+        let state_json = serde_json::to_string(&state)?;
+        client
+            .execute(sql, &[&"db_state", &state_json])
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn get_current_db_version(&self) -> DbResult<Option<String>> {
+        let client = pg_get_client(&self.pool).await?;
+        let sql = get_pgsql_query!("select-parameter");
+        let row_opt = client
+            .query_opt(sql, &[&"db_version"])
+            .await
+            .map_err(DbError::from)?;
+        Ok(row_opt.map(|row| row.get::<usize, String>(0)))
+    }
+
+    async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
+        let client = pg_get_client(&self.pool).await?;
+        let sql = get_pgsql_query!("upsert-parameter");
+        client
+            .execute(sql, &[&"db_version", &version])
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
     }
 }
 
@@ -317,555 +1224,564 @@ impl ObjectsStore for PgPool {
 impl PermissionsStore for PgPool {
     async fn list_user_operations_granted(
         &self,
-        user: &str,
-        _params: Option<Arc<dyn SessionParams>>,
+        user: &UserId,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
-        Ok(list_user_granted_access_rights_(user, &self.pool).await?)
+        let user_s: &str = user;
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare_cached(get_pgsql_query!("select-objects-access-obtained"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&user_s])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut map = HashMap::with_capacity(rows.len());
+            for row in rows {
+                let id: String = row.get(0);
+                let owner: String = row.get(1);
+                let state_str: String = row.get(2);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                let perms_val: Value = row.get(3);
+                let perms: HashSet<KmipOperation> = serde_json::from_value(perms_val)
+                    .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                // The same object may be returned twice: once for the direct
+                // grant and once for the wildcard `*` grant. Union the
+                // permission sets instead of overwriting the entry.
+                map.entry(id)
+                    .and_modify(
+                        |(_, _, existing_perms): &mut (String, State, HashSet<KmipOperation>)| {
+                            existing_perms.extend(perms.iter().copied());
+                        },
+                    )
+                    .or_insert((owner, state, perms));
+            }
+            Ok(map)
+        })
     }
 
     async fn list_object_operations_granted(
         &self,
         uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
-        Ok(list_accesses_(uid, &self.pool).await?)
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare_cached(get_pgsql_query!("select-rows-read_access-with-object-id"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&uid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut map = HashMap::with_capacity(rows.len());
+            for row in rows {
+                let userid: String = row.get(0);
+                let v: Value = row.get(1);
+                let ops: HashSet<KmipOperation> =
+                    serde_json::from_value(v).map_err(|e| InterfaceError::Db(e.to_string()))?;
+                map.insert(userid, ops);
+            }
+            Ok(map)
+        })
     }
 
     async fn grant_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        Ok(insert_access_(uid, user, operations, &self.pool).await?)
+        let user_s: &str = user;
+        // Merge with existing permissions (this read is itself retried)
+        let existing = self.list_user_operations_on_object(uid, user, true).await?;
+        let mut combined = existing;
+        combined.extend(operations);
+        pg_retry!(self.pool, |client| {
+            let json = serde_json::to_value(&combined)
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let stmt = client
+                .prepare_cached(get_pgsql_query!("upsert-row-read_access"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&stmt, &[&uid, &user_s, &json])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
     }
 
     async fn remove_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        Ok(remove_access_(uid, user, operations, &self.pool).await?)
+        let user_s: &str = user;
+        let current = self.list_user_operations_on_object(uid, user, true).await?;
+        let remaining: HashSet<KmipOperation> = current.difference(&operations).copied().collect();
+        pg_retry!(self.pool, |client| {
+            if remaining.is_empty() {
+                let d = client
+                    .prepare_cached(get_pgsql_query!("delete-rows-read_access"))
+                    .await
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                client
+                    .execute(&d, &[&uid, &user_s])
+                    .await
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                return Ok(());
+            }
+            let json = serde_json::to_value(&remaining)
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let u = client
+                .prepare_cached(get_pgsql_query!("update-rows-read_access-with-permission"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&u, &[&uid, &user_s, &json])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
     }
 
     async fn list_user_operations_on_object(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         no_inherited_access: bool,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
-        Ok(list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await?)
+        let user_s: &str = user;
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare_cached(get_pgsql_query!("select-user-accesses-for-object"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut perms: HashSet<KmipOperation> = match client
+                .query_opt(&stmt, &[&uid, &user_s])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?
+            {
+                Some(row) => {
+                    let v: Value = row.get(0);
+                    serde_json::from_value(v).map_err(|e| InterfaceError::from(DbError::from(e)))?
+                }
+                None => HashSet::new(),
+            };
+            if !no_inherited_access && user != "*" {
+                if let Some(row) = client
+                    .query_opt(&stmt, &[&uid, &"*"])
+                    .await
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?
+                {
+                    let v: Value = row.get(0);
+                    let all: HashSet<KmipOperation> = serde_json::from_value(v)
+                        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                    perms.extend(all);
+                }
+            }
+            Ok(perms)
+        })
+    }
+
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+        revoked_by: &str,
+    ) -> InterfaceResult<()> {
+        let sealed = sealed_record.to_owned();
+        let activated_by_s = activated_by.to_owned();
+        let revoked_by_s = revoked_by.to_owned();
+        pg_retry_tx!(self.pool, |tx| {
+            // Revoke only this user's prior active record, then insert the new one.
+            let revoke_stmt = tx
+                .prepare(get_pgsql_query!("revoke-crypto-officer-activation"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            tx.execute(
+                &revoke_stmt,
+                &[&revoked_by_s.as_str(), &activated_by_s.as_str()],
+            )
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let insert_stmt = tx
+                .prepare(get_pgsql_query!("insert-crypto-officer-activation"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            tx.execute(&insert_stmt, &[&sealed.as_str(), &activated_by_s.as_str()])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok::<(), InterfaceError>(())
+        })
+    }
+
+    async fn get_crypto_officer_activation_by(
+        &self,
+        user: &str,
+    ) -> InterfaceResult<Option<String>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!(
+                    "select-active-crypto-officer-activation-by"
+                ))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&user])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows.first().map(|row| row.get(0)))
+        })
+    }
+
+    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!(
+                    "select-any-active-crypto-officer-activation"
+                ))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let count: i64 = rows.first().map_or(0, |row| row.get(0));
+            Ok(count > 0)
+        })
+    }
+
+    async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("revoke-crypto-officer-activation"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&stmt, &[&revoked_by, &activated_by])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> InterfaceResult<()> {
+        let crl_number_i = i64::try_from(crl_number).unwrap_or(i64::MAX);
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("upsert-crl"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(
+                    &stmt,
+                    &[
+                        &issuer_id,
+                        &crl_der,
+                        &crl_number_i,
+                        &generated_at,
+                        &next_update,
+                    ],
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-crl"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&issuer_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows.first().map(|row| {
+                let der: Vec<u8> = row.get(0);
+                let generated_at: String = row.get(1);
+                (der, generated_at)
+            }))
+        })
+    }
+
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("list-crl-issuers"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows
+                .iter()
+                .map(|row| {
+                    let issuer_id: String = row.get(0);
+                    let next_update: String = row.get(1);
+                    (issuer_id, next_update)
+                })
+                .collect())
+        })
+    }
+
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
+        pg_retry!(self.pool, |client| {
+            let rows = client
+                .query("SELECT MAX(crl_number) FROM crls", &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            // MAX() returns one row; the value is NULL when the table is empty.
+            let max: Option<i64> = rows.first().and_then(|row| row.get::<_, Option<i64>>(0));
+            Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
+        })
     }
 }
 
-pub(super) async fn create_(
-    uid: Option<String>,
-    owner: &str,
-    object: &Object,
-    attributes: &Attributes,
-    tags: &HashSet<String>,
-    executor: &mut Transaction<'_, Postgres>,
-) -> DbResult<String> {
-    let object_json =
-        serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
-    debug!("uid: {:?}, object_json: {object_json:#?}", uid);
+// ---------------------------------------------------------------------------
+// Multi-host URL helpers
+// ---------------------------------------------------------------------------
 
-    let attributes_json =
-        serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
+/// SSL-related query parameters that are handled via `MakeTlsConnector`
+/// and must be stripped from the URL before passing to `deadpool-postgres`.
+const SSL_PARAMS: &[&str] = &["sslmode", "sslrootcert", "sslcert", "sslkey"];
 
-    // If the uid is not provided, generate a new one
-    let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
-
-    // Try to insert the object
-    match sqlx::query(get_pgsql_query!("insert-objects"))
-        .bind(uid.clone())
-        .bind(object_json)
-        .bind(attributes_json)
-        .bind(attributes.state.unwrap_or(State::PreActive).to_string())
-        .bind(owner)
-        .execute(&mut **executor)
-        .await
-    {
-        Ok(_) => {}
-        Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
-            return Err(DbError::Kmip21Error(
-                ErrorReason::Object_Already_Exists,
-                format!("Object with UID '{uid}' already exists"),
-            ));
+/// Extract query parameters from a `PostgreSQL` connection URL by splitting on `?`/`&`.
+/// This avoids `Url::parse()` which cannot handle multi-host connection strings.
+fn extract_query_params(url: &str) -> HashMap<String, String> {
+    let mut params = HashMap::new();
+    if let Some(query_start) = url.find('?') {
+        let query = &url[query_start + 1..];
+        for pair in query.split('&') {
+            if let Some((key, value)) = pair.split_once('=') {
+                params.insert(key.to_owned(), value.to_owned());
+            }
         }
-        Err(e) => return Err(e.into()),
     }
-
-    // Insert the tags
-    for tag in tags {
-        sqlx::query(get_pgsql_query!("insert-tags"))
-            .bind(uid.clone())
-            .bind(tag)
-            .execute(&mut **executor)
-            .await?;
-    }
-
-    trace!("Created in DB: {uid} / {owner}");
-    Ok(uid)
+    params
 }
 
-pub(super) async fn retrieve_<'e, E>(uid: &str, executor: E) -> DbResult<Option<ObjectWithMetadata>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let row = sqlx::query(get_pgsql_query!("select-object"))
-        .bind(uid)
-        .fetch_optional(executor)
-        .await?;
-    if let Some(row) = row {
-        return Ok(Some(pg_row_to_owm(&row)?));
-    }
-    Ok(None)
-}
-
-async fn retrieve_tags_<'e, E>(uid: &str, executor: E) -> DbResult<HashSet<String>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let rows: Vec<PgRow> = sqlx::query(get_pgsql_query!("select-tags"))
-        .bind(uid)
-        .fetch_all(executor)
-        .await?;
-
-    let tags = rows.iter().map(|r| r.get(0)).collect::<HashSet<String>>();
-
-    Ok(tags)
-}
-
-pub(super) async fn update_object_(
-    uid: &str,
-    object: &Object,
-    attributes: &Attributes,
-    tags: Option<&HashSet<String>>,
-    executor: &mut Transaction<'_, Postgres>,
-) -> DbResult<()> {
-    let object_json =
-        serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
-
-    let attributes_json =
-        serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
-
-    sqlx::query(get_pgsql_query!("update-object-with-object"))
-        .bind(object_json)
-        .bind(attributes_json)
-        .bind(uid)
-        .execute(&mut **executor)
-        .await?;
-
-    // Insert the new tags if any
-    if let Some(tags) = tags {
-        // delete the existing tags
-        sqlx::query(get_pgsql_query!("delete-tags"))
-            .bind(uid)
-            .execute(&mut **executor)
-            .await?;
-
-        for tag in tags {
-            sqlx::query(get_pgsql_query!("insert-tags"))
-                .bind(uid)
-                .bind(tag)
-                .execute(&mut **executor)
-                .await?;
-        }
-    }
-
-    trace!("Updated in DB: {uid}");
-    Ok(())
-}
-
-pub(super) async fn update_state_(
-    uid: &str,
-    state: State,
-    executor: &mut Transaction<'_, Postgres>,
-) -> DbResult<()> {
-    sqlx::query(get_pgsql_query!("update-object-with-state"))
-        .bind(state.to_string())
-        .bind(uid)
-        .execute(&mut **executor)
-        .await?;
-    trace!("Updated in DB: {uid}");
-    Ok(())
-}
-
-pub(super) async fn delete_(uid: &str, executor: &mut Transaction<'_, Postgres>) -> DbResult<()> {
-    // delete the object
-    sqlx::query(get_pgsql_query!("delete-object"))
-        .bind(uid)
-        .execute(&mut **executor)
-        .await?;
-
-    // delete the tags
-    sqlx::query(get_pgsql_query!("delete-tags"))
-        .bind(uid)
-        .execute(&mut **executor)
-        .await?;
-
-    trace!("Deleted in DB: {uid}");
-    Ok(())
-}
-
-pub(super) async fn upsert_(
-    uid: &str,
-    owner: &str,
-    object: &Object,
-    attributes: &Attributes,
-    tags: Option<&HashSet<String>>,
-    state: State,
-    executor: &mut Transaction<'_, Postgres>,
-) -> DbResult<()> {
-    let object_json =
-        serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
-
-    let attributes_json =
-        serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
-
-    sqlx::query(get_pgsql_query!("upsert-object"))
-        .bind(uid)
-        .bind(object_json)
-        .bind(attributes_json)
-        .bind(state.to_string())
-        .bind(owner)
-        .execute(&mut **executor)
-        .await?;
-
-    // Insert the new tags if present
-    if let Some(tags) = tags {
-        // delete the existing tags
-        sqlx::query(get_pgsql_query!("delete-tags"))
-            .bind(uid)
-            .execute(&mut **executor)
-            .await?;
-        // insert the new ones
-        for tag in tags {
-            sqlx::query(get_pgsql_query!("insert-tags"))
-                .bind(uid)
-                .bind(tag)
-                .execute(&mut **executor)
-                .await?;
-        }
-    }
-
-    trace!("Upserted in DB: {uid}");
-    Ok(())
-}
-
-pub(super) async fn list_uids_from_tags_<'e, E>(
-    tags: &HashSet<String>,
-    executor: E,
-) -> DbResult<HashSet<String>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let tags_params = tags
+/// Rebuild the connection URL, removing only SSL-related query parameters.
+/// Other parameters like `target_session_attrs` are preserved for `tokio-postgres`.
+fn rebuild_url_without_ssl_params(url: &str, params: &HashMap<String, String>) -> String {
+    let base = url.split('?').next().unwrap_or(url);
+    let non_ssl_params: Vec<String> = params
         .iter()
-        .enumerate()
-        .map(|(i, _)| format!("${}", i + 1))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    let raw_sql = get_pgsql_query!("select-uids-from-tags")
-        .replace("@TAGS", &tags_params)
-        .replace("@LEN", &format!("${}", tags.len() + 1));
-
-    let mut query = sqlx::query::<Postgres>(&raw_sql);
-    for tag in tags {
-        query = query.bind(tag);
-    }
-    // Bind the tags len and the user
-    query = query.bind(i16::try_from(tags.len())?);
-
-    let rows = query.fetch_all(executor).await?;
-    let uids = rows.iter().map(|r| r.get(0)).collect::<HashSet<String>>();
-    Ok(uids)
-}
-
-pub(super) async fn list_accesses_<'e, E>(
-    uid: &str,
-    executor: E,
-) -> DbResult<HashMap<String, HashSet<KmipOperation>>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    debug!("Uid = {}", uid);
-
-    let list = sqlx::query(get_pgsql_query!("select-rows-read_access-with-object-id"))
-        .bind(uid)
-        .fetch_all(executor)
-        .await?;
-    let mut ids: HashMap<String, HashSet<KmipOperation>> = HashMap::with_capacity(list.len());
-    for row in list {
-        ids.insert(
-            // userid
-            row.get::<String, _>(0),
-            // permissions
-            serde_json::from_value(row.get::<Value, _>(1))?,
-        );
-    }
-    debug!("Listed {} rows", ids.len());
-    Ok(ids)
-}
-
-pub(super) async fn list_user_granted_access_rights_<'e, E>(
-    user: &str,
-    executor: E,
-) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    debug!("Owner = {}", user);
-    let list = sqlx::query(get_pgsql_query!("select-objects-access-obtained"))
-        .bind(user)
-        .fetch_all(executor)
-        .await?;
-    let mut ids: HashMap<String, (String, State, HashSet<KmipOperation>)> =
-        HashMap::with_capacity(list.len());
-    for row in list {
-        ids.insert(
-            row.get::<String, _>(0),
-            (
-                row.get::<String, _>(1),
-                State::try_from(row.get::<String, _>(2).as_str()).map_err(|e| {
-                    DbError::ConversionError(format!("failed converting the state: {e}").into())
-                })?,
-                serde_json::from_value(
-                    row.try_get::<Value, _>(3)
-                        .context("failed deserializing the operations")?,
-                )?,
-            ),
-        );
-    }
-    debug!("Listed {} rows", ids.len());
-    Ok(ids)
-}
-
-pub(super) async fn list_user_access_rights_on_object_<'e, E>(
-    uid: &str,
-    userid: &str,
-    no_inherited_access: bool,
-    executor: E,
-) -> DbResult<HashSet<KmipOperation>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let mut user_perms = perms(uid, userid, executor).await?;
-    if no_inherited_access || userid == "*" {
-        return Ok(user_perms);
-    }
-    user_perms.extend(perms(uid, "*", executor).await?);
-    Ok(user_perms)
-}
-
-async fn perms<'e, E>(uid: &str, userid: &str, executor: E) -> DbResult<HashSet<KmipOperation>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let row: Option<PgRow> = sqlx::query(get_pgsql_query!("select-user-accesses-for-object"))
-        .bind(uid)
-        .bind(userid)
-        .fetch_optional(executor)
-        .await?;
-
-    row.map_or(Ok(HashSet::new()), |row| {
-        let perms_value = row
-            .try_get::<Value, _>(0)
-            .context("failed deserializing the permissions")?;
-        serde_json::from_value(perms_value).context("failed deserializing the permissions")
-    })
-}
-
-pub(super) async fn insert_access_<'e, E>(
-    uid: &str,
-    userid: &str,
-    operation_types: HashSet<KmipOperation>,
-    executor: E,
-) -> DbResult<()>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    // Retrieve existing permissions if any
-    let mut perms = list_user_access_rights_on_object_(uid, userid, false, executor).await?;
-    if operation_types.is_subset(&perms) {
-        // permissions are already setup
-        return Ok(());
-    }
-    perms.extend(operation_types.iter());
-
-    // Serialize permissions
-    let json =
-        serde_json::to_value(&perms).context("failed serializing the permissions to JSON")?;
-
-    // Upsert the DB
-    sqlx::query(get_pgsql_query!("upsert-row-read_access"))
-        .bind(uid)
-        .bind(userid)
-        .bind(json)
-        .execute(executor)
-        .await?;
-    trace!("Insert read access right in DB: {uid} / {userid}");
-    Ok(())
-}
-
-pub(super) async fn remove_access_<'e, E>(
-    uid: &str,
-    userid: &str,
-    operation_types: HashSet<KmipOperation>,
-    executor: E,
-) -> DbResult<()>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    // Retrieve existing permissions if any
-    let perms = list_user_access_rights_on_object_(uid, userid, true, executor)
-        .await?
-        .difference(&operation_types)
-        .copied()
-        .collect::<HashSet<_>>();
-
-    // No remaining permissions, delete the row
-    if perms.is_empty() {
-        sqlx::query(get_pgsql_query!("delete-rows-read_access"))
-            .bind(uid)
-            .bind(userid)
-            .execute(executor)
-            .await?;
-        return Ok(());
-    }
-
-    // Serialize permissions
-    let json =
-        serde_json::to_value(&perms).context("failed serializing the permissions to JSON")?;
-
-    // Update the DB
-    sqlx::query(get_pgsql_query!("update-rows-read_access-with-permission"))
-        .bind(uid)
-        .bind(userid)
-        .bind(json)
-        .execute(executor)
-        .await?;
-    trace!("Deleted in DB: {uid} / {userid}");
-    Ok(())
-}
-
-pub(super) async fn is_object_owned_by_<'e, E>(
-    uid: &str,
-    owner: &str,
-    executor: E,
-) -> DbResult<bool>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let row: Option<PgRow> = sqlx::query(get_pgsql_query!("has-row-objects"))
-        .bind(uid)
-        .bind(owner)
-        .fetch_optional(executor)
-        .await?;
-    Ok(row.is_some())
-}
-
-pub(super) async fn find_<'e, E>(
-    researched_attributes: Option<&Attributes>,
-    state: Option<State>,
-    user: &str,
-    user_must_be_owner: bool,
-    executor: E,
-) -> DbResult<Vec<(String, State, Attributes)>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let query = query_from_attributes::<PgSqlPlaceholder>(
-        researched_attributes,
-        state,
-        user,
-        user_must_be_owner,
-    );
-    trace!("{query:?}");
-
-    let mut query = sqlx::query(&query);
-    // Bind user-provided values to placeholders
-    query = if user_must_be_owner {
-        query.bind(user)
+        .filter(|(k, _)| !SSL_PARAMS.contains(&k.as_str()))
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect();
+    if non_ssl_params.is_empty() {
+        base.to_owned()
     } else {
-        query.bind(user).bind(user).bind(user)
-    };
-    let rows = query.fetch_all(executor).await?;
-
-    to_qualified_uids(&rows)
+        format!("{}?{}", base, non_ssl_params.join("&"))
+    }
 }
 
-/// Convert a list of rows into a list of qualified uids
-fn to_qualified_uids(rows: &[PgRow]) -> DbResult<Vec<(String, State, Attributes)>> {
-    let mut uids = Vec::with_capacity(rows.len());
-    for row in rows {
-        let attrs: Attributes = match row.try_get::<Value, _>(2) {
-            Err(_) => return Err(DbError::DatabaseError("no attributes found".to_owned())),
-            Ok(v) => serde_json::from_value(v)
-                .context("failed deserializing the attributes")
-                .map_err(|e| DbError::DatabaseError(e.to_string()))?,
-        };
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        uids.push((
-            row.get::<String, _>(0),
-            State::try_from(row.get::<String, _>(1).as_str()).map_err(|e| {
-                DbError::ConversionError(format!("failed converting the state: {e}").into())
-            })?,
-            attrs,
+    #[test]
+    fn test_extract_query_params_single_host() {
+        let url = "localhost:5432/kms?sslmode=require";
+        let params = extract_query_params(url);
+        assert_eq!(params.get("sslmode"), Some(&"require".to_owned()));
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_query_params_multi_host() {
+        let url = "host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require";
+        let params = extract_query_params(url);
+        assert_eq!(
+            params.get("target_session_attrs"),
+            Some(&"read-write".to_owned())
+        );
+        assert_eq!(params.get("sslmode"), Some(&"require".to_owned()));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_extract_query_params_no_params() {
+        let url = "localhost:5432/kms";
+        let params = extract_query_params(url);
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_rebuild_url_strips_only_ssl_params() {
+        let url = "host1:5432,host2:5432/kms?target_session_attrs=read-write&sslmode=require&sslrootcert=/path/ca.pem";
+        let params = extract_query_params(url);
+        let clean = rebuild_url_without_ssl_params(url, &params);
+        assert_eq!(
+            clean,
+            "host1:5432,host2:5432/kms?target_session_attrs=read-write"
+        );
+    }
+
+    #[test]
+    fn test_rebuild_url_all_ssl_params_stripped() {
+        let url =
+            "localhost:5432/kms?sslmode=require&sslcert=/c.pem&sslkey=/k.pem&sslrootcert=/ca.pem";
+        let params = extract_query_params(url);
+        let clean = rebuild_url_without_ssl_params(url, &params);
+        assert_eq!(clean, "localhost:5432/kms");
+    }
+
+    #[test]
+    fn test_rebuild_url_preserves_non_ssl_params() {
+        let url = "localhost:5432/kms?target_session_attrs=read-write&application_name=cosmian_kms";
+        let params = extract_query_params(url);
+        let clean = rebuild_url_without_ssl_params(url, &params);
+        // Both non-SSL params should be preserved (order may vary)
+        assert!(clean.contains("target_session_attrs=read-write"));
+        assert!(clean.contains("application_name=cosmian_kms"));
+        assert!(clean.starts_with("localhost:5432/kms?"));
+    }
+
+    #[test]
+    fn test_rebuild_url_no_params() {
+        let url = "localhost:5432/kms";
+        let params = extract_query_params(url);
+        let clean = rebuild_url_without_ssl_params(url, &params);
+        assert_eq!(clean, url);
+    }
+
+    #[test]
+    fn test_multi_host_url_preserved_in_rebuild() {
+        let url = "host1:5432,host2:5433,host3:5434/kms?target_session_attrs=read-write";
+        let params = extract_query_params(url);
+        let clean = rebuild_url_without_ssl_params(url, &params);
+        assert_eq!(clean, url);
+    }
+
+    #[test]
+    fn test_pg_retry_backoff_ms() {
+        assert_eq!(pg_retry_backoff_ms(0), 50); // 50 * 2^0
+        assert_eq!(pg_retry_backoff_ms(1), 100); // 50 * 2^1
+        assert_eq!(pg_retry_backoff_ms(5), 1600); // 50 * 2^5
+        assert_eq!(pg_retry_backoff_ms(6), 3200); // 50 * 2^6 (capped at PG_MAX_RETRIES)
+        assert_eq!(pg_retry_backoff_ms(100), 3200); // capped
+    }
+
+    #[test]
+    fn test_is_pg_retryable_error_deadlock_serialization() {
+        assert!(is_pg_retryable_error("ERROR: deadlock detected"));
+        assert!(is_pg_retryable_error("SQLSTATE 40P01"));
+        assert!(is_pg_retryable_error("serialization failure"));
+        assert!(is_pg_retryable_error("SQLSTATE 40001"));
+    }
+
+    #[test]
+    fn test_is_pg_retryable_error_connection() {
+        assert!(is_pg_retryable_error("connection refused"));
+        assert!(is_pg_retryable_error("connection reset by peer"));
+        assert!(is_pg_retryable_error("connection closed"));
+        assert!(is_pg_retryable_error("broken pipe"));
+        assert!(is_pg_retryable_error(
+            "server closed the connection unexpectedly"
+        ));
+        assert!(is_pg_retryable_error(
+            "terminating connection due to administrator command"
+        ));
+        assert!(is_pg_retryable_error("could not connect to server"));
+    }
+
+    #[test]
+    fn test_is_pg_retryable_error_sqlstate_codes() {
+        assert!(is_pg_retryable_error("SQLSTATE 08001"));
+        assert!(is_pg_retryable_error("SQLSTATE 08003"));
+        assert!(is_pg_retryable_error("SQLSTATE 08004"));
+        assert!(is_pg_retryable_error("SQLSTATE 08006"));
+        assert!(is_pg_retryable_error("SQLSTATE 57P01"));
+        assert!(is_pg_retryable_error("SQLSTATE 57P02"));
+        assert!(is_pg_retryable_error("SQLSTATE 57P03"));
+    }
+
+    #[test]
+    fn test_is_pg_retryable_error_case_insensitive() {
+        assert!(is_pg_retryable_error("DEADLOCK DETECTED"));
+        assert!(is_pg_retryable_error("Connection Refused"));
+    }
+
+    #[test]
+    fn test_is_pg_retryable_error_substring_match() {
+        assert!(is_pg_retryable_error(
+            "error connecting: SQLSTATE 08001 connection exception"
+        ));
+        assert!(is_pg_retryable_error(
+            "db error: ERROR: deadlock detected while waiting for lock"
         ));
     }
-    Ok(uids)
-}
 
-pub(super) async fn atomic_(
-    owner: &str,
-    operations: &[AtomicOperation],
-    tx: &mut Transaction<'_, Postgres>,
-) -> DbResult<Vec<String>> {
-    let mut uids = Vec::with_capacity(operations.len());
-    for operation in operations {
-        match operation {
-            AtomicOperation::Create((uid, object, attributes, tags)) => {
-                if let Err(e) =
-                    create_(Some(uid.clone()), owner, object, attributes, tags, tx).await
-                {
-                    db_bail!("creation of object {uid} failed: {e}");
-                }
-                uids.push(uid.clone());
-            }
-            AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
-                if let Err(e) = update_object_(uid, object, attributes, tags.as_ref(), tx).await {
-                    db_bail!("update of object {uid} failed: {e}");
-                }
-                uids.push(uid.clone());
-            }
-            AtomicOperation::UpdateState((uid, state)) => {
-                if let Err(e) = update_state_(uid, *state, tx).await {
-                    db_bail!("update of the state of object {uid} failed: {e}");
-                }
-                uids.push(uid.clone());
-            }
-            AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
-                if let Err(e) =
-                    upsert_(uid, owner, object, attributes, tags.as_ref(), *state, tx).await
-                {
-                    db_bail!("upsert of object {uid} failed: {e}");
-                }
-                uids.push(uid.clone());
-            }
-            AtomicOperation::Delete(uid) => {
-                if let Err(e) = delete_(uid, tx).await {
-                    db_bail!("deletion of object {uid} failed: {e}");
-                }
-                uids.push(uid.clone());
-            }
-        }
+    #[test]
+    fn test_is_pg_retryable_error_non_retryable() {
+        assert!(!is_pg_retryable_error("unique constraint violation"));
+        assert!(!is_pg_retryable_error("syntax error"));
+        assert!(!is_pg_retryable_error("permission denied"));
+        assert!(!is_pg_retryable_error(""));
     }
-    Ok(uids)
+
+    // Regression test for issue #1027: the pooled connection must be released
+    // before sleeping through the retry back-off, not held across it.
+    // A size-1 pool pins to one connection, so if `pool.status().available`
+    // never reports idle while a retryable transaction backs off, it's held.
+    #[ignore = "Requires a running PostgreSQL instance"]
+    #[tokio::test]
+    async fn pg_connection_released_during_backoff() -> DbResult<()> {
+        let postgres_url =
+            option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
+        let pg = PgPool::instantiate(postgres_url, true, Some(1)).await?;
+
+        let pool_for_task = pg.pool.clone();
+        let handle: tokio::task::JoinHandle<InterfaceResult<()>> = tokio::spawn(async move {
+            pg_retry_tx!(pool_for_task, |tx| {
+                tx.batch_execute(
+                    "DO $$ BEGIN RAISE EXCEPTION 'simulated deadlock detected' USING \
+                     ERRCODE = '40001'; END $$;",
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))
+            })
+        });
+
+        let mut idle_samples = 0_usize;
+        let mut total_samples = 0_usize;
+        while !handle.is_finished() {
+            total_samples += 1;
+            if pg.pool.status().available >= 1 {
+                idle_samples += 1;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        // Exhausts all retries and ends in an error — expected, only the
+        // connection-holding behavior along the way is under test here.
+        drop(handle.await);
+
+        if idle_samples * 2 <= total_samples.max(1) {
+            return Err(DbError::DatabaseError(format!(
+                "pool reported idle in only {idle_samples}/{total_samples} samples — \
+                 connection appears held during back-off sleep"
+            )));
+        }
+
+        Ok(())
+    }
 }

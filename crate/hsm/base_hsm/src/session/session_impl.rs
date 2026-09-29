@@ -1,39 +1,4 @@
-//! Hardware Security Module (HSM) Session Implementation
-//!
-//! This module provides the implementation of a session with a Hardware Security Module (HSM)
-//! following the PKCS#11 standard. It includes functionality for:
-//!
-//! - Managing HSM session lifecycle (creation, authentication, closure)
-//! - Object handling (creation, deletion, listing)
-//! - Cryptographic operations (encryption, decryption)
-//! - Key management (export, metadata retrieval)
-//!
-//! The implementation supports various cryptographic algorithms, including:
-//! - AES-GCM for symmetric encryption
-//! - RSA PKCS#1 v1.5 and OAEP for asymmetric encryption
-//!
-//! # Key Features
-//!
-//! - Session management with HSM devices
-//! - Object handle caching for improved performance
-//! - Support for both symmetric and asymmetric cryptographic operations
-//! - Key export capabilities with security controls
-//! - Comprehensive error handling
-//!
-//! # Security Considerations
-//!
-//! - Sensitive key material is protected using the `Zeroizing` type
-//! - Login state is tracked to ensure proper session closure
-//! - Object handle caching is thread-safe using `Arc`
-//!
-//! # Examples
-//!
-//! ```no_run
-//! use hsm::Session;
-//!
-//! let session = Session::new(hsm, session_handle, cache, true);
-//! let random_bytes = session.generate_random(32)?;
-//! ```
+//! PKCS#11 session implementation for HSM interaction.
 
 use std::{
     cmp::min,
@@ -46,22 +11,23 @@ use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata,
     KeyType,
     KeyType::{AesKey, RsaPrivateKey, RsaPublicKey},
-    RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
+    RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
 };
 use cosmian_logger::{debug, trace};
 use pkcs11_sys::{
-    CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
+    CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_DATE, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
     CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CKA_CLASS, CKA_COEFFICIENT,
-    CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2,
-    CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE, CKA_VALUE_LEN,
-    CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_RSA,
-    CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1,
-    CKM_SHA256, CKM_SHA384, CKM_SHA512, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
-    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
+    CKA_END_DATE, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS,
+    CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE,
+    CKA_START_DATE, CKA_VALUE, CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384,
+    CKG_MGF1_SHA512, CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS,
+    CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384,
+    CKM_SHA384_RSA_PKCS, CKM_SHA512, CKM_SHA512_RSA_PKCS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
+    CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
     CKZ_DATA_SPECIFIED,
 };
-use rand::{TryRngCore, rngs::OsRng};
+use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -78,7 +44,7 @@ const AES_GCM_AUTH_TAG_LENGTH: usize = 16;
 /// This function is used to generate a random nonce for the AES GCM or a random IV for AES CBC encryption
 fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0_u8; T];
-    OsRng
+    SysRng
         .try_fill_bytes(&mut bytes)
         .map_err(|e| HError::Default(format!("Error generating random nonce: {e}")))?;
     Ok(bytes)
@@ -106,70 +72,29 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
     }
 }
 
-/// A session with an HSM (Hardware Security Module) that implements PKCS#11 interface.
-///
-/// This structure represents an active connection to the HSM and provides methods to
-/// perform cryptographic operations and key management.
-///
-/// # Structure Fields
-/// * `hsm` - Arc reference to the HSM library interface
-/// * `session_handle` - PKCS#11 session handle
-/// * `object_handles_cache` - Cache for object handles
-/// * `supported_oaep_hash_cache` - Cache for supported OAEP hashing algorithms
-/// * `is_logged_in` - Login state of the session
-///
-/// # Methods
-/// The session provides several categories of operations:
-///
-/// ## Session Management
-/// * `new()` - Creates a new session
-/// * `close()` - Closes the session and logs out if necessary
-///
-/// ## Object Management
-/// * `get_object_handle()` - Retrieves handle for an object by its ID
-/// * `clear_object_handles()` - Removes all object handles from the cache
-/// * `delete_object_handle()` - Removes an object handle from cache
-/// * `list_objects()` - Lists objects matching specified filter
-/// * `destroy_object()` - Deletes an object from the HSM
-///
-/// ## Cryptographic Operations
-/// * `encrypt()` - Encrypts data using specified algorithm
-/// * `decrypt()` - Decrypts data using specified algorithm
-/// * `encrypt_aes_cbc_multi_round` - Encrypt data using AES-CBC in multiple rounds
-/// * `decrypt_aes_cbc_multi_round` - Decrypt data using AES-CBC in multiple rounds
-/// * `generate_random()` - Generates random data
-/// * `get_supported_oaep_hash` - List the supported OAEP hashing algorithms
-///
-/// ## Key Management
-/// * `export_key()` - Exports a key from the HSM (if allowed)
-/// * `get_key_metadata()` - Retrieves metadata about a key
-/// * `get_key_type()` - Gets the type of a key
-/// * `get_object_id()` - Gets the ID of an object
-///
-/// ## Internal Helpers
-/// * `encrypt_with_mechanism()` - Internal encryption implementation
-/// * `decrypt_with_mechanism()` - Internal decryption implementation
-/// * `export_rsa_private_key()` - Exports RSA private key
-/// * `export_rsa_public_key()` - Exports RSA public key
-/// * `export_aes_key()` - Exports AES key
-/// * `call_get_attributes()` - Helper for retrieving object attributes
-/// * `pkcs7_pad()` - Apply PKCS#7 padding to the input data
-/// * `pkcs7_unpad()` - Remove PKCS#7 padding from the input data.
-/// * `find_object_handles` - retrieve object handles that match the provided attribute template
-///
-/// # Safety
-/// Many methods in this implementation contain unsafe blocks as they interact with
-/// the PKCS#11 C interface. Care should be taken when using these methods, and all
-/// preconditions must be met to ensure safe operation.
-///
-/// # Error Handling
-/// Methods return `PResult<T>` which is a custom result type for handling HSM-related
-/// errors. Operations can fail due to various reasons including:
-/// * Invalid object handles
-/// * Permission issues
-/// * Communication errors with HSM
-/// * Invalid parameters
-/// * Unsupported operations
+/// Signing algorithm supported by the HSM
+#[derive(Debug, Clone, Copy)]
+pub enum HsmSigningAlgorithm {
+    RsaPkcsV15,
+    Sha1WithRsa,
+    Sha256WithRsa,
+    Sha384WithRsa,
+    Sha512WithRsa,
+}
+
+impl From<SigningAlgorithm> for HsmSigningAlgorithm {
+    fn from(algorithm: SigningAlgorithm) -> Self {
+        match algorithm {
+            SigningAlgorithm::RsaPkcsV15 => Self::RsaPkcsV15,
+            SigningAlgorithm::Sha1WithRsa => Self::Sha1WithRsa,
+            SigningAlgorithm::Sha256WithRsa => Self::Sha256WithRsa,
+            SigningAlgorithm::Sha384WithRsa => Self::Sha384WithRsa,
+            SigningAlgorithm::Sha512WithRsa => Self::Sha512WithRsa,
+        }
+    }
+}
+
+/// An active PKCS#11 session with an HSM.
 pub struct Session {
     hsm: Arc<crate::hsm_lib::HsmLib>,
     handle: CK_SESSION_HANDLE,
@@ -212,6 +137,14 @@ impl Session {
     /// Get the object handles cache
     pub(crate) fn object_handles_cache(&self) -> Arc<ObjectHandlesCache> {
         self.object_handles_cache.clone()
+    }
+
+    /// Pre-populate the object handle cache with a known object_id-to-handle mapping.
+    ///
+    /// Called during `find()` to ensure that subsequent `get_object_handle()` calls
+    /// get a cache hit instead of re-searching via `find_by_id_or_label()`.
+    pub fn cache_object_handle(&self, object_id: &[u8], handle: CK_OBJECT_HANDLE) -> HResult<()> {
+        self.object_handles_cache.insert(object_id.to_vec(), handle)
     }
 
     /// Close the session and log out if necessary
@@ -280,6 +213,13 @@ impl Session {
 
         let mut supported = Vec::new();
 
+        // Probe each hash by performing a real (dummy) single-part encryption.
+        // Using encrypt_with_mechanism (C_EncryptInit + C_Encrypt) guarantees the
+        // session returns to a clean state after each probe: per PKCS#11, C_Encrypt
+        // terminates the active encryption operation on completion.  Stopping at
+        // C_EncryptInit would leave `self.handle` in ENCRYPT state, causing
+        // CKR_OPERATION_ACTIVE (130) for the next hash and for any later operations
+        // (including C_DestroyObject on the temp key and keys created by other tests).
         for (hash, mgf) in candidates {
             let mut params = CK_RSA_PKCS_OAEP_PARAMS {
                 hashAlg: *hash,
@@ -295,20 +235,11 @@ impl Session {
                 ulParameterLen: CK_ULONG::try_from(size_of::<CK_RSA_PKCS_OAEP_PARAMS>())?,
             };
 
-            // We don't actually encrypt, just see if init succeeds
-            #[expect(unsafe_code)]
-            let rv = unsafe {
-                self.hsm.C_EncryptInit.ok_or_else(|| {
-                    drop(self.destroy_object(sk_handle));
-                    drop(self.destroy_object(pk_handle));
-                    HError::Default("C_EncryptInit not available on library".to_owned())
-                })?(self.handle, &raw mut mechanism, pk_handle)
-            };
-
-            if rv == CKR_OK {
-                supported.push(*hash);
-            } else {
-                debug!("Failed to encrypt data with hash {hash}: {rv}");
+            // A 1-byte plaintext is minimal but valid for RSA-1024 OAEP.
+            let dummy_plaintext = [0_u8; 1];
+            match self.encrypt_with_mechanism(pk_handle, &mut mechanism, &dummy_plaintext) {
+                Ok(_) => supported.push(*hash),
+                Err(e) => debug!("OAEP hash {hash} not supported: {e}"),
             }
         }
         self.destroy_object(sk_handle)?;
@@ -395,9 +326,9 @@ impl Session {
     /// Retrieve the object handle for a given object ID from the HSM.
     ///
     /// This function attempts to locate the handle of an object (such as a key) in the HSM
-    /// by searching for objects whose `CKA_LABEL` attribute matches the provided object ID.
-    /// attribute when searching. To optimize performance, previously found handles are cached
-    /// and reused if available.
+    /// by first searching by `CKA_ID` (set by Cosmian KMS on every key it creates), then
+    /// falling back to `CKA_LABEL` for externally provisioned keys that may not have `CKA_ID`.
+    /// To optimize performance, previously found handles are cached and reused if available.
     ///
     /// Special handling is included for key pairs who might be saved with the same label for both:
     /// * If the provided ID ends with `_pk`, the function first tries to find an exact match.
@@ -407,7 +338,7 @@ impl Session {
     ///   the one that matches the requested identifier (`_pk` → public key, otherwise private/secret key).
     ///
     /// # Arguments
-    /// * `object_id` - A byte slice representing the identifier (label) of the object to find.
+    /// * `object_id` - A byte slice representing the identifier of the object to find.
     ///
     /// # Returns
     /// * `HResult<CK_OBJECT_HANDLE>` - A result containing the handle of the object if found.
@@ -425,32 +356,17 @@ impl Session {
             return Ok(handle);
         }
 
-        // Proteccio does not allow the ID for secret keys so we use the label
-        // and we do the same on base HSM
-        let template = [CK_ATTRIBUTE {
-            type_: CKA_LABEL,
-            pValue: object_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
-            ulValueLen: CK_ULONG::try_from(object_id.len())?,
-        }];
-
-        // Get all handles for objects that have the appropriate label
-        let mut object_handles = self.find_object_handles(template.to_vec())?;
+        // Search by CKA_ID first (set by KMS on every key it creates), then fall back to
+        // CKA_LABEL for externally provisioned keys that may not have CKA_ID set.
+        let mut object_handles = self.find_by_id_or_label(object_id)?;
         if object_handles.is_empty() {
             if object_id.ends_with(b"_pk") {
-                // Check if the HSM stores the object without the suffix
+                // Check if the HSM stores the public key without the _pk suffix
                 let mut object_id_trimmed = object_id.strip_suffix(b"_pk").unwrap_or(object_id);
                 object_id_trimmed = object_id_trimmed
                     .strip_suffix(b" ")
                     .unwrap_or(object_id_trimmed);
-                let template_trimmed = [CK_ATTRIBUTE {
-                    type_: CKA_LABEL,
-                    pValue: object_id_trimmed
-                        .as_ptr()
-                        .cast::<std::ffi::c_void>()
-                        .cast_mut(),
-                    ulValueLen: CK_ULONG::try_from(object_id_trimmed.len())?,
-                }];
-                object_handles = self.find_object_handles(template_trimmed.to_vec())?;
+                object_handles = self.find_by_id_or_label(object_id_trimmed)?;
                 if object_handles.is_empty() {
                     return Err(HError::Default("Object not found".to_owned()));
                 }
@@ -463,8 +379,10 @@ impl Session {
             .first()
             .ok_or_else(|| HError::Default("Object handles empty".to_owned()))?;
         if object_handles.len() > 1 {
-            // Multiple matches in case the HSM uses the same ID for SK and PK
+            // Multiple matches; this happens when the HSM uses the same label for SK and PK.
+            // Disambiguate by key type.
             debug!("Found {} possible handles", object_handles.len());
+            let mut matched_type_count = 0;
             for handle in object_handles {
                 let Some(object_type) = self.get_key_type(handle)? else {
                     continue;
@@ -472,12 +390,26 @@ impl Session {
                 if object_id.ends_with(b"_pk") {
                     // We are looking for a public key. Check if the results contain one.
                     if object_type == RsaPublicKey {
+                        if matched_type_count > 0 {
+                            let label = std::str::from_utf8(object_id).unwrap_or("<non-utf8>");
+                            return Err(HError::Default(format!(
+                                "Multiple RSA public keys with label '{label}' found in the HSM slot. \
+                                 Labels must be unique per key type."
+                            )));
+                        }
                         object_handle = handle;
-                        break;
+                        matched_type_count += 1;
                     }
                 } else if object_type == AesKey || object_type == RsaPrivateKey {
+                    if matched_type_count > 0 {
+                        let label = std::str::from_utf8(object_id).unwrap_or("<non-utf8>");
+                        return Err(HError::Default(format!(
+                            "Multiple keys with label '{label}' and the same key type found in the \
+                             HSM slot. Labels must be unique per key type."
+                        )));
+                    }
                     object_handle = handle;
-                    break;
+                    matched_type_count += 1;
                 }
             }
         }
@@ -487,6 +419,31 @@ impl Session {
             .insert(object_id.to_vec(), object_handle)?;
 
         Ok(object_handle)
+    }
+
+    /// Find PKCS#11 object handles by searching `CKA_ID` first, then `CKA_LABEL`.
+    ///
+    /// Cosmian KMS sets both `CKA_ID` and `CKA_LABEL` on every key it creates, so
+    /// `CKA_ID`-based lookup is the primary path.  `CKA_LABEL` is the fallback for
+    /// externally provisioned keys (e.g., pre-loaded via `pkcs11-tool`) that may not
+    /// have `CKA_ID` set.
+    fn find_by_id_or_label(&self, id: &[u8]) -> HResult<Vec<CK_OBJECT_HANDLE>> {
+        let id_template = [CK_ATTRIBUTE {
+            type_: CKA_ID,
+            pValue: id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+            ulValueLen: CK_ULONG::try_from(id.len())?,
+        }];
+        let handles = self.find_object_handles(id_template.to_vec())?;
+        if !handles.is_empty() {
+            return Ok(handles);
+        }
+        // Fall back to CKA_LABEL for keys not created by Cosmian KMS
+        let label_template = [CK_ATTRIBUTE {
+            type_: CKA_LABEL,
+            pValue: id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+            ulValueLen: CK_ULONG::try_from(id.len())?,
+        }];
+        self.find_object_handles(label_template.to_vec())
     }
 
     /// Clear all cached object handles for this HSM slot.
@@ -1253,6 +1210,77 @@ impl Session {
         Ok(Zeroizing::new(decrypted_data))
     }
 
+    /// Sign data using the specified key and algorithm
+    pub fn sign(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        algorithm: HsmSigningAlgorithm,
+        data: &[u8],
+    ) -> HResult<Vec<u8>> {
+        let mechanism_type = match algorithm {
+            HsmSigningAlgorithm::RsaPkcsV15 => CKM_RSA_PKCS,
+            HsmSigningAlgorithm::Sha1WithRsa => CKM_SHA1_RSA_PKCS,
+            HsmSigningAlgorithm::Sha256WithRsa => CKM_SHA256_RSA_PKCS,
+            HsmSigningAlgorithm::Sha384WithRsa => CKM_SHA384_RSA_PKCS,
+            HsmSigningAlgorithm::Sha512WithRsa => CKM_SHA512_RSA_PKCS,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: mechanism_type,
+            pParameter: std::ptr::null_mut(),
+            ulParameterLen: 0,
+        };
+        self.sign_with_mechanism(key_handle, &mut mechanism, data)
+    }
+
+    fn sign_with_mechanism(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        mechanism: &mut CK_MECHANISM,
+        data: &[u8],
+    ) -> HResult<Vec<u8>> {
+        let mut data = data.to_vec();
+        hsm_call!(
+            self.hsm,
+            "Failed to initialize signing",
+            C_SignInit,
+            self.handle,
+            mechanism,
+            key_handle
+        );
+
+        let mut signature_len: CK_ULONG = 0;
+        hsm_call!(
+            self.hsm,
+            "Failed to get signature length",
+            C_Sign,
+            self.handle,
+            data.as_mut_ptr(),
+            CK_ULONG::try_from(data.len())?,
+            ptr::null_mut(),
+            &raw mut signature_len
+        );
+
+        let expected_len = signature_len;
+        let mut signature = vec![0_u8; usize::try_from(signature_len)?];
+        hsm_call!(
+            self.hsm,
+            "Failed to sign data",
+            C_Sign,
+            self.handle,
+            data.as_mut_ptr(),
+            CK_ULONG::try_from(data.len())?,
+            signature.as_mut_ptr(),
+            &raw mut signature_len
+        );
+
+        if signature_len != expected_len {
+            return Err(HError::Default(format!(
+                "C_Sign: signature length mismatch: expected {expected_len}, got {signature_len}"
+            )));
+        }
+        Ok(signature)
+    }
+
     /// Export a key from the HSM
     pub fn export_key(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<HsmObject>> {
         let mut key_type: CK_KEY_TYPE = CKK_VENDOR_DEFINED;
@@ -1602,6 +1630,246 @@ impl Session {
         Ok(Some(()))
     }
 
+    /// Parse a `CK_DATE` (8-byte ASCII "YYYYMMDD") into a `time::Date`.
+    /// Returns `None` if the date is empty/zeroed.
+    fn parse_ck_date(date: CK_DATE) -> Option<time::Date> {
+        let year_str = std::str::from_utf8(&date.year).ok()?;
+        let month_str = std::str::from_utf8(&date.month).ok()?;
+        let day_str = std::str::from_utf8(&date.day).ok()?;
+        let year: i32 = year_str.trim().parse().ok()?;
+        let month: u8 = month_str.trim().parse().ok()?;
+        let day: u8 = day_str.trim().parse().ok()?;
+        if year == 0 && month == 0 && day == 0 {
+            return None;
+        }
+        let month = time::Month::try_from(month).ok()?;
+        time::Date::from_calendar_date(year, month, day).ok()
+    }
+
+    /// Read `CKA_START_DATE` and `CKA_END_DATE` from a key handle.
+    /// Returns `(start_date, end_date)`. Attributes that are absent or empty
+    /// (zeroed) are returned as `None`.
+    fn get_key_dates(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+    ) -> HResult<(Option<time::Date>, Option<time::Date>)> {
+        let mut start_date = CK_DATE {
+            year: [0; 4],
+            month: [0; 2],
+            day: [0; 2],
+        };
+        let mut end_date = CK_DATE {
+            year: [0; 4],
+            month: [0; 2],
+            day: [0; 2],
+        };
+        let mut template = vec![
+            CK_ATTRIBUTE {
+                type_: CKA_START_DATE,
+                pValue: (&raw mut start_date).cast::<std::ffi::c_void>(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_DATE>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_END_DATE,
+                pValue: (&raw mut end_date).cast::<std::ffi::c_void>(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_DATE>())?,
+            },
+        ];
+        // If the HSM doesn't support these attributes, just return None for both
+        if self
+            .call_get_attributes(key_handle, &mut template)?
+            .is_none()
+        {
+            return Ok((None, None));
+        }
+        // Check if the returned length is 0 (attribute present but empty)
+        let start = if template.first().is_none_or(|t| t.ulValueLen == 0) {
+            None
+        } else {
+            Self::parse_ck_date(start_date)
+        };
+        let end = if template.get(1).is_none_or(|t| t.ulValueLen == 0) {
+            None
+        } else {
+            Self::parse_ck_date(end_date)
+        };
+        Ok((start, end))
+    }
+
+    /// Format a `time::Date` into a `CK_DATE` (8-byte ASCII "YYYYMMDD").
+    fn format_ck_date(date: time::Date) -> CK_DATE {
+        let year = date.year();
+        let month: u8 = date.month().into();
+        let day = date.day();
+        // These format! calls always produce exactly the right number of bytes
+        let mut year_bytes = [b'0'; 4];
+        let mut month_bytes = [b'0'; 2];
+        let mut day_bytes = [b'0'; 2];
+        let year_str = format!("{year:04}");
+        let month_str = format!("{month:02}");
+        let day_str = format!("{day:02}");
+        year_bytes.copy_from_slice(year_str.as_bytes().get(..4).unwrap_or(&[b'0'; 4]));
+        month_bytes.copy_from_slice(month_str.as_bytes().get(..2).unwrap_or(&[b'0'; 2]));
+        day_bytes.copy_from_slice(day_str.as_bytes().get(..2).unwrap_or(&[b'0'; 2]));
+        CK_DATE {
+            year: year_bytes,
+            month: month_bytes,
+            day: day_bytes,
+        }
+    }
+
+    /// Set `CKA_START_DATE` and/or `CKA_END_DATE` on a key object.
+    /// Passing `None` clears the attribute (sets to empty `CK_DATE`).
+    pub fn set_key_dates(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        start_date: Option<time::Date>,
+        end_date: Option<time::Date>,
+    ) -> HResult<()> {
+        let start_ck = start_date.map_or(
+            CK_DATE {
+                year: [0; 4],
+                month: [0; 2],
+                day: [0; 2],
+            },
+            Self::format_ck_date,
+        );
+        let end_ck = end_date.map_or(
+            CK_DATE {
+                year: [0; 4],
+                month: [0; 2],
+                day: [0; 2],
+            },
+            Self::format_ck_date,
+        );
+
+        let mut template = vec![
+            CK_ATTRIBUTE {
+                type_: CKA_START_DATE,
+                pValue: ptr::addr_of!(start_ck).cast_mut().cast(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_DATE>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_END_DATE,
+                pValue: ptr::addr_of!(end_ck).cast_mut().cast(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_DATE>())?,
+            },
+        ];
+
+        #[expect(unsafe_code)]
+        let rv = match self.hsm.C_SetAttributeValue {
+            Some(func) => unsafe {
+                func(
+                    self.handle,
+                    key_handle,
+                    template.as_mut_ptr(),
+                    CK_ULONG::try_from(template.len())?,
+                )
+            },
+            None => {
+                return Err(HError::Default(
+                    "C_SetAttributeValue not available on library".to_owned(),
+                ));
+            }
+        };
+        if rv != CKR_OK {
+            return Err(HError::Default(format!(
+                "Failed to set key dates for key handle: {key_handle}. Return code: {rv}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Parse keyset metadata from a `CKA_LABEL` value.
+    ///
+    /// Format: `rotate_name::generation::key_id[@latest]`
+    /// The optional `@latest` suffix is accepted for backward compatibility with
+    /// existing HSM keys (older format used `::latest`) but is not used for
+    /// determining the latest generation; callers compare `rotate_generation` values.
+    ///
+    /// Returns `(rotate_name, rotate_generation)`.
+    /// Returns `(None, None)` if the label does not match the format
+    /// (e.g. plain keys whose label is just an identifier).
+    pub(crate) fn parse_label_metadata(label: &str) -> (Option<String>, Option<i32>) {
+        // Format: "rotate_name::generation::key_id[@latest]"
+        //
+        // `rotate_name` may itself contain "::" — for HSM-resident keys the convention is
+        // rotate_name = "hsm::<model>::<slot>::<key_id>" (the full base UID, including the
+        // model segment), which is unique across slots.  Split from the RIGHT so the
+        // variable-length rotate_name is always the residual left segment, regardless of
+        // how many "::" it contains.
+        //
+        // rsplitn(3, "::") yields (from right to left):
+        //   index 0 → key_id[@latest]
+        //   index 1 → generation (must parse as i32)
+        //   index 2 → rotate_name  (may contain "::")
+        let mut rparts = label.rsplitn(3, "::");
+        let Some(_key_id) = rparts.next() else {
+            return (None, None);
+        };
+        let Some(gen_str) = rparts.next() else {
+            return (None, None);
+        };
+        let Some(rotate_name) = rparts.next() else {
+            return (None, None);
+        };
+        let Ok(generation) = gen_str.parse::<i32>() else {
+            return (None, None);
+        };
+        (Some(rotate_name.to_owned()), Some(generation))
+    }
+
+    /// Build the `CKA_LABEL` value for a keyset key.
+    ///
+    /// Format: `rotate_name::generation::key_id` (retired) or
+    ///         `rotate_name::generation::key_id@latest` (current latest).
+    // Used by the HSM ReKey flow (Phase 3).
+    #[allow(dead_code)]
+    pub(crate) fn build_keyset_label(
+        rotate_name: &str,
+        generation: i32,
+        key_id: &str,
+        latest: bool,
+    ) -> String {
+        if latest {
+            format!("{rotate_name}::{generation}::{key_id}@latest")
+        } else {
+            format!("{rotate_name}::{generation}::{key_id}")
+        }
+    }
+
+    /// Set `CKA_LABEL` on a key object via `C_SetAttributeValue`.
+    pub fn set_label(&self, key_handle: CK_OBJECT_HANDLE, label: &str) -> HResult<()> {
+        let label_bytes = label.as_bytes();
+        let mut template = vec![CK_ATTRIBUTE {
+            type_: CKA_LABEL,
+            pValue: label_bytes.as_ptr().cast_mut().cast(),
+            ulValueLen: CK_ULONG::try_from(label_bytes.len())?,
+        }];
+        #[expect(unsafe_code)]
+        let rv = match self.hsm.C_SetAttributeValue {
+            Some(func) => unsafe {
+                func(
+                    self.handle,
+                    key_handle,
+                    template.as_mut_ptr(),
+                    CK_ULONG::try_from(template.len())?,
+                )
+            },
+            None => {
+                return Err(HError::Default(
+                    "C_SetAttributeValue not available on library".to_owned(),
+                ));
+            }
+        };
+        if rv != CKR_OK {
+            return Err(HError::Default(format!(
+                "Failed to set label for key handle: {key_handle}. Return code: {rv}"
+            )));
+        }
+        Ok(())
+    }
+
     /// Get the metadata for a key
     pub fn get_key_metadata(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<KeyMetadata>> {
         let Some(key_type) = self.get_key_type(key_handle)? else {
@@ -1658,6 +1926,8 @@ impl Session {
                         HError::Default(format!("Failed to convert label to string: {e}"))
                     })?
                 };
+                let (start_date, end_date) = self.get_key_dates(key_handle).unwrap_or((None, None));
+                let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
                 Ok(Some(KeyMetadata {
                     key_type,
                     key_length_in_bits: usize::try_from(key_size).map_err(|e| {
@@ -1665,6 +1935,10 @@ impl Session {
                     })? * 8,
                     sensitive: sensitive == CK_TRUE,
                     id: label,
+                    start_date,
+                    end_date,
+                    rotate_name,
+                    rotate_generation,
                 }))
             }
             KeyType::RsaPrivateKey | KeyType::RsaPublicKey => {
@@ -1728,11 +2002,17 @@ impl Session {
                     label = label.trim().to_owned().add("_pk");
                 }
                 let sensitive = sensitive == CK_TRUE;
+                let (start_date, end_date) = self.get_key_dates(key_handle).unwrap_or((None, None));
+                let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
                 Ok(Some(KeyMetadata {
                     key_type,
                     key_length_in_bits,
                     sensitive,
                     id: label,
+                    start_date,
+                    end_date,
+                    rotate_name,
+                    rotate_generation,
                 }))
             }
         }
@@ -1789,36 +2069,54 @@ impl Session {
     /// * `object_handle` - The object handle
     /// # Returns
     /// * `Result<Option<Vec<u8>>>` - The key object id if the object exists
+    ///
+    /// Reads `CKA_ID` first (set by Cosmian KMS on every key it creates); if absent or
+    /// empty, falls back to `CKA_LABEL` (for externally provisioned keys).
+    /// For RSA public keys read via `CKA_LABEL`, the `_pk` suffix is appended if missing.
     pub fn get_object_id(&self, object_handle: CK_OBJECT_HANDLE) -> HResult<Option<Vec<u8>>> {
-        let mut template = [CK_ATTRIBUTE {
-            type_: CKA_LABEL, // Must be CKA_LABEL to match get_object_handle
-            pValue: ptr::null_mut(),
-            ulValueLen: 0,
-        }];
-        if self
-            .call_get_attributes(object_handle, &mut template)?
-            .is_none()
-        {
-            return Ok(None);
+        // Try CKA_ID first, then CKA_LABEL
+        for attr_type in [CKA_ID, CKA_LABEL] {
+            let mut template = [CK_ATTRIBUTE {
+                type_: attr_type,
+                pValue: ptr::null_mut(),
+                ulValueLen: 0,
+            }];
+            if self
+                .call_get_attributes(object_handle, &mut template)?
+                .is_none()
+            {
+                continue;
+            }
+            let id_len = template[0].ulValueLen;
+            if id_len == 0 {
+                continue;
+            }
+            let mut id: Vec<u8> = vec![0_u8; usize::try_from(id_len)?];
+            let mut template = [CK_ATTRIBUTE {
+                type_: attr_type,
+                pValue: id.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulValueLen: id_len,
+            }];
+            if self
+                .call_get_attributes(object_handle, &mut template)?
+                .is_none()
+            {
+                continue;
+            }
+            if id.is_empty() {
+                continue;
+            }
+            // When read via CKA_LABEL, append _pk for RSA public keys lacking the suffix.
+            // (When read via CKA_ID, KMS already stored the _pk suffix in the id.)
+            if attr_type == CKA_LABEL
+                && self.get_key_type(object_handle)? == Some(KeyType::RsaPublicKey)
+                && !id.ends_with(b"_pk")
+            {
+                id.extend_from_slice(b"_pk");
+            }
+            return Ok(Some(id));
         }
-        let id_len = template[0].ulValueLen;
-        let mut id: Vec<u8> = vec![0_u8; usize::try_from(id_len)?];
-        let mut template = [CK_ATTRIBUTE {
-            type_: CKA_LABEL,
-            pValue: id.as_mut_ptr().cast::<std::ffi::c_void>(),
-            ulValueLen: id_len,
-        }];
-        if self
-            .call_get_attributes(object_handle, &mut template)?
-            .is_none()
-        {
-            return Ok(None);
-        }
-        if self.get_key_type(object_handle)? == Some(KeyType::RsaPublicKey) && !id.ends_with(b"_pk")
-        {
-            id.extend_from_slice(b"_pk");
-        }
-        Ok(Some(id))
+        Ok(None)
     }
 }
 

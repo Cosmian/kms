@@ -28,13 +28,10 @@ pub struct SocketServerParams<'a> {
     pub port: u16,
     /// Server certificate and private key (PKCS#12 format) - non-fips
     #[cfg(feature = "non-fips")]
-    pub p12: &'a openssl::pkcs12::ParsedPkcs12_2,
+    pub p12: Option<&'a openssl::pkcs12::ParsedPkcs12_2>,
     /// Server certificate and private key (PEM) - FIPS mode
-    #[cfg(not(feature = "non-fips"))]
     pub server_cert_pem: &'a [u8],
-    #[cfg(not(feature = "non-fips"))]
     pub server_key_pem: &'a [u8],
-    #[cfg(not(feature = "non-fips"))]
     pub server_chain_pem: Option<&'a [u8]>,
     /// Client CA certificate (PEM format, X509)
     pub client_ca_cert_pem: &'a [u8],
@@ -56,28 +53,17 @@ impl<'a> TryFrom<&'a ServerParams> for SocketServerParams<'a> {
                 "The Socket server cannot be started: Client CA certificate is not set".to_owned(),
             ));
         };
-        #[cfg(feature = "non-fips")]
-        {
-            Ok(Self {
-                host: params.socket_server_hostname.clone(),
-                port: params.socket_server_port,
-                p12: &tls_params.p12,
-                client_ca_cert_pem,
-                cipher_suites: tls_params.cipher_suites.as_ref(),
-            })
-        }
-        #[cfg(not(feature = "non-fips"))]
-        {
-            Ok(Self {
-                host: params.socket_server_hostname.clone(),
-                port: params.socket_server_port,
-                server_cert_pem: &tls_params.server_cert_pem,
-                server_key_pem: &tls_params.server_key_pem,
-                server_chain_pem: tls_params.server_chain_pem.as_deref(),
-                client_ca_cert_pem,
-                cipher_suites: tls_params.cipher_suites.as_ref(),
-            })
-        }
+        Ok(Self {
+            host: params.socket_server_hostname.clone(),
+            port: params.socket_server_port,
+            #[cfg(feature = "non-fips")]
+            p12: tls_params.p12.as_ref(),
+            client_ca_cert_pem,
+            cipher_suites: tls_params.cipher_suites.as_ref(),
+            server_cert_pem: &tls_params.server_cert_pem,
+            server_key_pem: &tls_params.server_key_pem,
+            server_chain_pem: tls_params.server_chain_pem.as_deref(),
+        })
     }
 }
 
@@ -139,6 +125,7 @@ impl SocketServer {
             &handler,
             command_receiver,
             None,
+            None,
         )?;
         Ok(())
     }
@@ -154,6 +141,10 @@ impl SocketServer {
     /// * `request_handler`: A function that handles incoming requests.
     /// * It takes the username and request bytes as input and returns the response bytes.
     /// * The function must be `Send`, `Sync`, and `'static` to be used in a thread.
+    /// * `pre_bound_listener`: An optional pre-bound `TcpListener` for the socket server's
+    ///   `host:port`. When provided, it is used directly instead of re-binding by address,
+    ///   eliminating the TOCTOU race that a probe-then-release port allocation would have
+    ///   under highly parallel test execution.
     ///
     /// # Errors
     /// - If the server fails to bind to the specified host and port
@@ -163,6 +154,7 @@ impl SocketServer {
         kms_server: Arc<KMS>,
         request_handler: F,
         command_receiver: mpsc::Receiver<KResult<()>>,
+        pre_bound_listener: Option<TcpListener>,
     ) -> KResult<JoinHandle<()>>
     where
         F: Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
@@ -181,6 +173,7 @@ impl SocketServer {
                 &handler,
                 command_receiver,
                 Some(tx),
+                pre_bound_listener,
             );
         });
         trace!("Waiting for test socket server to start...");
@@ -199,11 +192,15 @@ impl SocketServer {
         handler: &Arc<F>,
         command_receiver: mpsc::Receiver<KResult<()>>,
         start_notifier: Option<mpsc::Sender<KResult<()>>>,
+        pre_bound_listener: Option<TcpListener>,
     ) -> Result<(), KmsError>
     where
         F: Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
     {
-        let listener = match TcpListener::bind(addr).context(&format!("Failed to bind to {addr}")) {
+        // Use the pre-bound listener when given (eliminates the TOCTOU race between
+        // probing a free port and re-binding it later); otherwise bind fresh by address.
+        let bind_result = pre_bound_listener.map_or_else(|| TcpListener::bind(addr), Ok);
+        let listener = match bind_result.context(&format!("Failed to bind to {addr}")) {
             Ok(listener) => {
                 info!("Socket server listening on {}", addr);
                 if let Some(notifier) = start_notifier {
@@ -403,21 +400,19 @@ fn client_username(tls_stream: &SslStream<&mut TcpStream>) -> Result<String, Kms
 
     // The certificate is already an X509 object with OpenSSL
     let x509 = client_certificate;
-    Ok(x509
-        .subject_name()
+    x509.subject_name()
         .entries_by_nid(openssl::nid::Nid::COMMONNAME)
         .next()
         .ok_or_else(|| {
             KmsError::Certificate("socket server: failed to get common name".to_owned())
         })?
         .data()
-        .as_utf8()
+        .to_string()
         .map_err(|_e| {
             KmsError::Certificate(
                 "socket server: failed to convert common name to UTF-8".to_owned(),
             )
-        })?
-        .to_string())
+        })
 }
 
 // Client Certificate Authentication
@@ -426,25 +421,14 @@ pub(crate) fn create_openssl_acceptor(server_config: &SocketServerParams) -> KRe
     trace!("Creating OpenSSL SslAcceptor for socket server");
 
     // Use the common TLS configuration
-    let tls_config = {
+    let tls_config = TlsConfig {
         #[cfg(feature = "non-fips")]
-        {
-            TlsConfig {
-                cipher_suites: server_config.cipher_suites.map(std::string::String::as_str),
-                p12: server_config.p12,
-                client_ca_cert_pem: Some(server_config.client_ca_cert_pem),
-            }
-        }
-        #[cfg(not(feature = "non-fips"))]
-        {
-            TlsConfig {
-                cipher_suites: server_config.cipher_suites.map(std::string::String::as_str),
-                server_cert_pem: server_config.server_cert_pem,
-                server_key_pem: server_config.server_key_pem,
-                server_chain_pem: server_config.server_chain_pem,
-                client_ca_cert_pem: Some(server_config.client_ca_cert_pem),
-            }
-        }
+        p12: server_config.p12,
+        cipher_suites: server_config.cipher_suites.map(std::string::String::as_str),
+        server_cert_pem: server_config.server_cert_pem,
+        server_key_pem: server_config.server_key_pem,
+        server_chain_pem: server_config.server_chain_pem,
+        client_ca_cert_pem: Some(server_config.client_ca_cert_pem),
     };
 
     let mut builder = create_base_openssl_acceptor(&tls_config, "socket server")?;
@@ -455,6 +439,14 @@ pub(crate) fn create_openssl_acceptor(server_config: &SocketServerParams) -> KRe
         server_config.client_ca_cert_pem,
         "socket server",
     )?;
+
+    // OpenSSL requires a session ID context when both client certificate verification
+    // and TLS session caching are enabled (the default). Without it, session
+    // resumption attempts fail with ssl_get_prev_session:session id context
+    // uninitialized (error:0A000115).
+    builder
+        .set_session_id_context(b"cosmian_kms_socket")
+        .context("socket server: failed to set TLS session ID context")?;
 
     Ok(builder.build())
 }

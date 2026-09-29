@@ -25,6 +25,7 @@ use crate::{
 
 /// Build a `CreateKeyPairRequest` for a RSA key pair.
 pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    vendor_id: &str,
     private_key_id: Option<UniqueIdentifier>,
     tags: T,
     cryptographic_length: usize,
@@ -55,11 +56,11 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         ..Attributes::default()
     };
     if let Some(wrap_key_id) = wrapping_key_id {
-        common_attributes.set_wrapping_key_id(wrap_key_id);
+        common_attributes.set_wrapping_key_id(vendor_id, wrap_key_id);
     }
 
     // Add the tags.
-    common_attributes.set_tags(tags)?;
+    common_attributes.set_tags(vendor_id, tags)?;
 
     // Differentiating private key and public key attributes to differentiate
     // public key and private key usage masks on key creation.
@@ -73,6 +74,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         object_type: Some(ObjectType::PrivateKey),
         unique_identifier: private_key_id,
         sensitive: sensitive.then_some(true),
+        activation_date: Some(time_normalize()?),
         ..Attributes::default()
     };
 
@@ -84,6 +86,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         cryptographic_usage_mask: Some(public_key_mask),
         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
+        activation_date: Some(time_normalize()?),
         ..Attributes::default()
     };
 
@@ -173,6 +176,7 @@ const fn build_algorithm_from_curve(curve: RecommendedCurve) -> CryptographicAlg
 
 /// Build a `CreateKeyPairRequest` for an elliptic curve
 pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    vendor_id: &str,
     private_key_id: Option<UniqueIdentifier>,
     tags: T,
     recommended_curve: RecommendedCurve,
@@ -197,11 +201,11 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         ..Attributes::default()
     };
     if let Some(wrap_key_id) = wrapping_key_id {
-        common_attributes.set_wrapping_key_id(wrap_key_id);
+        common_attributes.set_wrapping_key_id(vendor_id, wrap_key_id);
     }
 
     // Add the tags.
-    common_attributes.set_tags(tags)?;
+    common_attributes.set_tags(vendor_id, tags)?;
 
     let private_key_attributes = Attributes {
         cryptographic_algorithm: Some(algorithm),
@@ -215,7 +219,6 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         unique_identifier: private_key_id,
         sensitive: sensitive.then_some(true),
         activation_date: Some(time_normalize()?),
-
         ..Attributes::default()
     };
 
@@ -231,7 +234,48 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::TransparentECPublicKey),
         object_type: Some(ObjectType::PublicKey),
         activation_date: Some(time_normalize()?),
+        ..Attributes::default()
+    };
 
+    Ok(CreateKeyPair {
+        common_attributes: Some(common_attributes),
+        private_key_attributes: Some(private_key_attributes),
+        public_key_attributes: Some(public_key_attributes),
+        ..CreateKeyPair::default()
+    })
+}
+
+/// Build a `CreateKeyPair` request for a post-quantum algorithm (ML-KEM or ML-DSA).
+pub fn create_pqc_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    vendor_id: &str,
+    tags: T,
+    algorithm: CryptographicAlgorithm,
+    sensitive: bool,
+) -> Result<CreateKeyPair, KmipError> {
+    let mut common_attributes = Attributes {
+        cryptographic_algorithm: Some(algorithm),
+        cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
+        key_format_type: Some(KeyFormatType::PKCS8),
+        object_type: Some(ObjectType::PrivateKey),
+        activation_date: Some(time_normalize()?),
+        ..Attributes::default()
+    };
+    common_attributes.set_tags(vendor_id, tags)?;
+
+    let private_key_attributes = Attributes {
+        cryptographic_algorithm: Some(algorithm),
+        key_format_type: Some(KeyFormatType::PKCS8),
+        object_type: Some(ObjectType::PrivateKey),
+        sensitive: sensitive.then_some(true),
+        activation_date: Some(time_normalize()?),
+        ..Attributes::default()
+    };
+
+    let public_key_attributes = Attributes {
+        cryptographic_algorithm: Some(algorithm),
+        key_format_type: Some(KeyFormatType::PKCS8),
+        object_type: Some(ObjectType::PublicKey),
+        activation_date: Some(time_normalize()?),
         ..Attributes::default()
     };
 

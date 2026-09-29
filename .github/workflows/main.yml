@@ -1,21 +1,19 @@
 ---
 name: CI
+run-name: CI (${{ github.head_ref || github.ref_name }})
 
 on:
   push:
-    branches:
-      - '**'
     tags:
       - '**'
   workflow_dispatch:
+  pull_request:
+  schedule:
+    - cron: 0 0 * * * # Daily at midnight
 
 jobs:
-  # Run tests in release mode for tags and scheduled runs
   main:
-    if: github.repository == 'Cosmian/kms'
     secrets: inherit
     uses: ./.github/workflows/main_base.yml
     with:
-      toolchain: 1.90.0
-      # Use release for tags and scheduled runs
-      debug_or_release: ${{ (startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule') && 'release' || 'debug' }}
+      toolchain: 1.97.0

@@ -1,0 +1,554 @@
+#!/usr/bin/env bash
+# Generate standard SBOM using sbomnix tools
+# https://github.com/tiiuae/sbomnix
+set -euo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
+
+# Source shared helpers to pick up PIN_URL (pinned nixpkgs tarball URL).
+# This avoids relying on NIX_PATH being set in the CI environment.
+# shellcheck source=.mise/scripts/common.sh
+source "$SCRIPT_DIR/../common.sh"
+
+# sbomnix version to use — fetched directly from GitHub via Nix flakes so it
+# is independent of the global nixpkgs pin.  v1.8.0 is the first version that
+# ships both --impure and --include-vulns for sbomnix.
+SBOMNIX_VERSION="v1.8.0"
+
+# Nix experimental features needed for `nix run` (flake-based tool invocation)
+export NIX_CONFIG="experimental-features = nix-command flakes"
+
+# Parse arguments
+# Target: what to generate SBOM for. Supported: 'openssl_3_1_2', 'openssl_3_6_2', 'server', or 'ckms'.
+# - openssl_3_1_2: scans the OpenSSL 3.1.2 (FIPS) derivation from nix/openssl.nix
+# - openssl_3_6_2: scans the OpenSSL 3.6.2 (non-FIPS) derivation from nix/openssl.nix
+# - server:        scans the KMS server derivation
+# - ckms:          scans the ckms CLI binary derivation
+TARGET="openssl_3_1_2"
+# Variant and link are only relevant for 'server' target
+VARIANT="fips" # fips | non-fips
+LINK="static"  # static | dynamic (static by default)
+OUTPUT_DIR="$REPO_ROOT/sbom"
+
+# Retrieve mode: download pre-built SBOMs from package.cosmian.com instead of
+# generating them locally via sbomnix.  Set via --retrieve + --branch.
+RETRIEVE=false
+BRANCH=""
+
+usage() {
+  cat <<EOF
+Generate SBOM (Software Bill of Materials) using sbomnix standard tools
+
+Usage: $0 [OPTIONS]
+
+Options:
+  --target TARGET      One of: openssl_3_1_2 | openssl_3_6_2 | server | ckms (default: openssl_3_1_2)
+  --variant VARIANT    One of: fips | non-fips (server/ckms target only; default: fips)
+  --link LINK          One of: static | dynamic (server/ckms target only; default: static)
+  --output DIR         Output directory for SBOM files (default:
+                       - openssl_3_1_2: ./sbom/openssl_3_1_2
+                       - openssl_3_6_2: ./sbom/openssl_3_6_2
+                       - server:        ./sbom/server/<variant>/<link>
+                       - ckms:          ./sbom/ckms/<variant>/<link>)
+  --retrieve           Download pre-built SBOMs from package.cosmian.com
+                       instead of generating them locally (requires --branch)
+  --branch BRANCH      Remote branch/tag path used by the packaging CI
+                       (e.g. last_build/release/5.24.0).  Used with --retrieve.
+  -h, --help           Show this help message
+
+Examples:
+  $0                                           # Generate SBOM for OpenSSL 3.1.2 (default)
+  $0 --target openssl_3_1_2                    # Explicitly target OpenSSL 3.1.2 (FIPS)
+  $0 --target openssl_3_6_2                    # Target OpenSSL 3.6.2 (non-FIPS)
+  $0 --target server                           # Target KMS server (fips, static OpenSSL)
+  $0 --target server --variant non-fips        # Target KMS server (non-fips)
+  $0 --target server --link dynamic            # Target KMS server (dynamic link, if available)
+  $0 --target ckms                             # Target ckms CLI binary (fips, static OpenSSL)
+  $0 --target ckms --variant non-fips          # Target ckms CLI binary (non-fips)
+  $0 --output /tmp/sbom                        # Use custom output directory
+  $0 --retrieve --branch last_build/release/5.24.0  # Download SBOMs from package.cosmian.com
+
+Generated files:
+  - bom.cdx.json               CycloneDX SBOM (industry standard)
+  - bom.spdx.json              SPDX SBOM (ISO/IEC 5962:2021)
+  - sbom.csv                   CSV format for spreadsheet analysis
+  - graph.png                  Dependency graph visualization
+  - meta.json                  Build metadata
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --target)
+      TARGET="${2:-}"
+      shift 2
+      ;;
+    --variant)
+      VARIANT="${2:-}"
+      shift 2
+      ;;
+    --link)
+      LINK="${2:-}"
+      shift 2
+      ;;
+    --output)
+      OUTPUT_DIR="${2:-}"
+      shift 2
+      ;;
+    --retrieve)
+      RETRIEVE=true
+      shift
+      ;;
+    --branch)
+      BRANCH="${2:-}"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Error: Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+# ── Retrieve mode ─────────────────────────────────────────────────────────────
+# When --retrieve is set, download all pre-built SBOM artifacts from
+# package.cosmian.com for every target/variant/link combination produced by the
+# packaging CI matrix (features: [fips, non-fips], link: [static, dynamic]).
+if [[ "$RETRIEVE" == true ]]; then
+  if [[ -z "$BRANCH" ]]; then
+    echo "Error: --retrieve requires --branch <branch>" >&2
+    exit 1
+  fi
+
+  BASE_URL="https://package.cosmian.com/kms/${BRANCH}/sbom"
+  # Files the packaging CI uploads for each target/variant/link directory.
+  SBOM_FILES=(bom.cdx.json bom.spdx.json sbom.csv meta.json)
+  # Optional files — missing ones are silently skipped.
+  SBOM_FILES_OPTIONAL=(vulns.csv graph.png)
+
+  errors=0
+  for target in server ckms; do
+    for variant in fips non-fips; do
+      for link in static dynamic; do
+        remote_dir="${BASE_URL}/${target}/${variant}/${link}"
+        local_dir="${REPO_ROOT}/sbom/${target}/${variant}/${link}"
+        mkdir -p "$local_dir"
+
+        for file in "${SBOM_FILES[@]}"; do
+          url="${remote_dir}/${file}"
+          dest="${local_dir}/${file}"
+          echo "  Downloading ${target}/${variant}/${link}/${file}…"
+          if ! curl --silent --show-error --fail --location \
+            --retry 3 --retry-delay 5 \
+            -o "$dest" "$url"; then
+            echo "Error: failed to download ${url}" >&2
+            errors=$((errors + 1))
+          fi
+        done
+
+        for file in "${SBOM_FILES_OPTIONAL[@]}"; do
+          url="${remote_dir}/${file}"
+          dest="${local_dir}/${file}"
+          # --fail is intentionally omitted: 404 is acceptable for optional files.
+          if curl --silent --location \
+            --retry 3 --retry-delay 5 \
+            -o "$dest" "$url" 2>/dev/null; then
+            # Remove empty files produced when the server returns a non-200 without --fail.
+            [[ -s "$dest" ]] || rm -f "$dest"
+          fi
+        done
+      done
+    done
+  done
+
+  if [[ "$errors" -gt 0 ]]; then
+    echo "Error: ${errors} SBOM file(s) could not be retrieved." >&2
+    exit 1
+  fi
+
+  echo ""
+  echo "All SBOMs retrieved from ${BASE_URL}"
+  exit 0
+fi
+
+# Determine the derivation to analyze based on target
+case "$TARGET" in
+  openssl_3_1_2)
+    DERIVATION="openssl312"
+    NIX_RESULT="$REPO_ROOT/result-openssl-312"
+    ;;
+  openssl_3_6_2)
+    DERIVATION="openssl36-static"
+    NIX_RESULT="$REPO_ROOT/result-openssl-360"
+    ;;
+  server)
+    # Validate variant/link values
+    case "$VARIANT" in
+      fips | non-fips) : ;;
+      *)
+        echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+        exit 1
+        ;;
+    esac
+    case "$LINK" in
+      static | dynamic) : ;;
+      *)
+        echo "Error: --link must be 'static' or 'dynamic'" >&2
+        exit 1
+        ;;
+    esac
+
+    # Scan the exact server derivation (build chain) to verify toolchain CVEs
+    if [ "$LINK" = "dynamic" ]; then
+      DERIVATION="kms-server-${VARIANT}-dynamic-openssl"
+      NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-dynamic-openssl"
+    else
+      DERIVATION="kms-server-${VARIANT}-static-openssl"
+      NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-static-openssl"
+    fi
+    ;;
+  ckms)
+    # Validate variant/link values
+    case "$VARIANT" in
+      fips | non-fips) : ;;
+      *)
+        echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+        exit 1
+        ;;
+    esac
+    case "$LINK" in
+      static | dynamic) : ;;
+      *)
+        echo "Error: --link must be 'static' or 'dynamic'" >&2
+        exit 1
+        ;;
+    esac
+
+    # Scan the CLI binary derivation
+    if [ "$LINK" = "dynamic" ]; then
+      DERIVATION="kms-cli-${VARIANT}-dynamic-openssl"
+      NIX_RESULT="$REPO_ROOT/result-cli-${VARIANT}-dynamic-openssl"
+    else
+      DERIVATION="kms-cli-${VARIANT}-static-openssl"
+      NIX_RESULT="$REPO_ROOT/result-cli-${VARIANT}-static-openssl"
+    fi
+    ;;
+  *)
+    echo "Error: Unknown --target '$TARGET'. Use 'openssl_3_1_2', 'openssl_3_6_2', 'server', or 'ckms'." >&2
+    exit 1
+    ;;
+esac
+
+# Adjust default output directory to include target/variant/link structure
+if [ "$OUTPUT_DIR" = "$REPO_ROOT/sbom" ]; then
+  case "$TARGET" in
+    server)
+      OUTPUT_DIR="$REPO_ROOT/sbom/server/$VARIANT/$LINK"
+      ;;
+    ckms)
+      OUTPUT_DIR="$REPO_ROOT/sbom/ckms/$VARIANT/$LINK"
+      ;;
+    openssl_3_1_2)
+      OUTPUT_DIR="$REPO_ROOT/sbom/openssl_3_1_2"
+      ;;
+    openssl_3_6_2)
+      OUTPUT_DIR="$REPO_ROOT/sbom/openssl_3_6_2"
+      ;;
+  esac
+fi
+
+# Create output directory (after adjusting default path)
+mkdir -p "$OUTPUT_DIR"
+
+# sbomnix may emit default output files (sbom.csv/sbom.cdx.json/sbom.spdx.json)
+# into the current working directory, even when explicit output paths are
+# provided. To ensure this script only updates the requested OUTPUT_DIR,
+# run sbomnix/vulnxscan from an isolated temporary work directory.
+SBOM_WORKDIR="$(mktemp -d -t cosmian-kms-sbom.XXXXXX)"
+cleanup() {
+  rm -rf "$SBOM_WORKDIR" || true
+}
+trap cleanup EXIT
+
+# Keep the output directory clean: remove previously generated derived
+# artifacts (older runs may have created extra post-processed reports).
+rm -f \
+  "$OUTPUT_DIR/sbom.runtime.csv" \
+  "$OUTPUT_DIR/vulns.runtime.csv" \
+  "$OUTPUT_DIR/vulns.pc.deb-ubu-rocky.csv" \
+  "$OUTPUT_DIR/vulns.runtime.pc.deb-ubu-rocky.csv" \
+  "$OUTPUT_DIR/cves.pc.deb-ubu-rocky.txt" \
+  "$OUTPUT_DIR/cves.runtime.pc.deb-ubu-rocky.txt" ||
+  true
+
+echo "========================================="
+echo "SBOM Generation"
+echo "========================================="
+echo "Target:   $TARGET"
+echo "Variant:  $VARIANT"
+echo "Link:     $LINK"
+echo "Output:   $OUTPUT_DIR"
+echo "========================================="
+echo ""
+
+cd "$REPO_ROOT"
+
+# Helper: run a tool from the sbomnix flake at the pinned version.
+# Falls back to the tool already in PATH (e.g. in a Nix devshell).
+_run_sbomnix_tool() {
+  local tool="$1"
+  shift
+  if command -v "$tool" >/dev/null 2>&1; then
+    "$tool" "$@"
+  else
+    # Fetch sbomnix exactly at SBOMNIX_VERSION from its own flake on GitHub.
+    # --impure is required so that sbomnix can call nix evaluation at runtime.
+    nix run --impure "github:tiiuae/sbomnix/${SBOMNIX_VERSION}#${tool}" -- "$@"
+  fi
+}
+
+run_sbomnix() { _run_sbomnix_tool sbomnix "$@"; }
+run_vulnxscan() { _run_sbomnix_tool vulnxscan "$@"; }
+run_nixgraph() { _run_sbomnix_tool nixgraph "$@"; }
+
+# Check for build output
+echo "Checking build output..."
+if [ ! -e "$NIX_RESULT" ] || [ ! -e "$(readlink -f "$NIX_RESULT" 2>/dev/null || echo "/nonexistent")" ]; then
+  echo "Build output not found or garbage collected, rebuilding..."
+  nix-build "$REPO_ROOT/default.nix" -A "$DERIVATION" -o "$(basename "$NIX_RESULT")"
+  echo "Build complete: $NIX_RESULT"
+else
+  echo "Using existing build: $NIX_RESULT -> $(readlink -f "$NIX_RESULT")"
+fi
+echo ""
+
+# Generate CycloneDX SBOM (JSON format - industry standard)
+# --exclude-meta skips the nixpkgs metadata enrichment step entirely (no INFO
+# warnings about missing nixpkgs metadata for store-path targets) while keeping
+# heuristic CPE matching.  Full CPE coverage for cargo/npm components is handled
+# by enrich_cpe.py (step 2 of the post-processing pipeline below).
+echo "Generating CycloneDX SBOM..."
+(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --exclude-meta --include-vulns --cdx="$OUTPUT_DIR/bom.cdx.json")
+echo "  ✓ bom.cdx.json"
+echo ""
+
+# Generate SPDX SBOM (JSON format - ISO standard)
+echo "Generating SPDX SBOM..."
+(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --exclude-meta --include-vulns --spdx="$OUTPUT_DIR/bom.spdx.json")
+echo "  ✓ bom.spdx.json"
+echo ""
+
+# Generate CSV format
+echo "Generating CSV report..."
+(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --exclude-meta --include-vulns --csv="$OUTPUT_DIR/sbom.csv")
+echo "  ✓ sbom.csv"
+echo ""
+
+# Run vulnerability scan
+echo "Running vulnerability scan..."
+VULNXSCAN_LOG="$SBOM_WORKDIR/vulnxscan.log"
+# vulnxscan writes a large console report to stderr. Keep output quiet on success,
+# but show the log if the scan fails.
+if ! (cd "$SBOM_WORKDIR" && run_vulnxscan "$NIX_RESULT" --out "$OUTPUT_DIR/vulns.csv") \
+  >/dev/null 2>"$VULNXSCAN_LOG"; then
+  echo "Error: vulnerability scan failed" >&2
+  if [ -s "$VULNXSCAN_LOG" ]; then
+    echo "--- vulnxscan log ---" >&2
+    cat "$VULNXSCAN_LOG" >&2
+    echo "---------------------" >&2
+  fi
+  exit 1
+fi
+if [ -f "$OUTPUT_DIR/vulns.csv" ] && [ -s "$OUTPUT_DIR/vulns.csv" ]; then
+  echo "  ✓ vulns.csv"
+else
+  echo "  ⚠ Vulnerability scan produced no results"
+fi
+echo ""
+
+# Generate dependency graph
+echo "Generating dependency graph..."
+# Save current directory and change to output dir
+pushd "$OUTPUT_DIR" >/dev/null
+if run_nixgraph --depth 30 "$NIX_RESULT" 2>&1 | grep -E "INFO|Wrote" || true; then
+  :
+fi
+popd >/dev/null
+
+if [ -f "$OUTPUT_DIR/graph.png" ]; then
+  echo "  ✓ graph.png"
+else
+  echo "  ⚠ Graph generation failed"
+fi
+echo ""
+
+# Generate build metadata
+echo "Generating metadata..."
+
+OPENSSL_NOTE=""
+if [ "$TARGET" = "server" ] || [ "$TARGET" = "ckms" ]; then
+  if [ "$LINK" = "static" ]; then
+    OPENSSL_NOTE="OpenSSL is statically linked in the binary"
+  else
+    OPENSSL_NOTE="OpenSSL is dynamically linked in the binary"
+  fi
+else
+  OPENSSL_NOTE="SBOM targets the OpenSSL derivation itself"
+fi
+
+cat >"$OUTPUT_DIR/meta.json" <<EOF
+{
+  "spec_version": "1.0.0",
+  "build": {
+    "variant": "$VARIANT",
+    "derivation": "$DERIVATION",
+    "output_path": "$(readlink -f "$NIX_RESULT")",
+    "sbomnix_target": "$(readlink -f "$NIX_RESULT")",
+    "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+    "generator": {
+      "tool": "sbomnix",
+      "version": "${SBOMNIX_VERSION}"
+    }
+  },
+  "component_count": $(wc -l <"$OUTPUT_DIR/sbom.csv" 2>/dev/null | awk '{print $1-1}' || echo 0),
+  "vulnerability_count": $(wc -l <"$OUTPUT_DIR/vulns.csv" 2>/dev/null | awk '{print $1-1}' || echo 0),
+  "notes": [
+    "$OPENSSL_NOTE",
+    "All dependencies are from Nix store with pinned versions",
+    "SBOM reflects the exact Nix build output (derivation closure)",
+    "sbomnix used store-path target with --exclude-meta; heuristic CPE matching retained; full CPE coverage via enrich_cpe.py"
+  ]
+}
+EOF
+echo "  ✓ meta.json"
+echo ""
+
+# Note: README.md is maintained manually in sbom/ directory
+# It contains comprehensive documentation about all SBOM tools and usage
+
+# ---------------------------------------------------------------------------
+# Author/supplier enrichment
+# ---------------------------------------------------------------------------
+# sbomnix only captures Nix-level runtime dependencies (glibc, openssl…).
+# The enrichment step adds:
+#   • all Rust crates from Cargo.lock (author data from local registry cache)
+#   • all npm/pnpm packages from ui/pnpm-lock.yaml (author from node_modules)
+#   • supplier/originator fields on every component, including the system libs
+# The script reads author data from the local cargo registry cache populated
+# during build — no network calls required in the default mode.
+# Pass --api-limit N to also query crates.io for N crates missing author data.
+ENRICH_SCRIPT="$SCRIPT_DIR/enrich_sbom_authors.py"
+
+# Only run enrichment for the 'server' target (has Cargo.lock + UI).
+# For openssl-only targets the system-lib enrichment still applies.
+ENRICH_OPTS="--sbom-dir $OUTPUT_DIR --repo-root $REPO_ROOT"
+
+if [ "$TARGET" != "server" ] && [ "$TARGET" != "ckms" ]; then
+  # openssl-only: skip Rust + npm, just enrich existing components
+  ENRICH_OPTS="$ENRICH_OPTS --no-rust --no-npm"
+fi
+
+# ── Pre-populate caches for enrichment ◀─────────────────────────────────────
+# The enrichment script reads author/supplier metadata from:
+#   • ~/.cargo/registry/src/  — Cargo.toml files for Rust crate author fields
+#   • ui/node_modules/         — package.json files for npm package author fields
+# In Nix-based CI builds neither cache exists; cargo fetch + pnpm install
+# populate them so enrichment gets author data without hitting remote APIs.
+if [ "$TARGET" = "server" ] || [ "$TARGET" = "ckms" ]; then
+  if command -v cargo >/dev/null 2>&1 && [ -f "$REPO_ROOT/Cargo.toml" ]; then
+    echo "Populating cargo registry cache for SBOM enrichment..."
+    if ! cargo fetch --manifest-path "$REPO_ROOT/Cargo.toml" --quiet; then
+      echo "  ⚠ cargo fetch failed; enrichment will lack crate author data" >&2
+    fi
+  fi
+  if command -v pnpm >/dev/null 2>&1 && [ -f "$REPO_ROOT/ui/pnpm-lock.yaml" ]; then
+    echo "Installing UI dependencies for SBOM enrichment..."
+    if ! (cd "$REPO_ROOT/ui" && pnpm install --frozen-lockfile >/dev/null 2>&1); then
+      echo "  ⚠ pnpm install failed; enrichment will lack npm author data" >&2
+    fi
+  fi
+  echo ""
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "Error: python3 is required for SBOM enrichment but was not found in PATH" >&2
+  exit 1
+fi
+if [ ! -f "$ENRICH_SCRIPT" ]; then
+  echo "Error: author/supplier enrichment script not found: $ENRICH_SCRIPT" >&2
+  exit 1
+fi
+echo "Running author/supplier enrichment..."
+# In CI / release builds, set SBOM_API_LIMIT=500 in the environment to also
+# query crates.io + npm registry for the ~100 crates/packages whose Cargo.toml
+# or package.json does not carry an authors field.
+# Default (offline): local cargo registry cache only (~83% Rust coverage).
+SBOM_API_LIMIT="${SBOM_API_LIMIT:-0}"
+# Use --in-place to overwrite bom.*.json directly so downstream consumers
+# always get enriched files at the canonical paths.
+# shellcheck disable=SC2086
+python3 "$ENRICH_SCRIPT" $ENRICH_OPTS --in-place --api-limit "$SBOM_API_LIMIT"
+echo ""
+
+# ---------------------------------------------------------------------------
+# CPE 2.3 enrichment (Eviden PSIRT compliance)
+# ---------------------------------------------------------------------------
+# Adds NVD NIST CPE 2.3 identifiers to every component in bom.cdx.json that
+# lacks one.  Required by the Eviden PSIRT tooling service for vulnerability
+# profiling.  Uses cargo-sbom to extract GitHub VCS URLs and author fields for
+# accurate vendor derivation (priority: cpe_overrides.json → GitHub org from
+# VCS URL → author name → component name fallback).
+CPE_SCRIPT="$SCRIPT_DIR/enrich_cpe.py"
+# python3 was already verified above for author enrichment
+if [ ! -f "$CPE_SCRIPT" ]; then
+  echo "Error: CPE enrichment script not found: $CPE_SCRIPT" >&2
+  exit 1
+fi
+echo "Running CPE 2.3 enrichment..."
+
+# Use cargo-sbom to obtain rich VCS/author metadata for vendor derivation.
+# cargo-sbom emits GitHub VCS URLs for ~99% of Rust crates and author fields
+# for ~83%.  The output is passed to enrich_cpe.py via a temporary file and
+# discarded afterwards — it is never committed.
+CARGO_SBOM_JSON="$(mktemp /tmp/cosmian-kms-cargo-sbom-XXXXXX.json)"
+# shellcheck disable=SC2064
+trap "rm -f '$CARGO_SBOM_JSON'; $(trap -p EXIT | sed 's/trap -- //;s/ EXIT//')" EXIT
+if command -v cargo-sbom >/dev/null 2>&1 && [ -f "$REPO_ROOT/Cargo.toml" ]; then
+  echo "  → Collecting VCS/author metadata via cargo-sbom..."
+  cargo-sbom --output-format cyclone_dx_json_1_6 \
+    --project-directory "$REPO_ROOT" \
+    >"$CARGO_SBOM_JSON" 2>/dev/null || true
+fi
+
+python3 "$CPE_SCRIPT" \
+  --sbom-dir "$OUTPUT_DIR" \
+  --cargo-sbom-json "$CARGO_SBOM_JSON" \
+  --in-place
+rm -f "$CARGO_SBOM_JSON"
+echo ""
+
+# Summary
+echo "========================================="
+echo "SBOM Generation Complete"
+echo "========================================="
+echo ""
+echo "Generated files in $OUTPUT_DIR:"
+# shellcheck disable=SC2012
+ls -lh "$OUTPUT_DIR" | tail -n +2 | awk '{printf "  %10s  %s\n", $5, $9}'
+echo ""
+echo "Standards compliance:"
+echo "  ✓ CycloneDX 1.5 (OWASP)"
+echo "  ✓ SPDX 2.3 (ISO/IEC 5962:2021)"
+echo "  ✓ NVD NIST CPE 2.3 (NISTIR 7695) — all components enriched"
+echo ""
+echo "Next steps:"
+echo "  - Review: cat $REPO_ROOT/sbom/README.md"
+echo "  - Import to Dependency-Track or other SBOM platform"
+echo "  - Integrate into CI/CD pipeline"
+echo ""

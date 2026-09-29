@@ -2,21 +2,30 @@
 //! permission checks, and caching mechanisms for unwrapped keys.
 mod database_objects;
 mod database_permissions;
+mod db_metrics;
+use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
-
+use async_trait::async_trait;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
+pub use db_metrics::DbMetricsRecorder;
+#[cfg(feature = "non-fips")]
+use redis::AsyncCommands;
 use tokio::sync::RwLock;
 
-use crate::error::DbResult;
+use crate::{CeremonyKeys, error::DbResult};
 
 mod main_db_params;
 pub use main_db_params::{AdditionalObjectStoresParams, MainDbParams};
+pub(crate) mod fingerprinter;
+mod object_cache;
 mod unwrapped_cache;
 
-pub use crate::core::unwrapped_cache::{CachedUnwrappedObject, UnwrappedCache};
+pub use crate::core::{
+    object_cache::ObjectCache,
+    unwrapped_cache::{CachedObject, UnwrappedCache},
+};
 #[cfg(feature = "non-fips")]
 use crate::stores::RedisWithFindex;
 use crate::stores::{MySqlPool, PgPool, SqlitePool};
@@ -32,6 +41,58 @@ pub struct Database {
     /// The Unwrapped cache keeps the unwrapped version of keys in memory.
     /// This cache avoids calls to HSMs for each operation
     unwrapped_cache: UnwrappedCache,
+
+    /// LRU cache for `retrieve_object` results, eliminating repeated DB round-trips
+    /// when the same key is used for consecutive cryptographic operations.
+    object_cache: ObjectCache,
+
+    /// The database kind for the default store (sqlite/postgres/mysql/redis-findex).
+    kind: MainDbKind,
+
+    /// A lightweight health probe for the default store.
+    ///
+    /// This enables server-side `/health` checks without exposing internal store types.
+    health: Arc<dyn DatabaseHealth + Sync + Send>,
+
+    /// Optional OTEL metrics recorder injected at construction time.
+    ///
+    /// When `None`, all metric recording is skipped without any overhead.
+    /// The concrete implementation lives in the `server` crate to avoid a
+    /// dependency cycle.
+    recorder: Option<Arc<dyn DbMetricsRecorder>>,
+
+    /// Ceremony record encryption keys (derived from `ceremony_secret`).
+    ///
+    /// When `Some`, ceremony records are AES-256-GCM sealed before storage and
+    /// verified on read. When `None`, ceremony operations will fail if attempted.
+    pub(crate) ceremony_keys: Option<Arc<CeremonyKeys>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MainDbKind {
+    Sqlite,
+    Postgres,
+    Mysql,
+    #[cfg(feature = "non-fips")]
+    RedisFindex,
+}
+
+impl MainDbKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Sqlite => "sqlite",
+            Self::Postgres => "postgresql",
+            Self::Mysql => "mysql",
+            #[cfg(feature = "non-fips")]
+            Self::RedisFindex => "redis",
+        }
+    }
+}
+
+#[async_trait]
+trait DatabaseHealth {
+    async fn check(&self) -> Result<(), String>;
 }
 
 impl Database {
@@ -45,15 +106,31 @@ impl Database {
     /// - `clear_db_on_start` indicates whether to clear the database on startup.
     /// - `object_stores` is a map of object stores with their prefixes.
     /// - `cache_max_age` is the maximum age of unwrapped objects in the cache.
+    /// - `cache_max_size` is the maximum number of entries in the unwrapped objects cache.
+    #[allow(clippy::too_many_arguments)] // cache config params (max_ttl, disable) are additive; a builder would over-engineer
     pub async fn instantiate(
         main_db_params: &MainDbParams,
         clear_db_on_start: bool,
         object_stores: HashMap<String, Arc<dyn ObjectsStore + Sync + Send>>,
         cache_max_age: Duration,
+        cache_max_size: NonZeroUsize,
+        cache_max_ttl: Option<Duration>,
+        disable_unwrapped_cache: bool,
+        recorder: Option<Arc<dyn DbMetricsRecorder>>,
+        ceremony_keys: Option<Arc<CeremonyKeys>>,
     ) -> DbResult<Self> {
         // main/default database
-        let db = Self::instantiate_main_database(main_db_params, clear_db_on_start, cache_max_age)
-            .await?;
+        let mut db = Self::instantiate_main_database(
+            main_db_params,
+            clear_db_on_start,
+            cache_max_age,
+            ceremony_keys,
+            cache_max_size,
+            cache_max_ttl,
+            disable_unwrapped_cache,
+        )
+        .await?;
+        db.recorder = recorder;
         for (prefix, store) in object_stores {
             db.register_objects_store(&prefix, store).await;
         }
@@ -64,29 +141,67 @@ impl Database {
         main_db_params: &MainDbParams,
         clear_db_on_start: bool,
         cache_max_age: Duration,
+        ceremony_keys: Option<Arc<CeremonyKeys>>,
+        cache_max_size: NonZeroUsize,
+        cache_max_ttl: Option<Duration>,
+        disable_unwrapped_cache: bool,
     ) -> DbResult<Self> {
-        Ok(match main_db_params {
+        // Permissions are stored in the same backend as objects for the main database.
+        // The `SqlitePool`/`PgPool`/`MySqlPool` types implement both `ObjectsStore` and
+        // `PermissionsStore`, so we can reuse the same `Arc`.
+        match main_db_params {
             MainDbParams::Sqlite(db_path, max_conns) => {
                 let db = Arc::new(
                     SqlitePool::instantiate(&db_path.join("kms.db"), clear_db_on_start, *max_conns)
                         .await?,
                 );
-                Self::new(db.clone(), db, cache_max_age)
+                let health = Arc::new(SqliteHealthProbe::new(db.clone()));
+                Ok(Self::new(
+                    db.clone(),
+                    db,
+                    cache_max_age,
+                    cache_max_size,
+                    cache_max_ttl,
+                    disable_unwrapped_cache,
+                    MainDbKind::Sqlite,
+                    health,
+                    ceremony_keys,
+                ))
             }
             MainDbParams::Postgres(url, max_conns) => {
-                let db = Arc::new(
-                    PgPool::instantiate(url.as_str(), clear_db_on_start, *max_conns).await?,
-                );
-                Self::new(db.clone(), db, cache_max_age)
+                let db = Arc::new(PgPool::instantiate(url, clear_db_on_start, *max_conns).await?);
+                let health = Arc::new(PgHealthProbe::new(db.clone()));
+                Ok(Self::new(
+                    db.clone(),
+                    db,
+                    cache_max_age,
+                    cache_max_size,
+                    cache_max_ttl,
+                    disable_unwrapped_cache,
+                    MainDbKind::Postgres,
+                    health,
+                    ceremony_keys,
+                ))
             }
             MainDbParams::Mysql(url, max_conns) => {
                 let db = Arc::new(
                     MySqlPool::instantiate(url.as_str(), clear_db_on_start, *max_conns).await?,
                 );
-                Self::new(db.clone(), db, cache_max_age)
+                let health = Arc::new(MySqlHealthProbe::new(db.clone()));
+                Ok(Self::new(
+                    db.clone(),
+                    db,
+                    cache_max_age,
+                    cache_max_size,
+                    cache_max_ttl,
+                    disable_unwrapped_cache,
+                    MainDbKind::Mysql,
+                    health,
+                    ceremony_keys,
+                ))
             }
             #[cfg(feature = "non-fips")]
-            MainDbParams::RedisFindex(url, master_key, label) => {
+            MainDbParams::RedisFindex(url, master_key) => {
                 // There is no reason to keep a copy of the key in the shared config
                 // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
                 // and zeroize the one in the shared config
@@ -101,21 +216,31 @@ impl Database {
                 // `master_key` implements ZeroizeOnDrop so there is no need
                 // to manually zeroize.
                 let db = Arc::new(
-                    RedisWithFindex::instantiate(
-                        url.as_str(),
-                        new_master_key,
-                        clear_db_on_start,
-                        label.as_deref(),
-                    )
-                    .await?,
+                    RedisWithFindex::instantiate(url.as_str(), new_master_key, clear_db_on_start)
+                        .await?,
                 );
-                Self::new(db.clone(), db, cache_max_age)
+                let health = Arc::new(RedisFindexHealthProbe::new(db.clone()));
+                Ok(Self::new(
+                    db.clone(),
+                    db,
+                    cache_max_age,
+                    cache_max_size,
+                    cache_max_ttl,
+                    disable_unwrapped_cache,
+                    MainDbKind::RedisFindex,
+                    health,
+                    ceremony_keys,
+                ))
             }
-        })
+        }
     }
 
     pub const fn unwrapped_cache(&self) -> &UnwrappedCache {
         &self.unwrapped_cache
+    }
+
+    pub const fn object_cache(&self) -> &ObjectCache {
+        &self.object_cache
     }
 
     /// Create a new Objects Store
@@ -128,15 +253,171 @@ impl Database {
     /// - `default_database` is the default database for objects without a prefix
     /// - `permissions_database` is the database for permissions
     /// - `cache_max_age` is the maximum age of unwrapped objects in the cache.
-    pub(crate) fn new(
+    /// - `cache_max_size` is the maximum number of entries in the unwrapped objects cache.
+    #[allow(clippy::too_many_arguments)] // cache config params (max_ttl, disable) are additive; a builder would over-engineer
+    fn new(
         default_objects_database: Arc<dyn ObjectsStore + Sync + Send>,
         permissions_database: Arc<dyn PermissionsStore + Sync + Send>,
         cache_max_age: Duration,
+        cache_max_size: NonZeroUsize,
+        cache_max_ttl: Option<Duration>,
+        disable_unwrapped_cache: bool,
+        kind: MainDbKind,
+        health: Arc<dyn DatabaseHealth + Sync + Send>,
+        ceremony_keys: Option<Arc<CeremonyKeys>>,
     ) -> Self {
         Self {
             objects: RwLock::new(HashMap::from([(String::new(), default_objects_database)])),
             permissions: permissions_database,
-            unwrapped_cache: UnwrappedCache::new(cache_max_age),
+            unwrapped_cache: UnwrappedCache::new(
+                cache_max_age,
+                cache_max_size,
+                cache_max_ttl,
+                disable_unwrapped_cache,
+            ),
+            object_cache: ObjectCache::new(cache_max_age, cache_max_size, cache_max_ttl),
+            kind,
+            health,
+            recorder: None,
+            ceremony_keys,
+        }
+    }
+
+    #[must_use]
+    pub const fn main_db_kind(&self) -> MainDbKind {
+        self.kind
+    }
+
+    /// Replace the ceremony encryption keys after post-init resolution.
+    ///
+    /// Used when `ceremony_key_id` is set: the raw AES key is fetched from the
+    /// object store after the database is initialized, and the derived
+    /// `CeremonyKeys` are installed here before the server starts handling
+    /// requests.
+    pub fn set_ceremony_keys(&mut self, keys: Arc<CeremonyKeys>) {
+        self.ceremony_keys = Some(keys);
+    }
+
+    pub async fn health_check(&self) -> Result<(), String> {
+        self.health.check().await
+    }
+
+    /// Count all non-destroyed objects across all registered stores.
+    ///
+    /// Returns the total number of objects (all types) whose state is not `Destroyed`.
+    pub async fn count_all_non_destroyed_objects(&self) -> DbResult<u64> {
+        let map = self.objects.read().await;
+        let mut total = 0_u64;
+        for store in map.values() {
+            total += store.count_all_non_destroyed().await?;
+        }
+        Ok(total)
+    }
+
+    /// Count non-destroyed key objects across all registered stores.
+    ///
+    /// Returns the number of key objects (symmetric, asymmetric) whose state is not `Destroyed`.
+    pub async fn count_non_destroyed_key_objects(&self) -> DbResult<u64> {
+        let map = self.objects.read().await;
+        let mut total = 0_u64;
+        for store in map.values() {
+            total += store.count_non_destroyed_keys().await?;
+        }
+        Ok(total)
+    }
+
+    /// Reconcile all object-count metrics across all registered stores.
+    ///
+    /// For Redis-findex this rewrites the O(1) counter keys from a full SCAN;
+    /// for SQL backends this is a no-op.
+    pub async fn reconcile_all_object_counts(&self) -> DbResult<()> {
+        let map = self.objects.read().await;
+        for store in map.values() {
+            store.reconcile_counts().await?;
+        }
+        Ok(())
+    }
+}
+
+struct SqliteHealthProbe {
+    store: Arc<SqlitePool>,
+}
+
+impl SqliteHealthProbe {
+    #[allow(clippy::missing_const_for_fn)] // async_trait erases constness of the trait impl anyway
+    fn new(store: Arc<SqlitePool>) -> Self {
+        Self { store }
+    }
+}
+
+#[async_trait]
+impl DatabaseHealth for SqliteHealthProbe {
+    async fn check(&self) -> Result<(), String> {
+        self.store.health_check().await.map_err(|e| e.to_string())
+    }
+}
+
+struct PgHealthProbe {
+    store: Arc<PgPool>,
+}
+
+impl PgHealthProbe {
+    #[allow(clippy::missing_const_for_fn)] // async_trait erases constness of the trait impl anyway
+    fn new(store: Arc<PgPool>) -> Self {
+        Self { store }
+    }
+}
+
+#[async_trait]
+impl DatabaseHealth for PgHealthProbe {
+    async fn check(&self) -> Result<(), String> {
+        self.store.health_check().await.map_err(|e| e.to_string())
+    }
+}
+
+struct MySqlHealthProbe {
+    store: Arc<MySqlPool>,
+}
+
+impl MySqlHealthProbe {
+    #[allow(clippy::missing_const_for_fn)] // async_trait erases constness of the trait impl anyway
+    fn new(store: Arc<MySqlPool>) -> Self {
+        Self { store }
+    }
+}
+
+#[async_trait]
+impl DatabaseHealth for MySqlHealthProbe {
+    async fn check(&self) -> Result<(), String> {
+        self.store.health_check().await.map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(feature = "non-fips")]
+struct RedisFindexHealthProbe {
+    store: Arc<RedisWithFindex>,
+}
+
+#[cfg(feature = "non-fips")]
+impl RedisFindexHealthProbe {
+    #[allow(clippy::missing_const_for_fn)] // async_trait erases constness of the trait impl anyway
+    fn new(store: Arc<RedisWithFindex>) -> Self {
+        Self { store }
+    }
+}
+
+#[cfg(feature = "non-fips")]
+#[async_trait::async_trait]
+impl DatabaseHealth for RedisFindexHealthProbe {
+    async fn check(&self) -> Result<(), String> {
+        let mut mgr = self.store.mgr.clone();
+        let pong: String = mgr.ping().await.map_err(|e| e.to_string())?;
+        #[allow(clippy::manual_ignore_case_cmp)]
+        // `eq_ignore_ascii_case` is clearer here than a case-insensitive match
+        if pong.eq_ignore_ascii_case("PONG") {
+            Ok(())
+        } else {
+            Err(format!("unexpected redis ping response: {pong}"))
         }
     }
 }

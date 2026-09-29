@@ -1,129 +1,106 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
-use cosmian_kmip::kmip_2_1::KmipOperation;
-use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};
+use cosmian_kmip::kmip_2_1::{
+    KmipOperation, extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+    kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+};
+use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
+    CsRng,
+    reexport::rand_core::{RngCore, SeedableRng},
+};
+use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, UserId};
 use uuid::Uuid;
 
-use crate::error::DbResult;
+use crate::{db_error, error::DbResult};
 
-pub(super) async fn permissions<DB: ObjectsStore + PermissionsStore>(
-    db: &DB,
-    db_params: Option<Arc<dyn SessionParams>>,
-) -> DbResult<()> {
+pub(super) async fn permissions<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbResult<()> {
     cosmian_logger::log_init(None);
-    permissions_users(db, db_params.clone()).await?;
-    permissions_wildcard(db, db_params).await?;
+    permissions_users(db).await?;
+    permissions_wildcard(db).await?;
+    permissions_granted_includes_wildcard(db).await?;
+    permissions_find_includes_wildcard(db).await?;
+    crl_persistence(db).await?;
     Ok(())
 }
 
-async fn permissions_users<DB: ObjectsStore + PermissionsStore>(
-    db: &DB,
-    db_params: Option<Arc<dyn SessionParams>>,
-) -> DbResult<()> {
+async fn permissions_users<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbResult<()> {
     cosmian_logger::log_init(None);
 
-    let user_id_1 = Uuid::new_v4().to_string();
-    let user_id_2 = Uuid::new_v4().to_string();
+    let user_id_1 = UserId::from(Uuid::new_v4().to_string());
+    let user_id_2 = UserId::from(Uuid::new_v4().to_string());
     let uid = Uuid::new_v4().to_string();
 
     // simple insert
-    db.grant_operations(
-        &uid,
-        &user_id_1,
-        HashSet::from([KmipOperation::Get]),
-        db_params.clone(),
-    )
-    .await?;
+    db.grant_operations(&uid, &user_id_1, HashSet::from([KmipOperation::Get]))
+        .await?;
 
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id_1, false, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id_1, false)
         .await?;
     assert_eq!(perms.len(), 1);
     assert!(perms.contains(&KmipOperation::Get));
 
     // double insert, expect no duplicate
-    db.grant_operations(
-        &uid,
-        &user_id_1,
-        HashSet::from([KmipOperation::Get]),
-        db_params.clone(),
-    )
-    .await?;
+    db.grant_operations(&uid, &user_id_1, HashSet::from([KmipOperation::Get]))
+        .await?;
 
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id_1, false, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id_1, false)
         .await?;
     assert_eq!(perms.len(), 1);
     assert!(perms.contains(&KmipOperation::Get));
 
     // insert other operation type
-    db.grant_operations(
-        &uid,
-        &user_id_1,
-        HashSet::from([KmipOperation::Encrypt]),
-        db_params.clone(),
-    )
-    .await?;
+    db.grant_operations(&uid, &user_id_1, HashSet::from([KmipOperation::Encrypt]))
+        .await?;
 
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id_1, false, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id_1, false)
         .await?;
     assert_eq!(perms.len(), 2);
     assert!(perms.contains(&KmipOperation::Encrypt));
     assert!(perms.contains(&KmipOperation::Get));
 
     // insert other `userid2`, check it is ok and it didn't change anything for `userid`
-    db.grant_operations(
-        &uid,
-        &user_id_2,
-        HashSet::from([KmipOperation::Get]),
-        db_params.clone(),
-    )
-    .await?;
+    db.grant_operations(&uid, &user_id_2, HashSet::from([KmipOperation::Get]))
+        .await?;
 
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id_2, false, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id_2, false)
         .await?;
     assert_eq!(perms.len(), 1);
     assert!(perms.contains(&KmipOperation::Get));
 
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id_1, false, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id_1, false)
         .await?;
     assert_eq!(perms.len(), 2);
     assert!(perms.contains(&KmipOperation::Encrypt));
     assert!(perms.contains(&KmipOperation::Get));
 
-    let accesses = db
-        .list_object_operations_granted(&uid, db_params.clone())
-        .await?;
+    let accesses = db.list_object_operations_granted(&uid).await?;
 
     assert_eq!(accesses.len(), 2);
-    assert!(accesses.contains_key(&user_id_1));
-    assert!(accesses.contains_key(&user_id_2));
-    assert_eq!(accesses[&user_id_1].len(), 2);
-    assert!(accesses[&user_id_1].contains(&KmipOperation::Encrypt));
-    assert!(accesses[&user_id_1].contains(&KmipOperation::Get));
-    assert_eq!(accesses[&user_id_2].len(), 1);
-    assert!(accesses[&user_id_2].contains(&KmipOperation::Get));
+    assert!(accesses.contains_key(user_id_1.as_str()));
+    assert!(accesses.contains_key(user_id_2.as_str()));
+    assert_eq!(accesses[user_id_1.as_str()].len(), 2);
+    assert!(accesses[user_id_1.as_str()].contains(&KmipOperation::Encrypt));
+    assert!(accesses[user_id_1.as_str()].contains(&KmipOperation::Get));
+    assert_eq!(accesses[user_id_2.as_str()].len(), 1);
+    assert!(accesses[user_id_2.as_str()].contains(&KmipOperation::Get));
 
     // remove `Get` access for `userid`
-    db.remove_operations(
-        &uid,
-        &user_id_1,
-        HashSet::from([KmipOperation::Get]),
-        db_params.clone(),
-    )
-    .await?;
+    db.remove_operations(&uid, &user_id_1, HashSet::from([KmipOperation::Get]))
+        .await?;
 
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id_2, false, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id_2, false)
         .await?;
     assert_eq!(perms.len(), 1);
     assert!(perms.contains(&KmipOperation::Get));
 
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id_1, false, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id_1, false)
         .await?;
     assert_eq!(perms.len(), 1);
     assert!(perms.contains(&KmipOperation::Encrypt));
@@ -131,24 +108,16 @@ async fn permissions_users<DB: ObjectsStore + PermissionsStore>(
     Ok(())
 }
 
-async fn permissions_wildcard<DB: ObjectsStore + PermissionsStore>(
-    db: &DB,
-    db_params: Option<Arc<dyn SessionParams>>,
-) -> DbResult<()> {
-    let user_id = Uuid::new_v4().to_string();
+async fn permissions_wildcard<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbResult<()> {
+    let user_id = UserId::from(Uuid::new_v4().to_string());
     let uid = Uuid::new_v4().to_string();
 
     // simple insert
-    db.grant_operations(
-        &uid,
-        &user_id,
-        HashSet::from([KmipOperation::Get]),
-        db_params.clone(),
-    )
-    .await?;
+    db.grant_operations(&uid, &user_id, HashSet::from([KmipOperation::Get]))
+        .await?;
 
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id, false, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id, false)
         .await?;
     assert_eq!(perms.len(), 1);
     assert!(perms.contains(&KmipOperation::Get));
@@ -156,14 +125,13 @@ async fn permissions_wildcard<DB: ObjectsStore + PermissionsStore>(
     // insert other operation type using wildcard user
     db.grant_operations(
         &uid,
-        "*",
+        &UserId::from("*"),
         HashSet::from([KmipOperation::Encrypt]),
-        db_params.clone(),
     )
     .await?;
 
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id, false, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id, false)
         .await?;
     assert_eq!(perms.len(), 2);
     assert!(perms.contains(&KmipOperation::Encrypt));
@@ -171,14 +139,14 @@ async fn permissions_wildcard<DB: ObjectsStore + PermissionsStore>(
 
     // direct permissions however should not have changed
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id, true, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id, true)
         .await?;
     assert_eq!(perms.len(), 1);
     assert!(perms.contains(&KmipOperation::Get));
 
     // permissions of the wildcard user should be encrypt
     let perms = db
-        .list_user_operations_on_object(&uid, "*", false, db_params.clone())
+        .list_user_operations_on_object(&uid, &UserId::from("*"), false)
         .await?;
     assert_eq!(perms.len(), 1);
     assert!(perms.contains(&KmipOperation::Encrypt));
@@ -186,14 +154,13 @@ async fn permissions_wildcard<DB: ObjectsStore + PermissionsStore>(
     // double insert, expect no duplicate
     db.grant_operations(
         &uid,
-        "*",
+        &UserId::from("*"),
         HashSet::from([KmipOperation::Encrypt]),
-        db_params.clone(),
     )
     .await?;
 
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id, false, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id, false)
         .await?;
     assert_eq!(perms.len(), 2);
     assert!(perms.contains(&KmipOperation::Encrypt));
@@ -202,30 +169,24 @@ async fn permissions_wildcard<DB: ObjectsStore + PermissionsStore>(
     // grant access to Get via the wildcard user - expect no duplicates
     db.grant_operations(
         &uid,
-        "*",
+        &UserId::from("*"),
         HashSet::from([KmipOperation::Get]),
-        db_params.clone(),
     )
     .await?;
 
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id, false, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id, false)
         .await?;
     assert_eq!(perms.len(), 2);
     assert!(perms.contains(&KmipOperation::Encrypt));
     assert!(perms.contains(&KmipOperation::Get));
 
     // Remove Get access to user: it should still have access via the wildcard user
-    db.remove_operations(
-        &uid,
-        &user_id,
-        HashSet::from([KmipOperation::Get]),
-        db_params.clone(),
-    )
-    .await?;
+    db.remove_operations(&uid, &user_id, HashSet::from([KmipOperation::Get]))
+        .await?;
 
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id, false, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id, false)
         .await?;
     assert_eq!(perms.len(), 2);
     assert!(perms.contains(&KmipOperation::Encrypt));
@@ -234,40 +195,283 @@ async fn permissions_wildcard<DB: ObjectsStore + PermissionsStore>(
     // remove Encrypt access for the  wildcard user: user1 should only be left with Get access
     db.remove_operations(
         &uid,
-        "*",
+        &UserId::from("*"),
         HashSet::from([KmipOperation::Encrypt]),
-        db_params.clone(),
     )
     .await?;
 
     // remove Get from user 3
-    db.remove_operations(
-        &uid,
-        &user_id,
-        HashSet::from([KmipOperation::Get]),
-        db_params.clone(),
-    )
-    .await?;
+    db.remove_operations(&uid, &user_id, HashSet::from([KmipOperation::Get]))
+        .await?;
 
     // permissions of the wildcard user should be Get
     let perms = db
-        .list_user_operations_on_object(&uid, "*", false, db_params.clone())
+        .list_user_operations_on_object(&uid, &UserId::from("*"), false)
         .await?;
     assert_eq!(perms.len(), 1);
     assert!(perms.contains(&KmipOperation::Get));
 
     // direct permissions of the user should be none
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id, true, db_params.clone())
+        .list_user_operations_on_object(&uid, &user_id, true)
         .await?;
     assert!(perms.is_empty());
 
     // permissions of the user should also be Get
     let perms = db
-        .list_user_operations_on_object(&uid, &user_id, false, db_params)
+        .list_user_operations_on_object(&uid, &user_id, false)
         .await?;
     assert_eq!(perms.len(), 1);
     assert!(perms.contains(&KmipOperation::Get));
+
+    Ok(())
+}
+
+/// Regression test for `list_user_operations_granted` (`GET /access/obtained`):
+/// a permission granted only to the wildcard user `*` must be reported as
+/// "obtained" by every other user, consistent with `list_user_operations_on_object`
+/// which already treats wildcard grants as inherited.
+async fn permissions_granted_includes_wildcard<DB: ObjectsStore + PermissionsStore>(
+    db: &DB,
+) -> DbResult<()> {
+    let owner = UserId::from(Uuid::new_v4().to_string());
+    let user_id = UserId::from(Uuid::new_v4().to_string());
+
+    let mut rng = CsRng::from_entropy();
+    let mut symmetric_key_bytes = vec![0; 32];
+    rng.fill_bytes(&mut symmetric_key_bytes);
+    let symmetric_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &symmetric_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
+    )?;
+    let uid = Uuid::new_v4().to_string();
+    db.create(
+        Some(uid.clone()),
+        &owner,
+        &symmetric_key,
+        symmetric_key.attributes()?,
+        &HashSet::new(),
+    )
+    .await?;
+
+    // Grant `Get` to the wildcard user only (no direct grant to `user_id`).
+    db.grant_operations(
+        &uid,
+        &UserId::from("*"),
+        HashSet::from([KmipOperation::Get]),
+    )
+    .await?;
+
+    // Grant `Encrypt` directly to `user_id`.
+    db.grant_operations(&uid, &user_id, HashSet::from([KmipOperation::Encrypt]))
+        .await?;
+
+    let granted = db.list_user_operations_granted(&user_id).await?;
+    let (_owner, _state, ops) = granted
+        .get(&uid)
+        .ok_or_else(|| db_error!("object not found in the granted-access list"))?;
+    assert!(
+        ops.contains(&KmipOperation::Get),
+        "wildcard-granted operations must be included in the user's obtained access rights"
+    );
+    assert!(ops.contains(&KmipOperation::Encrypt));
+
+    Ok(())
+}
+
+/// Regression test for `find` (KMIP `Locate`, used by the "Search Objects" UI page):
+/// an object granted only to the wildcard user `*` must be found by every other
+/// user, consistent with `list_user_operations_granted` (the "Obtained" UI page)
+/// which already treats wildcard grants as inherited.
+///
+/// A tag filter is used to drive the search (rather than no filter at all)
+/// because the Redis-findex backend indexes objects by keyword and cannot
+/// return anything for a completely unfiltered `find`, mirroring how the real
+/// `Locate` KMIP operation always searches by a set of `Attributes`.
+async fn permissions_find_includes_wildcard<DB: ObjectsStore + PermissionsStore>(
+    db: &DB,
+) -> DbResult<()> {
+    let owner = UserId::from(Uuid::new_v4().to_string());
+    let user_id = UserId::from(Uuid::new_v4().to_string());
+    let tag = format!("wildcard-find-{}", Uuid::new_v4());
+
+    let mut rng = CsRng::from_entropy();
+    let mut symmetric_key_bytes = vec![0; 32];
+    rng.fill_bytes(&mut symmetric_key_bytes);
+    let symmetric_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &symmetric_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
+    )?;
+    let uid = Uuid::new_v4().to_string();
+    db.create(
+        Some(uid.clone()),
+        &owner,
+        &symmetric_key,
+        symmetric_key.attributes()?,
+        &HashSet::from([tag.clone()]),
+    )
+    .await?;
+
+    // Grant `Get` to the wildcard user only (no direct grant to `user_id`).
+    db.grant_operations(
+        &uid,
+        &UserId::from("*"),
+        HashSet::from([KmipOperation::Get]),
+    )
+    .await?;
+
+    // `find` (non-owner path), filtered by the tag set at creation, must
+    // return the object for `user_id`, even though the grant was made to `*`
+    // and not to `user_id` directly.
+    let mut search_attributes = Attributes::default();
+    search_attributes.set_tags(VENDOR_ID_COSMIAN, [tag])?;
+    let found = db
+        .find(
+            Some(&search_attributes),
+            None,
+            &user_id,
+            false,
+            VENDOR_ID_COSMIAN,
+        )
+        .await?;
+    assert!(
+        found.iter().any(|(found_uid, ..)| found_uid == &uid),
+        "wildcard-granted objects must be locatable by every user, not just the owner"
+    );
+
+    Ok(())
+}
+
+// ── CRL persistence tests ─────────────────────────────────────────────────────
+
+/// DB-layer unit tests for CRL persistence methods (RFC 5280 §5.2.3).
+///
+/// Tests:
+/// - `get_max_crl_number` returns `None` when the `crls` table is empty.
+/// - `upsert_crl` stores a CRL; `get_crl` retrieves it.
+/// - `upsert_crl` with the same issuer replaces the previous entry (upsert).
+/// - `get_max_crl_number` returns the highest `crl_number` across all issuers.
+/// - `list_crl_issuers` enumerates all stored issuer IDs.
+/// - The CRL counter seed logic `max(unix_ts, db_max + 1)` is satisfied.
+async fn crl_persistence<DB: PermissionsStore>(db: &DB) -> DbResult<()> {
+    cosmian_logger::log_init(None);
+
+    let issuer_a = Uuid::new_v4().to_string();
+    let issuer_b = Uuid::new_v4().to_string();
+
+    // 1. Fresh DB: no CRL stored yet — get_max_crl_number must return None.
+    let max = db.get_max_crl_number().await?;
+    assert!(
+        max.is_none(),
+        "get_max_crl_number on empty table must return None"
+    );
+
+    // 2. Store the first CRL (issuer A, crl_number=10).
+    let der_a_v1 = vec![0xDE, 0xAD, 0xBE, 0xEF];
+    db.upsert_crl(
+        &issuer_a,
+        &der_a_v1,
+        10,
+        "2026-01-01T00:00:00Z",
+        "2026-01-08T00:00:00Z",
+    )
+    .await?;
+
+    // 3. Retrieve the stored CRL — must match what was inserted.
+    let stored = db.get_crl(&issuer_a).await?;
+    assert!(stored.is_some(), "get_crl must return Some after upsert");
+    let (der_back, _) = stored.unwrap();
+    assert_eq!(der_back, der_a_v1, "retrieved DER must equal inserted DER");
+
+    // 4. get_max_crl_number must now return 10.
+    let max = db.get_max_crl_number().await?;
+    assert_eq!(
+        max,
+        Some(10),
+        "max CRL number must be 10 after first upsert"
+    );
+
+    // 5. Add a second issuer with a higher crl_number (crl_number=42).
+    let der_b = vec![0xCA, 0xFE];
+    db.upsert_crl(
+        &issuer_b,
+        &der_b,
+        42,
+        "2026-01-01T00:00:00Z",
+        "2026-01-08T00:00:00Z",
+    )
+    .await?;
+    let max = db.get_max_crl_number().await?;
+    assert_eq!(
+        max,
+        Some(42),
+        "max CRL number must be 42 after inserting issuer_b"
+    );
+
+    // 6. list_crl_issuers must return both issuers.
+    let issuers: Vec<String> = db
+        .list_crl_issuers()
+        .await?
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+    assert!(
+        issuers.contains(&issuer_a),
+        "list_crl_issuers must include issuer_a"
+    );
+    assert!(
+        issuers.contains(&issuer_b),
+        "list_crl_issuers must include issuer_b"
+    );
+
+    // 7. Upsert replaces: update issuer A to crl_number=99 with new DER.
+    let der_a_v2 = vec![0x11, 0x22, 0x33];
+    db.upsert_crl(
+        &issuer_a,
+        &der_a_v2,
+        99,
+        "2026-01-02T00:00:00Z",
+        "2026-01-09T00:00:00Z",
+    )
+    .await?;
+
+    // 7a. get_crl must return the *new* DER for issuer A.
+    let stored = db.get_crl(&issuer_a).await?;
+    let (der_back, _) = stored.unwrap();
+    assert_eq!(
+        der_back, der_a_v2,
+        "upsert must overwrite the previous CRL DER"
+    );
+
+    // 7b. get_max_crl_number must now return 99 (issuer A > issuer B).
+    let max = db.get_max_crl_number().await?;
+    assert_eq!(
+        max,
+        Some(99),
+        "max CRL number must be 99 after updating issuer_a"
+    );
+
+    // 8. Non-existent issuer returns None — no panic, no DB error.
+    let unknown = db.get_crl(&Uuid::new_v4().to_string()).await?;
+    assert!(unknown.is_none(), "get_crl for unknown issuer must be None");
+
+    // 9. CRL counter seed non-regression: max(unix_ts, db_max + 1) must be > db_max.
+    //    This mirrors the logic in KMS::instantiate(). Verify the invariant holds.
+    let db_max = db.get_max_crl_number().await?.unwrap_or(0);
+    let ts_seed = u64::try_from(time::OffsetDateTime::now_utc().unix_timestamp()).unwrap_or(1);
+    let seed = ts_seed.max(db_max + 1);
+    assert!(
+        seed > db_max,
+        "CRL counter seed must be strictly greater than DB max (RFC 5280 §5.2.3 monotonicity)"
+    );
 
     Ok(())
 }

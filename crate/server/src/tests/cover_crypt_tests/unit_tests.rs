@@ -7,7 +7,7 @@ use cosmian_kms_client_utils::cover_crypt_utils::{
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::{
-        extra::tagging::EMPTY_TAGS,
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_operations::{Get, Import, Locate},
@@ -27,6 +27,7 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
     tests::test_utils::https_clap_config,
 };
@@ -36,7 +37,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "cceyJhbGciOiJSUzI1Ni";
+    let owner = UserId::from("cceyJhbGciOiJSUzI1Ni");
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     // create Key Pair
@@ -44,14 +45,13 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let cr = kms
         .create_key_pair(
             build_create_covercrypt_master_keypair_request(
+                VENDOR_ID_COSMIAN,
                 access_structure,
                 EMPTY_TAGS,
                 false,
                 None,
             )?,
-            owner,
-            None,
-            None,
+            &owner,
         )
         .await?;
     debug!("  -> response {}", cr);
@@ -62,7 +62,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // get Private Key
     debug!("ABE Get Master Secret Key");
-    let gr_sk = kms.get(Get::from(sk_uid.as_str()), owner, None).await?;
+    let gr_sk = kms.get(Get::from(sk_uid.as_str()), &owner).await?;
     assert_eq!(
         &sk_uid,
         &gr_sk
@@ -92,7 +92,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     // get Public Key
     debug!("ABE Get Master Public Key");
     let pk_uid = cr.public_key_unique_identifier.to_string();
-    let gr_pk = kms.get(Get::from(pk_uid.as_str()), owner, None).await?;
+    let gr_pk = kms.get(Get::from(pk_uid.as_str()), &owner).await?;
     assert_eq!(pk_uid, gr_pk.unique_identifier.to_string());
     assert_eq!(ObjectType::PublicKey, gr_pk.object_type);
 
@@ -125,7 +125,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         },
         object: pk.clone(),
     };
-    kms.import(request, owner, None, None).await.unwrap_err();
+    kms.import(request, &owner).await.unwrap_err();
 
     // re-import public key - should succeed
     let request = Import {
@@ -139,16 +139,22 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         },
         object: pk.clone(),
     };
-    let _update_response = kms.import(request, owner, None, None).await?;
+    let _update_response = kms.import(request, &owner).await?;
 
     // User decryption key
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Confidential";
 
     // ...via KeyPair
     debug!(" .... user key via Keypair");
-    let request =
-        build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false, None)?;
-    let cr = kms.create(request, owner, None, None).await?;
+    let request = build_create_covercrypt_usk_request(
+        VENDOR_ID_COSMIAN,
+        access_policy,
+        &sk_uid,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    let cr = kms.create(request, &owner).await?;
     debug!("Create Response for User Decryption Key {}", cr);
 
     let usk_uid = cr.unique_identifier.to_string();
@@ -158,7 +164,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     assert_eq!(&usk_uid, &usk_uid_.to_string());
 
     // get the object
-    let gr = kms.get(Get::from(usk_uid.as_str()), owner, None).await?;
+    let gr = kms.get(Get::from(usk_uid.as_str()), &owner).await?;
     let object = &gr.object;
     assert_eq!(
         &usk_uid,
@@ -176,9 +182,15 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via Private key
     debug!(" .... user key via Private Key");
-    let request =
-        build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false, None)?;
-    let cr = kms.create(request, owner, None, None).await?;
+    let request = build_create_covercrypt_usk_request(
+        VENDOR_ID_COSMIAN,
+        access_policy,
+        &sk_uid,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    let cr = kms.create(request, &owner).await?;
     debug!("Create Response for User Decryption Key {}", cr);
 
     let usk_uid = cr.unique_identifier.to_string();
@@ -188,7 +200,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     assert_eq!(&usk_uid, &usk_uid_.to_string());
 
     // get the object
-    let gr = kms.get(Get::from(usk_uid.as_str()), owner, None).await?;
+    let gr = kms.get(Get::from(usk_uid.as_str()), &owner).await?;
     let object = &gr.object;
     assert_eq!(
         &usk_uid,
@@ -223,22 +235,21 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "cceyJhbGciOiJSUzI1Ni";
-    let nonexistent_owner = "invalid_owner";
+    let owner = UserId::from("cceyJhbGciOiJSUzI1Ni");
+    let nonexistent_owner = UserId::from("invalid_owner");
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     // create Key Pair
     let ckr = kms
         .create_key_pair(
             build_create_covercrypt_master_keypair_request(
+                VENDOR_ID_COSMIAN,
                 access_structure,
                 EMPTY_TAGS,
                 false,
                 None,
             )?,
-            owner,
-            None,
-            None,
+            &owner,
         )
         .await?;
     let master_secret_key_id = ckr
@@ -264,8 +275,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 Some(confidential_authentication_data.clone()),
                 None,
             )?,
-            owner,
-            None,
+            &owner,
         )
         .await?;
     assert_eq!(
@@ -287,8 +297,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 Some(confidential_authentication_data.clone()),
                 None,
             )?,
-            nonexistent_owner,
-            None,
+            &nonexistent_owner,
         )
         .await;
     er.unwrap_err();
@@ -307,8 +316,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 Some(secret_authentication_data.clone()),
                 None,
             )?,
-            owner,
-            None,
+            &owner,
         )
         .await?;
     assert_eq!(
@@ -330,8 +338,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 Some(secret_authentication_data.clone()),
                 None,
             )?,
-            nonexistent_owner,
-            None,
+            &nonexistent_owner,
         )
         .await;
     er.unwrap_err();
@@ -342,15 +349,14 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let cr = kms
         .create(
             build_create_covercrypt_usk_request(
+                VENDOR_ID_COSMIAN,
                 secret_mkg_fin_access_policy,
                 master_secret_key_id,
                 EMPTY_TAGS,
                 false,
                 None,
             )?,
-            owner,
-            None,
-            None,
+            &owner,
         )
         .await?;
     let secret_mkg_fin_user_key = &cr
@@ -369,8 +375,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 Some(confidential_authentication_data.clone()),
                 None,
             ),
-            owner,
-            None,
+            &owner,
         )
         .await?;
 
@@ -388,8 +393,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 Some(confidential_authentication_data),
                 None,
             ),
-            nonexistent_owner,
-            None,
+            &nonexistent_owner,
         )
         .await;
     dr.unwrap_err();
@@ -405,8 +409,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 Some(secret_authentication_data.clone()),
                 None,
             ),
-            owner,
-            None,
+            &owner,
         )
         .await?;
 
@@ -425,8 +428,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 Some(secret_authentication_data),
                 None,
             ),
-            nonexistent_owner,
-            None,
+            &nonexistent_owner,
         )
         .await;
     dr.unwrap_err();
@@ -439,16 +441,19 @@ async fn test_abe_json_access() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "cceyJhbGciOiJSUzI1Ni";
+    let owner = UserId::from("cceyJhbGciOiJSUzI1Ni");
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
     // Create CC master key pair
-    let master_keypair =
-        build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false, None)?;
+    let master_keypair = build_create_covercrypt_master_keypair_request(
+        VENDOR_ID_COSMIAN,
+        access_structure,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
 
     // create Key Pair
-    let ckr = kms
-        .create_key_pair(master_keypair, owner, None, None)
-        .await?;
+    let ckr = kms.create_key_pair(master_keypair, &owner).await?;
     let master_secret_key_uid = ckr.private_key_unique_identifier.to_string();
 
     // define search criteria
@@ -472,7 +477,7 @@ async fn test_abe_json_access() -> KResult<()> {
         ..Locate::default()
     };
 
-    let locate_response = kms.locate(locate, owner, None).await?;
+    let locate_response = kms.locate(locate, &owner).await?;
 
     // we only have 1 master keypair, but 0 decryption keys as
     // requested in `locate` request
@@ -484,15 +489,14 @@ async fn test_abe_json_access() -> KResult<()> {
     let cr = kms
         .create(
             build_create_covercrypt_usk_request(
+                VENDOR_ID_COSMIAN,
                 secret_mkg_fin_access_policy,
                 &master_secret_key_uid,
                 EMPTY_TAGS,
                 false,
                 None,
             )?,
-            owner,
-            None,
-            None,
+            &owner,
         )
         .await?;
     let secret_mkg_fin_user_key_id = &cr.unique_identifier;
@@ -503,11 +507,14 @@ async fn test_abe_json_access() -> KResult<()> {
         ..Locate::default()
     };
 
-    let locate_response = kms.locate(locate, owner, None).await?;
+    let locate_response = kms.locate(locate, &owner).await?;
 
     // now we have 1 key
     assert_eq!(locate_response.located_items.unwrap(), 1);
-    assert!(&locate_response.unique_identifier.unwrap()[0] == secret_mkg_fin_user_key_id);
+    assert_eq!(
+        &locate_response.unique_identifier.unwrap()[0],
+        secret_mkg_fin_user_key_id
+    );
 
     Ok(())
 }
@@ -518,21 +525,20 @@ async fn test_import_decrypt() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "cceyJhbGciOiJSUzI1Ni";
+    let owner = UserId::from("cceyJhbGciOiJSUzI1Ni");
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     // create Key Pair
     let cr = kms
         .create_key_pair(
             build_create_covercrypt_master_keypair_request(
+                VENDOR_ID_COSMIAN,
                 access_structure,
                 EMPTY_TAGS,
                 false,
                 None,
             )?,
-            owner,
-            None,
-            None,
+            &owner,
         )
         .await?;
     debug!("  -> response created");
@@ -557,8 +563,7 @@ async fn test_import_decrypt() -> KResult<()> {
                 Some(confidential_authentication_data.clone()),
                 None,
             )?,
-            owner,
-            None,
+            &owner,
         )
         .await?;
     assert_eq!(
@@ -575,22 +580,21 @@ async fn test_import_decrypt() -> KResult<()> {
     let cr = kms
         .create(
             build_create_covercrypt_usk_request(
+                VENDOR_ID_COSMIAN,
                 secret_mkg_fin_access_policy,
                 &sk_uid,
                 EMPTY_TAGS,
                 false,
                 None,
             )?,
-            owner,
-            None,
-            None,
+            &owner,
         )
         .await?;
     let secret_mkg_fin_user_key = cr.unique_identifier.to_string();
 
     // Retrieve the user key...
     let gr_sk = kms
-        .get(Get::from(secret_mkg_fin_user_key.as_str()), owner, None)
+        .get(Get::from(secret_mkg_fin_user_key.as_str()), &owner)
         .await?;
     assert_eq!(
         secret_mkg_fin_user_key,
@@ -617,9 +621,7 @@ async fn test_import_decrypt() -> KResult<()> {
         },
         object: gr_sk.object.clone(),
     };
-    kms.import(request, owner, None, None)
-        .await
-        .context(&custom_sk_uid)?;
+    kms.import(request, &owner).await.context(&custom_sk_uid)?;
 
     // decrypt resource MKG + Confidential
     let dr = kms
@@ -632,8 +634,7 @@ async fn test_import_decrypt() -> KResult<()> {
                 Some(confidential_authentication_data.clone()),
                 None,
             ),
-            owner,
-            None,
+            &owner,
         )
         .await?;
     // Decryption used to fail: import attributes were incorrect;
@@ -653,9 +654,7 @@ async fn test_import_decrypt() -> KResult<()> {
         attributes: gr_sk.object.attributes()?.clone(),
         object: gr_sk.object.clone(),
     };
-    kms.import(request, owner, None, None)
-        .await
-        .context(&custom_sk_uid)?;
+    kms.import(request, &owner).await.context(&custom_sk_uid)?;
 
     // Note: No activation needed here because the imported attributes include
     // activation_date from the original key, so it's imported as Active
@@ -672,8 +671,7 @@ async fn test_import_decrypt() -> KResult<()> {
                 Some(confidential_authentication_data.clone()),
                 None,
             ),
-            owner,
-            None,
+            &owner,
         )
         .await?;
 

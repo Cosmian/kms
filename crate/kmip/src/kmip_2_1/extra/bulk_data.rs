@@ -50,6 +50,18 @@ impl BulkData {
         let data = &serialized[2..];
         let mut de = Deserializer::new(data);
         let v = usize::try_from(de.read_leb128_u64()?)?;
+        // Each element requires at least 1 byte (a zero-length LEB128 prefix);
+        // reject counts that exceed the remaining bytes to prevent OOM on
+        // malformed or not-detected bulk data.
+        let remaining = de.value().len();
+        if v > remaining {
+            return Err(KmipError::InvalidKmip21Object(
+                ErrorReason::Illegal_Object_Type,
+                format!(
+                    "BulkData count {v} exceeds remaining data length {remaining}; not valid BulkData"
+                ),
+            ));
+        }
         let mut data = Vec::with_capacity(v);
         for _ in 0..v {
             data.push(Zeroizing::new(de.read_vec()?));

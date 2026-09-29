@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+#MISE description="PKI revocation external-customer black-box test suite (CDP/CRL, AIA/OCSP, CA-compromise cascade)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+
+# Drives the KMS purely through tooling a real customer/integrator has on hand
+# (`ckms` to provision the PKI and drive KMIP Validate/Revoke/Generate-CRL, plus
+# the standard `openssl verify -crl_check` / `openssl ocsp` clients) to prove:
+#
+#   1. The server can generate a certificate carrying BOTH a CRL Distribution
+#      Point (auto-injected via `kms_public_url`) and an Authority Information
+#      Access OCSP URL (manual --certificate-extensions), and that revoking that
+#      certificate is correctly reflected via BOTH mechanisms.
+#   2. Compromising an INTERMEDIATE CA in a 3-level chain invalidates the whole
+#      chain via the existing CRL cascade (root's CRL lists the intermediate).
+#   3. Compromising a ROOT CA directly (2-level chain, no CDP possible on a
+#      self-signed root) is now ALSO detected by `ckms certificates validate` —
+#      this exercises the new internal-KMS-state cascade check in
+#      `validate_operation`, previously invisible to any external protocol.
+#
+# This task deliberately does NOT re-test the OCSP root-compromise cascade
+# (already covered end-to-end by `mise run test:ocsp`, step 7).
+
+set -euo pipefail
+
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+require_cmd cargo
+require_cmd openssl "openssl (with its 'verify' and 'ocsp' clients) is required"
+
+print_header "Step 1: Build KMS server + ckms CLI (${VARIANT_NAME})"
+kms_build_all
+
+WORKDIR="$(mktemp -d /tmp/kms-pki-revocation-test-XXXXXX)"
+CKMS_BIN="$(get_ckms_bin)"
+
+cleanup() {
+  kms_stop
+  rm -rf "${WORKDIR}"
+}
+trap cleanup EXIT
+
+# ── Extension files ────────────────────────────────────────────────────────────
+CA_EXT_FILE="${WORKDIR}/ca.ext"
+cat >"${CA_EXT_FILE}" <<'EOF'
+[ v3_ca ]
+basicConstraints=critical,CA:TRUE
+keyUsage=critical,keyCertSign,crlSign
+subjectKeyIdentifier=hash
+EOF
+
+INTERMEDIATE_EXT_FILE="${WORKDIR}/intermediate.ext"
+cat >"${INTERMEDIATE_EXT_FILE}" <<'EOF'
+[ v3_ca ]
+basicConstraints=critical,CA:TRUE
+keyUsage=critical,keyCertSign,crlSign
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always
+EOF
+
+# ── Helpers ─────────────────────────────────────────────────────────────────────
+
+# Start a fresh KMS server with kms_public_url set to its own base URL, so the
+# CDP auto-injection points at a real, reachable local endpoint and the OCSP
+# responder (used for the AIA scenario) is enabled.
+# Usage: start_kms_pki <extra_toml_line>...
+start_kms_pki() {
+  local port sqlite_dir
+  port="$(kms_pick_free_port)"
+  sqlite_dir="$(mktemp -d /tmp/kms-pki-revocation-db-XXXXXX)"
+  kms_write_config "${port}" "${sqlite_dir}" "[ocsp]" "ocsp_enabled = true" "$@"
+  # kms_public_url has no dedicated TOML section, so it cannot be passed as an
+  # "extra line" to kms_write_config (those are appended after [logging], which
+  # would nest it under that table instead of at the top level). It also cannot
+  # be passed as a CLI flag: the server ignores all CLI args once --config is
+  # given. Prepend it directly as a genuine top-level key instead.
+  {
+    echo "kms_public_url = \"http://127.0.0.1:${port}\""
+    cat "${KMS_CONFIG_FILE}"
+  } \
+    >"${KMS_CONFIG_FILE}.tmp"
+  mv "${KMS_CONFIG_FILE}.tmp" "${KMS_CONFIG_FILE}"
+  kms_start_from_bin "$(get_kms_bin)"
+  kms_write_ckms_conf >/dev/null
+}
+
+ckms() { "${CKMS_BIN}" --conf-path "${KMS_CKMS_CONF}" "$@"; }
+
+# Issue a self-signed CA certificate. Usage: issue_ca <cert-id> [ext-file]
+issue_ca() {
+  ckms certificates certify --certificate-id "$1" --generate-key-pair \
+    --algorithm nist-p256 --subject-name "CN=$1,O=Cosmian Test,C=FR" \
+    --days 3650 --certificate-extensions "${2:-${CA_EXT_FILE}}" >/dev/null
+}
+
+# Issue a leaf certificate signed by a CA. Usage: issue_leaf <cert-id> <issuer-ca-id> [ext-file]
+issue_leaf() {
+  if [ -n "${3:-}" ]; then
+    ckms certificates certify --certificate-id "$1" --generate-key-pair \
+      --algorithm nist-p256 --subject-name "CN=$1,O=Cosmian Test,C=FR" \
+      --issuer-certificate-id "$2" --days 365 --certificate-extensions "$3" >/dev/null
+  else
+    ckms certificates certify --certificate-id "$1" --generate-key-pair \
+      --algorithm nist-p256 --subject-name "CN=$1,O=Cosmian Test,C=FR" \
+      --issuer-certificate-id "$2" --days 365 >/dev/null
+  fi
+}
+
+export_pem() { ckms certificates export "$2" --certificate-id "$1" --format pem >/dev/null; }
+
+assert_contains() {
+  if ! grep -Eqi "$2" <<<"$1"; then
+    echo "----- unexpected output -----" >&2
+    echo "$1" >&2
+    echo "------------------------------" >&2
+    print_error "FAIL: $3 (expected to match: $2)"
+  fi
+  print_success "PASS: $3"
+}
+
+# `ckms certificates validate` prints "Valid" / "Invalid" / "Unknown" on stdout.
+assert_validate() {
+  local expected="$1" cert_id="$2" label="$3"
+  shift 3
+  local ids_args=(--certificate-id "${cert_id}")
+  for extra_id in "$@"; do ids_args+=(--certificate-id "${extra_id}"); done
+  local out
+  out=$(ckms certificates validate "${ids_args[@]}" 2>&1 || true)
+  assert_contains "${out}" "${expected}" "${label}"
+}
+
+# A Compromised/Deactivated certificate is, by design, rejected two layers deep:
+# the pre-existing per-state retrieval permission gate already denies Validate on
+# it (Object_Not_Found) before Validate's own internal-state cascade check would
+# ever run. Both an explicit "Invalid" verdict and a retrieval error are, from an
+# external customer's point of view, an equally clear "do not trust this
+# certificate" signal, so this helper accepts either.
+assert_validate_rejected() {
+  local cert_id="$1" label="$2"
+  shift 2
+  local ids_args=(--certificate-id "${cert_id}")
+  for extra_id in "$@"; do ids_args+=(--certificate-id "${extra_id}"); done
+  local out
+  out=$(ckms certificates validate "${ids_args[@]}" 2>&1 || true)
+  assert_contains "${out}" "Invalid|Object_Not_Found|ERROR" "${label}"
+}
+
+print_header "Step 2: Leaf with both CDP + AIA — valid before, revoked after"
+start_kms_pki "ocsp_ca_uid = \"revocation-ca\""
+issue_ca "revocation-ca"
+export_pem "revocation-ca" "${WORKDIR}/ca.pem"
+
+LEAF_EXT_FILE="${WORKDIR}/leaf.ext"
+cat >"${LEAF_EXT_FILE}" <<EOF
+[ v3_ca ]
+basicConstraints=critical,CA:FALSE
+keyUsage=critical,digitalSignature
+authorityInfoAccess=OCSP;URI:http://127.0.0.1:${KMS_PORT}/ocsp/
+EOF
+issue_leaf "revocation-leaf" "revocation-ca" "${LEAF_EXT_FILE}"
+export_pem "revocation-leaf" "${WORKDIR}/leaf.pem"
+
+# Confirm the certificate actually carries BOTH extensions before checking them.
+LEAF_TEXT=$(openssl x509 -in "${WORKDIR}/leaf.pem" -noout -text)
+assert_contains "${LEAF_TEXT}" "CRL Distribution Points" \
+  "Leaf certificate carries an auto-injected CRL Distribution Point"
+assert_contains "${LEAF_TEXT}" "OCSP.*URI:http://127.0.0.1:${KMS_PORT}/ocsp/" \
+  "Leaf certificate carries the manually configured AIA OCSP URL"
+
+# The public CRL endpoint returns 404 until a CRL has been generated at least
+# once (documented "cold-start" behaviour) — the auto-injected CDP would
+# otherwise make even a perfectly healthy leaf's Validate call fail.
+ckms certificates generate-crl --certificate-id "revocation-ca" --validity-days 7 \
+  --output-format pem --output-file "${WORKDIR}/ca.crl.pem" >/dev/null
+
+assert_validate "Valid" "revocation-leaf" \
+  "ckms certificates validate: leaf is Valid before revocation" "revocation-ca"
+
+# CRL-based check (independent of Validate): verify locally against the CRL
+# already generated above.
+CRL_CHECK_BEFORE=$(openssl verify -crl_check -CAfile "${WORKDIR}/ca.pem" \
+  -CRLfile "${WORKDIR}/ca.crl.pem" "${WORKDIR}/leaf.pem" 2>&1 || true)
+assert_contains "${CRL_CHECK_BEFORE}" "OK" \
+  "openssl verify -crl_check: leaf is OK before revocation"
+
+# OCSP-based check (independent of Validate): query the responder directly.
+OCSP_CHECK_BEFORE=$(openssl ocsp -issuer "${WORKDIR}/ca.pem" -cert "${WORKDIR}/leaf.pem" \
+  -CAfile "${WORKDIR}/ca.pem" -url "${KMS_URL}/ocsp/" -resp_text 2>&1 || true)
+assert_contains "${OCSP_CHECK_BEFORE}" ": good" \
+  "openssl ocsp: leaf reports 'good' before revocation"
+
+ckms certificates revoke "compromised for PKI revocation testing" \
+  --certificate-id "revocation-leaf" --reason-code key-compromise >/dev/null
+# Explicit regeneration: the auto-regen-on-revoke feature is fire-and-forget, so
+# an explicit generate-crl call is used here for a deterministic assertion.
+ckms certificates generate-crl --certificate-id "revocation-ca" --validity-days 7 \
+  --output-format pem --output-file "${WORKDIR}/ca.crl.pem" >/dev/null
+
+assert_validate_rejected "revocation-leaf" \
+  "ckms certificates validate: leaf is Invalid after revocation" "revocation-ca"
+
+CRL_CHECK_AFTER=$(openssl verify -crl_check -CAfile "${WORKDIR}/ca.pem" \
+  -CRLfile "${WORKDIR}/ca.crl.pem" "${WORKDIR}/leaf.pem" 2>&1 || true)
+assert_contains "${CRL_CHECK_AFTER}" "revoked" \
+  "openssl verify -crl_check: leaf is reported revoked after revocation"
+
+OCSP_CHECK_AFTER=$(openssl ocsp -issuer "${WORKDIR}/ca.pem" -cert "${WORKDIR}/leaf.pem" \
+  -CAfile "${WORKDIR}/ca.pem" -url "${KMS_URL}/ocsp/" -resp_text 2>&1 || true)
+assert_contains "${OCSP_CHECK_AFTER}" ": revoked" \
+  "openssl ocsp: leaf reports 'revoked' after revocation"
+kms_stop
+
+print_header "Step 3: 3-level chain — intermediate CA compromise cascades via CRL"
+start_kms_pki
+issue_ca "chain-root"
+issue_leaf "chain-intermediate" "chain-root" "${INTERMEDIATE_EXT_FILE}"
+issue_leaf "chain-leaf" "chain-intermediate"
+export_pem "chain-root" "${WORKDIR}/chain-root.pem"
+
+# Both the intermediate's CDP (-> root's CRL) and the leaf's auto-injected CDP
+# (-> intermediate's CRL) need at least one generation before they are servable.
+ckms certificates generate-crl --certificate-id "chain-root" --validity-days 7 \
+  --output-format pem --output-file "${WORKDIR}/chain-root.crl.pem" >/dev/null
+ckms certificates generate-crl --certificate-id "chain-intermediate" --validity-days 7 \
+  --output-format pem --output-file "${WORKDIR}/chain-intermediate.crl.pem" >/dev/null
+assert_validate "Valid" "chain-leaf" \
+  "ckms certificates validate: full 3-level chain is Valid before compromise" \
+  "chain-intermediate" "chain-root"
+
+ckms certificates revoke "intermediate CA compromised" --certificate-id "chain-intermediate" \
+  --reason-code ca-compromise >/dev/null
+ckms certificates generate-crl --certificate-id "chain-root" --validity-days 7 \
+  --output-format pem --output-file "${WORKDIR}/chain-root.crl.pem" >/dev/null
+
+assert_validate_rejected "chain-leaf" \
+  "ckms certificates validate: 3-level chain is Invalid once the intermediate CA is compromised \
+(CRL cascade)" "chain-intermediate" "chain-root"
+kms_stop
+
+print_header "Step 4: 2-level chain — ROOT CA compromise now detected (internal-state fix)"
+start_kms_pki
+issue_ca "root-only-ca"
+issue_leaf "root-only-leaf" "root-only-ca"
+
+# The leaf still gets an auto-injected CDP pointing at root-only-ca's CRL (needs
+# one generation to avoid a cold-start 404) — but that CRL can only ever list
+# certificates *the root has revoked*, never the root's own revocation (a
+# self-signed root has no issuer of its own to publish a CRL about it). This
+# chain's validity against a ROOT compromise rests entirely on the new
+# internal-state check, not on anything CRL-related.
+ckms certificates generate-crl --certificate-id "root-only-ca" --validity-days 7 \
+  --output-format pem --output-file "${WORKDIR}/root-only.crl.pem" >/dev/null
+
+assert_validate "Valid" "root-only-leaf" \
+  "ckms certificates validate: 2-level chain is Valid before the root is compromised" \
+  "root-only-ca"
+
+ckms certificates revoke "root CA compromised" --certificate-id "root-only-ca" \
+  --reason-code ca-compromise >/dev/null
+
+assert_validate_rejected "root-only-leaf" \
+  "ckms certificates validate: 2-level chain is Invalid once the root CA is compromised \
+(internal-state cascade, no CRL/OCSP involved)" "root-only-ca"
+kms_stop
+
+print_header "PKI revocation external-customer test suite complete"
+print_success "All scenarios passed (${VARIANT_NAME})"

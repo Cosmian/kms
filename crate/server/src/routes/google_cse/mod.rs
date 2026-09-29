@@ -121,7 +121,7 @@ where
 {
     info!("POST /google_cse/{info_msg}");
     let request = request.into_inner();
-    trace!("{info_msg} request: {:?}", request);
+    trace!("{info_msg} request received");
     let cse_config = cse_config.into_inner();
     (request, cse_config)
 }
@@ -210,7 +210,7 @@ pub(crate) async fn rewrap(
         .into();
     };
 
-    let google_cse_kacls_url = format!("{base_url}/google_cse",);
+    let google_cse_kacls_url = format!("{base_url}/google_cse");
 
     match operations::rewrap(request, &google_cse_kacls_url, &cse_config, &kms)
         .await

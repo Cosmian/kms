@@ -1,0 +1,2713 @@
+use std::{cell::RefCell, str::FromStr};
+
+use base64::{Engine as _, engine::general_purpose};
+use cosmian_kms_client_utils::{
+    attributes_utils::{
+        LOCATE_ENRICH_ATTRIBUTE_KEYS, build_selected_attribute, parse_selected_attributes_flatten,
+    },
+    certificate_utils::{Algorithm, build_certify_request, build_re_certify_request},
+    configurable_kem_utils::{KemAlgorithm, build_create_configurable_kem_keypair_request},
+    cover_crypt_utils::{
+        build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
+    },
+    create_utils::{Curve, SymmetricAlgorithm, prepare_sym_key_elements},
+    error::UtilsError,
+    export_utils::{
+        CertificateExportFormat, ExportKeyFormat, WrappingAlgorithm, der_to_pem, export_request,
+        get_export_key_format_type, prepare_certificate_export_elements,
+        prepare_key_export_elements, tag_from_object,
+    },
+    import_utils::{
+        CertificateInputFormat, ImportKeyFormat, KeyUsage, build_private_key_from_der_bytes,
+        build_usage_mask_from_key_usage, prepare_certificate_attributes,
+        prepare_key_import_elements, read_object_from_json_ttlv_bytes,
+    },
+    locate_utils::build_locate_request,
+    reexport::cosmian_kmip::{
+        kmip_0::{
+            self,
+            kmip_types::{CertificateType, RevocationReason, RevocationReasonCode, SecretDataType},
+        },
+        kmip_2_1::{
+            KmipOperation,
+            extra::tagging::VENDOR_ID_COSMIAN,
+            kmip_attributes::{Attribute, Attributes},
+            kmip_data_structures::{DerivationParameters, KeyMaterial, KeyValue},
+            kmip_objects::{
+                Certificate as KmipCertificate, Object, ObjectType,
+                OpaqueObject as KmipOpaqueObject, PrivateKey,
+            },
+            kmip_operations::{
+                CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
+                CreateSplitKeyResponse, Decrypt, DecryptResponse, DeleteAttribute,
+                DeleteAttributeResponse, DeriveKey, DeriveKeyResponse, Destroy, DestroyResponse,
+                EncryptResponse, ExportResponse, GetAttributes, GetAttributesResponse, Hash,
+                HashResponse, ImportResponse, JoinSplitKeyResponse, LocateResponse,
+                ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse, ReCertifyResponse,
+                ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, RevokeResponse,
+                SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
+                SignatureVerifyResponse, Validate, ValidateResponse,
+            },
+            kmip_types::{
+                AttributeReference, CryptographicAlgorithm, CryptographicParameters,
+                DerivationMethod, KeyFormatType, LinkType, LinkedObjectIdentifier, OpaqueDataType,
+                QueryFunction, RecommendedCurve, Tag, UniqueIdentifier, VendorAttribute,
+                VendorAttributeValue,
+            },
+            requests::{
+                build_revoke_key_request, create_ec_key_pair_request, create_pqc_key_pair_request,
+                create_rsa_key_pair_request, create_secret_data_kmip_object,
+                create_symmetric_key_kmip_object, decrypt_request, encrypt_request,
+                get_ec_private_key_request, get_ec_public_key_request, get_rsa_private_key_request,
+                get_rsa_public_key_request, import_object_request, secret_data_create_request,
+                symmetric_key_create_request,
+            },
+        },
+        ttlv::{TTLV, from_ttlv, to_ttlv},
+    },
+    rsa_utils::{HashFn, RsaEncryptionAlgorithm},
+    symmetric_utils::{DataEncryptionAlgorithm, parse_decrypt_elements},
+};
+use js_sys::Uint8Array;
+use serde::Serialize;
+use wasm_bindgen::prelude::*;
+use x509_cert::{
+    Certificate,
+    der::{Decode, DecodePem, Encode},
+};
+use zeroize::Zeroizing;
+
+use crate::macros::{to_wasm_ttlv, wasm_response_parser};
+
+// ── Vendor-id module-level state ──────────────────────────────────────────────
+// Stores the vendor identification string that the connected KMS server uses for
+// KMIP VendorAttribute operations.  Defaults to VENDOR_ID_COSMIAN ("cosmian")
+// and is overwritten by `set_vendor_id()` once the UI has queried the server.
+thread_local! {
+    static VENDOR_ID: RefCell<String> = RefCell::new(VENDOR_ID_COSMIAN.to_owned());
+}
+
+/// Returns the currently configured vendor identification string.
+fn get_vendor_id() -> String {
+    VENDOR_ID.with(|v| v.borrow().clone())
+}
+
+/// Converts an `Option<String>` containing an empty or whitespace-only value to `None`.
+///
+/// This guards against UI form fields that produce `""` when cleared by the user,
+/// which wasm-bindgen passes as `Some("")` rather than `None`.
+fn none_if_empty(s: Option<String>) -> Option<String> {
+    s.filter(|v| !v.trim().is_empty())
+}
+
+/// Set the vendor identification used for all KMIP `VendorAttribute` operations.
+///
+/// Call this once at UI startup after querying the KMS server's
+/// `QueryServerInformation` response via [`query_server_information_ttlv_request`].
+#[wasm_bindgen]
+pub fn set_vendor_id(vendor_id: &str) {
+    VENDOR_ID.with(|v| {
+        vendor_id.clone_into(&mut v.borrow_mut());
+    });
+}
+
+/// Build a KMIP `Query` TTLV request that asks the server for
+/// its `vendor_identification` (via `QueryServerInformation`).
+#[wasm_bindgen]
+pub fn query_server_information_ttlv_request() -> Result<JsValue, JsValue> {
+    let request = Query {
+        query_function: Some(vec![QueryFunction::QueryServerInformation]),
+    };
+    to_wasm_ttlv(&request)
+}
+
+/// Parse a KMIP `QueryResponse` TTLV string and return the `vendor_identification`
+/// reported by the server, or `"cosmian"` when absent.
+#[wasm_bindgen]
+pub fn parse_query_server_information_response(response: &str) -> Result<JsValue, JsValue> {
+    let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
+    let qr: QueryResponse = from_ttlv(ttlv).map_err(|e| JsValue::from(e.to_string()))?;
+    let vendor_id = qr
+        .vendor_identification
+        .unwrap_or_else(|| VENDOR_ID_COSMIAN.to_owned());
+    Ok(JsValue::from_str(&vendor_id))
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Clone)]
+struct AlgoOption {
+    value: String,
+    label: String,
+}
+
+// Try to parse KeyFormatType from various string representations (robust to spacing/case)
+fn parse_key_format_type_flexible(s: &str) -> Result<KeyFormatType, JsValue> {
+    if let Ok(k) = KeyFormatType::from_str(s) {
+        return Ok(k);
+    }
+    let norm = s
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-' && *c != '_')
+        .collect::<String>()
+        .to_lowercase();
+    let candidates: &[KeyFormatType] = &[
+        KeyFormatType::Raw,
+        KeyFormatType::Opaque,
+        KeyFormatType::PKCS1,
+        KeyFormatType::PKCS8,
+        KeyFormatType::X509,
+        KeyFormatType::ECPrivateKey,
+        KeyFormatType::TransparentSymmetricKey,
+        KeyFormatType::TransparentDSAPrivateKey,
+        KeyFormatType::TransparentDSAPublicKey,
+        KeyFormatType::TransparentRSAPrivateKey,
+        KeyFormatType::TransparentRSAPublicKey,
+        KeyFormatType::TransparentDHPrivateKey,
+        KeyFormatType::TransparentDHPublicKey,
+        KeyFormatType::TransparentECPrivateKey,
+        KeyFormatType::TransparentECPublicKey,
+        KeyFormatType::PKCS12,
+        KeyFormatType::PKCS10,
+        KeyFormatType::PKCS7,
+        KeyFormatType::EnclaveECKeyPair,
+        KeyFormatType::EnclaveECSharedKey,
+        #[cfg(feature = "non-fips")]
+        KeyFormatType::CoverCryptSecretKey,
+        #[cfg(feature = "non-fips")]
+        KeyFormatType::CoverCryptPublicKey,
+    ];
+    for v in candidates {
+        let display = v.to_string();
+        let display_norm = display
+            .chars()
+            .filter(|c| !c.is_whitespace() && *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        if display_norm == norm {
+            return Ok(*v);
+        }
+    }
+    Err(JsValue::from("Invalid KeyFormatType"))
+}
+
+// Internal helpers to build algorithm option lists that reflect client_utils
+
+fn list_symmetric_algorithms() -> Vec<AlgoOption> {
+    let mut algs = fips_symmetric_alg_options();
+    algs.extend(non_fips_symmetric_alg_options());
+    algs
+}
+
+/// FIPS-approved symmetric algorithms (always available).
+fn fips_symmetric_alg_options() -> Vec<AlgoOption> {
+    [("Aes", "AES"), ("Sha3", "SHA3"), ("Shake", "SHAKE")]
+        .into_iter()
+        .map(|(value, label)| AlgoOption {
+            value: value.to_owned(),
+            label: label.to_owned(),
+        })
+        .collect()
+}
+
+/// Extra symmetric algorithms only available in non-FIPS builds.
+#[cfg(feature = "non-fips")]
+fn non_fips_symmetric_alg_options() -> Vec<AlgoOption> {
+    vec![AlgoOption {
+        value: "Chacha20".to_owned(),
+        label: "ChaCha20".to_owned(),
+    }]
+}
+
+#[cfg(not(feature = "non-fips"))]
+const fn non_fips_symmetric_alg_options() -> Vec<AlgoOption> {
+    vec![]
+}
+
+fn list_ec_algorithms() -> Vec<AlgoOption> {
+    // In non-FIPS mode Secp224k1 is prepended before the NIST curves, so
+    // the final order is: [Secp224k1?], P-256, P-384, P-521, [non-FIPS curves…]
+    non_fips_ec_alg_options_prepend()
+        .into_iter()
+        .chain(fips_ec_alg_options())
+        .chain(non_fips_ec_alg_options_append())
+        .collect()
+}
+
+/// FIPS-approved EC curves (always available).
+fn fips_ec_alg_options() -> impl Iterator<Item = AlgoOption> {
+    [
+        ("nist-p256", "NIST P-256"),
+        ("nist-p384", "NIST P-384"),
+        ("nist-p521", "NIST P-521"),
+    ]
+    .into_iter()
+    .map(|(value, label)| AlgoOption {
+        value: value.to_owned(),
+        label: label.to_owned(),
+    })
+}
+
+/// Non-FIPS EC curves that appear before the NIST curves in the list.
+#[cfg(feature = "non-fips")]
+fn non_fips_ec_alg_options_prepend() -> Vec<AlgoOption> {
+    vec![AlgoOption {
+        value: "secp224k1".to_owned(),
+        label: "SECP224k1".to_owned(),
+    }]
+}
+
+#[cfg(not(feature = "non-fips"))]
+const fn non_fips_ec_alg_options_prepend() -> Vec<AlgoOption> {
+    vec![]
+}
+
+/// Non-FIPS EC curves appended after the NIST curves.
+#[cfg(feature = "non-fips")]
+fn non_fips_ec_alg_options_append() -> Vec<AlgoOption> {
+    [
+        ("secp256k1", "SECP256k1"),
+        ("x25519", "X25519"),
+        ("ed25519", "Ed25519"),
+        ("x448", "X448"),
+        ("ed448", "Ed448"),
+    ]
+    .into_iter()
+    .map(|(value, label)| AlgoOption {
+        value: value.to_owned(),
+        label: label.to_owned(),
+    })
+    .collect()
+}
+
+#[cfg(not(feature = "non-fips"))]
+const fn non_fips_ec_alg_options_append() -> Vec<AlgoOption> {
+    vec![]
+}
+
+#[wasm_bindgen]
+pub fn get_symmetric_algorithms() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&list_symmetric_algorithms())
+        .map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn get_ec_algorithms() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&list_ec_algorithms()).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns the list of cryptographic algorithms available in this build.
+/// Now reuses EC and Symmetric lists for feature-driven consistency.
+#[wasm_bindgen]
+pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
+    let sym = list_symmetric_algorithms();
+    let ec_list = list_ec_algorithms();
+
+    #[allow(unused_mut)]
+    let mut variants: Vec<CryptographicAlgorithm> = vec![
+        CryptographicAlgorithm::AES,
+        CryptographicAlgorithm::RSA,
+        CryptographicAlgorithm::ECDSA,
+        CryptographicAlgorithm::ECDH,
+        CryptographicAlgorithm::EC,
+        CryptographicAlgorithm::SHA3224,
+        CryptographicAlgorithm::SHA3256,
+        CryptographicAlgorithm::SHA3384,
+        CryptographicAlgorithm::SHA3512,
+    ];
+    #[cfg(feature = "non-fips")]
+    {
+        variants.push(CryptographicAlgorithm::CoverCrypt);
+        variants.push(CryptographicAlgorithm::CoverCryptBulk);
+    }
+
+    if ec_list.iter().any(|o| o.value == "ed25519") {
+        variants.push(CryptographicAlgorithm::Ed25519);
+    }
+    if ec_list.iter().any(|o| o.value == "ed448") {
+        variants.push(CryptographicAlgorithm::Ed448);
+    }
+
+    if sym.iter().any(|o| o.value.eq_ignore_ascii_case("chacha20")) {
+        variants.push(CryptographicAlgorithm::ChaCha20);
+        variants.push(CryptographicAlgorithm::ChaCha20Poly1305);
+    }
+
+    // PQC algorithms (non-fips only — uses OpenSSL 3.6+ default provider)
+    #[cfg(feature = "non-fips")]
+    {
+        variants.push(CryptographicAlgorithm::MLKEM_512);
+        variants.push(CryptographicAlgorithm::MLKEM_768);
+        variants.push(CryptographicAlgorithm::MLKEM_1024);
+        variants.push(CryptographicAlgorithm::MLDSA_44);
+        variants.push(CryptographicAlgorithm::MLDSA_65);
+        variants.push(CryptographicAlgorithm::MLDSA_87);
+        variants.push(CryptographicAlgorithm::X25519MLKEM768);
+        variants.push(CryptographicAlgorithm::X448MLKEM1024);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHA2_128s);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHA2_128f);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHA2_192s);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHA2_192f);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHA2_256s);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHA2_256f);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_128s);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_128f);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_192s);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_192f);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_256s);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_256f);
+    }
+
+    let algorithms: Vec<AlgoOption> = variants
+        .into_iter()
+        .map(|alg| {
+            let value = alg.to_string();
+            let label = value.clone();
+            AlgoOption { value, label }
+        })
+        .collect();
+
+    serde_wasm_bindgen::to_value(&algorithms).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns the list of certificate key generation algorithms (RSA sizes and EC curves)
+/// mirroring `crate/clients/client_utils/src/certificate_utils.rs` `Algorithm` variants.
+#[wasm_bindgen]
+pub fn get_certificate_algorithms() -> Result<JsValue, JsValue> {
+    #[cfg(feature = "non-fips")]
+    let opts: Vec<AlgoOption> = vec![
+        // EC curves (keep NIST P-192 first)
+        AlgoOption {
+            value: "nist-p192".into(),
+            label: "NIST P-192".into(),
+        },
+        AlgoOption {
+            value: "nist-p224".into(),
+            label: "NIST P-224".into(),
+        },
+        AlgoOption {
+            value: "nist-p256".into(),
+            label: "NIST P-256".into(),
+        },
+        AlgoOption {
+            value: "nist-p384".into(),
+            label: "NIST P-384".into(),
+        },
+        AlgoOption {
+            value: "nist-p521".into(),
+            label: "NIST P-521".into(),
+        },
+        // Additional EC (non-FIPS)
+        AlgoOption {
+            value: "ed25519".into(),
+            label: "Ed25519".into(),
+        },
+        AlgoOption {
+            value: "ed448".into(),
+            label: "Ed448".into(),
+        },
+        // RSA sizes
+        AlgoOption {
+            value: "rsa1024".into(),
+            label: "RSA 1024".into(),
+        },
+        AlgoOption {
+            value: "rsa2048".into(),
+            label: "RSA 2048".into(),
+        },
+        AlgoOption {
+            value: "rsa3072".into(),
+            label: "RSA 3072".into(),
+        },
+        AlgoOption {
+            value: "rsa4096".into(),
+            label: "RSA 4096".into(),
+        },
+        // PQC signing algorithms (ML-DSA)
+        AlgoOption {
+            value: "ml-dsa-44".into(),
+            label: "ML-DSA-44 (PQC)".into(),
+        },
+        AlgoOption {
+            value: "ml-dsa-65".into(),
+            label: "ML-DSA-65 (PQC)".into(),
+        },
+        AlgoOption {
+            value: "ml-dsa-87".into(),
+            label: "ML-DSA-87 (PQC)".into(),
+        },
+        // PQC signing algorithms (SLH-DSA SHA2)
+        AlgoOption {
+            value: "slh-dsa-sha2-128s".into(),
+            label: "SLH-DSA-SHA2-128s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-128f".into(),
+            label: "SLH-DSA-SHA2-128f (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-192s".into(),
+            label: "SLH-DSA-SHA2-192s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-192f".into(),
+            label: "SLH-DSA-SHA2-192f (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-256s".into(),
+            label: "SLH-DSA-SHA2-256s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-256f".into(),
+            label: "SLH-DSA-SHA2-256f (PQC)".into(),
+        },
+        // PQC signing algorithms (SLH-DSA SHAKE)
+        AlgoOption {
+            value: "slh-dsa-shake-128s".into(),
+            label: "SLH-DSA-SHAKE-128s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-128f".into(),
+            label: "SLH-DSA-SHAKE-128f (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-192s".into(),
+            label: "SLH-DSA-SHAKE-192s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-192f".into(),
+            label: "SLH-DSA-SHAKE-192f (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-256s".into(),
+            label: "SLH-DSA-SHAKE-256s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-256f".into(),
+            label: "SLH-DSA-SHAKE-256f (PQC)".into(),
+        },
+        // ML-KEM and hybrid KEM algorithms (subject key for CA-issued certificates)
+        AlgoOption {
+            value: "ml-kem-512".into(),
+            label: "ML-KEM-512 (KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-768".into(),
+            label: "ML-KEM-768 (KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-1024".into(),
+            label: "ML-KEM-1024 (KEM)".into(),
+        },
+        AlgoOption {
+            value: "x25519-ml-kem-768".into(),
+            label: "X25519/ML-KEM-768 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "x448-ml-kem-1024".into(),
+            label: "X448/ML-KEM-1024 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-512-p256".into(),
+            label: "ML-KEM-512/P-256 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-768-p256".into(),
+            label: "ML-KEM-768/P-256 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-512-curve25519".into(),
+            label: "ML-KEM-512/Curve25519 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-768-curve25519".into(),
+            label: "ML-KEM-768/Curve25519 (Hybrid KEM)".into(),
+        },
+    ];
+    #[cfg(not(feature = "non-fips"))]
+    let opts: Vec<AlgoOption> = vec![
+        // EC curves (FIPS subset)
+        AlgoOption {
+            value: "nist-p224".into(),
+            label: "NIST P-224".into(),
+        },
+        AlgoOption {
+            value: "nist-p256".into(),
+            label: "NIST P-256".into(),
+        },
+        AlgoOption {
+            value: "nist-p384".into(),
+            label: "NIST P-384".into(),
+        },
+        AlgoOption {
+            value: "nist-p521".into(),
+            label: "NIST P-521".into(),
+        },
+        // RSA sizes
+        AlgoOption {
+            value: "rsa2048".into(),
+            label: "RSA 2048".into(),
+        },
+        AlgoOption {
+            value: "rsa3072".into(),
+            label: "RSA 3072".into(),
+        },
+        AlgoOption {
+            value: "rsa4096".into(),
+            label: "RSA 4096".into(),
+        },
+    ];
+
+    serde_wasm_bindgen::to_value(&opts).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns supported key format types for UI filters.
+#[wasm_bindgen]
+pub fn get_key_format_types() -> Result<JsValue, JsValue> {
+    // Prefer KMIP 2.1 enum variants directly
+    let variants: &[KeyFormatType] = &[
+        KeyFormatType::Raw,
+        KeyFormatType::Opaque,
+        KeyFormatType::PKCS1,
+        KeyFormatType::PKCS8,
+        KeyFormatType::X509,
+        KeyFormatType::ECPrivateKey,
+        KeyFormatType::TransparentSymmetricKey,
+        KeyFormatType::TransparentDSAPrivateKey,
+        KeyFormatType::TransparentDSAPublicKey,
+        KeyFormatType::TransparentRSAPrivateKey,
+        KeyFormatType::TransparentRSAPublicKey,
+        KeyFormatType::TransparentDHPrivateKey,
+        KeyFormatType::TransparentDHPublicKey,
+        KeyFormatType::TransparentECPrivateKey,
+        KeyFormatType::TransparentECPublicKey,
+        KeyFormatType::PKCS12,
+        KeyFormatType::CoverCryptSecretKey,
+        KeyFormatType::CoverCryptPublicKey,
+    ];
+
+    let formats: Vec<AlgoOption> = variants
+        .iter()
+        .map(|k| {
+            let value = k.to_string();
+            let label = match k {
+                KeyFormatType::CoverCryptSecretKey => String::from("CoverCrypt Secret Key"),
+                KeyFormatType::CoverCryptPublicKey => String::from("CoverCrypt Public Key"),
+                _ => value.clone(),
+            };
+            AlgoOption { value, label }
+        })
+        .collect();
+
+    serde_wasm_bindgen::to_value(&formats).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns supported KMIP object types for UI filters.
+#[wasm_bindgen]
+pub fn get_object_types() -> Result<JsValue, JsValue> {
+    let variants: &[ObjectType] = &[
+        ObjectType::Certificate,
+        ObjectType::SymmetricKey,
+        ObjectType::PublicKey,
+        ObjectType::PrivateKey,
+        ObjectType::SplitKey,
+        ObjectType::SecretData,
+        ObjectType::OpaqueObject,
+        ObjectType::PGPKey,
+        ObjectType::CertificateRequest,
+    ];
+    let types: Vec<AlgoOption> = variants
+        .iter()
+        .map(|v| {
+            let value = v.to_string();
+            let label = v.to_string();
+            AlgoOption { value, label }
+        })
+        .collect();
+    serde_wasm_bindgen::to_value(&types).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns KMIP lifecycle states for UI filters.
+#[wasm_bindgen]
+pub fn get_object_states() -> Result<JsValue, JsValue> {
+    let mut states: Vec<AlgoOption> = Vec::new();
+    // Use KMIP 1.0 State enum to derive names/labels
+    let variants = [
+        kmip_0::kmip_types::State::PreActive,
+        kmip_0::kmip_types::State::Active,
+        kmip_0::kmip_types::State::Deactivated,
+        kmip_0::kmip_types::State::Compromised,
+        kmip_0::kmip_types::State::Destroyed,
+        kmip_0::kmip_types::State::Destroyed_Compromised,
+    ];
+    for s in variants {
+        let label = s.to_string();
+        // Use UI labels for value to keep client-side filtering stable
+        states.push(AlgoOption {
+            value: label.clone(),
+            label,
+        });
+    }
+    serde_wasm_bindgen::to_value(&states).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns the list of delegable KMIP operations for the access-rights UI.
+/// The `create` operation is excluded because it is handled separately
+/// (it applies to the wildcard object `*`, not to a specific object).
+#[wasm_bindgen]
+pub fn get_kmip_operations() -> Result<JsValue, JsValue> {
+    let all_ops = [
+        KmipOperation::Certify,
+        KmipOperation::Decrypt,
+        KmipOperation::DeriveKey,
+        KmipOperation::Destroy,
+        KmipOperation::Encrypt,
+        KmipOperation::Export,
+        KmipOperation::Get,
+        KmipOperation::GetAttributes,
+        KmipOperation::Hash,
+        KmipOperation::Import,
+        KmipOperation::Locate,
+        KmipOperation::MAC,
+        KmipOperation::Revoke,
+        KmipOperation::Rekey,
+        KmipOperation::Sign,
+        KmipOperation::SignatureVerify,
+        KmipOperation::Validate,
+        KmipOperation::SetAttribute,
+        KmipOperation::ModifyAttribute,
+        KmipOperation::AddAttribute,
+        KmipOperation::DeleteAttribute,
+        KmipOperation::Activate,
+    ];
+    let operations: Vec<AlgoOption> = all_ops
+        .iter()
+        .map(|op| {
+            // Use serde_json to get the canonical serialised name (matches
+            // `#[serde(rename_all = "lowercase")]` on KmipOperation), e.g.
+            // "setattribute" instead of the Display value "set_attribute".
+            let value = serde_json::to_string(op)
+                .unwrap_or_default()
+                .trim_matches('"')
+                .to_owned();
+            let label = match op {
+                KmipOperation::DeriveKey => "Derive Key".to_owned(),
+                KmipOperation::GetAttributes => "Get Attributes".to_owned(),
+                KmipOperation::SignatureVerify => "Signature Verify".to_owned(),
+                KmipOperation::SetAttribute => "Set Attribute".to_owned(),
+                KmipOperation::ModifyAttribute => "Modify Attribute".to_owned(),
+                KmipOperation::AddAttribute => "Add Attribute".to_owned(),
+                KmipOperation::DeleteAttribute => "Delete Attribute".to_owned(),
+                KmipOperation::MAC => "MAC".to_owned(),
+                _ => {
+                    // Capitalize first letter
+                    let s = op.to_string();
+                    let mut chars = s.chars();
+                    chars.next().map_or_else(String::new, |c| {
+                        c.to_uppercase().collect::<String>() + chars.as_str()
+                    })
+                }
+            };
+            AlgoOption { value, label }
+        })
+        .collect();
+    serde_wasm_bindgen::to_value(&operations).map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[wasm_bindgen(start)]
+#[allow(clippy::missing_const_for_fn)]
+pub fn init_panic_hook() {
+    // Improve error messages for panics in the browser console
+    #[cfg(target_arch = "wasm32")]
+    console_error_panic_hook::set_once();
+}
+
+/// Returns true when compiled in FIPS mode (default), false in non-FIPS builds.
+#[wasm_bindgen]
+#[allow(clippy::missing_const_for_fn)]
+#[must_use]
+pub fn is_fips_mode() -> bool {
+    // `non-fips` feature disables FIPS mode
+    !cfg!(feature = "non-fips")
+}
+
+// Locate request
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::needless_pass_by_value)]
+pub fn locate_ttlv_request(
+    tags: Option<Vec<String>>,
+    cryptographic_algorithm: Option<String>,
+    cryptographic_length: Option<usize>,
+    key_format_type: Option<String>,
+    object_type: Option<String>,
+    public_key_id: Option<String>,
+    private_key_id: Option<String>,
+    certificate_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let cryptographic_algorithm = none_if_empty(cryptographic_algorithm);
+    let key_format_type = none_if_empty(key_format_type);
+    let object_type = none_if_empty(object_type);
+    let public_key_id = none_if_empty(public_key_id);
+    let private_key_id = none_if_empty(private_key_id);
+    let certificate_id = none_if_empty(certificate_id);
+    let cryptographic_algorithm: Option<CryptographicAlgorithm> = cryptographic_algorithm
+        .as_deref()
+        .map(|s| CryptographicAlgorithm::from_str(s).map_err(|e| JsValue::from(e.to_string())))
+        .transpose()?;
+
+    let cryptographic_length = cryptographic_length
+        .map(|x| i32::try_from(x).map_err(|e| JsValue::from(e.to_string())))
+        .transpose()?;
+
+    let key_format_type: Option<KeyFormatType> = key_format_type
+        .as_deref()
+        .map(parse_key_format_type_flexible)
+        .transpose()?;
+
+    let object_type: Option<ObjectType> = object_type
+        .as_deref()
+        .map(|s| ObjectType::try_from(s).map_err(|e| JsValue::from(e.to_string())))
+        .transpose()?;
+
+    let request = build_locate_request(
+        vendor_id,
+        tags,
+        cryptographic_algorithm,
+        cryptographic_length,
+        key_format_type,
+        object_type,
+        public_key_id.as_deref(),
+        private_key_id.as_deref(),
+        certificate_id.as_deref(),
+    )
+    .map_err(|e| JsValue::from(e.to_string()))?;
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_locate_ttlv_response, LocateResponse);
+
+// Create keys Requests
+#[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments)]
+pub fn create_rsa_key_pair_ttlv_request(
+    private_key_id: Option<String>,
+    tags: Vec<String>,
+    cryptographic_length: usize,
+    sensitive: bool,
+    wrapping_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let private_key_id = none_if_empty(private_key_id).map(UniqueIdentifier::TextString);
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
+    let request: CreateKeyPair = create_rsa_key_pair_request(
+        vendor_id,
+        private_key_id,
+        tags,
+        cryptographic_length,
+        sensitive,
+        wrapping_key_id.as_ref(),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Key pair creation failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments)]
+pub fn create_ec_key_pair_ttlv_request(
+    private_key_id: Option<String>,
+    tags: Vec<String>,
+    recommended_curve: &str,
+    sensitive: bool,
+    wrapping_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let private_key_id = none_if_empty(private_key_id).map(UniqueIdentifier::TextString);
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
+    let recommended_curve: RecommendedCurve = Curve::from_str(recommended_curve)
+        .map_err(|e| JsValue::from_str(&format!("Invalid recommended curve: {e}")))?
+        .into();
+    let request: CreateKeyPair = create_ec_key_pair_request(
+        vendor_id,
+        private_key_id,
+        tags,
+        recommended_curve,
+        sensitive,
+        wrapping_key_id.as_ref(),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Key pair creation failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_create_keypair_ttlv_response, CreateKeyPairResponse);
+
+/// Create a PQC (ML-KEM or ML-DSA) key pair TTLV request.
+///
+/// `algorithm` must be one of: `ml-kem-512`, `ml-kem-768`, `ml-kem-1024`,
+/// `ml-dsa-44`, `ml-dsa-65`, `ml-dsa-87`.
+#[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value)]
+pub fn create_pqc_key_pair_ttlv_request(
+    tags: Vec<String>,
+    algorithm: &str,
+    sensitive: bool,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let crypto_algorithm = match algorithm {
+        "ml-kem-512" => CryptographicAlgorithm::MLKEM_512,
+        "ml-kem-768" => CryptographicAlgorithm::MLKEM_768,
+        "ml-kem-1024" => CryptographicAlgorithm::MLKEM_1024,
+        "ml-dsa-44" => CryptographicAlgorithm::MLDSA_44,
+        "ml-dsa-65" => CryptographicAlgorithm::MLDSA_65,
+        "ml-dsa-87" => CryptographicAlgorithm::MLDSA_87,
+        "x25519-ml-kem-768" => CryptographicAlgorithm::X25519MLKEM768,
+        "x448-ml-kem-1024" => CryptographicAlgorithm::X448MLKEM1024,
+        "slh-dsa-sha2-128s" => CryptographicAlgorithm::SLHDSA_SHA2_128s,
+        "slh-dsa-sha2-128f" => CryptographicAlgorithm::SLHDSA_SHA2_128f,
+        "slh-dsa-sha2-192s" => CryptographicAlgorithm::SLHDSA_SHA2_192s,
+        "slh-dsa-sha2-192f" => CryptographicAlgorithm::SLHDSA_SHA2_192f,
+        "slh-dsa-sha2-256s" => CryptographicAlgorithm::SLHDSA_SHA2_256s,
+        "slh-dsa-sha2-256f" => CryptographicAlgorithm::SLHDSA_SHA2_256f,
+        "slh-dsa-shake-128s" => CryptographicAlgorithm::SLHDSA_SHAKE_128s,
+        "slh-dsa-shake-128f" => CryptographicAlgorithm::SLHDSA_SHAKE_128f,
+        "slh-dsa-shake-192s" => CryptographicAlgorithm::SLHDSA_SHAKE_192s,
+        "slh-dsa-shake-192f" => CryptographicAlgorithm::SLHDSA_SHAKE_192f,
+        "slh-dsa-shake-256s" => CryptographicAlgorithm::SLHDSA_SHAKE_256s,
+        "slh-dsa-shake-256f" => CryptographicAlgorithm::SLHDSA_SHAKE_256f,
+        "ml-kem-512-p256"
+        | "ml-kem-768-p256"
+        | "ml-kem-512-curve25519"
+        | "ml-kem-768-curve25519" => {
+            // ConfigurableKEM hybrid algorithms use a different key creation path
+            let kem_algorithm = match algorithm {
+                "ml-kem-512-p256" => KemAlgorithm::MlKem512P256,
+                "ml-kem-768-p256" => KemAlgorithm::MlKem768P256,
+                "ml-kem-512-curve25519" => KemAlgorithm::MlKem512Curve25519,
+                _ => KemAlgorithm::MlKem768Curve25519,
+            };
+            let request: CreateKeyPair = build_create_configurable_kem_keypair_request(
+                &vendor_id,
+                None,
+                &tags,
+                kem_algorithm,
+                sensitive,
+                None,
+            )
+            .map_err(|e| JsValue::from_str(&format!("Hybrid KEM key pair creation failed: {e}")))?;
+            return to_wasm_ttlv(&request);
+        }
+        _ => {
+            return Err(JsValue::from_str(&format!(
+                "Invalid PQC algorithm: {algorithm}. \
+                 Use one of: ml-kem-512, ml-kem-768, ml-kem-1024, ml-dsa-44, ml-dsa-65, ml-dsa-87, \
+                 x25519-ml-kem-768, x448-ml-kem-1024, \
+                 slh-dsa-sha2-128s, slh-dsa-sha2-128f, slh-dsa-sha2-192s, slh-dsa-sha2-192f, \
+                 slh-dsa-sha2-256s, slh-dsa-sha2-256f, slh-dsa-shake-128s, slh-dsa-shake-128f, \
+                 slh-dsa-shake-192s, slh-dsa-shake-192f, slh-dsa-shake-256s, slh-dsa-shake-256f, \
+                 ml-kem-512-p256, ml-kem-768-p256, ml-kem-512-curve25519, ml-kem-768-curve25519"
+            )));
+        }
+    };
+    let request: CreateKeyPair =
+        create_pqc_key_pair_request(&vendor_id, &tags, crypto_algorithm, sensitive)
+            .map_err(|e| JsValue::from_str(&format!("PQC key pair creation failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+/// Returns the list of PQC algorithms available.
+#[wasm_bindgen]
+pub fn get_pqc_algorithms() -> Result<JsValue, JsValue> {
+    let algorithms: Vec<AlgoOption> = vec![
+        AlgoOption {
+            value: "ml-kem-512".to_owned(),
+            label: "ML-KEM-512".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-kem-768".to_owned(),
+            label: "ML-KEM-768".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-kem-1024".to_owned(),
+            label: "ML-KEM-1024".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-dsa-44".to_owned(),
+            label: "ML-DSA-44".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-dsa-65".to_owned(),
+            label: "ML-DSA-65".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-dsa-87".to_owned(),
+            label: "ML-DSA-87".to_owned(),
+        },
+        AlgoOption {
+            value: "x25519-ml-kem-768".to_owned(),
+            label: "X25519MLKEM768".to_owned(),
+        },
+        AlgoOption {
+            value: "x448-ml-kem-1024".to_owned(),
+            label: "X448MLKEM1024".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-128s".to_owned(),
+            label: "SLH-DSA-SHA2-128s".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-128f".to_owned(),
+            label: "SLH-DSA-SHA2-128f".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-192s".to_owned(),
+            label: "SLH-DSA-SHA2-192s".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-192f".to_owned(),
+            label: "SLH-DSA-SHA2-192f".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-256s".to_owned(),
+            label: "SLH-DSA-SHA2-256s".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-256f".to_owned(),
+            label: "SLH-DSA-SHA2-256f".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-128s".to_owned(),
+            label: "SLH-DSA-SHAKE-128s".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-128f".to_owned(),
+            label: "SLH-DSA-SHAKE-128f".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-192s".to_owned(),
+            label: "SLH-DSA-SHAKE-192s".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-192f".to_owned(),
+            label: "SLH-DSA-SHAKE-192f".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-256s".to_owned(),
+            label: "SLH-DSA-SHAKE-256s".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-256f".to_owned(),
+            label: "SLH-DSA-SHAKE-256f".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-kem-512-p256".to_owned(),
+            label: "ML-KEM-512/P-256".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-kem-768-p256".to_owned(),
+            label: "ML-KEM-768/P-256".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-kem-512-curve25519".to_owned(),
+            label: "ML-KEM-512/Curve25519".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-kem-768-curve25519".to_owned(),
+            label: "ML-KEM-768/Curve25519".to_owned(),
+        },
+    ];
+    serde_wasm_bindgen::to_value(&algorithms).map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
+pub fn create_sym_key_ttlv_request(
+    key_id: Option<String>,
+    tags: Vec<String>,
+    number_of_bits: Option<usize>,
+    symmetric_algorithm: &str,
+    sensitive: bool,
+    wrap_key_id: Option<String>,
+    wrap_key_b64: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let key_id = none_if_empty(key_id);
+    let wrap_key_id = none_if_empty(wrap_key_id);
+    let wrap_key_b64 = none_if_empty(wrap_key_b64);
+    let algorithm = SymmetricAlgorithm::from_str(symmetric_algorithm)
+        .map_err(|e| JsValue::from_str(&format!("Invalid cryptographic algorithm: {e}")))?;
+    let (number_of_bits, key_bytes, algorithm) =
+        prepare_sym_key_elements(number_of_bits, &wrap_key_b64, algorithm).map_err(|e| {
+            JsValue::from_str(&format!("Error building symmetric key elements: {e}"))
+        })?;
+
+    if let Some(key_bytes) = key_bytes {
+        let mut object = create_symmetric_key_kmip_object(
+            vendor_id,
+            key_bytes.as_slice(),
+            &Attributes {
+                cryptographic_algorithm: Some(algorithm),
+                ..Default::default()
+            },
+        )
+        .map_err(|e| JsValue::from_str(&format!("Error creating symmetric key: {e}")))?;
+        if let Some(wrapping_key_id) = &wrap_key_id {
+            let attributes = object.attributes_mut().map_err(|e| {
+                JsValue::from_str(&format!("Error creating symmetric key attributes: {e}"))
+            })?;
+            attributes.set_wrapping_key_id(vendor_id, wrapping_key_id);
+        }
+        let request =
+            import_object_request(vendor_id, key_id, object, None, false, false, &tags)
+                .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
+        to_wasm_ttlv(&request)
+    } else {
+        let key_id = key_id.map(UniqueIdentifier::TextString);
+        let request = symmetric_key_create_request(
+            vendor_id,
+            key_id,
+            number_of_bits,
+            algorithm,
+            &tags,
+            sensitive,
+            wrap_key_id.as_ref(),
+        )
+        .map_err(|e| JsValue::from_str(&format!("Sym key request creation failed: {e}")))?;
+        to_wasm_ttlv(&request)
+    }
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn create_secret_data_ttlv_request(
+    secret_type: &str,
+    secret_value: Option<String>,
+    secret_id: Option<String>,
+    tags: Vec<String>,
+    sensitive: bool,
+    wrap_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let secret_value = none_if_empty(secret_value);
+    let secret_id = none_if_empty(secret_id);
+    let wrap_key_id = none_if_empty(wrap_key_id);
+    let secret_data_type = SecretDataType::from_str(secret_type)
+        .map_err(|e| JsValue::from_str(&format!("Invalid secret data type: {e}")))?;
+
+    if let Some(secret_value) = secret_value {
+        let mut object = create_secret_data_kmip_object(
+            vendor_id,
+            secret_value.as_bytes(),
+            secret_data_type,
+            &Attributes::default(),
+        )
+        .map_err(|e| JsValue::from_str(&format!("Error creating secret data: {e}")))?;
+        if let Some(wrapping_key_id) = &wrap_key_id {
+            let attributes = object.attributes_mut().map_err(|e| {
+                JsValue::from_str(&format!("Error creating secret data attributes: {e}"))
+            })?;
+            attributes.set_wrapping_key_id(vendor_id, wrapping_key_id);
+        }
+        let request =
+            import_object_request(vendor_id, secret_id, object, None, false, false, &tags)
+                .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
+
+        to_wasm_ttlv(&request)
+    } else {
+        let secret_id = secret_id.map(UniqueIdentifier::TextString);
+        let request = secret_data_create_request(
+            vendor_id,
+            secret_id,
+            &tags,
+            sensitive,
+            wrap_key_id.as_ref(),
+        )
+        .map_err(|e| JsValue::from_str(&format!("Secret Data request creation failed: {e}")))?;
+        to_wasm_ttlv(&request)
+    }
+}
+
+wasm_response_parser!(parse_create_ttlv_response, CreateResponse);
+
+wasm_response_parser!(parse_create_split_key_ttlv_response, CreateSplitKeyResponse);
+
+wasm_response_parser!(parse_join_split_key_ttlv_response, JoinSplitKeyResponse);
+
+/// Create an Opaque Object (via Import) TTLV request.
+/// If `object_value` is provided, builds an `OpaqueObject` and forges an `Import` request.
+/// Wrapping key id can be provided to set the object wrapping attribute.
+#[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value)]
+pub fn create_opaque_object_ttlv_request(
+    object_value: Option<String>,
+    object_id: Option<String>,
+    tags: Vec<String>,
+    _sensitive: bool,
+    wrap_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let object_id = none_if_empty(object_id);
+    let wrap_key_id = none_if_empty(wrap_key_id);
+    let data = object_value.map(String::into_bytes).unwrap_or_default();
+
+    let mut object = Object::OpaqueObject(KmipOpaqueObject {
+        opaque_data_type: OpaqueDataType::Unknown,
+        opaque_data_value: data,
+    });
+
+    if let Some(wrapping_key_id) = &wrap_key_id {
+        let attributes = object.attributes_mut().map_err(|e| {
+            JsValue::from_str(&format!("Error creating opaque object attributes: {e}"))
+        })?;
+        attributes.set_wrapping_key_id(vendor_id, wrapping_key_id);
+    }
+
+    let request = import_object_request(vendor_id, object_id, object, None, false, false, &tags)
+        .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+// Decrypt requests
+#[wasm_bindgen]
+pub fn decrypt_sym_ttlv_request(
+    key_unique_identifier: &str,
+    ciphertext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+    data_encryption_algorithm: JsValue,
+) -> Result<JsValue, JsValue> {
+    let cryptographic_parameters: CryptographicParameters =
+        serde_wasm_bindgen::from_value::<DataEncryptionAlgorithm>(data_encryption_algorithm)?
+            .into();
+    let (ciphertext, nonce, tag) = parse_decrypt_elements(&cryptographic_parameters, ciphertext)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let request: Decrypt = decrypt_request(
+        key_unique_identifier,
+        Some(nonce),
+        ciphertext,
+        Some(tag),
+        authentication_data,
+        Some(cryptographic_parameters),
+    );
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+pub fn decrypt_rsa_ttlv_request(
+    key_unique_identifier: &str,
+    ciphertext: Vec<u8>,
+    encryption_algorithm: JsValue,
+    hash_fn: JsValue,
+) -> Result<JsValue, JsValue> {
+    let encryption_algorithm =
+        serde_wasm_bindgen::from_value::<RsaEncryptionAlgorithm>(encryption_algorithm)?;
+    let hash_fn = serde_wasm_bindgen::from_value::<HashFn>(hash_fn)?;
+    let request = decrypt_request(
+        key_unique_identifier,
+        None,
+        ciphertext,
+        None,
+        None,
+        Some(encryption_algorithm.to_cryptographic_parameters(hash_fn)),
+    );
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+pub fn decrypt_ec_ttlv_request(
+    key_unique_identifier: &str,
+    ciphertext: Vec<u8>,
+) -> Result<JsValue, JsValue> {
+    let request = decrypt_request(key_unique_identifier, None, ciphertext, None, None, None);
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_decrypt_ttlv_response, DecryptResponse);
+
+// Destroy request
+#[wasm_bindgen]
+pub fn destroy_ttlv_request(unique_identifier: String, remove: bool) -> Result<JsValue, JsValue> {
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
+    let request = Destroy {
+        unique_identifier: Some(unique_identifier),
+        remove,
+        cascade: false,
+        expected_object_type: None,
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_destroy_ttlv_response, DestroyResponse);
+
+// Encrypt requests
+#[wasm_bindgen]
+pub fn encrypt_sym_ttlv_request(
+    key_unique_identifier: &str,
+    encryption_policy: Option<String>,
+    plaintext: Vec<u8>,
+    nonce: Option<Vec<u8>>,
+    authentication_data: Option<Vec<u8>>,
+    data_encryption_algorithm: JsValue,
+) -> Result<JsValue, JsValue> {
+    let encryption_policy = none_if_empty(encryption_policy);
+    let cryptographic_parameters: Option<CryptographicParameters> = if data_encryption_algorithm
+        .is_null()
+        || data_encryption_algorithm.is_undefined()
+    {
+        None
+    } else {
+        Some(
+            serde_wasm_bindgen::from_value::<DataEncryptionAlgorithm>(data_encryption_algorithm)?
+                .into(),
+        )
+    };
+    let request = encrypt_request(
+        key_unique_identifier,
+        encryption_policy,
+        plaintext,
+        nonce,
+        authentication_data,
+        cryptographic_parameters,
+    )
+    .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+pub fn encrypt_rsa_ttlv_request(
+    key_unique_identifier: &str,
+    plaintext: Vec<u8>,
+    encryption_algorithm: JsValue,
+    hash_fn: JsValue,
+) -> Result<JsValue, JsValue> {
+    let encryption_algorithm =
+        serde_wasm_bindgen::from_value::<RsaEncryptionAlgorithm>(encryption_algorithm)?;
+    let hash_fn = serde_wasm_bindgen::from_value::<HashFn>(hash_fn)?;
+    let request = encrypt_request(
+        key_unique_identifier,
+        None,
+        plaintext,
+        None,
+        None,
+        Some(encryption_algorithm.to_cryptographic_parameters(hash_fn)),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+pub fn encrypt_ec_ttlv_request(
+    key_unique_identifier: &str,
+    plaintext: Vec<u8>,
+) -> Result<JsValue, JsValue> {
+    let request = encrypt_request(key_unique_identifier, None, plaintext, None, None, None)
+        .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_encrypt_ttlv_response, EncryptResponse);
+
+// FPE (Format-Preserving Encryption) requests
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn create_fpe_key_ttlv_request(
+    key_id: Option<String>,
+    tags: Vec<String>,
+    sensitive: bool,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let mut all_tags = tags;
+    if !all_tags.iter().any(|tag| tag == "fpe-ff1") {
+        all_tags.push("fpe-ff1".to_owned());
+    }
+    let key_id = key_id
+        .filter(|s| !s.is_empty())
+        .map(UniqueIdentifier::TextString);
+    let request = symmetric_key_create_request(
+        vendor_id,
+        key_id,
+        256,
+        CryptographicAlgorithm::FPE_FF1,
+        &all_tags,
+        sensitive,
+        None,
+    )
+    .map_err(|e| JsValue::from_str(&format!("FPE key request creation failed: {e}")))?;
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn encrypt_fpe_ttlv_request(
+    key_unique_identifier: &str,
+    plaintext: Vec<u8>,
+    tweak: Option<Vec<u8>>,
+    authenticated_data: Option<Vec<u8>>,
+) -> Result<JsValue, JsValue> {
+    let request = encrypt_request(
+        key_unique_identifier,
+        None,
+        plaintext,
+        tweak,
+        authenticated_data,
+        Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::FPE_FF1),
+            ..CryptographicParameters::default()
+        }),
+    )
+    .map_err(|e| JsValue::from_str(&format!("FPE encryption failed: {e}")))?;
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn decrypt_fpe_ttlv_request(
+    key_unique_identifier: &str,
+    ciphertext: Vec<u8>,
+    tweak: Option<Vec<u8>>,
+    authenticated_data: Option<Vec<u8>>,
+) -> Result<JsValue, JsValue> {
+    let request = decrypt_request(
+        key_unique_identifier,
+        tweak,
+        ciphertext,
+        None,
+        authenticated_data,
+        Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::FPE_FF1),
+            ..CryptographicParameters::default()
+        }),
+    );
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+// Sign requests
+fn js_to_cryptographic_parameters(
+    alg: Option<JsValue>,
+) -> Result<Option<CryptographicParameters>, JsValue> {
+    if alg.is_none() {
+        return Ok(None);
+    }
+    let Some(v) = alg else {
+        return Ok(None);
+    };
+    if v.is_null() || v.is_undefined() {
+        return Ok(None);
+    }
+    if let Some(s) = v.as_string() {
+        let s_norm = s.trim().to_lowercase();
+        let cp = match s_norm.as_str() {
+            // RSA
+            "rsassapss" => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                padding_method: Some(kmip_0::kmip_types::PaddingMethod::None),
+                hashing_algorithm: None,
+                ..Default::default()
+            },
+            // ECDSA variants
+            "ecdsa-with-sha256" => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
+                padding_method: Some(kmip_0::kmip_types::PaddingMethod::None),
+                hashing_algorithm: Some(HashFn::Sha256.into()),
+                ..Default::default()
+            },
+            "ecdsa-with-sha384" => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
+                padding_method: Some(kmip_0::kmip_types::PaddingMethod::None),
+                hashing_algorithm: Some(HashFn::Sha384.into()),
+                ..Default::default()
+            },
+            "ecdsa-with-sha512" => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
+                padding_method: Some(kmip_0::kmip_types::PaddingMethod::None),
+                hashing_algorithm: Some(HashFn::Sha512.into()),
+                ..Default::default()
+            },
+            _ => {
+                return Err(JsValue::from_str(&format!(
+                    "Unsupported signature algorithm: '{s}'"
+                )));
+            }
+        };
+        return Ok(Some(cp));
+    }
+    // Try to deserialize a full `CryptographicParameters` object
+    let cp: CryptographicParameters = serde_wasm_bindgen::from_value(v).map_err(|e| {
+        JsValue::from_str(&format!(
+            "Invalid CryptographicParameters value: {e}. Expect string algorithm or CP object."
+        ))
+    })?;
+    Ok(Some(cp))
+}
+
+#[wasm_bindgen]
+pub fn sign_ttlv_request(
+    key_unique_identifier: &str,
+    data_or_digest: Vec<u8>,
+    cryptographic_parameters: Option<JsValue>,
+    digested: bool,
+) -> Result<JsValue, JsValue> {
+    let cp = js_to_cryptographic_parameters(cryptographic_parameters).map_err(|e| {
+        JsValue::from_str(&format!(
+            "sign_ttlv_request: invalid cryptographic parameters for key '{key_unique_identifier}': {e:?}"
+        ))
+    })?;
+    let request = if digested {
+        Sign {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                key_unique_identifier.to_owned(),
+            )),
+            cryptographic_parameters: cp,
+            data: None,
+            digested_data: Some(data_or_digest),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    } else {
+        Sign {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                key_unique_identifier.to_owned(),
+            )),
+            cryptographic_parameters: cp,
+            data: Some(data_or_digest.into()),
+            digested_data: None,
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_sign_ttlv_response, SignResponse);
+
+#[wasm_bindgen]
+pub fn signature_verify_ttlv_request(
+    key_unique_identifier: &str,
+    data_or_digest: Vec<u8>,
+    signature: Vec<u8>,
+    cryptographic_parameters: Option<JsValue>,
+    digested: bool,
+) -> Result<JsValue, JsValue> {
+    let cp = js_to_cryptographic_parameters(cryptographic_parameters).map_err(|e| {
+        JsValue::from_str(&format!(
+            "signature_verify_ttlv_request: invalid cryptographic parameters for key '{key_unique_identifier}': {e:?}"
+        ))
+    })?;
+    let request = if digested {
+        SignatureVerify {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                key_unique_identifier.to_owned(),
+            )),
+            cryptographic_parameters: cp,
+            data: None,
+            digested_data: Some(data_or_digest),
+            signature_data: Some(signature),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    } else {
+        SignatureVerify {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                key_unique_identifier.to_owned(),
+            )),
+            cryptographic_parameters: cp,
+            data: Some(data_or_digest),
+            digested_data: None,
+            signature_data: Some(signature),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(
+    parse_signature_verify_ttlv_response,
+    SignatureVerifyResponse
+);
+
+// Export request
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn export_ttlv_request(
+    unique_identifier: &str,
+    unwrap: bool,
+    key_format: &str,
+    wrap_key_id: Option<String>,
+    wrapping_algorithm: Option<String>,
+    authentication_data: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let wrap_key_id = none_if_empty(wrap_key_id);
+    let wrapping_algorithm = none_if_empty(wrapping_algorithm);
+    let authentication_data = none_if_empty(authentication_data);
+    let key_format = ExportKeyFormat::from_str(key_format)
+        .map_err(|e| JsValue::from_str(&format!("Invalid key format: {e}")))?;
+    let wrapping_algorithm = wrapping_algorithm.and_then(|s| {
+        WrappingAlgorithm::from_str(&s)
+            .map_err(|e| JsValue::from_str(&format!("Invalid wrapping algorithm: {e}")))
+            .ok()
+    });
+    let (key_format_type, _encode_to_pem, encode_to_ttlv, wrapping_cryptographic_parameters) =
+        prepare_key_export_elements(&key_format, &wrapping_algorithm)
+            .map_err(|e| JsValue::from_str(&format!("Error preparing export elements: {e}")))?;
+    let request = export_request(
+        unique_identifier,
+        unwrap,
+        wrap_key_id.as_deref(),
+        key_format_type,
+        encode_to_ttlv,
+        wrapping_cryptographic_parameters,
+        authentication_data,
+    );
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<JsValue, JsValue> {
+    // let response = parse_ttlv_response::<ExportResponse>(response)?;
+    let key_format = ExportKeyFormat::from_str(key_format)
+        .map_err(|e| JsValue::from_str(&format!("Invalid export key format type: {e}")))?;
+    let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
+    let response: ExportResponse = from_ttlv(ttlv).map_err(|e| JsValue::from(e.to_string()))?;
+    let data = match key_format {
+        ExportKeyFormat::JsonTtlv => {
+            let kmip_object = response.object;
+            let mut ttlv = to_ttlv(&kmip_object).map_err(|e| JsValue::from(e.to_string()))?;
+            ttlv.tag = tag_from_object(&kmip_object);
+            let bytes = serde_json::to_vec::<TTLV>(&ttlv)
+                .map_err(|e| JsValue::from_str(&format!("{e}")))?;
+            JsValue::from(Uint8Array::from(bytes.as_slice()))
+        }
+        ExportKeyFormat::Base64 => {
+            let kmip_object = response.object;
+            let string = general_purpose::STANDARD
+                .encode(get_object_bytes(&kmip_object)?)
+                .to_lowercase();
+            JsValue::from(string)
+        }
+        _ => {
+            let kmip_object = response.object;
+            let object_type = kmip_object.object_type();
+            let bytes = {
+                let mut bytes = get_object_bytes(&kmip_object)?;
+                let (key_format_type, encode_to_pem) = get_export_key_format_type(&key_format);
+
+                if encode_to_pem {
+                    let format_type = key_format_type
+                        .ok_or_else(|| {
+                            UtilsError::Default(
+                                "Server Error: the Key Format Type should be known at this stage"
+                                    .to_owned(),
+                            )
+                        })
+                        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+                    bytes = der_to_pem(bytes.as_slice(), format_type, object_type)
+                        .map_err(|e| JsValue::from_str(&format!("{e}")))?
+                        .to_vec();
+                }
+                bytes
+            };
+            JsValue::from(Uint8Array::from(bytes.as_slice()))
+        }
+    };
+    Ok(data)
+}
+
+fn get_object_bytes(object: &Object) -> Result<Vec<u8>, JsValue> {
+    let key_block = object
+        .key_block()
+        .map_err(|e| JsValue::from_str(&format!("{e}")))?;
+    match key_block
+        .key_value
+        .as_ref()
+        .ok_or_else(|| JsValue::from_str("Key value is missing"))?
+    {
+        KeyValue::ByteString(v) => Ok(v.to_vec()),
+        KeyValue::Structure { key_material, .. } => match key_material {
+            KeyMaterial::ByteString(v) => Ok(v.to_vec()),
+            KeyMaterial::TransparentSymmetricKey { key } => Ok(key.to_vec()),
+            KeyMaterial::TransparentECPrivateKey { .. }
+            | KeyMaterial::TransparentECPublicKey { .. } => key_block
+                .ec_raw_bytes()
+                .map(|v| v.to_vec())
+                .map_err(|e| JsValue::from_str(&e.to_string())),
+            x => Err(JsValue::from_str(&format!(
+                "Unsupported key material type: {x:?}"
+            ))),
+        },
+    }
+}
+
+// Get requests
+#[wasm_bindgen]
+pub fn get_rsa_private_key_ttlv_request(key_unique_identifier: &str) -> Result<JsValue, JsValue> {
+    let request = get_rsa_private_key_request(key_unique_identifier);
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+pub fn get_rsa_public_key_ttlv_request(key_unique_identifier: &str) -> Result<JsValue, JsValue> {
+    let request = get_rsa_public_key_request(key_unique_identifier);
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+pub fn get_ec_private_key_ttlv_request(key_unique_identifier: &str) -> Result<JsValue, JsValue> {
+    let request = get_ec_private_key_request(key_unique_identifier);
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+pub fn get_ec_public_key_ttlv_request(key_unique_identifier: &str) -> Result<JsValue, JsValue> {
+    let request = get_ec_public_key_request(key_unique_identifier);
+    to_wasm_ttlv(&request)
+}
+
+// Import request
+#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen]
+pub fn import_ttlv_request(
+    unique_identifier: Option<String>,
+    key_bytes: Vec<u8>,
+    key_format: &str,
+    public_key_id: Option<String>,
+    private_key_id: Option<String>,
+    certificate_id: Option<String>,
+    unwrap: bool,
+    replace_existing: bool,
+    tags: Vec<String>,
+    key_usage: Option<Vec<String>>,
+    wrapping_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let unique_identifier = none_if_empty(unique_identifier);
+    let public_key_id = none_if_empty(public_key_id);
+    let private_key_id = none_if_empty(private_key_id);
+    let certificate_id = none_if_empty(certificate_id);
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
+    let key_usage = key_usage.map(|vec| {
+        vec.into_iter()
+            .filter_map(|s| s.parse::<KeyUsage>().ok())
+            .collect()
+    });
+    let key_format =
+        ImportKeyFormat::from_str(key_format).map_err(|e| JsValue::from(e.to_string()))?;
+
+    let (object, import_attributes) = prepare_key_import_elements(
+        vendor_id,
+        &key_usage,
+        &key_format,
+        key_bytes,
+        &certificate_id,
+        &private_key_id,
+        &public_key_id,
+        wrapping_key_id.as_ref(),
+    )
+    .map_err(|e| JsValue::from(e.to_string()))?;
+    let request = import_object_request(
+        vendor_id,
+        unique_identifier,
+        object,
+        Some(import_attributes),
+        unwrap,
+        replace_existing,
+        tags,
+    )
+    .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
+
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_import_ttlv_response, ImportResponse);
+
+// Revoke request
+#[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value)] // required by wasm_bindgen: Option<String> from JS
+pub fn revoke_ttlv_request(
+    unique_identifier: &str,
+    revocation_reason_message: String,
+    revocation_reason_code: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let reason_code =
+        revocation_reason_code
+            .as_deref()
+            .map_or(RevocationReasonCode::Unspecified, |s| {
+                cosmian_kms_client_utils::revoke_utils::try_parse_revocation_reason_code(s)
+                    .unwrap_or(RevocationReasonCode::Unspecified)
+            });
+    let revocation_reason = RevocationReason {
+        revocation_reason_code: reason_code,
+        revocation_message: Some(revocation_reason_message),
+    };
+    let request = build_revoke_key_request(unique_identifier, revocation_reason)
+        .map_err(|e| JsValue::from_str(&format!("Revocation request creation failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_revoke_ttlv_response, RevokeResponse);
+
+// Covercrypt requests
+#[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value)]
+pub fn create_cc_master_keypair_ttlv_request(
+    access_structure: &str,
+    tags: Vec<String>,
+    sensitive: bool,
+    wrapping_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
+    let request = build_create_covercrypt_master_keypair_request(
+        vendor_id,
+        access_structure,
+        tags,
+        sensitive,
+        wrapping_key_id.as_ref(),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Covercrypt master keypair creation failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value)]
+pub fn create_cc_user_key_ttlv_request(
+    master_secret_key_id: &str,
+    access_policy: &str,
+    tags: Vec<String>,
+    sensitive: bool,
+    wrapping_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
+    let request = build_create_covercrypt_usk_request(
+        vendor_id,
+        access_policy,
+        master_secret_key_id,
+        tags,
+        sensitive,
+        wrapping_key_id.as_ref(),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Covercrypt user key creation failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+pub fn encrypt_cc_ttlv_request(
+    key_unique_identifier: &str,
+    encryption_policy: String,
+    plaintext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+) -> Result<JsValue, JsValue> {
+    let request = encrypt_request(
+        key_unique_identifier,
+        Some(encryption_policy),
+        plaintext,
+        None,
+        authentication_data,
+        Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
+            ..Default::default()
+        }),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+pub fn decrypt_cc_ttlv_request(
+    key_unique_identifier: &str,
+    ciphertext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+) -> Result<JsValue, JsValue> {
+    let request = decrypt_request(
+        key_unique_identifier,
+        None,
+        ciphertext,
+        None,
+        authentication_data,
+        Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
+            ..Default::default()
+        }),
+    );
+    to_wasm_ttlv(&request)
+}
+
+// Certificate requests
+#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen]
+pub fn import_certificate_ttlv_request(
+    certificate_id: Option<String>,
+    certificate_bytes: Vec<u8>,
+    input_format: &str,
+    private_key_id: Option<String>,
+    public_key_id: Option<String>,
+    issuer_certificate_id: Option<String>,
+    pkcs12_password: Option<String>,
+    replace_existing: bool,
+    tags: Vec<String>,
+    key_usage: Option<Vec<String>>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let certificate_id = none_if_empty(certificate_id);
+    let private_key_id = none_if_empty(private_key_id);
+    let public_key_id = none_if_empty(public_key_id);
+    let issuer_certificate_id = none_if_empty(issuer_certificate_id);
+    let pkcs12_password = none_if_empty(pkcs12_password);
+    let input_format =
+        CertificateInputFormat::from_str(input_format).map_err(|e| JsValue::from(e.to_string()))?;
+    let key_usage: Option<Vec<KeyUsage>> = key_usage.map(|vec| {
+        vec.into_iter()
+            .filter_map(|s| s.parse::<KeyUsage>().ok()) // Parse and filter out errors
+            .collect()
+    });
+    let attributes =
+        prepare_certificate_attributes(&issuer_certificate_id, &private_key_id, &public_key_id);
+    let request = match input_format {
+        CertificateInputFormat::JsonTtlv => {
+            let object: Object = read_object_from_json_ttlv_bytes(&certificate_bytes)
+                .map_err(|e| JsValue::from(e.to_string()))?;
+            import_object_request(
+                vendor_id,
+                certificate_id,
+                object,
+                attributes,
+                false,
+                replace_existing,
+                tags,
+            )
+        }
+        CertificateInputFormat::Pem => {
+            let certificate = Certificate::from_pem(&certificate_bytes)
+                .map_err(|e| JsValue::from(e.to_string()))?;
+            let object = Object::Certificate(KmipCertificate {
+                certificate_type: CertificateType::X509,
+                certificate_value: certificate
+                    .to_der()
+                    .map_err(|e| JsValue::from(e.to_string()))?,
+            });
+            import_object_request(
+                vendor_id,
+                certificate_id,
+                object,
+                attributes,
+                false,
+                replace_existing,
+                tags,
+            )
+        }
+        CertificateInputFormat::Der => {
+            let certificate = Certificate::from_der(&certificate_bytes)
+                .map_err(|e| JsValue::from(e.to_string()))?;
+            let object = Object::Certificate(KmipCertificate {
+                certificate_type: CertificateType::X509,
+                certificate_value: certificate
+                    .to_der()
+                    .map_err(|e| JsValue::from(e.to_string()))?,
+            });
+            import_object_request(
+                vendor_id,
+                certificate_id,
+                object,
+                attributes,
+                false,
+                replace_existing,
+                tags,
+            )
+        }
+        CertificateInputFormat::Pkcs12 => {
+            let cryptographic_usage_mask = key_usage
+                .as_deref()
+                .and_then(build_usage_mask_from_key_usage);
+            let pkcs12_bytes = Zeroizing::from(certificate_bytes);
+            let private_key = build_private_key_from_der_bytes(KeyFormatType::PKCS12, pkcs12_bytes);
+            let mut attributes = private_key.attributes().cloned().unwrap_or_default();
+            attributes.set_cryptographic_usage_mask(cryptographic_usage_mask);
+            if let Some(password) = &pkcs12_password {
+                attributes.set_link(
+                    LinkType::PKCS12PasswordLink,
+                    LinkedObjectIdentifier::TextString(password.clone()),
+                );
+            }
+            import_object_request(
+                vendor_id,
+                certificate_id,
+                private_key,
+                Some(attributes),
+                false,
+                replace_existing,
+                &tags,
+            )
+        }
+        CertificateInputFormat::Chain => Err(UtilsError::Default(
+            "Chain import not supported from the UI.".to_owned(),
+        ))
+        .map_err(|e| JsValue::from(e.to_string()))?,
+        CertificateInputFormat::CCADB => Err(UtilsError::Default(
+            "CCADB import not supported from the UI.".to_owned(),
+        ))
+        .map_err(|e| JsValue::from(e.to_string()))?,
+    }
+    .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn export_certificate_ttlv_request(
+    unique_identifier: &str,
+    output_format: &str,
+    pkcs12_password: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let pkcs12_password = none_if_empty(pkcs12_password);
+    let output_format = CertificateExportFormat::from_str(output_format)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let (key_format_type, wrapping_key_id) =
+        prepare_certificate_export_elements(&output_format, pkcs12_password);
+    let request = export_request(
+        unique_identifier,
+        false,
+        wrapping_key_id.as_deref(),
+        Some(key_format_type),
+        false,
+        None,
+        None,
+    );
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+pub fn parse_export_certificate_ttlv_response(
+    response: &str,
+    output_format: &str,
+) -> Result<JsValue, JsValue> {
+    // let response = parse_ttlv_response::<ExportResponse>(response)?;
+    let output_format = CertificateExportFormat::from_str(output_format)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
+    let response: ExportResponse = from_ttlv(ttlv).map_err(|e| JsValue::from(e.to_string()))?;
+    let object = response.object;
+    let object_type = response.object_type;
+    match &object {
+        Object::Certificate(KmipCertificate {
+            certificate_value, ..
+        }) => {
+            let data = match output_format {
+                CertificateExportFormat::JsonTtlv => {
+                    let mut ttlv = to_ttlv(&object).map_err(|e| JsValue::from(e.to_string()))?;
+                    ttlv.tag = tag_from_object(&object);
+                    let bytes = serde_json::to_vec::<TTLV>(&ttlv)
+                        .map_err(|e| JsValue::from_str(&format!("{e}")))?;
+                    JsValue::from(Uint8Array::from(bytes.as_slice()))
+                }
+                CertificateExportFormat::Pem => {
+                    // save the pem to a file
+                    let pem = pem::Pem::new("CERTIFICATE", certificate_value.as_slice());
+                    JsValue::from(Uint8Array::from(pem.to_string().as_bytes()))
+                }
+                CertificateExportFormat::Pkcs12 => {
+                    // PKCS12 is exported as a private key object
+                    Err(UtilsError::Default(
+                        "PKCS12: invalid object returned by the server.".to_owned(),
+                    ))
+                    .map_err(|e| JsValue::from(e.to_string()))?
+                }
+                #[cfg(feature = "non-fips")]
+                CertificateExportFormat::Pkcs12Legacy => {
+                    // PKCS12 is exported as a private key object
+                    Err(UtilsError::Default(
+                        "PKCS12: invalid object returned by the server.".to_owned(),
+                    ))
+                    .map_err(|e| JsValue::from(e.to_string()))?
+                }
+                CertificateExportFormat::Pkcs7 => {
+                    // save the pem to a file
+                    let pem = pem::Pem::new(String::from("PKCS7"), certificate_value.as_slice());
+                    JsValue::from(Uint8Array::from(pem.to_string().as_bytes()))
+                }
+            };
+            Ok(data)
+        }
+        // PKCS12 is exported as a private key object
+        Object::PrivateKey(PrivateKey { key_block }) => {
+            let p12_bytes = key_block
+                .pkcs_der_bytes()
+                .map_err(|e| JsValue::from(e.to_string()))?
+                .to_vec();
+            Ok(JsValue::from(Uint8Array::from(p12_bytes.as_slice())))
+        }
+        _ => Err(UtilsError::Default(format!(
+            "The object is not a certificate but a {object_type}"
+        )))
+        .map_err(|e| JsValue::from(e.to_string()))?,
+    }
+}
+
+// Validate request
+#[wasm_bindgen]
+pub fn validate_certificate_ttlv_request(
+    unique_identifier: Option<String>,
+    validity_time: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let unique_identifier = none_if_empty(unique_identifier);
+    let validity_time = none_if_empty(validity_time);
+    let unique_identifier = unique_identifier.map(|id| vec![UniqueIdentifier::TextString(id)]);
+    let request = Validate {
+        certificate: None,
+        unique_identifier,
+        validity_time,
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_validate_ttlv_response, ValidateResponse);
+
+#[wasm_bindgen]
+pub fn encrypt_certificate_ttlv_request(
+    unique_identifier: &str,
+    plaintext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+    encryption_algorithm: &str,
+) -> Result<JsValue, JsValue> {
+    let encryption_algorithm: RsaEncryptionAlgorithm =
+        RsaEncryptionAlgorithm::from_str(encryption_algorithm)
+            .map_err(|e| JsValue::from(e.to_string()))?;
+    let cryptographic_parameters = encryption_algorithm.to_cryptographic_parameters(HashFn::Sha256);
+    let request = encrypt_request(
+        unique_identifier,
+        None,
+        plaintext,
+        None,
+        authentication_data,
+        Some(cryptographic_parameters),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+pub fn decrypt_certificate_ttlv_request(
+    unique_identifier: &str,
+    ciphertext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+    encryption_algorithm: &str,
+) -> Result<JsValue, JsValue> {
+    let encryption_algorithm: RsaEncryptionAlgorithm =
+        RsaEncryptionAlgorithm::from_str(encryption_algorithm)
+            .map_err(|e| JsValue::from(e.to_string()))?;
+    let cryptographic_parameters = encryption_algorithm.to_cryptographic_parameters(HashFn::Sha256);
+    let request = decrypt_request(
+        unique_identifier,
+        None,
+        ciphertext,
+        None,
+        authentication_data,
+        Some(cryptographic_parameters),
+    );
+    to_wasm_ttlv(&request)
+}
+
+// Certify request
+#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen]
+pub fn certify_ttlv_request(
+    certificate_id: Option<String>,
+    certificate_signing_request_format: Option<String>,
+    certificate_signing_request: Option<Vec<u8>>,
+    public_key_id_to_certify: Option<String>,
+    certificate_id_to_re_certify: Option<String>,
+    generate_key_pair: bool,
+    subject_name: Option<String>,
+    algorithm: Option<String>,
+    issuer_private_key_id: Option<String>,
+    issuer_certificate_id: Option<String>,
+    number_of_days: usize,
+    certificate_extensions: Option<Vec<u8>>,
+    tags: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let certificate_id = none_if_empty(certificate_id);
+    let certificate_signing_request_format = none_if_empty(certificate_signing_request_format);
+    let public_key_id_to_certify = none_if_empty(public_key_id_to_certify);
+    let certificate_id_to_re_certify = none_if_empty(certificate_id_to_re_certify);
+    let subject_name = none_if_empty(subject_name);
+    let algorithm = none_if_empty(algorithm);
+    let issuer_private_key_id = none_if_empty(issuer_private_key_id);
+    let issuer_certificate_id = none_if_empty(issuer_certificate_id);
+    let algorithm = Algorithm::from_str(&algorithm.unwrap_or_else(|| "rsa4096".to_owned()))
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let request = build_certify_request(
+        vendor_id,
+        &certificate_id,
+        &certificate_signing_request_format,
+        &certificate_signing_request,
+        &public_key_id_to_certify,
+        &certificate_id_to_re_certify,
+        generate_key_pair,
+        &subject_name,
+        algorithm,
+        &issuer_private_key_id,
+        &issuer_certificate_id,
+        number_of_days,
+        &certificate_extensions,
+        &tags,
+    )
+    .map_err(|e| JsValue::from(e.to_string()))?;
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_certify_ttlv_response, CertifyResponse);
+
+/// Build a KMIP `ReCertify` TTLV request.
+///
+/// Unlike `certify_ttlv_request` with an existing certificate UID (which
+/// replaces in-place), this sends the dedicated KMIP `ReCertify` operation
+/// that creates a **new certificate** with a fresh UID and links the old and
+/// new certificates via `ReplacedObjectLink` / `ReplacementObjectLink`.
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn re_certify_ttlv_request(
+    certificate_id_to_re_certify: String,
+    issuer_private_key_id: Option<String>,
+    issuer_certificate_id: Option<String>,
+    number_of_days: usize,
+    tags: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let issuer_private_key_id = none_if_empty(issuer_private_key_id);
+    let issuer_certificate_id = none_if_empty(issuer_certificate_id);
+    let request = build_re_certify_request(
+        vendor_id,
+        &certificate_id_to_re_certify,
+        &issuer_private_key_id,
+        &issuer_certificate_id,
+        number_of_days,
+        &tags,
+    )
+    .map_err(|e| JsValue::from(e.to_string()))?;
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_re_certify_ttlv_response, ReCertifyResponse);
+
+// Attributes request
+
+/// Returns the canonical list of attribute key strings used to enrich KMIP Locate results.
+/// Sourced from [`cosmian_kms_client_utils::attributes_utils::LOCATE_ENRICH_ATTRIBUTE_KEYS`] —
+/// single source of truth defined next to `parse_selected_attributes_flatten`.
+#[wasm_bindgen]
+pub fn get_locate_enrich_attribute_keys() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(LOCATE_ENRICH_ATTRIBUTE_KEYS)
+        .map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn get_attributes_ttlv_request(unique_identifier: String) -> Result<JsValue, JsValue> {
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
+    let request = GetAttributes {
+        unique_identifier: Some(unique_identifier),
+        attribute_reference: None,
+    };
+    to_wasm_ttlv(&request)
+}
+
+/// Same as `get_attributes_ttlv_request`, but can force requesting tags.
+///
+/// Some callers (notably UI/WASM) rely on tags being returned, but the server may not include
+/// `Tag::Tag` unless explicitly requested.
+#[wasm_bindgen]
+pub fn get_attributes_ttlv_request_with_options(
+    unique_identifier: String,
+    force_tags: bool,
+) -> Result<JsValue, JsValue> {
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
+
+    let attribute_reference = if force_tags {
+        Some(vec![AttributeReference::Standard(Tag::Tag)])
+    } else {
+        None
+    };
+
+    let request = GetAttributes {
+        unique_identifier: Some(unique_identifier),
+        attribute_reference,
+    };
+
+    to_wasm_ttlv(&request)
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn parse_get_attributes_ttlv_response(
+    response: &str,
+    selected_attributes: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    let selected_attributes: Vec<&str> = selected_attributes.iter().map(String::as_str).collect();
+    let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
+    let GetAttributesResponse {
+        unique_identifier: _,
+        attributes,
+    } = from_ttlv(ttlv).map_err(|e| JsValue::from(e.to_string()))?;
+    let results =
+        parse_selected_attributes_flatten(&get_vendor_id(), &attributes, &selected_attributes)
+            .map_err(|e| JsValue::from(e.to_string()))?;
+    Ok(serde_wasm_bindgen::to_value(&results)?)
+}
+
+#[wasm_bindgen]
+pub fn set_attribute_ttlv_request(
+    unique_identifier: String,
+    attribute_name: &str,
+    attribute_value: String,
+) -> Result<JsValue, JsValue> {
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
+    let attribute = build_selected_attribute(attribute_name, attribute_value)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let request = SetAttribute {
+        unique_identifier: Some(unique_identifier),
+        new_attribute: attribute,
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_set_attribute_ttlv_response, SetAttributeResponse);
+
+/// Build a KMIP `SetAttribute` TTLV request that sets a vendor attribute on an object.
+///
+/// Vendor attributes carry custom key-value metadata (e.g. `x-cosmian-crypto-officer-ceremony`).
+/// This binding uses the Rust KMIP type system directly — avoiding the raw-TTLV-JSON pitfall
+/// where `VendorAttribute.AttributeValue` must be hex-encoded bytes.
+///
+/// # Arguments
+/// * `unique_identifier` — The UID of the object to update.
+/// * `vendor_id` — The vendor identification string (e.g. `"cosmian"`).
+/// * `attr_name` — The vendor attribute name (e.g. `"x-cosmian-crypto-officer-ceremony"`).
+/// * `attr_value` — The string value; serialized as `VendorAttributeValue::TextString`.
+#[wasm_bindgen]
+pub fn set_vendor_attribute_ttlv_request(
+    unique_identifier: String,
+    vendor_id: &str,
+    attr_name: &str,
+    attr_value: &str,
+) -> Result<JsValue, JsValue> {
+    let attr = Attribute::VendorAttribute(VendorAttribute {
+        vendor_identification: vendor_id.to_owned(),
+        attribute_name: attr_name.to_owned(),
+        attribute_value: VendorAttributeValue::TextString(attr_value.to_owned()),
+    });
+    let request = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        new_attribute: attr,
+    };
+    to_wasm_ttlv(&request)
+}
+
+#[wasm_bindgen]
+pub fn modify_attribute_ttlv_request(
+    unique_identifier: String,
+    attribute_name: &str,
+    attribute_value: String,
+) -> Result<JsValue, JsValue> {
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
+    let attribute = build_selected_attribute(attribute_name, attribute_value)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let request = ModifyAttribute {
+        unique_identifier: Some(unique_identifier),
+        new_attribute: attribute,
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(
+    parse_modify_attribute_ttlv_response,
+    ModifyAttributeResponse
+);
+
+#[wasm_bindgen]
+pub fn delete_attribute_ttlv_request(
+    unique_identifier: String,
+    attribute_name: &str,
+) -> Result<JsValue, JsValue> {
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
+    let request = match attribute_name {
+        "public_key_id"
+        | "private_key_id"
+        | "certificate_id"
+        | "pkcs12_certificate_id"
+        | "pkcs12_password_certificate"
+        | "parent_id"
+        | "child_id"
+        | "rotate_name" => {
+            let attribute = build_selected_attribute(attribute_name, String::new())
+                .map_err(|e| JsValue::from(e.to_string()))?;
+            DeleteAttribute {
+                unique_identifier: Some(unique_identifier),
+                current_attribute: Some(attribute),
+                attribute_references: None,
+            }
+        }
+        "rotate_interval" | "rotate_offset" => {
+            let attribute = build_selected_attribute(attribute_name, "0".to_owned())
+                .map_err(|e| JsValue::from(e.to_string()))?;
+            DeleteAttribute {
+                unique_identifier: Some(unique_identifier),
+                current_attribute: Some(attribute),
+                attribute_references: None,
+            }
+        }
+        _ => {
+            let attribute_tag =
+                Tag::from_str(attribute_name).map_err(|e| JsValue::from(e.to_string()))?;
+            let attribute_reference = AttributeReference::Standard(attribute_tag);
+            let references = vec![attribute_reference];
+            DeleteAttribute {
+                unique_identifier: Some(unique_identifier),
+                current_attribute: None,
+                attribute_references: Some(references),
+            }
+        }
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(
+    parse_delete_attribute_ttlv_response,
+    DeleteAttributeResponse
+);
+
+/// Returns the list of hash algorithms supported by the server.
+#[wasm_bindgen]
+pub fn get_hash_algorithms() -> Result<JsValue, JsValue> {
+    let algorithms: Vec<AlgoOption> = vec![
+        AlgoOption {
+            value: "SHA256".to_owned(),
+            label: "SHA-256".to_owned(),
+        },
+        AlgoOption {
+            value: "SHA384".to_owned(),
+            label: "SHA-384".to_owned(),
+        },
+        AlgoOption {
+            value: "SHA512".to_owned(),
+            label: "SHA-512".to_owned(),
+        },
+        AlgoOption {
+            value: "SHA3224".to_owned(),
+            label: "SHA3-224".to_owned(),
+        },
+        AlgoOption {
+            value: "SHA3256".to_owned(),
+            label: "SHA3-256".to_owned(),
+        },
+        AlgoOption {
+            value: "SHA3384".to_owned(),
+            label: "SHA3-384".to_owned(),
+        },
+        AlgoOption {
+            value: "SHA3512".to_owned(),
+            label: "SHA3-512".to_owned(),
+        },
+    ];
+    serde_wasm_bindgen::to_value(&algorithms).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Build a KMIP Hash TTLV request.
+///
+/// `hashing_algorithm` must be one of: `SHA256`, `SHA384`, `SHA512`,
+/// `SHA3224`, `SHA3256`, `SHA3384`, `SHA3512`.
+#[wasm_bindgen]
+pub fn hash_ttlv_request(data: &[u8], hashing_algorithm: &str) -> Result<JsValue, JsValue> {
+    use kmip_0::kmip_types::HashingAlgorithm;
+
+    let algorithm = match hashing_algorithm {
+        "SHA256" => HashingAlgorithm::SHA256,
+        "SHA384" => HashingAlgorithm::SHA384,
+        "SHA512" => HashingAlgorithm::SHA512,
+        "SHA3224" => HashingAlgorithm::SHA3224,
+        "SHA3256" => HashingAlgorithm::SHA3256,
+        "SHA3384" => HashingAlgorithm::SHA3384,
+        "SHA3512" => HashingAlgorithm::SHA3512,
+        _ => {
+            return Err(JsValue::from(format!(
+                "Unsupported hashing algorithm: {hashing_algorithm}"
+            )));
+        }
+    };
+    let request = Hash {
+        cryptographic_parameters: CryptographicParameters {
+            hashing_algorithm: Some(algorithm),
+            ..CryptographicParameters::default()
+        },
+        data: Some(data.to_vec()),
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_hash_ttlv_response, HashResponse);
+
+/// Build a KMIP `DeriveKey` TTLV request.
+///
+/// Derives a new symmetric key from an existing key or secret data object.
+///
+/// - `base_key_id`: unique identifier of the source key or secret data.
+/// - `derivation_method`: `"PBKDF2"` or `"HKDF"`.
+/// - `salt`: salt bytes (required).
+/// - `iteration_count`: number of iterations, used for PBKDF2 (ignored for HKDF).
+/// - `initialization_vector`: optional IV bytes.
+/// - `hashing_algorithm`: one of `SHA256`, `SHA384`, `SHA512`, `SHA3256`, etc.
+/// - `symmetric_algorithm`: output key algorithm, e.g. `"aes"`.
+/// - `cryptographic_length`: output key length in bits (e.g. `256`).
+/// - `derived_key_id`: optional unique identifier for the newly derived key.
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen]
+pub fn derive_key_ttlv_request(
+    base_key_id: &str,
+    derivation_method: &str,
+    salt: Vec<u8>,
+    iteration_count: i32,
+    initialization_vector: Option<Vec<u8>>,
+    hashing_algorithm: &str,
+    symmetric_algorithm: &str,
+    cryptographic_length: usize,
+    derived_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    use kmip_0::kmip_types::{CryptographicUsageMask, HashingAlgorithm};
+
+    let derived_key_id = none_if_empty(derived_key_id);
+    let method = match derivation_method.to_uppercase().as_str() {
+        "PBKDF2" => DerivationMethod::PBKDF2,
+        "HKDF" => DerivationMethod::HKDF,
+        other => {
+            return Err(JsValue::from_str(&format!(
+                "Unsupported derivation method: {other}"
+            )));
+        }
+    };
+
+    let hash_alg = match hashing_algorithm.to_uppercase().as_str() {
+        "SHA256" => HashingAlgorithm::SHA256,
+        "SHA384" => HashingAlgorithm::SHA384,
+        "SHA512" => HashingAlgorithm::SHA512,
+        "SHA3224" => HashingAlgorithm::SHA3224,
+        "SHA3256" => HashingAlgorithm::SHA3256,
+        "SHA3384" => HashingAlgorithm::SHA3384,
+        "SHA3512" => HashingAlgorithm::SHA3512,
+        other => {
+            return Err(JsValue::from_str(&format!(
+                "Unsupported hashing algorithm: {other}"
+            )));
+        }
+    };
+
+    let sym_algo = SymmetricAlgorithm::from_str(symmetric_algorithm)
+        .map_err(|e| JsValue::from_str(&format!("Invalid symmetric algorithm: {e}")))?;
+    let (length_bits, _, crypto_algorithm) =
+        prepare_sym_key_elements(Some(cryptographic_length), &None, sym_algo)
+            .map_err(|e| JsValue::from_str(&format!("Error building key elements: {e}")))?;
+
+    let derivation_parameters = DerivationParameters {
+        cryptographic_parameters: Some(CryptographicParameters {
+            hashing_algorithm: Some(hash_alg),
+            ..CryptographicParameters::default()
+        }),
+        initialization_vector,
+        derivation_data: None,
+        salt: Some(salt),
+        iteration_count: Some(iteration_count),
+    };
+
+    let attributes = Attributes {
+        cryptographic_algorithm: Some(crypto_algorithm),
+        cryptographic_length: Some(
+            i32::try_from(length_bits)
+                .map_err(|e| JsValue::from_str(&format!("Cryptographic length overflow: {e}")))?,
+        ),
+        cryptographic_usage_mask: Some(
+            CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+        ),
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        object_type: Some(ObjectType::SymmetricKey),
+        unique_identifier: derived_key_id.map(UniqueIdentifier::TextString),
+        ..Attributes::default()
+    };
+
+    let request = DeriveKey::new_single_base(
+        ObjectType::SymmetricKey,
+        UniqueIdentifier::TextString(base_key_id.to_owned()),
+        method,
+        derivation_parameters,
+        attributes,
+    );
+
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_derive_key_ttlv_response, DeriveKeyResponse);
+
+/// Build a KMIP `DeriveKey` TTLV request for asymmetric (X25519 ECDH) key agreement.
+///
+/// Derives a shared secret from a local X25519 private key and a peer's X25519
+/// public key. The result is always persisted as a `SecretData` object of 256
+/// bits (32 bytes); it is not usable directly as a symmetric key and should be
+/// expanded (e.g. via HKDF) before use.
+///
+/// - `private_key_id`: unique identifier of the local X25519 private key.
+/// - `peer_public_key_id`: unique identifier of the peer's X25519 public key.
+/// - `derived_key_id`: optional unique identifier for the newly derived secret data.
+#[wasm_bindgen]
+pub fn derive_key_asymmetric_ttlv_request(
+    private_key_id: &str,
+    peer_public_key_id: &str,
+    derived_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let derived_key_id = none_if_empty(derived_key_id);
+
+    let attributes = Attributes {
+        object_type: Some(ObjectType::SecretData),
+        unique_identifier: derived_key_id.map(UniqueIdentifier::TextString),
+        ..Attributes::default()
+    };
+
+    let request = DeriveKey::new_asymmetric(
+        UniqueIdentifier::TextString(private_key_id.to_owned()),
+        UniqueIdentifier::TextString(peer_public_key_id.to_owned()),
+        DerivationParameters::default(),
+        attributes,
+    );
+
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_derive_key_asymmetric_ttlv_response, DeriveKeyResponse);
+
+// ── ReKey (symmetric key rotation) ───────────────────────────────────────────
+
+/// Build a KMIP `ReKey` TTLV request for a symmetric key.
+#[wasm_bindgen]
+pub fn rekey_ttlv_request(unique_identifier: String) -> Result<JsValue, JsValue> {
+    let request = ReKey {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        ..ReKey::default()
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_rekey_ttlv_response, ReKeyResponse);
+
+// ── ReKey Key Pair (asymmetric key rotation) ─────────────────────────────────
+
+/// Build a KMIP `ReKeyKeyPair` TTLV request for an asymmetric key pair.
+#[wasm_bindgen]
+pub fn rekey_keypair_ttlv_request(
+    private_key_unique_identifier: String,
+) -> Result<JsValue, JsValue> {
+    let request = ReKeyKeyPair {
+        private_key_unique_identifier: Some(UniqueIdentifier::TextString(
+            private_key_unique_identifier,
+        )),
+        ..ReKeyKeyPair::default()
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_rekey_keypair_ttlv_response, ReKeyKeyPairResponse);
+
+// ── Rotation policy helpers ──────────────────────────────────────────────────
+
+/// Build a KMIP `SetAttribute` TTLV request to set `RotateInterval` on a key.
+#[wasm_bindgen]
+pub fn set_rotate_interval_ttlv_request(
+    unique_identifier: String,
+    interval_secs: i64,
+) -> Result<JsValue, JsValue> {
+    let request = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        new_attribute: Attribute::RotateInterval(interval_secs),
+    };
+    to_wasm_ttlv(&request)
+}
+
+/// Build a KMIP `SetAttribute` TTLV request to set `RotateOffset` on a key.
+#[wasm_bindgen]
+pub fn set_rotate_offset_ttlv_request(
+    unique_identifier: String,
+    offset_secs: i64,
+) -> Result<JsValue, JsValue> {
+    let request = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        new_attribute: Attribute::RotateOffset(offset_secs),
+    };
+    to_wasm_ttlv(&request)
+}
+
+/// Build a KMIP `SetAttribute` TTLV request to set `RotateName` on a key.
+#[wasm_bindgen]
+pub fn set_rotate_name_ttlv_request(
+    unique_identifier: String,
+    name: String,
+) -> Result<JsValue, JsValue> {
+    let request = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        new_attribute: Attribute::RotateName(name),
+    };
+    to_wasm_ttlv(&request)
+}
+
+/// Rotation-policy fields extracted from a `GetAttributes` response.
+#[derive(Serialize)]
+struct RotationPolicyDto {
+    interval: i64,
+    offset: i64,
+    name: Option<String>,
+    generation: i32,
+    date: Option<String>,
+}
+
+/// Parse a `GetAttributes` response and extract only the rotation-policy fields.
+///
+/// Returns a JS object with keys: `interval`, `offset`,
+/// `name`, `generation`, `date` (string or null).
+#[wasm_bindgen]
+pub fn parse_rotation_policy_response(response: &str) -> Result<JsValue, JsValue> {
+    let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
+    let GetAttributesResponse {
+        unique_identifier: _,
+        attributes,
+    } = from_ttlv(ttlv).map_err(|e| JsValue::from(e.to_string()))?;
+
+    let policy = RotationPolicyDto {
+        interval: attributes.rotate_interval.unwrap_or(0),
+        offset: attributes.rotate_offset.unwrap_or(0),
+        name: attributes.rotate_name.clone(),
+        generation: attributes.rotate_generation.unwrap_or(0),
+        date: attributes.rotate_date.map(|d| d.to_string()),
+    };
+
+    Ok(serde_wasm_bindgen::to_value(&policy)?)
+}

@@ -1,47 +1,64 @@
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::metrics::PeriodicReader;
+use opentelemetry_sdk::{Resource, metrics::PeriodicReader};
 mod kmip;
 mod other_kms_methods;
-mod permissions;
+pub(crate) mod permissions;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    num::NonZeroUsize,
+    sync::{Arc, atomic::AtomicU64},
+};
 
 use cosmian_kms_server_database::{
-    Database,
-    reexport::cosmian_kms_interfaces::{
-        EncryptionOracle, HSM, HsmEncryptionOracle, HsmStore, ObjectsStore,
+    CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
+    reexport::{
+        cosmian_kmip::kmip_2_1::kmip_objects::Object,
+        cosmian_kms_interfaces::{CryptoOracle, HSM, HsmStore, ObjectsStore},
     },
 };
 use cosmian_logger::trace;
+// Proprietary HSMs (Proteccio, Utimaco, Crypt2pay) ship Linux x86_64-only PKCS#11 libs.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crypt2pay_pkcs11_loader::{CRYPT2PAY_PKCS11_LIB, Crypt2pay};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+// SoftHSM2 and SmartCardHSM are cross-platform (Linux x86_64, Linux aarch64, and macOS).
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use softhsm2_pkcs11_loader::{SOFTHSM2_PKCS11_LIB, Softhsm2};
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use tokio::sync::OnceCell;
 use tokio::sync::RwLock;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
+#[cfg(target_os = "macos")]
+const OTHER_HSM_PKCS11_LIB: &str = "/usr/local/lib/libkmshsm.dylib";
 
-// Reuse a single HSM instance across multiple test servers (e.g. Utimaco) to
+// Reuse HSM instances across multiple test servers (e.g. Utimaco) to
 // avoid re-initialization failures when starting several KMS instances in the
 // same process for CLI tests exercising privileged & non-privileged endpoints.
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-static GLOBAL_HSM: OnceCell<Arc<dyn HSM + Send + Sync>> = OnceCell::const_new();
+// Each element is `Arc<dyn HSM>` for one configured HSM instance, in the same
+// order as `ServerParams::hsm_instances`.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+static GLOBAL_HSMS: OnceCell<Vec<Arc<dyn HSM + Send + Sync>>> = OnceCell::const_new();
 
-use crate::{config::ServerParams, core::OtelMetrics, error::KmsError, kms_bail, result::KResult};
+use crate::{
+    config::{OpenTelemetryConfig, ServerParams},
+    core::{OtelMetrics, audit::AuditFileStore},
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
-/// Macro to instantiate an HSM with support for environment variable override
-/// Allows overriding PKCS#11 lib path via env for testing (falls back to default constant)
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-#[allow(unused_macros)]
+/// Macro to instantiate an HSM with support for environment variable override.
+/// Returns an `Arc<dyn HSM + Send + Sync>` without touching any global state.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[allow(unused_macros)] // only expanded on linux/macos targets that instantiate an HSM
 macro_rules! instantiate_hsm_with_env {
     ($hsm_type:ty, $env_var:expr, $default_lib:expr, $hsm_name:expr, $slot_passwords:expr) => {{
         let lib_path = std::env::var($env_var).unwrap_or_else(|_| $default_lib.to_owned());
@@ -53,12 +70,11 @@ macro_rules! instantiate_hsm_with_env {
                 ))
             })?,
         );
-        GLOBAL_HSM.set(hsm.clone()).ok();
-        Some(hsm)
+        hsm
     }};
 }
 
-/// A Key Management System that partially implements KMIP 2.1
+/// A Key Management System that partially implements KMIP 1.x and 2.1
 ///
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
 /// and other operations not part of KMIP, such as Google CSE or Microsoft DKE.
@@ -74,20 +90,36 @@ pub struct KMS {
     /// - The permissions store that stores the permissions granted to users on the objects.
     pub(crate) database: Database,
 
-    /// Encryption Oracles are used to encrypt/decrypt data using keys with specific prefixes.
-    /// A typical use case is delegating encryption/decryption to an HSM.
-    /// This is a map of key prefixes to encryption oracles.
-    pub(crate) encryption_oracles: RwLock<HashMap<String, Box<dyn EncryptionOracle + Sync + Send>>>,
+    /// Crypto Oracles are used to encrypt/decrypt/sign data using keys with specific prefixes.
+    /// A typical use case is delegating cryptographic operations to an HSM.
+    /// This is a map of key prefixes to crypto oracles.
+    pub(crate) crypto_oracles: RwLock<HashMap<String, Box<dyn CryptoOracle + Sync + Send>>>,
 
     /// OTLP metrics collector (if enabled)
     pub(crate) metrics: Option<Arc<OtelMetrics>>,
 
+    /// Audit file store (if audit logging is enabled)
+    pub(crate) audit_store: Option<AuditFileStore>,
+
     /// Optional HSM instance for PKCS#11 operations.
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
     pub(crate) hsm: Option<Arc<dyn HSM + Send + Sync>>,
+
+    /// Monotonically increasing CRL sequence counter (RFC 5280 §5.2.3).
+    ///
+    /// Seeded on startup from `max(unix_timestamp, db_max_crl_number + 1)` so
+    /// that CRL Numbers are strictly greater than any previously issued number
+    /// across server restarts.  The `fetch_add` ensures uniqueness even when
+    /// two CRLs are generated within the same second.
+    pub(crate) crl_counter: Arc<AtomicU64>,
 }
 
 impl KMS {
+    /// Returns the vendor identification string used for KMIP `VendorAttribute` operations.
+    pub(crate) fn vendor_id(&self) -> &str {
+        &self.params.vendor_identification
+    }
+
     /// Instantiate a new KMS instance with the given server parameters.
     /// # Arguments
     /// * `server_params` - The server parameters built from the configuration file or command line arguments.
@@ -96,46 +128,199 @@ impl KMS {
     pub(crate) async fn instantiate(server_params: Arc<ServerParams>) -> KResult<Self> {
         trace!("params: {server_params:?}");
 
-        // Instantiate the HSM if any; the code has support for multiple concurrent HSMs
-        let hsm = Self::instantiate_hsm(&server_params)?;
+        // Instantiate all configured HSMs.
+        let hsm_instances = Self::instantiate_hsms(&server_params)?;
+
+        // Build object-store and crypto-oracle maps, one entry per HSM instance.
+        let mut object_stores: HashMap<String, Arc<dyn ObjectsStore + Sync + Send>> =
+            HashMap::new();
+        let mut crypto_oracles: HashMap<String, Box<dyn CryptoOracle + Sync + Send>> =
+            HashMap::new();
+        for (idx, hsm_arc) in hsm_instances.iter().enumerate() {
+            let inst = server_params.hsm_instances.get(idx).ok_or_else(|| {
+                KmsError::InvalidRequest(format!(
+                    "HSM instance index {idx} out of range (config has {} instances)",
+                    server_params.hsm_instances.len()
+                ))
+            })?;
+            let hsm_store = HsmStore::new(
+                hsm_arc.clone(),
+                &inst.admin,
+                &server_params.vendor_identification,
+                &inst.prefix,
+            );
+            object_stores.insert(inst.prefix.clone(), Arc::new(hsm_store.clone()));
+            crypto_oracles.insert(inst.prefix.clone(), Box::new(hsm_store));
+        }
 
         // Instantiate the main database
         let main_db_params = server_params.main_db_params.as_ref().ok_or_else(|| {
             KmsError::InvalidRequest("The main database parameters are not specified".to_owned())
         })?;
-        let mut object_stores: HashMap<String, Arc<dyn ObjectsStore + Sync + Send>> =
-            HashMap::new();
-        if let Some(hsm) = hsm.as_ref() {
-            object_stores.insert(
-                "hsm".to_owned(),
-                Arc::new(HsmStore::new(hsm.clone(), &server_params.hsm_admin)),
-            );
-        }
-        let database = Database::instantiate(
+
+        let metrics = Self::create_otel_metrics(&server_params)?;
+        let db_otel_recorder: Option<Arc<dyn DbMetricsRecorder>> =
+            metrics.as_ref().map(|m| -> Arc<dyn DbMetricsRecorder> {
+                m.clone() // Arc clones are cheap
+            });
+
+        let cache_max_size =
+            NonZeroUsize::new(server_params.unwrapped_cache_max_size).ok_or_else(|| {
+                KmsError::InvalidRequest(
+                    "unwrapped_cache_max_size must be greater than 0".to_owned(),
+                )
+            })?;
+        let mut database = Database::instantiate(
             main_db_params,
             server_params.clear_db_on_start,
             object_stores,
             server_params.unwrapped_cache_max_age,
+            cache_max_size,
+            server_params.unwrapped_cache_max_ttl,
+            server_params.disable_unwrapped_cache,
+            db_otel_recorder,
+            server_params.ceremony_keys.clone(),
         )
         .await?;
 
-        // HSMs are also encryption oracles
-        let mut encryption_oracles: HashMap<String, Box<dyn EncryptionOracle + Sync + Send>> =
-            HashMap::new();
-        if let Some(hsm) = hsm.clone() {
-            encryption_oracles.insert(
-                "hsm".to_owned(),
-                Box::new(HsmEncryptionOracle::new(hsm.clone())),
+        // Resolve ceremony_key_id: fetch the AES-256 key from the object store and derive
+        // CeremonyKeys from its raw bytes. This takes precedence over ceremony_secret when set.
+        if let Some(ref key_id) = server_params.ceremony_key_id {
+            let owm = database
+                .retrieve_object(key_id)
+                .await
+                .map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "ceremony_key_id '{key_id}': failed to retrieve from database: {e}"
+                    ))
+                })?
+                .ok_or_else(|| {
+                    KmsError::ServerError(format!(
+                        "ceremony_key_id '{key_id}' not found in the database. \
+                         Create the sealing key before enabling ceremony mode: \
+                         ckms sym keys create --id {key_id} --number-of-bits 256"
+                    ))
+                })?;
+
+            let raw_bytes = match owm.object() {
+                Object::SymmetricKey(sk) => sk.key_block.key_bytes().map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "ceremony_key_id '{key_id}': failed to extract key bytes: {e}"
+                    ))
+                })?,
+                other => {
+                    return Err(KmsError::ServerError(format!(
+                        "ceremony_key_id '{key_id}' must be a SymmetricKey (AES-256), \
+                         got {:?}",
+                        other.object_type()
+                    )));
+                }
+            };
+
+            if raw_bytes.len() != CEREMONY_SECRET_LENGTH {
+                return Err(KmsError::ServerError(format!(
+                    "ceremony_key_id '{key_id}' must be an AES-256 key ({} bytes), \
+                     got {} bytes",
+                    CEREMONY_SECRET_LENGTH,
+                    raw_bytes.len(),
+                )));
+            }
+
+            let mut secret = [0_u8; CEREMONY_SECRET_LENGTH];
+            secret.copy_from_slice(&raw_bytes);
+            let keys = Arc::new(CeremonyKeys::derive(&secret));
+            secret.fill(0);
+            database.set_ceremony_keys(keys);
+            tracing::info!(
+                ceremony_key_id = %key_id,
+                "ceremony sealing key loaded from object store"
             );
         }
+
+        // Seed the kms.objects.total gauge from the real DB count on startup.
+        //
+        // This ensures the metric starts at the correct absolute value rather
+        // than 0.  Without this seed, the gauge would only reach the right count
+        // after the first periodic cron sync (up to 30 s later), giving a
+        // misleading reading immediately after server restart.
+        if let Some(ref m) = metrics {
+            match database.count_all_non_destroyed_objects().await {
+                Ok(count) => {
+                    m.update_objects_total(i64::try_from(count).unwrap_or(i64::MAX));
+                }
+                Err(e) => {
+                    // Non-fatal: the cron will correct the value within 30 s.
+                    cosmian_logger::debug!("[kms-init] Failed to seed kms.objects.total: {e}");
+                }
+            }
+            // Seed kms.keys.active.count from the real DB count on startup.
+            match database.count_non_destroyed_key_objects().await {
+                Ok(count) => {
+                    m.update_active_keys_count(i64::try_from(count).unwrap_or(i64::MAX));
+                }
+                Err(e) => {
+                    // Non-fatal: the cron will correct the value within 30 s, but a
+                    // persistently failing query (e.g. a backend-specific SQL bug)
+                    // should be visible without enabling debug logging.
+                    cosmian_logger::warn!("[kms-init] Failed to seed kms.keys.active.count: {e}");
+                }
+            }
+        }
+
+        // Seed the CRL sequence counter (RFC 5280 §5.2.3 — monotonically increasing).
+        //
+        // The counter must be strictly greater than any CRL Number previously stored in the
+        // DB, so that relying-party caches never see a CRL with a lower sequence number
+        // after a server restart.  The seed is max(unix_timestamp, db_max + 1).
+        let crl_counter = {
+            let ts_seed =
+                u64::try_from(time::OffsetDateTime::now_utc().unix_timestamp()).unwrap_or(1);
+            let db_max = match database.get_max_crl_number().await {
+                Ok(Some(max)) => max,
+                Ok(None) => 0,
+                Err(e) => {
+                    // Non-fatal: fall back to timestamp seed only.
+                    cosmian_logger::debug!(
+                        "[kms-init] Failed to read max CRL number from DB: {e}; \
+                         using unix timestamp as CRL counter seed"
+                    );
+                    0
+                }
+            };
+            Arc::new(AtomicU64::new(ts_seed.max(db_max + 1)))
+        };
 
         Ok(Self {
             params: server_params.clone(),
             database,
-            encryption_oracles: RwLock::new(encryption_oracles),
-            hsm: hsm.clone(),
-            metrics: Self::create_otel_metrics(&server_params)?,
+            crypto_oracles: RwLock::new(crypto_oracles),
+            // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
+            hsm: hsm_instances.into_iter().next(),
+            metrics,
+            crl_counter,
+            audit_store: Self::create_audit_store(&server_params)?,
         })
+    }
+
+    /// Validate that the OTLP URL is not using plaintext HTTP unless explicitly allowed.
+    /// This prevents accidental exposure of telemetry data over unencrypted channels.
+    pub fn validate_otlp_url(
+        otlp_url: &str,
+        otel_params: &Option<OpenTelemetryConfig>,
+    ) -> KResult<()> {
+        let allow_insecure = otel_params
+            .as_ref()
+            .is_some_and(|otel| otel.otlp_allow_insecure);
+        if otlp_url.starts_with("http://") && !allow_insecure {
+            return Err(KmsError::InvalidRequest(
+                "OTLP endpoint uses plaintext HTTP which exposes telemetry data \
+                 (including encryption operation metadata) over an unencrypted channel. \
+                 Use https:// or set --otlp-allow-insecure / KMS_OTLP_ALLOW_INSECURE=true \
+                 if you accept this risk."
+                    .to_owned(),
+            ));
+        }
+        Ok(())
     }
 
     /// Create OTLP metrics if OTLP logging is configured
@@ -147,6 +332,9 @@ impl KMS {
             .as_ref()
             .and_then(|otel| otel.otlp_url.as_ref())
         {
+            // Reject plaintext HTTP unless explicitly allowed
+            Self::validate_otlp_url(otlp_url, &server_params.otel_params)?;
+
             // Create OTLP metrics exporter
             let exporter = opentelemetry_otlp::MetricExporter::builder()
                 .with_tonic()
@@ -156,14 +344,34 @@ impl KMS {
                     KmsError::ServerError(format!("Failed to create OTLP metrics exporter: {e}"))
                 })?;
 
-            // Create periodic reader that sends metrics every 30 seconds
-            let reader = PeriodicReader::builder(exporter, opentelemetry_sdk::runtime::Tokio)
+            // Create periodic reader that sends metrics every 30 seconds.
+            // otel_sdk 0.29: builder takes only the exporter (no runtime arg);
+            // export timeout is configured on the exporter, not the reader.
+            let reader = PeriodicReader::builder(exporter)
                 .with_interval(std::time::Duration::from_secs(30))
-                .with_timeout(std::time::Duration::from_secs(10))
                 .build();
 
             // Create meter provider
+            let mut resource_kvs = vec![
+                opentelemetry::KeyValue::new("service.name", "cosmian_kms"),
+                opentelemetry::KeyValue::new(
+                    "service.version",
+                    option_env!("CARGO_PKG_VERSION").unwrap_or("unknown"),
+                ),
+            ];
+            if let Some(env) = server_params
+                .otel_params
+                .as_ref()
+                .and_then(|otel| otel.environment.as_ref())
+            {
+                resource_kvs.push(opentelemetry::KeyValue::new(
+                    "deployment.environment",
+                    env.clone(),
+                ));
+            }
+
             let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+                .with_resource(Resource::builder().with_attributes(resource_kvs).build())
                 .with_reader(reader)
                 .build();
 
@@ -173,73 +381,196 @@ impl KMS {
         }
     }
 
-    fn instantiate_hsm(
-        server_params: &ServerParams,
-    ) -> Result<Option<Arc<dyn HSM + Send + Sync>>, KmsError> {
-        // Instantiate the HSM if any; the code has support for multiple concurrent HSMs
-        let hsm: Option<Arc<dyn HSM + Send + Sync>> = if server_params.slot_passwords.is_empty() {
-            None
+    /// Starts the audit file store if audit logging is configured.
+    fn create_audit_store(server_params: &ServerParams) -> KResult<Option<AuditFileStore>> {
+        if let Some(ref path) = server_params.audit_file_path {
+            let store = AuditFileStore::start_with_max_size(
+                path,
+                server_params.audit_channel_capacity,
+                server_params.audit_file_max_size_bytes,
+            )?;
+            Ok(Some(store))
         } else {
-            #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-            kms_bail!("Fatal: HSMs are only supported on Linux x86_64");
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            {
-                // Attempt reuse first (used by test harness to allow multiple servers sharing one physical HSM).
-                if let Some(existing) = GLOBAL_HSM.get() {
-                    return Ok(Some(existing.clone()));
-                }
-                let hsm_model = server_params.hsm_model.as_ref().ok_or_else(|| {
-                    KmsError::InvalidRequest("The HSM model is not specified".to_owned())
-                })?;
-                match hsm_model.as_str() {
-                    "crypt2pay" => instantiate_hsm_with_env!(
-                        Crypt2pay,
-                        "CRYPT2PAY_PKCS11_LIB",
-                        CRYPT2PAY_PKCS11_LIB,
-                        "Crypt2pay",
-                        server_params.slot_passwords.clone()
-                    ),
-                    "proteccio" => instantiate_hsm_with_env!(
-                        Proteccio,
-                        "PROTECCIO_PKCS11_LIB",
-                        PROTECCIO_PKCS11_LIB,
-                        "Proteccio",
-                        server_params.slot_passwords.clone()
-                    ),
-                    "utimaco" => instantiate_hsm_with_env!(
-                        Utimaco,
-                        "UTIMACO_PKCS11_LIB",
-                        UTIMACO_PKCS11_LIB,
-                        "Utimaco",
-                        server_params.slot_passwords.clone()
-                    ),
-                    "softhsm2" => instantiate_hsm_with_env!(
-                        Softhsm2,
-                        "SOFTHSM2_PKCS11_LIB",
-                        SOFTHSM2_PKCS11_LIB,
-                        "Softhsm2",
-                        server_params.slot_passwords.clone()
-                    ),
-                    "smartcardhsm" => instantiate_hsm_with_env!(
-                        Smartcardhsm,
-                        "SMARTCARDHSM_PKCS11_LIB",
-                        SMARTCARDHSM_PKCS11_LIB,
-                        "Smartcardhsm",
-                        server_params.slot_passwords.clone()
-                    ),
-                    "other" => instantiate_hsm_with_env!(
-                        Softhsm2,
-                        "OTHER_HSM_PKCS11_LIB",
-                        OTHER_HSM_PKCS11_LIB,
-                        "Other",
-                        server_params.slot_passwords.clone()
-                    ),
-                    _ => kms_bail!(
-                        "The only supported HSM models are proteccio, crypt2pay, smartcardhsm, softhsm2, utimaco and other"
-                    ),
-                }
+            Ok(None)
+        }
+    }
+
+    /// Instantiate all configured HSM instances and return them in order.
+    /// On platforms without HSM support, returns an empty Vec (or an error if HSMs were configured).
+    fn instantiate_hsms(
+        server_params: &ServerParams,
+    ) -> Result<Vec<Arc<dyn HSM + Send + Sync>>, KmsError> {
+        if server_params.hsm_instances.is_empty() {
+            return Ok(vec![]);
+        }
+
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        kms_bail!("Fatal: HSMs are only supported on Linux and macOS");
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            // Reuse pre-existing global instances when available (test-server reuse pattern).
+            if let Some(existing) = GLOBAL_HSMS.get() {
+                return Ok(existing.clone());
             }
-        };
-        Ok(hsm)
+
+            let mut hsm_arcs: Vec<Arc<dyn HSM + Send + Sync>> = Vec::new();
+            for inst in &server_params.hsm_instances {
+                let hsm = Self::instantiate_one_hsm(&inst.model, inst.slot_passwords.clone())?;
+                hsm_arcs.push(hsm);
+            }
+
+            GLOBAL_HSMS.set(hsm_arcs.clone()).ok();
+            Ok(hsm_arcs)
+        }
+    }
+
+    /// Instantiate a single HSM by model name.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn instantiate_one_hsm(
+        model: &str,
+        slot_passwords: std::collections::HashMap<usize, Option<String>>,
+    ) -> Result<Arc<dyn HSM + Send + Sync>, KmsError> {
+        match model {
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            "crypt2pay" => Ok(instantiate_hsm_with_env!(
+                Crypt2pay,
+                "CRYPT2PAY_PKCS11_LIB",
+                CRYPT2PAY_PKCS11_LIB,
+                "Crypt2pay",
+                slot_passwords
+            )),
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            "proteccio" => Ok(instantiate_hsm_with_env!(
+                Proteccio,
+                "PROTECCIO_PKCS11_LIB",
+                PROTECCIO_PKCS11_LIB,
+                "Proteccio",
+                slot_passwords
+            )),
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            "utimaco" => Ok(instantiate_hsm_with_env!(
+                Utimaco,
+                "UTIMACO_PKCS11_LIB",
+                UTIMACO_PKCS11_LIB,
+                "Utimaco",
+                slot_passwords
+            )),
+            "softhsm2" => Ok(instantiate_hsm_with_env!(
+                Softhsm2,
+                "SOFTHSM2_PKCS11_LIB",
+                SOFTHSM2_PKCS11_LIB,
+                "Softhsm2",
+                slot_passwords
+            )),
+            "smartcardhsm" => Ok(instantiate_hsm_with_env!(
+                Smartcardhsm,
+                "SMARTCARDHSM_PKCS11_LIB",
+                SMARTCARDHSM_PKCS11_LIB,
+                "Smartcardhsm",
+                slot_passwords
+            )),
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            "other" => Ok(instantiate_hsm_with_env!(
+                Softhsm2,
+                "OTHER_HSM_PKCS11_LIB",
+                OTHER_HSM_PKCS11_LIB,
+                "Other",
+                slot_passwords
+            )),
+            _ => kms_bail!(
+                "Unsupported HSM model: {model}. Supported values: \
+                 proteccio, crypt2pay, smartcardhsm, softhsm2, utimaco, other"
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    clippy::panic_in_result_fn,
+    clippy::unnecessary_wraps,
+    clippy::panic
+)]
+#[allow(clippy::doc_markdown)]
+mod tests {
+    use super::*;
+    use crate::{config::OpenTelemetryConfig, error::KmsError, result::KResult};
+
+    /// Regression test for COSMIAN-2026-004: OTLP plaintext HTTP must be rejected
+    /// unless explicitly allowed via `otlp_allow_insecure`.
+    #[test]
+    fn test_otlp_plaintext_http_rejected() -> KResult<()> {
+        let otel_params = Some(OpenTelemetryConfig {
+            otlp_url: Some("http://attacker.example.com:4317".to_owned()),
+            otlp_allow_insecure: false,
+            enable_metering: true,
+            environment: Some("test".to_owned()),
+        });
+
+        let result = KMS::validate_otlp_url("http://attacker.example.com:4317", &otel_params);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match &err {
+            KmsError::InvalidRequest(msg) => {
+                assert!(
+                    msg.contains("plaintext HTTP"),
+                    "Error should mention plaintext HTTP, got: {msg}"
+                );
+                assert!(
+                    msg.contains("otlp-allow-insecure"),
+                    "Error should mention the flag, got: {msg}"
+                );
+            }
+            _ => panic!("Expected InvalidRequest error, got: {err:?}"),
+        }
+        Ok(())
+    }
+
+    /// Regression test: OTLP with https:// should not be rejected.
+    #[test]
+    fn test_otlp_https_accepted() -> KResult<()> {
+        let otel_params = Some(OpenTelemetryConfig {
+            otlp_url: Some("https://collector.example.com:4317".to_owned()),
+            otlp_allow_insecure: false,
+            enable_metering: true,
+            environment: Some("test".to_owned()),
+        });
+
+        let result = KMS::validate_otlp_url("https://collector.example.com:4317", &otel_params);
+        assert!(result.is_ok(), "https OTLP should be accepted");
+        Ok(())
+    }
+
+    /// Regression test: OTLP plaintext HTTP is accepted when allow_insecure is true.
+    #[test]
+    fn test_otlp_plaintext_http_accepted_when_allowed() -> KResult<()> {
+        let otel_params = Some(OpenTelemetryConfig {
+            otlp_url: Some("http://localhost:4317".to_owned()),
+            otlp_allow_insecure: true,
+            enable_metering: true,
+            environment: Some("test".to_owned()),
+        });
+
+        let result = KMS::validate_otlp_url("http://localhost:4317", &otel_params);
+        assert!(
+            result.is_ok(),
+            "http OTLP with allow_insecure=true should be accepted"
+        );
+        Ok(())
+    }
+
+    /// Regression test: no OTLP params means allow_insecure defaults to false,
+    /// so plaintext HTTP is rejected.
+    #[test]
+    fn test_otlp_no_params_rejects_plaintext_http() -> KResult<()> {
+        // With None otel_params, allow_insecure defaults to false
+        let result = KMS::validate_otlp_url("http://localhost:4317", &None);
+        assert!(
+            result.is_err(),
+            "http without otel_params should be rejected"
+        );
+        Ok(())
     }
 }

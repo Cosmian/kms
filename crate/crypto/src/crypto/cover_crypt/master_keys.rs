@@ -3,7 +3,7 @@ use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
-        extra::VENDOR_ID_COSMIAN,
+        extra::tagging::{SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY},
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -28,7 +28,9 @@ pub type KmipKeyUidObject = (String, Object);
 
 /// Generate a new Covercrypt master keypair the attributes of a `CreateKeyPair`
 /// operation.
+#[expect(clippy::too_many_arguments)]
 pub fn create_master_keypair(
+    vendor_id: &str,
     cover_crypt: &Covercrypt,
     private_key_uid: String,
     public_key_uid: &str,
@@ -37,7 +39,7 @@ pub fn create_master_keypair(
     mpk_attributes: Option<Attributes>,
     sensitive: bool,
 ) -> Result<KeyPair, CryptoError> {
-    let access_structure = access_structure_from_attributes(&common_attributes)?;
+    let access_structure = access_structure_from_attributes(vendor_id, &common_attributes)?;
 
     debug!("server: access_structure: {access_structure:?}");
 
@@ -48,10 +50,10 @@ pub fn create_master_keypair(
     let mpk = cover_crypt.update_msk(&mut msk)?;
 
     // Removes the access structure from the common attributes.
-    common_attributes
-        .remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE);
+    common_attributes.remove_vendor_attribute(vendor_id, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE);
 
     let msk_owm = create_msk_object(
+        vendor_id,
         msk.serialize()?,
         msk_attributes.unwrap_or_else(|| common_attributes.clone()),
         public_key_uid,
@@ -59,6 +61,7 @@ pub fn create_master_keypair(
     )?;
 
     let mpk_owm = create_mpk_object(
+        vendor_id,
         &mpk.serialize()?,
         mpk_attributes.unwrap_or(common_attributes),
         private_key_uid,
@@ -68,6 +71,7 @@ pub fn create_master_keypair(
 }
 
 pub fn create_msk_object(
+    vendor_id: &str,
     msk_bytes: Zeroizing<Vec<u8>>,
     mut attributes: Attributes,
     mpk_uid: &str,
@@ -87,10 +91,10 @@ pub fn create_msk_object(
     }]);
     attributes.sensitive = sensitive.then_some(true);
 
-    // Add the "_sk" system tag to the attributes
-    let mut tags = attributes.get_tags();
-    tags.insert("_sk".to_owned());
-    attributes.set_tags(tags)?;
+    // Add the SYSTEM_TAG_PRIVATE_KEY system tag to the attributes
+    let mut tags = attributes.get_tags(vendor_id);
+    tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
+    attributes.set_tags(vendor_id, tags)?;
 
     let cryptographic_length = Some(i32::try_from(msk_bytes.len())? * 8);
     Ok(Object::PrivateKey(PrivateKey {
@@ -113,6 +117,7 @@ pub fn create_msk_object(
 ///
 /// see `cover_crypt_unwrap_master_public_key` for the reverse operation
 fn create_mpk_object(
+    vendor_id: &str,
     key: &Zeroizing<Vec<u8>>,
     mut attributes: Attributes,
     msk_uid: String,
@@ -128,10 +133,10 @@ fn create_mpk_object(
         linked_object_identifier: LinkedObjectIdentifier::TextString(msk_uid),
     }]);
 
-    // Add the "_pk" system tag to the attributes
-    let mut tags = attributes.get_tags();
-    tags.insert("_pk".to_owned());
-    attributes.set_tags(tags)?;
+    // Add the SYSTEM_TAG_PUBLIC_KEY system tag to the attributes
+    let mut tags = attributes.get_tags(vendor_id);
+    tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
+    attributes.set_tags(vendor_id, tags)?;
 
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);
     Ok(Object::PublicKey(PublicKey {

@@ -61,38 +61,38 @@ pub fn openssl_x509_to_certificate_attributes(x509: &X509) -> CertificateAttribu
     for entry in x509.subject_name().entries() {
         match entry.object().nid() {
             Nid::COMMONNAME => {
-                if let Ok(cn) = entry.data().as_utf8() {
-                    attributes.certificate_subject_cn = cn.to_string();
+                if let Ok(cn) = entry.data().to_string() {
+                    attributes.certificate_subject_cn = cn;
                 }
             }
             Nid::ORGANIZATIONALUNITNAME => {
-                if let Ok(ou) = entry.data().as_utf8() {
-                    attributes.certificate_subject_ou = ou.to_string();
+                if let Ok(ou) = entry.data().to_string() {
+                    attributes.certificate_subject_ou = ou;
                 }
             }
             Nid::COUNTRYNAME => {
-                if let Ok(country) = entry.data().as_utf8() {
-                    attributes.certificate_subject_c = country.to_string();
+                if let Ok(country) = entry.data().to_string() {
+                    attributes.certificate_subject_c = country;
                 }
             }
             Nid::STATEORPROVINCENAME => {
-                if let Ok(st) = entry.data().as_utf8() {
-                    attributes.certificate_subject_st = st.to_string();
+                if let Ok(st) = entry.data().to_string() {
+                    attributes.certificate_subject_st = st;
                 }
             }
             Nid::LOCALITYNAME => {
-                if let Ok(l) = entry.data().as_utf8() {
-                    attributes.certificate_subject_l = l.to_string();
+                if let Ok(l) = entry.data().to_string() {
+                    attributes.certificate_subject_l = l;
                 }
             }
             Nid::ORGANIZATIONNAME => {
-                if let Ok(o) = entry.data().as_utf8() {
-                    attributes.certificate_subject_o = o.to_string();
+                if let Ok(o) = entry.data().to_string() {
+                    attributes.certificate_subject_o = o;
                 }
             }
             Nid::PKCS9_EMAILADDRESS => {
-                if let Ok(email) = entry.data().as_utf8() {
-                    attributes.certificate_subject_email = email.to_string();
+                if let Ok(email) = entry.data().to_string() {
+                    attributes.certificate_subject_email = email;
                 }
             }
             _ => (),
@@ -112,38 +112,38 @@ pub fn openssl_x509_to_certificate_attributes(x509: &X509) -> CertificateAttribu
     for entry in x509.issuer_name().entries() {
         match entry.object().nid() {
             Nid::COMMONNAME => {
-                if let Ok(cn) = entry.data().as_utf8() {
-                    attributes.certificate_issuer_cn = cn.to_string();
+                if let Ok(cn) = entry.data().to_string() {
+                    attributes.certificate_issuer_cn = cn;
                 }
             }
             Nid::ORGANIZATIONALUNITNAME => {
-                if let Ok(ou) = entry.data().as_utf8() {
-                    attributes.certificate_issuer_ou = ou.to_string();
+                if let Ok(ou) = entry.data().to_string() {
+                    attributes.certificate_issuer_ou = ou;
                 }
             }
             Nid::COUNTRYNAME => {
-                if let Ok(country) = entry.data().as_utf8() {
-                    attributes.certificate_issuer_c = country.to_string();
+                if let Ok(country) = entry.data().to_string() {
+                    attributes.certificate_issuer_c = country;
                 }
             }
             Nid::STATEORPROVINCENAME => {
-                if let Ok(st) = entry.data().as_utf8() {
-                    attributes.certificate_issuer_st = st.to_string();
+                if let Ok(st) = entry.data().to_string() {
+                    attributes.certificate_issuer_st = st;
                 }
             }
             Nid::LOCALITYNAME => {
-                if let Ok(l) = entry.data().as_utf8() {
-                    attributes.certificate_issuer_l = l.to_string();
+                if let Ok(l) = entry.data().to_string() {
+                    attributes.certificate_issuer_l = l;
                 }
             }
             Nid::ORGANIZATIONNAME => {
-                if let Ok(o) = entry.data().as_utf8() {
-                    attributes.certificate_issuer_o = o.to_string();
+                if let Ok(o) = entry.data().to_string() {
+                    attributes.certificate_issuer_o = o;
                 }
             }
             Nid::PKCS9_EMAILADDRESS => {
-                if let Ok(email) = entry.data().as_utf8() {
-                    attributes.certificate_issuer_email = email.to_string();
+                if let Ok(email) = entry.data().to_string() {
+                    attributes.certificate_issuer_email = email;
                 }
             }
             _ => (),

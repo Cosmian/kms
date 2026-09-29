@@ -8,12 +8,14 @@ use std::sync::Arc;
 
 use actix_identity::Identity;
 use actix_web::{FromRequest, dev::ServiceRequest, http::header};
-use cosmian_logger::{debug, trace};
+use cosmian_logger::{debug, trace, warn};
 
 use super::UserClaim;
 use crate::{
     error::KmsError,
-    middlewares::{AuthenticatedUser, jwt::JwtConfig},
+    middlewares::{
+        AuthMethod, AuthenticatedUser, UserId, jwt::JwtConfig, reject_reserved_aws_xks_identity,
+    },
     result::KResult,
 };
 
@@ -71,7 +73,7 @@ pub(super) async fn handle_jwt(
                 // If Identity extraction fails, try the Authorization header
                 req.headers()
                     .get(header::AUTHORIZATION)
-                    .and_then(|h| h.to_str().ok().map(ToString::to_string))
+                    .and_then(|h| h.to_str().ok().map(str::to_owned))
             },
             |identity| identity.id().ok(),
         )
@@ -98,11 +100,16 @@ pub(super) async fn handle_jwt(
         Ok(Some(email)) => {
             // Authentication successful with valid email
             debug!("JWT Access granted to {email}!");
-            Ok(AuthenticatedUser { username: email })
+            let username = UserId::from(email);
+            reject_reserved_aws_xks_identity(&username)?;
+            Ok(AuthenticatedUser {
+                username,
+                auth_method: AuthMethod::OidcJwt,
+            })
         }
         Ok(None) => {
-            // JWT is valid but missing the required email claim
-            debug!(
+            // JWT is valid but missing the required email claim — log as WARN for audit trail
+            warn!(
                 "{:?} {} 401 unauthorized, no email in JWT",
                 req.method(),
                 req.path()
@@ -110,11 +117,11 @@ pub(super) async fn handle_jwt(
             Err(KmsError::InvalidRequest("No email in JWT".to_owned()))
         }
         Err(jwt_log_errors) => {
-            // JWT validation failed
+            // JWT validation failed — log at WARN so auth failures appear in production logs
             for error in &jwt_log_errors {
-                tracing::debug!("{error:?}");
+                warn!("{error:?}");
             }
-            debug!(
+            warn!(
                 "{:?} {} 401 unauthorized: bad JWT",
                 req.method(),
                 req.path(),

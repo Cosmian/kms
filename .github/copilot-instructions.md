@@ -1,102 +1,128 @@
-# Cosmian KMS — Build and Test Guide
+# Eviden KMS — Copilot Chat Instructions
 
-Cosmian KMS is a high-performance, open-source FIPS 140-3 compliant Key Management System written in Rust.
+Eviden KMS is a high-performance, source-available **FIPS 140-3** Key Management System
+written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS (Actix-web) and
+supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
 
-## Quick start
+For autonomous agent work, full instructions are in `AGENTS.md`.
+For the skills index, see `.github/skills/README.md`. Skills live in `.github/skills/`.
 
-```bash
-# Initialize git submodules (required after clone)
-git submodule update --init --recursive
+Per-file coding rules are in `.github/instructions/` and are applied automatically by
+agents when editing matching file types (`applyTo` in each file's YAML frontmatter):
 
-# Build the project (FIPS mode is default)
-cargo build --release
+| Instruction file | Applies to |
+|-----------------|------------|
+| `rust.instructions.md` | All `*.rs` files |
+| `rust-server.instructions.md` | `crate/server/**/*.rs` |
+| `rust-crypto.instructions.md` | `crate/crypto/**/*.rs` |
+| `rust-kmip.instructions.md` | `crate/kmip/**/*.rs` |
+| `rust-database.instructions.md` | `crate/server_database/**/*.rs` |
+| `database-tables.instructions.md` | `crate/server_database/src/stores/sql/*.sql` |
+| `ui-routes.instructions.md` | `ui/src/App.tsx`, `ui/src/menuItems.tsx`, `ui/src/actions/**/*.tsx`, `ui/src/pages/**/*.tsx` |
+| `routes.instructions.md` | `crate/server/src/routes/**/*.rs`, `crate/server/documentation/openapi.yaml` |
+| `kmip-operations.instructions.md` | `crate/kmip/src/**/*.rs`, `crate/server/src/core/operations/**/*.rs` |
+| `cli-ui-sync.instructions.md` | `crate/clients/clap/**/*.rs`, `crate/clients/ckms/**/*.rs`, `ui/src/actions/**/*.ts`, `ui/src/actions/**/*.tsx` |
+| `wasm.instructions.md` | `crate/clients/wasm/**/*.rs` |
+| `server-config.instructions.md` | `crate/server/src/config/**/*.rs` |
+| `middlewares.instructions.md` | `crate/server/src/middlewares/**/*.rs`, `crate/server/src/config/wizard/auth_wizard.rs` |
+| `test-vectors.instructions.md` | `test_data/vectors/**`, `crate/test_kms_server/**/*.rs` |
+| `lockfile-hashes.instructions.md` | `Cargo.lock`, `ui/pnpm-lock.yaml` |
+| `cloud-providers.instructions.md` | `crate/server/src/routes/{aws_xks,azure_ekm,google_cse,ms_dke}/**` |
+| `hsm.instructions.md` | `crate/hsm/**/*.rs` |
+| `openssl-build.instructions.md` | `crate/crypto/build.rs` |
+| `rust-cli.instructions.md` | `crate/clients/**/*.rs` |
+| `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` |
+| `i18n.instructions.md` | `ui/src/i18n/**/*.{ts,json}` |
+| `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` |
+| `bash.instructions.md` | `**/*.sh` |
+| `mise.instructions.md` | `.mise/**, scripts/**, .github/reusable_scripts/**` |
+| `github-actions.instructions.md` | `.github/workflows/**, .github/actions/**` |
+| `toml.instructions.md` | `**/*.toml` |
+| `python.instructions.md` | `**/*.py` |
+| `markdown.instructions.md` | `**/*.md` |
+| `docs.instructions.md` | `documentation/**/*.md`, `README.md` |
+| `nix.instructions.md` | `nix/**/*.nix` |
+| `docker.instructions.md` | `nix/docker.nix, nix/k8s-images.nix, .mise/scripts/docker-compose.yml, charts/cosmian-kms/**/*` |
 
-# Run tests (FIPS mode is default)
-cargo test
+---
 
-# For non-FIPS mode (includes additional algorithms)
-cargo build --release --features non-fips
-cargo test --features non-fips
-```
+## Key directories
 
-## Testing
+| Path | Contents |
+|------|----------|
+| `crate/server/` | Server binary and library (main codebase) |
+| `crate/kmip/` | KMIP 2.1 protocol types |
+| `crate/crypto/` | Crypto primitives; `build.rs` builds OpenSSL 3.6.2 |
+| `crate/clients/clap/` | CLI actions (clap commands) |
+| `crate/clients/ckms/` | CLI binary entry point |
+| `crate/server_database/` | DB backends (SQLite, PostgreSQL, Redis-findex) |
+| `ui/src/` | React 19 + Vite 7 + Ant Design 5 + Tailwind 4 web UI |
+| `ui/tests/e2e/` | Playwright E2E tests |
+| `.github/skills/` | Team-wide Copilot skills (slash commands) |
 
-```bash
-# Run all tests (FIPS mode is default)
-cargo test
+---
 
-# Run tests for a specific package
-cargo test -p cosmian_kms_server
-cargo test -p cosmian_kms_cli
-
-# Run specific test suites
-cargo test sqlite       # SQLite tests
-cargo test postgres     # PostgreSQL tests (requires local PostgreSQL)
-cargo test redis        # Redis tests
-
-# Run tests in non-FIPS mode (includes additional algorithms)
-cargo test --features non-fips
-cargo test --features non-fips sqlite
-```
-
-Environment variables for DB tests:
-
-- `KMS_POSTGRES_URL=postgresql://kms:kms@127.0.0.1:5432/kms`
-- `KMS_MYSQL_URL=mysql://kms:kms@localhost:3306/kms`
-- `KMS_SQLITE_PATH=data/shared`
-
-Notes:
-
-- MySQL tests are currently disabled in CI
-- Redis-findex tests are skipped in FIPS mode
-- FIPS mode is the default; use `--features non-fips` for non-approved algorithms
-- Start database backends with `docker compose up -d` before running DB tests
-
-## Running the server
-
-After building, you can run the server manually:
-
-```bash
-cargo run --release --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data
-```
-
-Or run the compiled binary directly:
-
-```bash
-./target/release/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data
-```
-
-Basic API probe:
+## Build and test
 
 ```bash
-curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:9998/kmip/2_1
+cargo build                          # FIPS mode (default)
+cargo build --features non-fips      # non-FIPS: PQC, Covercrypt, AES-XTS
+cargo clippy-all                     # zero warnings required
+cargo fmt --all                      # apply formatting
+cargo test -p <crate>                # targeted test (preferred)
+cargo test-fips                      # full FIPS workspace test suite
+cargo test-non-fips                  # full non-FIPS workspace test suite
 ```
 
-Expected response is a KMIP validation error, confirming the server is alive.
+No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds OpenSSL 3.6.2.
 
-## Repository layout (high level)
+---
 
-```text
-.github/                # CI workflows and scripts
-crate/                  # Rust workspace crates (server, cli, crypto, …)
-pkg/                    # Packaging metadata (deb/rpm service files, configs)
-documentation/          # Documentation and guides
-resources/              # Configuration files and resources
-test_data/              # Test fixtures and data
-ui/                     # Web UI source
-```
+## Cardinal coding rules
 
-## Tips
+- No `.unwrap()` in production code — use `?` propagation.
+- `#[cfg(feature = "non-fips")]` at function/module level only, never inside a function body.
+- Every `unsafe` block requires a `// SAFETY:` comment.
+- Zero Clippy warnings — fix warnings; never suppress with `#[allow]` without an inline justification.
+- Unit tests go in a `#[cfg(test)]` submodule in the same file.
+- All public items require `///` doc comments.
+- Minimal, focused commits — never refactor unrelated code alongside a bug fix.
 
-- Format/lints: run `cargo fmt --check` and `cargo clippy` to check code style
-- Use `cargo build --release` for optimized builds
-- Run `cargo test` frequently to ensure changes don't break functionality
+## Feature rollout order & PR cascade
 
-## Docker
+For any feature spanning server + CLI/UI: implement and PR the **server** side first
+(`crate/server/`, `crate/kmip/`), then the **CLI** (`crate/clients/`) in its own PR, then
+the **Web UI** (`ui/`) in its own PR. Never bundle server and CLI/UI changes for the same
+feature in one PR. When branches must exist before the server PR merges, stack them
+(each branch based on the previous one); use `gh stack view`/`gh stack submit` to manage
+the stack, but never `gh stack sync` (or any rebase-then-force-push flow) — update
+downstream branches with a regular merge instead, per the force-push prohibition below.
 
-```bash
-docker pull ghcr.io/cosmian/kms:latest
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
-```
+## Force-push prohibition
 
-Images include the UI at `http://localhost:9998/ui`.
+Agents must **never** force-push, under any circumstance — no `git push --force`/
+`--force-with-lease`, no delete-and-recreate of a remote branch, and no rewriting a
+remote ref via the GitHub web UI or REST/GraphQL API. If history diverges, merge or
+branch again; never rewrite shared history. Applies to every branch.
+
+---
+
+## Skills (slash commands in Copilot Chat)
+
+| Command | When to use |
+|---------|-------------|
+| `/kms-sync-rules` | After every code change — auto-detects changed files |
+| `/rust-review-all` | **Full Rust quality gate** — all review skills + reports in `./review/` |
+| `/rust-panic-audit` | Scan for panics, `.unwrap()`, `process::exit`, brutal exits |
+| `/meta-security` | **Comprehensive security audit** — orchestrates all 4 security skills |
+| `/security-review` | Before any PR |
+| `/cryptography-review` | When touching `crate/crypto/` or algorithm selection |
+| `/standards-review` | Verify code against exact text of applicable standards |
+| `/kmip-compliance` | When adding/modifying a KMIP operation |
+| `/rust-patterns` | Rust design patterns for this codebase |
+| `/rust-simplify` | Find simplification opportunities in Rust code |
+| `/rust-error-propagation` | Audit `Result` propagation chains |
+| `/react-ant-patterns` | UI coding conventions |
+| `/ckms-subcommand-test` | **After adding a `ckms` subcommand or flag** — write + run integration tests |
+| `/kms-changelog` | Writing the branch CHANGELOG entry |
+| `/threat-model` | STRIDE-A threat model |

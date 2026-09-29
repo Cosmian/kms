@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#MISE description="Run KMIP 1.0–1.4 compliance tests using ovh/kmip-go against a live KMS"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="Build variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+setup_test_logging
+
+export WITH_GO=1
+# shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
+ensure_nix_shell
+
+print_header "Running KMIP Go compliance tests (ovh/kmip-go, KMIP 1.0–1.4)"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/test/test_kmip_go.sh" --variant "$VARIANT" --link "$LINK"
+
+print_success "KMIP Go compliance tests completed"

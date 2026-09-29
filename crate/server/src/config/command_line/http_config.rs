@@ -1,7 +1,10 @@
 use std::fmt::Display;
 
 use clap::Args;
+use clap_config_fallback::ConfigArgs;
 use serde::{Deserialize, Serialize};
+
+use super::tls_config::TlsConfig;
 
 const DEFAULT_PORT: u16 = 9998;
 #[cfg(target_os = "windows")]
@@ -9,8 +12,8 @@ const DEFAULT_HOSTNAME: &str = "127.0.0.1";
 #[cfg(not(target_os = "windows"))]
 const DEFAULT_HOSTNAME: &str = "0.0.0.0";
 
-#[derive(Args, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[derive(Args, ConfigArgs, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct HttpConfig {
     /// The KMS HTTP server port
     #[clap(long, env = "KMS_PORT", default_value_t = DEFAULT_PORT, verbatim_doc_comment)]
@@ -23,18 +26,90 @@ pub struct HttpConfig {
     /// An optional API token to use for authentication on the HTTP server.
     #[clap(long, env = "KMS_API_TOKEN", verbatim_doc_comment)]
     pub api_token_id: Option<String>,
+
+    /// Maximum number of requests per second per IP address allowed by the rate limiter.
+    /// When set, the server enforces this limit to mitigate `DoS` and brute-force attacks.
+    /// Requests exceeding the limit receive HTTP 429 Too Many Requests.
+    /// Leave unset (default) to disable rate limiting.
+    #[clap(long, env = "KMS_RATE_LIMIT_PER_SECOND", verbatim_doc_comment)]
+    pub rate_limit_per_second: Option<u32>,
+
+    /// Comma-separated list of origins allowed to make cross-origin requests to the KMIP API.
+    /// Required for any Web UI deployment: the browser Fetch API sends an `Origin` header on
+    /// every POST request — even when the page is served by the KMS itself — and actix-cors
+    /// rejects it unless the exact origin appears in this list.
+    /// The value must match byte-for-byte what the user types in the browser address bar
+    /// (scheme + hostname + port). The server bind address (`0.0.0.0`) and the server IP
+    /// are not equivalent to a DNS hostname. The Docker image pre-populates loopback
+    /// addresses; add any custom hostname explicitly. Example: `http://kms.example.com:9998`.
+    #[clap(
+        long,
+        env = "KMS_CORS_ALLOWED_ORIGINS",
+        value_delimiter = ',',
+        verbatim_doc_comment
+    )]
+    pub cors_allowed_origins: Option<Vec<String>>,
+
+    /// Number of actix-web HTTP worker threads.
+    /// Defaults to the number of logical CPUs. On I/O-heavy workloads (e.g. `PostgreSQL` backend)
+    /// setting this to `2 * <number of CPU cores>` improves throughput by keeping more Tokio
+    /// threads busy while others are waiting on network I/O.
+    /// Can also be set via the `TOKIO_WORKER_THREADS` environment variable (Tokio runtime),
+    /// but this flag controls only the actix-web application workers.
+    #[clap(long, env = "KMS_HTTP_WORKERS", verbatim_doc_comment)]
+    pub http_workers: Option<usize>,
+
+    /// Enable the `GET /.well-known/jwks.json` endpoint.
+    ///
+    /// When set, the server exposes all public keys with the `Verify` usage mask as a
+    /// RFC 7517 JSON Web Key Set. Defaults to `false`; set to `true` to enable public key
+    /// discovery for JWT verification.
+    #[clap(
+        long,
+        env = "KMS_JWKS_ENABLED",
+        default_value_t = false,
+        verbatim_doc_comment
+    )]
+    #[serde(skip)]
+    pub jwks_enabled: bool,
+}
+
+impl HttpConfig {
+    /// Returns the correct scheme (`"http"` or `"https"`) based on the companion
+    /// [`TlsConfig`].  Use this when building log messages or client URLs where
+    /// the scheme must be accurate.
+    #[must_use]
+    pub const fn scheme<'a>(&self, tls: &'a TlsConfig) -> &'a str {
+        if tls.is_tls_enabled() {
+            "https"
+        } else {
+            "http"
+        }
+    }
 }
 
 impl Display for HttpConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "https://{}:{}, ", self.hostname, self.port)?;
+        write!(f, "{}:{}", self.hostname, self.port)?;
+        if let Some(ref token) = self.api_token_id {
+            write!(f, " (api_token: {token})")?;
+        }
+        if let Some(rps) = self.rate_limit_per_second {
+            write!(f, " (rate_limit: {rps}/s)")?;
+        }
+        if let Some(ref origins) = self.cors_allowed_origins {
+            write!(f, " (cors_allowed_origins: {})", origins.join(", "))?;
+        }
+        if let Some(w) = self.http_workers {
+            write!(f, " (http_workers: {w})")?;
+        }
         Ok(())
     }
 }
 
 impl std::fmt::Debug for HttpConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}", &self))
+        f.write_fmt(format_args!("{self}"))
     }
 }
 
@@ -44,6 +119,23 @@ impl Default for HttpConfig {
             port: DEFAULT_PORT,
             hostname: DEFAULT_HOSTNAME.to_owned(),
             api_token_id: None,
+            rate_limit_per_second: None,
+            cors_allowed_origins: None,
+            http_workers: None,
+            jwks_enabled: false,
         }
     }
+}
+
+/// Build the default CORS allowed-origins list for the given scheme and port.
+///
+/// Includes `localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, and `[::]` so that
+/// the bundled Web UI works out-of-the-box from any loopback address.
+#[must_use]
+pub fn default_cors_origins(scheme: &str, port: u16) -> Vec<String> {
+    let hosts = ["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "[::]"];
+    hosts
+        .iter()
+        .map(|h| format!("{scheme}://{h}:{port}"))
+        .collect()
 }

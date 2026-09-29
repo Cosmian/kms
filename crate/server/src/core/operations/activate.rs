@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{ErrorReason, State},
@@ -11,14 +9,15 @@ use cosmian_kms_server_database::reexport::{
         },
         time_normalize,
     },
-    cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
 use cosmian_logger::trace;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
-    result::{KResult, KResultHelper},
+    middlewares::UserId,
+    result::KResult,
 };
 
 /// KMIP 2.1 Activate Operation
@@ -54,23 +53,18 @@ use crate::{
 pub(crate) async fn activate(
     kms: &KMS,
     request: Activate,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
 ) -> KResult<ActivateResponse> {
     trace!("{}", serde_json::to_string(&request)?);
 
     // there must be an identifier
-    let uid_or_tags = request
-        .unique_identifier
-        .as_str()
-        .context("Activate: the unique identifier must be a string")?;
+    let object_handle = from_request(Some(&request.unique_identifier), "Activate")?;
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
-        uid_or_tags,
-        KmipOperation::GetAttributes,
+        object_handle,
+        KmipOperation::Activate,
         kms,
         user,
-        params.clone(),
     ))
     .await?;
     trace!("Retrieved object for: {}", owm.object());
@@ -148,20 +142,22 @@ pub(crate) async fn activate(
     // Update the activation date in the "external" attributes
     owm.attributes_mut().activation_date = Some(activation_date);
 
-    // Update the object in the database
+    // Atomically update the object and its state in a single transaction
+    // to prevent TOCTOU races where a concurrent request could see an
+    // inconsistent intermediate state.
     kms.database
-        .update_object(
-            owm.id(),
-            owm.object(),
-            owm.attributes(),
-            None,
-            params.clone(),
+        .atomic(
+            user,
+            &[
+                AtomicOperation::UpdateObject((
+                    owm.id().to_owned(),
+                    owm.object().clone(),
+                    owm.attributes().clone(),
+                    None,
+                )),
+                AtomicOperation::UpdateState((owm.id().to_owned(), State::Active)),
+            ],
         )
-        .await?;
-
-    // Update the state in the database (separate column)
-    kms.database
-        .update_state(owm.id(), State::Active, params.clone())
         .await?;
 
     // All Objects are activated by default on the KMS, so simply answer OK

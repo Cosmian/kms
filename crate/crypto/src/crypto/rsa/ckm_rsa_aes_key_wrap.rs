@@ -546,7 +546,7 @@ FQIDAQAB
         }
         let oaep_encapsulation = fs::read(&oaep_encapsulation_file)?;
 
-        // chack that we can decrypt the ephemeral using KEK_FOR_BYOK and our implementation
+        // check that we can decrypt the ephemeral using KEK_FOR_BYOK and our implementation
         let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
         let rec_ephemeral = ckm_rsa_pkcs_oaep_key_unwrap(
             &priv_key,
@@ -582,7 +582,7 @@ FQIDAQAB
             crypto_bail!("test_for_byok: RFC5649 pkeyutl failed: {output:?}");
         }
         let rfc5649_encapsulation = fs::read(&rfc5649_encapsulation_file)?;
-        // Check against our implementation of NistKeyWrap
+        // Check against our implementation of AESKeyWrapPadding
         let rec_secret_bytes = rfc5649_unwrap(
             &rfc5649_encapsulation,
             &hex::decode(ephemeral)

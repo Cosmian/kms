@@ -4,6 +4,7 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Ob
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::PaddingMethod,
     kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_operations::Operation,
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
         requests::{create_rsa_key_pair_request, decrypt_request, encrypt_request},
@@ -104,6 +105,7 @@ pub(super) async fn test_wrapped_rsa_dek() -> KResult<()> {
 
 async fn create_rsa_dek(dek_uid: &str, kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     let create_request = create_rsa_key_pair_request(
+        VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(dek_uid.to_owned())),
         EMPTY_TAGS,
         2048,
@@ -119,9 +121,9 @@ async fn create_rsa_dek(dek_uid: &str, kek_uid: &str, owner: &str, kms: &Arc<KMS
     let Operation::CreateKeyPairResponse(create_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
-    assert!(
-        create_response.private_key_unique_identifier
-            == UniqueIdentifier::TextString(dek_uid.to_owned())
+    assert_eq!(
+        create_response.private_key_unique_identifier,
+        UniqueIdentifier::TextString(dek_uid.to_owned())
     );
     assert_eq!(
         create_response.public_key_unique_identifier.to_string(),

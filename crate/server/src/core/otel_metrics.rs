@@ -11,20 +11,72 @@
 //! - HTTP request metrics
 //! - Server uptime and health metrics
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::sync::Arc;
 
+use cosmian_kms_server_database::{DbMetricsRecorder, MainDbKind};
+use dashmap::DashMap;
 use opentelemetry::{
     KeyValue,
-    metrics::{Counter, Histogram, Meter, MeterProvider, UpDownCounter},
+    metrics::{Counter, Gauge, Histogram, Meter, MeterProvider, UpDownCounter},
 };
 use opentelemetry_sdk::metrics::SdkMeterProvider;
+use sha2::{Digest, Sha256};
 
 use crate::{error::KmsError, result::KResult};
 
-/// OpenTelemetry metrics for KMS operations
+/// Maximum number of distinct user identities tracked in the active-users window.
+///
+/// If this limit is reached, new users are not inserted into the tracker and the
+/// per-user metric label for the current operation is substituted with
+/// `"__overflow__"`.  This limits Prometheus timeseries cardinality for the
+/// `kms.kmip.operations.per_user.total` and
+/// `kms.permissions.granted.per_user.total` metrics.
+///
+/// Raise this constant if your deployment legitimately has more than `10_000`
+/// distinct users active within any 1-hour window.
+pub(crate) const MAX_TRACKED_CARDINALITY: usize = 10_000;
+
+/// Sentinel label value emitted when the cardinality cap is reached.
+const OVERFLOW_USER_LABEL: &str = "__overflow__";
+
+/// Number of hex characters kept from the SHA-256 digest used for the `user`
+/// metric label (64 bits — negligible collision risk at `MAX_TRACKED_CARDINALITY`
+/// scale, short enough to stay readable in dashboards).
+const USER_LABEL_HASH_HEX_LEN: usize = 16;
+
+/// One-liner builder for an OpenTelemetry metric instrument.
+/// Usage: `metric!(meter, u64_counter, "name", "description", "unit")`
+macro_rules! metric {
+    ($meter:expr,u64_counter, $name:literal, $desc:literal, $unit:literal) => {
+        $meter
+            .u64_counter($name)
+            .with_description($desc)
+            .with_unit($unit)
+            .build()
+    };
+    ($meter:expr,f64_histogram, $name:literal, $desc:literal, $unit:literal) => {
+        $meter
+            .f64_histogram($name)
+            .with_description($desc)
+            .with_unit($unit)
+            .build()
+    };
+    ($meter:expr,i64_up_down_counter, $name:literal, $desc:literal, $unit:literal) => {
+        $meter
+            .i64_up_down_counter($name)
+            .with_description($desc)
+            .with_unit($unit)
+            .build()
+    };
+    ($meter:expr,i64_gauge, $name:literal, $desc:literal, $unit:literal) => {
+        $meter
+            .i64_gauge($name)
+            .with_description($desc)
+            .with_unit($unit)
+            .build()
+    };
+}
+
 pub struct OtelMetrics {
     /// The meter used to create instruments
     meter: Meter,
@@ -51,7 +103,7 @@ pub struct OtelMetrics {
     pub active_users: UpDownCounter<i64>,
 
     /// Track unique users (username -> last seen timestamp)
-    active_users_tracker: Arc<RwLock<HashMap<String, i64>>>,
+    active_users_tracker: Arc<DashMap<String, i64>>,
 
     /// Database operation counts
     pub database_operations_total: Counter<u64>,
@@ -77,20 +129,27 @@ pub struct OtelMetrics {
     /// Current number of active connections
     pub active_connections: UpDownCounter<i64>,
 
-    /// Total number of objects in the KMS
-    pub kms_objects_total: UpDownCounter<i64>,
+    /// Total number of objects in the KMS (gauge — records absolute count directly)
+    pub kms_objects_total: Gauge<i64>,
 
-    /// Current number of active keys (absolute count from Locate responses)
-    pub active_keys_count: UpDownCounter<i64>,
-
-    /// Mirror of `active_keys_count` for tracking the last set value
-    active_keys_count_value: Arc<RwLock<i64>>,
+    /// Current number of active keys in Active state (gauge — records absolute count directly)
+    pub active_keys_count: Gauge<i64>,
 
     /// Cache hit/miss statistics
     pub cache_operations_total: Counter<u64>,
 
     /// HSM operation counts (if HSM is enabled)
     pub hsm_operations_total: Counter<u64>,
+
+    /// Count of automatic key rotations triggered by the background scheduler.
+    ///
+    /// Labelled with `uid`, `algorithm`, and `outcome` (`"success"` / `"failure"`).
+    pub key_auto_rotation_total: Counter<u64>,
+
+    /// Count of rotation renewal warnings emitted by the background scheduler.
+    ///
+    /// Labelled with `uid`, `algorithm`, and `threshold` (1, 7, or 30 days).
+    pub key_rotation_warning_total: Counter<u64>,
 }
 
 impl OtelMetrics {
@@ -107,150 +166,162 @@ impl OtelMetrics {
     /// # Panics
     ///
     /// May panic if system time is before `UNIX_EPOCH`
-    #[allow(
-        clippy::too_many_lines,
-        clippy::cast_precision_loss,
-        clippy::as_conversions
-    )]
+    #[allow(clippy::cast_precision_loss, clippy::as_conversions)] // metric values are counters/durations well within f64 precision range
     pub fn new(meter_provider: SdkMeterProvider) -> KResult<Self> {
-        // Get a meter from the provider - use meter() method from MeterProvider trait
         let meter = MeterProvider::meter(&meter_provider, "cosmian_kms");
 
-        // KMIP operations total
-        let kmip_operations_total = meter
-            .u64_counter("kms.kmip.operations.total")
-            .with_description("Total number of KMIP operations executed")
-            .with_unit("{operation}")
-            .build();
+        let kmip_operations_total = metric!(
+            meter,
+            u64_counter,
+            "kms.kmip.operations.total",
+            "Total number of KMIP operations executed",
+            "{operation}"
+        );
+        let kmip_operations_per_user = metric!(
+            meter,
+            u64_counter,
+            "kms.kmip.operations.per_user.total",
+            "Total number of KMIP operations executed per user",
+            "{operation}"
+        );
+        let kmip_operation_duration = metric!(
+            meter,
+            f64_histogram,
+            "kms.kmip.operation.duration",
+            "Duration of KMIP operations in seconds",
+            "s"
+        );
+        let permissions_granted_per_user = metric!(
+            meter,
+            u64_counter,
+            "kms.permissions.granted.per_user.total",
+            "Total number of permissions granted per user",
+            "{permission}"
+        );
+        let permissions_granted_total = metric!(
+            meter,
+            u64_counter,
+            "kms.permissions.granted.total",
+            "Total number of permissions granted",
+            "{permission}"
+        );
+        let active_users = metric!(
+            meter,
+            i64_up_down_counter,
+            "kms.active.users",
+            "Number of unique active users",
+            "{user}"
+        );
+        let database_operations_total = metric!(
+            meter,
+            u64_counter,
+            "kms.database.operations.total",
+            "Total number of database operations",
+            "{operation}"
+        );
+        let database_operation_duration = metric!(
+            meter,
+            f64_histogram,
+            "kms.database.operation.duration",
+            "Duration of database operations in seconds",
+            "s"
+        );
+        let http_requests_total = metric!(
+            meter,
+            u64_counter,
+            "kms.http.requests.total",
+            "Total number of HTTP requests",
+            "{request}"
+        );
+        let http_request_duration = metric!(
+            meter,
+            f64_histogram,
+            "kms.http.request.duration",
+            "Duration of HTTP requests in seconds",
+            "s"
+        );
+        let server_uptime_seconds = metric!(
+            meter,
+            u64_counter,
+            "kms.server.uptime",
+            "Server uptime in seconds",
+            "s"
+        );
+        let server_start_time = metric!(
+            meter,
+            i64_up_down_counter,
+            "kms.server.start_time",
+            "Server start time as Unix timestamp",
+            "s"
+        );
+        let errors_total = metric!(
+            meter,
+            u64_counter,
+            "kms.errors.total",
+            "Total number of errors by type",
+            "{error}"
+        );
+        let active_connections = metric!(
+            meter,
+            i64_up_down_counter,
+            "kms.active.connections",
+            "Current number of active connections",
+            "{connection}"
+        );
+        let kms_objects_total = metric!(
+            meter,
+            i64_gauge,
+            "kms.objects.total",
+            "Total number of objects in the KMS",
+            "{object}"
+        );
+        let active_keys_count = metric!(
+            meter,
+            i64_gauge,
+            "kms.keys.active.count",
+            "Number of non-destroyed key objects across all backends",
+            "{key}"
+        );
+        let cache_operations_total = metric!(
+            meter,
+            u64_counter,
+            "kms.cache.operations.total",
+            "Total number of cache operations",
+            "{operation}"
+        );
+        let hsm_operations_total = metric!(
+            meter,
+            u64_counter,
+            "kms.hsm.operations.total",
+            "Total number of HSM operations",
+            "{operation}"
+        );
+        let key_auto_rotation_total = metric!(
+            meter,
+            u64_counter,
+            "kms.key.auto_rotation",
+            "Total number of automatic key rotations triggered by the background scheduler",
+            "{rotation}"
+        );
+        let key_rotation_warning_total = metric!(
+            meter,
+            u64_counter,
+            "kms.key.rotation_warning",
+            "Total number of rotation renewal warnings emitted by the background scheduler",
+            "{warning}"
+        );
 
-        // KMIP operations per user
-        let kmip_operations_per_user = meter
-            .u64_counter("kms.kmip.operations.per_user.total")
-            .with_description("Total number of KMIP operations executed per user")
-            .with_unit("{operation}")
-            .build();
-
-        // KMIP operation duration
-        let kmip_operation_duration = meter
-            .f64_histogram("kms.kmip.operation.duration")
-            .with_description("Duration of KMIP operations in seconds")
-            .with_unit("s")
-            .build();
-
-        // Permissions granted per user
-        let permissions_granted_per_user = meter
-            .u64_counter("kms.permissions.granted.per_user.total")
-            .with_description("Total number of permissions granted per user")
-            .with_unit("{permission}")
-            .build();
-
-        // Permissions granted total
-        let permissions_granted_total = meter
-            .u64_counter("kms.permissions.granted.total")
-            .with_description("Total number of permissions granted")
-            .with_unit("{permission}")
-            .build();
-
-        // Active users
-        let active_users = meter
-            .i64_up_down_counter("kms.active.users")
-            .with_description("Number of unique active users")
-            .with_unit("{user}")
-            .build();
-
-        // Database operations
-        let database_operations_total = meter
-            .u64_counter("kms.database.operations.total")
-            .with_description("Total number of database operations")
-            .with_unit("{operation}")
-            .build();
-
-        // Database operation duration
-        let database_operation_duration = meter
-            .f64_histogram("kms.database.operation.duration")
-            .with_description("Duration of database operations in seconds")
-            .with_unit("s")
-            .build();
-
-        // HTTP requests
-        let http_requests_total = meter
-            .u64_counter("kms.http.requests.total")
-            .with_description("Total number of HTTP requests")
-            .with_unit("{request}")
-            .build();
-
-        // HTTP request duration
-        let http_request_duration = meter
-            .f64_histogram("kms.http.request.duration")
-            .with_description("Duration of HTTP requests in seconds")
-            .with_unit("s")
-            .build();
-
-        // Server uptime
-        let server_uptime_seconds = meter
-            .u64_counter("kms.server.uptime")
-            .with_description("Server uptime in seconds")
-            .with_unit("s")
-            .build();
-
-        // Server start time
-        let server_start_time = meter
-            .i64_up_down_counter("kms.server.start_time")
-            .with_description("Server start time as Unix timestamp")
-            .with_unit("s")
-            .build();
-
-        // Set initial server start time
+        // Seed server start time on startup
         let start_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|e| KmsError::ServerError(format!("System time error: {e}")))?
             .as_secs();
-        // Use try_into to safely convert u64 to i64
         let start_time_i64 = i64::try_from(start_time)
             .map_err(|e| KmsError::ServerError(format!("Start time conversion error: {e}")))?;
         server_start_time.add(start_time_i64, &[]);
 
-        // Errors total
-        let errors_total = meter
-            .u64_counter("kms.errors.total")
-            .with_description("Total number of errors by type")
-            .with_unit("{error}")
-            .build();
-
-        // Active connections
-        let active_connections = meter
-            .i64_up_down_counter("kms.active.connections")
-            .with_description("Current number of active connections")
-            .with_unit("{connection}")
-            .build();
-
-        // KMS objects
-        let kms_objects_total = meter
-            .i64_up_down_counter("kms.objects.total")
-            .with_description("Total number of objects in the KMS")
-            .with_unit("{object}")
-            .build();
-
-        // Active Keys count (absolute number of keys in Active state)
-        let active_keys_count = meter
-            .i64_up_down_counter("kms.keys.active.count")
-            .with_description("Number of keys in Active state (absolute count based on Locate)")
-            .with_unit("{key}")
-            .build();
-
-        // Cache operations
-        let cache_operations_total = meter
-            .u64_counter("kms.cache.operations.total")
-            .with_description("Total number of cache operations")
-            .with_unit("{operation}")
-            .build();
-
-        // HSM operations
-        let hsm_operations_total = meter
-            .u64_counter("kms.hsm.operations.total")
-            .with_description("Total number of HSM operations")
-            .with_unit("{operation}")
-            .build();
+        // Seed the time series so it is visible in the backend from server start.
+        active_keys_count.record(0, &[]);
 
         Ok(Self {
             meter,
@@ -261,7 +332,7 @@ impl OtelMetrics {
             permissions_granted_per_user,
             permissions_granted_total,
             active_users,
-            active_users_tracker: Arc::new(RwLock::new(HashMap::with_capacity(100))),
+            active_users_tracker: Arc::new(DashMap::with_capacity(100)),
             database_operations_total,
             database_operation_duration,
             http_requests_total,
@@ -272,20 +343,26 @@ impl OtelMetrics {
             active_connections,
             kms_objects_total,
             active_keys_count,
-            active_keys_count_value: Arc::new(RwLock::new(0)),
             cache_operations_total,
             hsm_operations_total,
+            key_auto_rotation_total,
+            key_rotation_warning_total,
         })
     }
 
-    /// Record a KMIP operation
+    /// Record a KMIP operation.
+    ///
+    /// `user` is only ever used to update the in-process active-user tracker
+    /// and, hashed, as the `kms.kmip.operations.per_user.total` label — see
+    /// [`Self::bounded_user_label`].
     pub fn record_kmip_operation(&self, operation: &str, user: &str) {
         self.kmip_operations_total
             .add(1, &[KeyValue::new("operation", operation.to_owned())]);
+        let effective_user = self.bounded_user_label(user);
         self.kmip_operations_per_user.add(
             1,
             &[
-                KeyValue::new("user", user.to_owned()),
+                KeyValue::new("user", effective_user),
                 KeyValue::new("operation", operation.to_owned()),
             ],
         );
@@ -300,66 +377,129 @@ impl OtelMetrics {
         );
     }
 
-    /// Record a permission grant
+    /// Record a permission grant.
+    ///
+    /// `user` is only ever used, hashed, as the
+    /// `kms.permissions.granted.per_user.total` label — see
+    /// [`Self::bounded_user_label`].
     pub fn record_permission_grant(&self, user: &str, permission_type: &str) {
+        let effective_user = self.bounded_user_label(user);
         self.permissions_granted_per_user.add(
             1,
             &[
-                KeyValue::new("user", user.to_owned()),
+                KeyValue::new("user", effective_user),
                 KeyValue::new("permission_type", permission_type.to_owned()),
             ],
         );
         self.permissions_granted_total.add(1, &[]);
     }
 
-    /// Update active user tracking
+    /// Returns the `user` label to use for per-user metrics.
+    ///
+    /// The raw username is never exported: this returns a non-reversible,
+    /// truncated SHA-256 hash of the user identity if the cardinality cap has
+    /// not been reached, or the literal `"__overflow__"` sentinel when it has.
+    /// Real user identity is recorded only in the audit log
+    /// (`middlewares/audit.rs`), never in OTEL metrics.
+    fn bounded_user_label(&self, user: &str) -> String {
+        if self.active_users_tracker.contains_key(user)
+            || self.active_users_tracker.len() < MAX_TRACKED_CARDINALITY
+        {
+            Self::hash_user(user)
+        } else {
+            OVERFLOW_USER_LABEL.to_owned()
+        }
+    }
+
+    /// Hashes a user identity into a short, non-reversible hex digest suitable
+    /// for use as a metric label (per OTEL's `user.hash` semantic convention).
+    fn hash_user(user: &str) -> String {
+        let digest = Sha256::digest(user.as_bytes());
+        let full_hex = hex::encode(digest);
+        full_hex
+            .get(..USER_LABEL_HASH_HEX_LEN)
+            .unwrap_or(&full_hex)
+            .to_owned()
+    }
+
+    /// Update active user tracking.
+    ///
+    /// Uses `DashMap` for lock-free concurrent shard access — no global write
+    /// lock that would serialize all KMIP operations.
+    ///
+    /// Cleanup of stale users (inactive > 1 hour) is performed inline but only
+    /// touches the shard containing each stale key, so concurrent operations on
+    /// other shards proceed unblocked.
     ///
     /// # Panics
     ///
-    /// Panics if system time is before `UNIX_EPOCH` or lock is poisoned
-    #[allow(
-        clippy::cast_possible_wrap,
-        clippy::expect_used,
-        clippy::as_conversions
-    )]
+    /// Panics if system time is before `UNIX_EPOCH` (only possible on systems
+    /// with a misconfigured clock; safe to treat as unrecoverable).
+    #[allow(clippy::expect_used)] // documented panic: only fails on a misconfigured system clock before UNIX_EPOCH
     pub fn update_active_user(&self, user: &str) {
-        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("System time before UNIX_EPOCH")
-            .as_secs() as i64;
+        let now = i64::try_from(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("System time before UNIX_EPOCH")
+                .as_secs(),
+        )
+        .unwrap_or(i64::MAX);
 
-        let mut tracker = self
-            .active_users_tracker
-            .write()
-            .expect("Active users tracker lock poisoned");
+        // Enforce cardinality cap: do not track new users beyond the limit.
+        if !self.active_users_tracker.contains_key(user)
+            && self.active_users_tracker.len() >= MAX_TRACKED_CARDINALITY
+        {
+            return;
+        }
 
-        let previous_len = tracker.len() as i64;
-        tracker.insert(user.to_owned(), now);
+        let previous_len = self.active_users_tracker.len();
+        self.active_users_tracker.insert(user.to_owned(), now);
 
-        // Clean up users inactive for more than 1 hour
+        // Clean up users inactive for more than 1 hour.
         let cutoff = now - 3600;
-        tracker.retain(|_, &mut last_seen| last_seen > cutoff);
+        self.active_users_tracker
+            .retain(|_, last_seen| *last_seen > cutoff);
 
-        // Update gauge - calculate the delta
-        let current_len = tracker.len() as i64;
-        let delta = current_len - previous_len;
+        // Update gauge — calculate the delta.
+        let current_len = self.active_users_tracker.len();
+        let delta = i64::try_from(current_len).unwrap_or(i64::MAX)
+            - i64::try_from(previous_len).unwrap_or(i64::MAX);
         if delta != 0 {
             self.active_users.add(delta, &[]);
         }
     }
 
-    /// Record a database operation
-    pub fn record_database_operation(&self, operation: &str) {
-        self.database_operations_total
-            .add(1, &[KeyValue::new("operation", operation.to_owned())]);
-    }
-
-    /// Record database operation duration
-    pub fn record_database_operation_duration(&self, operation: &str, duration_seconds: f64) {
+    /// Record a database operation (count + duration in one call).
+    ///
+    /// # Arguments
+    /// * `operation` – low-cardinality label (`"create"`, `"retrieve"`, …)
+    /// * `backend`   – typed database backend; `as_str()` is called here so
+    ///   no free-form string can sneak in through this method.
+    /// * `outcome`   – `"success"` or `"error"`
+    /// * `duration_seconds` – wall-clock duration of the operation
+    pub fn record_database_operation(
+        &self,
+        operation: &str,
+        backend: MainDbKind,
+        outcome: &str,
+        duration_seconds: f64,
+    ) {
+        let backend_str = backend.as_str();
+        self.database_operations_total.add(
+            1,
+            &[
+                KeyValue::new("operation", operation.to_owned()),
+                KeyValue::new("backend", backend_str),
+                KeyValue::new("outcome", outcome.to_owned()),
+            ],
+        );
         self.database_operation_duration.record(
             duration_seconds,
-            &[KeyValue::new("operation", operation.to_owned())],
+            &[
+                KeyValue::new("operation", operation.to_owned()),
+                KeyValue::new("backend", backend_str),
+                KeyValue::new("outcome", outcome.to_owned()),
+            ],
         );
     }
 
@@ -376,12 +516,19 @@ impl OtelMetrics {
     }
 
     /// Record HTTP request duration
-    pub fn record_http_request_duration(&self, method: &str, path: &str, duration_seconds: f64) {
+    pub fn record_http_request_duration(
+        &self,
+        method: &str,
+        path: &str,
+        status: &str,
+        duration_seconds: f64,
+    ) {
         self.http_request_duration.record(
             duration_seconds,
             &[
                 KeyValue::new("method", method.to_owned()),
                 KeyValue::new("path", path.to_owned()),
+                KeyValue::new("status", status.to_owned()),
             ],
         );
     }
@@ -402,54 +549,76 @@ impl OtelMetrics {
         self.active_connections.add(-1, &[]);
     }
 
-    /// Update object count for a specific type
-    pub fn update_object_count(&self, object_type: &str, count: f64) {
-        // For UpDownCounter, we need to track the delta
-        // This is a simplified implementation - in production you might want to track previous values
-        // Round the f64 to avoid truncation issues
-        #[allow(clippy::cast_possible_wrap)]
-        #[allow(clippy::cast_possible_truncation)]
-        #[allow(clippy::as_conversions)]
-        let count_i64 = count.round() as i64;
-        self.kms_objects_total.add(
-            count_i64,
-            &[KeyValue::new("object_type", object_type.to_owned())],
-        );
+    /// Set the current active keys count from an absolute Locate response.
+    pub fn update_active_keys_count(&self, absolute_count: i64) {
+        self.active_keys_count.record(absolute_count, &[]);
     }
 
-    /// Set the current active keys count from an absolute Locate response
+    /// Set `kms.objects.total` to the current absolute object count.
     ///
-    /// OTLP instrument is an `UpDownCounter`, so we compute the delta from
-    /// the previously observed value and add it. The last value is mirrored
-    /// internally for subsequent updates and optional inspection.
-    pub fn update_active_keys_count(&self, absolute_count: i64) {
-        if let Ok(mut last) = self.active_keys_count_value.write() {
-            let delta = absolute_count - *last;
-            if delta != 0 {
-                self.active_keys_count.add(delta, &[]);
-                *last = absolute_count;
-            }
-        }
+    /// Called once at server startup (seeding from the real DB count) and
+    /// every 30 s by the metrics cron task.
+    pub fn update_objects_total(&self, absolute_count: i64) {
+        self.kms_objects_total.record(absolute_count, &[]);
     }
 
     /// Record cache operation
-    pub fn record_cache_operation(&self, operation: &str, result: &str) {
+    ///
+    /// Both `operation` and `result` must be `'static` string literals (e.g. `"get"`, `"hit"`).
+    /// Using `&'static str` avoids a `String` allocation on every call since
+    /// all current call sites already use compile-time constants.
+    pub fn record_cache_operation(&self, operation: &'static str, result: &'static str) {
         self.cache_operations_total.add(
             1,
             &[
-                KeyValue::new("operation", operation.to_owned()),
-                KeyValue::new("result", result.to_owned()),
+                KeyValue::new("operation", operation),
+                KeyValue::new("result", result),
             ],
         );
     }
 
-    /// Record HSM operation
-    pub fn record_hsm_operation(&self, operation: &str, hsm_model: &str) {
+    /// Record an automatic key rotation attempt.
+    ///
+    /// - `uid` — the key being rotated (high cardinality; use with care)
+    /// - `algorithm` — cryptographic algorithm label (e.g. `"Aes"`, `"Rsa"`)
+    /// - `outcome` — `"success"` or `"failure"`
+    pub fn record_key_auto_rotation(&self, uid: &str, algorithm: &str, outcome: &str) {
+        self.key_auto_rotation_total.add(
+            1,
+            &[
+                KeyValue::new("uid", uid.to_owned()),
+                KeyValue::new("algorithm", algorithm.to_owned()),
+                KeyValue::new("outcome", outcome.to_owned()),
+            ],
+        );
+    }
+
+    /// Record a rotation renewal warning.
+    ///
+    /// - `uid` — the key approaching its rotation deadline
+    /// - `algorithm` — cryptographic algorithm label (e.g. `"Aes"`, `"Rsa"`)
+    /// - `threshold` — the warning threshold that was matched (1, 7, or 30 days)
+    pub fn record_rotation_warning(&self, uid: &str, algorithm: &str, threshold: i64) {
+        self.key_rotation_warning_total.add(
+            1,
+            &[
+                KeyValue::new("uid", uid.to_owned()),
+                KeyValue::new("algorithm", algorithm.to_owned()),
+                KeyValue::new("threshold_days", threshold.to_string()),
+            ],
+        );
+    }
+
+    /// Record HSM operation.
+    ///
+    /// `operation` must be a `'static` literal (e.g. `Op::OP_NAME`, `"Wrap"`, `"Unwrap"`).
+    /// `hsm_model` is a runtime label from `hsm_model_from_prefix` and still requires allocation.
+    pub fn record_hsm_operation(&self, operation: &'static str, hsm_model: &str) {
         self.hsm_operations_total.add(
             1,
             &[
-                KeyValue::new("operation", operation.to_owned()),
                 KeyValue::new("hsm_model", hsm_model.to_owned()),
+                KeyValue::new("operation", operation),
             ],
         );
     }
@@ -466,6 +635,18 @@ impl OtelMetrics {
     }
 }
 
+impl DbMetricsRecorder for OtelMetrics {
+    fn record_operation(
+        &self,
+        operation: &str,
+        backend: MainDbKind,
+        outcome: &str,
+        duration_seconds: f64,
+    ) {
+        self.record_database_operation(operation, backend, outcome, duration_seconds);
+    }
+}
+
 #[cfg(test)]
 #[allow(
     clippy::expect_used,
@@ -474,67 +655,320 @@ impl OtelMetrics {
     clippy::cast_sign_loss
 )]
 mod tests {
+    use opentelemetry_sdk::metrics::{
+        InMemoryMetricExporter, PeriodicReader,
+        data::{AggregatedMetrics, GaugeDataPoint, Metric, MetricData, ScopeMetrics, SumDataPoint},
+    };
+
     use super::*;
 
+    // No-op provider — cheap, used only where value assertions aren't needed
     fn create_test_meter_provider() -> SdkMeterProvider {
-        // Create a simple no-op meter provider for testing
-        // We don't need to actually export metrics in tests
-        opentelemetry_sdk::metrics::SdkMeterProvider::builder().build()
+        SdkMeterProvider::builder().build()
     }
+
+    // Observing setup: real exporter, values assertable after force_flush()
+
+    fn setup_observing_metrics() -> (OtelMetrics, SdkMeterProvider, InMemoryMetricExporter) {
+        let exporter = InMemoryMetricExporter::default();
+        let reader = PeriodicReader::builder(exporter.clone()).build();
+        let provider = SdkMeterProvider::builder().with_reader(reader).build();
+        let provider_ref = provider.clone();
+        let metrics = OtelMetrics::new(provider).expect("metrics init");
+        (metrics, provider_ref, exporter)
+    }
+
+    /// Sum of all data-point values for a u64 counter metric in the last exported batch.
+    fn last_counter_u64(exporter: &InMemoryMetricExporter, name: &str) -> u64 {
+        let batches = exporter.get_finished_metrics().unwrap_or_default();
+        let Some(last) = batches.last() else {
+            return 0;
+        };
+        for sm in last.scope_metrics() {
+            for metric in sm.metrics() {
+                if metric.name() == name {
+                    if let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data() {
+                        return sum.data_points().map(SumDataPoint::value).sum();
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    /// Net value of an i64 `UpDownCounter` (`Sum<i64>`) in the last exported batch.
+    fn last_updown_i64(exporter: &InMemoryMetricExporter, name: &str) -> i64 {
+        let batches = exporter.get_finished_metrics().unwrap_or_default();
+        let Some(last) = batches.last() else {
+            return 0;
+        };
+        for sm in last.scope_metrics() {
+            for metric in sm.metrics() {
+                if metric.name() == name {
+                    if let AggregatedMetrics::I64(MetricData::Sum(sum)) = metric.data() {
+                        return sum.data_points().map(SumDataPoint::value).sum();
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    /// Last recorded value of an i64 Gauge in the last exported batch.
+    fn last_gauge_i64(exporter: &InMemoryMetricExporter, name: &str) -> i64 {
+        let batches = exporter.get_finished_metrics().unwrap_or_default();
+        let Some(last) = batches.last() else {
+            return 0;
+        };
+        for sm in last.scope_metrics() {
+            for metric in sm.metrics() {
+                if metric.name() == name {
+                    if let AggregatedMetrics::I64(MetricData::Gauge(g)) = metric.data() {
+                        return g.data_points().last().map_or(0, GaugeDataPoint::value);
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    /// Collects every `user` attribute value recorded for a `u64` counter metric
+    /// across all data points in the last exported batch.
+    fn user_labels(exporter: &InMemoryMetricExporter, name: &str) -> Vec<String> {
+        let batches = exporter.get_finished_metrics().unwrap_or_default();
+        let Some(last) = batches.last() else {
+            return vec![];
+        };
+        let mut labels = vec![];
+        for sm in last.scope_metrics() {
+            for metric in sm.metrics() {
+                if metric.name() != name {
+                    continue;
+                }
+                if let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data() {
+                    for dp in sum.data_points() {
+                        for kv in dp.attributes() {
+                            if kv.key.as_str() == "user" {
+                                labels.push(kv.value.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        labels
+    }
+
+    // ── Smoke tests (construction + no-panic; no value assertions needed) ─────
 
     #[test]
     fn test_metrics_creation() {
-        let meter_provider = create_test_meter_provider();
-        let _metrics = OtelMetrics::new(meter_provider).expect("Failed to create metrics");
-    }
-
-    #[test]
-    fn test_kmip_operation_recording() {
-        let meter_provider = create_test_meter_provider();
-        let metrics = OtelMetrics::new(meter_provider).expect("Failed to create metrics");
-
-        metrics.record_kmip_operation("Create", "user1");
-        metrics.record_kmip_operation("Get", "user1");
-        metrics.record_kmip_operation("Create", "user2");
-
-        // Metrics are recorded, actual verification would require checking the exporter
-    }
-
-    #[test]
-    fn test_permission_recording() {
-        let meter_provider = create_test_meter_provider();
-        let metrics = OtelMetrics::new(meter_provider).expect("Failed to create metrics");
-
-        metrics.record_permission_grant("user1", "read");
-        metrics.record_permission_grant("user1", "write");
-        metrics.record_permission_grant("user2", "read");
+        let _metrics = OtelMetrics::new(create_test_meter_provider()).expect("creation");
     }
 
     #[test]
     fn test_active_users_tracking() {
-        let meter_provider = create_test_meter_provider();
-        let metrics = OtelMetrics::new(meter_provider).expect("Failed to create metrics");
-
+        let metrics = OtelMetrics::new(create_test_meter_provider()).expect("creation");
         metrics.update_active_user("user1");
         metrics.update_active_user("user2");
         metrics.update_active_user("user3");
+        assert_eq!(metrics.active_users_tracker.len(), 3);
+    }
 
-        assert_eq!(
+    // ── Tests with value assertions ───────────────────────────────────────────
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_kmip_operation_recording() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.record_kmip_operation("Create", "user1");
+        metrics.record_kmip_operation("Get", "user1");
+        metrics.record_kmip_operation("Create", "user2");
+        provider.force_flush().expect("flush");
+        assert_eq!(last_counter_u64(&exporter, "kms.kmip.operations.total"), 3);
+
+        let labels = user_labels(&exporter, "kms.kmip.operations.per_user.total");
+        assert!(!labels.is_empty());
+        assert!(
+            labels.iter().all(|l| l != "user1" && l != "user2"),
+            "raw username must never appear in the `user` metric label: {labels:?}"
+        );
+        assert!(
+            labels.iter().all(|l| l.len() == USER_LABEL_HASH_HEX_LEN),
+            "expected {USER_LABEL_HASH_HEX_LEN}-hex-char hash labels: {labels:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_per_user_metric_labels() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.record_kmip_operation("Create", "alice");
+        metrics.record_kmip_operation("Get", "bob");
+        provider.force_flush().expect("flush");
+        let mut labels = user_labels(&exporter, "kms.kmip.operations.per_user.total");
+        labels.sort();
+        let mut expected = vec![
+            OtelMetrics::hash_user("alice"),
+            OtelMetrics::hash_user("bob"),
+        ];
+        expected.sort();
+        assert_eq!(labels, expected);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_per_user_cardinality_overflow() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        // Fill the tracker to the cardinality cap directly, avoiding the cost
+        // of `MAX_TRACKED_CARDINALITY` real `record_kmip_operation` calls.
+        for i in 0..MAX_TRACKED_CARDINALITY {
             metrics
                 .active_users_tracker
-                .read()
-                .expect("Failed to lock tracker")
-                .len(),
+                .insert(format!("user{i}"), i64::MAX);
+        }
+        metrics.record_kmip_operation("Create", "new_user");
+        provider.force_flush().expect("flush");
+        let labels = user_labels(&exporter, "kms.kmip.operations.per_user.total");
+        assert_eq!(labels, vec![OVERFLOW_USER_LABEL.to_owned()]);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_permission_recording() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.record_permission_grant("user1", "read");
+        metrics.record_permission_grant("user1", "write");
+        metrics.record_permission_grant("user2", "read");
+        provider.force_flush().expect("flush");
+        assert_eq!(
+            last_counter_u64(&exporter, "kms.permissions.granted.total"),
             3
+        );
+
+        let labels = user_labels(&exporter, "kms.permissions.granted.per_user.total");
+        assert!(!labels.is_empty());
+        assert!(
+            labels.iter().all(|l| l != "user1" && l != "user2"),
+            "raw username must never appear in the `user` metric label: {labels:?}"
         );
     }
 
     #[test]
-    fn test_operation_duration() {
-        let meter_provider = create_test_meter_provider();
-        let metrics = OtelMetrics::new(meter_provider).expect("Failed to create metrics");
+    fn test_user_label_hash_is_deterministic() {
+        assert_eq!(
+            OtelMetrics::hash_user("alice@example.com"),
+            OtelMetrics::hash_user("alice@example.com")
+        );
+        assert_ne!(
+            OtelMetrics::hash_user("alice@example.com"),
+            OtelMetrics::hash_user("bob@example.com")
+        );
+        assert_eq!(
+            OtelMetrics::hash_user("alice@example.com").len(),
+            USER_LABEL_HASH_HEX_LEN
+        );
+    }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_user_label_overflow_stays_literal_sentinel() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        // Fill the tracker to the cap directly instead of issuing
+        // `MAX_TRACKED_CARDINALITY` real `record_kmip_operation` calls: that
+        // many distinct `user` attribute values would also trip the OTel SDK's
+        // own default per-instrument cardinality limit (2000), which merges
+        // everything past it into an attribute-less SDK overflow point —
+        // masking our own `"__overflow__"` sentinel before it can be observed.
+        for i in 0..MAX_TRACKED_CARDINALITY {
+            metrics
+                .active_users_tracker
+                .insert(format!("user{i}"), i64::MAX);
+        }
+        metrics.record_kmip_operation("Create", "new_user");
+        provider.force_flush().expect("flush");
+        let labels = user_labels(&exporter, "kms.kmip.operations.per_user.total");
+        assert!(
+            labels.iter().any(|l| l == OVERFLOW_USER_LABEL),
+            "expected literal overflow sentinel once cardinality cap is exceeded: {labels:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_operation_duration_exports_histogram_names() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
         metrics.record_kmip_operation_duration("Create", 0.123);
-        metrics.record_database_operation_duration("insert", 0.045);
+        metrics.record_database_operation("insert", MainDbKind::Sqlite, "success", 0.045);
+        provider.force_flush().expect("flush");
+        let batches = exporter.get_finished_metrics().unwrap_or_default();
+        let names: Vec<&str> = batches.last().map_or(vec![], |rm| {
+            rm.scope_metrics()
+                .flat_map(ScopeMetrics::metrics)
+                .map(Metric::name)
+                .collect()
+        });
+        assert!(
+            names.contains(&"kms.kmip.operation.duration"),
+            "kmip histogram not exported"
+        );
+        assert!(
+            names.contains(&"kms.database.operation.duration"),
+            "db histogram not exported"
+        );
+    }
+
+    // ── New tests for previously-untested methods ─────────────────────────────
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_record_http_request_increments_counter() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.record_http_request("POST", "/kmip/2_1", "200");
+        metrics.record_http_request("GET", "/health", "200");
+        metrics.record_http_request("POST", "/kmip/2_1", "422");
+        provider.force_flush().expect("flush");
+        assert_eq!(last_counter_u64(&exporter, "kms.http.requests.total"), 3);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_record_cache_operation_increments_counter() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.record_cache_operation("get", "miss");
+        metrics.record_cache_operation("insert", "ok");
+        metrics.record_cache_operation("get", "hit");
+        provider.force_flush().expect("flush");
+        assert_eq!(last_counter_u64(&exporter, "kms.cache.operations.total"), 3);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_record_hsm_operation_increments_counter() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.record_hsm_operation("Encrypt", "softhsm2");
+        metrics.record_hsm_operation("Decrypt", "softhsm2");
+        provider.force_flush().expect("flush");
+        assert_eq!(last_counter_u64(&exporter, "kms.hsm.operations.total"), 2);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_objects_total_sets_gauge() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.update_objects_total(42);
+        provider.force_flush().expect("flush");
+        assert_eq!(last_gauge_i64(&exporter, "kms.objects.total"), 42);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_active_connections_up_down() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.increment_active_connections();
+        metrics.increment_active_connections();
+        metrics.decrement_active_connections();
+        provider.force_flush().expect("flush");
+        assert_eq!(last_updown_i64(&exporter, "kms.active.connections"), 1);
+    }
+
+    // ── MainDbKind::as_str correctness ────────────────────────────────────────
+
+    #[test]
+    fn test_main_db_kind_as_str() {
+        assert_eq!(MainDbKind::Sqlite.as_str(), "sqlite");
+        assert_eq!(MainDbKind::Postgres.as_str(), "postgresql");
+        assert_eq!(MainDbKind::Mysql.as_str(), "mysql");
+        #[cfg(feature = "non-fips")]
+        assert_eq!(MainDbKind::RedisFindex.as_str(), "redis");
     }
 }

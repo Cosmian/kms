@@ -12,7 +12,7 @@ use serde::{
     ser::SerializeStruct,
 };
 use tracing::instrument;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use super::{
     kmip_attributes::Attributes,
@@ -35,7 +35,8 @@ use crate::{
     ttlv::{KmipFlavor, TTLV, TtlvDeserializer, to_ttlv},
 };
 
-#[derive(Clone, Eq, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Default, Eq, Serialize, Deserialize, PartialEq, Debug)]
+#[serde(rename_all = "PascalCase")]
 pub struct DerivationParameters {
     /// Depends on the PRF.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -105,6 +106,18 @@ pub struct KeyBlock {
 
     /// SHALL only be present if the key is wrapped.
     pub key_wrapping_data: Option<KeyWrappingData>,
+}
+
+impl Zeroize for KeyBlock {
+    /// Zero the key material inside this `KeyBlock`.
+    ///
+    /// Delegates to `KeyValue::zeroize()` which in turn zeroes `Zeroizing<Vec<u8>>`
+    /// byte buffers and triggers `SafeBigInt::drop()` on private-key `BigInt` fields.
+    fn zeroize(&mut self) {
+        if let Some(kv) = &mut self.key_value {
+            kv.zeroize();
+        }
+    }
 }
 
 impl Display for KeyBlock {
@@ -631,6 +644,21 @@ pub enum KeyValue {
     },
 }
 
+impl Zeroize for KeyValue {
+    /// Zero sensitive key material within this `KeyValue`.
+    ///
+    /// * `ByteString` — calls `zeroize()` on the inner `Zeroizing<Vec<u8>>`.
+    /// * `Structure`  — delegates to `KeyMaterial::zeroize()` which replaces the
+    ///   key material with an empty `ByteString`, triggering the appropriate `Drop`
+    ///   implementations on all private-key variants.
+    fn zeroize(&mut self) {
+        match self {
+            Self::ByteString(b) => b.zeroize(),
+            Self::Structure { key_material, .. } => key_material.zeroize(),
+        }
+    }
+}
+
 impl Display for KeyValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -1100,6 +1128,17 @@ impl KeyMaterial {
     }
 }
 
+impl Zeroize for KeyMaterial {
+    /// Zero sensitive key material by replacing `self` with an empty `ByteString`.
+    ///
+    /// The assignment triggers the `Drop` of the previous value:
+    /// * `Zeroizing<Vec<u8>>` variants call `zeroize()` on their bytes.
+    /// * `SafeBigInt` fields call `BigInt::zeroize()` in their `Drop` impl.
+    fn zeroize(&mut self) {
+        *self = Self::ByteString(Zeroizing::new(Vec::new()));
+    }
+}
+
 impl Display for KeyMaterial {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -1157,6 +1196,8 @@ impl Serialize for KeyMaterialSerializer {
                 | KeyFormatType::PKCS7
                 | KeyFormatType::PKCS8
                 | KeyFormatType::X509
+                | KeyFormatType::ConfigurableKEMSecretKey
+                | KeyFormatType::ConfigurableKEMPublicKey
                 | KeyFormatType::CoverCryptSecretKey
                 | KeyFormatType::CoverCryptPublicKey => serializer.serialize_bytes(bytes),
                 #[cfg(feature = "non-fips")]
@@ -1342,6 +1383,8 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     | KeyFormatType::PKCS7
                     | KeyFormatType::PKCS8
                     | KeyFormatType::X509
+                    | KeyFormatType::ConfigurableKEMSecretKey
+                    | KeyFormatType::ConfigurableKEMPublicKey
                     | KeyFormatType::CoverCryptPublicKey
                     | KeyFormatType::CoverCryptSecretKey => {
                         Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))

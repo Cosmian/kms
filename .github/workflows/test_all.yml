@@ -7,15 +7,11 @@ on:
       toolchain:
         required: true
         type: string
-      debug_or_release:
-        required: true
-        type: string
   workflow_dispatch:
 
 jobs:
   test-nix:
     name: Test on ${{ matrix.type }} - ${{ matrix.features }}
-    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -26,28 +22,125 @@ jobs:
           - percona
           - mariadb
           - psql
-          - google_cse
+          - otel
+          - google-cse
           - redis
           - pykmip
           - wasm
+          - xks
+          - azure-ekm
+          - ui
+          - gcp-cmek
+          - openssh
+          - luks
+          - veracrypt
+          - jose
+          - iris
+          - db2
+          - ase
+          - secret_vault
+          - secret_aws
+          - secret_azure
+          - secret_cosmian_kms
+          - spire
+          - kmip-go
+          - cef
+          - monitoring
+          - ocsp
+          - pki-revocation
+          - siem
+          - audit
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
           - type: redis
             features: fips
+          # pykmip is exclusively for non-fips since P12 is used for TLS KMS server
+          - type: pykmip
+            features: fips
+          # aws_xks relies on curl SigV4 + non-FIPS build flags
+          - type: xks
+            features: fips
+          # azure_ekm is only run with non-fips
+          - type: azure-ekm
+            features: fips
+          # openssh PKCS#11 tests force non-fips (EdDSA / full algorithm set)
+          - type: openssh
+            features: fips
+          # luks disk-encryption PKCS#11 tests force non-fips
+          - type: luks
+            features: fips
+          # veracrypt disk-encryption PKCS#11 tests force non-fips
+          - type: veracrypt
+            features: fips
+          # jose (REST crypto + jwcrypto interop) runs only with non-fips
+          - type: jose
+            features: fips
+          # iris requires non-fips (PKCS#12 + full TLS stack)
+          - type: iris
+            features: fips
+          # db2 requires non-fips (PKCS#12 + full TLS stack for mTLS)
+          - type: db2
+            features: fips
+          # ase (PKCS#11) forces non-fips like the other PKCS#11 test types
+          - type: ase
+            features: fips
+          # secret_cosmian_kms runs against a local KMS server — works with both fips and non-fips
+          # secret_vault, secret_aws, secret_azure require external services — run non-fips only
+          - type: secret_vault
+            features: fips
+          - type: secret_aws
+            features: fips
+          - type: secret_azure
+            features: fips
+          # spire relies on the Vault API which is non-fips only
+          - type: spire
+            features: fips
+          - type: cef
+            features: fips
+          # monitoring tests work with both variants, but run non-fips only to avoid
+          # duplicating Docker-heavy test time (OTel + VictoriaMetrics + Grafana).
+          - type: monitoring
+            features: fips
+          # siem integration tests are format-agnostic (same audit output in both variants);
+          # run non-fips only to avoid duplicating test time.
+          - type: siem
+            features: fips
+        include:
+          # Docker services required per test type (types without an entry need no containers)
+          - type: psql
+            docker: postgres
+          - type: mysql
+            docker: mysql
+          - type: percona
+            docker: percona
+          - type: mariadb
+            docker: mariadb
+          - type: redis
+            docker: redis
+          - type: otel
+            docker: otel-collector jaeger
+          # siem-filebeat sub-test requires Elasticsearch; fluent-bit and cef-syslog
+          # use docker run internally and do not need a pre-started compose service.
+          - type: siem
+            docker: elasticsearch
+          # audit test has no external Docker dependencies (uses KMS binary directly).
 
     steps:
-      - name: Nix installation
-        uses: cachix/install-nix-action@v31
-
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
+      - uses: ./.github/actions/cleanup-runner
+
+      - uses: ./.github/actions/setup-nix
+
+      - uses: ./.github/actions/install-mise
+
       - name: Run docker containers
+        if: matrix.docker
         run: |
-          docker compose -h
-          docker compose up -d
+          docker compose up -d ${{ matrix.docker }}
 
       - name: Test
         env:
@@ -84,14 +177,49 @@ jobs:
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
           GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+
+          # EDB Postgres Advanced Server TDE variables.
+          # When EDB_SUBSCRIPTION_TOKEN is set the test suite starts the real
+          # EDB Postgres 17 container (edb-tde service in docker-compose.yml)
+          # and runs a live end-to-end TDE scenario.  Without it the Docker
+          # test is skipped and only the PyKMIP/Thales KMIP simulations run.
+          # Register for a free token: https://www.enterprisedb.com/accounts/register
+          EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
+
+          # InterSystems IRIS mTLS integration test
+          IRIS_LICENSE_KEY: ${{ secrets.IRIS_LICENSE_KEY }}
+
+          # AWS secret backend variables (secret_aws test type)
+          AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+
+          # Azure Key Vault secret backend variables (secret_azure test type)
+          AZURE_TENANT_ID: ${{ secrets.KMS_CI_AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.KMS_CI_AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.KMS_CI_AZURE_CLIENT_SECRET }}
+          AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}
+
+          # Splunk audit JSONL compatibility test password
+          SPLUNK_PASSWORD: ${{ secrets.AUDIT_COMPAT_SPLUNK_PASSWORD }}
+          # Provide an authenticated token so mise can install tools from
+          # GitHub releases without hitting the unauthenticated rate limit.
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -ex
-          bash .github/scripts/nix.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }} test ${{ matrix.type }}
+          mise run test:${{ matrix.type }} --variant ${{ matrix.features }}
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
-    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     runs-on: ubuntu-latest
+    # proteccio and crypt2pay hardware do not support concurrent connections from multiple CI runs;
+    # give them fixed concurrency groups so only one job runs at a time across all PRs.
+    # utimaco and softhsm2 use a per-run group so they are never blocked by other PRs.
+    concurrency:
+      group: ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || format('hsm-{0}-{1}', matrix.hsm-type,
+        github.run_id) }}
+      queue: max
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -99,19 +227,26 @@ jobs:
           - utimaco
           - proteccio
           - softhsm2
+          - crypt2pay
         features: [fips, non-fips]
         exclude:
           # parallel connections on proteccio is not supported
           - hsm-type: proteccio
-            features: non-fips
+            features: fips
+          # Not required - testing non-fips is sufficient
+          - hsm-type: crypt2pay
+            features: fips
 
     steps:
-      - name: Nix installation
-        uses: cachix/install-nix-action@v31
-
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
+
+      - uses: ./.github/actions/cleanup-runner
+
+      - uses: ./.github/actions/setup-nix
+
+      - uses: ./.github/actions/install-mise
 
       - name: Test
         env:
@@ -119,25 +254,124 @@ jobs:
           PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
           PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
           PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
+          CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
           # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
           GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+          # OVPN for Crypt2Pay HSM tests
+          OVPN_CONF: ${{ secrets.OVPN_CONF }}
         run: |
-          bash .github/scripts/nix.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }} test hsm ${{ matrix.hsm-type }}
+          mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
+
+  helm:
+    name: Helm chart E2E (minikube)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Install Helm
+        uses: azure/setup-helm@v5
+
+      - name: Start Minikube
+        uses: medyagh/setup-minikube@v0.0.21
+        with:
+          driver: docker
+          kubernetes-version: v1.30.0
+          cpus: 2
+          memory: 4096m
+
+      - name: Test (lint + template + E2E deployment)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mise run test:helm --e2e
+
+  xks-remote:
+    name: AWS XKS — remote server
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: xks-remote
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    environment: xks-remote-approval
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    steps:
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.0
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/cleanup-runner
+
+      - uses: ./.github/actions/setup-nix
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Build KMS binary (non-fips, release)
+        run: cargo build --bin cosmian_kms --features non-fips --release
+
+      - name: Deploy binary to XKS test server
+        env:
+          KMS_XKS_SSH_PRIVATE_KEY: ${{ secrets.KMS_XKS_SSH_PRIVATE_KEY }}
+          KMS_XKS_SSH_KNOWN_HOSTS: ${{ secrets.KMS_XKS_SSH_KNOWN_HOSTS }}
+          KMS_XKS_SSH_USER: ${{ secrets.KMS_XKS_SSH_USER }}
+          KMS_BIN: target/release/cosmian_kms
+        run: bash .mise/scripts/test/deploy_xks_remote.sh
+
+      - name: Run XKS tests against remote server
+        env:
+          KMS_XKS_HOST: aws-xks-kms.cosmian.dev
+          KMS_XKS_URI_PREFIX: aws
+          KMS_XKS_REGION: eu-west-1
+          KMS_XKS_SIGV4_ACCESS_KEY_ID: ${{ secrets.KMS_XKS_SIGV4_ACCESS_KEY_ID }}
+          KMS_XKS_SIGV4_SECRET_ACCESS_KEY: ${{ secrets.KMS_XKS_SIGV4_SECRET_ACCESS_KEY }}
+        run: |
+          bash .mise/scripts/test/test_xks_remote.sh
+
+      - name: Run AWS KMS XKS end-to-end test
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_XKS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_XKS_SECRET_ACCESS_KEY }}
+          AWS_XKS_KEY_ARN: ${{ secrets.AWS_XKS_KEY_ARN }}
+        run: bash .mise/scripts/test/test_xks_aws_e2e.sh
 
   windows-2022:
+    # Windows is slow: only run on PRs (catches regressions before merge) and tags (release gate).
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/test_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
-      debug_or_release: ${{ inputs.debug_or_release }}
 
-  cleanup:
+  # cargo publish is placed in test_all.yml to ensure the publication of crates is possible (no git deps, etc.). The publication will be done on tags only.
+  cargo-publish:
     needs:
       - test-nix
       - hsm
-      - windows-2022
+      - helm
+    uses: ./.github/workflows/cargo-publish.yml
+    with:
+      toolchain: 1.97.0
+    secrets:
+      token: ${{ secrets.CRATES_IO }}
+
+  cleanup:
+    needs:
+      - cargo-publish
+    if: always()
     uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
     secrets: inherit

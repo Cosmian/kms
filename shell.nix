@@ -1,190 +1,323 @@
 {
-  pkgs ? import (builtins.fetchTarball {
-    url = "https://github.com/NixOS/nixpkgs/archive/24.05.tar.gz";
-    sha256 = "1lr1h35prqkd1mkmzriwlpvxcb34kmhc9dnr48gkm8hh089hifmx";
-  }) { },
+  pkgs ?
+    let
+      rustOverlay = import (
+        builtins.fetchTarball {
+          # Mirrored on package.cosmian.com to avoid transient GitHub curl failures on macOS CI runners.
+          url = "https://package.cosmian.com/nixpkgs/rust-overlay-23dd7fa91602a68bd04847ac41bc10af1e6e2fd2.tar.gz";
+          sha256 = "sha256-KvmjUeA7uODwzbcQoN/B8DCZIbhT/Q/uErF1BBMcYnw=";
+        }
+      );
+      pinned =
+        import
+          (builtins.fetchTarball {
+            url = "https://package.cosmian.com/nixpkgs/24.11.tar.gz";
+          })
+          {
+            overlays = [ rustOverlay ];
+            config = if (builtins.getEnv "WITH_HSM") == "1" then { allowUnfree = true; } else { };
+          };
+    in
+    pinned,
+  # Explicit variant argument to avoid relying on builtins.getEnv during evaluation
+  variant ? "fips",
 }:
 
 let
-  inherit (pkgs.stdenv) isLinux;
   # Import project-level outputs to access tools like cargo-packager
-  project = import ./default.nix { inherit pkgs; };
-  hostGlibc =
-    if isLinux then
-      (pkgs.stdenv.cc.libc.version or (pkgs.lib.getVersion pkgs.stdenv.cc.libc))
-    else
-      "n/a";
-  nixpkgs1903 = builtins.getEnv "NIXPKGS_GLIBC_228_URL";
-  pkgs228 =
-    if isLinux && !(pkgs.lib.versionOlder hostGlibc "2.29") then
-      import (builtins.fetchTarball {
-        url =
-          if nixpkgs1903 != "" then
-            nixpkgs1903
-          else
-            "https://github.com/NixOS/nixpkgs/archive/refs/heads/nixos-19.03.tar.gz";
-      }) { }
-    else
-      pkgs;
   # Use custom OpenSSL 3.1.2 (FIPS-capable) for both FIPS and non-FIPS modes
   # The same OpenSSL library is used; FIPS vs non-FIPS is controlled at runtime
   # via OPENSSL_CONF and OPENSSL_MODULES environment variables
-  openssl312 = pkgs228.callPackage ./nix/openssl.nix { };
+  # Wrapper config to activate both default and FIPS providers while reusing
+  # the derivation's generated fipsmodule.cnf. This avoids generating configs
+  # inside nix/openssl.nix and strictly reuses the derivation outputs.
   # SoftHSM override with OpenSSL-only backend (Botan disabled)
-  # Note: softhsm 2.5.x in nixos-19.03 uses autotools (configure), not CMake
+  # Note: softhsm 2.6.x uses autotools (configure), not CMake
   # Prefer nixpkgs' OpenSSL for building SoftHSM (ensures compatibility); server uses openssl312
-  opensslForSofthsm = pkgs228.openssl;
-  softhsm_pkg = pkgs228.softhsm.overrideAttrs (
-    old:
-    let
-      lib = pkgs.lib or pkgs228.lib;
-      # Drop crypto-backend and backend-specific flags to avoid duplicates
-      filteredFlags = lib.filter (
-        f:
-        !(lib.hasPrefix "--with-crypto-backend=" f)
-        && !(lib.hasPrefix "--with-botan" f)
-        && !(lib.hasPrefix "--with-openssl" f)
-      ) (old.configureFlags or [ ]);
-      # Force OpenSSL backend only (no Botan)
-      extraFlags = [
-        "--with-crypto-backend=openssl"
-        "--with-openssl=${opensslForSofthsm}"
-      ];
-      extraInputs = [ opensslForSofthsm ];
-    in
-    {
-      configureFlags = filteredFlags ++ extraFlags;
-      buildInputs = (old.buildInputs or [ ]) ++ extraInputs;
-    }
-  );
   # Allow selectively adding extra tools from the environment (kept via nix-shell --keep)
-  withWget = (builtins.getEnv "WITH_WGET") == "1";
   withHsm = (builtins.getEnv "WITH_HSM") == "1";
   withPython = (builtins.getEnv "WITH_PYTHON") == "1";
-  extraTools = if withWget then [ pkgs228.wget ] else [ ];
+  withGo = (builtins.getEnv "WITH_GO") == "1";
+  withCurl = (builtins.getEnv "WITH_CURL") == "1";
+  withXks = (builtins.getEnv "WITH_XKS") == "1";
+  withWasm = (builtins.getEnv "WITH_WASM") == "1";
+  # OpenSSH PKCS#11 test: ssh-keygen is part of openssh on Linux (macOS has it natively)
+  withOpenssh = (builtins.getEnv "WITH_OPENSSH") == "1";
+  # LUKS disk-encryption PKCS#11 test: pkcs11-tool (opensc) lists objects on Linux
+  withLuks = (builtins.getEnv "WITH_LUKS") == "1";
+  # AWS secret backend test: awscli2 is needed to create/delete SSM parameters
+  withAws = (builtins.getEnv "WITH_AWS") == "1";
+  # IRIS mTLS test / Vault secret backend test: Docker CLI must be available inside the nix-shell to pull and run containers
+  withDocker = (builtins.getEnv "WITH_DOCKER") == "1";
+
+  rustToolchain =
+    if withWasm then
+      pkgs.rust-bin.stable.latest.default.override {
+        targets = [ "wasm32-unknown-unknown" ];
+      }
+    else
+      pkgs.rust-bin.stable.latest.default;
+  # Import FIPS OpenSSL 3.1.2 - will be used for FIPS builds
+  openssl312Fips = import ./nix/openssl.nix {
+    inherit (pkgs)
+      stdenv
+      lib
+      fetchurl
+      perl
+      coreutils
+      ;
+    static = true;
+  };
+  # Import non-FIPS OpenSSL 3.6.2 - will be used for non-FIPS builds
+  openssl360NonFips = import ./nix/openssl.nix {
+    inherit (pkgs)
+      stdenv
+      lib
+      fetchurl
+      perl
+      coreutils
+      ;
+    static = false;
+    version = "3.6.2";
+    enableLegacy = true;
+    srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.2.tar.gz";
+    sha256SRI = "sha256-qvUaH+BkOE+BHa6utOxNznNA7IvYkwJ+7mdq8x6DoE8=";
+    expectedHash = "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
+  };
+  # Shared (dynamic) build for components that require .so (e.g., SoftHSM2)
+  openssl312FipsShared = import ./nix/openssl.nix {
+    inherit (pkgs)
+      stdenv
+      lib
+      fetchurl
+      perl
+      coreutils
+      ;
+    static = false;
+  };
+  utimacoDrv = import ./nix/utimaco.nix {
+    inherit pkgs;
+    inherit (pkgs) lib;
+  };
+  # Preload shim to force FIPS provider load + properties for OpenSSL at runtime
+  opensslFipsBootstrap = import ./nix/openssl-fips-bootstrap.nix { inherit pkgs; };
+  # Ensure softhsm2 uses the same pinned nixpkgs instance to avoid glibc mismatches
+  softhsmDrv = import ./nix/softhsm2.nix {
+    inherit pkgs;
+    # Use FIPS shared OpenSSL when running in FIPS variant so SoftHSM2 links to it
+    # For non-FIPS, use OpenSSL 3.6.2 instead of pkgs.openssl (3.3.2)
+    openssl = if variant == "fips" then openssl312FipsShared else openssl360NonFips;
+  };
 in
-pkgs228.mkShell {
-  name = "cosmian-kms-dev-shell";
+pkgs.mkShell {
   buildInputs = [
-    pkgs228.pkg-config
-    pkgs228.cmake
-    pkgs228.git
-    pkgs228.rustup
-    # Provide cargo-packager in the shell so packaging scripts can call `cargo packager`
-    project.cargoPackagerTool
+    # Provide OpenSSL packages - the shellHook will configure which one to use
+    openssl312Fips
+    openssl312FipsShared
+    openssl360NonFips
+    pkgs.openssl.dev
+    pkgs.pkg-config
+    pkgs.gcc
+    rustToolchain
+    opensslFipsBootstrap
+    # zlib is needed on macOS in Nix pure mode (-nodefaultlibs strips system /usr/lib).
+    # Including it here puts its path into NIX_LDFLAGS so the Nix cc-wrapper can find -lz.
+    pkgs.zlib
   ]
   ++ (
-    if isLinux then
+    if withWasm then
       [
-        pkgs228.gcc
-        pkgs228.binutils
+        pkgs.nodejs_23
+        pkgs.wasm-pack
+        pkgs.pnpm
       ]
     else
       [ ]
   )
+  ++ (if withCurl then [ pkgs.curl ] else [ ])
   ++ (
-    if pkgs228.stdenv.isDarwin then
-      [ pkgs228.libiconv ]
-      ++ (with pkgs228.darwin.apple_sdk.frameworks; [
-        SystemConfiguration
-        Security
-        CoreFoundation
-      ])
+    if withXks then
+      [
+        pkgs.bash
+        pkgs.curl
+        pkgs.jq
+        pkgs.coreutils
+        pkgs.gawk
+        pkgs.gnused
+        pkgs.vim
+        pkgs.xxd
+        # Provides `uuidgen` in the pure nix-shell environment.
+        pkgs.util-linux
+      ]
     else
       [ ]
   )
-  ++ [ openssl312 ]
-  ++ extraTools
   ++ (
     if withHsm then
       [
-        pkgs228.psmisc
-        # Use a SoftHSM build with OpenSSL backend (Botan disabled)
-        softhsm_pkg
+        softhsmDrv
+        pkgs.openvpn
+        pkgs.wget
       ]
+      # pkcs11-tool (OpenSC) is used to verify that KMS-created HSM keys
+      # have CKA_ID set and do not trigger pkcs11-tool warnings (#745).
+      # opensc requires winscard.h (PC/SC) which is Linux-only; on macOS
+      # the test_pkcs11tool_no_warnings function skips gracefully.
+      ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.opensc ]
+      # Utimaco HSM simulator is only available on x86_64-linux
+      ++ pkgs.lib.optionals (pkgs.stdenv.system == "x86_64-linux") [ utimacoDrv ]
+      # psmimic is only available on Linux; macOS has killall built-in
+      ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.psmisc ]
     else
       [ ]
   )
   ++ (
     if withPython then
-      # Python 3.11 fallback logic: older pinned nixpkgs (e.g. 19.03) does not provide python311.
-      # Use host 'pkgs' Python when python311 is absent from pkgs228.
-      let
-        pyBase = pkgs228.python311 or pkgs.python311;
-        pyVenv =
-          if (pkgs228 ? python311Packages) && (pkgs228.python311Packages ? virtualenv) then
-            pkgs228.python311Packages.virtualenv
-          else
-            pkgs.python311Packages.virtualenv;
-      in
       [
-        pyBase
-        pyVenv
+        pkgs.python311
+        pkgs.python311Packages.virtualenv
       ]
     else
       [ ]
-  );
+  )
+  ++ (if withGo then [ pkgs.go ] else [ ])
+  # OpenSSH PKCS#11 test: include openssh so ssh-keygen is available on Linux CI
+  ++ pkgs.lib.optionals (withOpenssh && pkgs.stdenv.isLinux) [ pkgs.openssh ]
+  # LUKS disk-encryption test: include opensc for pkcs11-tool on Linux CI
+  ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ]
+  # AWS secret backend test: include awscli2 for SSM parameter management
+  ++ pkgs.lib.optionals withAws [ pkgs.awscli2 ]
+  # IRIS mTLS test + Vault secret backend test: include docker CLI
+  ++ pkgs.lib.optionals withDocker [ pkgs.docker ];
+
   shellHook = ''
-    export NIX_OPENSSL_OUT="${openssl312}"
-    ${
-      if isLinux then
-        ''
-          export NIX_CC_BIN="${pkgs228.stdenv.cc}/bin"
-          export NIX_BINUTILS_BIN="${pkgs228.binutils}/bin"
-          export NIX_BINUTILS_UNWRAPPED_BIN="${(pkgs228.binutils-unwrapped or pkgs228.binutils)}/bin"
-          export NIX_GLIBC_LIB="${pkgs228.glibc}/lib"
-          export NIX_DYN_LINKER="${pkgs228.glibc}/lib/ld-linux-x86-64.so.2"
-        ''
-      else
-        ""
-    }
-    # --- Begin inlined nix/shell-hook.sh ---
-    set -euo pipefail
+    set -eo pipefail
 
+    # Unset any OpenSSL variables that might be set by Nix before we configure them
+    unset OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR OPENSSL_CONF OPENSSL_MODULES || true
+
+    # Add softhsm2 binaries to PATH when WITH_HSM=1
+    if [ "''${WITH_HSM:-}" = "1" ]; then
+      export PATH="${softhsmDrv}/bin:$PATH"
+    fi
+
+    # Configure OpenSSL based on requested variant
     export OPENSSL_NO_VENDOR=1
-    export OPENSSL_STATIC=1
-    export PKG_CONFIG_ALL_STATIC=1
-    [ -d ${"\${NIX_OPENSSL_OUT:-}"}/bin ] && export PATH=${"\${NIX_OPENSSL_OUT}"}/bin:$PATH
-    if [ -n ${"\${NIX_OPENSSL_OUT:-}"} ]; then
-      export OPENSSL_DIR=${"\${NIX_OPENSSL_OUT}"}
-      export OPENSSL_LIB_DIR=${"\${NIX_OPENSSL_OUT}"}/lib
-      export OPENSSL_INCLUDE_DIR=${"\${NIX_OPENSSL_OUT}"}/include
 
-      # Add OpenSSL lib directory to LD_LIBRARY_PATH so dynamically linked binaries can find it
-      export LD_LIBRARY_PATH=${"\${NIX_OPENSSL_OUT}"}/lib:${"\${LD_LIBRARY_PATH:-}"}
+    # Check which variant is requested (defaults to non-fips if not set)
+    # VARIANT should be set by nix.sh via the command string OR via --argstr
+    # Prefer the Nix argument passed via --argstr, fall back to environment variable
+    VARIANT_MODE="${variant}"
 
-      # Configure FIPS provider for runtime (needed for tests)
-      # Point to the FIPS configuration and provider modules
-      if [ -f ${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf ]; then
-        export OPENSSL_CONF=${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf
-      fi
-      if [ -d ${"\${NIX_OPENSSL_OUT}"}/lib/ossl-modules ]; then
-        export OPENSSL_MODULES=${"\${NIX_OPENSSL_OUT}"}/lib/ossl-modules
+    if [ "$VARIANT_MODE" = "fips" ]; then
+      # Use Nix-provided FIPS OpenSSL 3.1.2 (shared) for dynamic linking in Rust
+      OPENSSL_PKG_PATH="${openssl312FipsShared}"
+
+      # Prefer our OpenSSL via pkg-config
+      export PKG_CONFIG_PATH="$OPENSSL_PKG_PATH/lib/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+
+      # Force dynamic linking for openssl-sys
+      export OPENSSL_STATIC=0
+
+      # Set OPENSSL_DIR for openssl-sys during compilation
+      export OPENSSL_DIR="$OPENSSL_PKG_PATH"
+      export OPENSSL_LIB_DIR="$OPENSSL_PKG_PATH/lib"
+      export OPENSSL_INCLUDE_DIR="$OPENSSL_PKG_PATH/include"
+
+      # Set runtime FIPS configuration pointing to dev/test locations
+      export OPENSSL_CONF="$OPENSSL_PKG_PATH/ssl/openssl.cnf"
+      export OPENSSL_MODULES="$OPENSSL_PKG_PATH/lib/ossl-modules"
+
+      echo "Using FIPS OpenSSL 3.1.2 from Nix: $OPENSSL_PKG_PATH"
+      echo "  OPENSSL_CONF=$OPENSSL_CONF"
+      echo "  OPENSSL_MODULES=$OPENSSL_MODULES"
+
+      # Verify FIPS OpenSSL shared library presence
+      if [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.so.3" ] || [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.3.dylib" ]; then
+        echo "FIPS OpenSSL 3.1.2 libcrypto library found (shared)"
+      else
+        echo "WARNING: FIPS OpenSSL libcrypto library NOT found at $OPENSSL_PKG_PATH/lib"
       fi
 
-      # Force openssl-sys to use our specific OpenSSL and detect version correctly
-      # Disable pkg-config to prevent it from finding wrong OpenSSL versions
-      export OPENSSL_NO_PKG_CONFIG=1
-      if [ -d ${"\${NIX_OPENSSL_OUT}"}/lib/pkgconfig ]; then
-        export PKG_CONFIG_PATH=${"\${NIX_OPENSSL_OUT}"}/lib/pkgconfig:${"\${PKG_CONFIG_PATH:-}"}
+      # Verify FIPS module
+      if [ -f "$OPENSSL_MODULES/fips.so" ] || [ -f "$OPENSSL_MODULES/fips.dylib" ]; then
+        echo "FIPS provider module found: $OPENSSL_MODULES/"
+      else
+        echo "WARNING: FIPS provider module NOT found"
       fi
-      if [ -d ${"\${NIX_OPENSSL_OUT}"}/lib64/pkgconfig ]; then
-        export PKG_CONFIG_PATH=${"\${NIX_OPENSSL_OUT}"}/lib64/pkgconfig:${"\${PKG_CONFIG_PATH:-}"}
+
+      # Runtime library path for FIPS (shared)
+      if [ "''${WITH_HSM:-}" = "1" ]; then
+        export LD_LIBRARY_PATH="$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        # On Linux, clear Nix linker flags to avoid OpenSSL confusion with multiple lib paths.
+        # On macOS, NIX_LDFLAGS must be kept so the linker can find zlib and other system libs.
+        if [ "$(uname)" = "Linux" ]; then
+          unset NIX_LD_LIBRARY_PATH NIX_CFLAGS_COMPILE NIX_LDFLAGS || true
+        fi
+      else
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+      fi
+
+      # Preload bootstrap so even statically linked libcrypto gets providers + properties
+      if [ -f "${opensslFipsBootstrap}/lib/libopenssl_fips_bootstrap.so" ]; then
+        export LD_PRELOAD="${opensslFipsBootstrap}/lib/libopenssl_fips_bootstrap.so''${LD_PRELOAD:+:$LD_PRELOAD}"
+        echo "LD_PRELOAD set to bootstrap OpenSSL FIPS providers"
+      fi
+    else
+      # Use OpenSSL 3.6.2 for non-FIPS builds (matches server build)
+      OPENSSL_PKG_PATH="${openssl360NonFips}"
+
+      export OPENSSL_DIR="$OPENSSL_PKG_PATH"
+      export OPENSSL_LIB_DIR="$OPENSSL_PKG_PATH/lib"
+      export OPENSSL_INCLUDE_DIR="$OPENSSL_PKG_PATH/include"
+
+      # Use the OpenSSL 3.6.2 config
+      export OPENSSL_CONF="$OPENSSL_PKG_PATH/ssl/openssl.cnf"
+      export OPENSSL_MODULES="$OPENSSL_PKG_PATH/lib/ossl-modules"
+
+      echo "Using OpenSSL 3.6.2 (non-FIPS): $OPENSSL_PKG_PATH"
+      echo "  OPENSSL_CONF=$OPENSSL_CONF"
+      echo "  OPENSSL_MODULES=$OPENSSL_MODULES"
+
+      # Verify non-FIPS OpenSSL library presence
+      if [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.so.3" ] || [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.3.dylib" ]; then
+        echo "OpenSSL 3.6.2 libcrypto library found"
+      else
+        echo "WARNING: OpenSSL libcrypto library NOT found at $OPENSSL_PKG_PATH/lib"
+      fi
+
+      # Runtime library path for non-FIPS
+      if [ "''${WITH_HSM:-}" = "1" ]; then
+        export LD_LIBRARY_PATH="$OPENSSL_PKG_PATH/lib"
+        # On Linux, clear Nix linker flags to avoid OpenSSL confusion with multiple lib paths.
+        # On macOS, NIX_LDFLAGS must be kept so the linker can find zlib and other system libs.
+        if [ "$(uname)" = "Linux" ]; then
+          unset NIX_LD_LIBRARY_PATH NIX_CFLAGS_COMPILE NIX_LDFLAGS || true
+        fi
+      else
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
       fi
     fi
 
-    if [ "$(uname -s)" = "Linux" ]; then
-      [ -n ${"\${NIX_CC_BIN:-}"} ] && PATH=${"\${NIX_CC_BIN}"}:$PATH
-      [ -n ${"\${NIX_BINUTILS_BIN:-}"} ] && PATH=${"\${NIX_BINUTILS_BIN}"}:$PATH
-      AR_BIN=${"\${NIX_BINUTILS_UNWRAPPED_BIN:-\${NIX_BINUTILS_BIN:-}}"}
-      export CC=${"\${NIX_CC_BIN:-}"}/cc
-      export AR="$AR_BIN/ar"
-      if [ ! -x "$AR" ] && command -v ar >/dev/null 2>&1; then AR="$(command -v ar)"; fi
-      export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$CC"
-      export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_AR="$AR"
-      export CC_x86_64_unknown_linux_gnu="$CC"
-      export AR_x86_64_unknown_linux_gnu="$AR"
+    # Skip local OpenSSL build since Nix provides it
+    export SERVER_SKIP_OPENSSL_BUILD=1
+    export RUST_TEST_THREADS=1
+
+    # Ensure TLS works for reqwest/native-tls inside Nix by pointing to the CA bundle.
+    # SSL_CERT_FILE is the OpenSSL env var; CURL_CA_BUNDLE is for curl (including cargo's
+    # internal HTTP client on macOS where OpenSSL CA auto-detection may not work);
+    # CARGO_HTTP_CAINFO lets cargo override its own curl CA bundle explicitly.
+    # NODE_EXTRA_CA_CERTS is for Node.js/npm which otherwise fails with "unable to get
+    # local issuer certificate" when the Nix pure shell strips system trust stores.
+    export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+    export CURL_CA_BUNDLE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+    export CARGO_HTTP_CAINFO="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+    export NODE_EXTRA_CA_CERTS="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+
+    if [ "''${WITH_HSM:-}" = "1" ]; then
+      # Enable core dumps for post-mortem analysis of HSM-related crashes
+      ulimit -c unlimited || true
+      # SOFTHSM2_PKCS11_LIB can be set externally if needed; no dlclose shims applied
     fi
-    # --- End inlined nix/shell-hook.sh ---
   '';
 }

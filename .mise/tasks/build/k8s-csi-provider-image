@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+#MISE description="Build Cosmian KMS CSI Provider Docker image via Nix"
+#USAGE flag "--load" help="Load the built image into the local Docker daemon"
+#USAGE flag "--force" help="Force rebuild even if a cached result exists"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+
+REPO_ROOT="$(get_repo_root)"
+ensure_nix_shell
+
+print_header "Building Cosmian KMS CSI Provider Docker image"
+
+if [ "$(uname)" = "Darwin" ]; then
+  print_error "Docker image builds require a Linux builder (Linux-only Nix packages)."
+fi
+
+OUT_LINK="$REPO_ROOT/result-k8s-csi-provider-image"
+FORCE="${usage_force:-false}"
+
+if [ "$FORCE" != "true" ] && [ -L "$OUT_LINK" ] && REAL_OUT=$(readlink -f "$OUT_LINK" 2>/dev/null) && [ -f "$REAL_OUT" ]; then
+  echo "Reusing cached CSI provider image at $REAL_OUT (use --force to rebuild)"
+else
+  env -u LD_LIBRARY_PATH -u LD_PRELOAD \
+    nix-build -I "nixpkgs=${PIN_URL}" -A k8s-csi-provider-image -o "$OUT_LINK" "$REPO_ROOT/default.nix"
+  REAL_OUT=$(readlink -f "$OUT_LINK")
+  echo "Built CSI provider image tarball: $REAL_OUT"
+fi
+
+if [ "${usage_load:-false}" = "true" ]; then
+  if command -v docker >/dev/null 2>&1; then
+    echo "Loading CSI provider image into Docker..."
+    LOAD_OUTPUT=$(docker load <"$REAL_OUT")
+    echo "$LOAD_OUTPUT"
+    LOADED=$(printf '%s\n' "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: \S+' | awk '{print $NF}' | head -1)
+    export DOCKER_K8S_CSI_IMAGE="${LOADED:-cosmian-kms-csi-provider}"
+    echo "CSI provider image available as: $DOCKER_K8S_CSI_IMAGE"
+  else
+    print_error "docker CLI not found; cannot load image"
+  fi
+fi
+
+print_success "Cosmian KMS CSI Provider Docker image ready"

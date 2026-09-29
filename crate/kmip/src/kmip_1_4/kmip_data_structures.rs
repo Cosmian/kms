@@ -184,10 +184,23 @@ impl<'de> Deserialize<'de> for KeyBlock {
 
 impl From<KeyBlock> for kmip_2_1::kmip_data_structures::KeyBlock {
     fn from(val: KeyBlock) -> Self {
+        let is_wrapped = val.key_wrapping_data.is_some();
+        // In KMIP 1.x an unwrapped opaque key is stored as KeyValue::ByteString.
+        // In KMIP 2.1 KeyValue::ByteString is reserved for *wrapped* keys; an
+        // unwrapped key with raw bytes must use KeyValue::Structure{ByteString}.
+        let key_value = val.key_value.map(|kv| match kv {
+            KeyValue::ByteString(b) if !is_wrapped => {
+                kmip_2_1::kmip_data_structures::KeyValue::Structure {
+                    key_material: kmip_2_1::kmip_data_structures::KeyMaterial::ByteString(b),
+                    attributes: None,
+                }
+            }
+            other => other.into(),
+        });
         Self {
             key_format_type: val.key_format_type.into(),
             key_compression_type: val.key_compression_type.map(Into::into),
-            key_value: val.key_value.map(Into::into),
+            key_value,
             cryptographic_algorithm: val.cryptographic_algorithm.map(Into::into),
             cryptographic_length: val.cryptographic_length,
             key_wrapping_data: val.key_wrapping_data.map(Into::into),
@@ -516,6 +529,8 @@ impl Serialize for KeyMaterialSerializer {
                 | KeyFormatType::PKCS12
                 | KeyFormatType::PKCS8
                 | KeyFormatType::X509
+                | KeyFormatType::ConfigurableKEMSecretKey
+                | KeyFormatType::ConfigurableKEMPublicKey
                 | KeyFormatType::CoverCryptSecretKey
                 | KeyFormatType::CoverCryptPublicKey => serializer.serialize_bytes(bytes),
                 x => Err(serde::ser::Error::custom(format!(
@@ -728,6 +743,8 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     | KeyFormatType::PKCS12
                     | KeyFormatType::PKCS8
                     | KeyFormatType::X509
+                    | KeyFormatType::ConfigurableKEMSecretKey
+                    | KeyFormatType::ConfigurableKEMPublicKey
                     | KeyFormatType::CoverCryptPublicKey
                     | KeyFormatType::CoverCryptSecretKey => {
                         Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
@@ -1877,7 +1894,7 @@ pub struct AuthenticatedEncryptionAdditionalData(pub Vec<u8>);
 pub struct AuthenticatedEncryptionTag(pub Vec<u8>);
 
 /// Derivation Parameters defines the parameters for a key derivation process
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DerivationParameters {
     /// The type of derivation method to be used
@@ -1895,6 +1912,37 @@ pub struct DerivationParameters {
     /// Optional iteration count used by the derivation method
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iteration_count: Option<i32>,
+}
+
+impl From<DerivationParameters> for kmip_2_1::kmip_data_structures::DerivationParameters {
+    fn from(params: DerivationParameters) -> Self {
+        Self {
+            cryptographic_parameters: params.cryptographic_parameters.map(Into::into),
+            initialization_vector: params.initialization_vector,
+            derivation_data: params.derivation_data.map(Zeroizing::new),
+            salt: params.salt,
+            iteration_count: params.iteration_count,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_data_structures::DerivationParameters> for DerivationParameters {
+    type Error = KmipError;
+
+    fn try_from(
+        params: kmip_2_1::kmip_data_structures::DerivationParameters,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            cryptographic_parameters: params
+                .cryptographic_parameters
+                .map(TryInto::try_into)
+                .transpose()?,
+            initialization_vector: params.initialization_vector,
+            derivation_data: params.derivation_data.map(|z| z.to_vec()),
+            salt: params.salt,
+            iteration_count: params.iteration_count,
+        })
+    }
 }
 
 /// The RNG Parameters base object is a structure that contains a mandatory RNG Algorithm

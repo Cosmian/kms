@@ -1,0 +1,2 @@
+[http_config]
+server_url = "http://kms:9998"

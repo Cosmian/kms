@@ -14,7 +14,7 @@ test-non-fips = "test --lib --workspace --features non-fips"
 clippy-all = "clippy --workspace --all-targets --all-features -- -D warnings"
 
 # Run coverage
-coverage = "tarpaulin --release -v -f -t 1800 --out Xml --ignore-tests --exclude-files resources/* apps/*"
+coverage = "tarpaulin --release -v -f -t 1800 --out Xml --ignore-tests --exclude-files crate/crypto/build.rs"
 
 # Find unused dependencies
 deps = "udeps --workspace --all-targets --all-features --backend depinfo"
@@ -23,15 +23,6 @@ deps = "udeps --workspace --all-targets --all-features --backend depinfo"
 publish-dry = "publish --dry-run --workspace --allow-dirty"
 publish-dry-crate = "publish --dry-run --allow-dirty"
 
-###
-# This options have been commented out because the Github runners responsible to build the KMS docker image have unpredictable CPU architectures, resulting in an error code 132 when running the generated container.
-# However, those flags are specifically given by CI in other builds (macos, windows, linux, centos7) in cargo_build.yml via the RUSTFLAGS environment variable.
-###
-# [build]
-# # Speeds up Ristretto 25519 multiplication x 2
-# rustflags = [
-#   "--cfg",
-#   "curve25519_dalek_backend=\"simd\"",
-#   "-C",
-#   "target_cpu=native",
-# ]
+# Run throughput bench with native-CPU tuning for maximum representative throughput.
+# cargo bench-native -- http_throughput
+bench-native = "bench --bench http_throughput"

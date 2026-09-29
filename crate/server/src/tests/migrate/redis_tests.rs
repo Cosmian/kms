@@ -9,7 +9,7 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
     },
 };
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::kmip_operations::Locate,
+    cosmian_kmip::kmip_2_1::{extra::tagging::VENDOR_ID_COSMIAN, kmip_operations::Locate},
     redis::{self, aio::ConnectionManager},
 };
 use cosmian_logger::{TracingConfig, trace, tracing_init};
@@ -17,6 +17,7 @@ use cosmian_logger::{TracingConfig, trace, tracing_init};
 use crate::{
     config::{MainDBConfig, ServerParams},
     core::KMS,
+    middlewares::UserId,
     result::KResult,
     tests::{
         migrate::utils::{open_file, restore_db_from_dump},
@@ -56,7 +57,6 @@ async fn init_test_kms(dump_filename: &str) -> KResult<Arc<KMS>> {
         database_type: Some("redis-findex".to_owned()),
         database_url: Some(redis_url.clone()),
         redis_master_password: Some("password".to_owned()),
-        redis_findex_label: Some("label".to_owned()),
         clear_database: false,
         ..Default::default()
     };
@@ -88,14 +88,14 @@ fn log_init_colorized(rust_log: Option<&str>) {
 async fn from_5_2_0_to_5_12_0() -> KResult<()> {
     log_init_colorized(option_env!("RUST_LOG"));
 
-    let owner = "mt_owner";
-    let user = "mt_normal_user";
-    let kms = init_test_kms("redis_dump_v5_2_0.bin").await?;
+    let owner = UserId::from("mt_owner");
+    let user = UserId::from("mt_normal_user");
+    let kms = Box::pin(init_test_kms("redis_dump_v5_2_0.bin")).await?;
 
     // Now, we check that the data is correctly migrated by "locating" it.
     // All keys have the "cat" tag, so the owner should find 5 keys.
     let mut search_attrs = Attributes::default();
-    let _: () = search_attrs.set_tags(vec!["cat".to_owned()])?;
+    let _: () = search_attrs.set_tags(VENDOR_ID_COSMIAN, vec!["cat".to_owned()])?;
     let locate = Locate {
         attributes: search_attrs.clone(),
         ..Locate::default()
@@ -106,14 +106,13 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
                 attributes: search_attrs.clone(),
                 ..Locate::default()
             },
-            owner,
-            None,
+            &owner,
         )
         .await?;
     assert_eq!(locate_response.located_items.unwrap(), 5);
 
     // verify permission boundaries: normal user can only "get" 1 key (with the same request)
-    let locate_response = kms.locate(locate, user, None).await?;
+    let locate_response = kms.locate(locate, &user).await?;
     assert_eq!(locate_response.located_items.unwrap(), 1);
 
     // but he hasn't enough rights to, for example, revoke it
@@ -128,8 +127,7 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
                 compromise_occurrence_date: None,
                 cascade: true,
             },
-            user,
-            None,
+            &user,
         )
         .await;
     revoke_response.unwrap_err();
@@ -155,13 +153,13 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
             ..Default::default()
         };
 
-        key_attrs.set_tags(expected_tags)?;
+        key_attrs.set_tags(VENDOR_ID_COSMIAN, expected_tags)?;
 
         let locate_specific = Locate {
             attributes: key_attrs,
             ..Locate::default()
         };
-        let specific_response = kms.locate(locate_specific, owner, None).await?;
+        let specific_response = kms.locate(locate_specific, &owner).await?;
 
         let found_count = specific_response.located_items.unwrap();
 
@@ -189,8 +187,7 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
                 data: Some(encrypted_bytes),
                 ..Decrypt::default()
             },
-            owner,
-            None,
+            &owner,
         )
         .await?;
 
@@ -218,8 +215,8 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
 // - create two sym keys (SHAKE), call them `mt_should_not_exist` and `mt_exists`, tag them with "cat"
 // ```bash
 // # assuming on cli repository root, with the cli binary built
-// ./target/debug/cosmian kms sym keys create mt_should_not_exist -a shake -t cat
-// ./target/debug/cosmian kms sym keys create mt_exists -a shake -t cat
+// ./target/debug/ckms sym keys create mt_should_not_exist -a shake -t cat
+// ./target/debug/ckms sym keys create mt_exists -a shake -t cat
 // ```
 // - grant `Locate` permission on both keys to user `mt_owner`
 // - revoke mt_should_not_exist key with NA as revocation reason. **Use the UI for this operation to avoid CLI bugs**
@@ -230,7 +227,7 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
     log_init_colorized(option_env!("RUST_LOG"));
     let dump_file = open_file(TEST_DATA_PATH, "redis_dump_v5_1_0.bin");
 
-    let owner = "mt_owner";
+    let owner = UserId::from("mt_owner");
     let redis_url = get_redis_url();
     let client = redis::Client::open(redis_url.clone()).unwrap();
     let mgr = ConnectionManager::new(client).await.unwrap();
@@ -249,7 +246,6 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
         database_type: Some("redis-findex".to_owned()),
         database_url: Some(redis_url),
         redis_master_password: Some("password".to_owned()),
-        redis_findex_label: Some("label".to_owned()),
         clear_database: false,
         ..Default::default()
     };
@@ -267,23 +263,21 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
                 },
                 ..Locate::default()
             },
-            owner,
-            None,
+            &owner,
         )
         .await?;
     assert_eq!(locate_response.located_items.unwrap(), 0);
 
     // since all keys had the "cat" tag, so we should find 1 key
     let mut search_attrs = Attributes::default();
-    let _: () = search_attrs.set_tags(vec!["cat".to_owned()])?;
+    let _: () = search_attrs.set_tags(VENDOR_ID_COSMIAN, vec!["cat".to_owned()])?;
     let locate_response = kms
         .locate(
             Locate {
                 attributes: search_attrs.clone(),
                 ..Locate::default()
             },
-            owner,
-            None,
+            &owner,
         )
         .await?;
     assert_eq!(locate_response.located_items.unwrap(), 1);
@@ -300,8 +294,7 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
                 compromise_occurrence_date: None,
                 cascade: true,
             },
-            owner,
-            None,
+            &owner,
         )
         .await;
     revoke_response.unwrap_err();
@@ -313,7 +306,6 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
 // for some reason, the #[serial] attribute from serial_test crate does
 // not solve the problem, hence this function.
 #[ignore = "Requires a running Redis instance"]
-#[allow(clippy::large_futures)]
 #[tokio::test]
 #[cfg(not(any(target_os = "windows", target_os = "macos")))] // no redis on those CI machines
 async fn findex_redis_migration_tests() -> KResult<()> {

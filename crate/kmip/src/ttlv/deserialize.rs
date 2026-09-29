@@ -141,8 +141,7 @@ impl<'de> Deserialize<'de> for TTLV {
                                     let hex: String = map.next_value()?;
                                     TTLValue::ByteString(hex::decode(&hex).map_err(|_e| {
                                         de::Error::custom(format!(
-                                            "Invalid value for a ByteString: {}",
-                                            &hex
+                                            "Invalid value for a ByteString: {hex}"
                                         ))
                                     })?)
                                 }

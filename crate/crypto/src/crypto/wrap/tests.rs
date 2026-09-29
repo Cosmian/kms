@@ -7,6 +7,7 @@ use cosmian_kmip::kmip_2_1::{
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyValue, KeyWrappingSpecification},
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
@@ -43,6 +44,7 @@ fn test_wrap_unwrap() -> Result<(), CryptoError> {
     let mut sym_wrapping_key_bytes = vec![0; 32];
     rand_bytes(&mut sym_wrapping_key_bytes)?;
     let sym_wrapping_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         sym_wrapping_key_bytes.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -54,6 +56,7 @@ fn test_wrap_unwrap() -> Result<(), CryptoError> {
     let mut sym_key_to_wrap_bytes = vec![0; 32];
     rand_bytes(&mut sym_key_to_wrap_bytes)?;
     let mut sym_key_to_wrap = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         sym_key_to_wrap_bytes.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -72,6 +75,7 @@ fn test_wrap_unwrap() -> Result<(), CryptoError> {
     };
 
     let wrapping_key_pair = create_x25519_key_pair(
+        VENDOR_ID_COSMIAN,
         "wrapping_private_key_uid",
         "wrapping_public_key_uid",
         &algorithm,
@@ -80,6 +84,7 @@ fn test_wrap_unwrap() -> Result<(), CryptoError> {
         Some(public_key_attributes.clone()),
     )?;
     let mut key_pair_to_wrap = create_x25519_key_pair(
+        VENDOR_ID_COSMIAN,
         "private_key_to_wrap_uid",
         "public_key_to_wrap_uid",
         &algorithm,
@@ -144,7 +149,10 @@ fn wrap_test(
             key_to_wrap.key_block()?.wrapped_key_bytes()?,
             key_to_wrap_bytes
         );
-        assert!(key_to_wrap.key_block()?.key_wrapping_data == Some(KeyWrappingData::default()));
+        assert_eq!(
+            key_to_wrap.key_block()?.key_wrapping_data,
+            Some(KeyWrappingData::default())
+        );
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
         assert_eq!(
@@ -172,12 +180,12 @@ fn wrap_test(
             key_to_wrap.key_block()?.wrapped_key_bytes()?,
             key_to_wrap_bytes
         );
-        assert!(
-            key_to_wrap.key_block()?.key_wrapping_data
-                == Some(KeyWrappingData {
-                    encoding_option: Some(EncodingOption::TTLVEncoding),
-                    ..Default::default()
-                })
+        assert_eq!(
+            key_to_wrap.key_block()?.key_wrapping_data,
+            Some(KeyWrappingData {
+                encoding_option: Some(EncodingOption::TTLVEncoding),
+                ..Default::default()
+            })
         );
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
@@ -205,6 +213,7 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
     rand_bytes(&mut random_bytes)?;
 
     let key_encryption_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         random_bytes.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -214,6 +223,7 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
 
     rand_bytes(&mut random_bytes)?;
     let mut data_encryption_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         random_bytes.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -233,7 +243,7 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &key_encryption_key)?;
 
-    assert!(data_encryption_key.key_block()? == &original_key_block);
+    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
     Ok(())
 }
 
@@ -251,6 +261,7 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
     };
 
     let wrap_key_pair = create_x25519_key_pair(
+        VENDOR_ID_COSMIAN,
         "sk_uid",
         "pk_uid",
         &algorithm,
@@ -262,6 +273,7 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
     let mut random_bytes = vec![0; 32];
     rand_bytes(&mut random_bytes)?;
     let mut data_encryption_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         random_bytes.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -284,7 +296,7 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
         wrap_key_pair.private_key(),
     )?;
 
-    assert!(data_encryption_key.key_block()? == &original_key_block);
+    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
     Ok(())
 }
 
@@ -325,6 +337,7 @@ fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
     let mut random_bytes = vec![0; 32];
     rand_bytes(&mut random_bytes)?;
     let mut data_encryption_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         random_bytes.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -344,7 +357,7 @@ fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
 
-    assert!(data_encryption_key.key_block()? == &original_key_block);
+    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
     Ok(())
 }
 
@@ -371,6 +384,7 @@ fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
     let mut random_bytes = vec![0; 32];
     rand_bytes(&mut random_bytes)?;
     let mut data_encryption_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         random_bytes.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -390,7 +404,7 @@ fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
 
-    assert!(data_encryption_key.key_block()? == &original_key_block);
+    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
     Ok(())
 }
 
@@ -417,6 +431,7 @@ fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
     let mut random_bytes = vec![0; 32];
     rand_bytes(&mut random_bytes)?;
     let mut data_encryption_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         random_bytes.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -436,6 +451,6 @@ fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
 
-    assert!(data_encryption_key.key_block()? == &original_key_block);
+    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
     Ok(())
 }

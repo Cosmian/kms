@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -20,12 +18,12 @@ use cosmian_kms_server_database::reexport::{
             cosmian_crypto_core::bytes_ser_de::Serializable,
         },
     },
-    cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{debug, trace};
 
 use super::KMS;
-use crate::{error::KmsError, kms_bail, result::KResult};
+use crate::{core::ObjectHandle, error::KmsError, kms_bail, middlewares::UserId, result::KResult};
 
 /// Create a User Decryption Key in the KMS.
 ///
@@ -34,12 +32,10 @@ pub(crate) async fn create_user_decryption_key(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
     create_request: &Create,
-    owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    owner: &UserId,
     sensitive: bool,
-    privileged_users: Option<Vec<String>>,
 ) -> KResult<Object> {
-    let msk_uid_or_tags = create_request
+    let msk_handle = create_request
         .attributes
         .get_parent_id()
         .ok_or_else(|| {
@@ -51,7 +47,7 @@ pub(crate) async fn create_user_decryption_key(
 
     for owm in kmip_server
         .database
-        .retrieve_objects(&msk_uid_or_tags, params.clone())
+        .retrieve_objects(ObjectHandle::from(&msk_handle))
         .await?
         .into_values()
     {
@@ -75,10 +71,12 @@ pub(crate) async fn create_user_decryption_key(
             continue;
         }
 
-        let access_policy = access_policy_from_attributes(&create_request.attributes)?;
-        debug!("create_user_decryption_key_: Access Policy: {access_policy}");
+        let access_policy =
+            access_policy_from_attributes(kmip_server.vendor_id(), &create_request.attributes)?;
+        debug!("create_user_decryption_key_: Access Policy: {access_policy:?}");
 
         let (msk_obj, usk_obj) = create_user_decryption_key_(
+            kmip_server.vendor_id(),
             &owm,
             &cover_crypt,
             &access_policy,
@@ -95,19 +93,18 @@ pub(crate) async fn create_user_decryption_key(
             object: msk_obj,
         };
 
-        kmip_server
-            .import(import_request, owner, params.clone(), privileged_users)
-            .await?;
+        kmip_server.import(import_request, owner).await?;
 
         return Ok(usk_obj);
     }
 
     Err(KmsError::InvalidRequest(format!(
-        "get: no Covercrypt master secret key found for: {msk_uid_or_tags}",
+        "get: no Covercrypt master secret key found for: {msk_handle}",
     )))
 }
 
 fn create_user_decryption_key_(
+    vendor_id: &str,
     owm: &ObjectWithMetadata,
     cover_crypt: &Covercrypt,
     access_policy: &str,
@@ -124,7 +121,7 @@ fn create_user_decryption_key_(
     let mut usk_handler = UserDecryptionKeysHandler::instantiate(cover_crypt, &mut msk);
 
     let usk_obj = usk_handler
-        .create_usk_object(access_policy, create_attributes, owm.id())
+        .create_usk_object(vendor_id, access_policy, create_attributes, owm.id())
         .map_err(KmsError::from)?;
 
     let msk_bytes = msk.serialize()?;
@@ -143,6 +140,7 @@ fn create_user_decryption_key_(
         })?;
 
     let msk_obj = create_msk_object(
+        vendor_id,
         msk_bytes,
         msk_attributes.clone(),
         &mpk_link.to_string(),

@@ -2,7 +2,7 @@ use std::{env, path::PathBuf};
 
 use cosmian_logger::{info, log_init, warn};
 
-use crate::tests::ttlv_tests::start_test_server;
+use crate::tests::ttlv_tests::start_test_server_with_fixed_port;
 
 #[ignore = "Integration test requires local pyKMIP server"]
 #[test]
@@ -11,7 +11,7 @@ fn test_pykmip() {
     // log_init(Some("info,kmip=debug"));
 
     // start the server
-    let _server_handles = start_test_server(15696);
+    let _server_handles = start_test_server_with_fixed_port(15696);
 
     let crate_dir =
         PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR"));

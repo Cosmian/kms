@@ -1,5 +1,6 @@
 use std::ptr;
 
+use cosmian_logger::warn;
 use libloading::Library;
 use pkcs11_sys::{
     CK_C_CloseSession, CK_C_Decrypt, CK_C_DecryptFinal, CK_C_DecryptInit, CK_C_DecryptUpdate,
@@ -7,8 +8,9 @@ use pkcs11_sys::{
     CK_C_Finalize, CK_C_FindObjects, CK_C_FindObjectsFinal, CK_C_FindObjectsInit, CK_C_GenerateKey,
     CK_C_GenerateKeyPair, CK_C_GenerateRandom, CK_C_GetAttributeValue, CK_C_GetInfo,
     CK_C_GetMechanismInfo, CK_C_GetMechanismList, CK_C_INITIALIZE_ARGS, CK_C_Initialize,
-    CK_C_Login, CK_C_Logout, CK_C_OpenSession, CK_C_SeedRandom, CK_C_UnwrapKey, CK_C_WrapKey,
-    CKF_OS_LOCKING_OK,
+    CK_C_Login, CK_C_Logout, CK_C_OpenSession, CK_C_SeedRandom, CK_C_SetAttributeValue, CK_C_Sign,
+    CK_C_SignInit, CK_C_UnwrapKey, CK_C_WrapKey, CKF_OS_LOCKING_OK,
+    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_OK,
 };
 
 use crate::{HResult, hsm_call};
@@ -84,6 +86,7 @@ pub struct HsmLib {
     pub(crate) C_SeedRandom: CK_C_SeedRandom,
 
     pub(crate) C_GetAttributeValue: CK_C_GetAttributeValue,
+    pub(crate) C_SetAttributeValue: CK_C_SetAttributeValue,
 
     pub(crate) C_GetInfo: CK_C_GetInfo,
     pub(crate) C_GetMechanismList: CK_C_GetMechanismList,
@@ -94,6 +97,9 @@ pub struct HsmLib {
 
     pub(crate) C_WrapKey: CK_C_WrapKey,
     pub(crate) C_UnwrapKey: CK_C_UnwrapKey,
+
+    pub(crate) C_SignInit: CK_C_SignInit,
+    pub(crate) C_Sign: CK_C_Sign,
 }
 
 impl HsmLib {
@@ -126,6 +132,7 @@ impl HsmLib {
                 C_GenerateRandom: Some(*library.get(b"C_GenerateRandom")?),
                 C_SeedRandom: Some(*library.get(b"C_SeedRandom")?),
                 C_GetAttributeValue: Some(*library.get(b"C_GetAttributeValue")?),
+                C_SetAttributeValue: Some(*library.get(b"C_SetAttributeValue")?),
                 C_GetInfo: Some(*library.get(b"C_GetInfo")?),
                 C_GetMechanismList: Some(*library.get(b"C_GetMechanismList")?),
                 C_GetMechanismInfo: Some(*library.get(b"C_GetMechanismInfo")?),
@@ -133,6 +140,8 @@ impl HsmLib {
                 C_Logout: Some(*library.get(b"C_Logout")?),
                 C_WrapKey: Some(*library.get(b"C_WrapKey")?),
                 C_UnwrapKey: Some(*library.get(b"C_UnwrapKey")?),
+                C_SignInit: Some(*library.get(b"C_SignInit")?),
+                C_Sign: Some(*library.get(b"C_Sign")?),
                 // we need to keep the library alive
                 _library: library,
             };
@@ -154,14 +163,31 @@ impl HsmLib {
             flags: CKF_OS_LOCKING_OK,
             pReserved: ptr::null_mut(),
         };
-        hsm_call!(
-            hsm_lib,
-            "Failed initializing the HSM",
-            C_Initialize,
-            (&raw const p_init_args)
-                .cast::<std::ffi::c_void>()
-                .cast_mut()
-        );
+        #[expect(unsafe_code)]
+        let rv = match hsm_lib.C_Initialize {
+            Some(func) => unsafe {
+                func(
+                    (&raw const p_init_args)
+                        .cast::<std::ffi::c_void>()
+                        .cast_mut(),
+                )
+            },
+            None => {
+                return Err(crate::HError::Default(
+                    "C_Initialize not available on library".to_owned(),
+                ));
+            }
+        };
+        if rv == CKR_CRYPTOKI_ALREADY_INITIALIZED {
+            // The library was already initialized by a previous instance using the same .so
+            // (e.g. two [[hsm_instances]] entries with the same softhsm2 model). This is
+            // harmless — all slots remain accessible.
+            warn!("HSM library already initialized (CKR_CRYPTOKI_ALREADY_INITIALIZED); continuing");
+        } else if rv != CKR_OK {
+            return Err(crate::HError::Default(format!(
+                "Failed initializing the HSM. Return code: {rv}"
+            )));
+        }
         Ok(())
     }
 

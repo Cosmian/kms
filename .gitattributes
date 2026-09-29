@@ -1,0 +1,3 @@
+# (important) exclude from GitHub Linguist language stats
+crate/kmip/src/**/*.html  linguist-vendored
+crate/kmip/src/**/*.xml   linguist-vendored

@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
             },
         },
         kmip_2_1::{
-            extra::tagging::EMPTY_TAGS,
+            extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
             kmip_attributes::Attributes,
             kmip_messages::RequestMessageBatchItem,
             kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -39,6 +39,7 @@ use crate::{
     config::ServerParams,
     core::KMS,
     error::KmsError,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
     tests::test_utils::https_clap_config,
 };
@@ -48,17 +49,18 @@ async fn test_curve_25519() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = Uuid::new_v4().to_string();
+    let owner = UserId::from(Uuid::new_v4().to_string());
 
     // request key pair creation
     let request = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString("ec_sk_uid".to_owned())),
         EMPTY_TAGS,
         RecommendedCurve::CURVE25519,
         false,
         None,
     )?;
-    let response = kms.create_key_pair(request, &owner, None, None).await?;
+    let response = kms.create_key_pair(request, &owner).await?;
     // check that the private and public keys exist
     // check secret key
     let sk_response = kms
@@ -70,7 +72,6 @@ async fn test_curve_25519() -> KResult<()> {
                     .context("no string for the private_key_unique_identifier")?,
             ),
             &owner,
-            None,
         )
         .await?;
     let sk_uid = sk_response
@@ -114,11 +115,9 @@ async fn test_curve_25519() -> KResult<()> {
         .as_ref()
         .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?[0];
     assert_eq!(link.link_type, LinkType::PublicKeyLink);
-    assert!(
-        link.linked_object_identifier
-            == LinkedObjectIdentifier::TextString(
-                response.public_key_unique_identifier.to_string()
-            )
+    assert_eq!(
+        link.linked_object_identifier,
+        LinkedObjectIdentifier::TextString(response.public_key_unique_identifier.to_string())
     );
 
     // check public key
@@ -131,7 +130,6 @@ async fn test_curve_25519() -> KResult<()> {
                     .context("no string for the public_key_unique_identifier")?,
             ),
             &owner,
-            None,
         )
         .await?;
     let pk = &pk_response.object;
@@ -170,11 +168,9 @@ async fn test_curve_25519() -> KResult<()> {
         .as_ref()
         .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?[0];
     assert_eq!(link.link_type, LinkType::PrivateKeyLink);
-    assert!(
-        link.linked_object_identifier
-            == LinkedObjectIdentifier::TextString(
-                response.private_key_unique_identifier.to_string()
-            )
+    assert_eq!(
+        link.linked_object_identifier,
+        LinkedObjectIdentifier::TextString(response.private_key_unique_identifier.to_string())
     );
     // test import of public key
     let pk_bytes = pk.key_block()?.ec_raw_bytes()?;
@@ -198,10 +194,7 @@ async fn test_curve_25519() -> KResult<()> {
         },
         object: pk.clone(),
     };
-    let new_uid = kms
-        .import(request, &owner, None, None)
-        .await?
-        .unique_identifier;
+    let new_uid = kms.import(request, &owner).await?.unique_identifier;
     // update
     let request = Import {
         unique_identifier: new_uid.clone(),
@@ -214,7 +207,7 @@ async fn test_curve_25519() -> KResult<()> {
         },
         object: pk,
     };
-    let update_response = kms.import(request, &owner, None, None).await?;
+    let update_response = kms.import(request, &owner).await?;
     assert_eq!(new_uid, update_response.unique_identifier);
     Ok(())
 }
@@ -224,7 +217,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = Uuid::new_v4().to_string();
+    let owner = UserId::from(Uuid::new_v4().to_string());
 
     let request = RequestMessage {
         request_header: RequestMessageHeader {
@@ -239,6 +232,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         batch_item: vec![
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
+                    VENDOR_ID_COSMIAN,
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::CURVE25519,
@@ -252,7 +246,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         ],
     };
 
-    let response = kms.message(request, &owner, None).await?;
+    let response = kms.message(request, &owner).await?;
     assert_eq!(response.response_header.batch_count, 2);
 
     let request = RequestMessage {
@@ -268,6 +262,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         batch_item: vec![
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
+                    VENDOR_ID_COSMIAN,
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::CURVE25519,
@@ -277,6 +272,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
+                    VENDOR_ID_COSMIAN,
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::CURVEED25519,
@@ -286,6 +282,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
+                    VENDOR_ID_COSMIAN,
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::SECT113R1,
@@ -295,6 +292,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
+                    VENDOR_ID_COSMIAN,
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::CURVEED25519,
@@ -305,7 +303,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         ],
     };
 
-    let response = kms.message(request, &owner, None).await?;
+    let response = kms.message(request, &owner).await?;
     assert_eq!(response.response_header.batch_count, 4);
     assert_eq!(response.batch_item.len(), 4);
 

@@ -12,6 +12,15 @@ use crate::{
     ttlv::{TTLV, TTLValue},
 };
 
+/// Push `type` and `value` attributes for primitive TTLV types that serialize via `to_string()`.
+macro_rules! push_typed_value {
+    ($elem:expr, $type_name:literal, $val_expr:expr) => {{
+        $elem.push_attribute(("type", $type_name));
+        let val = $val_expr.to_string();
+        $elem.push_attribute(("value", val.as_str()));
+    }};
+}
+
 pub struct TTLVXMLSerializer;
 impl TTLVXMLSerializer {
     pub fn to_xml(ttlv: &TTLV) -> Result<String, KmipError> {
@@ -37,16 +46,8 @@ impl TTLVXMLSerializer {
             primitive => {
                 let mut elem = BytesStart::new(ttlv.tag.as_str());
                 match primitive {
-                    TTLValue::Integer(v) => {
-                        elem.push_attribute(("type", "Integer"));
-                        let val = v.to_string();
-                        elem.push_attribute(("value", val.as_str()));
-                    }
-                    TTLValue::LongInteger(v) => {
-                        elem.push_attribute(("type", "LongInteger"));
-                        let val = v.to_string();
-                        elem.push_attribute(("value", val.as_str()));
-                    }
+                    TTLValue::Integer(v) => push_typed_value!(elem, "Integer", v),
+                    TTLValue::LongInteger(v) => push_typed_value!(elem, "LongInteger", v),
                     TTLValue::BigInteger(_) => {
                         elem.push_attribute(("type", "BigInteger"));
                         elem.push_attribute(("value", ""));
@@ -73,20 +74,10 @@ impl TTLVXMLSerializer {
                         elem.push_attribute(("value", val.as_str()));
                     }
                     TTLValue::DateTime(dt) => {
-                        elem.push_attribute(("type", "DateTime"));
-                        let val = dt.unix_timestamp().to_string();
-                        elem.push_attribute(("value", val.as_str()));
+                        push_typed_value!(elem, "DateTime", dt.unix_timestamp());
                     }
-                    TTLValue::Interval(i) => {
-                        elem.push_attribute(("type", "Interval"));
-                        let val = i.to_string();
-                        elem.push_attribute(("value", val.as_str()));
-                    }
-                    TTLValue::DateTimeExtended(i) => {
-                        elem.push_attribute(("type", "DateTimeExtended"));
-                        let val = i.to_string();
-                        elem.push_attribute(("value", val.as_str()));
-                    }
+                    TTLValue::Interval(i) => push_typed_value!(elem, "Interval", i),
+                    TTLValue::DateTimeExtended(i) => push_typed_value!(elem, "DateTimeExtended", i),
                     TTLValue::Structure(_) => {
                         return Err(KmipError::Default(
                             "cannot serialize Structure as an empty XML element".into(),

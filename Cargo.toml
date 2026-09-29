@@ -1,26 +1,38 @@
 [workspace]
-default-members = ["crate/server"]
+default-members = [
+  "crate/server",
+  "crate/clients/pkcs11/provider",
+  "crate/clients/ckms",
+]
 members = [
-    # Client crates
-    "crate/client_utils",
-    "crate/kms_client",
-    "crate/wasm",
-    "crate/cli",
-    # Server crates
-    "crate/access",
-    "crate/crypto",
-    "crate/hsm/proteccio",
-    "crate/hsm/crypt2pay",
-    "crate/hsm/softhsm2",
-    "crate/hsm/smartcardhsm",
-    "crate/hsm/utimaco",
-    "crate/hsm/base_hsm",
-    "crate/interfaces",
-    "crate/kmip",
-    "crate/server",
-    "crate/server_database",
-    # Test crates
-    "crate/test_kms_server",
+  # Common crates
+  "crate/kmip",
+  # Client crates
+  "crate/clients/client_utils",
+  "crate/clients/client",
+  "crate/clients/wasm",
+  "crate/clients/clap",
+  "crate/clients/ckms",
+  "crate/clients/k8s/plugin",
+  "crate/clients/k8s/operator",
+  "crate/clients/k8s/csi_provider",
+  "crate/clients/pkcs11/module",
+  "crate/clients/pkcs11/provider",
+  "crate/clients/cng",
+  # Server crates
+  "crate/access",
+  "crate/crypto",
+  "crate/hsm/proteccio",
+  "crate/hsm/crypt2pay",
+  "crate/hsm/softhsm2",
+  "crate/hsm/smartcardhsm",
+  "crate/hsm/utimaco",
+  "crate/hsm/base_hsm",
+  "crate/interfaces",
+  "crate/server",
+  "crate/server_database",
+  # Test crates
+  "crate/test_kms_server",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
@@ -28,14 +40,43 @@ members = [
 resolver = "2"
 
 [workspace.lints.rust]
+# ── Core lint groups ──────────────────────────────────────────────────
 nonstandard_style = "deny"
-refining_impl_trait = "deny"
 future_incompatible = "deny"
 keyword_idents = "deny"
 let_underscore = "deny"
 unreachable_pub = "deny"
 unused = "deny"
 unsafe_code = "deny"
+
+# ── Safety & security (new in 1.92–1.97) ─────────────────────────────
+# All unsafe operations inside unsafe fns must be in explicit unsafe { } blocks.
+unsafe-op-in-unsafe-fn = "deny"
+# Unsafe attributes (e.g. unsafe(no_mangle)) must be inside unsafe { }.
+unsafe-attr-outside-unsafe = "deny"
+# All extern declarations must be marked `unsafe extern`.
+missing-unsafe-on-extern = "deny"
+# Non-binding `let _ = expr` on types with Drop (lock guards, etc.) — forces `let _guard =`.
+let-underscore-drop = "deny"
+
+# ── Edition 2024 migration hardening ─────────────────────────────────
+# Items that became unsafe in edition 2024 must not be used as safe.
+deprecated-safe-2024 = "deny"
+# `if let` temporary lifetime rescoping in edition 2024.
+if-let-rescope = "deny"
+# `impl Trait` captures more lifetimes in edition 2024; flag potential changes now.
+impl-trait-overcaptures = "deny"
+# Emit a warning when `expr` fragment specifier semantics change in 2024.
+edition-2024-expr-fragment-specifier = "deny"
+# Keywords reserved in edition 2024 must not be used as identifiers.
+keyword-idents-2024 = "deny"
+# Tail-expression drop order changes in edition 2024.
+tail-expr-drop-order = "deny"
+# Prelude trait method collisions in edition 2024.
+rust-2024-prelude-collisions = "deny"
+
+# ── API correctness ───────────────────────────────────────────────────
+refining_impl_trait = "deny"
 
 [workspace.lints.clippy]
 # Main clippy categories
@@ -85,12 +126,12 @@ map_err_ignore = "deny"
 redundant_clone = "deny"
 
 [workspace.package]
-version = "5.14.0"
+version = "5.27.1"
 edition = "2024"
 rust-version = "1.87.0"
 authors = [
-    "Bruno Grieder <bruno.grieder@cosmian.com>",
-    "Emmanuel Coste <emmanuel.coste@cosmian.com>",
+  "Bruno Grieder <bruno.grieder@cosmian.com>",
+  "Emmanuel Coste <emmanuel.coste@cosmian.com>",
 ]
 license = "BUSL-1.1" # "Business Source License 1.1"
 license-file = "LICENSE"
@@ -102,17 +143,34 @@ categories = ["security"]
 [profile.release]
 # Deterministic build configuration for reproducible binaries
 # These settings ensure the same source produces identical binaries across builds
-lto = "fat"               # Fat LTO: maximum cross-crate optimization for smallest binaries
-strip = "symbols"         # Strip symbol tables for smaller binaries
-opt-level = "z"           # Optimize for size while maintaining performance
-codegen-units = 1         # Single codegen unit: best optimization and determinism
-panic = "abort"           # Smaller binaries, no unwinding tables
-incremental = false       # Disable incremental compilation for determinism
-debug = 0                 # No debug info (timestamps/paths)
+lto = "fat" # Fat LTO: maximum cross-crate optimization for smallest binaries
+strip = "symbols" # Strip symbol tables for smaller binaries
+opt-level = "z" # Optimize for size while maintaining performance
+codegen-units = 1 # Single codegen unit: best optimization and determinism
+panic = "abort" # Smaller binaries, no unwinding tables
+incremental = false # Disable incremental compilation for determinism
+debug = 0 # No debug info (timestamps/paths)
+overflow-checks = true # Catch integer overflows in release builds (ANSSI LANG-ARITH)
+
+[profile.bench]
+# Flamegraph-friendly profile: max-speed optimisations + symbol visibility.
+# Overrides release for the following reasons:
+#   opt-level = 3   → release uses "z" (size) which costs 15–40% throughput;
+#                     benchmarks must measure server speed, not binary size.
+#   strip = "none"  → perf / cargo-flamegraph need symbol tables to resolve frames.
+#   debug = 2       → full DWARF info: enables line-level flamegraph attribution
+#                     and DWARF-based stack unwinding by perf.
+#   lto = "thin"    → faster link than fat-LTO; still enables cross-crate inlining.
+inherits = "release"
+opt-level = 3           # Speed over size — critical for throughput benchmarks
+strip = "none"          # MUST be none — perf needs symbol tables
+debug = 2               # Full DWARF: line-level attribution + reliable unwinding
+codegen-units = 1       # Keep single CGU for realistic inlining
 
 [profile.dev]
 strip = "debuginfo"
 incremental = false
+panic = "abort" # prevent UB from unwinding panics across extern "C" boundary
 
 # proc-macros and build-scripts
 [profile.dev.build-override]
@@ -124,41 +182,74 @@ incremental = false
 opt-level = 0
 
 [workspace.dependencies]
+actix-cors = "0.6"
+actix-files = "0.6"
+actix-http = "3.12"
+actix-identity = "0.6"
 actix-rt = "2.10"
+actix-session = { version = "0.8" }
 actix-server = { version = "2.5", default-features = false }
-actix-web = { version = "4.10", default-features = false }
+actix-tls = "3.4"
+actix-web = { version = "4.12", default-features = false }
+async-recursion = "1.1"
 async-trait = "0.1"
+axum = "0.8"
+axum-server = "0.8"
 base64 = "0.22"
 bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
-cosmian_config_utils = "0.3.1"
-cosmian_crypto_core = { version = "10.3", default-features = false, features = [
-    "ser",
+clap-config-fallback = { version = "0.1", features = ["derive"] }
+dashmap = "6"
+criterion = { version = "0.6", default-features = false, features = [
+  "html_reports",
+  "async_tokio",
 ] }
-cosmian_logger = "0.5"
+cosmian_config_utils = "0.7"
+cosmian_crypto_core = { version = "11.0", default-features = false, features = ["ser"] }
+cosmian_logger = "0.8"
 der = { version = "0.7", default-features = false }
+dialoguer = { version = "0.11", default-features = false, features = ["editor", "fuzzy-select", "history", "password", "completion"] }
+dotenvy = "0.15"
 futures = "0.3"
 hex = { version = "0.4", default-features = false }
+humantime = "2"
+hyper-util = "0.1"
+hmac = { version = "0.12", features = ["std"] }
+http = "1.4"
+jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
+k8s-openapi = "0.24"
+kube = "0.99"
 lazy_static = "1.5"
 leb128 = "0.2"
 libloading = "0.8"
-lru = "0.12"
+log = { version = "0.4", default-features = false }
+lru = "0.18"
+moka = { version = "0.12", default-features = false, features = ["future"] }
 native-tls = { version = "0.2", default-features = false }
-num_cpus = "1.16"
 num-format = "0.4"
+itertools = "0.10"
+num-bigint = { version = "0.4", default-features = false }
 num-traits = "0.2"
 num-bigint-dig = { version = "0.8", default-features = false }
 openssl = { version = "0.10", default-features = false }
-opentelemetry = "0.27"
-opentelemetry-otlp = { version = "0.27", features = ["metrics", "grpc-tonic"] }
-opentelemetry_sdk = { version = "0.27", features = ["metrics", "rt-tokio"] }
+opentelemetry = "0.32"
+opentelemetry-otlp = { version = "0.32", features = ["metrics", "grpc-tonic"] }
+opentelemetry_sdk = { version = "0.32", features = ["metrics"] }
 pem = "3.0"
+prost = "0.13"
 pkcs11-sys = "0.2"
-rand = "0.9"
+rand = "0.10"
+rcgen = { version = "0.13", default-features = false }
+regex = { version = "1.11", default-features = false }
 reqwest = { version = "0.12", default-features = false }
+rustls = { version = "0.23", default-features = false }
+schemars = "0.8"
+scratchstack-aws-signature = "0.11"
 serde = "1.0"
+serde_ignored = "0.1"
 serde_json = "1.0"
+serde_yaml = "0.9"
 sha2 = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false }
 strum = { version = "0.27", default-features = false }
@@ -168,7 +259,13 @@ time = "0.3"
 tiny-keccak = "2.0"
 tempfile = "3.19"
 tokio = { version = "1.44", default-features = false }
+tokio-stream = "0.1"
+tonic = "0.12"
+tower = "0.4"
+toml = "0.9"
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false }
+subtle = "2.6"
 url = "2.5"
 uuid = "=1.11.1"
 x509-cert = { version = "0.2", default-features = false }

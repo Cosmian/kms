@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#MISE description="Run Utimaco HSM simulator tests (Linux only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; loader tests do not use a KMS server DB)" default="sqlite" {
+#USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+if [ "$(uname)" != "Linux" ]; then
+  print_error "Utimaco tests require Linux"
+fi
+
+ensure_nix_shell
+
+print_header "Running Utimaco HSM tests (${VARIANT_NAME})"
+
+# Prepare Utimaco simulator: extracts the simulator, starts it, configures PINs,
+# and exports UTIMACO_PKCS11_LIB + CS_PKCS11_R3_CFG.
+source "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_utimaco.sh"
+
+require_cmd cargo
+
+# UTIMACO_PKCS11_LIB is already exported by prepare_utimaco.sh.
+# The Rust test reads UTIMACO_PKCS11_LIB (falls back to the crate constant
+# /lib/libcs_pkcs11_R3.so) and HSM_USER_PASSWORD.
+HSM_USER_PASSWORD="12345678" cargo test \
+  -p utimaco_pkcs11_loader \
+  --features utimaco \
+  -- --nocapture tests::test_hsm_utimaco_all --ignored --exact
+
+print_success "Utimaco HSM tests completed"

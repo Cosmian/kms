@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Build all Nix derivations and update vendor hashes"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+
+print_header "Nix build + update hashes"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/release/nix_build_update_hash.sh"
+
+print_success "Hashes updated"

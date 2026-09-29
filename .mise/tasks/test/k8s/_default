@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+#MISE description="Run all Kubernetes E2E tests (plugin, operator, CSI provider)"
+set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+# shellcheck source=.mise/lib/k8s.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
+
+k8s_require_tools
+
+print_header "Running all Kubernetes E2E tests"
+
+FAILED=()
+
+run_step() {
+  local name="$1"
+  shift
+  print_status "▶ $name"
+  if mise run "$@"; then
+    print_success "✓ $name"
+  else
+    print_status "✗ $name FAILED"
+    FAILED+=("$name")
+  fi
+}
+
+# plugin runs as a binary on the Minikube node; operator and csi-provider
+# use their published Docker images (loaded into Minikube via Nix).
+run_step "k8s:plugin" test:k8s:plugin
+run_step "k8s:plugin-mtls" test:k8s:plugin --mtls
+run_step "k8s:operator" test:k8s:operator
+run_step "k8s:csi-provider" test:k8s:csi-provider
+
+if [ "${#FAILED[@]}" -gt 0 ]; then
+  echo ""
+  echo "FAILED tests:"
+  for f in "${FAILED[@]}"; do echo "  ✗ $f"; done
+  exit 1
+fi
+
+print_success "All Kubernetes E2E tests passed"

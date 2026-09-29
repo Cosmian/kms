@@ -13,9 +13,9 @@ use crate::{
             ResponseMessage, ResponseMessageBatchItemVersioned, ResponseMessageHeader,
         },
         kmip_types::{
-            AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
-            CredentialType, CredentialValue, CryptographicUsageMask, ErrorReason, MessageExtension,
-            Nonce, ProtocolVersion, ResultStatusEnumeration,
+            AsynchronousIndicator, AttestationType, Authentication, BatchErrorContinuationOption,
+            Credential, CredentialType, CredentialValue, CryptographicUsageMask, ErrorReason,
+            MessageExtension, Nonce, ProtocolVersion, ResultStatusEnumeration,
         },
     },
     kmip_2_1::{
@@ -281,11 +281,11 @@ fn test_aes_key_block() {
     //
     let json = serde_json::to_value(aes_key_block(key_bytes)).unwrap();
     let kb: KeyBlock = serde_json::from_value(json).unwrap();
-    assert!(aes_key_block(key_bytes) == kb);
+    assert_eq!(aes_key_block(key_bytes), kb);
     //
     let ttlv = aes_key_block_ttlv(key_bytes);
     let rec: KeyBlock = from_ttlv(ttlv).unwrap();
-    assert!(aes_key_block(key_bytes) == rec);
+    assert_eq!(aes_key_block(key_bytes), rec);
 }
 
 #[test]
@@ -308,7 +308,7 @@ fn test_des_aes_key() {
 
     // Deserializer
     let rec: Object = from_ttlv(ttlv).unwrap();
-    assert!(aes_key(key_bytes) == rec);
+    assert_eq!(aes_key(key_bytes), rec);
 }
 
 #[test]
@@ -459,7 +459,7 @@ fn test_import_symmetric_key() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: Import = from_ttlv(ttlv).unwrap();
-    assert!(import == rec);
+    assert_eq!(import, rec);
 }
 
 #[test]
@@ -550,7 +550,7 @@ fn test_import_public_key() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: Import = from_ttlv(ttlv).unwrap();
-    assert!(import == rec);
+    assert_eq!(import, rec);
 }
 
 #[test]
@@ -723,9 +723,9 @@ pub(super) fn test_create() {
         CryptographicAlgorithm::AES,
         create_.attributes.cryptographic_algorithm.unwrap()
     );
-    assert!(
-        LinkedObjectIdentifier::TextString("SK".to_owned())
-            == create_.attributes.link.as_ref().unwrap()[0].linked_object_identifier
+    assert_eq!(
+        LinkedObjectIdentifier::TextString("SK".to_owned()),
+        create_.attributes.link.as_ref().unwrap()[0].linked_object_identifier
     );
 }
 
@@ -770,6 +770,97 @@ fn serialize_deserialize<T: DeserializeOwned + Serialize>(object: &T) -> Result<
     let ttlv: TTLV = serde_json::from_str(&json)?;
     let t: T = from_ttlv(ttlv)?;
     Ok(t)
+}
+
+#[test]
+fn test_derive_key_single_identifier_round_trip() {
+    use crate::{
+        kmip_0::kmip_types::HashingAlgorithm,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_data_structures::DerivationParameters,
+            kmip_objects::ObjectType,
+            kmip_operations::DeriveKey,
+            kmip_types::{CryptographicParameters, DerivationMethod, UniqueIdentifier},
+        },
+    };
+
+    let request = DeriveKey::new_single_base(
+        ObjectType::SecretData,
+        UniqueIdentifier::TextString("base-key".to_owned()),
+        DerivationMethod::HKDF,
+        DerivationParameters {
+            cryptographic_parameters: Some(CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..CryptographicParameters::default()
+            }),
+            derivation_data: Some(Zeroizing::new(b"context".to_vec())),
+            salt: Some(b"salt".to_vec()),
+            ..DerivationParameters::default()
+        },
+        Attributes {
+            cryptographic_length: Some(256),
+            object_type: Some(ObjectType::SecretData),
+            ..Attributes::default()
+        },
+    );
+
+    let ttlv_roundtrip: DeriveKey = match serialize_deserialize(&request) {
+        Ok(roundtrip) => roundtrip,
+        Err(error) => panic!("TTLV round-trip failed: {error}"),
+    };
+    assert_eq!(ttlv_roundtrip.object_unique_identifier.len(), 1);
+    assert_eq!(ttlv_roundtrip, request);
+
+    let json = match serde_json::to_string_pretty(&request) {
+        Ok(json) => json,
+        Err(error) => panic!("JSON serialization failed: {error}"),
+    };
+    let json_roundtrip: DeriveKey = match serde_json::from_str(&json) {
+        Ok(roundtrip) => roundtrip,
+        Err(error) => panic!("JSON round-trip failed: {error}"),
+    };
+    assert_eq!(json_roundtrip, request);
+}
+
+#[test]
+fn test_derive_key_repeated_identifiers_round_trip() {
+    use crate::kmip_2_1::{
+        kmip_attributes::Attributes, kmip_data_structures::DerivationParameters,
+        kmip_operations::DeriveKey, kmip_types::UniqueIdentifier,
+    };
+
+    let request = DeriveKey::new_asymmetric(
+        UniqueIdentifier::TextString("private-key".to_owned()),
+        UniqueIdentifier::TextString("peer-public-key".to_owned()),
+        DerivationParameters::default(),
+        Attributes {
+            cryptographic_length: Some(256),
+            ..Attributes::default()
+        },
+    );
+
+    let ttlv_roundtrip: DeriveKey = match serialize_deserialize(&request) {
+        Ok(roundtrip) => roundtrip,
+        Err(error) => panic!("TTLV round-trip failed: {error}"),
+    };
+    assert_eq!(
+        ttlv_roundtrip.object_unique_identifier,
+        request.object_unique_identifier
+    );
+
+    let json = match serde_json::to_string_pretty(&request) {
+        Ok(json) => json,
+        Err(error) => panic!("JSON serialization failed: {error}"),
+    };
+    let json_roundtrip: DeriveKey = match serde_json::from_str(&json) {
+        Ok(roundtrip) => roundtrip,
+        Err(error) => panic!("JSON round-trip failed: {error}"),
+    };
+    assert_eq!(
+        json_roundtrip.object_unique_identifier,
+        request.object_unique_identifier
+    );
 }
 
 fn get_key_block() -> KeyBlock {
@@ -1429,18 +1520,20 @@ pub(super) fn test_message_request() {
             asynchronous_indicator: Some(AsynchronousIndicator::Optional),
             attestation_capable_indicator: Some(true),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
-            authentication: Some(vec![Credential {
-                credential_type: CredentialType::Attestation,
-                credential_value: CredentialValue::Attestation {
-                    nonce: Nonce {
-                        nonce_id: vec![9, 8, 7],
-                        nonce_value: vec![10, 11, 12],
+            authentication: Some(Authentication {
+                credential: vec![Credential {
+                    credential_type: CredentialType::Attestation,
+                    credential_value: CredentialValue::Attestation {
+                        nonce: Nonce {
+                            nonce_id: vec![9, 8, 7],
+                            nonce_value: vec![10, 11, 12],
+                        },
+                        attestation_type: AttestationType::TCG_Integrity_Report,
+                        attestation_measurement: Some(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+                        attestation_assertion: Some(vec![11, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
                     },
-                    attestation_type: AttestationType::TCG_Integrity_Report,
-                    attestation_measurement: Some(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
-                    attestation_assertion: Some(vec![11, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
-                },
-            }]),
+                }],
+            }),
             batch_error_continuation_option: Some(BatchErrorContinuationOption::Undo),
             batch_order_option: Some(true),
             time_stamp: Some(OffsetDateTime::from_unix_timestamp(1_950_940_403).unwrap()),
@@ -1718,12 +1811,10 @@ fn test_key_value_ttlv() {
             ..Default::default()
         }),
     };
-    assert!(
-        kv == KeyValue::from_ttlv_bytes(
-            &kv.to_ttlv_bytes(key_format_type).unwrap(),
-            key_format_type
-        )
-        .unwrap()
+    assert_eq!(
+        kv,
+        KeyValue::from_ttlv_bytes(&kv.to_ttlv_bytes(key_format_type).unwrap(), key_format_type)
+            .unwrap()
     );
     let key_format_type = KeyFormatType::TransparentRSAPublicKey;
 
@@ -1745,12 +1836,10 @@ fn test_key_value_ttlv() {
             ..Default::default()
         }),
     };
-    assert!(
-        kv == KeyValue::from_ttlv_bytes(
-            &kv.to_ttlv_bytes(key_format_type).unwrap(),
-            key_format_type
-        )
-        .unwrap()
+    assert_eq!(
+        kv,
+        KeyValue::from_ttlv_bytes(&kv.to_ttlv_bytes(key_format_type).unwrap(), key_format_type)
+            .unwrap()
     );
 }
 

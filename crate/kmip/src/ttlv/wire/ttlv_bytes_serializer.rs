@@ -1,11 +1,20 @@
 use std::io::Write;
 
-use crate::ttlv::{TTLV, TTLValue, TtlvType, error::TtlvError, wire::kmip_tag::KmipTag};
+use crate::ttlv::{
+    TTLV, TTLValue, TtlvType, enum_lookup::lookup_enum_code, error::TtlvError,
+    wire::kmip_tag::KmipTag,
+};
 
-/// Write a tag as a 3-byte big-endian integer
+/// Write a tag as a 3-byte big-endian integer.
+/// Falls back to the forward enum-lookup table when the tag name does not
+/// exactly match a [`KmipTag`] variant (e.g. `PascalCase` serde renames like
+/// `CertificateSubjectCn` vs `CertificateSubjectCN`).
 fn write_tag<W: Write, TAG: KmipTag>(writer: &mut W, tag_str: &str) -> Result<(), TtlvError> {
-    let tag =
-        TAG::from_str(tag_str).map_err(|_e| TtlvError::from(format!("Unknown tag: {tag_str}")))?;
+    let tag = TAG::from_str(tag_str).or_else(|_| {
+        lookup_enum_code(tag_str)
+            .and_then(|(code, _)| TAG::from_u32(code).ok())
+            .ok_or_else(|| TtlvError::from(format!("Unknown tag: {tag_str}")))
+    })?;
     let tag_value: u32 = tag.to_u32();
     let tag_bytes = tag_value.to_be_bytes();
     // Write only the lowest 3 bytes in big-endian
@@ -24,6 +33,21 @@ fn write_length<W: Write>(writer: &mut W, length: usize) -> Result<(), TtlvError
     let l = u32::try_from(length)
         .map_err(|_e| TtlvError::from(format!("Length too large: {length}")))?;
     writer.write_all(&l.to_be_bytes())?;
+    Ok(())
+}
+
+/// Write zero-padding so that a value of length `content_len` is aligned to the
+/// next 8-byte boundary, as required by the KMIP TTLV encoding for `TextString`
+/// and `ByteString` values.
+///
+/// Uses a static zero buffer to avoid the per-call heap allocation that a
+/// `vec![0u8; padding]` would incur on every padded value.
+fn write_padding<W: Write>(writer: &mut W, content_len: usize) -> Result<(), TtlvError> {
+    const ZEROES: [u8; 8] = [0; 8];
+    let padding = (8 - (content_len % 8)) % 8;
+    if let Some(pad) = ZEROES.get(..padding) {
+        writer.write_all(pad)?;
+    }
     Ok(())
 }
 
@@ -99,22 +123,14 @@ where
                 write_length(&mut self.writer, utf8_bytes.len())?;
                 self.writer.write_all(utf8_bytes)?;
                 // pad to a multiple of 8 bytes
-                let padding = 8 - (utf8_bytes.len() % 8);
-                if padding != 8 {
-                    let padding_bytes = vec![0_u8; padding];
-                    self.writer.write_all(&padding_bytes)?;
-                }
+                write_padding(&mut self.writer, utf8_bytes.len())?;
             }
             TTLValue::ByteString(value) => {
                 write_type(&mut self.writer, TtlvType::ByteString)?;
                 write_length(&mut self.writer, value.len())?;
                 self.writer.write_all(value)?;
                 // pad to a multiple of 8 bytes
-                let padding = 8 - (value.len() % 8);
-                if padding != 8 {
-                    let padding_bytes = vec![0_u8; padding];
-                    self.writer.write_all(&padding_bytes)?;
-                }
+                write_padding(&mut self.writer, value.len())?;
             }
             TTLValue::DateTime(value) => {
                 write_type(&mut self.writer, TtlvType::DateTime)?;

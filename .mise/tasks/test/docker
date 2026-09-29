@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Run Docker image smoke tests"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "static"
+
+print_header "Running Docker image tests (${VARIANT_NAME})"
+
+REPO_ROOT="$(get_repo_root)"
+
+# Derive KMS_TLS_CONFIG_FLAVOR from VARIANT (fips → fips, non-fips → non_fips).
+# test_docker_image.sh requires this to be set; Rust test code uses it to decide
+# which cipher suites / TLS modes to exercise. No guard lives in the bash script.
+export KMS_TLS_CONFIG_FLAVOR="${VARIANT//-/_}"
+
+bash "${REPO_ROOT}/.mise/scripts/test/test_docker_image.sh"
+
+print_success "Docker image tests completed"

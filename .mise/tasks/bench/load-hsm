@@ -1,0 +1,78 @@
+#!/usr/bin/env -S usage bash
+#MISE description="Run load-test benchmark with a SoftHSM2-backed key_encryption_key"
+#USAGE flag "-v --variant <v>"      env="BENCH_VARIANT"       default="non-fips"       help="FIPS variant"                              { choices "fips" "non-fips" }
+#USAGE flag "-l --link <l>"         env="BENCH_LINK"          default="static"          help="Linkage type"                              { choices "static" "dynamic" }
+#USAGE flag "-r --release"          env="BENCH_RELEASE"       default="true"            help="Build in release mode"
+#USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "key-creation" "sign-verify" "batch" }
+#USAGE flag "-P --protocol <p>"     env="BENCH_PROTOCOL"      default="all"             help="Protocol to benchmark"                     { choices "all" "ttlv-json" "ttlv-bytes" "jose" }
+#USAGE flag "-t --time <t>"         env="BENCH_TIME"          default="20"              help="Measurement time per level (seconds)"
+#USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16"  help="Comma-separated concurrency levels"
+#USAGE flag "-w --http-workers <n>" env="BENCH_HTTP_WORKERS"  default="32"              help="Number of Actix-web HTTP worker threads"
+#USAGE flag "-W --warmup <s>"       env="BENCH_WARMUP"        default="5"               help="Warmup time before the load sweep (seconds)"
+#USAGE flag "-C --cooldown <s>"     env="BENCH_COOLDOWN"      default="2"               help="Cooldown between concurrency levels (seconds)"
+#USAGE flag "-s --sanity"           env="BENCH_SANITY"                                  help="Quick sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/bench_helpers.sh"
+
+# ── Resolve BENCH_ variables from usage-parsed lowercase names ──────────────────────
+BENCH_VARIANT="${usage_variant:-non-fips}"
+BENCH_LINK="${usage_link:-static}"
+BENCH_RELEASE="${usage_release:-true}"
+BENCH_MODE="${usage_mode:-all}"
+BENCH_PROTOCOL="${usage_protocol:-all}"
+BENCH_TIME="${usage_time:-20}"
+BENCH_CONCURRENCY="${usage_concurrency:-1,2,4,8,16}"
+BENCH_HTTP_WORKERS="${usage_http_workers:-32}"
+BENCH_WARMUP="${usage_warmup:-5}"
+BENCH_COOLDOWN="${usage_cooldown:-2}"
+BENCH_SANITY="${usage_sanity:-}"
+
+kms_init_env "${BENCH_VARIANT}" "${BENCH_LINK}"
+print_header "Running load benchmark with HSM-backed KEK (${VARIANT_NAME})"
+
+# ── Variables ────────────────────────────────────────────────────────────────
+TMP_DIR="$(mktemp -d /tmp/kms-bench-hsm-XXXXXX)"
+BUILD_MODE=$([ "${BENCH_RELEASE}" = "false" ] && echo debug || echo release)
+
+if [ "${BENCH_SANITY}" = "true" ]; then
+  BUILD_MODE="debug"
+  BENCH_TIME="2"
+  BENCH_WARMUP="1"
+  BENCH_COOLDOWN="0"
+  BENCH_MODE="encrypt"
+  BENCH_CONCURRENCY="1,2"
+fi
+
+bench_register_cleanup
+
+# Build both server and ckms.
+bench_build_binaries "${BUILD_MODE}"
+
+BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+
+# Start the server with SoftHSM2 HSM + key_encryption_key, then create the KEK.
+bench_start_server_hsm "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}"
+
+export CRITERION_HOME="${CRITERION_HOME:-${CARGO_TARGET_DIR}/criterion}"
+echo "Cleaning ${CRITERION_HOME}..."
+rm -rf "${CRITERION_HOME}"
+mkdir -p "${CRITERION_HOME}"
+
+# Pass HSM env vars to ckms for the benchmark requests (server handles HSM internally,
+# but ckms itself does not need PKCS#11 — plain HTTP to the KMS).
+"${CKMS_BIN}" \
+  --url "http://127.0.0.1:${BENCH_PORT}" \
+  bench \
+  --load \
+  --mode "${BENCH_MODE}" \
+  --protocol "${BENCH_PROTOCOL}" \
+  --time "${BENCH_TIME}" \
+  --load-concurrency "${BENCH_CONCURRENCY}" \
+  --warmup-time "${BENCH_WARMUP}" \
+  --cooldown-time "${BENCH_COOLDOWN}"
+
+bench_generate_report "${BENCH_PORT}"
+
+print_success "HSM load benchmark completed (KEK: ${HSM_KEK_UID})"

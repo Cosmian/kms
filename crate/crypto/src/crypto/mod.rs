@@ -1,5 +1,4 @@
 use cosmian_kmip::kmip_2_1::{
-    extra::VENDOR_ID_COSMIAN,
     kmip_attributes::Attributes,
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
@@ -10,14 +9,24 @@ pub use password_derivation::FIPS_MIN_SALT_SIZE;
 
 use crate::error::CryptoError;
 
+#[cfg(feature = "non-fips")]
+pub mod anonymization;
 pub mod certificates;
 #[cfg(feature = "non-fips")]
 pub mod cover_crypt;
 pub mod dh_shared_keys;
 pub mod elliptic_curves;
+#[cfg(feature = "non-fips")]
+pub mod fpe;
+pub mod kdf;
+#[cfg(feature = "non-fips")]
+pub mod kem;
 pub mod password_derivation;
+#[cfg(feature = "non-fips")]
+pub mod pqc;
 pub mod rsa;
 pub mod secret;
+pub mod split_key;
 pub mod symmetric;
 pub mod wrap;
 
@@ -40,6 +49,7 @@ pub trait DecryptionSystem {
 /// Note: this object does not exist in the KMIP specs,
 /// hence its definition here
 pub struct KeyPair(pub (Object, Object));
+
 impl KeyPair {
     /// Create a new `KeyPair` from a private and public key
     #[must_use]
@@ -76,9 +86,12 @@ pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY: &str = "cover_crypt_access_poli
 pub const VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION: &str = "cover_crypt_rekey_action";
 
 /// Extract an `Covercrypt` Access policy from attributes
-pub fn access_policy_from_attributes(attributes: &Attributes) -> Result<String, CryptoError> {
+pub fn access_policy_from_attributes(
+    vendor_id: &str,
+    attributes: &Attributes,
+) -> Result<String, CryptoError> {
     attributes
-        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY)
+        .get_vendor_attribute_value(vendor_id, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY)
         .map_or_else(
             || {
                 Err(CryptoError::Kmip(

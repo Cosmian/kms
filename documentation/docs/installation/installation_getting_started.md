@@ -1,19 +1,65 @@
-Cosmian KMS can be installed on various platforms, including Docker, Ubuntu, Rocky Linux, macOS, and Windows.
+# Getting started
+
+Eviden KMS can be installed on various platforms, including Docker, Ubuntu, Rocky Linux, macOS, and Windows.
 It is prepackaged with an integrated web ui (except for macOS) that is available on the `/ui` path of the server.
 
-The KMS is also available on the marketplaces of major cloud providers, prepackaged to run confidentially in a Cosmian VM.
+The KMS is also available on the marketplaces of major cloud providers, prepackaged to run confidentially in an Eviden VM.
 Please check [this page](./marketplace_guide.md) for more information.
 
 When installed using the options below, the KMS server will be automatically configured to run
 using an SQLite database.
-If you wish to change the database configuration, please refer to the [database guide](../database.md).
+If you wish to change the database configuration, please refer to the [database guide](../configuration/database/configuration.md).
 
 For high availability and scalability, refer to the [High Availability Guide](./high_availability_mode.md).
 
-!!!info "Cosmian CLI"
-    The Cosmian CLI lets you interact with the KMS from the command line.
-    Install it from [Cosmian CLI](https://package.cosmian.com/cli/)
-    and [configure it](../../cosmian_cli/index.md).
+## Verifying release signatures
+
+All Eviden KMS release packages (DEB, RPM, DMG) are GPG-signed.
+Each package is accompanied by a `.asc` signature file that can be used to verify its authenticity and integrity.
+
+### Import the Eviden public key**
+
+```sh
+gpg --import cosmian-kms-public.asc
+```
+
+The key is also bundled inside DMG installers and available in the [GitHub repository](https://github.com/Cosmian/kms/blob/develop/nix/signing-keys/cosmian-kms-public.asc).
+
+### Verify a downloaded package**
+
+```sh
+gpg --verify <package>.asc <package>
+```
+
+For example:
+
+```sh
+# Debian package
+gpg --verify cosmian-kms-server-non-fips-static-openssl_5.27.1_amd64.deb.asc \
+             cosmian-kms-server-non-fips-static-openssl_5.27.1_amd64.deb
+
+# RPM package
+gpg --verify cosmian-kms-server-non-fips-static-openssl_5.27.1_x86_64.rpm.asc \
+             cosmian-kms-server-non-fips-static-openssl_5.27.1_x86_64.rpm
+
+# DMG package
+gpg --verify cosmian-kms-server-non-fips-static-openssl-5.27.1_arm64.dmg.asc \
+             cosmian-kms-server-non-fips-static-openssl-5.27.1_arm64.dmg
+```
+
+A successful verification prints:
+
+```text
+gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
+```
+
+!!!warning
+    If the signature does not match, do not use the package.
+
+## Installation
+
+!!!info "KMS CLI"
+    The KMS CLI lets you interact with the KMS from the command line. Install it from [KMS CLI](https://package.cosmian.com/kms/) and [configure it](../kms_clients/index.md).
 
 === "Docker"
 
@@ -58,16 +104,16 @@ For high availability and scalability, refer to the [High Availability Guide](./
     ```sh
     sudo apt update && sudo apt install -y wget
     # Standard build (non-FIPS, static OpenSSL)
-    wget https://package.cosmian.com/kms/5.14.0/deb/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.14.0_amd64.deb
-    sudo apt install ./cosmian-kms-server-non-fips-static-openssl_5.14.0_amd64.deb
+    wget https://package.cosmian.com/kms/5.27.1/deb/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.27.1_amd64.deb
+    sudo apt install ./cosmian-kms-server-non-fips-static-openssl_5.27.1_amd64.deb
     sudo cosmian_kms --version
     ```
 
     Or install the FIPS build:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.14.0/deb/amd64/fips/static/cosmian-kms-server-fips-static-openssl_5.14.0_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips-static-openssl_5.14.0_amd64.deb
+    wget https://package.cosmian.com/kms/5.27.1/deb/amd64/fips/static/cosmian-kms-server-fips-static-openssl_5.27.1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips-static-openssl_5.27.1_amd64.deb
     sudo cosmian_kms --version
     ```
 
@@ -87,8 +133,8 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo dnf update && sudo dnf install -y wget
-    wget https://package.cosmian.com/kms/5.14.0/rpm/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.14.0_x86_64.rpm
-    sudo dnf install ./cosmian-kms-server-non-fips-static-openssl_5.14.0_x86_64.rpm
+    wget https://package.cosmian.com/kms/5.27.1/rpm/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.27.1_x86_64.rpm
+    sudo dnf install ./cosmian-kms-server-non-fips-static-openssl_5.27.1_x86_64.rpm
     sudo cosmian_kms --version
     ```
 
@@ -103,50 +149,50 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
 === "macOS"
 
-        Download the installer for your architecture and run it:
+    Download the installer for your architecture and run it:
 
-        - Apple Silicon (ARM64):
-
-            ```sh
-            open "https://package.cosmian.com/kms/5.14.0/dmg/arm64/non-fips/static/cosmian-kms-server-non-fips-static-openssl-5.14.0_arm64.dmg"
-            ```
-
-        Then drag-and-drop the app to Applications or follow the DMG instructions.
-
-        Note: The 5.14.0 DMG is provided for Apple Silicon (ARM64).
-
-        After installation, run:
+    - Apple Silicon (ARM64):
 
         ```sh
-        /Applications/Cosmian\ KMS\ Server.app/Contents/MacOS/cosmian_kms --version
-        /Applications/Cosmian\ KMS\ Server.app/Contents/MacOS/cosmian_kms
+        open "https://package.cosmian.com/kms/5.27.1/dmg/arm64/non-fips/static/cosmian-kms-server-non-fips-static-openssl-5.27.1_arm64.dmg"
         ```
+
+    Then drag-and-drop the app to Applications or follow the DMG instructions.
+
+    Note: The 5.27.1 DMG is provided for Apple Silicon (ARM64).
+
+    After installation, run:
+
+    ```sh
+    /Applications/Cosmian\ KMS\ Server.app/Contents/MacOS/cosmian_kms --version
+    /Applications/Cosmian\ KMS\ Server.app/Contents/MacOS/cosmian_kms
+    ```
 
     - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
     - The KMS UI is available at `http://localhost:9998/ui`.
 
-#### Static vs Dynamic builds
+### Static vs Dynamic builds
 
 - Static builds: ship with OpenSSL statically linked into the binary. Simplest to deploy; no external crypto libraries required; consistent behavior across environments.
 - Dynamic builds: link OpenSSL dynamically. This allows replacing the OpenSSL shared library at runtime to use custom or system-provided crypto. On Linux, replace the relevant `.so` files; on macOS, replace the `.dylib` files, ensuring ABI compatibility.
 
 Available dynamic packages for Debian-based distributions:
 
-        ```sh
-        # Non-FIPS dynamic (OpenSSL linked dynamically)
-        wget https://package.cosmian.com/kms/5.14.0/deb/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.14.0_amd64.deb
-        # FIPS dynamic
-        wget https://package.cosmian.com/kms/5.14.0/deb/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.14.0_amd64.deb
-        ```
+```sh
+# Non-FIPS dynamic (OpenSSL linked dynamically)
+wget https://package.cosmian.com/kms/5.27.1/deb/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.27.1_amd64.deb
+# FIPS dynamic
+wget https://package.cosmian.com/kms/5.27.1/deb/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.27.1_amd64.deb
+```
 
 Available dynamic packages for Rocky Linux:
 
-        ```sh
-        # Non-FIPS dynamic
-        wget https://package.cosmian.com/kms/5.14.0/rpm/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.14.0_x86_64.rpm
-        # FIPS dynamic
-        wget https://package.cosmian.com/kms/5.14.0/rpm/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.14.0_x86_64.rpm
-        ```
+```sh
+# Non-FIPS dynamic
+wget https://package.cosmian.com/kms/5.27.1/rpm/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.27.1_x86_64.rpm
+# FIPS dynamic
+wget https://package.cosmian.com/kms/5.27.1/rpm/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.27.1_x86_64.rpm
+```
 
 To use custom OpenSSL with dynamic builds, install or place the desired OpenSSL
 shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
@@ -156,12 +202,12 @@ shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
     On Windows, download the NSIS installer:
 
     ```sh
-    https://package.cosmian.com/kms/5.14.0/windows/x86_64/non-fips/static-openssl/cosmian-kms-server-non-fips-static-openssl_5.14.0_x86_64.exe
+    https://package.cosmian.com/kms/5.27.1/windows/x86_64/non-fips/static-openssl/cosmian-kms-server-non-fips-static-openssl_5.27.1_x86_64.exe
     ```
 
-    Run the installer to install Cosmian KMS Server. The installer will:
+    Run the installer to install Eviden KMS Server. The installer will:
     - Install the KMS server with integrated web UI
-    - Set up the configuration file at `%LOCALAPPDATA%\Cosmian KMS Server\kms.toml`
+    - Set up the configuration file at `C:\Users\<username>\AppData\Local\Eviden KMS Server\kms.toml`
 
     After installation, you can run the server:
 
@@ -170,5 +216,5 @@ shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
     ```
 
     - The KMS UI is available at `http://localhost:9998/ui`
-    - The server uses the configuration file located at `%LOCALAPPDATA%\Cosmian KMS Server\kms.toml`
-    - See the [server configuration](../server_configuration_file.md) for more information
+    - The server uses the configuration file located at `C:\Users\<username>\AppData\Local\Eviden KMS Server\kms.toml`
+    - See the [server configuration](../configuration/server_configuration_file.md) for more information

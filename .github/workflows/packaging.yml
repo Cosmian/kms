@@ -7,30 +7,41 @@ on:
       toolchain:
         required: true
         type: string
-        default: 1.90.0
+        default: 1.97.0
+
   workflow_dispatch:
     inputs:
       toolchain:
-        description: Rust toolchain to use (e.g., stable, nightly-YYYY-MM-DD)
-        required: true
+        description: Rust toolchain version
+        required: false
         type: string
-        default: 1.90.0
+        default: 1.97.0
 
 jobs:
   windows-package:
     uses: ./.github/workflows/build_windows.yml
     with:
-      toolchain: ${{ inputs.toolchain }}
+      toolchain: 1.97.0
       archive-name: windows
+    secrets:
+      AZURE_TENANT_ID_POC: ${{ secrets.AZURE_TENANT_ID_POC }}
+      AZURE_CLIENT_ID_POC: ${{ secrets.AZURE_CLIENT_ID_POC }}
+      AZURE_CLIENT_SECRET_POC: ${{ secrets.AZURE_CLIENT_SECRET_POC }}
 
   docker:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==
+      'schedule'
     uses: ./.github/workflows/packaging-docker.yml
     with:
-      toolchain: ${{ inputs.toolchain }}
+      toolchain: 1.97.0
+    secrets: inherit
 
   packages:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==
+      'schedule'
     name: ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     runs-on: ${{ matrix.runner }}
+
     strategy:
       fail-fast: false
       matrix:
@@ -39,15 +50,21 @@ jobs:
         runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
 
     steps:
-      - name: Nix installation
-        uses: cachix/install-nix-action@v31
-
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
+      - uses: ./.github/actions/cleanup-runner
+        if: runner.os == 'Linux'
+
+      - uses: ./.github/actions/setup-nix
+        with:
+          extra-nix-config: http-connections = 8
+
+      - uses: ./.github/actions/install-mise
+
       - name: Set up GPG
-        uses: crazy-max/ghaction-import-gpg@v6
+        uses: crazy-max/ghaction-import-gpg@v7
         with:
           gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
           passphrase: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
@@ -55,27 +72,56 @@ jobs:
       - name: List keys
         run: gpg -K
 
-      - name: Package
+      - name: Package with GPG signature
         run: |
-          bash .github/scripts/nix.sh --profile release --variant ${{ matrix.features }} --link ${{ matrix.link }} package
+          if [ "$(uname)" = "Darwin" ]; then
+            mise run package:dmg --variant ${{ matrix.features }} --link ${{ matrix.link }}
+          else
+            mise run package:deb --variant ${{ matrix.features }} --link ${{ matrix.link }}
+            mise run package:rpm --variant ${{ matrix.features }} --link ${{ matrix.link }}
+            mise run package:pkcs11-zip --variant ${{ matrix.features }} --link ${{ matrix.link }}
+          fi
         env:
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
 
+      - name: Generate SBOM (server + ckms)
+        if: matrix.runner == 'ubuntu-24.04'
+        run: |
+          mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target openssl_3_1_2
+          mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target openssl_3_6_2
+          mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target server
+          mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target ckms
+
+      - name: Upload SBOM artifact
+        if: matrix.runner == 'ubuntu-24.04'
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom_${{ matrix.features }}_${{ matrix.link }}
+          path: sbom/
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Upload package
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
           path: result-*-${{ matrix.features }}-${{ matrix.link }}/*
           retention-days: 1
           if-no-files-found: error
 
+  kubernetes:
+    uses: ./.github/workflows/packaging-kubernetes.yml
+    secrets: inherit
+
   publish-release:
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/')
+      || github.event_name == 'workflow_dispatch'
+
     name: Publish ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     needs: packages
-    concurrency:
-      group: publish-release
-      cancel-in-progress: false
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
@@ -89,7 +135,7 @@ jobs:
         features: [fips, non-fips]
         link: [static, dynamic]
         runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
-        package-type: [deb, rpm, dmg]
+        package-type: [deb, rpm, dmg, pkcs11-zip]
         cpu-arch: [amd64, arm64]
         exclude:
           - runner: ubuntu-24.04
@@ -100,6 +146,8 @@ jobs:
             package-type: deb
           - runner: macos-15
             package-type: rpm
+          - runner: macos-15
+            package-type: pkcs11-zip
           - runner: ubuntu-24.04
             cpu-arch: arm64
           - runner: ubuntu-24.04-arm
@@ -111,12 +159,12 @@ jobs:
         run: rm -rf ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
 
       - name: Checkout repository (for public key file)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
 
       - name: Download packaged artifact for this matrix
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
 
@@ -165,24 +213,166 @@ jobs:
             PACKAGE_PATTERN="${{ matrix.cpu-arch }}"
           fi
 
-          # Upload package files
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-            ./nix/signing-keys/cosmian-kms-public.asc \
-            $RESULT_DIR/*${PACKAGE_PATTERN}*${{ matrix.package-type }}* \
-            $RESULT_SERVER_DIR/*${BINARY_PATTERN}* \
-            cosmian@package.cosmian.com:${remote_dir}/
+          # Map package-type to file extension (pkcs11-zip produces .zip files)
+          if [[ "${{ matrix.package-type }}" == "pkcs11-zip" ]]; then
+            PKG_EXT=".zip"
+          else
+            PKG_EXT=".${{ matrix.package-type }}"
+          fi
+
+          # Upload package files (installer packages + server binary)
+          # pkcs11-zip: only upload ZIP artifacts (no server binary)
+          if [[ "${{ matrix.package-type }}" == "pkcs11-zip" ]]; then
+            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+              $RESULT_DIR/*${PACKAGE_PATTERN}*${PKG_EXT}* \
+              cosmian@package.cosmian.com:${remote_dir}/
+          else
+            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+              ./nix/signing-keys/cosmian-kms-public.asc \
+              $RESULT_DIR/*${PACKAGE_PATTERN}*${PKG_EXT}* \
+              $RESULT_SERVER_DIR/*${BINARY_PATTERN}* \
+              cosmian@package.cosmian.com:${remote_dir}/
+          fi
 
       - name: Publish GitHub Release assets
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') && matrix.link == 'static' && matrix.package-type != 'pkcs11-zip'
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-server*
-            result-server-${{ matrix.features }}-${{ matrix.link }}/bin/cosmian-kms-server*
+            result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-cli*
             ./nix/signing-keys/cosmian-kms-public.asc
+
+      - name: Publish GitHub Release assets (pkcs11-zip)
+        if: startsWith(github.ref, 'refs/tags/') && matrix.link == 'static' && matrix.package-type == 'pkcs11-zip'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            result-pkcs11-zip-${{ matrix.features }}-${{ matrix.link }}/cosmian-pkcs11-*
+            ./nix/signing-keys/cosmian-kms-public.asc
+
+  publish-sbom:
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/')
+      || github.event_name == 'workflow_dispatch'
+
+    name: Publish SBOM ${{ matrix.features }}-${{ matrix.link }}
+    needs: packages
+    concurrency:
+      group: publish-sbom-${{ matrix.features }}-${{ matrix.link }}
+      cancel-in-progress: false
+      queue: max
+    runs-on: [self-hosted, not-sgx]
+    container:
+      image: cosmian/docker_doc_ci
+      volumes:
+        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [fips, non-fips]
+        link: [static, dynamic]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Download SBOM artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: sbom_${{ matrix.features }}_${{ matrix.link }}
+          path: sbom
+
+      - name: Push SBOM to package.cosmian.com
+        shell: bash
+        run: |
+          set -ex
+          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
+            BRANCH="${GITHUB_REF_NAME}"
+          else
+            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          fi
+          SBOM_REMOTE_BASE="/mnt/package/kms/${BRANCH}/sbom"
+
+          for target in server ckms; do
+            remote_dir="${SBOM_REMOTE_BASE}/${target}/${{ matrix.features }}/${{ matrix.link }}"
+            ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+              cosmian@package.cosmian.com mkdir -p "${remote_dir}"
+            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+              sbom/${target}/${{ matrix.features }}/${{ matrix.link }}/* \
+              cosmian@package.cosmian.com:"${remote_dir}/"
+          done
+
+  build-monitoring-archive:
+    name: Build monitoring stack archive
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/')
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Create monitoring archive
+        run: zip -r cosmian-kms-monitoring.zip monitoring/
+
+      - name: Upload monitoring archive artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: cosmian-kms-monitoring
+          path: cosmian-kms-monitoring.zip
+          retention-days: 1
+          if-no-files-found: error
+
+  publish-monitoring:
+    name: Publish monitoring stack archive
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/')
+      || github.event_name == 'workflow_dispatch'
+    needs: build-monitoring-archive
+    runs-on: [self-hosted, not-sgx]
+    container:
+      image: cosmian/docker_doc_ci
+      volumes:
+        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+
+    steps:
+      - name: Download monitoring archive artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: cosmian-kms-monitoring
+
+      - name: Push to package.cosmian.com
+        shell: bash
+        run: |
+          set -ex
+          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
+            BRANCH="${GITHUB_REF_NAME}"
+          else
+            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          fi
+          REMOTE_DIR="/mnt/package/kms/${BRANCH}/monitoring"
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "${REMOTE_DIR}"
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            cosmian-kms-monitoring.zip \
+            cosmian@package.cosmian.com:"${REMOTE_DIR}/"
+
+      - name: Publish GitHub Release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: cosmian-kms-monitoring.zip
 
   tests:
     needs: packages
     uses: ./.github/workflows/packaging-tests.yml
     with:
-      toolchain: ${{ inputs.toolchain }}
+      toolchain: 1.97.0

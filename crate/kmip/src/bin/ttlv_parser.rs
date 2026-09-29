@@ -42,7 +42,7 @@ fn main() {
                 } else if major == 2 {
                     KmipFlavor::Kmip2
                 } else {
-                    println!("ERROR: Unsupported KMIP version: {major}.{minor}",);
+                    println!("ERROR: Unsupported KMIP version: {major}.{minor}");
                     continue;
                 };
                 match TTLV::from_bytes(&bytes, kmip_flavor) {

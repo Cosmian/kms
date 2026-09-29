@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#MISE description="Run all HSM tests (softhsm2, utimaco, proteccio, crypt2pay)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "-d --db <db>" env="DB" help="DB backend to test against" default="sqlite" {
+#USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+
+TASK_DIR="${MISE_CONFIG_ROOT}/.mise/tasks/test"
+DB="${usage_db:-sqlite}"
+
+print_header "Running all HSM tests (variant=${VARIANT_NAME}, db=${DB})"
+
+bash "${TASK_DIR}/hsm-softhsm2" --variant "$VARIANT" --link "$LINK" --db "$DB"
+if [ "$(uname)" = "Linux" ]; then
+  bash "${TASK_DIR}/hsm-utimaco" --variant "$VARIANT" --link "$LINK" --db "$DB"
+  bash "${TASK_DIR}/hsm-proteccio" --variant "$VARIANT" --link "$LINK" --db "$DB"
+  bash "${TASK_DIR}/hsm-crypt2pay" --variant "$VARIANT" --link "$LINK" --db "$DB"
+fi
+
+print_success "All HSM tests completed"

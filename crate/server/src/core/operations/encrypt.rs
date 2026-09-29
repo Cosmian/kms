@@ -1,9 +1,9 @@
-use std::sync::Arc;
-
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::EncryptionSystem;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::fpe::encrypt_fpe;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
 #[cfg(feature = "non-fips")]
@@ -14,20 +14,17 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         KmipError,
-        kmip_0::kmip_types::{
-            BlockCipherMode, CryptographicUsageMask, ErrorReason, PaddingMethod, State,
-        },
+        kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, ErrorReason, PaddingMethod},
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,
+            kmip_attributes::Attributes,
             kmip_objects::{Certificate, Object},
             kmip_operations::{Encrypt, EncryptResponse},
             kmip_types::{
                 CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
-                UsageLimitsUnit,
             },
         },
-        time_normalize,
     },
     cosmian_kms_crypto::{
         crypto::{
@@ -39,311 +36,141 @@ use cosmian_kms_server_database::reexport::{
         },
         openssl::kmip_public_key_to_openssl,
     },
-    cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata},
 };
-use cosmian_logger::{debug, info, trace};
+use cosmian_logger::{debug, trace};
 use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
 };
 use zeroize::Zeroizing;
 
+#[cfg(feature = "non-fips")]
+use crate::core::operations::algorithm_policy::{
+    enforce_ecies_fixed_suite_for_attributes, enforce_ecies_fixed_suite_for_pkey_id,
+};
 use crate::{
-    core::{
-        KMS,
-        operations::get_effective_state,
-        uid_utils::{has_prefix, uids_from_unique_identifier},
-    },
+    config::ServerParams,
+    core::{KMS, operations::CryptoOpSpec},
     error::KmsError,
     kms_bail,
-    result::{KResult, KResultHelper},
+    middlewares::UserId,
+    result::KResult,
 };
 
 const EMPTY_SLICE: &[u8] = &[];
 
+/// Marker type for the Encrypt operation's key selection requirements.
+pub(crate) struct EncryptOp;
+
+impl CryptoOpSpec for EncryptOp {
+    type Request = Encrypt;
+    type Response = EncryptResponse;
+
+    const KMIP_OP: KmipOperation = KmipOperation::Encrypt;
+    const OP_NAME: &'static str = "Encrypt";
+
+    fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier> {
+        request.unique_identifier.as_ref()
+    }
+
+    fn usage_data_len(request: &Self::Request) -> usize {
+        request.data.as_ref().map_or(0, |d| d.len())
+    }
+
+    fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
+        if let Object::Certificate { .. } = owm.object() {
+            return owm.has_usage_mask(CryptographicUsageMask::Encrypt, true);
+        }
+        if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
+            return owm.has_usage_mask(CryptographicUsageMask::Encrypt, false);
+        }
+        false
+    }
+
+    fn map_selection_error(
+        e: KmsError,
+        unique_identifier: &UniqueIdentifier,
+        user: &UserId,
+    ) -> KmsError {
+        match e {
+            KmsError::ItemNotFound(_) => {
+                KmsError::ItemNotFound(format!("Encrypt: key id: {unique_identifier}, not found"))
+            }
+            KmsError::Unauthorized(_) => KmsError::Unauthorized(format!(
+                "Encrypt: the user {user} does not have permission to encrypt using the key: \
+                 {unique_identifier}"
+            )),
+            other => other,
+        }
+    }
+
+    async fn execute_local(
+        kms: &KMS,
+        owm: &ObjectWithMetadata,
+        request: &Self::Request,
+        _user: &UserId,
+    ) -> KResult<Self::Response> {
+        let data = request.data.as_ref().ok_or_else(|| {
+            KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
+        })?;
+        BulkData::deserialize(data).map_or_else(
+            |_| encrypt_single(owm, &kms.params, request),
+            |bulk_data| encrypt_bulk(owm, &kms.params, request.clone(), bulk_data),
+        )
+    }
+
+    async fn execute_oracle(
+        kms: &KMS,
+        request: &Self::Request,
+        uid: &str,
+        prefix: &str,
+    ) -> KResult<Self::Response> {
+        let data = request.data.as_ref().ok_or_else(|| {
+            KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
+        })?;
+        let lock = kms.crypto_oracles.read().await;
+        let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+            KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
+        })?;
+        let ca = request
+            .cryptographic_parameters
+            .as_ref()
+            .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
+            .transpose()?;
+        let encrypted_content = crypto_oracle
+            .encrypt(
+                uid,
+                data,
+                ca.clone(),
+                request.authenticated_encryption_additional_data.as_deref(),
+            )
+            .await?;
+        debug!(
+            "algorithm: {ca:?}, ciphertext length: {}",
+            encrypted_content.ciphertext.len()
+        );
+        Ok(EncryptResponse {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            data: Some(encrypted_content.ciphertext.clone()),
+            i_v_counter_nonce: encrypted_content.iv,
+            correlation_value: request.correlation_value.clone(),
+            authenticated_encryption_tag: encrypted_content.tag,
+        })
+    }
+}
+
 pub(crate) async fn encrypt(
     kms: &KMS,
     request: Encrypt,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
 ) -> KResult<EncryptResponse> {
-    trace!("{request}");
-
-    // We do not (yet) support continuation cases
-    let data = request.data.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
-    })?;
-
-    // Get the uids from the unique identifier
-    let unique_identifier = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
-        .await
-        .context("Encrypt")?;
-    trace!("candidate uids: {uids:?}");
-
-    // Determine which UID to select. The decision process is as follows: loop through the uids
-    // 1. If the UID has a prefix, try using that
-    // 2. If the UID does not have a prefix, fetch the corresponding object and check that
-    //   a- the object is active
-    //   b- the object is a public Key, a Symmetric Key, or a Certificate
-    //
-    // Permissions checks are done AFTER the object is fetched in the default database
-    // to avoid calling `database.is_object_owned_by()` and hence a double call to the DB
-    // for each uid. This is also based on the high probability that there is still a single object
-    // in the candidate list.
-
-    let mut selected_owm = None;
-    for uid in uids {
-        if let Some(prefix) = has_prefix(&uid) {
-            if !kms
-                .database
-                .is_object_owned_by(&uid, user, params.clone())
-                .await?
-            {
-                let ops = kms
-                    .database
-                    .list_user_operations_on_object(&uid, user, false, params.clone())
-                    .await?;
-                if !ops
-                    .iter()
-                    .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
-                {
-                    continue;
-                }
-            }
-            debug!("user: {user} is authorized to encrypt using: {uid} from decryption oracle");
-            return encrypt_using_encryption_oracle(kms, &request, data, &uid, prefix).await;
-        }
-        let owm = kms
-            .database
-            .retrieve_object(&uid, params.clone())
-            .await?
-            .ok_or_else(|| {
-                KmsError::InvalidRequest(format!("Encrypt: failed to retrieve key: {uid}"))
-            })?;
-        // Check effective state (PreActive with past activation_date counts as Active)
-        if get_effective_state(&owm)? != State::Active {
-            continue;
-        }
-        // check user permissions - owner can always encrypt
-        if owm.owner() != user {
-            let ops = kms
-                .database
-                .list_user_operations_on_object(&uid, user, false, params.clone())
-                .await?;
-            if !ops
-                .iter()
-                .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
-            {
-                continue;
-            }
-        }
-        trace!("user: {user} is authorized to encrypt using: {uid}");
-        // TODO check why usage masks are not checked for certificates
-        if let Object::Certificate { .. } = owm.object() {
-            selected_owm = Some(owm);
-            break;
-        }
-        if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
-            // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
-            // and the attributes of the object will be empty. Use the metadata attributes.
-            let attributes = owm
-                .object()
-                .attributes()
-                .unwrap_or_else(|_| owm.attributes());
-            trace!("attributes: {attributes}");
-            if !attributes.is_usage_authorized_for(CryptographicUsageMask::Encrypt)? {
-                continue;
-            }
-            selected_owm = Some(owm);
-            break;
-        }
-    }
-    let mut owm = selected_owm.ok_or_else(|| {
-        KmsError::Kmip21Error(
-            ErrorReason::Item_Not_Found,
-            format!("Encrypt: no valid key for id: {unique_identifier}"),
-        )
-    })?;
-
-    // Enforce time window constraints: Active key is unusable for Encrypt if current time is
-    // before ProcessStartDate OR after ProtectStopDate (when those attributes are present).
-    // The CS-BC-M-14-21 vector sets ActivationDate in the past, ProcessStartDate in the future
-    // and ProtectStopDate in the past expecting Encrypt to fail with WrongKeyLifecycleState.
-    if get_effective_state(&owm)? == State::Active {
-        if let Ok(attrs) = owm.object().attributes() {
-            let now = time_normalize()?;
-            let too_early = attrs.process_start_date.is_some_and(|d| now < d);
-            let too_late = attrs.protect_stop_date.is_some_and(|d| now > d);
-            if too_early || too_late {
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Wrong_Key_Lifecycle_State,
-                    "DENIED".to_owned(),
-                ));
-            }
-        }
-    }
-
-    // get unwrapped object for encryption but preserve original wrapped object
-    let unwrapped_object = match owm.object() {
-        Object::Certificate { .. } => owm.object().clone(),
-        _ => {
-            kms.get_unwrapped(owm.id(), owm.object(), user, params.clone())
-                .await?
-        }
-    };
-
-    // Create a new ObjectWithMetadata with the unwrapped object for encryption operations
-    let mut unwrapped_owm = owm.clone();
-    unwrapped_owm.set_object(unwrapped_object);
-
-    // plaintext length for logging
-    let plaintext_len = request.data.as_ref().map_or(0, |d| d.len());
-
-    // Enforce UsageLimits (byte unit). The vector CS-BC-M-7-21 sets a UsageLimitsTotal=16 (bytes)
-    // and performs two 16-byte ECB encrypts expecting the second to fail with PermissionDenied.
-    // We implement a simple in-memory decrement persisted via attributes/state update.
-    // NOTE: For durability a DB column would be better; for conformance tests this suffices.
-    if let Ok(attrs) = unwrapped_owm.object().attributes() {
-        if let Some(usage_limits) = attrs.usage_limits.as_ref() {
-            // Only enforce for Byte unit
-            if matches!(usage_limits.usage_limits_unit, UsageLimitsUnit::Byte) {
-                let remaining = usage_limits.usage_limits_total; // total remaining bytes allowed
-                let needed = i64::try_from(plaintext_len).map_or(i64::MAX, |v| v);
-                if remaining < needed {
-                    return Err(KmsError::Kmip21Error(
-                        ErrorReason::Permission_Denied,
-                        "DENIED".to_owned(),
-                    ));
-                }
-            }
-        }
-    }
-
-    // It may be a bulk encryption request; if not, fallback to single encryption
-    let res = match BulkData::deserialize(data) {
-        Ok(bulk_data) => {
-            // It is a bulk encryption request
-            encrypt_bulk(&unwrapped_owm, request, bulk_data)
-        }
-        Err(_) => {
-            // fallback to single encryption
-            encrypt_single(&unwrapped_owm, &request)
-        }
-    }?;
-
-    // Post-encryption: decrement usage limits if enforced.
-    if let Ok(attrs) = unwrapped_owm.object_mut().attributes_mut() {
-        if let Some(ref mut usage_limits) = attrs.usage_limits {
-            if matches!(usage_limits.usage_limits_unit, cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UsageLimitsUnit::Byte) {
-                if let Ok(p) = i64::try_from(plaintext_len) {
-                    usage_limits.usage_limits_total -= p;
-                } else {
-                    usage_limits.usage_limits_total = 0;
-                }
-                if usage_limits.usage_limits_total < 0 {
-                    usage_limits.usage_limits_total = 0;
-                }
-            }
-        }
-    }
-
-    // Copy updated usage limits from unwrapped_owm back to original owm for persistence
-    if let (Ok(unwrapped_attrs), Ok(original_attrs)) = (
-        unwrapped_owm.object().attributes(),
-        owm.object_mut().attributes_mut(),
-    ) {
-        if let Some(unwrapped_usage_limits) = unwrapped_attrs.usage_limits.as_ref() {
-            if let Some(ref mut original_usage_limits) = original_attrs.usage_limits {
-                original_usage_limits.usage_limits_total =
-                    unwrapped_usage_limits.usage_limits_total;
-            }
-        }
-    }
-
-    // Persist updated attributes (including possibly decremented UsageLimits) so subsequent
-    // operations observe the reduced remaining total. We ignore failure here only if the
-    // encryption itself succeeded; but propagate errors to surface DB issues.
-    if let Ok(attributes) = owm.object().attributes() {
-        if let Err(e) = kms
-            .database
-            .update_object(
-                owm.id(),
-                owm.object(),
-                attributes,
-                None, // tags unchanged
-                params.clone(),
-            )
-            .await
-        {
-            return Err(KmsError::ServerError(format!(
-                "Encrypt: failed to persist updated usage limits: {e}"
-            )));
-        }
-    }
-
-    info!(
-        uid = owm.id(),
-        user = user,
-        "Encrypted data of: {} bytes -> ciphertext length: {}",
-        plaintext_len,
-        res.data.as_ref().map_or(0, Vec::len),
+    trace!(
+        "uid={:?}, data_len={}",
+        request.unique_identifier,
+        request.data.as_ref().map_or(0, |d| d.len())
     );
-    Ok(res)
-}
-
-/// Encrypt using an encryption oracle.
-///
-/// # Arguments
-/// * `kms` - the KMS
-/// * `request` - the encrypted request
-/// * `data` - the data to encrypt
-/// * `uid` - the unique identifier of the key
-/// * `prefix` - the prefix of the encryption oracle
-///
-/// # Returns
-/// * the encrypted response
-async fn encrypt_using_encryption_oracle(
-    kms: &KMS,
-    request: &Encrypt,
-    data: &Zeroizing<Vec<u8>>,
-    uid: &str,
-    prefix: &str,
-) -> KResult<EncryptResponse> {
-    let lock = kms.encryption_oracles.read().await;
-    let encryption_oracle = lock.get(prefix).ok_or_else(|| {
-        KmsError::InvalidRequest(format!(
-            "Encrypt: unknown encryption oracle prefix: {prefix}"
-        ))
-    })?;
-    let ca = request
-        .cryptographic_parameters
-        .as_ref()
-        .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
-        .transpose()?;
-    let encrypted_content = encryption_oracle
-        .encrypt(
-            uid,
-            data,
-            ca.clone(),
-            request.authenticated_encryption_additional_data.as_deref(),
-        )
-        .await?;
-    debug!(
-        "algorithm: {ca:?}, ciphertext length: {}",
-        encrypted_content.ciphertext.len()
-    );
-
-    Ok(EncryptResponse {
-        unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-        data: Some(encrypted_content.ciphertext.clone()),
-        i_v_counter_nonce: encrypted_content.iv,
-        correlation_value: request.correlation_value.clone(),
-        authenticated_encryption_tag: encrypted_content.tag,
-    })
+    Box::pin(kms.perform_crypto_operation::<EncryptOp>(request, user)).await
 }
 
 /// Encrypt a single plaintext with the key
@@ -354,13 +181,17 @@ async fn encrypt_using_encryption_oracle(
 ///  * `request` - the encryption request
 /// # Returns
 /// * the encrypt response
-fn encrypt_single(owm: &ObjectWithMetadata, request: &Encrypt) -> KResult<EncryptResponse> {
+fn encrypt_single(
+    owm: &ObjectWithMetadata,
+    server_params: &ServerParams,
+    request: &Encrypt,
+) -> KResult<EncryptResponse> {
     match owm.object() {
         Object::SymmetricKey { .. } => encrypt_with_symmetric_key(request, owm),
-        Object::PublicKey { .. } => encrypt_with_public_key(request, owm),
+        Object::PublicKey { .. } => encrypt_with_public_key(request, server_params, owm),
         Object::Certificate(Certificate {
             certificate_value, ..
-        }) => encrypt_with_certificate(request, owm.id(), certificate_value),
+        }) => encrypt_with_certificate(request, server_params, owm.id(), certificate_value),
         other => kms_bail!(KmsError::NotSupported(format!(
             "encrypt: encryption with keys of type: {} is not supported",
             other.object_type()
@@ -383,6 +214,7 @@ fn encrypt_single(owm: &ObjectWithMetadata, request: &Encrypt) -> KResult<Encryp
 // TODO: Covercrypt already has a bulk encryption method; maybe this should be merged here
 pub(super) fn encrypt_bulk(
     owm: &ObjectWithMetadata,
+    server_params: &ServerParams,
     mut request: Encrypt,
     bulk_data: BulkData,
 ) -> KResult<EncryptResponse> {
@@ -402,6 +234,17 @@ pub(super) fn encrypt_bulk(
                     .i_v_counter_nonce
                     .clone()
                     .unwrap_or(random_nonce(cipher)?);
+                if cipher.nonce_size() > 0
+                    && nonce.len() != cipher.nonce_size()
+                    && !cipher.allows_variable_nonce()
+                {
+                    return Err(KmsError::InvalidRequest(format!(
+                        "Encrypt: invalid IV/nonce length: expected {} bytes for {cipher:?}, \
+                         got {}",
+                        cipher.nonce_size(),
+                        nonce.len()
+                    )));
+                }
                 let padding_method = request
                     .cryptographic_parameters
                     .as_ref()
@@ -423,7 +266,7 @@ pub(super) fn encrypt_bulk(
         Object::PublicKey { .. } => {
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(plaintext.clone());
-                let response = encrypt_with_public_key(&request, owm)?;
+                let response = encrypt_with_public_key(&request, server_params, owm)?;
                 ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
             }
         }
@@ -432,7 +275,8 @@ pub(super) fn encrypt_bulk(
         }) => {
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(plaintext.clone());
-                let response = encrypt_with_certificate(&request, owm.id(), certificate_value)?;
+                let response =
+                    encrypt_with_certificate(&request, server_params, owm.id(), certificate_value)?;
                 ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
             }
         }
@@ -457,6 +301,43 @@ fn encrypt_with_symmetric_key(
     owm: &ObjectWithMetadata,
 ) -> KResult<EncryptResponse> {
     trace!("entering. owm: {}", owm.attributes());
+
+    let key_block = owm.object().key_block()?;
+    let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
+    let req_cp = request.cryptographic_parameters.as_ref();
+    let cryptographic_algorithm = req_cp
+        .and_then(|cp| cp.cryptographic_algorithm)
+        .or_else(|| stored_cp.and_then(|cp| cp.cryptographic_algorithm))
+        .or_else(|| key_block.cryptographic_algorithm().copied())
+        .unwrap_or(CryptographicAlgorithm::AES);
+
+    #[cfg(not(feature = "non-fips"))]
+    if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+        return Err(KmsError::NotSupported(
+            "FPE_FF1 encryption is not supported in FIPS mode".to_owned(),
+        ));
+    }
+
+    #[cfg(feature = "non-fips")]
+    if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+        let plaintext = request.data.as_ref().ok_or_else(|| {
+            KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
+        })?;
+        let ciphertext = encrypt_fpe(
+            &key_block.key_bytes()?,
+            plaintext,
+            request.authenticated_encryption_additional_data.as_deref(),
+            request.i_v_counter_nonce.as_deref(),
+        )
+        .map_err(|e| KmsError::CryptographicError(format!("FPE encrypt failed: {e}")))?;
+        return Ok(EncryptResponse {
+            unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+            data: Some(ciphertext),
+            i_v_counter_nonce: None,
+            correlation_value: request.correlation_value.clone(),
+            authenticated_encryption_tag: None,
+        });
+    }
     let (key_bytes, aead) = get_key_and_cipher(request, owm)?;
     let plaintext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
@@ -465,10 +346,19 @@ fn encrypt_with_symmetric_key(
     let nonce = if aead.nonce_size() == 0 {
         Vec::new()
     } else {
-        request
+        let n = request
             .i_v_counter_nonce
             .clone()
-            .unwrap_or(random_nonce(aead)?)
+            .unwrap_or(random_nonce(aead)?);
+        let expected = aead.nonce_size();
+        if n.len() != expected && !aead.allows_variable_nonce() {
+            return Err(KmsError::InvalidRequest(format!(
+                "Encrypt: invalid IV/nonce length: expected {expected} bytes for {:?}, got {}",
+                aead,
+                n.len()
+            )));
+        }
+        n
     };
     let aad = request
         .authenticated_encryption_additional_data
@@ -489,11 +379,16 @@ fn encrypt_with_symmetric_key(
             }
         });
     if aead.nonce_size() == 0 {
-        trace!("plaintext (ECB): {plaintext:?}, aad: {aad:?}, padding_method: {padding_method:?}");
+        trace!(
+            "ECB encrypt: plaintext_len={}, padding_method={padding_method:?}",
+            plaintext.len()
+        );
     } else {
         trace!(
-            "plaintext: {plaintext:?}, nonce: {nonce:?}, aad: {aad:?}, padding_method: \
-             {padding_method:?}"
+            "plaintext_len={}, nonce_len={}, aad_len={}, padding_method={padding_method:?}",
+            plaintext.len(),
+            nonce.len(),
+            aad.len()
         );
     }
     let (ciphertext, tag) = sym_encrypt(
@@ -506,9 +401,13 @@ fn encrypt_with_symmetric_key(
     )?;
 
     if aead.nonce_size() == 0 {
-        trace!("ciphertext (ECB): {ciphertext:?}");
+        trace!("ECB encrypt result: ciphertext_len={}", ciphertext.len());
     } else {
-        trace!("ciphertext: {ciphertext:?}, tag: {tag:?},");
+        trace!(
+            "encrypt result: ciphertext_len={}, tag_len={}",
+            ciphertext.len(),
+            tag.len()
+        );
     }
     // Validate and apply AEAD TagLength handling.
     // For AEAD (ChaCha20-Poly1305), KMIP vectors expect an invalid tag length to fail the request
@@ -590,7 +489,7 @@ fn get_key_and_cipher(
     request: &Encrypt,
     owm: &ObjectWithMetadata,
 ) -> KResult<(Zeroizing<Vec<u8>>, SymCipher)> {
-    trace!("entering");
+    trace!("Entering get_key_and_cipher");
     // Make sure that the key used to encrypt can be used to encrypt.
     if !owm
         .object()
@@ -604,6 +503,15 @@ fn get_key_and_cipher(
         ));
     }
     let key_block = owm.object().key_block()?;
+    // Prevent FPE_FF1 keys from being misused for standard symmetric operations.
+    // FPE_FF1 encryption is handled before this point; reaching here with an FPE_FF1
+    // key means the caller explicitly requested a different algorithm, which is a misuse.
+    if key_block.cryptographic_algorithm().copied() == Some(CryptographicAlgorithm::FPE_FF1) {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            "an FPE_FF1 key may only be used for FPE_FF1 encrypt operations".to_owned(),
+        ));
+    }
     let key_bytes = key_block.key_bytes()?;
     let aead = match key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
@@ -636,6 +544,7 @@ fn get_key_and_cipher(
 
 fn encrypt_with_public_key(
     request: &Encrypt,
+    server_params: &ServerParams,
     owm: &ObjectWithMetadata,
 ) -> KResult<EncryptResponse> {
     // Make sure that the key used to encrypt can be used to encrypt.
@@ -652,7 +561,34 @@ fn encrypt_with_public_key(
     }
 
     let key_block = owm.object().key_block()?;
+
     match &key_block.key_format_type {
+        #[cfg(feature = "non-fips")]
+        KeyFormatType::ConfigurableKEMPublicKey => {
+            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
+                crypto::kem::kem_encaps, reexport::cosmian_crypto_core::bytes_ser_de::Serializable,
+            };
+
+            let (ek_bytes, _) = owm.object().key_block()?.key_bytes_and_attributes()?;
+            let (key, enc) = kem_encaps(&ek_bytes, request.data.as_ref())?;
+            Ok(EncryptResponse {
+                unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                data: Some(
+                    (key, enc)
+                        .serialize()
+                        .map_err(|e| {
+                            KmsError::ConversionError(format!(
+                                "failed serializing the configurable-KEM encapsulation \
+                                 results: {e}"
+                            ))
+                        })?
+                        .to_vec(),
+                ),
+                i_v_counter_nonce: None,
+                correlation_value: None,
+                authenticated_encryption_tag: None,
+            })
+        }
         #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptPublicKey => {
             CoverCryptEncryption::instantiate(Covercrypt::default(), owm.id(), owm.object())?
@@ -662,7 +598,53 @@ fn encrypt_with_public_key(
         KeyFormatType::TransparentECPublicKey
         | KeyFormatType::TransparentRSAPublicKey
         | KeyFormatType::PKCS1
-        | KeyFormatType::PKCS8 => {
+        | KeyFormatType::PKCS8
+        | KeyFormatType::Raw => {
+            // Check for KEM: if the key's algorithm is ML-KEM or hybrid KEM, perform encapsulation
+            // instead of standard encryption.
+            #[cfg(feature = "non-fips")]
+            {
+                let key_algo = key_block
+                    .cryptographic_algorithm()
+                    .copied()
+                    .or_else(|| owm.attributes().cryptographic_algorithm);
+                if matches!(
+                    key_algo,
+                    Some(
+                        CryptographicAlgorithm::MLKEM_512
+                            | CryptographicAlgorithm::MLKEM_768
+                            | CryptographicAlgorithm::MLKEM_1024
+                    )
+                ) {
+                    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_kem::ml_kem_encapsulate;
+                    let (pub_bytes, _) = key_block.key_bytes_and_attributes()?;
+                    let (shared_secret, ciphertext) = ml_kem_encapsulate(&pub_bytes)?;
+                    return Ok(EncryptResponse {
+                        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                        data: Some(shared_secret),
+                        i_v_counter_nonce: Some(ciphertext),
+                        correlation_value: request.correlation_value.clone(),
+                        authenticated_encryption_tag: None,
+                    });
+                }
+                if let Some(
+                    algo @ (CryptographicAlgorithm::X25519MLKEM768
+                    | CryptographicAlgorithm::X448MLKEM1024),
+                ) = key_algo
+                {
+                    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::hybrid_kem::hybrid_kem_encapsulate;
+                    let (pub_bytes, _) = key_block.key_bytes_and_attributes()?;
+                    let (shared_secret, ciphertext) = hybrid_kem_encapsulate(algo, &pub_bytes)?;
+                    return Ok(EncryptResponse {
+                        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                        data: Some(shared_secret),
+                        i_v_counter_nonce: Some(ciphertext),
+                        correlation_value: request.correlation_value.clone(),
+                        authenticated_encryption_tag: None,
+                    });
+                }
+            }
+
             let plaintext = request.data.as_ref().ok_or_else(|| {
                 KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
             })?;
@@ -672,7 +654,14 @@ fn encrypt_with_public_key(
             );
             let public_key = kmip_public_key_to_openssl(owm.object())?;
             trace!("OpenSSL Public Key instantiated before encryption");
-            encrypt_with_pkey(request, owm.id(), plaintext, &public_key)
+            encrypt_with_pkey(
+                request,
+                server_params,
+                owm.id(),
+                owm.attributes(),
+                plaintext,
+                &public_key,
+            )
         }
         other => Err(KmsError::NotSupported(format!(
             "encryption with public keys of format: {other}"
@@ -682,7 +671,11 @@ fn encrypt_with_public_key(
 
 fn encrypt_with_pkey(
     request: &Encrypt,
+    #[cfg(feature = "non-fips")] server_params: &ServerParams,
+    #[cfg(not(feature = "non-fips"))] _server_params: &ServerParams,
     key_id: &str,
+    #[cfg(feature = "non-fips")] key_attributes: &Attributes,
+    #[cfg(not(feature = "non-fips"))] _key_attributes: &Attributes,
     plaintext: &[u8],
     public_key: &PKey<Public>,
 ) -> KResult<EncryptResponse> {
@@ -699,7 +692,15 @@ fn encrypt_with_pkey(
             )?
         }
         #[cfg(feature = "non-fips")]
-        Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(public_key, plaintext)?,
+        Id::EC | Id::X25519 | Id::ED25519 => {
+            enforce_ecies_fixed_suite_for_attributes(
+                server_params,
+                "Encrypt",
+                key_id,
+                key_attributes,
+            )?;
+            ecies_encrypt(public_key, plaintext)?
+        }
         other => {
             kms_bail!("Encrypt: public key type not supported: {other:?}")
         }
@@ -750,6 +751,7 @@ fn encrypt_with_rsa(
 
 fn encrypt_with_certificate(
     request: &Encrypt,
+    server_params: &ServerParams,
     key_id: &str,
     certificate_value: &[u8],
 ) -> KResult<EncryptResponse> {
@@ -761,5 +763,28 @@ fn encrypt_with_certificate(
     let public_key = cert.public_key().map_err(|e| {
         KmipError::ConversionError(format!("invalid certificate public key: error: {e:?}"))
     })?;
-    encrypt_with_pkey(request, key_id, plaintext, &public_key)
+    // No key `Attributes` are available when encrypting with a raw certificate.
+    // If the certificate key is an ECIES-capable key type, fall back to strict PKey-id enforcement.
+    #[cfg(feature = "non-fips")]
+    {
+        match public_key.id() {
+            Id::EC | Id::X25519 | Id::ED25519 => {
+                enforce_ecies_fixed_suite_for_pkey_id(
+                    server_params,
+                    "Encrypt",
+                    key_id,
+                    public_key.id(),
+                )?;
+            }
+            _ => {}
+        }
+    }
+    encrypt_with_pkey(
+        request,
+        server_params,
+        key_id,
+        &Attributes::default(),
+        plaintext,
+        &public_key,
+    )
 }

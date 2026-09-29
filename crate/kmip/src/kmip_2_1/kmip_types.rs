@@ -24,7 +24,7 @@ use crate::{
         BlockCipherMode, DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, KeyRoleType,
         MaskGenerator, PaddingMethod, RNGAlgorithm,
     },
-    kmip_2_1::extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
+    kmip_2_1::extra::tagging::VENDOR_ATTR_TAG,
 };
 
 pub const VENDOR_ATTR_AAD: &str = "aad";
@@ -112,8 +112,8 @@ pub enum KeyFormatType {
     #[cfg(feature = "non-fips")]
     Pkcs12Legacy = 0x8880_0001,
     PKCS7 = 0x8880_0002,
-    // Available slot 0x8880_0003,
-    // Available slot 0x8880_0004,
+    ConfigurableKEMSecretKey = 0x8880_0003,
+    ConfigurableKEMPublicKey = 0x8880_0004,
     EnclaveECKeyPair = 0x8880_0005,
     EnclaveECSharedKey = 0x8880_0006,
     // Available slot 0x8880_0007,
@@ -187,11 +187,61 @@ pub enum CryptographicAlgorithm {
     McEliece8192128 = 0x0000_0036,
     Ed25519 = 0x0000_0037,
     Ed448 = 0x0000_0038,
-    // Available slot 0x8880_0001,
+    MLKEM_512 = 0x0000_0039,
+    MLKEM_768 = 0x0000_003A,
+    MLKEM_1024 = 0x0000_003B,
+    MLDSA_44 = 0x0000_003C,
+    MLDSA_65 = 0x0000_003D,
+    MLDSA_87 = 0x0000_003E,
+    SLHDSA_SHA2_128s = 0x0000_003F,
+    SLHDSA_SHA2_128f = 0x0000_0040,
+    SLHDSA_SHA2_192s = 0x0000_0041,
+    SLHDSA_SHA2_192f = 0x0000_0042,
+    SLHDSA_SHA2_256s = 0x0000_0043,
+    SLHDSA_SHA2_256f = 0x0000_0044,
+    SLHDSA_SHAKE_128s = 0x0000_0045,
+    SLHDSA_SHAKE_128f = 0x0000_0046,
+    SLHDSA_SHAKE_192s = 0x0000_0047,
+    SLHDSA_SHAKE_192f = 0x0000_0048,
+    SLHDSA_SHAKE_256s = 0x0000_0049,
+    SLHDSA_SHAKE_256f = 0x0000_004A,
+    FPE_FF1 = 0x8880_0001,
     // Available slot 0x8880_0002,
-    // Available slot 0x8880_0003,
+    ConfigurableKEM = 0x8880_0003,
     CoverCrypt = 0x8880_0004,
     CoverCryptBulk = 0x8880_0005,
+    X25519MLKEM768 = 0x8880_0006,
+    X448MLKEM1024 = 0x8880_0007,
+    // SecP256r1MLKEM768 (0x8880_0008) and SecP384r1MLKEM1024 (0x8880_0009)
+    // are not supported: OpenSSL 3.6.2 cannot serialize/deserialize their private keys.
+}
+
+impl CryptographicAlgorithm {
+    /// Returns `true` when this is a PQC signature algorithm (ML-DSA or SLH-DSA).
+    ///
+    /// These algorithms are dispatched to dedicated PQC signing / verification
+    /// routines instead of the classic OpenSSL code-path.
+    #[must_use]
+    pub const fn is_pqc_signature(&self) -> bool {
+        matches!(
+            self,
+            Self::MLDSA_44
+                | Self::MLDSA_65
+                | Self::MLDSA_87
+                | Self::SLHDSA_SHA2_128s
+                | Self::SLHDSA_SHA2_128f
+                | Self::SLHDSA_SHA2_192s
+                | Self::SLHDSA_SHA2_192f
+                | Self::SLHDSA_SHA2_256s
+                | Self::SLHDSA_SHA2_256f
+                | Self::SLHDSA_SHAKE_128s
+                | Self::SLHDSA_SHAKE_128f
+                | Self::SLHDSA_SHAKE_192s
+                | Self::SLHDSA_SHAKE_192f
+                | Self::SLHDSA_SHAKE_256s
+                | Self::SLHDSA_SHAKE_256f
+        )
+    }
 }
 
 /// The Cryptographic Domain Parameters attribute (4.14) is a structure that
@@ -199,8 +249,13 @@ pub enum CryptographicAlgorithm {
 /// Payload. Specific fields MAY only pertain to certain types of Managed
 /// Cryptographic Objects. The domain parameter `q_length` corresponds to the bit
 /// length of parameter Q (refer to RFC7778, SEC2 and SP800-56A).
-/// - `q_length` applies to algorithms such as DSA and DH. The bit length of parameter P (refer to RFC7778, SEC2 and SP800-56A) is specified separately by setting the Cryptographic Length attribute.
-/// - Recommended Curve is applicable to elliptic curve algorithms such as ECDSA, ECDH, and ECMQV
+///
+/// - `q_length` applies to algorithms such as DSA and DH. The bit length of
+///   parameter P (refer to RFC7778, SEC2 and SP800-56A) is specified separately
+///   by setting the Cryptographic Length attribute.
+///
+/// - Recommended Curve is applicable to elliptic curve algorithms such as
+///   ECDSA, ECDH, and ECMQV
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CryptographicDomainParameters {
@@ -965,9 +1020,9 @@ impl Display for AttributeReference {
 
 impl AttributeReference {
     #[must_use]
-    pub fn tags_reference() -> Self {
+    pub fn tags_reference(vendor_id: &str) -> Self {
         Self::Vendor(VendorAttributeReference {
-            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            vendor_identification: vendor_id.to_owned(),
             attribute_name: VENDOR_ATTR_TAG.to_owned(),
         })
     }
@@ -1313,7 +1368,18 @@ pub enum Tag {
     CommonProtectionStorageMasks = 0x42_0163,
     PrivateProtectionStorageMasks = 0x42_0164,
     PublicProtectionStorageMasks = 0x42_0165,
+    RotateInterval = 0x42_016A,
+    RotateAutomatic = 0x42_016B,
+    RotateOffset = 0x42_016C,
+    RotateDate = 0x42_016D,
+    RotateGeneration = 0x42_016E,
+    RotateName = 0x42_016F,
+    RotateLatest = 0x42_0172,
     // Extensions 540000 – 54FFFF
+    /// Cosmian vendor extension: not part of the KMIP 2.1 Tag Enumeration
+    /// (§11.56). Used internally to TTLV-serialize the composite
+    /// `CertificateAttributes` attribute struct (subject/issuer fields).
+    CertificateAttributes = 0x54_0001,
 }
 
 /// Indicates the method used to wrap the Key Value.
@@ -1492,6 +1558,64 @@ impl Display for CryptographicParameters {
     }
 }
 
+impl CryptographicParameters {
+    /// Fill missing (`None`) fields in `self` from `source`.
+    ///
+    /// Every `Option` field that is `None` in `self` gets overwritten with
+    /// the corresponding value from `source`.
+    pub fn fill_missing_fields(&mut self, source: &Self) {
+        macro_rules! fill {
+            ($($field:ident),* $(,)?) => {
+                $(if self.$field.is_none() { self.$field = source.$field.clone(); })*
+            };
+        }
+        fill!(
+            block_cipher_mode,
+            padding_method,
+            hashing_algorithm,
+            key_role_type,
+            digital_signature_algorithm,
+            cryptographic_algorithm,
+            random_iv,
+            iv_length,
+            tag_length,
+            fixed_field_length,
+            invocation_field_length,
+            counter_length,
+            initial_counter_value,
+            salt_length,
+            mask_generator,
+            mask_generator_hashing_algorithm,
+            p_source,
+            trailer_field,
+        );
+    }
+
+    /// Merge request-supplied cryptographic parameters with stored object attributes.
+    ///
+    /// If `request_params` is `None`, the parameters stored on `object` are returned
+    /// as-is. If `request_params` partially specifies parameters, the stored values
+    /// fill in any `None` fields.
+    #[must_use]
+    pub fn merged_with_object(
+        request_params: Option<Self>,
+        object: &crate::kmip_2_1::kmip_objects::Object,
+    ) -> Self {
+        let stored_cp = object
+            .attributes()
+            .ok()
+            .and_then(|a| a.cryptographic_parameters.clone())
+            .unwrap_or_default();
+        match request_params {
+            None => stored_cp,
+            Some(mut req_cp) => {
+                req_cp.fill_missing_fields(&stored_cp);
+                req_cp
+            }
+        }
+    }
+}
+
 /// Contains the Unique Identifier value of the encryption key and
 /// associated cryptographic parameters.
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
@@ -1510,7 +1634,7 @@ impl Display for EncryptionKeyInformation {
             self.unique_identifier,
             self.cryptographic_parameters
                 .as_ref()
-                .map_or_else(|| "None".to_owned(), std::string::ToString::to_string)
+                .map_or_else(|| "None".to_owned(), ToString::to_string)
         )
     }
 }
@@ -1531,7 +1655,7 @@ impl Display for MacSignatureKeyInformation {
             self.unique_identifier,
             self.cryptographic_parameters
                 .as_ref()
-                .map_or_else(|| "None".to_owned(), std::string::ToString::to_string)
+                .map_or_else(|| "None".to_owned(), ToString::to_string)
         )
     }
 }
@@ -1638,6 +1762,22 @@ impl UniqueIdentifier {
             _ => None,
         }
     }
+
+    /// Compute a fresh UID for a rotation replacement key.
+    ///
+    /// For keyset keys (`rotate_name` is `Some`): returns `"{name}@{gen+1}"`,
+    /// e.g. `"my-keyset@1"` for the first rotation of `"my-keyset"`.
+    /// For standalone keys (no `rotate_name`): returns a fresh UUID.
+    ///
+    /// The `prefix_uuid` pattern (`"name_<uuid>"`) is intentionally dropped;
+    /// keyset membership is the only path to deterministic successor UIDs.
+    #[must_use]
+    pub fn rotation_successor(rotate_name: Option<&str>, rotate_generation: Option<i32>) -> String {
+        rotate_name.map_or_else(
+            || Uuid::new_v4().to_string(),
+            |name| format!("{name}@{}", rotate_generation.unwrap_or(0) + 1),
+        )
+    }
 }
 
 impl TryFrom<LinkedObjectIdentifier> for UniqueIdentifier {
@@ -1722,11 +1862,12 @@ pub enum OperationEnumeration {
 
 /// An Enumeration object indicating whether the certificate chain is valid,
 /// invalid, or unknown.
+/// KMIP 2.1 spec §11.61 Table 492: Valid=0x01, Invalid=0x02, Unknown=0x03.
 #[kmip_enum]
 pub enum ValidityIndicator {
-    Valid = 0x0000_0000,
-    Invalid = 0x0000_0001,
-    Unknown = 0x0000_0002,
+    Valid = 0x0000_0001,
+    Invalid = 0x0000_0002,
+    Unknown = 0x0000_0003,
 }
 
 impl ValidityIndicator {
@@ -1784,7 +1925,7 @@ pub struct RandomNumberGenerator {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_length: Option<i64>,
+    pub cryptographic_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hashing_algorithm: Option<HashingAlgorithm>,
     #[serde(skip_serializing_if = "Option::is_none")]

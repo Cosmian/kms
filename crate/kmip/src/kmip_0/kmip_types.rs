@@ -74,15 +74,10 @@ pub enum HashingAlgorithm {
     MD2 = 0x0000_0001,
     MD4 = 0x0000_0002,
     MD5 = 0x0000_0003,
-    // #[serde(rename = "SHA-1")]
     SHA1 = 0x0000_0004,
-    // #[serde(rename = "SHA-224")]
     SHA224 = 0x0000_0005,
-    // #[serde(rename = "SHA-256")]
     SHA256 = 0x0000_0006,
-    // #[serde(rename = "SHA-384")]
     SHA384 = 0x0000_0007,
-    // #[serde(rename = "SHA-512")]
     SHA512 = 0x0000_0008,
     // #[serde(rename = "RIPEMD-160")]
     RIPEMD160 = 0x0000_0009,
@@ -119,6 +114,18 @@ pub struct Ticket {
 pub struct Credential {
     pub credential_type: CredentialType,
     pub credential_value: CredentialValue,
+}
+
+/// The Authentication structure wraps one or more Credential structures.
+///
+/// In KMIP 1.0 the Authentication structure SHALL contain exactly one Credential.
+/// In KMIP 1.4 and later, it MAY contain one or more Credentials.
+/// This wrapper struct ensures correct TTLV nesting:
+///   `Authentication { Credential { CredentialType, CredentialValue } }`
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Authentication {
+    pub credential: Vec<Credential>,
 }
 
 /// Credential Type Enumeration
@@ -765,7 +772,6 @@ pub enum ShreddingAlgorithm {
     Unsupervised = 0x3,
 }
 
-// Block Cipher Mode Enumeration
 #[kmip_enum]
 pub enum BlockCipherMode {
     CBC = 0x0000_0001,
@@ -779,8 +785,8 @@ pub enum BlockCipherMode {
     GCM = 0x0000_0009,
     CBCMAC = 0x0000_000A,
     XTS = 0x0000_000B,
-    AESKeyWrapPadding = 0x0000_000C,
-    NISTKeyWrap = 0x8000_000D,
+    AESKeyWrapPadding = 0x0000_000C, // RFC 5649
+    NISTKeyWrap = 0x0000_000D,       // RFC 3394
     X9102AESKW = 0x0000_000E,
     X9102TDKW = 0x0000_000F,
     X9102AKW1 = 0x0000_0010,
@@ -789,6 +795,10 @@ pub enum BlockCipherMode {
     // Extensions - 8XXXXXXX
     // AES GCM SIV
     GCMSIV = 0x8000_0002,
+    // This variant was introduced to support backward compatibility with versions prior to 5.15
+    // In the database layer, right after deserialization, objects that have a saved BlockCipherMode (via their `KeyWrappingData`) are tested for this mode and
+    // converted to AESKeyWrapPadding if found.
+    LegacyNISTKeyWrap = 0x8000_000D,
 }
 
 /// Padding Method Enumeration
@@ -1042,7 +1052,12 @@ pub enum RevocationReasonCode {
     Superseded = 0x0000_0005,
     CessationOfOperation = 0x0000_0006,
     PrivilegeWithdrawn = 0x0000_0007,
-    // Extensions 8XXXXXXX
+    // KMIP vendor extensions (8XXXXXXX range per KMIP 2.1 §11.48).
+    // These correspond to RFC 5280 §5.3.1 reason codes that are not
+    // part of the KMIP standard set but are needed for full CRL support.
+    CertificateHold = 0x8000_0001,
+    RemoveFromCRL = 0x8000_0002,
+    AaCompromise = 0x8000_0003,
 }
 
 /// The Revocation Reason attribute is a structure used to indicate why the

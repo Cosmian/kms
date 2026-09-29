@@ -1,16 +1,19 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{ErrorReason, State},
         kmip_2_1::KmipOperation,
         time_normalize,
     },
-    cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{trace, warn};
 
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{
+    core::{KMS, uid_utils::ObjectHandle},
+    error::KmsError,
+    middlewares::UserId,
+    result::KResult,
+};
 
 // TODO This function should probably not be a free-standing function KMS side,
 // and should be refactored as part of the Database,
@@ -24,23 +27,17 @@ use crate::{core::KMS, error::KmsError, result::KResult};
 /// This function assumes that if the user can `Get` the object,
 /// it can then also perform any other operation with it.
 pub(crate) async fn retrieve_object_for_operation(
-    uid_or_tags: &str,
+    object_handle: ObjectHandle<'_>,
     operation_type: KmipOperation,
     kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
 ) -> KResult<ObjectWithMetadata> {
     trace!(
-        "uid_or_tags: {uid_or_tags:?}, user: {user}, \
-         operation_type: {operation_type:?}"
+        "object_handle: {object_handle}, user: {user}, \
+         operation_type: {operation_type:?}",
     );
 
-    for owm in kms
-        .database
-        .retrieve_objects(uid_or_tags, params.clone())
-        .await?
-        .values()
-    {
+    for owm in kms.database.retrieve_objects(object_handle).await?.values() {
         trace!("Checking key with ID: {}", owm.id());
         let state = owm.state();
         // Allow retrieval based on state and operation semantics.
@@ -52,16 +49,32 @@ pub(crate) async fn retrieve_object_for_operation(
             State::Active | State::PreActive | State::Deactivated => true,
             State::Compromised => matches!(
                 operation_type,
-                KmipOperation::Get | KmipOperation::Export | KmipOperation::GetAttributes
+                KmipOperation::Get
+                    | KmipOperation::Export
+                    | KmipOperation::GetAttributes
+                    // Attribute operations do not expose key material; KMIP allows
+                    // adding/modifying/deleting attributes on compromised objects
+                    // (SKFF-M-9 test vectors exercise exactly this flow).
+                    | KmipOperation::AddAttribute
+                    | KmipOperation::ModifyAttribute
+                    | KmipOperation::SetAttribute
+                    | KmipOperation::DeleteAttribute
+                    // Activate on a compromised key must return Wrong_Key_Lifecycle_State
+                    // ("cannot be activated") rather than Object_Not_Found; allow retrieval
+                    // so activate.rs can emit the correct lifecycle error.
+                    | KmipOperation::Activate
             ),
             State::Destroyed | State::Destroyed_Compromised => {
                 // KMIP profiles expect Get on a destroyed object to return OperationFailed / ObjectDestroyed
                 // rather than ObjectNotFound. We therefore allow retrieval for Get so the operation layer
                 // can emit the correct Object_Destroyed error (BL-M-8-21 vector). Still restrict other
                 // operations besides GetAttributes and Get.
+                // Similarly, Activate on a destroyed object must return Wrong_Key_Lifecycle_State
+                // ("cannot be activated") rather than Object_Not_Found; allow retrieval so activate.rs
+                // can emit the correct lifecycle error.
                 matches!(
                     operation_type,
-                    KmipOperation::Get | KmipOperation::GetAttributes
+                    KmipOperation::Get | KmipOperation::GetAttributes | KmipOperation::Activate
                 )
             }
         };
@@ -72,7 +85,7 @@ pub(crate) async fn retrieve_object_for_operation(
             continue;
         }
 
-        if user_has_permission(user, Some(owm), &operation_type, kms, params.clone()).await? {
+        if user_has_permission(user, Some(owm), &operation_type, kms).await? {
             trace!(
                 "User {user} has permission for operation {operation_type:?} on object {}",
                 owm.id()
@@ -98,12 +111,9 @@ pub(crate) async fn retrieve_object_for_operation(
                 attributes.state = Some(effective_state);
             }
 
-            // KMIP 2.1 Auto-activation: Automatically activate PreActive objects when activation_date has passed
-            // This ensures the database state stays synchronized with the object's actual lifecycle state
+            // KMIP 2.1 Auto-activation: PreActive → Active when ActivationDate has passed (§4.57 transition 4)
             if effective_state == State::PreActive {
-                // Check if activation_date is set and has passed
                 let activation_date = owm.attributes().activation_date.or_else(|| {
-                    // Fallback to object's attributes if not in metadata
                     owm.object()
                         .attributes()
                         .ok()
@@ -113,30 +123,88 @@ pub(crate) async fn retrieve_object_for_operation(
                 if let Some(activation_date) = activation_date {
                     let now = time_normalize()?;
                     if activation_date <= now {
-                        // Activation date has passed, automatically transition to Active
                         trace!(
                             "Auto-activating object {} (activation_date {} <= now {})",
                             owm.id(),
                             activation_date,
                             now
                         );
-
-                        // Update state in both the object attributes and metadata
                         owm.attributes_mut().state = Some(State::Active);
                         if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
                             attributes.state = Some(State::Active);
                         }
+                        if let Err(e) = kms.database.update_state(owm.id(), State::Active).await {
+                            warn!(
+                                "Failed to persist auto-activation of object {}: {}",
+                                owm.id(),
+                                e
+                            );
+                        }
+                        // Re-check: the now-Active key may also need auto-deactivation
+                        let deactivation_date = owm.attributes().deactivation_date.or_else(|| {
+                            owm.object()
+                                .attributes()
+                                .ok()
+                                .and_then(|attrs| attrs.deactivation_date)
+                        });
+                        if let Some(deactivation_date) = deactivation_date {
+                            if deactivation_date <= now {
+                                trace!(
+                                    "Auto-deactivating object {} (deactivation_date {} <= now {})",
+                                    owm.id(),
+                                    deactivation_date,
+                                    now
+                                );
+                                owm.attributes_mut().state = Some(State::Deactivated);
+                                if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
+                                    attributes.state = Some(State::Deactivated);
+                                }
+                                if let Err(e) = kms
+                                    .database
+                                    .update_state(owm.id(), State::Deactivated)
+                                    .await
+                                {
+                                    warn!(
+                                        "Failed to persist auto-deactivation of object {}: {}",
+                                        owm.id(),
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
-                        // Persist the state change to database
-                        // Note: We do this synchronously to ensure consistency, but log errors
-                        // rather than failing the retrieval if the update fails
+            // KMIP 2.1 Auto-deactivation: Active → Deactivated when DeactivationDate has passed (§4.57 transition 6)
+            if owm.attributes().state == Some(State::Active) {
+                let deactivation_date = owm.attributes().deactivation_date.or_else(|| {
+                    owm.object()
+                        .attributes()
+                        .ok()
+                        .and_then(|attrs| attrs.deactivation_date)
+                });
+
+                if let Some(deactivation_date) = deactivation_date {
+                    let now = time_normalize()?;
+                    if deactivation_date <= now {
+                        trace!(
+                            "Auto-deactivating object {} (deactivation_date {} <= now {})",
+                            owm.id(),
+                            deactivation_date,
+                            now
+                        );
+                        owm.attributes_mut().state = Some(State::Deactivated);
+                        if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
+                            attributes.state = Some(State::Deactivated);
+                        }
                         if let Err(e) = kms
                             .database
-                            .update_state(owm.id(), State::Active, params.clone())
+                            .update_state(owm.id(), State::Deactivated)
                             .await
                         {
                             warn!(
-                                "Failed to persist auto-activation of object {}: {}",
+                                "Failed to persist auto-deactivation of object {}: {}",
                                 owm.id(),
                                 e
                             );
@@ -147,47 +215,64 @@ pub(crate) async fn retrieve_object_for_operation(
 
             // Automatic object unwrapping (if object type is not filtered)
             // Skip unwrapping for destroyed objects as they have empty key material
-            if let Some(defaults) = &kms.params.default_unwrap_types {
-                if defaults.contains(&owm.object().object_type())
-                    && state != State::Destroyed
-                    && state != State::Destroyed_Compromised
-                {
-                    let unwrapped_object = kms
-                        .get_unwrapped(owm.id(), owm.object(), user, params)
-                        .await?;
-                    owm.set_object(unwrapped_object);
+            // Skip unwrapping for attribute-only operations to prevent persisting the
+            // unwrapped key back to the database when the caller later calls update_object
+            // (e.g. ModifyAttribute, SetAttribute, AddAttribute, DeleteAttribute, Activate).
+            // Operations that need the key material (Get, Export) handle unwrapping
+            // themselves in export_get.rs.
+            let skip_unwrap = matches!(
+                operation_type,
+                KmipOperation::GetAttributes
+                    | KmipOperation::SetAttribute
+                    | KmipOperation::ModifyAttribute
+                    | KmipOperation::AddAttribute
+                    | KmipOperation::DeleteAttribute
+                    | KmipOperation::Activate
+            );
+            if !skip_unwrap {
+                if let Some(defaults) = &kms.params.default_unwrap_types {
+                    if defaults.contains(&owm.object().object_type())
+                        && state != State::Destroyed
+                        && state != State::Destroyed_Compromised
+                    {
+                        let unwrapped_object =
+                            Box::pin(kms.get_unwrapped(owm.id(), owm.object(), user)).await?;
+                        owm.set_object(unwrapped_object);
+                    }
                 }
             }
 
             return Ok(owm);
         }
+        trace!(
+            "User {user} does not have permission for operation {operation_type:?} on object {}",
+            owm.id()
+        );
     }
 
     Err(KmsError::Kmip21Error(
         ErrorReason::Object_Not_Found,
-        format!("object not found for identifier {uid_or_tags}",),
+        format!("object not found for identifier {object_handle}"),
     ))
 }
 
 /// Check if a user has permission to perform an operation on an object.
 ///  If the user is the owner of the object, it will always return true.
-///  If the user has the `Get` permission, it will always return true.
-///  Otherwise, it will check the permissions in the database.
+///  For non-HSM objects, having the `Get` permission implies all other operations.
+///  For HSM objects, each operation must be explicitly granted (no `Get` wildcard).
 ///  # Arguments
 ///  * `user` - The user to check the permission for.
 ///  * `owm` - The object to check the permission on.
 ///  * `operation_type` - The operation to check the permission for.
 ///  * `kms` - The KMS instance.
-///  * `params` - The extra store params.
 ///  # Returns
 ///  * `Ok(true)` if the user has permission to perform the operation on the object.
 ///  * `Ok(false)` if the user does not have permission to perform the operation on the object.
 pub(crate) async fn user_has_permission(
-    user: &str,
+    user: &UserId,
     owm: Option<&ObjectWithMetadata>,
     operation_type: &KmipOperation,
     kms: &KMS,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<bool> {
     let id = match owm {
         Some(object) if user == object.owner() => return Ok(true),
@@ -195,9 +280,54 @@ pub(crate) async fn user_has_permission(
         None => "*",
     };
 
+    // CryptoOfficer bypass: if the user is an active CryptoOfficer, grant access to
+    // all non-HSM objects. HSM-backed keys are governed by the HSM admin rules below
+    // and are therefore excluded from this bypass.
+    if !ObjectHandle::from(id).is_hsm() && kms.is_crypto_officer(user).await? {
+        warn!(
+            "CRYPTO_OFFICER_ACCESS: crypto officer {user} bypassed normal permission check on {id} for {operation_type:?}"
+        );
+        return Ok(true);
+    }
+
+    // HSM keys: admins have full access to all keys in their HSM instance(s).
+    if ObjectHandle::from(id).is_hsm() {
+        let is_hsm_admin = kms
+            .params
+            .hsm_instances
+            .iter()
+            .any(|inst| inst.admin.iter().any(|a| a == "*" || a == user));
+        if is_hsm_admin {
+            return Ok(true);
+        }
+    }
+
     let permissions = kms
         .database
-        .list_user_operations_on_object(id, user, false, params)
+        .list_user_operations_on_object(id, user, false)
         .await?;
+
+    // GetAttributes is metadata-only (no key material exposed), so allow it if
+    // the user has ANY granted operation on the object. This avoids "Unknown" state
+    // in UIs when a user can Locate an object but was only granted e.g. Encrypt.
+    if *operation_type == KmipOperation::GetAttributes && !permissions.is_empty() {
+        return Ok(true);
+    }
+
+    // HSM keys: each operation must be explicitly granted — no generic Get wildcard.
+    // Exception: Get and Export are semantically equivalent (both read key material),
+    // so holding either permission grants access for both operations.
+    if ObjectHandle::from(id).is_hsm() {
+        if permissions.contains(operation_type) {
+            return Ok(true);
+        }
+        // Get ↔ Export equivalence for HSM keys
+        let get_export_equiv = (*operation_type == KmipOperation::Export
+            && permissions.contains(&KmipOperation::Get))
+            || (*operation_type == KmipOperation::Get
+                && permissions.contains(&KmipOperation::Export));
+        return Ok(get_export_equiv);
+    }
+
     Ok(permissions.contains(operation_type) || permissions.contains(&KmipOperation::Get))
 }

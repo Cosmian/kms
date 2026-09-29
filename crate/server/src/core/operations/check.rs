@@ -1,21 +1,17 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::ErrorReason,
-        kmip_2_1::{
-            KmipOperation,
-            kmip_operations::{Check, CheckResponse},
-            kmip_types::UniqueIdentifier,
-        },
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        KmipOperation,
+        kmip_operations::{Check, CheckResponse},
+        kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_interfaces,
 };
 use cosmian_logger::trace;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -23,38 +19,17 @@ use crate::{
 /// - Retrieves the target object
 /// - If a `cryptographic_usage_mask` is supplied, ensure all requested bits are permitted by object usage mask
 /// - Succeeds (returns unique identifier) if compatible; otherwise returns `IncompatibleCryptographicUsageMask`
-pub(crate) async fn check(
-    kms: &KMS,
-    request: Check,
-    owner: &str,
-    params: Option<Arc<dyn cosmian_kms_interfaces::SessionParams>>,
-) -> KResult<CheckResponse> {
+pub(crate) async fn check(kms: &KMS, request: Check, owner: &UserId) -> KResult<CheckResponse> {
     trace!("{request}");
     // Unique Identifier is optional per spec; use ID Placeholder if missing (not yet supported here).
-    let uid = request
-        .unique_identifier
-        .clone()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
+    let object_handle = from_request(request.unique_identifier.as_ref(), "Check")?;
 
     // Retrieve the object (any state except Destroyed/Compromised accepted similar to Get)
-    let uid_str = match &uid {
-        UniqueIdentifier::TextString(s) => s.as_str(),
-        other => {
-            return Err(KmsError::Kmip21Error(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "Unsupported UID variant for Check: {}",
-                    std::any::type_name_of_val(&other)
-                ),
-            ));
-        }
-    };
     let owm = Box::pin(retrieve_object_for_operation(
-        uid_str,
+        object_handle,
         KmipOperation::Get,
         kms,
         owner,
-        params.clone(),
     ))
     .await?;
     let attributes = owm
@@ -72,7 +47,9 @@ pub(crate) async fn check(
     }
 
     Ok(CheckResponse {
-        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_string())),
+        unique_identifier: Some(UniqueIdentifier::TextString(
+            object_handle.as_str().to_owned(),
+        )),
         // Per BL-M-2-21 expected responses, do not echo policy fields; only return UID.
         // Spec allows omitting these unless policy adjustments are returned.
         usage_limits_count: None,

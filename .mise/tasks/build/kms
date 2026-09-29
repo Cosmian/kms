@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#MISE description="Build KMS server binary"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "-r --release" help="Build in release mode"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+
+print_header "Building KMS server (${VARIANT_NAME})"
+
+require_cmd cargo
+
+CARGO_ARGS=()
+if [ "${usage_release:-false}" = "true" ]; then
+  CARGO_ARGS+=(--release)
+fi
+
+cargo build -p cosmian_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  "${CARGO_ARGS[@]}"
+
+print_success "KMS server built"

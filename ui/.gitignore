@@ -26,3 +26,7 @@ dist-ssr
 
 # Ignore WASM generated files
 src/wasm/
+
+# Playwright test output
+test-results/
+playwright-report/

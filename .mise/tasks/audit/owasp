@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Run OWASP Top 10 / ASVS security checks"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Running OWASP audit"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/audit/owasp.sh"
+
+print_success "OWASP audit completed"

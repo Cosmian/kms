@@ -1,57 +1,33 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::{
-    CachedUnwrappedObject,
-    reexport::{
-        cosmian_kmip::{
-            kmip_0::kmip_types::{CryptographicUsageMask, State},
-            kmip_2_1::{
-                KmipOperation,
-                kmip_attributes::Attributes,
-                kmip_data_structures::{KeyValue, KeyWrappingSpecification},
-                kmip_objects::{Object, ObjectType},
-                kmip_types::{
-                    EncodingOption, EncryptionKeyInformation, LinkType, UniqueIdentifier,
-                },
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, State},
+        kmip_2_1::{
+            KmipOperation,
+            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
+            kmip_data_structures::{KeyValue, KeyWrappingSpecification},
+            kmip_objects::{Object, ObjectType},
+            kmip_types::{
+                CryptographicParameters, EncodingOption, EncryptionKeyInformation, LinkType,
+                UniqueIdentifier,
             },
         },
-        cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
-        cosmian_kms_interfaces::SessionParams,
     },
+    cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
 };
-use cosmian_logger::{debug, trace, warn};
+use cosmian_logger::{debug, trace};
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix, wrapping::unwrap_object},
+    core::{KMS, uid_utils::ObjectHandle, wrapping::unwrap_object},
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
-/// Wrap the object and store the unwrapped object in the unwrapped cache
-///
-/// This is a Cosmian-specific extension
-/// to wrap the key with a wrapping key stored in the database
-/// or in the HSM.
-/// Either the user has provided a wrapping key ID or a key wrapping key is
-/// supplied in the parameters.
-///
-/// The wrapping key ID is stored in the database
-/// or in the HSM.
-///
-/// The unwrapped object is stored in the unwrapped cache
-///
-/// # Arguments
-///
-/// * `kms` - The KMS instance
-/// * `owner` - The owner of the object
-/// * `params` - The parameters to use
-/// * `unique_identifier` - The unique identifier of the object
-/// * `object` - The object to wrap
+/// Wrap the object using a wrapping key from the database or HSM, then cache the unwrapped copy.
 pub(crate) async fn wrap_and_cache(
     kms: &KMS,
-    owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    owner: &UserId,
     unique_identifier: &UniqueIdentifier,
     object: &mut Object,
 ) -> Result<(), KmsError> {
@@ -65,22 +41,32 @@ pub(crate) async fn wrap_and_cache(
     // or in the HSM.
     // Either the user has provided a wrapping key ID or a key wrapping key is
     // provided in the parameters.
-    let Some(wrapping_key_id) = object
+    let uid_str = unique_identifier.to_string();
+    let explicit_wrapping_key_id = object
         .attributes_mut()
         .ok()
-        .and_then(Attributes::remove_wrapping_key_id)
-        .or_else(|| kms.params.key_wrapping_key.clone())
-    else {
-        // no wrapping key provided
-        return Ok(());
+        .and_then(|attrs| attrs.remove_wrapping_key_id(kms.vendor_id()));
+    let wrapping_key_id = if let Some(id) = explicit_wrapping_key_id {
+        id
+    } else {
+        let Some(kek) = kms.params.key_wrapping_key.clone() else {
+            // no wrapping key provided
+            return Ok(());
+        };
+        // HSM-resident keys are hardware-protected: skip the server-wide KEK wrapping
+        // to avoid creating a circular dependency where the KEK would wrap itself.
+        if ObjectHandle::from(&uid_str).is_hsm() {
+            return Ok(());
+        }
+        kek
     };
 
-    // Cannot wrap yourself
-    if wrapping_key_id == unique_identifier.to_string() {
-        if kms.params.key_wrapping_key.is_none() {
-            warn!("Key {wrapping_key_id} attempted to wrap itself");
-        }
-        return Ok(());
+    // A key cannot be its own wrapping key.
+    if wrapping_key_id == uid_str {
+        return Err(KmsError::InvalidRequest(format!(
+            "Key '{wrapping_key_id}' cannot be used as its own wrapping key: \
+             the wrapping key ID must differ from the key ID being created"
+        )));
     }
 
     // This is useful to store a key on the default data store but wrapped by a key stored in an HSM
@@ -97,7 +83,7 @@ pub(crate) async fn wrap_and_cache(
     let encoding = if object
         .key_block()
         .map_err(|e| {
-            KmsError::InvalidRequest(format!("wrap_object: no key block to wrap in object: {e}",))
+            KmsError::InvalidRequest(format!("wrap_object: no key block to wrap in object: {e}"))
         })?
         .key_bytes()
         .is_ok()
@@ -114,28 +100,29 @@ pub(crate) async fn wrap_and_cache(
         &KeyWrappingSpecification {
             encryption_key_information: Some(EncryptionKeyInformation {
                 unique_identifier: UniqueIdentifier::TextString(wrapping_key_id),
-                cryptographic_parameters: None,
+                // Explicitly use AESKeyWrapPadding (RFC 5649) for at-rest wrapping:
+                // it handles arbitrary key lengths (including < 16 bytes). The global
+                // default for Get-with-wrapping is NISTKeyWrap (RFC 3394) which
+                // requires input >= 16 bytes.
+                cryptographic_parameters: Some(CryptographicParameters {
+                    block_cipher_mode: Some(BlockCipherMode::AESKeyWrapPadding),
+                    ..CryptographicParameters::default()
+                }),
             }),
             encoding_option: Some(encoding),
             ..Default::default()
         },
         kms,
         owner,
-        params,
     ))
     .await?;
 
     // store the unwrapped object in the unwrapped cache
     kms.database
         .unwrapped_cache()
-        .insert(
-            unique_identifier.to_string(),
-            Ok(CachedUnwrappedObject::new(
-                object.fingerprint()?,
-                unwrapped_object,
-            )),
-        )
-        .await;
+        .insert(unique_identifier.to_string(), object, unwrapped_object)
+        .await?;
+
     Ok(())
 }
 
@@ -155,8 +142,7 @@ pub(crate) async fn wrap_object(
     object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
 ) -> KResult<()> {
     // recover the wrapping key uid
     let wrapping_key_uid = match &key_wrapping_specification.encryption_key_information {
@@ -166,18 +152,17 @@ pub(crate) async fn wrap_object(
             .context("unable to wrap key: wrapping key uid is not a string")?,
         None => kms_bail!("unable to wrap key: wrapping key uid is missing"),
     };
-    if let Some(prefix) = has_prefix(wrapping_key_uid) {
+    if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(wrapping_key_uid) {
         debug!(
             "...wrapping the key block with key uid: {wrapping_key_uid} using an encryption \
              oracle, user: {user}"
         );
-        wrap_using_encryption_oracle(
+        wrap_using_crypto_oracle(
             object,
             key_wrapping_specification,
             kms,
             user,
-            params,
-            wrapping_key_uid,
+            ObjectHandle::from(wrapping_key_uid),
             prefix,
         )
         .await?;
@@ -191,8 +176,7 @@ pub(crate) async fn wrap_object(
             key_wrapping_specification,
             kms,
             user,
-            params,
-            wrapping_key_uid,
+            ObjectHandle::from(wrapping_key_uid),
         ))
         .await?;
     }
@@ -205,15 +189,15 @@ async fn wrap_using_kms(
     object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
-    wrapping_key_uid: &str,
+    user: &UserId,
+    handle: ObjectHandle<'_>,
 ) -> KResult<()> {
+    let wrapping_key_uid = handle.as_str();
     trace!("Checking permissions to wrap with key {wrapping_key_uid}");
     // fetch the wrapping key
     let wrapping_key = kms
         .database
-        .retrieve_object(wrapping_key_uid, params.clone())
+        .retrieve_object(wrapping_key_uid)
         .await
         .context("wrap using KMS")?;
     let wrapping_key = wrapping_key.ok_or_else(|| {
@@ -231,13 +215,13 @@ async fn wrap_using_kms(
             let attributes = wrapping_key.attributes();
             let pk_id = attributes.get_link(LinkType::PublicKeyLink);
             let pk_id = pk_id.map_or_else(
-                || wrapping_key_uid.to_owned() + "_pk",
+                || wrapping_key_uid.to_owned() + SYSTEM_TAG_PUBLIC_KEY,
                 |pk_id| pk_id.to_string(),
             );
             // fetch the private key
             let wrapping_key = kms
                 .database
-                .retrieve_object(&pk_id, params.clone())
+                .retrieve_object(&pk_id)
                 .await
                 .context("wrapping using the KMS")?;
             wrapping_key.ok_or_else(|| {
@@ -254,10 +238,18 @@ async fn wrap_using_kms(
             "The wrapping key {wrapping_key_uid} is not active"
         )));
     }
-    if wrapping_key.owner() != user {
+    // The server-configured key_encryption_key is a shared server resource accessible
+    // to all users, so skip the ownership check for it (mirrors the bypass in
+    // `wrap_using_crypto_oracle` — issue #761).
+    let is_server_kek = kms
+        .params
+        .key_wrapping_key
+        .as_deref()
+        .is_some_and(|kek| kek == wrapping_key_uid);
+    if !is_server_kek && wrapping_key.owner() != user {
         let ops = kms
             .database
-            .list_user_operations_on_object(wrapping_key.id(), user, false, params.clone())
+            .list_user_operations_on_object(wrapping_key.id(), user, false)
             .await?;
         if !ops
             .iter()
@@ -274,7 +266,7 @@ async fn wrap_using_kms(
     let mut wrapping_key_object = if wrapping_key.object().is_wrapped() {
         debug!("The wrapping key {wrapping_key_uid} is itself wrapped, unwrapping it first");
         let mut wrapping_key_object = wrapping_key.object().clone();
-        unwrap_object(&mut wrapping_key_object, kms, user, params).await?;
+        Box::pin(unwrap_object(&mut wrapping_key_object, kms, user)).await?;
         wrapping_key_object.clone()
     } else {
         wrapping_key.object().clone()
@@ -322,25 +314,33 @@ async fn wrap_using_kms(
     Ok(())
 }
 
-/// Wrap a key with a wrapping key using an encryption oracle
-async fn wrap_using_encryption_oracle(
+/// Wrap a key with a wrapping key using a crypto oracle
+async fn wrap_using_crypto_oracle(
     object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
-    wrapping_key_uid: &str,
+    user: &UserId,
+    handle: ObjectHandle<'_>,
     prefix: &str,
 ) -> KResult<()> {
+    let wrapping_key_uid = handle.as_str();
+    // The server-configured key_encryption_key is a shared server resource accessible
+    // to all users, so skip the ownership check for it (issue #761).
+    let is_server_kek = kms
+        .params
+        .key_wrapping_key
+        .as_deref()
+        .is_some_and(|kek| kek == wrapping_key_uid);
     // check permissions
-    if !kms
-        .database
-        .is_object_owned_by(wrapping_key_uid, user, params.clone())
-        .await?
+    if !is_server_kek
+        && !kms
+            .database
+            .is_object_owned_by(wrapping_key_uid, user)
+            .await?
     {
         let ops = kms
             .database
-            .list_user_operations_on_object(wrapping_key_uid, user, false, params)
+            .list_user_operations_on_object(wrapping_key_uid, user, false)
             .await?;
         if !ops
             .iter()
@@ -356,16 +356,19 @@ async fn wrap_using_encryption_oracle(
     // Determine the key data to wrap based on the key format type and encoding
     let data_to_wrap = key_data_to_wrap(object, key_wrapping_specification)?;
 
-    // encrypt the key using the encryption oracle
-    let lock = kms.encryption_oracles.read().await;
-    let encryption_oracle = lock.get(prefix).ok_or_else(|| {
-        KmsError::InvalidRequest(format!(
-            "Encrypt: unknown encryption oracle prefix: {prefix}"
-        ))
+    // encrypt the key using the crypto oracle
+    let lock = kms.crypto_oracles.read().await;
+    let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+        KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
     })?;
-    let encrypted_content = encryption_oracle
+    let encrypted_content = crypto_oracle
         .encrypt(wrapping_key_uid, data_to_wrap.as_slice(), None, None)
         .await?;
+    if let Some(ref metrics) = kms.metrics {
+        let model =
+            crate::core::uid_utils::hsm_model_from_prefix(&kms.params.hsm_instances, prefix);
+        metrics.record_hsm_operation("Wrap", model);
+    }
 
     let wrapped_key = [
         encrypted_content.iv.clone().unwrap_or_default(),

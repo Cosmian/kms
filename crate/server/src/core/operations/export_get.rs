@@ -1,5 +1,7 @@
-use std::sync::Arc;
-
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::{
+    pqc_private_key_pkcs8_to_raw, pqc_public_key_spki_to_raw,
+};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         KmipError,
@@ -18,7 +20,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
         openssl_private_key_to_kmip, openssl_public_key_to_kmip,
     },
-    cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
 use cosmian_logger::{debug, info, trace};
 #[cfg(feature = "non-fips")]
@@ -36,12 +38,58 @@ use crate::{
         KMS,
         certificate::{retrieve_certificate_for_private_key, retrieve_private_key_for_certificate},
         retrieve_object_utils::retrieve_object_for_operation,
+        uid_utils::{ObjectHandle, from_request},
         wrapping::wrap_object,
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
+
+/// Validate that the object may be exported/retrieved given its Sensitive,
+/// Extractable, and `NeverExtractable` attributes.
+///
+/// Per KMIP 1.4 §3.48 / 2.1 §4.54 (Sensitive): sensitive objects cannot leave in plaintext.
+/// Per KMIP 1.4 §3.50 / 2.1 §4.23 (Extractable): non-extractable keys cannot be exported
+/// in any form (plaintext or encrypted).
+fn check_extractable_and_sensitive(
+    owm: &ObjectWithMetadata,
+    key_wrapping_specification: &Option<KeyWrappingSpecification>,
+    is_pkcs12: bool,
+) -> KResult<()> {
+    // Extractable=false or NeverExtractable=true (defensive latch check) forbids export completely.
+    if owm.attributes().extractable == Some(false)
+        || owm.attributes().never_extractable == Some(true)
+    {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Not_Extractable,
+            "DENIED".to_owned(),
+        ));
+    }
+
+    // Sensitive objects cannot be returned without wrapping.
+    // For PKCS#12 export, the password is recovered from the key wrapping spec's
+    // encryption_key_information. A dummy wrapping spec with no password would yield
+    // an empty password and return sensitive key material unprotected.
+    let is_wrapped = if is_pkcs12 {
+        key_wrapping_specification
+            .as_ref()
+            .and_then(|kws| kws.encryption_key_information.as_ref())
+            .is_some_and(|eki| !eki.unique_identifier.to_string().is_empty())
+    } else {
+        key_wrapping_specification.is_some()
+    };
+
+    if owm.attributes().sensitive == Some(true) && !is_wrapped {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Sensitive,
+            "DENIED".to_owned(),
+        ));
+    }
+
+    Ok(())
+}
 
 /// Export an object
 ///
@@ -50,44 +98,30 @@ pub(crate) async fn export_get(
     kms: &KMS,
     request: impl Into<Export>,
     operation_type: KmipOperation,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
 ) -> KResult<ExportResponse> {
     let request: Export = request.into();
-    trace!(target: "kmip", "[diag-export_get] enter export_get op={:?} req={}", operation_type, request);
+    trace!(target: "kmip", "enter export_get op={:?} req={}", operation_type, request);
 
-    let uid_or_tags = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?
-        .as_str()
-        .context("Export: unique_identifier or tags must be a string")?;
+    let object_handle = from_request(request.unique_identifier.as_ref(), "Export")?;
     let mut owm = Box::pin(retrieve_object_for_operation(
-        uid_or_tags,
+        object_handle,
         operation_type,
         kms,
         user,
-        params.clone(),
     ))
     .await?;
 
+    trace!(target: "kmip", "enter export_get op={:?} req={}", operation_type, request);
     // Log basic object metadata before any processing
-    trace!(target: "kmip", "[diag-export_get] retrieved object uid={} type={:?} state={:?} key_fmt={:?}",
+    trace!(target: "kmip", "retrieved object uid={} type={:?} state={:?} key_fmt={:?}",
         owm.id(), owm.object().object_type(), owm.state(), owm.object().key_block().ok().map(|kb| kb.key_format_type));
 
-    // The object cannot be returned (Get/Export) if it is sensitive and not wrapped.
-    // Per KMIP Profiles vector BL-M-12-21 the server must return ResultReason=Sensitive and message DENIED.
-    if owm.attributes().sensitive == Some(true) && request.key_wrapping_specification.is_none() {
-        return Err(KmsError::Kmip21Error(
-            ErrorReason::Sensitive,
-            "DENIED".to_owned(),
-        ));
-    }
+    check_extractable_and_sensitive(&owm, &request.key_wrapping_specification, false)?;
 
     // Revoked (Deactivated / Compromised) objects must NOT be accessible via Get (without
     // allow_revoked). The client uses Export with allow_revoked=true when retrieval of a revoked
     // object is explicitly requested. Enforce denial only for Get so that Export path continues
-    // to work for revoked objects but still blocks destroyed objects later.
     if operation_type == KmipOperation::Get && matches!(owm.state(), State::Deactivated) {
         return Err(KmsError::Kmip21Error(
             ErrorReason::Wrong_Key_Lifecycle_State,
@@ -107,6 +141,12 @@ pub(crate) async fn export_get(
         ));
     }
 
+    // Snapshot the original DB-form object before any response-oriented processing
+    // (format conversion, re-wrapping, auto-unwrap via default_unwrap_types).
+    // Attribute-persistence paths (Fresh bit flip) must write back this form so
+    // that auto-unwrapped key material is never accidentally persisted to the DB.
+    let original_object = owm.object().clone();
+
     // export based on the Object type
     match object_type {
         ObjectType::PrivateKey => {
@@ -114,7 +154,6 @@ pub(crate) async fn export_get(
                 kms,
                 operation_type,
                 user,
-                params.clone(),
                 &request,
                 &mut owm,
             ))
@@ -128,8 +167,10 @@ pub(crate) async fn export_get(
                         let mut updated_attrs = owm.attributes().clone();
                         updated_attrs.fresh = Some(false);
                         let uid = owm.id().to_owned();
-                        // Also flip Fresh inside the embedded KeyBlock attributes if present
-                        let mut obj = owm.object().clone();
+                        // Also flip Fresh inside the embedded KeyBlock attributes if present.
+                        // Use the original DB-form object (not the post-processed response form)
+                        // to avoid persisting auto-unwrapped key material to the database.
+                        let mut obj = original_object.clone();
                         if let Ok(kb) = obj.key_block_mut() {
                             if let Some(KeyValue::Structure { attributes, .. }) =
                                 kb.key_value.as_mut()
@@ -149,7 +190,6 @@ pub(crate) async fn export_get(
                                     updated_attrs,
                                     None,
                                 ))],
-                                params.clone(),
                             )
                             .await?;
                         // Mirror change in-memory for immediate consistency
@@ -187,7 +227,6 @@ pub(crate) async fn export_get(
                     &request.key_wrapping_specification,
                     kms,
                     user,
-                    params.clone(),
                 ))
                 .await?;
             }
@@ -204,7 +243,7 @@ pub(crate) async fn export_get(
                 });
                 key_block.key_format_type = KeyFormatType::Opaque;
             } else {
-                trace!(target: "kmip", "[diag-export_get] processing symmetric key uid={} state={:?} requested_format={:?}", owm.id(), owm.state(), request.key_format_type);
+                trace!(target: "kmip", "processing symmetric key uid={} state={:?} requested_format={:?}", owm.id(), owm.state(), request.key_format_type);
                 Box::pin(process_symmetric_key(
                     &mut owm,
                     &request.key_format_type,
@@ -212,54 +251,57 @@ pub(crate) async fn export_get(
                     &request.key_wrapping_specification,
                     kms,
                     user,
-                    params.clone(),
                 ))
                 .await?;
-                trace!(target: "kmip", "[diag-export_get] post-process symmetric key uid={} final_format={:?}", owm.id(), owm.object().key_block().ok().map(|kb| kb.key_format_type));
+                trace!(target: "kmip", "post-process symmetric key uid={} final_format={:?}", owm.id(), owm.object().key_block().ok().map(|kb| kb.key_format_type));
 
                 // KMIP Fresh semantics for symmetric keys: once the key material has been
                 // returned unwrapped, Fresh should flip to false and be persisted so that
-                // subsequent GetAttributes reflects it (e.g., TL-M-3-21 step=2).
+                // subsequent GetAttributes reflects it (e.g., TL-M-3-14 request[0] then request[2]).
+                // Note: Get responses may omit Attributes, so key-block inner attributes may be absent.
                 if owm.attributes().fresh != Some(false) {
-                    if let Ok(kb) = owm.object().key_block() {
-                        if kb.key_wrapping_data.is_none() {
-                            let mut updated_attrs = owm.attributes().clone();
-                            updated_attrs.fresh = Some(false);
-                            let uid = owm.id().to_owned();
-                            // Also flip Fresh inside the embedded KeyBlock attributes if present
-                            let mut obj = owm.object().clone();
-                            if let Ok(kb_mut) = obj.key_block_mut() {
-                                if let Some(KeyValue::Structure { attributes, .. }) =
-                                    kb_mut.key_value.as_mut()
-                                {
-                                    if let Some(inner) = attributes.as_mut() {
-                                        inner.fresh = Some(false);
-                                    }
+                    let key_returned_unwrapped = request
+                        .key_wrap_type
+                        .is_none_or(|kwt| kwt == KeyWrapType::NotWrapped)
+                        && request.key_wrapping_specification.is_none();
+                    if key_returned_unwrapped {
+                        let mut updated_attrs = owm.attributes().clone();
+                        updated_attrs.fresh = Some(false);
+                        let uid = owm.id().to_owned();
+                        // Also flip Fresh inside the embedded KeyBlock attributes if present.
+                        // Use the original DB-form object (not the post-processed response form)
+                        // to avoid persisting auto-unwrapped key material to the database.
+                        let mut obj = original_object.clone();
+                        if let Ok(kb_mut) = obj.key_block_mut() {
+                            if let Some(KeyValue::Structure { attributes, .. }) =
+                                kb_mut.key_value.as_mut()
+                            {
+                                if let Some(inner) = attributes.as_mut() {
+                                    inner.fresh = Some(false);
                                 }
                             }
-                            // Persist update without modifying tags
-                            kms.database
-                                .atomic(
-                                    user,
-                                    &[AtomicOperation::UpdateObject((
-                                        uid,
-                                        obj,
-                                        updated_attrs,
-                                        None,
-                                    ))],
-                                    params.clone(),
-                                )
-                                .await?;
-                            // Mirror change in-memory for immediate consistency
-                            let attrs_mut = owm.attributes_mut();
-                            attrs_mut.fresh = Some(false);
-                            if let Ok(kb_mut) = owm.object_mut().key_block_mut() {
-                                if let Some(KeyValue::Structure { attributes, .. }) =
-                                    kb_mut.key_value.as_mut()
-                                {
-                                    if let Some(inner) = attributes.as_mut() {
-                                        inner.fresh = Some(false);
-                                    }
+                        }
+                        // Persist update without modifying tags
+                        kms.database
+                            .atomic(
+                                user,
+                                &[AtomicOperation::UpdateObject((
+                                    uid,
+                                    obj,
+                                    updated_attrs,
+                                    None,
+                                ))],
+                            )
+                            .await?;
+                        // Mirror change in-memory for immediate consistency
+                        let attrs_mut = owm.attributes_mut();
+                        attrs_mut.fresh = Some(false);
+                        if let Ok(kb_mut) = owm.object_mut().key_block_mut() {
+                            if let Some(KeyValue::Structure { attributes, .. }) =
+                                kb_mut.key_value.as_mut()
+                            {
+                                if let Some(inner) = attributes.as_mut() {
+                                    inner.fresh = Some(false);
                                 }
                             }
                         }
@@ -285,18 +327,21 @@ pub(crate) async fn export_get(
                 if is_pkcs12 {
                     // retrieve the private key
                     owm = retrieve_private_key_for_certificate(
-                        uid_or_tags,
+                        object_handle,
                         operation_type,
                         kms,
                         user,
-                        params.clone(),
                     )
                     .await?;
+                    check_extractable_and_sensitive(
+                        &owm,
+                        &request.key_wrapping_specification,
+                        true,
+                    )?;
                     Box::pin(post_process_private_key(
                         kms,
                         operation_type,
                         user,
-                        params.clone(),
                         &Export {
                             unique_identifier: Some(UniqueIdentifier::TextString(
                                 owm.id().to_owned(),
@@ -310,8 +355,7 @@ pub(crate) async fn export_get(
                     ))
                     .await?;
                 } else if *key_format_type == KeyFormatType::PKCS7 {
-                    owm = Box::pin(post_process_pkcs7(kms, operation_type, user, params, owm))
-                        .await?;
+                    owm = Box::pin(post_process_pkcs7(kms, operation_type, user, owm)).await?;
                 }
 
                 #[cfg(not(feature = "non-fips"))]
@@ -359,17 +403,13 @@ pub(crate) async fn export_get(
                     &request.key_wrapping_specification,
                     kms,
                     user,
-                    params.clone(),
                 ))
                 .await?;
             }
         }
-        ObjectType::OpaqueObject => {
-            // Opaque Objects are returned as-is. KMIP does not define alternate export
-            // formats for OpaqueObject; no wrapping/unwrapping semantics apply here beyond
-            // what retrieve_object_for_operation has already enforced. If future profile
-            // vectors require additional behaviors (e.g., redaction on destroyed state),
-            // they can be added analogously to SecretData above.
+        ObjectType::OpaqueObject | ObjectType::SplitKey => {
+            // Opaque Objects and SplitKey shares are returned as-is. KMIP does not define
+            // alternate export formats for these types; no wrapping/unwrapping semantics apply.
         }
         _ => {
             kms_bail!(
@@ -381,7 +421,7 @@ pub(crate) async fn export_get(
 
     info!(
         uid = owm.id(),
-        user = user,
+        user = user.as_str(),
         "Exported object of type: {}",
         owm.object().object_type()
     );
@@ -401,8 +441,8 @@ pub(crate) async fn export_get(
 async fn post_process_private_key(
     kms: &KMS,
     operation_type: KmipOperation,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
+
     request: &Export,
     owm: &mut ObjectWithMetadata,
 ) -> Result<(), KmsError> {
@@ -426,6 +466,9 @@ async fn post_process_private_key(
 
     #[cfg(not(feature = "non-fips"))]
     let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
+    if is_pkcs12 {
+        check_extractable_and_sensitive(owm, &request.key_wrapping_specification, true)?;
+    }
     // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
     trace!("post_process_private_key: operation type: {operation_type:?}");
     if (operation_type == KmipOperation::Export)
@@ -452,7 +495,6 @@ async fn post_process_private_key(
             },
             kms,
             user,
-            params.clone(),
         ))
         .await?;
     }
@@ -462,7 +504,6 @@ async fn post_process_private_key(
             kms,
             operation_type,
             user,
-            params,
             request,
             owm,
         ))
@@ -481,37 +522,46 @@ async fn post_process_active_private_key(
     key_wrap_type: &Option<KeyWrapType>,
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
 ) -> KResult<()> {
     trace!("key_format_type: {key_format_type:?}",);
     // First perform any necessary unwrapping to the expected type
-    unwrap_if_requested(
+    Box::pin(unwrap_if_requested(
         object_with_metadata,
         key_wrap_type,
         kms,
         user,
-        params.clone(),
         ObjectType::PrivateKey,
-    )
+    ))
     .await?;
 
     let owm_attributes = object_with_metadata.attributes().clone();
-    let object = object_with_metadata.object_mut();
-    let key_block = object.key_block_mut()?;
 
-    // If the key is still wrapped, then the exported `KeyFormatType` must be the default (`None`)
-    if key_block.key_wrapping_data.is_some() {
+    // If the key is still wrapped, check constraints and optionally unwrap for re-wrapping.
+    if object_with_metadata.object().is_wrapped() {
         if key_format_type.is_some() {
             kms_bail!(
                 "export: unable to export a wrapped key with a requested Key Format Type. It must \
                  be the default"
             )
         }
-        // The key is wrapped, and the Key Format Type is the default (none)
-        // The key is exported as such
-        return Ok(());
+        if key_wrapping_specification.is_none() {
+            // No re-wrapping requested: export the key as-is (still wrapped)
+            return Ok(());
+        }
+        // A re-wrapping specification is present (e.g. CSE key): unwrap the
+        // current wrapping (KEK) first so the key can be re-wrapped below.
+        let unwrapped = Box::pin(kms.get_unwrapped(
+            object_with_metadata.id(),
+            object_with_metadata.object(),
+            user,
+        ))
+        .await?;
+        object_with_metadata.set_object(unwrapped);
     }
+
+    let object = object_with_metadata.object_mut();
+    let key_block = object.key_block_mut()?;
 
     // Covercrypt keys cannot be post-processed, process them here
     if key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt) {
@@ -521,9 +571,54 @@ async fn post_process_active_private_key(
             key_format_type,
             kms,
             user,
-            params.clone(),
         ))
         .await;
+    }
+
+    // PQC keys are stored as PKCS#8 (ML-KEM, ML-DSA, SLH-DSA) or Raw
+    // (hybrid KEMs) and do not support an OpenSSL round-trip.
+    // PKCS#8 → Raw conversion is supported; return as-is otherwise.
+    #[cfg(feature = "non-fips")]
+    if is_pqc_algorithm(key_block.cryptographic_algorithm) {
+        let stored_fmt = key_block.key_format_type;
+        if key_format_type.is_some()
+            && !matches!(
+                key_format_type,
+                Some(KeyFormatType::PKCS8 | KeyFormatType::Raw)
+            )
+        {
+            kms_bail!("export: PQC keys only support PKCS#8 or Raw format")
+        }
+        // Convert PKCS#8 → Raw when requested
+        if let Some(requested) = key_format_type {
+            if *requested == KeyFormatType::Raw && stored_fmt == KeyFormatType::PKCS8 {
+                let key_bytes = key_block.key_bytes()?;
+                let raw_bytes = pqc_private_key_pkcs8_to_raw(&key_bytes).map_err(|e| {
+                    KmsError::CryptographicError(format!(
+                        "export: failed to convert PQC private key from PKCS#8 to Raw: {e}"
+                    ))
+                })?;
+                key_block.key_format_type = KeyFormatType::Raw;
+                if let Some(KeyValue::Structure {
+                    ref mut key_material,
+                    ..
+                }) = key_block.key_value
+                {
+                    *key_material = KeyMaterial::ByteString(Zeroizing::from(raw_bytes));
+                }
+            } else if *requested != stored_fmt {
+                kms_bail!(
+                    "export: PQC key stored as {stored_fmt:?} cannot be converted to \
+                     {requested:?}"
+                )
+            }
+        }
+        if let Some(kws) = key_wrapping_specification {
+            let mut cloned = object_with_metadata.object().clone();
+            Box::pin(wrap_object(&mut cloned, kws, kms, user)).await?;
+            *object_with_metadata.object_mut() = cloned;
+        }
+        return Ok(());
     }
 
     // Take the existing attributes from the Object and merge them with the object attributes
@@ -538,6 +633,11 @@ async fn post_process_active_private_key(
             owm_attributes
         }
     };
+    // Strip WrappingKeyLink: it belongs to the server-side metadata (tracking the stored
+    // wrapping relationship), not to the exported key material. Without this, a key that
+    // was imported-as-wrapped and later exported-with-unwrap would carry a stale
+    // WrappingKeyLink in its embedded key_value.attributes.
+    attributes.remove_link(LinkType::WrappingKeyLink);
 
     // Special-case TransparentDSAPrivateKey: we do not need (nor want) an OpenSSL round-trip
     // if the caller either requested no specific format OR explicitly requested the same
@@ -564,28 +664,26 @@ async fn post_process_active_private_key(
                 kms_bail!("export: incompatible key format request for TransparentDSAPrivateKey")
             }
             // Wrap the existing object in-place
-            unwrap_if_requested(
+            Box::pin(unwrap_if_requested(
                 object_with_metadata,
                 key_wrap_type,
                 kms,
                 user,
-                params.clone(),
                 ObjectType::PrivateKey,
-            )
+            ))
             .await?; // ensure unwrapped first
             let mut cloned = object_with_metadata.object().clone();
-            wrap_object(&mut cloned, kws, kms, user, params.clone()).await?;
+            wrap_object(&mut cloned, kws, kms, user).await?;
             *object_with_metadata.object_mut() = cloned;
         } else {
             // Just ensure unwrapped if requested (normal path); no format conversion applied
-            unwrap_if_requested(
+            Box::pin(unwrap_if_requested(
                 object_with_metadata,
                 key_wrap_type,
                 kms,
                 user,
-                params.clone(),
                 ObjectType::PrivateKey,
-            )
+            ))
             .await?;
         }
         return Ok(());
@@ -662,7 +760,6 @@ async fn post_process_active_private_key(
             key_wrapping_specification,
             kms,
             user,
-            params,
         ))
         .await?;
         // reassign the wrapped key
@@ -754,18 +851,16 @@ async fn process_public_key(
     key_wrap_type: &Option<KeyWrapType>,
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
 ) -> KResult<()> {
     // perform any necessary unwrapping
-    unwrap_if_requested(
+    Box::pin(unwrap_if_requested(
         object_with_metadata,
         key_wrap_type,
         kms,
         user,
-        params.clone(),
         ObjectType::PublicKey,
-    )
+    ))
     .await?;
 
     // make a copy of the existing attributes
@@ -794,9 +889,54 @@ async fn process_public_key(
                 key_format_type,
                 kms,
                 user,
-                params.clone(),
             ))
             .await;
+        }
+
+        // PQC public keys: skip the OpenSSL round-trip, same rationale as private keys.
+        #[cfg(feature = "non-fips")]
+        if is_pqc_algorithm(key_block.cryptographic_algorithm) {
+            let stored_fmt = key_block.key_format_type;
+            if key_format_type.is_some()
+                && !matches!(
+                    key_format_type,
+                    Some(KeyFormatType::PKCS8 | KeyFormatType::Raw)
+                )
+            {
+                kms_bail!("export: PQC keys only support PKCS#8 or Raw format")
+            }
+            // Convert SPKI (stored as PKCS8 format type) → Raw when requested
+            if let Some(requested) = key_format_type {
+                if *requested == KeyFormatType::Raw && stored_fmt == KeyFormatType::PKCS8 {
+                    let key_bytes = key_block.key_bytes()?;
+                    let raw_bytes = pqc_public_key_spki_to_raw(&key_bytes).map_err(|e| {
+                        KmsError::CryptographicError(format!(
+                            "export: failed to convert PQC public key from SPKI to Raw: {e}"
+                        ))
+                    })?;
+                    // Drop immutable borrow, re-acquire mutably
+                    let key_block_mut = object_with_metadata.object_mut().key_block_mut()?;
+                    key_block_mut.key_format_type = KeyFormatType::Raw;
+                    if let Some(KeyValue::Structure {
+                        ref mut key_material,
+                        ..
+                    }) = key_block_mut.key_value
+                    {
+                        *key_material = KeyMaterial::ByteString(Zeroizing::from(raw_bytes));
+                    }
+                } else if *requested != stored_fmt {
+                    kms_bail!(
+                        "export: PQC key stored as {stored_fmt:?} cannot be converted to \
+                         {requested:?}"
+                    )
+                }
+            }
+            if let Some(kws) = key_wrapping_specification {
+                let mut cloned = object_with_metadata.object().clone();
+                Box::pin(wrap_object(&mut cloned, kws, kms, user)).await?;
+                *object_with_metadata.object_mut() = cloned;
+            }
+            return Ok(());
         }
     }
 
@@ -812,6 +952,9 @@ async fn process_public_key(
             owm_attributes
         }
     };
+    // Strip WrappingKeyLink from the exported public key attributes (same rationale as
+    // post_process_active_private_key: server-side metadata, not part of exported material).
+    attributes.remove_link(LinkType::WrappingKeyLink);
 
     // parse the key to an openssl object
     let openssl_key = kmip_public_key_to_openssl(object_with_metadata.object())
@@ -846,7 +989,6 @@ async fn process_public_key(
             key_wrapping_specification,
             kms,
             user,
-            params,
         ))
         .await?;
         // reassign the wrapped key
@@ -900,8 +1042,8 @@ async fn unwrap_if_requested(
     object_with_metadata: &mut ObjectWithMetadata,
     key_wrap_type: &Option<KeyWrapType>,
     kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
+
     object_type: ObjectType,
 ) -> Result<(), KmsError> {
     let mut key_wrap_type = *key_wrap_type;
@@ -916,14 +1058,12 @@ async fn unwrap_if_requested(
     debug!("Key wrap type: {:?}", key_wrap_type);
     if let Some(key_wrap_type) = key_wrap_type {
         if key_wrap_type == KeyWrapType::NotWrapped {
-            let mut object = kms
-                .get_unwrapped(
-                    object_with_metadata.id(),
-                    object_with_metadata.object(),
-                    user,
-                    params,
-                )
-                .await?;
+            let mut object = Box::pin(kms.get_unwrapped(
+                object_with_metadata.id(),
+                object_with_metadata.object(),
+                user,
+            ))
+            .await?;
             // If we have lost attributes on the unwrapped object, we need to restore them
             if let Ok(key_block) = object.key_block_mut() {
                 if let Some(KeyValue::Structure { attributes, .. }) = key_block.key_value.as_mut() {
@@ -946,8 +1086,7 @@ async fn process_covercrypt_key(
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     key_format_type: &Option<KeyFormatType>,
     kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
 ) -> KResult<()> {
     // Wrapping is only available for KeyFormatType being the default (i.e. None)
     if let Some(key_wrapping_specification) = key_wrapping_specification {
@@ -963,11 +1102,40 @@ async fn process_covercrypt_key(
             key_wrapping_specification,
             kms,
             user,
-            params,
         ))
         .await?;
     }
     Ok(())
+}
+
+/// Returns `true` for PQC algorithm variants (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA).
+#[cfg(feature = "non-fips")]
+const fn is_pqc_algorithm(algo: Option<CryptographicAlgorithm>) -> bool {
+    matches!(
+        algo,
+        Some(
+            CryptographicAlgorithm::MLKEM_512
+                | CryptographicAlgorithm::MLKEM_768
+                | CryptographicAlgorithm::MLKEM_1024
+                | CryptographicAlgorithm::MLDSA_44
+                | CryptographicAlgorithm::MLDSA_65
+                | CryptographicAlgorithm::MLDSA_87
+                | CryptographicAlgorithm::X25519MLKEM768
+                | CryptographicAlgorithm::X448MLKEM1024
+                | CryptographicAlgorithm::SLHDSA_SHA2_128s
+                | CryptographicAlgorithm::SLHDSA_SHA2_128f
+                | CryptographicAlgorithm::SLHDSA_SHA2_192s
+                | CryptographicAlgorithm::SLHDSA_SHA2_192f
+                | CryptographicAlgorithm::SLHDSA_SHA2_256s
+                | CryptographicAlgorithm::SLHDSA_SHA2_256f
+                | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+                | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+                | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+                | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+                | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+                | CryptographicAlgorithm::SLHDSA_SHAKE_256f
+        )
+    )
 }
 
 pub(super) fn openssl_private_key_to_kmip_default_format(
@@ -1023,26 +1191,24 @@ async fn process_symmetric_key(
     key_wrap_type: &Option<KeyWrapType>,
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
 ) -> KResult<()> {
     trace!(
         "process_symmetric_key: object_with_metadata: {}",
         object_with_metadata
     );
 
-    trace!(target: "kmip", "[diag-process_symmetric_key] enter uid={} requested_format={:?} wrap_type={:?}",
+    trace!(target: "kmip", "process_symmetric_key enter uid={} requested_format={:?} wrap_type={:?}",
         object_with_metadata.id(), key_format_type, key_wrap_type);
 
     // First check is any unwrapping needs to be done
-    unwrap_if_requested(
+    Box::pin(unwrap_if_requested(
         object_with_metadata,
         key_wrap_type,
         kms,
         user,
-        params.clone(),
         ObjectType::SymmetricKey,
-    )
+    ))
     .await?;
 
     // Capture id early to avoid borrow checker conflicts in trace statements
@@ -1056,7 +1222,7 @@ async fn process_symmetric_key(
         .key_wrapping_data
         .is_some();
 
-    // trace!(target: "kmip", "[diag-process_symmetric_key] key_block initial format={:?} wrapped={} uid={}", key_block.key_format_type, key_block.key_wrapping_data.is_some(), obj_id);
+    // trace!(target: "kmip", "process_symmetric_key key_block initial format={:?} wrapped={} uid={}", key_block.key_format_type, key_block.key_wrapping_data.is_some(), obj_id);
 
     // If the key is still wrapped then historically we rejected any requested KeyFormatType.
     // Allow the client to request `Raw` but, in order to provide actual raw key bytes (so the
@@ -1069,14 +1235,12 @@ async fn process_symmetric_key(
                 // Try to unwrap the stored wrapped key so callers requesting Raw actually get the
                 // underlying key bytes. This mirrors the behavior expected when the key must be
                 // unwrapped to be used as a KEK to wrap another key.
-                let mut unwrapped = kms
-                    .get_unwrapped(
-                        object_with_metadata.id(),
-                        object_with_metadata.object(),
-                        user,
-                        params.clone(),
-                    )
-                    .await?;
+                let mut unwrapped = Box::pin(kms.get_unwrapped(
+                    object_with_metadata.id(),
+                    object_with_metadata.object(),
+                    user,
+                ))
+                .await?;
 
                 // If the unwrapped object lost attributes in the KeyValue::Structure, restore
                 // them from the object metadata so downstream attribute accessors succeed.
@@ -1127,7 +1291,7 @@ async fn process_symmetric_key(
             _ => kms_bail!("export: unsupported key material"),
         }
     } else {
-        trace!(target: "kmip", "[diag-process_symmetric_key] missing key_value structure uid={}", object_with_metadata.id());
+        trace!(target: "kmip", "process_symmetric_key missing key_value structure uid={}", object_with_metadata.id());
         return Err(KmsError::Default(
             "process_symmetric_key: key value not found in key".to_owned(),
         ));
@@ -1151,14 +1315,7 @@ async fn process_symmetric_key(
             inner.key_format_type = Some(KeyFormatType::Raw);
         }
         // wrap the key
-        Box::pin(wrap_object(
-            object,
-            key_wrapping_specification,
-            kms,
-            user,
-            params,
-        ))
-        .await?;
+        Box::pin(wrap_object(object, key_wrapping_specification, kms, user)).await?;
         return Ok(());
     }
 
@@ -1170,7 +1327,7 @@ async fn process_symmetric_key(
                 attributes: nested_attrs.clone(),
             });
             key_block.key_format_type = KeyFormatType::TransparentSymmetricKey;
-            trace!(target: "kmip", "[diag-process_symmetric_key] set TransparentSymmetricKey uid={}", obj_id);
+            trace!(target: "kmip", "process_symmetric_key set TransparentSymmetricKey uid={}", obj_id);
         }
         None | Some(KeyFormatType::Raw) => {
             key_block.key_value = Some(KeyValue::Structure {
@@ -1181,7 +1338,7 @@ async fn process_symmetric_key(
             if let Some(inner) = nested_attrs.as_mut() {
                 inner.key_format_type = Some(KeyFormatType::Raw);
             }
-            trace!(target: "kmip", "[diag-process_symmetric_key] set Raw uid={}", obj_id);
+            trace!(target: "kmip", "process_symmetric_key set Raw uid={}", obj_id);
         }
         _ => kms_bail!(
             "export: unsupported requested Key Format Type for a symmetric key: {:?}",
@@ -1189,7 +1346,7 @@ async fn process_symmetric_key(
         ),
     }
 
-    trace!(target: "kmip", "[diag-process_symmetric_key] exit uid={} final_format={:?}", obj_id, key_block.key_format_type);
+    trace!(target: "kmip", "process_symmetric_key exit uid={} final_format={:?}", obj_id, key_block.key_format_type);
 
     Ok(())
 }
@@ -1197,8 +1354,8 @@ async fn process_symmetric_key(
 async fn build_pkcs12_for_private_key(
     kms: &KMS,
     operation_type: KmipOperation,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
+
     request: &Export,
     private_key_owm: &mut ObjectWithMetadata,
 ) -> Result<(), KmsError> {
@@ -1208,14 +1365,8 @@ async fn build_pkcs12_for_private_key(
         request.key_format_type
     );
 
-    let mut cert_owm = retrieve_certificate_for_private_key(
-        private_key_owm,
-        operation_type,
-        kms,
-        user,
-        params.clone(),
-    )
-    .await?;
+    let mut cert_owm =
+        retrieve_certificate_for_private_key(private_key_owm, operation_type, kms, user).await?;
     let certificate = kmip_certificate_to_openssl(cert_owm.object())?;
 
     trace!("building chain from leaf certificate:  {}", cert_owm.id());
@@ -1230,11 +1381,10 @@ async fn build_pkcs12_for_private_key(
         trace!("certificate parent id is:  {}", parent_id);
         // retrieve the parent certificate
         cert_owm = Box::pin(retrieve_object_for_operation(
-            &parent_id.to_string(),
+            ObjectHandle::from(&parent_id.to_string()),
             operation_type,
             kms,
             user,
-            params.clone(),
         ))
         .await?;
         let certificate = kmip_certificate_to_openssl(cert_owm.object())?;
@@ -1300,8 +1450,7 @@ async fn build_pkcs12_for_private_key(
 async fn post_process_pkcs7(
     kms: &KMS,
     operation_type: KmipOperation,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
     owm: ObjectWithMetadata,
 ) -> KResult<ObjectWithMetadata> {
     // convert the cert to openssl
@@ -1318,11 +1467,10 @@ async fn post_process_pkcs7(
             KmipError::Default("No Public Key found in the leaf certificate".to_owned())
         })?;
     let public_key_owm = Box::pin(retrieve_object_for_operation(
-        &public_key_id.to_string(),
+        ObjectHandle::from(&public_key_id.to_string()),
         operation_type,
         kms,
         user,
-        params.clone(),
     ))
     .await?;
     let private_key_id = public_key_owm
@@ -1330,14 +1478,20 @@ async fn post_process_pkcs7(
         .get_link(LinkType::PrivateKeyLink);
     if let Some(private_key_id) = private_key_id {
         let private_key_owm = Box::pin(retrieve_object_for_operation(
-            &private_key_id.to_string(),
+            ObjectHandle::from(&private_key_id.to_string()),
             operation_type,
             kms,
             user,
-            params.clone(),
         ))
         .await?;
-        let pkey = kmip_private_key_to_openssl(private_key_owm.object())
+        let private_key_object = if private_key_owm.object().is_wrapped() {
+            Box::pin(kms.get_unwrapped(private_key_owm.id(), private_key_owm.object(), user))
+                .await
+                .context("export pkcs7: unable to unwrap the private key")?
+        } else {
+            private_key_owm.object().clone()
+        };
+        let pkey = kmip_private_key_to_openssl(&private_key_object)
             .context("export: unable to parse the private key to openssl")?;
 
         // Create the PKCS7 structure
@@ -1351,11 +1505,10 @@ async fn post_process_pkcs7(
             }
             // Retrieve the parent certificate
             cert_owm = Box::pin(retrieve_object_for_operation(
-                &parent_id.to_string(),
+                ObjectHandle::from(&parent_id.to_string()),
                 operation_type,
                 kms,
                 user,
-                params.clone(),
             ))
             .await?;
             let certificate = kmip_certificate_to_openssl(cert_owm.object())
@@ -1389,8 +1542,7 @@ async fn process_secret_data(
     key_wrap_type: &Option<KeyWrapType>,
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
 ) -> KResult<()> {
     trace!(
         "process_secret_data: object_with_metadata: {}",
@@ -1398,14 +1550,13 @@ async fn process_secret_data(
     );
 
     // First check is any unwrapping needs to be done
-    unwrap_if_requested(
+    Box::pin(unwrap_if_requested(
         object_with_metadata,
         key_wrap_type,
         kms,
         user,
-        params.clone(),
         ObjectType::SecretData,
-    )
+    ))
     .await?;
 
     let object = object_with_metadata.object_mut();
@@ -1459,14 +1610,7 @@ async fn process_secret_data(
             inner.key_format_type = Some(KeyFormatType::Raw);
         }
         // wrap the key
-        Box::pin(wrap_object(
-            object,
-            key_wrapping_specification,
-            kms,
-            user,
-            params,
-        ))
-        .await?;
+        Box::pin(wrap_object(object, key_wrapping_specification, kms, user)).await?;
         return Ok(());
     }
 

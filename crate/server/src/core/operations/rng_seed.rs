@@ -1,13 +1,11 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::kmip_operations::{RNGSeed, RNGSeedResponse},
-    cosmian_kms_interfaces::SessionParams,
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
+    RNGSeed, RNGSeedResponse,
 };
 use cosmian_logger::trace;
 
 use crate::{
     core::{KMS, rng::global_rng},
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -20,8 +18,7 @@ use crate::{
 pub(crate) async fn rng_seed(
     _kms: &KMS,
     request: RNGSeed,
-    _user: &str,
-    _params: Option<Arc<dyn SessionParams>>,
+    _user: &UserId,
 ) -> KResult<RNGSeedResponse> {
     trace!("{request}");
 
@@ -34,7 +31,7 @@ pub(crate) async fn rng_seed(
     }
 
     // Report how much seed data was consumed (as per KMIP vectors expectations).
-    let amount_of_seed_data: i32 = i32::try_from(request.data.len()).map_or(i32::MAX, |v| v);
+    let amount_of_seed_data: i32 = i32::try_from(request.data.len()).unwrap_or(i32::MAX);
     Ok(RNGSeedResponse {
         amount_of_seed_data,
     })

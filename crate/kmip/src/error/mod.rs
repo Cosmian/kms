@@ -108,6 +108,12 @@ impl From<TryFromIntError> for KmipError {
     }
 }
 
+impl From<cosmian_crypto_core::CryptoCoreError> for KmipError {
+    fn from(e: cosmian_crypto_core::CryptoCoreError) -> Self {
+        Self::Serialization(e.to_string())
+    }
+}
+
 /// Return early with an error if a condition is not satisfied.
 ///
 /// This macro is equivalent to `if !$cond { return Err(From::from($err)); }`.

@@ -1,6 +1,7 @@
 use std::{ops::Add, sync::Arc};
 
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
+    extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
     kmip_attributes::Attributes,
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Export, Import},
@@ -29,10 +30,13 @@ use uuid::Uuid;
 
 const EMPTY_TAGS: [&str; 0] = [];
 
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
+
 use crate::{
     config::ClapConfig,
     core::KMS,
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
     tests::{
         hsm::test_helpers::{get_hsm_model, get_hsm_password, get_hsm_slot_id},
@@ -42,11 +46,14 @@ use crate::{
 
 #[cfg(feature = "non-fips")]
 mod ec_dek;
+mod issues;
+mod multi_hsm;
+mod permissions;
 mod rsa_dek;
 mod search;
 mod secret_data_dek;
 mod symmetric_dek;
-mod test_helpers;
+pub(crate) mod test_helpers;
 
 /// The HSM simulator does not like tests in parallel,
 /// so we run them sequentially from here
@@ -55,7 +62,7 @@ mod test_helpers;
 async fn test_hsm_all() {
     log_init(option_env!("RUST_LOG"));
     info!("HSM: find");
-    search::test_object_search().await.unwrap();
+    Box::pin(search::test_object_search()).await.unwrap();
 
     info!("HSM: wrapped_symmetric_dek");
     // Box::pin are needed to conform to clippy::large_futures lint
@@ -73,6 +80,28 @@ async fn test_hsm_all() {
         info!("HSM: wrapped_ec_dek");
         Box::pin(ec_dek::test_wrapped_ec_dek()).await.unwrap();
     }
+
+    info!("HSM: non_admin_kek_wrapping (issue #761)");
+    Box::pin(issues::test_non_admin_kek_wrapping())
+        .await
+        .unwrap();
+    info!("HSM: server_side_unwrap (issue #762)");
+    Box::pin(issues::test_server_side_unwrap()).await.unwrap();
+    info!("HSM: destroy_type_guard (issue #763)");
+    Box::pin(issues::test_hsm_destroy_type_guard())
+        .await
+        .unwrap();
+    info!("HSM: modify_attribute_sensitive_key (issue #933)");
+    Box::pin(issues::test_hsm_modify_attribute_sensitive_key())
+        .await
+        .unwrap();
+    info!("HSM: locate_name_filter_does_not_leak_kek (issue #935)");
+    Box::pin(issues::test_hsm_locate_name_filter_does_not_leak_kek())
+        .await
+        .unwrap();
+
+    info!("HSM: permissions (32 scenarios)");
+    Box::pin(permissions::test_hsm_permissions()).await.unwrap();
 }
 
 fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
@@ -83,13 +112,13 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
     if unwrapped_model == "default" {
         // For backwards compatible with existing tests.
         clap_config.hsm.hsm_model = "utimaco".to_owned();
-        clap_config.hsm.hsm_admin = owner.to_owned();
+        clap_config.hsm.hsm_admin = vec![owner.to_owned()];
         clap_config.hsm.hsm_slot = vec![0];
         clap_config.hsm.hsm_password = vec!["12345678".to_owned()];
     } else {
         let user_password = get_hsm_password()?;
         let slot = get_hsm_slot_id()?;
-        clap_config.hsm.hsm_admin = owner.to_owned();
+        clap_config.hsm.hsm_admin = vec![owner.to_owned()];
         clap_config.hsm.hsm_slot = vec![slot];
         clap_config.hsm.hsm_password = vec![user_password];
         if unwrapped_model == "utimaco" {
@@ -126,12 +155,16 @@ async fn create_kek(kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
 
 async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     // create the key encryption key
+    // sensitive = false so that export-based tests can retrieve the key material;
+    // HSM tests that specifically exercise non-extractable keys create their own
+    // sensitive key directly.
     let create_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         256,
         CryptographicAlgorithm::AES,
         EMPTY_TAGS,
-        true,
+        false,
         None,
     )?;
     let response =
@@ -149,6 +182,7 @@ async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<(
 async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     // create the key encryption key
     let create_request = create_rsa_key_pair_request(
+        VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         EMPTY_TAGS,
         2048,
@@ -164,13 +198,13 @@ async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<
     let Operation::CreateKeyPairResponse(create_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
-    assert!(
-        create_response.private_key_unique_identifier
-            == UniqueIdentifier::TextString(key_uid.to_owned())
+    assert_eq!(
+        create_response.private_key_unique_identifier,
+        UniqueIdentifier::TextString(key_uid.to_owned())
     );
-    assert!(
-        create_response.public_key_unique_identifier
-            == UniqueIdentifier::TextString(key_uid.to_owned().add("_pk"))
+    assert_eq!(
+        create_response.public_key_unique_identifier,
+        UniqueIdentifier::TextString(key_uid.to_owned().add(SYSTEM_TAG_PUBLIC_KEY))
     );
     Ok(())
 }
@@ -222,7 +256,7 @@ async fn import_object(
         object: object.clone(),
     };
 
-    let create_response = kms.import(import_request, owner, None, None).await?;
+    let create_response = kms.import(import_request, &UserId::from(owner)).await?;
     Ok(create_response.unique_identifier)
 }
 
@@ -235,7 +269,7 @@ async fn export_object(kms: &Arc<KMS>, owner: &str, object_id: &str) -> KResult<
         key_wrapping_specification: None,
     };
 
-    let export_response = kms.export(export_request, owner, None).await?;
+    let export_response = kms.export(export_request, &UserId::from(owner)).await?;
     Ok(export_response.object)
 }
 
@@ -244,6 +278,7 @@ async fn delete_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
         unique_identifier: Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         remove: true,
         cascade: true,
+        expected_object_type: None,
     };
     let response = send_message(
         kms.clone(),
@@ -268,7 +303,11 @@ async fn delete_all_keys(owner: &str, kms: &Arc<KMS>) -> KResult<()> {
         let Some(key_string) = found_key.as_str() else {
             continue;
         };
-        delete_key(key_string, owner, kms).await?;
+        // HSM slot state persists across test runs: keys may have been created by a
+        // different owner UUID in a previous run.
+        if let Err(e) = delete_key(key_string, owner, kms).await {
+            debug!("Could not delete key {key_string} (may belong to a different owner): {e}");
+        }
     }
     Ok(())
 }
@@ -317,7 +356,7 @@ async fn send_message(
             .collect(),
     };
 
-    let response = kms.message(request, owner, None).await?;
+    let response = kms.message(request, &UserId::from(owner)).await?;
     assert_eq!(response.response_header.batch_count, num_ops);
 
     response
@@ -329,8 +368,8 @@ async fn send_message(
             };
             if bi.result_status != ResultStatusEnumeration::Success {
                 return Err(KmsError::ServerError(format!(
-                    "operation failed: {:?}",
-                    bi.result_message
+                    "operation failed: reason={:?}, message={:?}",
+                    bi.result_reason, bi.result_message
                 )));
             }
             bi.response_payload

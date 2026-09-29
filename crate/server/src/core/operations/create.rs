@@ -1,69 +1,32 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip,
-    cosmian_kmip::{
-        kmip_0::kmip_types::State::{Active, PreActive},
-        kmip_2_1::{
-            kmip_objects::ObjectType,
-            kmip_operations::{Create, CreateResponse},
-            kmip_types::UniqueIdentifier,
-        },
-        time_normalize,
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        kmip_objects::ObjectType,
+        kmip_operations::{Create, CreateResponse},
+        kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::{info, trace};
 use uuid::Uuid;
 
+use super::key_ops::ObjectLifecycleExt;
 use crate::{
-    core::{
-        KMS, operations::digest::digest, retrieve_object_utils::user_has_permission,
-        wrapping::wrap_and_cache,
-    },
+    core::{KMS, uid_utils::ObjectHandle, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
-pub(crate) async fn create(
-    kms: &KMS,
-    request: Create,
-    owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
-    privileged_users: Option<Vec<String>>,
-) -> KResult<CreateResponse> {
+pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResult<CreateResponse> {
     trace!("{request}");
-    if request.protection_storage_masks.is_some() {
-        kms_bail!(KmsError::UnsupportedPlaceholder)
-    }
-
-    // To create an object, check that the user has `Create` access right
-    // The `Create` right implicitly grants permission for Create, Import, and Register operations.
-    if let Some(users) = privileged_users.clone() {
-        let has_permission = user_has_permission(
-            owner,
-            None,
-            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
-            kms,
-            params.clone(),
-        )
-        .await?;
-
-        if !has_permission && !users.iter().any(|u| u == owner) {
-            kms_bail!(KmsError::Unauthorized(
-                "User does not have create access-right.".to_owned()
-            ))
-        }
-    }
+    KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
+    kms.enforce_create_permission(owner).await?;
 
     let (unique_identifier, mut object, tags) = match &request.object_type {
-        ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(&request)?,
-        ObjectType::PrivateKey => {
-            kms.create_private_key_and_tags(&request, owner, params.clone(), privileged_users)
-                .await?
-        }
-        ObjectType::SecretData => KMS::create_secret_data_and_tags(&request)?,
+        ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(kms.vendor_id(), &request)?,
+        ObjectType::PrivateKey => kms.create_private_key_and_tags(&request, owner).await?,
+        ObjectType::SecretData => KMS::create_secret_data_and_tags(kms.vendor_id(), &request)?,
         _ => {
             kms_bail!(KmsError::NotSupported(format!(
                 "This server does not yet support creation of: {}",
@@ -86,7 +49,7 @@ pub(crate) async fn create(
         let protection_period_present = attrs.protection_period.is_some();
         if qs && (protection_level_present || protection_period_present) {
             kms_bail!(KmsError::Kmip21Error(
-                cosmian_kmip::kmip_0::kmip_types::ErrorReason::General_Failure,
+                ErrorReason::General_Failure,
                 "NOT_SAFE".to_owned(),
             ));
         }
@@ -98,65 +61,49 @@ pub(crate) async fn create(
     );
 
     // Set lifecycle attributes and copy them before the key gets wrapped
-    let attributes = {
-        let digest = digest(&object)?;
-        let attributes = object.attributes_mut()?;
-        // Determine state per KMIP 2.1 spec: default PreActive.
-        // Become Active only if ActivationDate was provided in request attributes and is <= now.
-        // InitialDate, ActivationDate, OriginalCreationDate, LastChangeDate are set by the server below.
-        let now = time_normalize()?;
-        let activation_allows_active = request.attributes.activation_date.is_some_and(|d| d <= now);
-        trace!(
-            "now: {now}, activation_allows_active: {}",
-            activation_allows_active
-        );
-        let desired_state = if activation_allows_active {
-            Active
-        } else {
-            PreActive
-        };
-        attributes.state = Some(desired_state);
-        // Ensure ObjectType is set by the server at creation
-        attributes.object_type = Some(request.object_type);
-        // Do not auto-set AlwaysSensitive; PyKMIP clients may not support this tag.
-        // Keep client-provided value if present, otherwise leave it unset.
-        // update the digest
-        attributes.digest = digest;
-        // KMIP 2.1: Key Format Type is a required attribute for cryptographic objects and is set by the server.
-        // For symmetric keys produced by Create, the default/export format is Raw. Some clients may
-        // include TransparentSymmetricKey in the request attributes, but our default behavior (and
-        // test expectations) is to export Raw unless explicitly requested at Get/Export time.
-        // To keep behavior consistent, set Attributes.key_format_type=Raw for SymmetricKey on Create.
-        // if request.object_type == ObjectType::SymmetricKey {
-        //     attributes.key_format_type = Some(KeyFormatType::Raw);
-        // }
-        // OriginalCreationDate/LastChangeDate are always set to now
-        // Zero milliseconds for KMIP serialization compatibility
-        let now_stored = time_normalize()?;
-        attributes.original_creation_date = Some(now_stored);
-        attributes.last_change_date = Some(now_stored);
-        attributes.initial_date = Some(now_stored);
-        if desired_state == Active {
-            attributes.activation_date = Some(now_stored);
-        }
-        attributes.clone()
-    };
+    let attributes =
+        object.setup_with_lifecycle(request.object_type, request.attributes.activation_date)?;
+    let mut attributes = attributes;
 
+    // The server SHALL create the AlwaysSensitive attribute at creation time
+    // (KMIP 2.1 §4.3): it is True iff the object is created Sensitive.
+    attributes.initialize_always_sensitive();
+    attributes.initialize_never_extractable();
+    if let Ok(object_attributes) = object.attributes_mut() {
+        object_attributes.always_sensitive = attributes.always_sensitive;
+        object_attributes.never_extractable = attributes.never_extractable;
+    }
+
+    // Keyset validation (SQL keys only): if rotate_name is present, the UID must equal it.
+    // HSM keys (those with a prefix such as "hsm::") manage keyset membership differently —
+    // the UID is an opaque PKCS#11 handle; rotate_name is set independently via SetAttribute.
+    if let Some(rotate_name) = &request.attributes.rotate_name {
+        let uid_str = unique_identifier.as_str().ok_or_else(|| {
+            KmsError::InvalidRequest("Create: unique_identifier must be a TextString".to_owned())
+        })?;
+        if !ObjectHandle::from(uid_str).is_hsm() && rotate_name.as_str() != uid_str {
+            return Err(KmsError::InvalidRequest(format!(
+                "Create: rotate_name ('{rotate_name}') must equal the key's unique_identifier \
+                 ('{uid_str}') — set the key ID to the keyset name at creation time"
+            )));
+        }
+        // Initialise keyset metadata for SQL keys: generation 0, the current (only) member.
+        if !ObjectHandle::from(uid_str).is_hsm() {
+            attributes.rotate_generation = Some(0);
+            attributes.rotate_latest = Some(true);
+        }
+    }
+
+    let object_type = object.object_type();
     trace!(
         "Creating object of type {:?} with UID {} and attributes {}",
-        &object.object_type(),
-        &unique_identifier,
-        &attributes,
+        &object_type, &unique_identifier, &attributes,
     );
     // Wrap the object if requested by the user or on the server params
-    Box::pin(wrap_and_cache(
-        kms,
-        owner,
-        params.clone(),
-        &unique_identifier,
-        &mut object,
-    ))
-    .await?;
+    Box::pin(wrap_and_cache(kms, owner, &unique_identifier, &mut object)).await?;
+    // If the object was wrapped, record the WrappingKeyLink in the stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    object.copy_wrapping_key_link_to(&mut attributes);
 
     // create the object in the database
     let uid = kms
@@ -167,14 +114,13 @@ pub(crate) async fn create(
             &object,
             &attributes,
             &tags,
-            params,
         )
         .await?;
     info!(
         uid = uid,
-        user = owner,
+        user = owner.as_str(),
         "Created Object of type {:?}",
-        &object.object_type(),
+        &object_type,
     );
 
     Ok(CreateResponse {

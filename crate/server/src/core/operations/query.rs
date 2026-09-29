@@ -13,7 +13,7 @@ use crate::result::KResult;
 /// The Query operation SHOULD be invocable by unauthenticated clients
 /// to interrogate server features and functions.
 /// The Query Function field in the request SHALL contain one or more of the following items:
-pub(crate) async fn query(request: Query) -> KResult<QueryResponse> {
+pub(crate) async fn query(request: Query, vendor_identification: &str) -> KResult<QueryResponse> {
     trace!("{request}");
 
     let mut response = QueryResponse {
@@ -81,6 +81,9 @@ pub(crate) async fn query(request: Query) -> KResult<QueryResponse> {
                         OperationEnumeration::Interop,
                         OperationEnumeration::Log,
                         OperationEnumeration::Check,
+                        // Split key ops (KMIP 1.4 §4.38–§4.39)
+                        OperationEnumeration::CreateSplitKey,
+                        OperationEnumeration::JoinSplitKey,
                     ]);
                 }
                 QueryFunction::QueryObjects => {
@@ -90,11 +93,12 @@ pub(crate) async fn query(request: Query) -> KResult<QueryResponse> {
                         ObjectType::PrivateKey,
                         ObjectType::PublicKey,
                         ObjectType::SecretData,
+                        ObjectType::SplitKey,
                         ObjectType::OpaqueObject,
                     ]);
                 }
                 QueryFunction::QueryServerInformation => {
-                    response.vendor_identification = Some("Cosmian".to_owned());
+                    response.vendor_identification = Some(vendor_identification.to_owned());
                     response.server_information = Some(ServerInformation {
                         server_name: Some("Cosmian KMS".to_owned()),
                         server_version: Some(env!("CARGO_PKG_VERSION").to_owned()),

@@ -1,24 +1,23 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, State},
         kmip_2_1::{
             KmipOperation,
+            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
             kmip_data_structures::{KeyBlock, KeyValue},
             kmip_objects::{Object, ObjectType},
             kmip_types::LinkType,
         },
     },
     cosmian_kms_crypto::crypto::wrap::{decode_unwrapped_key, unwrap_key_block},
-    cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::debug;
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{KMS, uid_utils::ObjectHandle},
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
@@ -33,12 +32,7 @@ use crate::{
 ///
 /// # Returns
 /// * `KResult<()>` - the result of the operation
-pub(crate) async fn unwrap_object(
-    object: &mut Object,
-    kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
-) -> KResult<()> {
+pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &UserId) -> KResult<()> {
     if !object.is_wrapped() {
         debug!("object is not wrapped, no need to unwrap");
         return Ok(());
@@ -63,20 +57,30 @@ pub(crate) async fn unwrap_object(
         .unique_identifier
         .to_string();
 
-    if let Some(prefix) = has_prefix(&unwrapping_key_uid) {
+    if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(&unwrapping_key_uid) {
         debug!(
             "...unwrapping the key block with key uid: {unwrapping_key_uid} using an encryption \
              oracle, user: {user}"
         );
-        unwrapping_key_uid =
-            unwrap_using_encryption_oracle(object_key_block, kms, &unwrapping_key_uid, prefix)
-                .await?;
+        unwrapping_key_uid = unwrap_using_crypto_oracle(
+            object_key_block,
+            kms,
+            ObjectHandle::from(&unwrapping_key_uid),
+            prefix,
+        )
+        .await?;
     } else {
         debug!(
             "...unwrapping the key block with key uid: {unwrapping_key_uid} using the KMS, user: \
              {user}"
         );
-        unwrap_using_kms(object_key_block, kms, user, params, &unwrapping_key_uid).await?;
+        Box::pin(unwrap_using_kms(
+            object_key_block,
+            kms,
+            user,
+            ObjectHandle::from(&unwrapping_key_uid),
+        ))
+        .await?;
     }
     debug!(
         "Key successfully unwrapped with wrapping key: {}",
@@ -89,14 +93,14 @@ pub(crate) async fn unwrap_object(
 async fn unwrap_using_kms(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
-    unwrapping_key_uid: &String,
+    user: &UserId,
+    handle: ObjectHandle<'_>,
 ) -> KResult<()> {
+    let unwrapping_key_uid = handle.as_str();
     // fetch the wrapping key
     let unwrapping_key = kms
         .database
-        .retrieve_object(unwrapping_key_uid, params.clone())
+        .retrieve_object(unwrapping_key_uid)
         .await
         .context("wrap using KMS")?;
     let unwrapping_key = unwrapping_key.ok_or_else(|| {
@@ -117,7 +121,7 @@ async fn unwrap_using_kms(
             let private_key_uid = attributes.get_link(LinkType::PrivateKeyLink);
             let sk_id = if let Some(private_key_uid) = private_key_uid {
                 private_key_uid.to_string()
-            } else if let Some(stripped) = unwrapping_key_uid.strip_suffix("_pk") {
+            } else if let Some(stripped) = unwrapping_key_uid.strip_suffix(SYSTEM_TAG_PUBLIC_KEY) {
                 stripped.to_owned()
             } else {
                 kms_bail!(
@@ -127,7 +131,7 @@ async fn unwrap_using_kms(
             };
             let unwrapping_key = kms
                 .database
-                .retrieve_object(&sk_id, params.clone())
+                .retrieve_object(&sk_id)
                 .await
                 .context("wrap using KMS")?;
             unwrapping_key.ok_or_else(|| {
@@ -157,10 +161,10 @@ async fn unwrap_using_kms(
         )));
     }
     // check user permissions
-    if unwrapping_key.owner() != user && user != kms.params.default_username {
+    if unwrapping_key.owner() != user && user != kms.params.default_username.as_str() {
         let ops = kms
             .database
-            .list_user_operations_on_object(unwrapping_key.id(), user, false, params)
+            .list_user_operations_on_object(unwrapping_key.id(), user, false)
             .await?;
         if !ops
             .iter()
@@ -177,22 +181,28 @@ async fn unwrap_using_kms(
     Ok(())
 }
 
-/// Unwrap a key with a wrapping key using an encryption oracle
+/// Unwrap a key with a wrapping key using a crypto oracle
 /// If the unwrapping key is a public key, it will be stripped of the "_pk" suffix
 /// and the stripped version will be replaced.
-async fn unwrap_using_encryption_oracle(
+async fn unwrap_using_crypto_oracle(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
-    unwrapping_key_uid: &str,
+    handle: ObjectHandle<'_>,
     prefix: &str,
 ) -> KResult<String> {
+    let unwrapping_key_uid = handle.as_str();
     // Determine the private key if a public key is passed
     let unwrapping_key_uid = unwrapping_key_uid
-        .strip_suffix("_pk")
-        .map_or_else(|| unwrapping_key_uid.to_owned(), ToString::to_string);
+        .strip_suffix(SYSTEM_TAG_PUBLIC_KEY)
+        .map_or_else(|| unwrapping_key_uid.to_owned(), str::to_owned);
 
-    // Permission checks on HSM keys are not performed during unwrapping.
-    // The HSM itself manages access control for key operations.
+    // SECURITY ASSUMPTION: KMS-level user-permission checks are intentionally
+    // skipped for HSM-backed keys during unwrapping. The HSM device is the
+    // authoritative access-control boundary for these keys: every cryptographic
+    // operation the HSM permits is considered authorised by the KMS layer.
+    // Operators MUST ensure that HSM slot / PIN configuration and the
+    // user-to-slot mapping enforce the desired access policy; the KMS makes
+    // no additional ownership or permission assertion here.
 
     // fetch the key wrapping data
     let key_wrapping_data = object_key_block.key_wrapping_data.as_ref().ok_or_else(|| {
@@ -205,15 +215,18 @@ async fn unwrap_using_encryption_oracle(
     };
 
     // decrypt the wrapped key
-    let lock = kms.encryption_oracles.read().await;
-    let encryption_oracle = lock.get(prefix).ok_or_else(|| {
-        KmsError::InvalidRequest(format!(
-            "Encrypt: unknown encryption oracle prefix: {prefix}"
-        ))
+    let lock = kms.crypto_oracles.read().await;
+    let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+        KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
     })?;
-    let plaintext = encryption_oracle
+    let plaintext = crypto_oracle
         .decrypt(&unwrapping_key_uid, wrapped_key, None, None)
         .await?;
+    if let Some(ref metrics) = kms.metrics {
+        let model =
+            crate::core::uid_utils::hsm_model_from_prefix(&kms.params.hsm_instances, prefix);
+        metrics.record_hsm_operation("Unwrap", model);
+    }
 
     // decode the unwrapped key
     let key_value = decode_unwrapped_key(

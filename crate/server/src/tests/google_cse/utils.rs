@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde::Deserialize;
 
 use crate::{
-    config::{JwtAuthConfig, ProxyParams},
+    config::{IdpAuthConfig, ProxyParams},
     error::KmsError,
     middlewares::{JwksManager, JwtConfig},
     result::KResult,
@@ -63,7 +63,7 @@ pub(crate) async fn google_cse_auth(
 ) -> KResult<GoogleCseConfig> {
     let mut uris = google_cse::list_jwks_uri(None);
 
-    uris.push(JwtAuthConfig::uri(
+    uris.push(IdpAuthConfig::uri(
         GOOGLE_JWT_ISSUER_URI,
         Some(GOOGLE_JWKS_URI),
     ));

@@ -1,27 +1,50 @@
 use std::{
+    collections::HashMap,
     fmt::{self},
     path::PathBuf,
 };
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, JwtAuthConfig, MainDBConfig,
-    WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
+    AuditConfig, AuthVerifierConfig, CrlConfig, GoogleCseConfig, HsmConfig, HttpConfig,
+    IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, OcspConfig, RolesConfig,
+    WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
+    ui_config::UiConfig, vault_config::VaultConfig,
 };
 use crate::{
-    config::{ProxyConfig, SocketServerConfig, TlsConfig},
+    config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
+    routes::aws_xks::AwsXksConfig,
 };
 
 #[cfg(not(target_os = "windows"))]
-const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
+pub const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
+
+/// Environment variable name allowing unit tests to point the "default config
+/// path" precedence check to a private, per-process temp path instead of the
+/// real system path (`/etc/cosmian/kms.toml` or its Windows equivalent).
+///
+/// This is only consulted in `#[cfg(test)]` builds — the branch reading it is
+/// compiled out entirely in release/production binaries, so it can never
+/// affect production behaviour. Without this override, tests writing to the
+/// real default path would race with each other, since `cargo-nextest` runs
+/// every test in its own process and that shared file lives outside any
+/// single process's control.
+#[cfg(test)]
+const TEST_DEFAULT_CONF_PATH_ENV_VAR: &str = "COSMIAN_KMS_TEST_DEFAULT_CONF_PATH";
 
 // On Windows, we need to resolve %LOCALAPPDATA% at runtime
 #[cfg(target_os = "windows")]
-fn get_default_config_path() -> String {
+#[must_use]
+pub fn get_default_config_path() -> String {
+    #[cfg(test)]
+    if let Ok(overridden) = std::env::var(TEST_DEFAULT_CONF_PATH_ENV_VAR) {
+        return overridden;
+    }
     std::env::var("LOCALAPPDATA").map_or_else(
         |_| String::from("C:\\ProgramData\\cosmian\\kms.toml"),
         |localappdata| format!("{localappdata}\\Cosmian KMS Server\\kms.toml"),
@@ -29,7 +52,12 @@ fn get_default_config_path() -> String {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn get_default_config_path() -> String {
+#[must_use]
+pub fn get_default_config_path() -> String {
+    #[cfg(test)]
+    if let Ok(overridden) = std::env::var(TEST_DEFAULT_CONF_PATH_ENV_VAR) {
+        return overridden;
+    }
     DEFAULT_COSMIAN_KMS_CONF.to_owned()
 }
 
@@ -45,21 +73,36 @@ impl Default for ClapConfig {
             http: HttpConfig::default(),
             proxy: ProxyConfig::default(),
             kms_public_url: None,
-            auth: JwtAuthConfig::default(),
             idp_auth: IdpAuthConfig::default(),
+            auth_verifier: AuthVerifierConfig::default(),
             ui_config: UiConfig::default(),
             google_cse_config: GoogleCseConfig::default(),
             workspace: WorkspaceConfig::default(),
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             default_username: DEFAULT_USERNAME.to_owned(),
             force_default_username: false,
             ms_dke_service_url: None,
             logging: LoggingConfig::default(),
             info: false,
+            print_default_config: false,
             hsm: HsmConfig::default(),
+            hsm_instances: vec![],
             key_encryption_key: None,
             default_unwrap_type: None,
             non_revocable_key_id: None,
+            roles: RolesConfig::default(),
             privileged_users: None,
+            aws_xks_config: AwsXksConfig::default(),
+            kmip_policy: KmipPolicyConfig::default(),
+            azure_ekm_config: AzureEkmConfig::default(),
+            auto_rotation_check_interval_secs: 0,
+            keyset_warn_depth: 5,
+            jwks_endpoint: JwksEndpointConfig::default(),
+            secret_backends: SecretBackendConfig::default(),
+            vault: VaultConfig::default(),
+            audit: AuditConfig::default(),
+            crl: CrlConfig::default(),
+            ocsp: OcspConfig::default(),
         }
     }
 }
@@ -67,6 +110,7 @@ impl Default for ClapConfig {
 #[derive(Parser, Serialize, Deserialize)]
 #[clap(version, about, long_about = None)]
 #[serde(default)]
+#[allow(clippy::struct_excessive_bools)] // CLI config structs legitimately have many boolean flags
 pub struct ClapConfig {
     /// Explicit configuration file path provided via -c / --config.
     /// When set, this file takes precedence over the `COSMIAN_KMS_CONF` environment variable
@@ -74,6 +118,10 @@ pub struct ClapConfig {
     /// and environment variables are ignored once the configuration file is loaded.
     #[clap(short = 'c', long = "config", value_name = "COSMIAN_KMS_CONF")]
     pub config_path: Option<PathBuf>,
+
+    /// The vendor identification string reported in KMIP `QueryServerInformation` responses
+    #[clap(long, env = "KMS_VENDOR_IDENTIFICATION", default_value = VENDOR_ID_COSMIAN)]
+    pub vendor_identification: String,
 
     /// The default username to use when no authentication method is provided
     #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = DEFAULT_USERNAME)]
@@ -97,9 +145,25 @@ pub struct ClapConfig {
     #[clap(long, default_value = "false")]
     pub info: bool,
 
+    /// Serialize the default server configuration as TOML to stdout and exit.
+    /// This is used to keep the documentation in sync with the Rust struct.
+    #[clap(long, default_value = "false")]
+    #[serde(skip)]
+    pub print_default_config: bool,
+
+    /// Legacy single-HSM configuration (flat CLI flags / top-level TOML fields).
+    /// Keys use the old prefix convention: `hsm::<slot_id>::<key_id>`.
+    /// Kept for backward compatibility; prefer `[[hsm_instances]]` for new deployments.
     #[clap(flatten)]
     #[serde(flatten)]
     pub hsm: HsmConfig,
+
+    /// HSM instances, configured via the TOML `[[hsm_instances]]` array.
+    /// Each entry uses the fields: `hsm_model`, `hsm_admin`, `hsm_slot`, `hsm_password`.
+    /// Keys use the new prefix convention: `hsm::<model>::<slot_id>::<key_id>`.
+    #[clap(skip)]
+    #[serde(default, rename = "hsm_instances")]
+    pub hsm_instances: Vec<HsmConfig>,
 
     /// Force all keys imported or created in the KMS, which are not protected by a key encryption key,
     /// to be wrapped by the specified key encryption key (KEK)
@@ -140,23 +204,28 @@ pub struct ClapConfig {
     #[clap(flatten)]
     pub proxy: ProxyConfig,
 
-    /// DEPRECATED: use the idp-auth instead.
-    /// JWT authentication configuration
-    ///
-    /// This field is deprecated. Use `idp_auth` with the `--jwt-auth-provider` option instead.
-    /// The new format allows specifying multiple providers in a single comma-separated format:
-    /// `--jwt-auth-provider "ISSUER_URI,JWKS_URI,AUDIENCE"`
-    #[clap(flatten)]
-    pub auth: JwtAuthConfig,
-
     #[clap(flatten)]
     pub idp_auth: IdpAuthConfig,
+
+    /// Auth Verifier server configuration (`[auth_verifier]` TOML section).
+    ///
+    /// When configured, the KMS validates bearer tokens issued by the Cosmian
+    /// Authentication Verifier server. The Web UI login form is enabled when both
+    /// `auth_verifier_url` and `auth_verifier_realm` are set.
+    ///
+    /// See `AuthVerifierConfig` for available fields.
+    #[clap(skip)]
+    #[serde(default, rename = "auth_verifier")]
+    pub auth_verifier: AuthVerifierConfig,
 
     #[clap(flatten)]
     pub ui_config: UiConfig,
 
     #[clap(flatten)]
     pub google_cse_config: GoogleCseConfig,
+
+    #[clap(flatten)]
+    pub azure_ekm_config: AzureEkmConfig,
 
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
@@ -168,13 +237,243 @@ pub struct ClapConfig {
     #[clap(long, hide = true)]
     pub non_revocable_key_id: Option<Vec<String>>,
 
-    /// List of users who have the right to create and import Objects
-    /// and grant access rights for Create Kmip Operation.
-    #[clap(long, verbatim_doc_comment)]
+    /// **Deprecated** — use `--crypto-officer-users` (under `[roles]`) instead.
+    ///
+    /// List of users who have the right to create and import objects and grant
+    /// the `Create` access right to other users. Kept for backward compatibility;
+    /// if set and `[roles] crypto_officer_users` is not configured, these users
+    /// are promoted to the `CryptoOfficer` role automatically on startup.
+    #[clap(long, hide = true, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
+
+    /// RBAC role assignments (`CryptoOfficer`).
+    /// Users not listed in any role default to `Operator` (minimum privilege).
+    /// In TOML these fields live under the `[roles]` section.
+    #[clap(flatten)]
+    #[serde(default, rename = "roles")]
+    pub roles: RolesConfig,
+
+    #[clap(flatten)]
+    pub aws_xks_config: AwsXksConfig,
+
+    /// KMIP algorithm policy.
+    ///
+    /// This policy is configured via parameter-specific allowlists under `[kmip.allowlists]`.
+    ///
+    /// Policy selection is controlled by `kmip.policy_id` (accepted values: `DEFAULT`, `CUSTOM`).
+    ///
+    /// If `kmip.policy_id` is unset, the KMIP policy layer is disabled.
+    ///
+    /// The `DEFAULT` policy enforces built-in conservative allowlists (aligned with ANSSI/NIST/FIPS
+    /// recommendations).
+    #[clap(flatten)]
+    #[serde(rename = "kmip")]
+    pub kmip_policy: KmipPolicyConfig,
+
+    /// Interval in seconds between background auto-rotation checks.
+    /// Set to 0 (default) to disable the auto-rotation background task.
+    /// When enabled, must be at least 60 seconds to avoid excessive database churn.
+    #[clap(long, default_value = "0", verbatim_doc_comment)]
+    pub auto_rotation_check_interval_secs: u64,
+
+    /// Depth at which a successful keyset chain decryption triggers a server-side warning.
+    /// Keyset chain traversal is unbounded (stopped only by cycle detection);
+    /// this threshold emits a warning log so operators can flag stale ciphertexts.
+    /// Default: 5.
+    #[clap(long, default_value = "5", verbatim_doc_comment)]
+    pub keyset_warn_depth: u32,
+
+    /// Authentication credentials for secret URI resolution backends.
+    ///
+    /// These are provided via CLI flags or environment variables only —
+    /// never stored in the TOML config file.
+    #[clap(flatten)]
+    #[serde(skip)]
+    pub secret_backends: SecretBackendConfig,
+
+    #[command(flatten)]
+    pub jwks_endpoint: JwksEndpointConfig,
+
+    /// Configuration for the Vault-compatible REST API (`/v1/transit/` and `/v1/<pki_mount>/`).
+    #[command(flatten)]
+    #[serde(default)]
+    pub vault: VaultConfig,
+
+    #[clap(flatten)]
+    #[serde(rename = "audit")]
+    pub audit: AuditConfig,
+
+    /// CRL (Certificate Revocation List) lifecycle settings.
+    #[command(flatten)]
+    #[serde(default)]
+    pub crl: CrlConfig,
+
+    /// OCSP (Online Certificate Status Protocol) responder settings.
+    #[command(flatten)]
+    #[serde(default)]
+    pub ocsp: OcspConfig,
 }
 
 impl ClapConfig {
+    /// Serialize the default configuration as TOML with comments extracted from
+    /// the clap help strings. Each field is preceded by its `///` doc comment as
+    /// TOML `# …` lines, making the output directly useful as a reference config file.
+    ///
+    /// # Errors
+    /// Returns an error if TOML serialization of the default config fails.
+    pub fn default_config_with_comments() -> KResult<String> {
+        use std::fmt::Write as _;
+
+        let cmd = Self::command();
+
+        // Build a map: toml_key (underscore form) → help text.
+        // Prefer long_help (full /// doc comment) over short help (first line only).
+        let help_map: HashMap<String, String> = cmd
+            .get_arguments()
+            .filter_map(|arg| {
+                let long = arg.get_long()?;
+                let help = arg
+                    .get_long_help()
+                    .or_else(|| arg.get_help())
+                    .map(ToString::to_string)?;
+                // Clap uses --long-flag-name; TOML serialization uses field_name.
+                Some((long.replace('-', "_"), help))
+            })
+            .collect();
+
+        // Use kms_template.toml as the structural template (lives at the crate root so
+        // it is included in the published tarball).
+        // It documents ALL known fields — including optional ones shown as "# key = value".
+        // For each field, the clap help string replaces the manual comment when available.
+        let template = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/kms_template.toml"));
+
+        // Collect the section headers present in the template so Phase 2 can detect gaps.
+        let template_sections: std::collections::HashSet<&str> =
+            template.lines().filter(|l| l.starts_with('[')).collect();
+
+        let mut output = String::new();
+        // Accumulate consecutive comment lines until a field or section header is reached.
+        let mut pending_comments: Vec<&str> = Vec::new();
+        // Skip the very first line (template file header: "## Cosmian KMS configuration file").
+        let mut first_line = true;
+
+        // ── Phase 1: process the template ──────────────────────────────────────────
+        for line in template.lines() {
+            if first_line {
+                first_line = false;
+                continue;
+            }
+
+            // Detect field lines:
+            //   "# key = …" where key is a valid identifier → optional field (commented-out)
+            //   "key = …"    → active field (not starting with '#', '[', or blank)
+            //
+            // Distinguishing "# key = val" (optional field) from "# plain comment" is done by
+            // checking that the token before '=' consists only of lowercase ASCII, digits and '_'.
+            let key_opt: Option<&str> = line.strip_prefix("# ").map_or_else(
+                || {
+                    if !line.starts_with('#') && !line.starts_with('[') && !line.trim().is_empty() {
+                        line.split('=')
+                            .next()
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                    } else {
+                        None
+                    }
+                },
+                |rest| {
+                    let before_eq = rest.split('=').next().map_or("", str::trim);
+                    if !before_eq.is_empty()
+                        && rest.contains('=')
+                        && before_eq
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit())
+                    {
+                        Some(before_eq)
+                    } else {
+                        None
+                    }
+                },
+            );
+
+            if let Some(key) = key_opt {
+                // Emit comments: prefer clap help when available, else use manual comments.
+                if let Some(help) = help_map.get(key) {
+                    for help_line in help.lines() {
+                        if help_line.is_empty() {
+                            let _ = writeln!(output, "#");
+                        } else {
+                            let _ = writeln!(output, "# {help_line}");
+                        }
+                    }
+                } else {
+                    for comment in &pending_comments {
+                        let _ = writeln!(output, "{comment}");
+                    }
+                }
+                pending_comments.clear();
+                // Emit the field line as-is: already "# key = val" or "key = val".
+                let _ = writeln!(output, "{line}");
+            } else if line.starts_with('[') {
+                // Section header: flush accumulated comments before it.
+                for comment in &pending_comments {
+                    let _ = writeln!(output, "{comment}");
+                }
+                pending_comments.clear();
+                let _ = writeln!(output, "{line}");
+            } else if line.starts_with('#') {
+                // Comment line: accumulate until the associated field is found.
+                pending_comments.push(line);
+            } else {
+                // Empty line or other content: flush pending comments then emit.
+                for comment in &pending_comments {
+                    let _ = writeln!(output, "{comment}");
+                }
+                pending_comments.clear();
+                let _ = writeln!(output, "{line}");
+            }
+        }
+        // Flush any remaining accumulated comments.
+        for comment in &pending_comments {
+            let _ = writeln!(output, "{comment}");
+        }
+
+        // ── Phase 2: append sections missing from the template ─────────────────────
+        // `toml::to_string_pretty` covers every section in the struct (e.g. [aws_xks_config],
+        // [azure_ekm_config], [kmip], …) but omits Option<None> fields.
+        // We emit only sections not already covered by the template, using clap help comments.
+        let plain = toml::to_string_pretty(&Self::default())
+            .map_err(|e| KmsError::ServerError(e.to_string()))?;
+
+        let mut in_missing_section = false;
+        for line in plain.lines() {
+            if line.starts_with('[') {
+                in_missing_section = !template_sections.contains(line);
+                if in_missing_section {
+                    let _ = writeln!(output, "\n{line}");
+                }
+            } else if in_missing_section {
+                if !line.starts_with('#') && !line.trim().is_empty() {
+                    // Key = value: prepend clap help if available.
+                    if let Some(key) = line.split('=').next().map(str::trim) {
+                        if let Some(help) = help_map.get(key) {
+                            for help_line in help.lines() {
+                                if help_line.is_empty() {
+                                    let _ = writeln!(output, "#");
+                                } else {
+                                    let _ = writeln!(output, "# {help_line}");
+                                }
+                            }
+                        }
+                    }
+                }
+                let _ = writeln!(output, "{line}");
+            }
+        }
+
+        Ok(output)
+    }
+
     /// Load the configuration from the default configuration file
     ///
     /// # Errors
@@ -196,8 +495,17 @@ impl ClapConfig {
     {
         // Collect args so we can re-use for parse + messages
         let args_vec: Vec<T> = args.into_iter().collect();
+        // Remember whether any CLI arguments beyond the binary name were supplied,
+        // before args_vec is consumed by parse_from.
+        let has_extra_args = args_vec.len() > 1;
         // Parse preliminarily to capture the optional config path (this also handles --help / --version)
         let preliminary = Self::parse_from(args_vec);
+
+        // --print-default-config is a meta flag: it must bypass any config file so that
+        // it always outputs the built-in defaults regardless of what is on disk.
+        if preliminary.print_default_config {
+            return Ok(preliminary);
+        }
 
         // Determine configuration file path precedence:
         // 1. Command line -c/--config
@@ -209,7 +517,17 @@ impl ClapConfig {
         let env_path = std::env::var("COSMIAN_KMS_CONF").ok().map(PathBuf::from);
         let default_path = PathBuf::from(get_default_config_path());
 
-        // Helper to load a TOML file into ClapConfig
+        // Helper to load a TOML file into ClapConfig.
+        //
+        // Steps:
+        //  1. Read the file.
+        //  2. Parse into a `toml::Value`.
+        //  3. Resolve `secret://` URIs in string leaves via the selected backend.
+        //  4. Deserialize into `ClapConfig`, collecting any unknown fields as errors.
+        //     `serde_ignored` wraps the deserializer and calls the callback for every
+        //     field the target type does not recognize — including fields that bubble up
+        //     via `#[serde(flatten)]` (e.g. `HsmConfig`), where `deny_unknown_fields`
+        //     would conflict with the flatten and cannot be used directly.
         let load_file = |p: &PathBuf| -> KResult<Self> {
             let conf_content = std::fs::read_to_string(p).map_err(|e| {
                 KmsError::ServerError(format!(
@@ -217,22 +535,53 @@ impl ClapConfig {
                     p.display()
                 ))
             })?;
-            toml::from_str(&conf_content).map_err(|e| {
+            let mut config_value: toml::Value = toml::from_str(&conf_content).map_err(|e| {
                 KmsError::ServerError(format!(
                     "Cannot parse kms server config at: {} - {e:?}",
                     p.display()
                 ))
+            })?;
+            super::secret_backends::resolve_config(
+                &mut config_value,
+                &preliminary.secret_backends,
+            )?;
+
+            let mut unknown_fields: Vec<String> = Vec::new();
+            let config: Self = serde_ignored::deserialize(config_value, |path| {
+                unknown_fields.push(path.to_string());
             })
+            .map_err(|e| {
+                KmsError::ServerError(format!(
+                    "Cannot deserialize KMS server config at: {} - {e:?}",
+                    p.display()
+                ))
+            })?;
+
+            if !unknown_fields.is_empty() {
+                return Err(KmsError::ServerError(format!(
+                    "Unknown key(s) in KMS configuration file: {}. Check for typos or remove \
+                     obsolete fields.",
+                    unknown_fields.join(", ")
+                )));
+            }
+
+            Ok(config)
         };
 
         if let Some(path) = explicit {
-            if path.exists() {
+            if path.is_file() {
                 println!(
                     "Configuration file {} found (via -c/--config). Command line arguments and \
                      env variables are ignored.",
                     path.display()
                 );
                 return load_file(&path);
+            }
+            if path.exists() {
+                return Err(KmsError::ServerError(format!(
+                    "Configuration file specified with -c/--config is not a regular file: {}",
+                    path.display()
+                )));
             }
             return Err(KmsError::ServerError(format!(
                 "Configuration file specified with -c/--config not found: {}",
@@ -241,7 +590,7 @@ impl ClapConfig {
         }
 
         if let Some(env_path) = env_path {
-            if env_path.exists() {
+            if env_path.is_file() {
                 println!(
                     "Configuration file {} found (via COSMIAN_KMS_CONF). Command line arguments \
                      and env variables are ignored.",
@@ -249,22 +598,53 @@ impl ClapConfig {
                 );
                 return load_file(&env_path);
             }
-            println!(
-                "WARNING: Configuration file {} (COSMIAN_KMS_CONF) not found. Falling back.",
-                env_path.display()
-            );
+            if env_path.exists() {
+                println!(
+                    "WARNING: COSMIAN_KMS_CONF path {} exists but is not a regular file (e.g. a \
+                     directory). Ignoring and falling back.",
+                    env_path.display()
+                );
+            } else {
+                println!(
+                    "WARNING: Configuration file {} (COSMIAN_KMS_CONF) not found. Falling back.",
+                    env_path.display()
+                );
+            }
         }
 
-        if default_path.exists() {
+        if default_path.is_file() {
+            // --info is an informational meta-flag: allow it even when the default
+            // config file is present (it loads the file then prints info and exits).
+            let info_only = preliminary.info;
+
+            // If the user also passed CLI arguments (beyond the binary name itself) they
+            // would silently be ignored because the file takes precedence.  This is almost
+            // certainly a mistake, so fail fast with a clear message.
+            if has_extra_args && !info_only {
+                return Err(KmsError::ServerError(format!(
+                    "Configuration file found at the default path ({}) but extra command-line \
+                     arguments were also provided. When a configuration file is present, all \
+                     command-line arguments and environment variables are ignored.\n\
+                     Either:\n\
+                     • Remove the extra arguments and edit {} directly, or\n\
+                     • Point to a different file with -c/--config <path>.",
+                    default_path.display(),
+                    default_path.display(),
+                )));
+            }
             println!(
-                "Configuration file {} found (default path). Command line arguments and \
-                 environment variables are ignored.",
+                "Configuration file {} found (default path).",
                 default_path.display()
             );
-            return load_file(&default_path);
+            let mut config = load_file(&default_path)?;
+            // Preserve the --info flag from the command line (it is not in the TOML file)
+            if info_only {
+                config.info = true;
+            }
+            return Ok(config);
         }
 
-        println!(
+        eprintln!(
             "No configuration file found (-c/--config, COSMIAN_KMS_CONF, default path). Using \
              command line arguments and environment variables."
         );
@@ -272,16 +652,14 @@ impl ClapConfig {
     }
 }
 
+// `secret_backends` is intentionally excluded to avoid leaking credentials in logs.
+#[allow(clippy::missing_fields_in_debug)]
 impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
         let x = x.field("config_path", &self.config_path);
+        let x = x.field("print_default_config", &self.print_default_config);
         let x = x.field("db", &self.db);
-        let x = if self.auth.jwt_issuer_uri.is_some() {
-            x.field("auth", &self.auth)
-        } else {
-            x
-        };
         let x = if self.idp_auth.jwt_auth_provider.is_some() {
             x.field("idp_auth", &self.idp_auth)
         } else {
@@ -304,10 +682,12 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
-        let x = x.field("KMS http", &self.http);
+        let kms_url = format!("{}://{}", self.http.scheme(&self.tls), self.http);
+        let x = x.field("KMS http", &kms_url);
         let x = x.field("KMS public URL", &self.kms_public_url);
 
         let x = x.field("workspace", &self.workspace);
+        let x = x.field("vendor identification", &self.vendor_identification);
         let x = x.field("default username", &self.default_username);
         let x = x.field("force default username", &self.force_default_username);
         let x = if self.google_cse_config.google_cse_enable {
@@ -333,35 +713,92 @@ impl fmt::Debug for ClapConfig {
                 &self.google_cse_config.google_cse_enable,
             )
         };
+        let x = if self.azure_ekm_config.azure_ekm_enable {
+            x.field("azure_ekm_enable", &self.azure_ekm_config.azure_ekm_enable)
+                .field(
+                    "azure_ekm_path_prefix",
+                    &self.azure_ekm_config.azure_ekm_path_prefix,
+                )
+                .field(
+                    "azure_ekm_disable_client_auth",
+                    &self.azure_ekm_config.azure_ekm_disable_client_auth,
+                )
+                .field(
+                    "azure_ekm_proxy_vendor",
+                    &self.azure_ekm_config.azure_ekm_proxy_vendor,
+                )
+                .field(
+                    "azure_ekm_proxy_name",
+                    &self.azure_ekm_config.azure_ekm_proxy_name,
+                )
+                .field(
+                    "azure_ekm_ekm_vendor",
+                    &self.azure_ekm_config.azure_ekm_ekm_vendor,
+                )
+                .field(
+                    "azure_ekm_ekm_product",
+                    &self.azure_ekm_config.azure_ekm_ekm_product,
+                )
+        } else {
+            x.field("azure_ekm_enable", &self.azure_ekm_config.azure_ekm_enable)
+        };
         let x = x.field(
             "Microsoft Double Key Encryption URL",
             &self.ms_dke_service_url,
         );
         let x = x.field("telemetry", &self.logging);
         let x = x.field("info", &self.info);
-        let x = x.field("HSM admin username", &self.hsm.hsm_admin);
-        let x = x.field(
-            "hsm_model",
-            if self.hsm.hsm_slot.is_empty() {
-                &"NO HSM"
-            } else {
-                &self.hsm.hsm_model
-            },
-        );
-        let x = x.field("hsm_slots", &self.hsm.hsm_slot);
-        let x = x.field(
-            "hsm_passwords",
-            &self
-                .hsm
-                .hsm_password
-                .iter()
-                .map(|_| "********")
-                .collect::<Vec<&str>>(),
-        );
+        let x = if self.hsm.hsm_slot.is_empty() {
+            x.field("hsm (legacy)", &"not configured")
+        } else {
+            x.field("hsm_model (legacy)", &self.hsm.hsm_model)
+                .field("hsm_admin (legacy)", &self.hsm.hsm_admin)
+                .field("hsm_slots (legacy)", &self.hsm.hsm_slot)
+                .field(
+                    "hsm_passwords (legacy)",
+                    &self
+                        .hsm
+                        .hsm_password
+                        .iter()
+                        .map(|_| "********")
+                        .collect::<Vec<_>>(),
+                )
+        };
+        let x = x.field("hsm_instances count", &self.hsm_instances.len());
         let x = x.field("key wrapping key", &self.key_encryption_key);
         let x = x.field("default unwrap type", &self.default_unwrap_type);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
-        let x = x.field("privileged_users", &self.privileged_users);
+        let x = x.field("privileged_users (deprecated)", &self.privileged_users);
+        let x = x.field("roles", &self.roles);
+
+        let x = x.field("aws_xks_config", &self.aws_xks_config);
+        let x = if self.aws_xks_config.aws_xks_enable {
+            x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
+                .field("aws_xks_region", &self.aws_xks_config.aws_xks_region)
+                .field("aws_xks_service", &self.aws_xks_config.aws_xks_service)
+                .field(
+                    "aws_xks_sigv4_access_key_id",
+                    &self.aws_xks_config.aws_xks_sigv4_access_key_id,
+                )
+                .field(
+                    "aws_xks_sigv4_secret_access_key",
+                    &self.aws_xks_config.aws_xks_sigv4_secret_access_key,
+                )
+        } else {
+            x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
+        };
+        let x = x.field("kmip", &self.kmip_policy);
+        let x = x.field(
+            "auto_rotation_check_interval_secs",
+            &self.auto_rotation_check_interval_secs,
+        );
+        let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
+        let x = if self.auth_verifier.is_enabled() {
+            x.field("auth_verifier_url", &self.auth_verifier.auth_verifier_url)
+        } else {
+            x
+        };
+        let x = x.field("audit", &self.audit);
 
         x.finish()
     }
@@ -378,9 +815,12 @@ mod tests {
     //! 3. Default system path
     //! 4. Command line arguments and environment variables (lowest precedence)
     //!
-    //! IMPORTANT: These tests MUST be run serially to avoid environment variable
-    //! and temporary file conflicts between parallel test runs:
-    //! `RUST_TEST_THREADS=1 cargo test --lib config::command_line::clap_config::tests`
+    //! Each test runs through [`with_clean_env`], which clears `COSMIAN_KMS_CONF`
+    //! and points `get_default_config_path()` (via `TEST_DEFAULT_CONF_PATH_ENV_VAR`,
+    //! a `#[cfg(test)]`-only override) at a private, unique-per-call temp path
+    //! instead of the real system path. This keeps tests independent of one
+    //! another and safe to run in parallel, including under `cargo-nextest`,
+    //! which runs every test in its own process.
 
     use std::{
         fs,
@@ -413,19 +853,55 @@ mod tests {
         drop(std::fs::remove_file(path));
     }
 
+    /// Generates a unique temp file path, without creating the file.
+    /// Used as the private "default config path" override for a single test
+    /// call: the path must start out non-existent so `default_path_exists()`
+    /// reports `false` until a test explicitly writes to it.
+    fn write_temp_path_only() -> PathBuf {
+        let mut p = std::env::temp_dir();
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let thread_id = std::thread::current().id();
+        let fname = format!("kms_test_default_conf_{ts}_{thread_id:?}.toml");
+        p.push(fname);
+        p
+    }
+
     fn with_clean_env<F, R>(f: F) -> R
     where
         F: FnOnce() -> R,
     {
-        // Acquire mutex to serialize environment variable access
-        let _guard = ENV_MUTEX.lock().unwrap();
+        // Acquire mutex to serialize environment variable access.
+        // Use unwrap_or_else to recover from a poisoned mutex (caused by a
+        // previous test panicking while holding the lock) so that one test
+        // failure does not cascade into all subsequent tests.
+        let _guard = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         // Save current env state
         let original_env = std::env::var("COSMIAN_KMS_CONF").ok();
+        let original_default_override = std::env::var(super::TEST_DEFAULT_CONF_PATH_ENV_VAR).ok();
 
         // Clear env
         unsafe {
             std::env::remove_var("COSMIAN_KMS_CONF");
+        }
+
+        // Point the "default config path" at a private, unique-per-call temp
+        // path instead of the real system path (`/etc/cosmian/kms.toml`).
+        // This is what makes these tests safe under `cargo-nextest`, which
+        // runs every test in its own process: each call gets its own path,
+        // so there is no shared file for concurrent test processes to race
+        // on, and no dependency on write access to the real system path.
+        let default_override_path = write_temp_path_only();
+        unsafe {
+            std::env::set_var(
+                super::TEST_DEFAULT_CONF_PATH_ENV_VAR,
+                default_override_path.display().to_string(),
+            );
         }
 
         // Run test
@@ -436,6 +912,13 @@ mod tests {
             Some(val) => unsafe { std::env::set_var("COSMIAN_KMS_CONF", val) },
             None => unsafe { std::env::remove_var("COSMIAN_KMS_CONF") },
         }
+        match original_default_override {
+            Some(val) => unsafe {
+                std::env::set_var(super::TEST_DEFAULT_CONF_PATH_ENV_VAR, val);
+            },
+            None => unsafe { std::env::remove_var(super::TEST_DEFAULT_CONF_PATH_ENV_VAR) },
+        }
+        cleanup_temp(&default_override_path);
 
         result
         // Mutex is automatically released when _guard goes out of scope
@@ -488,34 +971,81 @@ mod tests {
         });
     }
 
+    /// RAII guard that removes a file when dropped, ensuring cleanup even on panic.
+    struct RemoveOnDrop(PathBuf);
+    impl Drop for RemoveOnDrop {
+        fn drop(&mut self) {
+            drop(std::fs::remove_file(&self.0));
+        }
+    }
+
     #[test]
-    fn precedence_default_config_over_args() {
+    fn precedence_default_config_loads_without_args() {
         with_clean_env(|| {
             if default_path_exists() {
                 eprintln!(
-                    "Skipping precedence_default_config_over_args: default config already exists"
+                    "Skipping precedence_default_config_loads_without_args: default config \
+                     already exists"
+                );
+                return;
+            }
+            let default_content = "[http]\nport=34567\n";
+            let default_path = PathBuf::from(super::get_default_config_path());
+            if let Some(parent) = default_path.parent() {
+                drop(std::fs::create_dir_all(parent));
+            }
+            if std::fs::write(&default_path, default_content).is_ok() {
+                let _cleanup = RemoveOnDrop(default_path);
+                // No extra args beyond the binary name → config file is loaded
+                let args = vec!["kms"];
+                let cfg = ClapConfig::load_from_args(args).expect("load from args");
+                assert_eq!(
+                    cfg.http.port, 34567,
+                    "default config file should be loaded when no extra args are given"
                 );
             } else {
-                // Create a temporary default config file for this test
-                let default_content = "[http]\nport=34567\n";
-                let default_path = PathBuf::from(super::get_default_config_path());
-                if let Some(parent) = default_path.parent() {
-                    drop(std::fs::create_dir_all(parent));
-                }
-                if std::fs::write(&default_path, default_content).is_ok() {
-                    let args = vec!["kms", "--port", "2222"];
-                    let cfg = ClapConfig::load_from_args(args).expect("load from args");
-                    assert_eq!(
-                        cfg.http.port, 34567,
-                        "default config file ignores command line args"
-                    );
-                    drop(std::fs::remove_file(&default_path)); // cleanup
-                } else {
-                    eprintln!(
-                        "Skipping precedence_default_config_over_args: cannot write to default \
-                         path"
-                    );
-                }
+                eprintln!(
+                    "Skipping precedence_default_config_loads_without_args: cannot write to \
+                     default path"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn default_config_with_extra_args_is_error() {
+        with_clean_env(|| {
+            if default_path_exists() {
+                eprintln!(
+                    "Skipping default_config_with_extra_args_is_error: default config already \
+                     exists"
+                );
+                return;
+            }
+            let default_content = "[http]\nport=34567\n";
+            let default_path = PathBuf::from(super::get_default_config_path());
+            if let Some(parent) = default_path.parent() {
+                drop(std::fs::create_dir_all(parent));
+            }
+            if std::fs::write(&default_path, default_content).is_ok() {
+                let _cleanup = RemoveOnDrop(default_path);
+                // Extra CLI args when a default config exists should be rejected
+                let args = vec!["kms", "--port", "2222"];
+                let res = ClapConfig::load_from_args(args);
+                assert!(
+                    res.is_err(),
+                    "should error when default config exists and extra args are given"
+                );
+                let err_msg = res.unwrap_err().to_string();
+                assert!(
+                    err_msg.contains("extra command-line arguments were also provided"),
+                    "error message should mention extra args conflict: {err_msg}"
+                );
+            } else {
+                eprintln!(
+                    "Skipping default_config_with_extra_args_is_error: cannot write to default \
+                     path"
+                );
             }
         });
     }
@@ -623,5 +1153,78 @@ mod tests {
         let conf = ClapConfig::default();
         let conf_str = toml::to_string_pretty(&conf).unwrap();
         debug!("Configuration TOML: {conf_str}");
+    }
+
+    #[test]
+    #[expect(clippy::unwrap_used)]
+    fn test_server_idp() {
+        let mut conf = ClapConfig::default();
+        conf.idp_auth.jwt_auth_provider = Some(vec![
+            "https://issuer1.example.com,jwks_uri_1,audience1,audience2".to_owned(),
+            "https://issuer2.example.com,,audience3".to_owned(),
+            "https://issuer3.example.com".to_owned(),
+        ]);
+        let conf_str = toml::to_string_pretty(&conf).unwrap();
+        debug!("Configuration TOML: {conf_str}");
+    }
+
+    // ── Strict TOML parsing tests ──────────────────────────────────────────────────
+
+    /// An unknown top-level key must be rejected when loading from a config file.
+    #[test]
+    fn unknown_top_level_key_is_rejected() {
+        with_clean_env(|| {
+            // "typo_database" is not a valid ClapConfig key
+            let bad_file = write_temp("[http]\nport = 9998\n\ntypo_database = \"sqlite\"\n");
+            let args = vec!["kms", "-c", bad_file.to_str().unwrap()];
+            let res = ClapConfig::load_from_args(args);
+            assert!(
+                res.is_err(),
+                "unknown top-level key must cause a parse error"
+            );
+            let err_msg = res.unwrap_err().to_string();
+            assert!(
+                err_msg.contains("Unknown key(s)") || err_msg.contains("typo_database"),
+                "error message must identify the unknown key; got: {err_msg}"
+            );
+            cleanup_temp(&bad_file);
+        });
+    }
+
+    /// An unknown key inside a nested table (`[http]`) must be rejected.
+    #[test]
+    fn unknown_nested_key_is_rejected() {
+        with_clean_env(|| {
+            // "typo_port" is not a valid field inside [http]
+            let bad_file = write_temp("[http]\nport = 9998\ntypo_port = 1234\n");
+            let args = vec!["kms", "-c", bad_file.to_str().unwrap()];
+            let res = ClapConfig::load_from_args(args);
+            assert!(
+                res.is_err(),
+                "unknown key inside [http] section must cause a parse error"
+            );
+            let err_msg = res.unwrap_err().to_string();
+            assert!(
+                err_msg.contains("typo_port") || err_msg.contains("unknown field"),
+                "error message must identify the unknown nested key; got: {err_msg}"
+            );
+            cleanup_temp(&bad_file);
+        });
+    }
+
+    /// A valid minimal config must still load successfully (regression guard).
+    #[test]
+    fn valid_minimal_config_loads_ok() {
+        with_clean_env(|| {
+            let good_file = write_temp("[http]\nport = 9998\n");
+            let args = vec!["kms", "-c", good_file.to_str().unwrap()];
+            let res = ClapConfig::load_from_args(args);
+            assert!(
+                res.is_ok(),
+                "valid config must still load successfully: {:?}",
+                res.err()
+            );
+            cleanup_temp(&good_file);
+        });
     }
 }

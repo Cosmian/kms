@@ -1,0 +1,73 @@
+# Revoke
+
+## Specification
+
+This operation requests the server to revoke a Managed Cryptographic Object or an Opaque Object.
+
+The request contains a reason for the revocation (e.g., "key compromise", "cessation of operation", etc.).
+
+The operation has one of two effects. If the revocation reason is "key compromise" or "CA compromise", then the object
+is placed into the "compromised" state; the Date is set to the current date and time; and the Compromise Occurrence Date
+is set to the value (if provided) in the Revoke request and if a value is not provided in the Revoke request then
+Compromise Occurrence Date SHOULD be set to the Initial Date for the object. If the revocation reason is neither "key
+compromise" nor "CA compromise", the object is placed into the "deactivated" state, and the Deactivation Date is set to
+the current date and time.
+
+## Implementation
+
+The state of the object is kept as specified. The revocation reason is also persisted
+in the object's attributes (both internal and external), as required by RFC 5280 §5.3.1
+to populate the `CRLReason` extension in generated CRLs.
+
+Once an Object is revoked, it can only be retrieved using the `Export` operation. The `Get` operation will return an
+error.
+
+A `Revoked` object can be destroyed using the `Destroy` operation.
+
+## Example - Symmetric key
+
+Revoking key `f54f14a3-5639-4054-8c23-54af891669db` with reason `key was compromised`.
+
+Corresponding [KMS CLI](../kms_clients/index.md) command:
+
+```bash
+  ckms sym keys revoke -k f54f14a3-5639-4054-8c23-54af891669db "key was compromised"
+```
+
+=== "Request"
+
+    ```json
+    {
+      "tag": "Revoke",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "f54f14a3-5639-4054-8c23-54af891669db"
+        },
+        {
+          "tag": "RevocationReason",
+          "type": "TextString",
+          "value": "key was compromised"
+        }
+      ]
+    }
+
+    ```
+
+=== "Response"
+
+    ```json
+    {
+      "tag": "RevokeResponse",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "f54f14a3-5639-4054-8c23-54af891669db"
+        }
+      ]
+    }
+    ```

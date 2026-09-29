@@ -1,18 +1,35 @@
-pub use cosmian_kms_server::config::{DEFAULT_SQLITE_PATH, HsmConfig, MainDBConfig};
-pub use test_server::{
-    ApiTokenPolicy, AuthenticationOptions, BuildServerParamsOptions, ClientAuthOptions,
-    ClientCertPolicy, JwtAuth as ServerJwtAuth, JwtPolicy, TestsContext, TlsMode as ServerTlsMode,
-    build_server_params, build_server_params_full, start_default_test_kms_server,
-    start_default_test_kms_server_with_cert_auth,
-    start_default_test_kms_server_with_non_revocable_key_ids,
-    start_default_test_kms_server_with_privileged_users,
-    start_default_test_kms_server_with_utimaco_and_kek,
-    start_default_test_kms_server_with_utimaco_hsm, start_test_server_with_options,
+pub use cosmian_kms_server::{
+    config::{DEFAULT_SQLITE_PATH, HsmConfig, MainDBConfig},
+    openssl_providers::init_openssl_providers_for_tests,
 };
+pub use test_jwt::AUTH0_TOKEN;
+#[cfg(feature = "non-fips")]
+pub use test_server::start_test_kms_server_with_pqc_tls;
+pub use test_server::{
+    TestClientOptions, TestsContext, hsm_config_path, start_ceremony_test_kms_server,
+    start_default_test_kms_server, start_default_test_kms_server_with_cert_auth,
+    start_default_test_kms_server_with_crypto_officer_users,
+    start_default_test_kms_server_with_jwt_auth,
+    start_default_test_kms_server_with_multi_crypto_officer_users,
+    start_default_test_kms_server_with_non_revocable_key_ids,
+    start_default_test_kms_server_with_softhsm2_and_kek,
+    start_default_test_kms_server_with_softhsm2_and_kek_for_vectors,
+    start_default_test_kms_server_with_softhsm2_for_vectors,
+    start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vectors,
+    start_default_test_kms_server_with_three_softhsm2,
+    start_default_test_kms_server_with_utimaco_and_kek,
+    start_default_test_kms_server_with_utimaco_hsm, start_test_kms_server_with_config,
+    start_test_server, start_test_server_from_toml, start_test_server_with_patch, test_config_path,
+};
+pub use vector_runner::{run_test_vector, run_test_vector_with_context};
 
 mod test_server;
 
 mod test_jwt;
+
+pub mod test_env;
+
+pub mod vector_runner;
 
 use std::sync::Once;
 
@@ -24,9 +41,30 @@ static INIT_LOGGING: Once = Once::new();
 pub fn init_test_logging() {
     INIT_LOGGING.call_once(|| {
         cosmian_logger::log_init(option_env!("RUST_LOG"));
+        // Also initialize OpenSSL legacy provider for non-FIPS tests
+        cosmian_kms_server::openssl_providers::init_openssl_providers_for_tests();
     });
 }
 
 pub mod reexport {
     pub use cosmian_kms_server;
 }
+
+#[cfg(test)]
+mod certify_tests;
+
+#[cfg(test)]
+mod crl_tests;
+
+#[cfg(test)]
+mod db_hsm_tests;
+
+#[cfg(test)]
+mod auth_verifier_tests;
+
+#[cfg(test)]
+mod openapi_validation;
+
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
+mod pqc_export_tests;

@@ -4,6 +4,7 @@ use std::{
 };
 
 use clap::Args;
+use clap_config_fallback::ConfigArgs;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -14,8 +15,8 @@ use crate::{
 const DEFAULT_ROOT_DATA_PATH: &str = "./cosmian-kms";
 const DEFAULT_TMP_PATH: &str = "/tmp";
 
-#[derive(Debug, Args, Deserialize, Serialize)]
-#[serde(default)]
+#[derive(Debug, Args, ConfigArgs, Deserialize, Serialize, Clone)]
+#[serde(default, deny_unknown_fields)]
 pub struct WorkspaceConfig {
     /// The root folder where the KMS will store its data
     /// A relative path is taken relative to the user's HOME directory

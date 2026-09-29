@@ -6,8 +6,13 @@
 
 use std::{fmt, sync::Arc};
 
-use alcoholic_jwt::token_kid;
-use cosmian_logger::{debug, trace};
+use cosmian_logger::trace;
+#[cfg(not(feature = "insecure"))]
+use jsonwebtoken::Algorithm;
+#[cfg(any(test, feature = "insecure"))]
+use jsonwebtoken::dangerous;
+#[cfg(all(not(test), not(feature = "insecure")))]
+use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{self, SeqAccess, Visitor},
@@ -15,6 +20,39 @@ use serde::{
 
 use super::JwksManager;
 use crate::{error::KmsError, kms_ensure, result::KResult};
+
+/// Asymmetric JWT algorithms that the KMS server accepts.
+///
+/// HS* algorithms are explicitly excluded: when an attacker obtains the RSA
+/// public key from the JWKS endpoint they could forge HS256 tokens by using
+/// the public key as the HMAC secret (algorithm-confusion attack).
+/// Only RS*, ES*, and PS* families are accepted.
+#[cfg(not(feature = "insecure"))]
+pub(crate) const ALLOWED_JWT_ALGORITHMS: &[Algorithm] = &[
+    Algorithm::RS256,
+    Algorithm::RS384,
+    Algorithm::RS512,
+    Algorithm::ES256,
+    Algorithm::ES384,
+    Algorithm::PS256,
+    Algorithm::PS384,
+    Algorithm::PS512,
+];
+
+/// Verify that `alg` is an accepted asymmetric algorithm.
+///
+/// Returns `Err(KmsError::Unauthorized)` for `HS*`, `none`, or any other
+/// symmetric / unknown algorithm to prevent algorithm-confusion attacks.
+#[cfg(all(not(test), not(feature = "insecure")))]
+fn check_jwt_algorithm(alg: Algorithm) -> KResult<()> {
+    if ALLOWED_JWT_ALGORITHMS.contains(&alg) {
+        Ok(())
+    } else {
+        Err(KmsError::Unauthorized(format!(
+            "JWT algorithm {alg:?} is not permitted; only asymmetric algorithms (RS*, ES*, PS*) are accepted"
+        )))
+    }
+}
 
 fn deserialize_aud<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
 where
@@ -110,7 +148,7 @@ pub(crate) struct JwtTokenHeaders {
 #[derive(Debug)]
 pub struct JwtConfig {
     pub jwt_issuer_uri: String,
-    pub jwt_audience: Option<String>,
+    pub jwt_audience: Option<Vec<String>>,
     pub jwks: Arc<JwksManager>,
 }
 
@@ -129,11 +167,11 @@ impl JwtConfig {
         let token: &str = bearer.get(1).ok_or_else(|| {
             KmsError::Unauthorized("Bad authorization header content (missing token)".to_owned())
         })?;
-        self.decode_authentication_token(token, true)
+        self.validate_authentication_token(token, true)
     }
 
-    /// Decode a json web token (JWT)
-    pub(crate) fn decode_authentication_token(
+    /// Decode and validate a json web token (JWT)
+    pub(crate) fn validate_authentication_token(
         &self,
         token: &str,
         validate_subject: bool,
@@ -147,43 +185,168 @@ impl JwtConfig {
             self.jwt_issuer_uri
         );
 
-        let mut validations = vec![
-            #[cfg(all(not(test), not(feature = "insecure")))]
-            alcoholic_jwt::Validation::Issuer(self.jwt_issuer_uri.clone()),
-            #[cfg(all(not(test), not(feature = "insecure")))]
-            alcoholic_jwt::Validation::NotExpired,
-        ];
-        if let Some(jwt_audience) = &self.jwt_audience {
-            validations.push(alcoholic_jwt::Validation::Audience(jwt_audience.clone()));
-        }
-        if validate_subject {
-            validations.push(alcoholic_jwt::Validation::SubjectPresent);
+        // In test/insecure mode, skip all JWT validation (signature, expiry, issuer, audience).
+        // This allows tests to supply arbitrary tokens without a live JWKS endpoint.
+        #[cfg(any(test, feature = "insecure"))]
+        {
+            let _ = validate_subject; // unused when validation is disabled
+            let token_data = dangerous::insecure_decode::<UserClaim>(token)
+                .map_err(|e| KmsError::Unauthorized(format!("Cannot validate token: {e}")))?;
+            Ok(token_data.claims)
         }
 
-        // If a JWKS contains multiple keys, the correct KID first
-        // needs to be fetched from the token headers.
-        let kid = token_kid(token)
-            .map_err(|e| KmsError::Unauthorized(format!("Failed to decode kid: {e}")))?
-            .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
+        // In production, fully validate: issuer, expiry, audience, and signature via JWKS.
+        #[cfg(all(not(test), not(feature = "insecure")))]
+        {
+            let header = decode_header(token).map_err(|e| {
+                KmsError::Unauthorized(format!("Failed to decode token header: {e}"))
+            })?;
 
-        let jwk = self.jwks.find(&kid)?.ok_or_else(|| {
-            // Only log JWKS on error
-            KmsError::Unauthorized(format!(
-                "Specified key not found in set. Looking for kid `{kid}` in JWKS:\n{:?}",
-                self.jwks
-            ))
-        })?;
+            // Reject symmetric / unknown algorithms before touching the JWKS key material.
+            check_jwt_algorithm(header.alg)?;
 
-        trace!("JWK has been found:\n{jwk:?}");
+            let mut validation = Validation::new(header.alg);
+            // Explicitly pin the allowed algorithms to the single pre-validated algorithm.
+            // This prevents jsonwebtoken from accepting any algorithm not in the allowlist.
+            validation.algorithms = vec![header.alg];
+            validation.set_issuer(&[&self.jwt_issuer_uri]);
+            validation.validate_exp = true;
+            validation.required_spec_claims.clear();
+            if validate_subject {
+                // Require both subject and expiration in production
+                validation.set_required_spec_claims(&["sub", "exp"]);
+            } else {
+                // At minimum, always require expiration
+                validation.set_required_spec_claims(&["exp"]);
+            }
+            if let Some(jwt_audience) = &self.jwt_audience {
+                validation.set_audience(jwt_audience.as_slice());
+            } else {
+                // jsonwebtoken 10.x rejects tokens that carry an `aud` claim when no
+                // expected audience is configured in the Validation struct (InvalidAudience).
+                // When the server does not restrict by audience, skip audience validation.
+                validation.validate_aud = false;
+            }
 
-        let valid_jwt = alcoholic_jwt::validate(token, &jwk, validations)
-            .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?;
+            // OIDC/IdP tokens are required to carry a `kid` so we can look up the exact
+            // signing key in the JWKS.  Auth-verifier tokens intentionally omit `kid`
+            // (they are validated by the dedicated `AuthVerifier` middleware which tries
+            // every key in the JWKS).  Return `Unauthorized` here so the middleware chain
+            // falls through to the next authenticator rather than logging a noisy error.
+            let Some(kid) = header.kid else {
+                return Err(KmsError::Unauthorized(
+                    "No 'kid' claim present in token — not an OIDC token".to_owned(),
+                ));
+            };
 
-        let payload = serde_json::from_value(valid_jwt.claims)
-            .map_err(|err| KmsError::Unauthorized(format!("JWT claims is malformed: {err:?}")))?;
+            let jwk = self.jwks.find(&kid)?.ok_or_else(|| {
+                KmsError::Unauthorized(format!(
+                    "Specified key not found in set. Looking for kid `{kid}`"
+                ))
+            })?;
 
-        debug!("JWT payload: {payload:?}");
+            trace!("JWK has been found:\n{jwk:?}");
 
-        Ok(payload)
+            let decoding_key = DecodingKey::from_jwk(&jwk).map_err(|e| {
+                KmsError::Unauthorized(format!("Failed to build decoding key from JWK: {e}"))
+            })?;
+
+            let token_data = decode::<UserClaim>(token, &decoding_key, &validation)
+                .map_err(|e| KmsError::Unauthorized(format!("Cannot validate token: {e}")))?;
+
+            Ok(token_data.claims)
+        }
+    }
+}
+
+#[cfg(test)]
+#[cfg(not(feature = "insecure"))]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::assertions_on_result_states
+)]
+mod tests {
+    use jsonwebtoken::Algorithm;
+
+    use super::ALLOWED_JWT_ALGORITHMS;
+    use crate::error::KmsError;
+
+    fn check_alg(alg: Algorithm) -> crate::result::KResult<()> {
+        if ALLOWED_JWT_ALGORITHMS.contains(&alg) {
+            Ok(())
+        } else {
+            Err(KmsError::Unauthorized(format!(
+                "JWT algorithm {alg:?} is not permitted; only asymmetric algorithms (RS*, ES*, PS*) are accepted"
+            )))
+        }
+    }
+
+    /// A1–A3: Symmetric HS* algorithms must all be rejected (algorithm-confusion attack vector).
+    #[test]
+    fn a01_hs256_is_rejected() {
+        assert!(
+            !ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::HS256),
+            "HS256 must not be in the allowlist (algorithm-confusion risk)"
+        );
+        assert!(check_alg(Algorithm::HS256).is_err());
+    }
+
+    #[test]
+    fn a02_hs384_is_rejected() {
+        assert!(!ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::HS384));
+        assert!(check_alg(Algorithm::HS384).is_err());
+    }
+
+    #[test]
+    fn a03_hs512_is_rejected() {
+        assert!(!ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::HS512));
+        assert!(check_alg(Algorithm::HS512).is_err());
+    }
+
+    /// A4–A6: Representative asymmetric algorithms must be accepted.
+    #[test]
+    fn a04_rs256_is_accepted() {
+        assert!(
+            ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::RS256),
+            "RS256 must be in the allowlist"
+        );
+        assert!(check_alg(Algorithm::RS256).is_ok());
+    }
+
+    #[test]
+    fn a05_es256_is_accepted() {
+        assert!(ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::ES256));
+        assert!(check_alg(Algorithm::ES256).is_ok());
+    }
+
+    #[test]
+    fn a06_ps256_is_accepted() {
+        assert!(ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::PS256));
+        assert!(check_alg(Algorithm::PS256).is_ok());
+    }
+
+    /// Full coverage: every algorithm in the allowlist must be accepted.
+    #[test]
+    fn all_allowlisted_algorithms_are_accepted() {
+        for &alg in ALLOWED_JWT_ALGORITHMS {
+            assert!(
+                check_alg(alg).is_ok(),
+                "Expected {alg:?} to be accepted but it was rejected"
+            );
+        }
+    }
+
+    /// Error message quality: rejection must mention "not permitted".
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn rejection_error_message_quality() {
+        let result = check_alg(Algorithm::HS256);
+        assert!(result.is_err());
+        let msg = result.expect_err("HS256 must be rejected").to_string();
+        assert!(
+            msg.contains("not permitted"),
+            "error message should mention 'not permitted', got: {msg}"
+        );
     }
 }

@@ -1,15 +1,12 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason},
         kmip_2_1::{
             KmipOperation,
             kmip_objects::Object,
             kmip_operations::{Sign, SignResponse},
-            kmip_types::{KeyFormatType, UniqueIdentifier},
+            kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
         },
-        time_normalize,
     },
     cosmian_kms_crypto::{
         crypto::{
@@ -18,122 +15,107 @@ use cosmian_kms_server_database::reexport::{
         },
         openssl::kmip_private_key_to_openssl,
     },
-    cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
-use cosmian_logger::{debug, info, trace};
+use cosmian_logger::{debug, trace};
 use openssl::pkey::{Id, PKey, Private};
 
 use crate::{
-    core::{KMS, uid_utils::uids_from_unique_identifier},
+    core::{KMS, operations::CryptoOpSpec},
     error::KmsError,
     kms_bail,
-    result::{KResult, KResultHelper},
+    middlewares::UserId,
+    result::KResult,
 };
 
-pub(crate) async fn sign(
-    kms: &KMS,
-    request: Sign,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
-) -> KResult<SignResponse> {
-    debug!("{request}");
+/// Marker type for the Sign operation's key selection requirements.
+pub(crate) struct SignOp;
 
-    // Get the uids from the unique identifier
-    let unique_identifier = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
-        .await
-        .context("sign")?;
-    trace!("candidate uids: {uids:?}");
+impl CryptoOpSpec for SignOp {
+    type Request = Sign;
+    type Response = SignResponse;
 
-    // Find a suitable private key for signing
-    let mut selected_owm = None;
-    for uid in uids {
-        let owm = kms
-            .database
-            .retrieve_object(&uid, params.clone())
-            .await?
-            .ok_or_else(|| {
-                KmsError::InvalidRequest(format!("sign: failed to retrieve key: {uid}"))
-            })?;
-        // Lifecycle gating: For mandatory profile vector CS-AC-M-8-21 we must reject Sign when the
-        // key has an ActivationDate in the past but either (a) a future ProcessStartDate (not yet
-        // usable) or (b) a ProtectStopDate already in the past (no longer protected/usable).
-        // In such cases the expected KMIP response is OperationFailed / Wrong_Key_Lifecycle_State
-        // with message "DENIED".
-        let attributes = owm
-            .object()
-            .attributes()
-            .unwrap_or_else(|_| owm.attributes());
-        let now = time_normalize()?;
-        let activation_ok = attributes
-            .activation_date
-            .map_or_else(|| owm.state() == State::Active, |ad| ad <= now);
-        let process_window_ok = attributes.process_start_date.is_none_or(|psd| psd <= now)
-            && attributes.protect_stop_date.is_none_or(|psd| psd > now);
-        if !(activation_ok && process_window_ok) {
-            // force Wrong_Key_Lifecycle_State semantics for this candidate
-            return Err(KmsError::Kmip21Error(
-                ErrorReason::Wrong_Key_Lifecycle_State,
-                "DENIED".to_owned(),
-            ));
-        }
-        if owm.state() != State::Active {
-            continue;
-        }
-        // check user permissions - owner can always sign
-        if owm.owner() != user {
-            let ops = kms
-                .database
-                .list_user_operations_on_object(&uid, user, false, params.clone())
-                .await?;
-            if !ops.iter().any(|p| *p == KmipOperation::Sign) {
-                continue;
-            }
-        }
-        trace!("user: {user} is authorized to sign using: {uid}");
+    const KMIP_OP: KmipOperation = KmipOperation::Sign;
+    const OP_NAME: &'static str = "Sign";
 
-        // Only private keys can be used for signing
+    fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier> {
+        request.unique_identifier.as_ref()
+    }
+
+    fn usage_data_len(request: &Self::Request) -> usize {
+        request
+            .data
+            .as_ref()
+            .map_or(0, |d| d.len())
+            .max(request.digested_data.as_ref().map_or(0, Vec::len))
+    }
+
+    fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         if let Object::PrivateKey { .. } = owm.object() {
-            // Check that the private key is authorized for signing
-            let attributes = owm
-                .object()
-                .attributes()
-                .unwrap_or_else(|_| owm.attributes());
-            trace!("sign: attributes: {attributes}");
-            if !attributes.is_usage_authorized_for(CryptographicUsageMask::Sign)? {
-                continue;
-            }
-            selected_owm = Some(owm);
-            break;
+            return owm.has_usage_mask(CryptographicUsageMask::Sign, false);
+        }
+        false
+    }
+
+    async fn execute_local(
+        _kms: &KMS,
+        owm: &ObjectWithMetadata,
+        request: &Self::Request,
+        _user: &UserId,
+    ) -> KResult<Self::Response> {
+        match owm.object() {
+            Object::PrivateKey { .. } => sign_with_private_key(request, owm),
+            other => Err(KmsError::NotSupported(format!(
+                "signing with keys of type: {} is not supported",
+                other.object_type()
+            ))),
         }
     }
-    let mut owm = selected_owm.ok_or_else(|| {
-        KmsError::Kmip21Error(
-            ErrorReason::Item_Not_Found,
-            format!("sign: no valid private key for id: {unique_identifier}"),
-        )
-    })?;
 
-    // unwrap if wrapped
-    owm.set_object(
-        kms.get_unwrapped(owm.id(), owm.object(), user, params.clone())
-            .await?,
-    );
+    async fn execute_oracle(
+        kms: &KMS,
+        request: &Self::Request,
+        uid: &str,
+        prefix: &str,
+    ) -> KResult<Self::Response> {
+        let lock = kms.crypto_oracles.read().await;
+        let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+            KmsError::InvalidRequest(format!("Sign: unknown crypto oracle prefix: {prefix}"))
+        })?;
+        let data: &[u8] = request
+            .data
+            .as_ref()
+            .map(|d| d.as_slice())
+            .or(request.digested_data.as_deref())
+            .ok_or_else(|| {
+                KmsError::InvalidRequest(
+                    "Sign: no data or digested data provided for oracle signing".to_owned(),
+                )
+            })?;
+        let signature = crypto_oracle
+            .sign(uid, data, request.cryptographic_parameters.as_ref())
+            .await
+            .map_err(|e| KmsError::InvalidRequest(format!("Sign: crypto oracle error: {e}")))?;
+        debug!("user signed data via crypto oracle using: {uid}");
+        Ok(SignResponse {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            signature_data: Some(signature),
+            correlation_value: request.correlation_value.clone(),
+        })
+    }
+}
 
-    // Only private keys can be used for signing
-    let res = match owm.object() {
-        Object::PrivateKey { .. } => sign_with_private_key(&request, &owm),
-        other => kms_bail!(KmsError::NotSupported(format!(
-            "signing with keys of type: {} is not supported",
-            other.object_type()
-        ))),
-    }?;
+pub(crate) async fn sign(kms: &KMS, request: Sign, user: &UserId) -> KResult<SignResponse> {
+    trace!("{request}");
 
-    info!(uid = owm.id(), user = user, "sign response = {res}");
-    Ok(res)
+    // KMIP 2.1 §6.30: data and digested_data are mutually exclusive
+    if request.data.is_some() && request.digested_data.is_some() {
+        kms_bail!(KmsError::InvalidRequest(
+            "Sign request must not set both 'data' and 'digested_data' simultaneously".to_owned()
+        ));
+    }
+
+    Box::pin(kms.perform_crypto_operation::<SignOp>(request, user)).await
 }
 
 fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<SignResponse> {
@@ -168,44 +150,38 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
             );
             let private_key = kmip_private_key_to_openssl(owm.object())?;
             trace!("OpenSSL Private Key instantiated before signing");
-            // Resolve effective cryptographic parameters: request overrides, stored attributes fill missing
-            let effective_cp = {
-                let stored_cp = owm
-                    .object()
-                    .attributes()
-                    .ok()
-                    .and_then(|a| a.cryptographic_parameters.clone())
-                    .unwrap_or_default();
-                match request.cryptographic_parameters.clone() {
-                    None => stored_cp,
-                    Some(mut req_cp) => {
-                        if req_cp.cryptographic_algorithm.is_none() {
-                            req_cp.cryptographic_algorithm = stored_cp.cryptographic_algorithm;
-                        }
-                        if req_cp.padding_method.is_none() {
-                            req_cp.padding_method = stored_cp.padding_method;
-                        }
-                        if req_cp.hashing_algorithm.is_none() {
-                            req_cp.hashing_algorithm = stored_cp.hashing_algorithm;
-                        }
-                        if req_cp.digital_signature_algorithm.is_none() {
-                            req_cp.digital_signature_algorithm =
-                                stored_cp.digital_signature_algorithm;
-                        }
-                        if req_cp.mask_generator.is_none() {
-                            req_cp.mask_generator = stored_cp.mask_generator;
-                        }
-                        if req_cp.mask_generator_hashing_algorithm.is_none() {
-                            req_cp.mask_generator_hashing_algorithm =
-                                stored_cp.mask_generator_hashing_algorithm;
-                        }
-                        if req_cp.p_source.is_none() {
-                            req_cp.p_source = stored_cp.p_source;
-                        }
-                        req_cp
-                    }
+
+            // ML-DSA / SLH-DSA: handle PQC signing before the classic dispatch
+            #[cfg(feature = "non-fips")]
+            {
+                if owm
+                    .resolve_key_algorithm()
+                    .is_some_and(|a| a.is_pqc_signature())
+                {
+                    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_dsa::ml_dsa_sign;
+                    let data: &[u8] = if let Some(d) = request.data.as_ref() {
+                        d.as_slice()
+                    } else if let Some(d) = request.digested_data.as_ref() {
+                        d.as_slice()
+                    } else {
+                        return Err(KmsError::InvalidRequest(
+                            "Sign ML-DSA: data must be provided".to_owned(),
+                        ));
+                    };
+                    let signature = ml_dsa_sign(&private_key, data)?;
+                    return Ok(SignResponse {
+                        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                        signature_data: Some(signature),
+                        correlation_value: None,
+                    });
                 }
-            };
+            }
+
+            // Resolve effective cryptographic parameters: request overrides, stored attributes fill missing
+            let effective_cp = CryptographicParameters::merged_with_object(
+                request.cryptographic_parameters.clone(),
+                owm.object(),
+            );
 
             // Streaming support: if init or a correlation_value is present, accumulate data
             if request.init_indicator == Some(true) || request.correlation_value.is_some() {

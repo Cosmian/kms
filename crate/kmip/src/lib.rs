@@ -1,4 +1,3 @@
-mod bytes_ser_de;
 mod data_to_encrypt;
 mod error;
 pub mod kmip_0;
@@ -8,7 +7,9 @@ mod safe_bigint;
 mod time_utils;
 pub mod ttlv;
 
-pub use bytes_ser_de::{Deserializer, Serializer, test_serialization, to_leb128_len};
+pub use cosmian_crypto_core::bytes_ser_de::{
+    Deserializer, Serializer, test_serialization, to_leb128_len,
+};
 pub use data_to_encrypt::DataToEncrypt;
 pub use error::{KmipError, result::KmipResultHelper};
 pub use safe_bigint::SafeBigInt;

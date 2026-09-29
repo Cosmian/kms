@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Remove Nix result-* symlinks"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+REPO_ROOT="$(get_repo_root)"
+print_status "Cleaning result-* symlinks..."
+find "$REPO_ROOT" -maxdepth 1 -name 'result*' -type l -delete
+print_success "Clean"

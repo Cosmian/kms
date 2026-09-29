@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+#MISE description="Test the Cosmian KMS Operator Docker image via Minikube"
+set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+# shellcheck source=.mise/lib/k8s.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
+
+k8s_require_tools
+
+REPO_ROOT="${MISE_CONFIG_ROOT}"
+OUT_LINK="${REPO_ROOT}/result-k8s-operator-image"
+IMAGE_NAME="cosmian-kms-operator"
+POD_NAME="kms-operator-image-test"
+
+print_header "Testing KMS Operator Docker image via Minikube"
+
+# ── 1. Build image via Nix if not already cached ─────────────────────────────
+if [ ! -e "$OUT_LINK" ]; then
+  print_status "Image tarball not found — building via Nix..."
+  bash "${REPO_ROOT}/.mise/tasks/build/k8s-operator-image"
+fi
+IMAGE_TAR=$(readlink -f "$OUT_LINK")
+[ -f "$IMAGE_TAR" ] || print_error "Image tarball not found at $IMAGE_TAR"
+
+# ── 2. Load image into Minikube ───────────────────────────────────────────────
+print_status "Loading image into Minikube: $IMAGE_TAR"
+minikube image load "$IMAGE_TAR"
+
+# Extract the image name:tag that was loaded
+LOADED=$(docker load <"$IMAGE_TAR" 2>&1 | grep -oE 'Loaded image( ID)?: \S+' | awk '{print $NF}' | head -1)
+IMAGE_REF="${LOADED:-${IMAGE_NAME}:latest}"
+print_status "Image loaded as: $IMAGE_REF"
+
+# ── 3. Run a verification Pod ─────────────────────────────────────────────────
+kubectl delete pod "$POD_NAME" --ignore-not-found=true
+
+kubectl run "$POD_NAME" \
+  --image="$IMAGE_REF" \
+  --image-pull-policy=Never \
+  --restart=Never \
+  -- --help
+
+print_status "Waiting for pod $POD_NAME to complete..."
+# Kubernetes pod phase is "Succeeded" (not "Completed") when all containers exit 0.
+timeout 60 bash -c \
+  "until kubectl get pod \"$POD_NAME\" -o jsonpath='{.status.phase}' 2>/dev/null | grep -qE 'Succeeded|Failed'; do sleep 2; done" ||
+  print_error "Pod $POD_NAME did not complete within 60s"
+
+EXIT_CODE=$(kubectl get pod "$POD_NAME" \
+  -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}')
+[ "$EXIT_CODE" = "0" ] || [ "$EXIT_CODE" = "1" ] ||
+  print_error "Pod exited with unexpected code $EXIT_CODE"
+
+print_status "Pod logs:"
+kubectl logs "$POD_NAME" || true
+
+# ── 4. Cleanup ────────────────────────────────────────────────────────────────
+kubectl delete pod "$POD_NAME" --ignore-not-found=true
+
+print_success "KMS Operator Docker image test passed (pod exit code: $EXIT_CODE)"

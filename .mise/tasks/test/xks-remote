@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#MISE description="Run AWS XKS tests against the remote test server (no build required)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+setup_test_logging
+
+export WITH_XKS=1 WITH_CURL=1
+# shellcheck disable=SC2119
+ensure_nix_shell
+
+print_header "Running AWS XKS tests against remote server"
+
+REPO_ROOT="$(get_repo_root)"
+
+bash "${REPO_ROOT}/.mise/scripts/test/test_xks_remote.sh"
+
+print_success "AWS XKS remote tests completed"

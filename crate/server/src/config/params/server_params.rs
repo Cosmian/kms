@@ -1,24 +1,47 @@
-use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, time::Duration};
+use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
+use cosmian_kms_access::access::CryptoOfficerConfig;
 use cosmian_kms_server_database::{
-    MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
+    CeremonyKeys, MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
 };
 use cosmian_logger::{debug, warn};
+use ipnet::IpNet;
 
-use super::TlsParams;
+use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
-        params::{OpenTelemetryConfig, proxy_params::ProxyParams},
+        AuditFailureMode, AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig,
+        IdpConfig, JwksEndpointConfig, OidcConfig,
+        params::{
+            OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
+            proxy_params::ProxyParams,
+        },
     },
     error::KmsError,
     result::{KResult, KResultHelper},
+    routes::aws_xks::AwsXksParams,
 };
+
+/// Resolved parameters for a single HSM instance, derived from either
+/// the CLI `--hsm-*` flags (single instance) or a TOML `[[hsm]]` entry.
+#[derive(Clone, Debug)]
+pub struct HsmInstanceParams {
+    /// HSM model string (e.g. `"softhsm2"`, `"utimaco"`).
+    pub model: String,
+    /// KMS usernames with admin access to this HSM instance.
+    pub admin: Vec<String>,
+    /// Slot-number → optional PIN mapping passed to `BaseHsm::instantiate`.
+    pub slot_passwords: HashMap<usize, Option<String>>,
+    /// Routing prefix for object UIDs managed by this instance.
+    /// Format: `"hsm::<model>"` (e.g. `"hsm::softhsm2"`, `"hsm::utimaco"`).
+    pub prefix: String,
+}
 
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
 /// shared between all threads.
 #[derive(Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
     pub identity_provider_configurations: Option<Vec<IdpConfig>>,
@@ -26,11 +49,22 @@ pub struct ServerParams {
     /// The UI distribution folder
     pub ui_index_html_folder: PathBuf,
 
+    /// Whether the embedded web UI is enabled
+    pub ui_enable: bool,
+
+    /// A secret salt used to derive the session cookie encryption key.
+    /// This MUST be identical across all KMS instances behind the same load balancer.
+    /// This is mandatory only if the UI is configured.
+    pub ui_session_salt: Option<String>,
+
     /// The OIDC config used to handle login from the UI
     pub ui_oidc_auth: OidcConfig,
 
     /// The Google CSE config
     pub google_cse: GoogleCseConfig,
+
+    /// The vendor identification string reported in KMIP `QueryServerInformation` responses
+    pub vendor_identification: String,
 
     /// The username to use if no authentication method is provided
     pub default_username: String,
@@ -47,6 +81,15 @@ pub struct ServerParams {
 
     /// The maximum age of unwrapped objects in the cache
     pub unwrapped_cache_max_age: Duration,
+
+    /// The maximum number of entries in the unwrapped key cache
+    pub unwrapped_cache_max_size: usize,
+
+    /// Absolute time-to-live for unwrapped cache entries (`None` = no ceiling)
+    pub unwrapped_cache_max_ttl: Option<Duration>,
+
+    /// When `true`, the unwrapped cache is bypassed: every unwrap is performed live
+    pub disable_unwrapped_cache: bool,
 
     /// Whether the socket server should be started
     pub start_socket_server: bool,
@@ -86,15 +129,9 @@ pub struct ServerParams {
     /// The URL should be something like <https://cse.my_domain.com/ms_dke>
     pub ms_dke_service_url: Option<String>,
 
-    /// The username of the HSM admin.
-    /// The HSM admin can create objects on the HSM.
-    pub hsm_admin: String,
-
-    /// The HSM model, if any
-    pub hsm_model: Option<String>,
-
-    /// HSM slot passwords number
-    pub slot_passwords: HashMap<usize, Option<String>>,
+    /// Configured HSM instances (zero, one, or many).
+    /// Index 0 uses prefix `"hsm"`, index N uses prefix `"hsmN"` (N ≥ 1).
+    pub hsm_instances: Vec<HsmInstanceParams>,
 
     /// The Key Wrapping Key, if any
     pub key_wrapping_key: Option<String>,
@@ -113,9 +150,173 @@ pub struct ServerParams {
     /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
 
-    /// Users who have initial rights to create and grant access rights for Create Kmip Operation
-    /// If None, all users can create and grant create access rights.
-    pub privileged_users: Option<Vec<String>>,
+    /// Crypto Officer role configuration (role-based access control).
+    pub crypto_officer: CryptoOfficerConfig,
+
+    /// Ceremony record encryption keys.
+    ///
+    /// Derived from `ceremony_secret` at startup, or resolved from the object
+    /// store when `ceremony_key_id` is set. `None` when no role requires a ceremony.
+    /// When `Some`, all ceremony activation records are AES-256-GCM sealed before storage
+    /// and verified on read — preventing forgery and protecting participant identities.
+    pub ceremony_keys: Option<Arc<CeremonyKeys>>,
+
+    /// UID of the KMS symmetric key used as the ceremony record sealing key.
+    ///
+    /// When set, `ceremony_key_id` takes precedence over `ceremony_secret`.
+    /// The key is fetched from the object store after database initialization.
+    pub ceremony_key_id: Option<String>,
+
+    /// AWS XKS parameters, if any
+    pub aws_xks_params: Option<AwsXksParams>,
+
+    /// KMIP algorithm policy.
+    pub kmip_policy: KmipPolicyParams,
+
+    pub azure_ekm: AzureEkmConfig,
+
+    /// Steady-state requests per second allowed per source IP address.
+    /// Burst is set to 3× this value. `None` disables rate limiting (default for tests and
+    /// embedded deployments; production should set this to a positive value such as 100).
+    pub rate_limit_per_second: Option<u32>,
+
+    /// Number of actix-web HTTP worker threads. `None` means actix-web default
+    /// (uses `std::thread::available_parallelism`).
+    pub http_workers: Option<usize>,
+
+    /// Extra origins allowed to make cross-origin requests to the KMIP API.
+    /// Empty in production (same-origin only). Set to `["http://127.0.0.1:5173"]`
+    /// in UI E2E tests where the Vite dev server runs on port 5173.
+    pub cors_allowed_origins: Vec<String>,
+
+    /// Maximum number of objects returned by a single Locate operation.
+    /// Client-supplied `MaximumItems` is clamped to this value; when absent the cap is
+    /// applied automatically. Prevents unbounded DB queries and large response payloads.
+    pub max_locate_items: u32,
+
+    /// Interval in seconds between background auto-rotation checks.
+    /// 0 means disabled.
+    pub auto_rotation_check_interval_secs: u64,
+
+    /// Depth at which a successful keyset chain decryption triggers a warning.
+    /// Keyset chain traversal is unbounded (stopped only by cycle detection); this
+    /// threshold lets operators know when a ciphertext required walking many
+    /// generations to decrypt — a hint that re-encryption with the latest key may
+    /// be beneficial.
+    pub keyset_warn_depth: u32,
+
+    /// Configuration for the `GET /.well-known/jwks.json` public-key-discovery endpoint.
+    pub jwks_endpoint: JwksEndpointConfig,
+
+    // ── Vault-compatible API ──────────────────────────────────────────────────
+    /// When `true`, the Vault-compatible `/v1/transit/` and `/v1/<pki_mount>/` scopes
+    /// are registered at startup.  Defaults to `false`.
+    pub vault_api_enabled: bool,
+
+    /// Base URL of the auth-verifier server used for token validation.
+    ///
+    /// Required when `vault_api_enabled = true`.
+    /// Example: `"https://auth.example.com"`
+    pub vault_auth_verifier_url: Option<url::Url>,
+
+    /// Path to a PEM-encoded CA certificate for verifying the auth-verifier's TLS cert.
+    ///
+    /// When set, the reqwest client used by `spire_token_middleware` will trust this CA.
+    pub vault_auth_verifier_ca_cert: Option<std::path::PathBuf>,
+
+    /// When `true`, TLS certificate verification is disabled for auth-verifier connections.
+    ///
+    /// **Security warning**: only use in test/dev environments.
+    pub vault_auth_verifier_accept_invalid_certs: bool,
+
+    /// Vault transit mount name.  Defaults to `"transit"`.
+    /// Transit keys are served at `/v1/<vault_transit_mount>/keys/<name>`.
+    pub vault_transit_mount: String,
+
+    /// Vault PKI mount name.  Defaults to `"pki"`.
+    /// PKI sign-intermediate is served at `/v1/<vault_pki_mount>/root/sign-intermediate`.
+    pub vault_pki_mount: String,
+
+    /// KMIP Label of the KMS key to use as the intermediate CA signing key.
+    /// The key must already exist in the KMS (create it with `ckms ec create` or similar).
+    pub vault_pki_ca_key_label: String,
+
+    /// Lifetime of vault token validation cache entries in seconds.
+    /// The KMS caches successful `lookup-self` responses for this duration
+    /// to avoid a round-trip to auth-verifier on every transit/PKI request.
+    /// Defaults to `30`.
+    pub vault_token_cache_ttl_secs: u64,
+
+    /// Configuration for the Auth Verifier server.
+    /// When set, the KMS validates bearer tokens issued by the Auth Verifier server.
+    /// The `sub` claim is used as the user identity.
+    pub auth_verifier_config: Option<AuthVerifierConfig>,
+
+    /// When `Some`, tamper-evident JSONL audit logging is enabled and events
+    /// are appended to the file at this path.  `None` means audit logging is
+    /// disabled (the default).
+    pub audit_file_path: Option<std::path::PathBuf>,
+
+    /// Capacity of the bounded in-memory channel between request threads and the
+    /// audit writer task.  Propagated from `--audit-channel-capacity` /
+    /// `KMS_AUDIT_CHANNEL_CAPACITY`.  Must be ≥ 1.
+    pub audit_channel_capacity: usize,
+
+    /// When `Some`, the audit writer stops writing once the file reaches this many
+    /// bytes (see `AuditFileConfig::audit_file_max_size_bytes`). `None` (the default)
+    /// is unlimited. Must be > 0 when set.
+    pub audit_file_max_size_bytes: Option<u64>,
+
+    /// Trusted reverse-proxy CIDR blocks.  `X-Forwarded-For` is only used when
+    /// the direct TCP peer address falls within one of these ranges.
+    pub audit_trusted_proxy_cidrs: Vec<IpNet>,
+
+    /// What to do when an audit event cannot be queued.
+    pub audit_failure_mode: AuditFailureMode,
+
+    // ── CRL lifecycle ─────────────────────────────────────────────────────────
+    /// Default CRL validity period in days.
+    ///
+    /// Applied when a CRL is generated without an explicit `validity_days` override.
+    /// Valid range: 1–365. Default: 7.
+    pub crl_default_validity_days: u32,
+
+    /// Background CRL refresh check interval in hours. 0 = disabled.
+    ///
+    /// When non-zero, the CRL scheduler wakes up every N hours and regenerates any
+    /// stored CRL whose `nextUpdate` is within `crl_refresh_overlap_hours` of the
+    /// current time.
+    pub crl_refresh_check_hours: u32,
+
+    /// CRL overlap window in hours.
+    ///
+    /// The scheduler pre-generates a new CRL this many hours before the current one
+    /// expires, preventing relying parties from seeing a stale CRL.
+    pub crl_refresh_overlap_hours: u32,
+
+    // ── OCSP responder ────────────────────────────────────────────────────────────
+    /// Enable the OCSP responder at `GET/POST /ocsp/`.
+    pub ocsp_enabled: bool,
+
+    /// UID of the CA certificate used for issuer hash verification and status lookup.
+    pub ocsp_ca_uid: Option<String>,
+
+    /// UID of the delegated OCSP signing certificate (RFC 6960 §4.2.2.2).
+    ///
+    /// When set, responses are signed with this key; when `None` the CA key is used.
+    pub ocsp_responder_cert_uid: Option<String>,
+
+    /// Response validity period in seconds (`thisUpdate` → `nextUpdate`).
+    pub ocsp_cache_ttl_secs: u64,
+
+    /// Nonce handling policy (RFC 9654 §3): optional / required / ignore.
+    pub ocsp_nonce_policy: crate::config::command_line::NoncePolicyConfig,
+
+    /// Include the signing certificate chain in `BasicResponse`s.
+    pub ocsp_include_cert_chain: bool,
+
+    /// Archive-cutoff extension retention in seconds (0 = disabled, RFC 6960 §4.4.4).
+    pub ocsp_archive_cutoff_secs: u64,
 }
 
 /// Represents the server parameters.
@@ -168,39 +369,48 @@ impl ServerParams {
             );
         }
 
+        // Validate session_salt: it should only be provided when ui_index_html_folder is explicitly defined
+        if conf.ui_config.ui_session_salt.is_some() && conf.ui_config.ui_index_html_folder.is_none()
+        {
+            return Err(KmsError::ServerError(
+                "ui_session_salt should only be provided when ui_index_html_folder is configured. \
+                 Please either provide --ui-index-html-folder or remove --session-salt."
+                    .to_owned(),
+            ));
+        }
+
         let tls_params = TlsParams::try_from(&conf.tls).context("failed to create TLS params")?;
 
-        let slot_passwords: HashMap<usize, Option<String>> = conf
-            .hsm
-            .hsm_slot
-            .iter()
-            .zip(&conf.hsm.hsm_password)
-            .map(|(s, p)| {
-                let password = if p == "<NO_LOGIN>" {
-                    None
-                } else {
-                    Some(p.clone())
-                };
-                (*s, password)
-            })
-            .collect();
+        let hsm_instances = build_hsm_instances(&conf);
+
+        let (kmip_policy_id, kmip_allowlists) = parse_kmip_policy(&conf)?;
+
+        let cors_scheme = if conf.tls.is_tls_enabled() {
+            "https"
+        } else {
+            "http"
+        };
+
+        // Capture kms_public_url before the struct literal moves it, so we can also
+        // include it in the CORS allow-list when cors_allowed_origins is not configured.
+        let public_url_for_cors = conf.kms_public_url.clone();
+
+        // Determine whether CO users will come from the deprecated `privileged_users` path.
+        // Used after `res` is built to preserve v5.26.0 behaviour: if the operator had
+        // `force_default_username = true` AND `privileged_users = [...]` (nonsensical but
+        // tolerated before), only warn instead of hard-erroring.
+        let co_from_deprecated_path =
+            conf.roles.crypto_officer_users.is_none() && conf.privileged_users.is_some();
 
         let res = Self {
             identity_provider_configurations: {
                 // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
-                if let Some(idp_configs) = conf
-                    .idp_auth
+                conf.idp_auth
                     .extract_idp_configs()
                     .context("failed initializing IdPs from idp_auth")?
-                {
-                    Some(idp_configs)
-                } else {
-                    conf.auth
-                        .extract_idp_configs()
-                        .context("failed initializing IdPs from auth")?
-                }
             },
             ui_index_html_folder,
+            ui_enable: conf.ui_config.enable,
             ui_oidc_auth: conf.ui_config.ui_oidc_auth,
             main_db_params: Some(
                 conf.db
@@ -215,6 +425,32 @@ impl ServerParams {
             } else {
                 Duration::from_secs(conf.db.unwrapped_cache_max_age * 60)
             },
+            unwrapped_cache_max_size: if conf.db.unwrapped_cache_max_size == 0 {
+                return Err(KmsError::NotSupported(
+                    "unwrapped_cache_max_size must be greater than 0".to_owned(),
+                ));
+            } else {
+                conf.db.unwrapped_cache_max_size
+            },
+            unwrapped_cache_max_ttl: match conf.db.unwrapped_cache_max_ttl {
+                None => None,
+                Some(0) => {
+                    return Err(KmsError::NotSupported(
+                        "unwrapped_cache_max_ttl must be greater than 0 when set".to_owned(),
+                    ));
+                }
+                Some(ttl_min) => {
+                    let ttl = Duration::from_secs(ttl_min * 60);
+                    let tti = Duration::from_secs(conf.db.unwrapped_cache_max_age * 60);
+                    if ttl < tti {
+                        return Err(KmsError::NotSupported(
+                            "unwrapped_cache_max_ttl must be >= unwrapped_cache_max_age".to_owned(),
+                        ));
+                    }
+                    Some(ttl)
+                }
+            },
+            disable_unwrapped_cache: conf.db.disable_unwrapped_cache,
             start_socket_server: conf.socket_server.socket_server_start,
             socket_server_hostname: conf.socket_server.socket_server_hostname,
             socket_server_port: conf.socket_server.socket_server_port,
@@ -222,58 +458,22 @@ impl ServerParams {
             http_port: conf.http.port,
             tls_params,
             kms_public_url: conf.kms_public_url,
+            vendor_identification: conf.vendor_identification,
             default_username: conf.default_username,
             force_default_username: conf.force_default_username,
             api_token_id: conf.http.api_token_id,
             google_cse: conf.google_cse_config,
             ms_dke_service_url: conf.ms_dke_service_url,
-            hsm_admin: conf.hsm.hsm_admin,
-            hsm_model: if slot_passwords.is_empty() {
-                None
-            } else {
-                Some(conf.hsm.hsm_model)
-            },
-            slot_passwords,
+            hsm_instances,
             key_wrapping_key: conf.key_encryption_key,
-            default_unwrap_types: conf
-                .default_unwrap_type
-                .map(|types| {
-                    // Check if "All" is specified
-                    if types.iter().any(|s| s.eq_ignore_ascii_case("All")) {
-                        Ok(vec![
-                            ObjectType::Certificate,
-                            ObjectType::CertificateRequest,
-                            ObjectType::OpaqueObject,
-                            ObjectType::PGPKey,
-                            ObjectType::PrivateKey,
-                            ObjectType::PublicKey,
-                            ObjectType::SecretData,
-                            ObjectType::SplitKey,
-                            ObjectType::SymmetricKey,
-                        ])
-                    } else {
-                        types
-                            .into_iter()
-                            .map(|s| {
-                                ObjectType::from_str(&s).map_err(|e| {
-                                    KmsError::ServerError(format!(
-                                        "Invalid ObjectType: '{s}'. Valid values are: All, \
-                                         Certificate, CertificateRequest, OpaqueObject, PGPKey, \
-                                         PrivateKey, PublicKey, SecretData, SplitKey, \
-                                         SymmetricKey. Error: {e}"
-                                    ))
-                                })
-                            })
-                            .collect::<Result<Vec<ObjectType>, KmsError>>()
-                    }
-                })
-                .transpose()?,
+            default_unwrap_types: parse_default_unwrap_types(conf.default_unwrap_type)?,
             otel_params: if conf.logging.otlp.is_some()
                 || conf.logging.enable_metering
                 || conf.logging.environment.is_some()
             {
                 Some(OpenTelemetryConfig {
                     otlp_url: conf.logging.otlp,
+                    otlp_allow_insecure: conf.logging.otlp_allow_insecure,
                     enable_metering: conf.logging.enable_metering,
                     environment: conf.logging.environment,
                 })
@@ -281,14 +481,344 @@ impl ServerParams {
                 None
             },
             non_revocable_key_id: conf.non_revocable_key_id,
-            privileged_users: conf.privileged_users,
+            crypto_officer: {
+                // Backward compat: if the deprecated `privileged_users` field is set and
+                // `[roles] crypto_officer_users` is not configured, promote those users to
+                // the CryptoOfficer role automatically.
+                let co_users = match (conf.roles.crypto_officer_users, conf.privileged_users) {
+                    (Some(co), _) => co,
+                    (None, Some(priv_users)) => {
+                        tracing::warn!(
+                            "`privileged_users` is deprecated; please migrate to \
+                             `[roles] crypto_officer_users` in kms.toml"
+                        );
+                        priv_users
+                    }
+                    (None, None) => vec![],
+                };
+                let co = CryptoOfficerConfig {
+                    users: co_users,
+                    require_ceremony: conf.roles.crypto_officer_require_ceremony,
+                    ceremony_wrapping_key_id: conf.roles.ceremony_wrapping_key_id,
+                };
+                co.validate()
+                    .map_err(|e| KmsError::ServerError(format!("Role configuration error: {e}")))?;
+                // Warn operators that config-only CO mode is permanent super-admin —
+                // there is no runtime gate, so a config compromise equals privilege escalation.
+                if !co.users.is_empty() && !co.require_ceremony {
+                    tracing::warn!(
+                        "SECURITY: Crypto Officer is active in config-only mode \
+                         (require_ceremony = false). Any user listed in \
+                         `crypto_officer_users` is a permanent super-admin with no \
+                         runtime activation gate. Consider enabling \
+                         `crypto_officer_require_ceremony = true` in production \
+                         deployments."
+                    );
+                }
+                co
+            },
+            ceremony_keys: {
+                let any_ceremony_required = conf.roles.crypto_officer_require_ceremony;
+                match (
+                    &conf.roles.ceremony_key_id,
+                    &conf.roles.ceremony_secret,
+                    any_ceremony_required,
+                ) {
+                    // ceremony_key_id takes precedence — keys resolved after DB init;
+                    // or neither provided and ceremony is not required.
+                    (Some(_), _, _) | (None, None, false) => None,
+                    // Only ceremony_secret provided — derive keys now
+                    (None, Some(hex_secret), _) => {
+                        let bytes = hex::decode(hex_secret).map_err(|e| {
+                            KmsError::ServerError(format!(
+                                "ceremony_secret: invalid hex encoding: {e}"
+                            ))
+                        })?;
+                        if bytes.len() != cosmian_kms_server_database::CEREMONY_SECRET_LENGTH {
+                            return Err(KmsError::ServerError(format!(
+                                "ceremony_secret must be exactly {} bytes ({} hex chars), got {} bytes",
+                                cosmian_kms_server_database::CEREMONY_SECRET_LENGTH,
+                                cosmian_kms_server_database::CEREMONY_SECRET_LENGTH * 2,
+                                bytes.len(),
+                            )));
+                        }
+                        let mut secret =
+                            [0_u8; cosmian_kms_server_database::CEREMONY_SECRET_LENGTH];
+                        secret.copy_from_slice(&bytes);
+                        let keys = CeremonyKeys::derive(&secret);
+                        // Zeroize the local copy
+                        secret.fill(0);
+                        tracing::warn!(
+                            "ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment \
+                             variable is used in production to avoid persisting the secret to disk. \
+                             If loaded from a config file, ensure it has restrictive permissions \
+                             (0600) and is not committed to version control."
+                        );
+                        Some(Arc::new(keys))
+                    }
+                    // Neither provided but ceremony required
+                    (None, None, true) => {
+                        return Err(KmsError::ServerError(
+                            "ceremony_secret or ceremony_key_id is required when any role has \
+                             require_ceremony = true. Set ceremony_key_id to an existing AES-256 \
+                             symmetric key UID, or generate a secret with: openssl rand -hex 32"
+                                .to_owned(),
+                        ));
+                    }
+                }
+            },
+            ceremony_key_id: conf.roles.ceremony_key_id.clone(),
+            ui_session_salt: conf.ui_config.ui_session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
+            aws_xks_params: if conf.aws_xks_config.aws_xks_enable {
+                Some(conf.aws_xks_config.try_into()?)
+            } else {
+                None
+            },
+            kmip_policy: KmipPolicyParams {
+                policy_id: kmip_policy_id,
+                allowlists: KmipAllowlistsParams {
+                    algorithms: kmip_allowlists.algorithms,
+                    hashes: kmip_allowlists.hashes,
+                    signature_algorithms: kmip_allowlists.signature_algorithms,
+                    curves: kmip_allowlists.curves,
+                    block_cipher_modes: kmip_allowlists.block_cipher_modes,
+                    padding_methods: kmip_allowlists.padding_methods,
+                    mgf_hashes: kmip_allowlists.mgf_hashes,
+                    mask_generators: kmip_allowlists.mask_generators,
+                    rsa_key_sizes: kmip_allowlists.rsa_key_sizes,
+                    aes_key_sizes: kmip_allowlists.aes_key_sizes,
+                },
+            },
+            azure_ekm: conf.azure_ekm_config,
+            // Use the value from the HTTP config; None means rate limiting is disabled.
+            // Set KMS_RATE_LIMIT_PER_SECOND or `rate_limit_per_second` in the config file
+            // to enable rate limiting in production deployments.
+            rate_limit_per_second: conf.http.rate_limit_per_second,
+            http_workers: conf.http.http_workers,
+            cors_allowed_origins: conf.http.cors_allowed_origins.unwrap_or_else(|| {
+                let mut origins = crate::config::default_cors_origins(cors_scheme, conf.http.port);
+                // When kms_public_url is set and cors_allowed_origins was not explicitly
+                // configured, include the public URL automatically so that browsers
+                // accessing the KMS via its canonical address can reach the API without
+                // an explicit cors_allowed_origins configuration entry.
+                if let Some(ref url) = public_url_for_cors {
+                    if !origins.iter().any(|o| o == url) {
+                        origins.push(url.clone());
+                    }
+                }
+                origins
+            }),
+            max_locate_items: 1000,
+            auto_rotation_check_interval_secs: {
+                let v = conf.auto_rotation_check_interval_secs;
+                // 0 means disabled; any non-zero value must be at least 60 seconds to avoid
+                // hammering the database with high-frequency key-rotation scans.
+                if v > 0 && v < 60 {
+                    return Err(KmsError::ServerError(format!(
+                        "auto_rotation_check_interval_secs must be 0 (disabled) or at least 60 \
+                         seconds; {v} is too small and would cause excessive database churn"
+                    )));
+                }
+                v
+            },
+            keyset_warn_depth: conf.keyset_warn_depth,
+            jwks_endpoint: conf.jwks_endpoint,
+            // Vault-compatible API — opt-in via config file or CLI flags.
+            vault_api_enabled: conf.vault.vault_api_enabled,
+            vault_auth_verifier_url: conf
+                .vault
+                .vault_auth_verifier_url
+                .as_deref()
+                .map(url::Url::parse)
+                .transpose()
+                .map_err(|e| {
+                    KmsError::InvalidRequest(format!("invalid vault_auth_verifier_url: {e}"))
+                })?,
+            vault_auth_verifier_ca_cert: conf
+                .vault
+                .vault_auth_verifier_ca_cert
+                .map(std::path::PathBuf::from),
+            vault_auth_verifier_accept_invalid_certs: conf
+                .vault
+                .vault_auth_verifier_accept_invalid_certs,
+            vault_transit_mount: conf.vault.vault_transit_mount,
+            vault_pki_mount: conf.vault.vault_pki_mount,
+            vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
+            vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
+            auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
+            audit_file_path: if conf.audit.audit_enable {
+                let path = conf
+                    .audit
+                    .file
+                    .audit_file_path
+                    .unwrap_or_else(|| conf.workspace.root_data_path.join("audit.jsonl"));
+                Some(path)
+            } else {
+                None
+            },
+            audit_channel_capacity: conf.audit.audit_channel_capacity,
+            audit_file_max_size_bytes: match conf.audit.file.audit_file_max_size_bytes {
+                Some(0) => {
+                    return Err(KmsError::NotSupported(
+                        "audit_file_max_size_bytes must be greater than 0 when set".to_owned(),
+                    ));
+                }
+                other => other,
+            },
+            audit_trusted_proxy_cidrs: conf.audit.audit_trusted_proxy_cidrs,
+            audit_failure_mode: conf.audit.audit_failure_mode,
+            crl_default_validity_days: conf.crl.crl_default_validity_days,
+            crl_refresh_check_hours: conf.crl.crl_refresh_check_hours,
+            crl_refresh_overlap_hours: conf.crl.crl_refresh_overlap_hours,
+            ocsp_enabled: conf.ocsp.ocsp_enabled,
+            ocsp_ca_uid: conf.ocsp.ocsp_ca_uid,
+            ocsp_responder_cert_uid: conf.ocsp.ocsp_responder_cert_uid,
+            ocsp_cache_ttl_secs: conf.ocsp.ocsp_cache_ttl_secs,
+            ocsp_nonce_policy: conf.ocsp.ocsp_nonce_policy,
+            ocsp_include_cert_chain: conf.ocsp.ocsp_include_cert_chain,
+            ocsp_archive_cutoff_secs: conf.ocsp.ocsp_archive_cutoff_secs,
         };
+
+        // Cross-field validation: force_default_username=true collapses all identities to a
+        // single user, defeating the Crypto Officer dual-control guarantee.
+        //
+        // When CO users came from the new `[roles] crypto_officer_users` key, reject at startup.
+        // When they came only from the deprecated `privileged_users` key, preserve the v5.26.0
+        // behaviour (silently tolerated, though meaningless) and warn instead, so existing
+        // configurations upgrading from v5.26.0 are not broken.
+        if res.force_default_username && !res.crypto_officer.users.is_empty() {
+            if co_from_deprecated_path {
+                tracing::warn!(
+                    "`force_default_username = true` combined with `privileged_users` is \
+                     deprecated and will become an error in a future release. All requests run \
+                     under the same identity, making Crypto Officer dual-control meaningless. \
+                     Please migrate to `[roles] crypto_officer_users` and remove \
+                     `force_default_username`."
+                );
+            } else {
+                return Err(KmsError::ServerError(
+                    "`force_default_username = true` is incompatible with `crypto_officer_users`. \
+                     All requests would run under the same identity, making Crypto Officer \
+                     dual-control and ceremony audit logs meaningless. \
+                     Disable `force_default_username` or remove `crypto_officer_users`."
+                        .to_owned(),
+                ));
+            }
+        }
+
         debug!("{res:#?}");
 
         Ok(res)
     }
+}
+
+/// Build the list of `HsmInstanceParams` from the CLI configuration.
+///
+/// Merges the legacy flat HSM config (prefix `"hsm"`) with the new TOML
+/// `[[hsm]]` array (prefix `"hsm::<model>"`), disambiguating duplicate model
+/// names with a numeric suffix.
+fn build_hsm_instances(conf: &ClapConfig) -> Vec<HsmInstanceParams> {
+    let mut instances = Vec::new();
+
+    // Legacy flat config → prefix "hsm" (old UID format: hsm::<slot>::<key>)
+    if !conf.hsm.hsm_slot.is_empty() {
+        instances.push(HsmInstanceParams {
+            model: conf.hsm.hsm_model.clone(),
+            admin: conf.hsm.hsm_admin.clone(),
+            slot_passwords: conf.hsm.slot_passwords(),
+            prefix: "hsm".to_owned(),
+        });
+    }
+
+    // New TOML array → prefix "hsm::<model>" (new UID format: hsm::<model>::<slot>::<key>)
+    let mut model_counts: HashMap<String, usize> = HashMap::new();
+    for inst in conf.hsm_instances.iter().filter(|i| !i.hsm_slot.is_empty()) {
+        let model_lower = inst.hsm_model.to_lowercase();
+        let count = model_counts.entry(model_lower.clone()).or_insert(0);
+        let prefix = if *count == 0 {
+            format!("hsm::{model_lower}")
+        } else {
+            format!("hsm::{model_lower}_{count}")
+        };
+        *count += 1;
+        instances.push(HsmInstanceParams {
+            model: inst.hsm_model.clone(),
+            admin: inst.hsm_admin.clone(),
+            slot_passwords: inst.slot_passwords(),
+            prefix,
+        });
+    }
+
+    instances
+}
+
+/// Validate and normalise the KMIP policy ID, then return the corresponding allowlists.
+///
+/// Returns `(policy_id, allowlists)`.
+fn parse_kmip_policy(
+    conf: &ClapConfig,
+) -> KResult<(Option<String>, crate::config::KmipAllowlistsConfig)> {
+    let policy_id: Option<String> = conf
+        .kmip_policy
+        .policy_id
+        .as_deref()
+        .map(|raw| {
+            let normalized = raw.trim().to_ascii_uppercase();
+            if normalized == "DEFAULT" || normalized == "CUSTOM" {
+                Ok(normalized)
+            } else {
+                Err(KmsError::ServerError(format!(
+                    "Invalid kmip.policy_id: '{raw}'. Valid values are: DEFAULT, CUSTOM",
+                )))
+            }
+        })
+        .transpose()?;
+
+    // DEFAULT enforces the conservative allowlist; any other value uses the configured one.
+    let allowlists = if policy_id.as_deref() == Some("DEFAULT") {
+        crate::config::KmipAllowlistsConfig::conservative()
+    } else {
+        conf.kmip_policy.allowlists.clone()
+    };
+
+    Ok((policy_id, allowlists))
+}
+
+/// Parse the `--default-unwrap-type` CLI list into a typed `Vec<ObjectType>`.
+///
+/// Accepts the special value `"All"` (case-insensitive) to mean every object type.
+fn parse_default_unwrap_types(types: Option<Vec<String>>) -> KResult<Option<Vec<ObjectType>>> {
+    types
+        .map(|ts| {
+            if ts.iter().any(|s| s.eq_ignore_ascii_case("All")) {
+                Ok(vec![
+                    ObjectType::Certificate,
+                    ObjectType::CertificateRequest,
+                    ObjectType::OpaqueObject,
+                    ObjectType::PGPKey,
+                    ObjectType::PrivateKey,
+                    ObjectType::PublicKey,
+                    ObjectType::SecretData,
+                    ObjectType::SplitKey,
+                    ObjectType::SymmetricKey,
+                ])
+            } else {
+                ts.into_iter()
+                    .map(|s| {
+                        ObjectType::from_str(&s).map_err(|e| {
+                            KmsError::ServerError(format!(
+                                "Invalid ObjectType: '{s}'. Valid values are: All, Certificate, \
+                                 CertificateRequest, OpaqueObject, PGPKey, PrivateKey, PublicKey, \
+                                 SecretData, SplitKey, SymmetricKey. Error: {e}"
+                            ))
+                        })
+                    })
+                    .collect()
+            }
+        })
+        .transpose()
 }
 
 impl fmt::Debug for ServerParams {
@@ -303,7 +833,8 @@ impl fmt::Debug for ServerParams {
         // Always show these non-optional fields
         debug_struct
             .field("default_username", &self.default_username)
-            .field("force_default_username", &self.force_default_username);
+            .field("force_default_username", &self.force_default_username)
+            .field("vendor_identification", &self.vendor_identification);
 
         if let Some(ref db_params) = self.main_db_params {
             debug_struct.field("main_db_params", db_params);
@@ -311,7 +842,10 @@ impl fmt::Debug for ServerParams {
 
         debug_struct
             .field("clear_db_on_start", &self.clear_db_on_start)
-            .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age);
+            .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age)
+            .field("unwrapped_cache_max_size", &self.unwrapped_cache_max_size)
+            .field("unwrapped_cache_max_ttl", &self.unwrapped_cache_max_ttl)
+            .field("disable_unwrapped_cache", &self.disable_unwrapped_cache);
 
         if let Some(ref otel_params) = self.otel_params {
             debug_struct.field("otel_params", otel_params);
@@ -323,6 +857,42 @@ impl fmt::Debug for ServerParams {
 
         if let Some(ref unwrap_types) = self.default_unwrap_types {
             debug_struct.field("default_unwrap_types", unwrap_types);
+        }
+
+        debug_struct.field("kmip_policy_id", &self.kmip_policy.policy_id);
+        if self.kmip_policy.policy_id.is_none() {
+            debug_struct.field(
+                "kmip_algorithm_policy",
+                &"no restrictions — all supported algorithms are allowed",
+            );
+        } else {
+            if let Some(ref wl) = self.kmip_policy.allowlists.algorithms {
+                debug_struct.field("kmip_allowed_algorithms", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.hashes {
+                debug_struct.field("kmip_allowed_hashes", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.signature_algorithms {
+                debug_struct.field("kmip_allowed_signature_algorithms", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.curves {
+                debug_struct.field("kmip_allowed_curves", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.block_cipher_modes {
+                debug_struct.field("kmip_allowed_block_cipher_modes", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.padding_methods {
+                debug_struct.field("kmip_allowed_padding_methods", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.mgf_hashes {
+                debug_struct.field("kmip_allowed_mgf_hashes", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.rsa_key_sizes {
+                debug_struct.field("kmip_allowed_rsa_key_sizes", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.aes_key_sizes {
+                debug_struct.field("kmip_allowed_aes_key_sizes", wl);
+            }
         }
 
         if self.start_socket_server {
@@ -337,8 +907,8 @@ impl fmt::Debug for ServerParams {
             debug_struct.field("tls_params", tls);
         }
 
-        if let Some(ref token) = self.api_token_id {
-            debug_struct.field("api_token_id", token);
+        if self.api_token_id.is_some() {
+            debug_struct.field("api_token_id", &self.api_token_id);
         }
 
         if let Some(ref dke_url) = self.ms_dke_service_url {
@@ -358,31 +928,75 @@ impl fmt::Debug for ServerParams {
                 )
                 .field(
                     "google_cse_migration_key",
-                    &self.google_cse.google_cse_migration_key,
+                    &self
+                        .google_cse
+                        .google_cse_migration_key
+                        .as_ref()
+                        .map(|_| "[PEM key provided]"),
                 );
         } else {
             debug_struct.field("google_cse_enable", &self.google_cse.google_cse_enable);
         }
 
-        if self.hsm_model.is_some() {
+        if let Some(aws_xks_params) = &self.aws_xks_params {
             debug_struct
-                .field("hsm_admin", &self.hsm_admin)
-                .field("hsm_model", &self.hsm_model);
-            // Display slot passwords: mask actual passwords, show slot index
-            for (slot, password) in &self.slot_passwords {
-                let masked = if password.is_some() {
-                    "***"
-                } else {
-                    "<NO_LOGIN>"
-                };
-                debug_struct.field(&format!("hsm_slot_{slot}"), &masked);
-            }
+                .field("aws_xks_params", &"configured")
+                .field("aws_xks_region", &aws_xks_params.region)
+                .field("aws_xks_service", &aws_xks_params.service)
+                .field(
+                    "aws_xks_sigv4_access_key_id",
+                    &aws_xks_params.sigv4_access_key_id,
+                );
         } else {
-            debug_struct.field("hsm_model", &"no HSM configured");
+            debug_struct.field("aws_xks_params", &"not configured");
         }
 
-        if let Some(ref key) = self.key_wrapping_key {
-            debug_struct.field("key_wrapping_key", key);
+        // Azure EKM configuration
+        if self.azure_ekm.azure_ekm_enable {
+            debug_struct
+                .field("azure_ekm_enable", &self.azure_ekm.azure_ekm_enable)
+                .field(
+                    "azure_ekm_path_prefix",
+                    &self.azure_ekm.azure_ekm_path_prefix,
+                )
+                .field(
+                    "azure_ekm_disable_client_auth",
+                    &self.azure_ekm.azure_ekm_disable_client_auth,
+                )
+                .field(
+                    "azure_ekm_proxy_vendor",
+                    &self.azure_ekm.azure_ekm_proxy_vendor,
+                )
+                .field("azure_ekm_proxy_name", &self.azure_ekm.azure_ekm_proxy_name)
+                .field("azure_ekm_ekm_vendor", &self.azure_ekm.azure_ekm_ekm_vendor)
+                .field(
+                    "azure_ekm_ekm_product",
+                    &self.azure_ekm.azure_ekm_ekm_product,
+                );
+        } else {
+            debug_struct.field("azure_ekm_enable", &self.azure_ekm.azure_ekm_enable);
+        }
+
+        if self.hsm_instances.is_empty() {
+            debug_struct.field("hsm_instances", &"no HSM configured");
+        } else {
+            for inst in &self.hsm_instances {
+                debug_struct
+                    .field(&format!("[{}] model", inst.prefix), &inst.model)
+                    .field(&format!("[{}] admin", inst.prefix), &inst.admin);
+                for (slot, password) in &inst.slot_passwords {
+                    let masked = if password.is_some() {
+                        "***"
+                    } else {
+                        "<NO_LOGIN>"
+                    };
+                    debug_struct.field(&format!("[{}] slot_{slot}", inst.prefix), &masked);
+                }
+            }
+        }
+
+        if self.key_wrapping_key.is_some() {
+            debug_struct.field("key_wrapping_key", &"[configured]");
         }
 
         if let Some(ref proxy) = self.proxy_params {
@@ -398,13 +1012,18 @@ impl fmt::Debug for ServerParams {
             &format!(
                 "http{}://{}:{}",
                 if self.tls_params.is_some() { "s" } else { "" },
-                &self.http_hostname,
-                &self.http_port
+                self.http_hostname,
+                self.http_port
             ),
         );
 
-        if let Some(ref users) = self.privileged_users {
-            debug_struct.field("privileged_users", users);
+        if !self.crypto_officer.users.is_empty() {
+            debug_struct.field("crypto_officer_users", &self.crypto_officer.users);
+        }
+
+        // Mask the session salt for security (it's a secret)
+        if self.ui_session_salt.is_some() {
+            debug_struct.field("ui_session_salt", &"***");
         }
 
         // if one of these UI fields is some, add debug information
@@ -417,7 +1036,221 @@ impl fmt::Debug for ServerParams {
         }
 
         debug_struct.field("ui_index_html_folder", &self.ui_index_html_folder);
+        debug_struct.field("ui_enable", &self.ui_enable);
+        debug_struct.field("rate_limit_per_second", &self.rate_limit_per_second);
+        debug_struct.field("http_workers", &self.http_workers);
+        debug_struct.field("cors_allowed_origins", &self.cors_allowed_origins);
+        debug_struct.field("max_locate_items", &self.max_locate_items);
+        debug_struct.field(
+            "auto_rotation_check_interval_secs",
+            &self.auto_rotation_check_interval_secs,
+        );
+        debug_struct.field("keyset_warn_depth", &self.keyset_warn_depth);
+        if self.jwks_endpoint.jwks_endpoint_enabled {
+            debug_struct
+                .field(
+                    "jwks_endpoint_enabled",
+                    &self.jwks_endpoint.jwks_endpoint_enabled,
+                )
+                .field(
+                    "jwks_endpoint_max_keys",
+                    &self.jwks_endpoint.jwks_endpoint_max_keys,
+                )
+                .field(
+                    "jwks_endpoint_auto_tag",
+                    &self.jwks_endpoint.jwks_endpoint_auto_tag,
+                );
+        } else {
+            debug_struct.field(
+                "jwks_endpoint_enabled",
+                &self.jwks_endpoint.jwks_endpoint_enabled,
+            );
+        }
+        debug_struct.field("audit_file_path", &self.audit_file_path);
+        debug_struct.field("audit_channel_capacity", &self.audit_channel_capacity);
+        debug_struct.field("audit_file_max_size_bytes", &self.audit_file_max_size_bytes);
+        debug_struct.field("audit_trusted_proxy_cidrs", &self.audit_trusted_proxy_cidrs);
+        debug_struct.field("audit_failure_mode", &self.audit_failure_mode);
 
-        debug_struct.finish()
+        // Vault API fields
+        debug_struct.field("vault_api_enabled", &self.vault_api_enabled);
+        if self.vault_api_enabled {
+            debug_struct
+                .field("vault_auth_verifier_url", &self.vault_auth_verifier_url)
+                .field(
+                    "vault_auth_verifier_ca_cert",
+                    &self.vault_auth_verifier_ca_cert,
+                )
+                .field(
+                    "vault_auth_verifier_accept_invalid_certs",
+                    &self.vault_auth_verifier_accept_invalid_certs,
+                )
+                .field("vault_transit_mount", &self.vault_transit_mount)
+                .field("vault_pki_mount", &self.vault_pki_mount)
+                .field("vault_pki_ca_key_label", &self.vault_pki_ca_key_label)
+                .field(
+                    "vault_token_cache_ttl_secs",
+                    &self.vault_token_cache_ttl_secs,
+                );
+        }
+
+        if let Some(ref auth_verifier) = self.auth_verifier_config {
+            if auth_verifier.is_enabled() {
+                debug_struct.field("auth_verifier_url", &auth_verifier.auth_verifier_url);
+            }
+        }
+
+        debug_struct.field(
+            "ceremony_keys",
+            &self.ceremony_keys.as_ref().map(|_| "<configured>"),
+        );
+        debug_struct.field("ceremony_key_id", &self.ceremony_key_id);
+
+        debug_struct.field("crl_default_validity_days", &self.crl_default_validity_days);
+        if self.crl_refresh_check_hours > 0 {
+            debug_struct.field("crl_refresh_check_hours", &self.crl_refresh_check_hours);
+            debug_struct.field("crl_refresh_overlap_hours", &self.crl_refresh_overlap_hours);
+        }
+
+        debug_struct.finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::ServerParams;
+    use crate::{
+        config::{ClapConfig, HttpConfig, command_line::MainDBConfig},
+        tests::test_utils::https_clap_config,
+    };
+
+    /// Build a minimal [`ClapConfig`] that uses a `SQLite` database in `tmp_dir`.
+    fn minimal_config(tmp_dir: &TempDir) -> ClapConfig {
+        ClapConfig {
+            db: MainDBConfig {
+                sqlite_path: tmp_dir.path().to_path_buf(),
+                ..MainDBConfig::default()
+            },
+            http: HttpConfig {
+                cors_allowed_origins: None,
+                ..HttpConfig::default()
+            },
+            ..ClapConfig::default()
+        }
+    }
+
+    /// When `kms_public_url` is set and `cors_allowed_origins` is absent, the
+    /// resolved `ServerParams::cors_allowed_origins` must include `kms_public_url`.
+    #[test]
+    fn cors_includes_public_url_when_not_explicitly_configured() {
+        let tmp = TempDir::new().unwrap();
+        let mut conf = minimal_config(&tmp);
+        conf.kms_public_url = Some("https://kms.example.com".to_owned());
+
+        let params = super::ServerParams::try_from(conf).unwrap();
+
+        assert!(
+            params
+                .cors_allowed_origins
+                .contains(&"https://kms.example.com".to_owned()),
+            "cors_allowed_origins should contain kms_public_url when not explicitly set; got: {:?}",
+            params.cors_allowed_origins
+        );
+    }
+
+    /// When `cors_allowed_origins` is explicitly set, `kms_public_url` must
+    /// **not** be injected — the explicit list is used verbatim.
+    #[test]
+    fn cors_explicit_list_not_augmented_with_public_url() {
+        let tmp = TempDir::new().unwrap();
+        let mut conf = minimal_config(&tmp);
+        conf.kms_public_url = Some("https://kms.example.com".to_owned());
+        conf.http.cors_allowed_origins = Some(vec!["https://explicit.example.com".to_owned()]);
+
+        let params = super::ServerParams::try_from(conf).unwrap();
+
+        assert_eq!(
+            params.cors_allowed_origins,
+            vec!["https://explicit.example.com".to_owned()],
+            "explicit cors_allowed_origins must be used verbatim; kms_public_url must not be appended"
+        );
+    }
+
+    /// When `kms_public_url` is absent and `cors_allowed_origins` is unset, the
+    /// defaults must be the standard loopback origins only (no phantom entry).
+    #[test]
+    fn cors_defaults_when_no_public_url() {
+        let tmp = TempDir::new().unwrap();
+        let conf = minimal_config(&tmp);
+
+        let params = super::ServerParams::try_from(conf).unwrap();
+
+        // No kms_public_url → defaults should not contain any non-loopback origin.
+        for origin in &params.cors_allowed_origins {
+            assert!(
+                origin.contains("localhost")
+                    || origin.contains("127.0.0.1")
+                    || origin.contains("0.0.0.0")
+                    || origin.contains("[::1]")
+                    || origin.contains("[::]"),
+                "default cors_allowed_origins should only contain loopback addresses; found unexpected: {origin}"
+            );
+        }
+    }
+
+    /// `kms_public_url` that already appears in the explicit list must not be
+    /// duplicated (dedup guard inside the `unwrap_or_else` closure).
+    #[test]
+    fn cors_public_url_not_duplicated_in_defaults() {
+        let tmp = TempDir::new().unwrap();
+        let mut conf = minimal_config(&tmp);
+        conf.kms_public_url = Some("https://kms.example.com".to_owned());
+        // Do NOT set cors_allowed_origins — rely on the auto-default path
+
+        let params = super::ServerParams::try_from(conf).unwrap();
+
+        let count = params
+            .cors_allowed_origins
+            .iter()
+            .filter(|o| o.as_str() == "https://kms.example.com")
+            .count();
+        assert_eq!(
+            count, 1,
+            "kms_public_url must appear exactly once; got: {:?}",
+            params.cors_allowed_origins
+        );
+    }
+
+    /// `max_size_bytes = 0` is a configuration mistake (it would mean either
+    /// "unlimited" or "block everything", ambiguously), so it must be rejected
+    /// at config/parameter construction time rather than silently accepted.
+    #[test]
+    fn audit_file_max_size_bytes_zero_is_rejected() {
+        let mut conf = https_clap_config();
+        conf.audit.file.audit_file_max_size_bytes = Some(0);
+
+        let err = ServerParams::try_from(conf).expect_err("max_size_bytes = 0 must be rejected");
+        assert!(
+            err.to_string()
+                .contains("audit_file_max_size_bytes must be greater than 0"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    /// `None` (unset) and any positive value must both build successfully.
+    #[test]
+    fn audit_file_max_size_bytes_none_or_positive_is_accepted() {
+        let mut conf = https_clap_config();
+        conf.audit.file.audit_file_max_size_bytes = None;
+        let params = ServerParams::try_from(conf).expect("None must be accepted");
+        assert_eq!(params.audit_file_max_size_bytes, None);
+
+        let mut conf = https_clap_config();
+        conf.audit.file.audit_file_max_size_bytes = Some(1_073_741_824);
+        let params = ServerParams::try_from(conf).expect("a positive value must be accepted");
+        assert_eq!(params.audit_file_max_size_bytes, Some(1_073_741_824));
     }
 }

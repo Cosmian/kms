@@ -1,10 +1,11 @@
-use std::{borrow::Cow, sync::Arc};
+use std::borrow::Cow;
 
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
     crypto::{
         DecryptionSystem, cover_crypt::decryption::CovercryptDecryption,
-        elliptic_curves::ecies::ecies_decrypt, rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt,
+        elliptic_curves::ecies::ecies_decrypt, fpe::decrypt_fpe,
+        rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt,
     },
     reexport::cosmian_cover_crypt::api::Covercrypt,
 };
@@ -20,7 +21,6 @@ use cosmian_kms_server_database::reexport::{
                 CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
             },
         },
-        time_normalize,
     },
     cosmian_kms_crypto::{
         crypto::{
@@ -32,255 +32,192 @@ use cosmian_kms_server_database::reexport::{
         },
         openssl::kmip_private_key_to_openssl,
     },
-    cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata},
 };
-use cosmian_logger::{debug, info, trace};
+use cosmian_logger::{debug, trace};
 use openssl::pkey::{Id, PKey, Private};
 use zeroize::Zeroizing;
 
+#[cfg(feature = "non-fips")]
+use crate::core::operations::algorithm_policy::enforce_ecies_fixed_suite_for_attributes;
 use crate::{
+    config::ServerParams,
     core::{
         KMS,
-        operations::get_effective_state,
-        uid_utils::{has_prefix, uids_from_unique_identifier},
+        operations::{CryptoOpSpec, KeysetMode},
     },
     error::KmsError,
     kms_bail,
-    result::{KResult, KResultHelper},
+    middlewares::UserId,
+    result::KResult,
 };
 
 const EMPTY_SLICE: &[u8] = &[];
 
+/// Marker type for the Decrypt operation's key selection requirements.
+pub(crate) struct DecryptOp;
+
+impl CryptoOpSpec for DecryptOp {
+    type Request = Decrypt;
+    type Response = DecryptResponse;
+
+    const KMIP_OP: KmipOperation = KmipOperation::Decrypt;
+    const OP_NAME: &'static str = "Decrypt";
+
+    fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier> {
+        request.unique_identifier.as_ref()
+    }
+
+    fn keyset_mode() -> KeysetMode {
+        KeysetMode::TryEach
+    }
+
+    /// Decrypt accepts Active, Deactivated, and Compromised keys per KMIP 2.1 §3.31:
+    /// "The object SHALL NOT be used for applying cryptographic protection [...]
+    /// The object SHOULD only be used to process cryptographically-protected information."
+    fn accepted_states() -> &'static [State] {
+        &[State::Active, State::Deactivated, State::Compromised]
+    }
+
+    fn usage_data_len(request: &Self::Request) -> usize {
+        request.data.as_ref().map_or(0, Vec::len)
+    }
+
+    fn is_key_eligible(owm: &ObjectWithMetadata, vendor_id: &str) -> bool {
+        #[cfg(not(feature = "non-fips"))]
+        let _ = vendor_id;
+        if let Object::SymmetricKey { .. } = owm.object() {
+            return owm.has_usage_mask(CryptographicUsageMask::Decrypt, false);
+        }
+        if let Object::PrivateKey { .. } = owm.object() {
+            if !owm.has_usage_mask(CryptographicUsageMask::Decrypt, false) {
+                return false;
+            }
+            #[cfg(feature = "non-fips")]
+            if owm
+                .object()
+                .attributes()
+                .unwrap_or_else(|_| owm.attributes())
+                .key_format_type
+                == Some(KeyFormatType::CoverCryptSecretKey)
+            {
+                use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
+                let attributes = owm
+                    .object()
+                    .attributes()
+                    .unwrap_or_else(|_| owm.attributes());
+                if access_policy_from_attributes(vendor_id, attributes).is_err() {
+                    return false;
+                }
+            }
+            return true;
+        }
+        false
+    }
+
+    fn map_selection_error(
+        e: KmsError,
+        unique_identifier: &UniqueIdentifier,
+        user: &UserId,
+    ) -> KmsError {
+        match e {
+            KmsError::ItemNotFound(_) => KmsError::ItemNotFound(format!(
+                "Decrypt: failed to retrieve the key: {unique_identifier}"
+            )),
+            KmsError::Unauthorized(_) => KmsError::Unauthorized(format!(
+                "Decrypt: the user {user} does not have the permission to decrypt using the key: \
+                 {unique_identifier}"
+            )),
+            other => other,
+        }
+    }
+
+    async fn execute_local(
+        kms: &KMS,
+        owm: &ObjectWithMetadata,
+        request: &Self::Request,
+        _user: &UserId,
+    ) -> KResult<Self::Response> {
+        let data = request.data.as_ref().ok_or_else(|| {
+            KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
+        })?;
+        BulkData::deserialize(data).map_or_else(
+            |_| decrypt_single(owm, &kms.params, request),
+            |bulk_data| decrypt_bulk(owm, &kms.params, request, bulk_data),
+        )
+    }
+
+    async fn execute_oracle(
+        kms: &KMS,
+        request: &Self::Request,
+        uid: &str,
+        prefix: &str,
+    ) -> KResult<Self::Response> {
+        let mut data = request
+            .i_v_counter_nonce
+            .as_ref()
+            .map_or(vec![], Clone::clone);
+        data.extend(
+            request
+                .data
+                .as_ref()
+                .ok_or_else(|| {
+                    KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
+                })?
+                .clone(),
+        );
+        if let Some(tag) = &request.authenticated_encryption_tag {
+            data.extend(tag.iter().copied());
+        }
+        debug!(
+            "Decryption Oracle for prefix: {prefix}, total ciphertext is {} bytes long",
+            data.len()
+        );
+        let cleartext = kms
+            .crypto_oracles
+            .read()
+            .await
+            .get(prefix)
+            .ok_or_else(|| {
+                KmsError::InvalidRequest(format!(
+                    "Decrypt: unknown decryption oracle prefix: {prefix}"
+                ))
+            })?
+            .decrypt(
+                uid,
+                data.as_slice(),
+                request
+                    .cryptographic_parameters
+                    .as_ref()
+                    .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
+                    .transpose()?,
+                request.authenticated_encryption_additional_data.as_deref(),
+            )
+            .await?;
+        Ok(DecryptResponse {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            data: Some(cleartext),
+            correlation_value: request.correlation_value.clone(),
+        })
+    }
+}
+
 pub(crate) async fn decrypt(
     kms: &KMS,
     request: Decrypt,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    user: &UserId,
 ) -> KResult<DecryptResponse> {
-    trace!("{}", serde_json::to_string(&request)?);
-    let data = request.data.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
-    })?;
-
-    // Get the uids from the unique identifier
-    let unique_identifier = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
-        .await
-        .context("Decrypt")?;
-    debug!("candidate uids: {uids:?}");
-
-    // Determine which UID to select. The decision process is as follows: loop through the uids
-    // 1. If the UID has a prefix, try using that
-    // 2. If the UID does not have a prefix, fetch the corresponding object and check that
-    //   a- the object is active
-    //   b- the object is a Private Key, a Symmetric Key
-    //   c- the object is authorized for Decryption
-    //
-    // Permissions checks are done AFTER the object is fetched in the default database
-    // to avoid calling `database.is_object_owned_by()` and hence a double call to the DB
-    // for each uid. This is also based on the high probability that there is still a single object
-    // in the candidates' list.
-    let mut selected_owm = None;
-    for uid in uids {
-        if let Some(prefix) = has_prefix(&uid) {
-            if !kms
-                .database
-                .is_object_owned_by(&uid, user, params.clone())
-                .await?
-            {
-                let ops = kms
-                    .database
-                    .list_user_operations_on_object(&uid, user, false, params.clone())
-                    .await?;
-                if !ops
-                    .iter()
-                    .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
-                {
-                    debug!("{user} is not authorized to decrypt using: {uid}");
-                    continue;
-                }
-            }
-            debug!("{user} is authorized to decrypt using: {uid}");
-            return decrypt_using_encryption_oracle(kms, &request, &uid, prefix).await;
-        }
-
-        // Default database
-        let owm = kms
-            .database
-            .retrieve_object(&uid, params.clone())
-            .await?
-            .ok_or_else(|| {
-                debug!("failed to retrieve the key: {uid}");
-                KmsError::Kmip21Error(
-                    ErrorReason::Item_Not_Found,
-                    format!("Decrypt: failed to retrieve the key: {uid}"),
-                )
-            })?;
-        // Check effective state (PreActive with past activation_date counts as Active)
-        if get_effective_state(&owm)? != State::Active {
-            debug!("{uid} is not active");
-            continue;
-        }
-        // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
-        // and the attributes of the object will be empty. Use the metadata attributes.
-        let attributes = owm
-            .object()
-            .attributes()
-            .unwrap_or_else(|_| owm.attributes());
-        if !attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)? {
-            debug!("{uid} is not authorized for decryption");
-            continue;
-        }
-        // check user permissions - owner can always decrypt
-        if owm.owner() != user {
-            let ops = kms
-                .database
-                .list_user_operations_on_object(&uid, user, false, params.clone())
-                .await?;
-            if !ops
-                .iter()
-                .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
-            {
-                debug!("{user} is not authorized to decrypt using: {uid}");
-                continue;
-            }
-        }
-        debug!("{user} is authorized to decrypt using: {uid}");
-        // user is authorized to decrypt with the key
-        if let Object::SymmetricKey { .. } = owm.object() {
-            selected_owm = Some(owm);
-            break;
-        }
-        if let Object::PrivateKey { .. } = owm.object() {
-            // Is it a Covercrypt secret key?
-            #[cfg(feature = "non-fips")]
-            if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
-                // does it have an access access structure that allows decryption?
-                use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
-                if access_policy_from_attributes(attributes).is_err() {
-                    continue;
-                }
-            }
-            selected_owm = Some(owm);
-            break;
-        }
-    }
-    let mut owm = selected_owm.ok_or_else(|| {
-        KmsError::Kmip21Error(
-            ErrorReason::Item_Not_Found,
-            format!("Decrypt: no valid key for id: {unique_identifier}"),
-        )
-    })?;
-
-    // Enforce time window constraints for Decrypt mirroring Encrypt semantics: deny usage when
-    // current time is before ProcessStartDate or after ProtectStopDate. Required for vectors like
-    // CS-BC-M-14-21 which expect WrongKeyLifecycleState prior to revocation.
-    if get_effective_state(&owm)? == State::Active {
-        if let Ok(attrs) = owm.object().attributes() {
-            let now = time_normalize()?;
-            let too_early = attrs.process_start_date.is_some_and(|d| now < d);
-            let too_late = attrs.protect_stop_date.is_some_and(|d| now > d);
-            if too_early || too_late {
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Wrong_Key_Lifecycle_State,
-                    "DENIED".to_owned(),
-                ));
-            }
-        }
-    }
-
-    // if the key is wrapped, we need to unwrap it
-    owm.set_object(
-        kms.get_unwrapped(owm.id(), owm.object(), user, params)
-            .await
-            .with_context(|| format!("Decrypt: the key: {}, cannot be unwrapped.", owm.id()))?,
+    trace!(
+        "Decrypt: uid={:?}, data_len={}",
+        request.unique_identifier,
+        request.data.as_ref().map_or(0, Vec::len)
     );
-
-    let res = BulkData::deserialize(data).map_or_else(
-        |_| decrypt_single(&owm, &request),
-        |bulk_data| decrypt_bulk(&owm, &request, bulk_data),
-    )?;
-
-    info!(
-        uid = owm.id(),
-        user = user,
-        "Decrypted ciphertext of: {} bytes -> plaintext length: {}",
-        request.data.as_ref().map_or(0, Vec::len),
-        res.data.as_ref().map_or(0, |d| d.len()),
-    );
-
-    Ok(res)
-}
-
-/// Decrypt using a decryption oracle.
-///
-/// # Arguments
-/// * `kms` - the KMS
-/// * `request` - the decrypt request
-/// * `uid` - the unique identifier of the key
-/// * `prefix` - the prefix of the decryption oracle
-///
-/// # Returns
-/// * the decrypt response
-async fn decrypt_using_encryption_oracle(
-    kms: &KMS,
-    request: &Decrypt,
-    uid: &str,
-    prefix: &str,
-) -> KResult<DecryptResponse> {
-    let mut data = request
-        .i_v_counter_nonce
-        .as_ref()
-        .map_or(vec![], Clone::clone);
-    data.extend(
-        request
-            .data
-            .as_ref()
-            .ok_or_else(|| {
-                KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
-            })?
-            .clone(),
-    );
-    if let Some(tag) = &request.authenticated_encryption_tag {
-        data.extend(tag.iter().copied());
-    }
-    debug!(
-        "Encryption Oracle for prefix: {prefix}, total ciphertext is {} bytes long",
-        data.len()
-    );
-    let cleartext = kms
-        .encryption_oracles
-        .read()
-        .await
-        .get(prefix)
-        .ok_or_else(|| {
-            KmsError::InvalidRequest(format!(
-                "Decrypt: unknown decryption oracle prefix: {prefix}"
-            ))
-        })?
-        .decrypt(
-            uid,
-            data.as_slice(),
-            request
-                .cryptographic_parameters
-                .as_ref()
-                .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
-                .transpose()?,
-            request.authenticated_encryption_additional_data.as_deref(),
-        )
-        .await?;
-    Ok(DecryptResponse {
-        unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-        data: Some(cleartext),
-        correlation_value: request.correlation_value.clone(),
-    })
+    Box::pin(kms.perform_crypto_operation::<DecryptOp>(request, user)).await
 }
 
 fn decrypt_bulk(
     owm: &ObjectWithMetadata,
+    server_params: &ServerParams,
     request: &Decrypt,
     bulk_data: BulkData,
 ) -> KResult<DecryptResponse> {
@@ -294,11 +231,11 @@ fn decrypt_bulk(
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptSecretKey => {
+            // Clone the request once, then only swap the `data` field per ciphertext
+            // to avoid cloning the whole Decrypt request on every iteration.
+            let mut request = request.clone();
             for ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                let request = Decrypt {
-                    data: Some(ciphertext.to_vec()),
-                    ..request.clone()
-                };
+                request.data = Some(ciphertext.to_vec());
                 let response = decrypt_with_covercrypt(owm, &request)?;
                 plaintexts.push(response.data.unwrap_or_default());
             }
@@ -308,12 +245,12 @@ fn decrypt_bulk(
         | KeyFormatType::TransparentRSAPrivateKey
         | KeyFormatType::PKCS1
         | KeyFormatType::PKCS8 => {
+            // Clone the request once, then only swap the `data` field per ciphertext
+            // to avoid cloning the whole Decrypt request on every iteration.
+            let mut request = request.clone();
             for ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                let request = Decrypt {
-                    data: Some(ciphertext.to_vec()),
-                    ..request.clone()
-                };
-                let response = decrypt_with_private_key(owm, &request)?;
+                request.data = Some(ciphertext.to_vec());
+                let response = decrypt_with_private_key(owm, &request, server_params)?;
                 plaintexts.push(response.data.unwrap_or_default());
             }
         }
@@ -386,27 +323,105 @@ fn decrypt_bulk(
     })
 }
 
-fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<DecryptResponse> {
-    trace!("entering");
+fn decrypt_single(
+    owm: &ObjectWithMetadata,
+    server_params: &crate::config::ServerParams,
+    request: &Decrypt,
+) -> KResult<DecryptResponse> {
+    trace!("Extracting key block for decryption to identify key format type...");
     let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
+        #[cfg(feature = "non-fips")]
+        KeyFormatType::ConfigurableKEMSecretKey => {
+            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::kem_decaps;
+
+            let (dk_bytes, _) = owm.object().key_block()?.key_bytes_and_attributes()?;
+            let enc = request
+                .data
+                .as_ref()
+                .ok_or_else(|| KmsError::InvalidRequest("missing KEM encapsulation".to_owned()))?;
+            let key = kem_decaps(&dk_bytes, enc)?;
+            Ok(DecryptResponse {
+                unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                data: Some(key),
+                correlation_value: None,
+            })
+        }
         #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptSecretKey => decrypt_with_covercrypt(owm, request),
 
         KeyFormatType::TransparentECPrivateKey
         | KeyFormatType::TransparentRSAPrivateKey
         | KeyFormatType::PKCS1
-        | KeyFormatType::PKCS8 => {
+        | KeyFormatType::PKCS8
+        | KeyFormatType::Raw => {
+            // Check for KEM: if the key's algorithm is ML-KEM or hybrid KEM, perform decapsulation
+            // instead of standard decryption.
+            #[cfg(feature = "non-fips")]
+            {
+                let key_algo = key_block
+                    .cryptographic_algorithm()
+                    .copied()
+                    .or_else(|| owm.attributes().cryptographic_algorithm);
+                if matches!(
+                    key_algo,
+                    Some(
+                        CryptographicAlgorithm::MLKEM_512
+                            | CryptographicAlgorithm::MLKEM_768
+                            | CryptographicAlgorithm::MLKEM_1024
+                    )
+                ) {
+                    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_kem::ml_kem_decapsulate;
+                    let ciphertext = request.data.as_ref().ok_or_else(|| {
+                        KmsError::InvalidRequest(
+                            "Decrypt ML-KEM: ciphertext (encapsulation) must be provided"
+                                .to_owned(),
+                        )
+                    })?;
+                    let (priv_bytes, _) = key_block.key_bytes_and_attributes()?;
+                    let shared_secret = ml_kem_decapsulate(&priv_bytes, ciphertext)?;
+                    return Ok(DecryptResponse {
+                        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                        data: Some(Zeroizing::from(shared_secret)),
+                        correlation_value: request.correlation_value.clone(),
+                    });
+                }
+                if let Some(
+                    algo @ (CryptographicAlgorithm::X25519MLKEM768
+                    | CryptographicAlgorithm::X448MLKEM1024),
+                ) = key_algo
+                {
+                    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::hybrid_kem::hybrid_kem_decapsulate;
+                    let ciphertext = request.data.as_ref().ok_or_else(|| {
+                        KmsError::InvalidRequest(
+                            "Decrypt hybrid KEM: ciphertext (encapsulation) must be provided"
+                                .to_owned(),
+                        )
+                    })?;
+                    let (priv_bytes, _) = key_block.key_bytes_and_attributes()?;
+                    let shared_secret = hybrid_kem_decapsulate(algo, &priv_bytes, ciphertext)?;
+                    return Ok(DecryptResponse {
+                        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                        data: Some(Zeroizing::from(shared_secret)),
+                        correlation_value: request.correlation_value.clone(),
+                    });
+                }
+            }
+
+            // Raw format can be either a private key or a symmetric key;
+            // route symmetric keys to the correct handler.
+            if matches!(owm.object(), Object::SymmetricKey { .. }) {
+                return decrypt_single_with_symmetric_key(owm, request)?;
+            }
+
             trace!(
                 "matching on public key format type: {:?}",
                 key_block.key_format_type
             );
-            decrypt_with_private_key(owm, request)
+            decrypt_with_private_key(owm, request, server_params)
         }
 
-        KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
-            decrypt_single_with_symmetric_key(owm, request)?
-        }
+        KeyFormatType::TransparentSymmetricKey => decrypt_single_with_symmetric_key(owm, request)?,
 
         other => Err(KmsError::NotSupported(format!(
             "decryption with keys of format: {other}"
@@ -429,35 +444,90 @@ fn decrypt_single_with_symmetric_key(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
 ) -> Result<Result<DecryptResponse, KmsError>, KmsError> {
+    let key_block = owm.object().key_block()?;
+    let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
+    let req_cp = request.cryptographic_parameters.as_ref();
+    let cryptographic_algorithm = req_cp
+        .and_then(|cp| cp.cryptographic_algorithm)
+        .or_else(|| stored_cp.and_then(|cp| cp.cryptographic_algorithm))
+        .or_else(|| key_block.cryptographic_algorithm().copied())
+        .unwrap_or(CryptographicAlgorithm::AES);
+
+    #[cfg(not(feature = "non-fips"))]
+    if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+        return Ok(Err(KmsError::NotSupported(
+            "FPE_FF1 decryption is not supported in FIPS mode".to_owned(),
+        )));
+    }
+
+    #[cfg(feature = "non-fips")]
+    if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+        let ciphertext = request.data.as_ref().ok_or_else(|| {
+            KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
+        })?;
+        let plaintext = decrypt_fpe(
+            &key_block.key_bytes()?,
+            ciphertext,
+            request.authenticated_encryption_additional_data.as_deref(),
+            request.i_v_counter_nonce.as_deref(),
+        )
+        .map_err(|e| KmsError::CryptographicError(format!("FPE decrypt failed: {e}")))?;
+        return Ok(Ok(DecryptResponse {
+            unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+            data: Some(Zeroizing::from(plaintext)),
+            correlation_value: request.correlation_value.clone(),
+        }));
+    }
+
     let ciphertext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest(
             "Decrypt single with symmetric key: data to decrypt must be provided".to_owned(),
         )
     })?;
     let (key_bytes, aead) = get_aead_and_key(owm, request)?;
+    trace!(
+        "got key bytes of length: {}, aead: {:?}. Proceeding to get the nonce...",
+        key_bytes.len(),
+        aead
+    );
     // For modes with nonce_size()==0 (e.g. ECB) we do not expect / require an IV.
-    // For modes with nonce_size()>0 we require an IV. Some KMIP vectors supply an empty
-    // IVCounterNonce element to indicate an all-zero IV (e.g. CBC test cases). Treat a
-    // present-but-empty value as a zero IV of the required size. Any other length mismatch
-    // is reported as Invalid_Message instead of triggering an OpenSSL panic.
+    // For modes with nonce_size()>0 we require an IV.
+    //   - Absent IVCounterNonce (None)  → Invalid_Message "missing-iv" (KMIP mandatory compliance).
+    //   - Present but empty (Some([]))  → all-zero IV of the required size (some clients send this
+    //     explicitly to request a zero IV).
+    //   - Correct length               → use as-is.
+    //   - Wrong length for GCM         → pass through (OpenSSL derives J0 for non-96-bit IVs).
+    //   - Wrong length for other modes → Invalid_Message "invalid-iv-length".
     let empty_nonce_storage = Vec::new();
     let nonce_storage: Cow<[u8]> = if aead.nonce_size() == 0 {
         Cow::Borrowed(&empty_nonce_storage)
     } else {
-        let provided = request.i_v_counter_nonce.as_ref().ok_or_else(|| {
-            KmsError::Kmip21Error(ErrorReason::Invalid_Message, "missing-iv".to_owned())
-        })?;
-        if provided.is_empty() {
-            // Interpret empty provided IV as an all-zero IV of the recommended size for the cipher.
+        let provided = request.i_v_counter_nonce.as_ref();
+        if provided.is_none() {
+            // IVCounterNonce completely absent — required field; reject per KMIP spec.
+            return Ok(Err(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Message,
+                "missing-iv".to_owned(),
+            )));
+        } else if provided.is_some_and(Vec::is_empty) {
+            // Explicitly empty IVCounterNonce → caller requests all-zero IV.
             Cow::Owned(vec![0_u8; aead.nonce_size()])
-        } else if provided.len() == aead.nonce_size() {
-            Cow::Borrowed(provided)
+        } else if let Some(iv) = provided.filter(|v| v.len() == aead.nonce_size()) {
+            Cow::Borrowed(iv)
         } else {
             // Length mismatch: allow variable length only for AES-GCM (per spec and OpenSSL support).
+            // `provided` is guaranteed Some and non-empty at this point (None and empty were
+            // handled above), but we retain the let-else for exhaustive safety.
+            let Some(iv) = provided else {
+                return Ok(Err(KmsError::Kmip21Error(
+                    ErrorReason::Invalid_Message,
+                    "internal: IV unexpectedly absent after checks".to_owned(),
+                )));
+            };
             match aead {
                 SymCipher::Aes128Gcm | SymCipher::Aes192Gcm | SymCipher::Aes256Gcm => {
                     // Accept any non-empty length; pass through unchanged. (OpenSSL derives J0 for non-96-bit IVs.)
-                    Cow::Borrowed(provided)
+                    Cow::Borrowed(iv)
                 }
                 _ => {
                     return Ok(Err(KmsError::Kmip21Error(
@@ -465,7 +535,7 @@ fn decrypt_single_with_symmetric_key(
                         format!(
                             "invalid-iv-length: expected {} got {}",
                             aead.nonce_size(),
-                            provided.len()
+                            iv.len()
                         ),
                     )));
                 }
@@ -514,7 +584,7 @@ fn decrypt_single_with_symmetric_key(
         tag,
         Some(padding_method),
     )?;
-    trace!("plaintext: {plaintext:?}");
+    trace!("plaintext length: {} bytes", plaintext.len());
     Ok(Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(plaintext),
@@ -527,6 +597,15 @@ fn get_aead_and_key(
     request: &Decrypt,
 ) -> Result<(Zeroizing<Vec<u8>>, SymCipher), KmsError> {
     let key_block = owm.object().key_block()?;
+    // Prevent FPE_FF1 keys from being misused for standard symmetric operations.
+    // FPE_FF1 decryption is handled before this point; reaching here with an FPE_FF1
+    // key means the caller explicitly requested a different algorithm, which is a misuse.
+    if key_block.cryptographic_algorithm().copied() == Some(CryptographicAlgorithm::FPE_FF1) {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            "an FPE_FF1 key may only be used for FPE_FF1 decrypt operations".to_owned(),
+        ));
+    }
     // recover the cryptographic algorithm from the request or the key block or default to AES
     let cryptographic_algorithm = request
         .cryptographic_parameters
@@ -567,6 +646,8 @@ fn get_aead_and_key(
 fn decrypt_with_private_key(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
+    #[cfg(feature = "non-fips")] server_params: &ServerParams,
+    #[cfg(not(feature = "non-fips"))] _server_params: &ServerParams,
 ) -> KResult<DecryptResponse> {
     let ciphertext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
@@ -592,7 +673,15 @@ fn decrypt_with_private_key(
     let plaintext = match private_key.id() {
         Id::RSA => decrypt_with_rsa(&private_key, effective_cp.as_ref(), ciphertext)?,
         #[cfg(feature = "non-fips")]
-        Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(&private_key, ciphertext)?,
+        Id::EC | Id::X25519 | Id::ED25519 => {
+            enforce_ecies_fixed_suite_for_attributes(
+                server_params,
+                "Decrypt",
+                owm.id(),
+                owm.attributes(),
+            )?;
+            ecies_decrypt(&private_key, ciphertext)?
+        }
         other => {
             kms_bail!("Decrypt with PKey: private key type not supported: {other:?}")
         }

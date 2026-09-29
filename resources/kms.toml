@@ -6,12 +6,103 @@ default_username = "admin"
 # Example:
 ## default_unwrap_type = ["SecretData", "SymmetricKey"]
 
+# ── HSM configuration ─────────────────────────────────────────────────────────
+#
+# Two UID formats are supported:
+#
+# Legacy flat format (backward-compatible):
+#   UIDs: hsm::<slot_id>::<key_id>  (e.g. hsm::0::my_aes_key)
+#   Configure with top-level fields:
+#     hsm_model = "softhsm2"
+#     hsm_admin = ["admin"]
+#     hsm_slot = [0]
+#     hsm_password = ["changeme"]
+#
+# Multi-instance format:
+#   UIDs: hsm::<model>::<slot_id>::<key_id>  (e.g. hsm::softhsm2::0::my_aes_key)
+#   Configure with [[hsm_instances]] sections (one per device):
+#
+## [[hsm_instances]]
+## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other
+## hsm_admin    = ["tech@example.com"] # KMS users with admin rights on this HSM
+## hsm_slot     = [0]                  # PKCS#11 slot indices
+## hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
+#
+# UIDs for the above: hsm::softhsm2::0::<key_id>
+#
+## [[hsm_instances]]
+## hsm_model    = "utimaco"
+## hsm_admin    = ["tech@example.com"]
+## hsm_slot     = [0, 1]
+## hsm_password = ["slot0pass", "slot1pass"]
+#
+# UIDs for the above: hsm::utimaco::0::<key_id>, hsm::utimaco::1::<key_id>
+
+# ── Key Rotation & Keyset Management ────────────────────────────────────────
+# Background auto-rotation check interval (seconds).
+# Set to 0 (default) to disable the auto-rotation background task.
+# When enabled, must be at least 60 seconds to avoid excessive database churn.
+# auto_rotation_check_interval_secs = 0
+
+# Depth at which a keyset chain decryption triggers a server-side warning.
+# Keyset chain traversal is unbounded (stopped only by cycle detection);
+# this threshold emits a warning log so operators can flag stale ciphertexts.
+# Default: 5.
+# keyset_warn_depth = 5
+
 [http]
 port = 9998
 hostname = "0.0.0.0"
+# http_workers = 8  # leave unset to use all logical CPUs
+
+# ── JWKS Endpoint ────────────────────────────────────────────────────────────
+# Expose a public JSON Web Key Set at GET /.well-known/jwks.json (RFC 7517).
+# WARNING: this endpoint is intentionally unauthenticated — any client can read
+# the listed public keys.  Enable only when you want third parties to verify
+# JWT signatures or discover your public keys.
+
+#[jwks_endpoint]
+# jwks_endpoint_enabled = false
+
+# Responses exceeding this limit include X-JWKS-Truncated: true.
+# jwks_endpoint_max_keys = 50
+
+# Automatically tag key pairs created via POST /v1/crypto/keys with "jwks"
+# jwks_endpoint_auto_tag = true
+
+# ── Audit logging ────────────────────────────────────────────────────────────
+# [audit]
+# enabled = true
+#
+# [audit.file]
+# path = "/var/lib/cosmian/kms/audit.jsonl"
+# channel_capacity = 4096
+#
+# Stops all further writes once the file reaches this many bytes. Omitted means
+# unlimited. Write-stop cap only — never rotates or deletes the file.
+# max_size_bytes = 1073741824
+#
+# Only uncomment trusted_proxy_cidrs if the KMS sits behind a reverse proxy or
+# load balancer. Leave it unset otherwise (client_ip then always reflects the
+# real TCP peer address).
+# trusted_proxy_cidrs = ["10.0.0.0/8"]
 
 [db]
 database_type = "redis-findex"
 database_url = "redis://0.0.0.0:6379"
 redis_master_password = "master-password"
-redis_findex_label = "label"
+
+# ── Role-based access control ─────────────────────────────────────────────────
+[roles]
+# Uncomment to assign users to the Crypto Officer role:
+## crypto_officer_users = ["key-mgr@example.com"]
+
+# Enable split-key ceremony requirement (XOR n-of-n):
+## crypto_officer_require_ceremony = true
+
+# Hex-encoded 32-byte secret for ceremony record encryption (AES-256-GCM).
+# Required when any role has require_ceremony = true.
+# All ceremony activation records are encrypted with keys derived from this secret,
+# preventing forgery via direct database writes and protecting participant identities.
+# Generate with: openssl rand -hex 32
+## ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"

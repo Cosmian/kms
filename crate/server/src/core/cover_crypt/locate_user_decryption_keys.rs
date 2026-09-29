@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -16,11 +14,11 @@ use cosmian_kms_server_database::reexport::{
         crypto::cover_crypt::attributes::qualified_attributes_as_vendor_attributes,
         reexport::cosmian_cover_crypt::QualifiedAttribute,
     },
-    cosmian_kms_interfaces::SessionParams,
 };
 
 use crate::{
     core::{KMS, operations},
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -31,12 +29,14 @@ pub(crate) async fn locate_usk(
     master_secret_key_uid: &str,
     cover_crypt_policy_attributes_to_revoke: Option<Vec<QualifiedAttribute>>,
     state: Option<State>,
-    owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
+    owner: &UserId,
 ) -> KResult<Option<Vec<String>>> {
     // Convert the access structure attributes to vendor attributes
     let vendor_attributes = match cover_crypt_policy_attributes_to_revoke {
-        Some(att) => Some(vec![qualified_attributes_as_vendor_attributes(&att)?]),
+        Some(att) => Some(vec![qualified_attributes_as_vendor_attributes(
+            kmip_server.vendor_id(),
+            &att,
+        )?]),
         None => None,
     };
     // Search the user decryption keys that need to be refreshed
@@ -57,8 +57,7 @@ pub(crate) async fn locate_usk(
         attributes: search_attributes,
         ..Locate::default()
     };
-    let locate_response =
-        operations::locate(kmip_server, locate_request, state, owner, params).await?;
+    let locate_response = operations::locate(kmip_server, locate_request, state, owner).await?;
     Ok(locate_response.unique_identifier.map(|ids| {
         ids.into_iter()
             .map(|id| id.to_string())

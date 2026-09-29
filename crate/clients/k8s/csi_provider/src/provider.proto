@@ -1,0 +1,104 @@
+/*
+Copyright 2020 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+// Source: https://github.com/kubernetes-sigs/secrets-store-csi-driver/blob/main/provider/v1alpha1/service.proto
+
+syntax = "proto3";
+
+package v1alpha1;
+option go_package = "./provider/v1alpha1";
+
+service CSIDriverProvider {
+    // Version returns the runtime name and runtime version of the Secrets Store
+    // CSI Driver Provider.
+    rpc Version(VersionRequest) returns (VersionResponse) {}
+
+    // Mount executes the mount operation in the provider: fetch secrets
+    // declared in a SecretProviderClass and write them as files to the pod
+    // tmpfs volume.
+    rpc Mount(MountRequest) returns (MountResponse) {}
+}
+
+message VersionRequest {
+    // Version of the Secrets Store CSI Driver.
+    string version = 1;
+}
+
+message VersionResponse {
+    // Version of the Secrets Store CSI Driver.
+    string version = 1;
+    // Name of the Secrets Store CSI Driver Provider.
+    string runtime_name = 2;
+    // Version of the Secrets Store CSI Driver Provider.
+    // Must be semver-compatible.
+    string runtime_version = 3;
+}
+
+message MountRequest {
+    // Attributes is the JSON-serialized parameters field from the
+    // SecretProviderClass.
+    string attributes = 1;
+    // Secrets is the secret content referenced in nodePublishSecretRef secret
+    // data (deprecated, kept for wire compatibility).
+    string secrets = 2;
+    // TargetPath is the path to which the volume will be published
+    // (deprecated, kept for wire compatibility).
+    string target_path = 3;
+    // Permission is the file permissions (deprecated, kept for wire
+    // compatibility).
+    string permission = 4;
+    // CurrentObjectVersion is the list of objects and their versions currently
+    // mounted in the pod.  Used for rotation detection.
+    repeated ObjectVersion current_object_version = 5;
+}
+
+message MountResponse {
+    repeated ObjectVersion object_version = 1;
+    Error error = 2;
+    // files contains the entire mount volume filesystem.
+    //
+    // The total size of all files should not exceed 1 MiB or syncing to
+    // Kubernetes Secrets will fail.  If the contents of all files exceed
+    // 4 MiB, requests could fail unless MaxCallRecvMsgSize is increased.
+    repeated File files = 3;
+}
+
+// File holds secret file contents and location in the mount path.
+message File {
+    // The relative path of the file within the mount.
+    // May not be an absolute path.
+    // May not contain the path element '..'.
+    // May not start with the string '..'.
+    string path = 1;
+    // The mode bits used to set permissions on this file.
+    // Must be a decimal value between 0 and 511.
+    int32 mode = 2;
+    // The file contents.
+    bytes contents = 3;
+}
+
+message ObjectVersion {
+    // Id is the object UID fetched from the external secrets store.  Must be
+    // unique.  Example: "secret/my-api-key" or the KMS UID.
+    string id = 1;
+    // Version is the object version fetched from the external secrets store.
+    string version = 2;
+}
+
+message Error {
+    // Code is the error code that the provider returns, used for metrics.
+    string code = 1;
+}

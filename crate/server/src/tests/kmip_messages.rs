@@ -1,7 +1,5 @@
 #![allow(clippy::unwrap_in_result)]
 
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
@@ -14,7 +12,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         },
     },
     kmip_2_1::{
-        extra::tagging::EMPTY_TAGS,
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
         kmip_messages::RequestMessageBatchItem,
         kmip_operations::{Decrypt, Encrypt, MAC, Operation},
         kmip_types::{
@@ -27,21 +25,18 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::{debug, log_init};
 
-use crate::{
-    config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
-};
+use crate::{middlewares::UserId, result::KResult, tests::test_utils::test_kms};
 
 #[tokio::test]
 async fn test_kmip_mac_messages() -> KResult<()> {
     // Disable most logging
     log_init(Some("warn"));
 
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let kms = test_kms().await?;
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let symmetric_key_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
         None,
         256,
         CryptographicAlgorithm::AES,
@@ -51,7 +46,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     )?;
 
     let unique_identifier = Some(
-        kms.create(symmetric_key_request, owner, None, None)
+        kms.create(symmetric_key_request, &owner)
             .await?
             .unique_identifier,
     );
@@ -89,7 +84,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
         batch_item: items,
     };
 
-    let response = kms.message(message_request, owner, None).await?;
+    let response = kms.message(message_request, &owner).await?;
     assert_eq!(response.response_header.batch_count, items_number);
     // Check that all operations succeeded
     for item in &response.batch_item {
@@ -116,12 +111,12 @@ async fn test_kmip_mac_messages() -> KResult<()> {
 async fn test_encrypt_kmip_messages() -> KResult<()> {
     // Disable most logging
     log_init(Some("warn"));
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let kms = test_kms().await?;
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
     // Create a symmetric key first
 
     let symmetric_key_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
         None,
         256,
         CryptographicAlgorithm::AES,
@@ -131,7 +126,7 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
     )?;
 
     let unique_identifier = Some(
-        kms.create(symmetric_key_request, owner, None, None)
+        kms.create(symmetric_key_request, &owner)
             .await?
             .unique_identifier,
     );
@@ -171,7 +166,7 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
         batch_item: items,
     };
 
-    let response = kms.message(message_request, owner, None).await?;
+    let response = kms.message(message_request, &owner).await?;
     assert_eq!(response.response_header.batch_count, items_number);
     assert_eq!(
         response.batch_item.len(),
@@ -199,14 +194,18 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
 async fn test_kmip_messages() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let kms = test_kms().await?;
+    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     // request key pair creation
-    let ec_create_request =
-        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false, None)?;
+    let ec_create_request = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        EMPTY_TAGS,
+        RecommendedCurve::CURVE25519,
+        false,
+        None,
+    )?;
 
     // prepare and send the single message
     let batch_item = vec![
@@ -240,7 +239,7 @@ async fn test_kmip_messages() -> KResult<()> {
     };
     debug!("message_request: {:#?}", to_ttlv(&message_request));
 
-    let response = kms.message(message_request, owner, None).await?;
+    let response = kms.message(message_request, &owner).await?;
     assert_eq!(response.response_header.batch_count, 3);
     assert_eq!(response.batch_item.len(), 3);
 

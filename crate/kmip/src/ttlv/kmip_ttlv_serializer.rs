@@ -13,6 +13,8 @@ use tracing::instrument;
 use super::{collapse_adjacently_tagged_structure, normalize_ttlv};
 use crate::ttlv::{
     TtlvError,
+    interval::INTERVAL_NEWTYPE,
+    tags::BYTE_LIKE_TAGS,
     ttlv_struct::{KmipEnumerationVariant, TTLV, TTLValue},
 };
 
@@ -30,9 +32,10 @@ impl<T> Stack<T>
 where
     T: Debug,
 {
-    pub(crate) const fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            elements: Vec::new(),
+            // Pre-allocate for typical KMIP message nesting depth (avoids reallocations)
+            elements: Vec::with_capacity(8),
         }
     }
 
@@ -56,13 +59,20 @@ where
 #[derive(Debug)]
 pub struct TtlvSerializer {
     stack: Stack<TTLV>,
+    /// When serializing a sequence under a byte-like KMIP tag (e.g. `Data`,
+    /// `IVCounterNonce`), accumulate bytes directly instead of creating one
+    /// TTLV element per byte. This prevents capacity overflow in WASM for
+    /// large payloads (a 36 MB `Vec<u8>` would otherwise allocate 36M TTLV
+    /// structs, overflowing the 32-bit address space).
+    byte_accumulator: Option<Vec<u8>>,
 }
 
 impl TtlvSerializer {
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             stack: Stack::new(),
+            byte_accumulator: None,
         }
     }
 
@@ -138,6 +148,11 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
     type SerializeTupleStruct = &'a mut TtlvSerializer;
     type SerializeTupleVariant = &'a mut TtlvSerializer;
 
+    // TTLV is a binary, non-human-readable format.
+    fn is_human_readable(&self) -> bool {
+        false
+    }
+
     #[instrument(level = "trace", skip(self))]
     fn serialize_bool(self, v: bool) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::Boolean(v);
@@ -156,6 +171,15 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
 
     #[instrument(level = "trace", skip(self))]
     fn serialize_i32(self, v: i32) -> Result<Self::Ok> {
+        if let Some(ref mut acc) = self.byte_accumulator {
+            let byte = u8::try_from(v).map_err(|e| {
+                TtlvError::custom(format!(
+                    "expected byte value (0-255) in byte-like sequence, got {v}: {e}"
+                ))
+            })?;
+            acc.push(byte);
+            return Ok(());
+        }
         self.current_mut()?.value = TTLValue::Integer(v);
         Ok(())
     }
@@ -338,7 +362,25 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
     where
         T: ?Sized + Serialize,
     {
-        let _ = name;
+        // `Interval` wraps a `u32` that KMIP types as the `Interval` primitive
+        // (0x0A) rather than `Integer` (0x02). Serialize the inner value first,
+        // then retype the resulting TTLV node.
+        if name == INTERVAL_NEWTYPE {
+            value.serialize(&mut *self)?;
+            let current = self.current_mut()?;
+            let seconds = match current.value {
+                TTLValue::Integer(v) => u32::try_from(v).unwrap_or(0),
+                TTLValue::LongInteger(v) => u32::try_from(v).unwrap_or(0),
+                TTLValue::Interval(v) => v,
+                _ => {
+                    return Err(TtlvError::custom(
+                        "Interval must wrap an integer value".to_owned(),
+                    ));
+                }
+            };
+            current.value = TTLValue::Interval(seconds);
+            return Ok(());
+        }
         value.serialize(self)
     }
 
@@ -384,21 +426,41 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
     /// method `serialize_element`, that will be called for each item in the sequence.
     /// Finally, the method `end` will be called to close the sequence and make the `Array` TTLV the current
     /// element of the serializer.
+    ///
+    /// Optimization: when the current tag is a known byte-like KMIP tag, we
+    /// accumulate bytes directly into a `Vec<u8>` instead of creating a TTLV
+    /// element per byte. This avoids catastrophic memory usage for large
+    /// payloads (e.g. 36 MB plaintext → 36 M TTLV elements would overflow WASM).
     #[instrument(level = "trace", skip(self))]
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
         if let Some(receiver) = self.stack.peek_mut() {
-            receiver.value = TTLValue::Structure(Vec::with_capacity(len.unwrap_or(0)));
-            trace!("serialize_seq of len: {len:?} in receiver: {:?}", receiver);
+            if BYTE_LIKE_TAGS.contains(&receiver.tag.as_str()) {
+                // Byte-like tag: enable byte accumulation mode.
+                // We'll collect all bytes in a flat Vec<u8> and convert to
+                // ByteString in SerializeSeq::end().
+                self.byte_accumulator = Some(Vec::with_capacity(len.unwrap_or(0)));
+                trace!(
+                    "serialize_seq of len: {len:?} in receiver: {:?} (byte accumulation mode)",
+                    receiver
+                );
+            } else {
+                // Cap initial capacity to prevent allocation overflow for very large
+                // sequences of non-byte-like elements.
+                let cap = len.unwrap_or(0).min(1024);
+                receiver.value = TTLValue::Structure(Vec::with_capacity(cap));
+                trace!("serialize_seq of len: {len:?} in receiver: {:?}", receiver);
+            }
         } else {
             trace!(
                 "serialize_seq, no parent found. This is a direct vec![] serialization. Creating \
                  a new one with tag: {}",
                 self.current_tag()
             );
+            let cap = len.unwrap_or(0).min(1024);
             let tag = "[ARRAY]".to_owned();
             self.stack.push(TTLV {
                 tag,
-                value: TTLValue::Structure(Vec::with_capacity(len.unwrap_or(0))),
+                value: TTLValue::Structure(Vec::with_capacity(cap)),
             });
         }
         Ok(self)
@@ -406,10 +468,8 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
 
     #[instrument(level = "trace", skip(self))]
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
-        trace!(
-            "serialize_tuple of len {len}. Current: {:?}",
-            &self.current_tag()
-        );
+        let current_tag = self.current_tag();
+        trace!("serialize_tuple of len {len}. Current: {:?}", &current_tag);
         self.serialize_seq(Some(len))
     }
 
@@ -419,9 +479,10 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleStruct> {
+        let current_tag = self.current_tag();
         trace!(
             "serialize_tuple_struct {name} of len {len}. Current: {:?}",
-            &self.current_tag()
+            &current_tag
         );
         self.serialize_seq(Some(len))
     }
@@ -434,10 +495,11 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleVariant> {
+        let current_tag = self.current_tag();
         trace!(
             "serialize_tuple_variant {name}::{variant} (variant index: {variant_index}) of len \
              {len}. Current: {:?}",
-            &self.current_tag()
+            &current_tag
         );
         Err(TtlvError::custom(
             "'tuple variant' is unsupported in TTLV".to_owned(),
@@ -446,10 +508,8 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
 
     #[instrument(level = "trace", skip(self))]
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap> {
-        trace!(
-            "serialize_map of len: {len:?}. Current: {:?}",
-            &self.current_tag()
-        );
+        let current_tag = self.current_tag();
+        trace!("serialize_map of len: {len:?}. Current: {:?}", &current_tag);
         Err(TtlvError::custom("'map' is unsupported in TTLV".to_owned()))
     }
 
@@ -484,17 +544,13 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant> {
+        let current_tag = self.current_tag();
         trace!(
             "serialize_struct_variant {name}::{variant} (variant index: {variant_index}) of len \
              {len}. Current: {:?}",
-            &self.current_tag()
+            &current_tag
         );
         self.serialize_struct(name, len)
-    }
-
-    #[inline]
-    fn is_human_readable(&self) -> bool {
-        true
     }
 }
 
@@ -507,6 +563,13 @@ impl SerializeSeq for &mut TtlvSerializer {
     where
         T: ?Sized + Serialize,
     {
+        // In byte accumulation mode, serialize the value directly.
+        // The value's serialize_u8 → serialize_i32 call will push to byte_accumulator.
+        if self.byte_accumulator.is_some() {
+            value.serialize(&mut **self)?;
+            return Ok(());
+        }
+
         let tag = self.stack.peek().map_or("", |parent| parent.tag.as_str());
         trace!(
             "Seq Element: serializing a seq element with tag {}, stack is: {:?}",
@@ -534,10 +597,21 @@ impl SerializeSeq for &mut TtlvSerializer {
 
     #[instrument(level = "trace", skip(self))]
     fn end(self) -> Result<Self::Ok> {
-        trace!(
-            "Finished serializing the sequence, the parent is: {:?}",
-            self.stack.peek()
-        );
+        if let Some(bytes) = self.byte_accumulator.take() {
+            // Byte accumulation complete: set the parent's value to ByteString.
+            if let Ok(current) = self.current_mut() {
+                current.value = TTLValue::ByteString(bytes);
+            }
+            trace!(
+                "Finished serializing byte sequence as ByteString, parent: {:?}",
+                self.stack.peek()
+            );
+        } else {
+            trace!(
+                "Finished serializing the sequence, the parent is: {:?}",
+                self.stack.peek()
+            );
+        }
         Ok(())
     }
 }

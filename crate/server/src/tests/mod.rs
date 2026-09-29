@@ -1,21 +1,35 @@
+mod audit_middleware;
+mod azure_ekm;
 mod bulk_encrypt_decrypt_tests;
 #[cfg(feature = "non-fips")]
 mod cover_crypt_tests;
+mod crl_tests;
 #[cfg(feature = "non-fips")]
 mod curve_25519_tests;
 mod derive_key_tests;
 pub(crate) mod google_cse;
+mod health_endpoint;
 mod hsm;
+mod jose;
+mod jwks_endpoint;
+#[cfg(feature = "non-fips")]
+mod key_ceremony_tests;
 mod kmip_endpoints;
 #[cfg(feature = "non-fips")]
 mod kmip_messages;
+mod kmip_policy;
 #[cfg(feature = "non-fips")]
 mod kmip_server_tests;
 mod locate;
 #[cfg(feature = "non-fips")]
 mod migrate;
 mod ms_dke;
+mod mtls_db;
+mod revoke_tests;
 mod secret_data_tests;
+mod security_regression;
+mod test_always_sensitive;
+mod test_modify_attribute;
 pub(crate) mod test_set_attribute;
 mod test_sign;
 pub(crate) mod test_utils;

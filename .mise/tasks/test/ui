@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+#MISE description="Run all Playwright E2E tests for the KMS web UI (standard + auth + OIDC)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+
+REPO_ROOT="$(get_repo_root)"
+
+# ── Build auth_verifier BEFORE entering the nix shell ────────────────────────
+# The authentication submodule requires rustc ≥ 1.94; the nix shell pins an
+# older version.  Build with the host toolchain on the first invocation only
+# (ensure_nix_shell re-execs this script inside the nix shell).
+if [ "${IN_NIX_SHELL:-0}" != "1" ]; then
+  AUTH_VERIFIER_REPO="${AUTH_VERIFIER_REPO:-${REPO_ROOT}/authentication}"
+  if [ -f "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" ]; then
+    echo "==> Building auth_verifier (host toolchain) …"
+    (cd "${AUTH_VERIFIER_REPO}" && cargo build -p auth_verifier)
+  else
+    print_warning "authentication submodule not found at '${AUTH_VERIFIER_REPO}'; skipping auth tests"
+  fi
+fi
+
+# WITH_WASM=1 tells shell.nix to include wasm-pack, nodejs_23, and pnpm.
+# WITH_HSM=1 tells shell.nix to include softhsm2 and related tools.
+# WITH_CURL=1 for kms_wait_ready.
+# Must be exported before ensure_nix_shell so builtins.getEnv sees them.
+export WITH_WASM=1 WITH_HSM=1 WITH_CURL=1
+
+# The Nix-built Node.js links against OpenSSL with compiled-in OPENSSLDIR=/usr/local/cosmian/lib/ssl.
+# Create symlinks so node can initialize without error.
+# Use sudo -n (non-interactive) to avoid hanging in CI or pre-commit hooks.
+if [ -n "${OPENSSL_MODULES:-}" ] && [ -d "$OPENSSL_MODULES" ]; then
+  sudo -n mkdir -p /usr/local/cosmian/lib/ossl-modules 2>/dev/null || true
+  for f in "$OPENSSL_MODULES"/*.so "$OPENSSL_MODULES"/*.dylib; do
+    [ -f "$f" ] && sudo -n ln -sf "$f" /usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
+  done
+  if [ -f "${OPENSSL_CONF:-}" ]; then
+    sudo -n mkdir -p /usr/local/cosmian/lib/ssl 2>/dev/null || true
+    sudo -n ln -sf "$OPENSSL_CONF" /usr/local/cosmian/lib/ssl/openssl.cnf 2>/dev/null || true
+  fi
+fi
+
+ensure_nix_shell
+
+# ── 1. Standard E2E tests ────────────────────────────────────────────────────
+print_header "Standard UI E2E tests"
+bash "${REPO_ROOT}/.mise/scripts/test/test_ui.sh" --variant "${VARIANT}" --link "${LINK}"
+
+# ── 2. Auth Verifier E2E tests ────────────────────────────────────────────────
+# Skip in FIPS mode: the auth verifier binary hangs at bind() in FIPS CI
+# environments (the verifier is not FIPS-aware and the FIPS OpenSSL
+# provider interferes with its startup). Non-FIPS covers this path fully.
+AUTH_VERIFIER_REPO="${AUTH_VERIFIER_REPO:-${REPO_ROOT}/authentication}"
+if [ "${VARIANT}" = "fips" ]; then
+  print_warning "Skipping Auth Verifier E2E tests in FIPS mode (verifier is not FIPS-aware)"
+elif [ -f "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" ]; then
+  print_header "Auth Verifier E2E tests"
+  bash "${REPO_ROOT}/.mise/scripts/test/test_ui_auth.sh" --variant "${VARIANT}" --link "${LINK}"
+else
+  print_warning "Skipping auth tests: authentication submodule not found"
+fi
+
+# ── 3. OIDC E2E tests (requires Auth0 secrets; skips cleanly if unset) ──────
+print_header "OIDC E2E tests"
+bash "${REPO_ROOT}/.mise/scripts/test/test_ui_oidc.sh" --variant "${VARIANT}" --link "${LINK}"

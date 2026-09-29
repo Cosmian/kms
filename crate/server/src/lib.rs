@@ -7,10 +7,15 @@ pub mod core;
 pub mod cron;
 pub mod error;
 pub mod middlewares;
+pub mod openssl_providers;
 pub mod result;
 pub mod routes;
 pub mod socket_server;
 pub mod start_kms_server;
+pub mod tls_config;
+#[cfg(windows)]
+pub mod windows_service;
+
 #[expect(
     clippy::panic,
     clippy::unwrap_used,
@@ -22,5 +27,4 @@ pub mod start_kms_server;
     dead_code
 )]
 #[cfg(test)]
-mod tests;
-pub mod tls_config;
+pub mod tests;

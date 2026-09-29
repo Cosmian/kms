@@ -1,32 +1,37 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
     sync::Arc,
 };
 
 use async_trait::async_trait;
-use cloudproof_findex::Label;
 use cosmian_findex::{Findex, IndexADT, MemoryEncryptionLayer, generic_decode, generic_encode};
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
-    kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
+    kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, ObjectType},
+    },
 };
 use cosmian_kms_crypto::{
     crypto::password_derivation::derive_key_from_password,
     reexport::cosmian_crypto_core::{FixedSizeCBytes, Secret, SymmetricKey, kdf256},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
-    SessionParams,
+    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
+    PermissionsStore, UserId,
 };
-use cosmian_logger::{debug, trace, warn};
+use cosmian_logger::{debug, trace};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
 use redis::aio::ConnectionManager;
 use uuid::Uuid;
 
 use super::{
     FINDEX_KEY_LENGTH,
-    objects_db::{DB_KEY_LENGTH, ObjectsDB, RedisDbObject, keywords_from_attributes},
+    objects_db::{
+        ACTIVE_KEY_COUNT_KEY, DB_KEY_LENGTH, LIVE_COUNT_KEY, ObjectsDB, RedisDbObject,
+        keywords_from_attributes,
+    },
     permissions::PermissionDB,
 };
 use crate::{
@@ -34,17 +39,41 @@ use crate::{
     error::{DbError, DbResult},
     stores::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
-        migrate::{DbState, Migrate, MigrateTo5_12_0Parameters, MigrationParams, RedisMigrate},
+        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
             objects_db::RedisOperation,
-            permissions::{ObjectUid, UserId},
+            permissions::{FindexUserId, ObjectUid},
         },
     },
 };
 
 const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
 const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
+
+/// Returns `true` when an object's state counts toward the live-object total.
+///
+/// `Destroyed` and `Destroyed_Compromised` are terminal states — the object is
+/// no longer usable and should not appear in the `kms.objects.total` gauge.
+#[inline]
+const fn is_live(state: State) -> bool {
+    !matches!(state, State::Destroyed | State::Destroyed_Compromised)
+}
+
+/// Returns `true` when `object_type` is a key type counted by `kms.keys.active.count`.
+///
+/// Key types: `SymmetricKey`, `PrivateKey`, `PublicKey`, `SplitKey`.
+/// Excluded: `Certificate`, `SecretData`, `OpaqueObject`, `PGPKey`, `CertificateRequest`.
+#[inline]
+const fn is_key_type(object_type: ObjectType) -> bool {
+    matches!(
+        object_type,
+        ObjectType::SymmetricKey
+            | ObjectType::PrivateKey
+            | ObjectType::PublicKey
+            | ObjectType::SplitKey
+    )
+}
 
 /// Derive a Redis Master Key from a password
 pub fn redis_master_key_from_password(
@@ -91,6 +120,11 @@ pub(crate) struct RedisWithFindex {
     objects_db: Arc<ObjectsDB>,
     permission_db: PermissionDB,
     findex: Arc<FindexRedis>,
+    /// 32-byte key used to derive per-user obfuscated ceremony Redis key names.
+    ceremony_derivation_key: [u8; 32],
+    /// Obfuscated Redis SET key tracking the set of currently-active CO usernames.
+    /// Used for efficient `is_any_crypto_officer_activated` without scanning all keys.
+    ceremony_active_cos_key: String,
 }
 
 impl RedisWithFindex {
@@ -98,7 +132,6 @@ impl RedisWithFindex {
         redis_url: &str,
         master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         clear_database: bool,
-        label: Option<&[u8]>,
     ) -> DbResult<Self> {
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
@@ -130,11 +163,24 @@ impl RedisWithFindex {
             .map_err(|e| DbError::DatabaseError(format!("Failed to get Redis DB size: {e}")))?;
         trace!("Redis DB size: {count}");
 
+        // Derive ceremony key material from the master key.
+        // Per-user ceremony record keys are computed at call time using this derivation key.
+        // The `ceremony_active_cos_key` is a SET key that tracks active CO usernames.
+        let mut ceremony_derivation_key = [0_u8; 32];
+        kdf256!(
+            &mut ceremony_derivation_key,
+            &*master_key,
+            b"ceremony_key_derivation"
+        );
+        let ceremony_active_cos_key =
+            Self::derive_ceremony_key_name(&master_key, b"active_cos_set");
         let redis_with_findex = Self {
             mgr,
             objects_db,
             permission_db,
             findex,
+            ceremony_derivation_key,
+            ceremony_active_cos_key,
         };
 
         if count == 0 {
@@ -144,29 +190,81 @@ impl RedisWithFindex {
                 .await?;
             redis_with_findex.set_db_state(DbState::Ready).await?;
         } else {
-            warn!("Non-empty Redis database detected. Starting migration routine.");
-            let label = label.unwrap_or_else(|| {
-                warn!(
-                    "Label parameter not provided. Ignore this warning if this was \
-                    intentional. Otherwise, abort the migration and provide the correct \
-                    label."
-                );
-                b""
-            });
-            redis_with_findex
-                .migrate({
-                    MigrationParams {
-                        migrate_to_5_12_0_parameters: Some(MigrateTo5_12_0Parameters {
-                            redis_url: redis_url.to_owned(),
-                            master_key: &master_key,
-                            label: Label::from(label),
-                        }),
-                    }
-                })
-                .await?;
+            // Existing database detected. Accept databases that have our version/state markers;
+            // refuse truly legacy databases (no markers or non-ready state) since migrations were removed.
+            let db_version = redis_with_findex.get_current_db_version().await?;
+            let db_state = redis_with_findex.get_db_state().await?;
+
+            match (db_version, db_state) {
+                (Some(version), Some(DbState::Ready)) => {
+                    debug!(
+                        "Existing Redis database detected (version {version}). Using current database."
+                    );
+                    // proceed without reinitialization
+                }
+                _ => {
+                    return Err(DbError::DatabaseError(
+                        "Legacy Redis/Findex migration support has been removed. \
+                        Please export your data from the legacy KMS and reimport into the current version."
+                            .to_owned(),
+                    ));
+                }
+            }
         }
 
+        // One-time backfill of the `wrapped_by::<uid>` Findex index for objects
+        // created before that index existed. Gated by a completion marker so the
+        // O(N) scan runs at most once per database (a fresh database has no
+        // objects, so this is a no-op that only writes the marker).
+        redis_with_findex.backfill_wrapped_by_index().await?;
+
         Ok(redis_with_findex)
+    }
+
+    /// Backfill the `wrapped_by::<uid>` Findex index for wrapped objects that
+    /// predate that index.
+    ///
+    /// `find_wrapped_by` (used by key rotation) relies on a `wrapped_by::<uid>`
+    /// keyword that newer code writes at insert time. Objects stored by earlier
+    /// versions lack it, so they would be invisible to rotation. This method
+    /// scans every object once, (re-)inserts the keyword for wrapped ones, and
+    /// records a `wrapping_key_id_backfilled` marker so the scan never re-runs.
+    /// Re-inserting an already-indexed keyword is idempotent.
+    pub(crate) async fn backfill_wrapped_by_index(&self) -> DbResult<()> {
+        let marker: Option<String> = redis::cmd("GET")
+            .arg(WRAPPING_KEY_BACKFILL_PARAM)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("Failed to read wrapped_by backfill marker: {e}"))
+            })?;
+        if marker.as_deref() == Some("true") {
+            return Ok(());
+        }
+
+        let wrapped = self.objects_db.scan_wrapped_objects().await?;
+        for (uid, wrapping_key_uid) in wrapped {
+            let keyword = Keyword::from(format!("wrapped_by::{wrapping_key_uid}").as_bytes());
+            let indexed_uid = IndexedValue::from(uid.as_bytes());
+            self.findex.insert(keyword, [indexed_uid]).await?;
+        }
+
+        redis::cmd("SET")
+            .arg(WRAPPING_KEY_BACKFILL_PARAM)
+            .arg("true")
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("Failed to set wrapped_by backfill marker: {e}"))
+            })?;
+        Ok(())
+    }
+
+    /// Test-only accessor to the underlying object store, used to seed a legacy
+    /// (unindexed) object when exercising [`Self::backfill_wrapped_by_index`].
+    #[cfg(test)]
+    pub(crate) fn objects_db(&self) -> &ObjectsDB {
+        &self.objects_db
     }
 
     /// Prepare an object to be inserted
@@ -180,13 +278,12 @@ impl RedisWithFindex {
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
         state: State,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<RedisDbObject> {
         // replace the existing tags (if any) with the new ones (if provided)
         let tags = if let Some(tags) = tags {
             tags.clone()
         } else {
-            self.retrieve_tags(uid, params).await?
+            self.retrieve_tags(uid).await?
         };
         // the database object to index and store
         let db_object = RedisDbObject::new(
@@ -227,10 +324,41 @@ impl RedisWithFindex {
                 attributes,
                 Some(tags),
                 attributes.state.unwrap_or(State::PreActive),
-                None,
             )
             .await?;
         Ok((uid, db_object))
+    }
+
+    /// Update Findex index entries: insert new keywords, delete stale ones.
+    async fn update_findex_keywords(
+        &self,
+        uid: &str,
+        old_keywords: &HashSet<Keyword>,
+        new_keywords: &HashSet<Keyword>,
+    ) -> DbResult<()> {
+        let indexed_uid = IndexedValue::from(uid.as_bytes());
+        for keyword in new_keywords {
+            self.findex
+                .insert(keyword.clone(), [indexed_uid.clone()])
+                .await?;
+        }
+        for keyword in old_keywords.difference(new_keywords) {
+            self.findex
+                .delete(keyword.clone(), [indexed_uid.clone()])
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Delete all Findex index entries for the given object.
+    async fn delete_findex_keywords(&self, uid: &str, keywords: &HashSet<Keyword>) -> DbResult<()> {
+        let indexed_uid = IndexedValue::from(uid.as_bytes());
+        for keyword in keywords {
+            self.findex
+                .delete(keyword.clone(), [indexed_uid.clone()])
+                .await?;
+        }
+        Ok(())
     }
 
     async fn prepare_object_for_update(
@@ -239,26 +367,26 @@ impl RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
+        existing: Option<RedisDbObject>,
     ) -> DbResult<RedisDbObject> {
-        let mut db_object = self
-            .objects_db
-            .object_get(uid)
-            .await?
-            .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?;
+        let mut db_object = match existing {
+            Some(obj) => obj,
+            None => self
+                .objects_db
+                .object_get(uid)
+                .await?
+                .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?,
+        };
+        let old_keywords = db_object.keywords();
         db_object.object = object.clone();
         if tags.is_some() {
             db_object.tags = tags.cloned();
         }
         db_object.attributes = Some(attributes.clone());
 
-        // updates to the index;
-        // note: these are additions so some entries will be doubled but shat should not break the index
-        let keywords = db_object.keywords();
-        let indexed_uid = IndexedValue::from(uid.as_bytes());
-
-        for keyword in keywords {
-            self.findex.insert(keyword, [indexed_uid.clone()]).await?;
-        }
+        let new_keywords = db_object.keywords();
+        self.update_findex_keywords(uid, &old_keywords, &new_keywords)
+            .await?;
         Ok(db_object)
     }
 
@@ -266,24 +394,128 @@ impl RedisWithFindex {
         &self,
         uid: &str,
         state: State,
+        existing: Option<RedisDbObject>,
     ) -> DbResult<RedisDbObject> {
-        let mut db_object = self
-            .objects_db
-            .object_get(uid)
-            .await?
-            .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?;
+        let mut db_object = match existing {
+            Some(obj) => obj,
+            None => self
+                .objects_db
+                .object_get(uid)
+                .await?
+                .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?,
+        };
         db_object.state = state;
-        // The state is not indexed, so no updates there
+        // The state is not indexed, so no Findex updates needed
         Ok(db_object)
+    }
+
+    // ── Ceremony helpers ────────────────────────────────────────────────────
+
+    /// Derive an obfuscated Redis key name for a ceremony role using SHAKE-256.
+    fn derive_ceremony_key_name(
+        master_key: &Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
+        role: &[u8],
+    ) -> String {
+        let mut hash = [0_u8; 8]; // 8 bytes → 16 hex chars
+        kdf256!(&mut hash, &**master_key, b"ceremony_key_name", role);
+        format!("c:{}", hex::encode(hash))
+    }
+
+    /// Derive an obfuscated Redis key name for a per-user ceremony record.
+    fn derive_per_user_ceremony_key_name(&self, role: &str, user: &str) -> String {
+        let mut hash = [0_u8; 8];
+        let input = format!("{role}:{user}");
+        kdf256!(&mut hash, &self.ceremony_derivation_key, input.as_bytes());
+        format!("c:{}", hex::encode(hash))
+    }
+
+    /// Store a sealed ceremony record under the given Redis key.
+    ///
+    /// The record is a JSON object `{ "sealed": "<base64>", "revoked_at": null, "revoked_by": null }`.
+    async fn store_ceremony_record(
+        &self,
+        redis_key: &str,
+        sealed_record: &str,
+    ) -> InterfaceResult<()> {
+        let json = serde_json::json!({
+            "sealed": sealed_record,
+            "revoked_at": null,
+            "revoked_by": null,
+        });
+        let value = serde_json::to_string(&json)
+            .map_err(|e| InterfaceError::Default(format!("Failed to serialize ceremony: {e}")))?;
+        redis::cmd("SET")
+            .arg(redis_key)
+            .arg(value)
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to store ceremony: {e}")))?;
+        Ok(())
+    }
+
+    /// Retrieve the sealed ceremony record from Redis, returning `None` if absent or revoked.
+    async fn load_ceremony_record(&self, redis_key: &str) -> InterfaceResult<Option<String>> {
+        let raw: Option<String> = redis::cmd("GET")
+            .arg(redis_key)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to read ceremony: {e}")))?;
+        match raw {
+            None => Ok(None),
+            Some(json_str) => {
+                let v: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+                    InterfaceError::Default(format!("Failed to parse ceremony record: {e}"))
+                })?;
+                // If revoked_at is set, treat as non-existent (revoked).
+                if v.get("revoked_at").and_then(|v| v.as_str()).is_some() {
+                    return Ok(None);
+                }
+                Ok(v.get("sealed").and_then(|s| s.as_str()).map(String::from))
+            }
+        }
+    }
+
+    /// Revoke the ceremony record at `redis_key` by setting `revoked_at` and `revoked_by`.
+    async fn revoke_ceremony_record(
+        &self,
+        redis_key: &str,
+        revoked_by: &str,
+    ) -> InterfaceResult<()> {
+        let raw: Option<String> = redis::cmd("GET")
+            .arg(redis_key)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to read ceremony: {e}")))?;
+        if let Some(json_str) = raw {
+            let mut v: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+                InterfaceError::Default(format!("Failed to parse ceremony record: {e}"))
+            })?;
+            if let Some(obj) = v.as_object_mut() {
+                obj.insert(
+                    "revoked_at".to_owned(),
+                    serde_json::Value::String("revoked".to_owned()),
+                );
+                obj.insert(
+                    "revoked_by".to_owned(),
+                    serde_json::Value::String(revoked_by.to_owned()),
+                );
+            }
+            let updated = serde_json::to_string(&v).map_err(|e| {
+                InterfaceError::Default(format!("Failed to serialize ceremony record: {e}"))
+            })?;
+            redis::cmd("SET")
+                .arg(redis_key)
+                .arg(updated)
+                .query_async::<()>(&mut self.mgr.clone())
+                .await
+                .map_err(|e| InterfaceError::Default(format!("Failed to update ceremony: {e}")))?;
+        }
+        Ok(())
     }
 }
 
 #[async_trait(?Send)]
 impl ObjectsStore for RedisWithFindex {
-    fn filename(&self, _group_id: u128) -> Option<PathBuf> {
-        None
-    }
-
     /// Insert the given Object in the database.
     ///
     /// A new UUID will be created if none is supplier.
@@ -292,31 +524,32 @@ impl ObjectsStore for RedisWithFindex {
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<String> {
         let (uid, db_object) = self
-            .prepare_object_for_create(uid, owner, object, attributes, tags)
+            .prepare_object_for_create(uid, owner.as_str(), object, attributes, tags)
             .await?;
 
         // create the object
         self.objects_db.object_create(&uid, &db_object).await?;
+        // New objects are always PreActive (live) — increment unconditionally.
+        self.objects_db.adjust_live_count(1).await?;
+        // New key objects are non-destroyed by definition — increment the key counter.
+        if is_key_type(db_object.object_type) {
+            self.objects_db.adjust_active_key_count(1).await?;
+        }
 
         Ok(uid)
     }
 
     /// Retrieve objects from the database.
     ///
-    /// The `uid_or_tags` parameter can be either a `uid` or a comma-separated list of tags
+    /// The `uid` parameter can be either a `uid` or a comma-separated list of tags
     /// in a JSON array.
-    async fn retrieve(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<Option<ObjectWithMetadata>> {
+    async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         Ok(self.objects_db.object_get(uid).await.map(|o| {
             o.map(|o| {
                 ObjectWithMetadata::new(
@@ -331,11 +564,7 @@ impl ObjectsStore for RedisWithFindex {
     }
 
     /// Retrieve the tags of the object with the given `uid`
-    async fn retrieve_tags(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashSet<String>> {
+    async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
         Ok(self
             .objects_db
             .object_get(uid)
@@ -353,113 +582,247 @@ impl ObjectsStore for RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         let db_object = self
-            .prepare_object_for_update(uid, object, attributes, tags)
+            .prepare_object_for_update(uid, object, attributes, tags, None)
             .await?;
         self.objects_db.object_upsert(uid, &db_object).await?;
         Ok(())
     }
 
-    async fn update_state(
-        &self,
-        uid: &str,
-        state: State,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<()> {
-        let db_object = self.prepare_object_for_state_update(uid, state).await?;
+    async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
+        // Read the object once here so we can:
+        //   1. Capture the old state for the counter delta.
+        //   2. Pass it as `existing` to avoid a second object_get inside
+        //      prepare_object_for_state_update.
+        let existing = self.objects_db.object_get(uid).await?;
+        let old_state = existing.as_ref().map(|o| o.state);
+
+        let db_object = self
+            .prepare_object_for_state_update(uid, state, existing)
+            .await?;
         self.objects_db.object_upsert(uid, &db_object).await?;
+
+        // Adjust counter only when the liveness crosses a boundary:
+        //   live → destroyed  →  -1
+        //   destroyed → live  →  +1
+        //   no boundary cross →   0
+        if let Some(old) = old_state {
+            let delta = i64::from(is_live(state)) - i64::from(is_live(old));
+            self.objects_db.adjust_live_count(delta).await?;
+            // Mirror the same boundary check for the key counter.
+            if is_key_type(db_object.object_type) {
+                let key_delta = i64::from(!matches!(
+                    state,
+                    State::Destroyed | State::Destroyed_Compromised
+                )) - i64::from(!matches!(
+                    old,
+                    State::Destroyed | State::Destroyed_Compromised
+                ));
+                self.objects_db.adjust_active_key_count(key_delta).await?;
+            }
+        }
         Ok(())
     }
 
-    async fn delete(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<()> {
-        if let Some(_db_object) = self.objects_db.object_get(uid).await? {
+    async fn delete(&self, uid: &str) -> InterfaceResult<()> {
+        if let Some(db_object) = self.objects_db.object_get(uid).await? {
+            self.delete_findex_keywords(uid, &db_object.keywords())
+                .await?;
             self.objects_db.object_delete(uid).await?;
+            // Only decrement for live objects — destroying an already-destroyed
+            // object must not double-decrement the counter.
+            if is_live(db_object.state) {
+                self.objects_db.adjust_live_count(-1).await?;
+            }
+            // Decrement the key counter if this was a non-destroyed key object.
+            if is_key_type(db_object.object_type) && is_live(db_object.state) {
+                self.objects_db.adjust_active_key_count(-1).await?;
+            }
         }
         Ok(())
     }
 
     async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
-        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<String>> {
+        // Track pending objects so that multiple operations on the same UID
+        // within this batch build on each other (e.g. UpdateObject then UpdateState).
+        // Without this, each operation would re-read from Redis and the last write
+        // would clobber previous modifications for the same UID.
+        let mut pending: HashMap<String, RedisDbObject> = HashMap::new();
         let mut redis_operations: Vec<RedisOperation> = Vec::with_capacity(operations.len());
+        // Accumulate the net live-object delta for the entire batch.  We emit a
+        // single INCRBY at the end rather than one per operation to keep the
+        // counter update close to the data write.
+        let mut live_delta: i64 = 0;
+        // Accumulate the net active-key delta (non-destroyed key objects) for the batch.
+        let mut active_key_delta: i64 = 0;
+
         for operation in operations {
             match operation {
                 AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
+                    // Determine whether this Upsert is an insert (+1 if live)
+                    // or an update (±1 on liveness boundary).
+                    // Check pending first (already processed in this batch), then Redis.
+                    let old_obj = if let Some(p) = pending.get(uid.as_str()) {
+                        Some(p.clone())
+                    } else {
+                        self.objects_db.object_get(uid).await?
+                    };
+                    if let Some(old) = &old_obj {
+                        if old.owner != user.as_str() {
+                            return Err(DbError::Unauthorized(format!(
+                                "User '{user}' does not own object '{uid}' and cannot overwrite it"
+                            ))
+                            .into());
+                        }
+                    }
+                    let old_state = old_obj.as_ref().map(|o| o.state);
+                    let old_object_type = old_obj.as_ref().map(|o| o.object_type);
+                    let new_live = i64::from(is_live(*state));
+                    live_delta +=
+                        old_state.map_or(new_live, |old| new_live - i64::from(is_live(old)));
+
                     // TODO: this operation contains a non atomic retrieve_tags. It will be hard to make this whole method atomic
                     let db_object = self
                         .prepare_object_for_insert(
                             uid,
-                            user,
+                            user.as_str(),
                             object,
                             attributes,
                             tags.as_ref(),
                             *state,
-                            params.clone(),
                         )
                         .await?;
+                    // Accumulate key-counter delta.  Use the resolved object_type
+                    // from the newly built db_object (covers both insert and update).
+                    let obj_type = db_object.object_type;
+                    if is_key_type(obj_type) {
+                        let new_key_live = i64::from(is_live(*state));
+                        // For an existing object we compare old vs new liveness.
+                        // For a new insert (no old state) we use new_key_live directly.
+                        let old_key_live = old_object_type
+                            .filter(|ot| is_key_type(*ot))
+                            .and(old_state)
+                            .map_or(0, |old| i64::from(is_live(old)));
+                        active_key_delta += new_key_live - old_key_live;
+                    }
+                    pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
-                AtomicOperation::Create((uid, object, attributes, tags)) => {
+                AtomicOperation::Create((uid, _owner, object, attributes, tags)) => {
+                    // New objects are always live.
+                    live_delta += 1;
+
                     let (uid, db_object) = self
                         .prepare_object_for_create(
                             Some(uid.clone()),
-                            user,
+                            user.as_str(),
                             object,
                             attributes,
                             tags,
                         )
                         .await?;
+                    // New key objects are always non-destroyed.
+                    if is_key_type(db_object.object_type) {
+                        active_key_delta += 1;
+                    }
+                    pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Create(uid, db_object));
                 }
                 AtomicOperation::Delete(uid) => {
+                    // The existing object is read below (for Findex keyword
+                    // cleanup); we capture its state for the counter at the same
+                    // time — zero extra round trips.
+                    let existing = pending.remove(uid);
+                    let db_object = match existing {
+                        Some(obj) => obj,
+                        None => {
+                            if let Some(obj) = self.objects_db.object_get(uid).await? {
+                                obj
+                            } else {
+                                redis_operations.push(RedisOperation::Delete(uid.clone()));
+                                continue;
+                            }
+                        }
+                    };
+                    if is_live(db_object.state) {
+                        live_delta -= 1;
+                    }
+                    if is_key_type(db_object.object_type) && is_live(db_object.state) {
+                        active_key_delta -= 1;
+                    }
+                    self.delete_findex_keywords(uid, &db_object.keywords())
+                        .await?;
                     redis_operations.push(RedisOperation::Delete(uid.clone()));
                 }
                 AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
+                    // State is unchanged by UpdateObject — no counter adjustment.
                     // TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
+                    let existing = pending.remove(uid);
                     let db_object = self
-                        .prepare_object_for_update(uid, object, attributes, tags.as_ref())
+                        .prepare_object_for_update(uid, object, attributes, tags.as_ref(), existing)
                         .await?;
+                    pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
                 AtomicOperation::UpdateState((uid, state)) => {
-                    // TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
-                    let db_object = self.prepare_object_for_state_update(uid, *state).await?;
+                    // Fetch once: either from in-flight pending map or Redis.
+                    // Pass it as `existing` to avoid a second object_get inside
+                    // prepare_object_for_state_update.
+                    let existing = match pending.remove(uid) {
+                        Some(obj) => Some(obj),
+                        None => self.objects_db.object_get(uid).await?,
+                    };
+                    let old_state = existing.as_ref().map(|o| o.state);
+                    let object_type = existing.as_ref().map(|o| o.object_type);
+
+                    let db_object = self
+                        .prepare_object_for_state_update(uid, *state, existing)
+                        .await?;
+                    pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
+
+                    if let Some(old) = old_state {
+                        live_delta += i64::from(is_live(*state)) - i64::from(is_live(old));
+                        if let Some(ot) = object_type {
+                            if is_key_type(ot) {
+                                active_key_delta +=
+                                    i64::from(is_live(*state)) - i64::from(is_live(old));
+                            }
+                        }
+                    }
                 }
             }
         }
-        Ok(self.objects_db.atomic(&redis_operations).await?)
+
+        let result = self.objects_db.atomic(&redis_operations).await?;
+
+        // Emit a single counter adjustment for the whole batch after the data
+        // write succeeds.  On failure the Redis transaction is rolled back and
+        // the counter should not move.
+        self.objects_db.adjust_live_count(live_delta).await?;
+        self.objects_db
+            .adjust_active_key_count(active_key_delta)
+            .await?;
+
+        Ok(result)
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
-    async fn is_object_owned_by(
-        &self,
-        uid: &str,
-        owner: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<bool> {
+    async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> InterfaceResult<bool> {
         let object = self
             .objects_db
             .object_get(uid)
             .await?
             .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?;
-        Ok(object.owner == owner)
+        Ok(object.owner == *owner)
     }
 
-    async fn list_uids_for_tags(
-        &self,
-        tags: &HashSet<String>,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashSet<String>> {
+    async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
         let tag_keywords = tags
             .iter()
             .map(|tag| Keyword::from(tag.as_bytes()))
@@ -499,13 +862,13 @@ impl ObjectsStore for RedisWithFindex {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
-        _params: Option<Arc<dyn SessionParams>>,
+        vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let mut keywords = {
             researched_attributes.map_or_else(HashSet::new, |attributes| {
-                let tags = attributes.get_tags();
+                let tags = attributes.get_tags(vendor_id);
                 trace!("find: tags: {tags:?}");
                 let mut keywords = tags
                     .iter()
@@ -557,7 +920,7 @@ impl ObjectsStore for RedisWithFindex {
             HashMap::new()
         } else {
             self.permission_db
-                .list_user_permissions(&UserId(user.to_owned()))
+                .list_user_permissions(&FindexUserId(user.as_str().to_owned()))
                 .await?
                 .into_iter()
                 .map(|(k, v)| (k.0, v))
@@ -570,7 +933,7 @@ impl ObjectsStore for RedisWithFindex {
             .into_iter()
             .filter(|(uid, redis_db_object)| {
                 state.is_none_or(|state| redis_db_object.state == state)
-                    && (if redis_db_object.owner == user {
+                    && (if redis_db_object.owner == *user {
                         true
                     } else {
                         permissions.contains_key(uid)
@@ -592,20 +955,273 @@ impl ObjectsStore for RedisWithFindex {
             })
             .collect())
     }
+
+    async fn find_all(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        // Redis does not support a bypass-all-user-filtering scan via Findex.
+        // Fall back to a full SCAN of the object store and filter by attributes/state.
+        let all_objects = self.objects_db.scan_all_objects().await?;
+        let results = all_objects
+            .into_iter()
+            .filter(|(_uid, obj)| {
+                if state.is_some_and(|s| obj.state != s) {
+                    return false;
+                }
+                if let Some(attrs) = researched_attributes {
+                    // Filter by object_type if specified.
+                    if let Some(required_type) = attrs.object_type {
+                        if obj.object_type != required_type {
+                            return false;
+                        }
+                    }
+
+                    // Filter by tags if specified.
+                    let tags = attrs.get_tags(vendor_id);
+                    if !tags.is_empty() {
+                        let obj_tags = obj
+                            .object
+                            .attributes()
+                            .map(|a| a.get_tags(vendor_id))
+                            .unwrap_or_default();
+                        if !tags.iter().all(|t| obj_tags.contains(t)) {
+                            return false;
+                        }
+                    }
+
+                    // Filter by link attributes if specified — each required link must
+                    // appear in the object's own link list (matched by type and identifier).
+                    // Use the dedicated `attributes` field (covers Certificate objects
+                    // which have no key block and would return an error from
+                    // `obj.object.attributes()`).
+                    if let Some(required_links) = &attrs.link {
+                        if !required_links.is_empty() {
+                            let obj_links = obj
+                                .attributes
+                                .as_ref()
+                                .and_then(|a| a.link.as_deref())
+                                .unwrap_or(&[]);
+                            for req in required_links {
+                                let found = obj_links.iter().any(|l| {
+                                    l.link_type == req.link_type
+                                        && l.linked_object_identifier
+                                            == req.linked_object_identifier
+                                });
+                                if !found {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                }
+                true
+            })
+            .map(|(uid, obj)| {
+                let attrs = obj
+                    .object
+                    .attributes()
+                    .cloned()
+                    .unwrap_or_else(|_| Attributes {
+                        object_type: Some(obj.object.object_type()),
+                        ..Default::default()
+                    });
+                (uid, obj.state, attrs)
+            })
+            .collect();
+        Ok(results)
+    }
+
+    async fn find_by_rotate_name(
+        &self,
+        name: &str,
+        generation: Option<i32>,
+        owner: &UserId,
+    ) -> InterfaceResult<Vec<(String, Attributes)>> {
+        // Search Findex for objects indexed under this rotate_name keyword
+        let keyword = Keyword::from(format!("rotate_name::{name}").as_bytes());
+        let indexed_uids = self
+            .findex
+            .search(&keyword)
+            .await
+            .map_err(|e| db_error!(format!("Error searching rotate_name keyword: {e:?}")))?;
+        if indexed_uids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let candidate_uids: HashSet<String> = indexed_uids
+            .iter()
+            .filter_map(|v| String::from_utf8(v.to_vec()).ok())
+            .collect();
+
+        // Fetch the candidate objects
+        let redis_db_objects = self.objects_db.objects_get(&candidate_uids).await?;
+
+        // Filter by owner, generation, and latest flag
+        let mut results = Vec::new();
+        for (uid, dbo) in redis_db_objects {
+            if dbo.owner != *owner {
+                continue;
+            }
+            let attrs = dbo.attributes.unwrap_or_default();
+            // Filter by generation if requested
+            if let Some(expected_gen) = generation {
+                if attrs.rotate_generation != Some(expected_gen) {
+                    continue;
+                }
+            }
+            results.push((uid, attrs));
+        }
+        Ok(results)
+    }
+
+    async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &UserId,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        // Search Findex for objects indexed under this wrapping key
+        let keyword = Keyword::from(format!("wrapped_by::{wrapping_key_uid}").as_bytes());
+        let indexed_uids = self
+            .findex
+            .search(&keyword)
+            .await
+            .map_err(|e| db_error!(format!("Error searching wrapped_by keyword: {e:?}")))?;
+        if indexed_uids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let candidate_uids: HashSet<String> = indexed_uids
+            .iter()
+            .filter_map(|v| String::from_utf8(v.to_vec()).ok())
+            .collect();
+
+        // Fetch only the candidate objects
+        let redis_db_objects = self.objects_db.objects_get(&candidate_uids).await?;
+
+        // Filter by access: user must own the object or have permissions on it
+        let permissions = self
+            .permission_db
+            .list_user_permissions(&FindexUserId(user.as_str().to_owned()))
+            .await?;
+
+        let mut out = Vec::new();
+        for (uid, dbo) in redis_db_objects {
+            let has_access =
+                dbo.owner == *user || permissions.contains_key(&ObjectUid(uid.clone()));
+            if !has_access {
+                continue;
+            }
+            let attrs = dbo
+                .object
+                .attributes()
+                .cloned()
+                .unwrap_or_else(|_| Attributes {
+                    object_type: Some(dbo.object.object_type()),
+                    ..Default::default()
+                });
+            out.push((uid, dbo.state, attrs));
+        }
+        Ok(out)
+    }
+
+    /// Scan all objects and return `(uid, owner)` pairs for `Active` objects
+    /// with `rotate_automatic = true` whose next rotation instant is ≤ `now`.
+    ///
+    /// Implemented as an O(N) Redis SCAN.  Acceptable cost because this method
+    /// is only called by the low-frequency auto-rotation cron scheduler.
+    async fn find_due_for_rotation(
+        &self,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<Vec<(String, String)>> {
+        self.objects_db
+            .scan_due_for_rotation(now)
+            .await
+            .map_err(InterfaceError::from)
+    }
+
+    /// Return the count of live (non-destroyed) objects.
+    ///
+    /// # Fast path (steady state)
+    ///
+    /// Reads a single counter key `kms::metrics::live_object_count` that is
+    /// incremented/decremented in sync with every mutating operation in this
+    /// backend.  Cost: one O(1) `GET`, no decryption.
+    ///
+    /// # Bootstrap (first boot or after `FLUSHDB`)
+    ///
+    /// When the counter key is absent (counter has never been initialised or
+    /// was manually deleted), a one-time SCAN of all `do::*` keys is performed,
+    /// each blob is decrypted, and the result is written to the counter key.
+    /// Subsequent calls return the fast path immediately.
+    async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
+        // Fast path: counter key already exists.
+        if let Some(count) = self.objects_db.get_live_count().await? {
+            return Ok(count);
+        }
+        // Bootstrap: scan + decrypt once to establish the baseline.
+        let count = self.objects_db.scan_count_non_destroyed().await?;
+        self.objects_db.set_live_count(count).await?;
+        debug!(
+            "[redis-metrics] bootstrapped {} live object(s) into `{}`",
+            count, LIVE_COUNT_KEY
+        );
+        Ok(count)
+    }
+
+    /// Count non-destroyed key objects (`SymmetricKey`, `PrivateKey`, `PublicKey`, `SplitKey`).
+    ///
+    /// # Fast path
+    /// When `ACTIVE_KEY_COUNT_KEY` exists: one O(1) `GET`, no decryption.
+    ///
+    /// # Bootstrap
+    /// When the key is absent (first boot or after `FLUSHDB`): scans all `do::*`
+    /// keys, decrypts each, filters by key type and non-destroyed state, writes
+    /// the result to `ACTIVE_KEY_COUNT_KEY`, and returns the count.
+    async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
+        if let Some(count) = self.objects_db.get_active_key_count().await? {
+            return Ok(count);
+        }
+        let count = self.objects_db.scan_count_non_destroyed_keys().await?;
+        self.objects_db.set_active_key_count(count).await?;
+        debug!(
+            "[redis-metrics] bootstrapped {} non-destroyed key(s) into `{}`",
+            count, ACTIVE_KEY_COUNT_KEY
+        );
+        Ok(count)
+    }
+
+    /// Authoritative reconcile: recompute both Redis counter keys from a full
+    /// SCAN and overwrite the cached values.
+    ///
+    /// Called by the slow-path cron loop (every 5 minutes) to prevent counter
+    /// drift from accumulating due to partial failures.  The O(N) scan cost is
+    /// acceptable at that frequency.
+    async fn reconcile_counts(&self) -> InterfaceResult<()> {
+        let live_count = self.objects_db.scan_count_non_destroyed().await?;
+        self.objects_db.set_live_count(live_count).await?;
+        let key_count = self.objects_db.scan_count_non_destroyed_keys().await?;
+        self.objects_db.set_active_key_count(key_count).await?;
+        debug!(
+            "[redis-metrics] reconcile: live_objects={live_count}, non_destroyed_keys={key_count}"
+        );
+        Ok(())
+    }
 }
 
 #[async_trait(?Send)]
 impl PermissionsStore for RedisWithFindex {
     async fn list_user_operations_granted(
         &self,
-        user: &str,
-        _params: Option<Arc<dyn SessionParams>>,
+        user: &UserId,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         let permissions = self
             .permission_db
-            .list_user_permissions(&UserId(user.to_owned()))
+            .list_user_permissions(&FindexUserId(user.as_str().to_owned()))
             .await?;
-        let redis_db_objects = self
+        let mut redis_db_objects = self
             .objects_db
             .objects_get(
                 &permissions
@@ -614,18 +1230,24 @@ impl PermissionsStore for RedisWithFindex {
                     .collect::<HashSet<String>>(),
             )
             .await?;
+        // Join by uid rather than zipping the two maps by iteration order:
+        // `permissions` and `redis_db_objects` are independent `HashMap`s whose
+        // iteration orders are not guaranteed to correspond, and `objects_get`
+        // may legitimately return fewer entries (e.g. a stale permission for an
+        // object that no longer exists). Missing objects are skipped.
         Ok(permissions
             .into_iter()
-            .zip(redis_db_objects)
-            .map(|((uid, permissions), (_, redis_db_object))| {
-                (
-                    uid.into(),
+            .filter_map(|(uid, permissions)| {
+                let uid_string: String = uid.into();
+                let redis_db_object = redis_db_objects.remove(&uid_string)?;
+                Some((
+                    uid_string,
                     (
                         redis_db_object.owner,
                         redis_db_object.state,
                         permissions.into_iter().collect::<HashSet<KmipOperation>>(),
                     ),
-                )
+                ))
             })
             .collect())
     }
@@ -635,7 +1257,6 @@ impl PermissionsStore for RedisWithFindex {
     async fn list_object_operations_granted(
         &self,
         uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         Ok(self
             .permission_db
@@ -651,15 +1272,14 @@ impl PermissionsStore for RedisWithFindex {
     async fn grant_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         for operation in &operations {
             self.permission_db
                 .add(
                     &ObjectUid(uid.to_owned()),
-                    &UserId(user.to_owned()),
+                    &FindexUserId(user.as_str().to_owned()),
                     *operation,
                 )
                 .await?;
@@ -672,15 +1292,14 @@ impl PermissionsStore for RedisWithFindex {
     async fn remove_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         for operation in &operations {
             self.permission_db
                 .remove(
                     &ObjectUid(uid.to_owned()),
-                    &UserId(user.to_owned()),
+                    &FindexUserId(user.as_str().to_owned()),
                     *operation,
                 )
                 .await?;
@@ -691,21 +1310,210 @@ impl PermissionsStore for RedisWithFindex {
     async fn list_user_operations_on_object(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         no_inherited_access: bool,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(self
             .permission_db
             .get(
                 &ObjectUid(uid.to_owned()),
-                &UserId(user.to_owned()),
+                &FindexUserId(user.as_str().to_owned()),
                 no_inherited_access,
             )
             .await
             .unwrap_or_default()
             .into_iter()
             .collect())
+    }
+
+    async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> InterfaceResult<()> {
+        // Store as a JSON blob keyed by "crl:<issuer_id>".
+        let key = format!("crl:{issuer_id}");
+        let json = serde_json::json!({
+            "crl_der": crl_der,
+            "crl_number": crl_number,
+            "generated_at": generated_at,
+            "next_update": next_update,
+        });
+        let value = serde_json::to_string(&json).map_err(|e| {
+            InterfaceError::Default(format!("Failed to serialize CRL for Redis: {e}"))
+        })?;
+        redis::cmd("SET")
+            .arg(&key)
+            .arg(value)
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to store CRL in Redis: {e}")))?;
+        Ok(())
+    }
+
+    async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>> {
+        let key = format!("crl:{issuer_id}");
+        let raw: Option<String> = redis::cmd("GET")
+            .arg(&key)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to read CRL from Redis: {e}")))?;
+        let Some(json_str) = raw else {
+            return Ok(None);
+        };
+        let v: serde_json::Value = serde_json::from_str(&json_str)
+            .map_err(|e| InterfaceError::Default(format!("Failed to parse CRL from Redis: {e}")))?;
+        let der = v
+            .get("crl_der")
+            .and_then(|v| serde_json::from_value::<Vec<u8>>(v.clone()).ok());
+        let generated_at = v
+            .get("generated_at")
+            .and_then(|s| s.as_str())
+            .map(String::from);
+        match (der, generated_at) {
+            (Some(der), Some(generated_at)) => Ok(Some((der, generated_at))),
+            _ => Ok(None),
+        }
+    }
+
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
+        // Scan for all keys matching the `crl:*` pattern.
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg("crl:*")
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to list CRL keys from Redis: {e}"))
+            })?;
+
+        let mut result = Vec::with_capacity(keys.len());
+        for key in keys {
+            let raw: Option<String> = redis::cmd("GET")
+                .arg(&key)
+                .query_async(&mut self.mgr.clone())
+                .await
+                .map_err(|e| {
+                    InterfaceError::Default(format!("Failed to read CRL key '{key}': {e}"))
+                })?;
+            let Some(json_str) = raw else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_str) else {
+                continue;
+            };
+            let Some(next_update) = v
+                .get("next_update")
+                .and_then(|s| s.as_str())
+                .map(String::from)
+            else {
+                continue;
+            };
+            // Strip the "crl:" prefix to get the issuer_id.
+            let issuer_id = key.strip_prefix("crl:").unwrap_or(&key).to_owned();
+            result.push((issuer_id, next_update));
+        }
+        result.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(result)
+    }
+
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
+        // Scan all CRL keys and return the maximum stored crl_number.
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg("crl:*")
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!(
+                    "Failed to list CRL keys from Redis for max_crl_number: {e}"
+                ))
+            })?;
+
+        let mut max_number: Option<u64> = None;
+        for key in keys {
+            let raw: Option<String> = redis::cmd("GET")
+                .arg(&key)
+                .query_async(&mut self.mgr.clone())
+                .await
+                .map_err(|e| {
+                    InterfaceError::Default(format!("Failed to read CRL key '{key}': {e}"))
+                })?;
+            let Some(json_str) = raw else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_str) else {
+                continue;
+            };
+            let Some(n) = v.get("crl_number").and_then(serde_json::Value::as_u64) else {
+                continue;
+            };
+            max_number = Some(max_number.map_or(n, |prev| prev.max(n)));
+        }
+        Ok(max_number)
+    }
+
+    async fn activate_crypto_officer_ceremony(
+        &self,
+        sealed_record: &str,
+        activated_by: &str,
+        revoked_by: &str,
+    ) -> InterfaceResult<()> {
+        // For Redis, per-user ceremony records use a per-user obfuscated key.
+        // `SET` is atomic — it replaces any prior record for this user, so the
+        // revoke of the same user's prior record and the new insert are one operation.
+        let user_key = self.derive_per_user_ceremony_key_name("crypto_officer", activated_by);
+        // Revoke any prior record for this user.
+        self.revoke_ceremony_record(&user_key, revoked_by).await?;
+        // Store the new sealed record.
+        self.store_ceremony_record(&user_key, sealed_record).await?;
+        // Add to the active-COs set.
+        redis::cmd("SADD")
+            .arg(&self.ceremony_active_cos_key)
+            .arg(activated_by)
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to add to active COs set: {e}"))
+            })?;
+        Ok(())
+    }
+
+    async fn get_crypto_officer_activation_by(
+        &self,
+        user: &str,
+    ) -> InterfaceResult<Option<String>> {
+        let user_key = self.derive_per_user_ceremony_key_name("crypto_officer", user);
+        self.load_ceremony_record(&user_key).await
+    }
+
+    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
+        let count: i64 = redis::cmd("SCARD")
+            .arg(&self.ceremony_active_cos_key)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to read active COs set: {e}")))?;
+        Ok(count > 0)
+    }
+
+    async fn revoke_crypto_officer_activation(
+        &self,
+        revoked_by: &str,
+        activated_by: &str,
+    ) -> InterfaceResult<()> {
+        let user_key = self.derive_per_user_ceremony_key_name("crypto_officer", activated_by);
+        self.revoke_ceremony_record(&user_key, revoked_by).await?;
+        // Remove from the active-COs set.
+        redis::cmd("SREM")
+            .arg(&self.ceremony_active_cos_key)
+            .arg(activated_by)
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to remove from active COs set: {e}"))
+            })?;
+        Ok(())
     }
 }
 

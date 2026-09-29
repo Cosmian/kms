@@ -1,6 +1,6 @@
 //! HSM interface.
 //! This module defines the interface that an HSM must implement to be used as an object store and
-//! an encryption oracle.
+//! a crypto oracle.
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip_2_1::{
@@ -9,8 +9,8 @@ use cosmian_kmip::kmip_2_1::{
 use zeroize::Zeroizing;
 
 use crate::{
-    CryptoAlgorithm, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
-    encryption_oracle::EncryptedContent,
+    CryptoAlgorithm, InterfaceError, InterfaceResult, KeyMetadata, KeyType, SigningAlgorithm,
+    crypto_oracle::EncryptedContent,
 };
 
 /// Supported key algorithms
@@ -306,6 +306,22 @@ pub trait HSM: Send + Sync {
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyMetadata>>;
 
+    /// Sign data using the given private key in the HSM.
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM
+    /// * `key_id` - the ID of the private key to use for signing
+    /// * `algorithm` - the signing algorithm to use
+    /// * `data` - the data to sign
+    /// # Returns
+    /// * `InterfaceResult<Vec<u8>>` - the signature bytes
+    async fn sign(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        algorithm: SigningAlgorithm,
+        data: &[u8],
+    ) -> InterfaceResult<Vec<u8>>;
+
     /// Generate cryptographically secure random bytes using the HSM RNG.
     ///
     /// # Arguments
@@ -319,6 +335,43 @@ pub trait HSM: Send + Sync {
     /// Seed the HSM RNG with the provided data. Some devices may not support seeding and
     /// can return an error; callers may choose to ignore such errors.
     async fn seed_random(&self, slot_id: usize, seed: &[u8]) -> InterfaceResult<()>;
+
+    /// Set `CKA_START_DATE` and `CKA_END_DATE` on a key object.
+    ///
+    /// These PKCS#11 attributes are used to track rotation scheduling:
+    /// - `start_date` — when the current rotation interval began.
+    /// - `end_date` — when the key is due for rotation.
+    ///
+    /// Passing `None` for either date clears that attribute (sets to empty `CK_DATE`).
+    ///
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM
+    /// * `key_id` - the ID of the key
+    /// * `start_date` - optional start date
+    /// * `end_date` - optional end date
+    async fn set_key_dates(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        start_date: Option<time::Date>,
+        end_date: Option<time::Date>,
+    ) -> InterfaceResult<()>;
+
+    /// Set `CKA_LABEL` on a key object.
+    ///
+    /// The label encodes keyset metadata in the format
+    /// `rotate_name::generation::key_id[@latest]`.
+    ///
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM
+    /// * `key_id` - the `CKA_ID` bytes of the key to update
+    /// * `label` - the new label string to set
+    async fn set_key_label(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        label: &str,
+    ) -> InterfaceResult<()>;
 
     /// Get a reference to the underlying PKCS#11 library for direct function calls.
     ///

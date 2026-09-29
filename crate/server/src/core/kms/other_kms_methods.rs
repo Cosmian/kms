@@ -1,25 +1,23 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::State;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
-use cosmian_kms_server_database::{
-    CachedUnwrappedObject, DbError,
-    reexport::{
-        cosmian_kmip::{
-            kmip_0::kmip_types::SecretDataType,
-            kmip_2_1::{
-                kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-                kmip_objects::{Object, SecretData},
-                kmip_operations::Create,
-                kmip_types::{CryptographicAlgorithm, KeyFormatType},
-                requests::create_symmetric_key_kmip_object,
-            },
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::SecretDataType,
+        kmip_2_1::{
+            extra::tagging::SYSTEM_TAG_SECRET_DATA,
+            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+            kmip_objects::{Object, SecretData},
+            kmip_operations::Create,
+            kmip_types::{CryptographicAlgorithm, KeyFormatType},
+            requests::create_symmetric_key_kmip_object,
         },
-        cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
-        cosmian_kms_interfaces::{EncryptionOracle, SessionParams},
     },
+    cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
+    cosmian_kms_interfaces::CryptoOracle,
 };
 use cosmian_logger::{debug, trace};
 use openssl::rand::rand_bytes;
@@ -30,10 +28,21 @@ use crate::core::cover_crypt::create_user_decryption_key;
 use crate::{
     core::{KMS, wrapping::unwrap_object},
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
 impl KMS {
+    fn allowed_dsa_key_sizes_bits() -> Vec<u32> {
+        // DSA/DH key-size policy is distinct from RSA.
+        // Keep it conservative and aligned with what we can actually generate
+        // via OpenSSL in both FIPS and non-FIPS builds.
+        //
+        // Note: even if RSA allowlists include 4096, DSA/DH do not reliably
+        // support 4096 in this implementation.
+        vec![2048, 3072]
+    }
+
     /// Unwrap the object (if need be) and return the unwrapped object.
     /// The unwrapped object is cached in memory.
     /// # Arguments
@@ -47,8 +56,7 @@ impl KMS {
         &self,
         uid: &str,
         object: &Object,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
+        user: &UserId,
     ) -> KResult<Object> {
         // Is this an unwrapped key?
         if !object.is_wrapped() {
@@ -58,53 +66,35 @@ impl KMS {
         }
 
         // check if we have it in the cache
-        match self.database.unwrapped_cache().peek(uid).await {
-            Some(Ok(u)) => {
-                // Note: In theory, the cache should always be in sync...
-                if u.fingerprint() == object.fingerprint()? {
-                    debug!("Unwrapped cache hit");
-                    return Ok(u.unwrapped_object().clone());
-                }
+        if let Some(u) = self.database.unwrapped_cache().peek(uid, object).await? {
+            debug!("Unwrapped cache hit");
+            if let Some(ref metrics) = self.metrics {
+                metrics.record_cache_operation("get", "hit");
             }
-            Some(Err(e)) => {
-                return Err(KmsError::Database(DbError::UnwrappedCache(format!(
-                    "Error retrieving cached object for {uid}: {e}",
-                ))));
-            }
-            None => {
-                // try unwrapping
-            }
+            return Ok(u);
         }
-
-        // local async future that unwraps the object
-        let unwrap_local = async {
-            let fingerprint = object.fingerprint()?;
-            let mut unwrapped_object = object.clone();
-            unwrap_object(&mut unwrapped_object, self, user, params).await?;
-            Ok::<_, KmsError>(CachedUnwrappedObject::new(fingerprint, unwrapped_object))
-        };
 
         // cache miss, try to unwrap
         debug!("Unwrapped cache miss. Calling unwrap");
-        let unwrapped_object = unwrap_local.await;
-        // pre-calculating the result avoids a clone on the `CachedUnwrappedObject`
-        let result = unwrapped_object
-            .as_ref()
-            .map(|u| u.unwrapped_object().to_owned())
-            .map_err(|e| {
-                // an error reference is returned, but we need an owned one
-                KmsError::Database(DbError::UnwrappedCache(format!("Unwrapping error: {e}")))
-            });
+        if let Some(ref metrics) = self.metrics {
+            metrics.record_cache_operation("get", "miss");
+        }
+        let unwrapped_object = {
+            let mut unwrapped_object = object.clone();
+            Box::pin(unwrap_object(&mut unwrapped_object, self, user)).await?;
+            unwrapped_object
+        };
+
         // update cache if there is one
         self.database
             .unwrapped_cache()
-            .insert(
-                uid.to_owned(),
-                unwrapped_object.map_err(|e| DbError::UnwrappedCache(e.to_string())),
-            )
-            .await;
-        // return the result
-        result
+            .insert(uid.to_owned(), object, unwrapped_object.clone())
+            .await?;
+        if let Some(ref metrics) = self.metrics {
+            metrics.record_cache_operation("insert", "ok");
+        }
+
+        Ok(unwrapped_object)
     }
 
     /// Create a new symmetric key and the corresponding system tags
@@ -112,6 +102,7 @@ impl KMS {
     ///  - "_kk"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_symmetric_key_and_tags(
+        vendor_id: &str,
         request: &Create,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         let attributes = &request.attributes;
@@ -123,10 +114,26 @@ impl KMS {
             )
         })?;
 
+        // FPE-FF1 is a non-standard extension not approved for FIPS mode.
+        // Reject it explicitly so that FIPS-mode clients receive a clear error
+        // instead of silently creating a key that can never be used for encryption.
+        #[cfg(not(feature = "non-fips"))]
+        if *cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+            return Err(KmsError::NotSupported(
+                "FPE_FF1 key creation is not supported in FIPS mode".to_owned(),
+            ));
+        }
+
         match cryptographic_algorithm {
             CryptographicAlgorithm::AES
+            | CryptographicAlgorithm::FPE_FF1
             | CryptographicAlgorithm::ChaCha20
             | CryptographicAlgorithm::ChaCha20Poly1305
+            | CryptographicAlgorithm::HMACSHA1
+            | CryptographicAlgorithm::HMACSHA224
+            | CryptographicAlgorithm::HMACSHA256
+            | CryptographicAlgorithm::HMACSHA384
+            | CryptographicAlgorithm::HMACSHA512
             | CryptographicAlgorithm::SHA3224
             | CryptographicAlgorithm::SHA3256
             | CryptographicAlgorithm::SHA3384
@@ -138,6 +145,15 @@ impl KMS {
                     None | Some(KeyFormatType::TransparentSymmetricKey) => {
                         // determine the key length in bytes
                         let key_len: usize = match cryptographic_algorithm {
+                            CryptographicAlgorithm::FPE_FF1 => {
+                                let effective_bits = attributes.cryptographic_length.unwrap_or(256);
+                                if effective_bits != 256 {
+                                    return Err(KmsError::InvalidRequest(format!(
+                                        "unsupported FPE_FF1 cryptographic_length: {effective_bits} (expected 256)"
+                                    )));
+                                }
+                                32
+                            }
                             CryptographicAlgorithm::THREE_DES => {
                                 // KMIP specifies effective key lengths (112 or 168). Raw bytes include parity bits.
                                 let effective_bits = attributes.cryptographic_length.ok_or_else(|| {
@@ -157,19 +173,46 @@ impl KMS {
                                     ))
                                 })? // bytes including parity bits
                             }
-                            _ => attributes
-                                .cryptographic_length
-                                .map(|len| usize::try_from(len / 8))
-                                .transpose()?
-                                .map_or(AES_256_GCM_KEY_LENGTH, |v| v),
+                            _ => {
+                                // Defend against resource-exhaustion attacks: reject requests for
+                                // unreasonably large symmetric keys.  The largest legitimate key
+                                // in this server is an AES-256-XTS key at 512 bits (two 256-bit
+                                // halves).  We cap at 8192 bits (1 KB) — vastly more than any
+                                // standard algorithm needs, yet still blocks 128 MB+ DoS requests.
+                                // Also require a minimum of 8 bits so the key material is non-empty.
+                                const MAX_SYMMETRIC_KEY_BITS: i32 = 8192;
+                                const MIN_SYMMETRIC_KEY_BITS: i32 = 8;
+                                let bits = attributes.cryptographic_length.unwrap_or_else(|| {
+                                    i32::try_from(AES_256_GCM_KEY_LENGTH * 8).unwrap_or(256)
+                                });
+                                if !(MIN_SYMMETRIC_KEY_BITS..=MAX_SYMMETRIC_KEY_BITS)
+                                    .contains(&bits)
+                                {
+                                    return Err(KmsError::InvalidRequest(format!(
+                                        "invalid symmetric key length {bits} bits: must be between {MIN_SYMMETRIC_KEY_BITS} and {MAX_SYMMETRIC_KEY_BITS}"
+                                    )));
+                                }
+                                usize::try_from(bits / 8).map_err(|e| {
+                                    KmsError::InvalidRequest(format!(
+                                        "key length conversion error: {e}"
+                                    ))
+                                })?
+                            }
                         };
 
                         let mut symmetric_key = Zeroizing::from(vec![0; key_len]);
                         rand_bytes(&mut symmetric_key)?;
-                        let object = create_symmetric_key_kmip_object(&symmetric_key, attributes)?;
+                        let object = create_symmetric_key_kmip_object(
+                            vendor_id,
+                            &symmetric_key,
+                            attributes,
+                        )?;
                         let attributes = object.attributes()?;
                         debug!("Created symmetric key with attributes: {}", attributes);
-                        let tags = attributes.get_tags();
+                        let mut tags = attributes.get_tags(vendor_id);
+                        if *cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+                            tags.insert("fpe-ff1".to_owned());
+                        }
                         let uid = attributes
                             .unique_identifier
                             .as_ref()
@@ -194,14 +237,12 @@ impl KMS {
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     ///
     /// Only Covercrypt user decryption keys can be created using this function
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async)] // signature must match the non-fips async variant of this function
     #[cfg(not(feature = "non-fips"))]
     pub(crate) async fn create_private_key_and_tags(
         &self,
         create_request: &Create,
         _owner: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-        _privileged_users: Option<Vec<String>>,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         trace!("Internal create private key (FIPS build)");
         let attributes = &create_request.attributes;
@@ -217,6 +258,7 @@ impl KMS {
                 use cosmian_kms_server_database::reexport::cosmian_kmip::{
                     SafeBigInt,
                     kmip_2_1::{
+                        extra::tagging::SYSTEM_TAG_COVER_CRYPT_USER_KEY,
                         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                         kmip_objects::Object,
                         kmip_types::{
@@ -227,19 +269,19 @@ impl KMS {
                 use num_bigint_dig::BigInt;
                 use openssl::dsa::Dsa;
                 let requested_bits = attributes.cryptographic_length.unwrap_or(3072);
-                // Build allowed sizes list from env or fallback
-                let allowed: Vec<i32> = vec![2048, 3072];
-                if !allowed.contains(&requested_bits) {
+                let allowed = Self::allowed_dsa_key_sizes_bits();
+                let requested_bits_u32 = u32::try_from(requested_bits).map_err(|e| {
+                    KmsError::NotSupported(format!(
+                        "Requested DSA bit length out of range: {requested_bits}: {e}"
+                    ))
+                })?;
+                if !allowed.contains(&requested_bits_u32) {
                     return Err(KmsError::NotSupported(format!(
                         "unsupported DSA cryptographic_length {requested_bits}; allowed: {allowed:?}"
                     )));
                 }
                 // OpenSSL expects bit length as i32
-                let dsa_bits = u32::try_from(requested_bits).map_err(|e| {
-                    KmsError::NotSupported(format!(
-                        "Requested DSA bit length out of range: {requested_bits}: {e}"
-                    ))
-                })?;
+                let dsa_bits = requested_bits_u32;
                 let dsa = Dsa::generate(dsa_bits).map_err(|e| {
                     KmsError::NotSupported(format!(
                         "Failed to generate DSA parameters ({requested_bits} bits): {e}"
@@ -268,10 +310,10 @@ impl KMS {
                 attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::DSA);
                 attributes.cryptographic_length = Some(requested_bits);
                 attributes.key_format_type = Some(KeyFormatType::TransparentDSAPrivateKey);
-                let mut tags = attributes.get_tags();
-                tags.insert("_uk".to_owned());
+                let mut tags = attributes.get_tags(self.vendor_id());
+                tags.insert(SYSTEM_TAG_COVER_CRYPT_USER_KEY.to_owned());
                 tags.insert("_dsa".to_owned());
-                attributes.set_tags(tags.clone())?;
+                attributes.set_tags(self.vendor_id(), tags.clone())?;
                 if attributes.unique_identifier.is_none() {
                     attributes.unique_identifier = Some(UniqueIdentifier::TextString(
                         uuid::Uuid::new_v4().to_string(),
@@ -290,7 +332,7 @@ impl KMS {
                 };
                 let object = Object::PrivateKey(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::PrivateKey { key_block });
                 let attributes_view = object.attributes()?;
-                let tags = attributes_view.get_tags();
+                let tags = attributes_view.get_tags(self.vendor_id());
                 let uid = attributes_view
                     .unique_identifier
                     .as_ref()
@@ -313,9 +355,7 @@ impl KMS {
     pub(crate) async fn create_private_key_and_tags(
         &self,
         create_request: &Create,
-        owner: &str,
-        params: Option<Arc<dyn SessionParams>>,
-        privileged_users: Option<Vec<String>>,
+        owner: &UserId,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;
@@ -334,15 +374,13 @@ impl KMS {
                     Covercrypt::default(),
                     create_request,
                     owner,
-                    params,
                     create_request.attributes.sensitive.unwrap_or(false),
-                    privileged_users,
                 )
                 .await?;
                 // Update the attributes with state Active
                 object.attributes_mut()?.state = Some(State::Active);
                 let attributes = object.attributes()?;
-                let tags = attributes.get_tags();
+                let tags = attributes.get_tags(self.vendor_id());
                 let uid = attributes
                     .unique_identifier
                     .as_ref()
@@ -351,17 +389,18 @@ impl KMS {
             }
             CryptographicAlgorithm::DSA => {
                 let requested_bits = attributes.cryptographic_length.unwrap_or(3072);
-                let allowed: Vec<i32> = vec![2048, 3072];
-                if !allowed.contains(&requested_bits) {
-                    return Err(KmsError::NotSupported(format!(
-                        "unsupported DSA cryptographic_length {requested_bits}; allowed: {allowed:?}"
-                    )));
-                }
-                let dsa_bits = u32::try_from(requested_bits).map_err(|e| {
+                let allowed = Self::allowed_dsa_key_sizes_bits();
+                let requested_bits_u32 = u32::try_from(requested_bits).map_err(|e| {
                     KmsError::NotSupported(format!(
                         "Requested DSA bit length out of range: {requested_bits}; error: {e}"
                     ))
                 })?;
+                if !allowed.contains(&requested_bits_u32) {
+                    return Err(KmsError::NotSupported(format!(
+                        "unsupported DSA cryptographic_length {requested_bits}; allowed: {allowed:?}"
+                    )));
+                }
+                let dsa_bits = requested_bits_u32;
                 let dsa = openssl::dsa::Dsa::generate(dsa_bits).map_err(|e| {
                     KmsError::NotSupported(format!(
                         "Failed to generate DSA parameters ({requested_bits} bits): {e}"
@@ -396,9 +435,9 @@ impl KMS {
                 attributes.key_format_type = Some(
                     cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType::TransparentDSAPrivateKey,
                 );
-                let mut tags = attributes.get_tags();
+                let mut tags = attributes.get_tags(self.vendor_id());
                 tags.insert("_dsa".to_owned());
-                attributes.set_tags(tags.clone())?;
+                attributes.set_tags(self.vendor_id(), tags.clone())?;
                 if attributes.unique_identifier.is_none() {
                     attributes.unique_identifier = Some(
                         cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier::TextString(
@@ -418,7 +457,7 @@ impl KMS {
                 };
                 let object = cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::PrivateKey(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::PrivateKey { key_block });
                 let attributes_view = object.attributes()?;
-                let tags = attributes_view.get_tags();
+                let tags = attributes_view.get_tags(self.vendor_id());
                 let uid = attributes_view
                     .unique_identifier
                     .as_ref()
@@ -436,11 +475,12 @@ impl KMS {
     ///  - "_sd"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_secret_data_and_tags(
+        vendor_id: &str,
         request: &Create,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         let attributes = &request.attributes;
-        let mut tags = attributes.get_tags();
-        tags.insert("_sd".to_owned());
+        let mut tags = attributes.get_tags(vendor_id);
+        tags.insert(SYSTEM_TAG_SECRET_DATA.to_owned());
         let mut secret_data = Zeroizing::from(vec![0; 32]);
         rand_bytes(&mut secret_data)?;
         let object = Object::SecretData(SecretData {
@@ -468,17 +508,32 @@ impl KMS {
         Ok((uid, object, tags))
     }
 
-    /// Register an encryption oracle for a given key prefix.
-    /// The encryption oracle will be used to encrypt/decrypt data using keys with the given prefix.
+    /// Register a crypto oracle for a given key prefix.
+    /// The crypto oracle will be used to encrypt/decrypt/sign data using keys with the given prefix.
     /// # Arguments
-    /// * `prefix` - The key prefix for which the encryption oracle will be used.
-    /// * `oracle` - The encryption oracle to register.
-    pub async fn register_encryption_oracles(
+    /// * `prefix` - The key prefix for which the crypto oracle will be used.
+    /// * `oracle` - The crypto oracle to register.
+    pub async fn register_crypto_oracle(
         &self,
         prefix: &str,
-        oracle: Box<dyn EncryptionOracle + Sync + Send>,
+        oracle: Box<dyn CryptoOracle + Sync + Send>,
     ) {
-        let mut oracles = self.encryption_oracles.write().await;
+        let mut oracles = self.crypto_oracles.write().await;
         oracles.insert(prefix.to_owned(), oracle);
+    }
+
+    /// Record metrics for a cascading (linked-object) operation.
+    ///
+    /// Used by `destroy` and `revoke` when they cascade to related keys.
+    pub(crate) fn record_cascading_metrics(
+        &self,
+        op_name: &str,
+        op_start: std::time::Instant,
+        user: &UserId,
+    ) {
+        if let Some(metrics) = &self.metrics {
+            metrics.record_kmip_operation(op_name, user);
+            metrics.record_kmip_operation_duration(op_name, op_start.elapsed().as_secs_f64());
+        }
     }
 }

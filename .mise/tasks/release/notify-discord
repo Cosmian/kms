@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#MISE description="Send a Cosmian KMS release announcement to the Discord #général channel"
+#USAGE arg "<version>" help="Version being released (e.g. 5.24.0)"
+#USAGE flag "--notes-file <file>" default="/tmp/release_notes.md" help="File containing the release notes"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+# shellcheck disable=SC2154  # usage_* vars are set by the MISE USAGE framework
+print_header "Notifying Discord: KMS ${usage_version}"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/release/notify_discord.sh" \
+  "${usage_version}" \
+  "${usage_notes_file:-/tmp/release_notes.md}"
+
+print_success "Discord notification sent for ${usage_version}"

@@ -12,10 +12,10 @@ use cosmian_kms_client::{
     KmsClient, KmsClientError,
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
     kmip_2_1::{
-        extra::BulkData,
+        extra::{BulkData, tagging::VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_operations::{Create, Decrypt, Encrypt},
+        kmip_operations::{Activate, Create, Decrypt, Encrypt},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
@@ -116,7 +116,7 @@ fn create_symmetric_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
         object_type: Some(ObjectType::SymmetricKey),
         ..Attributes::default()
     };
-    attributes.set_tags(tags)?;
+    attributes.set_tags(VENDOR_ID_COSMIAN, tags)?;
     Ok(Create {
         object_type: ObjectType::SymmetricKey,
         attributes,
@@ -145,18 +145,7 @@ pub(crate) fn bench_encrypt_aes_256_gcm_100000(c: &mut Criterion) {
 }
 
 #[cfg(feature = "non-fips")]
-pub(crate) fn bench_encrypt_chacha20_128_poly1305(c: &mut Criterion) {
-    bench_encrypt(
-        c,
-        "ChaCha20 128 Poly1305",
-        128,
-        chacha20_cryptographic_parameters(),
-        1,
-    );
-}
-
-#[cfg(feature = "non-fips")]
-pub(crate) fn bench_encrypt_chacha20_256_poly1305(c: &mut Criterion) {
+pub(crate) fn bench_encrypt_chacha20_poly1305(c: &mut Criterion) {
     bench_encrypt(
         c,
         "ChaCha20 256 Poly1305",
@@ -177,14 +166,17 @@ pub(crate) fn bench_encrypt(
 
     let (kms_rest_client, key_id) = runtime.block_on(async {
         let ctx = start_default_test_kms_server().await;
-        let key_id = create_symmetric_key(
-            &ctx.get_owner_client(),
-            num_bits,
-            cryptographic_parameters.clone(),
-        )
-        .await
-        .unwrap();
-        (ctx.get_owner_client(), key_id)
+        let client = ctx.get_owner_client();
+        let key_id = create_symmetric_key(&client, num_bits, cryptographic_parameters.clone())
+            .await
+            .unwrap();
+        client
+            .activate(Activate {
+                unique_identifier: key_id.clone(),
+            })
+            .await
+            .unwrap();
+        (client, key_id)
     });
 
     let plaintext = if num_plaintexts == 1 {
@@ -264,18 +256,7 @@ pub(crate) fn bench_decrypt_aes_256_gcm_100000(c: &mut Criterion) {
 }
 
 #[cfg(feature = "non-fips")]
-pub(crate) fn bench_decrypt_chacha20_128_poly1305(c: &mut Criterion) {
-    bench_decrypt(
-        c,
-        "Chacha20 Poly1305",
-        128,
-        chacha20_cryptographic_parameters(),
-        1,
-    );
-}
-
-#[cfg(feature = "non-fips")]
-pub(crate) fn bench_decrypt_chacha20_256_poly1305(c: &mut Criterion) {
+pub(crate) fn bench_decrypt_chacha20_poly1305(c: &mut Criterion) {
     bench_decrypt(
         c,
         "Chacha20 Poly1305",
@@ -303,27 +284,30 @@ pub(crate) fn bench_decrypt(
     };
     let (kms_rest_client, key_id, (nonce, ciphertext, mac)) = runtime.block_on(async {
         let ctx = start_default_test_kms_server().await;
-        let key_id = create_symmetric_key(
-            &ctx.get_owner_client(),
-            num_bits,
-            cryptographic_parameters.clone(),
-        )
-        .await
-        .unwrap();
+        let client = ctx.get_owner_client();
+        let key_id = create_symmetric_key(&client, num_bits, cryptographic_parameters.clone())
+            .await
+            .unwrap();
+        client
+            .activate(Activate {
+                unique_identifier: key_id.clone(),
+            })
+            .await
+            .unwrap();
         let (nonce, ciphertext, mac) = encrypt(
-            &ctx.get_owner_client(),
+            &client,
             key_id.clone(),
             cryptographic_parameters.clone(),
             plaintext.clone(),
         )
         .await
         .unwrap();
-        (ctx.get_owner_client(), key_id, (nonce, ciphertext, mac))
+        (client, key_id, (nonce, ciphertext, mac))
     });
 
     let mut group = c.benchmark_group("Symmetric encryption");
     group.bench_function(
-        format!("{name} {num_bits}bit decryption of {num_ciphertexts} ciphertext(s)",),
+        format!("{name} {num_bits}bit decryption of {num_ciphertexts} ciphertext(s)"),
         |b| {
             b.to_async(&runtime).iter(|| async {
                 let _ = decrypt(
@@ -410,22 +394,26 @@ pub(crate) fn bench_encrypt_parametrized(
 
             let (kms_rest_client, key_id, (nonce, ciphertext, mac)) = runtime.block_on(async {
                 let ctx = start_default_test_kms_server().await;
-                let key_id = create_symmetric_key(
-                    &ctx.get_owner_client(),
-                    num_bits,
-                    cryptographic_parameters.clone(),
-                )
-                .await
-                .unwrap();
+                let client = ctx.get_owner_client();
+                let key_id =
+                    create_symmetric_key(&client, num_bits, cryptographic_parameters.clone())
+                        .await
+                        .unwrap();
+                client
+                    .activate(Activate {
+                        unique_identifier: key_id.clone(),
+                    })
+                    .await
+                    .unwrap();
                 let (nonce, ciphertext, mac) = encrypt(
-                    &ctx.get_owner_client(),
+                    &client,
                     key_id.clone(),
                     cryptographic_parameters.clone(),
                     plaintext.clone(),
                 )
                 .await
                 .unwrap();
-                (ctx.get_owner_client(), key_id, (nonce, ciphertext, mac))
+                (client, key_id, (nonce, ciphertext, mac))
             });
 
             let parameter_name = if num_plaintexts == 1 {
