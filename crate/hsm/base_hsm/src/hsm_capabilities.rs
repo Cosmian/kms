@@ -47,7 +47,7 @@ pub struct HsmCapabilities {
     pub max_label_len: Option<usize>,
 
     /// Whether `CKA_START_DATE`/`CKA_END_DATE` can be read and written on key objects.
-    /// Crypt2pay returns `CKR_ATTRIBUTE_TYPE_INVALID` for these attributes on secret keys;
+    /// Crypt2pay and AWS `CloudHSM` return `CKR_ATTRIBUTE_TYPE_INVALID` for these attributes;
     /// `SoftHSM2` accepts the write on private objects but then fails every read of them
     /// with `CKR_GENERAL_ERROR`.
     /// When `false`, reads report no dates and writes are refused, so HSM key

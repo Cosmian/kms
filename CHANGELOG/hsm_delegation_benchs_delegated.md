@@ -2,7 +2,7 @@
 
 ### HSM
 
-- Make HSM key-date handling capability-driven: `HsmCapabilities::supports_key_dates` now governs both reading and writing `CKA_START_DATE`/`CKA_END_DATE`. It is false for Crypt2pay (`CKR_ATTRIBUTE_TYPE_INVALID`) and SoftHSM2 (dates written on private keys can no longer be read back: `CKR_GENERAL_ERROR`, which made the key's metadata unreadable). On those HSMs, setting a rotation schedule now fails with an explicit error, and reading dates no longer silently swallows `CKR_ATTRIBUTE_TYPE_INVALID` on other vendors
+- Make HSM key-date handling capability-driven: `HsmCapabilities::supports_key_dates` now governs both reading and writing `CKA_START_DATE`/`CKA_END_DATE`. It is false for Crypt2pay and AWS CloudHSM (`CKR_ATTRIBUTE_TYPE_INVALID`) and SoftHSM2 (dates written on private keys can no longer be read back: `CKR_GENERAL_ERROR`, which made the key's metadata unreadable). On those HSMs, setting a rotation schedule now fails with an explicit error, and reading dates no longer silently swallows `CKR_ATTRIBUTE_TYPE_INVALID` on other vendors
 
 ## Refactor
 

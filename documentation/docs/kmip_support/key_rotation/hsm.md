@@ -11,7 +11,7 @@ attributes rather than the KMS database.
 | ------------------------------ | :-------: | ---------------------------------------------------------------- |
 | Manual `Re-Key` via KMIP       | ✅        | Calls `C_GenerateKey` on the same HSM slot.                      |
 | Keyset membership (`x-rotate-name`) | ✅   | Stored in `CKA_LABEL`; keyset name **must be the full base UID** (`hsm::model::slot::key_id`). Supports `@latest`, `@first`, `@N` generation addressing. |
-| `x-rotate-interval` attribute  | ✅        | Writes `CKA_START_DATE` / `CKA_END_DATE` for validity tracking. Rejected with an error on HSMs that cannot store these dates on keys (SoftHSM2, Crypt2pay). |
+| `x-rotate-interval` attribute  | ✅        | Writes `CKA_START_DATE` / `CKA_END_DATE` for validity tracking. Rejected with an error on HSMs that cannot store these dates on keys (SoftHSM2, Crypt2pay, AWS CloudHSM). |
 | Auto-rotation scheduler        | ❌        | `find_due_for_rotation` never returns HSM UIDs; scheduler skips them. |
 | `x-rotate-offset`              | ❌        | Not applicable to PKCS#11 scheduling; rejected with `NotSupported`. |
 

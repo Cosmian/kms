@@ -42,7 +42,8 @@ impl HsmProvider for AwsCloudHsmCapabilityProvider {
             supports_aes_gcm_message: true,
             rsa_oaep_requires_source_data_ptr: false,
             max_label_len: None,
-            supports_key_dates: true,
+            // C_GetAttributeValue on CKA_START_DATE/CKA_END_DATE returns CKR_ATTRIBUTE_TYPE_INVALID.
+            supports_key_dates: false,
             supports_rsa_oaep_key_wrap: true,
             enforces_ecdsa_digest_strength: true,
         }
