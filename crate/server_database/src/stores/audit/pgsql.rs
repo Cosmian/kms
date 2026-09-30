@@ -377,8 +377,8 @@ impl PgAuditSink {
         instance_id: &str,
         generation: i64,
         event: &AuditEvent,
-        duration_ms: i64,
     ) -> Result<u64, tokio_postgres::Error> {
+        let duration_ms = i64::try_from(event.duration_ms).unwrap_or(i64::MAX);
         let result_str = event.result.as_canonical_str();
         let prev_hash = event.prev_hash.as_slice();
         let row_hash = event.row_hash.as_slice();
@@ -430,23 +430,9 @@ impl PgAuditSink {
     ) -> DbResult<WriteOutcome> {
         let client = pool.get().await.map_err(DbError::from)?;
         let query = get_audit_query!("insert-audit-event");
-        let duration_ms = i64::try_from(event.duration_ms).map_err(|_e| {
-            db_error!(
-                "audit: event.duration_ms={} overflows i64",
-                event.duration_ms
-            )
-        })?;
         // Double deref: `Object` -> `ClientWrapper` -> `tokio_postgres::Client`, generic
         // inference won't apply that coercion chain on its own.
-        let res = Self::insert_event_row(
-            &**client,
-            query,
-            instance_id,
-            generation,
-            event,
-            duration_ms,
-        )
-        .await;
+        let res = Self::insert_event_row(&**client, query, instance_id, generation, event).await;
 
         let Err(e) = res else {
             return Ok(WriteOutcome::Written);
@@ -732,19 +718,12 @@ impl PgAuditSink {
             )))
         })?;
 
-        let reanchor_duration_ms = i64::try_from(reanchor.duration_ms).map_err(|_e| {
-            InterfaceError::from(db_error!(
-                "audit: reanchor event.duration_ms={} overflows i64",
-                reanchor.duration_ms
-            ))
-        })?;
         Self::insert_event_row(
             &tx,
             get_audit_query!("insert-audit-event"),
             &self.instance_id,
             new_generation,
             &reanchor,
-            reanchor_duration_ms,
         )
         .await
         .map_err(|e| InterfaceError::from(DbError::from(e)))?;
