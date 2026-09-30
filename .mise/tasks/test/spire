@@ -293,6 +293,10 @@ if [[ ! -f "${SPIRE_SECRETS_ENV}" ]]; then
 fi
 print_success "AppRoles provisioned."
 
+# sign-intermediate requires an explicit `certify` grant on the CA private key.
+CKMS_BIN="$(get_ckms_bin)" CKMS_CONF="${CKMS_CONF}" \
+  bash "${REPO_ROOT}/.mise/scripts/test/grant_spire_pki_certify.sh"
+
 # ── Step 6b: Vault API conformance tests ──────────────────────────────────────
 # Prove that every HTTP contract SPIRE relies on (§3 auth, §4 PKI, §5 transit)
 # is correctly implemented before starting the real SPIRE runtime. Tenant-a's
