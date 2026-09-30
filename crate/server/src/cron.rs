@@ -106,9 +106,6 @@ pub fn spawn_crl_refresh_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
 
 /// Scan all stored CRLs and regenerate those expiring within `overlap_hours`.
 async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
-    // CRL content is public information (RFC 5280 §3) — no special role required.
-    let signer = crate::middlewares::UserId::from(kms.params.default_username.as_str());
-
     // Enumerate all issuer IDs stored in the `crls` table.
     let issuers = match kms.database.list_crl_issuers().await {
         Ok(ids) => ids,
@@ -138,9 +135,11 @@ async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
              (expires within {overlap_hours}h)"
         );
 
-        if let Err(e) =
-            crate::core::operations::generate_crl::generate_crl(kms, &issuer_id, None, &signer)
-                .await
+        // Sign as the CA owner: `default_username` usually cannot read the CA key.
+        if let Err(e) = Box::pin(
+            crate::core::operations::generate_crl::regenerate_crl_as_issuer_owner(kms, &issuer_id),
+        )
+        .await
         {
             warn!(
                 issuer_id = issuer_id.as_str(),

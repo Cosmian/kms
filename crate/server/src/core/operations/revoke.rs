@@ -221,14 +221,12 @@ pub(crate) async fn recursively_revoke_key(
                 // an up-to-date list without requiring a manual generate-crl call.
                 // Errors here must never fail the Revoke operation.
                 //
-                // Pass the actual revoking user, not `default_username`: the revoking
-                // user already proved they can access the CA chain (they own or have
-                // Revoke rights on the cert), so they can also read the CA cert and its
-                // private key to sign the CRL.  Using `default_username` caused a silent
-                // permission failure because that user does not own the CA objects.
+                // Signed on behalf of the CA owner: neither the revoking user (e.g. a
+                // leaf-certificate owner) nor `default_username` can generally read the
+                // CA private key, which made regeneration fail silently.
                 if kms.params.kms_public_url.is_some() {
                     if let Some(issuer_id) = issuer_id {
-                        trigger_crl_regeneration(kms, &issuer_id, user).await;
+                        trigger_crl_regeneration(kms, &issuer_id).await;
                     }
                 }
             }
@@ -408,24 +406,19 @@ fn extract_serial_hex_for_ocsp_cache(object: &Object) -> Option<String> {
 
 /// Trigger CRL regeneration for `issuer_id` after a certificate revocation.
 ///
-/// CRL content is public information (RFC 5280 §3) so no special role is required.
-/// Uses the `revoking_user` identity — the user who just performed the Revoke — because
-/// they have already proven they can access the CA chain (owner or explicit `Revoke`
-/// grant), and therefore have the necessary permissions to read the CA certificate and
-/// its private key for CRL signing.  Using `default_username` caused a silent
-/// permission failure when the CA objects were owned by a different user (e.g., CO).
-///
-/// Errors are logged at `warn` level and never propagated — this must not fail
-/// the parent `Revoke` operation.
-async fn trigger_crl_regeneration(kms: &KMS, issuer_id: &str, revoking_user: &UserId) {
+/// The CRL is signed on behalf of the issuer certificate's owner (see
+/// `generate_crl::regenerate_crl_as_issuer_owner`). Errors are logged and never fail
+/// the Revoke operation.
+async fn trigger_crl_regeneration(kms: &KMS, issuer_id: &str) {
     info!(
         issuer_id = issuer_id,
         "Auto-CRL: triggered CRL regeneration for issuer '{issuer_id}' after certificate revocation"
     );
 
-    if let Err(e) =
-        crate::core::operations::generate_crl::generate_crl(kms, issuer_id, None, revoking_user)
-            .await
+    if let Err(e) = Box::pin(
+        crate::core::operations::generate_crl::regenerate_crl_as_issuer_owner(kms, issuer_id),
+    )
+    .await
     {
         warn!(
             issuer_id = issuer_id,

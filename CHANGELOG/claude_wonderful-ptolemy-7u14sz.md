@@ -39,3 +39,30 @@ They now require `add_attribute` / `delete_attribute`, like the KMIP operations.
 Both functions overwrote the caller's buffer length before checking it, so a buffer
 smaller than the value was overflowed instead of returning `CKR_BUFFER_TOO_SMALL`.
 `C_GenerateKey` now also rejects a null `phKey` with `CKR_ARGUMENTS_BAD`.
+
+### CRL / OCSP: revocation status could be lost, stale or wrong
+
+- `Destroy` keeps a certificate's issuer link and revocation details; CRLs and OCSP
+  now keep reporting a revoked-then-destroyed certificate as revoked (RFC 5280 §3.3).
+- Certificate serials are random 159-bit values instead of SHA-1(SPKI): `ReCertify`
+  no longer reuses the serial of the certificate it replaces (which made the renewed
+  certificate appear revoked).
+- OCSP response cache: correct expiry (never past `nextUpdate`), keyed by the full
+  `CertID`, used only for single-`CertID` requests (cached serials in multi-`CertID`
+  requests were answered `unknown`), bounded, and `unknown` responses are not cached.
+- OCSP requests must name the configured CA in every `CertID` (`unauthorized` otherwise).
+- OCSP `revocationTime` and reason are the recorded ones, matching the CRL.
+- Automatic CRL regeneration (after `Revoke` and by the refresh cron) signs on behalf
+  of the CA owner; it previously failed silently for revokers without CA-key access.
+- Each node re-reads the stored CRL from the database at most every 60 s instead of
+  serving its in-memory copy forever.
+- OCSP and CRL signing unwrap CA keys wrapped at rest (`key_encryption_key` / user KEK).
+- CRLs fetched during `Validate`/`Import` are refreshed after 5 minutes or once expired
+  (an expired cached CRL previously failed validation until restart), and the cache
+  lock is no longer held across network fetches.
+
+### CRL fetching: SSRF check bypass via `kms_public_url` prefix match
+
+The "own URL" exemption from the CRL SSRF check compared raw strings, so
+`http://kms.corp@169.254.169.254/…` or `http://kms.corp.attacker.tld/` bypassed it. The
+check now compares parsed scheme, host, port and path and rejects URLs with credentials.

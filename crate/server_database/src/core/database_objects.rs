@@ -532,13 +532,20 @@ impl Database {
     /// `good` (Active/PreActive), `revoked` (Compromised/Deactivated/Destroyed/DestroyedCompromised),
     /// and `unknown` (not found).
     ///
-    /// Returns `(uid, state)` for the first match or `None` if not found.
+    /// Returns `(uid, state, attributes)` for the first match or `None` if not found;
+    /// the attributes carry the revocation date and reason reported by OCSP.
     pub async fn find_certificate_by_serial(
         &self,
         issuer_certificate_uid: &str,
         serial_hex: &str,
         vendor_id: &str,
-    ) -> DbResult<Option<(String, cosmian_kmip::kmip_0::kmip_types::State)>> {
+    ) -> DbResult<
+        Option<(
+            String,
+            cosmian_kmip::kmip_0::kmip_types::State,
+            cosmian_kmip::kmip_2_1::kmip_attributes::Attributes,
+        )>,
+    > {
         use cosmian_kmip::kmip_2_1::{
             kmip_attributes::Attributes,
             kmip_objects::ObjectType,
@@ -570,12 +577,12 @@ impl Database {
                 .find_all(Some(&search_attrs), Some(state), vendor_id)
                 .await?;
 
-            for (uid, obj_state, _attrs) in candidates {
+            for (uid, obj_state, attrs) in candidates {
                 if let Some(owm) = self.retrieve_object(&uid).await? {
                     let found_serial = extract_serial_hex_from_object(owm.object());
                     if let Some(s) = found_serial {
                         if s.eq_ignore_ascii_case(serial_hex) {
-                            return Ok(Some((uid, obj_state)));
+                            return Ok(Some((uid, obj_state, attrs)));
                         }
                     }
                 }

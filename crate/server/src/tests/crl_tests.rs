@@ -1565,3 +1565,132 @@ async fn test_certify_cannot_overwrite_victim_object() -> KResult<()> {
 
     Ok(())
 }
+
+// ── Non-regression: CRL/OCSP review findings ────────────────────────────────
+
+/// A revoked certificate that is later destroyed must stay on its issuer's CRL
+/// (RFC 5280 §3.3): Destroy used to wipe the issuer link, dropping it silently.
+#[tokio::test]
+async fn test_crl_keeps_revoked_certificate_after_destroy() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Destroy;
+
+    let kms = make_kms().await?;
+    let owner = UserId::new("crl_owner");
+    let (ca_id, ca_sk_id) = certify(&kms, &owner, "Destroy CA", None, None, CA_EXT).await?;
+    let (leaf_id, _) = certify(
+        &kms,
+        &owner,
+        "Destroyed Leaf",
+        Some(&ca_id),
+        Some(&ca_sk_id),
+        LEAF_EXT,
+    )
+    .await?;
+    let leaf_serial = cert_serial(&get_cert_der(&kms, &owner, &leaf_id).await);
+
+    revoke_cert(&kms, &owner, &leaf_id, RevocationReasonCode::KeyCompromise).await?;
+    kms.destroy(
+        Destroy {
+            unique_identifier: Some(UniqueIdentifier::TextString(leaf_id.clone())),
+            ..Destroy::default()
+        },
+        &owner,
+    )
+    .await?;
+
+    let serials = revoked_serials(&generate_crl_der(&kms, &owner, &ca_id).await);
+    assert!(
+        serials.contains(&leaf_serial),
+        "a revoked-then-destroyed certificate must remain on the CRL"
+    );
+    Ok(())
+}
+
+/// `ReCertify` must issue the renewed certificate with a new serial: serials used
+/// to be SHA-1(SPKI), so the renewed certificate shared the serial of the old
+/// (now Deactivated, hence CRL-listed) one and appeared revoked.
+#[tokio::test]
+async fn test_recertify_issues_new_serial_not_listed_in_crl() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::ReCertify;
+
+    let kms = make_kms().await?;
+    let owner = UserId::new("crl_owner");
+    let (ca_id, ca_sk_id) = certify(&kms, &owner, "Renew CA", None, None, CA_EXT).await?;
+    let (leaf_id, _) = certify(
+        &kms,
+        &owner,
+        "Renewed Leaf",
+        Some(&ca_id),
+        Some(&ca_sk_id),
+        LEAF_EXT,
+    )
+    .await?;
+    let old_serial = cert_serial(&get_cert_der(&kms, &owner, &leaf_id).await);
+
+    let mut issuer_links = Attributes::default();
+    issuer_links.set_link(
+        LinkType::CertificateLink,
+        LinkedObjectIdentifier::TextString(ca_id.clone()),
+    );
+    issuer_links.set_link(
+        LinkType::PrivateKeyLink,
+        LinkedObjectIdentifier::TextString(ca_sk_id.clone()),
+    );
+    let new_id = kms
+        .recertify(
+            ReCertify {
+                unique_identifier: Some(UniqueIdentifier::TextString(leaf_id.clone())),
+                certificate_request_type: None,
+                certificate_request_value: None,
+                offset: None,
+                attributes: Some(issuer_links),
+                protection_storage_masks: None,
+            },
+            &owner,
+        )
+        .await?
+        .unique_identifier
+        .to_string();
+    let new_serial = cert_serial(&get_cert_der(&kms, &owner, &new_id).await);
+    assert_ne!(old_serial, new_serial, "renewal must use a fresh serial");
+
+    let serials = revoked_serials(&generate_crl_der(&kms, &owner, &ca_id).await);
+    assert!(
+        !serials.contains(&new_serial),
+        "the renewed certificate must not appear revoked"
+    );
+    Ok(())
+}
+
+/// When a user who cannot read the CA key revokes a certificate, the automatic
+/// CRL regeneration must still happen (signed on behalf of the CA owner).
+#[tokio::test]
+async fn test_auto_crl_regeneration_when_revoker_lacks_ca_key_access() -> KResult<()> {
+    let kms = make_kms_with_public_url("https://kms.example.com").await?;
+    let ca_admin = UserId::new("ca_admin");
+    let bob = UserId::new("bob");
+    let (ca_id, ca_sk_id) = certify(&kms, &ca_admin, "Owner CA", None, None, CA_EXT).await?;
+    let (leaf_id, _) = certify(
+        &kms,
+        &ca_admin,
+        "Bob Leaf",
+        Some(&ca_id),
+        Some(&ca_sk_id),
+        LEAF_EXT,
+    )
+    .await?;
+    let leaf_serial = cert_serial(&get_cert_der(&kms, &ca_admin, &leaf_id).await);
+    // Bob may revoke the leaf but has no access to the CA certificate or key.
+    grant_revoke_access(&kms, &leaf_id, &bob).await?;
+
+    revoke_cert(&kms, &bob, &leaf_id, RevocationReasonCode::KeyCompromise).await?;
+
+    let (crl_der, _, _) = get_cached_crl(&ca_id, &kms)
+        .await
+        .expect("the revocation must have regenerated the CRL");
+    assert!(
+        revoked_serials(&crl_der).contains(&leaf_serial),
+        "the regenerated CRL must list the certificate bob revoked"
+    );
+    Ok(())
+}

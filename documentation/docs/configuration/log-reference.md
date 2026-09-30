@@ -716,7 +716,7 @@ Crate path: `crate/server`
 | `info` | `GET /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `info` | `POST /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
-| `debug` | `OCSP: all serials served from cache` | `src/routes/ocsp/handler.rs` | - | - |
+| `debug` | `OCSP: all serials served from cache` | `src/routes/ocsp/handler.rs` | - | [REMOVED] |
 | `debug` | `OCSP GET request path exceeds MAX_OCSP_GET_ENCODED_LEN` | `src/routes/ocsp/handler.rs` | - | - |
 | `warn` | `` AWS XKS: skipping migration for key `{uid}` because its owner could not be                      determined (object missing) `` | `src/start_kms_server.rs` | `uid` | - |
 | `warn` | `Session: rejecting reserved AWS XKS service identity from stored                              session user_id: {error}` | `src/middlewares/session_auth.rs` | `error` | - |
@@ -750,6 +750,8 @@ Crate path: `crate/server`
 | `warn` | `[kms-init] Failed to seed kms.keys.active.count: {e}` | `src/core/kms/mod.rs` | `e` | - |
 | `warn` | `[metrics-cron] Failed to sync kms.keys.active.count: {}` | `src/cron.rs` | - | - |
 | `warn` | `JWK serialization failed uid={uid}: {e}` | `src/routes/jwks.rs` | `uid`: unique identifier of the key object being published in the JWKS; `e`: the `serde_json` serialization error | Emitted when a typed `Jwk` fails to serialize to JSON; the affected key is skipped and omitted from the JWKS `keys` array rather than emitting an invalid `null` entry. |
+| `debug` | `CRL cache entry stale, refetching: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
+| `debug` | `vault transit: key '{name}' already exists, not re-creating` | `src/routes/spire/transit.rs` | `name` | - |
 
 ### `cosmian_kms_server_database`
 

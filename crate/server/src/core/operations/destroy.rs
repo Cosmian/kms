@@ -439,7 +439,15 @@ async fn update_as_destroyed(
     let attributes = match object {
         Object::Certificate { .. } => {
             trace!("[destroy-core] certificate zeroization uid={handle}");
-            Attributes::default()
+            // Keep only what revocation checking needs: RFC 5280 §3.3 requires a revoked
+            // certificate to stay on its issuer's CRL until it expires, and CRL/OCSP find
+            // it through the issuer `CertificateLink` and read the revocation details.
+            // Wiping these made a revoked-then-destroyed certificate vanish from the CRL
+            // and OCSP report it `unknown`.
+            let previous = kms.database.retrieve_object(handle.as_str()).await?;
+            previous.map_or_else(Attributes::default, |owm| {
+                retained_certificate_attributes(owm.attributes())
+            })
         }
         Object::OpaqueObject(_) => {
             if let Object::OpaqueObject(inner) = object {
@@ -476,6 +484,23 @@ async fn update_as_destroyed(
     debug!("Object with unique identifier: {handle} destroyed");
 
     Ok(())
+}
+
+/// The subset of a certificate's attributes kept after Destroy: the issuer link
+/// and the revocation details used by CRL generation and the OCSP responder.
+fn retained_certificate_attributes(previous: &Attributes) -> Attributes {
+    let mut retained = Attributes {
+        object_type: Some(ObjectType::Certificate),
+        revocation_reason: previous.revocation_reason.clone(),
+        deactivation_date: previous.deactivation_date,
+        compromise_date: previous.compromise_date,
+        compromise_occurrence_date: previous.compromise_occurrence_date,
+        ..Attributes::default()
+    };
+    if let Some(issuer) = previous.get_link(LinkType::CertificateLink) {
+        retained.set_link(LinkType::CertificateLink, issuer);
+    }
+    retained
 }
 
 /// Issue #763 — Guard an HSM destroy against a key-type mismatch.
