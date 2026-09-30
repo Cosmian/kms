@@ -1479,3 +1479,131 @@ numbered scenario; all are asserted **live** against a running KMS + auth-verifi
 - `test_data/spire/setup/kms_setup.sh` — Bash script that runs all provisioning steps in one shot (`ROLE_NAME=my-spire bash test_data/spire/setup/kms_setup.sh`).
 - `crate/server/documentation/openapi.yaml` — OpenAPI schema for the `/v1/transit/*` and `/v1/<pki_mount>/*` paths.
 - `ckms vault approle --help` — full CLI reference for AppRole provisioning.
+
+---
+
+## Workload Authentication via SPIFFE JWT-SVID
+
+In addition to acting as a Vault-compatible backend for SPIRE itself (described above),
+Eviden KMS natively supports **authenticating application workloads using SPIFFE JWT-SVIDs**.
+
+Workloads running in Kubernetes clusters or bare-metal environments with SPIRE can authenticate
+to KMS endpoints using standard bearer token semantics (`Authorization: Bearer <JWT-SVID>`).
+
+### Operator Decision Tree
+
+```text
+Do you want workload authentication via SPIFFE?
+├── Option A: mTLS Client Certificate Authentication
+│   ├── Uses X.509 SVID (spire-agent / Envoy mTLS)
+│   └── Identity is mapped from certificate Common Name (CN).
+├── Option B: JWT-SVID Bearer Authentication
+│   ├── Uses SPIRE OIDC Discovery Provider / JWKS endpoint
+│   ├── Identity is mapped from `sub` claim (`spiffe://<trust-domain>/<path>`)
+│   └── Requires `jwt_svid_auth = true` (--jwt-svid-auth).
+└── Option C: Dual Layer (mTLS Transport + JWT-SVID Application)
+    ├── Server configures both `[tls] clients_ca_cert_file` and `[idp_auth] jwt_svid_auth`
+    ├── Client-certificate auth runs BEFORE the JWT middleware: a client cert with a CN
+    │   authenticates as that CN and any JWT-SVID / session cookie is ignored.
+    └── For the SPIFFE ID to be the identity, use client certs without a CN (or separate
+        listeners); otherwise expect CN precedence.
+```
+
+### Architecture & Claim Mapping
+
+- **Standard OIDC vs. SPIFFE JWT-SVID**: Standard OIDC/IdP tokens carry an `email` claim. SPIFFE JWT-SVIDs contain no `email` claim; they identify workloads via `sub = spiffe://<trust-domain>/<workload-path>`.
+- **Opt-In Flag (`--jwt-svid-auth` / `jwt_svid_auth = true`)**: When enabled, the KMS JWT authentication middleware accepts tokens with no `email` claim provided `sub` begins with `spiffe://`. The full SPIFFE URI is used as the KMS `UserId` / object owner. The flag is **global**: it applies to all `--jwt-auth-provider` entries (there is no per-provider setting).
+- **Audience is mandatory**: with `--jwt-svid-auth`, the server refuses to start if any `--jwt-auth-provider` entry has no audience (`issuer,jwks_uri,audience`), and a SPIFFE `sub` token without a non-empty `aud` claim is rejected. This follows the SPIFFE JWT-SVID specification (validators must reject SVIDs not addressed to them) and prevents cross-service replay.
+
+### KMS Server Configuration
+
+#### 1. JWT-SVID Only
+
+In `kms.toml`:
+
+```toml
+[idp_auth]
+jwt_auth_provider = [
+  "https://oidc-discovery.spire.local,https://oidc-discovery.spire.local/keys,cosmian-kms"
+]
+jwt_svid_auth = true
+```
+
+#### 2. Dual Configuration (mTLS + JWT-SVID)
+
+> **Precedence**: actix runs wrapped middleware last-in-first-out, and the client-certificate
+> middleware runs **before** the JWT middleware. A client certificate with a CN authenticates
+> the request as that CN (`AuthMethod::Mtls`); the JWT-SVID (and any session cookie) is then
+> ignored. A certificate without a usable CN falls through to the JWT-SVID. To make the SPIFFE
+> ID the identity, present CN-less client certificates or use separate listeners.
+
+In `kms.toml`:
+
+```toml
+[tls]
+tls_cert_file = "/etc/kms/kms.crt"
+tls_key_file  = "/etc/kms/kms.key"
+clients_ca_cert_file = "/etc/kms/spire-ca.crt"
+
+[idp_auth]
+jwt_auth_provider = [
+  "https://oidc-discovery.spire.local,https://oidc-discovery.spire.local/keys,cosmian-kms"
+]
+jwt_svid_auth = true
+```
+
+### Workload CLI Usage (`ckms`)
+
+1. Mint a JWT-SVID for the workload using SPIRE:
+
+   ```bash
+   spire-server jwt mint \
+     -spiffeID spiffe://cosmian-test-a.local/my-workload \
+     -audience cosmian-kms
+   ```
+
+2. Configure `ckms.toml` to use the minted token:
+
+   ```toml
+   [http_config]
+   server_url = "https://kms.example.com:9998"
+   access_token = "<minted_jwt_svid>"
+   ```
+
+3. Run `ckms` commands — all created keys and accesses are owned by `spiffe://cosmian-test-a.local/my-workload`:
+
+   ```bash
+   ckms sym keys create my-key
+   ckms access-rights owned
+   ```
+
+### HTTP / REST API Usage
+
+Workloads can authenticate directly to KMIP or REST endpoints via `Authorization: Bearer <JWT-SVID>`:
+
+```bash
+# Check authenticated identity
+curl -k -H "Authorization: Bearer ${JWT_SVID}" https://kms.example.com:9998/me
+
+# Response:
+# {"user":"spiffe://cosmian-test-a.local/my-workload"}
+```
+
+### Expected Log Messages
+
+- When JWT-SVID authentication succeeds:
+
+  ```text
+  [DEBUG] cosmian_kms_server::middlewares::jwt::jwt_token_auth: JWT-SVID access granted to spiffe://cosmian-test-a.local/my-workload!
+  ```
+
+- When client certificate authentication succeeds:
+
+  ```text
+  [TRACE] cosmian_kms_server::middlewares::tls_auth: Client certificate common name: spire-client
+  ```
+
+> **Note on Web UI**: With `--jwt-svid-auth` the server advertises `SPIFFE` in `/ui/auth_method`
+> and accepts a JWT-SVID posted by a trusted gateway to `POST /ui/login_svid`. There is no
+> login form. See [Web UI SPIFFE authentication](spire_webui.md), including the shared-identity
+> caveat.

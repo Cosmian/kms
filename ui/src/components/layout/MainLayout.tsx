@@ -133,14 +133,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                 </Button>
                             </Link>
                         )}
-                        {authMethod === "JWT" || authMethod === "AUTH_VERIFIER" ? (
+                        {authMethod === "JWT" || authMethod === "AUTH_VERIFIER" || authMethod === "SPIFFE" ? (
                             <div className="flex justify-center items-center h-full overflow-hidden ml-4">
                                 {userId && (
                                     <Tag className="truncate text-sm leading-tight" color="purple" data-testid="session-user-tag">
                                         {userId}
                                     </Tag>
                                 )}
-                                <Button onClick={handleLogout} className="w-18 ml-4" data-testid="logout-btn">
+                                <Button onClick={handleLogout} className="ml-4 whitespace-nowrap" data-testid="logout-btn">
                                     {t("main.logout")}
                                 </Button>
                             </div>
@@ -152,8 +152,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                     </Tag>
                                 )}
                                 {onCertLogout && (
-                                    <Button onClick={onCertLogout} className="w-18 ml-4" data-testid="logout-btn">
-                                        Logout
+                                    <Button onClick={onCertLogout} className="ml-4 whitespace-nowrap" data-testid="logout-btn">
+                                        {t("main.logout")}
                                     </Button>
                                 )}
                             </div>

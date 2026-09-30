@@ -883,6 +883,7 @@ async fn test_google_cse_custom_jwt() -> KResult<()> {
             jwt_issuer_uri: kacls_url.to_owned(),
             jwt_audience: Some(vec!["kacls-migration".to_owned()]),
             jwks: Arc::new(jwks_manager),
+            accept_spiffe_subject: false,
         }]),
         authorization: HashMap::new(),
     };
@@ -974,6 +975,7 @@ async fn test_google_cse_custom_jwt_multi_audience_match() -> KResult<()> {
             jwt_issuer_uri: kacls_url.to_owned(),
             jwt_audience: Some(vec!["wrong-aud".to_owned(), "kacls-migration".to_owned()]),
             jwks: Arc::new(jwks_manager),
+            accept_spiffe_subject: false,
         }]),
         authorization: HashMap::new(),
     };
@@ -1063,6 +1065,7 @@ async fn test_google_cse_custom_jwt_multi_audience_nomatch() -> KResult<()> {
             jwt_issuer_uri: kacls_url.to_owned(),
             jwt_audience: Some(vec!["wrong1".to_owned(), "wrong2".to_owned()]),
             jwks: Arc::new(jwks_manager),
+            accept_spiffe_subject: false,
         }]),
         authorization: HashMap::new(),
     };

@@ -126,13 +126,14 @@ Never assume `common.sh` is already loaded; always guard the source.
 
 | Library | What it provides |
 |---|---|
-| `.mise/lib/common.sh` | Colors, `print_*`, `kms_init_env`, `require_cmd`, `has_cmd`, `has_env_vars`, `docker_ready`, `get_repo_root`, `setup_test_logging`, `run_isolated`, `wait_for_port`, `compute_sha256`, `build_test_deps`, `run_db_tests`, `setup_db_env`, `check_and_test_db`, `kms_wait_ready`, `pkcs11_check_warnings` |
+| `.mise/lib/common.sh` | Colors, `print_*`, `kms_init_env`, `require_cmd`, `has_cmd`, `has_env_vars`, `docker_ready`, `get_repo_root`, `setup_test_logging`, `run_isolated`, `ensure_pnpm_v10`, `wait_for_port`, `compute_sha256`, `build_test_deps`, `run_db_tests`, `setup_db_env`, `check_and_test_db`, `kms_wait_ready`, `pkcs11_check_warnings` |
 | `.mise/lib/kms_build.sh` | `kms_build_server`, `kms_build_cli`, `kms_build_all`, `get_kms_bin`, `get_ckms_bin`, `get_cargo_target_dir` |
 | `.mise/lib/kms_server.sh` | `kms_write_config`, `kms_start`, `kms_start_from_bin`, `kms_stop`, `kms_write_ckms_conf` + globals `KMS_PID`, `KMS_URL`, `KMS_PORT` |
 | `.mise/lib/pkcs11_helpers.sh` | PKCS#11 slot and object helpers |
 | `.mise/lib/nix_helpers.sh` | Nix shell invocation, hash lookup |
 | `.mise/lib/package_build.sh` | Deb/RPM build helpers |
 | `.mise/lib/package_smoke.sh` | Smoke-test helpers for packages |
+| `.mise/lib/spire_test.sh` | SPIRE suite helpers: `spire_listener_pids`, `spire_port_listening`, `spire_wait_port_closed`, `spire_stop_port`, `spire_reset_state`, `spire_ensure_certs`, `spire_build_auth_verifier` |
 | `.mise/lib/softhsm2.sh` | SoftHSM2 token init/teardown |
 | `.mise/lib/k8s.sh` | Kubernetes helpers (helm, kubectl) |
 | `.mise/lib/bench_helpers.sh` | Benchmark setup helpers |

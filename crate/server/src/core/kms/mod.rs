@@ -241,15 +241,20 @@ impl KMS {
         //
         // This ensures the metric starts at the correct absolute value rather
         // than 0.  Without this seed, the gauge would only reach the right count
-        // after the first periodic cron sync (up to 30 s later), giving a
-        // misleading reading immediately after server restart.
-        if let Some(ref m) = metrics {
+        // after the first periodic cron sync (within one `metrics_count_interval_secs`
+        // period), giving a misleading reading immediately after server restart.
+        // Skipped when `metrics_count_interval_secs == 0` (COUNT queries disabled).
+        if let Some(m) = metrics
+            .as_ref()
+            .filter(|_| server_params.metrics_count_interval_secs > 0)
+        {
             match database.count_all_non_destroyed_objects().await {
                 Ok(count) => {
                     m.update_objects_total(i64::try_from(count).unwrap_or(i64::MAX));
                 }
                 Err(e) => {
-                    // Non-fatal: the cron will correct the value within 30 s.
+                    // Non-fatal: the cron will correct the value within one
+                    // `metrics_count_interval_secs` period.
                     cosmian_logger::debug!("[kms-init] Failed to seed kms.objects.total: {e}");
                 }
             }
@@ -259,7 +264,8 @@ impl KMS {
                     m.update_active_keys_count(i64::try_from(count).unwrap_or(i64::MAX));
                 }
                 Err(e) => {
-                    // Non-fatal: the cron will correct the value within 30 s, but a
+                    // Non-fatal: the cron will correct the value within one
+                    // `metrics_count_interval_secs` period, but a
                     // persistently failing query (e.g. a backend-specific SQL bug)
                     // should be visible without enabling debug logging.
                     cosmian_logger::warn!("[kms-init] Failed to seed kms.keys.active.count: {e}");
