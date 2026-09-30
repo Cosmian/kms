@@ -74,6 +74,7 @@ mod tests {
             "create-audit-revoke-mutations",
             "select-audit-schema-columns",
             "select-audit-advisory-lock",
+            "lock-audit-schema-bootstrap",
             "insert-audit-event",
             "select-audit-latest-generation",
             "select-audit-generations",

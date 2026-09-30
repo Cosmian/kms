@@ -264,30 +264,24 @@ impl PgAuditSink {
     /// bootstraps a fresh table and self-heals a table missing a column or trigger added
     /// by a later KMS version.
     ///
-    /// The whole bundle runs in one transaction, opened with `acquire-audit-schema-lock`
-    /// (`pg_advisory_xact_lock`, auto-released on commit/rollback): without it, two
-    /// instances calling this concurrently (e.g. two pods starting together with
-    /// different `instance_id`s — the per-instance advisory lock above doesn't cover
-    /// this) can interleave DROP/CREATE TRIGGER pairs and hit "tuple concurrently
-    /// updated", or run for a moment with the append-only guard absent.
+    /// The bundle runs in one transaction behind a transaction-scoped advisory lock, so
+    /// KMS instances booting at the same moment apply it one at a time instead of racing
+    /// on the same catalog objects, and no other session ever observes a guard trigger
+    /// between its `DROP` and its re-`CREATE`.
     ///
-    /// A hardened production deployment whose KMS role has only `INSERT`/`SELECT` on a
-    /// table owned by someone else gets a permission-denied error here (`SQLSTATE 42501`)
-    /// — expected, not fatal: the transaction is rolled back and this falls back to a
-    /// read-only check that every required column is present, trusting the documented
-    /// setup SQL to have configured triggers/constraints correctly.
+    /// A hardened production deployment whose KMS role has only `SELECT`/`INSERT` on
+    /// `kms_audit_events` and `SELECT`/`INSERT`/`UPDATE` on `kms_audit_control`, both owned
+    /// by someone else, gets a permission-denied error here (`SQLSTATE 42501`) — expected,
+    /// not fatal: falls back to a read-only check that every required column is present,
+    /// trusting the documented setup SQL to have configured triggers/constraints correctly.
     ///
     /// # Errors
     /// Returns an error if a non-permission DDL failure occurs, or if the read-only
     /// fallback check finds a required column missing.
     async fn ensure_schema(pool: &Pool) -> DbResult<()> {
-        let mut client = pool.get().await.map_err(DbError::from)?;
-        let tx = client.transaction().await.map_err(DbError::from)?;
-        tx.batch_execute(get_audit_query!("acquire-audit-schema-lock"))
-            .await
-            .map_err(DbError::from)?;
-
-        for name in [
+        let statements = [
+            // Must stay first: every DDL statement below runs under this lock.
+            "lock-audit-schema-bootstrap",
             "create-table-audit-events",
             "create-index-audit-events-timestamp",
             "create-audit-control-table",
@@ -302,27 +296,40 @@ impl PgAuditSink {
             "create-audit-trigger-no-insert-sealed",
             "create-audit-trigger-no-insert-sealed-create",
             "create-audit-revoke-mutations",
-        ] {
-            let sql = AUDIT_QUERIES
+        ]
+        .into_iter()
+        .map(|name| {
+            AUDIT_QUERIES
                 .get(name)
-                .ok_or_else(|| db_error!("{} SQL query can't be found", name))?;
-            if let Err(e) = tx.batch_execute(sql).await {
-                if e.as_db_error()
-                    .is_some_and(|db| *db.code() == SqlState::INSUFFICIENT_PRIVILEGE)
-                {
-                    // The transaction is poisoned by the failed statement: drop it
-                    // (rolls back and releases the advisory lock) before falling back
-                    // to a read-only check on a fresh connection.
-                    drop(tx);
-                    drop(client);
-                    let client = pool.get().await.map_err(DbError::from)?;
-                    return Self::verify_schema_columns(&client).await;
-                }
-                return Err(DbError::from(e));
-            }
-        }
+                .map(String::as_str)
+                .ok_or_else(|| db_error!("{} SQL query can't be found", name))
+        })
+        .collect::<DbResult<Vec<&str>>>()?;
 
-        tx.commit().await.map_err(DbError::from)?;
+        let mut client = pool.get().await.map_err(DbError::from)?;
+        let tx = client.transaction().await.map_err(DbError::from)?;
+        match Self::apply_schema_ddl(&tx, &statements).await {
+            Ok(()) => tx.commit().await.map_err(DbError::from),
+            Err(e)
+                if e.as_db_error()
+                    .is_some_and(|db| *db.code() == SqlState::INSUFFICIENT_PRIVILEGE) =>
+            {
+                tx.rollback().await.map_err(DbError::from)?;
+                Self::verify_schema_columns(&client).await
+            }
+            Err(e) => Err(DbError::from(e)),
+        }
+    }
+
+    /// Runs `statements` in order on `tx`, stopping at the first failure. Returns the raw
+    /// `tokio_postgres` error so [`Self::ensure_schema`] can match its `SqlState`.
+    async fn apply_schema_ddl(
+        tx: &deadpool_postgres::Transaction<'_>,
+        statements: &[&str],
+    ) -> Result<(), tokio_postgres::Error> {
+        for sql in statements {
+            tx.batch_execute(sql).await?;
+        }
         Ok(())
     }
 
@@ -1604,15 +1611,17 @@ mod live_tests {
     }
 
     /// Simulates a hardened production deployment where the KMS role has only
-    /// `INSERT`/`SELECT` on a table owned by someone else: `ensure_schema`'s DDL bundle
-    /// must fail with `SQLSTATE 42501` and fall back to the read-only column check
-    /// instead of aborting `connect()`.
+    /// `SELECT`/`INSERT` on `kms_audit_events` and `SELECT`/`INSERT`/`UPDATE` on
+    /// `kms_audit_control`, both owned by someone else: `ensure_schema`'s DDL bundle must
+    /// fail with `SQLSTATE 42501` and fall back to the read-only column check instead of
+    /// aborting `connect()`.
     ///
     /// Requires a companion role `kms_audit_writer` (password `writer_pw`) granted only
-    /// `INSERT, SELECT` on `kms_audit_events` — set up by the documented production audit
-    /// setup SQL, or manually for this test:
-    /// `CREATE ROLE kms_audit_writer LOGIN PASSWORD 'writer_pw'; GRANT INSERT, SELECT ON
-    /// kms_audit_events TO kms_audit_writer;`
+    /// that set — set up by the documented production audit setup SQL, or manually for
+    /// this test:
+    /// `CREATE ROLE kms_audit_writer LOGIN PASSWORD 'writer_pw'; GRANT SELECT, INSERT ON
+    /// kms_audit_events TO kms_audit_writer; GRANT SELECT, INSERT, UPDATE ON
+    /// kms_audit_control TO kms_audit_writer;`
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance and a pre-provisioned restricted \
                 kms_audit_writer role (see doc comment)"]
@@ -1689,16 +1698,13 @@ mod live_tests {
         .get(0)
     }
 
-    /// MEASUREMENT ONLY, not a correctness guarantee: several KMS instances can start at
-    /// the same moment against a brand-new, schema-less database. `ensure_schema()` reruns
-    /// its full DDL bundle on every `connect()`, and concurrent DDL against the same
-    /// objects is a documented `PostgreSQL` race (`tuple concurrently updated`); this test
-    /// exists to observe whether that race is actually hit in practice, not to assert it
-    /// never is. See `.mise/tasks/test/psql`'s `--test-threads=1` comment for the same
-    /// concern in this test suite's own execution.
+    /// Regression test for the `ensure_schema()` bootstrap race: several KMS instances
+    /// can start at the same moment against a brand-new, schema-less database. Before the
+    /// `lock-audit-schema-bootstrap` advisory lock, this reproducibly failed most runs
+    /// with concurrent-DDL errors (`tuple concurrently updated`, `42710`, `40P01`); the
+    /// lock now serializes the DDL bundle so every instance's `connect()` succeeds.
     #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL); \
-                MEASUREMENT ONLY — concurrent bootstrap DDL is a known race, see doc comment"]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
     async fn pg_audit_concurrent_startup_on_empty_database() {
         const N: usize = 8;
 
@@ -1741,14 +1747,12 @@ mod live_tests {
         );
     }
 
-    /// MEASUREMENT ONLY (see the sibling empty-database test's doc comment for why): new
+    /// Regression test for the same fix (see the sibling empty-database test): new
     /// instances starting at the same moment while another instance is already writing
-    /// steadily — the schema already exists here, so this measures whether a live writer
-    /// is disrupted by other instances' bootstrap re-run of the DDL bundle, not the
-    /// initial-creation race the other test targets.
+    /// steadily — the schema already exists here, so this proves a live writer is never
+    /// disrupted by other instances' bootstrap re-run of the DDL bundle.
     #[tokio::test(flavor = "multi_thread", worker_threads = 9)]
-    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL); \
-                MEASUREMENT ONLY — concurrent bootstrap DDL is a known race, see doc comment"]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
     async fn pg_audit_concurrent_startup_with_active_writer() {
         const N: usize = 8;
         const ACTIVE_WRITES: i64 = 200;
