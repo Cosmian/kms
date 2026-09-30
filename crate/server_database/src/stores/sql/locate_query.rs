@@ -486,7 +486,12 @@ fn select_from_objects<P: PlaceholderTrait>(
          FROM objects"
     );
     if let Some(attributes) = attributes {
-        for (i, tag) in attributes.get_tags(vendor_id).into_iter().enumerate() {
+        // `get_tags` returns a `HashSet`: sort the tags so that the same search
+        // always yields the same SQL text, which keeps prepared-statement caches
+        // (e.g. SQLite `prepare_cached`) effective and query logs comparable.
+        let mut tags: Vec<String> = attributes.get_tags(vendor_id).into_iter().collect();
+        tags.sort_unstable();
+        for (i, tag) in tags.into_iter().enumerate() {
             let tag = qb.bind_text(tag);
             let _ = write!(
                 query,
@@ -706,7 +711,9 @@ mod tests {
     use cosmian_kmip::kmip_2_1::{extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes};
     use cosmian_kms_interfaces::FindOptions;
 
-    use super::{MySqlPlaceholder, PgSqlPlaceholder, SqlitePlaceholder, query_from_attributes};
+    use super::{
+        LocateParam, MySqlPlaceholder, PgSqlPlaceholder, SqlitePlaceholder, query_from_attributes,
+    };
 
     fn tagged_attributes() -> Attributes {
         let mut attributes = Attributes::default();
@@ -752,6 +759,31 @@ mod tests {
         );
         assert!(!query.sql.contains("LIMIT"), "{}", query.sql);
         assert!(!query.sql.contains("NOT IN"), "{}", query.sql);
+    }
+
+    #[test]
+    fn tag_joins_are_bound_in_sorted_order() {
+        let query = query_from_attributes::<PgSqlPlaceholder>(
+            Some(&tagged_attributes()),
+            None,
+            "alice",
+            false,
+            VENDOR_ID_COSMIAN,
+            &FindOptions::default(),
+        );
+        // Tags are bound first (t0, t1, …), in sorted order whatever the
+        // iteration order of the tag set.
+        assert_eq!(
+            query.params.get(..2),
+            Some(
+                &[
+                    LocateParam::Text("a".to_owned()),
+                    LocateParam::Text("b".to_owned())
+                ][..]
+            ),
+            "{}",
+            query.sql
+        );
     }
 
     #[test]

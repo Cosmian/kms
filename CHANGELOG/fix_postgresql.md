@@ -47,7 +47,9 @@ planner starts from the rarest tag and probes `UNIQUE (id, tag)` for the
 others), the owner/grant check is an `EXISTS` probe of `read_access` instead of
 a `LEFT JOIN` plus `DISTINCT`, and the `Locate` path pushes the
 `MaximumItems`/server cap (`LIMIT`) and the destroyed-object exclusion into the
-query so the database stops after the requested page.
+query so the database stops after the requested page. The searched tags are
+joined in sorted order so that the same search always produces the same SQL
+text (prepared-statement cache reuse on SQLite).
 
 ## Features
 
@@ -56,4 +58,6 @@ query so the database stops after the requested page.
 - Add `metrics_count_interval_secs` server setting (`--metrics-count-interval-secs`,
   default 30) controlling how often the `kms.objects.total` and
   `kms.keys.active.count` metrics are refreshed from full COUNT queries; `0`
-  disables both the startup seed and the periodic refresh.
+  disables both the startup seed and the periodic refresh. The option is
+  documented in `resources/kms.toml`, `crate/server/kms_template.toml` and
+  `pkg/kms.toml`.
