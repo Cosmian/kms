@@ -658,6 +658,10 @@ cryptoki_fn!(
             } else {
                 &mut []
             };
+            // PKCS#11 §5.7: process every attribute, then report CKR_BUFFER_TOO_SMALL if
+            // any caller buffer was too small (its ulValueLen is set to
+            // CK_UNAVAILABLE_INFORMATION and nothing is written to it).
+            let mut buffer_too_small = false;
             for attribute in template.iter_mut() {
                 let type_: AttributeType = attribute.type_.try_into().map_err(|e| {
                     let attribute_type = attribute.type_;
@@ -678,20 +682,31 @@ cryptoki_fn!(
                 );
                 if let Some(value) = object.attribute(type_)? {
                     let value = value.as_raw_value();
-                    attribute.ulValueLen = value.len() as CK_ULONG;
                     if attribute.pValue.is_null() {
+                        // Size query: report the required length only.
+                        attribute.ulValueLen = value.len() as CK_ULONG;
                         continue;
                     }
+                    // Compare against the caller's buffer size *before* overwriting
+                    // ulValueLen, otherwise the check is vacuous and we overflow pValue.
                     if (usize::try_from(attribute.ulValueLen)?) < value.len() {
+                        attribute.ulValueLen = CK_UNAVAILABLE_INFORMATION;
+                        buffer_too_small = true;
                         continue;
                     }
+                    // SAFETY: pValue is non-null and the caller declared (via ulValueLen)
+                    // a buffer of at least value.len() bytes.
                     unsafe {
                         slice::from_raw_parts_mut(attribute.pValue.cast::<u8>(), value.len())
                     }
                     .copy_from_slice(&value);
+                    attribute.ulValueLen = value.len() as CK_ULONG;
                 } else {
                     attribute.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                 }
+            }
+            if buffer_too_small {
+                return Err(ModuleError::BufferTooSmall);
             }
             Ok(())
         })
@@ -1284,6 +1299,7 @@ cryptoki_fn!(
         valid_session!(hSession);
         not_null!(pMechanism, "C_GenerateKey: pMechanism");
         not_null!(pTemplate, "C_GenerateKey: pTemplate");
+        not_null!(phKey, "C_GenerateKey: phKey");
 
         debug!(
             "C_GenerateKey: session: {hSession:?}, pMechanism: {pMechanism:?}, pTemplate: \
