@@ -8,6 +8,7 @@ use cosmian_kms_client_utils::{
     certificate_utils::{Algorithm, build_certify_request, build_re_certify_request},
     configurable_kem_utils::{KemAlgorithm, build_create_configurable_kem_keypair_request},
     cover_crypt_utils::{
+        CoverCryptEncryptionHint, CoverCryptRekeyAction, build_covercrypt_rekey_keypair_request,
         build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
     },
     create_utils::{Curve, SymmetricAlgorithm, prepare_sym_key_elements},
@@ -1849,6 +1850,139 @@ pub fn decrypt_cc_ttlv_request(
         }),
     );
     to_wasm_ttlv(&request)
+}
+
+// Covercrypt master key edits — `ReKeyKeyPair` requests carrying a Covercrypt action, one
+// per `ckms cc` command (`keys rekey`/`prune`, `access-structure add-attribute`/…/
+// `add-dimension`). Their response parses with `parse_rekey_keypair_ttlv_response`. A
+// qualified attribute is written `"Dimension::name"`; an encryption hint is `Classic`,
+// `PostQuantum` or `Hybridized`.
+
+fn cc_rekey_ttlv_request(
+    master_secret_key_id: &str,
+    action: &CoverCryptRekeyAction,
+) -> Result<JsValue, JsValue> {
+    let request =
+        build_covercrypt_rekey_keypair_request(&get_vendor_id(), master_secret_key_id, action)
+            .map_err(|e| JsValue::from_str(&format!("Covercrypt re-key request failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+fn cc_encryption_hint(encryption_hint: &str) -> Result<CoverCryptEncryptionHint, JsValue> {
+    CoverCryptEncryptionHint::from_str(encryption_hint)
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// Renew the master secrets of every right `access_policy` covers — user keys are then
+/// refreshed by the server (`ckms cc keys rekey`).
+#[wasm_bindgen]
+pub fn rekey_cc_access_policy_ttlv_request(
+    master_secret_key_id: &str,
+    access_policy: String,
+) -> Result<JsValue, JsValue> {
+    cc_rekey_ttlv_request(
+        master_secret_key_id,
+        &CoverCryptRekeyAction::RekeyAccessPolicy(access_policy),
+    )
+}
+
+/// Remove all but the latest master secret of every right `access_policy` covers
+/// (`ckms cc keys prune`).
+#[wasm_bindgen]
+pub fn prune_cc_access_policy_ttlv_request(
+    master_secret_key_id: &str,
+    access_policy: String,
+) -> Result<JsValue, JsValue> {
+    cc_rekey_ttlv_request(
+        master_secret_key_id,
+        &CoverCryptRekeyAction::PruneAccessPolicy(access_policy),
+    )
+}
+
+/// Add `attribute` (`"Dimension::name"`) to an existing dimension — in a hierarchical one,
+/// ranked right above the existing attribute named `after` (`None`: at the very bottom)
+/// (`ckms cc access-structure add-attribute`).
+#[wasm_bindgen]
+pub fn add_cc_attribute_ttlv_request(
+    master_secret_key_id: &str,
+    attribute: String,
+    encryption_hint: &str,
+    after: Option<String>,
+) -> Result<JsValue, JsValue> {
+    cc_rekey_ttlv_request(
+        master_secret_key_id,
+        &CoverCryptRekeyAction::AddAttribute(vec![(
+            attribute,
+            cc_encryption_hint(encryption_hint)?,
+            none_if_empty(after),
+        )]),
+    )
+}
+
+/// Rename `attribute` (`"Dimension::name"`) to `new_name` (unqualified)
+/// (`ckms cc access-structure rename-attribute`).
+#[wasm_bindgen]
+pub fn rename_cc_attribute_ttlv_request(
+    master_secret_key_id: &str,
+    attribute: String,
+    new_name: String,
+) -> Result<JsValue, JsValue> {
+    cc_rekey_ttlv_request(
+        master_secret_key_id,
+        &CoverCryptRekeyAction::RenameAttribute(vec![(attribute, new_name)]),
+    )
+}
+
+/// Stop encrypting under `attribute` (`"Dimension::name"`) — existing ciphertexts still
+/// decrypt (`ckms cc access-structure disable-attribute`).
+#[wasm_bindgen]
+pub fn disable_cc_attribute_ttlv_request(
+    master_secret_key_id: &str,
+    attribute: String,
+) -> Result<JsValue, JsValue> {
+    cc_rekey_ttlv_request(
+        master_secret_key_id,
+        &CoverCryptRekeyAction::DisableAttribute(vec![attribute]),
+    )
+}
+
+/// Remove `attribute` (`"Dimension::name"`) from the access structure
+/// (`ckms cc access-structure remove-attribute`).
+#[wasm_bindgen]
+pub fn remove_cc_attribute_ttlv_request(
+    master_secret_key_id: &str,
+    attribute: String,
+) -> Result<JsValue, JsValue> {
+    cc_rekey_ttlv_request(
+        master_secret_key_id,
+        &CoverCryptRekeyAction::DeleteAttribute(vec![attribute]),
+    )
+}
+
+/// Add a new dimension named `dimension` with `attributes` (unqualified names, lowest first
+/// if `hierarchical`), all with `encryption_hint` (`ckms cc access-structure add-dimension`).
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn add_cc_dimension_ttlv_request(
+    master_secret_key_id: &str,
+    dimension: String,
+    attributes: Vec<String>,
+    encryption_hint: &str,
+    hierarchical: bool,
+) -> Result<JsValue, JsValue> {
+    let hint = cc_encryption_hint(encryption_hint)?;
+    let attributes = attributes
+        .iter()
+        .map(|name| (format!("{dimension}::{name}"), hint))
+        .collect();
+    cc_rekey_ttlv_request(
+        master_secret_key_id,
+        &if hierarchical {
+            CoverCryptRekeyAction::AddHierarchy(dimension, attributes)
+        } else {
+            CoverCryptRekeyAction::AddAnarchy(dimension, attributes)
+        },
+    )
 }
 
 // Certificate requests
