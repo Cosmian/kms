@@ -2,8 +2,9 @@
 name: Nightly Packaging
 
 # Triggered nightly (schedule), manually, on tag pushes, or on push to
-# develop/main.  Bot commits from nix-update-hashes.yml carry [skip ci] so
-# they do NOT re-trigger this workflow.
+# develop/main.  Bot commits from nix-update-hashes.yml and
+# update-log-index.yml carry [skip ci] so they do NOT re-trigger this
+# workflow.
 
 on:
   push:
@@ -21,7 +22,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   # Non-tag refs (branches, schedule, workflow_dispatch):
   #   1. Recompute Nix vendor hashes on the current branch and commit them.
-  #   2. Dispatch packaging.yml once both platform jobs have finished.
+  #   2. Sync log-reference.md with source call-sites and commit it.
+  #   3. Dispatch packaging.yml once both hash-update platform jobs have finished.
   #
   # Packaging is triggered by nix-update-hashes.yml (trigger_packaging=true)
   # so this workflow does NOT call packaging.yml directly for the branch case.
@@ -32,6 +34,17 @@ jobs:
     with:
       ref: ${{ github.ref_name }}
       trigger_packaging: true
+    secrets: inherit
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Non-tag refs only: sync log-reference.md with source call-sites and
+  # commit the result (tag refs are already in sync via release.yml).
+  # ─────────────────────────────────────────────────────────────────────────
+  update-log-index:
+    if: "!startsWith(github.ref, 'refs/tags/')"
+    uses: ./.github/workflows/update-log-index.yml
+    with:
+      ref: ${{ github.ref_name }}
     secrets: inherit
 
   # ─────────────────────────────────────────────────────────────────────────
