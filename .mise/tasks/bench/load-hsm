@@ -1,5 +1,5 @@
 #!/usr/bin/env -S usage bash
-#MISE description="Run load-test benchmark with a SoftHSM2-backed KEK (default) or with crypto operations delegated directly to the HSM (--delegated)"
+#MISE description="Run load-test benchmark with an HSM-backed KEK (default, SoftHSM2) or with crypto operations delegated directly to the HSM (--delegated, --hsm-model)"
 #USAGE flag "-v --variant <v>"      env="BENCH_VARIANT"       default="non-fips"       help="FIPS variant"                              { choices "fips" "non-fips" }
 #USAGE flag "-l --link <l>"         env="BENCH_LINK"          default="static"          help="Linkage type"                              { choices "static" "dynamic" }
 #USAGE flag "-r --release"          env="BENCH_RELEASE"       default="true"            help="Build in release mode"
@@ -15,6 +15,7 @@
 #USAGE flag "-d --delegated"        env="BENCH_DELEGATED"                               help="Benchmark crypto operations executed DIRECTLY on the HSM (CryptoOracle), instead of a software KEK-wrap. See task docs below for the difference."
 #USAGE flag "--criterion"           env="BENCH_CRITERION"                               help="Also run Criterion micro-benchmarks before/alongside the load sweep"
 #USAGE flag "--speed <speed>"       env="BENCH_SPEED"         default="quick"           help="Criterion speed preset (with --criterion)" { choices "quick" "normal" "sanity" }
+#USAGE flag "--hsm-model <m>"        env="BENCH_HSM_MODEL"     default="softhsm2"        help="HSM model for delegated benchmarking (KEK-wrap mode is SoftHSM2-only)" { choices "softhsm2" "kryoptic" "proteccio" "crypt2pay" "utimaco" "aws_cloudhsm" }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
@@ -58,6 +59,7 @@ BENCH_SANITY="${usage_sanity:-}"
 BENCH_DELEGATED="${usage_delegated:-}"
 BENCH_CRITERION="${usage_criterion:-}"
 BENCH_SPEED="${usage_speed:-quick}"
+BENCH_HSM_MODEL="${usage_hsm_model:-softhsm2}"
 
 kms_init_env "${BENCH_VARIANT}" "${BENCH_LINK}"
 if [ "${BENCH_DELEGATED}" = "true" ]; then
@@ -65,6 +67,14 @@ if [ "${BENCH_DELEGATED}" = "true" ]; then
 else
   print_header "Running load benchmark with HSM-backed KEK (${VARIANT_NAME})"
 fi
+if [ "${BENCH_DELEGATED}" != "true" ] && [ "${BENCH_HSM_MODEL}" != "softhsm2" ]; then
+  echo "ERROR: --hsm-model ${BENCH_HSM_MODEL} requires --delegated." >&2
+  echo "       The KEK-wrap mode (no --delegated) is SoftHSM2-only: it creates a" >&2
+  echo "       local SoftHSM2 token and key_encryption_key. Use --delegated to" >&2
+  echo "       benchmark crypto operations directly on ${BENCH_HSM_MODEL}." >&2
+  exit 1
+fi
+
 if [ -n "${BENCH_SERVER_URL}" ]; then
   echo "ERROR: --server-url is not supported by bench:load-hsm." >&2
   echo "       This task always creates and owns its own local SoftHSM2 token, KEK," >&2
@@ -160,6 +170,12 @@ fi
 # afterward (the load JSON format is one-object-per-line, so concatenation is
 # a valid merge). Single-mode runs (`--mode encrypt`, etc.) already only ever
 # touch one fresh token and need no such isolation.
+# Prepare the host for the selected HSM model: SoftHSM2 token setup, or for
+# proteccio/crypt2pay the library install + VPN/credentials (via
+# .github/reusable_scripts/prepare_*.sh and ~/.cosmian/<model>.sh). Must run
+# after bench_register_cleanup so any VPN it opens is torn down on exit.
+bench_prepare_hsm "${BENCH_HSM_MODEL}"
+
 run_hsm_load() {
   local port="$1" sub_mode="$2" concurrency="$3"
   "${CKMS_BIN}" \
@@ -191,7 +207,7 @@ run_hsm_criterion() {
     --cooldown-time "${BENCH_COOLDOWN}"
 }
 
-if [ "${BENCH_MODE}" = "all" ]; then
+if [ "${BENCH_MODE}" = "all" ] && [ "${BENCH_HSM_MODEL}" = "softhsm2" ]; then
   echo "-------------------------------------------------------------------------------"
   echo "--delegated --mode all: running key-creation, encrypt, and sign-verify as three"
   echo "separate SoftHSM2 sessions (each with its own fresh token), then merging the"
@@ -253,6 +269,17 @@ if [ "${BENCH_MODE}" = "all" ]; then
   done
 
   BENCH_PORT="${LAST_PORT}"
+elif [ "${BENCH_MODE}" = "all" ]; then
+  # Non-SoftHSM2 delegated "all": one server for every submode (the per-submode
+  # fresh-token isolation above is a SoftHSM2-specific workaround and does not
+  # apply to real HSMs). Keys accumulate on the HSM token across submodes, which
+  # is the expected behaviour for a single persistent token.
+  BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+  bench_start_server_hsm_resident "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}"
+  for SUB_MODE in key-creation encrypt sign-verify; do
+    run_hsm_load "${BENCH_PORT}" "${SUB_MODE}" "${BENCH_CONCURRENCY}"
+    [ "${BENCH_CRITERION}" = "true" ] && run_hsm_criterion "${BENCH_PORT}" "${SUB_MODE}"
+  done
 else
   # SoftHSM2 concurrency caveat still applies to a standalone key-creation
   # run at high concurrency (see comment block above) — warn instead of
@@ -275,7 +302,7 @@ else
   # hsm::<slot>:: keys are created directly ON the HSM and Encrypt/Sign
   # against them execute via the HSM's CryptoOracle (PKCS#11), unlike the
   # default (non-delegated) mode above, which only wraps a software KEK.
-  bench_start_server_hsm_resident "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}"
+  bench_start_server_hsm_resident "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}"
 
   run_hsm_load "${BENCH_PORT}" "${BENCH_MODE}" "${BENCH_CONCURRENCY}"
 
