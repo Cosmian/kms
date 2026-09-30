@@ -17,6 +17,30 @@ attributes rather than the KMS database.
 
 ---
 
+## Why label HSM keys?
+
+A PKCS#11 object exposes only a small, fixed set of attributes
+(`CKA_CLASS`, `CKA_KEY_TYPE`, `CKA_ID`, `CKA_LABEL`, `CKA_START_DATE`,
+`CKA_END_DATE`, …). None of them can hold free-form metadata, so an HSM key
+cannot store KMIP concepts such as *"which keyset do I belong to"* or *"which
+generation am I"* in a dedicated field.
+
+`CKA_LABEL` is the only freely-writable text attribute, subject to a
+token-specific maximum length (e.g. 128 bytes on Proteccio). The KMS therefore
+encodes everything it needs to know about an HSM key into that single field:
+
+- **tags**, so clients can discover keys with `Locate` — see
+  [HSM key labeling & tagging](../../hsm_support/tagging.md);
+- **keyset membership and generation**, so a bare key can be rotated and its
+  generations ordered — the subject of this page.
+
+Without a label an HSM key is an opaque blob: the KMS cannot tell its logical
+name, which keyset (if any) it belongs to, or which generation is current.
+Encoding that metadata in `CKA_LABEL` keeps it self-contained on the token,
+with no SQL shadow rows and no external registry.
+
+---
+
 ## CKA_LABEL convention
 
 HSM keyset metadata is stored entirely in the PKCS#11 `CKA_LABEL` attribute —
