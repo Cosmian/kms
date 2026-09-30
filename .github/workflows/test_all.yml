@@ -206,7 +206,10 @@ jobs:
   test-nix-upstream:
     name: Test on ${{ matrix.type }} - ${{ matrix.features }}
     runs-on: ubuntu-latest
-    if: github.repository == 'Cosmian/kms'
+    if: >-
+      github.repository == 'Cosmian/kms' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
     strategy:
       fail-fast: false
       matrix:
@@ -306,7 +309,10 @@ jobs:
   hsm-upstream:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
     runs-on: ubuntu-latest
-    if: github.repository == 'Cosmian/kms'
+    if: >-
+      github.repository == 'Cosmian/kms' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
     # This hardware does not support concurrent connections from multiple CI runs: a fixed
     # group per HSM so only one job runs at a time across all PRs.
     concurrency:
@@ -366,6 +372,9 @@ jobs:
   helm:
     name: Helm chart E2E (minikube)
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v7
         with:
@@ -451,7 +460,10 @@ jobs:
 
   windows-2022:
     # Windows is slow: only run on PRs (catches regressions before merge) and tags (release gate).
-    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
+    if: >-
+      startsWith(github.ref, 'refs/tags/') ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     uses: ./.github/workflows/test_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
@@ -467,7 +479,10 @@ jobs:
       - helm
     # The upstream-only jobs are skipped on forks: a skipped dependency must not skip the
     # publish dry-run, but any failed or cancelled dependency still blocks it.
-    if: ${{ !failure() && !cancelled() }}
+    if: >-
+      !failure() && !cancelled() &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
     uses: ./.github/workflows/cargo-publish.yml
     with:
       toolchain: 1.97.0
@@ -477,6 +492,9 @@ jobs:
   cleanup:
     needs:
       - cargo-publish
-    if: always()
+    if: >-
+      always() &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
     uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
     secrets: inherit
