@@ -133,9 +133,12 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.archive-name }}-release
-          path: |
-            README.md
-            target/release/*.exe
+          # Single glob keeps target/release as the artifact root so the sign
+          # job's non-recursive filter finds the .exe files at the top level.
+          # Do not add other paths (e.g. README.md) here: upload-artifact
+          # would then use the repo root as base and nest files under
+          # target/release/, breaking the sign step (see PR #1101 regression).
+          path: target/release/*.exe
           retention-days: 1
           if-no-files-found: error
 
