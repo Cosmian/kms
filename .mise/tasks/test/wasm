@@ -80,26 +80,6 @@ if [ -f "${REPO_ROOT}/ui/src/wasm/pkg/package.json" ]; then
   "
 fi
 
-# Ensure pnpm >= 10 is available.
-# The nix-shell provides pnpm 9.x, but the lockfile (lockfileVersion 9.0) requires pnpm 10+.
-# Install pnpm 10.17.1 from npm into a temp dir and prepend to PATH.
-ensure_pnpm_v10() {
-  local pnpm_major
-  pnpm_major=$(pnpm --version 2>/dev/null | cut -d. -f1 || echo "0")
-  if [ "${pnpm_major}" -ge 10 ]; then
-    return 0
-  fi
-  if command -v npm >/dev/null 2>&1; then
-    local _pnpm_tmp
-    _pnpm_tmp="$(mktemp -d)"
-    npm install "pnpm@10.17.1" --prefix "${_pnpm_tmp}" --no-save --quiet >/dev/null 2>&1 || true
-    if [ -f "${_pnpm_tmp}/node_modules/.bin/pnpm" ]; then
-      export PATH="${_pnpm_tmp}/node_modules/.bin:${PATH}"
-      echo "Upgraded to pnpm $(pnpm --version)"
-    fi
-  fi
-}
-
 # 5. Run UI TypeScript check + unit tests (pnpm is in ui/, not in wasm crate)
 echo "Running UI unit tests..."
 (

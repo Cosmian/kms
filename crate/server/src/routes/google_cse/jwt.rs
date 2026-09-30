@@ -76,6 +76,7 @@ pub fn list_jwt_configurations(
             // calls `Validation::set_audience`, which makes jsonwebtoken 10.x accept
             // the token instead of rejecting it with InvalidAudience.
             jwt_audience: Some(vec!["kacls-migration".to_owned()]),
+            accept_spiffe_subject: false,
         })
         .collect::<Vec<_>>()
 }
@@ -105,6 +106,7 @@ fn jwt_authorization_config_application(
         jwt_issuer_uri,
         jwks: jwks_manager,
         jwt_audience,
+        accept_spiffe_subject: false,
     })
 }
 
@@ -635,6 +637,7 @@ mod tests {
             jwt_issuer_uri: issuer.to_owned(),
             jwks: jwks_manager,
             jwt_audience: Some(vec!["cse-authorization".to_owned()]),
+            accept_spiffe_subject: false,
         });
 
         let now = now_usize();
@@ -700,6 +703,7 @@ mod tests {
             jwt_issuer_uri: issuer.to_owned(),
             jwks: jwks_manager,
             jwt_audience: Some(vec!["cse-authorization".to_owned()]),
+            accept_spiffe_subject: false,
         });
 
         let now = now_usize();
@@ -736,6 +740,7 @@ mod tests {
             jwt_issuer_uri: issuer.to_owned(),
             jwks: jwks_manager,
             jwt_audience: None,
+            accept_spiffe_subject: false,
         });
 
         let now = now_usize();
@@ -773,6 +778,7 @@ mod tests {
             jwt_issuer_uri: expected_issuer.to_owned(),
             jwks: jwks_manager,
             jwt_audience: Some(vec!["cse-authorization".to_owned()]),
+            accept_spiffe_subject: false,
         });
 
         let now = now_usize();
@@ -824,6 +830,7 @@ mod tests {
             jwt_issuer_uri: kms_a_url.to_owned(),
             jwks: jwks_manager.clone(),
             jwt_audience: Some(vec!["kacls-migration".to_owned()]),
+            accept_spiffe_subject: false,
         };
 
         let cse_config = super::GoogleCseConfig {
@@ -878,6 +885,7 @@ mod tests {
             jwt_issuer_uri: kms_a_url.to_owned(),
             jwks: jwks_manager.clone(),
             jwt_audience: Some(vec!["kacls-migration".to_owned()]),
+            accept_spiffe_subject: false,
         };
 
         let cse_config = super::GoogleCseConfig {
@@ -947,6 +955,7 @@ mod tests {
                 "{},{},{}",
                 JWT_ISSUER_URI, JWKS_URI, client_id
             )]),
+            jwt_svid_auth: false,
         };
         let idp_configs = jwt_authentication_config
             .extract_idp_configs()
@@ -956,6 +965,7 @@ mod tests {
             jwt_issuer_uri: idp_configs[0].jwt_issuer_uri.clone(),
             jwks: jwks_manager.clone(),
             jwt_audience: idp_configs[0].jwt_audience.clone(),
+            accept_spiffe_subject: false,
         };
 
         let authentication_token = jwt_authentication_config

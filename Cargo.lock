@@ -1049,7 +1049,7 @@ dependencies = [
  "url",
  "uuid",
  "winresource",
- "x509-parser",
+ "x509-parser 0.17.0",
 ]
 
 [[package]]
@@ -1459,6 +1459,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "sha2 0.10.9",
+ "spiffe",
  "strum 0.27.2",
  "tempfile",
  "test_kms_server",
@@ -1579,7 +1580,7 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
- "x509-parser",
+ "x509-parser 0.17.0",
  "zeroize",
 ]
 
@@ -1741,7 +1742,7 @@ dependencies = [
  "uuid",
  "windows-service",
  "winresource",
- "x509-parser",
+ "x509-parser 0.17.0",
  "zeroize",
 ]
 
@@ -1777,7 +1778,7 @@ dependencies = [
  "tokio-rusqlite",
  "url",
  "uuid",
- "x509-parser",
+ "x509-parser 0.17.0",
  "zeroize",
 ]
 
@@ -6149,6 +6150,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "spiffe"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7d0a770f9a8571eb96f9c319b3b55dd7118e3047bd3629b894882506b9e8295"
+dependencies = [
+ "arc-swap",
+ "base64ct",
+ "fastrand",
+ "futures",
+ "hyper-util",
+ "pkcs8",
+ "prost 0.14.4",
+ "prost-types",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tonic 0.14.6",
+ "tonic-prost",
+ "tower 0.5.3",
+ "url",
+ "x509-parser 0.18.1",
+ "zeroize",
+]
+
+[[package]]
 name = "spin"
 version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6347,7 +6376,7 @@ dependencies = [
  "time",
  "tokio",
  "toml 0.9.12+spec-1.1.0",
- "x509-parser",
+ "x509-parser 0.17.0",
  "zeroize",
 ]
 
@@ -6753,6 +6782,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "bytes",
+ "h2 0.4.16",
  "http 1.5.0",
  "http-body",
  "http-body-util",
@@ -6761,6 +6791,7 @@ dependencies = [
  "hyper-util",
  "percent-encoding",
  "pin-project",
+ "socket2 0.6.5",
  "sync_wrapper",
  "tokio",
  "tokio-stream",
@@ -7690,6 +7721,23 @@ dependencies = [
  "nom",
  "oid-registry",
  "ring",
+ "rusticata-macros",
+ "thiserror 2.0.19",
+ "time",
+]
+
+[[package]]
+name = "x509-parser"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d43b0f71ce057da06bc0851b23ee24f3f86190b07203dd8f567d0b706a185202"
+dependencies = [
+ "asn1-rs",
+ "data-encoding",
+ "der-parser",
+ "lazy_static",
+ "nom",
+ "oid-registry",
  "rusticata-macros",
  "thiserror 2.0.19",
  "time",

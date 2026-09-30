@@ -56,9 +56,8 @@ Crate path: `crate/server`
 | `warn` | `Fetch JWKS: {e}` | `src/middlewares/jwt/jwks.rs` | `e`: caught error | - |
 | `warn` | `Socket server: connection failed: {e}` | `src/socket_server.rs` | `e`: caught error | - |
 | `warn` | `UI folder invalid or Linux default detected, falling back to: {fallback:#?}` | `src/config/params/server_params.rs` | `fallback`: fallback UI folder path | - |
-| `warn` | `{:?} {} 401 unauthorized, no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
 | `warn` | `{:?} {} 401 unauthorized: bad JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
-| `warn` | `{error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | - |
+| `warn` | `{error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | ×2 in this file |
 | `warn` | `{status_code} - {message}` | `src/routes/mod.rs` | `status_code`: HTTP status code<br>`message`: human-readable message text | - |
 | `warn` | `{status} - {}` | `src/routes/jose/error.rs` | `status`: HTTP response status | - |
 | `info` | `AUTHENTICATION token: {:?}` | `src/routes/google_cse/jwt.rs` | - | - |
@@ -746,10 +745,15 @@ Crate path: `crate/server`
 | `error` | `AuditFileStore: cannot acquire audit log lock {} ({e}) — retrying` | `src/core/audit/file_store.rs` | `e` | - |
 | `trace` | `Extractable: {:?}` | `src/core/operations/attributes/add.rs` | - | - |
 | `trace` | `Set Attribute: Extractable: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
+| `warn` | `no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | Emitted when a validated JWT has no email claim and `--jwt-svid-auth` is not enabled or sub is not a valid SPIFFE ID |
+| `debug` | `JWT-SVID access granted to {sub}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub`: SPIFFE ID (URI) from JWT sub claim | Workload authenticated via SPIFFE JWT-SVID with full URI mapped to KMS UserId |
 | `debug` | `DeriveKey asymmetric operation completed successfully` | `src/core/operations/derive_key.rs` | - | Emitted after a non-FIPS X25519 ECDH `DeriveKey` request has validated both referenced keys, derived the shared secret, and persisted the resulting `SecretData` object. |
 | `warn` | `[kms-init] Failed to seed kms.keys.active.count: {e}` | `src/core/kms/mod.rs` | `e` | - |
 | `warn` | `[metrics-cron] Failed to sync kms.keys.active.count: {}` | `src/cron.rs` | - | - |
 | `warn` | `JWK serialization failed uid={uid}: {e}` | `src/routes/jwks.rs` | `uid`: unique identifier of the key object being published in the JWKS; `e`: the `serde_json` serialization error | Emitted when a typed `Jwk` fails to serialize to JSON; the affected key is skipped and omitted from the JWKS `keys` array rather than emitting an invalid `null` entry. |
+| `warn` | `JWKS refresh failed while validating a JWT-SVID: {error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | JWKS endpoint unreachable |
+| `warn` | `JWT-SVID for {sub} rejected: missing or empty 'aud' claim` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub`: SPIFFE ID of the rejected SVID | Possible cross-service SVID replay attempt |
+| `warn` | `{:?} {} 401 unauthorized: {error}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error` | - |
 
 ### `cosmian_kms_server_database`
 

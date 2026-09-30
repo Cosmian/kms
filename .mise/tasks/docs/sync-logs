@@ -19,4 +19,4 @@ python3 "${REPO_ROOT}/.mise/scripts/docs/update_log_index.py" --non-interactive 
   fi
 }
 
-print_success "docs:log-index done"
+print_success "docs:sync-logs done"

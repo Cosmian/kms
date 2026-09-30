@@ -54,6 +54,7 @@ reqwest = { workspace = true, features = ["json", "rustls-tls", "cookies"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+spiffe = { version = "0.16", features = ["workload-api", "jwt"] }
 strum = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }

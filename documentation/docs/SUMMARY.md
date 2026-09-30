@@ -85,6 +85,8 @@
     - [SPIRE / SPIFFE (Zero-Trust M2M)]()
       - [Vault-compatible integration](integrations/spire_spiffe.md)
       - [Native KMIP 2.1 plugins](integrations/spire_spiffe_kmip_plugin.md)
+      - [Web UI gateway SPIFFE authentication](integrations/spire_webui.md)
+      - [CLI (ckms) SPIFFE authentication](integrations/spire_ckms.md)
 - [Installation]()
   - [Getting started](installation/installation_getting_started.md)
   - [Deploying in a Cosmian Confidential VM](installation/marketplace_guide.md)
