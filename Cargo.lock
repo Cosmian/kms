@@ -1554,6 +1554,7 @@ dependencies = [
  "cosmian_cover_crypt",
  "cosmian_crypto_core",
  "cosmian_kmip",
+ "cosmian_kms_client_utils",
  "cosmian_logger",
  "ctor",
  "foreign-types",
