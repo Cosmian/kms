@@ -23,6 +23,14 @@ use crate::{
 /// as carried by the `sub` claim of a SPIFFE JWT-SVID.
 const SPIFFE_ID_PREFIX: &str = "spiffe://";
 
+/// `true` when `sub` is a SPIFFE ID: the `spiffe://` scheme followed by a non-empty trust
+/// domain (a bare `spiffe://` or `spiffe:///path` never names a workload).
+fn is_spiffe_id(sub: &str) -> bool {
+    sub.strip_prefix(SPIFFE_ID_PREFIX)
+        .and_then(|rest| rest.split('/').next())
+        .is_some_and(|trust_domain| !trust_domain.is_empty())
+}
+
 /// Attempts to extract and validate a user claim from a JWT token
 ///
 /// Tries each provided JWT configuration until one successfully validates the token or all configurations fail.
@@ -68,7 +76,7 @@ fn spiffe_authenticated_user(user_claim: &UserClaim) -> KResult<AuthenticatedUse
     let sub = user_claim
         .sub
         .as_deref()
-        .filter(|sub| sub.starts_with(SPIFFE_ID_PREFIX))
+        .filter(|sub| is_spiffe_id(sub))
         .ok_or_else(|| {
             KmsError::InvalidRequest("JWT-SVID subject must be a spiffe:// ID".to_owned())
         })?;
@@ -112,10 +120,7 @@ fn resolve_authenticated_user(
             auth_method: AuthMethod::OidcJwt,
         });
     }
-    let has_spiffe_subject = user_claim
-        .sub
-        .as_deref()
-        .is_some_and(|sub| sub.starts_with(SPIFFE_ID_PREFIX));
+    let has_spiffe_subject = user_claim.sub.as_deref().is_some_and(is_spiffe_id);
     if accept_spiffe_subject && has_spiffe_subject {
         // SPIFFE JWT-SVID: no email claim, but a validated spiffe:// subject and the
         // issuer's config explicitly opted in via `--jwt-svid-auth`.
@@ -237,9 +242,9 @@ pub(super) async fn handle_jwt(
 
     match private_claim {
         Ok((user_claim, accept_spiffe_subject)) => {
-            resolve_authenticated_user(&user_claim, accept_spiffe_subject).inspect_err(|_| {
+            resolve_authenticated_user(&user_claim, accept_spiffe_subject).inspect_err(|error| {
                 warn!(
-                    "{:?} {} 401 unauthorized, no email in JWT",
+                    "{:?} {} 401 unauthorized: {error}",
                     req.method(),
                     req.path()
                 );
@@ -338,9 +343,11 @@ mod tests {
     /// flag is enabled — the fallback is strictly scoped to `spiffe://` subjects.
     #[test]
     fn non_spiffe_subject_rejected_even_when_flag_enabled() {
-        let error = resolve_authenticated_user(&svid_claim("not-a-spiffe-id"), true)
-            .expect_err("non-spiffe sub must never be accepted as a username");
-        assert!(error.to_string().contains("No email in JWT"));
+        for sub in ["not-a-spiffe-id", "spiffe://", "spiffe:///no-trust-domain"] {
+            let error = resolve_authenticated_user(&svid_claim(sub), true)
+                .expect_err("non-spiffe sub must never be accepted as a username");
+            assert!(error.to_string().contains("No email in JWT"), "{sub}");
+        }
     }
 
     /// No `sub` and no `email` must be rejected regardless of the flag.
@@ -540,6 +547,14 @@ mod real_validation {
         })
     }
 
+    /// Overwrite one claim of a claim set built by [`valid_claims`].
+    fn set_claim(claims: &mut Value, name: &str, value: Value) {
+        claims
+            .as_object_mut()
+            .expect("object")
+            .insert(name.to_owned(), value);
+    }
+
     fn sign(key: &TestKey, kid: &str, alg: Algorithm, claims: &Value) -> String {
         let mut header = Header::new(alg);
         header.kid = Some(kid.to_owned());
@@ -569,7 +584,7 @@ mod real_validation {
         let key = generate_key();
         let config = config(&key).await;
         let mut claims = valid_claims();
-        claims["aud"] = json!(["some-other-service"]);
+        set_claim(&mut claims, "aud", json!(["some-other-service"]));
         let token = sign(&key, KID, Algorithm::ES256, &claims);
         accept(&config, &token).expect_err("wrong audience must be rejected");
     }
@@ -591,7 +606,7 @@ mod real_validation {
         let key = generate_key();
         let config = config(&key).await;
         let mut claims = valid_claims();
-        claims["exp"] = json!(now() - 3600);
+        set_claim(&mut claims, "exp", json!(now() - 3600));
         let token = sign(&key, KID, Algorithm::ES256, &claims);
         accept(&config, &token).expect_err("expired SVID must be rejected");
     }
@@ -601,7 +616,7 @@ mod real_validation {
         let key = generate_key();
         let config = config(&key).await;
         let mut claims = valid_claims();
-        claims["iss"] = json!("https://evil.example.org");
+        set_claim(&mut claims, "iss", json!("https://evil.example.org"));
         let token = sign(&key, KID, Algorithm::ES256, &claims);
         accept(&config, &token).expect_err("wrong issuer must be rejected");
     }
