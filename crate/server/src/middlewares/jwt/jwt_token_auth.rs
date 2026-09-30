@@ -120,10 +120,7 @@ fn resolve_authenticated_user(
             auth_method: AuthMethod::OidcJwt,
         });
     }
-    let has_spiffe_subject = user_claim
-        .sub
-        .as_deref()
-        .is_some_and(is_spiffe_id);
+    let has_spiffe_subject = user_claim.sub.as_deref().is_some_and(is_spiffe_id);
     if accept_spiffe_subject && has_spiffe_subject {
         // SPIFFE JWT-SVID: no email claim, but a validated spiffe:// subject and the
         // issuer's config explicitly opted in via `--jwt-svid-auth`.
