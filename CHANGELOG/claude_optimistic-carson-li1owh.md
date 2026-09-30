@@ -22,7 +22,7 @@
 
 ### DB
 
-- Keyset re-key eligibility and rotation-time generation allocation bypass the `RotateNameCache`,
+- Keyset re-key eligibility and HSM latest-generation selection bypass the `RotateNameCache`,
   so they are never decided on stale keyset state (e.g. a rotation done by another KMS node)
 - `RotateNameCache` is invalidated by keyset name for all owners and generation filters, and
   by member UID on update, state change (revoke/destroy), delete and HSM re-label; empty
@@ -38,6 +38,3 @@
 
 - Document the `RotateNameCache` invalidation and multi-node consistency model, and the
   virtual-memory cost of the server's 16 MiB `RUST_MIN_STACK` default
-- Add a "Why label HSM keys?" rationale to the HSM key-rotation page (why keyset/tag
-  metadata is encoded in `CKA_LABEL`), and a "Why this cache exists" rationale to the
-  `RotateNameCache` section of the object-cache page

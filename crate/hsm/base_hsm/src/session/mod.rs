@@ -79,18 +79,9 @@ pub(crate) fn serialize_tagged_label(
     let mut encoded = TAGGED_LABEL_HEX_PREFIX.to_vec();
     encoded.extend(encode_hex(&bytes));
     if let Some(max) = max_len {
-        if encoded.len() <= max {
-            return Ok(Some(encoded));
+        if encoded.len() > max {
+            return Ok(None);
         }
-        // The hex form doubles the payload size and can exceed short HSM label
-        // limits (Proteccio caps CKA_LABEL at 128 bytes). Fall back to the
-        // compact LEB128 binary form when it still fits and is valid UTF-8
-        // (the case for the ASCII ids KMS normally produces), so tags survive
-        // instead of being silently dropped.
-        if bytes.len() <= max && std::str::from_utf8(&bytes).is_ok() {
-            return Ok(Some(bytes));
-        }
-        return Ok(None);
     }
     Ok(Some(encoded))
 }
@@ -169,37 +160,6 @@ mod tests {
         let tags = HashSet::from(["bench".to_owned(), "disk".to_owned()]);
         let encoded = serialize_tagged_label(b"key-id", Some(&tags), Some(10));
         assert_eq!(encoded.ok(), Some(None));
-    }
-
-    #[test]
-    fn tagged_label_falls_back_to_binary_when_hex_exceeds_limit() -> crate::HResult<()> {
-        // Mirrors the delegated-benchmark key UID + tag set: the hex form is
-        // ~190 bytes (over Proteccio's 128-byte CKA_LABEL cap) while the compact
-        // LEB128 binary form is ~92 bytes and must be selected so tags survive.
-        let id = b"pkcs11_ec_01234567-89ab-cdef-0123-456789abcdef";
-        let tags = HashSet::from([
-            "pkcs11-bench".to_owned(),
-            "disk-encryption".to_owned(),
-            "_sk".to_owned(),
-            "_pk".to_owned(),
-        ]);
-        let encoded = serialize_tagged_label(id, Some(&tags), Some(128))?.ok_or_else(|| {
-            crate::HError::Default("binary form must fit within 128 bytes".to_owned())
-        })?;
-        if encoded.len() > 128 {
-            return Err(crate::HError::Default(format!(
-                "binary label exceeds the HSM limit: {} bytes",
-                encoded.len()
-            )));
-        }
-        let (roundtrip_id, roundtrip_tags) = deserialize_tagged_label(encoded)?;
-        if roundtrip_id.as_bytes() != id.as_slice() {
-            return Err(crate::HError::Default("id did not round-trip".to_owned()));
-        }
-        if roundtrip_tags != tags {
-            return Err(crate::HError::Default("tags did not round-trip".to_owned()));
-        }
-        Ok(())
     }
 
     #[test]

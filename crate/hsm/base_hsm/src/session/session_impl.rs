@@ -25,14 +25,14 @@ use pkcs11_sys::{
     CKA_START_DATE, CKA_TOKEN, CKA_VALUE, CKA_VALUE_LEN, CKF_HKDF_SALT_DATA, CKF_HKDF_SALT_NULL,
     CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_EC,
     CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKK_GENERIC_SECRET, CKK_RSA, CKK_VENDOR_DEFINED,
-    CKM_AES_CBC, CKM_AES_GCM, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512,
-    CKM_EDDSA, CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
-    CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS,
-    CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512,
-    CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
-    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_MECHANISM_INVALID,
-    CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID,
-    CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
+    CKM_AES_CBC, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_EDDSA,
+    CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_RSA_PKCS_PSS,
+    CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS,
+    CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512, CKM_SHA512_RSA_PKCS,
+    CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED,
+    CKR_ATTRIBUTE_SENSITIVE, CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID,
+    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE,
+    CKZ_DATA_SPECIFIED,
 };
 use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
@@ -54,7 +54,6 @@ const AES_GCM_IV_LENGTH: usize = 12;
 const AES_GCM_AUTH_TAG_LENGTH: usize = 16;
 
 /// Generate a random nonce of size T
-/// This function is used to generate a random nonce for the AES GCM or a random IV for AES CBC encryption
 fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0_u8; T];
     SysRng
@@ -89,8 +88,6 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
 #[derive(Debug, Clone, Copy)]
 pub enum HsmSigningAlgorithm {
     RsaPkcsV15,
-    /// Raw PKCS#1 v1.5 signing over a caller-supplied digest that must first be wrapped in a DER
-    /// `DigestInfo` matching the declared hash algorithm.
     RsaPkcsV15Digest {
         hashing_algorithm: HashingAlgorithm,
     },
@@ -98,32 +95,20 @@ pub enum HsmSigningAlgorithm {
     Sha256WithRsa,
     Sha384WithRsa,
     Sha512WithRsa,
-    /// RSA-PSS signing. When `prehashed` is true, use raw `CKM_RSA_PKCS_PSS`; otherwise use the
-    /// corresponding hashing mechanism `CKM_SHA*_RSA_PKCS_PSS`.
     RsaPss {
         hashing_algorithm: HashingAlgorithm,
         mask_generator_hashing_algorithm: HashingAlgorithm,
         salt_length: Option<u32>,
         prehashed: bool,
     },
-    /// ECDSA signing. When `prehashed` is true, use raw `CKM_ECDSA`; otherwise use
-    /// `CKM_ECDSA_SHA*`. PKCS#11 returns raw `r || s`, which is re-encoded to DER to match the
-    /// software ECDSA signing convention (`ecdsa_sign` in `crate::crypto`).
     Ecdsa {
         hashing_algorithm: HashingAlgorithm,
         prehashed: bool,
     },
-    /// `CKM_EDDSA` over an Ed25519 private key (pure `EdDSA`, un-hashed input). Non-FIPS: see
-    /// `crate::crypto::elliptic_curves::sign` for the equivalent software gating (issue #1157).
     #[cfg(feature = "non-fips")]
     Ed25519,
-    /// `CKM_EDDSA` over an Ed448 private key.
     #[cfg(feature = "non-fips")]
     Ed448,
-    /// `CKM_EDDSA` — pure Ed25519 (OASIS Cryptoki v3.0 §2.3.9). Not (yet) reachable
-    /// through `SigningAlgorithm::from`/KMIP (Phase 2); only constructed directly by
-    /// `base_hsm`-internal callers and tests until the KMIP integration phase wires it
-    /// up. Requires a key generated with `Session::generate_eddsa_key_pair`.
     Eddsa,
 }
 
@@ -877,7 +862,7 @@ impl Session {
             ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
         };
         let mut mechanism = CK_MECHANISM {
-            mechanism: CKM_AES_GCM,
+            mechanism: self.hsm_capabilities.aes_gcm_mechanism,
             pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
             ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
         };
@@ -918,14 +903,20 @@ impl Session {
         }
         Ok(match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
-                if iv_counter_nonce.is_some() {
-                    return Err(HError::Default(
-                        "Caller-supplied AES-GCM IVs are not accepted by HSM encryption; \
-                         the HSM integration generates a fresh nonce"
-                            .to_owned(),
-                    ));
-                }
-                if self.hsm_capabilities().supports_aes_gcm_message
+                if let Some(iv) = iv_counter_nonce {
+                    if !self.hsm_capabilities.supports_aes_gcm_caller_iv {
+                        return Err(HError::Default(
+                            "Caller-supplied AES-GCM IVs are not accepted by this HSM".to_owned(),
+                        ));
+                    }
+                    let nonce = iv.try_into().map_err(|_invalid_length| {
+                        HError::Default(format!(
+                            "Invalid AES-GCM IV length: expected {AES_GCM_IV_LENGTH}, got {}",
+                            iv.len()
+                        ))
+                    })?;
+                    self.encrypt_aes_gcm_with_iv_buffer(key_handle, nonce, plaintext)?
+                } else if self.hsm_capabilities.supports_aes_gcm_message
                     && self.hsm().supports_message_encrypt()
                 {
                     self.encrypt_message_aes_gcm(key_handle, &[], plaintext)?
@@ -1091,7 +1082,7 @@ impl Session {
                     ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
                 };
                 let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_AES_GCM,
+                    mechanism: self.hsm_capabilities.aes_gcm_mechanism,
                     pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
                     ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
                 };

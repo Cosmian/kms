@@ -213,6 +213,15 @@ pub fn destroy_all(slot: &Arc<SlotManager>) -> HResult<()> {
 #[allow(clippy::panic, clippy::unwrap_used)]
 pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     let supports_exportable_keys = slot.capabilities().supports_aes_sensitive_attribute;
+    generate_aes_key_with_exportability(slot, supports_exportable_keys, true)
+}
+
+#[allow(clippy::panic, clippy::unwrap_used)]
+pub fn generate_aes_key_with_exportability(
+    slot: &Arc<SlotManager>,
+    supports_exportable_keys: bool,
+    cka_id_matches_label: bool,
+) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
     if supports_exportable_keys {
@@ -223,12 +232,14 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
         // assert the key handles are identical
         assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
         // assert CKA_ID is set and matches the key label bytes
-        let cka_id = session.get_object_id(key_handle)?;
-        assert_eq!(
-            cka_id.as_deref(),
-            Some(key_id.as_bytes()),
-            "CKA_ID must be set to the key id bytes"
-        );
+        if cka_id_matches_label {
+            let cka_id = session.get_object_id(key_handle)?;
+            assert_eq!(
+                cka_id.as_deref(),
+                Some(key_id.as_bytes()),
+                "CKA_ID must be set to the key id bytes"
+            );
+        }
         // try export if allowed
         if let Ok(Some(key)) = session.export_key(key_handle) {
             let KeyMaterial::AesKey(key_bytes) = key.key_material() else {
@@ -256,12 +267,14 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     // assert the key handles are identical
     assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
     // assert CKA_ID is set for sensitive keys too
-    let cka_id = session.get_object_id(key_handle)?;
-    assert_eq!(
-        cka_id.as_deref(),
-        Some(key_id.as_bytes()),
-        "CKA_ID must be set to the key id bytes for sensitive keys"
-    );
+    if cka_id_matches_label {
+        let cka_id = session.get_object_id(key_handle)?;
+        assert_eq!(
+            cka_id.as_deref(),
+            Some(key_id.as_bytes()),
+            "CKA_ID must be set to the key id bytes for sensitive keys"
+        );
+    }
     // it should not be exportable
     session.export_key(key_handle).unwrap_err();
     // Without `CKA_SENSITIVE` support, `CKA_EXTRACTABLE` is left at the HSM default and cannot
@@ -518,10 +531,20 @@ pub fn aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     let key_id = Uuid::new_v4().to_string();
     let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     info!("AES key handle: {sk}");
-    let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data, None)?;
+    let iv = [7_u8; 12];
+    let requested_iv = if session.hsm_capabilities().supports_aes_gcm_caller_iv {
+        Some(iv.as_slice())
+    } else {
+        None
+    };
+    let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data, requested_iv)?;
     assert_eq!(enc.ciphertext.len(), data.len());
     assert_eq!(enc.tag.clone().unwrap_or_default().len(), 16);
-    assert!(enc.iv.is_some());
+    if session.hsm_capabilities().supports_aes_gcm_caller_iv {
+        assert_eq!(enc.iv.as_deref(), Some(iv.as_slice()));
+    } else {
+        assert_eq!(enc.iv.as_ref().map(Vec::len), Some(12));
+    }
     let plaintext = session.decrypt(
         sk,
         HsmEncryptionAlgorithm::AesGcm,
@@ -543,7 +566,11 @@ pub fn aes_cbc_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
     let key_id = Uuid::new_v4().to_string();
-    let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
+    let sk = session.generate_sensitive_aes_key_with_algorithm(
+        key_id.as_bytes(),
+        AesKeySize::Aes256,
+        43,
+    )?;
     info!("AES key handle: {sk}");
     let iv = [7_u8; 16];
     let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, data, Some(&iv))?;

@@ -189,22 +189,6 @@ Caches the result of `Database::find_by_rotate_name`, the shared keyset lookup
 used to resolve `RotateName` and generation selectors. This is distinct from
 `ObjectCache`: it caches a multi-object keyset query, not an individual object.
 
-### Why this cache exists
-
-Every delegated Sign/Verify/Encrypt/Decrypt call that names a bare key UID
-(no `@N` generation suffix) must first answer *"which generation is the
-latest?"*. For an HSM-backed store that answer is not free: it requires a full
-`C_FindObjects` scan of the slot followed by a `C_GetAttributeValue`
-round-trip for every object found, on **every** call — even for a key that has
-never been rotated.
-
-Without the cache, that scan sits directly on the hot path and, because the
-lookup fans through the same `Database::find_by_rotate_name` chokepoint,
-concurrent operations all pay it simultaneously. `RotateNameCache` remembers
-the resolution for a short TTL (2 seconds) so repeat calls skip the scan
-entirely; correctness is preserved by eagerly invalidating the relevant entry
-the moment a local rotation commits (see below).
-
 ### Behavior
 
 | Property | Behavior |
@@ -235,11 +219,9 @@ Empty results are not cached, so a newly created keyset is visible at once.
 
 Writes performed by *other* KMS nodes sharing the same database are only seen
 once the 2-second TTL expires. Paths whose correctness depends on the current
-keyset state — re-key eligibility (`enforce_keyset_latest`) and rotation-time
-generation allocation (selecting which generation to increment on the next
-re-key) — therefore bypass the cache through
-`Database::find_by_rotate_name_uncached`. The delegated crypto hot path
-(Sign/Verify/Encrypt/Decrypt) does *not* bypass the cache.
+keyset state — re-key eligibility (`enforce_keyset_latest`) and HSM
+latest-generation selection — therefore bypass the cache through
+`Database::find_by_rotate_name_uncached`.
 
 `RotateNameCache` is internal and is not configurable through the server
 configuration file or command-line options.
