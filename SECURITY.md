@@ -155,7 +155,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Affected   | from 5.27.0 before 5.28.0 |
 | Fixed in   | 5.28.0 |
 | Found by   | Internal code review |
-| References | [Branch changelog](CHANGELOG/claude_wonderful-ptolemy-7u14sz.md) |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
 
 **Summary:** The COSMIAN-2026-021 fix exempted CRL Distribution Point URLs "belonging to the server" from the SSRF check with a raw string test, `uri.starts_with(kms_public_url)`. With `kms_public_url = http://kms.corp`, URLs such as `http://kms.corp@169.254.169.254/...` (userinfo) or `http://kms.corp.attacker.tld/` pass the prefix test while targeting another host.
 
@@ -174,7 +174,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Affected   | from 5.27.0 before 5.28.0 |
 | Fixed in   | 5.28.0 |
 | Found by   | Internal code review |
-| References | [Branch changelog](CHANGELOG/claude_wonderful-ptolemy-7u14sz.md) |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
 
 **Summary:** Several defects in the CRL and OCSP services let relying parties accept revoked certificates: (1) `Destroy` wiped a certificate's attributes, so a revoked-then-destroyed certificate disappeared from the CRL and OCSP answered `unknown`; (2) certificate serials were SHA-1(SPKI), so `ReCertify` reused the serial of the certificate it replaced (the renewed certificate appeared revoked, and OCSP could answer `good` for a revoked serial); (3) the OCSP response cache served entries for twice their lifetime, ignored the `CertID` hash algorithm, answered cached serials of partially cached multi-`CertID` requests as `unknown`, and grew without bound from unauthenticated requests; (4) the OCSP responder accepted a request if any one `CertID` named the CA; (5) OCSP reported `revocationTime = now`; (6) automatic CRL regeneration ran as users who cannot read the CA key and failed silently; (7) nodes kept serving their in-memory CRL copy indefinitely; (8) OCSP/CRL signing failed for CA keys wrapped at rest.
 
@@ -193,7 +193,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Affected   | from 5.17.0 before 5.28.0 |
 | Fixed in   | 5.28.0 |
 | Found by   | Internal code review |
-| References | [Branch changelog](CHANGELOG/claude_wonderful-ptolemy-7u14sz.md) |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
 
 **Summary:** Both functions overwrote the caller-declared buffer length with the output length before comparing the two, so the `CKR_BUFFER_TOO_SMALL` check could never trigger and the full value was written past a smaller caller buffer. `C_GenerateKey` also wrote the new handle through a null `phKey`.
 
@@ -212,7 +212,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Affected   | from 5.25.0 before 5.28.0 |
 | Fixed in   | 5.28.0 |
 | Found by   | Internal code review |
-| References | [Branch changelog](CHANGELOG/claude_wonderful-ptolemy-7u14sz.md) |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
 
 **Summary:** `POST`/`DELETE /v1/crypto/keys/{kid}/tags` authorized through `GetAttributes`, which any grant satisfies, then wrote the tag column directly — bypassing the `AddAttribute`/`DeleteAttribute` permissions that KMIP enforces.
 
@@ -231,7 +231,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Affected   | from 5.25.0 before 5.28.0 |
 | Fixed in   | 5.28.0 |
 | Found by   | Internal code review |
-| References | [Branch changelog](CHANGELOG/claude_wonderful-ptolemy-7u14sz.md) |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
 
 **Summary:** `/.well-known/jwks.json` listed every `jwks`-tagged public key that `default_username` owned *or had any grant on*, including `*` grants. Any owner may grant `*`, and REST-created key pairs are auto-tagged `jwks`.
 
@@ -250,7 +250,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Affected   | from 5.26.0 before 5.28.0 |
 | Fixed in   | 5.28.0 |
 | Found by   | Internal code review |
-| References | [Branch changelog](CHANGELOG/claude_wonderful-ptolemy-7u14sz.md) |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
 
 **Summary:** Vault-compatible transit routes resolved a key name by tag among all keys shared with the caller and used an arbitrary match (`.next()` over unordered results). Creating an existing name also created a duplicate.
 
@@ -269,7 +269,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Affected   | from 5.26.0 before 5.28.0 |
 | Fixed in   | 5.28.0 |
 | Found by   | Internal code review |
-| References | [Branch changelog](CHANGELOG/claude_wonderful-ptolemy-7u14sz.md) |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
 
 **Summary:** `POST /v1/{pki_mount}/root/sign-intermediate` accepted any token validated by the auth-verifier and signed the caller's CSR as a `CA:TRUE` intermediate with the server's PKI CA. Token policies were never checked, `uri_sans` was checked only for non-emptiness, and the CA key lookup also accepted keys merely shared with `default_username`.
 
