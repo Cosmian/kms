@@ -198,6 +198,9 @@ pub struct ServerParams {
     /// 0 means disabled.
     pub auto_rotation_check_interval_secs: u64,
 
+    /// Interval in seconds between metrics COUNT refreshes; 0 disables them.
+    pub metrics_count_interval_secs: u64,
+
     /// Depth at which a successful keyset chain decryption triggers a warning.
     /// Keyset chain traversal is unbounded (stopped only by cycle detection); this
     /// threshold lets operators know when a ciphertext required walking many
@@ -624,6 +627,7 @@ impl ServerParams {
                 v
             },
             keyset_warn_depth: conf.keyset_warn_depth,
+            metrics_count_interval_secs: conf.metrics_count_interval_secs,
             jwks_endpoint: conf.jwks_endpoint,
             // Vault-compatible API — opt-in via config file or CLI flags.
             vault_api_enabled: conf.vault.vault_api_enabled,
@@ -1044,6 +1048,10 @@ impl fmt::Debug for ServerParams {
         debug_struct.field(
             "auto_rotation_check_interval_secs",
             &self.auto_rotation_check_interval_secs,
+        );
+        debug_struct.field(
+            "metrics_count_interval_secs",
+            &self.metrics_count_interval_secs,
         );
         debug_struct.field("keyset_warn_depth", &self.keyset_warn_depth);
         if self.jwks_endpoint.jwks_endpoint_enabled {

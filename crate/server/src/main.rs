@@ -391,6 +391,7 @@ hsm_instances = []
 key_encryption_key = "key wrapping key"
 kms_public_url = "[kms_public_url]"
 auto_rotation_check_interval_secs = 0
+metrics_count_interval_secs = 30
 keyset_warn_depth = 5
 
 [db]

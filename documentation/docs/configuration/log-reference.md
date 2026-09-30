@@ -769,7 +769,6 @@ Crate path: `crate/server_database`
 | `trace` | `find: tags: {tags:?}` | `src/stores/redis/redis_with_findex.rs` | `tags` — … | — |
 | `trace` | `find: uids before permissions: {:?}` | `src/stores/redis/redis_with_findex.rs` | — | — |
 | `trace` | `find: user must be owner` | `src/stores/redis/redis_with_findex.rs` | — | — |
-| `trace` | `find_: {:?}` | `src/stores/sql/mysql.rs` | — | — |
 | `trace` | `Insert read access right in DB: {uid} / {userid}` | `src/stores/sql/mysql.rs` | `uid` — …<br>`userid` — … | — |
 | `trace` | `Invalidating the cache for {}` | `src/core/unwrapped_cache.rs` | — | — |
 | `trace` | `Redis DB size: {count}` | `src/stores/redis/redis_with_findex.rs` | `count` — … | — |
@@ -787,13 +786,14 @@ Crate path: `crate/server_database`
 | `warn` | `PostgreSQL transaction body failed — retrying` | `src/stores/sql/pgsql.rs` | `attempt`, `delay_ms`, `error` | - |
 | `debug` | `[redis-scan-all] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
 | `debug` | `PG find_all query: {}` | `src/stores/sql/pgsql.rs` | - | - |
-| `trace` | `find_all_: {:?}` | `src/stores/sql/mysql.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object that failed to                                      deserialize` | `src/stores/sql/sqlite.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object {id} that failed to                          deserialize: {e}` | `src/stores/sql/mysql.rs` | `id`, `e` | - |
 | `debug` | `[redis-scan-wrapped] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
 | `debug` | `PostgreSQL error` | `src/error/db_error.rs` | `code`: SQLSTATE code<br>`message`: raw driver error message | Internal only — never surfaced via `SqlError` (which carries just the code) to avoid leaking table/constraint names to clients. |
 | `debug` | `SQLite transient lock encountered, retrying in {backoff:?}: {e}` | `src/stores/sql/sqlite.rs` | `backoff`: delay before the next retry attempt<br>`e`: the underlying "database is locked" error | Emitted while retrying a transient SQLite lock contention error; not an operator-actionable warning by itself, only relevant if retries are repeatedly exhausted. |
+| `trace` | `find: {:?}` | `src/stores/sql/mysql.rs` | - | - |
+| `trace` | `find_all: {:?}` | `src/stores/sql/mysql.rs` | - | - |
 
 ### `cosmian_kms_crypto`
 

@@ -83,7 +83,7 @@ export COSMIAN_KMS_CONF=./test_data/configs/server/auth/jwt.toml
 
 The file should be a TOML file with the following structure:
 
-````toml
+```toml
 # The default username to use when no authentication method is provided
 default_username = "admin"
 

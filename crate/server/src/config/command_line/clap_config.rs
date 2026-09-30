@@ -96,6 +96,7 @@ impl Default for ClapConfig {
             kmip_policy: KmipPolicyConfig::default(),
             azure_ekm_config: AzureEkmConfig::default(),
             auto_rotation_check_interval_secs: 0,
+            metrics_count_interval_secs: 30,
             keyset_warn_depth: 5,
             jwks_endpoint: JwksEndpointConfig::default(),
             secret_backends: SecretBackendConfig::default(),
@@ -275,6 +276,14 @@ pub struct ClapConfig {
     /// When enabled, must be at least 60 seconds to avoid excessive database churn.
     #[clap(long, default_value = "0", verbatim_doc_comment)]
     pub auto_rotation_check_interval_secs: u64,
+
+    /// Interval in seconds between background refreshes of the `kms.objects.total`
+    /// and `kms.keys.active.count` metrics. Each refresh runs a full COUNT over the
+    /// objects table, which is expensive on very large databases.
+    /// Set to 0 to disable both the startup seed and the periodic refresh.
+    /// Default: 30.
+    #[clap(long, default_value = "30", verbatim_doc_comment)]
+    pub metrics_count_interval_secs: u64,
 
     /// Depth at which a successful keyset chain decryption triggers a server-side warning.
     /// Keyset chain traversal is unbounded (stopped only by cycle detection);
@@ -791,6 +800,10 @@ impl fmt::Debug for ClapConfig {
         let x = x.field(
             "auto_rotation_check_interval_secs",
             &self.auto_rotation_check_interval_secs,
+        );
+        let x = x.field(
+            "metrics_count_interval_secs",
+            &self.metrics_count_interval_secs,
         );
         let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
         let x = if self.auth_verifier.is_enabled() {
