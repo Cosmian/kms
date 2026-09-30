@@ -25,9 +25,11 @@ The KMS creates its table on first connection, with triggers that reject `UPDATE
 `TRUNCATE` on it, even for the table owner. This runs again on every boot and self-heals an older
 table automatically.
 
-For a hardened deployment, a database administrator can provision the table separately and grant
-the KMS role only `INSERT` and `SELECT`; see
+For a hardened deployment, a database administrator can provision both tables separately and grant
+the KMS role only `SELECT` and `INSERT` on `kms_audit_events`, plus `SELECT`, `INSERT`, and `UPDATE` on
+`kms_audit_control`, with no DDL rights; see
 [the exact schema](https://github.com/Cosmian/kms/blob/develop/crate/server_database/src/stores/audit/audit.sql).
+The KMS then skips schema creation and only checks that every required column is present.
 
 ---
 
@@ -139,6 +141,9 @@ instance_id=kms-eu-west-1b: chain OK: 96 events verified
 ```
 
 `verify` checks every row's hash and its link to the previous row, one generation at a time.
+A failing generation or instance does not stop the rest from being checked: a generation sealed by
+a recovery stays failed, so the report lists every failing generation together with the ones that
+verified clean, and the command exits with code 1 if any failed.
 It does not yet check a reanchor's recorded evidence digest against the sealed generation's
 current content; reproduce that check manually (see below).
 

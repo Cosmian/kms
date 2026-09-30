@@ -88,6 +88,10 @@ SELECT instance_id, chain_generation, id, timestamp, operation, username, object
 -- name: select-audit-advisory-lock
 SELECT pg_try_advisory_lock(hashtextextended($1, 0));
 
+-- Serializes the schema DDL bundle across KMS boots. Two-int keyspace never overlaps the bigint per-instance lock; 1263358785 is ASCII "KMSA".
+-- name: lock-audit-schema-bootstrap
+SELECT pg_advisory_xact_lock(1263358785, 1);
+
 -- name: insert-audit-event
 INSERT INTO kms_audit_events (instance_id, chain_generation, id, timestamp, operation, username, object_uid, algorithm, client_ip, result, duration_ms, request_id, details, prev_hash, row_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);
 

@@ -490,7 +490,8 @@ impl VerifyAuditAction {
     }
 
     /// Verifies every instance in a `PostgreSQL` audit database (or just `instance_id`,
-    /// if given), each as its own independent chain.
+    /// if given), each as its own independent chain. A failing instance does not stop the
+    /// remaining ones from being checked; every failure is reported together at the end.
     async fn verify_postgres<W: Write>(
         &self,
         url: &str,
@@ -514,88 +515,80 @@ impl VerifyAuditAction {
             ));
         }
 
+        let mut failures = Vec::new();
         for instance in &instances {
             writeln!(out, "== instance_id: {instance} ==")
                 .map_err(crate::error::KmsCliError::IoError)?;
-            self.verify_one_postgres_instance(&reader, instance, out)
-                .await?;
+            if let Some(failure) = self
+                .verify_one_postgres_instance(&reader, instance, out)
+                .await?
+            {
+                failures.push(failure);
+            }
         }
-        Ok(())
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(crate::error::KmsCliError::InvalidRequest(
+                failures.join("\n"),
+            ))
+        }
     }
 
-    /// Pages through one instance's generations in order, verifying every row's hash and
-    /// chain link without ever materializing a whole generation in memory. Each generation
-    /// is its own independent chain (a fresh genesis after a seal-and-roll recovery), so
-    /// `prev`/`after_id` reset at every generation boundary.
+    /// Verifies one instance's generations in order, each as its own independent chain (a
+    /// fresh genesis after a seal-and-roll recovery). A failing generation does not stop
+    /// later ones from being checked: a sealed generation stays corrupted forever, and the
+    /// active generation after it must still be verifiable.
+    ///
+    /// Returns `None` once the `chain OK` line is written to `out`, or `Some` report naming
+    /// every failing generation and the ones that verified clean.
     async fn verify_one_postgres_instance<W: Write>(
         &self,
         reader: &PgAuditReader,
         instance_id: &str,
         out: &mut W,
-    ) -> KmsCliResult<()> {
-        let mut total: u64 = 0;
-
-        for generation in reader
+    ) -> KmsCliResult<Option<String>> {
+        let generations = reader
             .list_generations(instance_id)
             .await
-            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?
-        {
-            let mut prev: Option<AuditEvent> = None;
-            let mut after_id = -1_i64;
+            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
 
-            loop {
-                let page = reader
-                    .events_page(instance_id, generation, after_id)
-                    .await
-                    .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
-                if page.is_empty() {
-                    break;
+        let mut failures = Vec::new();
+        let mut clean_generations = Vec::new();
+        let mut total: u64 = 0;
+        for &generation in &generations {
+            match self
+                .verify_postgres_generation(reader, instance_id, generation)
+                .await?
+            {
+                Ok(count) => {
+                    total += count;
+                    clean_generations.push(generation.to_string());
                 }
-
-                for event in page {
-                    after_id = event.id;
-
-                    if !verify_event(&event) {
-                        return Err(crate::error::KmsCliError::InvalidRequest(format!(
-                            "TAMPERED: instance_id={instance_id} generation={generation} \
-                             event id={} has an invalid row_hash",
-                            event.id
-                        )));
-                    }
-                    if !verify_chain_link(&event, prev.as_ref()) {
-                        return Err(crate::error::KmsCliError::InvalidRequest(format!(
-                            "CHAIN BROKEN: instance_id={instance_id} generation={generation} \
-                             event id={} prev_hash does not match the row_hash of event id={}",
-                            event.id,
-                            prev.as_ref().map_or(-1, |p| p.id)
-                        )));
-                    }
-
-                    if self.verbose {
-                        let status = match &event.result {
-                            AuditResult::Success => "ok",
-                            AuditResult::Failure(_) => "fail",
-                        };
-                        eprintln!(
-                            "generation={generation}  id={:>6}  {}  {}  {}  chain=ok",
-                            event.id,
-                            event
-                                .timestamp
-                                .format(&time::format_description::well_known::Rfc3339)
-                                .unwrap_or_default(),
-                            event.operation,
-                            status
-                        );
-                    }
-
-                    total += 1;
-                    prev = Some(event);
-                }
+                Err(failure) => failures.push(failure),
             }
         }
 
+        if !failures.is_empty() {
+            let clean = if clean_generations.is_empty() {
+                "no generation verified OK".to_owned()
+            } else {
+                format!(
+                    "generation(s) {} verified OK ({total} event{})",
+                    clean_generations.join(", "),
+                    if total == 1 { "" } else { "s" }
+                )
+            };
+            let summary = format!(
+                "instance_id={instance_id}: {} of {} generations failed verification; {clean}",
+                failures.len(),
+                generations.len()
+            );
+            failures.push(summary);
+            return Ok(Some(failures.join("\n")));
+        }
         if total == 0 {
-            return Err(crate::error::KmsCliError::InvalidRequest(format!(
+            return Ok(Some(format!(
                 "no audit events found for instance_id={instance_id}"
             )));
         }
@@ -605,7 +598,72 @@ impl VerifyAuditAction {
             "instance_id={instance_id}: chain OK: {total} event{} verified",
             if total == 1 { "" } else { "s" }
         )
-        .map_err(crate::error::KmsCliError::IoError)
+        .map_err(crate::error::KmsCliError::IoError)?;
+        Ok(None)
+    }
+
+    /// Pages through one generation in `id` order, verifying every row's hash and chain
+    /// link without ever materializing the whole generation in memory. Returns the number
+    /// of events verified, or the first failure: rows after a break only repeat it.
+    async fn verify_postgres_generation(
+        &self,
+        reader: &PgAuditReader,
+        instance_id: &str,
+        generation: i64,
+    ) -> KmsCliResult<Result<u64, String>> {
+        let mut prev: Option<AuditEvent> = None;
+        let mut after_id = -1_i64;
+        let mut count: u64 = 0;
+
+        loop {
+            let page = reader
+                .events_page(instance_id, generation, after_id)
+                .await
+                .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+            if page.is_empty() {
+                return Ok(Ok(count));
+            }
+
+            for event in page {
+                after_id = event.id;
+
+                if !verify_event(&event) {
+                    return Ok(Err(format!(
+                        "TAMPERED: instance_id={instance_id} generation={generation} event \
+                         id={} has an invalid row_hash",
+                        event.id
+                    )));
+                }
+                if !verify_chain_link(&event, prev.as_ref()) {
+                    return Ok(Err(format!(
+                        "CHAIN BROKEN: instance_id={instance_id} generation={generation} event \
+                         id={} prev_hash does not match the row_hash of event id={}",
+                        event.id,
+                        prev.as_ref().map_or(-1, |p| p.id)
+                    )));
+                }
+
+                if self.verbose {
+                    let status = match &event.result {
+                        AuditResult::Success => "ok",
+                        AuditResult::Failure(_) => "fail",
+                    };
+                    eprintln!(
+                        "generation={generation}  id={:>6}  {}  {}  {}  chain=ok",
+                        event.id,
+                        event
+                            .timestamp
+                            .format(&time::format_description::well_known::Rfc3339)
+                            .unwrap_or_default(),
+                        event.operation,
+                        status
+                    );
+                }
+
+                count += 1;
+                prev = Some(event);
+            }
+        }
     }
 
     /// Confirms a reanchor event's sealed-evidence file still exists next to `path` and
@@ -1186,6 +1244,26 @@ mod tests {
             .to_owned()
     }
 
+    /// Builds a would-be-valid event for `id` chained onto `prev_hash`, with `row_hash`
+    /// left zeroed \u2014 callers compute it (and may then corrupt any field) before writing.
+    fn build_test_event(id: i64, prev_hash: [u8; 32]) -> AuditEvent {
+        AuditEvent {
+            id,
+            timestamp: audit_now(),
+            operation: format!("Op{id}"),
+            user: "cli-test-user".to_owned(),
+            object_uid: Some(format!("uid-{id}")),
+            algorithm: Some("AES-256-GCM".to_owned()),
+            client_ip: Some("127.0.0.1".to_owned()),
+            result: AuditResult::Success,
+            duration_ms: 1,
+            request_id: None,
+            details: None,
+            prev_hash,
+            row_hash: [0_u8; 32],
+        }
+    }
+
     /// Seeds a fresh instance with `n` events via `PgAuditSink`, returning its
     /// `instance_id`. `mutate` runs on each event just before it is written, letting a
     /// caller deliberately corrupt one event (see the tamper/broken-link tests below)
@@ -1205,21 +1283,7 @@ mod tests {
 
         let mut prev_hash = [0_u8; 32];
         for i in 0..n {
-            let mut event = AuditEvent {
-                id: i,
-                timestamp: audit_now(),
-                operation: format!("Op{i}"),
-                user: "cli-test-user".to_owned(),
-                object_uid: Some(format!("uid-{i}")),
-                algorithm: Some("AES-256-GCM".to_owned()),
-                client_ip: Some("127.0.0.1".to_owned()),
-                result: AuditResult::Success,
-                duration_ms: 1,
-                request_id: None,
-                details: None,
-                prev_hash,
-                row_hash: [0_u8; 32],
-            };
+            let mut event = build_test_event(i, prev_hash);
             event.row_hash = compute_row_hash(&event);
             mutate(i, &mut event);
             sink.write_event_atomic(&event).await.unwrap();
@@ -1230,6 +1294,42 @@ mod tests {
 
     async fn seed_postgres_chain(url: &str, n: i64) -> String {
         seed_postgres_chain_with(url, n, |_, _| {}).await
+    }
+
+    /// Seeds a fresh instance whose generation 0 ends with a tampered event, reconnects to
+    /// trigger the automatic seal-and-roll recovery (sealing generation 0, starting
+    /// generation 1 with its reanchor event), then writes `extra_gen1_events` further
+    /// events into generation 1, running `mutate` on each \u2014 letting a caller leave the
+    /// recovered generation healthy or corrupt it too. Returns the `instance_id`.
+    async fn seed_postgres_sealed_instance(
+        url: &str,
+        extra_gen1_events: i64,
+        mut mutate: impl FnMut(i64, &mut AuditEvent),
+    ) -> String {
+        use cosmian_kms_server_database::{
+            PgAuditSink, reexport::cosmian_kms_interfaces::AuditSink as _,
+        };
+
+        let instance_id = seed_postgres_chain_with(url, 3, |i, event| {
+            if i == 2 {
+                event.row_hash = [0xCC_u8; 32];
+            }
+        })
+        .await;
+
+        let mut sink = PgAuditSink::connect(url, &instance_id).await.unwrap();
+        let head = sink.resume().await.unwrap();
+
+        let mut prev_hash = head.prev_hash;
+        for i in 0..extra_gen1_events {
+            let id = head.next_id + i;
+            let mut event = build_test_event(id, prev_hash);
+            event.row_hash = compute_row_hash(&event);
+            mutate(i, &mut event);
+            sink.write_event_atomic(&event).await.unwrap();
+            prev_hash = event.row_hash;
+        }
+        instance_id
     }
 
     #[test]
@@ -1290,6 +1390,84 @@ mod tests {
         assert!(msg.contains("CHAIN BROKEN"), "{msg}");
         assert!(msg.contains(&instance_id), "{msg}");
         assert!(msg.contains("id=1"), "{msg}");
+    }
+
+    #[test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    fn verify_postgres_source_reports_every_failing_generation() {
+        let url = audit_pg_url();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        // Generation 0 is sealed by its own tampered event; generation 1, the recovered
+        // active generation, is deliberately corrupted too — a failing generation must
+        // not stop the next one from being checked and reported as its own failure.
+        let instance_id = rt.block_on(seed_postgres_sealed_instance(&url, 2, |i, event| {
+            if i == 1 {
+                event.row_hash = [0xDD_u8; 32];
+            }
+        }));
+
+        let action = VerifyAuditAction {
+            source: AuditSourceArgs {
+                audit_postgres_url: Some(url),
+                audit_instance_id: Some(instance_id.clone()),
+                ..Default::default()
+            },
+            verbose: false,
+        };
+        let mut out = Vec::new();
+        let err = action.run_with_writer(&mut out).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("generation=0"), "{msg}");
+        assert!(msg.contains("generation=1"), "{msg}");
+        assert!(
+            msg.contains(&format!(
+                "instance_id={instance_id}: 2 of 2 generations failed verification; no \
+                 generation verified OK"
+            )),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    fn verify_postgres_reports_one_sealed_instance_among_healthy_ones() {
+        let url = audit_pg_url();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let instance_a = rt.block_on(seed_postgres_chain(&url, 2));
+        // Generation 1 stays healthy after the automatic recovery: only generation 0,
+        // sealed forever by design, must be reported as failing for this instance.
+        let instance_b = rt.block_on(seed_postgres_sealed_instance(&url, 2, |_, _| {}));
+        let instance_c = rt.block_on(seed_postgres_chain(&url, 2));
+
+        let action = VerifyAuditAction {
+            source: AuditSourceArgs {
+                audit_postgres_url: Some(url),
+                audit_instance_id: None,
+                ..Default::default()
+            },
+            verbose: false,
+        };
+        let mut out = Vec::new();
+        let err = action.run_with_writer(&mut out).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains(&format!(
+                "instance_id={instance_b}: 1 of 2 generations failed verification"
+            )),
+            "{msg}"
+        );
+        assert!(msg.contains("generation=0"), "{msg}");
+        assert!(msg.contains("generation(s) 1 verified OK"), "{msg}");
+
+        let printed = String::from_utf8(out).unwrap();
+        assert!(
+            printed.contains(&format!("== instance_id: {instance_a} ==")),
+            "{printed}"
+        );
+        assert!(
+            printed.contains(&format!("== instance_id: {instance_c} ==")),
+            "{printed}"
+        );
     }
 
     #[test]

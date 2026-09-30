@@ -15,8 +15,9 @@
   (`--database-url`) — validated at startup.
 - Schema (`kms_audit_events`, with append-only triggers rejecting `UPDATE`/
   `DELETE`/`TRUNCATE`) is created and self-healed automatically on every boot.
-  A hardened deployment whose KMS role has only `INSERT`/`SELECT` rights on a
-  separately-provisioned table is also supported.
+  A hardened deployment with separately-provisioned tables is also supported:
+  the KMS role then needs only `SELECT`/`INSERT` on `kms_audit_events` and
+  `SELECT`/`INSERT`/`UPDATE` on `kms_audit_control`, with no DDL rights.
 - `ckms audit export`/`ckms audit verify` now accept `--audit-postgres-url`
   (with optional `--audit-instance-id`, defaulting to every instance in the
   database) as an alternative to `--path`, reading the chain in bounded pages
@@ -40,11 +41,15 @@
 - Fixed: the dedicated `test:audit-postgres` CI job now runs the `PostgreSQL`
   audit test suite (it previously only ran on a pre-populated schema, so a
   first-time/clean run failed).
-- Known issue, not yet fixed: several KMS instances connecting to the same,
-  previously-schema-less audit database at the same moment can fail to start
-  — the schema bootstrap re-applied on every connection is not safe under
-  concurrency. Tracked with a `#[ignore]`d regression test measuring the
-  failure rate; not run in CI yet.
+- Fixed: several KMS instances connecting to the same audit database at the
+  same moment (fresh database or rolling restart) no longer fail to start. The
+  schema bootstrap re-applied on every connection now runs in one transaction,
+  serialized across instances, so the append-only triggers are also never
+  briefly absent while it runs.
+- Fixed: `ckms audit verify --audit-postgres-url` now checks every chain
+  generation of every instance instead of stopping at the first failure. After
+  a seal-and-roll recovery, the sealed generation still fails verification, but
+  the active generation is verified too and reported as clean or failed.
 
 ### Documentation
 

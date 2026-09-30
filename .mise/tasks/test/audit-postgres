@@ -67,22 +67,13 @@ _require_tests_passed() {
 
 print_status "Running live unit tests: cosmian_kms_server_database..."
 _log_db="$(mktemp)"
-# Skipped, both with an open finding, not a test bug — see
-# .agents/out/audit-postgres-fixes/PLAN.md Step 5 and the session report for details:
-#   - pg_audit_connect_falls_back_to_column_check_without_ddl_rights needs a properly
-#     provisioned restricted role and a fixed connection-URL substitution; deferred.
-#   - pg_audit_concurrent_startup_on_empty_database /
-#     pg_audit_concurrent_startup_with_active_writer reproducibly fail most runs:
-#     ensure_schema()'s unconditional DDL re-run races when several instances
-#     connect() at the same moment (SQLSTATE 42710/40P01/XX000). Real KMS instances
-#     starting together (e.g. a Kubernetes rolling deploy/scale-up) can hit this.
-print_warning "Skipping pg_audit_concurrent_startup_* — known ensure_schema() DDL race under \
-concurrent connect(), not yet fixed (see .agents/out/audit-postgres-fixes/PLAN.md)"
+# Skipped: needs a properly provisioned restricted role and a fixed connection-URL
+# substitution (kms_audit_writer with the corrected kms_audit_events + kms_audit_control
+# grants) that this task doesn't set up yet — deferred, see
+# .agents/out/audit-postgres-fixes/PLAN.md Step 2.
 cargo test -p cosmian_kms_server_database --lib stores::audit "${FEATURES_FLAG[@]}" \
   -- --ignored --test-threads=1 \
   --skip pg_audit_connect_falls_back_to_column_check_without_ddl_rights \
-  --skip pg_audit_concurrent_startup_on_empty_database \
-  --skip pg_audit_concurrent_startup_with_active_writer \
   2>&1 | tee "${_log_db}"
 _require_tests_passed "${_log_db}"
 
