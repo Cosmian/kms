@@ -21,14 +21,16 @@ SPIRE_ENTITIES="${SPIRE_ENTITIES:-spire-server-a spire-server-b}"
 
 ckms() { "${CKMS_BIN}" --conf-path "${CKMS_CONF}" --accept-invalid-certs "$@"; }
 
-# `certify --generate-key-pair` stores the private key as <uuid> and the public
-# key as <uuid>_pk; the certificate carries an explicit id. Keep the bare UUID.
-ca_sk_uid=$(ckms locate --tag "${PKI_CA_TAG}" |
-  grep -oE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' | head -n 1 || true)
-if [[ -z "${ca_sk_uid}" ]]; then
-  echo "ERROR: no PKI CA private key tagged '${PKI_CA_TAG}' found" >&2
+# Locate the CA *private* key by type: the key pair's public key also carries the
+# tag, and its UID is not guaranteed to follow a recognisable pattern.
+mapfile -t ca_sk_uids < <(ckms locate --tag "${PKI_CA_TAG}" --object-type PrivateKey |
+  grep -vE '^(List of unique identifiers:|No object found\.)?$')
+if [[ "${#ca_sk_uids[@]}" -ne 1 ]]; then
+  echo "ERROR: expected exactly one PKI CA private key tagged '${PKI_CA_TAG}'," \
+    "found ${#ca_sk_uids[@]}: ${ca_sk_uids[*]:-none}" >&2
   exit 1
 fi
+ca_sk_uid="${ca_sk_uids[0]}"
 
 for entity in ${SPIRE_ENTITIES}; do
   ckms access-rights grant "spire:${entity}" certify --object-uid "${ca_sk_uid}"
