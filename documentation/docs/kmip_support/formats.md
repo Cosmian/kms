@@ -13,7 +13,7 @@ When requesting the export of an Object without specifying the Key Format Type, 
 | Certificate         | X.509                       | X.509                                                     |
 | Certificate Request | PKCS#10                     | PKCS#10                                                   |
 | Opaque Object       | Opaque                      |                                                           |
-| PGP Key             | Raw                         |                                                           |
+| PGP Key             | Raw                         | Raw, OpenPgpSecretKey, OpenPgpPublicKey                   |
 | Secret Data         | Raw                         |                                                           |
 | Symmetric Key       | Raw                         | Raw                                                       |
 | Split Key           | Raw                         |                                                           |
@@ -46,6 +46,7 @@ This server enforces the KMIP 2.1 default export formats above but the storage f
 - `PKCS#10 DER` for certificate requests (RFC 2986).
 - `TransparentSymmetricKey` for symmetric keys
 - `Raw` for opaque objects and Secret Data
+- `OpenPgpSecretKey` / `OpenPgpPublicKey` (ASCII-armored UTF-8 bytes) for PGP keys
 
 Users requesting keys are therefore encouraged to request them in these storage formats to avoid conversions and match
 recent RFCs.

@@ -367,12 +367,12 @@ The following table shows managed object support across all KMIP versions.
 | Template       |    🚫    |    🚫    |    🚫    |    🚫    |    🚫    |   N/A   |   N/A   |
 | Secret Data    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Opaque Data    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| PGP Key        |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| PGP Key        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 
 Notes:
 
 - Opaque Object import support is present (see `import.rs`).
-- PGP Key types appear in digest and attribute handling but full object import/register is not implemented, hence ❌.
+- PGP Key objects are supported (Create, Import, Export, Encrypt, Decrypt, Sign, SignatureVerify) in non-FIPS mode.
 - Template objects are deprecated in newer KMIP versions.
 
 #### Base Objects

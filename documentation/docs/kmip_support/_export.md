@@ -25,7 +25,7 @@ for more details, including how to invoke
 [CKM_RSA_AES_KEY_WRAP](../certifications_and_compliance/cryptographic_algorithms/algorithms.md#ckm_rsa_aes_key_wrap)
 using `CryptographicAlgorithm::RSA` + `PaddingMethod::None`.
 
-For the list of supported key formats, please check the [formats page](./formats.md).
+For the list of supported key formats, please check the [formats page](./formats.md). OpenPGP keys (`PGPKey`) can be exported in their stored format (secret key armor) or projected to public key armor using `KeyFormatType::OpenPgpPublicKey`.
 
 ## Examples -  Check `Get`
 
