@@ -86,6 +86,8 @@ fn decode_pg_ssl_file_query_value(value: &str) -> String {
         .unwrap_or_else(|| value.to_owned())
 }
 
+// TODO(fix/pgsql_ssl_issues): sslmode is stripped from the URL before parsing, so
+// tokio-postgres/deadpool never enforce it — connections silently downgrade to Prefer.
 /// Builds an OpenSSL-backed TLS connector for any non-`disable` `sslmode`: `verify-full`
 /// and `verify-ca` verify the server certificate (`verify-ca` does not additionally
 /// disable hostname checking — `postgres_openssl` verifies it regardless), anything else

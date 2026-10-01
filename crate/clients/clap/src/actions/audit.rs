@@ -1,13 +1,17 @@
-//! `ckms audit` subcommands — work directly on the JSONL audit file, no KMS
-//! server connection required.
+//! `ckms audit` subcommands — read the audit trail directly from its storage backend,
+//! no KMS server connection required.
 //!
 //! These commands bypass the normal `ClientConfig::load()` bootstrap so they
-//! can be used offline (e.g. on an isolated audit workstation that has the
-//! audit file but no access to the KMS server).
+//! can be used offline (e.g. on an isolated audit workstation that has access to the
+//! audit file or `PostgreSQL` database but not to the KMS server itself).
+//!
+//! Exactly one source: `--path` (the JSONL file) or `--audit-postgres-url` (connects
+//! directly to the audit database). There is no UI equivalent for either — this is an
+//! offline/operator utility operating on raw storage, not a KMS API the Web UI could call.
 //!
 //! Subcommands
 //! ===========
-//! * `export` — reads the file and writes events to stdout (JSON or CEF v27)
+//! * `export` — writes events to stdout (JSON or CEF v27)
 //! * `verify` — validates the SHA-256 hash chain; exits non-zero if broken
 
 use std::{
@@ -19,6 +23,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use cosmian_kms_client::reexport::cosmian_kms_access::audit::{
     AuditEvent, AuditResult, sha256_file, to_cef_line, verify_chain_link, verify_event,
 };
+use cosmian_kms_server_database::PgAuditReader;
 
 use crate::error::result::KmsCliResult;
 
@@ -57,7 +62,59 @@ pub enum ExportFormat {
     Cef,
 }
 
-/// Export audit events from the JSONL log file to stdout.
+/// Selects exactly one audit source: the JSONL file or a `PostgreSQL` database.
+/// Shared by `export` and `verify` so both commands accept the same flags.
+#[derive(Parser, Debug, Default)]
+pub struct AuditSourceArgs {
+    /// Path to a JSONL audit log file (`export`), or a file or directory (`verify`).
+    #[clap(long, short = 'p', env = "KMS_AUDIT_FILE_PATH")]
+    pub path: Option<PathBuf>,
+
+    /// `PostgreSQL` connection URL for the audit database, as an alternative to `--path`.
+    #[clap(long, env = "KMS_AUDIT_POSTGRES_URL")]
+    pub audit_postgres_url: Option<String>,
+
+    /// Restrict a `--audit-postgres-url` source to a single KMS instance's chain.
+    /// Omit to read every instance present in the database.
+    #[clap(long, env = "KMS_AUDIT_INSTANCE_ID")]
+    pub audit_instance_id: Option<String>,
+}
+
+/// Resolved, exactly-one-of audit source.
+#[derive(Debug)]
+enum AuditSource {
+    File(PathBuf),
+    Postgres {
+        url: String,
+        /// `None` means every instance in the database.
+        instance_id: Option<String>,
+    },
+}
+
+impl AuditSourceArgs {
+    /// Validates that exactly one source was given.
+    ///
+    /// # Errors
+    /// Returns an error if both `--path` and `--audit-postgres-url` are set, or neither is.
+    fn resolve(&self) -> KmsCliResult<AuditSource> {
+        match (&self.path, &self.audit_postgres_url) {
+            (Some(path), None) => Ok(AuditSource::File(path.clone())),
+            (None, Some(url)) => Ok(AuditSource::Postgres {
+                url: url.clone(),
+                instance_id: self.audit_instance_id.clone(),
+            }),
+            (Some(_), Some(_)) => Err(crate::error::KmsCliError::InvalidRequest(
+                "--path and --audit-postgres-url are mutually exclusive — specify exactly one"
+                    .to_owned(),
+            )),
+            (None, None) => Err(crate::error::KmsCliError::InvalidRequest(
+                "one of --path or --audit-postgres-url is required".to_owned(),
+            )),
+        }
+    }
+}
+
+/// Export audit events to stdout.
 ///
 /// Each event is printed on its own line.  Use `--since` to filter by time and
 /// `--format` to choose between JSON (default) and CEF v27 output.
@@ -65,19 +122,21 @@ pub enum ExportFormat {
 /// # Examples
 ///
 /// ```sh
-/// # Print all events as JSON
+/// # Print all events as JSON, from the file
 /// ckms audit export --path /data/kms/audit.jsonl
 ///
-/// # Print events since 2024-01-01 in CEF format
+/// # Print events since 2024-01-01 in CEF format, from the file
 /// ckms audit export --path /data/kms/audit.jsonl \
 ///     --since 2024-01-01T00:00:00Z --format cef
+///
+/// # Print every instance's events from a PostgreSQL audit database
+/// ckms audit export --audit-postgres-url postgresql://user:pass@host/audit_db
 /// ```
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct ExportAuditAction {
-    /// Path to the JSONL audit log file.
-    #[clap(long, short = 'p', env = "KMS_AUDIT_FILE_PATH")]
-    pub path: PathBuf,
+    #[clap(flatten)]
+    pub source: AuditSourceArgs,
 
     /// Only export events at or after this RFC 3339 timestamp
     /// (e.g. `2024-01-15T00:00:00Z`).
@@ -98,7 +157,7 @@ impl ExportAuditAction {
     /// Run the export, writing output to `stdout`.
     ///
     /// # Errors
-    /// Returns an error if the file cannot be opened or read.
+    /// Returns an error if the source cannot be read.
     pub fn run(&self) -> KmsCliResult<()> {
         self.run_with_writer(&mut std::io::stdout().lock())
     }
@@ -109,10 +168,20 @@ impl ExportAuditAction {
     /// For tests pass `&mut Vec::new()` and inspect the captured bytes.
     ///
     /// # Errors
-    /// Returns an error if the file cannot be opened, read, or a line cannot be parsed.
+    /// Returns an error if the source cannot be opened/connected to, read, or a line/row
+    /// cannot be decoded.
     pub(crate) fn run_with_writer<W: Write>(&self, out: &mut W) -> KmsCliResult<()> {
-        let since = self
-            .since
+        let since = self.parse_since()?;
+        match self.source.resolve()? {
+            AuditSource::File(path) => self.export_file(&path, since, out),
+            AuditSource::Postgres { url, instance_id } => block_on_audit_source(
+                self.export_postgres(&url, instance_id.as_deref(), since, out),
+            ),
+        }
+    }
+
+    fn parse_since(&self) -> KmsCliResult<Option<time::OffsetDateTime>> {
+        self.since
             .as_deref()
             .map(|s| {
                 time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
@@ -122,9 +191,16 @@ impl ExportAuditAction {
                         ))
                     })
             })
-            .transpose()?;
+            .transpose()
+    }
 
-        let file = std::fs::File::open(&self.path).map_err(crate::error::KmsCliError::IoError)?;
+    fn export_file<W: Write>(
+        &self,
+        path: &Path,
+        since: Option<time::OffsetDateTime>,
+        out: &mut W,
+    ) -> KmsCliResult<()> {
+        let file = std::fs::File::open(path).map_err(crate::error::KmsCliError::IoError)?;
         let reader = BufReader::new(file);
 
         for (line_no, line) in reader.lines().enumerate() {
@@ -156,19 +232,88 @@ impl ExportAuditAction {
 
         Ok(())
     }
+
+    /// Exports events from a `PostgreSQL` audit database, one instance at a time, paging
+    /// through each chain rather than materializing it entirely in memory.
+    async fn export_postgres<W: Write>(
+        &self,
+        url: &str,
+        instance_id: Option<&str>,
+        since: Option<time::OffsetDateTime>,
+        out: &mut W,
+    ) -> KmsCliResult<()> {
+        let reader = PgAuditReader::connect(url)
+            .await
+            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+
+        let instances = match instance_id {
+            Some(id) => vec![id.to_owned()],
+            None => reader
+                .list_instances()
+                .await
+                .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?,
+        };
+
+        for instance in &instances {
+            for generation in reader
+                .list_generations(instance)
+                .await
+                .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?
+            {
+                let mut after_id = -1_i64;
+                loop {
+                    let page = reader
+                        .events_page(instance, generation, after_id)
+                        .await
+                        .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+                    if page.is_empty() {
+                        break;
+                    }
+                    for event in &page {
+                        after_id = event.id;
+                        if let Some(ts) = since {
+                            if event.timestamp < ts {
+                                continue;
+                            }
+                        }
+                        let output_line = match self.format {
+                            ExportFormat::Json => serde_json::to_string(event).map_err(|e| {
+                                crate::error::KmsCliError::Default(format!(
+                                    "cannot serialize event id={}: {e}",
+                                    event.id
+                                ))
+                            })?,
+                            ExportFormat::Cef => to_cef_line(event, &self.kms_version),
+                        };
+                        writeln!(out, "{output_line}")
+                            .map_err(crate::error::KmsCliError::IoError)?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
-/// Verify the SHA-256 hash chain of the audit log file.
+/// Verify the SHA-256 hash chain of the audit trail.
 ///
 /// Checks that:
 /// 1. Each event's `row_hash` matches a freshly computed hash of its fields.
 /// 2. Each event's `prev_hash` matches the `row_hash` of the previous event
 ///    (or is all-zeros for the first event).
-/// 3. Every `audit:reanchor` event's sealed evidence file still exists next to the
-///    log and its SHA-256 still matches the digest recorded in the event.
+/// 3. (File source only) every `audit:reanchor` event's sealed evidence file still
+///    exists next to the log and its SHA-256 still matches the digest recorded in the
+///    event. The `PostgreSQL` backend also seals and reanchors on content corruption
+///    (using immutable chain generations instead of renamed files), but this command
+///    does not yet cross-check a Postgres reanchor's recorded evidence digest against
+///    its sealed generation — see the audit operator guide for the manual `psql`
+///    reproduction recipe in the meantime.
 ///
 /// `--path` may be a single file or a directory. A directory is scanned for every
-/// `*.jsonl` file, each verified as its own **independent** chain.
+/// `*.jsonl` file, each verified as its own **independent** chain. `--audit-postgres-url`
+/// verifies every instance's every generation in the database (or just
+/// `--audit-instance-id` if given), each generation again as its own independent chain.
 ///
 /// Exits with code **0** when every chain is intact, or **1** when a broken
 /// link, tampered event, or altered/missing sealed-evidence file is detected
@@ -179,13 +324,13 @@ impl ExportAuditAction {
 /// ```sh
 /// ckms audit verify --path /data/kms/audit.jsonl
 /// ckms audit verify --path /data/kms/audit-logs/
+/// ckms audit verify --audit-postgres-url postgresql://user:pass@host/audit_db
 /// ```
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct VerifyAuditAction {
-    /// Path to a JSONL audit log file, or a directory containing one or more.
-    #[clap(long, short = 'p', env = "KMS_AUDIT_FILE_PATH")]
-    pub path: PathBuf,
+    #[clap(flatten)]
+    pub source: AuditSourceArgs,
 
     /// Print a summary line for every event even when the chain is valid.
     #[clap(long, default_value = "false")]
@@ -199,8 +344,8 @@ impl VerifyAuditAction {
     /// Run the verification, printing the summary to `stdout`.
     ///
     /// # Errors
-    /// Returns an error if the path cannot be opened or read, if a broken
-    /// hash-chain link is detected, or if sealed reanchor evidence is
+    /// Returns an error if the source cannot be opened/connected to or read, if a
+    /// broken hash-chain link is detected, or if sealed reanchor evidence is
     /// missing/altered (exit code 1).
     pub fn run(&self) -> KmsCliResult<()> {
         self.run_with_writer(&mut std::io::stdout().lock())
@@ -208,15 +353,24 @@ impl VerifyAuditAction {
 
     /// Run the verification, writing the summary to the provided writer.
     ///
+    /// # Errors
+    /// Returns an error if the source cannot be opened/connected to, read, or a
+    /// chain/evidence check fails.
+    pub(crate) fn run_with_writer<W: Write>(&self, out: &mut W) -> KmsCliResult<()> {
+        match self.source.resolve()? {
+            AuditSource::File(path) => self.verify_file_source(&path, out),
+            AuditSource::Postgres { url, instance_id } => {
+                block_on_audit_source(self.verify_postgres(&url, instance_id.as_deref(), out))
+            }
+        }
+    }
+
     /// When `path` is a directory, every `*.jsonl` file in it is verified as its own
     /// independent chain. Returns `Err` containing the human-readable diagnosis on the
     /// first broken link, tampered event, or altered/missing sealed-evidence file.
-    ///
-    /// # Errors
-    /// Returns an error if the path cannot be opened, read, or a chain/evidence check fails.
-    pub(crate) fn run_with_writer<W: Write>(&self, out: &mut W) -> KmsCliResult<()> {
-        if self.path.is_dir() {
-            let mut files: Vec<PathBuf> = std::fs::read_dir(&self.path)
+    fn verify_file_source<W: Write>(&self, path: &Path, out: &mut W) -> KmsCliResult<()> {
+        if path.is_dir() {
+            let mut files: Vec<PathBuf> = std::fs::read_dir(path)
                 .map_err(crate::error::KmsCliError::IoError)?
                 .collect::<std::io::Result<Vec<_>>>()
                 .map_err(crate::error::KmsCliError::IoError)?
@@ -232,7 +386,7 @@ impl VerifyAuditAction {
             if files.is_empty() {
                 return Err(crate::error::KmsCliError::InvalidRequest(format!(
                     "no *.jsonl audit files found in {}",
-                    self.path.display()
+                    path.display()
                 )));
             }
 
@@ -243,7 +397,7 @@ impl VerifyAuditAction {
             }
             Ok(())
         } else {
-            self.verify_one_file(&self.path, out)
+            self.verify_one_file(path, out)
         }
     }
 
@@ -333,6 +487,183 @@ impl VerifyAuditAction {
             if total == 1 { "" } else { "s" }
         )
         .map_err(crate::error::KmsCliError::IoError)
+    }
+
+    /// Verifies every instance in a `PostgreSQL` audit database (or just `instance_id`,
+    /// if given), each as its own independent chain. A failing instance does not stop the
+    /// remaining ones from being checked; every failure is reported together at the end.
+    async fn verify_postgres<W: Write>(
+        &self,
+        url: &str,
+        instance_id: Option<&str>,
+        out: &mut W,
+    ) -> KmsCliResult<()> {
+        let reader = PgAuditReader::connect(url)
+            .await
+            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+
+        let instances = match instance_id {
+            Some(id) => vec![id.to_owned()],
+            None => reader
+                .list_instances()
+                .await
+                .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?,
+        };
+        if instances.is_empty() {
+            return Err(crate::error::KmsCliError::InvalidRequest(
+                "no audit instances found in the PostgreSQL database".to_owned(),
+            ));
+        }
+
+        let mut failures = Vec::new();
+        for instance in &instances {
+            writeln!(out, "== instance_id: {instance} ==")
+                .map_err(crate::error::KmsCliError::IoError)?;
+            if let Some(failure) = self
+                .verify_one_postgres_instance(&reader, instance, out)
+                .await?
+            {
+                failures.push(failure);
+            }
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(crate::error::KmsCliError::InvalidRequest(
+                failures.join("\n"),
+            ))
+        }
+    }
+
+    /// Verifies one instance's generations in order, each as its own independent chain (a
+    /// fresh genesis after a seal-and-roll recovery). A failing generation does not stop
+    /// later ones from being checked: a sealed generation stays corrupted forever, and the
+    /// active generation after it must still be verifiable.
+    ///
+    /// Returns `None` once the `chain OK` line is written to `out`, or `Some` report naming
+    /// every failing generation and the ones that verified clean.
+    async fn verify_one_postgres_instance<W: Write>(
+        &self,
+        reader: &PgAuditReader,
+        instance_id: &str,
+        out: &mut W,
+    ) -> KmsCliResult<Option<String>> {
+        let generations = reader
+            .list_generations(instance_id)
+            .await
+            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+
+        let mut failures = Vec::new();
+        let mut clean_generations = Vec::new();
+        let mut total: u64 = 0;
+        for &generation in &generations {
+            match self
+                .verify_postgres_generation(reader, instance_id, generation)
+                .await?
+            {
+                Ok(count) => {
+                    total += count;
+                    clean_generations.push(generation.to_string());
+                }
+                Err(failure) => failures.push(failure),
+            }
+        }
+
+        if !failures.is_empty() {
+            let clean = if clean_generations.is_empty() {
+                "no generation verified OK".to_owned()
+            } else {
+                format!(
+                    "generation(s) {} verified OK ({total} event{})",
+                    clean_generations.join(", "),
+                    if total == 1 { "" } else { "s" }
+                )
+            };
+            let summary = format!(
+                "instance_id={instance_id}: {} of {} generations failed verification; {clean}",
+                failures.len(),
+                generations.len()
+            );
+            failures.push(summary);
+            return Ok(Some(failures.join("\n")));
+        }
+        if total == 0 {
+            return Ok(Some(format!(
+                "no audit events found for instance_id={instance_id}"
+            )));
+        }
+
+        writeln!(
+            out,
+            "instance_id={instance_id}: chain OK: {total} event{} verified",
+            if total == 1 { "" } else { "s" }
+        )
+        .map_err(crate::error::KmsCliError::IoError)?;
+        Ok(None)
+    }
+
+    /// Pages through one generation in `id` order, verifying every row's hash and chain
+    /// link without ever materializing the whole generation in memory. Returns the number
+    /// of events verified, or the first failure: rows after a break only repeat it.
+    async fn verify_postgres_generation(
+        &self,
+        reader: &PgAuditReader,
+        instance_id: &str,
+        generation: i64,
+    ) -> KmsCliResult<Result<u64, String>> {
+        let mut prev: Option<AuditEvent> = None;
+        let mut after_id = -1_i64;
+        let mut count: u64 = 0;
+
+        loop {
+            let page = reader
+                .events_page(instance_id, generation, after_id)
+                .await
+                .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+            if page.is_empty() {
+                return Ok(Ok(count));
+            }
+
+            for event in page {
+                after_id = event.id;
+
+                if !verify_event(&event) {
+                    return Ok(Err(format!(
+                        "TAMPERED: instance_id={instance_id} generation={generation} event \
+                         id={} has an invalid row_hash",
+                        event.id
+                    )));
+                }
+                if !verify_chain_link(&event, prev.as_ref()) {
+                    return Ok(Err(format!(
+                        "CHAIN BROKEN: instance_id={instance_id} generation={generation} event \
+                         id={} prev_hash does not match the row_hash of event id={}",
+                        event.id,
+                        prev.as_ref().map_or(-1, |p| p.id)
+                    )));
+                }
+
+                if self.verbose {
+                    let status = match &event.result {
+                        AuditResult::Success => "ok",
+                        AuditResult::Failure(_) => "fail",
+                    };
+                    eprintln!(
+                        "generation={generation}  id={:>6}  {}  {}  {}  chain=ok",
+                        event.id,
+                        event
+                            .timestamp
+                            .format(&time::format_description::well_known::Rfc3339)
+                            .unwrap_or_default(),
+                        event.operation,
+                        status
+                    );
+                }
+
+                count += 1;
+                prev = Some(event);
+            }
+        }
     }
 
     /// Confirms a reanchor event's sealed-evidence file still exists next to `path` and
@@ -428,18 +759,39 @@ fn is_sealed_audit_evidence_file(path: &Path) -> bool {
         .is_some_and(|name| name.contains(".corrupt."))
 }
 
+/// Runs `fut` to completion, reusing the ambient tokio runtime if one is already driving
+/// the current thread (e.g. `ckms`'s own multi-threaded runtime), or spinning up a
+/// throwaway one otherwise (e.g. a plain, non-async `#[test]`).
+///
+/// A bare `Runtime::new().block_on(fut)` panics with "Cannot start a runtime from within
+/// a runtime" when `ckms`'s own binary — which already runs everything inside a
+/// multi-threaded tokio runtime — calls into this sync CLI action.
+fn block_on_audit_source<F: std::future::Future<Output = KmsCliResult<()>>>(
+    fut: F,
+) -> KmsCliResult<()> {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(fut)),
+        Err(_) => match tokio::runtime::Runtime::new() {
+            Ok(rt) => rt.block_on(fut),
+            Err(e) => Err(crate::error::KmsCliError::Default(format!(
+                "cannot start async runtime: {e}"
+            ))),
+        },
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use std::{io::Write as _, path::PathBuf};
 
     use cosmian_kms_client::reexport::cosmian_kms_access::audit::{
-        AuditEvent, AuditResult, compute_row_hash,
+        AuditEvent, AuditResult, audit_now, compute_row_hash,
     };
     use sha2::{Digest, Sha256};
     use time::OffsetDateTime;
 
-    use super::{ExportAuditAction, ExportFormat, VerifyAuditAction};
+    use super::{AuditSourceArgs, ExportAuditAction, ExportFormat, VerifyAuditAction};
 
     fn temp_path(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -481,14 +833,20 @@ mod tests {
 
     fn verify_action(path: PathBuf) -> VerifyAuditAction {
         VerifyAuditAction {
-            path,
+            source: AuditSourceArgs {
+                path: Some(path),
+                ..Default::default()
+            },
             verbose: false,
         }
     }
 
     fn export_action(path: PathBuf, format: ExportFormat) -> ExportAuditAction {
         ExportAuditAction {
-            path,
+            source: AuditSourceArgs {
+                path: Some(path),
+                ..Default::default()
+            },
             since: None,
             format,
             kms_version: "test".to_owned(),
@@ -665,7 +1023,7 @@ mod tests {
 
         let details = format!(
             "{{\"sealed_file\":\"{}\",\"sha256\":\"{recorded_sha256}\",\"size\":{},\
-             \"claimed_last_id\":0,\"failure_offset\":0,\"reason\":\"unparseable\"}}",
+             \"claimed_last_id\":0,\"failure_offset\":0,\"reason\":\"unparsable\"}}",
             sealed_path.file_name().unwrap().to_string_lossy(),
             sealed_content.len()
         );
@@ -815,7 +1173,10 @@ mod tests {
             .format(&time::format_description::well_known::Rfc3339)
             .unwrap();
         let action = ExportAuditAction {
-            path,
+            source: AuditSourceArgs {
+                path: Some(path),
+                ..Default::default()
+            },
             since: Some(since_str),
             format: ExportFormat::Json,
             kms_version: "test".to_owned(),
@@ -832,5 +1193,354 @@ mod tests {
         );
         let ev0: AuditEvent = serde_json::from_str(lines[0]).unwrap();
         assert_eq!(ev0.id, 1, "first kept event should have id=1 (cutoff)");
+    }
+
+    // ── AuditSourceArgs::resolve() ───────────────────────────────────────────
+
+    #[test]
+    fn source_resolve_rejects_neither_path_nor_postgres_url() {
+        let args = AuditSourceArgs::default();
+        let err = args.resolve().unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("one of --path or --audit-postgres-url")
+        );
+    }
+
+    #[test]
+    fn source_resolve_rejects_both_path_and_postgres_url() {
+        let args = AuditSourceArgs {
+            path: Some(PathBuf::from("/tmp/audit.jsonl")),
+            audit_postgres_url: Some("postgresql://host/db".to_owned()),
+            audit_instance_id: None,
+        };
+        let err = args.resolve().unwrap_err();
+        assert!(err.to_string().contains("mutually exclusive"));
+    }
+
+    #[test]
+    fn source_resolve_accepts_path_only() {
+        let args = AuditSourceArgs {
+            path: Some(PathBuf::from("/tmp/audit.jsonl")),
+            ..Default::default()
+        };
+        args.resolve().unwrap();
+    }
+
+    #[test]
+    fn source_resolve_accepts_postgres_url_only() {
+        let args = AuditSourceArgs {
+            audit_postgres_url: Some("postgresql://host/db".to_owned()),
+            ..Default::default()
+        };
+        args.resolve().unwrap();
+    }
+
+    // ── PostgreSQL source (requires a live database) ─────────────────────────
+
+    fn audit_pg_url() -> String {
+        option_env!("KMS_AUDIT_POSTGRES_URL")
+            .unwrap_or("postgresql://kms_audit:kms_audit@127.0.0.1:5436/kms_audit?sslmode=disable")
+            .to_owned()
+    }
+
+    /// Builds a would-be-valid event for `id` chained onto `prev_hash`, with `row_hash`
+    /// left zeroed \u2014 callers compute it (and may then corrupt any field) before writing.
+    fn build_test_event(id: i64, prev_hash: [u8; 32]) -> AuditEvent {
+        AuditEvent {
+            id,
+            timestamp: audit_now(),
+            operation: format!("Op{id}"),
+            user: "cli-test-user".to_owned(),
+            object_uid: Some(format!("uid-{id}")),
+            algorithm: Some("AES-256-GCM".to_owned()),
+            client_ip: Some("127.0.0.1".to_owned()),
+            result: AuditResult::Success,
+            duration_ms: 1,
+            request_id: None,
+            details: None,
+            prev_hash,
+            row_hash: [0_u8; 32],
+        }
+    }
+
+    /// Seeds a fresh instance with `n` events via `PgAuditSink`, returning its
+    /// `instance_id`. `mutate` runs on each event just before it is written, letting a
+    /// caller deliberately corrupt one event (see the tamper/broken-link tests below)
+    /// while reusing the same well-formed chain construction as the happy-path tests.
+    async fn seed_postgres_chain_with(
+        url: &str,
+        n: i64,
+        mut mutate: impl FnMut(i64, &mut AuditEvent),
+    ) -> String {
+        use cosmian_kms_server_database::{
+            PgAuditSink, reexport::cosmian_kms_interfaces::AuditSink as _,
+        };
+
+        let instance_id = format!("cli-test-{}", uuid::Uuid::new_v4());
+        let mut sink = PgAuditSink::connect(url, &instance_id).await.unwrap();
+        sink.resume().await.unwrap();
+
+        let mut prev_hash = [0_u8; 32];
+        for i in 0..n {
+            let mut event = build_test_event(i, prev_hash);
+            event.row_hash = compute_row_hash(&event);
+            mutate(i, &mut event);
+            sink.write_event_atomic(&event).await.unwrap();
+            prev_hash = event.row_hash;
+        }
+        instance_id
+    }
+
+    async fn seed_postgres_chain(url: &str, n: i64) -> String {
+        seed_postgres_chain_with(url, n, |_, _| {}).await
+    }
+
+    /// Seeds a fresh instance whose generation 0 ends with a tampered event, reconnects to
+    /// trigger the automatic seal-and-roll recovery (sealing generation 0, starting
+    /// generation 1 with its reanchor event), then writes `extra_gen1_events` further
+    /// events into generation 1, running `mutate` on each \u2014 letting a caller leave the
+    /// recovered generation healthy or corrupt it too. Returns the `instance_id`.
+    async fn seed_postgres_sealed_instance(
+        url: &str,
+        extra_gen1_events: i64,
+        mut mutate: impl FnMut(i64, &mut AuditEvent),
+    ) -> String {
+        use cosmian_kms_server_database::{
+            PgAuditSink, reexport::cosmian_kms_interfaces::AuditSink as _,
+        };
+
+        let instance_id = seed_postgres_chain_with(url, 3, |i, event| {
+            if i == 2 {
+                event.row_hash = [0xCC_u8; 32];
+            }
+        })
+        .await;
+
+        let mut sink = PgAuditSink::connect(url, &instance_id).await.unwrap();
+        let head = sink.resume().await.unwrap();
+
+        let mut prev_hash = head.prev_hash;
+        for i in 0..extra_gen1_events {
+            let id = head.next_id + i;
+            let mut event = build_test_event(id, prev_hash);
+            event.row_hash = compute_row_hash(&event);
+            mutate(i, &mut event);
+            sink.write_event_atomic(&event).await.unwrap();
+            prev_hash = event.row_hash;
+        }
+        instance_id
+    }
+
+    #[test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    fn verify_postgres_source_detects_tampered_row() {
+        let url = audit_pg_url();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        // Event 1's own row_hash no longer matches its content — a self-consistency
+        // failure, independent of its neighbors.
+        let instance_id = rt.block_on(seed_postgres_chain_with(&url, 3, |i, event| {
+            if i == 1 {
+                event.row_hash = [0xAA_u8; 32];
+            }
+        }));
+
+        let action = VerifyAuditAction {
+            source: AuditSourceArgs {
+                audit_postgres_url: Some(url),
+                audit_instance_id: Some(instance_id.clone()),
+                ..Default::default()
+            },
+            verbose: false,
+        };
+        let mut out = Vec::new();
+        let err = action.run_with_writer(&mut out).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("TAMPERED"), "{msg}");
+        assert!(msg.contains(&instance_id), "{msg}");
+        assert!(msg.contains("generation=0"), "{msg}");
+        assert!(msg.contains("id=1"), "{msg}");
+    }
+
+    #[test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    fn verify_postgres_source_detects_broken_link() {
+        let url = audit_pg_url();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        // Event 1's own hash still matches its (now-wrong) prev_hash — it verifies on
+        // its own, but no longer chains onto event 0.
+        let instance_id = rt.block_on(seed_postgres_chain_with(&url, 3, |i, event| {
+            if i == 1 {
+                event.prev_hash = [0xBB_u8; 32];
+                event.row_hash = compute_row_hash(event);
+            }
+        }));
+
+        let action = VerifyAuditAction {
+            source: AuditSourceArgs {
+                audit_postgres_url: Some(url),
+                audit_instance_id: Some(instance_id.clone()),
+                ..Default::default()
+            },
+            verbose: false,
+        };
+        let mut out = Vec::new();
+        let err = action.run_with_writer(&mut out).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("CHAIN BROKEN"), "{msg}");
+        assert!(msg.contains(&instance_id), "{msg}");
+        assert!(msg.contains("id=1"), "{msg}");
+    }
+
+    #[test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    fn verify_postgres_source_reports_every_failing_generation() {
+        let url = audit_pg_url();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        // Generation 0 is sealed by its own tampered event; generation 1, the recovered
+        // active generation, is deliberately corrupted too — a failing generation must
+        // not stop the next one from being checked and reported as its own failure.
+        let instance_id = rt.block_on(seed_postgres_sealed_instance(&url, 2, |i, event| {
+            if i == 1 {
+                event.row_hash = [0xDD_u8; 32];
+            }
+        }));
+
+        let action = VerifyAuditAction {
+            source: AuditSourceArgs {
+                audit_postgres_url: Some(url),
+                audit_instance_id: Some(instance_id.clone()),
+                ..Default::default()
+            },
+            verbose: false,
+        };
+        let mut out = Vec::new();
+        let err = action.run_with_writer(&mut out).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("generation=0"), "{msg}");
+        assert!(msg.contains("generation=1"), "{msg}");
+        assert!(
+            msg.contains(&format!(
+                "instance_id={instance_id}: 2 of 2 generations failed verification; no \
+                 generation verified OK"
+            )),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    fn verify_postgres_reports_one_sealed_instance_among_healthy_ones() {
+        let url = audit_pg_url();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let instance_a = rt.block_on(seed_postgres_chain(&url, 2));
+        // Generation 1 stays healthy after the automatic recovery: only generation 0,
+        // sealed forever by design, must be reported as failing for this instance.
+        let instance_b = rt.block_on(seed_postgres_sealed_instance(&url, 2, |_, _| {}));
+        let instance_c = rt.block_on(seed_postgres_chain(&url, 2));
+
+        let action = VerifyAuditAction {
+            source: AuditSourceArgs {
+                audit_postgres_url: Some(url),
+                audit_instance_id: None,
+                ..Default::default()
+            },
+            verbose: false,
+        };
+        let mut out = Vec::new();
+        let err = action.run_with_writer(&mut out).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains(&format!(
+                "instance_id={instance_b}: 1 of 2 generations failed verification"
+            )),
+            "{msg}"
+        );
+        assert!(msg.contains("generation=0"), "{msg}");
+        assert!(msg.contains("generation(s) 1 verified OK"), "{msg}");
+
+        let printed = String::from_utf8(out).unwrap();
+        assert!(
+            printed.contains(&format!("== instance_id: {instance_a} ==")),
+            "{printed}"
+        );
+        assert!(
+            printed.contains(&format!("== instance_id: {instance_c} ==")),
+            "{printed}"
+        );
+    }
+
+    #[test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    fn verify_postgres_source_rejects_unknown_instance() {
+        let url = audit_pg_url();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        // Seed a real instance so the database is non-empty, then ask for a different,
+        // never-seeded instance_id — must not report a vacuously verified empty chain.
+        rt.block_on(seed_postgres_chain(&url, 1));
+        let unknown_instance_id = format!("cli-test-unknown-{}", uuid::Uuid::new_v4());
+
+        let action = VerifyAuditAction {
+            source: AuditSourceArgs {
+                audit_postgres_url: Some(url),
+                audit_instance_id: Some(unknown_instance_id.clone()),
+                ..Default::default()
+            },
+            verbose: false,
+        };
+        let mut out = Vec::new();
+        let err = action.run_with_writer(&mut out).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("no audit events found"), "{msg}");
+        assert!(msg.contains(&unknown_instance_id), "{msg}");
+    }
+
+    #[test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    fn verify_postgres_source_reports_chain_ok() {
+        let url = audit_pg_url();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let instance_id = rt.block_on(seed_postgres_chain(&url, 3));
+
+        let action = VerifyAuditAction {
+            source: AuditSourceArgs {
+                audit_postgres_url: Some(url),
+                audit_instance_id: Some(instance_id.clone()),
+                ..Default::default()
+            },
+            verbose: false,
+        };
+        let mut out = Vec::new();
+        action.run_with_writer(&mut out).unwrap();
+        let msg = String::from_utf8(out).unwrap();
+        assert!(msg.contains("chain OK: 3 events verified"), "{msg}");
+        assert!(msg.contains(&instance_id), "{msg}");
+    }
+
+    #[test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    fn export_postgres_source_outputs_parseable_lines() {
+        let url = audit_pg_url();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let instance_id = rt.block_on(seed_postgres_chain(&url, 2));
+
+        let action = ExportAuditAction {
+            source: AuditSourceArgs {
+                audit_postgres_url: Some(url),
+                audit_instance_id: Some(instance_id),
+                ..Default::default()
+            },
+            since: None,
+            format: ExportFormat::Json,
+            kms_version: "test".to_owned(),
+        };
+        let mut out = Vec::new();
+        action.run_with_writer(&mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 2, "got:\n{text}");
+        for line in &lines {
+            let _event: AuditEvent = serde_json::from_str(line).unwrap();
+        }
     }
 }
