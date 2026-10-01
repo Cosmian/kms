@@ -428,6 +428,7 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
 }
 
 #[cfg(all(test, feature = "non-fips"))]
+#[expect(clippy::expect_used)]
 mod tests {
     use super::init_openssl_providers;
 
