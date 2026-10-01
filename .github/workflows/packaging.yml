@@ -188,11 +188,14 @@ jobs:
       # (used to execute every JS-based `uses:` action, including checkout
       # itself) is glibc-linked; `gcompat` shims the glibc syscalls it needs
       # on musl. `bash` is needed because composite actions below default to
-      # `shell: bash`, which Alpine doesn't ship (busybox `ash` only). Must
-      # use `shell: sh` explicitly here since bash doesn't exist yet.
-      - name: Bootstrap (gcompat for Actions' own Node.js runtime, bash)
+      # `shell: bash`, which Alpine doesn't ship (busybox `ash` only). `git`
+      # is needed too — without it, actions/checkout silently falls back to
+      # the GitHub REST API tarball download, which doesn't support
+      # `submodules: recursive` and hard-fails instead of just skipping it.
+      # Must use `shell: sh` explicitly here since bash doesn't exist yet.
+      - name: Bootstrap (gcompat for Actions' own Node.js runtime, bash, git)
         shell: sh
-        run: apk add --no-cache gcompat bash
+        run: apk add --no-cache gcompat bash git
 
       - uses: actions/checkout@v7
         with:
@@ -202,7 +205,7 @@ jobs:
 
       - name: Install native Alpine build toolchain (apk)
         run: |
-          apk add --no-cache build-base perl linux-headers openssl-dev pkgconfig curl git
+          apk add --no-cache build-base perl linux-headers openssl-dev pkgconfig curl
 
       - name: Install Rust via rustup (musl-native build, same 1.97.0 pin as the rest of CI)
         run: |
