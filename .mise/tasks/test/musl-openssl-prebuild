@@ -26,9 +26,22 @@ require_cmd perl
 require_cmd make
 require_cmd musl-gcc "musl-gcc not found — install musl-tools first (apt-get install -y musl-tools)."
 
+EXTRA_CFLAGS=""
 case "$(uname -m)" in
   x86_64) OPENSSL_TARGET="linux-x86_64" ;;
-  aarch64 | arm64) OPENSSL_TARGET="linux-aarch64" ;;
+  aarch64 | arm64)
+    OPENSSL_TARGET="linux-aarch64"
+    # GCC >= 10 defaults to -moutline-atomics on aarch64: it emits a runtime
+    # LSE-atomics detector (lse-init.o, pulled from the host's static
+    # libgcc.a) that calls glibc's internal `__getauxval` symbol. musl-gcc
+    # wraps the host's (glibc-targeted) gcc/libgcc but links against musl,
+    # which does not export that symbol, so *any* output that pulls in
+    # libgcc.a (providers/legacy.so, apps/openssl, fuzz test binaries, ...)
+    # fails with "undefined reference to `__getauxval'". This throwaway
+    # cross-check build never needs LSE runtime dispatch, so disable it
+    # outright rather than patching in a stub symbol.
+    EXTRA_CFLAGS="-mno-outline-atomics"
+    ;;
   *) print_error "Unsupported architecture: $(uname -m)" ;;
 esac
 
@@ -79,14 +92,13 @@ mkdir -p "${OUT_DIR}"
     # multiarch directory, not /usr/include directly.
     [ -d "${GNU_INCLUDE_DIR}/asm" ] && $SUDO cp -r "${GNU_INCLUDE_DIR}/asm" "${MUSL_INCLUDE_DIR}/asm"
   fi
-  # `no-tests` skips both test/ and fuzz/ (the latter matters here: its
-  # harnesses link gcc's static libgcc.a, whose aarch64 LSE-atomics init code
-  # references glibc's internal `__getauxval` — undefined when musl-gcc links
-  # against musl instead, so `make`'s default target fails on aarch64 even
-  # though libcrypto/libssl/apps — all this script actually needs — build
-  # fine). Confirmed OpenSSL-version-stable Configure option, not a make-target
-  # name that could silently drift across OpenSSL releases.
-  CC=musl-gcc perl ./Configure no-shared no-fips no-tests \
+  # `no-tests` skips both test/ and fuzz/ — neither is needed just to produce
+  # libcrypto/libssl/apps for use as a Rust OPENSSL_DIR, and (on aarch64,
+  # belt-and-suspenders alongside -mno-outline-atomics above) the fuzz
+  # harnesses are an extra place the same __getauxval problem could resurface.
+  # Confirmed OpenSSL-version-stable Configure option, not a make-target name
+  # that could silently drift across OpenSSL releases.
+  CC=musl-gcc perl ./Configure no-shared no-fips no-tests ${EXTRA_CFLAGS:+"$EXTRA_CFLAGS"} \
     --prefix="${OUT_DIR}" --openssldir="${OUT_DIR}/ssl" --libdir=lib "${OPENSSL_TARGET}"
   make -j"$(nproc)" depend
   make -j"$(nproc)"
