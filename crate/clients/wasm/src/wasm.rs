@@ -1960,21 +1960,28 @@ pub fn remove_cc_attribute_ttlv_request(
 }
 
 /// Add a new dimension named `dimension` with `attributes` (unqualified names, lowest first
-/// if `hierarchical`), all with `encryption_hint` (`ckms cc access-structure add-dimension`).
-#[allow(clippy::needless_pass_by_value)]
+/// if `hierarchical`), `encryption_hints[i]` being the hint of `attributes[i]` — both must
+/// have the same length (`ckms cc access-structure add-dimension`).
 #[wasm_bindgen]
 pub fn add_cc_dimension_ttlv_request(
     master_secret_key_id: &str,
     dimension: String,
     attributes: Vec<String>,
-    encryption_hint: &str,
+    encryption_hints: Vec<String>,
     hierarchical: bool,
 ) -> Result<JsValue, JsValue> {
-    let hint = cc_encryption_hint(encryption_hint)?;
+    if attributes.len() != encryption_hints.len() {
+        return Err(JsValue::from_str(&format!(
+            "{} attributes but {} encryption hints: one hint per attribute is expected",
+            attributes.len(),
+            encryption_hints.len()
+        )));
+    }
     let attributes = attributes
-        .iter()
-        .map(|name| (format!("{dimension}::{name}"), hint))
-        .collect();
+        .into_iter()
+        .zip(encryption_hints)
+        .map(|(name, hint)| Ok((format!("{dimension}::{name}"), cc_encryption_hint(&hint)?)))
+        .collect::<Result<_, JsValue>>()?;
     cc_rekey_ttlv_request(
         master_secret_key_id,
         &if hierarchical {
