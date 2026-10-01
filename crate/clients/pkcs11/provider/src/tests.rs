@@ -22,20 +22,25 @@ use cosmian_logger::{debug, log_init};
 use cosmian_pkcs11_module::{
     pkcs11::{
         C_CloseSession, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
-        C_Initialize, C_OpenSession, SLOT_ID,
+        C_GetAttributeValue, C_Initialize, C_Login, C_OpenSession, C_SetAttributeValue, SLOT_ID,
     },
     test_decrypt, test_encrypt,
-    traits::{Backend, SignatureAlgorithm},
+    traits::{Backend, SignatureAlgorithm, backend as registered_backend},
 };
 use pkcs11_sys::{
-    CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INVALID_HANDLE, CK_OBJECT_CLASS, CK_ULONG, CKA_CLASS,
-    CKA_LABEL, CKF_SERIAL_SESSION, CKO_DATA, CKR_ARGUMENTS_BAD, CKR_OK,
+    C_GetInterface, C_LoginUser, CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INTERFACE, CK_INVALID_HANDLE,
+    CK_OBJECT_CLASS, CK_PROFILE_ID, CK_ULONG, CK_USER_TYPE, CK_UTF8CHAR, CK_VERSION, CKA_CLASS,
+    CKA_LABEL, CKA_PRIVATE, CKA_PROFILE_ID, CKA_UNIQUE_ID, CKF_SERIAL_SESSION, CKO_DATA,
+    CKO_PROFILE, CKP_AUTHENTICATION_TOKEN, CKP_BASELINE_PROVIDER, CKP_EXTENDED_PROVIDER,
+    CKP_PUBLIC_CERTIFICATES_TOKEN, CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_READ_ONLY,
+    CKR_BUFFER_TOO_SMALL, CKR_OK, CKR_OPERATION_NOT_INITIALIZED, CKR_USER_TYPE_INVALID,
+    CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 use serial_test::serial;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
-    C_GetFunctionList,
+    C_GetFunctionList, C_GetInterfaceList,
     backend::{COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, COSMIAN_PKCS11_SSH_KEY_TAG, CliBackend},
     error::{Pkcs11Error, result::Pkcs11Result},
     kms_object::get_kms_objects_async,
@@ -275,7 +280,7 @@ fn test_get_function_list_rejects_null_output() {
 
 #[test]
 #[expect(unsafe_code)]
-fn test_init() {
+pub(crate) fn test_init() {
     // export RUST_LOG="cosmian_pkcs11=trace,ckms=trace,cosmian_config_utils=trace"
     log_init(None);
 
@@ -642,37 +647,41 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
         unsafe { C_GetInterfaceList(std::ptr::null_mut(), &raw mut count) },
         CKR_OK
     );
-    assert_eq!(count, 1, "this module exposes exactly one interface");
+    assert_eq!(
+        count, 2,
+        "this module exposes the same function table under two interface versions"
+    );
 
     // Second call: too-small buffer must report CKR_BUFFER_TOO_SMALL and the required count.
-    let mut zero_count: CK_ULONG = 0;
+    let mut zero_count: CK_ULONG = 1;
     let mut interfaces = [CK_INTERFACE {
         pInterfaceName: std::ptr::null_mut(),
         pFunctionList: std::ptr::null_mut(),
         flags: 0,
-    }; 1];
+    }; 2];
     assert_eq!(
-        // SAFETY: `interfaces` is a valid 1-element buffer; `zero_count` (0) under-reports its
+        // SAFETY: `interfaces` is a valid 2-element buffer; `zero_count` (1) under-reports its
         // capacity on purpose to exercise the too-small path.
         unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut zero_count) },
         CKR_BUFFER_TOO_SMALL
     );
-    assert_eq!(zero_count, 1);
+    assert_eq!(zero_count, 2);
 
     // Third call: correctly sized buffer must succeed and return the "PKCS 11" interface.
-    let mut full_count: CK_ULONG = 1;
+    let mut full_count: CK_ULONG = 2;
     assert_eq!(
-        // SAFETY: `interfaces` is a valid 1-element buffer, matching `full_count`.
+        // SAFETY: `interfaces` is a valid 2-element buffer, matching `full_count`.
         unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut full_count) },
         CKR_OK
     );
-    assert_eq!(full_count, 1);
-    assert!(!interfaces[0].pInterfaceName.is_null());
-    // SAFETY: `pInterfaceName` was just populated by a successful `C_GetInterfaceList` call
-    // above, and is guaranteed NUL-terminated by `PKCS11_INTERFACE_NAME`.
-    let name = unsafe { std::ffi::CStr::from_ptr(interfaces[0].pInterfaceName.cast()) };
-    assert_eq!(name.to_bytes(), b"PKCS 11");
-
+    assert_eq!(full_count, 2);
+    for interface in &interfaces {
+        assert!(!interface.pInterfaceName.is_null());
+        // SAFETY: `pInterfaceName` was just populated by a successful `C_GetInterfaceList` call
+        // above, and is guaranteed NUL-terminated by `PKCS11_INTERFACE_NAME`.
+        let name = unsafe { std::ffi::CStr::from_ptr(interface.pInterfaceName.cast()) };
+        assert_eq!(name.to_bytes(), b"PKCS 11");
+    }
     // `C_GetInterface` with null name/version must resolve to the same sole interface.
     let mut interface_ptr: *mut CK_INTERFACE = std::ptr::null_mut();
     assert_eq!(
