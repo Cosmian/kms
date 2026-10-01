@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+#MISE description="Build the KMS server + CLI natively inside Alpine (no cross-compilation at all)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "static"
+
+# ---------------------------------------------------------------------------
+# Third, independent validation path for the Alpine/musl release tarballs —
+# in addition to the Nix build (canonical/published) and the cargo+musl-gcc
+# cross-check (musl-crosscheck). Unlike both of those, this one does *not*
+# cross-compile at all: it assumes it is already running *inside* a real
+# `alpine:<tag>` container (see .github/workflows/packaging.yml's
+# `alpine-native-build` job, or run it yourself via e.g.:
+#   docker run --rm -v "$PWD:/repo" -w /repo alpine:3.21 sh -c '
+#     apk add --no-cache bash gcompat build-base perl linux-headers \
+#       openssl-dev pkgconfig curl git &&
+#     curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | \
+#       sh -s -- -y --default-toolchain 1.97.0 --profile minimal &&
+#     . "$HOME/.cargo/env" &&
+#     .mise/tasks/test/alpine-native-build --variant fips
+#   '
+#
+# Using Alpine's *own* native gcc/musl/openssl-dev (via apk) end-to-end means
+# there is no musl-gcc-wraps-a-glibc-host-gcc layer to go wrong — exactly the
+# layer responsible for the -moutline-atomics/__getauxval and header-sysroot
+# issues found (and worked around) in musl-openssl-prebuild. This is the
+# closest possible stand-in for "a KMS contributor just runs cargo build
+# inside their own Alpine container", and the most authentic test of musl
+# portability, at the cost of not matching the project's exact OpenSSL
+# version/FIPS-module pin (it links whatever `apk add openssl-dev` provides
+# for the standalone openssl-sys dependency; crate/crypto/build.rs still
+# builds its *own* pinned 3.6.2 — with the FIPS module when --variant=fips —
+# from source natively, exactly as it would on any other native Linux host).
+# ---------------------------------------------------------------------------
+
+if [ ! -f /etc/alpine-release ]; then
+  print_error "This task must run inside a real Alpine container (/etc/alpine-release not found) — see the header comment for a standalone docker run example."
+fi
+
+require_cmd cargo "cargo not found — install rustup first (see header comment)."
+require_cmd cc "No C compiler found — apk add build-base first."
+require_cmd perl "perl not found — apk add perl first (needed by crate/crypto/build.rs's OpenSSL Configure)."
+
+print_header "Native Alpine build: ${VARIANT_NAME} ($(cat /etc/alpine-release))"
+
+print_status "Building cosmian_kms (server)…"
+cargo build --release -p cosmian_kms_server --no-default-features \
+  "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+print_status "Building ckms (CLI)…"
+cargo build --release -p ckms --no-default-features \
+  "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+SERVER_BIN="${CARGO_TARGET_DIR:-target}/release/cosmian_kms"
+CLI_BIN="${CARGO_TARGET_DIR:-target}/release/ckms"
+[ -x "$SERVER_BIN" ] || print_error "Build did not produce an executable at $SERVER_BIN"
+[ -x "$CLI_BIN" ] || print_error "Build did not produce an executable at $CLI_BIN"
+
+print_status "Binary info (server):"
+file "$SERVER_BIN" || true
+ldd "$SERVER_BIN" 2>&1 || true # musl's own ldd; "not a dynamic executable" is expected if statically linked
+
+print_status "Running --version (genuinely native — no interpreter/arch mismatch is possible here)…"
+"$SERVER_BIN" --version
+"$CLI_BIN" --version
+
+print_success "Native Alpine build passed for ${VARIANT_NAME}"
