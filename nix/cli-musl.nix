@@ -17,7 +17,12 @@ let
   common = import ./common.nix {
     pkgs = pkgsMusl;
     pkgs234 = pkgsMusl;
-    inherit lib openssl36 openssl312 features;
+    inherit
+      lib
+      openssl36
+      openssl312
+      features
+      ;
     static = true; # OpenSSL main library is always statically embedded (.a) here
   };
   inherit (common)
