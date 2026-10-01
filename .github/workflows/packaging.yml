@@ -162,6 +162,57 @@ jobs:
           OPENSSL_DIR: /tmp/musl-openssl-crosscheck
         run: mise run test:musl-crosscheck --variant ${{ matrix.features }}
 
+  # Third, independent musl validation path: unlike musl-crosscheck above
+  # (plain cargo + Debian/Ubuntu's musl-gcc, which *wraps* the host's own
+  # glibc-targeted gcc/libgcc — the exact layer responsible for the
+  # -moutline-atomics/__getauxval and header-sysroot issues worked around in
+  # musl-openssl-prebuild), this job builds *inside a real Alpine container*
+  # using Alpine's own apk-provided native toolchain end-to-end — no
+  # cross-compilation, no wrapper, no foreign sysroot. See
+  # .mise/tasks/test/alpine-native-build for the full rationale and a
+  # standalone `docker run` invocation for local reproduction.
+  alpine-native-build:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==
+      'schedule'
+    name: alpine-native-${{ matrix.features }}-${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: alpine:3.21
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [fips, non-fips]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    steps:
+      # Must run *before* actions/checkout: GitHub's own bundled Node.js
+      # (used to execute every JS-based `uses:` action, including checkout
+      # itself) is glibc-linked; `gcompat` shims the glibc syscalls it needs
+      # on musl. `bash` is needed because composite actions below default to
+      # `shell: bash`, which Alpine doesn't ship (busybox `ash` only). Must
+      # use `shell: sh` explicitly here since bash doesn't exist yet.
+      - name: Bootstrap (gcompat for Actions' own Node.js runtime, bash)
+        shell: sh
+        run: apk add --no-cache gcompat bash
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Install native Alpine build toolchain (apk)
+        run: |
+          apk add --no-cache build-base perl linux-headers openssl-dev pkgconfig curl git
+
+      - name: Install Rust via rustup (musl-native build, same 1.97.0 pin as the rest of CI)
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+            sh -s -- -y --default-toolchain 1.97.0 --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Build natively on Alpine (no cross-compilation)
+        run: mise run test:alpine-native-build --variant ${{ matrix.features }}
+
   # Proves the Nix-built musl tarballs actually run on real Alpine — not just
   # that they link correctly in the Nix sandbox. See
   # .mise/scripts/test/test_alpine_musl.sh for the full test sequence
