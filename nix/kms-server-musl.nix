@@ -42,7 +42,12 @@ let
   common = import ./common.nix {
     pkgs = pkgsMusl;
     pkgs234 = pkgsMusl; # musl has no cross-distro GLIBC-version concern to pin against
-    inherit lib openssl36 openssl312 features;
+    inherit
+      lib
+      openssl36
+      openssl312
+      features
+      ;
     static = true; # OpenSSL main library is always statically embedded (.a) here
   };
   inherit (common)
@@ -155,7 +160,6 @@ rustPlatform.buildRustPackage rec {
   pname = "cosmian-kms-server-${libcTag}";
   inherit version;
   auditable = false;
-
 
   src = filteredSrc;
 
