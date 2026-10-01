@@ -3,4 +3,6 @@ mod recovery;
 mod store;
 mod writer;
 
-pub(crate) use store::AuditFileStore;
+const SIZE_CAP_SENTINEL_OPERATION: &str = "audit:size-cap-reached";
+
+pub(crate) use store::AuditStore;

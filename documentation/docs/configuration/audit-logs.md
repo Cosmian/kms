@@ -113,9 +113,11 @@ max_size_bytes = 1073741824 # 1 GiB
 Behavior:
 
 - Omitted (the default): unlimited, today's behavior.
-- The event that pushes the file to or past the cap is still persisted — only events **after**
-  that one are dropped (subject to `--audit-failure-mode`, exactly like a full channel or a dead
-  writer).
+- The event that would make the file reach or exceed the cap is replaced by a final
+  `audit:size-cap-reached` event.
+  The sentinel may cross the cap and makes the reason for stopping visible in the hash chain.
+- Later events are dropped, subject to `--audit-failure-mode`, like a full channel or dead writer.
+- If the file is already at or past the cap on startup, no sentinel is added and all writes remain blocked.
 - Once capped, the condition does **not** clear itself: an external process truncating or
   rotating the file does not resume writing. The KMS must be restarted after the log is safely
   remediated. KMS-aware rotation/reopen is a possible future improvement.
@@ -168,8 +170,11 @@ Each line in the JSONL file is a complete JSON object with the following fields:
 
 Every persisted event includes a SHA-256 hash chain that makes tampering detectable offline.
 
-The hash is computed over a canonical byte sequence of the event's fields:
-`id || timestamp || operation || user || object_uid || algorithm || client_ip || result || duration_ms || request_id || prev_hash`
+The hash is computed over a canonical byte sequence of the event's fields, in this order:
+`prev_hash || id || timestamp || operation || user || object_uid || algorithm || client_ip || result || duration_ms || request_id || details`
+
+`request_id` and `details` are each included only when present (`Some`), so events written
+before either field existed still hash to the same bytes as before.
 
 `prev_hash` of the first event (`id = 0`) is the 32-byte all-zeros sentinel.
 
