@@ -35,8 +35,8 @@ pub(crate) type CkCGetInterfaceList = CK_C_GetInterfaceList;
 /// exports `C_GetInterface` and reports a version-3.x interface.
 ///
 /// Requests the interface with `pVersion = NULL_PTR` (accept the library's newest
-/// "PKCS 11" interface, of *any* 3.x minor version — per OASIS Cryptoki v3.1 §5.2,
-/// an exact-match request would incorrectly reject a conformant v3.1/v3.2-only
+/// "PKCS 11" interface, of *any* 3.x minor version — per OASIS Cryptoki v3.0/v3.1
+/// §5.4.6, an exact-match request would incorrectly reject a conformant v3.1/v3.2-only
 /// library), then verifies the returned interface's version is actually a 3.x one
 /// before treating `pFunctionList` as a `CK_FUNCTION_LIST_3_0`.
 ///
@@ -59,15 +59,19 @@ pub(crate) unsafe fn get_v3_function_list(library: &Library) -> Option<CK_FUNCTI
     let get_interface = get_interface?;
 
     let mut name = *b"PKCS 11\0";
-    // Per OASIS Cryptoki v3.1 §5.2 `C_GetInterface`: "If pVersion is not NULL_PTR,
-    // the version of the interface returned must match [exactly]. If pVersion is
+    // Per OASIS Cryptoki v3.0/v3.1 §5.4.6 `C_GetInterface`, rule 2: "If pVersion is
+    // not NULL_PTR, the version of the interface returned must match. If pVersion is
     // NULL_PTR, the cryptoki library can return an interface of any version."
-    // Passing a hardcoded `{major: 3, minor: 0}` here would make this call fail for
-    // any strictly conformant library whose "PKCS 11" interface is versioned 3.1 or
-    // 3.2 (an exact-match request for 3.0 does not match a 3.1/3.2 interface),
-    // causing `HsmLib` to wrongly report *no* v3 support at all for a fully v3.1/3.2
-    // capable library. Passing NULL here lets the library return its own newest
-    // "PKCS 11" interface version; the returned version is then checked below.
+    // That match is *exact*, not a compatibility range, so passing a hardcoded
+    // `{major: 3, minor: 0}` here would make this call fail for any strictly
+    // conformant library whose "PKCS 11" interface is versioned 3.1 or 3.2, causing
+    // `HsmLib` to wrongly report *no* v3 support at all for a fully v3.1/3.2 capable
+    // library. Passing NULL here lets the library return its own newest "PKCS 11"
+    // interface version; the returned version is then checked below.
+    //
+    // The provider side of this codebase (`cosmian_pkcs11::C_GetInterface`) implements
+    // the same rule with the same exact-match reading, publishing one interface entry
+    // per version it answers for rather than widening the comparison.
     let mut p_interface: CK_INTERFACE_PTR = std::ptr::null_mut();
     // SAFETY: `name` is a NUL-terminated buffer we own for the duration of this call,
     // as required by `C_GetInterface`. `p_interface` is a valid, properly aligned

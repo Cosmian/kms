@@ -70,7 +70,7 @@ if [ "${BENCH_SANITY}" = "true" ]; then
   BENCH_TIME="2"
   BENCH_WARMUP="0"
   BENCH_COOLDOWN="0"
-  BENCH_MODE="encrypt"
+  BENCH_MODE="all"
   BENCH_CONCURRENCY="1,2"
 fi
 

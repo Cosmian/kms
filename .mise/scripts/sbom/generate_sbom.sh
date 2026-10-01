@@ -55,6 +55,12 @@ Options:
                        instead of generating them locally (requires --branch)
   --branch BRANCH      Remote branch/tag path used by the packaging CI
                        (e.g. last_build/release/5.24.0).  Used with --retrieve.
+  (env) CPE_DICT_DB      Path to a SQLite CPE dictionary built by
+                          build_cpe_dictionary.py (optional; default:
+                          ./.cache/sbom/cpe-dictionary.sqlite)
+  (env) CPE_DICT_ZIP_URL Mirror URL for the NVD CPE dictionary zip (default:
+                          https://package.cosmian.com/ci/nvdcpe-2.0.zip)
+  (env) SBOM_SKIP_CPE_DICT  Set to 1 to skip the automatic dictionary download/build
   -h, --help           Show this help message
 
 Examples:
@@ -497,6 +503,92 @@ python3 "$ENRICH_SCRIPT" $ENRICH_OPTS --in-place --api-limit "$SBOM_API_LIMIT"
 echo ""
 
 # ---------------------------------------------------------------------------
+# Transparent CPE dictionary bootstrap
+# ---------------------------------------------------------------------------
+# Downloads the NVD CPE 2.0 dictionary mirror from package.cosmian.com (an
+# anonymous HTTPS mirror of https://nvd.nist.gov/feeds/json/cpe/2.0/nvdcpe-2.0.zip
+# hosted at https://package.cosmian.com/ci/nvdcpe-2.0.zip) and builds the local
+# SQLite index used by enrich_cpe.py's --cpe-dict-db. Runs automatically on
+# every `sbom:generate` invocation — no separate CI step required.
+#
+# Best-effort: any failure (network unavailable, mirror down, disk full) logs a
+# warning and leaves CPE_DICT_DB unset/nonexistent, which enrich_cpe.py already
+# treats as "dictionary unavailable" (falls back to heuristic-only vendor
+# derivation). SBOM generation NEVER fails because of this step.
+CPE_DICT_ZIP_URL="${CPE_DICT_ZIP_URL:-https://package.cosmian.com/ci/nvdcpe-2.0.zip}"
+
+_ensure_cpe_dictionary() {
+  local dict_db="$1"
+
+  if [[ -f "$dict_db" ]]; then
+    echo "  → Using existing CPE dictionary: $dict_db"
+    return 0
+  fi
+
+  if [[ "${SBOM_SKIP_CPE_DICT:-0}" == "1" ]]; then
+    echo "  → SBOM_SKIP_CPE_DICT=1 set — skipping CPE dictionary bootstrap"
+    return 0
+  fi
+
+  if ! command -v unzip >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+    echo "  ⚠ curl/unzip not available — skipping CPE dictionary bootstrap" >&2
+    return 0
+  fi
+
+  echo "  → Downloading CPE dictionary mirror from $CPE_DICT_ZIP_URL..."
+  local zip_path chunks_dir
+  zip_path="$(mktemp /tmp/cosmian-kms-nvdcpe-XXXXXX.zip)"
+  chunks_dir="$(mktemp -d /tmp/cosmian-kms-nvdcpe-chunks-XXXXXX)"
+  _cleanup() {
+    rm -rf "$zip_path" "$chunks_dir"
+  }
+
+  if ! curl --silent --show-error --fail --location \
+    --retry 3 --retry-delay 5 --max-time 300 \
+    -o "$zip_path" "$CPE_DICT_ZIP_URL"; then
+    echo "  ⚠ Could not download CPE dictionary mirror — continuing without it" >&2
+    _cleanup
+    return 0
+  fi
+
+  if ! unzip -q -o "$zip_path" -d "$chunks_dir"; then
+    echo "  ⚠ Could not unzip CPE dictionary mirror — continuing without it" >&2
+    _cleanup
+    return 0
+  fi
+
+  local source_dir
+  source_dir="$(dirname "$(find "$chunks_dir" -name 'nvdcpe-2.0-chunk-*.json' -print -quit)")"
+  if [[ -z "$source_dir" || ! -d "$source_dir" ]]; then
+    echo "  ⚠ CPE dictionary mirror had unexpected layout — continuing without it" >&2
+    _cleanup
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$dict_db")"
+  local build_task="$REPO_ROOT/.mise/tasks/sbom/build-cpe-dictionary"
+  local build_success=0
+  if command -v mise >/dev/null 2>&1; then
+    mise run sbom:build-cpe-dictionary "$source_dir" --output "$dict_db" && build_success=1 || true
+  elif [[ -x "$build_task" ]]; then
+    MISE_CONFIG_ROOT="$REPO_ROOT" bash "$build_task" "$source_dir" --output "$dict_db" && build_success=1 || true
+  else
+    python3 "$SCRIPT_DIR/build_cpe_dictionary.py" \
+      --source-dir "$source_dir" --output "$dict_db" && build_success=1 || true
+  fi
+
+  if [[ $build_success -ne 1 || ! -f "$dict_db" ]]; then
+    echo "  ⚠ Failed to build CPE dictionary index — continuing without it" >&2
+    rm -f "$dict_db"
+    _cleanup
+    return 0
+  fi
+
+  _cleanup
+  echo "  ✓ CPE dictionary ready: $dict_db"
+}
+
+# ---------------------------------------------------------------------------
 # CPE 2.3 enrichment (Eviden PSIRT compliance)
 # ---------------------------------------------------------------------------
 # Adds NVD NIST CPE 2.3 identifiers to every component in bom.cdx.json that
@@ -526,10 +618,14 @@ if command -v cargo-sbom >/dev/null 2>&1 && [ -f "$REPO_ROOT/Cargo.toml" ]; then
     >"$CARGO_SBOM_JSON" 2>/dev/null || true
 fi
 
+CPE_DICT_DB="${CPE_DICT_DB:-$REPO_ROOT/.cache/sbom/cpe-dictionary.sqlite}"
+_ensure_cpe_dictionary "$CPE_DICT_DB"
+
 python3 "$CPE_SCRIPT" \
   --sbom-dir "$OUTPUT_DIR" \
   --cargo-sbom-json "$CARGO_SBOM_JSON" \
-  --in-place
+  --in-place \
+  --cpe-dict-db "$CPE_DICT_DB"
 rm -f "$CARGO_SBOM_JSON"
 echo ""
 

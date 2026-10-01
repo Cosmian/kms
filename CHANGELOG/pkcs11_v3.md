@@ -1,3 +1,89 @@
+# PKCS#11 v3.0 review follow-ups: OIDC PIN length, `C_GetInterface` version matching and name bounds, and message-AEAD IV handling
+
+## Bug Fixes
+
+### HSM
+
+- Fix `Session::encrypt_message_aes_gcm()`/`decrypt_message_aes_gcm()` issuing **two**
+  `C_EncryptMessage`/`C_DecryptMessage` calls per operation — a NULL-output-buffer size
+  probe followed by the real call — while presenting the same `CK_GCM_MESSAGE_PARAMS`, and
+  therefore the same IV, to both. OASIS Cryptoki v3.0 §5.9.2/§5.11.2 state that such a call
+  "begins and terminates a message encryption operation", so a token legitimately sees two
+  distinct messages sharing one IV, against current-mechanisms §2.13.5's requirement that
+  "each IV must be
+  unique for a given session". No nonce was actually reused — §5.2's convention makes the
+  NULL-buffer call compute a length only, and `ivGenerator = CKG_NO_GENERATE` means the IV
+  is ours rather than token-generated — but a token that enforces per-message IV uniqueness,
+  or that treats the probe as having terminated the operation, was entitled to reject the
+  second call. Both paths now issue exactly one call, sizing the output buffer locally: in
+  message mode the GCM tag is returned detached in `CK_GCM_MESSAGE_PARAMS.pTag`
+  (current-mechanisms §2.13.2)
+  rather than appended, and `CKM_AES_GCM` is CTR-based, so ciphertext and plaintext are
+  necessarily the same length. This also matches the init → one `C_EncryptMessage` → final
+  flow the spec prescribes. A `CKR_BUFFER_TOO_SMALL` response is now reported with a
+  diagnostic naming the invariant rather than retried, since retrying would re-present the
+  same IV
+
+### PKCS#11 provider
+
+- Fix `C_Login`/`C_LoginUser` rejecting valid logins with `CKR_ARGUMENTS_BAD` when
+  `pkcs11_use_pin_as_access_token = true` is set in `ckms.toml`. In that mode the "PIN" is
+  not a PIN but a full OAuth2/OIDC bearer token, and the shared 4 KiB defense-in-depth cap
+  on FFI argument lengths refused any JWT above that size — Entra/Azure AD access tokens
+  carrying group, role or `wids` claims routinely exceed 4 KiB. The cap is now split in two:
+  `MAX_USERNAME_LEN` (4 KiB, unchanged, for `pUsername`) and `MAX_PIN_LEN` (64 KiB, for
+  `pPin`), so the allocation stays trivially bounded while covering any realistic token
+- Fix `C_GetInterface` reading OASIS Cryptoki v3.0/v3.1 §5.4.6's version rule in the
+  opposite direction from the HSM loader side of this codebase
+  (`cosmian_kms_base_hsm::pkcs11_v3::get_v3_function_list`). Rule 2 — "if `pVersion` is not
+  `NULL_PTR`, the version of the interface returned must match" — is an *exact*-match rule,
+  but the provider accepted any minor version at or below the one it implements and answered
+  with its newest function table, so a caller requesting `{3, 0}` (exactly what the spec's
+  own `C_GetInterface` example does) received a table declaring `{3, 1}` in its `version`
+  field. Rather than keep the relaxation, the module now publishes the same "PKCS 11"
+  function table as *two* interface entries — one at the implemented version, one at
+  `{3, 0}` — which §5.4.5 explicitly allows, since a library may expose any number of
+  interfaces. v3.0 consumers keep working, a conformance suite re-reading
+  `pFunctionList->version` now sees `{3, 0}`, and both halves of the codebase implement the
+  same reading of the same rule. Behavioural change: `C_GetInterfaceList` now reports **2**
+  entries rather than 1, so a caller passing a 1-slot buffer receives `CKR_BUFFER_TOO_SMALL`
+  (with `*pulCount` set to 2) where it previously succeeded — the spec's two-call convention
+  handles this correctly, but a caller with a hardcoded 1-entry buffer must be rebuilt
+- Harden `C_GetInterface`'s `pInterfaceName` comparison, which used `CStr::from_ptr` and so
+  walked caller-supplied memory until it found a NUL. Unlike `pPin`/`pUsername`, §5.4.6's
+  `pInterfaceName` carries no length argument, leaving nothing but the caller's promise of a
+  terminator to bound the read — a host that passes an unterminated buffer turned a name
+  comparison into an unbounded out-of-bounds read, inconsistent with the deliberate
+  `MAX_USERNAME_LEN`/`MAX_PIN_LEN` caps already applied to the length-carrying arguments. The
+  comparison now runs against `PKCS11_INTERFACE_NAME` one byte at a time, stopping at the first
+  difference, so at most 8 bytes — the length of `"PKCS 11"` with its terminator, and never more
+  than a legitimately matching caller would have supplied — are ever read. No behavioural change:
+  the same names are accepted and the same ones rejected with `CKR_ARGUMENTS_BAD`
+
+## Documentation
+
+- Correct the `C_GetInterface` spec citations in `pkcs11_v3.rs` from "§5.2" to "§5.4.6"
+  (§5.2 covers variable-length output buffers; §5.4.5/§5.4.6 are
+  `C_GetInterfaceList`/`C_GetInterface`), and quote rule 2 verbatim
+- Correct the message-AEAD spec citations in `message_aead.rs` from "§5.20"/"§5.21" to
+  "§5.9"/"§5.11" (§5.20 is parallel function management and §5.21 is callback functions;
+  the message-based encryption and decryption function families are §5.9 and §5.11)
+- Document `KryopticCapabilityProvider`, which was public but undocumented, recording *why* it
+  takes `HsmCapabilities::default()` where every vendor loader sets explicit values — Kryoptic
+  is a conformance oracle rather than a supported backend, so its limits were never measured —
+  and noting that the defaulted `find_max_object_count = 1` makes `C_FindObjects` return one
+  handle per call. Also attach the existing `KRYOPTIC_PKCS11_LIB` doc comment to the
+  non-macOS definition, where it was missing (so the constant was undocumented on the Linux
+  builds that actually run the suite)
+- Narrow the `kryoptic` test module's lint allowances from 10 blanket `#[allow]`s — copied from
+  `softhsm2`, and reaching `cargo clippy-all` because `--all-features` enables the `kryoptic`
+  feature — to the 3 lints that actually fire (`unsafe_code`, `clippy::expect_used`,
+  `clippy::panic`), as a single `#[expect]` with a `reason`, matching the style already used for
+  the `cosmian_pkcs11` test module. `#[expect]` rather than `#[allow]` so the allowance is
+  flagged if it ever stops being needed; the 7 dropped entries (`panic_in_result_fn`,
+  `unwrap_used`, `assertions_on_result_states`, `as_conversions`, `map_err_ignore`,
+  `redundant_clone`, `explicit_iter_loop`) were already dead
+
 # PKCS#11 v3.0 consumer-side mechanisms (EdDSA, HKDF, message-AEAD) and Kryoptic conformance suite
 
 ## Features
@@ -33,7 +119,7 @@
   `CKK_GENERIC_SECRET`
 - Fix `get_v3_function_list()` requesting the "PKCS 11" interface from
   `C_GetInterface` with a hardcoded `pVersion = {major: 3, minor: 0}` (an exact-match
-  request per OASIS Cryptoki v3.1 §5.2). This rejected any strictly conformant
+  request per OASIS Cryptoki v3.1 §5.4.6). This rejected any strictly conformant
   library whose "PKCS 11" interface is versioned 3.1 or 3.2 rather than exactly 3.0,
   causing `HsmLib` to wrongly report *no* v3.0 support at all for a fully
   v3.1/v3.2-capable library. Now requests `pVersion = NULL_PTR` (any version, per

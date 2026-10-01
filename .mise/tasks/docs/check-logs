@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Check log-reference.md is in sync with source (fails if out of date)"
+#MISE description="Verify log-reference.md is in sync with source (CI check)"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 

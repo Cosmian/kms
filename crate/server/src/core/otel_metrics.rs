@@ -557,7 +557,7 @@ impl OtelMetrics {
     /// Set `kms.objects.total` to the current absolute object count.
     ///
     /// Called once at server startup (seeding from the real DB count) and
-    /// every 30 s by the metrics cron task.
+    /// every `metrics_count_interval_secs` by the metrics cron task (0 disables both).
     pub fn update_objects_total(&self, absolute_count: i64) {
         self.kms_objects_total.record(absolute_count, &[]);
     }

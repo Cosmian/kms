@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Regenerate all documentation (server help, ckms markdown, KMIP tables, CBOM)"
+#MISE description="Sync all generated documentation (server help, ckms markdown, KMIP tables, CBOM, logs)"
 #USAGE arg "[task]" help="Documentation task to run (default: all)" default="all" {
 #USAGE   choices "all" "server-docs" "ckms-docs" "kmip-tables" "cbom" "log-index"
 #USAGE }

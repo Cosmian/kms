@@ -56,9 +56,8 @@ Crate path: `crate/server`
 | `warn` | `Fetch JWKS: {e}` | `src/middlewares/jwt/jwks.rs` | `e`: caught error | - |
 | `warn` | `Socket server: connection failed: {e}` | `src/socket_server.rs` | `e`: caught error | - |
 | `warn` | `UI folder invalid or Linux default detected, falling back to: {fallback:#?}` | `src/config/params/server_params.rs` | `fallback`: fallback UI folder path | - |
-| `warn` | `{:?} {} 401 unauthorized, no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
 | `warn` | `{:?} {} 401 unauthorized: bad JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
-| `warn` | `{error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | - |
+| `warn` | `{error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | ×2 in this file |
 | `warn` | `{status_code} - {message}` | `src/routes/mod.rs` | `status_code`: HTTP status code<br>`message`: human-readable message text | - |
 | `warn` | `{status} - {}` | `src/routes/jose/error.rs` | `status`: HTTP response status | - |
 | `info` | `AUTHENTICATION token: {:?}` | `src/routes/google_cse/jwt.rs` | - | - |
@@ -153,7 +152,6 @@ Crate path: `crate/server`
 | `debug` | `create_user_decryption_key_: Access Policy: {access_policy:?}` | `src/core/cover_crypt/create_user_decryption_key.rs` | `access_policy`: Covercrypt access policy expression | - |
 | `debug` | `Created secret data with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
 | `debug` | `Created symmetric key with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
-| `debug` | `Creating SecretData object` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `CSE Error: {:?}` | `src/routes/google_cse/mod.rs` | - | - |
 | `debug` | `decode encrypted_dek` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `decrypt private key` | `src/routes/google_cse/operations.rs` | - | - |
@@ -163,8 +161,6 @@ Crate path: `crate/server`
 | `debug` | `Decryption Oracle for prefix: {prefix}, total ciphertext is {} bytes long` | `src/core/operations/decrypt.rs` | `prefix`: decryption oracle prefix bytes | - |
 | `debug` | `DeriveKey operation completed successfully` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `DeriveKey operation starting` | `src/core/operations/derive_key.rs` | - | - |
-| `debug` | `DeriveKey: activation_date={:?} <= now, setting state to Active` | `src/core/operations/derive_key.rs` | - | - |
-| `debug` | `DeriveKey: no activation_date or future date, setting state to PreActive` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `DeriveKey: No derivation data (info) provided for HKDF` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `DeriveKey: No iteration count provided for PBKDF2, using default` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `EKM Error: {:?}` | `src/routes/azure_ekm/error.rs` | - | - |
@@ -749,8 +745,15 @@ Crate path: `crate/server`
 | `error` | `AuditFileStore: cannot acquire audit log lock {} ({e}) — retrying` | `src/core/audit/file_store.rs` | `e` | - |
 | `trace` | `Extractable: {:?}` | `src/core/operations/attributes/add.rs` | - | - |
 | `trace` | `Set Attribute: Extractable: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
+| `warn` | `no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | Emitted when a validated JWT has no email claim and `--jwt-svid-auth` is not enabled or sub is not a valid SPIFFE ID |
+| `debug` | `JWT-SVID access granted to {sub}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub`: SPIFFE ID (URI) from JWT sub claim | Workload authenticated via SPIFFE JWT-SVID with full URI mapped to KMS UserId |
+| `debug` | `DeriveKey asymmetric operation completed successfully` | `src/core/operations/derive_key.rs` | - | Emitted after a non-FIPS X25519 ECDH `DeriveKey` request has validated both referenced keys, derived the shared secret, and persisted the resulting `SecretData` object. |
 | `warn` | `[kms-init] Failed to seed kms.keys.active.count: {e}` | `src/core/kms/mod.rs` | `e` | - |
 | `warn` | `[metrics-cron] Failed to sync kms.keys.active.count: {}` | `src/cron.rs` | - | - |
+| `warn` | `JWK serialization failed uid={uid}: {e}` | `src/routes/jwks.rs` | `uid`: unique identifier of the key object being published in the JWKS; `e`: the `serde_json` serialization error | Emitted when a typed `Jwk` fails to serialize to JSON; the affected key is skipped and omitted from the JWKS `keys` array rather than emitting an invalid `null` entry. |
+| `warn` | `JWKS refresh failed while validating a JWT-SVID: {error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | JWKS endpoint unreachable |
+| `warn` | `JWT-SVID for {sub} rejected: missing or empty 'aud' claim` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub`: SPIFFE ID of the rejected SVID | Possible cross-service SVID replay attempt |
+| `warn` | `{:?} {} 401 unauthorized: {error}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -770,7 +773,6 @@ Crate path: `crate/server_database`
 | `trace` | `find: tags: {tags:?}` | `src/stores/redis/redis_with_findex.rs` | `tags` — … | — |
 | `trace` | `find: uids before permissions: {:?}` | `src/stores/redis/redis_with_findex.rs` | — | — |
 | `trace` | `find: user must be owner` | `src/stores/redis/redis_with_findex.rs` | — | — |
-| `trace` | `find_: {:?}` | `src/stores/sql/mysql.rs` | — | — |
 | `trace` | `Insert read access right in DB: {uid} / {userid}` | `src/stores/sql/mysql.rs` | `uid` — …<br>`userid` — … | — |
 | `trace` | `Invalidating the cache for {}` | `src/core/unwrapped_cache.rs` | — | — |
 | `trace` | `Redis DB size: {count}` | `src/stores/redis/redis_with_findex.rs` | `count` — … | — |
@@ -788,13 +790,14 @@ Crate path: `crate/server_database`
 | `warn` | `PostgreSQL transaction body failed — retrying` | `src/stores/sql/pgsql.rs` | `attempt`, `delay_ms`, `error` | - |
 | `debug` | `[redis-scan-all] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
 | `debug` | `PG find_all query: {}` | `src/stores/sql/pgsql.rs` | - | - |
-| `trace` | `find_all_: {:?}` | `src/stores/sql/mysql.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object that failed to                                      deserialize` | `src/stores/sql/sqlite.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object {id} that failed to                          deserialize: {e}` | `src/stores/sql/mysql.rs` | `id`, `e` | - |
 | `debug` | `[redis-scan-wrapped] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
 | `debug` | `PostgreSQL error` | `src/error/db_error.rs` | `code`: SQLSTATE code<br>`message`: raw driver error message | Internal only — never surfaced via `SqlError` (which carries just the code) to avoid leaking table/constraint names to clients. |
 | `debug` | `SQLite transient lock encountered, retrying in {backoff:?}: {e}` | `src/stores/sql/sqlite.rs` | `backoff`: delay before the next retry attempt<br>`e`: the underlying "database is locked" error | Emitted while retrying a transient SQLite lock contention error; not an operator-actionable warning by itself, only relevant if retries are repeatedly exhausted. |
+| `trace` | `find: {:?}` | `src/stores/sql/mysql.rs` | - | - |
+| `trace` | `find_all: {:?}` | `src/stores/sql/mysql.rs` | - | - |
 | `warn` | `RotateNameCache: predicate invalidation failed ({e}); clearing cache` | `src/core/rotate_name_cache.rs` | `e` | - |
 
 ### `cosmian_kms_crypto`

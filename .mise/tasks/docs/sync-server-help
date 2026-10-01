@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Regenerate server --help documentation"
+#MISE description="Sync server --help documentation from source"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 

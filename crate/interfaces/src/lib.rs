@@ -16,7 +16,9 @@ pub use hsm::{
     RsaPublicKeyMaterial,
 };
 pub use object_handle::{HsmUidParts, ObjectHandle};
-pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore};
+pub use stores::{
+    AtomicOperation, FindOptions, ObjectWithMetadata, ObjectsStore, PermissionsStore,
+};
 pub use user_id::UserId;
 
 /// Number of seconds in one day — the finest granularity PKCS#11 `CK_DATE` can represent.

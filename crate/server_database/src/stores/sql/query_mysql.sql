@@ -239,6 +239,9 @@ CREATE INDEX idx_read_access_userid ON read_access (userid);
 -- name: create-index-objects-wrapping-key-id
 CREATE INDEX idx_objects_wrapping_key_id ON objects (wrapping_key_id);
 
+-- name: create-index-tags-tag-id
+CREATE INDEX idx_tags_tag_id ON tags (tag, id);
+
 -- name: create-table-crypto_officer_activations
 CREATE TABLE IF NOT EXISTS crypto_officer_activations (
         id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -271,12 +274,7 @@ SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';
 -- name: count-non-destroyed-keys
 SELECT COUNT(*) FROM objects
 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
-AND (
-    JSON_TYPE(JSON_EXTRACT(object, '$.SymmetricKey')) IS NOT NULL OR
-    JSON_TYPE(JSON_EXTRACT(object, '$.PrivateKey'))   IS NOT NULL OR
-    JSON_TYPE(JSON_EXTRACT(object, '$.PublicKey'))    IS NOT NULL OR
-    JSON_TYPE(JSON_EXTRACT(object, '$.SplitKey'))     IS NOT NULL
-);
+AND JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.ObjectType')) IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
 
 -- ── CRL persistence (MySQL-specific) ─────────────────────────────────────────
 -- MySQL uses LONGBLOB for binary data and REPLACE INTO for upsert.

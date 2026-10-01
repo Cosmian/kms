@@ -25,10 +25,16 @@ description = "Cosmian Key Management Service - A high-performance, FIPS 140-3 a
 [lints]
 workspace = true
 
+[package.metadata.cargo-machete]
+ignored = ["winresource"]
+
 [[bin]]
 name = "cosmian_kms"
 path = "src/main.rs"
 test = false
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
 
 [lib]
 # doc test linking as a separate binary is extremely slow

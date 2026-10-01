@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Regenerate crate/test_kms_server/README.md from all test vector manifests"
+#MISE description="Sync test vectors README from all test vector manifests"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 

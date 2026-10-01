@@ -1229,6 +1229,7 @@ def _render_architecture_section(
             '',
         ]
 
+
 def _render_protocol_section(
     *, is_hsm: bool = False, is_hsm_kek: bool = False, is_pkcs11: bool = False
 ) -> list[str]:
@@ -1382,9 +1383,7 @@ def _render_methodology_section(
 ) -> list[str]:
     """Render the static ## Benchmark Methodology section."""
     pkcs11_task = (
-        '`mise bench:load-pkcs11 --delegated`'
-        if is_hsm
-        else '`mise bench:load-pkcs11`'
+        '`mise bench:load-pkcs11 --delegated`' if is_hsm else '`mise bench:load-pkcs11`'
     )
     if is_pkcs11:
         return [
@@ -1708,7 +1707,6 @@ def generate_report(
     if arch_lines:
         lines += arch_lines
         lines += sep
-
 
     # ── Protocols ─────────────────────────────────────────────────────────────
     lines += _render_protocol_section(

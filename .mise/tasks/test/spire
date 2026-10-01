@@ -7,10 +7,9 @@
 #USAGE   choices "static" "dynamic"
 #USAGE }
 set -euo pipefail
-
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
-
+source "${MISE_CONFIG_ROOT}/.mise/lib/spire_test.sh"
 if [ "${usage_variant:-non-fips}" != "non-fips" ]; then
   print_error "SPIRE tests require non-fips variant (got: ${usage_variant})"
 fi
@@ -31,76 +30,11 @@ SPIRE_SECRETS_ENV="/tmp/spire-secrets.env"
 # leak across runs and can cause SPIRE login 403s ("invalid role_id or secret_id").
 AUTH_DB_FILE="/tmp/auth-verifier-spire-test.db"
 
-# `mise run test:spire` owns host ports 8443 (auth-verifier) and 9998 (KMS).
-# A previously crashed or unrelated SPIRE test run can leave stale listeners on
-# those ports, causing this task to talk to the wrong processes and produce
-# false positives/negatives. Detect and stop any existing listeners up front.
-#
-# All four helpers use lsof (available on both macOS and Linux) instead of the
-# Linux-only ss + GNU awk combination.
-listener_pids_for_port() {
-  local port="$1"
-  lsof -ti tcp:"${port}" 2>/dev/null | sort -u || true
-}
-
-port_is_listening() {
-  local port="$1"
-  lsof -i tcp:"${port}" -sTCP:LISTEN 2>/dev/null | grep -q . 2>/dev/null
-}
-
-wait_for_port_closed() {
-  local port="$1" timeout_secs="$2" elapsed=0
-  while port_is_listening "${port}"; do
-    if [[ "${elapsed}" -ge "${timeout_secs}" ]]; then
-      return 1
-    fi
-    sleep 1
-    elapsed=$((elapsed + 1))
-  done
-}
-
-stop_listener_on_port() {
-  local port="$1" label="$2" pids pid
-  pids="$(listener_pids_for_port "${port}")"
-  [[ -z "${pids}" ]] && return 0
-
-  print_info "Stopping stale ${label} listener(s) on port ${port}: $(paste -sd, <<<"${pids}")"
-  while IFS= read -r pid; do
-    [[ -n "${pid}" ]] && kill "${pid}" 2>/dev/null || true
-  done <<<"${pids}"
-
-  if wait_for_port_closed "${port}" 10; then
-    return 0
-  fi
-
-  print_info "Port ${port} still busy after SIGTERM; forcing remaining ${label} listener(s) down."
-  while IFS= read -r pid; do
-    [[ -n "${pid}" ]] && kill -9 "${pid}" 2>/dev/null || true
-  done <<<"${pids}"
-
-  wait_for_port_closed "${port}" 5 ||
-    print_error "Port ${port} is still in use after stopping stale ${label} listener(s)."
-}
-
 # Remove all leftover SPIRE test state (stale containers/volumes, persistent auth DB,
 # and temp files) so each run starts from a clean, deterministic environment. Used both
 # for the up-front reset and by the exit-time cleanup.
 reset_spire_state() {
-  # Free the host ports owned by this task before bringing fresh processes up.
-  stop_listener_on_port 8443 "auth-verifier"
-  stop_listener_on_port 9998 "KMS"
-
-  # Stop all SPIRE profile containers (including spire-agent) and remove named
-  # volumes (incl. spire-agent-socket) so `up -d` never reuses a stale container
-  # carrying outdated AppRole credentials.
-  docker compose --profile spire down --volumes --remove-orphans 2>/dev/null || true
-  # Remove the persistent auth-verifier DB (WAL/SHM sidecars included).
-  rm -f "${AUTH_DB_FILE}" "${AUTH_DB_FILE}-wal" "${AUTH_DB_FILE}-shm" 2>/dev/null || true
-  # Remove temp files/dirs carrying credentials/tokens from a previous run,
-  # including the per-tenant patched agent configs and captured server logs.
-  rm -f "${SPIRE_SECRETS_ENV}" /tmp/spire-join-token.txt 2>/dev/null || true
-  rm -rf /tmp/spire-agent-config-* 2>/dev/null || true
-  rm -f /tmp/spire-server-*.log 2>/dev/null || true
+  spire_reset_state "${AUTH_DB_FILE}" "${SPIRE_SECRETS_ENV}"
 }
 
 # ── Cleanup on exit ───────────────────────────────────────────────────────────
@@ -196,25 +130,13 @@ print_header "SPIRE + Mistral Client Integration Tests"
 
 # ── Step 1: Generate TLS certificates if missing ─────────────────────────────
 print_status "Checking TLS certificates..."
-if [[ ! -f "${TEST_DATA}/certs/ca.crt" || ! -f "${TEST_DATA}/certs/jwt.key.pem" ]]; then
-  print_info "Generating test TLS certificates..."
-  bash "${TEST_DATA}/certs/generate-test-certs.sh"
-else
-  print_info "TLS certificates already present."
-fi
+spire_ensure_certs "${TEST_DATA}"
 
 # ── Step 2: Build binaries ────────────────────────────────────────────────────
 print_status "Building KMS server (non-fips)..."
 kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
 
-print_status "Building auth-verifier..."
-# Note: grep -E changes the exit code; check build exit separately via set -o pipefail.
-cargo build --manifest-path "${REPO_ROOT}/authentication/Cargo.toml" \
-  --bin auth_verifier
-
-AUTH_BIN="$(cd "${REPO_ROOT}/authentication" && cargo metadata --no-deps --format-version 1 |
-  python3 -c "import sys,json; m=json.load(sys.stdin); print(m['target_directory'])")/debug/auth_verifier"
-
+AUTH_BIN="$(spire_build_auth_verifier "${REPO_ROOT}")"
 print_status "Building ckms CLI..."
 kms_build_cli "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
 
@@ -594,7 +516,7 @@ if [[ -n "${AUTH_PID:-}" ]]; then
   wait "${AUTH_PID}" 2>/dev/null || true
   AUTH_PID=""
 fi
-if ! wait_for_port_closed 8443 15; then
+if ! spire_wait_port_closed 8443 15; then
   print_error "Scenario 2: auth-verifier port 8443 stayed open after shutdown; stale listener likely present."
 fi
 S2_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --cacert "${TEST_DATA}/certs/ca.crt" \
@@ -627,43 +549,48 @@ fi
 
 print_header "All SPIRE integration tests passed — KMS+auth-verifier is a valid multi-tenant drop-in replacement for HashiCorp Vault"
 
-# ── Step 16: KMS PKI capability validation via test:spire-pki ────────────────
-# Delegates to the standalone `mise run test:spire-pki` task.
-# KMS_SKIP_BUILD=1 skips the build step (already done above).
-# The spire-pki task will start its own KMS+auth-verifier instances on the same
-# ports.  First stop the ones running here so spire-pki gets a clean slate
-# (it does its own port cleanup on startup).
-print_header "Step 16: KMS PKI capability validation (mise run test:spire-pki)"
-print_status "Stopping current KMS and auth-verifier to hand off to spire-pki task..."
-[[ -n "${KMS_PID:-}" ]] && kill "${KMS_PID}" 2>/dev/null || true
-[[ -n "${AUTH_PID:-}" ]] && kill "${AUTH_PID}" 2>/dev/null || true
-wait_for_port_closed 9998 30 || true
-wait_for_port_closed 8443 30 || true
-KMS_PID=""
-AUTH_PID=""
-
-KMS_SKIP_BUILD=1 mise run test:spire-pki
-print_success "Step 16: KMS PKI capability validation passed."
-
-# ── Step 17: Service mesh SDS delivery (PKI-10) ───────────────────────────────
+# ── Step 16: Service mesh SDS delivery (PKI-10) ───────────────────────────────
 # Runs test_sds.sh inline — reuses the already-running spire-server-a and
-# spire-agent-a Docker containers.  No KMS/auth-verifier restart needed.
+# spire-agent-a Docker containers BEFORE stopping KMS/auth-verifier for spire-pki.
 # Exit code 2 from test_sds.sh means Docker is not available — treat as a
 # warning (not a failure) so the core SPIRE/KMS tests are not blocked.
-print_header "Step 17: Service mesh SDS delivery — PKI-10"
+print_header "Step 16: Service mesh SDS delivery — PKI-10"
 SDS_EXIT=0
 SPIRE_SERVER_CONTAINER="spire-server-a" \
   TRUST_DOMAIN="$(tenant_trust_domain a)" \
   bash "${TEST_DATA}/setup/test_sds.sh" || SDS_EXIT=$?
 
 if [[ "${SDS_EXIT}" -eq 0 ]]; then
-  print_success "Step 17: SDS delivery test passed (PKI-10)."
+  print_success "Step 16: SDS delivery test passed (PKI-10)."
 elif [[ "${SDS_EXIT}" -eq 2 ]]; then
-  print_warning "Step 17: SDS test SKIPPED — Docker not available or SPIRE container stopped."
+  print_warning "Step 16: SDS test SKIPPED — Docker not available or SPIRE container stopped."
   print_info "Run 'mise run test:spire-sds' as a standalone test when Docker is ready."
 else
-  print_warning "Step 17: SDS delivery test FAILED (exit ${SDS_EXIT}). See output above."
+  print_warning "Step 16: SDS delivery test FAILED (exit ${SDS_EXIT}). See output above."
   print_info "Run 'mise run test:spire-sds' to investigate."
 fi
 
+# ── Step 17: KMS PKI capability validation via test:spire-pki ────────────────
+# Delegates to the standalone `mise run test:spire-pki` task.
+# KMS_SKIP_BUILD=1 skips the build step (already done above).
+print_header "Step 17: KMS PKI capability validation (mise run test:spire-pki)"
+print_status "Stopping current KMS and auth-verifier to hand off to spire-pki task..."
+[[ -n "${KMS_PID:-}" ]] && kill "${KMS_PID}" 2>/dev/null || true
+[[ -n "${AUTH_PID:-}" ]] && kill "${AUTH_PID}" 2>/dev/null || true
+spire_wait_port_closed 9998 30 || true
+spire_wait_port_closed 8443 30 || true
+KMS_PID=""
+AUTH_PID=""
+
+KMS_SKIP_BUILD=1 mise run test:spire-pki --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}"
+print_success "Step 17: KMS PKI capability validation passed."
+# ── Step 18: SPIFFE JWT-SVID end-to-end integration (test:spire-jwt-svid) ─────
+print_header "Step 18: SPIFFE JWT-SVID authentication (mise run test:spire-jwt-svid)"
+mise run test:spire-jwt-svid --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}"
+print_success "Step 18: SPIFFE JWT-SVID authentication tests passed."
+
+# ── Step 19: SPIRE KMIP plugins (test:spire-kmip) ──────────────────────────────
+print_header "Step 19: SPIRE KMIP plugins (mise run test:spire-kmip)"
+mise run test:spire-kmip --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}"
+print_success "Step 19: SPIRE KMIP plugins tests passed."
 print_success "SPIRE integration tests completed successfully!"

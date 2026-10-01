@@ -2592,13 +2592,21 @@ Derive a new key from an existing key
 ### Usage
 `ckms derive-key [options]`
 ### Arguments
-`--key-id [-k] <KEY_ID>` The unique identifier of the base key to derive from Mutually exclusive with --password
+`--key-id [-k] <KEY_ID>` The unique identifier of the base key to derive from Mutually exclusive with --password and --x25519
 
-`--password [-p] <PASSWORD>` UTF-8 password to use as base material for key derivation Will create a `SecretData` of type Password internally Mutually exclusive with --key-id
+`--password [-p] <PASSWORD>` UTF-8 password to use as base material for key derivation Will create a `SecretData` of type Password internally Mutually exclusive with --key-id and --x25519
 
-`--derivation-method [-m] <DERIVATION_METHOD>` The derivation method to use (PBKDF2 or HKDF)
+`--x25519 <X25519>` Perform an asymmetric X25519 ECDH key agreement instead of a symmetric (PBKDF2/HKDF) derivation. Requires --private-key-id and --peer-public-key-id. The result is always a non-extractable 256-bit `SecretData` object. Available in non-FIPS mode only. Mutually exclusive with --key-id and --password
 
-`--salt [-s] <SALT>` Salt for key derivation (in hex format)
+Possible values:  `"true", "false"`
+
+`--private-key-id <PRIVATE_KEY_ID>` The unique identifier of the local X25519 private key. Required (and only used) with --x25519
+
+`--peer-public-key-id <PEER_PUBLIC_KEY_ID>` The unique identifier of the peer's X25519 public key. Required (and only used) with --x25519
+
+`--derivation-method [-m] <DERIVATION_METHOD>` The derivation method to use (PBKDF2 or HKDF). Ignored with --x25519
+
+`--salt [-s] <SALT>` Salt for key derivation (in hex format). Required unless --x25519 is used
 
 `--iteration-count [-i] <ITERATION_COUNT>` Number of iterations for PBKDF2 derivation
 
@@ -2606,7 +2614,9 @@ Derive a new key from an existing key
 
 `--digest-algorithm [-d] <DIGEST_ALGORITHM>` Digest algorithm for derivation
 
-Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"` [default: `"SHA256"`]
+Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"` [default: `"sha256"`]
+
+`--info [-n] <INFO>` Context/info for HKDF derivation (in hex format). Ignored for PBKDF2. Two calls with the same base key, salt, and info produce the same derived key. Defaults to empty (RFC 5869 permits an empty info)
 
 `--algorithm [-a] <ALGORITHM>` The algorithm
 
@@ -3417,6 +3427,8 @@ Login to the KMS server identity provider.
 
 **`approle`** [[17.3]](#173-ckms-login-approle)  Login using a Vault-compatible `AppRole` identity
 
+**`spire`** [[17.4]](#174-ckms-login-spire)  Fetch a SPIFFE JWT-SVID from the local SPIRE Agent's Workload API and use it as the KMS access token
+
 ---
 
 ## 17.1 ckms login oauth
@@ -3454,6 +3466,23 @@ Login using a Vault-compatible `AppRole` identity
 `--role-id <ROLE_ID>` The stable `role_id` of the `AppRole`
 
 `--secret-id <SECRET_ID>` The `secret_id` credential. Omit for roles with `bind_secret_id = false`
+
+
+
+---
+
+## 17.4 ckms login spire
+
+Fetch a SPIFFE JWT-SVID from the local SPIRE Agent's Workload API and use it as the KMS access token
+
+### Usage
+`ckms login spire [options]`
+### Arguments
+`--audience <AUDIENCE>` The JWT audience value, forwarded to the Workload API's JWT-SVID fetch call. Must match a `--jwt-auth-provider` audience configured on the KMS server
+
+`--spiffe-id <SPIFFE_ID>` The SPIFFE ID of the JWT-SVID to request, when the local agent serves more than one identity to this workload (optional — omit to accept whichever identity the agent returns)
+
+`--socket-path <SOCKET_PATH>` Local SPIRE Agent Workload API endpoint: an absolute socket path (e.g. `/tmp/spire-agent/public/api.sock`) or a `unix:///path` / `tcp://host:port` URI. When omitted, the `SPIFFE_ENDPOINT_SOCKET` environment variable is used
 
 
 
@@ -4852,11 +4881,11 @@ Split an existing symmetric key into multiple shares using XOR-based split knowl
 ### Arguments
 `--key-id [-k] <KEY_ID>` The unique identifier of the key to split
 
-`--total-parts [-p] <TOTAL_PARTS>` Total number of share objects to create (n >= 2). All shares are required to reconstruct the key (XOR n-of-n, no configurable threshold). Ignored when `--ceremony` is set (share count is auto-determined by the server)
+`--total-parts [-p] <TOTAL_PARTS>` Total number of share objects to create (n >= 2). All shares are required to reconstruct the key (XOR n-of-n, no configurable threshold). Ignored when ceremony mode is enabled for an eligible Crypto Officer candidate (or by the server's global `require_ceremony` setting); otherwise the requested count is used
 
 `--method [-m] <METHOD>` The splitting method. Accepted value: `xor` (XOR n-of-n, all shares required)
 
-`--ceremony <CEREMONY>` Stamp the `x-cosmian-crypto-officer-ceremony` vendor attribute on the key before splitting. The server will distribute shares to different Crypto Officer candidates instead of assigning them all to the caller
+`--ceremony <CEREMONY>` Stamp the `x-cosmian-crypto-officer-ceremony` vendor attribute on the key before splitting. When ceremony mode is enabled for an eligible Crypto Officer candidate (or by the server's global `require_ceremony` setting), the server distributes shares to different Crypto Officer candidates; otherwise it creates an ordinary caller-owned split
 
 Possible values:  `"true", "false"` [default: `"false"`]
 

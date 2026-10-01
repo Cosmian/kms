@@ -13,20 +13,28 @@ use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsCl
 use cosmian_logger::reexport::tracing::Level;
 use cosmian_pkcs11_module::{
     ModuleError,
-    pkcs11::{FUNC_LIST, FUNC_LIST_3_0, PKCS11_INTERFACE, PKCS11_INTERFACE_NAME},
+    pkcs11::{
+        FUNC_LIST, FUNC_LIST_3_0, FUNC_LIST_3_0_V3_0, PKCS11_INTERFACE, PKCS11_INTERFACE_V3_0,
+        PKCS11_INTERFACE_V3_0_MINOR, interface_name_matches,
+    },
     traits::{register_backend, register_backend_if_absent, register_login_fn, register_pin_mode},
 };
 use pkcs11_sys::{
-    CK_FLAGS, CK_FUNCTION_LIST_PTR_PTR, CK_INTERFACE_PTR, CK_INTERFACE_PTR_PTR, CK_RV,
+    CK_FLAGS, CK_FUNCTION_LIST_PTR_PTR, CK_INTERFACE_PTR, CK_INTERFACE_PTR_PTR, CK_RV, CK_ULONG,
     CK_ULONG_PTR, CK_UTF8CHAR_PTR, CK_VERSION_PTR, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
     CKR_FUNCTION_FAILED, CKR_OK, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 
 use crate::{kms_object::get_kms_config, logging::initialize_logging};
 
-/// Guards the one-time population of the v3.0 `FUNC_LIST_3_0` function-pointer table. Both
+/// Number of `CK_INTERFACE` entries `C_GetInterfaceList` publishes: the same "PKCS 11" function
+/// table under both the implemented Cryptoki version and `{3, 0}`. See `C_GetInterface` for why
+/// the second entry is needed to satisfy §5.4.6's exact-version-match rule.
+const INTERFACE_COUNT: CK_ULONG = 2;
+
+/// Guards the one-time population of the v3.0 `FUNC_LIST_3_0*` function-pointer tables. Both
 /// `C_GetInterfaceList` and `C_GetInterface` write the same constant function pointers into
-/// this `static mut`; without synchronization, concurrent calls from different threads would
+/// these `static mut`s; without synchronization, concurrent calls from different threads would
 /// be a data race under Rust's memory model (see the #1156 security review, which fixed the
 /// same class of issue for the sibling `pkcs11_v3_rollout` branch). `Once` ensures the writes
 /// happen at most once, mirroring the existing `initialize_logging` pattern.
@@ -46,8 +54,10 @@ fn register_client(client: KmsClient, registration: BackendRegistration) {
     }
 }
 
-/// PKCS#11 v3.0 Interfaces API gap-fill: populates `FUNC_LIST_3_0` exactly once, regardless of
-/// how many threads call `C_GetInterfaceList`/`C_GetInterface` concurrently.
+/// PKCS#11 v3.0 Interfaces API gap-fill: populates the `FUNC_LIST_3_0*` tables exactly once,
+/// regardless of how many threads call `C_GetInterfaceList`/`C_GetInterface` concurrently. Both
+/// tables carry the same three entry points; they differ only in the Cryptoki version they
+/// declare (see `FUNC_LIST_3_0_V3_0` in the module crate).
 fn ensure_func_list_3_0_registered() {
     FUNC_LIST_3_0_INIT.call_once(|| {
         // SAFETY: guarded by `Once::call_once`, so this write can only ever execute on a single
@@ -57,6 +67,9 @@ fn ensure_func_list_3_0_registered() {
             FUNC_LIST_3_0.C_GetFunctionList = Some(C_GetFunctionList);
             FUNC_LIST_3_0.C_GetInterfaceList = Some(C_GetInterfaceList);
             FUNC_LIST_3_0.C_GetInterface = Some(C_GetInterface);
+            FUNC_LIST_3_0_V3_0.C_GetFunctionList = Some(C_GetFunctionList);
+            FUNC_LIST_3_0_V3_0.C_GetInterfaceList = Some(C_GetInterfaceList);
+            FUNC_LIST_3_0_V3_0.C_GetInterface = Some(C_GetInterface);
         }
     });
 }
@@ -283,6 +296,12 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
 /// `C_GetMechanismList` in the module crate): called once with `pInterfacesList` null to learn
 /// the count, then again with a caller-allocated buffer of at least that size.
 ///
+/// Reports both "PKCS 11" entries — the implemented version first (it is the one returned for a
+/// version-agnostic request), then the v3.0-versioned view of the same function table. Cryptoki
+/// v3.0/v3.1 §5.4.5 places no limit on how many interfaces a library may publish, and the second
+/// entry is what lets `C_GetInterface` honour an exact `{3, 0}` request without bending §5.4.6's
+/// exact-match rule; see `FUNC_LIST_3_0_V3_0` in the module crate.
+///
 /// # Safety
 /// `pulCount` must be non-null. If non-null, `pInterfacesList` must point to an array of at
 /// least `*pulCount` valid, writable `CK_INTERFACE` slots.
@@ -301,31 +320,44 @@ pub unsafe extern "C" fn C_GetInterfaceList(
     ensure_func_list_3_0_registered();
     unsafe {
         if p_interfaces_list.is_null() {
-            *pul_count = 1;
+            *pul_count = INTERFACE_COUNT;
             return CKR_OK;
         }
-        if *pul_count < 1 {
-            *pul_count = 1;
+        if *pul_count < INTERFACE_COUNT {
+            *pul_count = INTERFACE_COUNT;
             return CKR_BUFFER_TOO_SMALL;
         }
         *p_interfaces_list = PKCS11_INTERFACE;
-        *pul_count = 1;
+        p_interfaces_list.add(1).write(PKCS11_INTERFACE_V3_0);
+        *pul_count = INTERFACE_COUNT;
     }
     CKR_OK
 }
 
 /// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): standard v3.0 interface-lookup
-/// entry point. This module exposes exactly one interface — the standard "PKCS 11" interface,
-/// implemented at version 3.1 — so `pInterfaceName` (if non-null) must match that name; `pVersion`
-/// (if non-null) must request the same major version (3) with a minor version no greater than
-/// the implemented one (3.1), since a v3.1 implementation is backward-compatible with v3.0
-/// consumers requesting exactly `{major: 3, minor: 0}`; `flags` must be 0 (this interface makes
-/// no special guarantees, e.g. no fork-safety claim).
+/// entry point.
+///
+/// Matching follows OASIS Cryptoki v3.0/v3.1 §5.4.6 literally, and identically to how the HSM
+/// loader side of this codebase reads it (see `get_v3_function_list` in
+/// `cosmian_kms_base_hsm::pkcs11_v3`):
+///
+/// * `pInterfaceName` — if non-null, "the name of the interface returned must match", so it must
+///   be exactly `"PKCS 11"`; if null, the library picks a default.
+/// * `pVersion` — if non-null, "the version of the interface returned must match". This is an
+///   *exact* match, not a compatibility range: a request for `{3, 0}` is answered with the
+///   v3.0-versioned interface (whose `pFunctionList->version` really is `{3, 0}`, as a
+///   conformance suite re-reading that field will check) and a request for the implemented
+///   version with the newer one. Any other version has no matching interface. If null, the
+///   library may return an interface of any version — this one returns the newest.
+/// * `flags` — must be 0: this module's interfaces make no special guarantees (e.g. no
+///   fork-safety claim), and a non-zero request must be matched by *all* supplied flags.
 ///
 /// # Safety
-/// `ppInterface` must be non-null and writable. If non-null, `pInterfaceName` must point to a
-/// exact NUL-terminated string `"PKCS 11"`; if
-/// non-null, `pVersion` must point to a valid `CK_VERSION`.
+/// `ppInterface` must be non-null and writable. If non-null, `pInterfaceName` must be readable
+/// up to and including a NUL byte, or for 8 bytes (the length of `"PKCS 11"` with its
+/// terminator), whichever comes first — a name *other* than `"PKCS 11"` is not undefined
+/// behavior, it is simply rejected with `CKR_ARGUMENTS_BAD`. If non-null, `pVersion` must point
+/// to a valid `CK_VERSION`.
 #[unsafe(no_mangle)]
 #[expect(unsafe_code)]
 pub unsafe extern "C" fn C_GetInterface(
@@ -338,21 +370,22 @@ pub unsafe extern "C" fn C_GetInterface(
         return CKR_ARGUMENTS_BAD;
     }
     if flags != 0 {
-        // This module's sole interface makes no special guarantees (e.g. fork-safety); no
-        // interface exists that satisfies a non-zero flag request.
+        // This module's interfaces make no special guarantees (e.g. fork-safety); no interface
+        // exists that satisfies a non-zero flag request.
         return CKR_ARGUMENTS_BAD;
     }
     if !p_interface_name.is_null() {
-        // SAFETY: PKCS#11 requires `pInterfaceName` to reference a valid NUL-terminated string.
-        let matches = unsafe {
-            std::ffi::CStr::from_ptr(p_interface_name.cast()).to_bytes_with_nul()
-                == PKCS11_INTERFACE_NAME
-        };
-        if !matches {
+        // SAFETY: PKCS#11 requires `pInterfaceName` to reference a NUL-terminated string.
+        // `interface_name_matches` additionally stops at the length of the only name that
+        // could match, so a host that forgets the terminator causes a bounded read rather
+        // than the unbounded walk `CStr::from_ptr` would perform.
+        if !unsafe { interface_name_matches(p_interface_name) } {
             return CKR_ARGUMENTS_BAD;
         }
     }
-    if !p_version.is_null() {
+    let interface: CK_INTERFACE_PTR = if p_version.is_null() {
+        addr_of_mut!(PKCS11_INTERFACE)
+    } else {
         // SAFETY: caller guarantees p_version points to a valid CK_VERSION per this function's
         // safety contract.
         let version = unsafe { *p_version };
@@ -363,13 +396,20 @@ pub unsafe extern "C" fn C_GetInterface(
         if version.major != CRYPTOKI_VERSION_MAJOR || version.minor > CRYPTOKI_VERSION_MINOR {
             return CKR_ARGUMENTS_BAD;
         }
-    }
+        if version.minor == CRYPTOKI_VERSION_MINOR {
+            addr_of_mut!(PKCS11_INTERFACE)
+        } else if version.minor == PKCS11_INTERFACE_V3_0_MINOR {
+            addr_of_mut!(PKCS11_INTERFACE_V3_0)
+        } else {
+            return CKR_ARGUMENTS_BAD;
+        }
+    };
     if let Err(rv) = ensure_backend_registered(BackendRegistration::PreserveExisting) {
         return rv;
     }
     ensure_func_list_3_0_registered();
     unsafe {
-        *pp_interface = addr_of_mut!(PKCS11_INTERFACE);
+        *pp_interface = interface;
     }
     CKR_OK
 }

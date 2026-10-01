@@ -10,7 +10,7 @@ use cosmian_kmip::{
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, ObjectHandle, ObjectWithMetadata, ObjectsStore, UserId,
+    AtomicOperation, FindOptions, ObjectHandle, ObjectWithMetadata, ObjectsStore, UserId,
 };
 use time::Date;
 use x509_parser::prelude::{FromDer as _, X509Certificate};
@@ -491,23 +491,47 @@ impl Database {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> DbResult<Vec<(String, State, Attributes)>> {
+        self.find_with_options(
+            researched_attributes,
+            state,
+            user,
+            user_must_be_owner,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    /// Same as [`Self::find`], restricted by `options`, which each object store
+    /// applies to its own result: with several stores, callers must still cap
+    /// the concatenated result.
+    pub async fn find_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        user: &UserId,
+        user_must_be_owner: bool,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> DbResult<Vec<(String, State, Attributes)>> {
         let start = Instant::now();
         let map = self.objects.read().await;
         let mut results: Vec<(String, State, Attributes)> = Vec::new();
         for db in map.values() {
             results.extend(
-                db.find(
+                db.find_with_options(
                     researched_attributes,
                     state,
                     user,
                     user_must_be_owner,
                     vendor_id,
+                    options,
                 )
                 .await
                 .unwrap_or(vec![]),
             );
         }
-        if let Some(ref rec) = self.recorder {
+        if let Some(rec) = &self.recorder {
             rec.record_operation("find", self.kind, "success", start.elapsed().as_secs_f64());
         }
         Ok(results)
@@ -523,11 +547,30 @@ impl Database {
         state: Option<State>,
         vendor_id: &str,
     ) -> DbResult<Vec<(String, State, Attributes)>> {
+        self.find_all_with_options(
+            researched_attributes,
+            state,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    /// Same as [`Self::find_all`], restricted by `options`, which each object
+    /// store applies to its own result: with several stores, callers must still
+    /// cap the concatenated result.
+    pub async fn find_all_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> DbResult<Vec<(String, State, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, State, Attributes)> = Vec::new();
         for db in map.values() {
             results.extend(
-                db.find_all(researched_attributes, state, vendor_id)
+                db.find_all_with_options(researched_attributes, state, vendor_id, options)
                     .await
                     .unwrap_or_default(),
             );

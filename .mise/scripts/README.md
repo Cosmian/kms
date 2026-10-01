@@ -208,13 +208,14 @@ mise test:siem --suite filebeat      # Filebeat → Elasticsearch
 
 | Task | Description |
 |------|-------------|
-| `docs:build` | Build the KMS documentation book (mdBook) |
-| `docs:generate` | Regenerate all documentation (server help, ckms markdown, KMIP tables, CBOM) |
-| `docs:server-help` | Regenerate server `--help` documentation |
-| `docs:ckms-markdown` | Regenerate `ckms` CLI markdown documentation |
-| `docs:vector-readme` | Regenerate `crate/test_kms_server/README.md` from test vector manifests |
-| `docs:log-index` | Update `log-reference.md` from source call-sites |
-| `docs:log-index-check` | Check `log-reference.md` is in sync with source |
+| `docs` | Run all documentation sync tasks (mdbook-build, sync-all, sync-logs check) |
+| `docs:mdbook-build` | Build the KMS documentation site with mdBook |
+| `docs:sync-all` | Sync all generated documentation (server help, ckms markdown, KMIP tables, CBOM, logs) |
+| `docs:sync-server-help` | Sync server `--help` documentation from source |
+| `docs:sync-ckms-help` | Sync `ckms` CLI markdown documentation from source |
+| `docs:sync-vectors` | Sync test vectors README from all test vector manifests |
+| `docs:sync-logs` | Sync `log-reference.md` documentation from source log callsites |
+| `docs:check-logs` | Verify `log-reference.md` is in sync with source (CI check) |
 
 ---
 

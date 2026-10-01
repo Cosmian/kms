@@ -27,8 +27,8 @@ use std::{
 
 use cosmian_logger::{debug, error, info, trace};
 use pkcs11_sys::{
-    CK_ATTRIBUTE_PTR, CK_BBOOL, CK_BYTE_PTR, CK_C_INITIALIZE_ARGS_PTR, CK_FLAGS, CK_FUNCTION_LIST,
-    CK_FUNCTION_LIST_3_0, CK_INFO, CK_INFO_PTR, CK_INTERFACE, CK_MECHANISM_INFO,
+    CK_ATTRIBUTE_PTR, CK_BBOOL, CK_BYTE, CK_BYTE_PTR, CK_C_INITIALIZE_ARGS_PTR, CK_FLAGS,
+    CK_FUNCTION_LIST, CK_FUNCTION_LIST_3_0, CK_INFO, CK_INFO_PTR, CK_INTERFACE, CK_MECHANISM_INFO,
     CK_MECHANISM_INFO_PTR, CK_MECHANISM_PTR, CK_MECHANISM_TYPE, CK_MECHANISM_TYPE_PTR, CK_NOTIFY,
     CK_OBJECT_HANDLE, CK_OBJECT_HANDLE_PTR, CK_RV, CK_SESSION_HANDLE, CK_SESSION_HANDLE_PTR,
     CK_SESSION_INFO, CK_SESSION_INFO_PTR, CK_SLOT_ID, CK_SLOT_ID_PTR, CK_SLOT_INFO,
@@ -248,7 +248,7 @@ pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
 /// patched at runtime by the `cosmian_pkcs11` provider crate (mirroring how
 /// `FUNC_LIST.C_GetFunctionList` is patched above), since their real implementations must
 /// perform KMS backend/config initialization that only the provider crate knows how to do.
-pub static mut FUNC_LIST_3_0: CK_FUNCTION_LIST_3_0 = CK_FUNCTION_LIST_3_0 {
+const FUNC_LIST_3_0_TEMPLATE: CK_FUNCTION_LIST_3_0 = CK_FUNCTION_LIST_3_0 {
     version: CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: CRYPTOKI_VERSION_MINOR,
@@ -347,19 +347,98 @@ pub static mut FUNC_LIST_3_0: CK_FUNCTION_LIST_3_0 = CK_FUNCTION_LIST_3_0 {
     C_MessageVerifyFinal: Some(C_MessageVerifyFinal),
 };
 
-/// ASCII name of the sole interface this module exposes, as required by the PKCS#11 v3.0 spec
-/// (§5.2). NUL-terminated so that `C_GetInterface` can compare it safely without trusting an
-/// externally supplied length (the spec's `pInterfaceName` parameter carries none).
+/// The function list behind the newest "PKCS 11" interface this module exposes
+/// (`PKCS11_INTERFACE`), declaring the Cryptoki version actually implemented.
+pub static mut FUNC_LIST_3_0: CK_FUNCTION_LIST_3_0 = FUNC_LIST_3_0_TEMPLATE;
+
+/// The function list behind the v3.0-versioned "PKCS 11" interface
+/// (`PKCS11_INTERFACE_V3_0`): byte-for-byte the same function pointers as `FUNC_LIST_3_0`, but
+/// declaring `{major: 3, minor: 0}` in its `version` field.
+///
+/// This exists because OASIS Cryptoki v3.0/v3.1 §5.4.6 rule 2 is an *exact*-match rule — "if
+/// `pVersion` is not `NULL_PTR`, the version of the interface returned must match" — so a caller
+/// requesting `{3, 0}` (exactly what the spec's own `C_GetInterface` example does) must receive
+/// an interface whose `pFunctionList->version` really is `{3, 0}`, not a `{3, 1}` one. Answering
+/// such a request with the newer table would satisfy the caller's intent but violate the rule,
+/// and a conformance suite that re-reads the returned version would flag it. Publishing both
+/// versions as separate interface entries — which §5.4.5 explicitly allows, since a library may
+/// expose any number of interfaces — keeps v3.0 consumers working *and* keeps the matching rule
+/// exact. The two tables are interchangeable in practice: the v3.0 and v3.1 base function-list
+/// layouts are identical (3.1 added mechanisms and attributes, not functions).
+pub static mut FUNC_LIST_3_0_V3_0: CK_FUNCTION_LIST_3_0 = CK_FUNCTION_LIST_3_0 {
+    version: CK_VERSION {
+        major: CRYPTOKI_VERSION_MAJOR,
+        minor: PKCS11_INTERFACE_V3_0_MINOR,
+    },
+    ..FUNC_LIST_3_0_TEMPLATE
+};
+
+/// Minor version declared by [`FUNC_LIST_3_0_V3_0`]/[`PKCS11_INTERFACE_V3_0`]. Named rather than
+/// spelled `0` inline so `C_GetInterface`'s version dispatch stays greppable.
+pub const PKCS11_INTERFACE_V3_0_MINOR: CK_BYTE = 0;
+
+/// ASCII name of the "PKCS 11" interface this module exposes, as required by the PKCS#11 v3.0
+/// spec (§5.4.6). NUL-terminated, and its length doubles as the read bound
+/// [`interface_name_matches`] applies to the caller's `pInterfaceName` — the spec's parameter
+/// carries no length of its own. Shared by both versioned entries: §5.4.6 matches on name *and*
+/// version independently, so two interfaces may legitimately share a name while differing in
+/// version.
 pub const PKCS11_INTERFACE_NAME: &[u8] = b"PKCS 11\0";
 
-/// The sole `CK_INTERFACE` this module exposes through `C_GetInterfaceList`/`C_GetInterface`: the
-/// standard "PKCS 11" v3.0 interface, backed by `FUNC_LIST_3_0`. `pFunctionList` points at a
-/// `static mut`, so its target may be patched at runtime (see the provider crate), but the pointer
-/// value itself never changes. `static mut` (rather than `static`) is required here because
-/// `CK_INTERFACE` contains raw pointers, which are not `Sync`.
+/// Compares a caller-supplied `pInterfaceName` against [`PKCS11_INTERFACE_NAME`] without
+/// reading more of it than a matching name would occupy.
+///
+/// `C_GetInterface`'s `pInterfaceName` (§5.4.6) carries no length argument, unlike every other
+/// caller-supplied string this module accepts, so the only thing bounding a read of it is a NUL
+/// the host promises to have written. `CStr::from_ptr` trusts that promise unconditionally and
+/// walks memory until it finds one, which turns a buggy host's unterminated buffer into an
+/// *unbounded* out-of-bounds read. The length-carrying arguments are already capped against the
+/// same class of caller bug — see [`MAX_USERNAME_LEN`] and [`MAX_PIN_LEN`] — and this is their
+/// no-length counterpart.
+///
+/// The bound is the tightest one this parameter admits: the only name that can ever match is
+/// [`PKCS11_INTERFACE_NAME`], so the comparison stops at the first differing byte and never
+/// looks past that constant's terminating NUL. A mismatched, truncated or unterminated buffer is
+/// therefore read for at most `PKCS11_INTERFACE_NAME.len()` bytes — never more than a
+/// legitimately matching caller would have supplied. This cannot make an unterminated buffer
+/// *sound* to pass (no C-string API can: the pointer has to be readable for at least one byte),
+/// but it converts an unbounded walk into a fixed, auditable 8-byte one.
+///
+/// # Safety
+/// `ptr` must be non-null and readable up to and including its first NUL byte, or for
+/// <code>[PKCS11_INTERFACE_NAME].len()</code> bytes, whichever comes first.
+pub unsafe fn interface_name_matches(ptr: CK_UTF8CHAR_PTR) -> bool {
+    PKCS11_INTERFACE_NAME
+        .iter()
+        .enumerate()
+        .all(|(index, expected)| {
+            // SAFETY: `all` short-circuits, so `index` is only reached once every preceding byte
+            // compared equal to `PKCS11_INTERFACE_NAME`'s — all of which are non-NUL, the
+            // terminator being the final element. The caller's first NUL is therefore at `index`
+            // or later, so this byte is within the range the caller guarantees is readable.
+            #[expect(unsafe_code)]
+            let actual = unsafe { *ptr.add(index) };
+            actual == *expected
+        })
+}
+
+/// The newest "PKCS 11" interface this module exposes through
+/// `C_GetInterfaceList`/`C_GetInterface`, backed by `FUNC_LIST_3_0`, and the one returned for a
+/// `pVersion = NULL_PTR` request (§5.4.6 rule 2 leaves that choice to the library).
+/// `pFunctionList` points at a `static mut`, so its target may be patched at runtime (see the
+/// provider crate), but the pointer value itself never changes. `static mut` (rather than
+/// `static`) is required here because `CK_INTERFACE` contains raw pointers, which are not `Sync`.
 pub static mut PKCS11_INTERFACE: CK_INTERFACE = CK_INTERFACE {
     pInterfaceName: PKCS11_INTERFACE_NAME.as_ptr().cast_mut(),
     pFunctionList: (&raw mut FUNC_LIST_3_0).cast::<std::ffi::c_void>(),
+    flags: 0,
+};
+
+/// The v3.0-versioned "PKCS 11" interface, backed by `FUNC_LIST_3_0_V3_0`. See that table for
+/// why this second entry exists.
+pub static mut PKCS11_INTERFACE_V3_0: CK_INTERFACE = CK_INTERFACE {
+    pInterfaceName: PKCS11_INTERFACE_NAME.as_ptr().cast_mut(),
+    pFunctionList: (&raw mut FUNC_LIST_3_0_V3_0).cast::<std::ffi::c_void>(),
     flags: 0,
 };
 
@@ -724,7 +803,12 @@ cryptoki_fn!(
         initialized!();
         valid_session!(hSession);
         validate_login_user_type(hSession, userType)?;
-        parse_utf8_argument(pUsername, ulUsernameLen, "C_LoginUser: pUsername")?;
+        parse_utf8_argument(
+            pUsername,
+            ulUsernameLen,
+            MAX_USERNAME_LEN,
+            "C_LoginUser: pUsername",
+        )?;
         login_with_pin(pPin, ulPinLen, "C_LoginUser")?;
         Ok(())
     }
@@ -745,17 +829,28 @@ const fn validate_login_user_type(
     }
 }
 
-/// Defense-in-depth cap on `pPin`/`pUsername` argument lengths accepted by
-/// `C_Login`/`C_LoginUser`: no legitimate PIN or username is anywhere near this size, so a
-/// caller-supplied `ulPinLen`/`ulUsernameLen` far larger than this is refused before any
-/// allocation or `slice::from_raw_parts` call, rather than trusting an arbitrarily large
-/// native `CK_ULONG` and exhausting process memory (threat-model finding: FFI argument-length
-/// denial of service).
-const MAX_UTF8_ARGUMENT_LEN: usize = 4096;
+/// Defense-in-depth cap on `pUsername` argument lengths accepted by `C_LoginUser`: no
+/// legitimate username is anywhere near this size, so a caller-supplied `ulUsernameLen` far
+/// larger than this is refused before any allocation or `slice::from_raw_parts` call, rather
+/// than trusting an arbitrarily large native `CK_ULONG` and exhausting process memory
+/// (threat-model finding: FFI argument-length denial of service).
+const MAX_USERNAME_LEN: usize = 4096;
+
+/// Defense-in-depth cap on `pPin` argument lengths accepted by `C_Login`/`C_LoginUser`,
+/// serving the same purpose as [`MAX_USERNAME_LEN`] but deliberately far larger.
+///
+/// When `pkcs11_use_pin_as_access_token = true` is set in `ckms.toml`, the "PIN" is not a PIN
+/// at all: it carries a full OAuth2/OIDC bearer token. Signed JWTs carrying group, role or
+/// `wids` claims routinely exceed 4 KiB — this is precisely why identity providers implement
+/// group-overage indirection and why HTTP servers commonly allow 8 KiB headers — so reusing
+/// the username cap here would reject those logins outright with `CKR_ARGUMENTS_BAD`. 64 KiB
+/// keeps the single allocation trivially bounded while covering any realistic token.
+const MAX_PIN_LEN: usize = 65_536;
 
 fn parse_utf8_argument(
     ptr: CK_UTF8CHAR_PTR,
     len: CK_ULONG,
+    max_len: usize,
     name: &str,
 ) -> ModuleResult<Option<String>> {
     if len == 0 {
@@ -765,10 +860,10 @@ fn parse_utf8_argument(
         return Err(ModuleError::BadArguments(format!("{name} is null")));
     }
     let len = usize::try_from(len)?;
-    if len > MAX_UTF8_ARGUMENT_LEN {
+    if len > max_len {
         return Err(ModuleError::BadArguments(format!(
-            "{name} length {len} exceeds the plausible maximum of {MAX_UTF8_ARGUMENT_LEN} \
-             bytes; refusing to allocate (possible misbehaving or malicious caller)"
+            "{name} length {len} exceeds the maximum of {max_len} bytes; refusing to \
+             allocate (possible misbehaving or malicious caller)"
         )));
     }
     // SAFETY: PKCS#11 requires callers to provide `len` readable bytes when `ptr` is non-null.
@@ -780,7 +875,7 @@ fn parse_utf8_argument(
 }
 
 fn login_with_pin(pin: CK_UTF8CHAR_PTR, pin_len: CK_ULONG, function: &str) -> ModuleResult<()> {
-    let token = parse_utf8_argument(pin, pin_len, &format!("{function}: pPin"))?;
+    let token = parse_utf8_argument(pin, pin_len, MAX_PIN_LEN, &format!("{function}: pPin"))?;
     if use_pin_as_access_token() {
         invoke_login_fn(
             token
@@ -1929,3 +2024,49 @@ cryptoki_fn_not_supported!(
 );
 
 cryptoki_fn_not_supported!(C_MessageVerifyFinal, hSession: CK_SESSION_HANDLE);
+
+#[cfg(test)]
+#[expect(unsafe_code)]
+mod tests {
+    use super::{PKCS11_INTERFACE_NAME, interface_name_matches};
+
+    /// Calls the helper with `bytes` standing in for the caller's *entire* allocation.
+    ///
+    /// Each case below is sized so that reading one byte further than the helper is supposed
+    /// to would be a genuine out-of-bounds read. Plain `cargo test` will not fault on that —
+    /// these assertions check the boolean result, and the bound is established by reading the
+    /// helper — but the sizing means a sanitizer or Miri run would flag a regression, and it
+    /// keeps the intent of each case unambiguous.
+    fn matches(bytes: &[u8]) -> bool {
+        unsafe { interface_name_matches(bytes.as_ptr().cast_mut()) }
+    }
+
+    #[test]
+    fn accepts_only_the_exact_interface_name() {
+        assert!(matches(PKCS11_INTERFACE_NAME));
+        assert!(matches(b"PKCS 11\0trailing garbage"));
+    }
+
+    #[test]
+    fn rejects_other_names_without_reading_past_their_nul() {
+        // Differs at byte 0: only that byte is read.
+        assert!(!matches(b"\0"));
+        assert!(!matches(b"Vendor 11\0"));
+        // A prefix: the caller's NUL at index 4 differs from the expected ' ', so the
+        // comparison stops there rather than running into whatever follows.
+        assert!(!matches(b"PKCS\0"));
+        // Longer than the expected name: byte 7 is the caller's '1' against the expected
+        // terminating NUL, so the comparison ends inside the caller's own buffer.
+        assert!(!matches(b"PKCS 111\0"));
+    }
+
+    #[test]
+    fn stops_at_the_length_of_the_expected_name_when_unterminated() {
+        // Worst case: a buffer with no NUL at all whose bytes match throughout. The helper
+        // must stop after `PKCS11_INTERFACE_NAME.len()` bytes; sizing the allocation to
+        // exactly that makes any further read out of bounds.
+        let unterminated = *b"PKCS 111";
+        assert_eq!(unterminated.len(), PKCS11_INTERFACE_NAME.len());
+        assert!(!matches(&unterminated));
+    }
+}

@@ -88,6 +88,8 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
 #[derive(Debug, Clone, Copy)]
 pub enum HsmSigningAlgorithm {
     RsaPkcsV15,
+    /// Raw PKCS#1 v1.5 signing over a caller-supplied digest that must first be wrapped in a DER
+    /// `DigestInfo` matching the declared hash algorithm.
     RsaPkcsV15Digest {
         hashing_algorithm: HashingAlgorithm,
     },
@@ -95,20 +97,32 @@ pub enum HsmSigningAlgorithm {
     Sha256WithRsa,
     Sha384WithRsa,
     Sha512WithRsa,
+    /// RSA-PSS signing. When `prehashed` is true, use raw `CKM_RSA_PKCS_PSS`; otherwise use the
+    /// corresponding hashing mechanism `CKM_SHA*_RSA_PKCS_PSS`.
     RsaPss {
         hashing_algorithm: HashingAlgorithm,
         mask_generator_hashing_algorithm: HashingAlgorithm,
         salt_length: Option<u32>,
         prehashed: bool,
     },
+    /// ECDSA signing. When `prehashed` is true, use raw `CKM_ECDSA`; otherwise use
+    /// `CKM_ECDSA_SHA*`. PKCS#11 returns raw `r || s`, which is re-encoded to DER to match the
+    /// software ECDSA signing convention (`ecdsa_sign` in `crate::crypto`).
     Ecdsa {
         hashing_algorithm: HashingAlgorithm,
         prehashed: bool,
     },
+    /// `CKM_EDDSA` over an Ed25519 private key (pure `EdDSA`, un-hashed input). Non-FIPS: see
+    /// `crate::crypto::elliptic_curves::sign` for the equivalent software gating (issue #1157).
     #[cfg(feature = "non-fips")]
     Ed25519,
+    /// `CKM_EDDSA` over an Ed448 private key.
     #[cfg(feature = "non-fips")]
     Ed448,
+    /// `CKM_EDDSA` — pure Ed25519 (OASIS Cryptoki v3.0 §2.3.9). Not (yet) reachable
+    /// through `SigningAlgorithm::from`/KMIP (Phase 2); only constructed directly by
+    /// `base_hsm`-internal callers and tests until the KMIP integration phase wires it
+    /// up. Requires a key generated with `Session::generate_eddsa_key_pair`.
     Eddsa,
 }
 

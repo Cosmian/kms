@@ -1,0 +1,714 @@
+#!/usr/bin/env bash
+#MISE description="SPIFFE JWT-SVID end-to-end authentication test via SPIRE + ckms CLI"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/spire_test.sh"
+if [ "${usage_variant:-non-fips}" != "non-fips" ]; then
+  print_error "SPIRE tests require non-fips variant (got: ${usage_variant})"
+fi
+
+kms_init_env "non-fips" "${usage_link:-static}"
+setup_test_logging
+
+REPO_ROOT="$(get_repo_root)"
+TEST_DATA="${REPO_ROOT}/test_data/spire"
+AUTH_PID=""
+AUTH_LOG="/tmp/auth-verifier-spire-jwt-svid.log"
+AUTH_DB_FILE="/tmp/auth-verifier-spire-jwt-svid.db"
+SPIRE_SECRETS_ENV="/tmp/spire-jwt-svid-secrets.env"
+KMS_LOG_FILE="/tmp/kms-spire-jwt-svid.log"
+SPIRE_SERVER_CONTAINER="spire-server-a"
+SPIRE_SERVER_SOCKET="/tmp/spire-server/private/api.sock"
+TRUST_DOMAIN="cosmian-test-a.local"
+WORKLOAD_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/test-workload-app"
+AUDIENCE="cosmian-kms"
+OTHER_AUDIENCE="some-other-service"
+JWKS_PORT=8088
+# Strict mode (Linux/CI): real signature/issuer/audience/expiry validation against a JWKS served
+# over HTTPS. Signature and audience are ALSO covered by the Rust unit tests
+# (middlewares::jwt::jwt_token_auth::real_validation). On macOS native-tls (Security.framework)
+# ignores SSL_CERT_FILE, so the KMS cannot trust the test CA: the suite then falls back to an
+# `insecure` build (no signature/audience/expiry checks, http JWKS) and skips the negative
+# checks that depend on them.
+STRICT=1
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  STRICT=0
+fi
+if [[ "${STRICT}" -eq 1 ]]; then
+  JWKS_URI="https://localhost:${JWKS_PORT}/jwks.json"
+else
+  JWKS_URI="http://localhost:${JWKS_PORT}/jwks.json"
+fi
+KMS_URL_LOCAL="https://localhost:9998"
+
+# Everything the suite creates with mktemp lives under WORK_DIR (bearer tokens, cookie jars,
+# generated configs, SPIRE agent state, ...) so a single `rm -rf` in cleanup() removes it.
+WORK_DIR=""
+JWKS_SERVER_PID=""
+LOCAL_AGENT_PID=""
+KMS_PID=""
+UI_DIST_DIR="${REPO_ROOT}/ui/dist"
+UI_DIST_REAL=0
+UI_PLACEHOLDER_CREATED=0
+UI_DIST_DIR_CREATED=0
+UI_PLACEHOLDER_MARKER="SPIRE JWT-SVID test placeholder"
+
+cleanup() {
+  print_info "Cleaning up SPIRE JWT-SVID test resources..."
+  [[ -n "${JWKS_SERVER_PID:-}" ]] && kill "${JWKS_SERVER_PID}" 2>/dev/null || true
+  [[ -n "${LOCAL_AGENT_PID:-}" ]] && kill "${LOCAL_AGENT_PID}" 2>/dev/null || true
+  [[ -n "${AUTH_PID:-}" ]] && kill "${AUTH_PID}" 2>/dev/null || true
+  [[ -n "${KMS_PID:-}" ]] && kill "${KMS_PID}" 2>/dev/null || true
+  # Removes the ckms conf directory created by kms_write_ckms_conf (idempotent).
+  kms_stop || true
+  [[ -n "${WORK_DIR:-}" ]] && rm -rf "${WORK_DIR}" || true
+  # Remove the placeholder SPA index only if this run created it (never a real build).
+  if [[ "${UI_PLACEHOLDER_CREATED:-0}" == "1" ]]; then
+    rm -f "${UI_DIST_DIR}/index.html"
+    [[ "${UI_DIST_DIR_CREATED:-0}" == "1" ]] && rmdir "${UI_DIST_DIR}" 2>/dev/null || true
+  fi
+  spire_reset_state "${AUTH_DB_FILE}" "${SPIRE_SECRETS_ENV}"
+}
+trap cleanup EXIT
+require_cmd docker
+require_cmd cargo
+require_cmd openssl
+require_cmd python3
+require_cmd curl
+
+if [[ "${STRICT}" -eq 0 ]]; then
+  print_warning "macOS: building the KMS with the 'insecure' feature and serving the JWKS over http. JWT signature/audience/expiry validation is NOT exercised by this run (covered by the Rust unit tests; run this suite on Linux/CI for the full check)."
+elif [[ " ${FEATURES_FLAG[*]:-} " == *insecure* ]]; then
+  # Guard against silently testing a build with all JWT validation disabled.
+  print_error "The KMS must NOT be built with the 'insecure' feature for this suite (it disables signature/issuer/audience/expiry validation)."
+fi
+
+if [[ ! -d "${TEST_DATA}" ]]; then
+  print_error "test_data/spire not found."
+fi
+
+WORK_DIR="$(mktemp -d /tmp/spire-jwt-svid-XXXXXX)"
+
+print_status "Resetting SPIRE test state..."
+spire_reset_state "${AUTH_DB_FILE}" "${SPIRE_SECRETS_ENV}"
+print_header "SPIRE JWT-SVID Authentication Integration Test"
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+# Start the KMS with SSL_CERT_FILE pointing at the test CA (KMS process only) so that the JWKS
+# fetch over HTTPS validates the certificate of the local JWKS server.
+# Usage: start_kms <config.toml> <log_file>   (sets KMS_PID)
+start_kms() {
+  local config="$1" log="$2"
+  SSL_CERT_FILE="${TEST_DATA}/certs/ca.crt" "$(get_kms_bin)" --config "${config}" >"${log}" 2>&1 &
+  KMS_PID=$!
+}
+
+# Stop the KMS started by start_kms. Idempotent.
+stop_kms() {
+  if [[ -n "${KMS_PID:-}" ]]; then
+    kill "${KMS_PID}" 2>/dev/null || true
+    wait "${KMS_PID}" 2>/dev/null || true
+    KMS_PID=""
+  fi
+}
+
+# Wait until the KMS listens on 9998, failing fast if the process dies during startup.
+# Usage: wait_kms_ready <log_file> <description>
+wait_kms_ready() {
+  local log="$1" what="$2" deadline=$((SECONDS + 120))
+  until wait_for_port 127.0.0.1 9998 1; do
+    if ! kill -0 "${KMS_PID}" 2>/dev/null; then
+      tail -n 30 "${log}" >&2 || true
+      print_error "KMS exited during startup (${what}). Check ${log}"
+    fi
+    if [[ "${SECONDS}" -ge "${deadline}" ]]; then
+      tail -n 30 "${log}" >&2 || true
+      print_error "KMS did not listen on port 9998 in time (${what}). Check ${log}"
+    fi
+  done
+}
+
+# Write a KMS TOML config: base test config + UI folder + [idp_auth].
+# Usage: write_kms_config <out_file> <provider_spec> <jwt_svid_auth: true|false> [mtls]
+# A generated file is required because --config takes precedence and ignores CLI args.
+write_kms_config() {
+  local out="$1" spec="$2" svid="$3" mtls="${4:-}"
+  if [[ -n "${mtls}" ]]; then
+    sed "/\[tls\]/a\\
+clients_ca_cert_file = \"${TEST_DATA}/certs/ca.crt\"
+" "${KMS_CONFIG_FILE}" >"${out}"
+  else
+    cat "${KMS_CONFIG_FILE}" >"${out}"
+  fi
+  cat >>"${out}" <<EOF
+
+[ui_config]
+ui_index_html_folder = "${UI_DIST_DIR}"
+
+[idp_auth]
+jwt_auth_provider = ["${spec}"]
+jwt_svid_auth = ${svid}
+EOF
+}
+
+# Mint a JWT-SVID through the SPIRE server and print the token.
+# Usage: TOKEN="$(mint_jwt_svid <spiffe_id> <audience>)"
+mint_jwt_svid() {
+  local spiffe_id="$1" audience="$2" out token
+  out="$(docker exec "${SPIRE_SERVER_CONTAINER}" \
+    /opt/spire/bin/spire-server jwt mint \
+    -socketPath "${SPIRE_SERVER_SOCKET}" \
+    -spiffeID "${spiffe_id}" \
+    -audience "${audience}" \
+    -ttl 1h)" || print_error "spire-server jwt mint failed for ${spiffe_id} (audience ${audience})"
+  token="$(echo "${out}" | grep -Eo 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+' | head -n1 | tr -d '\r\n' || true)"
+  [[ -n "${token}" ]] || print_error "Failed to extract minted JWT-SVID for ${spiffe_id}. Mint output: ${out}"
+  echo "${token}"
+}
+
+# Corrupt the signature of a JWT by changing the FIRST character of its signature segment.
+# (Changing only the last base64url character can leave the decoded bytes unchanged because
+# of the unused padding bits, so the token would still verify.)
+tamper_jwt_signature() {
+  python3 - "$1" <<'PY'
+import sys
+header, payload, sig = sys.argv[1].split(".")
+sig = ("A" if sig[0] != "A" else "B") + sig[1:]
+print(f"{header}.{payload}.{sig}")
+PY
+}
+
+# Write a ckms configuration authenticating with `token` as bearer.
+# Usage: write_bearer_conf <path> <token>
+write_bearer_conf() {
+  cat >"$1" <<EOF
+[http_config]
+server_url = "${KMS_URL_LOCAL}"
+access_token = "$2"
+EOF
+}
+
+# Print the HTTP status returned by a KMIP endpoint for a bearer token.
+# Authentication is evaluated before the body, so 401 means "authentication refused".
+bearer_http_status() {
+  local status
+  status="$(curl -k -s -o /dev/null -w '%{http_code}' -X POST \
+    -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $1" \
+    -d '{}' "${KMS_URL_LOCAL}/kmip/2_1")" || status="000"
+  echo "${status}"
+}
+
+# Print the HTTP status of POST /ui/login_svid for a token (cookies stored in $2 if given).
+login_svid_http_status() {
+  local token="$1" jar="${2:-${WORK_DIR}/login-neg-cookies}" status
+  status="$(curl -k -s -o "${WORK_DIR}/login-svid-body" -w '%{http_code}' -c "${jar}" \
+    -H "Content-Type: application/json" \
+    -d "{\"jwt_svid\":\"${token}\"}" \
+    "${KMS_URL_LOCAL}/ui/login_svid")" || status="000"
+  echo "${status}"
+}
+
+# Assert that a token is refused both as bearer (ckms CLI exits non-zero, HTTP 401) and by
+# POST /ui/login_svid (HTTP 401 unless $3 gives another expected status).
+# Usage: expect_svid_rejected <label> <token> [expected_login_status]
+expect_svid_rejected() {
+  local label="$1" token="$2" login_expected="${3:-401}"
+  local conf="${WORK_DIR}/ckms-negative.toml" out="${WORK_DIR}/ckms-negative.log" status
+  write_bearer_conf "${conf}" "${token}"
+  if "$(get_ckms_bin)" --conf-path "${conf}" --accept-invalid-certs \
+    sym keys create "spiffe-negative-key-${RANDOM}" >"${out}" 2>&1; then
+    print_error "${label}: ckms authenticated with a token that must be rejected. Output: $(cat "${out}")"
+  fi
+  print_success "${label}: ckms refused the token ($(tr '\n' ' ' <"${out}" | cut -c1-140))"
+  status="$(bearer_http_status "${token}")"
+  [[ "${status}" == "401" ]] || print_error "${label}: bearer request returned HTTP ${status}, expected 401"
+  print_success "${label}: bearer request returned HTTP 401."
+  status="$(login_svid_http_status "${token}")"
+  [[ "${status}" == "${login_expected}" ]] ||
+    print_error "${label}: POST /ui/login_svid returned HTTP ${status}, expected ${login_expected}: $(cat "${WORK_DIR}/login-svid-body")"
+  print_success "${label}: POST /ui/login_svid returned HTTP ${status}."
+}
+
+# ── Step 1: Check / Generate TLS certificates ───────────────────────────────
+print_status "Step 1: TLS certificates..."
+spire_ensure_certs "${TEST_DATA}"
+
+# ── Step 2: Build server and CLI ─────────────────────────────────────────────
+# The server is built WITHOUT the `insecure` feature: real signature, issuer, audience and
+# expiry validation, and the https-only JWKS guard, are exactly what this suite must exercise.
+print_status "Step 2: Building KMS server (non-fips) & ckms CLI..."
+if [[ "${STRICT}" -eq 1 ]]; then
+  kms_build_server
+else
+  kms_build_server --features non-fips,insecure
+fi
+
+AUTH_BIN="$(spire_build_auth_verifier "${REPO_ROOT}")"
+kms_build_cli "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+# ── Step 3: Start auth-verifier ──────────────────────────────────────────────
+print_status "Step 3: Starting auth-verifier on port 8443..."
+rm -f "${AUTH_DB_FILE}"
+"${AUTH_BIN}" "${TEST_DATA}/config/auth_verifier.toml" >"${AUTH_LOG}" 2>&1 &
+AUTH_PID=$!
+if ! wait_for_port 127.0.0.1 8443 60; then
+  print_error "auth-verifier failed to start. Check ${AUTH_LOG}"
+fi
+print_success "auth-verifier ready."
+
+# ── Step 4: Bootstrap temporary KMS for Root CA & AppRole provisioning ──────
+print_status "Step 4: Bootstrapping temporary KMS server for SPIRE PKI..."
+KMS_CONFIG_FILE="${TEST_DATA}/config/kms.toml"
+start_kms "${KMS_CONFIG_FILE}" "${KMS_LOG_FILE}"
+wait_kms_ready "${KMS_LOG_FILE}" "bootstrap"
+
+# Not in a command substitution: kms_write_ckms_conf records its temp dir in a global that
+# kms_stop (called from cleanup) removes.
+kms_write_ckms_conf "${KMS_URL_LOCAL}" >/dev/null
+CKMS_CONF="${KMS_CKMS_CONF}"
+_VAULT_EXT_FILE="${WORK_DIR}/vault_pki_ca_ext"
+cat >"${_VAULT_EXT_FILE}" <<'EXTEOF'
+[ v3_ca ]
+basicConstraints=critical,CA:TRUE
+keyUsage=critical,keyCertSign,crlSign,digitalSignature
+EXTEOF
+
+"$(get_ckms_bin)" --conf-path "${CKMS_CONF}" \
+  --accept-invalid-certs \
+  certificates certify \
+  --generate-key-pair \
+  --algorithm nist-p384 \
+  --certificate-id vault_pki_ca_cert \
+  --subject-name "CN=Cosmian KMS Root CA,O=Cosmian,C=FR" \
+  --tag vault_pki_ca \
+  --days 3650 \
+  --certificate-extensions "${_VAULT_EXT_FILE}" \
+  2>&1 | grep -v "^$"
+
+AUTH_VERIFIER_URL="https://localhost:8443" \
+  VAULT_ADDR="${KMS_URL_LOCAL}" \
+  VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
+  CKMS_BIN="$(get_ckms_bin)" \
+  CKMS_CONF="${CKMS_CONF}" \
+  SECRETS_ENV_FILE="${SPIRE_SECRETS_ENV}" \
+  bash "${TEST_DATA}/setup/provision.sh"
+
+# shellcheck disable=SC1090
+source "${SPIRE_SECRETS_ENV}"
+
+# ── Step 5: Start SPIRE server (tenant A) ────────────────────────────────────
+print_status "Step 5: Starting SPIRE server A..."
+export SPIRE_SERVER_CONFIG_FILE_A="./test_data/spire/config/spire-server-a.conf"
+export VAULT_APPROLE_ID_A="${SPIRE_ROLE_ID_A}"
+export VAULT_APPROLE_SECRET_ID_A="${SPIRE_SECRET_ID_A}"
+docker compose --profile spire up -d "${SPIRE_SERVER_CONTAINER}"
+
+tries=0
+until [[ "$(docker inspect --format='{{.State.Status}}' "${SPIRE_SERVER_CONTAINER}" 2>/dev/null)" == "running" && "$(docker inspect --format='{{.State.Health.Status}}' "${SPIRE_SERVER_CONTAINER}" 2>/dev/null)" == "healthy" ]]; do
+  tries=$((tries + 1))
+  if [[ "${tries}" -ge 24 ]]; then
+    docker logs "${SPIRE_SERVER_CONTAINER}" 2>&1 | tail -20 || true
+    print_error "SPIRE server did not become healthy in time."
+  fi
+  sleep 5
+done
+print_success "SPIRE server A healthy."
+
+# ── Step 6: Export the SPIRE trust bundle and serve it as an HTTPS JWKS ──────
+print_status "Step 6: Exporting SPIRE bundle and serving the JWKS (${JWKS_URI})..."
+JWKS_DIR="${WORK_DIR}/jwks"
+mkdir -p "${JWKS_DIR}"
+JWKS_FILE="${JWKS_DIR}/jwks.json"
+
+docker exec "${SPIRE_SERVER_CONTAINER}" \
+  /opt/spire/bin/spire-server bundle show \
+  -socketPath "${SPIRE_SERVER_SOCKET}" \
+  -format SPIFFE >"${JWKS_FILE}" || print_error "spire-server bundle show failed"
+
+# The SPIFFE bundle lists both x509-svid keys (with x5c, no kid) and jwt-svid keys (kid,
+# use=jwt-svid). The KMS JWKS parser (jsonwebtoken::jwk::Jwk) accepts both (`use` is an open
+# string and x5c is an optional list), and looks keys up by `kid`, so the bundle is served
+# unfiltered, as a real SPIFFE bundle endpoint would. Only assert that a usable key exists.
+python3 - "${JWKS_FILE}" <<'PY' || print_error "Exported SPIFFE bundle contains no usable jwt-svid key (kid + use=jwt-svid)"
+import json
+import sys
+
+keys = json.load(open(sys.argv[1])).get("keys", [])
+jwt_keys = [k for k in keys if k.get("use") == "jwt-svid" and k.get("kid")]
+if not jwt_keys:
+    sys.exit(1)
+print(f"SPIFFE bundle: {len(keys)} key(s), {len(jwt_keys)} usable jwt-svid key(s), "
+      f"kid(s)={[k['kid'] for k in jwt_keys]}")
+PY
+
+cat >"${WORK_DIR}/serve_jwks.py" <<'PY'
+import functools
+import http.server
+import ssl
+import sys
+
+directory, cert, key, port, tls = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5] == "1"
+handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=directory)
+httpd = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
+if tls:
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert, key)
+    httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+httpd.serve_forever()
+PY
+
+python3 "${WORK_DIR}/serve_jwks.py" "${JWKS_DIR}" \
+  "${TEST_DATA}/certs/kms.crt" "${TEST_DATA}/certs/kms.key" "${JWKS_PORT}" "${STRICT}" \
+  >"${WORK_DIR}/jwks-server.log" 2>&1 &
+JWKS_SERVER_PID=$!
+if ! wait_for_port 127.0.0.1 "${JWKS_PORT}" 10; then
+  cat "${WORK_DIR}/jwks-server.log" >&2 || true
+  print_error "Failed to start JWKS HTTPS server on port ${JWKS_PORT}"
+fi
+# The certificate must be valid for `localhost` and chain to the test CA.
+curl -fsS --cacert "${TEST_DATA}/certs/ca.crt" -o /dev/null "${JWKS_URI}" ||
+  print_error "JWKS endpoint ${JWKS_URI} is not reachable (with certificate validation against test_data/spire/certs/ca.crt in strict mode)"
+print_success "JWKS server running: ${JWKS_URI}"
+
+# ── Step 7: KMS start-up and configuration checks ────────────────────────────
+print_status "Step 7: Restarting KMS with --jwt-svid-auth and the SPIRE JWKS provider..."
+stop_kms
+
+# The KMS only registers the /ui auth routes (login_svid, whoami, ...) when the
+# configured UI index folder contains an index.html. CI runners start from a
+# clean checkout and never build ui/dist, so provision a placeholder index so
+# the BFF endpoints used below are served. A real ui/dist build is never touched;
+# the placeholder is removed again by cleanup().
+if [[ -f "${UI_DIST_DIR}/index.html" ]] && ! grep -q "${UI_PLACEHOLDER_MARKER}" "${UI_DIST_DIR}/index.html"; then
+  UI_DIST_REAL=1
+else
+  if [[ ! -d "${UI_DIST_DIR}" ]]; then
+    mkdir -p "${UI_DIST_DIR}"
+    UI_DIST_DIR_CREATED=1
+  fi
+  echo "<!doctype html><html><body>${UI_PLACEHOLDER_MARKER}</body></html>" >"${UI_DIST_DIR}/index.html"
+  UI_PLACEHOLDER_CREATED=1
+fi
+
+JWT_PROVIDER_SPEC="https://${TRUST_DOMAIN},${JWKS_URI},${AUDIENCE}"
+JWT_PROVIDER_SPEC_NO_AUD="https://${TRUST_DOMAIN},${JWKS_URI},"
+KMS_SVID_LOG="/tmp/kms-spire-jwt-svid-server.log"
+
+# 7a. Negative: --jwt-svid-auth with a provider that has no audience must be refused at start-up.
+print_status "Step 7a: KMS must refuse to start with jwt_svid_auth = true and no audience..."
+KMS_NOAUD_CONFIG_FILE="${WORK_DIR}/kms-noaud.toml"
+KMS_NOAUD_LOG="/tmp/kms-spire-jwt-svid-noaud.log"
+write_kms_config "${KMS_NOAUD_CONFIG_FILE}" "${JWT_PROVIDER_SPEC_NO_AUD}" true
+start_kms "${KMS_NOAUD_CONFIG_FILE}" "${KMS_NOAUD_LOG}"
+deadline=$((SECONDS + 60))
+while kill -0 "${KMS_PID}" 2>/dev/null; do
+  if [[ "${SECONDS}" -ge "${deadline}" ]]; then
+    stop_kms
+    print_error "KMS is still running 60s after start with jwt_svid_auth = true and an empty audience: it must refuse to start. Check ${KMS_NOAUD_LOG}"
+  fi
+  sleep 1
+done
+noaud_rc=0
+wait "${KMS_PID}" || noaud_rc=$?
+KMS_PID=""
+if [[ "${noaud_rc}" -eq 0 ]]; then
+  print_error "KMS exited with status 0 for a jwt_svid_auth provider without audience; expected a non-zero exit. Check ${KMS_NOAUD_LOG}"
+fi
+if ! grep -qi "audience" "${KMS_NOAUD_LOG}"; then
+  tail -n 30 "${KMS_NOAUD_LOG}" >&2 || true
+  print_error "KMS refused to start (exit ${noaud_rc}) but its log does not mention the missing audience. Check ${KMS_NOAUD_LOG}"
+fi
+print_success "KMS refused to start without an audience (exit ${noaud_rc}): $(grep -i audience "${KMS_NOAUD_LOG}" | head -n1 | cut -c1-200)"
+
+# 7b. The valid configuration.
+KMS_SVID_CONFIG_FILE="${WORK_DIR}/kms-svid.toml"
+write_kms_config "${KMS_SVID_CONFIG_FILE}" "${JWT_PROVIDER_SPEC}" true
+start_kms "${KMS_SVID_CONFIG_FILE}" "${KMS_SVID_LOG}"
+wait_kms_ready "${KMS_SVID_LOG}" "--jwt-svid-auth"
+if grep -q "Fetch JWKS" "${KMS_SVID_LOG}"; then
+  grep "Fetch JWKS" "${KMS_SVID_LOG}" >&2 || true
+  print_error "The KMS could not fetch the JWKS from ${JWKS_URI} (see log above): TLS trust of the test CA through SSL_CERT_FILE failed."
+fi
+print_success "KMS server ready with --jwt-svid-auth."
+
+# ── Step 8: Mint JWT-SVID for workload and configure ckms ─────────────────────
+print_status "Step 8: Minting JWT-SVID via spire-server..."
+JWT_TOKEN="$(mint_jwt_svid "${WORKLOAD_SPIFFE_ID}" "${AUDIENCE}")"
+print_success "JWT-SVID minted successfully for ${WORKLOAD_SPIFFE_ID}."
+
+print_status "Step 9a: Writing ckms.toml with access_token..."
+SVID_CKMS_CONF="${WORK_DIR}/ckms-svid.toml"
+write_bearer_conf "${SVID_CKMS_CONF}" "${JWT_TOKEN}"
+
+print_status "Executing ckms command authenticated by JWT-SVID..."
+TEST_KEY_ID="spiffe-test-key-$(date +%s)"
+"$(get_ckms_bin)" --conf-path "${SVID_CKMS_CONF}" --accept-invalid-certs \
+  sym keys create "${TEST_KEY_ID}"
+print_success "Key '${TEST_KEY_ID}' created."
+
+print_status "Verifying ownership of created object matches SPIFFE ID..."
+OWNED_OUTPUT=$("$(get_ckms_bin)" --conf-path "${SVID_CKMS_CONF}" --accept-invalid-certs \
+  access-rights owned)
+echo "${OWNED_OUTPUT}"
+if echo "${OWNED_OUTPUT}" | grep -q "${TEST_KEY_ID}"; then
+  print_success "Object is owned by the authenticated SPIFFE ID (${WORKLOAD_SPIFFE_ID})!"
+else
+  print_error "Key '${TEST_KEY_ID}' not found in list-owned output: ${OWNED_OUTPUT}"
+fi
+
+# Control for the HTTP probes used by the negative checks below: a valid SVID is NOT a 401.
+CONTROL_STATUS="$(bearer_http_status "${JWT_TOKEN}")"
+if [[ "${CONTROL_STATUS}" == "401" || "${CONTROL_STATUS}" == "000" ]]; then
+  print_error "Valid JWT-SVID rejected on ${KMS_URL_LOCAL}/kmip/2_1 (HTTP ${CONTROL_STATUS})"
+fi
+print_success "Valid JWT-SVID accepted by the KMIP endpoint (HTTP ${CONTROL_STATUS})."
+
+# ── Step 9c: Negative checks — tokens that must NOT authenticate ─────────────
+print_status "Step 9c: Negative checks (wrong audience, tampered signature)..."
+if [[ "${STRICT}" -eq 1 ]]; then
+  WRONG_AUD_TOKEN="$(mint_jwt_svid "${WORKLOAD_SPIFFE_ID}" "${OTHER_AUDIENCE}")"
+  expect_svid_rejected "SVID minted for audience '${OTHER_AUDIENCE}'" "${WRONG_AUD_TOKEN}"
+
+  TAMPERED_TOKEN="$(tamper_jwt_signature "${JWT_TOKEN}")"
+  [[ "${TAMPERED_TOKEN}" != "${JWT_TOKEN}" ]] || print_error "Failed to tamper with the JWT signature"
+  expect_svid_rejected "SVID with tampered signature" "${TAMPERED_TOKEN}"
+else
+  print_info "Skipped on macOS (insecure build does not validate audience/signature); covered by the Rust real_validation unit tests."
+fi
+
+# ── Step 9b: ckms login spire native integration ─────────────────────────────
+print_status "Step 9b: Testing ckms login spire directly via local SPIRE Agent..."
+LOCAL_SPIRE_AGENT_BIN="$(command -v spire-agent || true)"
+if [[ -z "${LOCAL_SPIRE_AGENT_BIN}" && -x "${HOME}/go/bin/spire-agent" ]]; then
+  LOCAL_SPIRE_AGENT_BIN="${HOME}/go/bin/spire-agent"
+fi
+
+if [[ -n "${LOCAL_SPIRE_AGENT_BIN}" && "${STRICT}" -eq 1 ]]; then
+  AGENT_DIR="${WORK_DIR}/spire-agent"
+  AGENT_CONF_FILE="${WORK_DIR}/spire-agent.conf"
+  AGENT_LOG="${WORK_DIR}/spire-agent.log"
+  LOGIN_SPIRE_CONF="${WORK_DIR}/ckms-login-spire.toml"
+  LOGIN_LOG="${WORK_DIR}/ckms-login-spire.log"
+  mkdir -p "${AGENT_DIR}/data"
+
+  # Generate join token from spire-server-a
+  GEN_TOKEN_OUT=$(docker exec "${SPIRE_SERVER_CONTAINER}" \
+    /opt/spire/bin/spire-server token generate \
+    -socketPath "${SPIRE_SERVER_SOCKET}" \
+    -spiffeID "spiffe://${TRUST_DOMAIN}/test-local-agent" \
+    -ttl 300) || print_error "spire-server token generate failed"
+  AGENT_JOIN_TOKEN=$(echo "${GEN_TOKEN_OUT}" | awk '/^Token:/{print $2}' | tr -d '\r\n')
+  if [[ -z "${AGENT_JOIN_TOKEN}" ]]; then
+    print_error "Failed to extract the SPIRE agent join token. Output: ${GEN_TOKEN_OUT}"
+  fi
+
+  # Register workload entry for local ckms process under this agent
+  ENTRY_OUT=$(docker exec "${SPIRE_SERVER_CONTAINER}" \
+    /opt/spire/bin/spire-server entry create \
+    -socketPath "${SPIRE_SERVER_SOCKET}" \
+    -spiffeID "${WORKLOAD_SPIFFE_ID}" \
+    -parentID "spiffe://${TRUST_DOMAIN}/test-local-agent" \
+    -selector "unix:uid:$(id -u)" 2>&1) ||
+    print_error "spire-server entry create failed: ${ENTRY_OUT}"
+
+  cat >"${AGENT_CONF_FILE}" <<EOF
+agent {
+  data_dir = "${AGENT_DIR}/data"
+  log_level = "INFO"
+  server_address = "127.0.0.1"
+  server_port = "8081"
+  socket_path = "${AGENT_DIR}/api.sock"
+  trust_domain = "${TRUST_DOMAIN}"
+  insecure_bootstrap = true
+  join_token = "${AGENT_JOIN_TOKEN}"
+}
+
+plugins {
+  NodeAttestor "join_token" {
+    plugin_data {}
+  }
+  KeyManager "memory" {
+    plugin_data {}
+  }
+  WorkloadAttestor "unix" {
+    plugin_data {}
+  }
+}
+EOF
+  "${LOCAL_SPIRE_AGENT_BIN}" run -config "${AGENT_CONF_FILE}" >"${AGENT_LOG}" 2>&1 &
+  LOCAL_AGENT_PID=$!
+
+  # Wait for agent socket
+  for _ in $(seq 1 30); do
+    [[ -S "${AGENT_DIR}/api.sock" ]] && break
+    sleep 0.5
+  done
+  if [[ ! -S "${AGENT_DIR}/api.sock" ]]; then
+    tail -n 30 "${AGENT_LOG}" >&2 || true
+    print_error "SPIRE agent did not create its Workload API socket ${AGENT_DIR}/api.sock"
+  fi
+
+  # Wait for cache sync
+  agent_synced=0
+  for _ in $(seq 1 20); do
+    if "${LOCAL_SPIRE_AGENT_BIN}" api fetch jwt -socketPath "${AGENT_DIR}/api.sock" -audience "${AUDIENCE}" >/dev/null 2>&1; then
+      agent_synced=1
+      break
+    fi
+    sleep 0.5
+  done
+  if [[ "${agent_synced}" -ne 1 ]]; then
+    tail -n 30 "${AGENT_LOG}" >&2 || true
+    print_error "SPIRE agent never issued a JWT-SVID for the local workload (registration entry not synced?)"
+  fi
+
+  cat >"${LOGIN_SPIRE_CONF}" <<EOF
+vendor_id = "cosmian"
+[http_config]
+server_url = "${KMS_URL_LOCAL}"
+accept_invalid_certs = true
+EOF
+  if ! "$(get_ckms_bin)" --conf-path "${LOGIN_SPIRE_CONF}" login spire --audience "${AUDIENCE}" --socket-path "unix://${AGENT_DIR}/api.sock" >"${LOGIN_LOG}" 2>&1; then
+    cat "${LOGIN_LOG}" >&2 || true
+    print_error "ckms login spire failed although a spire-agent is available and synced."
+  fi
+  TEST_KEY_SPIRE="spiffe-login-spire-key-$(date +%s)"
+  "$(get_ckms_bin)" --conf-path "${LOGIN_SPIRE_CONF}" sym keys create "${TEST_KEY_SPIRE}"
+  print_success "ckms login spire successfully fetched JWT-SVID from local agent and created key '${TEST_KEY_SPIRE}'!"
+
+  kill "${LOCAL_AGENT_PID}" 2>/dev/null || true
+  wait "${LOCAL_AGENT_PID}" 2>/dev/null || true
+  LOCAL_AGENT_PID=""
+else
+  # macOS: the spire-server container uses network_mode: host under Docker Desktop, so its
+  # attestation port 8081 is not reachable from a native agent process.
+  print_info "No native spire-agent (or macOS Docker Desktop host networking): verifying ckms login spire CLI flag validation only..."
+  "$(get_ckms_bin)" login spire --help >/dev/null
+  print_success "ckms login spire CLI help flag verified."
+fi
+
+# ── Step 10: Run Playwright E2E tests with the JWT-SVID ──────────────────────
+print_status "Step 10: Running Playwright E2E tests with JWT-SVID..."
+export PLAYWRIGHT_KMS_URL="https://127.0.0.1:9998"
+export TEST_JWT_SVID_TOKEN="${JWT_TOKEN}"
+export TEST_SPIFFE_ID="${WORKLOAD_SPIFFE_ID}"
+if [[ "${STRICT}" -eq 1 ]]; then
+  export TEST_JWT_STRICT=1
+fi
+
+# The UI lockfile requires pnpm >= 10, which is not pre-installed on CI runners
+# used by the spire job. Bootstrap it from npm when it is missing or too old.
+ensure_pnpm_v10
+if ! command -v pnpm >/dev/null 2>&1; then
+  print_error "pnpm is required for the Playwright E2E tests (Step 10) but could not be provisioned."
+fi
+
+# spiffe-jwt-svid-auth.spec.ts exercises the JSON /ui endpoints only. spiffe-ui-login.spec.ts
+# establishes a session through POST /ui/login_svid and then loads the SPA, which a placeholder
+# index.html cannot render: run it only when a real ui/dist build exists.
+E2E_SPECS=(spiffe-jwt-svid-auth.spec.ts)
+if [[ "${UI_DIST_REAL}" -eq 1 ]]; then
+  E2E_SPECS+=(spiffe-ui-login.spec.ts)
+else
+  print_info "No real ui/dist build found (placeholder index.html only): skipping spiffe-ui-login.spec.ts."
+fi
+
+if (cd "${REPO_ROOT}/ui" && ([ -d node_modules ] || pnpm install --frozen-lockfile) && CI=true pnpm run test:e2e -- "${E2E_SPECS[@]}"); then
+  print_success "Playwright E2E tests for SPIFFE JWT-SVID passed (${E2E_SPECS[*]})."
+else
+  print_error "Playwright E2E tests for SPIFFE JWT-SVID failed (${E2E_SPECS[*]})."
+fi
+
+# ── Step 11: Mint a demo-user JWT-SVID and log into the Web UI with it ────────
+print_status "Step 11: Testing Web UI /ui/login_svid and session verification..."
+DEMO_USER_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/webui-demo-user"
+DEMO_JWT_TOKEN="$(mint_jwt_svid "${DEMO_USER_SPIFFE_ID}" "${AUDIENCE}")"
+print_success "Demo-user JWT-SVID minted for ${DEMO_USER_SPIFFE_ID}."
+
+# Test POST /ui/login_svid endpoint directly (transparent gateway BFF flow)
+COOKIEJAR="${WORK_DIR}/ui-cookies"
+LOGIN_STATUS="$(login_svid_http_status "${DEMO_JWT_TOKEN}" "${COOKIEJAR}")"
+LOGIN_RESP="$(cat "${WORK_DIR}/login-svid-body")"
+if [[ "${LOGIN_STATUS}" == "200" ]] && echo "${LOGIN_RESP}" | grep -q "Authenticated"; then
+  print_success "POST /ui/login_svid returned 200 Authenticated."
+else
+  print_error "POST /ui/login_svid failed (HTTP ${LOGIN_STATUS}): ${LOGIN_RESP}"
+fi
+
+WHOAMI_RESP=$(curl -k -s -b "${COOKIEJAR}" "${KMS_URL_LOCAL}/ui/whoami")
+if echo "${WHOAMI_RESP}" | grep -q "${DEMO_USER_SPIFFE_ID}"; then
+  print_success "GET /ui/whoami returned expected SPIFFE ID: ${WHOAMI_RESP}"
+else
+  print_error "GET /ui/whoami failed to return expected SPIFFE ID. Got: ${WHOAMI_RESP}"
+fi
+
+# ── Step 12: A KMS started WITHOUT jwt_svid_auth must reject a valid SVID ─────
+print_status "Step 12: Restarting KMS WITHOUT jwt_svid_auth; a valid JWT-SVID must be rejected..."
+stop_kms
+KMS_NOSVID_CONFIG_FILE="${WORK_DIR}/kms-nosvid.toml"
+KMS_NOSVID_LOG="/tmp/kms-spire-jwt-svid-disabled.log"
+write_kms_config "${KMS_NOSVID_CONFIG_FILE}" "${JWT_PROVIDER_SPEC}" false
+start_kms "${KMS_NOSVID_CONFIG_FILE}" "${KMS_NOSVID_LOG}"
+wait_kms_ready "${KMS_NOSVID_LOG}" "jwt_svid_auth = false"
+
+# /ui/login_svid answers 500 (not 401) when --jwt-svid-auth is not enabled.
+expect_svid_rejected "Valid SVID with jwt_svid_auth disabled" "${JWT_TOKEN}" 500
+print_success "A KMS without jwt_svid_auth refuses JWT-SVIDs."
+
+# ── Step 13: Validate mTLS + JWT-SVID simultaneously ───────────────────────────
+print_status "Step 13: Validating mTLS + JWT-SVID configured together..."
+stop_kms
+
+KMS_MTLS_JWT_LOG="/tmp/kms-spire-mtls-jwt-svid.log"
+KMS_DUAL_CONFIG_FILE="${WORK_DIR}/kms-dual.toml"
+write_kms_config "${KMS_DUAL_CONFIG_FILE}" "${JWT_PROVIDER_SPEC}" true mtls
+start_kms "${KMS_DUAL_CONFIG_FILE}" "${KMS_MTLS_JWT_LOG}"
+wait_kms_ready "${KMS_MTLS_JWT_LOG}" "mTLS + --jwt-svid-auth"
+print_success "KMS server ready with both mTLS and --jwt-svid-auth."
+
+# 1. Test request using JWT-SVID bearer token (no client cert)
+TEST_KEY_ID_JWT="spiffe-dual-jwt-key-$(date +%s)"
+"$(get_ckms_bin)" --conf-path "${SVID_CKMS_CONF}" --accept-invalid-certs \
+  sym keys create "${TEST_KEY_ID_JWT}"
+print_success "Key '${TEST_KEY_ID_JWT}' created via JWT-SVID on dual-auth server."
+
+OWNED_OUTPUT_JWT=$("$(get_ckms_bin)" --conf-path "${SVID_CKMS_CONF}" --accept-invalid-certs \
+  access-rights owned)
+if echo "${OWNED_OUTPUT_JWT}" | grep -q "${TEST_KEY_ID_JWT}"; then
+  print_success "Dual auth (JWT-SVID path): Object is owned by ${WORKLOAD_SPIFFE_ID}!"
+else
+  print_error "Key '${TEST_KEY_ID_JWT}' not found in list-owned output: ${OWNED_OUTPUT_JWT}"
+fi
+
+# 2. Test request using mTLS client certificate (no JWT bearer token)
+MTLS_CKMS_CONF="${WORK_DIR}/ckms-mtls.toml"
+cat >"${MTLS_CKMS_CONF}" <<EOF
+[http_config]
+server_url = "${KMS_URL_LOCAL}"
+tls_client_pem_cert_path = "${TEST_DATA}/certs/spire-client.crt"
+tls_client_pem_key_path = "${TEST_DATA}/certs/spire-client.key"
+EOF
+TEST_KEY_ID_MTLS="spiffe-dual-mtls-key-$(date +%s)"
+"$(get_ckms_bin)" --conf-path "${MTLS_CKMS_CONF}" --accept-invalid-certs \
+  sym keys create "${TEST_KEY_ID_MTLS}"
+print_success "Key '${TEST_KEY_ID_MTLS}' created via mTLS client cert on dual-auth server."
+
+OWNED_OUTPUT_MTLS=$("$(get_ckms_bin)" --conf-path "${MTLS_CKMS_CONF}" --accept-invalid-certs \
+  access-rights owned)
+if echo "${OWNED_OUTPUT_MTLS}" | grep -q "${TEST_KEY_ID_MTLS}"; then
+  print_success "Dual auth (mTLS path): Object is owned by spire-client (certificate CN)!"
+else
+  print_error "Key '${TEST_KEY_ID_MTLS}' not found in list-owned output: ${OWNED_OUTPUT_MTLS}"
+fi
+
+print_header "SPIRE JWT-SVID end-to-end integration test PASSED successfully"
+print_success "All checks passed."
