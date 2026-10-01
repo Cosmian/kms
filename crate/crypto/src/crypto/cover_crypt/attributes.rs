@@ -154,6 +154,8 @@ pub enum RekeyEditAction {
     DisableAttribute(Vec<QualifiedAttribute>),
     AddAttribute(Vec<(QualifiedAttribute, EncryptionHint, Option<String>)>),
     RenameAttribute(Vec<(QualifiedAttribute, String)>),
+    AddAnarchy(String, Vec<(QualifiedAttribute, EncryptionHint)>),
+    AddHierarchy(String, Vec<(QualifiedAttribute, EncryptionHint)>),
 }
 
 /// Convert an edit action to a vendor attribute
