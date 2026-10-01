@@ -190,7 +190,6 @@ pub fn build_covercrypt_rekey_keypair_request(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use std::str::FromStr;
 
@@ -198,20 +197,21 @@ mod tests {
 
     #[test]
     fn encryption_hints_parse() {
-        assert_eq!(Hint::from_str("Classic").unwrap(), Hint::Classic);
-        assert_eq!(Hint::from_str("post-quantum").unwrap(), Hint::PostQuantum);
-        assert_eq!(Hint::from_str("HYBRIDIZED").unwrap(), Hint::Hybridized);
-        Hint::from_str("quantum").unwrap_err();
+        let parse = |s: &str| Hint::from_str(s).map_err(|e| e.to_string());
+        assert_eq!(parse("Classic"), Ok(Hint::Classic));
+        assert_eq!(parse("post-quantum"), Ok(Hint::PostQuantum));
+        assert_eq!(parse("HYBRIDIZED"), Ok(Hint::Hybridized));
+        assert_eq!(parse("quantum").ok(), None);
     }
 
     /// The JSON the server reads back as a `RekeyEditAction` — `cosmian_kms_crypto`'s
     /// tests check it's also what `RekeyEditAction` itself produces.
     #[test]
     fn rekey_actions_serialize_like_the_server_expects() {
-        let json = |action: &Action| serde_json::to_string(action).unwrap();
+        let json = |action: &Action| serde_json::to_string(action).map_err(|e| e.to_string());
         assert_eq!(
             json(&Action::RekeyAccessPolicy("D::a".to_owned())),
-            r#"{"RekeyAccessPolicy":"D::a"}"#
+            Ok(r#"{"RekeyAccessPolicy":"D::a"}"#.to_owned())
         );
         assert_eq!(
             json(&Action::AddAttribute(vec![(
@@ -219,7 +219,7 @@ mod tests {
                 Hint::Classic,
                 Some("a".to_owned())
             )])),
-            r#"{"AddAttribute":[["D::b","Classic","a"]]}"#
+            Ok(r#"{"AddAttribute":[["D::b","Classic","a"]]}"#.to_owned())
         );
         assert_eq!(
             json(&Action::AddAttribute(vec![(
@@ -227,21 +227,21 @@ mod tests {
                 Hint::Hybridized,
                 None
             )])),
-            r#"{"AddAttribute":[["D::b","Hybridized",null]]}"#
+            Ok(r#"{"AddAttribute":[["D::b","Hybridized",null]]}"#.to_owned())
         );
         assert_eq!(
             json(&Action::RenameAttribute(vec![(
                 "D::a".to_owned(),
                 "z".to_owned()
             )])),
-            r#"{"RenameAttribute":[["D::a","z"]]}"#
+            Ok(r#"{"RenameAttribute":[["D::a","z"]]}"#.to_owned())
         );
         assert_eq!(
             json(&Action::AddHierarchy(
                 "E".to_owned(),
                 vec![("E::x".to_owned(), Hint::Classic)]
             )),
-            r#"{"AddHierarchy":["E",[["E::x","Classic"]]]}"#
+            Ok(r#"{"AddHierarchy":["E",[["E::x","Classic"]]]}"#.to_owned())
         );
     }
 }
