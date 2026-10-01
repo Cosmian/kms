@@ -65,12 +65,19 @@ mkdir -p "${OUT_DIR}"
   MUSL_INCLUDE_DIR="/usr/include/$(uname -m)-linux-musl"
   GNU_INCLUDE_DIR="/usr/include/$(uname -m)-linux-gnu"
   if [ -d "${MUSL_INCLUDE_DIR}" ] && [ ! -e "${MUSL_INCLUDE_DIR}/linux" ]; then
-    cp -r /usr/include/linux "${MUSL_INCLUDE_DIR}/linux"
-    cp -r /usr/include/asm-generic "${MUSL_INCLUDE_DIR}/asm-generic" 2>/dev/null || true
+    # musl-tools installs this sysroot as root-owned; CI runners execute as
+    # a non-root user (GitHub Actions' passwordless `sudo` is available
+    # there), so these copies need sudo. When already root (e.g. local
+    # Docker-based testing), skip sudo entirely — it is not guaranteed to
+    # be installed in a minimal root container.
+    SUDO=""
+    [ "$(id -u)" != "0" ] && SUDO="sudo"
+    $SUDO cp -r /usr/include/linux "${MUSL_INCLUDE_DIR}/linux"
+    $SUDO cp -r /usr/include/asm-generic "${MUSL_INCLUDE_DIR}/asm-generic" 2>/dev/null || true
     # linux/mman.h etc. further include the arch-specific "asm/..." headers
     # (e.g. asm/mman.h), which on Debian/Ubuntu live under the glibc
     # multiarch directory, not /usr/include directly.
-    [ -d "${GNU_INCLUDE_DIR}/asm" ] && cp -r "${GNU_INCLUDE_DIR}/asm" "${MUSL_INCLUDE_DIR}/asm"
+    [ -d "${GNU_INCLUDE_DIR}/asm" ] && $SUDO cp -r "${GNU_INCLUDE_DIR}/asm" "${MUSL_INCLUDE_DIR}/asm"
   fi
   CC=musl-gcc perl ./Configure no-shared no-fips \
     --prefix="${OUT_DIR}" --openssldir="${OUT_DIR}/ssl" --libdir=lib "${OPENSSL_TARGET}"
