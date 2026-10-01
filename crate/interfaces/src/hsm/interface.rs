@@ -322,6 +322,29 @@ pub trait HSM: Send + Sync {
         data: &[u8],
     ) -> InterfaceResult<Vec<u8>>;
 
+    /// Verify a signature using the given public (or private, for the imported-key
+    /// case where no paired public key object exists) key in the HSM.
+    ///
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM
+    /// * `key_id` - the ID of the key to use for verification
+    /// * `algorithm` - the signing algorithm the signature was produced with
+    /// * `data` - the data that was signed
+    /// * `signature` - the signature to verify
+    /// # Returns
+    /// * `InterfaceResult<bool>` - `true` if the signature is valid, `false` for a
+    ///   cryptographically invalid signature. Returns `Err` for any other failure,
+    ///   including an unsupported mechanism (e.g. `CKM_EDDSA` on a v2.40-only
+    ///   library).
+    async fn verify(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        algorithm: SigningAlgorithm,
+        data: &[u8],
+        signature: &[u8],
+    ) -> InterfaceResult<bool>;
+
     /// Generate cryptographically secure random bytes using the HSM RNG.
     ///
     /// # Arguments

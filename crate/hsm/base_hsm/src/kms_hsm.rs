@@ -215,6 +215,21 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         Ok(signature)
     }
 
+    async fn verify(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        algorithm: SigningAlgorithm,
+        data: &[u8],
+        signature: &[u8],
+    ) -> InterfaceResult<bool> {
+        let slot = self.get_slot(slot_id)?;
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(key_id)?;
+        let is_valid = session.verify(handle, algorithm.into(), data, signature)?;
+        Ok(is_valid)
+    }
+
     async fn get_key_type(
         &self,
         slot_id: usize,
