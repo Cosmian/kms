@@ -1,9 +1,12 @@
 //! `GET /.well-known/jwks.json` — RFC 7517 JSON Web Key Set endpoint.
 //!
-//! Serves all public keys owned by (or granted to) the server's
-//! `default_username` that are tagged [`JWKS_TAG`] and in `Active` or
-//! `Deactivated` state (rotation-overlap support).  The endpoint is
-//! intentionally **unauthenticated**.
+//! Serves all public keys **owned by** the server's `default_username` that are
+//! tagged [`JWKS_TAG`] and in `Active` or `Deactivated` state (rotation-overlap
+//! support).  The endpoint is intentionally **unauthenticated**.
+//!
+//! Keys merely granted to `default_username` (or shared with `*`) are excluded:
+//! any user can grant access on their own keys, so including them would let any
+//! user publish a key they control in the server's trusted key set.
 
 use std::sync::Arc;
 
@@ -53,8 +56,8 @@ struct RawJwkSet {
 
 /// `GET /.well-known/jwks.json` — RFC 7517 public key endpoint.
 ///
-/// Returns the JWK Set of all public keys accessible to the server's
-/// default user that have `Verify` in their `CryptographicUsageMask`.
+/// Returns the JWK Set of all `jwks`-tagged public keys owned by the server's
+/// default user.
 /// Only keys in `Active` or `Deactivated` state are included (rotation
 /// overlap: verifiers still need old public keys while tokens signed with
 /// the retired private key are in circulation).
@@ -147,7 +150,8 @@ async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object
             Some(&filter),
             None, // no state pre-filter: filter client-side to include both Active and Deactivated
             &UserId::from(kms.params.default_username.as_str()),
-            false,
+            // Owned keys only — see the module documentation.
+            true,
             kms.vendor_id(),
         )
         .await?;
@@ -410,4 +414,64 @@ fn x25519_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Option<serde_json::V
         "kid": uid,
         "x": URL_SAFE_NO_PAD.encode(&x_bytes),
     })))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic_in_result_fn)]
+mod tests {
+    use std::sync::Arc;
+
+    use cosmian_kms_access::access::Access;
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        KmipOperation, extra::tagging::VENDOR_ID_COSMIAN, requests::create_rsa_key_pair_request,
+    };
+
+    use super::{JWKS_TAG, discover_eligible_public_keys};
+    use crate::{
+        config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
+        tests::test_utils::https_clap_config,
+    };
+
+    /// A `jwks`-tagged key owned by another user and shared with `*` must not be
+    /// published; the same kind of key owned by `default_username` must be.
+    #[tokio::test]
+    async fn test_jwks_excludes_keys_only_shared_with_default_user() -> KResult<()> {
+        let kms = Arc::new(
+            KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
+        );
+        let attacker = UserId::from("attacker");
+        let request =
+            || create_rsa_key_pair_request(VENDOR_ID_COSMIAN, None, [JWKS_TAG], 2048, false, None);
+
+        let foreign = kms.create_key_pair(request()?, &attacker).await?;
+        for user in ["*", kms.params.default_username.as_str()] {
+            kms.grant_access(
+                &Access {
+                    unique_identifier: Some(foreign.public_key_unique_identifier.clone()),
+                    user_id: user.to_owned(),
+                    operation_types: vec![KmipOperation::GetAttributes],
+                },
+                &attacker,
+            )
+            .await?;
+        }
+        let owned = kms
+            .create_key_pair(
+                request()?,
+                &UserId::from(kms.params.default_username.as_str()),
+            )
+            .await?;
+
+        let published: Vec<String> = Box::pin(discover_eligible_public_keys(&kms))
+            .await?
+            .into_iter()
+            .map(|(uid, _, _)| uid)
+            .collect();
+        assert!(
+            !published.contains(&foreign.public_key_unique_identifier.to_string()),
+            "a key shared with the default user must not be published"
+        );
+        assert!(published.contains(&owned.public_key_unique_identifier.to_string()));
+        Ok(())
+    }
 }

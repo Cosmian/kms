@@ -8,6 +8,13 @@
             - [GHSA-8mmx-f92q-2gq8 — `Extractable` and `NeverExtractable` not enforced on key export paths](#ghsa-8mmx-f92q-2gq8--extractable-and-neverextractable-not-enforced-on-key-export-paths)
             - [GHSA-pvw2-jxwc-95xq — Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite](#ghsa-pvw2-jxwc-95xq--reserved-uid--bypassable-via-atomicoperationupsert-and-certify-destination-overwrite)
             - [GHSA-c75c-3cmm-48h7 — `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant](#ghsa-c75c-3cmm-48h7--sensitive-and-extractable-attribute-stripping-via-read-only-get-grant)
+            - [COSMIAN-2026-028 — SSRF check bypass via `kms_public_url` prefix match in CRL fetching](#cosmian-2026-028--ssrf-check-bypass-via-kms_public_url-prefix-match-in-crl-fetching)
+            - [COSMIAN-2026-027 — CRL/OCSP revocation status could be lost, stale or wrong](#cosmian-2026-027--crlocsp-revocation-status-could-be-lost-stale-or-wrong)
+            - [COSMIAN-2026-026 — PKCS#11 module buffer overflows in `C_GetAttributeValue` and `C_Encrypt`](#cosmian-2026-026--pkcs11-module-buffer-overflows-in-c_getattributevalue-and-c_encrypt)
+            - [COSMIAN-2026-025 — JOSE tag endpoints allow tag changes with any grant](#cosmian-2026-025--jose-tag-endpoints-allow-tag-changes-with-any-grant)
+            - [COSMIAN-2026-024 — Any user can publish a key on the unauthenticated JWKS endpoint](#cosmian-2026-024--any-user-can-publish-a-key-on-the-unauthenticated-jwks-endpoint)
+            - [COSMIAN-2026-023 — SPIRE transit key substitution via shared tags](#cosmian-2026-023--spire-transit-key-substitution-via-shared-tags)
+            - [COSMIAN-2026-022 — SPIRE PKI `sign-intermediate` issues CA certificates to any Vault token](#cosmian-2026-022--spire-pki-sign-intermediate-issues-ca-certificates-to-any-vault-token)
             - [COSMIAN-2026-021 — SSRF via attacker-controlled CRL Distribution Points in KMIP Validate/Import](#cosmian-2026-021--ssrf-via-attacker-controlled-crl-distribution-points-in-kmip-validateimport)
             - [COSMIAN-2026-020 — `Get` grant on wildcard uid `*` bypasses the Create/Import authorization gate](#cosmian-2026-020--get-grant-on-wildcard-uid--bypasses-the-createimport-authorization-gate)
             - [COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`](#cosmian-2026-019--rustsec-2026-0173-proc-macro-error2-soundness-issue-via-mysql_async)
@@ -136,6 +143,139 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 **Impact:** Plaintext key compromise by users holding only read-only (`Get`) grants on sensitive keys.
 
 **Mitigation:** Upgrade to 5.28.0. `Tag::Sensitive`, `Tag::Extractable`, `Tag::AlwaysSensitive`, and `Tag::NeverExtractable` are now enforced as read-only under both value and reference variants of `DeleteAttribute`. `SetAttribute`, `ModifyAttribute`, and `AddAttribute` now enforce `user_can_perform_operation` specifically for the requested attribute operation, rejecting changes from callers relying solely on generic `Get` grants.
+
+---
+
+#### COSMIAN-2026-028 — SSRF check bypass via `kms_public_url` prefix match in CRL fetching
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | High |
+| Published  | 30 September 2026 |
+| Affected   | from 5.27.0 before 5.28.0 |
+| Fixed in   | 5.28.0 |
+| Found by   | Internal code review |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
+
+**Summary:** The COSMIAN-2026-021 fix exempted CRL Distribution Point URLs "belonging to the server" from the SSRF check with a raw string test, `uri.starts_with(kms_public_url)`. With `kms_public_url = http://kms.corp`, URLs such as `http://kms.corp@169.254.169.254/...` (userinfo) or `http://kms.corp.attacker.tld/` pass the prefix test while targeting another host.
+
+**Impact:** A user allowed to `Import` or `Validate` certificates could make the server request internal addresses (cloud metadata, internal services), and learn whether they answered from the resulting object state, re-opening the blind SSRF closed by COSMIAN-2026-021.
+
+**Mitigation:** Upgrade to 5.28.0. The exemption now compares parsed URL components (scheme, host, port, base-path prefix) and never applies to URLs carrying credentials. Fetched CRLs are also no longer cached forever, and the cache lock is no longer held across network requests.
+
+---
+
+#### COSMIAN-2026-027 — CRL/OCSP revocation status could be lost, stale or wrong
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | High |
+| Published  | 30 September 2026 |
+| Affected   | from 5.27.0 before 5.28.0 |
+| Fixed in   | 5.28.0 |
+| Found by   | Internal code review |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
+
+**Summary:** Several defects in the CRL and OCSP services let relying parties accept revoked certificates: (1) `Destroy` wiped a certificate's attributes, so a revoked-then-destroyed certificate disappeared from the CRL and OCSP answered `unknown`; (2) certificate serials were SHA-1(SPKI), so `ReCertify` reused the serial of the certificate it replaced (the renewed certificate appeared revoked, and OCSP could answer `good` for a revoked serial); (3) the OCSP response cache served entries for twice their lifetime, ignored the `CertID` hash algorithm, answered cached serials of partially cached multi-`CertID` requests as `unknown`, and grew without bound from unauthenticated requests; (4) the OCSP responder accepted a request if any one `CertID` named the CA; (5) OCSP reported `revocationTime = now`; (6) automatic CRL regeneration ran as users who cannot read the CA key and failed silently; (7) nodes kept serving their in-memory CRL copy indefinitely; (8) OCSP/CRL signing failed for CA keys wrapped at rest.
+
+**Impact:** Revoked certificates could be accepted by CRL- and OCSP-checking relying parties; published CRLs could go stale or expire; an unauthenticated client could exhaust server memory through the OCSP cache.
+
+**Mitigation:** Upgrade to 5.28.0. Destroy keeps the issuer link and revocation details, and CRL/OCSP include destroyed revoked certificates; serials are random 159-bit values; the OCSP cache is keyed by the full `CertID`, bounded, never serves past `nextUpdate`, is used only for single-`CertID` requests and never stores `unknown`; every `CertID` must name the CA; OCSP reports the recorded revocation time and reason; automatic regeneration signs on behalf of the CA owner; in-memory CRL copies are re-read from the database every 60 s; signing keys are unwrapped.
+
+---
+
+#### COSMIAN-2026-026 — PKCS#11 module buffer overflows in `C_GetAttributeValue` and `C_Encrypt`
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | High |
+| Published  | 30 September 2026 |
+| Affected   | from 5.17.0 before 5.28.0 |
+| Fixed in   | 5.28.0 |
+| Found by   | Internal code review |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
+
+**Summary:** Both functions overwrote the caller-declared buffer length with the output length before comparing the two, so the `CKR_BUFFER_TOO_SMALL` check could never trigger and the full value was written past a smaller caller buffer. `C_GenerateKey` also wrote the new handle through a null `phKey`.
+
+**Impact:** Memory corruption in the host application loading the PKCS#11 module (e.g. database TDE agents, OpenSSH, LUKS tooling) when it supplies a buffer smaller than the value.
+
+**Mitigation:** Upgrade to 5.28.0. The caller's buffer size is checked before anything is written; `CKR_BUFFER_TOO_SMALL` is returned per PKCS#11 v2.40 §5.7, and a null `phKey` returns `CKR_ARGUMENTS_BAD`.
+
+---
+
+#### COSMIAN-2026-025 — JOSE tag endpoints allow tag changes with any grant
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | Moderate |
+| Published  | 30 September 2026 |
+| Affected   | from 5.25.0 before 5.28.0 |
+| Fixed in   | 5.28.0 |
+| Found by   | Internal code review |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
+
+**Summary:** `POST`/`DELETE /v1/crypto/keys/{kid}/tags` authorized through `GetAttributes`, which any grant satisfies, then wrote the tag column directly — bypassing the `AddAttribute`/`DeleteAttribute` permissions that KMIP enforces.
+
+**Impact:** A user holding only e.g. an `encrypt` grant (or a `*` grant) could rewrite a key's tags, breaking tag-based lookups, or add/remove the `jwks` tag on a default-user key to publish or unpublish it on the JWKS endpoint.
+
+**Mitigation:** Upgrade to 5.28.0. The endpoints now require `add_attribute` / `delete_attribute` (or ownership / `get`).
+
+---
+
+#### COSMIAN-2026-024 — Any user can publish a key on the unauthenticated JWKS endpoint
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | High |
+| Published  | 30 September 2026 |
+| Affected   | from 5.25.0 before 5.28.0 |
+| Fixed in   | 5.28.0 |
+| Found by   | Internal code review |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
+
+**Summary:** `/.well-known/jwks.json` listed every `jwks`-tagged public key that `default_username` owned *or had any grant on*, including `*` grants. Any owner may grant `*`, and REST-created key pairs are auto-tagged `jwks`.
+
+**Impact:** Any user could place a key they control in the server's published key set; relying parties trusting that JWKS would accept tokens the user signs.
+
+**Mitigation:** Upgrade to 5.28.0. Only keys owned by `default_username` are published.
+
+---
+
+#### COSMIAN-2026-023 — SPIRE transit key substitution via shared tags
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | High |
+| Published  | 30 September 2026 |
+| Affected   | from 5.26.0 before 5.28.0 |
+| Fixed in   | 5.28.0 |
+| Found by   | Internal code review |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
+
+**Summary:** Vault-compatible transit routes resolved a key name by tag among all keys shared with the caller and used an arbitrary match (`.next()` over unordered results). Creating an existing name also created a duplicate.
+
+**Impact:** A KMS user could share a key tagged with another tenant's transit key name, so that tenant's SPIRE server could sign (e.g. its CA or JWT keys) with a key the attacker controls.
+
+**Mitigation:** Upgrade to 5.28.0. Transit names resolve only to keys owned by the caller (lowest UID on legacy duplicates); creating an existing name is a no-op.
+
+---
+
+#### COSMIAN-2026-022 — SPIRE PKI `sign-intermediate` issues CA certificates to any Vault token
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | Critical |
+| Published  | 30 September 2026 |
+| Affected   | from 5.26.0 before 5.28.0 |
+| Fixed in   | 5.28.0 |
+| Found by   | Internal code review |
+| References | [Branch changelog](https://github.com/Cosmian/kms/pull/1234) |
+
+**Summary:** `POST /v1/{pki_mount}/root/sign-intermediate` accepted any token validated by the auth-verifier and signed the caller's CSR as a `CA:TRUE` intermediate with the server's PKI CA. Token policies were never checked, `uri_sans` was checked only for non-emptiness, and the CA key lookup also accepted keys merely shared with `default_username`.
+
+**Impact:** Any AppRole (e.g. one meant only for transit) could obtain an intermediate CA certificate chaining to the PKI root and mint X.509-SVIDs for any workload trusting it.
+
+**Mitigation:** Upgrade to 5.28.0. The caller's KMS identity (`spire:<AppRole>`) must hold the `certify` access right on the CA private key; the CA key must be owned by `default_username` (exactly one); CSRs requesting their own `basicConstraints` are rejected. **Upgrade action:** grant `certify` on the CA private key to each SPIRE AppRole identity.
 
 ---
 
@@ -763,6 +903,13 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 | GHSA-8mmx-f92q-2gq8 | High     | 5.0.0 – 5.27.1          | 5.28.0   | `Extractable` and `NeverExtractable` not enforced on key export paths |
 | GHSA-pvw2-jxwc-95xq | High     | 5.0.0 – 5.27.1          | 5.28.0   | Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite |
 | GHSA-c75c-3cmm-48h7 | High     | 5.0.0 – 5.27.1          | 5.28.0   | `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant |
+| COSMIAN-2026-028 | High     | 5.27.0 – 5.27.1   | 5.28.0   | SSRF check bypass via `kms_public_url` prefix match in CRL fetching |
+| COSMIAN-2026-027 | High     | 5.27.0 – 5.27.1   | 5.28.0   | CRL/OCSP revocation status could be lost, stale or wrong |
+| COSMIAN-2026-026 | High     | 5.17.0 – 5.27.1   | 5.28.0   | PKCS#11 module buffer overflows in `C_GetAttributeValue` and `C_Encrypt` |
+| COSMIAN-2026-025 | Moderate | 5.25.0 – 5.27.1   | 5.28.0   | JOSE tag endpoints allow tag changes with any grant |
+| COSMIAN-2026-024 | High     | 5.25.0 – 5.27.1   | 5.28.0   | Any user can publish a key on the unauthenticated JWKS endpoint |
+| COSMIAN-2026-023 | High     | 5.26.0 – 5.27.1   | 5.28.0   | SPIRE transit key substitution via shared tags |
+| COSMIAN-2026-022 | Critical | 5.26.0 – 5.27.1   | 5.28.0   | SPIRE PKI `sign-intermediate` issues CA certificates to any Vault token |
 | COSMIAN-2026-021 | High     | 5.0.0 – 5.26.x          | 5.27.0   | SSRF via CRL Distribution Points in KMIP Validate/Import     |
 | COSMIAN-2026-020 | Critical | 5.0.0 – 5.26.0          | 5.27.0   | `Get` grant on wildcard uid `*` bypasses Create/Import gate   |
 | COSMIAN-2026-019 | Low      | 5.0.0 – 5.22.x          | 5.23.0   | RUSTSEC-2026-0173: proc-macro-error2 via mysql_async (compile-time) |
