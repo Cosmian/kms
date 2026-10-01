@@ -204,7 +204,6 @@ pub fn rekey_edit_action_from_attributes(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use cosmian_cover_crypt::{EncryptionHint, QualifiedAttribute};
     use cosmian_kms_client_utils::cover_crypt_utils::{
@@ -212,7 +211,9 @@ mod tests {
     };
 
     use super::{RekeyEditAction, rekey_edit_action_from_attributes};
-    use crate::crypto::cover_crypt::kmip_requests::build_rekey_keypair_request;
+    use crate::{
+        crypto::cover_crypt::kmip_requests::build_rekey_keypair_request, error::CryptoError,
+    };
 
     const VENDOR: &str = "cosmian";
 
@@ -299,28 +300,42 @@ mod tests {
         ]
     }
 
+    /// The server-side request for `action`, and `action` itself, as JSON.
+    fn server_side(action: &RekeyEditAction) -> Result<(String, String), CryptoError> {
+        let request = build_rekey_keypair_request(VENDOR, "msk", action)?;
+        Ok((
+            serde_json::to_string(&request)?,
+            serde_json::to_string(action)?,
+        ))
+    }
+
+    /// The client-side request for `action`, and the action the server reads back from it,
+    /// as JSON.
+    fn client_side(action: &RekeyEditAction) -> Result<(String, String), CryptoError> {
+        let request = build_covercrypt_rekey_keypair_request(VENDOR, "msk", &mirror(action))
+            .map_err(|e| CryptoError::Default(e.to_string()))?;
+        let attributes = request
+            .private_key_attributes
+            .as_ref()
+            .ok_or_else(|| CryptoError::Default("no private key attributes".to_owned()))?;
+        let read_back = rekey_edit_action_from_attributes(VENDOR, attributes)?;
+        Ok((
+            serde_json::to_string(&request)?,
+            serde_json::to_string(&read_back)?,
+        ))
+    }
+
     /// Every action built client-side (`build_covercrypt_rekey_keypair_request`, what the
     /// WASM client exposes) is the very request the server-side builder makes, and the server
     /// reads it back as the same action.
     #[test]
     fn client_rekey_actions_match_the_server_ones() {
         for action in every_action() {
-            let server = build_rekey_keypair_request(VENDOR, "msk", &action).unwrap();
-            let client =
-                build_covercrypt_rekey_keypair_request(VENDOR, "msk", &mirror(&action)).unwrap();
+            let expected = server_side(&action).map_err(|e| e.to_string());
+            assert_eq!(expected.as_ref().err(), None, "{action:?}");
             assert_eq!(
-                serde_json::to_string(&client).unwrap(),
-                serde_json::to_string(&server).unwrap(),
-                "{action:?}"
-            );
-            let read_back = rekey_edit_action_from_attributes(
-                VENDOR,
-                client.private_key_attributes.as_ref().expect("attributes"),
-            )
-            .unwrap();
-            assert_eq!(
-                serde_json::to_string(&read_back).unwrap(),
-                serde_json::to_string(&action).unwrap(),
+                client_side(&action).map_err(|e| e.to_string()),
+                expected,
                 "{action:?}"
             );
         }

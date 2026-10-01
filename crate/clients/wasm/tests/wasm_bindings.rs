@@ -345,7 +345,7 @@ fn test_cc_rekey_requests() {
             "msk",
             "E".to_owned(),
             vec!["x".to_owned(), "y".to_owned()],
-            "Hybridized",
+            vec!["Hybridized".to_owned(), "Hybridized".to_owned()],
             true
         )),
         r#"{"AddHierarchy":["E",[["E::x","Hybridized"],["E::y","Hybridized"]]]}"#
@@ -354,11 +354,21 @@ fn test_cc_rekey_requests() {
         action(w::add_cc_dimension_ttlv_request(
             "msk",
             "E".to_owned(),
-            vec!["x".to_owned()],
-            "Classic",
+            vec!["x".to_owned(), "y".to_owned()],
+            vec!["Classic".to_owned(), "PostQuantum".to_owned()],
             false
         )),
-        r#"{"AddAnarchy":["E",[["E::x","Classic"]]]}"#
+        r#"{"AddAnarchy":["E",[["E::x","Classic"],["E::y","PostQuantum"]]]}"#
+    );
+    assert!(
+        w::add_cc_dimension_ttlv_request(
+            "msk",
+            "E".to_owned(),
+            vec!["x".to_owned(), "y".to_owned()],
+            vec!["Classic".to_owned()],
+            false
+        )
+        .is_err()
     );
     assert!(w::add_cc_attribute_ttlv_request("msk", "D::b".to_owned(), "quantum", None).is_err());
 }
