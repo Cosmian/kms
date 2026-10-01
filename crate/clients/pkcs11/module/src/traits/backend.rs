@@ -24,10 +24,21 @@ pub struct SignContext {
 }
 
 #[derive(Debug)]
+pub struct VerifyContext {
+    pub algorithm: SignatureAlgorithm,
+    pub public_key: Arc<dyn PublicKey>,
+    /// Payload stored for multipart `C_VerifyUpdate` operations.
+    pub payload: Option<Vec<u8>>,
+}
+
+#[derive(Debug)]
 pub struct DecryptContext {
     pub remote_object_id: String,
     pub algorithm: EncryptionAlgorithm,
     pub iv: Option<Vec<u8>>,
+    /// Additional Authenticated Data (AAD), used by `CKM_AES_GCM` (PKCS#11 v3.0).
+    /// Always `None` for non-AEAD mechanisms.
+    pub aad: Option<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -35,6 +46,9 @@ pub struct EncryptContext {
     pub remote_object_id: String,
     pub algorithm: EncryptionAlgorithm,
     pub iv: Option<Vec<u8>>,
+    /// Additional Authenticated Data (AAD), used by `CKM_AES_GCM` (PKCS#11 v3.0).
+    /// Always `None` for non-AEAD mechanisms.
+    pub aad: Option<Vec<u8>>,
 }
 
 static BACKEND: LazyLock<RwLock<Option<Arc<dyn Backend>>>> = LazyLock::new(|| RwLock::new(None));
@@ -213,4 +227,17 @@ pub trait Backend: Send + Sync {
         algorithm: &SignatureAlgorithm,
         data: &[u8],
     ) -> ModuleResult<Vec<u8>>;
+
+    /// Verifies `signature` over `data` for the remote public key identified by `remote_id`,
+    /// via a KMIP `SignatureVerify` round trip through the KMS. Returns `Ok(())` when the
+    /// KMS reports `ValidityIndicator::Valid`, and `Err(ModuleError::SignatureInvalid)` when
+    /// it reports `Invalid`/`Unknown` — callers (`C_Verify`/`C_VerifyFinal`) must map that
+    /// specific error to `CKR_SIGNATURE_INVALID`, not a generic failure code.
+    fn remote_verify(
+        &self,
+        remote_id: &str,
+        algorithm: &SignatureAlgorithm,
+        data: &[u8],
+        signature: &[u8],
+    ) -> ModuleResult<()>;
 }
