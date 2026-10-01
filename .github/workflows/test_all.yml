@@ -380,6 +380,56 @@ jobs:
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
+      - name: Bench (PKCS#11 load, HSM-delegated)
+        env:
+          # Proteccio
+          PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
+          PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
+          PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
+          # Crypt2Pay (reached through OpenVPN)
+          CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
+          OVPN_CONF: ${{ secrets.OVPN_CONF }}
+          # AWS CloudHSM: persistent CI cluster (see crate/hsm/aws_cloudhsm/README.md)
+          AWS_CLOUDHSM_CLUSTER_ID: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CLUSTER_ID }}
+          AWS_CLOUDHSM_CU_USERNAME: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CU_USERNAME }}
+          AWS_CLOUDHSM_CU_PASSWORD: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CU_PASSWORD }}
+          AWS_CLOUDHSM_SLOT_ID: ${{ secrets.KMS_CI_AWS_CLOUDHSM_SLOT_ID }}
+          AWS_CLOUDHSM_CA_CERT: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CA_CERT }}
+          AWS_CLOUDHSM_HSM_IPS: ${{ secrets.KMS_CI_AWS_CLOUDHSM_HSM_IPS }}
+          AWS_CLOUDHSM_OVPN_CONF: ${{ secrets.KMS_CI_AWS_CLOUDHSM_OVPN_CONF }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+        run: |
+          HSM_MODEL="${{ matrix.hsm-type }}"
+          [ "$HSM_MODEL" = "aws-cloudhsm" ] && HSM_MODEL="aws_cloudhsm"
+          mise run bench:load-pkcs11 --delegated --hsm-model "$HSM_MODEL" --variant ${{ matrix.features }} --speed sanity
+
+      - name: Bench (HSM-delegated crypto load)
+        env:
+          # Proteccio
+          PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
+          PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
+          PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
+          # Crypt2Pay (reached through OpenVPN)
+          CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
+          OVPN_CONF: ${{ secrets.OVPN_CONF }}
+          # AWS CloudHSM: persistent CI cluster (see crate/hsm/aws_cloudhsm/README.md)
+          AWS_CLOUDHSM_CLUSTER_ID: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CLUSTER_ID }}
+          AWS_CLOUDHSM_CU_USERNAME: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CU_USERNAME }}
+          AWS_CLOUDHSM_CU_PASSWORD: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CU_PASSWORD }}
+          AWS_CLOUDHSM_SLOT_ID: ${{ secrets.KMS_CI_AWS_CLOUDHSM_SLOT_ID }}
+          AWS_CLOUDHSM_CA_CERT: ${{ secrets.KMS_CI_AWS_CLOUDHSM_CA_CERT }}
+          AWS_CLOUDHSM_HSM_IPS: ${{ secrets.KMS_CI_AWS_CLOUDHSM_HSM_IPS }}
+          AWS_CLOUDHSM_OVPN_CONF: ${{ secrets.KMS_CI_AWS_CLOUDHSM_OVPN_CONF }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+        run: |
+          HSM_MODEL="${{ matrix.hsm-type }}"
+          [ "$HSM_MODEL" = "aws-cloudhsm" ] && HSM_MODEL="aws_cloudhsm"
+          mise run bench:load-hsm --delegated --hsm-model "$HSM_MODEL" --variant ${{ matrix.features }} -s
+
       # PKCS#11 v3 conformance tests: signs through OpenSC's pkcs11-tool (a real,
       # independently-implemented external PKCS#11 v3 client), not just our own
       # in-process Rust tests above. SoftHSM2-only: it is the only backend the CI
