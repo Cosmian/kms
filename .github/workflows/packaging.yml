@@ -182,7 +182,15 @@ jobs:
       fail-fast: false
       matrix:
         features: [fips, non-fips]
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        # x64 only: GitHub Actions' JS-action support inside Alpine
+        # containers is upstream-limited to x64 Linux runners — arm64 hard
+        # fails with "JavaScript Actions in Alpine containers are only
+        # supported on x64 Linux runners" before even reaching checkout
+        # (tracked upstream: https://github.com/actions/runner/issues/1637,
+        # no workaround currently exists). aarch64 coverage for musl itself
+        # is not lost — musl-crosscheck above and the Nix-built artifacts
+        # (test-alpine-musl below) both already cover ubuntu-24.04-arm.
+        runner: [ubuntu-24.04]
     steps:
       # Must run *before* actions/checkout: GitHub's own bundled Node.js
       # (used to execute every JS-based `uses:` action, including checkout
