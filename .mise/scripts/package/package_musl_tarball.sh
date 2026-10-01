@@ -132,7 +132,16 @@ rm -rf "$RESULT_DIR"
 mkdir -p "$RESULT_DIR"
 
 WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "$WORK_DIR"' EXIT
+# `cp -r` below (usr/local/cosmian/lib/) copies from a Nix store path, whose
+# directories are read-only (dr-xr-xr-x) by design — cp -r replicates that
+# same permission onto the destination directories once populated. Without
+# the chmod, a plain `rm -rf` on cleanup fails ("Permission denied": removing
+# an entry needs write access to its *parent* directory), which — being the
+# last command the EXIT trap runs — would make the whole task report failure
+# even though the tarball (in the separate $RESULT_DIR) was already built
+# successfully. `|| true` on both: cleanup is best-effort and must never
+# fail a task whose real work is already done.
+trap 'chmod -R u+w "$WORK_DIR" 2>/dev/null || true; rm -rf "$WORK_DIR" || true' EXIT
 
 cp "$BIN_PATH" "$WORK_DIR/$BIN_NAME"
 chmod 755 "$WORK_DIR/$BIN_NAME"
@@ -147,6 +156,12 @@ chmod 755 "$WORK_DIR/$BIN_NAME"
 if [ -d "$REAL_OUT/usr/local/cosmian/lib" ]; then
   mkdir -p "$WORK_DIR/usr/local/cosmian/lib"
   cp -r "$REAL_OUT/usr/local/cosmian/lib/." "$WORK_DIR/usr/local/cosmian/lib/"
+  # The Nix store source is read-only (dr-xr-xr-x) by design; `cp -r`
+  # replicates that onto these destination directories. Normalize to normal,
+  # writable permissions so (a) the shipped tarball doesn't hand end users
+  # oddly read-only config/provider files and (b) this tree can later be
+  # cleaned up without the EXIT trap below needing a chmod of its own.
+  chmod -R u+w "$WORK_DIR/usr/local/cosmian/lib"
 fi
 
 PUBLIC_KEY="$REPO_ROOT/nix/signing-keys/cosmian-kms-public.asc"
