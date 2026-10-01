@@ -137,6 +137,18 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 cp "$BIN_PATH" "$WORK_DIR/$BIN_NAME"
 chmod 755 "$WORK_DIR/$BIN_NAME"
 
+# FIPS dynamic-musl server builds ship the FIPS provider module and OpenSSL
+# config as a separate usr/local/cosmian/lib/ tree (dlopen'd at runtime via
+# OPENSSL_MODULES/OPENSSL_CONF — see nix/kms-server-musl.nix's postInstall).
+# Without it the server cannot start at all ("Error loading shared library
+# .../fips.so: No such file or directory"). Bundle it, preserving the path,
+# whenever the Nix derivation produced one (server component only; CLI has
+# no such directory, and the fully static non-FIPS server does not either).
+if [ -d "$REAL_OUT/usr/local/cosmian/lib" ]; then
+  mkdir -p "$WORK_DIR/usr/local/cosmian/lib"
+  cp -r "$REAL_OUT/usr/local/cosmian/lib/." "$WORK_DIR/usr/local/cosmian/lib/"
+fi
+
 PUBLIC_KEY="$REPO_ROOT/nix/signing-keys/cosmian-kms-public.asc"
 [ -f "$PUBLIC_KEY" ] && cp "$PUBLIC_KEY" "$WORK_DIR/cosmian-kms-public.asc"
 

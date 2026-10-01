@@ -70,10 +70,31 @@ cp "${SERVER_BIN}" "${WORK_DIR}/cosmian_kms"
 cp "${CLI_BIN}" "${WORK_DIR}/ckms"
 chmod 755 "${WORK_DIR}/cosmian_kms" "${WORK_DIR}/ckms"
 
+# FIPS dynamic-musl tarballs bundle a usr/local/cosmian/lib/ tree alongside
+# the binary (FIPS provider module + openssl.cnf, dlopen'd at runtime —
+# see nix/kms-server-musl.nix and package_musl_tarball.sh). Without it the
+# server cannot start at all. Carry it into the image if the extracted
+# tarball provided one (sibling of --server-bin).
+SERVER_ROOT="$(cd "$(dirname "${SERVER_BIN}")" && pwd)"
+HAS_COSMIAN_LIB=0
+if [ -d "${SERVER_ROOT}/usr/local/cosmian/lib" ]; then
+  HAS_COSMIAN_LIB=1
+  mkdir -p "${WORK_DIR}/usr/local/cosmian/lib"
+  cp -r "${SERVER_ROOT}/usr/local/cosmian/lib/." "${WORK_DIR}/usr/local/cosmian/lib/"
+fi
+
 if [ "${VARIANT}" = "fips" ]; then
   EXTRA_APK="RUN apk add --no-cache libgcc ca-certificates"
 else
   EXTRA_APK="RUN apk add --no-cache ca-certificates"
+fi
+
+if [ "${HAS_COSMIAN_LIB}" = "1" ]; then
+  OPENSSL_ENV="ENV OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl.cnf
+ENV OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules
+COPY usr /usr"
+else
+  OPENSSL_ENV=""
 fi
 
 cat >"${WORK_DIR}/Dockerfile" <<EOF
@@ -81,6 +102,7 @@ FROM alpine:${ALPINE_TAG}
 ${EXTRA_APK}
 COPY cosmian_kms /usr/local/bin/cosmian_kms
 COPY ckms /usr/local/bin/ckms
+${OPENSSL_ENV}
 EXPOSE 9998
 ENTRYPOINT ["/usr/local/bin/cosmian_kms"]
 EOF
