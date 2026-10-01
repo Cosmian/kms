@@ -169,7 +169,7 @@ All encrypt benchmarks use a **64-byte** fixed-size random payload (128 bytes fo
 Concurrent/cumulative RSA and EC key **generation** against a single SoftHSM2 token progressively degrades that token — later PKCS#11 operations, even unrelated `Encrypt`/`Sign` calls against different keys, can slow from milliseconds to *minutes* per request. This is a SoftHSM2 limitation (a software simulator, not built for heavy concurrent/cumulative key generation on one token), not a KMS defect. Mitigations applied to keep this report reproducible:
 
 - Load-test key-creation concurrency is capped at 4 regardless of the requested sweep (`PreparedLoadOp::max_concurrency`).
-- The `bench/load-hsm --delegated` task runs `key-creation`, `encrypt`, and `sign-verify` as three separate SoftHSM2 sessions (each with its own fresh token) when `--mode all` (the default), so key-creation load never contaminates the encrypt/sign token; results are merged into this single report afterward.
+- The `bench/hsm --delegated` task runs `key-creation`, `encrypt`, and `sign-verify` as three separate SoftHSM2 sessions (each with its own fresh token) when `--mode all` (the default), so key-creation load never contaminates the encrypt/sign token; results are merged into this single report afterward.
 
 ### Why ttlv-json only (no ttlv-bytes)
 

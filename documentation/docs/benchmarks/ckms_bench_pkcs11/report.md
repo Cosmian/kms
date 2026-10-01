@@ -136,7 +136,7 @@ The caller-facing protocol benchmarked here is the `cosmian_pkcs11` provider's r
 
 ### Real Cryptoki C ABI, one session per worker
 
-The benchmark subcommand `ckms pkcs11 bench` (driven by `mise bench:load-pkcs11`) `dlopen()`s the built `cosmian_pkcs11` shared library, resolves the v3.1 function table through `C_GetInterface`, and calls it directly — the same code path a real PKCS#11 consumer application uses, as opposed to `mise bench:load`, which drives the KMIP REST API directly through the `ckms` client library.
+The benchmark subcommand `ckms pkcs11 bench` (driven by `mise bench:pkcs11`) `dlopen()`s the built `cosmian_pkcs11` shared library, resolves the v3.1 function table through `C_GetInterface`, and calls it directly — the same code path a real PKCS#11 consumer application uses, as opposed to `mise bench:load`, which drives the KMIP REST API directly through the `ckms` client library.
 
 By default each worker thread owns a dedicated `C_OpenSession` handle. The provider looks the handle up in its session map and serializes only access to that individual session with a per-session lock, so unrelated worker sessions can progress independently. `--shared-session` is an opt-in comparison mode that reproduces the former single-session contention model; it is not the default methodology.
 
@@ -150,7 +150,7 @@ Unlike the software/HSM reports above, where `encrypt` and `sign-verify` each me
 
 `C_GenerateKeyPair` is not implemented either (asymmetric keys are always created through the KMS REST API, not PKCS#11), so `key-creation` only covers the one Cryptoki key-creation path the provider does support: symmetric `C_GenerateKey`.
 
-### Load test (`mise bench:load-pkcs11`)
+### Load test (`mise bench:pkcs11`)
 
 The load test sweeps a configurable list of concurrency levels, mirroring `mise bench:load`'s own sweep mechanics exactly: at each level *N* concurrent OS threads call the target Cryptoki function in a tight loop for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase** (default: 5 s) that is excluded from measurements, followed by a **cooldown** (default: 2 s) before the next level.
 Recorded metrics per *(operation, concurrency)* pair:

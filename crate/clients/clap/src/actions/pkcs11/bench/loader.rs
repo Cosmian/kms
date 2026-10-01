@@ -7,12 +7,13 @@
 use std::{ptr, sync::Arc};
 
 use pkcs11_sys::{
-    CK_ATTRIBUTE, CK_BBOOL, CK_FLAGS, CK_FUNCTION_LIST_3_0, CK_GCM_PARAMS, CK_INTERFACE_PTR,
-    CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE,
-    CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CK_TRUE, CK_ULONG, CK_USER_TYPE,
-    CK_VERSION, CKA_CLASS, CKA_EC_PARAMS, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_SENSITIVE,
-    CKA_VALUE_LEN, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKG_MGF1_SHA256, CKK_AES, CKM_AES_CBC_PAD,
-    CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKM_SHA256, CKR_OK, CKU_USER,
+    CK_ATTRIBUTE, CK_BBOOL, CK_FLAGS, CK_FUNCTION_LIST_3_0, CK_GCM_MESSAGE_PARAMS, CK_GCM_PARAMS,
+    CK_INTERFACE_PTR, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS,
+    CK_OBJECT_HANDLE, CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CK_TRUE,
+    CK_ULONG, CK_USER_TYPE, CK_VERSION, CKA_CLASS, CKA_EC_PARAMS, CKA_EXTRACTABLE, CKA_KEY_TYPE,
+    CKA_LABEL, CKA_SENSITIVE, CKA_VALUE_LEN, CKF_RW_SESSION, CKF_SERIAL_SESSION,
+    CKG_GENERATE_RANDOM, CKG_MGF1_SHA256, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN,
+    CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKM_SHA256, CKR_OK, CKU_USER,
 };
 
 use super::error::{BenchError, BenchResult};
@@ -600,12 +601,17 @@ impl<'lib> Pkcs11Session<'lib> {
         Ok(output)
     }
 
-    /// `C_EncryptInit` + `C_Encrypt` with `CKM_AES_GCM` (v3.0).
+    /// `CKM_AES_GCM` encryption. HSM-resident keys use the PKCS#11 v3 message
+    /// interface, which leaves nonce generation to the KMS/HSM; software keys
+    /// use the classic interface with its caller-owned nonce.
     pub(crate) fn encrypt_gcm(
         &self,
         key: CK_OBJECT_HANDLE,
         plaintext: &[u8],
     ) -> BenchResult<Vec<u8>> {
+        if self.hsm_prefix.is_some() {
+            return self.encrypt_gcm_message(key, plaintext);
+        }
         let f = &self.lib.functions;
         let mut iv = [0_u8; 12];
         let mut gcm_params = CK_GCM_PARAMS {
@@ -634,6 +640,56 @@ impl<'lib> Pkcs11Session<'lib> {
         check("C_Encrypt(CKM_AES_GCM)", unsafe {
             c_encrypt(
                 self.handle,
+                input.as_mut_ptr(),
+                input.len() as CK_ULONG,
+                output.as_mut_ptr(),
+                &raw mut output_len,
+            )
+        })?;
+        output.truncate(output_len as usize);
+        Ok(output)
+    }
+
+    /// Encrypt one HSM-resident AES-GCM message with a nonce generated remotely.
+    fn encrypt_gcm_message(&self, key: CK_OBJECT_HANDLE, plaintext: &[u8]) -> BenchResult<Vec<u8>> {
+        let f = &self.lib.functions;
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_GCM,
+            pParameter: ptr::null_mut(),
+            ulParameterLen: 0,
+        };
+        let init = f
+            .C_MessageEncryptInit
+            .ok_or_else(|| missing("C_MessageEncryptInit"))?;
+        // SAFETY: `mechanism` is fully initialized and valid for this call.
+        check("C_MessageEncryptInit(CKM_AES_GCM)", unsafe {
+            init(self.handle, &raw mut mechanism, key)
+        })?;
+        let mut iv = [0_u8; 12];
+        let mut tag = [0_u8; 16];
+        let mut params = CK_GCM_MESSAGE_PARAMS {
+            pIv: iv.as_mut_ptr(),
+            ulIvLen: iv.len() as CK_ULONG,
+            ulIvFixedBits: 0,
+            ivGenerator: CKG_GENERATE_RANDOM,
+            pTag: tag.as_mut_ptr(),
+            ulTagBits: (tag.len() * 8) as CK_ULONG,
+        };
+        let encrypt = f
+            .C_EncryptMessage
+            .ok_or_else(|| missing("C_EncryptMessage"))?;
+        let mut input = plaintext.to_vec();
+        let mut output = vec![0_u8; plaintext.len()];
+        let mut output_len = output.len() as CK_ULONG;
+        // SAFETY: all parameter, input, and output buffers remain valid for the call;
+        // `params` requests a fresh random 96-bit nonce and a detached 128-bit tag.
+        check("C_EncryptMessage(CKM_AES_GCM)", unsafe {
+            encrypt(
+                self.handle,
+                (&raw mut params).cast::<std::ffi::c_void>(),
+                size_of::<CK_GCM_MESSAGE_PARAMS>() as CK_ULONG,
+                ptr::null_mut(),
+                0,
                 input.as_mut_ptr(),
                 input.len() as CK_ULONG,
                 output.as_mut_ptr(),

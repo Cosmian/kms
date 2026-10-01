@@ -43,8 +43,8 @@ use crate::{
     objects_store::{OBJECTS_STORE, ObjectsStore},
     profiling::{self, SignPhase},
     traits::{
-        DecryptContext, EncryptContext, KeyAlgorithm, PendingSignature, SearchOptions, SignContext,
-        SignOperation, VerifyContext, backend, use_pin_as_access_token,
+        DecryptContext, EncryptContext, KeyAlgorithm, MessageEncryptionOutput, PendingSignature,
+        SearchOptions, SignContext, SignOperation, VerifyContext, backend, use_pin_as_access_token,
     },
 };
 
@@ -863,6 +863,18 @@ impl Session {
             *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
         }
         Ok(())
+    }
+
+    /// Encrypt one PKCS#11 v3 AES-GCM message with a KMS-generated nonce.
+    pub(crate) fn encrypt_message(
+        &self,
+        cleartext: Vec<u8>,
+    ) -> ModuleResult<MessageEncryptionOutput> {
+        let encrypt_ctx = self
+            .encrypt_ctx
+            .as_ref()
+            .ok_or(ModuleError::OperationNotInitialized(0))?;
+        backend()?.encrypt_message(encrypt_ctx, cleartext)
     }
 
     pub(crate) fn generate_key(

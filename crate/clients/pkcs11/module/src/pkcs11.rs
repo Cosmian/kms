@@ -21,25 +21,27 @@
 #![allow(clippy::significant_drop_in_scrutinee)]
 
 use std::{
-    cmp, slice,
+    cmp,
+    mem::size_of,
+    slice,
     sync::atomic::{AtomicBool, Ordering},
 };
 
 use cosmian_logger::{debug, error, info, trace};
 use pkcs11_sys::{
     CK_ATTRIBUTE_PTR, CK_BBOOL, CK_BYTE, CK_BYTE_PTR, CK_C_INITIALIZE_ARGS_PTR, CK_FLAGS,
-    CK_FUNCTION_LIST, CK_FUNCTION_LIST_3_0, CK_INFO, CK_INFO_PTR, CK_INTERFACE, CK_MECHANISM_INFO,
-    CK_MECHANISM_INFO_PTR, CK_MECHANISM_PTR, CK_MECHANISM_TYPE, CK_MECHANISM_TYPE_PTR, CK_NOTIFY,
-    CK_OBJECT_HANDLE, CK_OBJECT_HANDLE_PTR, CK_RV, CK_SESSION_HANDLE, CK_SESSION_HANDLE_PTR,
-    CK_SESSION_INFO, CK_SESSION_INFO_PTR, CK_SLOT_ID, CK_SLOT_ID_PTR, CK_SLOT_INFO,
-    CK_SLOT_INFO_PTR, CK_TOKEN_INFO, CK_TOKEN_INFO_PTR, CK_ULONG, CK_ULONG_PTR,
-    CK_UNAVAILABLE_INFORMATION, CK_USER_TYPE, CK_UTF8CHAR_PTR, CK_VERSION, CK_VOID_PTR,
-    CKA_UNIQUE_ID, CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT, CKF_MESSAGE_SIGN,
-    CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN,
-    CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_USER_PIN_INITIALIZED, CKF_VERIFY, CKM_AES_CBC,
-    CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_EDDSA, CKR_OK, CKS_RO_USER_FUNCTIONS,
-    CKS_RW_USER_FUNCTIONS, CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR,
-    CRYPTOKI_VERSION_MINOR,
+    CK_FUNCTION_LIST, CK_FUNCTION_LIST_3_0, CK_GCM_MESSAGE_PARAMS, CK_INFO, CK_INFO_PTR,
+    CK_INTERFACE, CK_MECHANISM_INFO, CK_MECHANISM_INFO_PTR, CK_MECHANISM_PTR, CK_MECHANISM_TYPE,
+    CK_MECHANISM_TYPE_PTR, CK_NOTIFY, CK_OBJECT_HANDLE, CK_OBJECT_HANDLE_PTR, CK_RV,
+    CK_SESSION_HANDLE, CK_SESSION_HANDLE_PTR, CK_SESSION_INFO, CK_SESSION_INFO_PTR, CK_SLOT_ID,
+    CK_SLOT_ID_PTR, CK_SLOT_INFO, CK_SLOT_INFO_PTR, CK_TOKEN_INFO, CK_TOKEN_INFO_PTR, CK_ULONG,
+    CK_ULONG_PTR, CK_UNAVAILABLE_INFORMATION, CK_USER_TYPE, CK_UTF8CHAR_PTR, CK_VERSION,
+    CK_VOID_PTR, CKA_UNIQUE_ID, CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT,
+    CKF_MESSAGE_SIGN, CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION,
+    CKF_SERIAL_SESSION, CKF_SIGN, CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT,
+    CKF_USER_PIN_INITIALIZED, CKF_VERIFY, CKG_GENERATE_RANDOM, CKM_AES_CBC, CKM_AES_CBC_PAD,
+    CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_EDDSA, CKR_OK, CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS,
+    CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 use rand::Rng;
 
@@ -1812,33 +1814,134 @@ cryptoki_fn_not_supported!(
     pReserved: CK_VOID_PTR
 );
 
-// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): the v3.0-only functions below
-// (other than `C_LoginUser`, fully implemented above) must exist as non-null stubs to populate
-// `FUNC_LIST_3_0` above — a null function pointer in `CK_FUNCTION_LIST_3_0` would violate the
-// spec. This module does not implement PKCS#11 v3.0 "message-based" bulk crypto operations
-// (`C_MessageEncryptInit` and friends), so each stub simply returns `CKR_FUNCTION_NOT_SUPPORTED`,
-// exactly like the pre-existing v2.x stubs above (e.g. `C_CopyObject`).
+// PKCS#11 v3.0 message encryption keeps AES-GCM nonce generation at the KMS/HSM
+// boundary. The remaining v3.0 message operations are exposed as required stubs.
 
 cryptoki_fn_not_supported!(C_SessionCancel, hSession: CK_SESSION_HANDLE, flags: CK_FLAGS);
 
-cryptoki_fn_not_supported!(
-    C_MessageEncryptInit,
-    hSession: CK_SESSION_HANDLE,
-    pMechanism: CK_MECHANISM_PTR,
-    hKey: CK_OBJECT_HANDLE
+cryptoki_fn!(
+    unsafe fn C_MessageEncryptInit(
+        hSession: CK_SESSION_HANDLE,
+        pMechanism: CK_MECHANISM_PTR,
+        hKey: CK_OBJECT_HANDLE,
+    ) {
+        initialized!();
+        valid_session!(hSession);
+        not_null!(pMechanism, "C_MessageEncryptInit: pMechanism");
+        // SAFETY: `pMechanism` is non-null and points to a caller-owned CK_MECHANISM.
+        let mechanism = unsafe { pMechanism.read() };
+        if mechanism.mechanism != CKM_AES_GCM
+            || !mechanism.pParameter.is_null()
+            || mechanism.ulParameterLen != 0
+        {
+            return Err(ModuleError::MechanismInvalid(mechanism.mechanism));
+        }
+        sessions::session(hSession, |session| -> ModuleResult<()> {
+            let objects = OBJECTS_STORE.read()?;
+            let object = objects.get_using_handle(hKey);
+            let Some(Object::SymmetricKey(key)) = object.as_deref() else {
+                return Err(ModuleError::KeyHandleInvalid(hKey));
+            };
+            session.encrypt_ctx = Some(EncryptContext {
+                remote_object_id: key.remote_id().to_owned(),
+                algorithm: EncryptionAlgorithm::AesGcm,
+                iv: None,
+                aad: None,
+            });
+            Ok(())
+        })
+    }
 );
 
-cryptoki_fn_not_supported!(
-    C_EncryptMessage,
-    hSession: CK_SESSION_HANDLE,
-    pParameter: CK_VOID_PTR,
-    ulParameterLen: CK_ULONG,
-    pAssociatedData: CK_BYTE_PTR,
-    ulAssociatedDataLen: CK_ULONG,
-    pPlaintext: CK_BYTE_PTR,
-    ulPlaintextLen: CK_ULONG,
-    pCiphertext: CK_BYTE_PTR,
-    pulCiphertextLen: CK_ULONG_PTR
+cryptoki_fn!(
+    unsafe fn C_EncryptMessage(
+        hSession: CK_SESSION_HANDLE,
+        pParameter: CK_VOID_PTR,
+        ulParameterLen: CK_ULONG,
+        pAssociatedData: CK_BYTE_PTR,
+        ulAssociatedDataLen: CK_ULONG,
+        pPlaintext: CK_BYTE_PTR,
+        ulPlaintextLen: CK_ULONG,
+        pCiphertext: CK_BYTE_PTR,
+        pulCiphertextLen: CK_ULONG_PTR,
+    ) {
+        initialized!();
+        valid_session!(hSession);
+        not_null!(pParameter, "C_EncryptMessage: pParameter");
+        not_null!(pPlaintext, "C_EncryptMessage: pPlaintext");
+        not_null!(pulCiphertextLen, "C_EncryptMessage: pulCiphertextLen");
+        if usize::try_from(ulParameterLen)? != size_of::<CK_GCM_MESSAGE_PARAMS>() {
+            return Err(ModuleError::BadArguments(
+                "C_EncryptMessage: invalid CK_GCM_MESSAGE_PARAMS length".to_owned(),
+            ));
+        }
+        // SAFETY: `pParameter` is non-null and its size was checked against the packed C layout.
+        let params = unsafe { pParameter.cast::<CK_GCM_MESSAGE_PARAMS>().read_unaligned() };
+        if params.ivGenerator != CKG_GENERATE_RANDOM
+            || params.ulIvFixedBits != 0
+            || params.ulIvLen != 12
+            || params.ulTagBits != 128
+        {
+            return Err(ModuleError::BadArguments(
+                "C_EncryptMessage requires a 96-bit KMS-generated IV and 128-bit tag".to_owned(),
+            ));
+        }
+        not_null!(params.pIv, "C_EncryptMessage: CK_GCM_MESSAGE_PARAMS.pIv");
+        not_null!(params.pTag, "C_EncryptMessage: CK_GCM_MESSAGE_PARAMS.pTag");
+        if ulAssociatedDataLen != 0 {
+            not_null!(pAssociatedData, "C_EncryptMessage: pAssociatedData");
+        }
+        let plaintext_len = usize::try_from(ulPlaintextLen)?;
+        // SAFETY: `pulCiphertextLen` is non-null and belongs to the caller for this invocation.
+        let output_capacity = unsafe { usize::try_from(*pulCiphertextLen)? };
+        if pCiphertext.is_null() {
+            // SAFETY: this is the validated output-length pointer used for a size query.
+            unsafe { *pulCiphertextLen = ulPlaintextLen };
+            return Ok(());
+        }
+        if output_capacity < plaintext_len {
+            // SAFETY: this is the validated output-length pointer used to report required capacity.
+            unsafe { *pulCiphertextLen = ulPlaintextLen };
+            return Err(ModuleError::BufferTooSmall);
+        }
+        let associated_data = if ulAssociatedDataLen == 0 {
+            Vec::new()
+        } else {
+            let associated_data_len = usize::try_from(ulAssociatedDataLen)?;
+            // SAFETY: a non-zero length requires the non-null caller buffer checked above.
+            unsafe { slice::from_raw_parts(pAssociatedData, associated_data_len) }.to_vec()
+        };
+        // SAFETY: `pPlaintext` is non-null and spans the caller-declared plaintext length.
+        let plaintext = unsafe { slice::from_raw_parts(pPlaintext, plaintext_len) }.to_vec();
+        sessions::session(hSession, |session| -> ModuleResult<()> {
+            let encrypt_ctx = session
+                .encrypt_ctx
+                .as_mut()
+                .ok_or(ModuleError::OperationNotInitialized(hSession))?;
+            encrypt_ctx.aad = (!associated_data.is_empty()).then_some(associated_data);
+            let output = session.encrypt_message(plaintext)?;
+            if output.ciphertext.len() != plaintext_len
+                || output.iv.len() != 12
+                || output.tag.len() != 16
+            {
+                return Err(ModuleError::Cryptography(
+                    "KMS returned malformed AES-GCM message artifacts".to_owned(),
+                ));
+            }
+            // SAFETY: output capacity was validated above; `pIv` and `pTag` were checked
+            // non-null and their lengths were validated against the fixed AES-GCM layout.
+            unsafe {
+                slice::from_raw_parts_mut(pCiphertext, output.ciphertext.len())
+                    .copy_from_slice(&output.ciphertext);
+                slice::from_raw_parts_mut(params.pIv, output.iv.len()).copy_from_slice(&output.iv);
+                slice::from_raw_parts_mut(params.pTag, output.tag.len())
+                    .copy_from_slice(&output.tag);
+                *pulCiphertextLen = CK_ULONG::try_from(output.ciphertext.len())?;
+            }
+            session.encrypt_ctx = None;
+            Ok(())
+        })
+    }
 );
 
 cryptoki_fn_not_supported!(

@@ -1,6 +1,6 @@
 //! Compile-time-only PKCS#11 Sign profiling primitives.
 //!
-//! The `benchmarking` feature is enabled only for `mise bench:load-pkcs11`.
+//! The `benchmarking` feature is enabled only for `mise bench:pkcs11`.
 //! Without it, all helpers inline to no-ops and production builds contain no
 //! clocks or atomic updates on the signing hot path.
 

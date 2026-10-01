@@ -146,7 +146,7 @@ bench_download_server() {
 #
 # The load-average check exists because of a concrete, reproduced false alarm: on
 # a shared (non-dedicated) development host, the exact same single-operation
-# criterion benchmark (`mise bench:load-pkcs11 --criterion`) measured 400-700us in
+# criterion benchmark (`mise bench:pkcs11 --criterion`) measured 400-700us in
 # two back-to-back runs and ~70ms (a ~100x outlier) in a third — not a code
 # regression, just unrelated processes (IDE background indexing, etc.) briefly
 # saturating the CPU during that one run. A load-average warning up front makes

@@ -43,7 +43,7 @@ use cosmian_pkcs11_module::{
     profiling::{self, SignPhase},
     traits::{
         DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
-        SignatureAlgorithm,
+        MessageEncryptionOutput, SignatureAlgorithm,
     },
 };
 use zeroize::Zeroizing;
@@ -751,14 +751,27 @@ pub(crate) fn kms_encrypt(
     encrypt_ctx: &EncryptContext,
     data: Vec<u8>,
 ) -> Pkcs11Result<Vec<u8>> {
-    RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data))
+    let mut output = RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data))?;
+    if matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
+        output.ciphertext.extend_from_slice(&output.tag);
+    }
+    Ok(output.ciphertext)
 }
 
-pub(crate) async fn kms_encrypt_async(
+/// Encrypt one PKCS#11 v3 AES-GCM message and preserve its detached artifacts.
+pub(crate) fn kms_encrypt_message(
     kms_rest_client: &KmsClient,
     encrypt_ctx: &EncryptContext,
     data: Vec<u8>,
-) -> Pkcs11Result<Vec<u8>> {
+) -> Pkcs11Result<MessageEncryptionOutput> {
+    RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data))
+}
+
+async fn kms_encrypt_async(
+    kms_rest_client: &KmsClient,
+    encrypt_ctx: &EncryptContext,
+    data: Vec<u8>,
+) -> Pkcs11Result<MessageEncryptionOutput> {
     let cryptographic_parameters = match encrypt_ctx.algorithm {
         EncryptionAlgorithm::AesCbcPad => CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -794,27 +807,34 @@ pub(crate) async fn kms_encrypt_async(
         ..Default::default()
     };
     let response = kms_rest_client.encrypt(encryption_request).await?;
-    let mut ciphertext = response.data.ok_or_else(|| {
+    let ciphertext = response.data.ok_or_else(|| {
         Pkcs11Error::ServerError("Encryption response does not contain data".to_owned())
     })?;
-
-    // `CKM_AES_GCM` (PKCS#11 v3.0): the caller expects a single output buffer of
-    // ciphertext followed by the authentication tag (per the PKCS#11 spec's
-    // "ciphertext = C || T" convention for AEAD mechanisms without separate tag output).
-    if matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
-        let tag = response.authenticated_encryption_tag.ok_or_else(|| {
-            Pkcs11Error::ServerError(
-                "AES-GCM encryption response does not contain an authentication tag".to_owned(),
-            )
-        })?;
-        ciphertext.extend_from_slice(&tag);
-    }
-
+    let (iv, tag) = if matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
+        (
+            response.i_v_counter_nonce.ok_or_else(|| {
+                Pkcs11Error::ServerError(
+                    "AES-GCM encryption response does not contain a nonce".to_owned(),
+                )
+            })?,
+            response.authenticated_encryption_tag.ok_or_else(|| {
+                Pkcs11Error::ServerError(
+                    "AES-GCM encryption response does not contain an authentication tag".to_owned(),
+                )
+            })?,
+        )
+    } else {
+        (Vec::new(), Vec::new())
+    };
     debug!(
         "kms_encrypt_async: ciphertext: {}",
-        hex::encode(ciphertext.clone())
+        hex::encode(&ciphertext)
     );
-    Ok(ciphertext)
+    Ok(MessageEncryptionOutput {
+        ciphertext,
+        iv,
+        tag,
+    })
 }
 
 pub(crate) fn kms_decrypt(
