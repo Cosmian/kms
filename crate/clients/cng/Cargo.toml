@@ -32,7 +32,7 @@ non-fips = ["ckms/non-fips", "test_kms_server/non-fips"]
 [dependencies]
 base64 = { workspace = true }
 bitflags = { workspace = true }
-ckms = { path = "../ckms", version = "5.27.1" }
+ckms = { path = "../ckms", version = "5.28.0" }
 cosmian_logger = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
