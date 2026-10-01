@@ -25,8 +25,21 @@
   log lines, round-trips AES/RSA/EC via `ckms`, and (non-FIPS) exercises PQC —
   ML-KEM-1024, ML-DSA-87, and SLH-DSA-SHAKE-256f as a musl thread-stack-size
   regression canary.
+- Add a third, independent validation path (`mise run test:alpine-native-build`, CI job
+  `alpine-native-build`, x86_64 only — see below): builds `cosmian_kms` and `ckms`
+  *natively* inside a real `alpine:3.21` container using Alpine's own apk-provided
+  gcc/musl/openssl-dev end-to-end, with no cross-compilation at all. GitHub Actions has
+  no hosted Alpine runner OS, but a job can set `container: alpine:X.Y` to achieve this.
+  Never signed or published — purely a third way to catch musl-portability bugs that
+  the other two paths (which both cross-compile from Ubuntu) could miss.
 
 ### Known limitations (documented, not bugs)
+
+- `alpine-native-build` is x86_64-only: GitHub Actions does not yet support JS-based
+  actions (e.g. `actions/checkout`) inside Alpine containers on arm64 runners
+  ([actions/runner#1637](https://github.com/actions/runner/issues/1637)). aarch64 musl
+  coverage is unaffected — still provided independently by `musl-crosscheck` and the
+  Nix-built artifacts' `test-alpine-musl` smoke test.
 
 - HSM backends (Utimaco, Proteccio, SmartCard HSM, Crypt2Pay) are not supported on the
   musl tarballs — vendor PKCS#11 drivers are glibc-only shared libraries.
