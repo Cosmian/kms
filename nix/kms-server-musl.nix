@@ -22,12 +22,19 @@
   #     Alpine image. This keeps `dlopen` available, so the FIPS provider module
   #     (`fips.so`, loaded via `Provider::load(None, "fips")` in
   #     `openssl_providers.rs`) loads exactly like it does on the glibc build.
+  #     NOTE: rustc always emits an explicit `-lgcc_s` for non-static musl targets
+  #     (confirmed: `-C link-arg=-static-libgcc` does NOT suppress it — rustc's own
+  #     codegen, not gcc's implicit linking, adds it). Alpine's base image does not
+  #     ship `libgcc_s.so.1` (it's the separate `libgcc` apk package), so deployments
+  #     of this variant must `apk add --no-cache libgcc` — documented in the
+  #     Alpine how-to page, not fixable via a build flag on stable Rust.
   #   true (fully static, used for the non-FIPS variant, Rust's own default for musl
   #     targets): produces a binary with no dynamic linker at all (no INTERP segment),
-  #     runnable even on `FROM scratch`. musl's static libc cannot `dlopen`, so the
-  #     OpenSSL "legacy" provider is skipped at runtime (see `choose_provider` /
-  #     `DLOPEN_UNAVAILABLE` in `crate/server/src/openssl_providers.rs`) — everything
-  #     else (default provider: AES/RSA/EC/PQC/Covercrypt) is unaffected.
+  #     runnable even on `FROM scratch`, with zero extra apk packages. musl's static
+  #     libc cannot `dlopen` at all, so the OpenSSL "legacy" provider load fails and
+  #     is handled gracefully at runtime (logged as a warning, not fatal — see
+  #     `init_openssl_providers` in `crate/server/src/openssl_providers.rs`) —
+  #     everything else (default provider: AES/RSA/EC/PQC/Covercrypt) is unaffected.
   muslCrtStatic ? true,
 }:
 
@@ -204,19 +211,10 @@ rustPlatform.buildRustPackage rec {
         "/tmp=/cosmian-src"
       ];
       crtStatic = "-C target-feature=${if muslCrtStatic then "+crt-static" else "-crt-static"}";
-      # Statically link libgcc's unwinder (-lgcc_s) into the binary. Without this, the
-      # *dynamic* musl variant fails at runtime with "Error loading shared library
-      # libgcc_s.so.1: No such file or directory" — base Alpine images don't ship
-      # libgcc_s.so.1 (it's a separate `libgcc` apk package, not part of musl itself).
-      # Statically linking it removes that extra runtime dependency entirely, so the
-      # binary runs on a stock `alpine` image with no `apk add` step required. No-op
-      # for the fully static variant (it has no dynamic dependencies at all anyway).
-      staticLibgcc = "-C link-arg=-static-libgcc";
     in
     lib.concatStringsSep " " [
       remap
       crtStatic
-      staticLibgcc
       "-C symbol-mangling-version=v0"
       "-C link-arg=-Wl,--build-id=none"
       "-C debuginfo=0"
