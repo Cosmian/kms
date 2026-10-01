@@ -74,9 +74,6 @@ rustPlatform.buildRustPackage rec {
 
   RUSTFLAGS = lib.concatStringsSep " " [
     "-C target-feature=${if muslCrtStatic then "+crt-static" else "-crt-static"}"
-    # See kms-server-musl.nix: statically link libgcc_s so the dynamic variant doesn't
-    # need Alpine's separate `libgcc` apk package at runtime.
-    "-C link-arg=-static-libgcc"
     "-C debuginfo=0"
     "-C strip=symbols"
   ];

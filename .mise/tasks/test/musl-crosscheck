@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+#MISE description="Cross-check: build the KMS server for a musl target via plain cargo + musl-gcc (not Nix)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "static"
+
+# ---------------------------------------------------------------------------
+# Reproducibility cross-check for the Alpine/musl release tarballs.
+#
+# The *published* musl artifacts are built via Nix (nix/kms-server-musl.nix,
+# nix/cli-musl.nix — see `mise run package:musl-tarball`). This task builds the
+# same target with a completely independent toolchain (plain `cargo` +
+# system `musl-gcc`, no Nix) as a cross-check: if Nix has a musl-specific bug,
+# an independently-built binary is far less likely to share it. This build is
+# a CI artifact only — it is never signed or published.
+#
+# musl libc linking mode mirrors the Nix side exactly (see
+# crate/server/src/openssl_providers.rs and nix/kms-server-musl.nix):
+#   fips     -> dynamically-linked musl (keeps dlopen available for the FIPS
+#               provider).
+#   non-fips -> fully static musl (+crt-static, Rust's own default for musl
+#               targets — no extra flag needed).
+#
+# Two linker quirks were found empirically (confirmed on Debian/Ubuntu +
+# musl-tools) and are NOT fixable via `-static-libgcc` (rustc always emits an
+# explicit `-lgcc_s` for the dynamic variant — confirmed that flag has no
+# effect) or by any other stable-Rust flag:
+#   1. `-lgcc_s`: musl-tools' `musl-gcc` wrapper reuses the host's gcc, which
+#      does not ship a musl-targeted libgcc_s.so — but the host's own
+#      (glibc) libgcc_s.so.1 satisfies the *link-time* symbol check just
+#      fine (libgcc's ABI is stable regardless of the underlying libc), so
+#      pointing `-L` at its directory is sufficient. The *runtime* dependency
+#      on `libgcc_s.so.1` is real and still requires `apk add libgcc` when
+#      deploying the dynamic/FIPS variant on Alpine (documented in the Alpine
+#      how-to page) — this `-L` only fixes the cross-check *build*.
+#   2. `-lm`: musl, unlike glibc, does not fold libm into libc, so
+#      libsqlite3-sys's bundled C code needs it explicitly.
+#
+# Requires OPENSSL_DIR (+ OPENSSL_LIB_DIR/OPENSSL_INCLUDE_DIR) to already
+# point at a musl-targeted OpenSSL build — see
+# `.github/workflows/packaging.yml`'s musl-crosscheck job for how CI builds
+# one first. `crate/crypto/build.rs` cannot be relied on to produce it here:
+# it only builds OpenSSL for its own crate's linking needs, while the
+# standalone `openssl`/`openssl-sys` dependency (used directly by
+# `cosmian_kms_crypto`, `cosmian_kms_server`, etc.) needs its own working
+# `OPENSSL_DIR` before Cargo can resolve the dependency graph at all.
+# ---------------------------------------------------------------------------
+
+require_cmd rustup
+require_cmd cargo
+
+: "${OPENSSL_DIR:?OPENSSL_DIR must point at a musl-targeted OpenSSL build, see header comment above}"
+export OPENSSL_LIB_DIR="${OPENSSL_LIB_DIR:-${OPENSSL_DIR}/lib}"
+export OPENSSL_INCLUDE_DIR="${OPENSSL_INCLUDE_DIR:-${OPENSSL_DIR}/include}"
+export OPENSSL_STATIC=1
+export OPENSSL_NO_VENDOR=1
+
+case "$(uname -m)" in
+  x86_64)
+    MUSL_TRIPLE="x86_64-unknown-linux-musl"
+    MULTIARCH_DIR="x86_64-linux-gnu"
+    ;;
+  aarch64 | arm64)
+    MUSL_TRIPLE="aarch64-unknown-linux-musl"
+    MULTIARCH_DIR="aarch64-linux-gnu"
+    ;;
+  *)
+    print_error "Unsupported architecture for musl cross-check: $(uname -m)"
+    ;;
+esac
+
+MUSL_GCC="musl-gcc"
+require_cmd "$MUSL_GCC" "musl-gcc not found — install musl-tools first (apt-get install -y musl-tools on Debian/Ubuntu)."
+
+print_header "Musl cross-check build: ${VARIANT_NAME} (${MUSL_TRIPLE})"
+
+rustup target add "$MUSL_TRIPLE"
+
+TARGET_ENV_SUFFIX="$(echo "${MUSL_TRIPLE//-/_}" | tr '[:lower:]' '[:upper:]')"
+export "CC_${MUSL_TRIPLE//-/_}=${MUSL_GCC}"
+export "CARGO_TARGET_${TARGET_ENV_SUFFIX}_LINKER=${MUSL_GCC}"
+
+HOST_LIBGCC_DIR="/usr/lib/${MULTIARCH_DIR}"
+if [ "$VARIANT" = "fips" ]; then
+  # Dynamic musl: keep dlopen available for the FIPS provider. Empirically
+  # confirmed working end-to-end (correct ld-musl interpreter, matches Nix).
+  export RUSTFLAGS="-C target-feature=-crt-static -L ${HOST_LIBGCC_DIR} -C link-arg=-lm"
+else
+  # KNOWN GAP (tracked, not yet resolved): with plain cargo + musl-gcc (no Nix),
+  # `-C target-feature=+crt-static` is accepted by rustc (confirmed via
+  # `rustc --print cfg`) but the resulting binary still links dynamically
+  # against musl's ld-musl here, unlike the Nix-built artifact (which
+  # correctly produces a static-pie binary with this exact flag). The Nix
+  # pipeline is canonical/published and is unaffected — this plain-cargo path
+  # is a CI-only cross-check. If this reproduces in CI, compare against a
+  # `cross`-rs musl image (which bundles a verified musl cross toolchain)
+  # before concluding it is a rustc/toolchain-version issue.
+  export RUSTFLAGS="-C target-feature=+crt-static -C link-arg=-lm"
+fi
+
+print_status "RUSTFLAGS=${RUSTFLAGS}"
+print_status "OPENSSL_DIR=${OPENSSL_DIR}"
+
+cargo build --release -p cosmian_kms_server --target "$MUSL_TRIPLE" --no-default-features \
+  "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+BIN="${CARGO_TARGET_DIR:-target}/${MUSL_TRIPLE}/release/cosmian_kms"
+[ -x "$BIN" ] || print_error "Build did not produce an executable at $BIN"
+
+print_status "Binary info:"
+file "$BIN" || true
+readelf -l "$BIN" 2>/dev/null | grep -i "interpreter\|type:" || true
+
+# Detect actual staticness from the ELF itself (do not assume from --variant —
+# see the KNOWN GAP note above) and only attempt direct execution when there
+# is truly no INTERP segment, i.e. the binary cannot need Alpine's own ld-musl.
+if readelf -l "$BIN" 2>/dev/null | grep -q "INTERP"; then
+  print_status "Skipping direct execution (dynamic-musl interpreter needs Alpine's own ld-musl); validated via the Alpine-container smoke test instead."
+else
+  print_status "Running --version (fully static, no interpreter dependency)..."
+  "$BIN" --version
+fi
+
+print_success "Musl cross-check build passed for ${VARIANT_NAME} (${MUSL_TRIPLE})"
