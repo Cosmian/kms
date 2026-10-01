@@ -43,11 +43,19 @@ kms_init_env "${usage_variant:-fips}" "static"
 # Requires OPENSSL_DIR (+ OPENSSL_LIB_DIR/OPENSSL_INCLUDE_DIR) to already
 # point at a musl-targeted OpenSSL build — see
 # `.github/workflows/packaging.yml`'s musl-crosscheck job for how CI builds
-# one first. `crate/crypto/build.rs` cannot be relied on to produce it here:
-# it only builds OpenSSL for its own crate's linking needs, while the
-# standalone `openssl`/`openssl-sys` dependency (used directly by
-# `cosmian_kms_crypto`, `cosmian_kms_server`, etc.) needs its own working
-# `OPENSSL_DIR` before Cargo can resolve the dependency graph at all.
+# one first (`mise run test:musl-openssl-prebuild`). This matters twice over:
+#   1. The standalone `openssl`/`openssl-sys` crate (used directly by
+#      `cosmian_kms_crypto`, `cosmian_kms_server`, etc.) needs its own working
+#      `OPENSSL_DIR` before Cargo can even resolve the dependency graph.
+#   2. `crate/crypto/build.rs` builds a *second*, separate copy of OpenSSL for
+#      its own crate's static-linking needs, using whatever `cc` is first on
+#      PATH — it has no musl-gcc/cross-compilation awareness of its own. Left
+#      alone it would silently build a *glibc*-targeted OpenSSL here and fail
+#      to link against this musl target. `musl-openssl-prebuild` works around
+#      this (without touching build.rs) by also writing the
+#      ssl/openssl.cnf + lib/ossl-modules/ markers build.rs already checks
+#      for to detect "an external OpenSSL is provided, skip my own build" —
+#      the same heuristic that lets Nix's OpenSSL work today.
 # ---------------------------------------------------------------------------
 
 require_cmd rustup
@@ -90,15 +98,13 @@ if [ "$VARIANT" = "fips" ]; then
   # confirmed working end-to-end (correct ld-musl interpreter, matches Nix).
   export RUSTFLAGS="-C target-feature=-crt-static -L ${HOST_LIBGCC_DIR} -C link-arg=-lm"
 else
-  # KNOWN GAP (tracked, not yet resolved): with plain cargo + musl-gcc (no Nix),
-  # `-C target-feature=+crt-static` is accepted by rustc (confirmed via
-  # `rustc --print cfg`) but the resulting binary still links dynamically
-  # against musl's ld-musl here, unlike the Nix-built artifact (which
-  # correctly produces a static-pie binary with this exact flag). The Nix
-  # pipeline is canonical/published and is unaffected — this plain-cargo path
-  # is a CI-only cross-check. If this reproduces in CI, compare against a
-  # `cross`-rs musl image (which bundles a verified musl cross toolchain)
-  # before concluding it is a rustc/toolchain-version issue.
+  # Fully static musl (+crt-static, Rust's own default for this target).
+  # Empirically confirmed working end-to-end in CI: produces a genuine
+  # static-pie binary (matching the Nix-built artifact) once OPENSSL_DIR
+  # points at a *musl*-targeted OpenSSL throughout — see
+  # musl-openssl-prebuild's redirect of crate/crypto/build.rs's own internal
+  # OpenSSL build, without which this would silently link a glibc-targeted
+  # OpenSSL and fail (or mislink) instead.
   export RUSTFLAGS="-C target-feature=+crt-static -C link-arg=-lm"
 fi
 
@@ -115,9 +121,10 @@ print_status "Binary info:"
 file "$BIN" || true
 readelf -l "$BIN" 2>/dev/null | grep -i "interpreter\|type:" || true
 
-# Detect actual staticness from the ELF itself (do not assume from --variant —
-# see the KNOWN GAP note above) and only attempt direct execution when there
-# is truly no INTERP segment, i.e. the binary cannot need Alpine's own ld-musl.
+# Detect actual staticness from the ELF itself rather than assuming from
+# --variant — cheap belt-and-suspenders check, and only attempt direct
+# execution when there is truly no INTERP segment, i.e. the binary cannot
+# need Alpine's own ld-musl.
 if readelf -l "$BIN" 2>/dev/null | grep -q "INTERP"; then
   print_status "Skipping direct execution (dynamic-musl interpreter needs Alpine's own ld-musl); validated via the Alpine-container smoke test instead."
 else
