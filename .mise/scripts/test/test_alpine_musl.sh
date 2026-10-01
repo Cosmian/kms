@@ -64,7 +64,12 @@ done
 IMAGE_TAG="kms-alpine-smoke-${VARIANT}-${ALPINE_TAG}"
 CONTAINER_NAME="kms-alpine-smoke-${VARIANT}-${ALPINE_TAG}-$$"
 WORK_DIR="$(mktemp -d)"
-trap 'docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true; rm -rf "${WORK_DIR}"' EXIT
+# The usr/local/cosmian/lib/ tree copied below may still carry read-only
+# directory permissions inherited (via the musl tarball's own `cp -r` from a
+# read-only Nix store path, then preserved through tar) — `chmod -R u+w`
+# before `rm -rf` ensures cleanup can never fail on that; `|| true` on both
+# so a best-effort cleanup step never overrides this script's real exit code.
+trap 'docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true; chmod -R u+w "${WORK_DIR}" 2>/dev/null || true; rm -rf "${WORK_DIR}" || true' EXIT
 
 cp "${SERVER_BIN}" "${WORK_DIR}/cosmian_kms"
 cp "${CLI_BIN}" "${WORK_DIR}/ckms"
@@ -81,6 +86,7 @@ if [ -d "${SERVER_ROOT}/usr/local/cosmian/lib" ]; then
   HAS_COSMIAN_LIB=1
   mkdir -p "${WORK_DIR}/usr/local/cosmian/lib"
   cp -r "${SERVER_ROOT}/usr/local/cosmian/lib/." "${WORK_DIR}/usr/local/cosmian/lib/"
+  chmod -R u+w "${WORK_DIR}/usr/local/cosmian/lib"
 fi
 
 if [ "${VARIANT}" = "fips" ]; then
