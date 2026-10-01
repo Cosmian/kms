@@ -147,6 +147,46 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
     - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
     - The KMS UI is available at `http://localhost:9998/ui`.
 
+=== "Alpine Linux"
+
+    Eviden KMS publishes Linux **musl** tarballs that run natively on Alpine — no
+    `gcompat` shim required. Pick the variant for your Dockerfile:
+
+    **FIPS** (dynamically-linked musl — needs `libgcc`, the one extra `apk` package below):
+
+    ```dockerfile
+    FROM alpine:3.21
+    RUN apk add --no-cache libgcc ca-certificates
+    ADD https://package.cosmian.com/kms/5.27.1/musl-tarball/amd64/fips/cosmian-kms-server-fips-musl-dynamic_5.27.1_x86_64-unknown-linux-musl.tar.gz /tmp/kms.tar.gz
+    RUN tar -xzf /tmp/kms.tar.gz -C / && rm /tmp/kms.tar.gz
+    ENV OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl.cnf
+    ENV OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules
+    EXPOSE 9998
+    ENTRYPOINT ["/cosmian_kms"]
+    ```
+
+    **non-FIPS** (fully static musl — zero extra `apk` packages):
+
+    ```dockerfile
+    FROM alpine:3.21
+    RUN apk add --no-cache ca-certificates
+    ADD https://package.cosmian.com/kms/5.27.1/musl-tarball/amd64/non-fips/cosmian-kms-server-non-fips-musl-static_5.27.1_x86_64-unknown-linux-musl.tar.gz /tmp/kms.tar.gz
+    RUN tar -xzf /tmp/kms.tar.gz -C / && rm /tmp/kms.tar.gz
+    EXPOSE 9998
+    ENTRYPOINT ["/cosmian_kms"]
+    ```
+
+    The `ckms` CLI is published the same way under `musl-tarball/<arch>/<variant>/cosmian-kms-cli-*`.
+
+    - The KMS UI is available at `http://localhost:9998/ui`.
+    - **Known limitations** on the musl tarballs (see the
+      [Alpine support note](../../../README.md#alpine-linux-musl) for details):
+        - HSM backends (Utimaco, Proteccio, SmartCard HSM, Crypt2Pay) are not supported —
+          vendor PKCS#11 drivers are glibc-only.
+        - non-FIPS: old PKCS#12/RC2 import is unsupported (musl's static libc cannot
+          `dlopen` the legacy OpenSSL provider). All other algorithms, including PQC and
+          Covercrypt, are unaffected — the server logs a warning and continues.
+
 === "macOS"
 
     Download the installer for your architecture and run it:
