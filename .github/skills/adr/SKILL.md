@@ -1,6 +1,6 @@
 ---
 name: adr
-description: 'Create an Architectural Decision Record (ADR) under documentation/docs/adr/. Use when making or documenting an architectural decision.'
+description: 'Create an Architectural Decision Record (ADR) under documentation/adr/. Use when making or documenting an architectural decision.'
 ---
 
 # Architectural Decision Record Generator
@@ -9,11 +9,11 @@ Create an ADR document for the Eviden KMS repository.
 
 ## ADR Storage
 
-Save ADRs at: `documentation/docs/adr/adr-YYYY-MM-DD-[title-slug].md`
+Save ADRs at: `documentation/adr/adr-YYYY-MM-DD-[title-slug].md`
 
 Where `YYYY-MM-DD` is the current date.
 
-If the `documentation/docs/adr/` directory doesn't exist yet, create it and add nav entries in `documentation/docs/SUMMARY.md` and `documentation/nav.yml`.
+If the `documentation/adr/` directory doesn't exist yet, create it. Do NOT add ADRs to `documentation/docs/SUMMARY.md` or `documentation/nav.yml` (ADRs are internal design records, not published documentation).
 
 ## Required Inputs
 
