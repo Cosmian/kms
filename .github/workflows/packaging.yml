@@ -129,6 +129,85 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # Reproducibility cross-check for the musl tarballs: builds the same target
+  # with a completely independent toolchain (plain cargo + system musl-gcc,
+  # no Nix). Never signed or published — see .mise/tasks/test/musl-crosscheck.
+  musl-crosscheck:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==
+      'schedule'
+    name: musl-crosscheck-${{ matrix.features }}-${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [fips, non-fips]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Install musl-tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq musl-tools linux-libc-dev
+
+      - name: Build throwaway OpenSSL for the cross-check
+        run: mise run test:musl-openssl-prebuild
+
+      - name: Run musl cross-check (plain cargo + musl-gcc, no Nix)
+        env:
+          OPENSSL_DIR: /tmp/musl-openssl-crosscheck
+        run: mise run test:musl-crosscheck --variant ${{ matrix.features }}
+
+  # Proves the Nix-built musl tarballs actually run on real Alpine — not just
+  # that they link correctly in the Nix sandbox. See
+  # .mise/scripts/test/test_alpine_musl.sh for the full test sequence
+  # (FIPS-provider / legacy-provider-skip log checks, AES/RSA/EC round-trips,
+  # PQC for non-FIPS including SLH-DSA as a musl thread-stack-size canary).
+  test-alpine-musl:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==
+      'schedule'
+    name: alpine-${{ matrix.alpine-tag }}-${{ matrix.features }}-${{ matrix.runner }}
+    needs: packages
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [fips, non-fips]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        alpine-tag: ['3.20', '3.21', latest]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Download musl tarball artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: musl-tarball_${{ matrix.features }}_${{ matrix.runner }}
+
+      - name: Extract tarballs
+        run: |
+          set -euo pipefail
+          SERVER_TAR=$(find "result-musl-tarball-server-${{ matrix.features }}" -name "cosmian-kms-server-*.tar.gz")
+          CLI_TAR=$(find "result-musl-tarball-cli-${{ matrix.features }}" -name "cosmian-kms-cli-*.tar.gz")
+          mkdir -p extracted-server extracted-cli
+          tar -xzf "$SERVER_TAR" -C extracted-server
+          tar -xzf "$CLI_TAR" -C extracted-cli
+          echo "SERVER_BIN=$(pwd)/extracted-server/cosmian_kms" >> "$GITHUB_ENV"
+          echo "CLI_BIN=$(pwd)/extracted-cli/ckms" >> "$GITHUB_ENV"
+
+      - name: Run Alpine ${{ matrix.alpine-tag }} smoke test
+        run: |
+          bash .mise/scripts/test/test_alpine_musl.sh \
+            --variant ${{ matrix.features }} \
+            --server-bin "${SERVER_BIN}" \
+            --cli-bin "${CLI_BIN}" \
+            --alpine-tag ${{ matrix.alpine-tag }}
+
   kubernetes:
     uses: ./.github/workflows/packaging-kubernetes.yml
     secrets: inherit
