@@ -52,6 +52,8 @@ trap 'rm -rf "${WORK_DIR}"' EXIT
 print_header "Building OpenSSL ${OPENSSL_VERSION} (musl-gcc, ${OPENSSL_TARGET}) for the cross-check"
 
 if [ -f "${OUT_DIR}/lib/libcrypto.a" ]; then
+  mkdir -p "${OUT_DIR}/ssl" "${OUT_DIR}/lib/ossl-modules"
+  [ -f "${OUT_DIR}/ssl/openssl.cnf" ] || echo "# placeholder: satisfies crate/crypto/build.rs's external-OpenSSL-dir detection" >"${OUT_DIR}/ssl/openssl.cnf"
   print_status "Reusing existing build at ${OUT_DIR}"
   print_success "Musl OpenSSL ready at ${OUT_DIR}"
   exit 0
@@ -104,5 +106,21 @@ mkdir -p "${OUT_DIR}"
   make -j"$(nproc)"
   make install_sw
 )
+
+# crate/crypto/build.rs builds its own *separate*, internal copy of OpenSSL
+# (for cosmian_kms_crypto's statically-embedded libcrypto/libssl) using
+# whatever `cc`/`gcc` is first on PATH — it has no cross-compilation
+# awareness of its own and does not consult musl-gcc. Left alone, that would
+# silently produce a *glibc*-targeted static OpenSSL and link it into this
+# musl target, failing with undefined references to glibc-only symbols
+# (__memcpy_chk, fopen64, __isoc23_strtol, ...). build.rs *does* skip its own
+# build when OPENSSL_DIR already looks like a full external install — the
+# same heuristic it uses to detect Nix's OpenSSL (see build.rs: `if
+# conf_path.exists() && modules_dir.exists() { ...skip...}`) — so satisfy
+# that heuristic here with the (otherwise-unused by this cross-check)
+# ssl/openssl.cnf + lib/ossl-modules/ paths, redirecting it to the musl
+# OpenSSL this script just built instead of building its own.
+mkdir -p "${OUT_DIR}/ssl" "${OUT_DIR}/lib/ossl-modules"
+[ -f "${OUT_DIR}/ssl/openssl.cnf" ] || echo "# placeholder: satisfies crate/crypto/build.rs's external-OpenSSL-dir detection" >"${OUT_DIR}/ssl/openssl.cnf"
 
 print_success "Musl OpenSSL ready at ${OUT_DIR}"
