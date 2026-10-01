@@ -15,8 +15,8 @@ established by a gateway.
     the gateway posts. If the gateway posts **its own** JWT-SVID whenever a browser has no
     cookie, every anonymous browser receives a session as **one shared SPIFFE identity**:
     there is no per-user authentication, authorization or audit. This is the same anti-pattern
-    as forcing every client onto a single `admin` account (rejected in
-    [ADR-2026-09-19](../adr/2026-09-19-spiffe-jwt-svid-authentication.md), ALT-003/ALT-004).
+    as forcing every client onto a single `admin` account (rejected architectural anti-pattern:
+    forcing every client onto a single shared identity violates audit trail guarantees).
     The gateway **must authenticate the end user first** (for example OIDC at the gateway)
     and only then relay a session, ideally with an identity scoped to that user or group.
 
