@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#MISE description="Run CEF-over-TCP-syslog integration test (rsyslog, RFC 6587)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="Feature variant (must be non-fips)" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+# Proves TCP syslog delivery with RFC 6587 octet-counting framing.
+# Requires non-fips: CEF export is only available in non-fips builds.
+# Requires Docker: rsyslog/syslog_appliance_alpine.
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+VARIANT="${usage_variant:-non-fips}"
+if [[ "${VARIANT}" == "fips" ]]; then
+  echo "ERROR: CEF TCP syslog test requires --variant non-fips." >&2
+  exit 1
+fi
+
+kms_init_env "${VARIANT}" "static"
+setup_test_logging
+
+print_header "Running CEF-over-TCP-syslog integration test (${VARIANT_NAME})"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/test/test_siem_cef_tcp_syslog.sh" --variant "${VARIANT}"
+
+print_success "CEF-over-TCP-syslog test completed"

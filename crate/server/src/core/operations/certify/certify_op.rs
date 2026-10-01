@@ -126,6 +126,10 @@ pub(crate) async fn certify(
                 .private_key_object
                 .setup_with_lifecycle(ObjectType::PrivateKey, Some(now))?;
             keypair_data
+                .private_key_object
+                .attributes_mut()?
+                .initialize_never_extractable();
+            keypair_data
                 .public_key_object
                 .setup_with_lifecycle(ObjectType::PublicKey, Some(now))?;
             // update the private key attributes with the public key identifier

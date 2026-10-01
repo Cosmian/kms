@@ -59,12 +59,11 @@ dependencies = [
 
 [[package]]
 name = "actix-http"
-version = "3.13.3"
+version = "3.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11004b0e9b44b4eb3d15e0c3132b96fb178c7e50a74758b2f17bb9cc9a7fb4f6"
+checksum = "3c4f07a021937af76abef4c458a0d6b25f63f82eec5394354deeb7de0551f523"
 dependencies = [
  "actix-codec",
- "actix-rt",
  "actix-service",
  "actix-tls",
  "actix-utils",
@@ -611,9 +610,9 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "aws-lc-rs"
-version = "1.17.3"
+version = "1.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00bdb5da18dac48ca2cc7cd4a98e533e8635a58e2361d13a1a4ee3888e0d72f1"
+checksum = "b281d307588d634de920874890732659e2e7672f72b5e10e81badc1a8a83621e"
 dependencies = [
  "aws-lc-sys",
  "zeroize",
@@ -621,9 +620,9 @@ dependencies = [
 
 [[package]]
 name = "aws-lc-sys"
-version = "0.43.0"
+version = "0.45.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43103168cc76fe62678a375e722fc9cb3a0146159ac5828bc4f0dfd755c2224c"
+checksum = "9bff6c3b54fad79a2e60b8102caf565819711497c1f5f092f49508e2f5c31b27"
 dependencies = [
  "cc",
  "cmake",
@@ -733,12 +732,13 @@ dependencies = [
 
 [[package]]
 name = "axum-server"
-version = "0.7.3"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1ab4a3ec9ea8a657c72d99a03a824af695bd0fb5ec639ccbd9cd3543b41a5f9"
+checksum = "b1df331683d982a0b9492b38127151e6453639cd34926eb9c07d4cd8c6d22bfc"
 dependencies = [
  "arc-swap",
  "bytes",
+ "either",
  "fs-err",
  "http 1.5.0",
  "http-body",
@@ -746,22 +746,10 @@ dependencies = [
  "hyper-util",
  "pin-project-lite",
  "rustls",
- "rustls-pemfile",
  "rustls-pki-types",
  "tokio",
  "tokio-rustls",
  "tower-service",
-]
-
-[[package]]
-name = "backoff"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b62ddb9cb1ec0a098ad4bbf9344d0713fa193ae1a80af55febcff2627b6a00c1"
-dependencies = [
- "getrandom 0.2.17",
- "instant",
- "rand 0.8.7",
 ]
 
 [[package]]
@@ -771,6 +759,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cffb0e931875b666fc4fcb20fee52e9bbd1ef836fd9e9e04ec21555f9f85f7ef"
 dependencies = [
  "fastrand",
+ "gloo-timers",
+ "tokio",
 ]
 
 [[package]]
@@ -1033,7 +1023,7 @@ dependencies = [
 
 [[package]]
 name = "ckms"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "assert_cmd",
  "base64 0.22.1",
@@ -1058,7 +1048,8 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
- "x509-parser",
+ "winresource",
+ "x509-parser 0.17.0",
 ]
 
 [[package]]
@@ -1298,7 +1289,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "cosmian_cng"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "base64 0.22.1",
  "bitflags",
@@ -1310,6 +1301,7 @@ dependencies = [
  "tokio",
  "uuid",
  "windows-sys 0.59.0",
+ "winresource",
  "zeroize",
 ]
 
@@ -1382,7 +1374,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "base64 0.22.1",
  "bitflags",
@@ -1409,15 +1401,20 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_access"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "cosmian_kmip",
+ "hex",
  "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "time",
+ "uuid",
 ]
 
 [[package]]
 name = "cosmian_kms_base_hsm"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",
@@ -1435,7 +1432,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli_actions"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "assert_cmd",
  "base64 0.22.1",
@@ -1462,6 +1459,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "sha2 0.10.9",
+ "spiffe",
  "strum 0.27.2",
  "tempfile",
  "test_kms_server",
@@ -1477,7 +1475,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "actix-web",
  "base64 0.22.1",
@@ -1508,7 +1506,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_utils"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -1527,7 +1525,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_wasm"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "base64 0.22.1",
  "console_error_panic_hook",
@@ -1546,7 +1544,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_crypto"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "aes-gcm-siv",
  "aes-kw",
@@ -1582,13 +1580,13 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
- "x509-parser",
+ "x509-parser 0.17.0",
  "zeroize",
 ]
 
 [[package]]
 name = "cosmian_kms_csi_provider"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "clap",
  "cosmian_kms_client",
@@ -1609,7 +1607,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_interfaces"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
@@ -1627,7 +1625,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_k8s_operator"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "axum 0.8.9",
  "axum-server",
@@ -1656,7 +1654,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_k8s_plugin"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "clap",
  "cosmian_kms_client",
@@ -1678,7 +1676,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -1703,11 +1701,13 @@ dependencies = [
  "dashmap",
  "dialoguer",
  "dotenvy",
+ "fs4",
  "futures",
  "governor",
  "hex",
  "hmac 0.12.1",
  "http 1.5.0",
+ "ipnet",
  "jsonwebtoken",
  "native-tls",
  "num-bigint-dig",
@@ -1741,13 +1741,14 @@ dependencies = [
  "utimaco_pkcs11_loader",
  "uuid",
  "windows-service",
- "x509-parser",
+ "winresource",
+ "x509-parser 0.17.0",
  "zeroize",
 ]
 
 [[package]]
 name = "cosmian_kms_server_database"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1777,7 +1778,7 @@ dependencies = [
  "tokio-rusqlite",
  "url",
  "uuid",
- "x509-parser",
+ "x509-parser 0.17.0",
  "zeroize",
 ]
 
@@ -1813,7 +1814,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_pkcs11"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "ckms",
  "cosmian_config_utils",
@@ -1832,13 +1833,14 @@ dependencies = [
  "tokio",
  "tracing-error",
  "tracing-subscriber",
+ "winresource",
  "x509-cert",
  "zeroize",
 ]
 
 [[package]]
 name = "cosmian_pkcs11_module"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "const-oid 0.9.6",
  "cosmian_logger",
@@ -1983,7 +1985,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
 name = "crypt2pay_pkcs11_loader"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "cosmian_kms_base_hsm",
 ]
@@ -2588,7 +2590,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2768,6 +2770,16 @@ checksum = "b91aa448ca50d7e79433bdf3ee8d99215430d2ec02ade5aefab2a073a1822e8a"
 dependencies = [
  "autocfg",
  "tokio",
+]
+
+[[package]]
+name = "fs4"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8640e34b88f7652208ce9e88b1a37a2ae95227d84abec377ccd3c5cfeb141ed4"
+dependencies = [
+ "rustix",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2951,6 +2963,18 @@ checksum = "f0d8a4362ccb29cb0b265253fb0a2728f592895ee6854fd9bc13f2ffda266ff1"
 dependencies = [
  "opaque-debug",
  "polyval",
+]
+
+[[package]]
+name = "gloo-timers"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbb143cf96099802033e0d4f4963b19fd2e0b728bcf076cd9cf7f6634f092994"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "js-sys",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -3392,7 +3416,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "tokio",
  "tower-service",
  "tracing",
@@ -3582,19 +3606,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "instant"
-version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
-dependencies = [
- "cfg-if",
-]
-
-[[package]]
 name = "ipnet"
 version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d98f6fed1fde3f8c21bc40a1abb88dd75e67924f9cffc3ef95607bad8017f8e2"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "is_terminal_polyfill"
@@ -3657,14 +3675,14 @@ dependencies = [
 
 [[package]]
 name = "json-patch"
-version = "3.0.1"
+version = "4.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "863726d7afb6bc2590eeff7135d923545e5e964f004c2ccf8716c25e70a86f08"
+checksum = "7421438de105a0827e44fadd05377727847d717c80ce29a229f85fd04c427b72"
 dependencies = [
  "jsonptr",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
+ "thiserror 2.0.19",
 ]
 
 [[package]]
@@ -3682,9 +3700,9 @@ dependencies = [
 
 [[package]]
 name = "jsonptr"
-version = "0.6.3"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5dea2b27dd239b2556ed7a25ba842fe47fd602e7fc7433c2a8d6106d4d9edd70"
+checksum = "a5a3cc660ba5d72bce0b3bb295bf20847ccbb40fd423f3f05b61273672e561fe"
 dependencies = [
  "serde",
  "serde_json",
@@ -3771,7 +3789,7 @@ dependencies = [
 
 [[package]]
 name = "kmip-derive"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "quote",
  "syn 2.0.119",
@@ -3779,9 +3797,9 @@ dependencies = [
 
 [[package]]
 name = "kube"
-version = "0.98.0"
+version = "0.99.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32053dc495efad4d188c7b33cc7c02ef4a6e43038115348348876efd39a53cba"
+checksum = "9a4eb20010536b48abe97fec37d23d43069bcbe9686adcf9932202327bc5ca6e"
 dependencies = [
  "k8s-openapi",
  "kube-client",
@@ -3792,9 +3810,9 @@ dependencies = [
 
 [[package]]
 name = "kube-client"
-version = "0.98.0"
+version = "0.99.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d34ad38cdfbd1fa87195d42569f57bb1dda6ba5f260ee32fef9570b7937a0c9"
+checksum = "7fc2ed952042df20d15ac2fe9614d0ec14b6118eab89633985d4b36e688dccf1"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -3814,9 +3832,7 @@ dependencies = [
  "k8s-openapi",
  "kube-core",
  "pem",
- "rand 0.8.7",
  "rustls",
- "rustls-pemfile",
  "secrecy",
  "serde",
  "serde_json",
@@ -3832,9 +3848,9 @@ dependencies = [
 
 [[package]]
 name = "kube-core"
-version = "0.98.0"
+version = "0.99.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97aa830b288a178a90e784d1b0f1539f2d200d2188c7b4a3146d9dc983d596f3"
+checksum = "ff0d0793db58e70ca6d689489183816cb3aa481673e7433dc618cf7e8007c675"
 dependencies = [
  "chrono",
  "form_urlencoded",
@@ -3850,34 +3866,34 @@ dependencies = [
 
 [[package]]
 name = "kube-derive"
-version = "0.98.0"
+version = "0.99.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37745d8a4076b77e0b1952e94e358726866c8e14ec94baaca677d47dcdb98658"
+checksum = "c562f58dc9f7ca5feac8a6ee5850ca221edd6f04ce0dd2ee873202a88cd494c9"
 dependencies = [
  "darling 0.20.11",
  "proc-macro2",
  "quote",
+ "serde",
  "serde_json",
  "syn 2.0.119",
 ]
 
 [[package]]
 name = "kube-runtime"
-version = "0.98.0"
+version = "0.99.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a41af186a0fe80c71a13a13994abdc3ebff80859ca6a4b8a6079948328c135b"
+checksum = "88f34cfab9b4bd8633062e0e85edb81df23cb09f159f2e31c60b069ae826ffdc"
 dependencies = [
  "ahash",
  "async-broadcast",
  "async-stream",
  "async-trait",
- "backoff",
+ "backon",
  "educe",
  "futures",
  "hashbrown 0.15.5",
  "hostname",
  "json-patch",
- "jsonptr",
  "k8s-openapi",
  "kube-client",
  "parking_lot",
@@ -4375,7 +4391,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "chrono",
  "getrandom 0.2.17",
  "http 1.5.0",
@@ -5026,7 +5042,7 @@ dependencies = [
 
 [[package]]
 name = "proteccio_pkcs11_loader"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "cosmian_kms_base_hsm",
 ]
@@ -5102,7 +5118,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "thiserror 2.0.19",
  "tokio",
  "tracing",
@@ -5140,9 +5156,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5323,6 +5339,7 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "itoa",
+ "native-tls",
  "num-bigint",
  "percent-encoding",
  "pin-project-lite",
@@ -5330,6 +5347,7 @@ dependencies = [
  "sha1_smol",
  "socket2 0.6.5",
  "tokio",
+ "tokio-native-tls",
  "tokio-util",
  "url",
 ]
@@ -5555,14 +5573,14 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "rustls"
-version = "0.23.43"
+version = "0.23.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0283386ce02abc0151e1761d08802dfe86c173b0b494af5cbc086574e453da06"
+checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
 dependencies = [
  "aws-lc-rs",
  "log",
@@ -5587,15 +5605,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustls-pemfile"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dce314e5fee3f39953d46bb63bb8a46d40c2f8fb7cc5a3b6cab2bde9721d6e50"
-dependencies = [
- "rustls-pki-types",
-]
-
-[[package]]
 name = "rustls-pki-types"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5607,9 +5616,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.13"
+version = "0.103.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e"
+checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -6104,7 +6113,7 @@ checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 
 [[package]]
 name = "smartcardhsm_pkcs11_loader"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "libloading",
@@ -6133,11 +6142,39 @@ dependencies = [
 
 [[package]]
 name = "softhsm2_pkcs11_loader"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "libloading",
  "pkcs11-sys",
+]
+
+[[package]]
+name = "spiffe"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7d0a770f9a8571eb96f9c319b3b55dd7118e3047bd3629b894882506b9e8295"
+dependencies = [
+ "arc-swap",
+ "base64ct",
+ "fastrand",
+ "futures",
+ "hyper-util",
+ "pkcs8",
+ "prost 0.14.4",
+ "prost-types",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tonic 0.14.6",
+ "tonic-prost",
+ "tower 0.5.3",
+ "url",
+ "x509-parser 0.18.1",
+ "zeroize",
 ]
 
 [[package]]
@@ -6311,7 +6348,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6322,7 +6359,7 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test_kms_server"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "actix-server",
  "cosmian_kms_client",
@@ -6339,7 +6376,7 @@ dependencies = [
  "time",
  "tokio",
  "toml 0.9.12+spec-1.1.0",
- "x509-parser",
+ "x509-parser 0.17.0",
  "zeroize",
 ]
 
@@ -6630,6 +6667,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "toml"
+version = "1.1.6+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "920602543f0911ab71da12c50d59701da54c196d1a2bf5cb4b75667f137a406a"
+dependencies = [
+ "indexmap 2.14.0",
+ "serde_core",
+ "serde_spanned 1.1.1",
+ "toml_datetime 1.1.1+spec-1.1.0",
+ "toml_parser",
+ "toml_writer",
+ "winnow 1.0.4",
+]
+
+[[package]]
 name = "toml_datetime"
 version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6643,6 +6695,15 @@ name = "toml_datetime"
 version = "0.7.5+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92e1cfed4a3038bc5a127e35a2d360f145e1f4b971b551a2ba5fd7aedf7e1347"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
+name = "toml_datetime"
+version = "1.1.1+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3165f65f62e28e0115a00b2ebdd37eb6f3b641855f9d636d3cd4103767159ad7"
 dependencies = [
  "serde_core",
 ]
@@ -6721,6 +6782,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "bytes",
+ "h2 0.4.16",
  "http 1.5.0",
  "http-body",
  "http-body-util",
@@ -6729,6 +6791,7 @@ dependencies = [
  "hyper-util",
  "percent-encoding",
  "pin-project",
+ "socket2 0.6.5",
  "sync_wrapper",
  "tokio",
  "tokio-stream",
@@ -7093,7 +7156,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "utimaco_pkcs11_loader"
-version = "5.27.1"
+version = "5.28.0"
 dependencies = [
  "cosmian_kms_base_hsm",
 ]
@@ -7105,6 +7168,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b913a3b5fe84142e269d63cc62b64319ccaf89b748fc31fe025177f767a756c4"
 dependencies = [
  "getrandom 0.2.17",
+ "serde",
 ]
 
 [[package]]
@@ -7360,7 +7424,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7612,6 +7676,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 
 [[package]]
+name = "winresource"
+version = "0.1.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0986a8b1d586b7d3e4fe3d9ea39fb451ae22869dcea4aa109d287a374d866087"
+dependencies = [
+ "toml 1.1.6+spec-1.1.0",
+ "version_check",
+]
+
+[[package]]
 name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7647,6 +7721,23 @@ dependencies = [
  "nom",
  "oid-registry",
  "ring",
+ "rusticata-macros",
+ "thiserror 2.0.19",
+ "time",
+]
+
+[[package]]
+name = "x509-parser"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d43b0f71ce057da06bc0851b23ee24f3f86190b07203dd8f567d0b706a185202"
+dependencies = [
+ "asn1-rs",
+ "data-encoding",
+ "der-parser",
+ "lazy_static",
+ "nom",
+ "oid-registry",
  "rusticata-macros",
  "thiserror 2.0.19",
  "time",

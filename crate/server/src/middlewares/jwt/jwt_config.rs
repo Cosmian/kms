@@ -11,7 +11,7 @@ use cosmian_logger::trace;
 use jsonwebtoken::Algorithm;
 #[cfg(any(test, feature = "insecure"))]
 use jsonwebtoken::dangerous;
-#[cfg(all(not(test), not(feature = "insecure")))]
+#[cfg(not(feature = "insecure"))]
 use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use serde::{
     Deserialize, Deserializer, Serialize,
@@ -43,7 +43,7 @@ pub(crate) const ALLOWED_JWT_ALGORITHMS: &[Algorithm] = &[
 ///
 /// Returns `Err(KmsError::Unauthorized)` for `HS*`, `none`, or any other
 /// symmetric / unknown algorithm to prevent algorithm-confusion attacks.
-#[cfg(all(not(test), not(feature = "insecure")))]
+#[cfg(not(feature = "insecure"))]
 fn check_jwt_algorithm(alg: Algorithm) -> KResult<()> {
     if ALLOWED_JWT_ALGORITHMS.contains(&alg) {
         Ok(())
@@ -150,6 +150,11 @@ pub struct JwtConfig {
     pub jwt_issuer_uri: String,
     pub jwt_audience: Option<Vec<String>>,
     pub jwks: Arc<JwksManager>,
+    /// When `true`, a token from this issuer that has no `email` claim is authenticated
+    /// using its `sub` claim, provided `sub` starts with `spiffe://` (SPIFFE JWT-SVID).
+    /// Defaults to `false` so existing OIDC/IdP issuers keep requiring `email`. Only set
+    /// from the operator-controlled `--jwt-svid-auth` flag; Google CSE issuers never set it.
+    pub accept_spiffe_subject: bool,
 }
 
 impl JwtConfig {
@@ -198,64 +203,79 @@ impl JwtConfig {
         // In production, fully validate: issuer, expiry, audience, and signature via JWKS.
         #[cfg(all(not(test), not(feature = "insecure")))]
         {
-            let header = decode_header(token).map_err(|e| {
-                KmsError::Unauthorized(format!("Failed to decode token header: {e}"))
-            })?;
-
-            // Reject symmetric / unknown algorithms before touching the JWKS key material.
-            check_jwt_algorithm(header.alg)?;
-
-            let mut validation = Validation::new(header.alg);
-            // Explicitly pin the allowed algorithms to the single pre-validated algorithm.
-            // This prevents jsonwebtoken from accepting any algorithm not in the allowlist.
-            validation.algorithms = vec![header.alg];
-            validation.set_issuer(&[&self.jwt_issuer_uri]);
-            validation.validate_exp = true;
-            validation.required_spec_claims.clear();
-            if validate_subject {
-                // Require both subject and expiration in production
-                validation.set_required_spec_claims(&["sub", "exp"]);
-            } else {
-                // At minimum, always require expiration
-                validation.set_required_spec_claims(&["exp"]);
-            }
-            if let Some(jwt_audience) = &self.jwt_audience {
-                validation.set_audience(jwt_audience.as_slice());
-            } else {
-                // jsonwebtoken 10.x rejects tokens that carry an `aud` claim when no
-                // expected audience is configured in the Validation struct (InvalidAudience).
-                // When the server does not restrict by audience, skip audience validation.
-                validation.validate_aud = false;
-            }
-
-            // OIDC/IdP tokens are required to carry a `kid` so we can look up the exact
-            // signing key in the JWKS.  Auth-verifier tokens intentionally omit `kid`
-            // (they are validated by the dedicated `AuthVerifier` middleware which tries
-            // every key in the JWKS).  Return `Unauthorized` here so the middleware chain
-            // falls through to the next authenticator rather than logging a noisy error.
-            let Some(kid) = header.kid else {
-                return Err(KmsError::Unauthorized(
-                    "No 'kid' claim present in token — not an OIDC token".to_owned(),
-                ));
-            };
-
-            let jwk = self.jwks.find(&kid)?.ok_or_else(|| {
-                KmsError::Unauthorized(format!(
-                    "Specified key not found in set. Looking for kid `{kid}`"
-                ))
-            })?;
-
-            trace!("JWK has been found:\n{jwk:?}");
-
-            let decoding_key = DecodingKey::from_jwk(&jwk).map_err(|e| {
-                KmsError::Unauthorized(format!("Failed to build decoding key from JWK: {e}"))
-            })?;
-
-            let token_data = decode::<UserClaim>(token, &decoding_key, &validation)
-                .map_err(|e| KmsError::Unauthorized(format!("Cannot validate token: {e}")))?;
-
-            Ok(token_data.claims)
+            self.validate_signed_token(token, validate_subject)
         }
+    }
+
+    /// Fully validate a JWT: algorithm allow-list, `kid` lookup in the JWKS, signature,
+    /// issuer, expiry and (when configured) audience.
+    ///
+    /// This is the production validation path. It is compiled in every build except
+    /// `insecure` so that unit tests can exercise it directly even though
+    /// [`Self::validate_authentication_token`] short-circuits to an unverified decode
+    /// under `cfg(test)`.
+    #[cfg(not(feature = "insecure"))]
+    pub(crate) fn validate_signed_token(
+        &self,
+        token: &str,
+        validate_subject: bool,
+    ) -> KResult<UserClaim> {
+        let header = decode_header(token)
+            .map_err(|e| KmsError::Unauthorized(format!("Failed to decode token header: {e}")))?;
+
+        // Reject symmetric / unknown algorithms before touching the JWKS key material.
+        check_jwt_algorithm(header.alg)?;
+
+        let mut validation = Validation::new(header.alg);
+        // Explicitly pin the allowed algorithms to the single pre-validated algorithm.
+        // This prevents jsonwebtoken from accepting any algorithm not in the allowlist.
+        validation.algorithms = vec![header.alg];
+        validation.set_issuer(&[&self.jwt_issuer_uri]);
+        validation.validate_exp = true;
+        validation.required_spec_claims.clear();
+        if validate_subject {
+            // Require both subject and expiration in production
+            validation.set_required_spec_claims(&["sub", "exp"]);
+        } else {
+            // At minimum, always require expiration
+            validation.set_required_spec_claims(&["exp"]);
+        }
+        if let Some(jwt_audience) = &self.jwt_audience {
+            validation.set_audience(jwt_audience.as_slice());
+        } else {
+            // jsonwebtoken 10.x rejects tokens that carry an `aud` claim when no
+            // expected audience is configured in the Validation struct (InvalidAudience).
+            // When the server does not restrict by audience, skip audience validation.
+            validation.validate_aud = false;
+        }
+
+        // OIDC/IdP tokens are required to carry a `kid` so we can look up the exact
+        // signing key in the JWKS.  Auth-verifier tokens intentionally omit `kid`
+        // (they are validated by the dedicated `AuthVerifier` middleware which tries
+        // every key in the JWKS).  Return `Unauthorized` here so the middleware chain
+        // falls through to the next authenticator rather than logging a noisy error.
+        let Some(kid) = header.kid else {
+            return Err(KmsError::Unauthorized(
+                "No 'kid' claim present in token — not an OIDC token".to_owned(),
+            ));
+        };
+
+        let jwk = self.jwks.find(&kid)?.ok_or_else(|| {
+            KmsError::Unauthorized(format!(
+                "Specified key not found in set. Looking for kid `{kid}`"
+            ))
+        })?;
+
+        trace!("JWK has been found:\n{jwk:?}");
+
+        let decoding_key = DecodingKey::from_jwk(&jwk).map_err(|e| {
+            KmsError::Unauthorized(format!("Failed to build decoding key from JWK: {e}"))
+        })?;
+
+        let token_data = decode::<UserClaim>(token, &decoding_key, &validation)
+            .map_err(|e| KmsError::Unauthorized(format!("Cannot validate token: {e}")))?;
+
+        Ok(token_data.claims)
     }
 }
 
@@ -339,6 +359,7 @@ mod tests {
 
     /// Error message quality: rejection must mention "not permitted".
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn rejection_error_message_quality() {
         let result = check_alg(Algorithm::HS256);
         assert!(result.is_err());

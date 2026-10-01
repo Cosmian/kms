@@ -4,7 +4,12 @@
 //!   `POST /root/sign-intermediate` — sign a CSR with the configured CA key
 //!
 //! The CA private key is located in the KMS by the tag `vault_pki_ca_key_label`
-//! configured in `ServerParams`.
+//! configured in `ServerParams`, among keys **owned** by `default_username`.
+//!
+//! Authorization: a valid Vault token only proves who the caller is. Signing an
+//! intermediate CA is a privileged operation, so the caller must also hold the
+//! KMIP `Certify` permission on the CA private key (granted by its owner, e.g.
+//! `ckms access-rights grant spire:<entity> certify --object-uid <ca-key-uid>`).
 //!
 //! Request:
 //!   `{ "csr": "<PEM>", "uri_sans": ["spiffe://..."], "ttl": "8760h" }`
@@ -26,6 +31,7 @@ use actix_web::{
 use cosmian_kms_interfaces::UserId;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
+        KmipOperation,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::Certify,
@@ -38,7 +44,7 @@ use openssl::x509::X509;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    core::KMS,
+    core::{KMS, retrieve_object_utils::user_has_permission},
     routes::spire::error::{SpireApiError, SpireResult},
 };
 
@@ -178,12 +184,20 @@ async fn find_ca_private_key_uid(
         .set_tags(kms.vendor_id(), [label])
         .map_err(|e| SpireApiError::InternalError(format!("tag filter error: {e}")))?;
 
+    // `user_must_be_owner = true`: a key merely shared with `default_username`
+    // (or with `*`) by another user must never be picked as the CA key.
     let results = kms
         .database
-        .find(Some(&filter), None, user, false, kms.vendor_id())
+        .find(Some(&filter), None, user, true, kms.vendor_id())
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
+    if results.len() > 1 {
+        return Err(SpireApiError::InternalError(format!(
+            "{} PKI CA private keys carry the tag '{label}'; exactly one is required",
+            results.len()
+        )));
+    }
     results
         .into_iter()
         .next()
@@ -246,6 +260,16 @@ pub(crate) async fn sign_intermediate(
     // Find the CA private key
     let ca_private_key_uid = find_ca_private_key_uid(&kms, ca_label, &ca_user).await?;
     debug!("vault pki: using CA private key uid={ca_private_key_uid}");
+
+    // Authorization: the caller must hold `Certify` on the CA private key. Without
+    // this, any token the auth-verifier accepts (e.g. a transit-only tenant) could
+    // obtain an intermediate CA certificate chaining to the server's PKI root.
+    authorize_ca_use(&kms, &ca_private_key_uid, &user).await?;
+
+    // The server sets basicConstraints (CA:TRUE, pathlen:0) itself; a CSR-supplied
+    // basicConstraints would be copied into the certificate as a duplicate extension
+    // that some relying parties resolve in the requester's favour (no pathlen).
+    reject_csr_basic_constraints(&body.csr)?;
 
     // Build the Certify request
     let csr_pem_bytes = body.csr.as_bytes().to_vec();
@@ -343,6 +367,48 @@ pub(crate) async fn sign_intermediate(
     }))
 }
 
+/// Require the caller to hold the KMIP `Certify` permission on the CA private key.
+async fn authorize_ca_use(kms: &KMS, ca_sk_uid: &str, user: &UserId) -> SpireResult<()> {
+    let ca_sk_owm = kms
+        .database
+        .retrieve_object(ca_sk_uid)
+        .await
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?
+        .ok_or_else(|| SpireApiError::InternalError("CA private key not found".to_owned()))?;
+    if user_has_permission(user, Some(&ca_sk_owm), &KmipOperation::Certify, kms)
+        .await
+        .map_err(SpireApiError::from)?
+    {
+        return Ok(());
+    }
+    Err(SpireApiError::Forbidden(format!(
+        "identity '{user}' is not authorized to sign intermediate CAs: grant it the \
+         `certify` access right on the PKI CA private key"
+    )))
+}
+
+/// Reject a CSR that requests its own `basicConstraints` extension.
+fn reject_csr_basic_constraints(csr_pem: &str) -> SpireResult<()> {
+    use x509_parser::{
+        pem::parse_x509_pem,
+        prelude::{FromDer, ParsedExtension, X509CertificationRequest},
+    };
+
+    let (_, pem) = parse_x509_pem(csr_pem.as_bytes())
+        .map_err(|e| SpireApiError::BadRequest(format!("invalid CSR PEM: {e}")))?;
+    let (_, csr) = X509CertificationRequest::from_der(&pem.contents)
+        .map_err(|e| SpireApiError::BadRequest(format!("invalid CSR: {e}")))?;
+    let has_basic_constraints = csr.requested_extensions().is_some_and(|mut exts| {
+        exts.any(|ext| matches!(ext, ParsedExtension::BasicConstraints(_)))
+    });
+    if has_basic_constraints {
+        return Err(SpireApiError::BadRequest(
+            "CSR must not request basicConstraints; the server sets CA:TRUE, pathlen:0".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 /// Error for a missing CA certificate in the PKI key chain.
 fn no_ca_cert_error() -> SpireApiError {
     SpireApiError::InternalError(
@@ -404,7 +470,56 @@ async fn get_issuing_ca_pem(kms: &KMS, ca_sk_uid: &str) -> Result<String, SpireA
 mod tests {
     use serde::Deserialize;
 
-    use super::{deserialize_string_or_vec, parse_ttl_days};
+    use super::{deserialize_string_or_vec, parse_ttl_days, reject_csr_basic_constraints};
+
+    fn csr_pem(with_basic_constraints: bool) -> String {
+        use openssl::{
+            ec::{EcGroup, EcKey},
+            nid::Nid,
+            pkey::PKey,
+            stack::Stack,
+            x509::{
+                X509NameBuilder, X509ReqBuilder,
+                extension::{BasicConstraints, SubjectAlternativeName},
+            },
+        };
+        let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
+        let key = PKey::from_ec_key(EcKey::generate(&group).unwrap()).unwrap();
+        let mut name = X509NameBuilder::new().unwrap();
+        name.append_entry_by_text("CN", "test").unwrap();
+        let mut builder = X509ReqBuilder::new().unwrap();
+        builder.set_subject_name(&name.build()).unwrap();
+        builder.set_pubkey(&key).unwrap();
+        let mut extensions = Stack::new().unwrap();
+        let ctx = builder.x509v3_context(None);
+        extensions
+            .push(
+                SubjectAlternativeName::new()
+                    .uri("spiffe://example.org/x")
+                    .build(&ctx)
+                    .unwrap(),
+            )
+            .unwrap();
+        if with_basic_constraints {
+            extensions
+                .push(BasicConstraints::new().critical().ca().build().unwrap())
+                .unwrap();
+        }
+        builder.add_extensions(&extensions).unwrap();
+        builder
+            .sign(&key, openssl::hash::MessageDigest::sha256())
+            .unwrap();
+        String::from_utf8(builder.build().to_pem().unwrap()).unwrap()
+    }
+
+    /// A CSR requesting its own basicConstraints (e.g. CA:TRUE without pathlen)
+    /// must be rejected; a plain SPIFFE CSR is accepted.
+    #[test]
+    fn csr_basic_constraints_are_rejected() {
+        reject_csr_basic_constraints(&csr_pem(false)).unwrap();
+        assert!(reject_csr_basic_constraints(&csr_pem(true)).is_err());
+        assert!(reject_csr_basic_constraints("not a csr").is_err());
+    }
 
     #[test]
     fn parse_ttl_days_handles_all_units() {

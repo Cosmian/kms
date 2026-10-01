@@ -47,6 +47,38 @@ impl AtomicOperation {
     }
 }
 
+/// Controls how many rows a listing query (`find_with_options` /
+/// `find_all_with_options`) returns, so that stores able to do so filter and
+/// cap the result in the database rather than after fetching every match.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FindOptions {
+    /// Maximum number of rows returned by one store. `None` means unbounded.
+    pub limit: Option<usize>,
+    /// When `true` and no explicit `state` is requested, exclude `Destroyed`
+    /// and `Destroyed_Compromised` objects.
+    pub exclude_destroyed: bool,
+}
+
+impl FindOptions {
+    /// Apply these options to rows already fetched, for stores that cannot push
+    /// them into their own query. `requested_state` is the explicit state filter
+    /// of the search: when set, `exclude_destroyed` does not apply.
+    pub fn apply(
+        &self,
+        requested_state: Option<State>,
+        rows: &mut Vec<(String, State, Attributes)>,
+    ) {
+        if self.exclude_destroyed && requested_state.is_none() {
+            rows.retain(|(_, state, _)| {
+                !matches!(state, State::Destroyed | State::Destroyed_Compromised)
+            });
+        }
+        if let Some(limit) = self.limit {
+            rows.truncate(limit);
+        }
+    }
+}
+
 /// Trait that must implement all object stores (DBs, HSMs, etc.) that store objects
 #[async_trait(?Send)]
 pub trait ObjectsStore {
@@ -69,6 +101,16 @@ pub trait ObjectsStore {
 
     /// Retrieve the tags of the object with the given `uid`
     async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>>;
+
+    /// Retrieve only the state and attributes of an object for lightweight cache validation.
+    ///
+    /// Default implementation falls back to `retrieve(uid)` and extracts `(state, attributes)`.
+    async fn retrieve_state(&self, uid: &str) -> InterfaceResult<Option<(State, Attributes)>> {
+        Ok(self
+            .retrieve(uid)
+            .await?
+            .map(|owm| (owm.state(), owm.attributes().clone())))
+    }
 
     /// Update an object in the database.
     ///
@@ -114,6 +156,33 @@ pub trait ObjectsStore {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
+
+    /// Same as [`Self::find`], restricted by `options`.
+    ///
+    /// The default implementation applies `options` after [`Self::find`] has
+    /// returned every match; SQL stores override it to filter and limit in the
+    /// query itself.
+    async fn find_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        user: &UserId,
+        user_must_be_owner: bool,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let mut rows = self
+            .find(
+                researched_attributes,
+                state,
+                user,
+                user_must_be_owner,
+                vendor_id,
+            )
+            .await?;
+        options.apply(state, &mut rows);
+        Ok(rows)
+    }
 
     /// Return (uid, state, attributes) for every object whose
     /// `key_wrapping_data.encryption_key_information.unique_identifier` equals
@@ -251,6 +320,25 @@ pub trait ObjectsStore {
         state: Option<State>,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
+
+    /// Same as [`Self::find_all`], restricted by `options`.
+    ///
+    /// The default implementation applies `options` after [`Self::find_all`]
+    /// has returned every match; SQL stores override it to filter and limit in
+    /// the query itself.
+    async fn find_all_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let mut rows = self
+            .find_all(researched_attributes, state, vendor_id)
+            .await?;
+        options.apply(state, &mut rows);
+        Ok(rows)
+    }
 
     /// Find a certificate by its X.509 serial number and issuer UID.
     ///

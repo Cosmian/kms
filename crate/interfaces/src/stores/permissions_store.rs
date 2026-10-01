@@ -13,6 +13,10 @@ pub trait PermissionsStore {
     /// (i.e. the objects for which `user` is not the owner)
     /// The result is a list of tuples (uid, owner, state, operations, `is_wrapped`)
     /// where `operations` is a list of operations that `user` can perform on the object
+    ///
+    /// Operations granted to the wildcard user `*` are included as well
+    /// (unless `user` itself is the wildcard), since they have effectively
+    /// been "obtained" by every user.
     async fn list_user_operations_granted(
         &self,
         user: &UserId,

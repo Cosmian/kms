@@ -1,5 +1,5 @@
 ---
-title: "ADR-0002: KMIP-Compliant Key Auto-Rotation with Keyset Chain Design"
+title: "ADR-2026-06-30: KMIP-Compliant Key Auto-Rotation with Keyset Chain Design"
 status: "Accepted"
 date: "2026-06-21"
 updated: "2026-06-30"
@@ -9,7 +9,7 @@ supersedes: ""
 superseded_by: ""
 ---
 
-# ADR-0002: KMIP-Compliant Key Auto-Rotation with Keyset Chain Design
+# ADR-2026-06-30: KMIP-Compliant Key Auto-Rotation with Keyset Chain Design
 
 ## Status
 
@@ -268,8 +268,7 @@ the minimum allowed interval is 60 s.
 
 ## References
 
-- **REF-001**: ADR-0001 — Unwrapped-cache configurable max size
-  (`documentation/docs/adr/0001-unwrapped-cache-configurable-max-size.md`)
+- **REF-001**: [ADR-2026-06-26: Configurable UnwrappedCache max size](2026-06-26-unwrapped-cache-configurable-max-size.md)
 - **REF-002**: KMIP 2.1 specification §6.1.46 (Re-Key), §6.1.47 (Re-Key Key Pair), §4.8
   (ReCertify), §3.31 (Key state lifecycle), §3.1 (Unique Identifier)
 - **REF-003**: Key auto-rotation design document

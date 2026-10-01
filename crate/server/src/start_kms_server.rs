@@ -59,8 +59,8 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache, UserId,
-        api_token_middleware, ensure_auth_middleware, extract_peer_certificate,
+        AuditMiddleware, AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache,
+        UserId, api_token_middleware, ensure_auth_middleware, extract_peer_certificate,
         jwt_auth_middleware, otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
         vault_token_optional_middleware,
     },
@@ -494,6 +494,9 @@ async fn import_cse_migration_key(
 ///   instead of [`HttpServer::bind()`], which eliminates the TOCTOU race that occurs between
 ///   probing a free port and re-binding it later. Tests pass a listener from
 ///   `allocate_dynamic_port`; production callers pass `None`.
+/// * `pre_bound_socket_listener` - An optional pre-bound TCP listener for the KMIP socket
+///   server (only meaningful when `socket_server_start` is enabled). Same TOCTOU rationale
+///   as `pre_bound_http_listener`; production callers pass `None`.
 ///
 /// # Errors
 ///
@@ -502,6 +505,7 @@ pub async fn start_kms_server(
     server_params: Arc<ServerParams>,
     kms_server_handle_tx: Option<mpsc::Sender<ServerHandle>>,
     pre_bound_http_listener: Option<std::net::TcpListener>,
+    pre_bound_socket_listener: Option<std::net::TcpListener>,
 ) -> KResult<()> {
     // OpenSSL is loaded now, so that tests can use the correct provider(s)
 
@@ -555,7 +559,8 @@ pub async fn start_kms_server(
     let (ss_command_tx, _socket_server_handle) = if server_params.start_socket_server {
         let (tx, rx) = mpsc::channel::<KResult<()>>();
         // Start the socket server
-        let socket_server_handle = start_socket_server(kms_server.clone(), rx)?;
+        let socket_server_handle =
+            start_socket_server(kms_server.clone(), rx, pre_bound_socket_listener)?;
         (Some(tx), Some(socket_server_handle))
     } else {
         (None, None)
@@ -594,6 +599,9 @@ pub async fn start_kms_server(
 ///
 /// # Arguments
 /// * `server_params` - An instance of `ServerParams` containing the server's settings.
+/// * `pre_bound_socket_listener` - An optional pre-bound TCP listener for the socket server.
+///   When provided, avoids the TOCTOU race between probing a free port and re-binding it
+///   later. Tests pass a listener allocated up front; production callers pass `None`.
 ///
 /// # Errors
 /// This function returns an error if:
@@ -605,6 +613,7 @@ pub async fn start_kms_server(
 fn start_socket_server(
     kms_server: Arc<KMS>,
     command_receiver: mpsc::Receiver<KResult<()>>,
+    pre_bound_socket_listener: Option<std::net::TcpListener>,
 ) -> KResult<JoinHandle<()>> {
     // Start the socket server
     let socket_server =
@@ -622,6 +631,7 @@ fn start_socket_server(
             })
         },
         command_receiver,
+        pre_bound_socket_listener,
     )?;
     Ok(socket_server_handle)
 }
@@ -1012,6 +1022,7 @@ pub async fn prepare_kms_server(
                 jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
                 jwks: jwks_manager.clone(),
                 jwt_audience: idp_config.jwt_audience.clone(),
+                accept_spiffe_subject: kms_server.params.jwt_svid_auth_enabled,
             })
             .collect::<Vec<_>>();
 
@@ -1625,14 +1636,28 @@ pub async fn prepare_kms_server(
             // Ordered list of UI login methods, highest priority first. The Web UI
             // renders the first entry as the primary login action and the rest as
             // secondary actions (a button when a single alternative exists, a
-            // dropdown when several do). Priority is JWT > AUTH_VERIFIER > CERT:
+            // dropdown when several do). Priority is JWT > SPIFFE > AUTH_VERIFIER > CERT:
             // the interactive, per-user methods come before the ambient client
             // certificate probe. AUTH_VERIFIER is only offered when its UI login is
             // enabled. The singular `auth_method` served by `get_auth_method` is
             // derived as the first entry for backward compatibility.
+            //
+            // SPIFFE is not an interactive login: the browser session is established by a
+            // gateway that posts a JWT-SVID to `/ui/login_svid`. It is advertised so the UI
+            // resolves the identity through `/ui/whoami` instead of reporting that
+            // authentication is disabled.
+            let use_spiffe_ui_auth = jwt_configurations
+                .iter()
+                .any(|config| config.accept_spiffe_subject);
             let mut auth_methods: Vec<String> = Vec::new();
-            if use_jwt_auth {
+            // Without a discovered UI OIDC provider the "JWT" login redirect cannot work; on a
+            // SPIFFE deployment (bearer JWT-SVIDs, no UI OIDC) it would only be a broken
+            // button, so it is offered only when OIDC is discovered or SPIFFE is not in use.
+            if use_jwt_auth && (oidc_runtime_config.discovered.is_some() || !use_spiffe_ui_auth) {
                 auth_methods.push("JWT".to_owned());
+            }
+            if use_spiffe_ui_auth {
+                auth_methods.push("SPIFFE".to_owned());
             }
             if use_auth_verifier
                 && kms_server_for_http
@@ -1689,6 +1714,7 @@ pub async fn prepare_kms_server(
             let mut auth_routes = web::scope("/ui")
                 .app_data(Data::new(oidc_runtime_config))
                 .app_data(Data::new(auth_verifier_runtime_config))
+                .app_data(Data::new(jwt_configurations.clone()))
                 .app_data(Data::new(kms_public_url.clone()))
                 .app_data(Data::new(ui_index_folder.clone()))
                 .app_data(Data::new(auth_methods))
@@ -1843,6 +1869,13 @@ pub async fn prepare_kms_server(
                     vault_http_client.clone(),
                     spire_default_username.clone(),
                 ),
+            ))
+            // Tamper-evident audit logging: wraps every auth method above so both
+            // successful and failed authentication attempts are recorded (LIFO wrap order).
+            .wrap(AuditMiddleware::new(
+                kms_server_for_http.audit_store.clone(),
+                kms_server_for_http.params.audit_trusted_proxy_cidrs.clone(),
+                kms_server_for_http.params.audit_failure_mode.clone(),
             ))
             // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
             // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via

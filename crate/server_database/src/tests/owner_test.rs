@@ -104,11 +104,64 @@ pub(super) async fn owner<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbRes
     assert_eq!(
         objects[&uid],
         (
-            String::from(owner),
+            String::from(owner.clone()),
             State::PreActive,
             vec![KmipOperation::Get].into_iter().collect(),
         )
     );
+
+    // Upsert by a non-owner must be rejected with Unauthorized and preserve object & tags.
+    let initial_tags: HashSet<String> = HashSet::from(["tag1".to_owned(), "tag2".to_owned()]);
+    let uid_victim = Uuid::new_v4().to_string();
+    db.create(
+        Some(uid_victim.clone()),
+        &owner,
+        &symmetric_key,
+        symmetric_key.attributes()?,
+        &initial_tags,
+    )
+    .await?;
+
+    let mut attacker_key_bytes = vec![1; 32];
+    rng.fill_bytes(&mut attacker_key_bytes);
+    let attacker_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &attacker_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
+    )?;
+    let attacker_tags = HashSet::from(["attacker_tag".to_owned()]);
+    let upsert_op = cosmian_kms_interfaces::AtomicOperation::Upsert((
+        uid_victim.clone(),
+        attacker_key,
+        symmetric_key.attributes()?.clone(),
+        Some(attacker_tags),
+        State::Active,
+    ));
+
+    let upsert_err = db
+        .atomic(&user_id_1, &[upsert_op])
+        .await
+        .expect_err("non-owner atomic Upsert must fail");
+    assert!(
+        matches!(
+            upsert_err,
+            cosmian_kms_interfaces::InterfaceError::Unauthorized(_)
+        ),
+        "expected InterfaceError::Unauthorized, got: {upsert_err:?}"
+    );
+
+    // Victim object, owner, and tags must remain untouched.
+    let victim_obj = db
+        .retrieve(&uid_victim)
+        .await?
+        .ok_or_else(|| db_error!("Victim object missing"))?;
+    assert_eq!(&symmetric_key, victim_obj.object());
+    assert_eq!(owner.as_str(), victim_obj.owner());
+    let tags = db.retrieve_tags(&uid_victim).await?;
+    assert_eq!(initial_tags, tags);
 
     Ok(())
 }

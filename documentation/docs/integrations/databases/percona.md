@@ -795,13 +795,13 @@ postgresql:
 
 ### References
 
-- [Percona pg_tde Documentation](https://percona.github.io/pg_tde/main/)
+- [Percona pg_tde Documentation](https://docs.percona.com/pg-tde/)
 - [Eviden KMS KMIP Support](../../index.md)
 - [Percona pg_tde Architecture](https://docs.percona.com/pg-tde/architecture/architecture.html)
 - [Percona WAL Encryption Blog (2025-09-01)](https://percona.community/blog/2025/09/01/pg_tde-can-now-encrypt-your-wal-on-prod/)
 - [Percona pg_tde Limitations](https://docs.percona.com/pg-tde/index/tde-limitations.html#currently-unsupported-wal-tools)
 
-[1]: https://percona.github.io/pg_tde/main/
+[1]: https://docs.percona.com/pg-tde/
 [2]: ../../index.md
 [3]: https://docs.percona.com/pg-tde/architecture/architecture.html
 [4]: https://percona.community/blog/2025/09/01/pg_tde-can-now-encrypt-your-wal-on-prod/

@@ -116,8 +116,10 @@ pub(crate) async fn create_key_pair(
     // The server SHALL create the AlwaysSensitive attribute (KMIP 2.1 §4.3):
     // True iff the private key is created Sensitive.
     private_key_attributes.initialize_always_sensitive();
+    private_key_attributes.initialize_never_extractable();
     if let Ok(object_attributes) = private_key.attributes_mut() {
         object_attributes.always_sensitive = private_key_attributes.always_sensitive;
+        object_attributes.never_extractable = private_key_attributes.never_extractable;
     }
     // Initialise keyset metadata for gen-0 on SQL key pairs only.
     if sk_rotate_name.is_some() && !ObjectHandle::from(&sk_uid).is_hsm() {

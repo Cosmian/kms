@@ -220,6 +220,7 @@ async fn run() -> KResult<()> {
         server_params,
         None,
         None,
+        None,
     ))
     .await?;
 
@@ -234,7 +235,7 @@ mod tests {
 
     use cosmian_kms_server::{
         config::{
-            AuthVerifierConfig, AzureEkmConfig, ClapConfig, CrlConfig, GoogleCseConfig, HttpConfig,
+            AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig,
             IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig, LoggingConfig, MainDBConfig,
             OidcConfig, ProxyConfig, RolesConfig, SocketServerConfig, TlsConfig, UiConfig,
             WorkspaceConfig,
@@ -295,6 +296,9 @@ mod tests {
                     "jwt issuer uri 1,jwks uri 1,jwt audience 1".to_owned(),
                     "jwt issuer uri 2,jwks uri 2,jwt audience 2".to_owned(),
                 ]),
+                // Set to true only when the provider(s) above are SPIFFE-aware (e.g. a
+                // SPIRE OIDC Discovery Provider) issuing JWT-SVIDs with no `email` claim.
+                jwt_svid_auth: false,
             },
             auth_verifier: AuthVerifierConfig::default(),
             ui_config: UiConfig {
@@ -373,12 +377,7 @@ mod tests {
             privileged_users: None,
             roles: RolesConfig::default(),
             print_default_config: false,
-            secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
-            auto_rotation_check_interval_secs: 0,
-            keyset_warn_depth: 5,
-            vault: cosmian_kms_server::config::VaultConfig::default(),
-            crl: CrlConfig::default(),
-            ocsp: cosmian_kms_server::config::OcspConfig::default(),
+            ..ClapConfig::default()
         };
 
         let toml_string = r#"
@@ -395,6 +394,7 @@ hsm_instances = []
 key_encryption_key = "key wrapping key"
 kms_public_url = "[kms_public_url]"
 auto_rotation_check_interval_secs = 0
+metrics_count_interval_secs = 30
 keyset_warn_depth = 5
 
 [db]
@@ -431,6 +431,7 @@ proxy_exclusion_list = ["domain1", "domain2"]
 
 [idp_auth]
 jwt_auth_provider = ["jwt issuer uri 1,jwks uri 1,jwt audience 1", "jwt issuer uri 2,jwks uri 2,jwt audience 2"]
+jwt_svid_auth = false
 
 [auth_verifier]
 auth_verifier_accept_invalid_certs = false
@@ -493,6 +494,14 @@ vault_transit_mount = ""
 vault_pki_mount = ""
 vault_pki_ca_key_label = ""
 vault_token_cache_ttl_secs = 0
+
+[audit]
+enabled = false
+channel_capacity = 0
+trusted_proxy_cidrs = []
+failure_mode = "continue"
+
+[audit.file]
 
 [crl]
 crl_default_validity_days = 7

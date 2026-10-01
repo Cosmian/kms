@@ -18,7 +18,11 @@
 //!
 //! Time-to-idle eviction and LRU capacity limits are delegated entirely to moka.
 
-use std::{num::NonZeroUsize, sync::Arc, time::Duration};
+use std::{
+    num::NonZeroUsize,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use cosmian_kmip::kmip_2_1::kmip_objects::Object;
 use cosmian_kms_interfaces::ObjectWithMetadata;
@@ -26,17 +30,20 @@ use moka::future::Cache;
 
 use crate::{core::fingerprinter::Fingerprinter, error::DbResult};
 
-/// An entry in the object cache: the object together with the fingerprint of
-/// its key material at insertion time.
+/// Default bounded revalidation interval for cross-node consistency checks on cache hits.
 ///
-/// The fingerprint is recomputed at [`ObjectCache::validate_cache`] time and
-/// compared against the caller-supplied current object to detect stale entries.
+/// Cache hits within this interval skip the DB query entirely, preserving hot-path throughput.
+/// When an entry is older than this interval, its state is checked against the DB.
+pub(crate) const DEFAULT_REVALIDATION_INTERVAL: Duration = Duration::from_secs(2);
+
+/// An entry in the object cache: the object together with the fingerprint of
+/// its key material at insertion time and the timestamp of last DB state validation.
 #[derive(Clone)]
 struct CachedEntry {
     owm: Arc<ObjectWithMetadata>,
     fingerprint: u64,
+    last_validated: Instant,
 }
-
 /// Concurrent cache for recently retrieved `ObjectWithMetadata`.
 ///
 /// Backed by [`moka::future::Cache`] — [`get`][ObjectCache::get] is lock-free,
@@ -78,8 +85,34 @@ impl ObjectCache {
     /// callers, even when other tasks are inserting or invalidating entries.
     /// Returns a cheap `Arc` clone — callers that need to mutate (e.g. unwrap
     /// key material) can call `Arc::unwrap_or_clone()` at the point of mutation.
+    /// Look up a cached object by UID, returning the cached entry along with whether
+    /// it needs revalidation based on `revalidation_interval`.
+    ///
+    /// Returns `Some((owm, needs_revalidation))` on cache hit, `None` on miss.
+    pub async fn get_with_validation_status(
+        &self,
+        uid: &str,
+        revalidation_interval: Duration,
+    ) -> Option<(Arc<ObjectWithMetadata>, bool)> {
+        self.inner.get(uid).await.map(|e| {
+            let needs_revalidation = e.last_validated.elapsed() >= revalidation_interval;
+            (e.owm, needs_revalidation)
+        })
+    }
+
+    /// Look up a cached object by UID.
+    ///
+    /// Returns `Some(owm)` on cache hit, `None` on miss.
     pub async fn get(&self, uid: &str) -> Option<Arc<ObjectWithMetadata>> {
         self.inner.get(uid).await.map(|e| e.owm)
+    }
+
+    /// Mark a cached entry as validated against the DB, updating its `last_validated` timestamp.
+    pub async fn touch_validated(&self, uid: &str) {
+        if let Some(mut entry) = self.inner.get(uid).await {
+            entry.last_validated = Instant::now();
+            self.inner.insert(uid.to_owned(), entry).await;
+        }
     }
 
     /// Validate the cache entry for `uid` against the current object from the DB.
@@ -108,6 +141,7 @@ impl ObjectCache {
                 CachedEntry {
                     owm: Arc::new(owm),
                     fingerprint,
+                    last_validated: Instant::now(),
                 },
             )
             .await;
@@ -121,7 +155,14 @@ impl ObjectCache {
     pub async fn insert_arc(&self, uid: String, owm: Arc<ObjectWithMetadata>) -> DbResult<()> {
         let fingerprint = self.fingerprinter.fingerprint(owm.object())?;
         self.inner
-            .insert(uid, CachedEntry { owm, fingerprint })
+            .insert(
+                uid,
+                CachedEntry {
+                    owm,
+                    fingerprint,
+                    last_validated: Instant::now(),
+                },
+            )
             .await;
         Ok(())
     }

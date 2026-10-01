@@ -148,6 +148,11 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
     type SerializeTupleStruct = &'a mut TtlvSerializer;
     type SerializeTupleVariant = &'a mut TtlvSerializer;
 
+    // TTLV is a binary, non-human-readable format.
+    fn is_human_readable(&self) -> bool {
+        false
+    }
+
     #[instrument(level = "trace", skip(self))]
     fn serialize_bool(self, v: bool) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::Boolean(v);
@@ -546,11 +551,6 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
             &current_tag
         );
         self.serialize_struct(name, len)
-    }
-
-    #[inline]
-    fn is_human_readable(&self) -> bool {
-        true
     }
 }
 

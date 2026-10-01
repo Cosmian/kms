@@ -330,6 +330,11 @@ impl From<KmipError> for DbError {
 
 impl From<DbError> for InterfaceError {
     fn from(value: DbError) -> Self {
-        Self::Db(value.to_string())
+        match value {
+            DbError::Unauthorized(msg) => Self::Unauthorized(msg),
+            DbError::InvalidRequest(msg) => Self::InvalidRequest(msg),
+            DbError::NotSupported(msg) => Self::NotSupported(msg),
+            other => Self::Db(other.to_string()),
+        }
     }
 }

@@ -9,10 +9,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::taggin
 use serde::{Deserialize, Serialize};
 
 use super::{
-    AuthVerifierConfig, CrlConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig,
-    JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, OcspConfig, RolesConfig, WorkspaceConfig,
-    logging::LoggingConfig, secret_backends::SecretBackendConfig, ui_config::UiConfig,
-    vault_config::VaultConfig,
+    AuditConfig, AuthVerifierConfig, CrlConfig, GoogleCseConfig, HsmConfig, HttpConfig,
+    IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, OcspConfig, RolesConfig,
+    WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
+    ui_config::UiConfig, vault_config::VaultConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -24,10 +24,27 @@ use crate::{
 #[cfg(not(target_os = "windows"))]
 pub const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
 
+/// Environment variable name allowing unit tests to point the "default config
+/// path" precedence check to a private, per-process temp path instead of the
+/// real system path (`/etc/cosmian/kms.toml` or its Windows equivalent).
+///
+/// This is only consulted in `#[cfg(test)]` builds — the branch reading it is
+/// compiled out entirely in release/production binaries, so it can never
+/// affect production behaviour. Without this override, tests writing to the
+/// real default path would race with each other, since `cargo-nextest` runs
+/// every test in its own process and that shared file lives outside any
+/// single process's control.
+#[cfg(test)]
+const TEST_DEFAULT_CONF_PATH_ENV_VAR: &str = "COSMIAN_KMS_TEST_DEFAULT_CONF_PATH";
+
 // On Windows, we need to resolve %LOCALAPPDATA% at runtime
 #[cfg(target_os = "windows")]
 #[must_use]
 pub fn get_default_config_path() -> String {
+    #[cfg(test)]
+    if let Ok(overridden) = std::env::var(TEST_DEFAULT_CONF_PATH_ENV_VAR) {
+        return overridden;
+    }
     std::env::var("LOCALAPPDATA").map_or_else(
         |_| String::from("C:\\ProgramData\\cosmian\\kms.toml"),
         |localappdata| format!("{localappdata}\\Cosmian KMS Server\\kms.toml"),
@@ -37,6 +54,10 @@ pub fn get_default_config_path() -> String {
 #[cfg(not(target_os = "windows"))]
 #[must_use]
 pub fn get_default_config_path() -> String {
+    #[cfg(test)]
+    if let Ok(overridden) = std::env::var(TEST_DEFAULT_CONF_PATH_ENV_VAR) {
+        return overridden;
+    }
     DEFAULT_COSMIAN_KMS_CONF.to_owned()
 }
 
@@ -75,10 +96,12 @@ impl Default for ClapConfig {
             kmip_policy: KmipPolicyConfig::default(),
             azure_ekm_config: AzureEkmConfig::default(),
             auto_rotation_check_interval_secs: 0,
+            metrics_count_interval_secs: 30,
             keyset_warn_depth: 5,
             jwks_endpoint: JwksEndpointConfig::default(),
             secret_backends: SecretBackendConfig::default(),
             vault: VaultConfig::default(),
+            audit: AuditConfig::default(),
             crl: CrlConfig::default(),
             ocsp: OcspConfig::default(),
         }
@@ -254,6 +277,14 @@ pub struct ClapConfig {
     #[clap(long, default_value = "0", verbatim_doc_comment)]
     pub auto_rotation_check_interval_secs: u64,
 
+    /// Interval in seconds between background refreshes of the `kms.objects.total`
+    /// and `kms.keys.active.count` metrics. Each refresh runs a full COUNT over the
+    /// objects table, which is expensive on very large databases.
+    /// Set to 0 to disable both the startup seed and the periodic refresh.
+    /// Default: 30.
+    #[clap(long, default_value = "30", verbatim_doc_comment)]
+    pub metrics_count_interval_secs: u64,
+
     /// Depth at which a successful keyset chain decryption triggers a server-side warning.
     /// Keyset chain traversal is unbounded (stopped only by cycle detection);
     /// this threshold emits a warning log so operators can flag stale ciphertexts.
@@ -276,6 +307,10 @@ pub struct ClapConfig {
     #[command(flatten)]
     #[serde(default)]
     pub vault: VaultConfig,
+
+    #[clap(flatten)]
+    #[serde(rename = "audit")]
+    pub audit: AuditConfig,
 
     /// CRL (Certificate Revocation List) lifecycle settings.
     #[command(flatten)]
@@ -766,7 +801,17 @@ impl fmt::Debug for ClapConfig {
             "auto_rotation_check_interval_secs",
             &self.auto_rotation_check_interval_secs,
         );
+        let x = x.field(
+            "metrics_count_interval_secs",
+            &self.metrics_count_interval_secs,
+        );
         let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
+        let x = if self.auth_verifier.is_enabled() {
+            x.field("auth_verifier_url", &self.auth_verifier.auth_verifier_url)
+        } else {
+            x
+        };
+        let x = x.field("audit", &self.audit);
 
         x.finish()
     }
@@ -783,9 +828,12 @@ mod tests {
     //! 3. Default system path
     //! 4. Command line arguments and environment variables (lowest precedence)
     //!
-    //! IMPORTANT: These tests MUST be run serially to avoid environment variable
-    //! and temporary file conflicts between parallel test runs:
-    //! `RUST_TEST_THREADS=1 cargo test --lib config::command_line::clap_config::tests`
+    //! Each test runs through [`with_clean_env`], which clears `COSMIAN_KMS_CONF`
+    //! and points `get_default_config_path()` (via `TEST_DEFAULT_CONF_PATH_ENV_VAR`,
+    //! a `#[cfg(test)]`-only override) at a private, unique-per-call temp path
+    //! instead of the real system path. This keeps tests independent of one
+    //! another and safe to run in parallel, including under `cargo-nextest`,
+    //! which runs every test in its own process.
 
     use std::{
         fs,
@@ -818,6 +866,22 @@ mod tests {
         drop(std::fs::remove_file(path));
     }
 
+    /// Generates a unique temp file path, without creating the file.
+    /// Used as the private "default config path" override for a single test
+    /// call: the path must start out non-existent so `default_path_exists()`
+    /// reports `false` until a test explicitly writes to it.
+    fn write_temp_path_only() -> PathBuf {
+        let mut p = std::env::temp_dir();
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let thread_id = std::thread::current().id();
+        let fname = format!("kms_test_default_conf_{ts}_{thread_id:?}.toml");
+        p.push(fname);
+        p
+    }
+
     fn with_clean_env<F, R>(f: F) -> R
     where
         F: FnOnce() -> R,
@@ -832,10 +896,25 @@ mod tests {
 
         // Save current env state
         let original_env = std::env::var("COSMIAN_KMS_CONF").ok();
+        let original_default_override = std::env::var(super::TEST_DEFAULT_CONF_PATH_ENV_VAR).ok();
 
         // Clear env
         unsafe {
             std::env::remove_var("COSMIAN_KMS_CONF");
+        }
+
+        // Point the "default config path" at a private, unique-per-call temp
+        // path instead of the real system path (`/etc/cosmian/kms.toml`).
+        // This is what makes these tests safe under `cargo-nextest`, which
+        // runs every test in its own process: each call gets its own path,
+        // so there is no shared file for concurrent test processes to race
+        // on, and no dependency on write access to the real system path.
+        let default_override_path = write_temp_path_only();
+        unsafe {
+            std::env::set_var(
+                super::TEST_DEFAULT_CONF_PATH_ENV_VAR,
+                default_override_path.display().to_string(),
+            );
         }
 
         // Run test
@@ -846,6 +925,13 @@ mod tests {
             Some(val) => unsafe { std::env::set_var("COSMIAN_KMS_CONF", val) },
             None => unsafe { std::env::remove_var("COSMIAN_KMS_CONF") },
         }
+        match original_default_override {
+            Some(val) => unsafe {
+                std::env::set_var(super::TEST_DEFAULT_CONF_PATH_ENV_VAR, val);
+            },
+            None => unsafe { std::env::remove_var(super::TEST_DEFAULT_CONF_PATH_ENV_VAR) },
+        }
+        cleanup_temp(&default_override_path);
 
         result
         // Mutex is automatically released when _guard goes out of scope

@@ -1,4 +1,4 @@
-use std::{cmp::min, collections::HashSet, default::Default};
+use std::{cmp::min, collections::HashSet};
 
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
@@ -26,7 +26,6 @@ use openssl::{
     asn1::{Asn1Integer, Asn1Object, Asn1OctetString, Asn1Time},
     hash::MessageDigest,
     pkey::Id,
-    sha::Sha1,
     x509::{X509, X509Extension},
 };
 
@@ -131,7 +130,7 @@ pub(crate) fn build_and_sign_certificate(
 
     // Set the issuer name and private key
     x509_builder.set_issuer_name(issuer.subject_name())?;
-    x509_builder.set_serial_number(create_subject_key_identifier_value(subject)?.as_ref())?;
+    x509_builder.set_serial_number(generate_serial_number()?.as_ref())?;
     x509_builder.sign(issuer.private_key(), digest)?;
 
     let x509 = x509_builder.build();
@@ -439,22 +438,22 @@ fn signing_digest(key: &openssl::pkey::PKeyRef<openssl::pkey::Private>) -> Messa
     }
 }
 
-fn create_subject_key_identifier_value(subject: &Subject) -> KResult<Asn1Integer> {
-    let pk = subject.public_key()?;
-    let spki_der = pk.public_key_to_der()?;
-    let mut sha1 = Sha1::default();
-    sha1.update(&spki_der);
-    let mut serial_number_bytes = sha1.finish().to_vec();
-
-    // Ensure the serial number is always positive by clearing the high bit of the first byte.
-    // This prevents ASN.1 DER encoding from adding a leading 0x00 byte for negative numbers,
-    // which would make the serial number 21 bytes instead of 20 bytes.
-    // RFC 5280 Section 4.1.2.2 allows serial numbers up to 20 octets.
-    *serial_number_bytes
-        .get_mut(0)
-        .ok_or_else(|| KmsError::ServerError("SHA1 digest returned empty bytes".to_owned()))? &=
-        0x7F;
-
+/// Generate a fresh random certificate serial number (RFC 5280 §4.1.2.2).
+///
+/// The serial must be unique per issuer. It used to be SHA-1(SPKI) of the subject
+/// key, so re-certifying the same public key (e.g. `ReCertify`) produced a second
+/// certificate with the same issuer and serial; CRL and OCSP identify revoked
+/// certificates by serial, so revoking one silently revoked (or masked) the other.
+/// 159 random bits (high bit cleared so the INTEGER stays positive and fits in
+/// 20 octets) also satisfy the CA/Browser Forum ≥ 64-bit entropy requirement.
+fn generate_serial_number() -> KResult<Asn1Integer> {
+    let mut serial_number_bytes = [0_u8; 20];
+    openssl::rand::rand_bytes(&mut serial_number_bytes)?;
+    // Clear the high bit (positive INTEGER) and set the lowest one so the encoding
+    // keeps the full 20 octets and the serial can never be zero.
+    if let Some(first) = serial_number_bytes.first_mut() {
+        *first = (*first & 0x7F) | 0x01;
+    }
     let serial_number = openssl::asn1::Asn1Integer::from_bn(
         openssl::bn::BigNum::from_slice(&serial_number_bytes)?.as_ref(),
     )?;

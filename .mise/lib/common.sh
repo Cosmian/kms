@@ -6,9 +6,9 @@
 #
 # Provides:
 #   Colors & printing:  RED GREEN YELLOW BLUE NC, print_header/status/warning/error/success/info
-#   Environment:        kms_init_env, get_repo_root, require_cmd, ensure_macos_sdk_env,
-#                       ensure_macos_frameworks_ldflags, setup_test_logging, run_isolated,
-#                       wait_for_port, compute_sha256
+#   Environment:        kms_init_env, get_repo_root, require_cmd, has_cmd, has_env_vars,
+#                       docker_ready, ensure_macos_sdk_env, ensure_macos_frameworks_ldflags,
+#                       setup_test_logging, run_isolated, wait_for_port, compute_sha256
 #   Test helpers:       build_test_deps, run_db_tests, check_and_test_db
 
 # ── Guard against double-sourcing ─────────────────────────────────────────────
@@ -169,6 +169,50 @@ require_cmd() {
   if ! command -v "$cmd" >/dev/null 2>&1; then
     print_error "$msg"
   fi
+}
+
+# Non-fatal existence check — unlike require_cmd, never exits.
+# Usage: has_cmd <cmd>
+has_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+# Ensure pnpm >= 10 is available on PATH.
+#
+# The UI lockfile uses lockfileVersion 9.0 which requires pnpm 10+. Some
+# environments (e.g. nix-shell, fresh CI runners) only provide pnpm 9.x or no
+# pnpm at all, so this installs pnpm 10.17.1 from npm into a temp dir and
+# prepends it to PATH when the installed pnpm is too old or missing.
+# Usage: ensure_pnpm_v10
+ensure_pnpm_v10() {
+  local pnpm_major
+  pnpm_major=$(pnpm --version 2>/dev/null | cut -d. -f1 || echo "0")
+  if [ "${pnpm_major}" -ge 10 ]; then
+    return 0
+  fi
+  if command -v npm >/dev/null 2>&1; then
+    local _pnpm_tmp
+    _pnpm_tmp="$(mktemp -d)"
+    npm install "pnpm@10.17.1" --prefix "${_pnpm_tmp}" --no-save --quiet >/dev/null 2>&1 || true
+    if [ -f "${_pnpm_tmp}/node_modules/.bin/pnpm" ]; then
+      export PATH="${_pnpm_tmp}/node_modules/.bin:${PATH}"
+      echo "Upgraded to pnpm $(pnpm --version)"
+    fi
+  fi
+}
+
+# Returns success only if every named environment variable is set and non-empty.
+# Usage: has_env_vars VAR_ONE VAR_TWO ...
+has_env_vars() {
+  local v
+  for v in "$@"; do
+    [ -z "${!v:-}" ] && return 1
+  done
+  return 0
+}
+
+# Returns success if Docker is installed and its daemon is reachable.
+# Usage: docker_ready
+docker_ready() {
+  has_cmd docker && docker info >/dev/null 2>&1
 }
 
 get_repo_root() {

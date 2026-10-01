@@ -44,14 +44,19 @@ use crate::error::{Pkcs11Error, result::Pkcs11Result};
 
 /// Shared Tokio runtime — created once, reused for every blocking KMS call.
 /// Avoids the overhead (and potential `io::Error`) of spinning up a runtime per call.
-static RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> = std::sync::LazyLock::new(|| {
-    tokio::runtime::Runtime::new().unwrap_or_else(|e| {
-        // Runtime creation can only fail due to OS resource exhaustion; no
-        // recovery is possible, so terminate the process immediately.
-        eprintln!("FATAL: failed to create Tokio runtime: {e}");
-        std::process::abort()
-    })
-});
+///
+/// Also entered (via `RUNTIME.enter()`) around synchronous `KmsClient` construction in
+/// `C_GetFunctionList`: that entrypoint is invoked directly by PKCS#11 consumers (e.g. SAP
+/// ASE) with no Tokio runtime active, and the underlying `hyper` client requires one.
+pub(crate) static RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> =
+    std::sync::LazyLock::new(|| {
+        tokio::runtime::Runtime::new().unwrap_or_else(|e| {
+            // Runtime creation can only fail due to OS resource exhaustion; no
+            // recovery is possible, so terminate the process immediately.
+            eprintln!("FATAL: failed to create Tokio runtime: {e}");
+            std::process::abort()
+        })
+    });
 
 /// Query the KMS server for its vendor identification string.
 ///

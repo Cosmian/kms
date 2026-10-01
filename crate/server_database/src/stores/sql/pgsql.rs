@@ -6,8 +6,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, UserId,
+    AtomicOperation, FindOptions, InterfaceError, InterfaceResult, ObjectWithMetadata,
+    ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
 use deadpool_postgres::{Config as PgConfig, GenericClient, ManagerConfig, Pool, RecyclingMethod};
@@ -28,7 +28,13 @@ use crate::{
     stores::{
         PGSQL_QUERIES,
         migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
-        sql::database::SqlDatabase,
+        sql::{
+            database::SqlDatabase,
+            locate_query::{
+                LocateParam, LocateQuery, PgSqlPlaceholder, query_all_from_attributes,
+                query_from_attributes,
+            },
+        },
     },
 };
 
@@ -417,11 +423,17 @@ impl PgPool {
             .map_err(DbError::from)?;
         // Create the read-path indexes (idempotent). PostgreSQL supports
         // `CREATE INDEX IF NOT EXISTS`, so these are safe to run on every start.
+        // They are built synchronously: on a large existing table, the first start
+        // after an upgrade blocks writes to `objects` while each new index builds.
         for name in [
             "create-index-objects-owner",
             "create-index-objects-state",
             "create-index-read_access-userid",
             "create-index-objects-wrapping-key-id",
+            "create-index-tags-tag-id",
+            "create-index-objects-rotate-lookup",
+            "create-index-objects-rotate-auto",
+            "create-index-objects-type-state",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -510,6 +522,46 @@ impl PgPool {
             .await
             .map(|_| ())
             .map_err(|e| DbError::DatabaseError(e.to_string()))
+    }
+
+    /// Run a query built by the locate query builders and decode its
+    /// `(id, state, attributes)` rows.
+    async fn run_locate_query(
+        &self,
+        locate: &LocateQuery,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(&locate.sql)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let params: Vec<&(dyn ToSql + Sync)> = locate
+                .params
+                .iter()
+                .map(|p| -> &(dyn ToSql + Sync) {
+                    match p {
+                        LocateParam::Text(s) => s,
+                        LocateParam::I64(i) => i,
+                    }
+                })
+                .collect();
+            let rows = client
+                .query(&stmt, &params)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut out = Vec::with_capacity(rows.len());
+            for row in rows {
+                let uid: String = row.get(0);
+                let state_str: String = row.get(1);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let attrs_val: Value = row.get(2);
+                let attrs: Attributes = serde_json::from_value(attrs_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                out.push((uid, state, attrs));
+            }
+            Ok(out)
+        })
     }
 }
 
@@ -605,6 +657,30 @@ impl ObjectsStore for PgPool {
                 Ok(Some(ObjectWithMetadata::new(
                     id, object, owner, state, attributes,
                 )))
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
+    async fn retrieve_state(&self, uid: &str) -> InterfaceResult<Option<(State, Attributes)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare_cached(get_pgsql_query!("select-object-state"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&uid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            if let Some(row) = rows.first() {
+                let state_str: String = row.get(0);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let attrs_val: Value = row.get(1);
+                let attrs: Attributes = serde_json::from_value(attrs_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                Ok(Some((state, attrs)))
             } else {
                 Ok(None)
             }
@@ -820,19 +896,25 @@ impl ObjectsStore for PgPool {
                             .map_err(DbError::from)?;
                         let st = state.to_string();
                         let attrs_param = Json(&attributes_json);
-                        tx.execute(
-                            &stmt,
-                            &[
-                                &uid,
-                                &object_json,
-                                &attrs_param,
-                                &st,
-                                &user,
-                                &wrapping_key_id,
-                            ],
-                        )
-                        .await
-                        .map_err(DbError::from)?;
+                        let rows_affected = tx
+                            .execute(
+                                &stmt,
+                                &[
+                                    &uid,
+                                    &object_json,
+                                    &attrs_param,
+                                    &st,
+                                    &user,
+                                    &wrapping_key_id,
+                                ],
+                            )
+                            .await
+                            .map_err(DbError::from)?;
+                        if rows_affected == 0 {
+                            return Err(DbError::Unauthorized(format!(
+                                "User '{user}' does not own object '{uid}' and cannot overwrite it"
+                            )));
+                        }
                         if let Some(tags) = tags {
                             let delete_stmt = tx
                                 .prepare_cached(get_pgsql_query!("delete-tags"))
@@ -925,51 +1007,36 @@ impl ObjectsStore for PgPool {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        pg_retry!(self.pool, |client| {
-            let locate = crate::stores::sql::locate_query::query_from_attributes::<
-                crate::stores::sql::locate_query::PgSqlPlaceholder,
-            >(
-                researched_attributes,
-                state,
-                user,
-                user_must_be_owner,
-                vendor_id,
-            );
-            cosmian_logger::debug!("PG find query: {}", locate.sql);
-            let stmt = client
-                .prepare(&locate.sql)
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut owned: Vec<Box<dyn ToSql + Sync>> = Vec::with_capacity(locate.params.len());
-            for p in locate.params {
-                match p {
-                    crate::stores::sql::locate_query::LocateParam::Text(s) => {
-                        owned.push(Box::new(s));
-                    }
-                    crate::stores::sql::locate_query::LocateParam::I64(i) => {
-                        owned.push(Box::new(i));
-                    }
-                }
-            }
-            let params: Vec<&(dyn ToSql + Sync)> =
-                owned.iter().map(std::convert::AsRef::as_ref).collect();
-            let rows = client
-                .query(&stmt, &params)
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut out = Vec::new();
-            for row in rows {
-                let uid: String = row.get(0);
-                let state_str: String = row.get(1);
-                let state = State::try_from(state_str.as_str())
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                let attrs_val: Value = row.get(2);
-                let attrs: Attributes = serde_json::from_value(attrs_val)
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                out.push((uid, state, attrs));
-            }
-            Ok(out)
-        })
+        self.find_with_options(
+            researched_attributes,
+            state,
+            user,
+            user_must_be_owner,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    async fn find_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        user: &UserId,
+        user_must_be_owner: bool,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let locate = query_from_attributes::<PgSqlPlaceholder>(
+            researched_attributes,
+            state,
+            user,
+            user_must_be_owner,
+            vendor_id,
+            options,
+        );
+        cosmian_logger::debug!("PG find query: {}", locate.sql);
+        self.run_locate_query(&locate).await
     }
 
     async fn find_wrapped_by(
@@ -1075,45 +1142,30 @@ impl ObjectsStore for PgPool {
         state: Option<State>,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        pg_retry!(self.pool, |client| {
-            let locate = crate::stores::sql::locate_query::query_all_from_attributes::<
-                crate::stores::sql::locate_query::PgSqlPlaceholder,
-            >(researched_attributes, state, vendor_id);
-            cosmian_logger::debug!("PG find_all query: {}", locate.sql);
-            let stmt = client
-                .prepare(&locate.sql)
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut owned: Vec<Box<dyn ToSql + Sync>> = Vec::with_capacity(locate.params.len());
-            for p in locate.params {
-                match p {
-                    crate::stores::sql::locate_query::LocateParam::Text(s) => {
-                        owned.push(Box::new(s));
-                    }
-                    crate::stores::sql::locate_query::LocateParam::I64(i) => {
-                        owned.push(Box::new(i));
-                    }
-                }
-            }
-            let params: Vec<&(dyn ToSql + Sync)> =
-                owned.iter().map(std::convert::AsRef::as_ref).collect();
-            let rows = client
-                .query(&stmt, &params)
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut out = Vec::new();
-            for row in rows {
-                let uid: String = row.get(0);
-                let state_str: String = row.get(1);
-                let state = State::try_from(state_str.as_str())
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                let attrs_val: Value = row.get(2);
-                let attrs: Attributes = serde_json::from_value(attrs_val)
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                out.push((uid, state, attrs));
-            }
-            Ok(out)
-        })
+        self.find_all_with_options(
+            researched_attributes,
+            state,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    async fn find_all_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let locate = query_all_from_attributes::<PgSqlPlaceholder>(
+            researched_attributes,
+            state,
+            vendor_id,
+            options,
+        );
+        cosmian_logger::debug!("PG find_all query: {}", locate.sql);
+        self.run_locate_query(&locate).await
     }
 
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
@@ -1129,8 +1181,7 @@ impl ObjectsStore for PgPool {
 
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
         pg_retry!(self.pool, |client| {
-            // Object JSON is stored as {"SymmetricKey": {...}} — use the JSONB ?
-            // operator to check for key presence.
+            // Filters on the ObjectType attribute; avoids parsing the object JSON.
             let row = client
                 .query_one(get_pgsql_query!("count-non-destroyed-keys"), &[])
                 .await
@@ -1216,7 +1267,16 @@ impl PermissionsStore for PgPool {
                 let perms_val: Value = row.get(3);
                 let perms: HashSet<KmipOperation> = serde_json::from_value(perms_val)
                     .map_err(|e| InterfaceError::Db(e.to_string()))?;
-                map.insert(id, (owner, state, perms));
+                // The same object may be returned twice: once for the direct
+                // grant and once for the wildcard `*` grant. Union the
+                // permission sets instead of overwriting the entry.
+                map.entry(id)
+                    .and_modify(
+                        |(_, _, existing_perms): &mut (String, State, HashSet<KmipOperation>)| {
+                            existing_perms.extend(perms.iter().copied());
+                        },
+                    )
+                    .or_insert((owner, state, perms));
             }
             Ok(map)
         })

@@ -6,6 +6,41 @@ The Windows DLL is a SQL Server EKM provider that forwards key operations to the
 
 The Windows DLL is available in a separate project on [GitHub](https://github.com/Cosmian/ekm_sql_server); pre-built signed DLLs are available for [download](https://package.cosmian.com).
 
+## Architecture & Workflow
+
+The sequence diagram below shows how SQL Server interacts with the Cosmian EKM Provider DLL (`cosmian_ekm_sql_server.dll`), which forwards KMIP/REST operations over TLS to the Eviden KMS, persisting key state in the configured KMS database backend:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant MSSQL as Microsoft SQL Server
+    participant EKM as EKM Provider DLL (cosmian_ekm_sql_server.dll)
+    participant KMS as Eviden KMS Server
+    participant DB as KMS Database Backend (PostgreSQL / MySQL / SQLite / Redis)
+
+    Note over MSSQL,EKM: Initialization & Authentication
+    MSSQL->>EKM: Open provider & authenticate credential (mapped KMS username)
+    EKM->>EKM: Load config.toml & client certificate
+    EKM-->>MSSQL: Provider ready
+
+    Note over MSSQL,DB: Asymmetric / Symmetric Key Provisioning
+    MSSQL->>EKM: CREATE ASYMMETRIC KEY ... FROM PROVIDER [CosmianEKM]
+    EKM->>KMS: POST /kmip (KMIP Create KeyPair / Key)
+    KMS->>DB: Store key pair & attributes in DB
+    DB-->>KMS: Key UID persisted
+    KMS-->>EKM: KMIP Response with key UID
+    EKM-->>MSSQL: Key handle returned to SQL Server
+
+    Note over MSSQL,DB: TDE / Column Encryption Key Operations
+    MSSQL->>EKM: Encrypt / Decrypt DEK using EKM Key
+    EKM->>KMS: POST /kmip (KMIP Encrypt / Decrypt Request)
+    KMS->>DB: Retrieve wrapping key via ObjectCache / DB
+    DB-->>KMS: Key material retrieved
+    KMS->>KMS: Perform crypto operation
+    KMS-->>EKM: KMIP Encrypt/Decrypt Response (ciphertext / unwrapped DEK)
+    EKM-->>MSSQL: Result returned to SQL Server Engine
+```
+
 ## Deployment Guide
 
 This document explains how to install and configure the Cosmian EKM SQL Server provider, starting from a signed DLL. Follow the steps in order.

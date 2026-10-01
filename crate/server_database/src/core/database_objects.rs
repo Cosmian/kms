@@ -10,7 +10,7 @@ use cosmian_kmip::{
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, ObjectHandle, ObjectWithMetadata, ObjectsStore, UserId,
+    AtomicOperation, FindOptions, ObjectHandle, ObjectWithMetadata, ObjectsStore, UserId,
 };
 use time::Date;
 use x509_parser::prelude::{FromDer as _, X509Certificate};
@@ -258,6 +258,12 @@ impl Database {
         .await
     }
 
+    /// Retrieve state and attributes of an object for cache validation.
+    pub async fn retrieve_state(&self, uid: &str) -> DbResult<Option<(State, Attributes)>> {
+        let db = self.get_object_store(uid).await?;
+        Ok(db.retrieve_state(uid).await?)
+    }
+
     /// Retrieve a single object from the database.
     ///
     /// This method retrieves an object identified by its `uid` and applies
@@ -266,10 +272,6 @@ impl Database {
     /// # Arguments
     ///
     /// * `uid` - A string slice that holds the unique identifier of the object.
-    /// * `user` - A string slice representing the user requesting the object.
-    /// * `user_filter` - A `UserFilter` enum to filter objects based on user permissions.
-    /// * `state_filter` - A `StateFilter` enum to filter objects based on their state.
-    /// * `params` - An optional reference to `ExtraStoreParams` for additional query parameters.
     ///
     /// # Returns
     ///
@@ -277,12 +279,33 @@ impl Database {
     ///   If the object is found and passes the filters, it is returned wrapped in `Some`.
     ///   If the object is not found or does not pass the filters, `None` is returned.
     pub async fn retrieve_object(&self, uid: &str) -> DbResult<Option<ObjectWithMetadata>> {
-        // Fast path: check the in-memory cache first (no DB round-trip, no recording).
-        // The cache returns Arc<ObjectWithMetadata> — unwrap_or_clone avoids a deep
-        // copy when the caller is the sole holder (common on the encrypt hot-path
-        // where the cache entry is read-only).
-        if let Some(owm) = self.object_cache.get(uid).await {
-            return Ok(Some(std::sync::Arc::unwrap_or_clone(owm)));
+        // Fast path: check in-memory cache first.
+        // Cross-node consistency is maintained via bounded revalidation: cache hits within
+        // DEFAULT_REVALIDATION_INTERVAL skip DB round-trips entirely, while entries older than
+        // the interval re-verify their lifecycle state against the database.
+        if let Some((cached_owm, needs_revalidation)) = self
+            .object_cache
+            .get_with_validation_status(
+                uid,
+                crate::core::object_cache::DEFAULT_REVALIDATION_INTERVAL,
+            )
+            .await
+        {
+            if !needs_revalidation {
+                return Ok(Some(std::sync::Arc::unwrap_or_clone(cached_owm)));
+            }
+            // Revalidate state and security-sensitive attributes against DB
+            let db = self.get_object_store(uid).await?;
+            if let Some((current_state, current_attrs)) = db.retrieve_state(uid).await? {
+                if cached_owm.state() == current_state
+                    && cached_owm.attributes().sensitive == current_attrs.sensitive
+                {
+                    self.object_cache.touch_validated(uid).await;
+                    return Ok(Some(std::sync::Arc::unwrap_or_clone(cached_owm)));
+                }
+            }
+            // Invalidate stale cache entry and fall through to full fetch
+            self.object_cache.invalidate(uid).await;
         }
         // Cache miss: fetch from the backing store and record the operation.
         let result: Option<ObjectWithMetadata> = self
@@ -313,9 +336,28 @@ impl Database {
         &self,
         uid: &str,
     ) -> DbResult<Option<Arc<ObjectWithMetadata>>> {
-        // Fast path: cache hit — zero-copy Arc clone.
-        if let Some(owm) = self.object_cache.get(uid).await {
-            return Ok(Some(owm));
+        // Fast path: zero-copy Arc cache hit with bounded cross-node revalidation.
+        if let Some((cached_owm, needs_revalidation)) = self
+            .object_cache
+            .get_with_validation_status(
+                uid,
+                crate::core::object_cache::DEFAULT_REVALIDATION_INTERVAL,
+            )
+            .await
+        {
+            if !needs_revalidation {
+                return Ok(Some(cached_owm));
+            }
+            let db = self.get_object_store(uid).await?;
+            if let Some((current_state, current_attrs)) = db.retrieve_state(uid).await? {
+                if cached_owm.state() == current_state
+                    && cached_owm.attributes().sensitive == current_attrs.sensitive
+                {
+                    self.object_cache.touch_validated(uid).await;
+                    return Ok(Some(cached_owm));
+                }
+            }
+            self.object_cache.invalidate(uid).await;
         }
         // Cache miss: fetch from the backing store and record the operation.
         let result: Option<ObjectWithMetadata> = self
@@ -440,23 +482,47 @@ impl Database {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> DbResult<Vec<(String, State, Attributes)>> {
+        self.find_with_options(
+            researched_attributes,
+            state,
+            user,
+            user_must_be_owner,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    /// Same as [`Self::find`], restricted by `options`, which each object store
+    /// applies to its own result: with several stores, callers must still cap
+    /// the concatenated result.
+    pub async fn find_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        user: &UserId,
+        user_must_be_owner: bool,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> DbResult<Vec<(String, State, Attributes)>> {
         let start = Instant::now();
         let map = self.objects.read().await;
         let mut results: Vec<(String, State, Attributes)> = Vec::new();
         for db in map.values() {
             results.extend(
-                db.find(
+                db.find_with_options(
                     researched_attributes,
                     state,
                     user,
                     user_must_be_owner,
                     vendor_id,
+                    options,
                 )
                 .await
                 .unwrap_or(vec![]),
             );
         }
-        if let Some(ref rec) = self.recorder {
+        if let Some(rec) = &self.recorder {
             rec.record_operation("find", self.kind, "success", start.elapsed().as_secs_f64());
         }
         Ok(results)
@@ -472,11 +538,30 @@ impl Database {
         state: Option<State>,
         vendor_id: &str,
     ) -> DbResult<Vec<(String, State, Attributes)>> {
+        self.find_all_with_options(
+            researched_attributes,
+            state,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    /// Same as [`Self::find_all`], restricted by `options`, which each object
+    /// store applies to its own result: with several stores, callers must still
+    /// cap the concatenated result.
+    pub async fn find_all_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> DbResult<Vec<(String, State, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, State, Attributes)> = Vec::new();
         for db in map.values() {
             results.extend(
-                db.find_all(researched_attributes, state, vendor_id)
+                db.find_all_with_options(researched_attributes, state, vendor_id, options)
                     .await
                     .unwrap_or_default(),
             );
@@ -490,13 +575,20 @@ impl Database {
     /// `good` (Active/PreActive), `revoked` (Compromised/Deactivated/Destroyed/DestroyedCompromised),
     /// and `unknown` (not found).
     ///
-    /// Returns `(uid, state)` for the first match or `None` if not found.
+    /// Returns `(uid, state, attributes)` for the first match or `None` if not found;
+    /// the attributes carry the revocation date and reason reported by OCSP.
     pub async fn find_certificate_by_serial(
         &self,
         issuer_certificate_uid: &str,
         serial_hex: &str,
         vendor_id: &str,
-    ) -> DbResult<Option<(String, cosmian_kmip::kmip_0::kmip_types::State)>> {
+    ) -> DbResult<
+        Option<(
+            String,
+            cosmian_kmip::kmip_0::kmip_types::State,
+            cosmian_kmip::kmip_2_1::kmip_attributes::Attributes,
+        )>,
+    > {
         use cosmian_kmip::kmip_2_1::{
             kmip_attributes::Attributes,
             kmip_objects::ObjectType,
@@ -528,12 +620,12 @@ impl Database {
                 .find_all(Some(&search_attrs), Some(state), vendor_id)
                 .await?;
 
-            for (uid, obj_state, _attrs) in candidates {
+            for (uid, obj_state, attrs) in candidates {
                 if let Some(owm) = self.retrieve_object(&uid).await? {
                     let found_serial = extract_serial_hex_from_object(owm.object());
                     if let Some(s) = found_serial {
                         if s.eq_ignore_ascii_case(serial_hex) {
-                            return Ok(Some((uid, obj_state)));
+                            return Ok(Some((uid, obj_state, attrs)));
                         }
                     }
                 }
@@ -701,7 +793,7 @@ impl Database {
             return Ok(vec![]);
         }
         for op in operations {
-            if let AtomicOperation::Create((uid, ..)) = op {
+            if let AtomicOperation::Create((uid, ..)) | AtomicOperation::Upsert((uid, ..)) = op {
                 reject_reserved_uid(uid)?;
             }
         }
@@ -791,7 +883,7 @@ mod tests {
     };
 
     use cosmian_kmip::{
-        kmip_0::kmip_types::CertificateType,
+        kmip_0::kmip_types::{CertificateType, State},
         kmip_2_1::{
             extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
             kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
@@ -886,6 +978,29 @@ mod tests {
         ))];
         let result = db.atomic(&owner, &operations).await;
         let err = result.expect_err("atomic Create with uid '*' must fail");
+        assert!(
+            err.to_string().contains("reserved"),
+            "expected a reserved-identifier error, got: {err}"
+        );
+    }
+
+    /// `Database::atomic` with `AtomicOperation::Upsert` must refuse the reserved uid `"*"` (GHSA-pvw2-jxwc-95xq).
+    #[tokio::test]
+    async fn test_atomic_upsert_rejects_reserved_uid() {
+        let db = test_db().await;
+        let owner = UserId::from("owner@example.com");
+        let key = test_key();
+        let attributes = key.attributes().expect("key has attributes").clone();
+
+        let operations = vec![AtomicOperation::Upsert((
+            "*".to_owned(),
+            key,
+            attributes,
+            Some(HashSet::new()),
+            State::Active,
+        ))];
+        let result = db.atomic(&owner, &operations).await;
+        let err = result.expect_err("atomic Upsert with uid '*' must fail");
         assert!(
             err.to_string().contains("reserved"),
             "expected a reserved-identifier error, got: {err}"
@@ -1149,6 +1264,174 @@ mod tests {
         assert!(
             found.is_none(),
             "a never-stored certificate must not match any KMS record"
+        );
+    }
+
+    /// Two-node cross-node cache invalidation test:
+    /// Node A and Node B share the same backing database.
+    /// Node B retrieves the object, warming its local in-memory cache.
+    /// Node A revokes (or destroys) the object.
+    /// Node B's subsequent `retrieve_object` call must observe the new state,
+    /// not after TTL expiry.
+    #[tokio::test]
+    async fn test_cross_node_cache_invalidation_on_state_change() {
+        let tmp = TempDir::new().expect("Failed to create temp dir");
+        let db_params = MainDbParams::Sqlite(tmp.path().to_path_buf(), None);
+
+        // Node A
+        let node_a = Database::instantiate(
+            &db_params,
+            false,
+            HashMap::new(),
+            Duration::from_secs(900), // 15 min TTL
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to instantiate Node A");
+
+        // Node B
+        let node_b = Database::instantiate(
+            &db_params,
+            false,
+            HashMap::new(),
+            Duration::from_secs(900), // 15 min TTL
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to instantiate Node B");
+
+        let owner = UserId::from("owner@example.com");
+        let key = test_key();
+        let attributes = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        };
+
+        // Create key via Node A
+        let uid = node_a
+            .create(None, &owner, &key, &attributes, &HashSet::new())
+            .await
+            .expect("create key failed");
+
+        // Activate key
+        node_a
+            .update_state(&uid, State::Active)
+            .await
+            .expect("update state to Active failed");
+
+        // Node B retrieves key -> warms Node B's cache
+        let owm_b = node_b
+            .retrieve_object(&uid)
+            .await
+            .expect("retrieve from Node B failed")
+            .expect("key must exist");
+        assert_eq!(owm_b.state(), State::Active);
+
+        // Node A revokes the key (transitions to Deactivated or Compromised)
+        node_a
+            .update_state(&uid, State::Deactivated)
+            .await
+            .expect("Node A revoke failed");
+
+        // Wait for bounded revalidation window to elapse
+        tokio::time::sleep(crate::core::object_cache::DEFAULT_REVALIDATION_INTERVAL).await;
+
+        // Node B retrieves key again -> must NOT serve stale Active state from cache
+        let owm_b_after = node_b
+            .retrieve_object(&uid)
+            .await
+            .expect("retrieve from Node B failed")
+            .expect("key must exist");
+        assert_eq!(
+            owm_b_after.state(),
+            State::Deactivated,
+            "Node B must see revoked state from Node A after revalidation window"
+        );
+    }
+
+    /// Two-node cross-node cache invalidation test for `retrieve_object_arc` and attribute change (e.g. Sensitive).
+    #[tokio::test]
+    async fn test_cross_node_cache_invalidation_on_sensitive_attribute_change() {
+        let tmp = TempDir::new().expect("Failed to create temp dir");
+        let db_params = MainDbParams::Sqlite(tmp.path().to_path_buf(), None);
+
+        let node_a = Database::instantiate(
+            &db_params,
+            false,
+            HashMap::new(),
+            Duration::from_secs(900),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to instantiate Node A");
+
+        let node_b = Database::instantiate(
+            &db_params,
+            false,
+            HashMap::new(),
+            Duration::from_secs(900),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to instantiate Node B");
+
+        let owner = UserId::from("owner@example.com");
+        let key = test_key();
+        let mut attributes = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            sensitive: Some(false),
+            ..Default::default()
+        };
+
+        let uid = node_a
+            .create(None, &owner, &key, &attributes, &HashSet::new())
+            .await
+            .expect("create key failed");
+
+        // Warm Node B's cache via retrieve_object_arc
+        let arc_b = node_b
+            .retrieve_object_arc(&uid)
+            .await
+            .expect("retrieve_object_arc from Node B failed")
+            .expect("key must exist");
+        assert_eq!(arc_b.attributes().sensitive, Some(false));
+
+        // Node A updates sensitive attribute to true
+        attributes.sensitive = Some(true);
+        node_a
+            .update_object(&uid, &key, &attributes, None)
+            .await
+            .expect("Node A update_object failed");
+
+        // Wait for bounded revalidation window to elapse
+        tokio::time::sleep(crate::core::object_cache::DEFAULT_REVALIDATION_INTERVAL).await;
+
+        // Node B retrieves via retrieve_object_arc -> must see sensitive = true
+        let arc_b_after = node_b
+            .retrieve_object_arc(&uid)
+            .await
+            .expect("retrieve_object_arc after update failed")
+            .expect("key must exist");
+        assert_eq!(
+            arc_b_after.attributes().sensitive,
+            Some(true),
+            "Node B must see sensitive attribute change from Node A after revalidation window"
         );
     }
 }

@@ -153,6 +153,44 @@ services:
       - ${KMS_SLOT_OTEL_HTTP_PORT:-4318}:4318   # OTLP HTTP receiver (host)
       - ${KMS_SLOT_OTEL_METRICS_PORT:-8889}:8889   # Prometheus metrics endpoint (host)
 
+  # ── rsyslog (SIEM TCP syslog integration test) ────────────────────────────
+  #
+  # Used by: mise run test:siem-cef-tcp-syslog, mise run test:siem
+  # No special startup needed — the test script manages the container lifecycle
+  # with the .mise/scripts/test/rsyslog.conf config.
+  #
+  # Start manually for debugging:
+  #   docker run --rm --name kms-rsyslog -p 51514:514 \
+  #     -v ./.mise/scripts/test/rsyslog.conf:/etc/rsyslog.conf:ro \
+  #     -v /tmp/rsyslog:/var/log:rw \
+  #     rsyslog/syslog_appliance_alpine:latest
+
+  # ── Elasticsearch 8.x (SIEM integration tests) ───────────────────────────
+  #
+  # WARNING: FOR LOCAL TEST AND CI AUTOMATION ONLY. DO NOT USE IN PRODUCTION.
+  # Authentication and TLS are disabled (xpack.security.enabled=false) to simplify ephemeral test runs.
+  #
+  # Used by: mise run test:siem-filebeat, mise run test:siem
+  # Start with: docker compose up -d elasticsearch
+  #
+  elasticsearch:
+    profiles: [test, siem]
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - ${KMS_SLOT_ES_PORT:-9200}:9200
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf http://localhost:9200/_cluster/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   # ── EDB Postgres Advanced Server 17 with Transparent Data Encryption ──────
   #
   # Requires:
@@ -211,6 +249,32 @@ services:
       # on macOS/Windows Docker Desktop; on Linux Docker the special value
       # "host-gateway" maps to the host IP).
       - host.docker.internal:host-gateway
+
+  # IBM Db2 LUW — KMIP TDE integration test
+  # Started on demand with: docker compose up -d db2-tde
+  # Requires Docker privileged mode. Startup takes up to 5 minutes.
+  # LICENSE=accept is required to run the Community Edition image.
+  db2-tde:
+    image: ${DB2_DOCKER_IMAGE:-icr.io/db2_community/db2}
+    container_name: ${DB2_CONTAINER_NAME:-db2-kmip-test}
+    privileged: true
+    profiles:
+      - db2
+    ports:
+      - ${KMS_SLOT_DB2_PORT:-50000}:50000
+    environment:
+      - LICENSE=accept
+      - DB2INST1_PASSWORD=${DB2_INSTANCE_PWD:-Db2KmipTest1}
+      - DBNAME=${DB2_DBNAME:-KMIPDB}
+      - ARCHIVE_LOGS=false
+      - AUTOCONFIG=false
+    volumes:
+      - ./test_data/certificates/client_server/ca/ca.crt:/db2-kmip-certs/ca.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/db2-kmip-certs/client.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.key:/db2-kmip-certs/client.key:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+      - kmserver.acme.com:host-gateway
 
   # InterSystems IRIS — mTLS integration test
   # Started on demand with: docker compose up -d iris

@@ -10,6 +10,7 @@ or contact the Cosmian support team on Discord https://discord.com/invite/7kPMNt
 Usage: ckms [OPTIONS] <COMMAND>
 
 Commands:
+  audit          Inspect and verify the tamper-evident KMS audit log
   access-rights  Manage the users' access rights to the cryptographic objects
   attributes     Get/Set/Delete/Modify the KMIP object attributes
   azure          Support for Azure specific interactions

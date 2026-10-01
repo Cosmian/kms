@@ -67,6 +67,9 @@ SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.st
         FROM objects
         WHERE objects.id=$1;
 
+-- name: select-object-state
+SELECT objects.state, objects.attributes FROM objects WHERE objects.id=$1;
+
 -- name: update-object-with-object
 UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3 WHERE id=$4;
 
@@ -116,7 +119,7 @@ SELECT read_access.id, COALESCE(objects.owner, ''), COALESCE(objects.state, 'Act
         FROM read_access
         LEFT JOIN objects
         ON objects.id = read_access.id
-        WHERE read_access.userid=$1;
+        WHERE read_access.userid=$1 OR read_access.userid='*';
 
 -- name: insert-tags
 INSERT INTO tags (id, tag) VALUES ($1, $2);
@@ -154,6 +157,18 @@ CREATE INDEX IF NOT EXISTS idx_read_access_userid ON read_access (userid);
 
 -- name: create-index-objects-wrapping-key-id
 CREATE INDEX IF NOT EXISTS idx_objects_wrapping_key_id ON objects (wrapping_key_id);
+
+-- name: create-index-tags-tag-id
+CREATE INDEX IF NOT EXISTS idx_tags_tag_id ON tags (tag, id);
+
+-- name: create-index-objects-rotate-lookup
+CREATE INDEX IF NOT EXISTS idx_objects_rotate_name ON objects ((attributes ->> 'RotateName'), owner) WHERE (attributes ->> 'RotateName') IS NOT NULL;
+
+-- name: create-index-objects-rotate-auto
+CREATE INDEX IF NOT EXISTS idx_objects_rotate_auto ON objects (state) WHERE (attributes ->> 'RotateAutomatic') = 'true';
+
+-- name: create-index-objects-type-state
+CREATE INDEX IF NOT EXISTS idx_objects_type_state ON objects ((attributes ->> 'ObjectType'), state);
 
 -- name: list-uids-for-tags
 SELECT id FROM tags WHERE tag = ANY($1::text[]) GROUP BY id HAVING COUNT(DISTINCT tag) = $2::int;
@@ -202,10 +217,7 @@ SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';
 -- name: count-non-destroyed-keys
 SELECT COUNT(*) FROM objects
 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
-AND (object ? 'SymmetricKey' OR
-     object ? 'PrivateKey'   OR
-     object ? 'PublicKey'    OR
-     object ? 'SplitKey');
+AND (attributes ->> 'ObjectType') IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
 
 -- ── CRL persistence (RFC 5280 §5) ─────────────────────────────────────────────
 -- One row per CA issuer. On regeneration the row is replaced in-place so that

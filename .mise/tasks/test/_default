@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run all tests sequentially"
+#MISE description="Run every test group under test/, auto-skipping any that lack required infra/credentials/tools"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
@@ -10,45 +10,199 @@ set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 
-print_header "Running all tests (variant=${VARIANT})"
+print_header "Running all test groups (variant=${VARIANT})"
 
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+TASK_DIR="${MISE_CONFIG_ROOT}/.mise/tasks/test"
+
+PASSED=()
 FAILED=()
+SKIPPED=()
 
+# Runs $name ($@ as the command). Never aborts the aggregator on failure.
 run_step() {
   local name="$1"
   shift
   print_status "Running: $name"
   if "$@"; then
     print_success "$name passed"
+    PASSED+=("$name")
   else
     print_warning "$name FAILED (continuing...)"
     FAILED+=("$name")
   fi
 }
 
-TASK_DIR="${MISE_CONFIG_ROOT}/.mise/tasks/test"
+# Records a skip with its reason instead of running the step.
+skip_step() {
+  local name="$1" reason="$2"
+  print_warning "Skipping $name — ${reason}"
+  SKIPPED+=("$name (${reason})")
+}
 
-run_step "sqlite" bash "${TASK_DIR}/sqlite" --variant "${VARIANT}" --link "${LINK}"
-run_step "psql" bash "${TASK_DIR}/psql" --variant "${VARIANT}" --link "${LINK}"
+# Prints the first non-empty argument (used to pick the first failing gate's reason).
+first_reason() {
+  local r
+  for r in "$@"; do
+    if [ -n "$r" ]; then
+      echo "$r"
+      return 0
+    fi
+  done
+}
 
-if [ "${VARIANT}" = "non-fips" ]; then
-  run_step "redis" bash "${TASK_DIR}/redis" --variant "${VARIANT}" --link "${LINK}"
-fi
+# Runs $name via run_step, or skip_step if $reason is non-empty.
+gate_run() {
+  local name="$1" reason="$2"
+  shift 2
+  if [ -n "$reason" ]; then
+    skip_step "$name" "$reason"
+  else
+    run_step "$name" "$@"
+  fi
+}
 
+reason_non_fips_only() {
+  [ "${VARIANT}" = "non-fips" ] || echo "requires --variant non-fips"
+}
+
+reason_needs_docker() {
+  docker_ready || echo "Docker is not installed or not running"
+}
+
+reason_needs_nix() {
+  has_cmd nix-shell || echo "nix-shell not found"
+}
+
+reason_needs_env() {
+  has_env_vars "$@" || echo "required env vars not set: $*"
+}
+
+reason_needs_cmd() {
+  local cmd="$1"
+  has_cmd "$cmd" || echo "'$cmd' not found on PATH"
+}
+
+reason_needs_auth_submodule() {
+  [ -f "${REPO_ROOT}/authentication/Cargo.toml" ] || echo "authentication submodule not checked out"
+}
+
+reason_needs_port() {
+  local host="$1" port="$2" what="$3"
+  wait_for_port "$host" "$port" 0 || echo "${what} not reachable on ${host}:${port}"
+}
+
+# ── Database backends (sqlite/psql/redis/mysql/mariadb/percona), self-skipping ──
+run_step "db" bash "${TASK_DIR}/db/_default" --variant "${VARIANT}" --link "${LINK}"
+
+# ── Always-safe local groups (no external infra required) ──────────────────────
 run_step "helm" bash "${TASK_DIR}/helm"
 run_step "wasm" bash "${TASK_DIR}/wasm" --variant "${VARIANT}" --link "${LINK}"
 run_step "hsm" bash "${TASK_DIR}/hsm/_default" --variant "${VARIANT}" --link "${LINK}"
+run_step "ocsp" bash "${TASK_DIR}/ocsp" --variant "${VARIANT}" --link "${LINK}"
+run_step "pki-revocation" bash "${TASK_DIR}/pki-revocation" --variant "${VARIANT}" --link "${LINK}"
+run_step "vectors-rekey" bash "${TASK_DIR}/vectors-rekey" --variant "${VARIANT}" --link "${LINK}"
+run_step "secret_cosmian_kms" bash "${TASK_DIR}/secret_cosmian_kms" --variant "${VARIANT}" --link "${LINK}"
+run_step "gcp-cmek" bash "${TASK_DIR}/gcp-cmek" --variant "${VARIANT}" --link "${LINK}"
 
-if [ "${VARIANT}" = "non-fips" ]; then
-  run_step "ui" bash "${TASK_DIR}/ui" --variant "${VARIANT}" --link "${LINK}"
+# ── Groups requiring a nix-shell (pinned dev shell) ─────────────────────────────
+gate_run "jose" "$(first_reason "$(reason_needs_nix)")" \
+  bash "${TASK_DIR}/jose" --variant "${VARIANT}" --link "${LINK}"
+gate_run "kmip-go" "$(first_reason "$(reason_needs_nix)" "$(reason_needs_cmd go)")" \
+  bash "${TASK_DIR}/kmip-go" --variant "${VARIANT}" --link "${LINK}"
+gate_run "luks" "$(first_reason "$(reason_needs_nix)")" \
+  bash "${TASK_DIR}/luks" --variant "${VARIANT}" --link "${LINK}"
+gate_run "veracrypt" "$(first_reason "$(reason_needs_nix)" "$(reason_needs_cmd veracrypt)")" \
+  bash "${TASK_DIR}/veracrypt" --variant "${VARIANT}" --link "${LINK}"
+gate_run "load-balancer" "$(first_reason "$(reason_needs_nix)")" \
+  bash "${TASK_DIR}/load-balancer" --variant "${VARIANT}" --link "${LINK}"
+
+# ── non-FIPS-only groups ────────────────────────────────────────────────────────
+gate_run "openssh" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
+  bash "${TASK_DIR}/openssh" --variant "${VARIANT}" --link "${LINK}"
+gate_run "pykmip" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
+  bash "${TASK_DIR}/pykmip" --variant "${VARIANT}" --link "${LINK}"
+gate_run "azure-ekm" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
+  bash "${TASK_DIR}/azure-ekm" --variant "${VARIANT}" --link "${LINK}"
+gate_run "xks" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
+  bash "${TASK_DIR}/xks" --variant "${VARIANT}" --link "${LINK}"
+# NOTE: "ui" already runs test_ui_auth.sh and test_ui_oidc.sh internally
+# (standard + auth + OIDC E2E suites), so "ui-auth"/"ui-oidc" are intentionally
+# NOT listed separately here — that would re-run the same suites twice. They
+# remain available standalone via "mise test:ui-auth" / "mise test:ui-oidc".
+gate_run "ui" "$(first_reason "$(reason_non_fips_only)")" \
+  bash "${TASK_DIR}/ui" --variant "${VARIANT}" --link "${LINK}"
+
+# ── Groups requiring cloud/service credentials ──────────────────────────────────
+gate_run "google-cse" "$(first_reason "$(reason_needs_env TEST_GOOGLE_OAUTH_CLIENT_ID TEST_GOOGLE_OAUTH_CLIENT_SECRET TEST_GOOGLE_OAUTH_REFRESH_TOKEN GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)")" \
+  bash "${TASK_DIR}/google-cse" --variant "${VARIANT}" --link "${LINK}"
+gate_run "secret_aws" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_env AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION)")" \
+  bash "${TASK_DIR}/secret_aws" --variant "${VARIANT}" --link "${LINK}"
+gate_run "secret_azure" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_env AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_KV_NAME)")" \
+  bash "${TASK_DIR}/secret_azure" --variant "${VARIANT}" --link "${LINK}"
+gate_run "xks-remote" "$(first_reason "$(reason_needs_env KMS_XKS_SIGV4_ACCESS_KEY_ID KMS_XKS_SIGV4_SECRET_ACCESS_KEY)")" \
+  bash "${TASK_DIR}/xks-remote" --variant "${VARIANT}" --link "${LINK}"
+gate_run "docker-oracle" "$(first_reason "$(reason_needs_env DOCKER_IMAGE_NAME ORACLE_KMS_DEMO_USER_PASS COSMIAN_HSM_PIN)")" \
+  bash "${TASK_DIR}/docker-oracle" --variant "${VARIANT}" --link "${LINK}"
+gate_run "edb-tde" "$(first_reason "$(reason_needs_docker)" "$(reason_needs_env EDB_SUBSCRIPTION_TOKEN)")" \
+  bash "${TASK_DIR}/edb-tde" --variant "${VARIANT}" --link "${LINK}"
+
+# ── Groups requiring an OTLP collector reachable on the configured port ─────────
+gate_run "otel" "$(first_reason "$(reason_needs_port 127.0.0.1 "${KMS_SLOT_OTEL_GRPC_PORT:-4317}" "OTLP collector")")" \
+  bash "${TASK_DIR}/otel" --variant "${VARIANT}" --link "${LINK}"
+
+# ── Groups requiring Docker ──────────────────────────────────────────────────────
+gate_run "docker" "$(first_reason "$(reason_needs_docker)")" \
+  bash "${TASK_DIR}/docker" --variant "${VARIANT}" --link "${LINK}"
+gate_run "iris" "$(first_reason "$(reason_needs_docker)")" \
+  bash "${TASK_DIR}/iris" --variant "${VARIANT}" --link "${LINK}"
+gate_run "secret_vault" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_docker)")" \
+  bash "${TASK_DIR}/secret_vault" --variant "${VARIANT}" --link "${LINK}"
+
+# ── SPIRE groups (Docker + non-FIPS; some also need the authentication submodule
+#    and/or Go) ────────────────────────────────────────────────────────────────
+# NOTE: "spire" already delegates to "spire-pki" (step 16) and runs the same
+# test_sds.sh as "spire-sds" (step 17) using the containers it started, so
+# those two are intentionally NOT listed separately — that would re-run the
+# same suites twice. They remain available standalone via "mise test:spire-pki"
+# / "mise test:spire-sds". Likewise "spire-kmip" already runs both
+# "spire-kmip-key-manager" and "spire-kmip-upstream-authority" sequentially, so
+# those two are also omitted here.
+gate_run "spire" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_docker)" "$(reason_needs_auth_submodule)")" \
+  bash "${TASK_DIR}/spire" --variant "${VARIANT}" --link "${LINK}"
+gate_run "spire-kmip" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_docker)" "$(reason_needs_cmd go)")" \
+  bash "${TASK_DIR}/spire-kmip" --variant "${VARIANT}" --link "${LINK}"
+
+# ── Kubernetes group (needs kubectl/helm/minikube/openssl + a reachable cluster) ─
+K8S_REASON="$(first_reason \
+  "$(reason_needs_cmd kubectl)" \
+  "$(reason_needs_cmd helm)" \
+  "$(reason_needs_cmd minikube)" \
+  "$(reason_needs_cmd openssl)")"
+if [ -z "${K8S_REASON}" ] && ! kubectl cluster-info >/dev/null 2>&1; then
+  K8S_REASON="no reachable Kubernetes cluster (kubectl cluster-info failed)"
 fi
+gate_run "k8s" "${K8S_REASON}" bash "${TASK_DIR}/k8s/_default" --variant "${VARIANT}" --link "${LINK}"
 
+# NOTE: test:matrix is intentionally excluded — it re-runs the full HSM x DB x
+# variant combinatorial matrix already covered by the "db" and "hsm" groups
+# above, and is expensive to run on every "mise test". Invoke it explicitly with
+# "mise test:matrix" when needed.
+
+echo ''
+echo '============================================'
+print_success "Passed:  ${#PASSED[@]}"
+if [ ${#SKIPPED[@]} -gt 0 ]; then
+  print_warning "Skipped: ${#SKIPPED[@]}"
+  for s in "${SKIPPED[@]}"; do
+    echo "  - $s"
+  done
+fi
 if [ ${#FAILED[@]} -gt 0 ]; then
-  echo '' >&2
-  echo '============================================' >&2
   echo "  FAILED steps: ${FAILED[*]}" >&2
   echo '============================================' >&2
   exit 1
 fi
+echo '============================================'
 
-print_success "All tests passed"
+print_success "All runnable tests passed"

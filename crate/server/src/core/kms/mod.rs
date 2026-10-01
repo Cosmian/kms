@@ -49,7 +49,7 @@ static GLOBAL_HSMS: OnceCell<Vec<Arc<dyn HSM + Send + Sync>>> = OnceCell::const_
 
 use crate::{
     config::{OpenTelemetryConfig, ServerParams},
-    core::OtelMetrics,
+    core::{OtelMetrics, audit::AuditFileStore},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -97,6 +97,9 @@ pub struct KMS {
 
     /// OTLP metrics collector (if enabled)
     pub(crate) metrics: Option<Arc<OtelMetrics>>,
+
+    /// Audit file store (if audit logging is enabled)
+    pub(crate) audit_store: Option<AuditFileStore>,
 
     /// Optional HSM instance for PKCS#11 operations.
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
@@ -238,15 +241,20 @@ impl KMS {
         //
         // This ensures the metric starts at the correct absolute value rather
         // than 0.  Without this seed, the gauge would only reach the right count
-        // after the first periodic cron sync (up to 30 s later), giving a
-        // misleading reading immediately after server restart.
-        if let Some(ref m) = metrics {
+        // after the first periodic cron sync (within one `metrics_count_interval_secs`
+        // period), giving a misleading reading immediately after server restart.
+        // Skipped when `metrics_count_interval_secs == 0` (COUNT queries disabled).
+        if let Some(m) = metrics
+            .as_ref()
+            .filter(|_| server_params.metrics_count_interval_secs > 0)
+        {
             match database.count_all_non_destroyed_objects().await {
                 Ok(count) => {
                     m.update_objects_total(i64::try_from(count).unwrap_or(i64::MAX));
                 }
                 Err(e) => {
-                    // Non-fatal: the cron will correct the value within 30 s.
+                    // Non-fatal: the cron will correct the value within one
+                    // `metrics_count_interval_secs` period.
                     cosmian_logger::debug!("[kms-init] Failed to seed kms.objects.total: {e}");
                 }
             }
@@ -256,8 +264,11 @@ impl KMS {
                     m.update_active_keys_count(i64::try_from(count).unwrap_or(i64::MAX));
                 }
                 Err(e) => {
-                    // Non-fatal: the cron will correct the value within 30 s.
-                    cosmian_logger::debug!("[kms-init] Failed to seed kms.keys.active.count: {e}");
+                    // Non-fatal: the cron will correct the value within one
+                    // `metrics_count_interval_secs` period, but a
+                    // persistently failing query (e.g. a backend-specific SQL bug)
+                    // should be visible without enabling debug logging.
+                    cosmian_logger::warn!("[kms-init] Failed to seed kms.keys.active.count: {e}");
                 }
             }
         }
@@ -293,6 +304,7 @@ impl KMS {
             hsm: hsm_instances.into_iter().next(),
             metrics,
             crl_counter,
+            audit_store: Self::create_audit_store(&server_params)?,
         })
     }
 
@@ -370,6 +382,20 @@ impl KMS {
                 .build();
 
             Ok(Some(Arc::new(OtelMetrics::new(meter_provider)?)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Starts the audit file store if audit logging is configured.
+    fn create_audit_store(server_params: &ServerParams) -> KResult<Option<AuditFileStore>> {
+        if let Some(ref path) = server_params.audit_file_path {
+            let store = AuditFileStore::start_with_max_size(
+                path,
+                server_params.audit_channel_capacity,
+                server_params.audit_file_max_size_bytes,
+            )?;
+            Ok(Some(store))
         } else {
             Ok(None)
         }

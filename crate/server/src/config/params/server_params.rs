@@ -5,12 +5,13 @@ use cosmian_kms_server_database::{
     CeremonyKeys, MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
 };
 use cosmian_logger::{debug, warn};
+use ipnet::IpNet;
 
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig,
-        JwksEndpointConfig, OidcConfig,
+        AuditFailureMode, AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig,
+        IdpConfig, JwksEndpointConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -44,6 +45,11 @@ pub struct HsmInstanceParams {
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
     pub identity_provider_configurations: Option<Vec<IdpConfig>>,
+
+    /// When `true`, JWTs from `identity_provider_configurations` issuers that have no
+    /// `email` claim are authenticated using their `sub` claim, provided it starts with
+    /// `spiffe://` (SPIFFE JWT-SVID support). See `IdpAuthConfig::jwt_svid_auth`.
+    pub jwt_svid_auth_enabled: bool,
 
     /// The UI distribution folder
     pub ui_index_html_folder: PathBuf,
@@ -197,6 +203,9 @@ pub struct ServerParams {
     /// 0 means disabled.
     pub auto_rotation_check_interval_secs: u64,
 
+    /// Interval in seconds between metrics COUNT refreshes; 0 disables them.
+    pub metrics_count_interval_secs: u64,
+
     /// Depth at which a successful keyset chain decryption triggers a warning.
     /// Keyset chain traversal is unbounded (stopped only by cycle detection); this
     /// threshold lets operators know when a ciphertext required walking many
@@ -250,6 +259,28 @@ pub struct ServerParams {
     /// When set, the KMS validates bearer tokens issued by the Auth Verifier server.
     /// The `sub` claim is used as the user identity.
     pub auth_verifier_config: Option<AuthVerifierConfig>,
+
+    /// When `Some`, tamper-evident JSONL audit logging is enabled and events
+    /// are appended to the file at this path.  `None` means audit logging is
+    /// disabled (the default).
+    pub audit_file_path: Option<std::path::PathBuf>,
+
+    /// Capacity of the bounded in-memory channel between request threads and the
+    /// audit writer task.  Propagated from `--audit-channel-capacity` /
+    /// `KMS_AUDIT_CHANNEL_CAPACITY`.  Must be ≥ 1.
+    pub audit_channel_capacity: usize,
+
+    /// When `Some`, the audit writer stops writing once the file reaches this many
+    /// bytes (see `AuditFileConfig::audit_file_max_size_bytes`). `None` (the default)
+    /// is unlimited. Must be > 0 when set.
+    pub audit_file_max_size_bytes: Option<u64>,
+
+    /// Trusted reverse-proxy CIDR blocks.  `X-Forwarded-For` is only used when
+    /// the direct TCP peer address falls within one of these ranges.
+    pub audit_trusted_proxy_cidrs: Vec<IpNet>,
+
+    /// What to do when an audit event cannot be queued.
+    pub audit_failure_mode: AuditFailureMode,
 
     // ── CRL lifecycle ─────────────────────────────────────────────────────────
     /// Default CRL validity period in days.
@@ -372,6 +403,19 @@ impl ServerParams {
         // include it in the CORS allow-list when cors_allowed_origins is not configured.
         let public_url_for_cors = conf.kms_public_url.clone();
 
+        // Capture before `conf.idp_auth` is consumed by `extract_idp_configs` below.
+        let jwt_svid_auth_enabled = conf.idp_auth.jwt_svid_auth;
+
+        // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
+        let identity_provider_configurations = conf
+            .idp_auth
+            .extract_idp_configs()
+            .context("failed initializing IdPs from idp_auth")?;
+
+        if jwt_svid_auth_enabled {
+            ensure_svid_providers_have_audience(identity_provider_configurations.as_deref())?;
+        }
+
         // Determine whether CO users will come from the deprecated `privileged_users` path.
         // Used after `res` is built to preserve v5.26.0 behaviour: if the operator had
         // `force_default_username = true` AND `privileged_users = [...]` (nonsensical but
@@ -380,12 +424,8 @@ impl ServerParams {
             conf.roles.crypto_officer_users.is_none() && conf.privileged_users.is_some();
 
         let res = Self {
-            identity_provider_configurations: {
-                // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
-                conf.idp_auth
-                    .extract_idp_configs()
-                    .context("failed initializing IdPs from idp_auth")?
-            },
+            identity_provider_configurations,
+            jwt_svid_auth_enabled,
             ui_index_html_folder,
             ui_enable: conf.ui_config.enable,
             ui_oidc_auth: conf.ui_config.ui_oidc_auth,
@@ -601,6 +641,7 @@ impl ServerParams {
                 v
             },
             keyset_warn_depth: conf.keyset_warn_depth,
+            metrics_count_interval_secs: conf.metrics_count_interval_secs,
             jwks_endpoint: conf.jwks_endpoint,
             // Vault-compatible API — opt-in via config file or CLI flags.
             vault_api_enabled: conf.vault.vault_api_enabled,
@@ -625,6 +666,27 @@ impl ServerParams {
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
             auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
+            audit_file_path: if conf.audit.audit_enable {
+                let path = conf
+                    .audit
+                    .file
+                    .audit_file_path
+                    .unwrap_or_else(|| conf.workspace.root_data_path.join("audit.jsonl"));
+                Some(path)
+            } else {
+                None
+            },
+            audit_channel_capacity: conf.audit.audit_channel_capacity,
+            audit_file_max_size_bytes: match conf.audit.file.audit_file_max_size_bytes {
+                Some(0) => {
+                    return Err(KmsError::NotSupported(
+                        "audit_file_max_size_bytes must be greater than 0 when set".to_owned(),
+                    ));
+                }
+                other => other,
+            },
+            audit_trusted_proxy_cidrs: conf.audit.audit_trusted_proxy_cidrs,
+            audit_failure_mode: conf.audit.audit_failure_mode,
             crl_default_validity_days: conf.crl.crl_default_validity_days,
             crl_refresh_check_hours: conf.crl.crl_refresh_check_hours,
             crl_refresh_overlap_hours: conf.crl.crl_refresh_overlap_hours,
@@ -777,6 +839,27 @@ fn parse_default_unwrap_types(types: Option<Vec<String>>) -> KResult<Option<Vec<
         .transpose()
 }
 
+/// `--jwt-svid-auth` is global: it makes EVERY `--jwt-auth-provider` issuer accept SPIFFE
+/// subjects. A JWT-SVID is minted for a specific audience and workloads hold SVIDs for many
+/// services, so without an expected audience any SVID issued for another service could be
+/// replayed against the KMS. Refuse to start rather than silently accept them.
+fn ensure_svid_providers_have_audience(providers: Option<&[IdpConfig]>) -> KResult<()> {
+    let Some(providers) = providers else {
+        return Err(KmsError::ServerError(
+            "`jwt_svid_auth` is enabled but no `jwt_auth_provider` is configured".to_owned(),
+        ));
+    };
+    if let Some(provider) = providers.iter().find(|idp| idp.jwt_audience.is_none()) {
+        return Err(KmsError::ServerError(format!(
+            "`jwt_svid_auth` requires an audience on every `jwt_auth_provider`, but the \
+             provider for issuer `{}` has none. Append the expected audience \
+             (`issuer,jwks_uri,audience`) so SVIDs minted for other services are rejected.",
+            provider.jwt_issuer_uri
+        )));
+    }
+    Ok(())
+}
+
 impl fmt::Debug for ServerParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut debug_struct = f.debug_struct("ServerParams");
@@ -785,6 +868,7 @@ impl fmt::Debug for ServerParams {
         if let Some(ref idp_configs) = self.identity_provider_configurations {
             debug_struct.field("identity_provider_configurations", idp_configs);
         }
+        debug_struct.field("jwt_svid_auth_enabled", &self.jwt_svid_auth_enabled);
 
         // Always show these non-optional fields
         debug_struct
@@ -1001,6 +1085,10 @@ impl fmt::Debug for ServerParams {
             "auto_rotation_check_interval_secs",
             &self.auto_rotation_check_interval_secs,
         );
+        debug_struct.field(
+            "metrics_count_interval_secs",
+            &self.metrics_count_interval_secs,
+        );
         debug_struct.field("keyset_warn_depth", &self.keyset_warn_depth);
         if self.jwks_endpoint.jwks_endpoint_enabled {
             debug_struct
@@ -1022,6 +1110,11 @@ impl fmt::Debug for ServerParams {
                 &self.jwks_endpoint.jwks_endpoint_enabled,
             );
         }
+        debug_struct.field("audit_file_path", &self.audit_file_path);
+        debug_struct.field("audit_channel_capacity", &self.audit_channel_capacity);
+        debug_struct.field("audit_file_max_size_bytes", &self.audit_file_max_size_bytes);
+        debug_struct.field("audit_trusted_proxy_cidrs", &self.audit_trusted_proxy_cidrs);
+        debug_struct.field("audit_failure_mode", &self.audit_failure_mode);
 
         // Vault API fields
         debug_struct.field("vault_api_enabled", &self.vault_api_enabled);
@@ -1068,11 +1161,41 @@ impl fmt::Debug for ServerParams {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use tempfile::TempDir;
 
-    use crate::config::{ClapConfig, HttpConfig, command_line::MainDBConfig};
+    use super::{ServerParams, ensure_svid_providers_have_audience};
+    use crate::{
+        config::{ClapConfig, HttpConfig, IdpConfig, command_line::MainDBConfig},
+        tests::test_utils::https_clap_config,
+    };
+
+    fn provider(issuer: &str, audience: Option<&str>) -> IdpConfig {
+        IdpConfig {
+            jwt_issuer_uri: issuer.to_owned(),
+            jwks_uri: None,
+            jwt_audience: audience.map(|a| vec![a.to_owned()]),
+        }
+    }
+
+    /// `--jwt-svid-auth` is global, so a single provider without an audience would let
+    /// SVIDs minted for other services through: startup must be refused and name the issuer.
+    #[test]
+    fn jwt_svid_auth_requires_audience_on_every_provider() {
+        let providers = [
+            provider("https://with-aud.example.org", Some("cosmian-kms")),
+            provider("https://no-aud.example.org", None),
+        ];
+        let error = ensure_svid_providers_have_audience(Some(&providers))
+            .expect_err("provider without audience must be refused");
+        assert!(error.to_string().contains("https://no-aud.example.org"));
+
+        ensure_svid_providers_have_audience(Some(&providers[..1]))
+            .expect("all providers have an audience");
+        ensure_svid_providers_have_audience(None)
+            .expect_err("jwt_svid_auth without any provider must be refused");
+    }
 
     /// Build a minimal [`ClapConfig`] that uses a `SQLite` database in `tmp_dir`.
     fn minimal_config(tmp_dir: &TempDir) -> ClapConfig {
@@ -1169,5 +1292,35 @@ mod tests {
             "kms_public_url must appear exactly once; got: {:?}",
             params.cors_allowed_origins
         );
+    }
+
+    /// `max_size_bytes = 0` is a configuration mistake (it would mean either
+    /// "unlimited" or "block everything", ambiguously), so it must be rejected
+    /// at config/parameter construction time rather than silently accepted.
+    #[test]
+    fn audit_file_max_size_bytes_zero_is_rejected() {
+        let mut conf = https_clap_config();
+        conf.audit.file.audit_file_max_size_bytes = Some(0);
+
+        let err = ServerParams::try_from(conf).expect_err("max_size_bytes = 0 must be rejected");
+        assert!(
+            err.to_string()
+                .contains("audit_file_max_size_bytes must be greater than 0"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    /// `None` (unset) and any positive value must both build successfully.
+    #[test]
+    fn audit_file_max_size_bytes_none_or_positive_is_accepted() {
+        let mut conf = https_clap_config();
+        conf.audit.file.audit_file_max_size_bytes = None;
+        let params = ServerParams::try_from(conf).expect("None must be accepted");
+        assert_eq!(params.audit_file_max_size_bytes, None);
+
+        let mut conf = https_clap_config();
+        conf.audit.file.audit_file_max_size_bytes = Some(1_073_741_824);
+        let params = ServerParams::try_from(conf).expect("a positive value must be accepted");
+        assert_eq!(params.audit_file_max_size_bytes, Some(1_073_741_824));
     }
 }

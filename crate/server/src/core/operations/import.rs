@@ -240,6 +240,7 @@ pub(super) async fn process_symmetric_key(
     if attributes.always_sensitive.is_none() {
         attributes.initialize_always_sensitive();
     }
+    attributes.initialize_never_extractable();
     // make sure we have a CryptographicAlgorithm set; default to AES
     if attributes.cryptographic_algorithm.is_none() {
         attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::AES);
@@ -604,6 +605,7 @@ pub(super) async fn process_private_key(
     if attributes.always_sensitive.is_none() {
         attributes.initialize_always_sensitive();
     }
+    attributes.initialize_never_extractable();
 
     // Replace updated attributes in the object structure if the object is not wrapped.
     if let Ok(key_block) = object.key_block_mut() {
@@ -1046,6 +1048,7 @@ pub(super) async fn process_secret_data(
     if attributes.always_sensitive.is_none() {
         attributes.initialize_always_sensitive();
     }
+    attributes.initialize_never_extractable();
 
     // force the usage mask to unrestricted if not in FIPS mode
     #[cfg(feature = "non-fips")]

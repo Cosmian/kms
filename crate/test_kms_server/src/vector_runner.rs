@@ -2891,6 +2891,18 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_integration_sybase_ase() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/integrations/sybase_ase").await
+    }
+
+    #[tokio::test]
+    async fn test_integration_db2_luw() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/integrations/db2_luw").await
+    }
+
+    #[tokio::test]
     async fn test_integration_percona() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/integrations/percona").await
@@ -4201,6 +4213,13 @@ ObjectType = "SymmetricKey"
     async fn test_vec_rekey_keypair_x25519() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/non-fips/rekey_keypair_x25519").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_derive_key_x25519() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/non-fips/derive_key_x25519").await
     }
 
     #[cfg(feature = "non-fips")]

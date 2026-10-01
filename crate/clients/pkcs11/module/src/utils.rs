@@ -15,9 +15,13 @@ use crate::{
 #[expect(clippy::missing_panics_doc)]
 #[must_use]
 pub fn test_generate_key(session_h: CK_ULONG) -> CK_OBJECT_HANDLE {
+    // The parameter buffer must outlive `mechanism` since `pParameter` only stores a raw
+    // pointer to it; a temporary array here would be dropped before the FFI call that
+    // dereferences it, leaving `pParameter` dangling.
+    let mut parameter = [0_u8; 16];
     let mut mechanism = CK_MECHANISM {
         mechanism: CKM_AES_KEY_GEN,
-        pParameter: [0_u8; 16].as_mut_ptr().cast::<std::ffi::c_void>(),
+        pParameter: parameter.as_mut_ptr().cast::<std::ffi::c_void>(),
         ulParameterLen: 16,
     };
     let pMechanism: CK_MECHANISM_PTR = &raw mut mechanism;
@@ -77,9 +81,13 @@ pub fn test_encrypt(
     key_handle: CK_OBJECT_HANDLE,
     plaintext: Vec<u8>,
 ) -> Vec<u8> {
+    // The IV buffer must outlive `mechanism` since `pParameter` only stores a raw
+    // pointer to it; a temporary array here would be dropped before the FFI calls
+    // that dereference it, leaving `pParameter` dangling.
+    let mut iv = [0_u8; AES_IV_SIZE];
     let mut mechanism = CK_MECHANISM {
         mechanism: CKM_AES_CBC_PAD,
-        pParameter: [0_u8; AES_IV_SIZE].as_mut_ptr().cast::<std::ffi::c_void>(),
+        pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
         ulParameterLen: AES_IV_SIZE as CK_ULONG,
     };
     let pMechanism: CK_MECHANISM_PTR = &raw mut mechanism;
@@ -123,9 +131,13 @@ pub fn test_decrypt(
     key_handle: CK_OBJECT_HANDLE,
     encrypted_data: Vec<u8>,
 ) -> Vec<u8> {
+    // The IV buffer must outlive `mechanism` since `pParameter` only stores a raw
+    // pointer to it; a temporary array here would be dropped before the FFI calls
+    // that dereference it, leaving `pParameter` dangling.
+    let mut iv = [0_u8; AES_IV_SIZE];
     let mut mechanism = CK_MECHANISM {
         mechanism: CKM_AES_CBC_PAD,
-        pParameter: [0_u8; AES_IV_SIZE].as_mut_ptr().cast::<std::ffi::c_void>(),
+        pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
         ulParameterLen: AES_IV_SIZE as CK_ULONG,
     };
     let pMechanism: CK_MECHANISM_PTR = &raw mut mechanism;

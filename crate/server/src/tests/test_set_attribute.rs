@@ -28,15 +28,20 @@
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        extra::tagging::VENDOR_ID_COSMIAN,
-        kmip_attributes::{Attribute, Attributes},
-        kmip_operations::{DeleteAttribute, GetAttributes, GetAttributesResponse, SetAttribute},
-        kmip_types::{
-            AttributeReference, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
-            Tag, UniqueIdentifier,
+    cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            extra::tagging::VENDOR_ID_COSMIAN,
+            kmip_attributes::{Attribute, Attributes},
+            kmip_operations::{
+                DeleteAttribute, GetAttributes, GetAttributesResponse, SetAttribute,
+            },
+            kmip_types::{
+                AttributeReference, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
+                Tag, UniqueIdentifier,
+            },
+            requests::create_symmetric_key_kmip_object,
         },
-        requests::create_symmetric_key_kmip_object,
     },
     cosmian_kms_crypto::reexport::cosmian_crypto_core::{
         CsRng,
@@ -48,7 +53,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
+    config::ServerParams, core::KMS, error::KmsError, middlewares::UserId, result::KResult,
     tests::test_utils::https_clap_config,
 };
 
@@ -264,7 +269,7 @@ async fn set_cryptographic_length_and_remove_it(kms: &Arc<KMS>, uid: &str) -> KR
     let get_response = get_attributes(kms, uid, Tag::CryptographicLength).await?;
     assert_eq!(get_response.attributes.cryptographic_length, Some(256));
 
-    delete_attribute(
+    let err = delete_attribute(
         kms,
         DeleteAttribute {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
@@ -272,10 +277,14 @@ async fn set_cryptographic_length_and_remove_it(kms: &Arc<KMS>, uid: &str) -> KR
             attribute_references: None,
         },
     )
-    .await?;
+    .await
+    .expect_err("deleting CryptographicLength must fail as read-only");
+    assert!(matches!(
+        err,
+        KmsError::Kmip21Error(ErrorReason::Attribute_Read_Only, _)
+    ));
 
     let get_response = get_attributes(kms, uid, Tag::CryptographicLength).await?;
-    assert!(get_response.attributes.cryptographic_length.is_none());
-
+    assert_eq!(get_response.attributes.cryptographic_length, Some(256));
     Ok(())
 }

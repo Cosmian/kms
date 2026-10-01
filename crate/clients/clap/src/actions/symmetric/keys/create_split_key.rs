@@ -50,8 +50,9 @@ pub struct CreateSplitKeyAction {
     pub key_id: String,
 
     /// Total number of share objects to create (n >= 2). All shares are required to
-    /// reconstruct the key (XOR n-of-n, no configurable threshold).
-    /// Ignored when `--ceremony` is set (share count is auto-determined by the server).
+    /// reconstruct the key (XOR n-of-n, no configurable threshold). Ignored when
+    /// ceremony mode is enabled for an eligible Crypto Officer candidate (or by the
+    /// server's global `require_ceremony` setting); otherwise the requested count is used.
     #[clap(long, short = 'p', default_value = "2")]
     pub total_parts: i32,
 
@@ -60,8 +61,10 @@ pub struct CreateSplitKeyAction {
     pub method: SplitKeyMethodArg,
 
     /// Stamp the `x-cosmian-crypto-officer-ceremony` vendor attribute on the key
-    /// before splitting. The server will distribute shares to different Crypto Officer
-    /// candidates instead of assigning them all to the caller.
+    /// before splitting. When ceremony mode is enabled for an eligible Crypto Officer
+    /// candidate (or by the server's global `require_ceremony` setting), the server
+    /// distributes shares to different Crypto Officer candidates; otherwise it creates
+    /// an ordinary caller-owned split.
     #[clap(long, default_value = "false")]
     pub ceremony: bool,
 }

@@ -84,67 +84,67 @@ The server exposes the following instruments via OTLP, as implemented in `crate/
 
 ### KMIP Operations
 
-| Metric | Type | Labels |
-|--------|------|--------|
-| `kms.kmip.operations.total` | counter | `operation` |
-| `kms.kmip.operations.per_user.total` | counter | `operation`, `user` |
-| `kms.kmip.operation.duration` | histogram (s) | `operation` |
+| Metric                               | Type          | Labels              |
+| ------------------------------------ | ------------- | ------------------- |
+| `kms.kmip.operations.total`          | counter       | `operation`         |
+| `kms.kmip.operations.per_user.total` | counter       | `operation`, `user` |
+| `kms.kmip.operation.duration`        | histogram (s) | `operation`         |
 
-> **Note:** The `user` label in `kms.kmip.operations.per_user.total` and `kms.permissions.granted.per_user.total` carries whatever string the authentication middleware extracts (e.g. an OAuth subject, email address, or service-account identifier); operators connecting these metrics to a cloud OTLP backend should be aware that this value will be stored in the backend.
+> **Note:** The `user` label in `kms.kmip.operations.per_user.total` and `kms.permissions.granted.per_user.total` is a truncated SHA-256 hash of the identity string extracted by the authentication middleware (e.g. an OAuth subject, email address, or service-account identifier), not the raw value. The hash is deterministic (the same user always produces the same label, so per-user trend/cardinality analysis still works) but non-reversible, so it cannot be used to identify a real user from the OTLP backend alone. The authoritative record of which user performed which operation is the audit log, not OTEL metrics.
 
 ### Users & Permissions
 
-| Metric | Type | Labels |
-|--------|------|--------|
-| `kms.active.users` | up-down counter | — |
-| `kms.permissions.granted.per_user.total` | counter | `user`, `permission_type` |
-| `kms.permissions.granted.total` | counter | — |
+| Metric                                   | Type            | Labels                    |
+| ---------------------------------------- | --------------- | ------------------------- |
+| `kms.active.users`                       | up-down counter | —                         |
+| `kms.permissions.granted.per_user.total` | counter         | `user`, `permission_type` |
+| `kms.permissions.granted.total`          | counter         | —                         |
 
 ### Database Metrics
 
-| Metric | Type | Labels |
-|--------|------|--------|
-| `kms.database.operations.total` | counter | `operation`, `backend`, `outcome` |
+| Metric                            | Type          | Labels                            |
+| --------------------------------- | ------------- | --------------------------------- |
+| `kms.database.operations.total`   | counter       | `operation`, `backend`, `outcome` |
 | `kms.database.operation.duration` | histogram (s) | `operation`, `backend`, `outcome` |
 
 `backend`: `sqlite` · `postgresql` · `mysql` · `redis` — `outcome`: `success` · `error`
 
 ### HTTP Metrics
 
-| Metric | Type | Labels |
-|--------|------|--------|
-| `kms.http.requests.total` | counter | `method`, `path`, `status` |
+| Metric                      | Type          | Labels                     |
+| --------------------------- | ------------- | -------------------------- |
+| `kms.http.requests.total`   | counter       | `method`, `path`, `status` |
 | `kms.http.request.duration` | histogram (s) | `method`, `path`, `status` |
 
 ### Server Health
 
-| Metric | Type | Labels |
-|--------|------|--------|
-| `kms.server.uptime` | counter (monotonic, s) | — |
-| `kms.server.start_time` | up-down counter | — |
-| `kms.active.connections` | up-down counter | — |
-| `kms.errors.total` | counter | `error_type` |
+| Metric                   | Type                   | Labels       |
+| ------------------------ | ---------------------- | ------------ |
+| `kms.server.uptime`      | counter (monotonic, s) | —            |
+| `kms.server.start_time`  | up-down counter        | —            |
+| `kms.active.connections` | up-down counter        | —            |
+| `kms.errors.total`       | counter                | `error_type` |
 
 ### Objects & Keys
 
-| Metric | Type | Labels |
-|--------|------|--------|
-| `kms.objects.total` | gauge | — |
-| `kms.keys.active.count` | gauge | — |
+| Metric                  | Type  | Labels |
+| ----------------------- | ----- | ------ |
+| `kms.objects.total`     | gauge | —      |
+| `kms.keys.active.count` | gauge | —      |
 
 `kms.keys.active.count` counts all **non-destroyed** key objects (SymmetricKey, PrivateKey,
 PublicKey, SplitKey) across all non-terminal states: PreActive, Active, Deactivated, Compromised.
 
 ### Cache
 
-| Metric | Type | Labels |
-|--------|------|--------|
+| Metric                       | Type    | Labels                |
+| ---------------------------- | ------- | --------------------- |
 | `kms.cache.operations.total` | counter | `operation`, `result` |
 
 ### HSM
 
-| Metric | Type | Labels |
-|--------|------|--------|
+| Metric                     | Type    | Labels                   |
+| -------------------------- | ------- | ------------------------ |
 | `kms.hsm.operations.total` | counter | `operation`, `hsm_model` |
 
 ## OTLP Collector Configuration
@@ -160,7 +160,7 @@ receivers:
 
 exporters:
   otlp:
-    endpoint: ${env:OTLP_ENDPOINT}  # Forward to Jaeger, etc.
+    endpoint: ${env:OTLP_ENDPOINT} # Forward to Jaeger, etc.
 
 service:
   pipelines:
@@ -251,9 +251,9 @@ otlp = "https://otlp-lb.example.com:4317"
 
 1. **Check KMS logs** for OTLP connection errors:
 
-    ```bash
-    cosmian_kms --log-level debug
-    ```
+   ```bash
+   cosmian_kms --log-level debug
+   ```
 
 2. **Check Collector logs**:
 
@@ -269,11 +269,11 @@ docker compose --profile otel-test logs -f otel-collector
 
 ## Files Reference
 
-| File | Purpose |
-|------|---------|
-| `otel-collector-config.yaml` | OTLP Collector configuration |
-| `docker-compose.yml` | Local development stack (use profile `otel-test`) |
-| `crate/server/src/core/otel_metrics.rs` | Metrics instruments and recording helpers |
+| File                                    | Purpose                                           |
+| --------------------------------------- | ------------------------------------------------- |
+| `otel-collector-config.yaml`            | OTLP Collector configuration                      |
+| `docker-compose.yml`                    | Local development stack (use profile `otel-test`) |
+| `crate/server/src/core/otel_metrics.rs` | Metrics instruments and recording helpers         |
 
 ## Differences from HTTP /metrics Endpoint
 

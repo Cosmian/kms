@@ -26,6 +26,10 @@ use cosmian_kms_client_utils::reexport::{
 use cosmian_logger::{info, trace};
 use serde::Serialize;
 
+#[cfg(feature = "non-fips")]
+use crate::cosmian_kmip::kmip_2_1::{
+    kmip_data_structures::DerivationParameters, kmip_types::UniqueIdentifier,
+};
 use crate::{
     KmsClientConfig,
     cosmian_kmip::{
@@ -225,6 +229,28 @@ impl KmsClient {
     ) -> Result<DeriveKeyResponse, KmsClientError> {
         self.post_ttlv_2_1::<DeriveKey, DeriveKeyResponse>(&request)
             .await
+    }
+
+    /// Derive a non-exportable X25519 shared secret from a private key and a peer public key.
+    #[cfg(feature = "non-fips")]
+    pub async fn derive_x25519_secret(
+        &self,
+        private_key_uid: impl Into<String>,
+        peer_public_key_uid: impl Into<String>,
+        cryptographic_length: i32,
+    ) -> Result<String, KmsClientError> {
+        let request = DeriveKey::new_asymmetric(
+            UniqueIdentifier::TextString(private_key_uid.into()),
+            UniqueIdentifier::TextString(peer_public_key_uid.into()),
+            DerivationParameters::default(),
+            crate::kmip_2_1::kmip_attributes::Attributes {
+                object_type: Some(crate::kmip_2_1::kmip_objects::ObjectType::SecretData),
+                cryptographic_length: Some(cryptographic_length),
+                ..Default::default()
+            },
+        );
+        let response = self.derive_key(request).await?;
+        Ok(response.unique_identifier.to_string())
     }
 
     /// This operation is used to indicate to the server that the key material

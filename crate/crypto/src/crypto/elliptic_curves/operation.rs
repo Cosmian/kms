@@ -19,11 +19,14 @@ use cosmian_kmip::{
     },
 };
 use cosmian_logger::trace;
+#[cfg(feature = "non-fips")]
+use openssl::pkey::Id;
 use openssl::{
-    bn::BigNumContext,
-    ec::{EcGroup, EcKey, PointConversionForm},
+    bn::{BigNum, BigNumContext},
+    ec::{EcGroup, EcKey, EcPoint, PointConversionForm},
     nid::Nid,
     pkey::PKey,
+    pkey_ctx::PkeyCtx,
 };
 use zeroize::Zeroizing;
 
@@ -265,6 +268,124 @@ pub fn create_x25519_key_pair(
         private_key_attributes,
         public_key_attributes,
     )
+}
+
+/// Perform an X25519 key agreement and return the 32-byte shared secret.
+#[cfg(feature = "non-fips")]
+pub fn x25519_key_agreement(
+    private_key_bytes: &[u8],
+    peer_public_key_bytes: &[u8],
+) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+    let private_key = PKey::private_key_from_raw_bytes(private_key_bytes, Id::X25519)?;
+    let peer_public_key = PKey::public_key_from_raw_bytes(peer_public_key_bytes, Id::X25519)?;
+    let mut ctx = PkeyCtx::new(&private_key)?;
+    ctx.derive_init()?;
+    ctx.derive_set_peer(&peer_public_key).map_err(|_error| {
+        CryptoError::Derivation(
+            "X25519 key agreement failed for invalid peer public key".to_owned(),
+        )
+    })?;
+
+    let mut shared_secret = Zeroizing::new(vec![0_u8; 32]);
+    let secret_len = ctx.derive(Some(&mut shared_secret)).map_err(|_error| {
+        CryptoError::Derivation(
+            "X25519 key agreement failed for invalid peer public key".to_owned(),
+        )
+    })?;
+    if secret_len != shared_secret.len() {
+        crypto_bail!(CryptoError::Derivation(
+            "X25519 key agreement returned an unexpected shared-secret length".to_owned()
+        ));
+    }
+    if shared_secret.iter().all(|byte| *byte == 0) {
+        crypto_bail!(CryptoError::Derivation(
+            "X25519 key agreement failed for invalid peer public key".to_owned()
+        ));
+    }
+
+    Ok(shared_secret)
+}
+
+/// Return the SP 800-56A shared-secret length in bytes for a NIST curve, given its OpenSSL NID.
+///
+/// P-256 → 32 bytes, P-384 → 48 bytes, P-521 → 66 bytes (ceil(521/8)).
+fn ecdh_shared_secret_len(curve_nid: Nid) -> Result<usize, CryptoError> {
+    match curve_nid {
+        Nid::X9_62_PRIME256V1 => Ok(32),
+        Nid::SECP384R1 => Ok(48),
+        Nid::SECP521R1 => Ok(66),
+        other => crypto_bail!(CryptoError::NotSupported(format!(
+            "ECDH key agreement: unsupported curve NID {other:?}"
+        ))),
+    }
+}
+
+/// Perform a NIST-curve (P-256/P-384/P-521) ECDH key agreement and return the shared secret.
+///
+/// `private_key_scalar` is the raw big-endian private scalar `d`; `peer_public_key_point` is the
+/// peer's public key as an uncompressed SEC1 point (`0x04 || X || Y`).
+///
+/// This primitive implements SP 800-56Ar3 elliptic-curve Diffie-Hellman and is available in both
+/// FIPS and non-FIPS builds (raw ECDH on P-256/P-384/P-521 is a FIPS 140-3 approved algorithm).
+pub fn ecdh_key_agreement(
+    curve_nid: Nid,
+    private_key_scalar: &[u8],
+    peer_public_key_point: &[u8],
+) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+    let shared_secret_len = ecdh_shared_secret_len(curve_nid)?;
+    let group = EcGroup::from_curve_name(curve_nid)?;
+    let mut bn_ctx = BigNumContext::new()?;
+
+    // Rebuild the full EC private key (private scalar + derived public point) so that
+    // OpenSSL accepts it as a valid `EcKey`/`PKey` for key derivation.
+    let priv_bn = BigNum::from_slice(private_key_scalar)?;
+    let mut own_public_point = EcPoint::new(&group)?;
+    own_public_point
+        .mul_generator2(&group, &priv_bn, &mut bn_ctx)
+        .map_err(|_error| {
+            CryptoError::Derivation(
+                "ECDH key agreement failed to derive the local public point".to_owned(),
+            )
+        })?;
+    let ec_private_key = EcKey::from_private_components(&group, &priv_bn, &own_public_point)
+        .map_err(|_error| {
+            CryptoError::Derivation("ECDH key agreement failed for invalid private key".to_owned())
+        })?;
+    let private_key = PKey::from_ec_key(ec_private_key)?;
+
+    let peer_point =
+        EcPoint::from_bytes(&group, peer_public_key_point, &mut bn_ctx).map_err(|_error| {
+            CryptoError::Derivation(
+                "ECDH key agreement failed for invalid peer public key point".to_owned(),
+            )
+        })?;
+    let ec_peer_key = EcKey::from_public_key(&group, &peer_point).map_err(|_error| {
+        CryptoError::Derivation("ECDH key agreement failed for invalid peer public key".to_owned())
+    })?;
+    let peer_public_key = PKey::from_ec_key(ec_peer_key)?;
+
+    let mut ctx = PkeyCtx::new(&private_key)?;
+    ctx.derive_init()?;
+    ctx.derive_set_peer(&peer_public_key).map_err(|_error| {
+        CryptoError::Derivation("ECDH key agreement failed for invalid peer public key".to_owned())
+    })?;
+
+    let mut shared_secret = Zeroizing::new(vec![0_u8; shared_secret_len]);
+    let secret_len = ctx.derive(Some(&mut shared_secret)).map_err(|_error| {
+        CryptoError::Derivation("ECDH key agreement failed for invalid peer public key".to_owned())
+    })?;
+    if secret_len != shared_secret.len() {
+        crypto_bail!(CryptoError::Derivation(
+            "ECDH key agreement returned an unexpected shared-secret length".to_owned()
+        ));
+    }
+    if shared_secret.iter().all(|byte| *byte == 0) {
+        crypto_bail!(CryptoError::Derivation(
+            "ECDH key agreement failed for invalid peer public key".to_owned()
+        ));
+    }
+
+    Ok(shared_secret)
 }
 
 /// Generate a SEC 2 Key Pair. Not FIPS 140-3 compliant.
@@ -627,6 +748,7 @@ mod tests {
             kmip_types::{CryptographicAlgorithm, RecommendedCurve},
         },
     };
+    use openssl::nid::Nid;
     #[cfg(feature = "non-fips")]
     use openssl::pkey::{Id, PKey};
     // Load FIPS provider module from OpenSSL.
@@ -635,9 +757,9 @@ mod tests {
 
     #[cfg(not(feature = "non-fips"))]
     use super::{check_ecc_mask_against_flags, check_ecc_mask_algorithm_compliance};
-    use super::{create_approved_ecc_key_pair, create_ed25519_key_pair};
+    use super::{create_approved_ecc_key_pair, create_ed25519_key_pair, ecdh_key_agreement};
     #[cfg(feature = "non-fips")]
-    use super::{create_x448_key_pair, create_x25519_key_pair};
+    use super::{create_x448_key_pair, create_x25519_key_pair, x25519_key_agreement};
     #[cfg(not(feature = "non-fips"))]
     use crate::crypto::elliptic_curves::operation::create_ed448_key_pair;
     #[cfg(feature = "non-fips")]
@@ -695,6 +817,138 @@ mod tests {
             pubkey1.public_key_to_der().unwrap(),
             pubkey2.public_key_to_der().unwrap()
         );
+    }
+
+    #[test]
+    fn test_ecdh_key_agreement_rfc7518_appendix_c() {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
+        // RFC 7518 Appendix C — Alice's and Bob's static P-256 key pairs.
+        let alice_d = URL_SAFE_NO_PAD
+            .decode("0_NxaRPUMQoAJt50Gz8YiTr8gRTwyEaCumd-MToTmIo")
+            .unwrap();
+        let alice_x = URL_SAFE_NO_PAD
+            .decode("gI0GAILBdu7T53akrFmMyGcsF3n5dO7MmwNBHKW5SV0")
+            .unwrap();
+        let alice_y = URL_SAFE_NO_PAD
+            .decode("SLW_xSffzlPWrHEVI30DHM_4egVwt3NQqeUD7nMFpps")
+            .unwrap();
+
+        let bob_d = URL_SAFE_NO_PAD
+            .decode("VEmDZpDXXK8p8N0Cndsxs924q6nS1RXFASRl6BfUqdw")
+            .unwrap();
+        let bob_x = URL_SAFE_NO_PAD
+            .decode("weNJy2HscCSM6AEDTDg04biOvhFhyyWvOHQfeF_PxMQ")
+            .unwrap();
+        let bob_y = URL_SAFE_NO_PAD
+            .decode("e8lnCO-AlStT-NJVX-crhB7QRYhiix03illJOVAOyck")
+            .unwrap();
+
+        // Uncompressed SEC1 point: 0x04 || X || Y
+        let mut alice_point = vec![0x04_u8];
+        alice_point.extend_from_slice(&alice_x);
+        alice_point.extend_from_slice(&alice_y);
+        let mut bob_point = vec![0x04_u8];
+        bob_point.extend_from_slice(&bob_x);
+        bob_point.extend_from_slice(&bob_y);
+
+        let z_from_alice = ecdh_key_agreement(Nid::X9_62_PRIME256V1, &alice_d, &bob_point).unwrap();
+        let z_from_bob = ecdh_key_agreement(Nid::X9_62_PRIME256V1, &bob_d, &alice_point).unwrap();
+
+        let expected_z: [u8; 32] = [
+            158, 86, 217, 29, 129, 113, 53, 211, 114, 131, 66, 131, 191, 132, 38, 156, 251, 49,
+            110, 163, 218, 128, 106, 72, 246, 218, 167, 121, 140, 254, 144, 196,
+        ];
+        assert_eq!(z_from_alice.as_slice(), &expected_z[..]);
+        assert_eq!(z_from_bob.as_slice(), &expected_z[..]);
+    }
+
+    #[test]
+    fn test_ecdh_key_agreement_rejects_invalid_peer_point() {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
+        let alice_d = URL_SAFE_NO_PAD
+            .decode("0_NxaRPUMQoAJt50Gz8YiTr8gRTwyEaCumd-MToTmIo")
+            .unwrap();
+        // Malformed peer point (all-zero X and Y, not a valid EC point).
+        let bad_point = vec![0x04_u8; 65];
+        ecdh_key_agreement(Nid::X9_62_PRIME256V1, &alice_d, &bad_point).unwrap_err();
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_x25519_key_agreement_rfc_7748_vectors() {
+        let alice_private = decode_test_hex(
+            "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a",
+            "alice private",
+        );
+        let alice_public = decode_test_hex(
+            "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a",
+            "alice public",
+        );
+        let bob_private = decode_test_hex(
+            "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb",
+            "bob private",
+        );
+        let bob_public = decode_test_hex(
+            "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f",
+            "bob public",
+        );
+        let expected_shared_secret = decode_test_hex(
+            "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742",
+            "shared secret",
+        );
+
+        let shared_ab_result = x25519_key_agreement(&alice_private, &bob_public);
+        assert!(
+            shared_ab_result.is_ok(),
+            "alice/bob derivation failed: {shared_ab_result:?}"
+        );
+        let Ok(shared_ab) = shared_ab_result else {
+            return;
+        };
+        let shared_ba_result = x25519_key_agreement(&bob_private, &alice_public);
+        assert!(
+            shared_ba_result.is_ok(),
+            "bob/alice derivation failed: {shared_ba_result:?}"
+        );
+        let Ok(shared_ba) = shared_ba_result else {
+            return;
+        };
+
+        assert_eq!(shared_ab.as_slice(), expected_shared_secret.as_slice());
+        assert_eq!(shared_ba.as_slice(), expected_shared_secret.as_slice());
+        assert_eq!(shared_ab.as_slice(), shared_ba.as_slice());
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_x25519_key_agreement_rejects_all_zero_shared_secret() {
+        let private_key = decode_test_hex(
+            "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a",
+            "private key",
+        );
+        let low_order_public_key = vec![0_u8; 32];
+
+        let agreement_result = x25519_key_agreement(&private_key, &low_order_public_key);
+        assert!(
+            agreement_result.is_err(),
+            "X25519 key agreement must reject an invalid peer public key"
+        );
+        let Err(error) = agreement_result else {
+            return;
+        };
+        assert!(
+            error.to_string().contains("invalid peer public key"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[cfg(feature = "non-fips")]
+    fn decode_test_hex(hex_value: &str, label: &str) -> Vec<u8> {
+        let decoded = hex::decode(hex_value);
+        assert!(decoded.is_ok(), "invalid {label} test vector: {decoded:?}");
+        decoded.unwrap_or_else(|_| Vec::new())
     }
 
     #[expect(clippy::expect_used, clippy::panic)]

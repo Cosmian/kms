@@ -500,16 +500,20 @@ impl Session {
             .as_ref()
             .ok_or_else(|| ModuleError::OperationNotInitialized(0))?;
         let ciphertext = backend()?.encrypt(encrypt_ctx, cleartext)?;
+        // SAFETY: pulEncryptedDataLen is non-null (checked by C_Encrypt); pEncryptedData,
+        // when non-null, is a caller buffer of *pulEncryptedDataLen bytes. The caller's
+        // size must be read before it is overwritten, or the check below is vacuous.
         unsafe {
-            *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
             if !pEncryptedData.is_null() {
                 if (usize::try_from(*pulEncryptedDataLen)?) < ciphertext.len() {
+                    *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
                     return Err(ModuleError::BufferTooSmall);
                 }
                 std::slice::from_raw_parts_mut(pEncryptedData, ciphertext.len())
                     .copy_from_slice(&ciphertext);
                 self.encrypt_ctx = None;
             }
+            *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
         }
         Ok(())
     }
@@ -532,7 +536,9 @@ impl Session {
         let mut objects_store = OBJECTS_STORE.write()?;
 
         let key_length = attributes.get_value_len()?;
-        let sensitive = attributes.get_sensitive()?;
+        // PKCS#11 defaults CKA_SENSITIVE to CK_FALSE when the caller omits it
+        // (e.g. SAP ASE's `create encryption key ... on external keystore` does).
+        let sensitive = attributes.get_sensitive().unwrap_or(false);
         let label = attributes.get_label()?;
 
         let object = backend()?.generate_key(

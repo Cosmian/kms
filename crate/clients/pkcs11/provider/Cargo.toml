@@ -13,6 +13,12 @@ description = "HSM PKCS#11 provider for Cosmian KMS"
 [lints]
 workspace = true
 
+[package.metadata.cargo-machete]
+ignored = ["winresource"]
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
 [lib]
 name = "cosmian_pkcs11"
 crate-type = ["rlib", "cdylib"]
@@ -24,9 +30,9 @@ doctest = false
 non-fips = ["ckms/non-fips", "test_kms_server/non-fips"]
 
 [dependencies]
-ckms = { path = "../../ckms", version = "5.27.1" }
+ckms = { path = "../../ckms", version = "5.28.0" }
 cosmian_logger = { workspace = true }
-cosmian_pkcs11_module = { path = "../module", version = "5.27.1" }
+cosmian_pkcs11_module = { path = "../module", version = "5.28.0" }
 etcetera = "0.8.0"
 hex = "0.4"
 p256 = { version = "0.13.2", default-features = false, features = [

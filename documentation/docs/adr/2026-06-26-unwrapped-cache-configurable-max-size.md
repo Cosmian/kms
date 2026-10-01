@@ -1,4 +1,14 @@
-# Configurable UnwrappedCache max size
+---
+title: "ADR-2026-06-26: Configurable UnwrappedCache max size"
+status: "Superseded"
+date: "2026-06-26"
+authors: "contributors, performance engineers"
+tags: ["architecture", "decision", "performance", "cache"]
+supersedes: ""
+superseded_by: "2026-07-08-two-tier-cache-architecture.md"
+---
+
+# ADR-2026-06-26: Configurable UnwrappedCache max size
 
 The `UnwrappedCache` LRU size was hardcoded to 100 entries. For XKS deployments with
 ~100 active keys, any access to a cold key evicts a warm one, causing continuous LRU

@@ -48,8 +48,15 @@ use crate::{
 /// re-generates a CRL (or the first post-startup `Revoke` triggers
 /// auto-regeneration) the public endpoint becomes available again.
 ///
-/// Map: `issuer_certificate_id` → `(der_bytes, generated_at, next_update_iso8601)`
-type CrlCacheInner = HashMap<String, (Vec<u8>, Instant, String)>;
+/// Map: `issuer_certificate_id` → `(der_bytes, generated_at, next_update_iso8601, cached_at)`
+type CrlCacheInner = HashMap<String, (Vec<u8>, Instant, String, Instant)>;
+
+/// How long a node may serve its in-memory CRL copy before re-reading the DB.
+///
+/// The DB `crls` table is shared by all nodes of a cluster, while this cache is
+/// per-process: without a bound, a node that did not regenerate the CRL itself kept
+/// serving its stale copy (missing new revocations, even past its nextUpdate).
+const CRL_MEMORY_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(60);
 static GENERATED_CRL_CACHE: LazyLock<tokio::sync::RwLock<CrlCacheInner>> =
     LazyLock::new(|| tokio::sync::RwLock::new(HashMap::new()));
 
@@ -71,35 +78,78 @@ pub(crate) async fn get_cached_crl(
     issuer_id: &str,
     kms: &KMS,
 ) -> Option<(Vec<u8>, Instant, String)> {
-    // 1. Fast path: in-memory cache hit.
+    // 1. Fast path: recent in-memory cache hit.
     let cached = GENERATED_CRL_CACHE.read().await.get(issuer_id).cloned();
-    if let Some(entry) = cached {
-        return Some(entry);
+    if let Some((der, generated_at, next_update, cached_at)) = &cached {
+        if cached_at.elapsed() < CRL_MEMORY_CACHE_TTL {
+            return Some((der.clone(), *generated_at, next_update.clone()));
+        }
     }
 
-    // 2. Cold-start: try loading from the DB `crls` table.
+    // 2. Cold start or stale entry: (re)load from the DB `crls` table, which another
+    //    node may have updated.
     let db_result = kms.database.get_crl(issuer_id).await;
     match db_result {
         Ok(Some((der, next_update))) => {
-            // Warm the in-memory cache; use Instant::now() as a conservative
-            // `generated_at` approximation for the Last-Modified header.
-            let entry = (der.clone(), Instant::now(), next_update);
-            GENERATED_CRL_CACHE
-                .write()
-                .await
-                .insert(issuer_id.to_owned(), entry.clone());
-            Some(entry)
+            // Keep the original `generated_at` when the DB still holds the same CRL,
+            // otherwise use Instant::now() as a conservative Last-Modified approximation.
+            let generated_at = cached
+                .as_ref()
+                .filter(|(cached_der, ..)| *cached_der == der)
+                .map_or_else(Instant::now, |(_, generated_at, ..)| *generated_at);
+            GENERATED_CRL_CACHE.write().await.insert(
+                issuer_id.to_owned(),
+                (
+                    der.clone(),
+                    generated_at,
+                    next_update.clone(),
+                    Instant::now(),
+                ),
+            );
+            Some((der, generated_at, next_update))
         }
         Ok(None) => None,
         Err(e) => {
-            // DB error: log and return None so the endpoint returns 404 rather than 500.
+            // DB error: fall back to the (stale) in-memory copy, else 404 rather than 500.
             cosmian_logger::warn!(
                 issuer_id = issuer_id,
                 "Failed to load CRL from database for issuer '{issuer_id}': {e}"
             );
-            None
+            cached.map(|(der, generated_at, next_update, _)| (der, generated_at, next_update))
         }
     }
+}
+
+/// Regenerate the CRL of `issuer_certificate_id` on behalf of the issuer
+/// certificate's owner.
+///
+/// Used by automatic regeneration (post-Revoke and the refresh cron). Those run as
+/// identities — the revoking leaf owner, or `default_username` — that usually have
+/// no access to the CA key, so regeneration failed silently and the published CRL
+/// went stale or expired. The CA owner is the principal that can sign it; CRL
+/// content is fully determined by server state, so no caller-controlled input is
+/// signed.
+pub(crate) async fn regenerate_crl_as_issuer_owner(
+    kms: &KMS,
+    issuer_certificate_id: &str,
+) -> KResult<X509Crl> {
+    let issuer_owner = kms
+        .database
+        .retrieve_object(issuer_certificate_id)
+        .await?
+        .map(|owm| owm.owner_id().clone())
+        .ok_or_else(|| {
+            KmsError::ItemNotFound(format!(
+                "CRL regeneration: issuer certificate '{issuer_certificate_id}' not found"
+            ))
+        })?;
+    Box::pin(generate_crl(
+        kms,
+        issuer_certificate_id,
+        None,
+        &issuer_owner,
+    ))
+    .await
 }
 
 /// Generate a CRL for the given issuer certificate.
@@ -208,7 +258,13 @@ pub(crate) async fn generate_crl(
     .await
     .context("CRL generation: retrieving issuer private key")?;
 
-    let issuer_pkey = kmip_private_key_to_openssl(issuer_key_owm.object()).map_err(|e| {
+    // The CA key may be wrapped at rest (server `key_encryption_key` or a user KEK);
+    // `retrieve_object_for_operation` only unwraps for `default_unwrap_types`.
+    let issuer_key_object =
+        Box::pin(kms.get_unwrapped(issuer_key_owm.id(), issuer_key_owm.object(), user))
+            .await
+            .context("CRL generation: unwrapping issuer private key")?;
+    let issuer_pkey = kmip_private_key_to_openssl(&issuer_key_object).map_err(|e| {
         KmsError::ServerError(format!(
             "Failed to convert issuer private key to OpenSSL: {e}"
         ))
@@ -292,7 +348,7 @@ pub(crate) async fn generate_crl(
         let mut cache = GENERATED_CRL_CACHE.write().await;
         cache.insert(
             issuer_certificate_id.to_owned(),
-            (crl_der, Instant::now(), next_update_str),
+            (crl_der, Instant::now(), next_update_str, Instant::now()),
         );
     }
 
@@ -313,9 +369,15 @@ async fn find_revoked_certificates(
 ) -> KResult<Vec<RevokedEntry>> {
     let mut entries = Vec::new();
 
-    // Search for certificates with CertificateLink pointing to this issuer
-    // in both Deactivated and Compromised states.
-    for state in [State::Deactivated, State::Compromised] {
+    // Search for certificates with CertificateLink pointing to this issuer.
+    // Destroyed certificates must stay listed (RFC 5280 §3.3: until they expire):
+    // Destroy keeps the issuer link and revocation details for exactly this purpose.
+    for state in [
+        State::Deactivated,
+        State::Compromised,
+        State::Destroyed,
+        State::Destroyed_Compromised,
+    ] {
         let search_attrs = Attributes {
             object_type: Some(ObjectType::Certificate),
             link: Some(vec![Link {
@@ -336,6 +398,10 @@ async fn find_revoked_certificates(
             .context("CRL generation: searching for revoked certificates")?;
 
         for (uid, _state, attributes) in results {
+            // A certificate destroyed without ever being revoked is not revoked.
+            if state == State::Destroyed && attributes.revocation_reason.is_none() {
+                continue;
+            }
             // Retrieve the actual certificate to extract serial number
             let Some(owm) = kms.database.retrieve_object(&uid).await? else {
                 continue;
@@ -408,7 +474,7 @@ async fn find_revoked_certificates(
 /// (hold state is not tracked between complete CRL issuances). Using `Unspecified`
 /// causes the `reasonCode` extension to be omitted entirely per §5.3.1 ("SHOULD be
 /// absent instead of using the unspecified (0) reasonCode value").
-const fn kmip_reason_to_crl_reason(reason: RevocationReasonCode) -> CrlReasonCode {
+pub(crate) const fn kmip_reason_to_crl_reason(reason: RevocationReasonCode) -> CrlReasonCode {
     match reason {
         // RFC 5280 §5.3.1: removeFromCRL (8) MUST only appear in delta CRLs.
         // The KMS generates only complete CRLs; map to Unspecified so the reasonCode

@@ -90,6 +90,15 @@ SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.st
 FROM objects
 WHERE objects.id = ?;
 
+-- name: select-object-state
+SELECT objects.state, objects.attributes FROM objects WHERE objects.id = ?;
+
+-- name: select-object-for-update
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
+FROM objects
+WHERE objects.id = ?
+FOR UPDATE;
+
 -- name: update-object-with-object
 UPDATE objects
 SET object=?,
@@ -161,7 +170,7 @@ SELECT read_access.id, COALESCE(objects.owner, ''), COALESCE(objects.state, 'Act
 FROM read_access
          LEFT JOIN objects
                     ON objects.id = read_access.id
-WHERE read_access.userid = ?;
+WHERE read_access.userid = ? OR read_access.userid = '*';
 
 -- name: insert-tags
 INSERT INTO tags (id, tag)
@@ -230,6 +239,9 @@ CREATE INDEX idx_read_access_userid ON read_access (userid);
 -- name: create-index-objects-wrapping-key-id
 CREATE INDEX idx_objects_wrapping_key_id ON objects (wrapping_key_id);
 
+-- name: create-index-tags-tag-id
+CREATE INDEX idx_tags_tag_id ON tags (tag, id);
+
 -- name: create-table-crypto_officer_activations
 CREATE TABLE IF NOT EXISTS crypto_officer_activations (
         id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -262,12 +274,7 @@ SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';
 -- name: count-non-destroyed-keys
 SELECT COUNT(*) FROM objects
 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
-AND (
-    JSON_TYPE(JSON_EXTRACT(object, '$.SymmetricKey')) IS NOT NULL OR
-    JSON_TYPE(JSON_EXTRACT(object, '$.PrivateKey'))   IS NOT NULL OR
-    JSON_TYPE(JSON_EXTRACT(object, '$.PublicKey'))    IS NOT NULL OR
-    JSON_TYPE(JSON_EXTRACT(object, '$.SplitKey'))     IS NOT NULL
-);
+AND JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.ObjectType')) IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
 
 -- ── CRL persistence (MySQL-specific) ─────────────────────────────────────────
 -- MySQL uses LONGBLOB for binary data and REPLACE INTO for upsert.

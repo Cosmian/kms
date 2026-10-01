@@ -93,6 +93,8 @@ nav:
           - Microsoft SQL Server External (EKM): integrations/databases/ms_sql_server.md
           - Oracle Database TDE: integrations/databases/oracle_tde.md
           - EDB Postgres Advanced Server TDE: integrations/databases/edb_postgres_tde.md
+          - SAP ASE TDE: integrations/databases/sap_ase_tde.md
+          - IBM Db2 LUW TDE: integrations/databases/ibm_db2_luw_tde.md
           - InterSystems IRIS: integrations/databases/intersystems_iris.md
       - Disk encryption:
           - Veracrypt: integrations/disk_encryption/veracrypt.md
@@ -122,6 +124,8 @@ nav:
       - Zero Trust M2M (SPIRE / SPIFFE):
           - Vault-compatible integration: integrations/spire_spiffe.md
           - Native KMIP 2.1 plugins: integrations/spire_spiffe_kmip_plugin.md
+          - Web UI gateway SPIFFE authentication: integrations/spire_webui.md
+          - CLI (ckms) SPIFFE authentication: integrations/spire_ckms.md
   - Installation:
       - Getting started: installation/installation_getting_started.md
       - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md
@@ -143,11 +147,15 @@ nav:
           - Role Management and Key Ceremony: configuration/authorization/key_ceremony.md
       - Enabling TLS: configuration/tls.md
       - Obtaining TLS Certificates: configuration/certificates.md
-      - Logging and telemetry: configuration/logging.md
-      - Log reference: configuration/log-reference.md
-      - Monitoring:
-          - Setup: configuration/monitoring-setup.md
-          - Metrics reference: configuration/otlp-metrics.md
+      - Observability:
+          - Log output: configuration/logging.md
+          - Log call-site reference: configuration/log-reference.md
+          - Metrics & traces (OTLP): configuration/otlp-telemetry.md
+          - Monitoring stack (Grafana): configuration/monitoring-setup.md
+      - Audit & SIEM:
+          - Audit logs: configuration/audit-logs.md
+          - CEF export format: configuration/cef-export.md
+          - SIEM integration: configuration/siems.md
       - User interface: configuration/ui.md
       - UI branding: configuration/ui_branding.md
       - Custom OpenSSL build: configuration/openssl_override.md
@@ -174,5 +182,6 @@ nav:
           - Examples: kms_clients/configuration.md
       - Usage:
           - Command Line Interface: kms_clients/usage.md
+          - Audit log management: kms_clients/audit.md
       - Access Rights: kms_clients/authorization.md
       - S/MIME Gmail: kms_clients/smime_gmail.md
