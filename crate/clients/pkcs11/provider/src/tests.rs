@@ -1028,7 +1028,8 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
             unsafe { C_GetAttributeValue(handle, obj_handle, undersized.as_mut_ptr(), 1) },
             CKR_BUFFER_TOO_SMALL
         );
-        assert!(undersized[0].ulValueLen > 1);
+        let reported_len = undersized[0].ulValueLen;
+        assert!(reported_len > 1);
         assert_eq!(sentinel, 0xA5);
         assert_eq!(
             // SAFETY: the template contains one valid attribute and `obj_handle` is live.
