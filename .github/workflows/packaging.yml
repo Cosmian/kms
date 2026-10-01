@@ -186,26 +186,31 @@ jobs:
     steps:
       # Must run *before* actions/checkout: GitHub's own bundled Node.js
       # (used to execute every JS-based `uses:` action, including checkout
-      # itself) is glibc-linked; `gcompat` shims the glibc syscalls it needs
-      # on musl. `bash` is needed because composite actions below default to
-      # `shell: bash`, which Alpine doesn't ship (busybox `ash` only). `git`
-      # is needed too — without it, actions/checkout silently falls back to
-      # the GitHub REST API tarball download, which doesn't support
-      # `submodules: recursive` and hard-fails instead of just skipping it.
-      # Must use `shell: sh` explicitly here since bash doesn't exist yet.
-      - name: Bootstrap (gcompat for Actions' own Node.js runtime, bash, git)
+      # and install-mise) is glibc-linked; `gcompat` shims the glibc
+      # syscalls it needs on musl. `bash` is needed because composite
+      # actions below default to `shell: bash`, which Alpine doesn't ship
+      # (busybox `ash` only). `git` is needed too — without it,
+      # actions/checkout silently falls back to the GitHub REST API tarball
+      # download, which doesn't support `submodules: recursive` and
+      # hard-fails instead of just skipping it. `curl` is needed by both
+      # install-mise and the rustup install step further down. Installing
+      # everything in one early step (rather than splitting
+      # "bootstrap" vs. "toolchain" apk calls across later steps) avoids
+      # repeatedly hitting "command not found" in whichever later step
+      # happens to need a package that hasn't been apk-added yet. Must use
+      # `shell: sh` explicitly here since bash doesn't exist yet.
+      - name: Install Alpine packages (bootstrap + native build toolchain)
         shell: sh
-        run: apk add --no-cache gcompat bash git
+        run: |
+          apk add --no-cache \
+            gcompat bash git curl \
+            build-base perl linux-headers openssl-dev pkgconfig
 
       - uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - uses: ./.github/actions/install-mise
-
-      - name: Install native Alpine build toolchain (apk)
-        run: |
-          apk add --no-cache build-base perl linux-headers openssl-dev pkgconfig curl
 
       - name: Install Rust via rustup (musl-native build, same 1.97.0 pin as the rest of CI)
         run: |
