@@ -67,4 +67,12 @@ mod openapi_validation;
 
 #[cfg(test)]
 #[cfg(feature = "non-fips")]
+mod pgp_gnupg_tests;
+
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
+mod pgp_tests;
+
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
 mod pqc_export_tests;
