@@ -274,7 +274,7 @@ pub fn parse_ocsp_request(request_der: &[u8]) -> Result<Vec<ParsedOcspQuery>, Cr
     Ok(queries)
 }
 
-/// Verify that at least one query in `queries` has issuer hashes matching `ca_cert`.
+/// Verify that **every** query in `queries` has issuer hashes matching `ca_cert`.
 ///
 /// Each query's issuer hashes are compared against a reference computed with **that
 /// query's own `hash_algorithm_nid`** (RFC 6960 §4.1.1) — not a fixed algorithm.
@@ -282,20 +282,25 @@ pub fn parse_ocsp_request(request_der: &[u8]) -> Result<Vec<ParsedOcspQuery>, Cr
 /// to SHA-1 for the `CertId` hash; hardcoding a single digest here would reject those
 /// requests as `unauthorized` even though they are perfectly valid.
 ///
-/// Returns `true` if any query's issuer hashes match the CA under its own algorithm;
-/// returns `false` if none match (i.e., the request is for a different CA, or uses a
-/// digest algorithm this OpenSSL build does not support).
+/// Returns `true` only if all queries' issuer hashes match the CA under their own
+/// algorithm. A single non-matching query (a different CA, or a digest this OpenSSL
+/// build does not support) yields `false`: otherwise one matching `CertId` would let
+/// the responder sign statuses for other issuers' `CertId`s, looked up by serial
+/// under this CA. Returns `false` for an empty query list.
 #[expect(unsafe_code)]
 pub fn verify_issuer_hashes_match_ca(
     queries: &[ParsedOcspQuery],
     ca_cert: &X509Ref,
 ) -> Result<bool, CryptoError> {
+    if queries.is_empty() {
+        return Ok(false);
+    }
     for q in queries {
         // SAFETY: EVP_get_digestbynid returns null for an unrecognised NID; checked below.
         let md = unsafe { openssl_sys::EVP_get_digestbynid(q.hash_algorithm_nid) };
         if md.is_null() {
-            // Unknown/unsupported digest algorithm — cannot match, try the next query.
-            continue;
+            // Unknown/unsupported digest algorithm — cannot match.
+            return Ok(false);
         }
 
         // Build a reference OCSP_CERTID from the CA itself, using the same digest as
@@ -305,18 +310,18 @@ pub fn verify_issuer_hashes_match_ca(
         // SAFETY: ca_cert is valid; OCSP_cert_to_id returns null on error.
         let ref_cid = unsafe { ocsp_ffi::OCSP_cert_to_id(md, ca_cert.as_ptr(), ca_cert.as_ptr()) };
         if ref_cid.is_null() {
-            continue;
+            return Ok(false);
         }
         let _cid_guard = CidGuard(ref_cid);
 
         let ref_query = extract_query_from_cert_id(ref_cid)?;
-        if q.issuer_name_hash == ref_query.issuer_name_hash
-            && q.issuer_key_hash == ref_query.issuer_key_hash
+        if q.issuer_name_hash != ref_query.issuer_name_hash
+            || q.issuer_key_hash != ref_query.issuer_key_hash
         {
-            return Ok(true);
+            return Ok(false);
         }
     }
-    Ok(false)
+    Ok(true)
 }
 
 /// Verify that a delegated OCSP responder certificate satisfies RFC 6960 §4.2.2.2:
@@ -1366,6 +1371,27 @@ mod tests {
         assert!(
             !verify_issuer_hashes_match_ca(&queries, &ca).expect("verify"),
             "a request for a different CA must not match"
+        );
+    }
+
+    #[test]
+    fn test_verify_issuer_hashes_match_ca_rejects_mixed_issuers() {
+        // One CertId for this CA must not authorize answering another issuer's CertId.
+        let (ca, _) = create_test_ca();
+        let (other_ca, _) = create_test_ca();
+        let mut req = OcspRequest::new().expect("OcspRequest::new");
+        for issuer in [&ca, &other_ca] {
+            req.add_id(
+                OcspCertId::from_cert(MessageDigest::sha1(), issuer, issuer)
+                    .expect("OcspCertId::from_cert"),
+            )
+            .expect("add_id");
+        }
+        let queries = parse_ocsp_request(&req.to_der().expect("to_der")).expect("parse");
+        assert_eq!(queries.len(), 2);
+        assert!(
+            !verify_issuer_hashes_match_ca(&queries, &ca).expect("verify"),
+            "a request mixing issuers must not match"
         );
     }
 

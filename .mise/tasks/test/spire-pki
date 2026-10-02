@@ -138,6 +138,10 @@ AUTH_VERIFIER_URL="https://localhost:8443" \
 source "${SPIRE_SECRETS_ENV}"
 print_success "AppRoles provisioned."
 
+# sign-intermediate requires an explicit `certify` grant on the CA private key.
+CKMS_BIN="$(get_ckms_bin)" CKMS_CONF="${CKMS_CONF}" \
+  bash "${REPO_ROOT}/.mise/scripts/test/grant_spire_pki_certify.sh"
+
 # ── Step 7: Run PKI test scenarios ────────────────────────────────────
 print_header "Step 7: KMS PKI test scenarios (M-01 through M-08)"
 

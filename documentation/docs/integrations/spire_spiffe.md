@@ -405,6 +405,24 @@ ckms --accept-invalid-certs \
 > `POST /v1/pki/root/sign-intermediate` call (step 3 of the end-to-end flow) fails
 > immediately if the key is absent.
 
+Then, once the AppRoles exist (step 1), grant each SPIRE server's KMS identity
+(`spire:<AppRole name>`) the `certify` access right on the CA **private key**. A valid
+Vault token only authenticates the caller; without this grant `sign-intermediate`
+returns `403 Forbidden`, so a token issued for another purpose (e.g. transit-only)
+cannot obtain an intermediate CA certificate chaining to your root:
+
+```bash
+# The private key UID is the bare UUID returned by locate (the public key ends in `_pk`).
+ckms --accept-invalid-certs locate --tag vault_pki_ca
+ckms --accept-invalid-certs access-rights grant spire:spire-server-a certify \
+  --object-uid <ca-private-key-uid>
+```
+
+The CA key must be **owned** by the server admin (`default_username`); keys that are
+only shared with it are ignored, and exactly one owned key may carry the label. CSRs
+must not request their own `basicConstraints` — the KMS always sets
+`CA:TRUE, pathlen:0`.
+
 ### 1. AppRole provisioning (admin bootstrap)
 
 An administrator provisions one `AppRole` per SPIRE server. AI agent workloads do **not**
@@ -476,11 +494,16 @@ and vice versa — each AppRole has a **fully isolated KMS object namespace**.
 > **PKI root CA exception.**
 > The root CA `PrivateKey` (tagged `vault_pki_ca`) is owned by the **server admin**
 > (`default_username`), not by any AppRole.
-> The `sign-intermediate` handler always looks up the CA key as the server admin,
-> regardless of which AppRole token the caller presents.
+> The `sign-intermediate` handler always looks up the CA key among keys owned by the
+> server admin, regardless of which AppRole token the caller presents.
 > This is intentional: the root CA is shared infrastructure, not a per-tenant resource.
 > AppRole authentication on the PKI endpoint only proves *who is requesting* the
-> signature — it does not grant ownership of the CA key.
+> signature; the caller must additionally hold the `certify` access right on the CA
+> private key (see [PKI CA key provisioning](#0-pki-ca-key-provisioning-prerequisite)).
+>
+> Transit keys are resolved by name among keys **owned** by the calling AppRole only —
+> a key another user shares under the same name is never used. Creating a transit key
+> whose name already exists is a no-op (Vault semantics), not a duplicate.
 
 ### 2. SPIRE intermediate CA rotation (PKI engine)
 

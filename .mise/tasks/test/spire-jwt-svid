@@ -305,6 +305,10 @@ AUTH_VERIFIER_URL="https://localhost:8443" \
 # shellcheck disable=SC1090
 source "${SPIRE_SECRETS_ENV}"
 
+# sign-intermediate requires an explicit `certify` grant on the CA private key.
+CKMS_BIN="$(get_ckms_bin)" CKMS_CONF="${CKMS_CONF}" \
+  bash "${REPO_ROOT}/.mise/scripts/test/grant_spire_pki_certify.sh"
+
 # ── Step 5: Start SPIRE server (tenant A) ────────────────────────────────────
 print_status "Step 5: Starting SPIRE server A..."
 export SPIRE_SERVER_CONFIG_FILE_A="./test_data/spire/config/spire-server-a.conf"

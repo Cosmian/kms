@@ -42,7 +42,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_private_key_to_openssl,
         ocsp::{
             CrlReasonCode, NoncePolicy, OcspBuildConfig, OcspCertStatus, OcspStatusEntry,
-            build_ocsp_response, parse_ocsp_request, request_has_nonce,
+            ParsedOcspQuery, build_ocsp_response, parse_ocsp_request, request_has_nonce,
             verify_delegated_responder_authorization, verify_issuer_hashes_match_ca,
         },
     },
@@ -54,7 +54,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     config::NoncePolicyConfig,
-    core::KMS,
+    core::{KMS, operations::generate_crl::kmip_reason_to_crl_reason},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -101,13 +101,34 @@ type OcspSignerFuture<'a> = Pin<Box<dyn Future<Output = KResult<OcspSignerMateri
 type OcspCacheEntry = (Vec<u8>, Instant);
 type OcspCache = RwLock<HashMap<String, OcspCacheEntry>>;
 
+/// Upper bound on cached OCSP responses. The responder is unauthenticated, so the
+/// cache must not grow with attacker-chosen serials; `unknown` responses are never
+/// cached and expired entries are purged before this limit is enforced.
+const MAX_OCSP_CACHE_ENTRIES: usize = 10_000;
+
 /// In-memory OCSP response cache.
 ///
-/// Map key: `"{ca_uid}:{serial_hex}"` → `(signed DER bytes, expires_at Instant)`.
+/// Map key: see [`ocsp_cache_key`] → `(signed DER bytes, expires_at Instant)`.
 ///
-/// Requests that carry a nonce bypass the cache because the nonce makes each
-/// response unique.
+/// Only single-`CertID` requests are cached (a response covers exactly the
+/// `CertID`s of its request). Requests that carry a nonce bypass the cache because
+/// the nonce makes each response unique.
 static OCSP_CACHE: LazyLock<OcspCache> = LazyLock::new(|| RwLock::new(HashMap::new()));
+
+/// Cache key for one `CertID`: the response echoes the requester's `CertID`
+/// (hash algorithm and issuer hashes), so responses for different `CertID`
+/// encodings of the same serial are not interchangeable. The key starts with
+/// `"{ca_uid}:{serial_hex}:"` so [`evict_ocsp_cache_entry`] can drop every
+/// encoding of a serial at once.
+fn ocsp_cache_key(ca_uid: &str, query: &ParsedOcspQuery) -> String {
+    format!(
+        "{ca_uid}:{}:{}:{}:{}",
+        query.serial_hex.to_ascii_uppercase(),
+        query.hash_algorithm_nid,
+        hex::encode(&query.issuer_name_hash),
+        hex::encode(&query.issuer_key_hash)
+    )
+}
 
 /// Evict a single entry from the in-memory OCSP response cache.
 ///
@@ -118,8 +139,11 @@ static OCSP_CACHE: LazyLock<OcspCache> = LazyLock::new(|| RwLock::new(HashMap::n
 /// self-correct after `ocsp_cache_ttl_secs` naturally elapses. A no-op if the
 /// entry was never cached (e.g. OCSP disabled, or never queried).
 pub(crate) async fn evict_ocsp_cache_entry(ca_uid: &str, serial_hex: &str) {
-    let cache_key = format!("{ca_uid}:{serial_hex}");
-    OCSP_CACHE.write().await.remove(&cache_key);
+    let prefix = format!("{ca_uid}:{}:", serial_hex.to_ascii_uppercase());
+    OCSP_CACHE
+        .write()
+        .await
+        .retain(|key, _| !key.starts_with(&prefix));
 }
 
 // HTTP-date weekday / month name tables (RFC 7231 §7.1.1.1).
@@ -282,31 +306,30 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
         // guaranteeing a genuine nonce is never served from a stale cached entry.
         let has_nonce = nonce_policy != NoncePolicy::Ignore && request_carries_nonce;
 
-        // ── 5. Build status entries with cache lookup ────────────────────────────
-        let mut entries: Vec<OcspStatusEntry> = Vec::with_capacity(queries.len());
+        // ── 5. Cache lookup (single-CertID requests only) ────────────────────────
         // A cached "good" entry may predate a CA compromise recorded after it was
         // signed; once the CA is compromised every entry must be freshly computed
         // (forced to `revoked`/`cACompromise` below) rather than served stale from
         // the cache, so the cache is unconditionally bypassed in that case.
-        let mut all_cached = !has_nonce && !ca_compromised;
-        let mut cache_hit_responses: Vec<Vec<u8>> = Vec::new();
-
-        for query in &queries {
-            let serial = &query.serial_hex;
-            let cache_key = format!("{ca_uid}:{serial}");
-
-            if !has_nonce && !ca_compromised {
-                let cache = OCSP_CACHE.read().await;
-                if let Some((cached_der, expires)) = cache.get(&cache_key) {
-                    if expires.elapsed().as_secs() < ttl_secs {
-                        debug!(serial = serial, "OCSP cache HIT");
-                        cache_hit_responses.push(cached_der.clone());
-                        continue;
-                    }
+        let cacheable_query = match queries.as_slice() {
+            [query] if !has_nonce && !ca_compromised => Some(query),
+            _ => None,
+        };
+        if let Some(query) = cacheable_query {
+            let cache_key = ocsp_cache_key(ca_uid, query);
+            if let Some((cached_der, expires_at)) = OCSP_CACHE.read().await.get(&cache_key) {
+                // `expires_at` is when the cached response's nextUpdate passes.
+                if Instant::now() < *expires_at {
+                    debug!(serial = query.serial_hex, "OCSP cache HIT");
+                    return Ok(build_ocsp_http_response(cached_der, ttl_secs));
                 }
             }
-            all_cached = false;
+        }
 
+        // ── 5b. Build a status entry for every CertID ─────────────────────────────
+        let mut entries: Vec<OcspStatusEntry> = Vec::with_capacity(queries.len());
+        for query in &queries {
+            let serial = &query.serial_hex;
             let status = if ca_compromised {
                 OcspCertStatus::Revoked {
                     revocation_time: OffsetDateTime::now_utc(),
@@ -320,14 +343,6 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
                 serial_hex: serial.clone(),
                 status,
             });
-        }
-
-        if all_cached && !cache_hit_responses.is_empty() {
-            debug!("OCSP: all serials served from cache");
-            let cached_response = cache_hit_responses
-                .first()
-                .ok_or_else(|| KmsError::ServerError("OCSP cache unexpectedly empty".to_owned()))?;
-            return Ok(build_ocsp_http_response(cached_response, ttl_secs));
         }
 
         // ── 6. Retrieve signer cert + key ────────────────────────────────────────
@@ -359,14 +374,22 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
         .map_err(|e| KmsError::CryptographicError(format!("OCSP response build failed: {e}")))?;
 
         // ── 8. Cache + respond ────────────────────────────────────────────────────
-        if !has_nonce && entries.len() == 1 {
-            if let Some(entry) = entries.first() {
-                let cache_key = format!("{ca_uid}:{}", entry.serial_hex);
+        // `unknown` responses are not cached: they are what random-serial requests
+        // produce, and caching them would let unauthenticated clients grow the map.
+        if let (Some(query), [entry]) = (cacheable_query, entries.as_slice()) {
+            if !matches!(entry.status, OcspCertStatus::Unknown) {
                 let expires_at = Instant::now() + std::time::Duration::from_secs(ttl_secs);
-                OCSP_CACHE
-                    .write()
-                    .await
-                    .insert(cache_key, (resp_der.clone(), expires_at));
+                let mut cache = OCSP_CACHE.write().await;
+                if cache.len() >= MAX_OCSP_CACHE_ENTRIES {
+                    let now = Instant::now();
+                    cache.retain(|_, (_, entry_expires_at)| *entry_expires_at > now);
+                }
+                if cache.len() < MAX_OCSP_CACHE_ENTRIES {
+                    cache.insert(
+                        ocsp_cache_key(ca_uid, query),
+                        (resp_der.clone(), expires_at),
+                    );
+                }
             }
         }
 
@@ -391,12 +414,16 @@ const fn map_nonce_policy(config: &NoncePolicyConfig) -> NoncePolicy {
 ///
 /// Status mapping per RFC 6960 §2.2:
 ///
-/// | KMS State | OCSP status | Reason |
-/// |---|---|---|
-/// | Active / PreActive | good | — |
-/// | Compromised / DestroyedCompromised | revoked | keyCompromise |
-/// | Deactivated / Destroyed | revoked | cessationOfOperation |
-/// | Not found | unknown | — |
+/// | KMS State | OCSP status |
+/// |---|---|
+/// | `Active` / `PreActive` | good |
+/// | `Compromised` / `Destroyed_Compromised` / `Deactivated` | revoked |
+/// | `Destroyed` after a Revoke | revoked |
+/// | `Destroyed` without Revoke / not found | unknown |
+///
+/// `revocationTime` and `revocationReason` come from the stored revocation
+/// details (`deactivation_date`, `revocation_reason`), exactly as in the CRL, so
+/// both sources agree and verifiers see when the certificate was actually revoked.
 fn look_up_cert_status<'a>(
     kms: &'a KMS,
     ca_uid: &'a str,
@@ -413,15 +440,23 @@ fn look_up_cert_status<'a>(
 
         Ok(match result {
             None => OcspCertStatus::Unknown,
-            Some((_uid, state)) => match state {
+            Some((_uid, state, attributes)) => match state {
                 State::Active | State::PreActive => OcspCertStatus::Good,
-                State::Compromised | State::Destroyed_Compromised => OcspCertStatus::Revoked {
-                    revocation_time: OffsetDateTime::now_utc(),
-                    reason: Some(CrlReasonCode::KeyCompromise),
-                },
-                State::Deactivated | State::Destroyed => OcspCertStatus::Revoked {
-                    revocation_time: OffsetDateTime::now_utc(),
-                    reason: Some(CrlReasonCode::CessationOfOperation),
+                // Mirrors `generate_crl::find_revoked_certificates`.
+                State::Destroyed if attributes.revocation_reason.is_none() => {
+                    OcspCertStatus::Unknown
+                }
+                State::Compromised
+                | State::Destroyed_Compromised
+                | State::Deactivated
+                | State::Destroyed => OcspCertStatus::Revoked {
+                    revocation_time: attributes
+                        .deactivation_date
+                        .unwrap_or_else(OffsetDateTime::now_utc),
+                    reason: attributes
+                        .revocation_reason
+                        .as_ref()
+                        .map(|r| kmip_reason_to_crl_reason(r.revocation_reason_code)),
                 },
             },
         })
@@ -545,7 +580,13 @@ fn retrieve_signer_cert_and_key<'a>(
                 KmsError::ItemNotFound(format!("OCSP signer private key not found: {key_uid}"))
             })?;
 
-        let signer_key = kmip_private_key_to_openssl(key_owm.object()).map_err(|e| {
+        // The key may be wrapped at rest (server `key_encryption_key` or a user KEK).
+        // The responder is unauthenticated, so unwrap on behalf of the key's owner.
+        let signer_key_object =
+            Box::pin(kms.get_unwrapped(key_owm.id(), key_owm.object(), key_owm.owner_id()))
+                .await
+                .context("unwrap OCSP signer private key")?;
+        let signer_key = kmip_private_key_to_openssl(&signer_key_object).map_err(|e| {
             KmsError::CryptographicError(format!("Cannot load OCSP signing key: {e}"))
         })?;
 
@@ -705,6 +746,55 @@ mod tests {
         assert_eq!(
             format!("{ca}:{serial}", ca = "ca-123", serial = "0A1B2C"),
             "ca-123:0A1B2C"
+        );
+    }
+
+    fn query(serial: &str, nid: i32) -> ParsedOcspQuery {
+        ParsedOcspQuery {
+            serial_hex: serial.to_owned(),
+            issuer_name_hash: vec![1, 2],
+            issuer_key_hash: vec![3, 4],
+            hash_algorithm_nid: nid,
+        }
+    }
+
+    /// Responses echo the requester's `CertID`, so SHA-1 and SHA-256 `CertID`s for the
+    /// same serial must not share a cache entry.
+    #[test]
+    fn test_ocsp_cache_key_includes_certid_encoding() {
+        let sha1 = ocsp_cache_key("ca", &query("0A", openssl::nid::Nid::SHA1.as_raw()));
+        let sha256 = ocsp_cache_key("ca", &query("0a", openssl::nid::Nid::SHA256.as_raw()));
+        assert_ne!(sha1, sha256);
+        assert!(sha1.starts_with("ca:0A:") && sha256.starts_with("ca:0A:"));
+    }
+
+    /// Revocation must evict every cached `CertID` encoding of the serial.
+    #[tokio::test]
+    async fn test_evict_removes_every_certid_encoding() {
+        let far = Instant::now() + std::time::Duration::from_secs(3600);
+        let keys = [
+            ocsp_cache_key("evict-ca", &query("BEEF", openssl::nid::Nid::SHA1.as_raw())),
+            ocsp_cache_key(
+                "evict-ca",
+                &query("BEEF", openssl::nid::Nid::SHA256.as_raw()),
+            ),
+        ];
+        let other = ocsp_cache_key(
+            "evict-ca",
+            &query("BEEF01", openssl::nid::Nid::SHA1.as_raw()),
+        );
+        {
+            let mut cache = OCSP_CACHE.write().await;
+            for key in keys.iter().chain([&other]) {
+                cache.insert(key.clone(), (vec![0], far));
+            }
+        }
+        evict_ocsp_cache_entry("evict-ca", "beef").await;
+        let cache = OCSP_CACHE.read().await;
+        assert!(keys.iter().all(|k| !cache.contains_key(k)));
+        assert!(
+            cache.contains_key(&other),
+            "a different serial must be kept"
         );
     }
 

@@ -846,14 +846,12 @@ impl Session {
             .as_ref()
             .ok_or_else(|| ModuleError::OperationNotInitialized(0))?;
         let ciphertext = backend()?.encrypt(encrypt_ctx, cleartext)?;
+        // SAFETY: pulEncryptedDataLen is non-null (checked by C_Encrypt); pEncryptedData,
+        // when non-null, is a caller buffer of *pulEncryptedDataLen bytes. The caller's
+        // size must be read before it is overwritten, or the check below is vacuous.
         unsafe {
-            if pEncryptedData.is_null() {
-                *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
-            } else {
+            if !pEncryptedData.is_null() {
                 if (usize::try_from(*pulEncryptedDataLen)?) < ciphertext.len() {
-                    // Per the PKCS#11 spec, the caller's output-length variable must still be
-                    // updated with the required size on `CKR_BUFFER_TOO_SMALL` so a retry with a
-                    // correctly-sized buffer can succeed.
                     *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
                     return Err(ModuleError::BufferTooSmall);
                 }
@@ -862,6 +860,7 @@ impl Session {
                 *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
                 self.encrypt_ctx = None;
             }
+            *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
         }
         Ok(())
     }
