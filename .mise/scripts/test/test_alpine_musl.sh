@@ -2,14 +2,15 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Alpine-container smoke test for the musl release tarballs.
+# Alpine-container smoke test for the Alpine .apk packages.
 #
 # Unlike test_docker_image.sh (which exercises the glibc Nix Docker image),
-# this script proves the musl server + CLI binaries actually run on *real*
-# Alpine Linux — not just that they link correctly in the Nix sandbox. It:
-#   1. Copies the server/CLI binaries into a throwaway image built FROM the
-#      requested Alpine version (apk add libgcc only for the FIPS/dynamic
-#      variant — see crate/server/src/openssl_providers.rs).
+# this script proves the musl server + CLI packages actually install and run
+# on *real* Alpine Linux — not just that they link correctly in the Nix
+# sandbox. It:
+#   1. `apk add`s the server/CLI packages into a throwaway image built FROM
+#      the requested Alpine version (dependencies such as libgcc for the
+#      FIPS/dynamic variant are pulled automatically from the apk metadata).
 #   2. Starts the server and waits for /version.
 #   3. Round-trips AES/RSA/EC (+ PQC/Covercrypt for non-FIPS) via ckms,
 #      exercising deep call stacks (notably SLH-DSA) to catch musl's smaller
@@ -19,12 +20,12 @@ set -euo pipefail
 #
 # Usage:
 #   bash test_alpine_musl.sh --variant fips|non-fips \
-#     --server-bin <path> --cli-bin <path> [--alpine-tag 3.20]
+#     --server-apk <path> --cli-apk <path> [--alpine-tag 3.20]
 # ---------------------------------------------------------------------------
 
 VARIANT="fips"
-SERVER_BIN=""
-CLI_BIN=""
+SERVER_APK=""
+CLI_APK=""
 ALPINE_TAG="3.20"
 
 while [[ $# -gt 0 ]]; do
@@ -33,12 +34,12 @@ while [[ $# -gt 0 ]]; do
       VARIANT="$2"
       shift 2
       ;;
-    --server-bin)
-      SERVER_BIN="$2"
+    --server-apk)
+      SERVER_APK="$2"
       shift 2
       ;;
-    --cli-bin)
-      CLI_BIN="$2"
+    --cli-apk)
+      CLI_APK="$2"
       shift 2
       ;;
     --alpine-tag)
@@ -52,65 +53,38 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[ -x "${SERVER_BIN}" ] || {
-  echo "ERROR: --server-bin not found or not executable: ${SERVER_BIN}" >&2
+[ -f "${SERVER_APK}" ] || {
+  echo "ERROR: --server-apk not found: ${SERVER_APK}" >&2
   exit 1
 }
-[ -x "${CLI_BIN}" ] || {
-  echo "ERROR: --cli-bin not found or not executable: ${CLI_BIN}" >&2
+[ -f "${CLI_APK}" ] || {
+  echo "ERROR: --cli-apk not found: ${CLI_APK}" >&2
   exit 1
 }
 
 IMAGE_TAG="kms-alpine-smoke-${VARIANT}-${ALPINE_TAG}"
 CONTAINER_NAME="kms-alpine-smoke-${VARIANT}-${ALPINE_TAG}-$$"
 WORK_DIR="$(mktemp -d)"
-# The usr/local/cosmian/lib/ tree copied below may still carry read-only
-# directory permissions inherited (via the musl tarball's own `cp -r` from a
-# read-only Nix store path, then preserved through tar) — `chmod -R u+w`
-# before `rm -rf` ensures cleanup can never fail on that; `|| true` on both
-# so a best-effort cleanup step never overrides this script's real exit code.
-trap 'docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true; chmod -R u+w "${WORK_DIR}" 2>/dev/null || true; rm -rf "${WORK_DIR}" || true' EXIT
+trap 'docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true; rm -rf "${WORK_DIR}" || true' EXIT
 
-cp "${SERVER_BIN}" "${WORK_DIR}/cosmian_kms"
-cp "${CLI_BIN}" "${WORK_DIR}/ckms"
-chmod 755 "${WORK_DIR}/cosmian_kms" "${WORK_DIR}/ckms"
+cp "${SERVER_APK}" "${WORK_DIR}/server.apk"
+cp "${CLI_APK}" "${WORK_DIR}/cli.apk"
 
-# FIPS dynamic-musl tarballs bundle a usr/local/cosmian/lib/ tree alongside
-# the binary (FIPS provider module + openssl.cnf, dlopen'd at runtime —
-# see nix/kms-server-musl.nix and package_musl_tarball.sh). Without it the
-# server cannot start at all. Carry it into the image if the extracted
-# tarball provided one (sibling of --server-bin).
-SERVER_ROOT="$(cd "$(dirname "${SERVER_BIN}")" && pwd)"
-HAS_COSMIAN_LIB=0
-if [ -d "${SERVER_ROOT}/usr/local/cosmian/lib" ]; then
-  HAS_COSMIAN_LIB=1
-  mkdir -p "${WORK_DIR}/usr/local/cosmian/lib"
-  cp -r "${SERVER_ROOT}/usr/local/cosmian/lib/." "${WORK_DIR}/usr/local/cosmian/lib/"
-  chmod -R u+w "${WORK_DIR}/usr/local/cosmian/lib"
-fi
-
-if [ "${VARIANT}" = "fips" ]; then
-  EXTRA_APK="RUN apk add --no-cache libgcc ca-certificates"
-else
-  EXTRA_APK="RUN apk add --no-cache ca-certificates"
-fi
-
-if [ "${HAS_COSMIAN_LIB}" = "1" ]; then
-  OPENSSL_ENV="ENV OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl.cnf
-ENV OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules
-COPY usr /usr"
-else
-  OPENSSL_ENV=""
-fi
-
+# The packages are GPG-signed out-of-band (.asc), not abuild-signed, hence
+# --allow-untrusted. The server's OpenRC service normally exports
+# OPENSSL_CONF/OPENSSL_MODULES; there is no init system in the container, so
+# set them here (pointing at the package-installed FIPS provider tree).
+# The packaged /etc/cosmian/kms.toml is removed so the server accepts the
+# command-line arguments below (a default config file makes it reject them).
 cat >"${WORK_DIR}/Dockerfile" <<EOF
 FROM alpine:${ALPINE_TAG}
-${EXTRA_APK}
-COPY cosmian_kms /usr/local/bin/cosmian_kms
-COPY ckms /usr/local/bin/ckms
-${OPENSSL_ENV}
+RUN apk add --no-cache ca-certificates
+COPY server.apk cli.apk /tmp/
+RUN apk add --no-cache --allow-untrusted /tmp/server.apk /tmp/cli.apk && rm /tmp/*.apk /etc/cosmian/kms.toml
+ENV OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl.cnf
+ENV OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules
 EXPOSE 9998
-ENTRYPOINT ["/usr/local/bin/cosmian_kms"]
+ENTRYPOINT ["/usr/sbin/cosmian_kms"]
 EOF
 
 echo "=== Building ${IMAGE_TAG} (alpine:${ALPINE_TAG}) ==="
@@ -160,20 +134,12 @@ print_json = false
 server_url = "http://localhost:${HOST_PORT}"
 EOF
 
-CLI_IMAGE_TAG="${IMAGE_TAG}-cli"
-cat >"${WORK_DIR}/Dockerfile.cli" <<EOF
-FROM alpine:${ALPINE_TAG}
-${EXTRA_APK}
-COPY ckms /usr/local/bin/ckms
-ENTRYPOINT ["/usr/local/bin/ckms"]
-EOF
-docker build -t "${CLI_IMAGE_TAG}" -f "${WORK_DIR}/Dockerfile.cli" "${WORK_DIR}"
-
 run_ckms() {
   docker run --rm --network host \
     -v "${WORK_DIR}/conf/ckms.toml:/root/.cosmian/ckms.toml:ro" \
     -v "${WORK_DIR}:/data" \
-    "${CLI_IMAGE_TAG}" "$@"
+    --entrypoint /usr/bin/ckms \
+    "${IMAGE_TAG}" "$@"
 }
 
 echo "=== AES round-trip ==="

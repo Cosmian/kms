@@ -9,10 +9,10 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 kms_init_env "${usage_variant:-fips}" "static"
 
 # ---------------------------------------------------------------------------
-# Reproducibility cross-check for the Alpine/musl release tarballs.
+# Reproducibility cross-check for the Alpine apk packages.
 #
 # The *published* musl artifacts are built via Nix (nix/kms-server-musl.nix,
-# nix/cli-musl.nix — see `mise run package:musl-tarball`). This task builds the
+# nix/cli-musl.nix — see `mise run package:apk`). This task builds the
 # same target with a completely independent toolchain (plain `cargo` +
 # system `musl-gcc`, no Nix) as a cross-check: if Nix has a musl-specific bug,
 # an independently-built binary is far less likely to share it. This build is

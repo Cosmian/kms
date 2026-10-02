@@ -4,24 +4,25 @@
 
 ### Packaging
 
-- Publish Linux **musl** release tarballs for `cosmian_kms` (server) and `ckms` (CLI),
+- Publish Alpine Linux **`.apk`** packages for `cosmian_kms` (server, with OpenRC service
+  and `/etc/cosmian/kms.toml`) and `ckms` (CLI),
   built via Nix (`nix/kms-server-musl.nix`, `nix/cli-musl.nix`) and validated end-to-end
   against real `alpine:3.20`/`3.21`/`latest` containers — no `gcompat` shim required:
   - **FIPS**: dynamically-linked musl (`ld-musl-<arch>.so.1`), keeping `dlopen` available
-    so the FIPS provider loads exactly like the GLIBC build. Requires
-    `apk add --no-cache libgcc` on Alpine (rustc always emits an explicit `-lgcc_s` for
+    so the FIPS provider loads exactly like the GLIBC build. The package depends on
+    `libgcc` (rustc always emits an explicit `-lgcc_s` for
     this target; confirmed not fixable via `-static-libgcc` on stable Rust).
   - **non-FIPS**: fully static musl (`+crt-static`, Rust's own default for this target).
     Zero extra `apk` packages required, including on `FROM scratch`.
-  - Published for `x86_64` and `aarch64`, signed (GPG), checksummed (SHA-256), with SBOM,
-    matching the existing `pkcs11-zip` artifact treatment
-    (`mise run package:musl-tarball --component server|cli --variant fips|non-fips`).
+  - Published for `x86_64` and `aarch64`, signed (GPG detached `.asc`), checksummed
+    (SHA-256), with SBOM, built with `nfpm`
+    (`mise run package:apk --variant fips|non-fips [--component all|server|cli]`).
 - Add a CI-only reproducibility cross-check (`mise run test:musl-crosscheck`,
   `test:musl-openssl-prebuild`) that builds the same target via plain `cargo` +
   system `musl-gcc` (no Nix) — never signed or published, purely a second,
   independent build path to catch Nix-specific musl bugs.
-- Add an Alpine-container smoke test (`.mise/scripts/test/test_alpine_musl.sh`) run in
-  CI against `alpine:3.20`/`3.21`/`latest`: verifies the FIPS-provider / legacy-provider
+- Add an Alpine-container smoke test (`.mise/scripts/test/test_alpine_musl.sh`) that
+  `apk add`s the packages, run in CI against `alpine:3.20`/`3.21`/`latest`: verifies the FIPS-provider / legacy-provider
   log lines, round-trips AES/RSA/EC via `ckms`, and (non-FIPS) exercises PQC —
   ML-KEM-1024, ML-DSA-87, and SLH-DSA-SHAKE-256f as a musl thread-stack-size
   regression canary.
@@ -42,7 +43,7 @@
   Nix-built artifacts' `test-alpine-musl` smoke test.
 
 - HSM backends (Utimaco, Proteccio, SmartCard HSM, Crypt2Pay) are not supported on the
-  musl tarballs — vendor PKCS#11 drivers are glibc-only shared libraries.
+  Alpine packages — vendor PKCS#11 drivers are glibc-only shared libraries.
 - non-FIPS (fully static musl): old PKCS#12/RC2 import is unsupported — musl's static
   libc cannot `dlopen` the legacy OpenSSL provider module. All other algorithms,
   including PQC and Covercrypt, are unaffected.

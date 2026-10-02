@@ -408,7 +408,7 @@ let
     openssl312 = openssl312-static-228;
   };
 
-  # Alpine-compatible musl release tarballs (server + CLI). See nix/kms-server-musl.nix
+  # Alpine-compatible musl builds packaged as .apk (server + CLI). See nix/kms-server-musl.nix
   # for why FIPS uses dynamic musl linkage and non-FIPS uses fully static musl linkage.
   # `null` on Darwin (pkgsMuslNative is null there — these targets are Linux-only).
   mkKmsServerMusl =
@@ -491,7 +491,7 @@ rec {
   # Export UI builds for debugging/development
   inherit ui-fips ui-non-fips;
 
-  # Alpine-compatible musl release tarballs (server + CLI); null on Darwin.
+  # Alpine-compatible musl builds packaged as .apk (server + CLI); null on Darwin.
   inherit
     kms-server-fips-musl-dynamic
     kms-server-non-fips-musl-static
