@@ -1436,19 +1436,12 @@ impl Session {
             key_handle
         );
 
-        let mut decrypted_data_len: CK_ULONG = 0;
-        hsm_call!(
-            self.hsm,
-            "Failed to get decrypted data length",
-            C_Decrypt,
-            self.handle,
-            encrypted_data.as_mut_ptr(),
-            CK_ULONG::try_from(encrypted_data.len())?,
-            ptr::null_mut(),
-            &raw mut decrypted_data_len
-        );
-
-        let mut decrypted_data = vec![0_u8; usize::try_from(decrypted_data_len)?];
+        // Every supported decryption mechanism returns no more bytes than its input:
+        // AES-GCM removes its tag, CBC removes padding, and RSA plaintext is bounded by
+        // the modulus-sized ciphertext. Allocating this upper bound avoids a preliminary
+        // null-output C_Decrypt query, which Crypt2Pay rejects with CKR_ENCRYPTED_DATA_INVALID.
+        let mut decrypted_data = vec![0_u8; encrypted_data.len()];
+        let mut decrypted_data_len = CK_ULONG::try_from(decrypted_data.len())?;
         hsm_call!(
             self.hsm,
             "Failed to decrypt data",

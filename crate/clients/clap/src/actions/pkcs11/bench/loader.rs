@@ -10,8 +10,8 @@ use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_FLAGS, CK_FUNCTION_LIST_3_0, CK_GCM_MESSAGE_PARAMS, CK_GCM_PARAMS,
     CK_INTERFACE_PTR, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS,
     CK_OBJECT_HANDLE, CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CK_TRUE,
-    CK_ULONG, CK_USER_TYPE, CK_VERSION, CKA_CLASS, CKA_EC_PARAMS, CKA_EXTRACTABLE, CKA_KEY_TYPE,
-    CKA_LABEL, CKA_SENSITIVE, CKA_VALUE_LEN, CKF_RW_SESSION, CKF_SERIAL_SESSION,
+    CK_ULONG, CK_USER_TYPE, CK_VERSION, CKA_CLASS, CKA_EC_PARAMS, CKA_EXTRACTABLE, CKA_ID,
+    CKA_KEY_TYPE, CKA_LABEL, CKA_SENSITIVE, CKA_VALUE_LEN, CKF_RW_SESSION, CKF_SERIAL_SESSION,
     CKG_GENERATE_RANDOM, CKG_MGF1_SHA256, CKG_NO_GENERATE, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_GCM,
     CKM_AES_KEY_GEN, CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKM_SHA256, CKR_OK, CKU_USER,
 };
@@ -342,15 +342,6 @@ impl<'lib> Pkcs11Session<'lib> {
         })
     }
 
-    /// Finds the first object of the given `CK_OBJECT_CLASS` (e.g. `CKO_SECRET_KEY`,
-    /// `CKO_PRIVATE_KEY`) visible to the provider's current backend.
-    pub(crate) fn find_first_by_class(
-        &self,
-        class: CK_OBJECT_CLASS,
-    ) -> BenchResult<CK_OBJECT_HANDLE> {
-        self.find_first(class, None, None)
-    }
-
     /// Finds the first object of the given `CK_OBJECT_CLASS` *and* `CK_KEY_TYPE`
     /// (e.g. `CKO_PRIVATE_KEY` + `CKK_RSA`, or `CKO_PRIVATE_KEY` + `CKK_EC_EDWARDS`).
     ///
@@ -363,28 +354,19 @@ impl<'lib> Pkcs11Session<'lib> {
         class: CK_OBJECT_CLASS,
         key_type: CK_KEY_TYPE,
     ) -> BenchResult<CK_OBJECT_HANDLE> {
-        self.find_first(class, Some(key_type), None)
+        self.find_first(class, Some(key_type), None, None)
     }
 
-    /// Finds the first object of the given `CK_OBJECT_CLASS` and `CK_KEY_TYPE`
-    /// whose `CKA_EC_PARAMS` attribute matches `expected_ec_params_der` exactly
-    /// (a DER-encoded curve OID, e.g. from `KeyAlgorithm::to_oid()` /
-    /// `pkcs1::ObjectIdentifier::to_der()` on the module side).
+    /// Finds the object of `class` whose `CKA_ID` is the supplied KMS identifier.
     ///
-    /// Needed because more than one EC key pair sharing the same `CKK_EC`
-    /// `CK_KEY_TYPE` may be provisioned (e.g. P-256 and secp256k1 both report
-    /// `CKK_EC` — unlike RSA/Ed25519, which have their own distinct
-    /// `CK_KEY_TYPE`s — see [`Self::find_first_by_class_and_key_type`]'s doc
-    /// comment) — filtering by class and key type alone would
-    /// non-deterministically return whichever EC key the backend happens to
-    /// enumerate first.
-    pub(crate) fn find_first_by_class_key_type_and_ec_params(
+    /// Benchmark runs share physical HSMs, so type-only discovery can otherwise pair
+    /// a newly created public key with a private key left by an earlier run.
+    pub(crate) fn find_first_by_class_and_id(
         &self,
         class: CK_OBJECT_CLASS,
-        key_type: CK_KEY_TYPE,
-        expected_ec_params_der: &[u8],
+        id: &str,
     ) -> BenchResult<CK_OBJECT_HANDLE> {
-        self.find_first(class, Some(key_type), Some(expected_ec_params_der))
+        self.find_first(class, None, None, Some(id.as_bytes()))
     }
 
     /// Shared `C_FindObjectsInit`/`C_FindObjects`/`C_FindObjectsFinal` implementation
@@ -395,10 +377,12 @@ impl<'lib> Pkcs11Session<'lib> {
         class: CK_OBJECT_CLASS,
         key_type: Option<CK_KEY_TYPE>,
         expected_ec_params: Option<&[u8]>,
+        id: Option<&[u8]>,
     ) -> BenchResult<CK_OBJECT_HANDLE> {
         let f = &self.lib.functions;
         let mut class = class;
         let mut key_type = key_type;
+        let mut id = id.map(ToOwned::to_owned);
         let mut template = vec![CK_ATTRIBUTE {
             type_: CKA_CLASS,
             pValue: (&raw mut class).cast::<std::ffi::c_void>(),
@@ -409,6 +393,13 @@ impl<'lib> Pkcs11Session<'lib> {
                 type_: CKA_KEY_TYPE,
                 pValue: (&raw mut *key_type).cast::<std::ffi::c_void>(),
                 ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
+            });
+        }
+        if let Some(id) = id.as_mut() {
+            template.push(CK_ATTRIBUTE {
+                type_: CKA_ID,
+                pValue: id.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulValueLen: id.len() as CK_ULONG,
             });
         }
 

@@ -9,7 +9,7 @@
 
 use std::{cell::Cell, time::Duration};
 
-use cosmian_kms_client::{KmsClient, cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier};
+use cosmian_kms_client::KmsClient;
 use criterion::Criterion;
 use tokio::runtime::Runtime;
 
@@ -19,6 +19,7 @@ use super::{
     loader::Pkcs11Session,
     overhead::add_overhead_benchmarks,
     report,
+    setup::BenchSetup,
 };
 
 /// How long/thorough a criterion run should be — identical semantics to
@@ -68,7 +69,7 @@ pub(crate) fn run_criterion(
     pool: &[Pkcs11Session<'_>],
     runtime: &Runtime,
     client: &KmsClient,
-    ed25519_private_key_id: Option<&UniqueIdentifier>,
+    setup: &BenchSetup,
     config: &CriterionRunConfig,
 ) -> BenchResult<()> {
     let session = pool
@@ -91,7 +92,7 @@ pub(crate) fn run_criterion(
     };
 
     let overhead_metadata = if config.overhead && modes.contains(&ConcreteMode::SignEdDsa) {
-        let private_key_id = ed25519_private_key_id.ok_or_else(|| {
+        let private_key_id = setup.ed25519_private.as_ref().ok_or_else(|| {
             BenchError::Setup(
                 "Ed25519 overhead benchmark requires a provisioned private key".to_owned(),
             )
@@ -109,7 +110,12 @@ pub(crate) fn run_criterion(
         None
     };
 
-    for PreparedOp { label, setup, op } in prepare_ops(modes, pool)? {
+    for PreparedOp {
+        label,
+        setup: operation_setup,
+        op,
+    } in prepare_ops(modes, pool, setup)?
+    {
         // `sign/eddsa-ed25519` used to be skipped here and aliased from the
         // `pkcs11-one-call-bracketed` tier in the overhead ladder above. That tier
         // is an A/B/A/B bracketed mean measured *inside* a differential benchmark
@@ -119,8 +125,8 @@ pub(crate) fn run_criterion(
         // table. Always run a dedicated, non-interleaved benchmark for it here —
         // identical in kind to `ecdsa-p256/sign` and `rsa-pkcs-sha256/sign` below —
         // so every row in that table is measured the same way.
-        if let Some(setup) = setup {
-            setup(pool)?;
+        if let Some(operation_setup) = operation_setup {
+            operation_setup(pool)?;
         }
         eprintln!("[bench:pkcs11] criterion: {label}");
         // `label` is e.g. "encrypt/aes-cbc" or "sign/eddsa-ed25519" (see

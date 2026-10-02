@@ -205,7 +205,7 @@ impl Pkcs11BenchAction {
             cooldown_time: Duration::from_secs(cooldown),
         };
 
-        let modes = expand_bench_mode(self.mode, Some(&self.filter), self.delegated);
+        let modes = expand_bench_mode(self.mode, Some(&self.filter));
         if modes.is_empty() {
             return Err(KmsCliError::Default(
                 "No benchmark operations matched the selected mode and filter".to_owned(),
@@ -282,7 +282,7 @@ impl Pkcs11BenchAction {
                 .collect::<BenchResult<Vec<_>>>()
                 .map_err(|e| KmsCliError::Default(e.to_string()))?;
 
-            let results = run_all(&modes, &pool, &sweep_config)
+            let results = run_all(&modes, &pool, &setup, &sweep_config)
                 .map_err(|e| KmsCliError::Default(e.to_string()))?;
             print_results(&results);
             report::write_load_json(&results).map_err(|e| KmsCliError::Default(e.to_string()))?;
@@ -293,7 +293,7 @@ impl Pkcs11BenchAction {
                     &pool,
                     &rt,
                     &client,
-                    setup.ed25519_private_key_id.as_ref(),
+                    &setup,
                     &CriterionRunConfig {
                         speed,
                         measurement_time: sweep_config.measure_time,
