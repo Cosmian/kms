@@ -302,7 +302,8 @@ fn decode_ppccap(hex: &str) -> String {
 
 /// Initialize OpenSSL providers for test environments.
 ///
-/// In non-FIPS mode with OpenSSL >= 3.0: loads the legacy provider for old PKCS#12 formats.
+/// In non-FIPS mode with OpenSSL >= 3.0: loads the legacy provider for old PKCS#12 formats
+/// (falls back to a warning if it can't be loaded — see [`init_openssl_providers`]).
 /// In non-FIPS mode with OpenSSL < 3.0: loads the default provider.
 /// In FIPS mode: no-op (FIPS provider is loaded via openssl.cnf).
 ///
@@ -313,19 +314,31 @@ fn decode_ppccap(hex: &str) -> String {
 pub fn init_openssl_providers_for_tests() {
     use std::sync::OnceLock;
 
+    use cosmian_logger::warn;
     use openssl::provider::Provider;
 
-    // Keep provider alive for program lifetime — it must not be dropped
-    static PROVIDER: OnceLock<Provider> = OnceLock::new();
+    // Keep provider alive for program lifetime — it must not be dropped. `None` means
+    // the legacy provider could not be loaded (see init_openssl_providers) rather than
+    // "not yet initialized".
+    static PROVIDER: OnceLock<Option<Provider>> = OnceLock::new();
 
     PROVIDER.get_or_init(|| {
         let ossl_number = u64::try_from(openssl::version::number()).unwrap_or(0);
         if ossl_number >= OPENSSL_3_0_VERSION_NUMBER {
             // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats
-            Provider::try_load(None, "legacy", true).expect("Failed to load legacy provider")
+            match Provider::try_load(None, "legacy", true) {
+                Ok(provider) => Some(provider),
+                Err(e) => {
+                    warn!(
+                        "Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats \
+                         are unsupported in this test run. All other algorithms are unaffected."
+                    );
+                    None
+                }
+            }
         } else {
             // OpenSSL < 3.0: load the default provider
-            Provider::load(None, "default").expect("Failed to load default provider")
+            Some(Provider::load(None, "default").expect("Failed to load default provider"))
         }
     });
 }
@@ -350,7 +363,9 @@ pub const fn init_openssl_providers_for_tests() {
 ///
 /// # Errors
 ///
-/// Returns an error if the provider fails to load.
+/// Returns an error if the FIPS provider (FIPS mode) or the default provider
+/// (non-FIPS mode, pre-3.0 OpenSSL) fails to load. In non-FIPS mode with OpenSSL >= 3.0,
+/// a *legacy* provider load failure does **not** propagate as an error — see below.
 pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
     use std::sync::OnceLock;
 
@@ -369,21 +384,60 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
 
     #[cfg(feature = "non-fips")]
     {
-        static PROVIDER: OnceLock<Provider> = OnceLock::new();
+        use cosmian_logger::warn;
+
+        // `None` means the legacy provider failed to load (see below) rather than
+        // "not yet initialized".
+        static PROVIDER: OnceLock<Option<Provider>> = OnceLock::new();
 
         if PROVIDER.get().is_none() {
             let ossl_number = u64::try_from(openssl::version::number()).unwrap_or(0);
-            let provider = if ossl_number >= OPENSSL_3_0_VERSION_NUMBER {
-                // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats
+            let loaded = if ossl_number >= OPENSSL_3_0_VERSION_NUMBER {
+                // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats. Unlike
+                // the FIPS provider above, a failure here is deliberately **not**
+                // propagated with `?`: OpenSSL's "legacy" module is a separate shared
+                // object loaded via `dlopen`, which can never succeed on a fully static
+                // musl binary (the non-FIPS Alpine apk package — musl's
+                // static libc has no dynamic linker at all, so `dlopen` always fails
+                // there, regardless of `OPENSSL_MODULES`). The "default" provider
+                // (already active via openssl.cnf, and not dlopen'd — it's built into
+                // libcrypto) still covers every modern algorithm, including PQC and
+                // Covercrypt, so this is a narrow, clearly-logged capability loss
+                // (old PKCS#12/RC2 formats only) rather than a reason to abort startup.
                 info!("Load legacy provider");
-                Provider::try_load(None, "legacy", true)?
+                match Provider::try_load(None, "legacy", true) {
+                    Ok(provider) => Some(provider),
+                    Err(e) => {
+                        warn!(
+                            "Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 \
+                             formats are unsupported on this build. All other algorithms \
+                             (including PQC and Covercrypt) are unaffected."
+                        );
+                        None
+                    }
+                }
             } else {
                 // OpenSSL < 3.0: load the default provider
                 info!("Load default provider");
-                Provider::load(None, "default")?
+                Some(Provider::load(None, "default")?)
             };
-            drop(PROVIDER.set(provider));
+            drop(PROVIDER.set(loaded));
         }
         Ok(())
+    }
+}
+
+#[cfg(all(test, feature = "non-fips"))]
+#[expect(clippy::expect_used)]
+mod tests {
+    use super::init_openssl_providers;
+
+    /// `init_openssl_providers` must never hard-fail in non-FIPS mode on a normal
+    /// (dynamically-linked) test/dev target, and must be idempotent (safe to call more
+    /// than once — e.g. once per Actix worker thread).
+    #[test]
+    fn test_init_openssl_providers_succeeds_and_is_idempotent() {
+        init_openssl_providers().expect("first call must succeed");
+        init_openssl_providers().expect("second call must also succeed (OnceLock guard)");
     }
 }

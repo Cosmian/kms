@@ -635,6 +635,22 @@ The following table shows the GLIBC versions and distribution support for **Evid
 
 **Note:** Cosmian KMS requires **GLIBC 2.34** or higher (available in Debian 12+, Rocky Linux 9+, and Ubuntu 22.04+).
 
+#### Alpine Linux (musl)
+
+In addition to the GLIBC packages above, Cosmian KMS publishes Alpine **`.apk`** packages
+(musl builds) for `cosmian_kms` (server, with an OpenRC service) and `ckms` (CLI) that run natively on Alpine Linux — tested against
+Alpine 3.20, 3.21, and `latest` — with no `gcompat` shim required. See the
+[Getting started guide](documentation/docs/installation/installation_getting_started.md)
+for install instructions and a Dockerfile example.
+
+| Variant  | musl linking                 | Alpine requirement        | Notes                                                                 |
+| -------- | ----------------------------- | -------------------------- | ---------------------------------------------------------------------- |
+| FIPS     | Dynamic (`ld-musl-<arch>.so.1`) | `libgcc` (pulled in automatically by `apk`) | Full feature parity with the GLIBC build (FIPS provider loads via `dlopen`). |
+| non-FIPS | Fully static (`+crt-static`)   | None — zero extra packages | Old PKCS#12/RC2 import is unsupported (musl's static libc cannot `dlopen` the legacy OpenSSL provider); all other algorithms, including PQC and Covercrypt, are unaffected. |
+
+**Note:** HSM backends (Utimaco, Proteccio, SmartCard HSM, Crypt2Pay) are **not supported**
+on the Alpine packages — vendor PKCS#11 drivers are glibc-only shared libraries.
+
 #### OpenSSL prerequisite
 
 The following table shows the OpenSSL versions used by **Cosmian KMS** variants:

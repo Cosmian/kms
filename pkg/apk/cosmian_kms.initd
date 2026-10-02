@@ -1,0 +1,28 @@
+#!/sbin/openrc-run
+# OpenRC service for the Eviden KMS server (Alpine Linux apk package).
+
+name="Cosmian KMS"
+description="Cosmian Key Management System server"
+
+command="/usr/sbin/cosmian_kms"
+command_background="yes"
+pidfile="/run/${RC_SVCNAME}.pid"
+directory="/var/lib/cosmian"
+output_log="/var/log/cosmian/cosmian_kms.log"
+error_log="/var/log/cosmian/cosmian_kms.log"
+
+: "${COSMIAN_KMS_CONF:=/etc/cosmian/kms.toml}"
+export COSMIAN_KMS_CONF
+# Only meaningful when the FIPS provider tree is installed; harmless otherwise.
+export OPENSSL_CONF="${OPENSSL_CONF:-/usr/local/cosmian/lib/ssl/openssl.cnf}"
+export OPENSSL_MODULES="${OPENSSL_MODULES:-/usr/local/cosmian/lib/ossl-modules}"
+
+depend() {
+    need net
+    after firewall
+}
+
+start_pre() {
+    checkpath --directory --mode 0750 /var/lib/cosmian
+    checkpath --directory --mode 0750 /var/log/cosmian
+}

@@ -147,6 +147,51 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
     - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
     - The KMS UI is available at `http://localhost:9998/ui`.
 
+=== "Alpine Linux"
+
+    Eviden KMS publishes Alpine **`.apk`** packages (musl builds) that run natively on
+    Alpine — no `gcompat` shim required. The packages are GPG-signed out-of-band
+    (`.apk.asc`) rather than with an `abuild` key, so install them with
+    `--allow-untrusted` after verifying the signature:
+
+    ```sh
+    wget https://package.cosmian.com/kms/5.27.1/apk/amd64/fips/cosmian-kms-server-fips_5.27.1-r0_x86_64.apk
+    wget https://package.cosmian.com/kms/5.27.1/apk/amd64/fips/cosmian-kms-cli-fips_5.27.1-r0_x86_64.apk
+    apk add --allow-untrusted ./cosmian-kms-server-fips_5.27.1-r0_x86_64.apk ./cosmian-kms-cli-fips_5.27.1-r0_x86_64.apk
+    rc-update add cosmian_kms default
+    rc-service cosmian_kms start
+    ```
+
+    The server package installs `/usr/sbin/cosmian_kms`, the configuration file
+    `/etc/cosmian/kms.toml`, the web UI, and an OpenRC service (`/etc/init.d/cosmian_kms`,
+    options in `/etc/conf.d/cosmian_kms`). The CLI package installs `/usr/bin/ckms`.
+
+    - **FIPS** (dynamically-linked musl): the package depends on `libgcc`, which `apk`
+      installs automatically.
+    - **non-FIPS** (fully static musl): no dependencies. Use the `non-fips` path and package
+      names (`cosmian-kms-server-non-fips_…`, `cosmian-kms-cli-non-fips_…`).
+
+    In a Dockerfile:
+
+    ```dockerfile
+    FROM alpine:3.21
+    ADD https://package.cosmian.com/kms/5.27.1/apk/amd64/fips/cosmian-kms-server-fips_5.27.1-r0_x86_64.apk /tmp/kms.apk
+    RUN apk add --no-cache --allow-untrusted ca-certificates /tmp/kms.apk && rm /tmp/kms.apk
+    ENV OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl.cnf
+    ENV OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules
+    EXPOSE 9998
+    ENTRYPOINT ["/usr/sbin/cosmian_kms"]
+    ```
+
+    - The KMS UI is available at `http://localhost:9998/ui`.
+    - **Known limitations** on the Alpine packages (see the
+      [Alpine support note](../../../README.md#alpine-linux-musl) for details):
+        - HSM backends (Utimaco, Proteccio, SmartCard HSM, Crypt2Pay) are not supported —
+          vendor PKCS#11 drivers are glibc-only.
+        - non-FIPS: old PKCS#12/RC2 import is unsupported (musl's static libc cannot
+          `dlopen` the legacy OpenSSL provider). All other algorithms, including PQC and
+          Covercrypt, are unaffected — the server logs a warning and continues.
+
 === "macOS"
 
     Download the installer for your architecture and run it:
