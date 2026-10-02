@@ -643,13 +643,20 @@ impl Backend for CliBackend {
         remote_id: &str,
         algorithm: &SignatureAlgorithm,
         data: &[u8],
+        key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<Vec<u8>> {
         debug!("remote_sign: remote_id: {remote_id}, algorithm: {algorithm:?}");
         let remote_sign = cosmian_pkcs11_module::profiling::phase(
             cosmian_pkcs11_module::profiling::SignPhase::BackendRemoteSign,
         );
-        let result =
-            kms_sign(&self.kms_rest_client, remote_id, algorithm, data).map_err(Into::into);
+        let result = kms_sign(
+            &self.kms_rest_client,
+            remote_id,
+            algorithm,
+            data,
+            key_algorithm,
+        )
+        .map_err(Into::into);
         drop(remote_sign);
         result
     }
@@ -660,8 +667,17 @@ impl Backend for CliBackend {
         algorithm: &SignatureAlgorithm,
         data: &[u8],
         signature: &[u8],
+        key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<()> {
         debug!("remote_verify: remote_id: {remote_id}, algorithm: {algorithm:?}");
-        kms_verify(&self.kms_rest_client, remote_id, algorithm, data, signature).map_err(Into::into)
+        kms_verify(
+            &self.kms_rest_client,
+            remote_id,
+            algorithm,
+            data,
+            signature,
+            key_algorithm,
+        )
+        .map_err(Into::into)
     }
 }

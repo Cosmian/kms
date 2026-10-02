@@ -200,7 +200,18 @@ pub struct HsmLib {
 }
 
 impl HsmLib {
-    pub(crate) fn instantiate<P>(path: P) -> HResult<Self>
+    /// Load the PKCS#11 library at `path` and resolve its function table.
+    ///
+    /// Resolves the two spec-mandated entry points (`C_GetFunctionList`/`C_GetInterface`
+    /// plus the v2.40 `C_GetFunctionList`) best-effort, then resolves every function the
+    /// crate drives (per-symbol `dlsym` first, then the v3.0 function list, then the
+    /// v2.40 one). Calls `C_Initialize` with `CKF_OS_LOCKING_OK`; `Drop` calls
+    /// `C_Finalize`.
+    ///
+    /// # Errors
+    /// Returns an error if the library cannot be loaded or `C_Initialize` fails for a
+    /// reason other than `CKR_CRYPTOKI_ALREADY_INITIALIZED`.
+    pub fn instantiate<P>(path: P) -> HResult<Self>
     where
         P: AsRef<std::ffi::OsStr>,
     {

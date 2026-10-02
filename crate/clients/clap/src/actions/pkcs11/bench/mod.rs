@@ -20,8 +20,7 @@
 pub(crate) mod criterion_bench;
 pub(crate) mod error;
 pub(crate) mod load;
-pub(crate) mod loader;
-pub(crate) mod overhead;
+pub(crate) mod ops;
 pub(crate) mod report;
 pub(crate) mod setup;
 
@@ -34,10 +33,10 @@ use std::{
 
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
-use criterion_bench::{BenchSpeed, CriterionRunConfig, PayloadMode, run_criterion};
+use criterion_bench::{BenchSpeed, CriterionRunConfig, run_criterion};
 pub(crate) use error::{BenchError, BenchResult};
 use load::{LoadResult, SweepConfig, expand_bench_mode, run_all};
-use loader::{Pkcs11Lib, Pkcs11Session};
+use ops::open_pool;
 
 use crate::{
     actions::bench::types::{BenchFilter, BenchMode},
@@ -127,26 +126,6 @@ pub struct Pkcs11BenchAction {
     /// Criterion speed preset (only used with `--criterion`).
     #[arg(long, value_enum, default_value_t = BenchSpeed::Quick)]
     pub(crate) speed: BenchSpeed,
-
-    /// Also run the Ed25519-specific differential overhead ladder (request
-    /// construction, TTLV serialization, raw HTTP tiers, PKCS#11 `C_SignMessage`,
-    /// internal phase boundaries — see `overhead.rs`) and write
-    /// `pkcs11_overhead.json`. Only used with `--criterion` and when an `EdDSA` sign
-    /// mode is selected. This is a standalone local diagnostic for investigating
-    /// Ed25519 signing overhead specifically — it is not part of the standard
-    /// report pipeline and is never rendered into `report.md`.
-    #[arg(long)]
-    pub(crate) overhead: bool,
-
-    /// Ed25519 payload size for differential Criterion tiers (only used with
-    /// `--overhead`).
-    #[arg(long, default_value_t = 32)]
-    pub(crate) overhead_payload_size: usize,
-
-    /// Payload selection for typed and PKCS#11 overhead tiers (only used with
-    /// `--overhead`).
-    #[arg(long, value_enum, default_value_t = PayloadMode::Fixed)]
-    pub(crate) overhead_payload_mode: PayloadMode,
 }
 
 fn parse_concurrency(spec: &str) -> BenchResult<Vec<usize>> {
@@ -231,9 +210,6 @@ impl Pkcs11BenchAction {
         let shared_session = self.shared_session;
         let criterion = self.criterion;
         let speed = self.speed;
-        let overhead = self.overhead;
-        let overhead_payload_size = self.overhead_payload_size;
-        let overhead_payload_mode = self.overhead_payload_mode;
         let delegated = self.delegated;
         let hsm_slot = self.hsm_slot;
 
@@ -261,11 +237,6 @@ impl Pkcs11BenchAction {
                 unsafe { env::set_var("CKMS_CONF", conf_path) };
             }
 
-            let dll_str = dll.to_str().ok_or_else(|| {
-                KmsCliError::Default(format!("Invalid DLL path: {}", dll.display()))
-            })?;
-            let lib = Pkcs11Lib::load(dll_str).map_err(|e| KmsCliError::Default(e.to_string()))?;
-
             let pool_size = if shared_session {
                 1
             } else {
@@ -277,29 +248,29 @@ impl Pkcs11BenchAction {
                     .unwrap_or(1)
             };
             let hsm_prefix = delegated.then(|| Arc::<str>::from(format!("hsm::{hsm_slot}")));
-            let pool = (0..pool_size)
-                .map(|_| Pkcs11Session::open(&lib, hsm_prefix.clone()))
-                .collect::<BenchResult<Vec<_>>>()
+            let pool = open_pool(&dll, pool_size, hsm_prefix.as_ref())
                 .map_err(|e| KmsCliError::Default(e.to_string()))?;
 
-            let results = run_all(&modes, &pool, &setup, &sweep_config)
-                .map_err(|e| KmsCliError::Default(e.to_string()))?;
+            let results = run_all(
+                &modes,
+                &pool.sessions,
+                &setup,
+                &sweep_config,
+                hsm_prefix.as_deref(),
+            )
+            .map_err(|e| KmsCliError::Default(e.to_string()))?;
             print_results(&results);
             report::write_load_json(&results).map_err(|e| KmsCliError::Default(e.to_string()))?;
 
             if criterion {
                 run_criterion(
                     &modes,
-                    &pool,
-                    &rt,
-                    &client,
+                    &pool.sessions,
+                    hsm_prefix.as_deref(),
                     &setup,
                     &CriterionRunConfig {
                         speed,
                         measurement_time: sweep_config.measure_time,
-                        overhead_payload_size,
-                        overhead_payload_mode,
-                        overhead,
                     },
                 )
                 .map_err(|e| KmsCliError::Default(e.to_string()))?;

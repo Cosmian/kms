@@ -29,6 +29,8 @@ pub(crate) struct BenchSetup {
     pub(crate) rsa_public: UniqueIdentifier,
     pub(crate) ecdsa_private: UniqueIdentifier,
     pub(crate) ecdsa_public: UniqueIdentifier,
+    pub(crate) ecdsa_p384_private: UniqueIdentifier,
+    pub(crate) ecdsa_p384_public: UniqueIdentifier,
     pub(crate) ed25519_private: Option<UniqueIdentifier>,
     pub(crate) ed25519_public: Option<UniqueIdentifier>,
     pub(crate) secp256k1_private: Option<UniqueIdentifier>,
@@ -53,6 +55,14 @@ const BENCH_TAG: &str = "pkcs11-bench";
 /// it.
 const DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 
+/// The (private, public) unique identifiers of the optional Ed25519 and
+/// secp256k1 key pairs `provision_optional_keys` may create, each absent when
+/// its corresponding `provision_*` flag is `false` (or always, in FIPS mode).
+type OptionalKeyPairIds = (
+    Option<(UniqueIdentifier, UniqueIdentifier)>,
+    Option<(UniqueIdentifier, UniqueIdentifier)>,
+);
+
 #[cfg(feature = "non-fips")]
 async fn provision_optional_keys(
     client: &KmsClient,
@@ -61,10 +71,7 @@ async fn provision_optional_keys(
     delegated: bool,
     hsm_slot: usize,
     disk_encryption_tag: &str,
-) -> BenchResult<(
-    Option<(UniqueIdentifier, UniqueIdentifier)>,
-    Option<(UniqueIdentifier, UniqueIdentifier)>,
-)> {
+) -> BenchResult<OptionalKeyPairIds> {
     let ed25519_key_pair = if provision_ed25519 {
         let request = create_ec_key_pair_request(
             VENDOR_ID_COSMIAN,
@@ -122,12 +129,7 @@ fn provision_optional_keys(
     delegated: bool,
     hsm_slot: usize,
     disk_encryption_tag: &str,
-) -> impl Future<
-    Output = BenchResult<(
-        Option<(UniqueIdentifier, UniqueIdentifier)>,
-        Option<(UniqueIdentifier, UniqueIdentifier)>,
-    )>,
-> {
+) -> impl Future<Output = BenchResult<OptionalKeyPairIds>> {
     let _ = (
         client,
         provision_ed25519,
@@ -194,6 +196,20 @@ pub(crate) async fn provision_bench_keys(
         .create_key_pair(create_ecdsa_key_pair_request)
         .await?;
 
+    // EC P-384 is also FIPS-approved and advertised by both Proteccio
+    // (secp384r1) and Crypt2Pay (ansix9p384r1) in their PKCS#11 mechanism
+    // tables, so — like P-256 — it is always provisioned.
+    let create_ecdsa_p384_key_pair_request = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        benchmark_key_uid(delegated, hsm_slot, "pkcs11_ec_p384"),
+        [BENCH_TAG, disk_encryption_tag.as_str()],
+        RecommendedCurve::P384,
+        false,
+        None,
+    )?;
+    let ecdsa_p384_key_pair = client
+        .create_key_pair(create_ecdsa_p384_key_pair_request)
+        .await?;
     // Non-FIPS-only keys are provisioned by a module-level cfg helper so the
     // feature boundary does not split the body of this function.
     let (ed25519_key_pair, secp256k1_key_pair) = provision_optional_keys(
@@ -212,6 +228,8 @@ pub(crate) async fn provision_bench_keys(
         rsa_public: rsa_key_pair.public_key_unique_identifier,
         ecdsa_private: ecdsa_key_pair.private_key_unique_identifier,
         ecdsa_public: ecdsa_key_pair.public_key_unique_identifier,
+        ecdsa_p384_private: ecdsa_p384_key_pair.private_key_unique_identifier,
+        ecdsa_p384_public: ecdsa_p384_key_pair.public_key_unique_identifier,
         ed25519_private: ed25519_key_pair
             .as_ref()
             .map(|(private_key_id, _)| private_key_id.clone()),

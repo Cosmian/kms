@@ -220,6 +220,7 @@ mod aes;
 mod ec;
 mod eddsa;
 mod message_aead;
+mod message_sign;
 mod rsa;
 
 mod session_impl;

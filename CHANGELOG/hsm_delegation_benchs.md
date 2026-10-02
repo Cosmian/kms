@@ -846,3 +846,77 @@ full `--mode all` sweep (9 operations, concurrency 1/2/4, including
   any other model runs `bench:pkcs11 --delegated` against that HSM. The
   `hsm` matrix in `test_all.yml` now runs `mise run bench --sanity
   --hsm-model <type>` on every non-fips entry
+
+### `ckms pkcs11 bench`: RSA-OAEP and ECDSA P-384 coverage, plus a latent `base_hsm` OAEP bug
+
+Cross-checked `ckms pkcs11 bench`'s algorithm coverage against both vendors'
+PKCS#11 documentation (`C2P_LP54016_PKCS11_API_User_Guide_V2.28_EN.pdf` for
+Crypt2Pay, Proteccio's `Developer's Guide.pdf`) for algorithms already
+implemented server-side (`crate/hsm/base_hsm`) but missing from the
+Cryptoki-level bench tool:
+
+- Added `encrypt/rsa-oaep` and `decrypt/rsa-oaep` modes (`CKM_RSA_PKCS_OAEP`,
+  SHA-256/MGF1-SHA256, matching the server's `HsmEncryptionAlgorithm::
+  RsaOaepSha256`) and `sign/ecdsa-p384`/`verify/ecdsa-p384` modes (`CKM_ECDSA`
+  over a P-384 key pair) to `crate/clients/clap/src/actions/pkcs11/bench`
+  (`load.rs`, `loader.rs`, `setup.rs`). Both are documented, FIPS-approved
+  mechanisms supported by Proteccio and Crypt2Pay per their PKCS#11 guides.
+  P-521 was intentionally not added (pre-existing `cryptographic_length`
+  derivation bug, already tracked above in this changelog); ChaCha20 was not
+  added (not implemented in `base_hsm` at all — out of scope for a bench-tool
+  change).
+- RSA-OAEP encrypt is wrapped in a one-time capability probe
+  (`rsa_oaep_probe` in `prepare_ops`) rather than run unconditionally: the
+  server's HSM capability detection (`add_supported_oaep_algorithms` in
+  `crate/hsm/base_hsm/src/base_hsm.rs`) only checks that the HSM advertises
+  the generic `CKM_SHA256` digest mechanism, which is a false positive for
+  SoftHSM2 — its OAEP implementation rejects SHA-256 as the OAEP hash/MGF
+  parameter specifically, a known, already-documented limitation
+  (`test_data/vectors/hsm/resident_rsa2048_encrypt_oaep_sha256`,
+  `CKR_MECHANISM_PARAM_INVALID`, return code 7). A failed probe now skips
+  both `encrypt/rsa-oaep` and `decrypt/rsa-oaep` for that run with a console
+  notice instead of crashing the whole benchmark — the same
+  capability-probe-and-skip convention already used for AES-GCM/CBC decrypt.
+
+**Found and fixed a real, independent `base_hsm` bug while investigating the
+above**: `Session::encrypt`/`decrypt`'s `HsmEncryptionAlgorithm::
+RsaOaepSha256`/`RsaOaepSha1` branches (`crate/hsm/base_hsm/src/session/
+session_impl.rs`) hard-coded `pSourceData: ptr::null_mut()` for the empty
+OAEP label. SoftHSM2 requires a non-null source pointer even for a
+zero-length label (`HsmCapabilities::rsa_oaep_requires_source_data_ptr`,
+already `true` for SoftHSM2) while AWS CloudHSM requires `NULL` — the
+separate RSA-OAEP *key-wrap* path (`session/rsa.rs`) already branches on this
+capability flag, but the generic `Encrypt`/`Decrypt` KMIP operation path
+never got the same fix. Both `encrypt` and `decrypt`'s OAEP branches (4 call
+sites total) now consult `self.hsm_capabilities().
+rsa_oaep_requires_source_data_ptr` identically to `rsa.rs`. This does not
+change the known SoftHSM2 outcome (OAEP+SHA-256 is still rejected there for
+an unrelated reason — SHA-256 is not accepted as the OAEP hash algorithm at
+all on this SoftHSM2 build), but fixes a real latent null-pointer-vs-HSM-
+requirement mismatch for any other non-exempt HSM relying on this generic
+path with `rsa_oaep_requires_source_data_ptr = true`.
+
+Verified: `cargo test -p cosmian_kms_base_hsm --features non-fips --lib` (28
+passed), `cargo test -p cosmian_kms_cli_actions --features non-fips --lib
+actions::pkcs11::bench::load` (3 passed, including 2 new assertions),
+`cargo check`/`cargo clippy -- -D warnings` clean on
+`cosmian_kms_cli_actions`, `cosmian_kms_base_hsm`, `cosmian_pkcs11_module`,
+and `cosmian_pkcs11` (non-fips and default features; two pre-existing,
+unrelated clippy failures on `setup.rs`'s `type_complexity` and
+`tests.rs`'s `renamed_function_params` confirmed present before this change
+via `git stash`). End-to-end: `mise bench:pkcs11 --delegated -m encrypt -s`
+(exit 0, `rsa-oaep` gracefully skipped with a notice against SoftHSM2) and
+`mise bench:pkcs11 --delegated -m sign-verify -s` (exit 0, `sign/ecdsa-p384`
+and `verify/ecdsa-p384` both pass with real throughput numbers) against a
+live SoftHSM2 token.
+
+Also wired `CKM_RSA_PKCS_OAEP` (SHA-256/MGF1-SHA256 only) into the
+`cosmian_pkcs11` delegated PKCS#11 provider itself
+(`crate/clients/pkcs11/module/src/core/mechanism.rs`,
+`traits/encryption_algorithms.rs`,
+`crate/clients/pkcs11/provider/src/kms_object.rs`) — it was previously
+entirely unimplemented there (`parse_mechanism`'s catch-all rejected it with
+`CKR_MECHANISM_INVALID`), which the bench tool surfaced as soon as it
+exercised `encrypt/rsa-oaep` through `--delegated` mode; the KEK-wrap/direct
+vendor-library path was unaffected since it talks to the native HSM library
+directly.

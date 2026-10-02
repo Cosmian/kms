@@ -1452,6 +1452,7 @@ dependencies = [
  "cosmian_config_utils",
  "cosmian_crypto_core",
  "cosmian_kmip",
+ "cosmian_kms_base_hsm",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
  "cosmian_logger",

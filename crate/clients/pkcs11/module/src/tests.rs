@@ -267,6 +267,7 @@ impl Backend for TestBackend {
         _remote_id: &str,
         _algorithm: &SignatureAlgorithm,
         _data: &[u8],
+        _key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<Vec<u8>> {
         Err(ModuleError::FunctionNotSupported)
     }
@@ -277,6 +278,7 @@ impl Backend for TestBackend {
         _algorithm: &SignatureAlgorithm,
         _data: &[u8],
         _signature: &[u8],
+        _key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<()> {
         Err(ModuleError::FunctionNotSupported)
     }
@@ -1535,6 +1537,7 @@ impl Backend for FallbackBackend {
         _remote_id: &str,
         _algorithm: &SignatureAlgorithm,
         _data: &[u8],
+        _key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<Vec<u8>> {
         Err(ModuleError::FunctionNotSupported)
     }
@@ -1545,6 +1548,7 @@ impl Backend for FallbackBackend {
         _algorithm: &SignatureAlgorithm,
         _data: &[u8],
         _signature: &[u8],
+        _key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<()> {
         Err(ModuleError::FunctionNotSupported)
     }

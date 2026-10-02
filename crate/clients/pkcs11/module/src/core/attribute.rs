@@ -415,6 +415,8 @@ impl Attributes {
 
     get_attribute!(get_label, AttributeType::Label, Label, String);
 
+    get_attribute!(get_id, AttributeType::Id, Id, Vec<u8>);
+
     get_attribute!(get_value, AttributeType::Value, Value, Vec<u8>);
 
     get_attribute!(get_value_len, AttributeType::ValueLen, ValueLen, CK_ULONG);

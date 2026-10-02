@@ -26,7 +26,7 @@ use cosmian_pkcs11_module::{
         C_SetAttributeValue, SLOT_ID,
     },
     test_decrypt, test_encrypt,
-    traits::{Backend, SignatureAlgorithm, backend as registered_backend},
+    traits::{Backend, KeyAlgorithm, SignatureAlgorithm, backend as registered_backend},
 };
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INTERFACE, CK_INVALID_HANDLE, CK_OBJECT_CLASS,
@@ -513,7 +513,12 @@ fn test_ssh_rsa_sign() -> Pkcs11Result<()> {
 
     let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
     let data = b"hello ssh world, this is a test message for RSA signing";
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::RsaPkcs1v15Sha256, data)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Sha256,
+        data,
+        KeyAlgorithm::Rsa,
+    )?;
     assert!(
         !signature.is_empty(),
         "RSA-2048 signature must not be empty"
@@ -542,7 +547,12 @@ fn test_ssh_ecdsa_p256_sign() -> Pkcs11Result<()> {
     let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
     // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
     let prehash = [0x42_u8; 32];
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::Ecdsa,
+        &prehash,
+        KeyAlgorithm::EccP256,
+    )?;
     assert!(
         !signature.is_empty(),
         "ECDSA P-256 signature must not be empty"

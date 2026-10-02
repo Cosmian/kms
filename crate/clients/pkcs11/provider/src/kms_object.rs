@@ -797,6 +797,12 @@ async fn kms_encrypt_async(
             padding_method: Some(PaddingMethod::PKCS1v15),
             ..Default::default()
         },
+        EncryptionAlgorithm::RsaOaepSha256 => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
     };
     let encryption_request = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(
@@ -878,6 +884,12 @@ pub(crate) async fn kms_decrypt_async(
             padding_method: Some(PaddingMethod::PKCS1v15),
             ..Default::default()
         },
+        EncryptionAlgorithm::RsaOaepSha256 => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
     };
 
     // `CKM_AES_GCM` (PKCS#11 v3.0): the caller supplies a single input buffer of
@@ -925,6 +937,7 @@ pub(crate) fn kms_sign(
     unique_identifier: &str,
     algorithm: &SignatureAlgorithm,
     data: &[u8],
+    key_algorithm: KeyAlgorithm,
 ) -> Pkcs11Result<Vec<u8>> {
     let runtime_block_on = profiling::phase(SignPhase::RuntimeBlockOn);
     let result = RUNTIME.block_on(kms_sign_async(
@@ -932,6 +945,7 @@ pub(crate) fn kms_sign(
         unique_identifier,
         algorithm,
         data,
+        key_algorithm,
     ));
     drop(runtime_block_on);
     result
@@ -1049,12 +1063,204 @@ fn signature_algorithm_to_kmip_params(
         }
     })
 }
+/// Convert a DER-encoded ECDSA signature to raw PKCS#11 format (r || s).
+///
+/// # Arguments
+/// * `der` - DER-encoded signature bytes in SEQUENCE { r INTEGER, s INTEGER } format
+/// * `byte_size` - The curve's field size in bytes (e.g., 32 for P-256, 48 for P-384, 66 for P-521)
+///
+/// # Returns
+/// Raw signature in r || s format, each component zero-padded to `byte_size`
+fn ecdsa_der_to_raw(der: &[u8], byte_size: usize) -> Pkcs11Result<Vec<u8>> {
+    let (tag, rest) = der
+        .split_first()
+        .ok_or_else(|| Pkcs11Error::Default("ECDSA DER: unexpected end of input".to_owned()))?;
+    if *tag != 0x30 {
+        return Err(Pkcs11Error::Default(format!(
+            "ECDSA DER: expected SEQUENCE tag (0x30), found {tag:#04x}"
+        )));
+    }
+    let (seq_len, rest) = der_parse_length(rest)?;
+    let content = rest
+        .get(..seq_len)
+        .ok_or_else(|| Pkcs11Error::Default("ECDSA DER: truncated SEQUENCE content".to_owned()))?;
+    let (r, content) = der_parse_unsigned_integer(content)?;
+    let (s, _) = der_parse_unsigned_integer(content)?;
+
+    if r.len() > byte_size || s.len() > byte_size {
+        return Err(Pkcs11Error::Default(format!(
+            "ECDSA DER: component larger than curve field size ({byte_size} bytes)"
+        )));
+    }
+
+    let mut raw = vec![0_u8; 2 * byte_size];
+    let r_start = byte_size.saturating_sub(r.len());
+    raw.get_mut(r_start..byte_size)
+        .ok_or_else(|| Pkcs11Error::Default("ECDSA DER: r slice out of bounds".to_owned()))?
+        .copy_from_slice(r);
+
+    let s_start = (2 * byte_size).saturating_sub(s.len());
+    raw.get_mut(s_start..)
+        .ok_or_else(|| Pkcs11Error::Default("ECDSA DER: s slice out of bounds".to_owned()))?
+        .copy_from_slice(s);
+
+    Ok(raw)
+}
+
+/// Convert raw PKCS#11 ECDSA signature (r || s) to DER-encoded format.
+/// Each component is expected to be exactly `byte_size` bytes, zero-padded.
+fn ecdsa_raw_to_der(raw: &[u8], byte_size: usize) -> Pkcs11Result<Vec<u8>> {
+    if raw.len() != 2 * byte_size {
+        return Err(Pkcs11Error::Default(format!(
+            "ECDSA raw: expected {} bytes, got {}",
+            2 * byte_size,
+            raw.len()
+        )));
+    }
+
+    let r = raw
+        .get(0..byte_size)
+        .ok_or_else(|| Pkcs11Error::Default("ECDSA raw: r component out of bounds".to_owned()))?;
+    let s = raw
+        .get(byte_size..2 * byte_size)
+        .ok_or_else(|| Pkcs11Error::Default("ECDSA raw: s component out of bounds".to_owned()))?;
+
+    // Strip leading zeros from r and s
+    let r_trimmed = r
+        .iter()
+        .copied()
+        .skip_while(|&b| b == 0)
+        .collect::<Vec<u8>>();
+    let s_trimmed = s
+        .iter()
+        .copied()
+        .skip_while(|&b| b == 0)
+        .collect::<Vec<u8>>();
+
+    let r_trimmed = if r_trimmed.is_empty() {
+        vec![0_u8]
+    } else {
+        r_trimmed
+    };
+    let s_trimmed = if s_trimmed.is_empty() {
+        vec![0_u8]
+    } else {
+        s_trimmed
+    };
+
+    // Add padding byte if high bit is set
+    let r_needs_padding = r_trimmed.first().is_some_and(|&b| b & 0x80 != 0);
+    let s_needs_padding = s_trimmed.first().is_some_and(|&b| b & 0x80 != 0);
+
+    let r_len = r_trimmed.len() + usize::from(r_needs_padding);
+    let s_len = s_trimmed.len() + usize::from(s_needs_padding);
+
+    // Build DER: SEQUENCE { INTEGER r, INTEGER s }
+    let mut der = Vec::new();
+    der.push(0x30); // SEQUENCE tag
+
+    let seq_len = 2 + r_len + 2 + s_len; // two INTEGER tags + lengths + data
+    encode_der_length(&mut der, seq_len);
+
+    // INTEGER r
+    der.push(0x02); // INTEGER tag
+    encode_der_length(&mut der, r_len);
+    if r_needs_padding {
+        der.push(0x00);
+    }
+    der.extend_from_slice(&r_trimmed);
+
+    // INTEGER s
+    der.push(0x02); // INTEGER tag
+    encode_der_length(&mut der, s_len);
+    if s_needs_padding {
+        der.push(0x00);
+    }
+    der.extend_from_slice(&s_trimmed);
+
+    Ok(der)
+}
+
+/// Encode a DER length value (supports both short and long form).
+fn encode_der_length(der: &mut Vec<u8>, len: usize) {
+    if len < 128 {
+        der.push(u8::try_from(len).unwrap_or(127));
+    } else {
+        let mut len_bytes = Vec::new();
+        let mut tmp = len;
+        while tmp > 0 {
+            len_bytes.push(u8::try_from(tmp & 0xFF).unwrap_or(0));
+            tmp >>= 8;
+        }
+        len_bytes.reverse();
+        der.push(0x80 | u8::try_from(len_bytes.len()).unwrap_or(0xFF));
+        der.extend_from_slice(&len_bytes);
+    }
+}
+
+/// Parse DER length encoding (supports both short form and long form).
+fn der_parse_length(input: &[u8]) -> Pkcs11Result<(usize, &[u8])> {
+    let (len_byte, rest) = input
+        .split_first()
+        .ok_or_else(|| Pkcs11Error::Default("ECDSA DER: unexpected end of input".to_owned()))?;
+
+    if len_byte & 0x80 == 0 {
+        // Short form
+        Ok((usize::from(*len_byte), rest))
+    } else {
+        // Long form
+        let len_len = usize::from(len_byte & 0x7f);
+        if rest.len() < len_len {
+            return Err(Pkcs11Error::Default(
+                "ECDSA DER: truncated length encoding".to_owned(),
+            ));
+        }
+        let (len_bytes, rest) = rest.split_at(len_len);
+        let mut len = 0_usize;
+        for byte in len_bytes {
+            len = (len << 8) | usize::from(*byte);
+        }
+        Ok((len, rest))
+    }
+}
+
+fn der_parse_unsigned_integer(input: &[u8]) -> Pkcs11Result<(&[u8], &[u8])> {
+    let (tag, rest) = input
+        .split_first()
+        .ok_or_else(|| Pkcs11Error::Default("ECDSA DER: unexpected end of input".to_owned()))?;
+    if *tag != 0x02 {
+        return Err(Pkcs11Error::Default(format!(
+            "ECDSA DER: expected INTEGER tag (0x02), found {tag:#04x}"
+        )));
+    }
+    let (len, rest) = der_parse_length(rest)?;
+    let (content, rest) = if rest.len() >= len {
+        rest.split_at(len)
+    } else {
+        return Err(Pkcs11Error::Default(
+            "ECDSA DER: truncated INTEGER content".to_owned(),
+        ));
+    };
+
+    // Strip leading 0x00 sign-padding byte if present
+    let content = if content.len() > 1
+        && content.starts_with(&[0])
+        && content.get(1).is_some_and(|b| b & 0x80 != 0)
+    {
+        content.get(1..).unwrap_or(&[])
+    } else {
+        content
+    };
+
+    Ok((content, rest))
+}
 
 pub(crate) async fn kms_sign_async(
     kms_rest_client: &KmsClient,
     unique_identifier: &str,
     algorithm: &SignatureAlgorithm,
     data: &[u8],
+    key_algorithm: KeyAlgorithm,
 ) -> Pkcs11Result<Vec<u8>> {
     let request_build = profiling::phase(SignPhase::RequestBuild);
     // Map the PKCS#11 mechanism to KMIP CryptographicParameters.
@@ -1079,17 +1285,35 @@ pub(crate) async fn kms_sign_async(
     let response = kms_rest_client.sign_bytes(sign_request).await;
     drop(kms_client_sign);
     let response = response?;
-    response.signature_data.ok_or_else(|| {
+    let mut signature = response.signature_data.ok_or_else(|| {
         Pkcs11Error::ServerError("Sign response does not contain signature data".to_owned())
-    })
-}
+    })?;
 
+    // ECDSA signatures from the KMS are DER-encoded, but PKCS#11 expects raw r||s format.
+    // Convert DER to raw for EC keys.
+    if matches!(algorithm, SignatureAlgorithm::Ecdsa) {
+        let curve_byte_size = match key_algorithm {
+            KeyAlgorithm::EccP256 | KeyAlgorithm::Secp256k1 => 32,
+            KeyAlgorithm::EccP384 => 48,
+            KeyAlgorithm::EccP521 => 66,
+            KeyAlgorithm::Secp224k1 => 28,
+            _ => {
+                // Non-EC key, signature is already in correct format
+                return Ok(signature);
+            }
+        };
+        signature = ecdsa_der_to_raw(&signature, curve_byte_size)?;
+    }
+
+    Ok(signature)
+}
 pub(crate) fn kms_verify(
     kms_rest_client: &KmsClient,
     unique_identifier: &str,
     algorithm: &SignatureAlgorithm,
     data: &[u8],
     signature: &[u8],
+    key_algorithm: KeyAlgorithm,
 ) -> Pkcs11Result<()> {
     RUNTIME.block_on(kms_verify_async(
         kms_rest_client,
@@ -1097,6 +1321,7 @@ pub(crate) fn kms_verify(
         algorithm,
         data,
         signature,
+        key_algorithm,
     ))
 }
 
@@ -1110,16 +1335,33 @@ pub(crate) async fn kms_verify_async(
     algorithm: &SignatureAlgorithm,
     data: &[u8],
     signature: &[u8],
+    key_algorithm: KeyAlgorithm,
 ) -> Pkcs11Result<()> {
     let (cryptographic_parameters, data_bytes, digested_data_bytes) =
         signature_algorithm_to_kmip_params(algorithm, data)?;
+
+    // For ECDSA, convert raw r||s format to DER before sending to KMS
+    let signature_data = if matches!(algorithm, SignatureAlgorithm::Ecdsa) {
+        match key_algorithm {
+            KeyAlgorithm::EccP256 | KeyAlgorithm::Secp256k1 => ecdsa_raw_to_der(signature, 32)?,
+            KeyAlgorithm::EccP384 => ecdsa_raw_to_der(signature, 48)?,
+            KeyAlgorithm::EccP521 => ecdsa_raw_to_der(signature, 66)?,
+            KeyAlgorithm::Secp224k1 => ecdsa_raw_to_der(signature, 28)?,
+            _ => {
+                // Non-EC key or unknown curve: pass signature through unchanged
+                signature.to_vec()
+            }
+        }
+    } else {
+        signature.to_vec()
+    };
 
     let verify_request = SignatureVerify {
         unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
         cryptographic_parameters,
         data: data_bytes,
         digested_data: digested_data_bytes,
-        signature_data: Some(signature.to_vec()),
+        signature_data: Some(signature_data),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
@@ -1209,4 +1451,75 @@ pub(crate) fn key_algorithm_from_attributes(attributes: &Attributes) -> Pkcs11Re
         }
     };
     Ok(algorithm)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ecdsa_der_to_raw_p256() {
+        let der_sig = vec![
+            0x30, 0x44, // SEQUENCE, length 68 bytes
+            0x02, 0x20, // INTEGER, length 32 bytes
+            0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
+            0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08, 0x02, 0x20, // INTEGER, length 32 bytes
+            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+            0x88, 0x99, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0xaa, 0xbb, 0xcc, 0xdd,
+            0xee, 0xff, 0x00, 0x11,
+        ];
+        let raw = ecdsa_der_to_raw(&der_sig, 32).unwrap_or_default();
+        assert_eq!(raw.len(), 64, "raw signature should be 64 bytes for P-256");
+        let r_expected = vec![
+            0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
+            0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08,
+        ];
+        assert_eq!(
+            raw.get(0..32),
+            Some(r_expected.as_slice()),
+            "r component mismatch"
+        );
+        let s_expected = vec![
+            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+            0x88, 0x99, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0xaa, 0xbb, 0xcc, 0xdd,
+            0xee, 0xff, 0x00, 0x11,
+        ];
+        assert_eq!(
+            raw.get(32..64),
+            Some(s_expected.as_slice()),
+            "s component mismatch"
+        );
+    }
+
+    #[test]
+    fn test_ecdsa_der_to_raw_with_padding() {
+        let der_sig = vec![
+            0x30, 0x46, // SEQUENCE, length 70 bytes
+            0x02, 0x21, // INTEGER r, length 33 bytes
+            0x00, // padding byte
+            0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00, 0xff, 0xee, 0xdd, 0xcc,
+            0xbb, 0xaa, 0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00, 0xff, 0xee,
+            0xdd, 0xcc, 0xbb, 0xaa, 0x02, 0x21, // INTEGER s, length 33 bytes
+            0x00, // padding byte
+            0x92, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
+            0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08,
+        ];
+        let raw = ecdsa_der_to_raw(&der_sig, 32).unwrap_or_default();
+        assert_eq!(raw.len(), 64);
+        let r_expected = vec![
+            0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00, 0xff, 0xee, 0xdd, 0xcc,
+            0xbb, 0xaa, 0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00, 0xff, 0xee,
+            0xdd, 0xcc, 0xbb, 0xaa,
+        ];
+        assert_eq!(raw.get(0..32), Some(r_expected.as_slice()));
+        let s_expected = vec![
+            0x92, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
+            0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08,
+        ];
+        assert_eq!(raw.get(32..64), Some(s_expected.as_slice()));
+    }
 }

@@ -265,16 +265,24 @@ impl Session {
         if let Ok(search_class) = search_class {
             self.load_find_context_by_class(attributes, search_class)
         } else {
-            let label = attributes.get_label()?;
-            let label = Self::map_oracle_tde_security_to_mk(&label)?;
+            // Try CKA_LABEL first (legacy), then CKA_ID (new generic API)
+            let label_or_id = attributes
+                .get_label()
+                .map(|label| String::from_utf8_lossy(&label.into_bytes()).into_owned())
+                .or_else(|_| {
+                    attributes
+                        .get_id()
+                        .map(|id| String::from_utf8_lossy(&id).into_owned())
+                })?;
+            let label_or_id = Self::map_oracle_tde_security_to_mk(&label_or_id)?;
             let find_ctx = OBJECTS_STORE.read()?;
             debug!(
-                "load_find_context: loading for label: {label:?} and attributes: {attributes:?}"
+                "load_find_context: loading for label/id: {label_or_id:?} and attributes: {attributes:?}"
             );
             debug!("load_find_context: display current store: {find_ctx}");
-            if let Some((object, handle)) = find_ctx.get_using_id(&label) {
+            if let Some((object, handle)) = find_ctx.get_using_id(&label_or_id) {
                 debug!(
-                    "load_find_context: search by id: {label} -> handle: {} -> object: {}: {}",
+                    "load_find_context: search by id: {label_or_id} -> handle: {} -> object: {}: {}",
                     handle,
                     object.name(),
                     object.remote_id()
@@ -282,7 +290,7 @@ impl Session {
                 self.clear_find_objects_ctx();
                 self.add_to_find_objects_ctx(handle);
             } else {
-                warn!("load_find_context: id {label} not found in store");
+                warn!("load_find_context: id {label_or_id} not found in store");
                 self.clear_find_objects_ctx();
                 return Ok(());
             }

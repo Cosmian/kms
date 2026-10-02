@@ -24,9 +24,6 @@
 #USAGE flag "--hsm-slot <s>"          env="BENCH_HSM_SLOT"                                 help="HSM slot ID for HSM-resident keys (used with --delegated and remote --server-url)"
 #USAGE flag "--criterion"           env="BENCH_CRITERION"                               help="Also run real criterion-crate single-operation micro-benchmarks, on top of the concurrency sweep that always runs — writes criterion.json alongside load_pkcs11.json, so the report gets both a Load Tests and a Criterion Benchmarks section"
 #USAGE flag "--speed <speed>"         env="BENCH_SPEED"         default="quick"           help="Criterion speed preset (with --criterion)" { choices "sanity" "quick" "normal" }
-#USAGE flag "--overhead"            env="BENCH_OVERHEAD"                                help="Also run the Ed25519-specific differential overhead ladder (with --criterion) and write pkcs11_overhead.json — a standalone local diagnostic, never rendered into report.md"
-#USAGE flag "--overhead-payload-size <n>" env="BENCH_OVERHEAD_PAYLOAD_SIZE" default="32" help="Ed25519 payload bytes for differential Criterion tiers (with --overhead)"
-#USAGE flag "--overhead-payload-mode <m>" env="BENCH_OVERHEAD_PAYLOAD_MODE" default="fixed" help="Payload selection for typed and PKCS#11 Criterion tiers (with --overhead)" { choices "fixed" "varying" }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/bench_helpers.sh"
@@ -58,9 +55,6 @@ BENCH_HSM_MODEL="${usage_hsm_model:-softhsm2}"
 BENCH_HSM_SLOT="${usage_hsm_slot:-}"
 BENCH_CRITERION="${usage_criterion:-}"
 BENCH_SPEED="${usage_speed:-quick}"
-BENCH_OVERHEAD="${usage_overhead:-}"
-BENCH_OVERHEAD_PAYLOAD_SIZE="${usage_overhead_payload_size:-32}"
-BENCH_OVERHEAD_PAYLOAD_MODE="${usage_overhead_payload_mode:-fixed}"
 
 
 # A remote server needs an explicit --hsm-slot; for a local server the HSM is
@@ -185,10 +179,7 @@ if [ "${BENCH_CRITERION}" = "true" ]; then
   CRITERION_ARGS+=(
     --criterion
     --speed "${BENCH_SPEED}"
-    --overhead-payload-size "${BENCH_OVERHEAD_PAYLOAD_SIZE}"
-    --overhead-payload-mode "${BENCH_OVERHEAD_PAYLOAD_MODE}"
   )
-  [ "${BENCH_OVERHEAD}" = "true" ] && CRITERION_ARGS+=(--overhead)
 fi
 
 ACCEPT_INVALID_CERTS_ARGS=()
