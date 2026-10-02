@@ -9,7 +9,7 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 kms_init_env "${usage_variant:-fips}" "static"
 
 # ---------------------------------------------------------------------------
-# Third, independent validation path for the Alpine/musl release tarballs —
+# Third, independent validation path for the Alpine apk packages —
 # in addition to the Nix build (canonical/published) and the cargo+musl-gcc
 # cross-check (musl-crosscheck). Unlike both of those, this one does *not*
 # cross-compile at all: it assumes it is already running *inside* a real

@@ -397,7 +397,7 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
                 // the FIPS provider above, a failure here is deliberately **not**
                 // propagated with `?`: OpenSSL's "legacy" module is a separate shared
                 // object loaded via `dlopen`, which can never succeed on a fully static
-                // musl binary (the Alpine-compatible non-FIPS release tarball — musl's
+                // musl binary (the non-FIPS Alpine apk package — musl's
                 // static libc has no dynamic linker at all, so `dlopen` always fails
                 // there, regardless of `OPENSSL_MODULES`). The "default" provider
                 // (already active via openssl.cnf, and not dlopen'd — it's built into

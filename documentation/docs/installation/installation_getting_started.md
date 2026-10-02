@@ -149,37 +149,42 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
 
 === "Alpine Linux"
 
-    Eviden KMS publishes Linux **musl** tarballs that run natively on Alpine — no
-    `gcompat` shim required. Pick the variant for your Dockerfile:
+    Eviden KMS publishes Alpine **`.apk`** packages (musl builds) that run natively on
+    Alpine — no `gcompat` shim required. The packages are GPG-signed out-of-band
+    (`.apk.asc`) rather than with an `abuild` key, so install them with
+    `--allow-untrusted` after verifying the signature:
 
-    **FIPS** (dynamically-linked musl — needs `libgcc`, the one extra `apk` package below):
+    ```sh
+    wget https://package.cosmian.com/kms/5.27.1/apk/amd64/fips/cosmian-kms-server-fips_5.27.1-r0_x86_64.apk
+    wget https://package.cosmian.com/kms/5.27.1/apk/amd64/fips/cosmian-kms-cli-fips_5.27.1-r0_x86_64.apk
+    apk add --allow-untrusted ./cosmian-kms-server-fips_5.27.1-r0_x86_64.apk ./cosmian-kms-cli-fips_5.27.1-r0_x86_64.apk
+    rc-update add cosmian_kms default
+    rc-service cosmian_kms start
+    ```
+
+    The server package installs `/usr/sbin/cosmian_kms`, the configuration file
+    `/etc/cosmian/kms.toml`, the web UI, and an OpenRC service (`/etc/init.d/cosmian_kms`,
+    options in `/etc/conf.d/cosmian_kms`). The CLI package installs `/usr/bin/ckms`.
+
+    - **FIPS** (dynamically-linked musl): the package depends on `libgcc`, which `apk`
+      installs automatically.
+    - **non-FIPS** (fully static musl): no dependencies. Use the `non-fips` path and package
+      names (`cosmian-kms-server-non-fips_…`, `cosmian-kms-cli-non-fips_…`).
+
+    In a Dockerfile:
 
     ```dockerfile
     FROM alpine:3.21
-    RUN apk add --no-cache libgcc ca-certificates
-    ADD https://package.cosmian.com/kms/5.27.1/musl-tarball/amd64/fips/cosmian-kms-server-fips-musl-dynamic_5.27.1_x86_64-unknown-linux-musl.tar.gz /tmp/kms.tar.gz
-    RUN tar -xzf /tmp/kms.tar.gz -C / && rm /tmp/kms.tar.gz
+    ADD https://package.cosmian.com/kms/5.27.1/apk/amd64/fips/cosmian-kms-server-fips_5.27.1-r0_x86_64.apk /tmp/kms.apk
+    RUN apk add --no-cache --allow-untrusted ca-certificates /tmp/kms.apk && rm /tmp/kms.apk
     ENV OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl.cnf
     ENV OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules
     EXPOSE 9998
-    ENTRYPOINT ["/cosmian_kms"]
+    ENTRYPOINT ["/usr/sbin/cosmian_kms"]
     ```
-
-    **non-FIPS** (fully static musl — zero extra `apk` packages):
-
-    ```dockerfile
-    FROM alpine:3.21
-    RUN apk add --no-cache ca-certificates
-    ADD https://package.cosmian.com/kms/5.27.1/musl-tarball/amd64/non-fips/cosmian-kms-server-non-fips-musl-static_5.27.1_x86_64-unknown-linux-musl.tar.gz /tmp/kms.tar.gz
-    RUN tar -xzf /tmp/kms.tar.gz -C / && rm /tmp/kms.tar.gz
-    EXPOSE 9998
-    ENTRYPOINT ["/cosmian_kms"]
-    ```
-
-    The `ckms` CLI is published the same way under `musl-tarball/<arch>/<variant>/cosmian-kms-cli-*`.
 
     - The KMS UI is available at `http://localhost:9998/ui`.
-    - **Known limitations** on the musl tarballs (see the
+    - **Known limitations** on the Alpine packages (see the
       [Alpine support note](../../../README.md#alpine-linux-musl) for details):
         - HSM backends (Utimaco, Proteccio, SmartCard HSM, Crypt2Pay) are not supported —
           vendor PKCS#11 drivers are glibc-only.

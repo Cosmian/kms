@@ -80,13 +80,12 @@ jobs:
             mise run package:deb --variant ${{ matrix.features }} --link ${{ matrix.link }}
             mise run package:rpm --variant ${{ matrix.features }} --link ${{ matrix.link }}
             mise run package:pkcs11-zip --variant ${{ matrix.features }} --link ${{ matrix.link }}
-            # musl/Alpine tarballs don't have a static/dynamic-OpenSSL axis (musl libc
+            # Alpine .apk packages don't have a static/dynamic-OpenSSL axis (musl libc
             # linkage is implied by --variant — see nix/kms-server-musl.nix); build them
             # once per (features, runner) rather than once per matrix.link to avoid a
             # redundant duplicate build.
             if [ "${{ matrix.link }}" = "static" ]; then
-              mise run package:musl-tarball --component server --variant ${{ matrix.features }}
-              mise run package:musl-tarball --component cli --variant ${{ matrix.features }}
+              mise run package:apk --variant ${{ matrix.features }}
             fi
           fi
         env:
@@ -118,18 +117,18 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-      - name: Upload musl tarballs
+      - name: Upload Alpine apk packages
         if: runner.os == 'Linux' && matrix.link == 'static'
         uses: actions/upload-artifact@v7
         with:
-          name: musl-tarball_${{ matrix.features }}_${{ matrix.runner }}
+          name: apk_${{ matrix.features }}_${{ matrix.runner }}
           path: |
-            result-musl-tarball-server-${{ matrix.features }}/*
-            result-musl-tarball-cli-${{ matrix.features }}/*
+            result-apk-server-${{ matrix.features }}/*
+            result-apk-cli-${{ matrix.features }}/*
           retention-days: 1
           if-no-files-found: error
 
-  # Reproducibility cross-check for the musl tarballs: builds the same target
+  # Reproducibility cross-check for the Alpine apk packages: builds the same target
   # with a completely independent toolchain (plain cargo + system musl-gcc,
   # no Nix). Never signed or published — see .mise/tasks/test/musl-crosscheck.
   musl-crosscheck:
@@ -229,7 +228,7 @@ jobs:
       - name: Build natively on Alpine (no cross-compilation)
         run: mise run test:alpine-native-build --variant ${{ matrix.features }}
 
-  # Proves the Nix-built musl tarballs actually run on real Alpine — not just
+  # Proves the Nix-built Alpine apk packages actually run on real Alpine — not just
   # that they link correctly in the Nix sandbox. See
   # .mise/scripts/test/test_alpine_musl.sh for the full test sequence
   # (FIPS-provider / legacy-provider-skip log checks, AES/RSA/EC round-trips,
@@ -251,28 +250,25 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Download musl tarball artifact
+      - name: Download apk artifact
         uses: actions/download-artifact@v8
         with:
-          name: musl-tarball_${{ matrix.features }}_${{ matrix.runner }}
+          name: apk_${{ matrix.features }}_${{ matrix.runner }}
 
-      - name: Extract tarballs
+      - name: Locate apk packages
         run: |
           set -euo pipefail
-          SERVER_TAR=$(find "result-musl-tarball-server-${{ matrix.features }}" -name "cosmian-kms-server-*.tar.gz")
-          CLI_TAR=$(find "result-musl-tarball-cli-${{ matrix.features }}" -name "cosmian-kms-cli-*.tar.gz")
-          mkdir -p extracted-server extracted-cli
-          tar -xzf "$SERVER_TAR" -C extracted-server
-          tar -xzf "$CLI_TAR" -C extracted-cli
-          echo "SERVER_BIN=$(pwd)/extracted-server/cosmian_kms" >> "$GITHUB_ENV"
-          echo "CLI_BIN=$(pwd)/extracted-cli/ckms" >> "$GITHUB_ENV"
+          SERVER_APK=$(find "result-apk-server-${{ matrix.features }}" -name "cosmian-kms-server-*.apk")
+          CLI_APK=$(find "result-apk-cli-${{ matrix.features }}" -name "cosmian-kms-cli-*.apk")
+          echo "SERVER_APK=$(pwd)/${SERVER_APK}" >> "$GITHUB_ENV"
+          echo "CLI_APK=$(pwd)/${CLI_APK}" >> "$GITHUB_ENV"
 
       - name: Run Alpine ${{ matrix.alpine-tag }} smoke test
         run: |
           bash .mise/scripts/test/test_alpine_musl.sh \
             --variant ${{ matrix.features }} \
-            --server-bin "${SERVER_BIN}" \
-            --cli-bin "${CLI_BIN}" \
+            --server-apk "${SERVER_APK}" \
+            --cli-apk "${CLI_APK}" \
             --alpine-tag ${{ matrix.alpine-tag }}
 
   kubernetes:
@@ -416,18 +412,18 @@ jobs:
             result-pkcs11-zip-${{ matrix.features }}-${{ matrix.link }}/cosmian-pkcs11-*
             ./nix/signing-keys/cosmian-kms-public.asc
 
-  # Publishes the Alpine-compatible musl tarballs (server + CLI) built once per
-  # (features, runner) in the `packages` job (see "Upload musl tarballs" step there).
+  # Publishes the Alpine-compatible apk packages (server + CLI) built once per
+  # (features, runner) in the `packages` job (see "Upload Alpine apk packages" step there).
   # Kept as its own job — rather than extending `publish-release`'s package-type
   # matrix — because the musl artifacts don't share that matrix's static/dynamic-
   # OpenSSL axis (musl libc linkage is implied by `features`, not a free choice).
-  publish-musl-tarball:
+  publish-apk:
     if: |
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
       || startsWith(github.ref, 'refs/tags/')
       || github.event_name == 'workflow_dispatch'
 
-    name: Publish musl-${{ matrix.features }}-${{ matrix.runner }}
+    name: Publish apk-${{ matrix.features }}-${{ matrix.runner }}
     needs: packages
     runs-on: [self-hosted, not-sgx]
     container:
@@ -449,17 +445,17 @@ jobs:
             cpu-arch: amd64
     steps:
       - name: Remove existing old artifacts
-        run: rm -rf musl-tarball_${{ matrix.features }}_${{ matrix.runner }}
+        run: rm -rf apk_${{ matrix.features }}_${{ matrix.runner }}
 
       - name: Checkout repository (for public key file)
         uses: actions/checkout@v7
         with:
           submodules: false
 
-      - name: Download musl tarball artifact for this matrix
+      - name: Download apk artifact for this matrix
         uses: actions/download-artifact@v8
         with:
-          name: musl-tarball_${{ matrix.features }}_${{ matrix.runner }}
+          name: apk_${{ matrix.features }}_${{ matrix.runner }}
 
       - name: List downloaded assets
         run: |
@@ -475,12 +471,12 @@ jobs:
           else
             BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
           fi
-          remote_dir="/mnt/package/kms/$BRANCH/musl-tarball/${{ matrix.cpu-arch }}/${{ matrix.features }}"
+          remote_dir="/mnt/package/kms/$BRANCH/apk/${{ matrix.cpu-arch }}/${{ matrix.features }}"
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_dir"
           scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
             ./nix/signing-keys/cosmian-kms-public.asc \
-            result-musl-tarball-server-${{ matrix.features }}/* \
-            result-musl-tarball-cli-${{ matrix.features }}/* \
+            result-apk-server-${{ matrix.features }}/* \
+            result-apk-cli-${{ matrix.features }}/* \
             cosmian@package.cosmian.com:"${remote_dir}/"
 
       - name: Publish GitHub Release assets
@@ -488,8 +484,8 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            result-musl-tarball-server-${{ matrix.features }}/cosmian-kms-server-*
-            result-musl-tarball-cli-${{ matrix.features }}/cosmian-kms-cli-*
+            result-apk-server-${{ matrix.features }}/cosmian-kms-server-*
+            result-apk-cli-${{ matrix.features }}/cosmian-kms-cli-*
             ./nix/signing-keys/cosmian-kms-public.asc
 
   publish-sbom:

@@ -637,19 +637,19 @@ The following table shows the GLIBC versions and distribution support for **Evid
 
 #### Alpine Linux (musl)
 
-In addition to the GLIBC packages above, Cosmian KMS publishes Linux **musl** tarballs for
-`cosmian_kms` (server) and `ckms` (CLI) that run natively on Alpine Linux — tested against
+In addition to the GLIBC packages above, Cosmian KMS publishes Alpine **`.apk`** packages
+(musl builds) for `cosmian_kms` (server, with an OpenRC service) and `ckms` (CLI) that run natively on Alpine Linux — tested against
 Alpine 3.20, 3.21, and `latest` — with no `gcompat` shim required. See the
 [Getting started guide](documentation/docs/installation/installation_getting_started.md)
 for install instructions and a Dockerfile example.
 
 | Variant  | musl linking                 | Alpine requirement        | Notes                                                                 |
 | -------- | ----------------------------- | -------------------------- | ---------------------------------------------------------------------- |
-| FIPS     | Dynamic (`ld-musl-<arch>.so.1`) | `apk add --no-cache libgcc` | Full feature parity with the GLIBC build (FIPS provider loads via `dlopen`). |
+| FIPS     | Dynamic (`ld-musl-<arch>.so.1`) | `libgcc` (pulled in automatically by `apk`) | Full feature parity with the GLIBC build (FIPS provider loads via `dlopen`). |
 | non-FIPS | Fully static (`+crt-static`)   | None — zero extra packages | Old PKCS#12/RC2 import is unsupported (musl's static libc cannot `dlopen` the legacy OpenSSL provider); all other algorithms, including PQC and Covercrypt, are unaffected. |
 
 **Note:** HSM backends (Utimaco, Proteccio, SmartCard HSM, Crypt2Pay) are **not supported**
-on the musl tarballs — vendor PKCS#11 drivers are glibc-only shared libraries.
+on the Alpine packages — vendor PKCS#11 drivers are glibc-only shared libraries.
 
 #### OpenSSL prerequisite
 
