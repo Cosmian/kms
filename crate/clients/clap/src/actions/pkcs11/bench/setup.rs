@@ -24,11 +24,21 @@ use super::error::BenchResult;
 
 /// Object identifiers provisioned for one benchmark process.
 pub(crate) struct BenchSetup {
-    pub(crate) ed25519_private_key_id: Option<UniqueIdentifier>,
+    pub(crate) symmetric: UniqueIdentifier,
+    pub(crate) rsa_private: UniqueIdentifier,
+    pub(crate) rsa_public: UniqueIdentifier,
+    pub(crate) ecdsa_private: UniqueIdentifier,
+    pub(crate) ecdsa_public: UniqueIdentifier,
+    pub(crate) ed25519_private: Option<UniqueIdentifier>,
+    pub(crate) ed25519_public: Option<UniqueIdentifier>,
+    pub(crate) secp256k1_private: Option<UniqueIdentifier>,
+    pub(crate) secp256k1_public: Option<UniqueIdentifier>,
 }
 
 /// Bits of key material for the AES key used by the `encrypt-decrypt` benchmark.
-const AES_KEY_BITS: usize = 128;
+///
+/// AES-256 is supported by every delegated HSM backend, including `Crypt2Pay`.
+const AES_KEY_BITS: usize = 256;
 /// Bits of key material for the RSA key pair used by the `sign`/`verify` benchmark.
 const RSA_KEY_BITS: usize = 2048;
 
@@ -51,8 +61,11 @@ async fn provision_optional_keys(
     delegated: bool,
     hsm_slot: usize,
     disk_encryption_tag: &str,
-) -> BenchResult<Option<UniqueIdentifier>> {
-    let ed25519_private_key_id = if provision_ed25519 {
+) -> BenchResult<(
+    Option<(UniqueIdentifier, UniqueIdentifier)>,
+    Option<(UniqueIdentifier, UniqueIdentifier)>,
+)> {
+    let ed25519_key_pair = if provision_ed25519 {
         let request = create_ec_key_pair_request(
             VENDOR_ID_COSMIAN,
             benchmark_key_uid(delegated, hsm_slot, "pkcs11_ed25519"),
@@ -61,17 +74,21 @@ async fn provision_optional_keys(
             false,
             None,
         )?;
-        Some(
-            client
-                .create_key_pair(request)
-                .await?
-                .private_key_unique_identifier,
-        )
+        match client.create_key_pair(request).await {
+            Ok(response) => Some((
+                response.private_key_unique_identifier,
+                response.public_key_unique_identifier,
+            )),
+            Err(error) => {
+                eprintln!("[bench:pkcs11] Ed25519 key creation failed, skipping: {error}");
+                None
+            }
+        }
     } else {
         None
     };
 
-    if provision_secp256k1 {
+    let secp256k1_key_pair = if provision_secp256k1 {
         let request = create_ec_key_pair_request(
             VENDOR_ID_COSMIAN,
             benchmark_key_uid(delegated, hsm_slot, "pkcs11_secp256k1"),
@@ -80,10 +97,21 @@ async fn provision_optional_keys(
             false,
             None,
         )?;
-        client.create_key_pair(request).await?;
-    }
+        match client.create_key_pair(request).await {
+            Ok(response) => Some((
+                response.private_key_unique_identifier,
+                response.public_key_unique_identifier,
+            )),
+            Err(error) => {
+                eprintln!("[bench:pkcs11] secp256k1 key creation failed, skipping: {error}");
+                None
+            }
+        }
+    } else {
+        None
+    };
 
-    Ok(ed25519_private_key_id)
+    Ok((ed25519_key_pair, secp256k1_key_pair))
 }
 
 #[cfg(not(feature = "non-fips"))]
@@ -94,7 +122,12 @@ fn provision_optional_keys(
     delegated: bool,
     hsm_slot: usize,
     disk_encryption_tag: &str,
-) -> impl Future<Output = BenchResult<Option<UniqueIdentifier>>> {
+) -> impl Future<
+    Output = BenchResult<(
+        Option<(UniqueIdentifier, UniqueIdentifier)>,
+        Option<(UniqueIdentifier, UniqueIdentifier)>,
+    )>,
+> {
     let _ = (
         client,
         provision_ed25519,
@@ -103,7 +136,7 @@ fn provision_optional_keys(
         hsm_slot,
         disk_encryption_tag,
     );
-    std::future::ready(Ok(None))
+    std::future::ready(Ok((None, None)))
 }
 
 fn benchmark_key_uid(delegated: bool, hsm_slot: usize, name: &str) -> Option<UniqueIdentifier> {
@@ -134,7 +167,7 @@ pub(crate) async fn provision_bench_keys(
         false,
         None,
     )?;
-    client.create(create_request).await?;
+    let symmetric = client.create(create_request).await?.unique_identifier;
 
     let create_key_pair_request = create_rsa_key_pair_request(
         VENDOR_ID_COSMIAN,
@@ -144,7 +177,7 @@ pub(crate) async fn provision_bench_keys(
         false,
         None,
     )?;
-    client.create_key_pair(create_key_pair_request).await?;
+    let rsa_key_pair = client.create_key_pair(create_key_pair_request).await?;
 
     // EC P-256 is FIPS-approved (unlike Ed25519 below), so this key pair is always
     // provisioned regardless of `provision_ed25519` — `sign-ecdsa`/`verify-ecdsa`
@@ -157,13 +190,13 @@ pub(crate) async fn provision_bench_keys(
         false,
         None,
     )?;
-    client
+    let ecdsa_key_pair = client
         .create_key_pair(create_ecdsa_key_pair_request)
         .await?;
 
     // Non-FIPS-only keys are provisioned by a module-level cfg helper so the
     // feature boundary does not split the body of this function.
-    let ed25519_private_key_id = provision_optional_keys(
+    let (ed25519_key_pair, secp256k1_key_pair) = provision_optional_keys(
         client,
         provision_ed25519,
         provision_secp256k1,
@@ -174,7 +207,19 @@ pub(crate) async fn provision_bench_keys(
     .await?;
 
     Ok(BenchSetup {
-        ed25519_private_key_id,
+        symmetric,
+        rsa_private: rsa_key_pair.private_key_unique_identifier,
+        rsa_public: rsa_key_pair.public_key_unique_identifier,
+        ecdsa_private: ecdsa_key_pair.private_key_unique_identifier,
+        ecdsa_public: ecdsa_key_pair.public_key_unique_identifier,
+        ed25519_private: ed25519_key_pair
+            .as_ref()
+            .map(|(private_key_id, _)| private_key_id.clone()),
+        ed25519_public: ed25519_key_pair.map(|(_, public_key_id)| public_key_id),
+        secp256k1_private: secp256k1_key_pair
+            .as_ref()
+            .map(|(private_key_id, _)| private_key_id.clone()),
+        secp256k1_public: secp256k1_key_pair.map(|(_, public_key_id)| public_key_id),
     })
 }
 

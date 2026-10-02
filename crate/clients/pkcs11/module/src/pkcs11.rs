@@ -39,9 +39,10 @@ use pkcs11_sys::{
     CK_VOID_PTR, CKA_UNIQUE_ID, CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT,
     CKF_MESSAGE_SIGN, CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION,
     CKF_SERIAL_SESSION, CKF_SIGN, CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT,
-    CKF_USER_PIN_INITIALIZED, CKF_VERIFY, CKG_GENERATE_RANDOM, CKM_AES_CBC, CKM_AES_CBC_PAD,
-    CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_EDDSA, CKR_OK, CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS,
-    CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
+    CKF_USER_PIN_INITIALIZED, CKF_VERIFY, CKG_GENERATE_RANDOM, CKG_NO_GENERATE, CKM_AES_CBC,
+    CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_EDDSA, CKR_OK, CKS_RO_USER_FUNCTIONS,
+    CKS_RW_USER_FUNCTIONS, CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR,
+    CRYPTOKI_VERSION_MINOR,
 };
 use rand::Rng;
 
@@ -243,10 +244,12 @@ pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
 /// v2.x function pointer already exposed via `FUNC_LIST` above, plus the new v3.0-only
 /// functions. Per the PKCS#11 v3.0 spec, unimplemented v3.0 functions must be non-null stubs
 /// returning `CKR_FUNCTION_NOT_SUPPORTED` (never a null pointer) — see the
-/// `cryptoki_fn_not_supported!` stubs near the end of this file. One-shot `EdDSA`
-/// message signing (`C_MessageSignInit`/`C_SignMessage`/`C_MessageSignFinal`) and
-/// `C_LoginUser` are implemented; the other message-operation families remain
-/// unsupported. `C_GetFunctionList`, `C_GetInterfaceList`, and `C_GetInterface` are
+/// `cryptoki_fn_not_supported!` stubs near the end of this file. One-shot AES-GCM
+/// message encryption/decryption (`C_Message{Encrypt,Decrypt}Init`,
+/// `C_{Encrypt,Decrypt}Message`, and `C_Message{Encrypt,Decrypt}Final`), one-shot
+/// `EdDSA` message signing, and `C_LoginUser` are implemented; multipart `Begin`/`Next`
+/// and the remaining message-operation families remain unsupported. `C_GetFunctionList`,
+/// `C_GetInterfaceList`, and `C_GetInterface` are
 /// patched at runtime by the `cosmian_pkcs11` provider crate (mirroring how
 /// `FUNC_LIST.C_GetFunctionList` is patched above), since their real implementations must
 /// perform KMS backend/config initialization that only the provider crate knows how to do.
@@ -1813,9 +1816,9 @@ cryptoki_fn_not_supported!(
     pSlot: CK_SLOT_ID_PTR,
     pReserved: CK_VOID_PTR
 );
-
-// PKCS#11 v3.0 message encryption keeps AES-GCM nonce generation at the KMS/HSM
-// boundary. The remaining v3.0 message operations are exposed as required stubs.
+// PKCS#11 v3.0 message AES-GCM keeps nonce generation at the KMS/HSM boundary.
+// Its one-shot Encrypt/Decrypt lifecycle mirrors the implemented message-sign API;
+// multipart Begin/Next remains unsupported for every message operation family.
 
 cryptoki_fn_not_supported!(C_SessionCancel, hSession: CK_SESSION_HANDLE, flags: CK_FLAGS);
 
@@ -1837,6 +1840,9 @@ cryptoki_fn!(
             return Err(ModuleError::MechanismInvalid(mechanism.mechanism));
         }
         sessions::session(hSession, |session| -> ModuleResult<()> {
+            if session.encrypt_ctx.is_some() {
+                return Err(ModuleError::OperationActive);
+            }
             let objects = OBJECTS_STORE.read()?;
             let object = objects.get_using_handle(hKey);
             let Some(Object::SymmetricKey(key)) = object.as_deref() else {
@@ -1848,6 +1854,7 @@ cryptoki_fn!(
                 iv: None,
                 aad: None,
             });
+            session.message_encrypt_active = true;
             Ok(())
         })
     }
@@ -1914,6 +1921,9 @@ cryptoki_fn!(
         // SAFETY: `pPlaintext` is non-null and spans the caller-declared plaintext length.
         let plaintext = unsafe { slice::from_raw_parts(pPlaintext, plaintext_len) }.to_vec();
         sessions::session(hSession, |session| -> ModuleResult<()> {
+            if !session.message_encrypt_active {
+                return Err(ModuleError::OperationNotInitialized(hSession));
+            }
             let encrypt_ctx = session
                 .encrypt_ctx
                 .as_mut()
@@ -1938,7 +1948,6 @@ cryptoki_fn!(
                     .copy_from_slice(&output.tag);
                 *pulCiphertextLen = CK_ULONG::try_from(output.ciphertext.len())?;
             }
-            session.encrypt_ctx = None;
             Ok(())
         })
     }
@@ -1965,26 +1974,140 @@ cryptoki_fn_not_supported!(
     flags: CK_FLAGS
 );
 
-cryptoki_fn_not_supported!(C_MessageEncryptFinal, hSession: CK_SESSION_HANDLE);
-
-cryptoki_fn_not_supported!(
-    C_MessageDecryptInit,
-    hSession: CK_SESSION_HANDLE,
-    pMechanism: CK_MECHANISM_PTR,
-    hKey: CK_OBJECT_HANDLE
+cryptoki_fn!(
+    fn C_MessageEncryptFinal(hSession: CK_SESSION_HANDLE) {
+        initialized!();
+        valid_session!(hSession);
+        sessions::session(hSession, Session::finish_message_encrypt)
+    }
 );
 
-cryptoki_fn_not_supported!(
-    C_DecryptMessage,
-    hSession: CK_SESSION_HANDLE,
-    pParameter: CK_VOID_PTR,
-    ulParameterLen: CK_ULONG,
-    pAssociatedData: CK_BYTE_PTR,
-    ulAssociatedDataLen: CK_ULONG,
-    pCiphertext: CK_BYTE_PTR,
-    ulCiphertextLen: CK_ULONG,
-    pPlaintext: CK_BYTE_PTR,
-    pulPlaintextLen: CK_ULONG_PTR
+cryptoki_fn!(
+    unsafe fn C_MessageDecryptInit(
+        hSession: CK_SESSION_HANDLE,
+        pMechanism: CK_MECHANISM_PTR,
+        hKey: CK_OBJECT_HANDLE,
+    ) {
+        initialized!();
+        valid_session!(hSession);
+        not_null!(pMechanism, "C_MessageDecryptInit: pMechanism");
+        // SAFETY: `pMechanism` is non-null and points to a caller-owned CK_MECHANISM.
+        let mechanism = unsafe { pMechanism.read() };
+        if mechanism.mechanism != CKM_AES_GCM
+            || !mechanism.pParameter.is_null()
+            || mechanism.ulParameterLen != 0
+        {
+            return Err(ModuleError::MechanismInvalid(mechanism.mechanism));
+        }
+        sessions::session(hSession, |session| -> ModuleResult<()> {
+            if session.decrypt_ctx.is_some() {
+                return Err(ModuleError::OperationActive);
+            }
+            let objects = OBJECTS_STORE.read()?;
+            let object = objects.get_using_handle(hKey);
+            let Some(Object::SymmetricKey(key)) = object.as_deref() else {
+                return Err(ModuleError::KeyHandleInvalid(hKey));
+            };
+            session.decrypt_ctx = Some(DecryptContext {
+                remote_object_id: key.remote_id().to_owned(),
+                algorithm: EncryptionAlgorithm::AesGcm,
+                iv: None,
+                aad: None,
+            });
+            session.message_decrypt_active = true;
+            Ok(())
+        })
+    }
+);
+
+cryptoki_fn!(
+    unsafe fn C_DecryptMessage(
+        hSession: CK_SESSION_HANDLE,
+        pParameter: CK_VOID_PTR,
+        ulParameterLen: CK_ULONG,
+        pAssociatedData: CK_BYTE_PTR,
+        ulAssociatedDataLen: CK_ULONG,
+        pCiphertext: CK_BYTE_PTR,
+        ulCiphertextLen: CK_ULONG,
+        pPlaintext: CK_BYTE_PTR,
+        pulPlaintextLen: CK_ULONG_PTR,
+    ) {
+        initialized!();
+        valid_session!(hSession);
+        not_null!(pParameter, "C_DecryptMessage: pParameter");
+        not_null!(pCiphertext, "C_DecryptMessage: pCiphertext");
+        not_null!(pulPlaintextLen, "C_DecryptMessage: pulPlaintextLen");
+        if usize::try_from(ulParameterLen)? != size_of::<CK_GCM_MESSAGE_PARAMS>() {
+            return Err(ModuleError::BadArguments(
+                "C_DecryptMessage: invalid CK_GCM_MESSAGE_PARAMS length".to_owned(),
+            ));
+        }
+        // SAFETY: `pParameter` is non-null and its size was checked against the packed C layout.
+        let params = unsafe { pParameter.cast::<CK_GCM_MESSAGE_PARAMS>().read_unaligned() };
+        if params.ivGenerator != CKG_NO_GENERATE
+            || params.ulIvFixedBits != 0
+            || params.ulIvLen != 12
+            || params.ulTagBits != 128
+        {
+            return Err(ModuleError::BadArguments(
+                "C_DecryptMessage requires a caller-supplied 96-bit IV and 128-bit tag".to_owned(),
+            ));
+        }
+        not_null!(params.pIv, "C_DecryptMessage: CK_GCM_MESSAGE_PARAMS.pIv");
+        not_null!(params.pTag, "C_DecryptMessage: CK_GCM_MESSAGE_PARAMS.pTag");
+        if ulAssociatedDataLen != 0 {
+            not_null!(pAssociatedData, "C_DecryptMessage: pAssociatedData");
+        }
+        let ciphertext_len = usize::try_from(ulCiphertextLen)?;
+        // SAFETY: `pulPlaintextLen` is non-null and belongs to the caller for this invocation.
+        let output_capacity = unsafe { usize::try_from(*pulPlaintextLen)? };
+        if pPlaintext.is_null() {
+            // SAFETY: this is the validated output-length pointer used for a size query.
+            unsafe { *pulPlaintextLen = ulCiphertextLen };
+            return Ok(());
+        }
+        if output_capacity < ciphertext_len {
+            // SAFETY: this is the validated output-length pointer used to report required capacity.
+            unsafe { *pulPlaintextLen = ulCiphertextLen };
+            return Err(ModuleError::BufferTooSmall);
+        }
+        // SAFETY: the IV and tag pointers are non-null and their fixed lengths were validated above.
+        let iv = unsafe { slice::from_raw_parts(params.pIv, 12) }.to_vec();
+        // SAFETY: the IV and tag pointers are non-null and their fixed lengths were validated above.
+        let tag = unsafe { slice::from_raw_parts(params.pTag, 16) }.to_vec();
+        let associated_data = if ulAssociatedDataLen == 0 {
+            Vec::new()
+        } else {
+            let associated_data_len = usize::try_from(ulAssociatedDataLen)?;
+            // SAFETY: a non-zero length requires the non-null caller buffer checked above.
+            unsafe { slice::from_raw_parts(pAssociatedData, associated_data_len) }.to_vec()
+        };
+        // SAFETY: `pCiphertext` is non-null and spans the caller-declared ciphertext length.
+        let mut ciphertext_and_tag =
+            unsafe { slice::from_raw_parts(pCiphertext, ciphertext_len) }.to_vec();
+        ciphertext_and_tag.extend_from_slice(&tag);
+        sessions::session(hSession, |session| -> ModuleResult<()> {
+            if !session.message_decrypt_active {
+                return Err(ModuleError::OperationNotInitialized(hSession));
+            }
+            let decrypt_ctx = session
+                .decrypt_ctx
+                .as_mut()
+                .ok_or(ModuleError::OperationNotInitialized(hSession))?;
+            decrypt_ctx.iv = Some(iv);
+            decrypt_ctx.aad = (!associated_data.is_empty()).then_some(associated_data);
+            let plaintext = session.decrypt_message(ciphertext_and_tag)?;
+            if plaintext.len() > output_capacity {
+                return Err(ModuleError::BufferTooSmall);
+            }
+            // SAFETY: output capacity was validated above and `pPlaintext` is non-null.
+            unsafe {
+                slice::from_raw_parts_mut(pPlaintext, plaintext.len()).copy_from_slice(&plaintext);
+                *pulPlaintextLen = CK_ULONG::try_from(plaintext.len())?;
+            }
+            Ok(())
+        })
+    }
 );
 
 cryptoki_fn_not_supported!(
@@ -2008,7 +2131,13 @@ cryptoki_fn_not_supported!(
     flags: CK_FLAGS
 );
 
-cryptoki_fn_not_supported!(C_MessageDecryptFinal, hSession: CK_SESSION_HANDLE);
+cryptoki_fn!(
+    fn C_MessageDecryptFinal(hSession: CK_SESSION_HANDLE) {
+        initialized!();
+        valid_session!(hSession);
+        sessions::session(hSession, Session::finish_message_decrypt)
+    }
+);
 
 cryptoki_fn!(
     unsafe fn C_MessageSignInit(

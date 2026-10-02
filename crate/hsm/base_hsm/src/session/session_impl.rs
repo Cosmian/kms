@@ -1441,19 +1441,12 @@ impl Session {
             key_handle
         );
 
-        let mut decrypted_data_len: CK_ULONG = 0;
-        hsm_call!(
-            self.hsm,
-            "Failed to get decrypted data length",
-            C_Decrypt,
-            self.handle,
-            encrypted_data.as_mut_ptr(),
-            CK_ULONG::try_from(encrypted_data.len())?,
-            ptr::null_mut(),
-            &raw mut decrypted_data_len
-        );
-
-        let mut decrypted_data = vec![0_u8; usize::try_from(decrypted_data_len)?];
+        // Allocate the maximum plaintext size for the supported mechanisms instead of
+        // issuing a second, null-output query. Some PKCS#11 providers treat that query
+        // as an operation and return provider-specific errors; the real operation still
+        // performs the mechanism's authentication or padding validation.
+        let mut decrypted_data = vec![0_u8; encrypted_data.len()];
+        let mut decrypted_data_len = CK_ULONG::try_from(decrypted_data.len())?;
         hsm_call!(
             self.hsm,
             "Failed to decrypt data",

@@ -203,6 +203,13 @@ const KNOWN_FAILING_SHALLOW_PROBES: &[&str] = &[
     "C_VerifyFinal",
     // `cosmian_pkcs11` does not support application-seeded randomness.
     "C_SeedRandom",
+    // `CKR_ARGUMENTS_BAD`: the shallow probe calls `C_EncryptMessage`/
+    // `C_DecryptMessage` without first staging a successful
+    // `C_MessageEncryptInit`/`C_MessageDecryptInit` precondition (same
+    // shallow-probe philosophy as the streaming `*Update`/`*Final` entries
+    // above).
+    "C_EncryptMessage",
+    "C_DecryptMessage",
 ];
 
 /// Verify that `ckms pkcs11 capabilities` runs every FIPS-eligible mechanism
@@ -305,10 +312,10 @@ async fn test_pkcs11_capabilities_with_jwt_auth() {
         );
     }
 
-    // All 92 C_* functions must be accounted for exactly once each (passed +
-    // failed + skipped + not-implemented + excluded == 92): no function may be
-    // silently dropped by the coverage pass.
-    assert_section_total(&stdout, "PKCS#11 API function coverage", 92);
+    // Every C_* function is reported exactly once, split between the legacy
+    // v2.40 ABI and v3.x extension tables.
+    assert_section_total(&stdout, "PKCS#11 v2.40 API function coverage", 68);
+    assert_section_total(&stdout, "PKCS#11 v3.x API extension coverage", 24);
     // The mechanism section has more *rows* than 442 whenever a mechanism is
     // deep-tested across several curves (e.g. CKM_ECDSA: P-256/P-384/P-521/
     // secp256k1), since each curve is a genuinely distinct code path (Decision

@@ -49,6 +49,17 @@
   and `sign-secp256k1` correctly select their own key when both coexist
   (`--mode all`)
 
+### HSM-delegated PKCS#11 benchmark compatibility
+
+- Added defensive PKCS#11 decryption compatibility for providers that reject a
+  null-output size query, using a single caller-sized plaintext buffer. This is
+  independent of the benchmark key-selection fix below.
+- Bind benchmark object discovery to the identifiers returned by the current key
+  provisioning run, preventing stale HSM objects from pairing mismatched RSA/EC keys.
+- Removed the global delegated-mode algorithm exclusions. Requested operations are
+  capability-probed against the selected HSM and unsupported operations are skipped
+  only for that provider; supported HSMs retain the full mode set.
+
 ### `bench:pkcs11` report accuracy
 
 - `--criterion` was mutually exclusive with the concurrency sweep in

@@ -11,21 +11,19 @@ use std::{
 };
 
 use pkcs11_sys::{
-    CKK_EC, CKK_EC_EDWARDS, CKK_RSA, CKM_ECDSA, CKM_EDDSA, CKM_SHA256_RSA_PKCS, CKO_PRIVATE_KEY,
-    CKO_PUBLIC_KEY, CKO_SECRET_KEY,
+    CKM_ECDSA, CKM_EDDSA, CKM_SHA256_RSA_PKCS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
 };
 
 use super::{
     error::{BenchError, BenchResult},
-    loader::Pkcs11Session,
+    loader::{AesGcmCiphertext, Pkcs11Session},
+    setup::BenchSetup,
 };
 use crate::actions::bench::types::{BenchFilter, BenchMode};
 
 const ED25519_SIGNATURE_LEN: usize = 64;
 const RSA_2048_SIGNATURE_LEN: usize = 256;
 const ECDSA_P256_SIGNATURE_MAX_LEN: usize = 72;
-const P256_EC_PARAMS_DER: [u8; 10] = [0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07];
-const SECP256K1_EC_PARAMS_DER: [u8; 7] = [0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x0A];
 /// The concrete operation families `run_all` actually knows how to execute.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ConcreteMode {
@@ -156,14 +154,13 @@ fn sign_verify_modes() -> Vec<ConcreteMode> {
 
 /// Expands standard `BenchMode` to concrete PKCS#11 benchmark modes.
 ///
-/// Delegated AES-GCM encryption uses PKCS#11 v3 message encryption so the
-/// KMS/HSM generates the nonce. Decryption remains excluded because the
-/// classic one-shot `CKM_AES_GCM` decrypt API cannot carry that generated nonce.
+/// Delegated mode does not hard-code an HSM capability matrix. Every requested
+/// operation is prepared and probed against the selected provider; unsupported
+/// operations are skipped for that run only, while supported HSMs retain them.
 #[must_use]
 pub(crate) fn expand_bench_mode(
     mode: BenchMode,
     filter: Option<&BenchFilter>,
-    delegated: bool,
 ) -> Vec<ConcreteMode> {
     let modes = match mode {
         BenchMode::All => all_modes(),
@@ -182,7 +179,6 @@ pub(crate) fn expand_bench_mode(
 
     modes
         .into_iter()
-        .filter(|m| !(delegated && matches!(m, ConcreteMode::DecryptAesGcm)))
         .filter(|m| filter.is_none_or(|f| f.matches(m.label(), None)))
         .collect()
 }
@@ -364,6 +360,7 @@ fn summarize(
 pub(crate) fn prepare_ops<'a>(
     modes: &[ConcreteMode],
     pool: &[Pkcs11Session<'a>],
+    setup: &BenchSetup,
 ) -> BenchResult<Vec<PreparedOp<'a>>> {
     // Any pooled session works for one-time setup/object-discovery calls below:
     // `crate/clients/pkcs11/module/src/objects_store.rs`'s object store is global,
@@ -383,7 +380,10 @@ pub(crate) fn prepare_ops<'a>(
                 | ConcreteMode::Batch
         )
     }) {
-        Some(setup_session.find_first_by_class(CKO_SECRET_KEY)?)
+        Some(
+            setup_session
+                .find_first_by_class_and_id(CKO_SECRET_KEY, &setup.symmetric.to_string())?,
+        )
     } else {
         None
     };
@@ -393,7 +393,10 @@ pub(crate) fn prepare_ops<'a>(
             ConcreteMode::EncryptRsaPkcs | ConcreteMode::VerifyRsaPkcs | ConcreteMode::VerifyRsaPss
         )
     }) {
-        Some(setup_session.find_first_by_class_and_key_type(CKO_PUBLIC_KEY, CKK_RSA)?)
+        Some(
+            setup_session
+                .find_first_by_class_and_id(CKO_PUBLIC_KEY, &setup.rsa_public.to_string())?,
+        )
     } else {
         None
     };
@@ -403,7 +406,10 @@ pub(crate) fn prepare_ops<'a>(
             ConcreteMode::DecryptRsaPkcs | ConcreteMode::SignRsaPkcs | ConcreteMode::SignRsaPss
         )
     }) {
-        Some(setup_session.find_first_by_class_and_key_type(CKO_PRIVATE_KEY, CKK_RSA)?)
+        Some(
+            setup_session
+                .find_first_by_class_and_id(CKO_PRIVATE_KEY, &setup.rsa_private.to_string())?,
+        )
     } else {
         None
     };
@@ -413,11 +419,10 @@ pub(crate) fn prepare_ops<'a>(
             ConcreteMode::SignEcdsaP256 | ConcreteMode::VerifyEcdsaP256
         )
     }) {
-        Some(setup_session.find_first_by_class_key_type_and_ec_params(
-            CKO_PRIVATE_KEY,
-            CKK_EC,
-            &P256_EC_PARAMS_DER,
-        )?)
+        Some(
+            setup_session
+                .find_first_by_class_and_id(CKO_PRIVATE_KEY, &setup.ecdsa_private.to_string())?,
+        )
     } else {
         None
     };
@@ -427,11 +432,22 @@ pub(crate) fn prepare_ops<'a>(
             ConcreteMode::SignSecp256k1 | ConcreteMode::VerifySecp256k1
         )
     }) {
-        Some(setup_session.find_first_by_class_key_type_and_ec_params(
-            CKO_PRIVATE_KEY,
-            CKK_EC,
-            &SECP256K1_EC_PARAMS_DER,
-        )?)
+        match setup.secp256k1_private.as_ref() {
+            Some(id) => {
+                Some(setup_session.find_first_by_class_and_id(CKO_PRIVATE_KEY, &id.to_string())?)
+            }
+            None => None,
+        }
+    } else {
+        None
+    };
+    let secp256k1_public_key = if modes.contains(&ConcreteMode::VerifySecp256k1) {
+        match setup.secp256k1_public.as_ref() {
+            Some(id) => {
+                Some(setup_session.find_first_by_class_and_id(CKO_PUBLIC_KEY, &id.to_string())?)
+            }
+            None => None,
+        }
     } else {
         None
     };
@@ -439,7 +455,22 @@ pub(crate) fn prepare_ops<'a>(
         .iter()
         .any(|mode| matches!(mode, ConcreteMode::SignEdDsa | ConcreteMode::VerifyEdDsa))
     {
-        Some(setup_session.find_first_by_class_and_key_type(CKO_PRIVATE_KEY, CKK_EC_EDWARDS)?)
+        match setup.ed25519_private.as_ref() {
+            Some(id) => {
+                Some(setup_session.find_first_by_class_and_id(CKO_PRIVATE_KEY, &id.to_string())?)
+            }
+            None => None,
+        }
+    } else {
+        None
+    };
+    let eddsa_public_key = if modes.contains(&ConcreteMode::VerifyEdDsa) {
+        match setup.ed25519_public.as_ref() {
+            Some(id) => {
+                Some(setup_session.find_first_by_class_and_id(CKO_PUBLIC_KEY, &id.to_string())?)
+            }
+            None => None,
+        }
     } else {
         None
     };
@@ -454,11 +485,11 @@ pub(crate) fn prepare_ops<'a>(
     } else {
         None
     };
-    let ciphertext_gcm = if modes.contains(&ConcreteMode::DecryptAesGcm) {
+    let ciphertext_gcm: Option<AesGcmCiphertext> = if modes.contains(&ConcreteMode::DecryptAesGcm) {
         let key = secret_key.ok_or_else(|| {
             BenchError::Setup("DecryptAesGcm requires a provisioned secret key".to_owned())
         })?;
-        Some(setup_session.encrypt_gcm(key, &plaintext)?)
+        Some(setup_session.encrypt_gcm_for_decryption(key, &plaintext)?)
     } else {
         None
     };
@@ -470,7 +501,6 @@ pub(crate) fn prepare_ops<'a>(
     } else {
         None
     };
-
     let verify_rsa_signature = if modes.contains(&ConcreteMode::VerifyRsaPkcs) {
         let key = rsa_private_key.ok_or_else(|| {
             BenchError::Setup(
@@ -503,32 +533,32 @@ pub(crate) fn prepare_ops<'a>(
     // Likewise for `VerifySecp256k1`, signing the same 32-byte digest used by
     // `SignSecp256k1`.
     let verify_secp256k1_signature = if modes.contains(&ConcreteMode::VerifySecp256k1) {
-        let key = secp256k1_private_key.ok_or_else(|| {
-            BenchError::Setup(
-                "VerifySecp256k1 mode requires a provisioned secp256k1 key".to_owned(),
-            )
-        })?;
-        Some(setup_session.sign(key, &message, CKM_ECDSA, ECDSA_P256_SIGNATURE_MAX_LEN)?)
+        if let Some(key) = secp256k1_private_key {
+            Some(setup_session.sign(key, &message, CKM_ECDSA, ECDSA_P256_SIGNATURE_MAX_LEN)?)
+        } else {
+            None
+        }
     } else {
         None
     };
     let eddsa_verify_signature = if modes.contains(&ConcreteMode::VerifyEdDsa) {
-        let key = eddsa_private_key.ok_or_else(|| {
-            BenchError::Setup("VerifyEdDsa mode requires a provisioned Ed25519 key".to_owned())
-        })?;
-        setup_session.message_sign_init(key, CKM_EDDSA)?;
-        let mut signature = vec![0_u8; ED25519_SIGNATURE_LEN];
-        let signature_len = setup_session.sign_message_into(&message, &mut signature)?;
-        setup_session.message_sign_final()?;
-        signature.truncate(signature_len);
-        Some(signature)
+        if let Some(key) = eddsa_private_key {
+            setup_session.message_sign_init(key, CKM_EDDSA)?;
+            let mut signature = vec![0_u8; ED25519_SIGNATURE_LEN];
+            let signature_len = setup_session.sign_message_into(&message, &mut signature)?;
+            setup_session.message_sign_final()?;
+            signature.truncate(signature_len);
+            Some(signature)
+        } else {
+            None
+        }
     } else {
         None
     };
 
     let mut prepared = Vec::new();
     for mode in modes {
-        let mut setup: Option<Box<SetupOp<'a>>> = None;
+        let mut operation_setup: Option<Box<SetupOp<'a>>> = None;
         let op: Box<Op<'a>> = match mode {
             ConcreteMode::EncryptAesCbc => {
                 let Some(secret_key) = secret_key else {
@@ -567,6 +597,13 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(ciphertext) = ciphertext_cbc.clone() else {
                     continue;
                 };
+                if let Err(error) = setup_session.decrypt(secret_key, &ciphertext) {
+                    eprintln!(
+                        "[bench:pkcs11] '{}' unavailable, skipping: {error}",
+                        mode.label()
+                    );
+                    continue;
+                }
                 Box::new(move |session: &Pkcs11Session<'a>| {
                     session.decrypt(secret_key, &ciphertext)?;
                     Ok(())
@@ -579,6 +616,13 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(ciphertext) = ciphertext_gcm.clone() else {
                     continue;
                 };
+                if let Err(error) = setup_session.decrypt_gcm(secret_key, &ciphertext) {
+                    eprintln!(
+                        "[bench:pkcs11] '{}' unavailable, skipping: {error}",
+                        mode.label()
+                    );
+                    continue;
+                }
                 Box::new(move |session: &Pkcs11Session<'a>| {
                     session.decrypt_gcm(secret_key, &ciphertext)?;
                     Ok(())
@@ -591,6 +635,13 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(ciphertext) = ciphertext_rsa.clone() else {
                     continue;
                 };
+                if let Err(error) = setup_session.decrypt_rsa(rsa_private_key, &ciphertext) {
+                    eprintln!(
+                        "[bench:pkcs11] '{}' unavailable, skipping: {error}",
+                        mode.label()
+                    );
+                    continue;
+                }
                 Box::new(move |session: &Pkcs11Session<'a>| {
                     session.decrypt_rsa(rsa_private_key, &ciphertext)?;
                     Ok(())
@@ -654,7 +705,7 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(eddsa_private_key) = eddsa_private_key else {
                     continue;
                 };
-                setup = Some(Box::new(move |sessions: &[Pkcs11Session<'a>]| {
+                operation_setup = Some(Box::new(move |sessions: &[Pkcs11Session<'a>]| {
                     sessions.iter().try_for_each(|session| {
                         session.message_sign_init(eddsa_private_key, CKM_EDDSA)
                     })
@@ -670,8 +721,8 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(signature) = verify_rsa_signature.clone() else {
                     continue;
                 };
-                let public_key =
-                    setup_session.find_first_by_class_and_key_type(CKO_PUBLIC_KEY, CKK_RSA)?;
+                let public_key = setup_session
+                    .find_first_by_class_and_id(CKO_PUBLIC_KEY, &setup.rsa_public.to_string())?;
                 match setup_session.verify(public_key, &message, &signature, CKM_SHA256_RSA_PKCS) {
                     Ok(()) => {}
                     Err(e) if e.is_function_not_supported() => {
@@ -692,8 +743,19 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(signature) = verify_rsa_pss_signature.clone() else {
                     continue;
                 };
-                let public_key =
-                    setup_session.find_first_by_class_and_key_type(CKO_PUBLIC_KEY, CKK_RSA)?;
+                let public_key = setup_session
+                    .find_first_by_class_and_id(CKO_PUBLIC_KEY, &setup.rsa_public.to_string())?;
+                match setup_session.verify_pss(public_key, &message, &signature) {
+                    Ok(()) => {}
+                    Err(error) if error.is_function_not_supported() => {
+                        eprintln!(
+                            "[bench:pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
+                            mode.label()
+                        );
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                }
                 let message = message.clone();
                 Box::new(move |session: &Pkcs11Session<'a>| {
                     session.verify_pss(public_key, &message, &signature)
@@ -703,11 +765,8 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(signature) = verify_ecdsa_signature.clone() else {
                     continue;
                 };
-                let public_key = setup_session.find_first_by_class_key_type_and_ec_params(
-                    CKO_PUBLIC_KEY,
-                    CKK_EC,
-                    &P256_EC_PARAMS_DER,
-                )?;
+                let public_key = setup_session
+                    .find_first_by_class_and_id(CKO_PUBLIC_KEY, &setup.ecdsa_public.to_string())?;
                 match setup_session.verify(public_key, &message, &signature, CKM_ECDSA) {
                     Ok(()) => {}
                     Err(e) if e.is_function_not_supported() => {
@@ -728,11 +787,9 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(signature) = verify_secp256k1_signature.clone() else {
                     continue;
                 };
-                let public_key = setup_session.find_first_by_class_key_type_and_ec_params(
-                    CKO_PUBLIC_KEY,
-                    CKK_EC,
-                    &SECP256K1_EC_PARAMS_DER,
-                )?;
+                let Some(public_key) = secp256k1_public_key else {
+                    continue;
+                };
                 match setup_session.verify(public_key, &message, &signature, CKM_ECDSA) {
                     Ok(()) => {}
                     Err(e) if e.is_function_not_supported() => {
@@ -753,8 +810,9 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(signature) = eddsa_verify_signature.clone() else {
                     continue;
                 };
-                let public_key = setup_session
-                    .find_first_by_class_and_key_type(CKO_PUBLIC_KEY, CKK_EC_EDWARDS)?;
+                let Some(public_key) = eddsa_public_key else {
+                    continue;
+                };
                 match setup_session.verify(public_key, &message, &signature, CKM_EDDSA) {
                     Ok(()) => {}
                     Err(e) if e.is_function_not_supported() => {
@@ -789,7 +847,7 @@ pub(crate) fn prepare_ops<'a>(
         };
         prepared.push(PreparedOp {
             label: mode.label(),
-            setup,
+            setup: operation_setup,
             op,
         });
     }
@@ -802,9 +860,10 @@ pub(crate) fn prepare_ops<'a>(
 pub(crate) fn run_all(
     modes: &[ConcreteMode],
     pool: &[Pkcs11Session<'_>],
+    setup: &BenchSetup,
     config: &SweepConfig,
 ) -> BenchResult<Vec<LoadResult>> {
-    let prepared = prepare_ops(modes, pool)?;
+    let prepared = prepare_ops(modes, pool, setup)?;
     let mut all_results = Vec::with_capacity(prepared.len());
     for PreparedOp { label, setup, op } in prepared {
         if let Some(setup) = setup {
@@ -825,10 +884,18 @@ mod tests {
     use crate::actions::bench::types::BenchMode;
 
     #[test]
-    fn delegated_encrypt_includes_message_based_aes_gcm() {
-        let modes = expand_bench_mode(BenchMode::Encrypt, None, true);
+    fn delegated_encrypt_keeps_all_requested_modes_for_probing() {
+        let modes = expand_bench_mode(BenchMode::Encrypt, None);
 
         assert!(modes.contains(&ConcreteMode::EncryptAesGcm));
-        assert!(!modes.contains(&ConcreteMode::DecryptAesGcm));
+        assert!(modes.contains(&ConcreteMode::DecryptAesGcm));
+    }
+
+    #[test]
+    fn delegated_sign_verify_keeps_verification_for_capability_probe() {
+        let modes = expand_bench_mode(BenchMode::SignVerify, None);
+
+        assert!(modes.contains(&ConcreteMode::SignRsaPkcs));
+        assert!(modes.iter().any(|mode| mode.label().starts_with("verify/")));
     }
 }
