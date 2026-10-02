@@ -156,13 +156,18 @@ fn sign_verify_modes() -> Vec<ConcreteMode> {
 
 /// Expands standard `BenchMode` to concrete PKCS#11 benchmark modes.
 ///
-/// Delegated AES-GCM operations use PKCS#11 v3 message encryption/decryption,
-/// so the KMS/HSM generates the nonce and the benchmark preserves it for decrypt.
+/// Delegated AES-GCM encryption uses PKCS#11 v3 message encryption so the
+/// KMS/HSM generates the nonce. AES-GCM decrypt remains excluded from the
+/// cross-HSM benchmark: `Crypt2Pay` rejects its delegated decrypt path, even
+/// though the provider exposes the v3 `C_DecryptMessage` API for compatible
+/// backends. HSM-resident verification is also excluded because the server's
+/// crypto-oracle contract only guarantees delegated generation, encryption,
+/// and signing.
 #[must_use]
 pub(crate) fn expand_bench_mode(
     mode: BenchMode,
     filter: Option<&BenchFilter>,
-    _delegated: bool,
+    delegated: bool,
 ) -> Vec<ConcreteMode> {
     let modes = match mode {
         BenchMode::All => all_modes(),
@@ -181,6 +186,18 @@ pub(crate) fn expand_bench_mode(
 
     modes
         .into_iter()
+        .filter(|mode| {
+            !delegated
+                || !matches!(
+                    mode,
+                    ConcreteMode::DecryptAesGcm
+                        | ConcreteMode::VerifyRsaPkcs
+                        | ConcreteMode::VerifyRsaPss
+                        | ConcreteMode::VerifyEcdsaP256
+                        | ConcreteMode::VerifySecp256k1
+                        | ConcreteMode::VerifyEdDsa
+                )
+        })
         .filter(|m| filter.is_none_or(|f| f.matches(m.label(), None)))
         .collect()
 }
@@ -425,11 +442,17 @@ pub(crate) fn prepare_ops<'a>(
             ConcreteMode::SignSecp256k1 | ConcreteMode::VerifySecp256k1
         )
     }) {
-        Some(setup_session.find_first_by_class_key_type_and_ec_params(
+        match setup_session.find_first_by_class_key_type_and_ec_params(
             CKO_PRIVATE_KEY,
             CKK_EC,
             &SECP256K1_EC_PARAMS_DER,
-        )?)
+        ) {
+            Ok(key) => Some(key),
+            Err(error) => {
+                eprintln!("[bench:pkcs11] secp256k1 key discovery failed, skipping: {error}");
+                None
+            }
+        }
     } else {
         None
     };
@@ -437,7 +460,13 @@ pub(crate) fn prepare_ops<'a>(
         .iter()
         .any(|mode| matches!(mode, ConcreteMode::SignEdDsa | ConcreteMode::VerifyEdDsa))
     {
-        Some(setup_session.find_first_by_class_and_key_type(CKO_PRIVATE_KEY, CKK_EC_EDWARDS)?)
+        match setup_session.find_first_by_class_and_key_type(CKO_PRIVATE_KEY, CKK_EC_EDWARDS) {
+            Ok(key) => Some(key),
+            Err(error) => {
+                eprintln!("[bench:pkcs11] Ed25519 key discovery failed, skipping: {error}");
+                None
+            }
+        }
     } else {
         None
     };
@@ -468,7 +497,6 @@ pub(crate) fn prepare_ops<'a>(
     } else {
         None
     };
-
     let verify_rsa_signature = if modes.contains(&ConcreteMode::VerifyRsaPkcs) {
         let key = rsa_private_key.ok_or_else(|| {
             BenchError::Setup(
@@ -501,25 +529,25 @@ pub(crate) fn prepare_ops<'a>(
     // Likewise for `VerifySecp256k1`, signing the same 32-byte digest used by
     // `SignSecp256k1`.
     let verify_secp256k1_signature = if modes.contains(&ConcreteMode::VerifySecp256k1) {
-        let key = secp256k1_private_key.ok_or_else(|| {
-            BenchError::Setup(
-                "VerifySecp256k1 mode requires a provisioned secp256k1 key".to_owned(),
-            )
-        })?;
-        Some(setup_session.sign(key, &message, CKM_ECDSA, ECDSA_P256_SIGNATURE_MAX_LEN)?)
+        if let Some(key) = secp256k1_private_key {
+            Some(setup_session.sign(key, &message, CKM_ECDSA, ECDSA_P256_SIGNATURE_MAX_LEN)?)
+        } else {
+            None
+        }
     } else {
         None
     };
     let eddsa_verify_signature = if modes.contains(&ConcreteMode::VerifyEdDsa) {
-        let key = eddsa_private_key.ok_or_else(|| {
-            BenchError::Setup("VerifyEdDsa mode requires a provisioned Ed25519 key".to_owned())
-        })?;
-        setup_session.message_sign_init(key, CKM_EDDSA)?;
-        let mut signature = vec![0_u8; ED25519_SIGNATURE_LEN];
-        let signature_len = setup_session.sign_message_into(&message, &mut signature)?;
-        setup_session.message_sign_final()?;
-        signature.truncate(signature_len);
-        Some(signature)
+        if let Some(key) = eddsa_private_key {
+            setup_session.message_sign_init(key, CKM_EDDSA)?;
+            let mut signature = vec![0_u8; ED25519_SIGNATURE_LEN];
+            let signature_len = setup_session.sign_message_into(&message, &mut signature)?;
+            setup_session.message_sign_final()?;
+            signature.truncate(signature_len);
+            Some(signature)
+        } else {
+            None
+        }
     } else {
         None
     };
@@ -823,10 +851,18 @@ mod tests {
     use crate::actions::bench::types::BenchMode;
 
     #[test]
-    fn delegated_encrypt_includes_message_based_aes_gcm_round_trip() {
+    fn delegated_encrypt_keeps_message_based_aes_gcm_encryption() {
         let modes = expand_bench_mode(BenchMode::Encrypt, None, true);
 
         assert!(modes.contains(&ConcreteMode::EncryptAesGcm));
-        assert!(modes.contains(&ConcreteMode::DecryptAesGcm));
+        assert!(!modes.contains(&ConcreteMode::DecryptAesGcm));
+    }
+
+    #[test]
+    fn delegated_sign_verify_excludes_unsupported_verification() {
+        let modes = expand_bench_mode(BenchMode::SignVerify, None, true);
+
+        assert!(modes.contains(&ConcreteMode::SignRsaPkcs));
+        assert!(!modes.iter().any(|mode| mode.label().starts_with("verify/")));
     }
 }

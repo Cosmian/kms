@@ -28,7 +28,9 @@ pub(crate) struct BenchSetup {
 }
 
 /// Bits of key material for the AES key used by the `encrypt-decrypt` benchmark.
-const AES_KEY_BITS: usize = 128;
+///
+/// AES-256 is supported by every delegated HSM backend, including `Crypt2Pay`.
+const AES_KEY_BITS: usize = 256;
 /// Bits of key material for the RSA key pair used by the `sign`/`verify` benchmark.
 const RSA_KEY_BITS: usize = 2048;
 
@@ -61,12 +63,13 @@ async fn provision_optional_keys(
             false,
             None,
         )?;
-        Some(
-            client
-                .create_key_pair(request)
-                .await?
-                .private_key_unique_identifier,
-        )
+        match client.create_key_pair(request).await {
+            Ok(response) => Some(response.private_key_unique_identifier),
+            Err(error) => {
+                eprintln!("[bench:pkcs11] Ed25519 key creation failed, skipping: {error}");
+                None
+            }
+        }
     } else {
         None
     };
@@ -80,7 +83,9 @@ async fn provision_optional_keys(
             false,
             None,
         )?;
-        client.create_key_pair(request).await?;
+        if let Err(error) = client.create_key_pair(request).await {
+            eprintln!("[bench:pkcs11] secp256k1 key creation failed, skipping: {error}");
+        }
     }
 
     Ok(ed25519_private_key_id)
