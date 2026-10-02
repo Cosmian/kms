@@ -156,9 +156,9 @@ fn sign_verify_modes() -> Vec<ConcreteMode> {
 
 /// Expands standard `BenchMode` to concrete PKCS#11 benchmark modes.
 ///
-/// With `delegated`, AES-GCM modes are dropped: single-part `CKM_AES_GCM`
-/// requires a caller-supplied IV (`CK_GCM_PARAMS.pIv`), which the KMS rejects
-/// for HSM-resident keys (the HSM integration always generates the nonce).
+/// Delegated AES-GCM encryption uses PKCS#11 v3 message encryption so the
+/// KMS/HSM generates the nonce. Decryption remains excluded because the
+/// classic one-shot `CKM_AES_GCM` decrypt API cannot carry that generated nonce.
 #[must_use]
 pub(crate) fn expand_bench_mode(
     mode: BenchMode,
@@ -182,9 +182,7 @@ pub(crate) fn expand_bench_mode(
 
     modes
         .into_iter()
-        .filter(|m| {
-            !(delegated && matches!(m, ConcreteMode::EncryptAesGcm | ConcreteMode::DecryptAesGcm))
-        })
+        .filter(|m| !(delegated && matches!(m, ConcreteMode::DecryptAesGcm)))
         .filter(|m| filter.is_none_or(|f| f.matches(m.label(), None)))
         .collect()
 }
@@ -819,4 +817,18 @@ pub(crate) fn run_all(
         }
     }
     Ok(all_results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ConcreteMode, expand_bench_mode};
+    use crate::actions::bench::types::BenchMode;
+
+    #[test]
+    fn delegated_encrypt_includes_message_based_aes_gcm() {
+        let modes = expand_bench_mode(BenchMode::Encrypt, None, true);
+
+        assert!(modes.contains(&ConcreteMode::EncryptAesGcm));
+        assert!(!modes.contains(&ConcreteMode::DecryptAesGcm));
+    }
 }

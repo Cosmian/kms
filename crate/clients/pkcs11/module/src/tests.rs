@@ -9,14 +9,15 @@ use std::{
 use cosmian_logger::log_init;
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_C_INITIALIZE_ARGS, CK_C_INITIALIZE_ARGS_PTR, CK_FALSE, CK_FUNCTION_LIST,
-    CK_FUNCTION_LIST_PTR_PTR, CK_INFO, CK_INVALID_HANDLE, CK_KEY_TYPE, CK_MECHANISM,
-    CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE,
-    CK_SESSION_INFO, CK_SLOT_INFO, CK_TOKEN_INFO, CK_ULONG, CK_UNAVAILABLE_INFORMATION,
-    CK_VOID_PTR, CKA_CLASS, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_VALUE_LEN, CKF_MESSAGE_SIGN,
-    CKF_SERIAL_SESSION, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKM_DSA, CKM_ECDSA, CKM_EDDSA,
-    CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
-    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL,
-    CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SESSION_HANDLE_INVALID,
+    CK_FUNCTION_LIST_PTR_PTR, CK_GCM_MESSAGE_PARAMS, CK_INFO, CK_INVALID_HANDLE, CK_KEY_TYPE,
+    CK_MECHANISM, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE,
+    CK_SESSION_HANDLE, CK_SESSION_INFO, CK_SLOT_INFO, CK_TOKEN_INFO, CK_ULONG,
+    CK_UNAVAILABLE_INFORMATION, CK_VOID_PTR, CKA_CLASS, CKA_ID, CKA_KEY_TYPE, CKA_LABEL,
+    CKA_VALUE_LEN, CKF_MESSAGE_SIGN, CKF_SERIAL_SESSION, CKG_GENERATE_RANDOM, CKK_AES,
+    CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_DSA, CKM_ECDSA, CKM_EDDSA, CKO_PRIVATE_KEY,
+    CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED,
+    CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL, CKR_MECHANISM_INVALID,
+    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SESSION_HANDLE_INVALID,
     CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
 };
 use serial_test::serial;
@@ -30,14 +31,16 @@ use crate::{
     },
     objects_store::OBJECTS_STORE,
     pkcs11::{
-        C_CloseSession, C_Encrypt, C_EncryptInit, C_Finalize, C_FindObjects, C_FindObjectsFinal,
-        C_FindObjectsInit, C_GenerateKey, C_GetAttributeValue, C_GetFunctionStatus, C_GetInfo,
-        C_GetMechanismInfo, C_GetMechanismList, C_GetSessionInfo, C_GetSlotInfo, C_GetSlotList,
-        C_GetTokenInfo, C_Initialize, C_OpenSession, C_SignInit, FUNC_LIST, INITIALIZED, SLOT_ID,
+        C_CloseSession, C_Encrypt, C_EncryptInit, C_EncryptMessage, C_Finalize, C_FindObjects,
+        C_FindObjectsFinal, C_FindObjectsInit, C_GenerateKey, C_GetAttributeValue,
+        C_GetFunctionStatus, C_GetInfo, C_GetMechanismInfo, C_GetMechanismList, C_GetSessionInfo,
+        C_GetSlotInfo, C_GetSlotList, C_GetTokenInfo, C_Initialize, C_MessageEncryptInit,
+        C_OpenSession, C_SignInit, FUNC_LIST, INITIALIZED, SLOT_ID,
     },
     traits::{
-        Backend, Certificate, DataObject, DecryptContext, EncryptContext, KeyAlgorithm, PrivateKey,
-        PublicKey, SearchOptions, SignatureAlgorithm, SymmetricKey, Version, register_backend,
+        Backend, Certificate, DataObject, DecryptContext, EncryptContext, EncryptionAlgorithm,
+        KeyAlgorithm, MessageEncryptionOutput, PrivateKey, PublicKey, SearchOptions,
+        SignatureAlgorithm, SymmetricKey, Version, register_backend,
     },
 };
 
@@ -214,6 +217,26 @@ impl Backend for TestBackend {
 
     fn encrypt(&self, _encrypt_ctx: &EncryptContext, cleartext: Vec<u8>) -> ModuleResult<Vec<u8>> {
         Ok(vec![0; cleartext.len() + AES_IV_SIZE])
+    }
+
+    fn encrypt_message(
+        &self,
+        encrypt_ctx: &EncryptContext,
+        cleartext: Vec<u8>,
+    ) -> ModuleResult<MessageEncryptionOutput> {
+        if !matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm)
+            || encrypt_ctx.iv.is_some()
+            || encrypt_ctx.aad.as_deref() != Some(b"aad")
+        {
+            return Err(ModuleError::Cryptography(
+                "message encryption did not preserve the generated-nonce contract".to_owned(),
+            ));
+        }
+        Ok(MessageEncryptionOutput {
+            ciphertext: cleartext,
+            iv: vec![0xA1; 12],
+            tag: vec![0xB2; 16],
+        })
     }
 
     fn decrypt(
@@ -811,6 +834,78 @@ fn module_test_generate_key_encrypt_decrypt() -> ModuleResult<()> {
     assert_eq!(C_CloseSession(handle), CKR_OK);
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
     Ok(())
+}
+
+/// PKCS#11 v3 AES-GCM message encryption must return the KMS-owned nonce and tag.
+#[test]
+#[serial]
+fn message_encrypt_returns_kms_generated_artifacts() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    let mut session = CK_INVALID_HANDLE;
+    // SAFETY: session output is a valid mutable handle, with standard serial-session arguments.
+    assert_eq!(
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                ptr::null_mut(),
+                None,
+                &raw mut session,
+            )
+        },
+        CKR_OK
+    );
+    let key = test_generate_key(session);
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_AES_GCM,
+        pParameter: ptr::null_mut(),
+        ulParameterLen: 0,
+    };
+    // SAFETY: the mechanism and key handle remain valid through initialization.
+    assert_eq!(
+        unsafe { C_MessageEncryptInit(session, &raw mut mechanism, key) },
+        CKR_OK
+    );
+
+    let mut iv = [0_u8; 12];
+    let mut tag = [0_u8; 16];
+    let mut params = CK_GCM_MESSAGE_PARAMS {
+        pIv: iv.as_mut_ptr(),
+        ulIvLen: iv.len() as CK_ULONG,
+        ulIvFixedBits: 0,
+        ivGenerator: CKG_GENERATE_RANDOM,
+        pTag: tag.as_mut_ptr(),
+        ulTagBits: (tag.len() * 8) as CK_ULONG,
+    };
+    let mut plaintext = b"plaintext".to_vec();
+    let mut aad = b"aad".to_vec();
+    let mut ciphertext = vec![0_u8; plaintext.len()];
+    let mut ciphertext_len = ciphertext.len() as CK_ULONG;
+    // SAFETY: every pointer addresses a writable or readable buffer matching its declared length.
+    assert_eq!(
+        unsafe {
+            C_EncryptMessage(
+                session,
+                (&raw mut params).cast::<std::ffi::c_void>(),
+                std::mem::size_of::<CK_GCM_MESSAGE_PARAMS>() as CK_ULONG,
+                aad.as_mut_ptr(),
+                aad.len() as CK_ULONG,
+                plaintext.as_mut_ptr(),
+                plaintext.len() as CK_ULONG,
+                ciphertext.as_mut_ptr(),
+                &raw mut ciphertext_len,
+            )
+        },
+        CKR_OK
+    );
+    assert_eq!(ciphertext_len, plaintext.len() as CK_ULONG);
+    assert_eq!(ciphertext, plaintext);
+    assert_eq!(iv, [0xA1; 12]);
+    assert_eq!(tag, [0xB2; 16]);
+
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
 }
 
 /// `C_GetAttributeValue` must not write past the caller-declared `ulValueLen`:

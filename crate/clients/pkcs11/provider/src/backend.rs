@@ -17,8 +17,9 @@ use cosmian_pkcs11_module::{
     ModuleError, ModuleResult,
     core::object::Object,
     traits::{
-        Backend, Certificate, DataObject, DecryptContext, EncryptContext, KeyAlgorithm, PrivateKey,
-        PublicKey, SearchOptions, SignatureAlgorithm, SymmetricKey, Version,
+        Backend, Certificate, DataObject, DecryptContext, EncryptContext, KeyAlgorithm,
+        MessageEncryptionOutput, PrivateKey, PublicKey, SearchOptions, SignatureAlgorithm,
+        SymmetricKey, Version,
     },
 };
 use zeroize::Zeroizing;
@@ -27,8 +28,8 @@ use crate::{
     kms_object::{
         get_kms_certificate_objects, get_kms_disk_encryption_data_objects, get_kms_object,
         get_kms_object_attributes, get_kms_secret_data_objects, key_algorithm_from_attributes,
-        kms_decrypt, kms_destroy_object, kms_encrypt, kms_import_object, kms_import_symmetric_key,
-        kms_revoke_object, kms_sign, kms_verify, locate_kms_objects,
+        kms_decrypt, kms_destroy_object, kms_encrypt, kms_encrypt_message, kms_import_object,
+        kms_import_symmetric_key, kms_revoke_object, kms_sign, kms_verify, locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -617,6 +618,15 @@ impl Backend for CliBackend {
     fn encrypt(&self, ctx: &EncryptContext, cleartext: Vec<u8>) -> ModuleResult<Vec<u8>> {
         debug!("encrypt: ctx: {ctx:?}");
         kms_encrypt(&self.kms_rest_client, ctx, cleartext).map_err(Into::into)
+    }
+
+    fn encrypt_message(
+        &self,
+        ctx: &EncryptContext,
+        cleartext: Vec<u8>,
+    ) -> ModuleResult<MessageEncryptionOutput> {
+        debug!("encrypt_message: ctx: {ctx:?}");
+        kms_encrypt_message(&self.kms_rest_client, ctx, cleartext).map_err(Into::into)
     }
 
     fn decrypt(

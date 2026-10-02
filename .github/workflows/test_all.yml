@@ -445,8 +445,7 @@ jobs:
           OVPN_CONF: ${{ secrets.OVPN_CONF }}
         run: |
           HSM_MODEL="${{ matrix.hsm-type }}"
-          mise run bench:pkcs11 --delegated --hsm-model "$HSM_MODEL" --variant ${{ matrix.features }} --speed sanity
-
+          mise run bench:pkcs11 --delegated --hsm-model "$HSM_MODEL" --variant ${{ matrix.features }} -s
       - name: Bench (HSM-delegated)
         if: matrix.hsm-type != 'aws-cloudhsm'
         env:
