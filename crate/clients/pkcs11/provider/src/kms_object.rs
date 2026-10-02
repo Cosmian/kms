@@ -1458,7 +1458,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_ecdsa_der_to_raw_p256() {
+    fn test_ecdsa_der_to_raw_p256() -> Result<(), Box<dyn std::error::Error>> {
         let der_sig = vec![
             0x30, 0x44, // SEQUENCE, length 68 bytes
             0x02, 0x20, // INTEGER, length 32 bytes
@@ -1469,32 +1469,35 @@ mod tests {
             0x88, 0x99, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0xaa, 0xbb, 0xcc, 0xdd,
             0xee, 0xff, 0x00, 0x11,
         ];
-        let raw = ecdsa_der_to_raw(&der_sig, 32).unwrap_or_default();
-        assert_eq!(raw.len(), 64, "raw signature should be 64 bytes for P-256");
+        let raw = ecdsa_der_to_raw(&der_sig, 32)?;
+        if raw.len() != 64 {
+            return Err(format!(
+                "raw signature should be 64 bytes for P-256, got {}",
+                raw.len()
+            )
+            .into());
+        }
         let r_expected = vec![
             0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
             0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x01, 0x02, 0x03, 0x04,
             0x05, 0x06, 0x07, 0x08,
         ];
-        assert_eq!(
-            raw.get(0..32),
-            Some(r_expected.as_slice()),
-            "r component mismatch"
-        );
+        if raw.get(0..32) != Some(r_expected.as_slice()) {
+            return Err("r component mismatch".into());
+        }
         let s_expected = vec![
             0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
             0x88, 0x99, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0xaa, 0xbb, 0xcc, 0xdd,
             0xee, 0xff, 0x00, 0x11,
         ];
-        assert_eq!(
-            raw.get(32..64),
-            Some(s_expected.as_slice()),
-            "s component mismatch"
-        );
+        if raw.get(32..64) != Some(s_expected.as_slice()) {
+            return Err("s component mismatch".into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_ecdsa_der_to_raw_with_padding() {
+    fn test_ecdsa_der_to_raw_with_padding() -> Result<(), Box<dyn std::error::Error>> {
         let der_sig = vec![
             0x30, 0x46, // SEQUENCE, length 70 bytes
             0x02, 0x21, // INTEGER r, length 33 bytes
@@ -1507,19 +1510,26 @@ mod tests {
             0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x01, 0x02, 0x03, 0x04,
             0x05, 0x06, 0x07, 0x08,
         ];
-        let raw = ecdsa_der_to_raw(&der_sig, 32).unwrap_or_default();
-        assert_eq!(raw.len(), 64);
+        let raw = ecdsa_der_to_raw(&der_sig, 32)?;
+        if raw.len() != 64 {
+            return Err(format!("Expected raw signature of 64 bytes, got {}", raw.len()).into());
+        }
         let r_expected = vec![
             0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00, 0xff, 0xee, 0xdd, 0xcc,
             0xbb, 0xaa, 0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00, 0xff, 0xee,
             0xdd, 0xcc, 0xbb, 0xaa,
         ];
-        assert_eq!(raw.get(0..32), Some(r_expected.as_slice()));
+        if raw.get(0..32) != Some(r_expected.as_slice()) {
+            return Err("r component (padded) mismatch".into());
+        }
         let s_expected = vec![
             0x92, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
             0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x01, 0x02, 0x03, 0x04,
             0x05, 0x06, 0x07, 0x08,
         ];
-        assert_eq!(raw.get(32..64), Some(s_expected.as_slice()));
+        if raw.get(32..64) != Some(s_expected.as_slice()) {
+            return Err("s component (padded) mismatch".into());
+        }
+        Ok(())
     }
 }
