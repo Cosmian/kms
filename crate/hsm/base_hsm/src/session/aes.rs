@@ -22,6 +22,7 @@ impl Session {
         id: &[u8],
         size: AesKeySize,
         extractable: Option<bool>,
+        algorithm: Option<CK_ULONG>,
         error_context: &'static str,
     ) -> HResult<CK_OBJECT_HANDLE> {
         let size = CK_ULONG::try_from(match size {
@@ -35,10 +36,50 @@ impl Session {
             ulParameterLen: 0,
         };
         let mut aes_key_handle = CK_OBJECT_HANDLE::default();
+        let aes_algorithm_attribute = self.hsm_capabilities().aes_algorithm_attribute.map(
+            |(attribute_type, default_algorithm)| {
+                (attribute_type, algorithm.unwrap_or(default_algorithm))
+            },
+        );
 
         if let Some(extractable) = extractable {
             let extractable = if extractable { CK_TRUE } else { CK_FALSE };
-            let mut template = aes_key_template!(id, size, extractable);
+            let mut template = aes_key_template!(id, size, extractable).to_vec();
+            if !self.hsm_capabilities().supports_aes_class_attribute {
+                template.retain(|attribute| attribute.type_ != pkcs11_sys::CKA_CLASS);
+            }
+            if !self.hsm_capabilities().supports_aes_key_type_attribute {
+                template.retain(|attribute| attribute.type_ != pkcs11_sys::CKA_KEY_TYPE);
+            }
+            if !self.hsm_capabilities().supports_aes_value_len_attribute {
+                template.retain(|attribute| attribute.type_ != pkcs11_sys::CKA_VALUE_LEN);
+            }
+            if !self.hsm_capabilities().supports_aes_token_attribute {
+                template.retain(|attribute| attribute.type_ != pkcs11_sys::CKA_TOKEN);
+            }
+            if !self.hsm_capabilities().supports_aes_usage_attributes {
+                template.retain(|attribute| {
+                    !matches!(
+                        attribute.type_,
+                        pkcs11_sys::CKA_ENCRYPT | pkcs11_sys::CKA_DECRYPT | pkcs11_sys::CKA_PRIVATE
+                    )
+                });
+            }
+            if !self.hsm_capabilities().supports_aes_label_attribute {
+                template.retain(|attribute| attribute.type_ != pkcs11_sys::CKA_LABEL);
+            }
+            if !self.hsm_capabilities().supports_aes_id_attribute {
+                template.retain(|attribute| attribute.type_ != pkcs11_sys::CKA_ID);
+            }
+            if let Some((attribute_type, algorithm)) = aes_algorithm_attribute {
+                template.push(pkcs11_sys::CK_ATTRIBUTE {
+                    type_: attribute_type,
+                    pValue: std::ptr::from_ref(&algorithm)
+                        .cast::<std::ffi::c_void>()
+                        .cast_mut(),
+                    ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_ULONG>())?,
+                });
+            }
             #[cfg(target_os = "windows")]
             let len = u32::try_from(template.len())?;
             #[cfg(not(target_os = "windows"))]
@@ -54,7 +95,42 @@ impl Session {
                 &raw mut aes_key_handle
             );
         } else {
-            let mut template = aes_key_template!(id, size);
+            let mut template = aes_key_template!(id, size).to_vec();
+            if !self.hsm_capabilities().supports_aes_class_attribute {
+                template.retain(|attribute| attribute.type_ != pkcs11_sys::CKA_CLASS);
+            }
+            if !self.hsm_capabilities().supports_aes_key_type_attribute {
+                template.retain(|attribute| attribute.type_ != pkcs11_sys::CKA_KEY_TYPE);
+            }
+            if !self.hsm_capabilities().supports_aes_value_len_attribute {
+                template.retain(|attribute| attribute.type_ != pkcs11_sys::CKA_VALUE_LEN);
+            }
+            if !self.hsm_capabilities().supports_aes_token_attribute {
+                template.retain(|attribute| attribute.type_ != pkcs11_sys::CKA_TOKEN);
+            }
+            if !self.hsm_capabilities().supports_aes_usage_attributes {
+                template.retain(|attribute| {
+                    !matches!(
+                        attribute.type_,
+                        pkcs11_sys::CKA_ENCRYPT | pkcs11_sys::CKA_DECRYPT | pkcs11_sys::CKA_PRIVATE
+                    )
+                });
+            }
+            if !self.hsm_capabilities().supports_aes_label_attribute {
+                template.retain(|attribute| attribute.type_ != pkcs11_sys::CKA_LABEL);
+            }
+            if !self.hsm_capabilities().supports_aes_id_attribute {
+                template.retain(|attribute| attribute.type_ != pkcs11_sys::CKA_ID);
+            }
+            if let Some((attribute_type, algorithm)) = aes_algorithm_attribute {
+                template.push(pkcs11_sys::CK_ATTRIBUTE {
+                    type_: attribute_type,
+                    pValue: std::ptr::from_ref(&algorithm)
+                        .cast::<std::ffi::c_void>()
+                        .cast_mut(),
+                    ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_ULONG>())?,
+                });
+            }
             #[cfg(target_os = "windows")]
             let len = u32::try_from(template.len())?;
             #[cfg(not(target_os = "windows"))]
@@ -82,7 +158,23 @@ impl Session {
         id: &[u8],
         size: AesKeySize,
     ) -> HResult<CK_OBJECT_HANDLE> {
-        self.generate_aes_key_internal(id, size, None, "Failed generating sensitive key")
+        self.generate_aes_key_internal(id, size, None, None, "Failed generating sensitive key")
+    }
+
+    /// Generate a sensitive AES key with a provider-specific algorithm value.
+    pub fn generate_sensitive_aes_key_with_algorithm(
+        &self,
+        id: &[u8],
+        size: AesKeySize,
+        algorithm: CK_ULONG,
+    ) -> HResult<CK_OBJECT_HANDLE> {
+        self.generate_aes_key_internal(
+            id,
+            size,
+            None,
+            Some(algorithm),
+            "Failed generating sensitive key",
+        )
     }
 
     /// Generate an exportable AES key using `CKA_EXTRACTABLE=true`, without
@@ -93,7 +185,13 @@ impl Session {
         id: &[u8],
         size: AesKeySize,
     ) -> HResult<CK_OBJECT_HANDLE> {
-        self.generate_aes_key_internal(id, size, Some(true), "Failed generating exportable key")
+        self.generate_aes_key_internal(
+            id,
+            size,
+            Some(true),
+            None,
+            "Failed generating exportable key",
+        )
     }
 
     /// Generate an AES key

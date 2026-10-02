@@ -314,6 +314,20 @@ jobs:
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
+      # PKCS#11 v3 conformance tests: signs through OpenSC's pkcs11-tool (a real,
+      # independently-implemented external PKCS#11 v3 client), not just our own
+      # in-process Rust tests above. SoftHSM2-only: it is the only backend the CI
+      # is allowed to reconfigure with an HSM-KEK for this check.
+      # Prerequisite warning: `pkcs11-tool` (OpenSC) is a hard requirement — the
+      # task fails loudly if it is missing, with no silent fallback. It does not
+      # need a separate install step here: shell.nix already adds `pkgs.opensc` to
+      # the nix-shell PATH on Linux whenever `WITH_HSM=1` is set, which this task
+      # sets before entering the nix shell (see .mise/tasks/test/hsm-pkcs11-tool).
+      - name: Test (PKCS#11 v3 conformance via pkcs11-tool)
+        if: matrix.hsm-type == 'softhsm2'
+        run: |
+          mise run test:hsm-pkcs11-tool --variant ${{ matrix.features }}
+
   # Hardware HSMs reachable only with upstream-only secrets and infrastructure (Proteccio
   # network HSM, Crypt2Pay over OpenVPN, the AWS CloudHSM CI cluster). They live in their
   # own job (a job-level `if` cannot read the `matrix` context) and are skipped on forks.
@@ -337,9 +351,10 @@ jobs:
           - proteccio
           - crypt2pay
           - aws-cloudhsm
+          - gcp-cloud-hsm
         # non-fips only: parallel connections on proteccio are not supported, non-fips is
-        # sufficient for crypt2pay, and aws-cloudhsm FIPS-mode compatibility is not yet
-        # confirmed against the cluster's supported mechanism list.
+        # sufficient for crypt2pay, and aws-cloudhsm/gcp-cloud-hsm FIPS-mode compatibility is
+        # not yet confirmed against each cluster's supported mechanism list.
         features: [non-fips]
 
     steps:
@@ -355,6 +370,38 @@ jobs:
 
       - name: Install OpenVPN
         run: sudo apt-get update -qq && sudo apt-get install -y -qq openvpn
+
+      # Downloads Google's libkmsp11.so (public release asset) and writes the two files
+      # the library itself requires: a KMS_PKCS11_CONFIG YAML (key ring to expose) and a
+      # GOOGLE_APPLICATION_CREDENTIALS service account key (see
+      # crate/hsm/gcp_cloud_hsm/README.md). Both env vars are exported to $GITHUB_ENV so
+      # the "Test" step below picks them up automatically.
+      - name: Prepare GCP Cloud HSM
+        if: matrix.hsm-type == 'gcp-cloud-hsm'
+        env:
+          GCP_CLOUD_HSM_SERVICE_ACCOUNT_KEY: ${{ secrets.KMS_CI_GCP_CLOUDHSM_SERVICE_ACCOUNT_KEY }}
+          GCP_CLOUD_HSM_KEY_RING: ${{ secrets.KMS_CI_GCP_CLOUDHSM_KEY_RING }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gcp-pkcs11
+          curl -fsSL -o /tmp/libkmsp11.tar.gz \
+            https://github.com/GoogleCloudPlatform/kms-integrations/releases/download/pkcs11-v1.9/libkmsp11-1.9-linux-amd64.tar.gz
+          tar -xzf /tmp/libkmsp11.tar.gz -C /tmp/gcp-pkcs11
+          lib_path=$(find /tmp/gcp-pkcs11 -name 'libkmsp11.so' -print -quit)
+          test -n "$lib_path"
+          echo "GCP_CLOUD_HSM_PKCS11_LIB=${lib_path}" >> "$GITHUB_ENV"
+
+          printf '%s' "$GCP_CLOUD_HSM_SERVICE_ACCOUNT_KEY" > /tmp/gcp-cloudhsm-sa.json
+          chmod 600 /tmp/gcp-cloudhsm-sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-cloudhsm-sa.json" >> "$GITHUB_ENV"
+
+          cat >/tmp/kmsp11-config.yaml <<EOF
+          tokens:
+            - key_ring: "${GCP_CLOUD_HSM_KEY_RING}"
+              label: "kms-ci"
+          EOF
+          chmod 600 /tmp/kmsp11-config.yaml
+          echo "KMS_PKCS11_CONFIG=/tmp/kmsp11-config.yaml" >> "$GITHUB_ENV"
 
       - name: Test
         env:
@@ -380,6 +427,9 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+          # GCP Cloud HSM: PKCS#11 PIN. Google's library ignores its value (C_Login is a
+          # no-op per the user guide), but our generic HSM session flow requires one.
+          HSM_USER_PASSWORD: ${{ secrets.KMS_CI_GCP_CLOUDHSM_PIN }}
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 

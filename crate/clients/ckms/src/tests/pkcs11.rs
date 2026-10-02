@@ -203,6 +203,13 @@ const KNOWN_FAILING_SHALLOW_PROBES: &[&str] = &[
     "C_VerifyFinal",
     // `cosmian_pkcs11` does not support application-seeded randomness.
     "C_SeedRandom",
+    // `CKR_ARGUMENTS_BAD`: the shallow probe calls `C_EncryptMessage`/
+    // `C_DecryptMessage` without first staging a successful
+    // `C_MessageEncryptInit`/`C_MessageDecryptInit` precondition (same
+    // shallow-probe philosophy as the streaming `*Update`/`*Final` entries
+    // above).
+    "C_EncryptMessage",
+    "C_DecryptMessage",
 ];
 
 /// Verify that `ckms pkcs11 capabilities` runs every FIPS-eligible mechanism

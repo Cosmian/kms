@@ -110,7 +110,8 @@ info = false
 
 # The HSM model.
 # `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-# `Smartcard HSM`, `AWS CloudHSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
+# `Smartcard HSM`, `AWS CloudHSM`, `GCP Cloud HSM`, `SoftHSM2`, and `Kryoptic`
+# are natively supported.
 # Other HSMs are supported too; specify `other` and check the documentation
 # hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | aws_cloudhsm | kryoptic | other
 # List of KMS usernames that are granted HSM admin privileges.

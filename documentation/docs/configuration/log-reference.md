@@ -361,7 +361,6 @@ Crate path: `crate/server`
 | `trace` | `OpenSSL Private Key instantiated before signing` | `src/core/operations/sign.rs` | — | — |
 | `trace` | `OpenSSL Public Key instantiated before encryption` | `src/core/operations/encrypt.rs` | — | — |
 | `trace` | `Operation processed successfully: {op}` | `src/core/operations/message.rs` | `op` — … | — |
-| `trace` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` — … | — |
 | `trace` | `params: {server_params:?}` | `src/core/kms/mod.rs` | `server_params` — … | — |
 | `trace` | `PKCS12 parsed successfully` | `src/core/operations/import.rs` | — | — |
 | `trace` | `plaintext length: {} bytes` | `src/core/operations/decrypt.rs` | — | — |
@@ -755,6 +754,7 @@ Crate path: `crate/server`
 | `warn` | `{:?} {} 401 unauthorized: {error}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error` | - |
 | `debug` | `CRL cache entry stale, refetching: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
 | `debug` | `vault transit: key '{name}' already exists, not re-creating` | `src/routes/spire/transit.rs` | `name` | - |
+| `error` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e`: the operation error | Logged at `error` (was `trace`) so failed batch operations inside a KMIP `Message`/batch request are surfaced without enabling trace logging. |
 
 ### `cosmian_kms_server_database`
 
@@ -1244,6 +1244,7 @@ Crate path: `crate/clients/pkcs11/provider`
 | `warn` | `find_all_objects: failed to fetch Certificate objects: {e}, skipping certificates` | `src/backend.rs` | `e` | - |
 | `warn` | `create_public_key_from_id: failed to build Pkcs11PublicKey for {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | - |
 | `warn` | `create_public_key_from_id: failed to export public key {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | - |
+| `debug` | `encrypt_message: ctx: {ctx:?}` | `src/backend.rs` | `ctx`: the `EncryptContext` (remote key id, algorithm, caller IV/AAD) for a PKCS#11 v3 message-based encryption call | - |
 
 ### `cosmian_pkcs11_module`
 

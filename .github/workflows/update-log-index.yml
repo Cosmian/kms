@@ -62,6 +62,7 @@ jobs:
       - uses: ./.github/actions/install-mise
 
       - name: Update log-reference.md
+      - name: Update log-reference.md
         run: mise run docs:sync-logs
 
       - name: Commit updated log index

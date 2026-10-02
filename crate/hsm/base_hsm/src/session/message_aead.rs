@@ -22,7 +22,6 @@ use pkcs11_sys::{
     CK_GCM_MESSAGE_PARAMS, CK_MECHANISM, CK_OBJECT_HANDLE, CK_ULONG, CKG_GENERATE_RANDOM,
     CKG_NO_GENERATE, CKM_AES_GCM, CKR_BUFFER_TOO_SMALL, CKR_OK,
 };
-
 use zeroize::Zeroizing;
 
 use crate::{HError, HResult, session::Session};
@@ -112,7 +111,6 @@ impl Session {
             // known upfront per current-mechanisms §2.13.2 (tag in `pTag` field,
             // ciphertext size = plaintext size), so no length probe is needed.
 
-            //
             // `Vec::as_mut_ptr` never yields NULL (an unallocated `Vec` returns a
             // dangling-but-non-null pointer), so a zero-length plaintext — a legitimate
             // AEAD input when there is AAD to authenticate — still selects base §5.2's

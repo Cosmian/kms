@@ -20,6 +20,7 @@
   - [Utimaco General Purpose](hsm_support/utimaco.md)
   - [Smart card HSM / Nitrokey HSM 2](hsm_support/sc_hsm.md)
   - [AWS CloudHSM](hsm_support/aws_cloudhsm.md)
+  - [GCP Cloud HSM](hsm_support/gcp_cloud_hsm.md)
   - [SoftHSMv2](hsm_support/softhsm2.md)
   - [Kryoptic](hsm_support/kryoptic.md)
   - [Other HSMs](hsm_support/other_hsms.md)
