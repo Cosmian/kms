@@ -31,6 +31,7 @@ set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/bench_helpers.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/pkcs11_helpers.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 
 # ── Resolve BENCH_ variables from usage-parsed lowercase names ──────────────────────
 BENCH_VARIANT="${usage_variant:-non-fips}"
@@ -101,12 +102,16 @@ if [ "${BENCH_SANITY}" = "true" ]; then
   BENCH_TIME="2"
   BENCH_WARMUP="0"
   BENCH_COOLDOWN="0"
-  BENCH_MODE="all"
+  if [ -z "${usage_mode:-}" ]; then
+    BENCH_MODE="all"
+  fi
   BENCH_CONCURRENCY="1,2"
 fi
 
 bench_register_cleanup
 if [ "${BENCH_DELEGATED}" = "true" ] && [ -z "${BENCH_SERVER_URL}" ]; then
+  export WITH_HSM=1
+  ensure_nix_shell
   bench_prepare_hsm "${BENCH_HSM_MODEL}"
 fi
 
@@ -156,7 +161,7 @@ if [ "${BENCH_DELEGATED}" != "true" ] || [ -n "${BENCH_SERVER_URL}" ]; then
 fi
 # CRITERION_HOME is where the benchmark binary writes load_pkcs11.json and where
 # bench_generate_report reads it from — same variable, same directory convention as
-# `bench/load` and `bench/load-hsm`. Always start from a clean slate so results are
+# `bench/load` and `bench/hsm`. Always start from a clean slate so results are
 # never mixed with output from another bench task's earlier run.
 export CRITERION_HOME="${CRITERION_HOME:-${CARGO_TARGET_DIR}/criterion}"
 echo "Cleaning ${CRITERION_HOME}..."

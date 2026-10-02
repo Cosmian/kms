@@ -155,7 +155,7 @@ class Pkcs11OverheadReportTests(unittest.TestCase):
         self.assertIn('HSM-resident key execution', methodology)
         self.assertIn('PKCS#11 `CKA_LABEL` envelope', methodology)
         self.assertIn('key-creation, encrypt, sign, and verify', methodology)
-        self.assertIn('mise bench:load-pkcs11 --delegated', methodology)
+        self.assertIn('mise bench:pkcs11 --delegated', methodology)
 
 
 if __name__ == '__main__':

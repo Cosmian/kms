@@ -186,7 +186,7 @@ jobs:
           #   3. KMIP support tables (README.md + kmip_support/support.md)
           #   4. cbom/cbom.cdx.json (CycloneDX 1.6, requires cdxgen)
           pip install cyclonedx-bom --quiet
-          mise run docs:generate
+          mise run docs:sync-all
 
       - name: Install cargo-deny
         run: cargo install --version 0.19.0 cargo-deny --locked

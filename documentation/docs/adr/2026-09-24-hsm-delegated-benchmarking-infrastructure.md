@@ -282,7 +282,7 @@ pub struct HsmKeyPairIds<'a> {
 
 ```bash
 # Generate 256-bit ECDSA keypair on HSM, sign 10k messages
-mise bench:load-hsm --delegated --variant non-fips --mode sign-ecdsa --concurrency 1,2,4,8
+mise bench:hsm --delegated --variant non-fips --mode sign-ecdsa --concurrency 1,2,4,8
 
 # Report at: documentation/docs/benchmarks/ckms_bench_delegated_crypto_operations/report.md
 # Includes Architecture diagram showing: ckms → KMIP → CryptoOracle → PKCS#11 → HSM

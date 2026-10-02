@@ -80,50 +80,50 @@ jobs:
           [[ -n "${{ inputs.server_version }}" ]] && ARGS+=(--server-version "${{ inputs.server_version }}")
           mise run bench:load "${ARGS[@]}"
 
-      - name: Run HSM-backed KEK benchmark (bench:load-hsm)
+      - name: Run HSM-backed KEK benchmark (bench:hsm)
         run: |
-          mise run bench:load-hsm \
+          mise run bench:hsm \
             --variant "${{ inputs.variant }}" \
             --mode "${{ inputs.bench_mode }}" \
             --criterion
 
-      - name: Run HSM-delegated crypto benchmark (bench:load-hsm --delegated)
+      - name: Run HSM-delegated crypto benchmark (bench:hsm --delegated)
         run: |
-          mise run bench:load-hsm --delegated \
+          mise run bench:hsm --delegated \
             --variant "${{ inputs.variant }}" \
             --mode "${{ inputs.bench_mode }}" \
             --criterion
 
-      - name: Run PKCS#11 benchmark (bench:load-pkcs11)
+      - name: Run PKCS#11 benchmark (bench:pkcs11)
         run: |
-          # bench:load-pkcs11's --mode choices are a different, narrower set than the other
+          # bench:pkcs11's --mode choices are a different, narrower set than the other
           # three tasks (no "sign-verify"/"batch"). Fall back to "all" when the shared
           # bench_mode input picked one of those two, instead of failing the whole job.
           PKCS11_MODE="${{ inputs.bench_mode }}"
           case "${PKCS11_MODE}" in
             all | encrypt | key-creation) ;;
             *)
-              echo "NOTE: bench_mode '${PKCS11_MODE}' is not a valid bench:load-pkcs11 mode; using 'all' instead."
+              echo "NOTE: bench_mode '${PKCS11_MODE}' is not a valid bench:pkcs11 mode; using 'all' instead."
               PKCS11_MODE="all"
               ;;
           esac
-          mise run bench:load-pkcs11 \
+          mise run bench:pkcs11 \
             --variant "${{ inputs.variant }}" \
             --mode "${PKCS11_MODE}" \
             --criterion
 
-      - name: Run HSM-delegated PKCS#11 benchmark (bench:load-pkcs11 --delegated)
+      - name: Run HSM-delegated PKCS#11 benchmark (bench:pkcs11 --delegated)
         run: |
           # Same PKCS11_MODE fallback logic for the delegated step
           PKCS11_MODE_DELEGATED="${{ inputs.bench_mode }}"
           case "${PKCS11_MODE_DELEGATED}" in
             all | encrypt | key-creation) ;;
             *)
-              echo "NOTE: bench_mode '${PKCS11_MODE_DELEGATED}' is not a valid bench:load-pkcs11 mode; using 'all' instead."
+              echo "NOTE: bench_mode '${PKCS11_MODE_DELEGATED}' is not a valid bench:pkcs11 mode; using 'all' instead."
               PKCS11_MODE_DELEGATED="all"
               ;;
           esac
-          mise run bench:load-pkcs11 --delegated \
+          mise run bench:pkcs11 --delegated \
             --variant "${{ inputs.variant }}" \
             --mode "${PKCS11_MODE_DELEGATED}" \
             --criterion

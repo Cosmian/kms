@@ -368,6 +368,9 @@ jobs:
 
       - uses: ./.github/actions/install-mise
 
+      - name: Install OpenVPN
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq openvpn
+
       # Downloads Google's libkmsp11.so (public release asset) and writes the two files
       # the library itself requires: a KMS_PKCS11_CONFIG YAML (key ring to expose) and a
       # GOOGLE_APPLICATION_CREDENTIALS service account key (see
@@ -429,6 +432,34 @@ jobs:
           HSM_USER_PASSWORD: ${{ secrets.KMS_CI_GCP_CLOUDHSM_PIN }}
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
+
+      - name: Bench (PKCS#11 load, HSM-delegated)
+        if: matrix.hsm-type != 'aws-cloudhsm'
+        env:
+          # Proteccio
+          PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
+          PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
+          PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
+          # Crypt2Pay (reached through OpenVPN)
+          CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
+          OVPN_CONF: ${{ secrets.OVPN_CONF }}
+        run: |
+          HSM_MODEL="${{ matrix.hsm-type }}"
+          mise run bench:pkcs11 --delegated --hsm-model "$HSM_MODEL" --variant ${{ matrix.features }} --speed sanity
+
+      - name: Bench (HSM-delegated)
+        if: matrix.hsm-type != 'aws-cloudhsm'
+        env:
+          # Proteccio
+          PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
+          PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
+          PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
+          # Crypt2Pay (reached through OpenVPN)
+          CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
+          OVPN_CONF: ${{ secrets.OVPN_CONF }}
+        run: |
+          HSM_MODEL="${{ matrix.hsm-type }}"
+          mise run bench:hsm --delegated --hsm-model "$HSM_MODEL" --variant ${{ matrix.features }} -s
 
       # PKCS#11 v3 conformance tests: signs through OpenSC's pkcs11-tool (a real,
       # independently-implemented external PKCS#11 v3 client), not just our own

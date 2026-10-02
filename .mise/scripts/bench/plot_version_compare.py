@@ -42,7 +42,7 @@ def _is_symmetric(algorithm: str) -> bool:
     """Return True if the algorithm name suggests a symmetric cipher.
 
     Strips an optional 'hsm-' prefix first: HSM-delegated benchmarks (see
-    `bench/load-hsm --delegated`) label their algorithm 'hsm-aes-gcm', 'hsm-rsa-oaep',
+    `bench/hsm --delegated`) label their algorithm 'hsm-aes-gcm', 'hsm-rsa-oaep',
     etc. so the criterion group's op_type still parses correctly (a bare 'hsm/'
     path segment would shift `bench_id_to_parts`'s op_type/algorithm split).
     """
@@ -1105,7 +1105,7 @@ def _render_architecture_section(
                 '',
             ]
     elif is_hsm:
-        # HSM-resident keys (bench:load-hsm --delegated)
+        # HSM-resident keys (bench:hsm --delegated)
         return [
             '## Architecture',
             '',
@@ -1146,7 +1146,7 @@ def _render_architecture_section(
             '',
         ]
     elif is_hsm_kek:
-        # HSM KEK-wrapped keys (bench:load-hsm without --delegated)
+        # HSM KEK-wrapped keys (bench:hsm without --delegated)
         return [
             '## Architecture',
             '',
@@ -1382,9 +1382,7 @@ def _render_methodology_section(
     *, is_hsm: bool = False, is_hsm_kek: bool = False, is_pkcs11: bool = False
 ) -> list[str]:
     """Render the static ## Benchmark Methodology section."""
-    pkcs11_task = (
-        '`mise bench:load-pkcs11 --delegated`' if is_hsm else '`mise bench:load-pkcs11`'
-    )
+    pkcs11_task = '`mise bench:pkcs11 --delegated`' if is_hsm else '`mise bench:pkcs11`'
     if is_pkcs11:
         return [
             '## Benchmark Methodology',
@@ -1544,7 +1542,7 @@ def _render_methodology_section(
             '',
             '- Load-test key-creation concurrency is capped at 4 regardless of the'
             ' requested sweep (`PreparedLoadOp::max_concurrency`).',
-            '- The `bench/load-hsm --delegated` task runs `key-creation`, `encrypt`, and'
+            '- The `bench/hsm --delegated` task runs `key-creation`, `encrypt`, and'
             ' `sign-verify` as three separate SoftHSM2 sessions (each with its own fresh'
             ' token) when `--mode all` (the default), so key-creation load never'
             ' contaminates the encrypt/sign token; results are merged into this single'

@@ -22,16 +22,17 @@ use cosmian_logger::{debug, log_init};
 use cosmian_pkcs11_module::{
     pkcs11::{
         C_CloseSession, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
-        C_GetAttributeValue, C_Initialize, C_Login, C_OpenSession, C_SetAttributeValue, SLOT_ID,
+        C_GetAttributeValue, C_Initialize, C_Login, C_LoginUser, C_OpenSession,
+        C_SetAttributeValue, SLOT_ID,
     },
     test_decrypt, test_encrypt,
     traits::{Backend, SignatureAlgorithm, backend as registered_backend},
 };
 use pkcs11_sys::{
-    C_GetInterface, C_LoginUser, CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INTERFACE, CK_INVALID_HANDLE,
-    CK_OBJECT_CLASS, CK_PROFILE_ID, CK_ULONG, CK_USER_TYPE, CK_UTF8CHAR, CK_VERSION, CKA_CLASS,
-    CKA_LABEL, CKA_PRIVATE, CKA_PROFILE_ID, CKA_UNIQUE_ID, CKF_SERIAL_SESSION, CKO_DATA,
-    CKO_PROFILE, CKP_AUTHENTICATION_TOKEN, CKP_BASELINE_PROVIDER, CKP_EXTENDED_PROVIDER,
+    CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INTERFACE, CK_INVALID_HANDLE, CK_OBJECT_CLASS,
+    CK_PROFILE_ID, CK_ULONG, CK_USER_TYPE, CK_UTF8CHAR, CK_VERSION, CKA_CLASS, CKA_LABEL,
+    CKA_PRIVATE, CKA_PROFILE_ID, CKA_UNIQUE_ID, CKF_SERIAL_SESSION, CKO_DATA, CKO_PROFILE,
+    CKP_AUTHENTICATION_TOKEN, CKP_BASELINE_PROVIDER, CKP_EXTENDED_PROVIDER,
     CKP_PUBLIC_CERTIFICATES_TOKEN, CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_READ_ONLY,
     CKR_BUFFER_TOO_SMALL, CKR_OK, CKR_OPERATION_NOT_INITIALIZED, CKR_USER_TYPE_INVALID,
     CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
@@ -40,7 +41,7 @@ use serial_test::serial;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
-    C_GetFunctionList, C_GetInterfaceList,
+    C_GetFunctionList, C_GetInterface, C_GetInterfaceList,
     backend::{COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, COSMIAN_PKCS11_SSH_KEY_TAG, CliBackend},
     error::{Pkcs11Error, result::Pkcs11Result},
     kms_object::get_kms_objects_async,

@@ -64,7 +64,7 @@ pub(crate) fn write_load_json(results: &[LoadResult]) -> BenchResult<()> {
         .map_err(|e| BenchError::Report(e.to_string()))?;
 
     let json_path = criterion_home().join("load_pkcs11.json");
-    eprintln!("[bench:load-pkcs11] JSON report → {}", json_path.display());
+    eprintln!("[bench:pkcs11] JSON report → {}", json_path.display());
     Ok(())
 }
 
@@ -301,7 +301,7 @@ pub(crate) fn write_overhead_json(metadata: &OverheadMetadata) -> BenchResult<()
     fs::write(&json_path, content)
         .map_err(|e| BenchError::Report(format!("write {}: {e}", json_path.display())))?;
     eprintln!(
-        "[bench:load-pkcs11] overhead JSON report → {}",
+        "[bench:pkcs11] overhead JSON report → {}",
         json_path.display()
     );
     Ok(())
