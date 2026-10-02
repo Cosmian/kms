@@ -24,6 +24,7 @@ nav:
       - Introduction: kmip_support/introduction/index.md
       - KMIP support summary: kmip_support/support.md
       - Supported Objects: kmip_support/objects.md
+      - OpenPGP: kmip_support/openpgp.md
       - Supported Formats: kmip_support/formats.md
       - Objects Tagging: kmip_support/tagging.md
       - Attributes Extensions: kmip_support/attributes.md

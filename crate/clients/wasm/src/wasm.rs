@@ -59,8 +59,8 @@ use cosmian_kms_client_utils::{
                 create_rsa_key_pair_request, create_secret_data_kmip_object,
                 create_symmetric_key_kmip_object, decrypt_request, encrypt_request,
                 get_ec_private_key_request, get_ec_public_key_request, get_rsa_private_key_request,
-                get_rsa_public_key_request, import_object_request, secret_data_create_request,
-                symmetric_key_create_request,
+                get_rsa_public_key_request, import_object_request, pgp_key_create_request,
+                secret_data_create_request, symmetric_key_create_request,
             },
         },
         ttlv::{TTLV, from_ttlv, to_ttlv},
@@ -583,6 +583,8 @@ pub fn get_key_format_types() -> Result<JsValue, JsValue> {
         KeyFormatType::PKCS12,
         KeyFormatType::CoverCryptSecretKey,
         KeyFormatType::CoverCryptPublicKey,
+        KeyFormatType::OpenPgpSecretKey,
+        KeyFormatType::OpenPgpPublicKey,
     ];
 
     let formats: Vec<AlgoOption> = variants
@@ -592,6 +594,8 @@ pub fn get_key_format_types() -> Result<JsValue, JsValue> {
             let label = match k {
                 KeyFormatType::CoverCryptSecretKey => String::from("CoverCrypt Secret Key"),
                 KeyFormatType::CoverCryptPublicKey => String::from("CoverCrypt Public Key"),
+                KeyFormatType::OpenPgpSecretKey => String::from("OpenPGP Secret Key"),
+                KeyFormatType::OpenPgpPublicKey => String::from("OpenPGP Public Key"),
                 _ => value.clone(),
             };
             AlgoOption { value, label }
@@ -1131,6 +1135,86 @@ pub fn create_secret_data_ttlv_request(
         .map_err(|e| JsValue::from_str(&format!("Secret Data request creation failed: {e}")))?;
         to_wasm_ttlv(&request)
     }
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn create_pgp_key_ttlv_request(
+    key_id: Option<String>,
+    tags: Vec<String>,
+    algorithm: &str,
+    cryptographic_length: Option<i32>,
+    user_id: Option<String>,
+    sensitive: bool,
+    wrap_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let key_id = none_if_empty(key_id).map(UniqueIdentifier::TextString);
+    let user_id = none_if_empty(user_id);
+    let wrap_key_id = none_if_empty(wrap_key_id);
+
+    let algo = match algorithm.to_ascii_lowercase().as_str() {
+        "ed25519" => CryptographicAlgorithm::Ed25519,
+        "rsa" => CryptographicAlgorithm::RSA,
+        other => {
+            return Err(JsValue::from_str(&format!(
+                "Invalid OpenPGP algorithm: {other}. Expected 'Ed25519' or 'RSA'"
+            )));
+        }
+    };
+
+    let request = pgp_key_create_request(
+        vendor_id,
+        key_id,
+        algo,
+        cryptographic_length,
+        user_id.as_deref(),
+        &tags,
+        sensitive,
+        wrap_key_id.as_ref(),
+    )
+    .map_err(|e| JsValue::from_str(&format!("OpenPGP Key request creation failed: {e}")))?;
+
+    to_wasm_ttlv(&request)
+}
+
+/// Returns the `OpenPGP` key algorithms supported by this build.
+#[wasm_bindgen]
+pub fn get_pgp_algorithms() -> Result<JsValue, JsValue> {
+    let algos = vec![
+        AlgoOption {
+            value: "Ed25519".to_owned(),
+            label: "Ed25519 (Curve25519)".to_owned(),
+        },
+        AlgoOption {
+            value: "RSA".to_owned(),
+            label: "RSA".to_owned(),
+        },
+    ];
+    serde_wasm_bindgen::to_value(&algos).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Encrypt to an `OpenPGP` key. No cryptographic parameters: the server always uses
+/// `SEIPDv1` / AES-256 to the certificate's encryption subkey.
+#[wasm_bindgen]
+pub fn encrypt_pgp_ttlv_request(
+    key_unique_identifier: &str,
+    plaintext: Vec<u8>,
+) -> Result<JsValue, JsValue> {
+    let request = encrypt_request(key_unique_identifier, None, plaintext, None, None, None)
+        .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+/// Decrypt an `OpenPGP` message (binary or ASCII-armored).
+#[wasm_bindgen]
+pub fn decrypt_pgp_ttlv_request(
+    key_unique_identifier: &str,
+    ciphertext: Vec<u8>,
+) -> Result<JsValue, JsValue> {
+    let request = decrypt_request(key_unique_identifier, None, ciphertext, None, None, None);
+    to_wasm_ttlv(&request)
 }
 
 wasm_response_parser!(parse_create_ttlv_response, CreateResponse);

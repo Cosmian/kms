@@ -31,6 +31,7 @@ jobs:
           - ui
           - gcp-cmek
           - openssh
+          - gnupg
           - luks
           - veracrypt
           - jose
@@ -62,6 +63,9 @@ jobs:
             features: fips
           # openssh PKCS#11 tests force non-fips (EdDSA / full algorithm set)
           - type: openssh
+            features: fips
+          # gnupg OpenPGP tests force non-fips
+          - type: gnupg
             features: fips
           # luks disk-encryption PKCS#11 tests force non-fips
           - type: luks

@@ -9,7 +9,8 @@ mod validate;
 
 pub use create::{
     create_derivation_object_request, create_secret_data_kmip_object,
-    create_symmetric_key_kmip_object, secret_data_create_request, symmetric_key_create_request,
+    create_symmetric_key_kmip_object, pgp_key_create_request, secret_data_create_request,
+    symmetric_key_create_request,
 };
 pub use create_key_pair::{
     create_ec_key_pair_request, create_pqc_key_pair_request, create_rsa_key_pair_request,

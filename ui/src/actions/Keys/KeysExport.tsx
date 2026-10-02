@@ -17,7 +17,18 @@ interface KeyExportFormData {
     authenticatedAdditionalData?: string;
 }
 
-type ExportKeyFormat = "json-ttlv" | "sec1-pem" | "sec1-der" | "pkcs1-pem" | "pkcs1-der" | "pkcs8-pem" | "pkcs8-der" | "base64" | "raw";
+type ExportKeyFormat =
+    | "json-ttlv"
+    | "sec1-pem"
+    | "sec1-der"
+    | "pkcs1-pem"
+    | "pkcs1-der"
+    | "pkcs8-pem"
+    | "pkcs8-der"
+    | "base64"
+    | "raw"
+    | "pgp-secret"
+    | "pgp-public";
 
 type WrappingAlgorithm = "aes-key-wrap-padding" | "nist-key-wrap" | "aes-gcm" | "rsa-pkcs-v15" | "rsa-oaep" | "rsa-aes-key-wrap";
 
@@ -30,9 +41,9 @@ const WRAPPING_ALGORITHMS: { labelKey: string; value: WrappingAlgorithm }[] = [
     { labelKey: "keysExport.wrapAlgoRsaAesKeyWrap", value: "rsa-aes-key-wrap" },
 ];
 
-type KeyType = "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "secret-data" | "opaque-object";
+type KeyType = "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "pgp" | "secret-data" | "opaque-object";
 
-const exportFileExtension = {
+const exportFileExtension: Record<ExportKeyFormat, string> = {
     "json-ttlv": "json",
     "sec1-pem": "pem",
     "pkcs1-pem": "pem",
@@ -42,8 +53,9 @@ const exportFileExtension = {
     "pkcs8-der": "der",
     base64: "b64",
     raw: "",
+    "pgp-secret": "asc",
+    "pgp-public": "asc",
 };
-
 interface KeyExportFormProps {
     key_type: KeyType;
 }
@@ -93,7 +105,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                 const mimeType =
                     values.keyFormat === "json-ttlv"
                         ? "application/json"
-                        : values.keyFormat === "base64"
+                        : values.keyFormat === "base64" || values.keyFormat === "pgp-secret" || values.keyFormat === "pgp-public"
                           ? "text/plain"
                           : "application/octet-stream";
                 downloadFile(data, filename, mimeType);
@@ -126,6 +138,14 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
     } else if (key_type === "symmetric" || key_type === "fpe" || isDataLike) {
         keyFormats = [
             { label: t("keysExport.formatJsonTtlv"), value: "json-ttlv" },
+            { label: t("keysExport.formatBase64"), value: "base64" },
+            { label: t("keysExport.formatRaw"), value: "raw" },
+        ];
+    } else if (key_type === "pgp") {
+        keyFormats = [
+            { label: t("keysExport.formatJsonTtlv"), value: "json-ttlv" },
+            { label: t("keysExport.formatPgpSecret", { defaultValue: "OpenPGP Secret Key (.asc)" }), value: "pgp-secret" },
+            { label: t("keysExport.formatPgpPublic", { defaultValue: "OpenPGP Public Key (.asc)" }), value: "pgp-public" },
             { label: t("keysExport.formatBase64"), value: "base64" },
             { label: t("keysExport.formatRaw"), value: "raw" },
         ];

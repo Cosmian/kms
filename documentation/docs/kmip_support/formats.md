@@ -35,6 +35,13 @@ When requesting the export of an Object without specifying the Key Format Type, 
     - the uncompressed point octet form as defined in RFC5480 and used in certificates and TLS records for NIST curves.
     - the raw bytes of the public key for Curve 25519 and Curve 448
 
+### CLI Key Formats
+
+The `ckms` command-line tool supports the following format flags for OpenPGP:
+
+- Export: `--key-format pgp-secret` (exports ASCII-armored secret key block) and `--key-format pgp-public` (exports ASCII-armored public key block).
+- Import: `--key-format pgp` (imports binary or ASCII-armored OpenPGP key material, secret or public).
+
 ## Internal storage
 
 The IETF now recommends using PKCS#8 and Subject Public Key Info (SPKI) as default formats for inter-operability.

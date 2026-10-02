@@ -328,6 +328,19 @@ export async function createSymKeyWithId(page: Page, id: string): Promise<string
 }
 
 /**
+ * Create a fresh Ed25519 OpenPGP key and return its UUID.
+ */
+export async function createPgpKey(page: Page): Promise<string> {
+    await gotoAndWait(page, "/ui/pgp/keys/create");
+    await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: UI_READY_TIMEOUT });
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/has been created/i);
+    const id = extractUuid(text);
+    expect(id).not.toBeNull();
+    return id!;
+}
+
+/**
  * Navigate to `path`, run optional `setup`, submit the form, and wait for the
  * response panel.  Retries once (with a fresh navigate + setup) on a transient
  * "Failed to fetch" error, which can occur when many workers share a single KMS

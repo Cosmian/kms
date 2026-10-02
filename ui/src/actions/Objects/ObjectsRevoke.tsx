@@ -44,6 +44,7 @@ const RevokeForm: React.FC<RevokeFormProps> = ({ objectType }) => {
         symmetric: t("objectsRevoke.typeSymmetric"),
         fpe: t("objectsRevoke.typeFpe"),
         pqc: t("objectsRevoke.typePqc"),
+        pgp: "PGPKey",
         certificate: t("objectsRevoke.typeCertificate"),
         "secret-data": t("objectsRevoke.typeSecretData"),
         "opaque-object": t("objectsRevoke.typeOpaqueObject"),

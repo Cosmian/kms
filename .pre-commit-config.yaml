@@ -162,7 +162,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: test_data|documentation/docs|crate/clients/clap/src/tests/google_cmd/identities.rs|crate/clients/ckms/src/tests/google_cmd/identities.rs|crate/server/src/tests|crate/clients/clap/src/tests/shared/export_import.rs|crate/clients/ckms/src/tests/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/cng/src/key.rs|crate/crypto/src/crypto/openpgp/mod.rs|crate/test_kms_server/src/pgp_tests.rs
+        exclude: test_data|documentation/docs|crate/clients/clap/src/tests/google_cmd/identities.rs|crate/clients/ckms/src/tests/google_cmd/identities.rs|crate/server/src/tests|crate/clients/clap/src/tests/shared/export_import.rs|crate/clients/ckms/src/tests/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/cng/src/key.rs|crate/crypto/src/crypto/openpgp/mod.rs|crate/test_kms_server/src/pgp_tests.rs|crate/clients/ckms/src/tests/pgp/
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
         exclude: documentation/docs/cli/main_commands.md|documentation/docs

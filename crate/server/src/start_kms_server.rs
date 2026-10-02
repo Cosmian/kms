@@ -1697,6 +1697,7 @@ pub async fn prepare_kms_server(
                 "/rsa{_:.*}",
                 "/ec{_:.*}",
                 "/pqc{_:.*}",
+                "/pgp{_:.*}",
                 "/mac{_:.*}",
                 "/cc{_:.*}",
                 "/secret-data{_:.*}",

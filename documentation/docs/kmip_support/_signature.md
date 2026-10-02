@@ -207,3 +207,5 @@ Both Sign and SignatureVerify operations support streaming for large data:
 - Set `InitIndicator: true` to start streaming
 - Use `CorrelationValue` to continue streaming sessions
 - Set `FinalIndicator: true` to complete the operation
+
+Streaming is not supported for OpenPGP (`PGPKey`) keys: supplying `InitIndicator` or `CorrelationValue` returns an error, as does `DigestedData`.

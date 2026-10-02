@@ -32,6 +32,8 @@ pub mod version;
 #[cfg(feature = "non-fips")]
 pub mod cover_crypt;
 #[cfg(feature = "non-fips")]
+pub mod pgp;
+#[cfg(feature = "non-fips")]
 pub mod pqc;
 #[cfg(feature = "non-fips")]
 pub mod tokenize;

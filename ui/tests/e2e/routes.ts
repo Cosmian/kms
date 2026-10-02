@@ -74,6 +74,19 @@ const PQC_KEY_ROUTES: Route[] = [
     { name: "verify", path: "/ui/pqc/verify" },
 ];
 
+// ── OpenPGP Key routes ────────────────────────────────────────────────────────
+const PGP_ROUTES: Route[] = [
+    { name: "create", path: "/ui/pgp/keys/create" },
+    { name: "export", path: "/ui/pgp/keys/export" },
+    { name: "import", path: "/ui/pgp/keys/import" },
+    { name: "revoke", path: "/ui/pgp/keys/revoke" },
+    { name: "destroy", path: "/ui/pgp/keys/destroy" },
+    { name: "encrypt", path: "/ui/pgp/encrypt" },
+    { name: "decrypt", path: "/ui/pgp/decrypt" },
+    { name: "sign", path: "/ui/pgp/sign" },
+    { name: "verify", path: "/ui/pgp/verify" },
+];
+
 // ── Covercrypt Key routes ────────────────────────────────────────────────────
 const CC_KEY_ROUTES: Route[] = [
     { name: "create master key pair", path: "/ui/cc/keys/create-master-key-pair" },
@@ -186,6 +199,7 @@ export const ALL_ROUTES: { section: string; routes: Route[] }[] = [
     { section: "RSA Keys", routes: RSA_KEY_ROUTES },
     { section: "EC Keys", routes: EC_KEY_ROUTES },
     { section: "PQC Keys", routes: PQC_KEY_ROUTES },
+    { section: "OpenPGP", routes: PGP_ROUTES },
     { section: "Covercrypt Keys", routes: CC_KEY_ROUTES },
     { section: "Certificates", routes: CERT_ROUTES },
     { section: "Opaque Objects", routes: OPAQUE_ROUTES },

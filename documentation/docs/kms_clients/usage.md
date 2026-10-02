@@ -19,6 +19,7 @@ Commands:
   cc             Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
   fpe            Manage FPE keys and perform FPE encryption/decryption through KMIP Encrypt/Decrypt
   pqc            Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
+  pgp            Create, import, export and use OpenPGP keys (non-FIPS builds only)
   tokenize       Anonymization utilities: hash, noise, word masking, pattern masking, aggregation, and scaling
   certificates   Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
   cng            Manage the Windows CNG Key Storage Provider (KSP)

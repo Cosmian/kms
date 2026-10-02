@@ -33,3 +33,5 @@ SIEM = "SIEM"
 SIEMs = "SIEMs"
 SIE = "SIE"
 sie = "sie"
+# GnuPG with-colons output record tag for key fingerprints
+fpr = "fpr"

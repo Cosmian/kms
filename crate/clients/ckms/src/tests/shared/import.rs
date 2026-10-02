@@ -85,6 +85,7 @@ pub(crate) fn import_key(params: ImportKeyParams) -> CosmianResult<String> {
             ImportKeyFormat::Pkcs8Pub => "pkcs8-pub",
             ImportKeyFormat::Aes => "aes",
             ImportKeyFormat::Chacha20 => "chacha20",
+            ImportKeyFormat::Pgp => "pgp",
         };
         args.push(kfs.to_string());
     }
