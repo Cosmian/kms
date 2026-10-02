@@ -1,6 +1,6 @@
 //! Real `criterion`-crate micro-benchmarks for the PKCS#11 provider, giving
 //! single-operation statistical latency (mean/median/`CI`) for each mode — the fast
-//! counterpart to `load.rs`'s concurrency sweep (`mise bench:load-pkcs11
+//! counterpart to `load.rs`'s concurrency sweep (`mise bench:pkcs11
 //! --criterion` skips the sweep entirely and only runs these).
 //!
 //! Mirrors `mise bench:load --criterion`'s own `Criterion::default()` construction
@@ -122,7 +122,7 @@ pub(crate) fn run_criterion(
         if let Some(setup) = setup {
             setup(pool)?;
         }
-        eprintln!("[bench:load-pkcs11] criterion: {label}");
+        eprintln!("[bench:pkcs11] criterion: {label}");
         // `label` is e.g. "encrypt/aes-cbc" or "sign/eddsa-ed25519" (see
         // `ConcreteMode::label`). A flat `c.bench_function(label, ...)` gets
         // criterion-sanitized into a single directory (`encrypt_aes-cbc`), which

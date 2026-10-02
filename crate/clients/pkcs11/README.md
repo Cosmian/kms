@@ -17,4 +17,4 @@
 
 3. `bench` subcommand
 
-    The `provider` crate's compiled shared library can be benchmarked via `ckms pkcs11 bench --help` (driven through `mise bench:load-pkcs11`).
+    The `provider` crate's compiled shared library can be benchmarked via `ckms pkcs11 bench --help` (driven through `mise bench:pkcs11`).

@@ -678,7 +678,7 @@ pub(crate) fn prepare_ops<'a>(
                     Ok(()) => {}
                     Err(e) if e.is_function_not_supported() => {
                         eprintln!(
-                            "[bench:load-pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
+                            "[bench:pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
                             mode.label()
                         );
                         continue;
@@ -714,7 +714,7 @@ pub(crate) fn prepare_ops<'a>(
                     Ok(()) => {}
                     Err(e) if e.is_function_not_supported() => {
                         eprintln!(
-                            "[bench:load-pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
+                            "[bench:pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
                             mode.label()
                         );
                         continue;
@@ -739,7 +739,7 @@ pub(crate) fn prepare_ops<'a>(
                     Ok(()) => {}
                     Err(e) if e.is_function_not_supported() => {
                         eprintln!(
-                            "[bench:load-pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
+                            "[bench:pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
                             mode.label()
                         );
                         continue;
@@ -761,7 +761,7 @@ pub(crate) fn prepare_ops<'a>(
                     Ok(()) => {}
                     Err(e) if e.is_function_not_supported() => {
                         eprintln!(
-                            "[bench:load-pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
+                            "[bench:pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
                             mode.label()
                         );
                         continue;

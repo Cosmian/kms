@@ -16,7 +16,7 @@ Accepted
 
 ## Context
 
-`mise bench:load-pkcs11 --delegated --mode sign-verify` (ECDSA-P256 + Ed25519,
+`mise bench:pkcs11 --delegated --mode sign-verify` (ECDSA-P256 + Ed25519,
 concurrency 1/2/4/8) against a SoftHSM2-backed KMS server on commit `4e5ddbb78`
 ("perf(hsm): optimize PKCS#11 concurrent scaling with session pooling and
 spawn_blocking") showed every `verify` operation and `eddsa` sign **peaking at
@@ -204,7 +204,7 @@ needed there.
   `auto_rotate` suites in `cosmian_kms_server` (37 tests) pass unchanged.
   `cargo clippy --all-targets -- -D warnings` clean on both crates.
 - **IMP-006**: Success criteria — re-ran the exact reproducing benchmark
-  (`mise bench:load-pkcs11 --delegated --mode sign-verify --algorithm
+  (`mise bench:pkcs11 --delegated --mode sign-verify --algorithm
   ecdsa,eddsa --concurrency 1,2,4,8`) against a rebuilt server: the
   concurrency 4→8 regression is gone on all six operation/algorithm
   combinations, and `documentation/docs/benchmarks/ckms_bench_pkcs11_delegated/report.md`

@@ -1,4 +1,4 @@
-# HSM-direct crypto benchmarks: `ckms bench --hsm` and `bench/load-hsm --delegated`
+# HSM-direct crypto benchmarks: `ckms bench --hsm` and `bench/hsm --delegated`
 
 ## Bug Fixes
 
@@ -49,7 +49,7 @@
   and `sign-secp256k1` correctly select their own key when both coexist
   (`--mode all`)
 
-### `bench:load-pkcs11` report accuracy
+### `bench:pkcs11` report accuracy
 
 - `--criterion` was mutually exclusive with the concurrency sweep in
   `crate/clients/pkcs11/bench/src/main.rs` (`if cli.criterion { return
@@ -71,7 +71,7 @@
   `criterion_bench.rs`) gating the Ed25519 overhead ladder, which previously ran
   unconditionally whenever an EdDSA sign mode was selected under `--criterion`.
   It remains a standalone local diagnostic, never rendered into `report.md`.
-  `.mise/tasks/bench/load-pkcs11` now only builds `cosmian_pkcs11` with its
+  `.mise/tasks/bench/pkcs11` now only builds `cosmian_pkcs11` with its
   `benchmarking` feature when `--overhead` is passed, not on every `--criterion`
   run
 
@@ -83,7 +83,7 @@
   duration of its callback — including the synchronous, blocking
   `RUNTIME.block_on(...)` KMS network round-trip that `C_Sign`/`C_Verify`/
   `C_Encrypt`/`C_Decrypt` all make. A concurrency sweep against
-  `mise bench:load-pkcs11` (`--mode sign-eddsa`) showed the resulting bottleneck
+  `mise bench:pkcs11` (`--mode sign-eddsa`) showed the resulting bottleneck
   concretely: throughput stayed completely flat (~17-19 ops/s) from concurrency 1
   through 8, while p99 latency exploded from 74ms to over 5s — a single lock held
   across a blocking network call was serializing concurrent Cryptoki calls
@@ -96,7 +96,7 @@
   Cryptoki spec requires without additional application-level synchronization.
   `create`/`exists`/`flags`/`session`/`close`/`close_all` all updated accordingly
 - Re-benchmarked with the same `sign-eddsa` sweep after also switching
-  `mise bench:load-pkcs11` to one dedicated session per worker thread (see
+  `mise bench:pkcs11` to one dedicated session per worker thread (see
   "Testing" below, since a shared single session would have masked this fix
   entirely): throughput now scales with concurrency (19 → 34 → 57 → 82 ops/s at
   concurrency 1/2/4/8, a ~4.3x improvement at c=8) and p99 latency stays bounded
@@ -136,26 +136,26 @@
   through it; `--hsm --protocol jose` prints a skip notice instead of
   silently doing nothing
 
-### New independent mise task: `bench/load-hsm --delegated`
+### New independent mise task: `bench/hsm --delegated`
 
-- Add a new `.mise/tasks/bench/load-hsm-crypto` task (later merged into
-  `bench/load-hsm` behind a `--delegated` flag — see the final section of
-  this changelog), mirroring `bench/load-hsm`'s flag
+- Add a new `.mise/tasks/bench/hsm-crypto` task (later merged into
+  `bench/hsm` behind a `--delegated` flag — see the final section of
+  this changelog), mirroring `bench/hsm`'s flag
   surface (`--variant`, `--mode`, `--protocol`, `--time`, `--concurrency`,
   `--http-workers`, `--warmup`, `--cooldown`, `--sanity`) plus `bench/load`'s
   `--criterion`/`--speed`. Runs fully independently of `bench/load` and
-  `bench/load-hsm` (its own SoftHSM2 token, its own server) — unlike
-  `bench/load-hsm`, which benchmarks a software KEK *wrapped* by the HSM
+  `bench/hsm` (its own SoftHSM2 token, its own server) — unlike
+  `bench/hsm`, which benchmarks a software KEK *wrapped* by the HSM
   (crypto still executes in KMS software), this task benchmarks crypto
   operations executed *directly* on the HSM
 - Add `bench_start_server_hsm_resident` to `.mise/lib/bench_helpers.sh`: like
   `bench_start_server_hsm`, but does not set `key_encryption_key` — no KEK is
   ever created, since resident-key benchmarking doesn't need wrapping
 - Add an optional `docs_subdir` argument to `bench_generate_report` (default
-  `ckms_bench`, unchanged for `bench/load`/`bench/load-hsm`) so
-  `bench/load-hsm --delegated` writes its report to a **separate**
+  `ckms_bench`, unchanged for `bench/load`/`bench/hsm`) so
+  `bench/hsm --delegated` writes its report to a **separate**
   `documentation/docs/benchmarks/ckms_bench_delegated_crypto_operations/` directory instead of
-  clobbering the software baseline that `bench/load`/`bench/load-hsm` share
+  clobbering the software baseline that `bench/load`/`bench/hsm` share
   (the shared helper replaces its target directory wholesale on every run)
 
 ### SoftHSM2 per-token degradation: found, isolated, and worked around
@@ -170,13 +170,13 @@ created on the token), not purely a function of peak concurrency. This is a
 SoftHSM2 limitation (a software simulator not built for heavy concurrent/
 cumulative key generation on one token), not a KMS defect.
 
-Fix, so a single `bench/load-hsm --delegated` invocation reliably produces a
+Fix, so a single `bench/hsm --delegated` invocation reliably produces a
 complete report:
 
 - `PreparedLoadOp::max_concurrency` (`load.rs`) caps HSM key-creation
   load-test concurrency at 4 regardless of the requested sweep, applied by
   `bench_load` per-operation.
-- `bench/load-hsm --delegated`, when `--mode all` (the default), now runs
+- `bench/hsm --delegated`, when `--mode all` (the default), now runs
   `key-creation`, `encrypt`, and `sign-verify` as **three separate SoftHSM2
   sessions**, each with its own fresh token, so key-creation's key
   generation never contaminates the encrypt/sign token. Results are merged
@@ -203,7 +203,7 @@ categorizes as **Symmetric Encryption** rather than falling through to
 
 ### Full HSM benchmark run — final report
 
-`mise run bench:load-hsm --delegated --criterion --speed quick` (default modes/
+`mise run bench:hsm --delegated --criterion --speed quick` (default modes/
 protocols/concurrency, SoftHSM2 2.6.1, i9-14900T, release build) now
 completes end-to-end: **6 load-test operations / 46 records / 6 SVG
 charts**, **16 criterion benchmarks / 4 SVG charts**, written to
@@ -323,7 +323,7 @@ Made `## Protocols` and `## Benchmark Methodology` HSM-aware: added an
 `--hsm` flag to `.mise/scripts/bench/plot_version_compare.py` (stripped from
 `argv` before positional parsing), threaded through a new `is_hsm` parameter
 on `bench_generate_report` (`.mise/lib/bench_helpers.sh`), passed as
-`"true"` by `bench/load-hsm --delegated`. When set:
+`"true"` by `bench/hsm --delegated`. When set:
 - `## Protocols` lists only `ttlv-json`/`ttlv-bytes` (not `jose`) and
   explains why JOSE key creation can't address `hsm::` keys.
 - `## Benchmark Methodology` replaces the generic software text with the
@@ -352,29 +352,29 @@ reaching ~49,800 req/s (`ttlv-json`), ~49,100 req/s (`ttlv-bytes`), and
 ~63,600 req/s (`jose`) at concurrency 16 — confirming the extrapolation in
 issue #1155 and roughly 3.8× the ECDSA P-256 throughput in the same run.
 
-### Merged `bench/load-hsm-crypto` into `bench/load-hsm --delegated`
+### Merged `bench/hsm-crypto` into `bench/hsm --delegated`
 
-Having two separate, similarly-named mise tasks (`bench/load-hsm` for the
-software-crypto KEK-wrap benchmark, `bench/load-hsm-crypto` for the
+Having two separate, similarly-named mise tasks (`bench/hsm` for the
+software-crypto KEK-wrap benchmark, `bench/hsm-crypto` for the
 HSM-delegated crypto benchmark added above) was confusing — the names
 differ only by a suffix, yet they exercise entirely different code paths.
 
-Merged the two into a single task, `.mise/tasks/bench/load-hsm`, selected by
+Merged the two into a single task, `.mise/tasks/bench/hsm`, selected by
 a new `-d`/`--delegated` boolean flag:
 
 - Default (no flag): unchanged KEK-wrap benchmark (software crypto, root key
   wrapped by an HSM-resident KEK).
 - `--delegated`: the HSM-delegated crypto benchmark (all crypto executed
-  directly on the HSM), formerly `bench/load-hsm-crypto` — same
+  directly on the HSM), formerly `bench/hsm-crypto` — same
   three-session `--mode all` splitting, same `docs_subdir=ckms_bench_delegated_crypto_operations`
   report output, same `--criterion`/`--speed` flags, unchanged behavior.
 
-Deleted `.mise/tasks/bench/load-hsm-crypto`. Updated the two stale doc-comment
+Deleted `.mise/tasks/bench/hsm-crypto`. Updated the two stale doc-comment
 references in `crate/clients/clap/src/actions/bench/types.rs` and the two
 comment references in `.mise/scripts/bench/plot_version_compare.py` that
 named the old task, and regenerated
 `documentation/docs/benchmarks/ckms_bench_delegated_crypto_operations/report.md` (Methodology
-section) to reference `bench/load-hsm --delegated` instead — this was done
+section) to reference `bench/hsm --delegated` instead — this was done
 by re-running `plot_version_compare.py` directly against the existing
 `target/criterion/reports/5.27.0/` data, without a full benchmark re-run,
 since only report text changed, not measured behavior.
@@ -382,8 +382,8 @@ since only report text changed, not measured behavior.
 Usage after the merge:
 
 ```bash
-mise run bench:load-hsm                         # KEK-wrap (software crypto)
-mise run bench:load-hsm --delegated --criterion  # HSM-delegated crypto
+mise run bench:hsm                         # KEK-wrap (software crypto)
+mise run bench:hsm --delegated --criterion  # HSM-delegated crypto
 ```
 
 ### Dropped ttlv-bytes from the HSM-delegated report; gave the KEK-wrap benchmark its own dedicated report
@@ -404,7 +404,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
   documents `ttlv-json` as the only protocol, with the ordering-artefact explanation
   reproduced in full; a new Methodology subsection ("Why ttlv-json only (no
   ttlv-bytes)") documents the root cause for future readers.
-- Gave the HSM-backed-KEK benchmark (`bench/load-hsm`'s default, non-`--delegated`
+- Gave the HSM-backed-KEK benchmark (`bench/hsm`'s default, non-`--delegated`
   mode) its own dedicated report directory,
   `documentation/docs/benchmarks/ckms_bench_hsm_kek/`, instead of silently sharing
   (and clobbering) the plain software baseline's `ckms_bench/` directory. Its
@@ -417,14 +417,14 @@ row — the opposite of the software baseline, and not a real protocol differenc
   "Benchmarks" nav section:
   1. `benchmarks/ckms_bench/report.md` — software baseline (`bench/load`)
   2. `benchmarks/ckms_bench_hsm_kek/report.md` — HSM-backed KEK, software crypto
-     (`bench/load-hsm`, default)
+     (`bench/hsm`, default)
   3. `benchmarks/ckms_bench_delegated_crypto_operations/report.md` — HSM-delegated crypto, ttlv-json only
-     (`bench/load-hsm --delegated`)
+     (`bench/hsm --delegated`)
 
-### New independent benchmark: `mise bench:load-pkcs11`
+### New independent benchmark: `mise bench:pkcs11`
 
 - Add a new `cosmian_pkcs11_bench` crate (`crate/clients/pkcs11/bench`) and a new
-  `mise bench:load-pkcs11` task (renamed from an initial `bench:pkcs11`),
+  `mise bench:pkcs11` task (renamed from an initial `bench:pkcs11`),
   benchmarking the `cosmian_pkcs11` PKCS#11 provider itself rather than the KMIP
   REST API: the benchmark `dlopen()`s the built `libcosmian_pkcs11.{so,dylib}` and
   drives its real Cryptoki v2.40 C ABI (`C_Initialize`, `C_OpenSession`,
@@ -467,12 +467,12 @@ row — the opposite of the software baseline, and not a real protocol differenc
   (alongside the existing `--hsm`/`--kek`) and a matching `is_pkcs11` parameter to
   `bench_generate_report`, so the report's Protocols/Methodology sections describe
   the real dlopen()-based Cryptoki benchmark instead of the generic
-  KMIP-wire-protocol text — mirroring `bench/load`/`bench/load-hsm` exactly instead
+  KMIP-wire-protocol text — mirroring `bench/load`/`bench/hsm` exactly instead
   of a standalone console-only benchmark as originally implemented
 
-### Add EdDSA-Ed25519 `sign`/`verify` modes to `mise bench:load-pkcs11`
+### Add EdDSA-Ed25519 `sign`/`verify` modes to `mise bench:pkcs11`
 
-- `mise bench:load-pkcs11` previously only exercised RSA (`CKM_SHA256_RSA_PKCS`)
+- `mise bench:pkcs11` previously only exercised RSA (`CKM_SHA256_RSA_PKCS`)
   for its `sign`/`verify` modes — there was no way to benchmark Ed25519 through
   PKCS#11 at all, even though `cosmian_pkcs11_module` fully supports `CKM_EDDSA`.
   Added two new modes, `sign-eddsa`/`verify-eddsa`, that drive `C_SignInit`/`C_Sign`
@@ -486,7 +486,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
   private/public key objects by `CKA_KEY_TYPE` (`CKK_RSA`/`CKK_EC_EDWARDS`) — plain
   `find_first_by_class` would otherwise non-deterministically return whichever key
   the backend enumerates first now that two key pairs exist
-- Added the two new mode names to `.mise/tasks/bench/load-pkcs11`'s `--mode`
+- Added the two new mode names to `.mise/tasks/bench/pkcs11`'s `--mode`
   `choices` list and to the crate `README.md`'s mode table
 - Corrected a stale doc comment/README claim that `C_VerifyInit`/`C_Verify` are
   unimplemented (`CKR_FUNCTION_NOT_SUPPORTED`) by `cosmian_pkcs11_module` — both
@@ -496,7 +496,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
   defensive guard for a future provider/backend that doesn't support it, not
   because it is currently needed
 
-### `mise bench:load-pkcs11` now pools one Cryptoki session per worker thread
+### `mise bench:pkcs11` now pools one Cryptoki session per worker thread
 
 - Every worker thread of the concurrency sweep previously hammered a **single**,
   process-wide-shared `C_OpenSession` handle — the doc comments framed this as
@@ -521,7 +521,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
   well-behaved, high-concurrency PKCS#11 consumer would actually use the provider,
   so it is not the default
 
-### Add `--criterion` mode to `mise bench:load-pkcs11`; diagnose remaining latency variance
+### Add `--criterion` mode to `mise bench:pkcs11`; diagnose remaining latency variance
 
 - Added real `criterion`-crate single-operation micro-benchmarks
   (`src/criterion_bench.rs`, new `--criterion`/`--speed` flags mirroring `mise
@@ -575,7 +575,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
 ### Attribute PKCS#11 Ed25519 signing overhead and remove duplicate remote signing
 
 - Add an apples-to-apples Criterion ladder for Ed25519 signing to
-  `mise bench:load-pkcs11 --criterion`: request construction, TTLV+JSON
+  `mise bench:pkcs11 --criterion`: request construction, TTLV+JSON
   serialization, the published `ckms bench --criterion`-equivalent
   pre-serialized full-message HTTP call, a pre-serialized bare `Sign` HTTP call,
   response parsing, typed `KmsClient::sign`, the Tokio `block_on` control cost,
@@ -653,7 +653,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
   measured 114.11 microseconds for `C_SignMessage` and 139.28 microseconds
   end-to-end including local verification
 
-### `mise bench:load-pkcs11 --mode sign`/`--mode verify` now cover every signature algorithm
+### `mise bench:pkcs11 --mode sign`/`--mode verify` now cover every signature algorithm
 
 `--mode sign` previously benchmarked RSA (`CKM_SHA256_RSA_PKCS`) only; ECDSA had no
 mode at all, and EdDSA required the separate `sign-eddsa`/`verify-eddsa` names.
@@ -675,11 +675,11 @@ mode at all, and EdDSA required the separate `sign-eddsa`/`verify-eddsa` names.
   `sign-eddsa` (and their `verify-*` counterparts) remain available to benchmark one
   algorithm in isolation. FIPS builds drop the EdDSA entry from every aggregate,
   unchanged from the prior `sign-eddsa`/`verify-eddsa` gating.
-- `mise bench:load-pkcs11 --mode sign --sanity`-equivalent run (debug build,
+- `mise bench:pkcs11 --mode sign --sanity`-equivalent run (debug build,
   concurrency 1, 2 s/level) confirmed all three algorithms execute end-to-end in one
   sweep: RSA-2048 (~36 ops/s), ECDSA P-256 (~258 ops/s), Ed25519 (~863 ops/s); same
   for `--mode verify` (RSA ~653 ops/s, ECDSA ~242 ops/s, Ed25519 ~860 ops/s).
-- Updated `.mise/tasks/bench/load-pkcs11`'s `--mode` choices list and
+- Updated `.mise/tasks/bench/pkcs11`'s `--mode` choices list and
   `crate/clients/pkcs11/bench/README.md`'s mode table/usage examples accordingly.
   `criterion_bench.rs`/`plot_version_compare.py` required no changes: both already
   parse `sign`/`verify` labels generically by splitting on `/`, so the new
@@ -763,9 +763,9 @@ path itself could not be re-verified locally (requires the physical/emulated
 Crypt2pay HSM only available in CI), but the fix only changes behavior for the two
 previously-unhandled return codes on this one call site.
 
-### Fix `mise bench:load-pkcs11 --mode key-creation` at concurrency > 1: `C_DestroyObject` (`CKR_OBJECT_HANDLE_INVALID`)
+### Fix `mise bench:pkcs11 --mode key-creation` at concurrency > 1: `C_DestroyObject` (`CKR_OBJECT_HANDLE_INVALID`)
 
-Running `mise bench:load-pkcs11` (any mode set including `key-creation`, at any
+Running `mise bench:pkcs11` (any mode set including `key-creation`, at any
 requested concurrency above 1) reliably failed partway through with:
 
 ```
@@ -811,14 +811,14 @@ passed), `cargo test -p cosmian_pkcs11_bench --features non-fips` (2 passed),
 `cargo test -p cosmian_pkcs11 --lib --features non-fips` (19 passed, 5
 pre-existing `#[ignore]`), and `cargo clippy --all-targets --features non-fips
 -- -D warnings` all clean on both crates. Reproduced the original failure with
-`mise run bench:load-pkcs11 --mode key-creation --concurrency 1,2,4,8` (debug
+`mise run bench:pkcs11 --mode key-creation --concurrency 1,2,4,8` (debug
 build) before the fix, and confirmed it now completes cleanly after; also ran the
 full `--mode all` sweep (9 operations, concurrency 1/2/4, including
 `key-creation`) end-to-end with no failures.
 
 ### `mise bench -s` fixed and run per HSM in CI
 
-- `bench:load-pkcs11 --delegated` no longer sources `~/.cosmian/proteccio.sh` /
+- `bench:pkcs11 --delegated` no longer sources `~/.cosmian/proteccio.sh` /
   `~/.cosmian/crypt2pay.sh` unconditionally (they do not exist by default). HSM
   preparation moved to a new `bench_prepare_hsm` helper
   (`.mise/lib/bench_helpers.sh`) that reuses the `test:hsm-<model>` prepare
@@ -828,10 +828,10 @@ full `--mode all` sweep (9 operations, concurrency 1/2/4, including
 - `ckms pkcs11 bench --delegated` skips the AES-GCM modes: single-part
   `CKM_AES_GCM` requires a caller-supplied IV, which the KMS rejects for
   HSM-resident keys. This made `mise bench -s` fail on
-  `bench:load-pkcs11 --delegated`
+  `bench:pkcs11 --delegated`
 - Sanity runs (`--sanity`) no longer overwrite the committed reports under
   `documentation/docs/benchmarks/`
 - `mise bench` gains `--hsm-model`: `softhsm2` (default) runs the full suite,
-  any other model runs `bench:load-pkcs11 --delegated` against that HSM. The
+  any other model runs `bench:pkcs11 --delegated` against that HSM. The
   `hsm` matrix in `test_all.yml` now runs `mise run bench --sanity
   --hsm-model <type>` on every non-fips entry
