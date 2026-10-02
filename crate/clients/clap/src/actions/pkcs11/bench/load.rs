@@ -1,7 +1,7 @@
 //! Concurrency-sweep load engine for the PKCS#11 benchmark, mirroring the
 //! vocabulary (concurrency levels, p50/p95/p99, throughput) of
 //! `crate/clients/clap/src/actions/bench/load.rs`'s KMIP REST load sweep, but driving
-//! the real Cryptoki C API over a pool of dedicated `Pkcs11Session`s (one per
+//! the real Cryptoki C API over a pool of `cosmian_kms_base_hsm::Session`s (one per
 //! concurrent worker thread, or a single shared one under `--shared-session`)
 //! instead.
 
@@ -10,21 +10,16 @@ use std::{
     time::{Duration, Instant},
 };
 
-use pkcs11_sys::{
-    CKM_ECDSA, CKM_EDDSA, CKM_SHA256_RSA_PKCS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
-};
+use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
+use cosmian_kms_base_hsm::{HsmEncryptionAlgorithm, HsmSigningAlgorithm, Session};
 
 use super::{
     error::{BenchError, BenchResult},
-    loader::{AesGcmCiphertext, Pkcs11Session},
+    ops,
     setup::BenchSetup,
 };
 use crate::actions::bench::types::{BenchFilter, BenchMode};
 
-const ED25519_SIGNATURE_LEN: usize = 64;
-const RSA_2048_SIGNATURE_LEN: usize = 256;
-const ECDSA_P256_SIGNATURE_MAX_LEN: usize = 72;
-const ECDSA_P384_SIGNATURE_MAX_LEN: usize = 104;
 /// The concrete operation families `run_all` actually knows how to execute.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ConcreteMode {
@@ -48,6 +43,7 @@ pub(crate) enum ConcreteMode {
     SignSecp256k1,
     #[cfg_attr(not(feature = "non-fips"), allow(dead_code))]
     VerifySecp256k1,
+    #[cfg_attr(not(feature = "non-fips"), allow(dead_code))]
     SignEdDsa,
     VerifyEdDsa,
     KeyCreation,
@@ -228,26 +224,26 @@ pub(crate) struct LoadResult {
 
 /// A single unit of work executed repeatedly by every worker thread.
 ///
-/// Takes `&Pkcs11Session` because each worker thread now gets its own dedicated
-/// session from the pool built in `main.rs` (see [`run_for`]), rather than every
-/// thread sharing one handle.
-pub(crate) type Op<'a> = dyn Fn(&Pkcs11Session<'a>) -> BenchResult<()> + Send + Sync + 'a;
-pub(crate) type SetupOp<'a> = dyn Fn(&[Pkcs11Session<'a>]) -> BenchResult<()> + Send + Sync + 'a;
+/// Takes `&Session` because each worker thread gets its own dedicated session from
+/// the pool built in `mod.rs` (see [`run_for`]), rather than every thread sharing
+/// one handle.
+pub(crate) type Op = dyn Fn(&Session) -> BenchResult<()> + Send + Sync;
+pub(crate) type SetupOp = dyn Fn(&[Session]) -> BenchResult<()> + Send + Sync;
 
 /// One mode's report label plus its ready-to-run [`Op`] closure, as produced by
 /// [`prepare_ops`].
-pub(crate) struct PreparedOp<'a> {
+pub(crate) struct PreparedOp {
     pub(crate) label: &'static str,
-    pub(crate) setup: Option<Box<SetupOp<'a>>>,
-    pub(crate) op: Box<Op<'a>>,
+    pub(crate) setup: Option<Box<SetupOp>>,
+    pub(crate) op: Box<Op>,
 }
 
 /// Runs the full concurrency sweep for one named operation and returns one
 /// [`LoadResult`] per concurrency level.
-fn run_sweep<'a>(
+fn run_sweep(
     operation: &str,
-    pool: &[Pkcs11Session<'a>],
-    op: &Op<'a>,
+    pool: &[Session],
+    op: &Op,
     config: &SweepConfig,
 ) -> BenchResult<Vec<LoadResult>> {
     let mut results = Vec::with_capacity(config.concurrency_levels.len());
@@ -277,11 +273,11 @@ fn run_sweep<'a>(
 /// `crate/clients/pkcs11/module/src/sessions.rs` locks each session independently
 /// (not one process-wide lock shared by every session), so operations on *different*
 /// sessions no longer block each other. Passing a single-session `pool` (see
-/// `main.rs`'s `--shared-session` flag) instead reproduces the old
+/// `mod.rs`'s `--shared-session` flag) instead reproduces the old
 /// every-thread-shares-one-handle model, for direct before/after comparison.
-fn run_for<'a>(
-    pool: &[Pkcs11Session<'a>],
-    op: &Op<'a>,
+fn run_for(
+    pool: &[Session],
+    op: &Op,
     concurrency: usize,
     duration: Duration,
 ) -> BenchResult<(Vec<Duration>, Duration)> {
@@ -375,16 +371,18 @@ fn summarize(
 /// micro-benchmarks), so the two entry points can never diverge on how a mode's
 /// closure is built.
 ///
-/// `VerifyRsa`/`VerifyEcdsa`/`VerifyEdDsa` are each probed once here; if the loaded provider reports
-/// `CKR_FUNCTION_NOT_SUPPORTED` (see [`Pkcs11Session::verify`]'s doc comment), the
-/// mode is skipped with a console notice and simply absent from the returned list —
-/// mirroring `mise bench:load`'s own pattern of skipping a benchmark it cannot
-/// prepare (e.g. a key-creation failure) rather than reporting fabricated numbers.
-pub(crate) fn prepare_ops<'a>(
+/// `VerifyRsa`/`VerifyEcdsa`/`VerifyEdDsa` are each probed once here; if the loaded
+/// provider reports an error for the requested mechanism (e.g. `CKM_EDDSA` on a
+/// v2.40-only library), the mode is skipped with a console notice and simply absent
+/// from the returned list — mirroring `mise bench:load`'s own pattern of skipping a
+/// benchmark it cannot prepare (e.g. a key-creation failure) rather than reporting
+/// fabricated numbers.
+pub(crate) fn prepare_ops(
     modes: &[ConcreteMode],
-    pool: &[Pkcs11Session<'a>],
+    pool: &[Session],
     setup: &BenchSetup,
-) -> BenchResult<Vec<PreparedOp<'a>>> {
+    hsm_prefix: Option<&str>,
+) -> BenchResult<Vec<PreparedOp>> {
     // Any pooled session works for one-time setup/object-discovery calls below:
     // `crate/clients/pkcs11/module/src/objects_store.rs`'s object store is global,
     // not scoped per session, so a handle found via one session remains valid when
@@ -392,6 +390,10 @@ pub(crate) fn prepare_ops<'a>(
     let setup_session = pool
         .first()
         .ok_or_else(|| BenchError::Setup("empty PKCS#11 session pool".to_owned()))?;
+
+    // Owned copy for the `KeyCreation` closure (an `Op` is `'static`, so it cannot
+    // borrow `hsm_prefix` directly).
+    let key_creation_prefix = hsm_prefix.map(str::to_owned);
 
     let secret_key = if modes.iter().any(|mode| {
         matches!(
@@ -403,10 +405,7 @@ pub(crate) fn prepare_ops<'a>(
                 | ConcreteMode::Batch
         )
     }) {
-        Some(
-            setup_session
-                .find_first_by_class_and_id(CKO_SECRET_KEY, &setup.symmetric.to_string())?,
-        )
+        Some(ops::find(setup_session, &setup.symmetric.to_string())?)
     } else {
         None
     };
@@ -419,10 +418,7 @@ pub(crate) fn prepare_ops<'a>(
                 | ConcreteMode::VerifyRsaPss
         )
     }) {
-        Some(
-            setup_session
-                .find_first_by_class_and_id(CKO_PUBLIC_KEY, &setup.rsa_public.to_string())?,
-        )
+        Some(ops::find(setup_session, &setup.rsa_public.to_string())?)
     } else {
         None
     };
@@ -435,10 +431,7 @@ pub(crate) fn prepare_ops<'a>(
                 | ConcreteMode::SignRsaPss
         )
     }) {
-        Some(
-            setup_session
-                .find_first_by_class_and_id(CKO_PRIVATE_KEY, &setup.rsa_private.to_string())?,
-        )
+        Some(ops::find(setup_session, &setup.rsa_private.to_string())?)
     } else {
         None
     };
@@ -448,27 +441,23 @@ pub(crate) fn prepare_ops<'a>(
             ConcreteMode::SignEcdsaP256 | ConcreteMode::VerifyEcdsaP256
         )
     }) {
-        Some(
-            setup_session
-                .find_first_by_class_and_id(CKO_PRIVATE_KEY, &setup.ecdsa_private.to_string())?,
-        )
+        Some(ops::find(setup_session, &setup.ecdsa_private.to_string())?)
     } else {
         None
     };
-    let ecdsa_p384_private_key =
-        if modes.iter().any(|mode| {
-            matches!(
-                mode,
-                ConcreteMode::SignEcdsaP384 | ConcreteMode::VerifyEcdsaP384
-            )
-        }) {
-            Some(setup_session.find_first_by_class_and_id(
-                CKO_PRIVATE_KEY,
-                &setup.ecdsa_p384_private.to_string(),
-            )?)
-        } else {
-            None
-        };
+    let ecdsa_p384_private_key = if modes.iter().any(|mode| {
+        matches!(
+            mode,
+            ConcreteMode::SignEcdsaP384 | ConcreteMode::VerifyEcdsaP384
+        )
+    }) {
+        Some(ops::find(
+            setup_session,
+            &setup.ecdsa_p384_private.to_string(),
+        )?)
+    } else {
+        None
+    };
     let secp256k1_private_key = if modes.iter().any(|mode| {
         matches!(
             mode,
@@ -476,9 +465,7 @@ pub(crate) fn prepare_ops<'a>(
         )
     }) {
         match setup.secp256k1_private.as_ref() {
-            Some(id) => {
-                Some(setup_session.find_first_by_class_and_id(CKO_PRIVATE_KEY, &id.to_string())?)
-            }
+            Some(id) => Some(ops::find(setup_session, &id.to_string())?),
             None => None,
         }
     } else {
@@ -486,9 +473,7 @@ pub(crate) fn prepare_ops<'a>(
     };
     let secp256k1_public_key = if modes.contains(&ConcreteMode::VerifySecp256k1) {
         match setup.secp256k1_public.as_ref() {
-            Some(id) => {
-                Some(setup_session.find_first_by_class_and_id(CKO_PUBLIC_KEY, &id.to_string())?)
-            }
+            Some(id) => Some(ops::find(setup_session, &id.to_string())?),
             None => None,
         }
     } else {
@@ -499,9 +484,7 @@ pub(crate) fn prepare_ops<'a>(
         .any(|mode| matches!(mode, ConcreteMode::SignEdDsa | ConcreteMode::VerifyEdDsa))
     {
         match setup.ed25519_private.as_ref() {
-            Some(id) => {
-                Some(setup_session.find_first_by_class_and_id(CKO_PRIVATE_KEY, &id.to_string())?)
-            }
+            Some(id) => Some(ops::find(setup_session, &id.to_string())?),
             None => None,
         }
     } else {
@@ -509,9 +492,7 @@ pub(crate) fn prepare_ops<'a>(
     };
     let eddsa_public_key = if modes.contains(&ConcreteMode::VerifyEdDsa) {
         match setup.ed25519_public.as_ref() {
-            Some(id) => {
-                Some(setup_session.find_first_by_class_and_id(CKO_PUBLIC_KEY, &id.to_string())?)
-            }
+            Some(id) => Some(ops::find(setup_session, &id.to_string())?),
             None => None,
         }
     } else {
@@ -524,15 +505,24 @@ pub(crate) fn prepare_ops<'a>(
         let key = secret_key.ok_or_else(|| {
             BenchError::Setup("DecryptAesCbc requires a provisioned secret key".to_owned())
         })?;
-        Some(setup_session.encrypt(key, &plaintext)?)
+        let c = setup_session.encrypt(key, HsmEncryptionAlgorithm::AesCbc, &plaintext, None)?;
+        Some([c.iv.unwrap_or_default(), c.ciphertext].concat())
     } else {
         None
     };
-    let ciphertext_gcm: Option<AesGcmCiphertext> = if modes.contains(&ConcreteMode::DecryptAesGcm) {
+    let ciphertext_gcm: Option<Vec<u8>> = if modes.contains(&ConcreteMode::DecryptAesGcm) {
         let key = secret_key.ok_or_else(|| {
             BenchError::Setup("DecryptAesGcm requires a provisioned secret key".to_owned())
         })?;
-        Some(setup_session.encrypt_gcm_for_decryption(key, &plaintext)?)
+        let c = setup_session.encrypt(key, HsmEncryptionAlgorithm::AesGcm, &plaintext, None)?;
+        Some(
+            [
+                c.iv.unwrap_or_default(),
+                c.ciphertext,
+                c.tag.unwrap_or_default(),
+            ]
+            .concat(),
+        )
     } else {
         None
     };
@@ -540,7 +530,11 @@ pub(crate) fn prepare_ops<'a>(
         let key = rsa_public_key.ok_or_else(|| {
             BenchError::Setup("DecryptRsaPkcs requires a provisioned RSA public key".to_owned())
         })?;
-        Some(setup_session.encrypt_rsa(key, &message)?)
+        Some(
+            setup_session
+                .encrypt(key, HsmEncryptionAlgorithm::RsaPkcsV15, &message, None)?
+                .ciphertext,
+        )
     } else {
         None
     };
@@ -562,8 +556,8 @@ pub(crate) fn prepare_ops<'a>(
                 "EncryptRsaOaep/DecryptRsaOaep require a provisioned RSA public key".to_owned(),
             )
         })?;
-        match setup_session.encrypt_rsa_oaep(key, &message) {
-            Ok(ciphertext) => Some(ciphertext),
+        match setup_session.encrypt(key, HsmEncryptionAlgorithm::RsaOaepSha256, &message, None) {
+            Ok(ciphertext) => Some(ciphertext.ciphertext),
             Err(error) => {
                 eprintln!(
                     "[bench:pkcs11] 'encrypt/rsa-oaep'/'decrypt/rsa-oaep' unavailable, \
@@ -586,7 +580,7 @@ pub(crate) fn prepare_ops<'a>(
                 "VerifyRsaPkcs mode requires a provisioned RSA private key".to_owned(),
             )
         })?;
-        Some(setup_session.sign(key, &message, CKM_SHA256_RSA_PKCS, RSA_2048_SIGNATURE_LEN)?)
+        Some(setup_session.sign(key, HsmSigningAlgorithm::Sha256WithRsa, &message)?)
     } else {
         None
     };
@@ -594,9 +588,16 @@ pub(crate) fn prepare_ops<'a>(
         let key = rsa_private_key.ok_or_else(|| {
             BenchError::Setup("VerifyRsaPss mode requires a provisioned RSA private key".to_owned())
         })?;
-        let mut sig = vec![0_u8; RSA_2048_SIGNATURE_LEN];
-        setup_session.sign_pss_into(key, &message, &mut sig)?;
-        Some(sig)
+        Some(setup_session.sign(
+            key,
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
+                salt_length: Some(32),
+                prehashed: true,
+            },
+            &message,
+        )?)
     } else {
         None
     };
@@ -605,7 +606,14 @@ pub(crate) fn prepare_ops<'a>(
         let key = ecdsa_private_key.ok_or_else(|| {
             BenchError::Setup("VerifyEcdsaP256 mode requires a provisioned EC P-256 key".to_owned())
         })?;
-        Some(setup_session.sign(key, &message, CKM_ECDSA, ECDSA_P256_SIGNATURE_MAX_LEN)?)
+        Some(setup_session.sign(
+            key,
+            HsmSigningAlgorithm::Ecdsa {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                prehashed: true,
+            },
+            &message,
+        )?)
     } else {
         None
     };
@@ -613,7 +621,14 @@ pub(crate) fn prepare_ops<'a>(
         let key = ecdsa_p384_private_key.ok_or_else(|| {
             BenchError::Setup("VerifyEcdsaP384 mode requires a provisioned EC P-384 key".to_owned())
         })?;
-        Some(setup_session.sign(key, &message, CKM_ECDSA, ECDSA_P384_SIGNATURE_MAX_LEN)?)
+        Some(setup_session.sign(
+            key,
+            HsmSigningAlgorithm::Ecdsa {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                prehashed: true,
+            },
+            &message,
+        )?)
     } else {
         None
     };
@@ -621,7 +636,14 @@ pub(crate) fn prepare_ops<'a>(
     // `SignSecp256k1`.
     let verify_secp256k1_signature = if modes.contains(&ConcreteMode::VerifySecp256k1) {
         if let Some(key) = secp256k1_private_key {
-            Some(setup_session.sign(key, &message, CKM_ECDSA, ECDSA_P256_SIGNATURE_MAX_LEN)?)
+            Some(setup_session.sign(
+                key,
+                HsmSigningAlgorithm::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: true,
+                },
+                &message,
+            )?)
         } else {
             None
         }
@@ -630,11 +652,9 @@ pub(crate) fn prepare_ops<'a>(
     };
     let eddsa_verify_signature = if modes.contains(&ConcreteMode::VerifyEdDsa) {
         if let Some(key) = eddsa_private_key {
-            setup_session.message_sign_init(key, CKM_EDDSA)?;
-            let mut signature = vec![0_u8; ED25519_SIGNATURE_LEN];
-            let signature_len = setup_session.sign_message_into(&message, &mut signature)?;
+            setup_session.message_sign_init(key, HsmSigningAlgorithm::Eddsa)?;
+            let signature = setup_session.sign_message(&message)?;
             setup_session.message_sign_final()?;
-            signature.truncate(signature_len);
             Some(signature)
         } else {
             None
@@ -645,15 +665,20 @@ pub(crate) fn prepare_ops<'a>(
 
     let mut prepared = Vec::new();
     for mode in modes {
-        let mut operation_setup: Option<Box<SetupOp<'a>>> = None;
-        let op: Box<Op<'a>> = match mode {
+        let mut operation_setup: Option<Box<SetupOp>> = None;
+        let op: Box<Op> = match mode {
             ConcreteMode::EncryptAesCbc => {
                 let Some(secret_key) = secret_key else {
                     continue;
                 };
                 let plaintext = plaintext.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.encrypt(secret_key, &plaintext)?;
+                Box::new(move |session: &Session| {
+                    session.encrypt(
+                        secret_key,
+                        HsmEncryptionAlgorithm::AesCbc,
+                        &plaintext,
+                        None,
+                    )?;
                     Ok(())
                 })
             }
@@ -662,8 +687,13 @@ pub(crate) fn prepare_ops<'a>(
                     continue;
                 };
                 let plaintext = plaintext.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.encrypt_gcm(secret_key, &plaintext)?;
+                Box::new(move |session: &Session| {
+                    session.encrypt(
+                        secret_key,
+                        HsmEncryptionAlgorithm::AesGcm,
+                        &plaintext,
+                        None,
+                    )?;
                     Ok(())
                 })
             }
@@ -672,8 +702,13 @@ pub(crate) fn prepare_ops<'a>(
                     continue;
                 };
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.encrypt_rsa(rsa_public_key, &message)?;
+                Box::new(move |session: &Session| {
+                    session.encrypt(
+                        rsa_public_key,
+                        HsmEncryptionAlgorithm::RsaPkcsV15,
+                        &message,
+                        None,
+                    )?;
                     Ok(())
                 })
             }
@@ -686,8 +721,13 @@ pub(crate) fn prepare_ops<'a>(
                     continue;
                 }
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.encrypt_rsa_oaep(rsa_public_key, &message)?;
+                Box::new(move |session: &Session| {
+                    session.encrypt(
+                        rsa_public_key,
+                        HsmEncryptionAlgorithm::RsaOaepSha256,
+                        &message,
+                        None,
+                    )?;
                     Ok(())
                 })
             }
@@ -698,15 +738,17 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(ciphertext) = ciphertext_cbc.clone() else {
                     continue;
                 };
-                if let Err(error) = setup_session.decrypt(secret_key, &ciphertext) {
+                if let Err(error) =
+                    setup_session.decrypt(secret_key, HsmEncryptionAlgorithm::AesCbc, &ciphertext)
+                {
                     eprintln!(
                         "[bench:pkcs11] '{}' unavailable, skipping: {error}",
                         mode.label()
                     );
                     continue;
                 }
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.decrypt(secret_key, &ciphertext)?;
+                Box::new(move |session: &Session| {
+                    session.decrypt(secret_key, HsmEncryptionAlgorithm::AesCbc, &ciphertext)?;
                     Ok(())
                 })
             }
@@ -717,15 +759,17 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(ciphertext) = ciphertext_gcm.clone() else {
                     continue;
                 };
-                if let Err(error) = setup_session.decrypt_gcm(secret_key, &ciphertext) {
+                if let Err(error) =
+                    setup_session.decrypt(secret_key, HsmEncryptionAlgorithm::AesGcm, &ciphertext)
+                {
                     eprintln!(
                         "[bench:pkcs11] '{}' unavailable, skipping: {error}",
                         mode.label()
                     );
                     continue;
                 }
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.decrypt_gcm(secret_key, &ciphertext)?;
+                Box::new(move |session: &Session| {
+                    session.decrypt(secret_key, HsmEncryptionAlgorithm::AesGcm, &ciphertext)?;
                     Ok(())
                 })
             }
@@ -736,15 +780,23 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(ciphertext) = ciphertext_rsa.clone() else {
                     continue;
                 };
-                if let Err(error) = setup_session.decrypt_rsa(rsa_private_key, &ciphertext) {
+                if let Err(error) = setup_session.decrypt(
+                    rsa_private_key,
+                    HsmEncryptionAlgorithm::RsaPkcsV15,
+                    &ciphertext,
+                ) {
                     eprintln!(
                         "[bench:pkcs11] '{}' unavailable, skipping: {error}",
                         mode.label()
                     );
                     continue;
                 }
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.decrypt_rsa(rsa_private_key, &ciphertext)?;
+                Box::new(move |session: &Session| {
+                    session.decrypt(
+                        rsa_private_key,
+                        HsmEncryptionAlgorithm::RsaPkcsV15,
+                        &ciphertext,
+                    )?;
                     Ok(())
                 })
             }
@@ -755,15 +807,23 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(ciphertext) = ciphertext_rsa_oaep.clone() else {
                     continue;
                 };
-                if let Err(error) = setup_session.decrypt_rsa_oaep(rsa_private_key, &ciphertext) {
+                if let Err(error) = setup_session.decrypt(
+                    rsa_private_key,
+                    HsmEncryptionAlgorithm::RsaOaepSha256,
+                    &ciphertext,
+                ) {
                     eprintln!(
                         "[bench:pkcs11] '{}' unavailable, skipping: {error}",
                         mode.label()
                     );
                     continue;
                 }
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.decrypt_rsa_oaep(rsa_private_key, &ciphertext)?;
+                Box::new(move |session: &Session| {
+                    session.decrypt(
+                        rsa_private_key,
+                        HsmEncryptionAlgorithm::RsaOaepSha256,
+                        &ciphertext,
+                    )?;
                     Ok(())
                 })
             }
@@ -772,14 +832,8 @@ pub(crate) fn prepare_ops<'a>(
                     continue;
                 };
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    let mut signature = [0_u8; RSA_2048_SIGNATURE_LEN];
-                    session.sign_into(
-                        private_key,
-                        &message,
-                        CKM_SHA256_RSA_PKCS,
-                        &mut signature,
-                    )?;
+                Box::new(move |session: &Session| {
+                    session.sign(private_key, HsmSigningAlgorithm::Sha256WithRsa, &message)?;
                     Ok(())
                 })
             }
@@ -788,9 +842,17 @@ pub(crate) fn prepare_ops<'a>(
                     continue;
                 };
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    let mut signature = [0_u8; RSA_2048_SIGNATURE_LEN];
-                    session.sign_pss_into(private_key, &message, &mut signature)?;
+                Box::new(move |session: &Session| {
+                    session.sign(
+                        private_key,
+                        HsmSigningAlgorithm::RsaPss {
+                            hashing_algorithm: HashingAlgorithm::SHA256,
+                            mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
+                            salt_length: Some(32),
+                            prehashed: true,
+                        },
+                        &message,
+                    )?;
                     Ok(())
                 })
             }
@@ -799,9 +861,15 @@ pub(crate) fn prepare_ops<'a>(
                     continue;
                 };
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    let mut signature = [0_u8; ECDSA_P256_SIGNATURE_MAX_LEN];
-                    session.sign_into(ecdsa_private_key, &message, CKM_ECDSA, &mut signature)?;
+                Box::new(move |session: &Session| {
+                    session.sign(
+                        ecdsa_private_key,
+                        HsmSigningAlgorithm::Ecdsa {
+                            hashing_algorithm: HashingAlgorithm::SHA256,
+                            prehashed: true,
+                        },
+                        &message,
+                    )?;
                     Ok(())
                 })
             }
@@ -810,13 +878,14 @@ pub(crate) fn prepare_ops<'a>(
                     continue;
                 };
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    let mut signature = [0_u8; ECDSA_P384_SIGNATURE_MAX_LEN];
-                    session.sign_into(
+                Box::new(move |session: &Session| {
+                    session.sign(
                         ecdsa_p384_private_key,
+                        HsmSigningAlgorithm::Ecdsa {
+                            hashing_algorithm: HashingAlgorithm::SHA256,
+                            prehashed: true,
+                        },
                         &message,
-                        CKM_ECDSA,
-                        &mut signature,
                     )?;
                     Ok(())
                 })
@@ -826,13 +895,14 @@ pub(crate) fn prepare_ops<'a>(
                     continue;
                 };
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    let mut signature = [0_u8; ECDSA_P256_SIGNATURE_MAX_LEN];
-                    session.sign_into(
+                Box::new(move |session: &Session| {
+                    session.sign(
                         secp256k1_private_key,
+                        HsmSigningAlgorithm::Ecdsa {
+                            hashing_algorithm: HashingAlgorithm::SHA256,
+                            prehashed: true,
+                        },
                         &message,
-                        CKM_ECDSA,
-                        &mut signature,
                     )?;
                     Ok(())
                 })
@@ -841,15 +911,16 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(eddsa_private_key) = eddsa_private_key else {
                     continue;
                 };
-                operation_setup = Some(Box::new(move |sessions: &[Pkcs11Session<'a>]| {
+                operation_setup = Some(Box::new(move |sessions: &[Session]| {
                     sessions.iter().try_for_each(|session| {
-                        session.message_sign_init(eddsa_private_key, CKM_EDDSA)
+                        session
+                            .message_sign_init(eddsa_private_key, HsmSigningAlgorithm::Eddsa)
+                            .map_err(BenchError::from)
                     })
                 }));
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    let mut signature = [0_u8; ED25519_SIGNATURE_LEN];
-                    session.sign_message_into(&message, &mut signature)?;
+                Box::new(move |session: &Session| {
+                    session.sign_message(&message)?;
                     Ok(())
                 })
             }
@@ -857,90 +928,140 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(signature) = verify_rsa_signature.clone() else {
                     continue;
                 };
-                let public_key = setup_session
-                    .find_first_by_class_and_id(CKO_PUBLIC_KEY, &setup.rsa_public.to_string())?;
-                match setup_session.verify(public_key, &message, &signature, CKM_SHA256_RSA_PKCS) {
-                    Ok(()) => {}
-                    Err(e) if e.is_function_not_supported() => {
-                        eprintln!(
-                            "[bench:pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
-                            mode.label()
-                        );
+                let public_key = ops::find(setup_session, &setup.rsa_public.to_string())?;
+                let label = mode.label();
+                match setup_session.verify(
+                    public_key,
+                    HsmSigningAlgorithm::Sha256WithRsa,
+                    &message,
+                    &signature,
+                ) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return Err(BenchError::Setup(format!(
+                            "{label}: signature verification failed"
+                        )));
+                    }
+                    Err(e) => {
+                        eprintln!("[bench:pkcs11] '{label}' unavailable, skipping: {e}");
                         continue;
                     }
-                    Err(e) => return Err(e),
                 }
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.verify(public_key, &message, &signature, CKM_SHA256_RSA_PKCS)
+                Box::new(move |session: &Session| {
+                    if session.verify(
+                        public_key,
+                        HsmSigningAlgorithm::Sha256WithRsa,
+                        &message,
+                        &signature,
+                    )? {
+                        Ok(())
+                    } else {
+                        Err(BenchError::Setup(format!(
+                            "{label}: signature verification failed"
+                        )))
+                    }
                 })
             }
             ConcreteMode::VerifyRsaPss => {
                 let Some(signature) = verify_rsa_pss_signature.clone() else {
                     continue;
                 };
-                let public_key = setup_session
-                    .find_first_by_class_and_id(CKO_PUBLIC_KEY, &setup.rsa_public.to_string())?;
-                match setup_session.verify_pss(public_key, &message, &signature) {
-                    Ok(()) => {}
-                    Err(error) if error.is_function_not_supported() => {
-                        eprintln!(
-                            "[bench:pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
-                            mode.label()
-                        );
+                let public_key = ops::find(setup_session, &setup.rsa_public.to_string())?;
+                let label = mode.label();
+                let pss = HsmSigningAlgorithm::RsaPss {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
+                    salt_length: Some(32),
+                    prehashed: true,
+                };
+                match setup_session.verify(public_key, pss, &message, &signature) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return Err(BenchError::Setup(format!(
+                            "{label}: signature verification failed"
+                        )));
+                    }
+                    Err(e) => {
+                        eprintln!("[bench:pkcs11] '{label}' unavailable, skipping: {e}");
                         continue;
                     }
-                    Err(error) => return Err(error),
                 }
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.verify_pss(public_key, &message, &signature)
+                Box::new(move |session: &Session| {
+                    if session.verify(public_key, pss, &message, &signature)? {
+                        Ok(())
+                    } else {
+                        Err(BenchError::Setup(format!(
+                            "{label}: signature verification failed"
+                        )))
+                    }
                 })
             }
             ConcreteMode::VerifyEcdsaP256 => {
                 let Some(signature) = verify_ecdsa_signature.clone() else {
                     continue;
                 };
-                let public_key = setup_session
-                    .find_first_by_class_and_id(CKO_PUBLIC_KEY, &setup.ecdsa_public.to_string())?;
-                match setup_session.verify(public_key, &message, &signature, CKM_ECDSA) {
-                    Ok(()) => {}
-                    Err(e) if e.is_function_not_supported() => {
-                        eprintln!(
-                            "[bench:pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
-                            mode.label()
-                        );
+                let public_key = ops::find(setup_session, &setup.ecdsa_public.to_string())?;
+                let label = mode.label();
+                let ecdsa = HsmSigningAlgorithm::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: true,
+                };
+                match setup_session.verify(public_key, ecdsa, &message, &signature) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return Err(BenchError::Setup(format!(
+                            "{label}: signature verification failed"
+                        )));
+                    }
+                    Err(e) => {
+                        eprintln!("[bench:pkcs11] '{label}' unavailable, skipping: {e}");
                         continue;
                     }
-                    Err(e) => return Err(e),
                 }
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.verify(public_key, &message, &signature, CKM_ECDSA)
+                Box::new(move |session: &Session| {
+                    if session.verify(public_key, ecdsa, &message, &signature)? {
+                        Ok(())
+                    } else {
+                        Err(BenchError::Setup(format!(
+                            "{label}: signature verification failed"
+                        )))
+                    }
                 })
             }
             ConcreteMode::VerifyEcdsaP384 => {
                 let Some(signature) = verify_ecdsa_p384_signature.clone() else {
                     continue;
                 };
-                let public_key = setup_session.find_first_by_class_and_id(
-                    CKO_PUBLIC_KEY,
-                    &setup.ecdsa_p384_public.to_string(),
-                )?;
-                match setup_session.verify(public_key, &message, &signature, CKM_ECDSA) {
-                    Ok(()) => {}
-                    Err(e) if e.is_function_not_supported() => {
-                        eprintln!(
-                            "[bench:pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
-                            mode.label()
-                        );
+                let public_key = ops::find(setup_session, &setup.ecdsa_p384_public.to_string())?;
+                let label = mode.label();
+                let ecdsa = HsmSigningAlgorithm::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: true,
+                };
+                match setup_session.verify(public_key, ecdsa, &message, &signature) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return Err(BenchError::Setup(format!(
+                            "{label}: signature verification failed"
+                        )));
+                    }
+                    Err(e) => {
+                        eprintln!("[bench:pkcs11] '{label}' unavailable, skipping: {e}");
                         continue;
                     }
-                    Err(e) => return Err(e),
                 }
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.verify(public_key, &message, &signature, CKM_ECDSA)
+                Box::new(move |session: &Session| {
+                    if session.verify(public_key, ecdsa, &message, &signature)? {
+                        Ok(())
+                    } else {
+                        Err(BenchError::Setup(format!(
+                            "{label}: signature verification failed"
+                        )))
+                    }
                 })
             }
             ConcreteMode::VerifySecp256k1 => {
@@ -950,20 +1071,32 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(public_key) = secp256k1_public_key else {
                     continue;
                 };
-                match setup_session.verify(public_key, &message, &signature, CKM_ECDSA) {
-                    Ok(()) => {}
-                    Err(e) if e.is_function_not_supported() => {
-                        eprintln!(
-                            "[bench:pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
-                            mode.label()
-                        );
+                let label = mode.label();
+                let ecdsa = HsmSigningAlgorithm::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: true,
+                };
+                match setup_session.verify(public_key, ecdsa, &message, &signature) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return Err(BenchError::Setup(format!(
+                            "{label}: signature verification failed"
+                        )));
+                    }
+                    Err(e) => {
+                        eprintln!("[bench:pkcs11] '{label}' unavailable, skipping: {e}");
                         continue;
                     }
-                    Err(e) => return Err(e),
                 }
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.verify(public_key, &message, &signature, CKM_ECDSA)
+                Box::new(move |session: &Session| {
+                    if session.verify(public_key, ecdsa, &message, &signature)? {
+                        Ok(())
+                    } else {
+                        Err(BenchError::Setup(format!(
+                            "{label}: signature verification failed"
+                        )))
+                    }
                 })
             }
             ConcreteMode::VerifyEdDsa => {
@@ -973,33 +1106,59 @@ pub(crate) fn prepare_ops<'a>(
                 let Some(public_key) = eddsa_public_key else {
                     continue;
                 };
-                match setup_session.verify(public_key, &message, &signature, CKM_EDDSA) {
-                    Ok(()) => {}
-                    Err(e) if e.is_function_not_supported() => {
-                        eprintln!(
-                            "[bench:pkcs11] '{}' — C_Verify is not implemented (CKR_FUNCTION_NOT_SUPPORTED); skipping",
-                            mode.label()
-                        );
+                let label = mode.label();
+                match setup_session.verify(
+                    public_key,
+                    HsmSigningAlgorithm::Eddsa,
+                    &message,
+                    &signature,
+                ) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return Err(BenchError::Setup(format!(
+                            "{label}: signature verification failed"
+                        )));
+                    }
+                    Err(e) => {
+                        eprintln!("[bench:pkcs11] '{label}' unavailable, skipping: {e}");
                         continue;
                     }
-                    Err(e) => return Err(e),
                 }
                 let message = message.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
-                    session.verify(public_key, &message, &signature, CKM_EDDSA)
+                Box::new(move |session: &Session| {
+                    if session.verify(
+                        public_key,
+                        HsmSigningAlgorithm::Eddsa,
+                        &message,
+                        &signature,
+                    )? {
+                        Ok(())
+                    } else {
+                        Err(BenchError::Setup(format!(
+                            "{label}: signature verification failed"
+                        )))
+                    }
                 })
             }
             ConcreteMode::KeyCreation => {
-                Box::new(move |session: &Pkcs11Session<'a>| session.generate_and_destroy_key())
+                let key_creation_prefix = key_creation_prefix.clone();
+                Box::new(move |session: &Session| {
+                    ops::generate_and_destroy_key(session, key_creation_prefix.as_deref())
+                })
             }
             ConcreteMode::Batch => {
                 let Some(secret_key) = secret_key else {
                     continue;
                 };
                 let plaintext = plaintext.clone();
-                Box::new(move |session: &Pkcs11Session<'a>| {
+                Box::new(move |session: &Session| {
                     for _ in 0..10 {
-                        session.encrypt(secret_key, &plaintext)?;
+                        session.encrypt(
+                            secret_key,
+                            HsmEncryptionAlgorithm::AesCbc,
+                            &plaintext,
+                            None,
+                        )?;
                     }
                     Ok(())
                 })
@@ -1019,11 +1178,12 @@ pub(crate) fn prepare_ops<'a>(
 /// closure is built and which modes may be silently skipped.
 pub(crate) fn run_all(
     modes: &[ConcreteMode],
-    pool: &[Pkcs11Session<'_>],
+    pool: &[Session],
     setup: &BenchSetup,
     config: &SweepConfig,
+    hsm_prefix: Option<&str>,
 ) -> BenchResult<Vec<LoadResult>> {
-    let prepared = prepare_ops(modes, pool, setup)?;
+    let prepared = prepare_ops(modes, pool, setup, hsm_prefix)?;
     let mut all_results = Vec::with_capacity(prepared.len());
     for PreparedOp { label, setup, op } in prepared {
         if let Some(setup) = setup {
@@ -1032,7 +1192,7 @@ pub(crate) fn run_all(
         all_results.extend(run_sweep(label, pool, &*op, config)?);
         if label == "sign/eddsa-ed25519" {
             pool.iter()
-                .try_for_each(Pkcs11Session::message_sign_final)?;
+                .try_for_each(|session| session.message_sign_final().map_err(BenchError::from))?;
         }
     }
     Ok(all_results)

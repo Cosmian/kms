@@ -1144,7 +1144,13 @@ fn test_hsm_kek_c_verify_round_trip() -> Pkcs11Result<()> {
     // Positive case: a genuine signature must verify successfully through the same
     // `Backend::remote_verify` path used by the real `C_VerifyInit`/`C_Verify` functions.
     backend
-        .remote_verify(&pk_id, &SignatureAlgorithm::Ecdsa, &prehash, &signature)
+        .remote_verify(
+            &pk_id,
+            &SignatureAlgorithm::Ecdsa,
+            &prehash,
+            &signature,
+            KeyAlgorithm::EccP256,
+        )
         .expect("a genuine ECDSA P-256 signature must verify successfully via C_Verify");
 
     // Negative case: a tampered signature must be rejected with CKR_SIGNATURE_INVALID,
@@ -1159,6 +1165,7 @@ fn test_hsm_kek_c_verify_round_trip() -> Pkcs11Result<()> {
             &SignatureAlgorithm::Ecdsa,
             &prehash,
             &tampered_signature,
+            KeyAlgorithm::EccP256,
         )
         .expect_err("a tampered signature must be rejected, not silently accepted");
     assert!(

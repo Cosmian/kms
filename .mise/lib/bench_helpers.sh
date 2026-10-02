@@ -802,7 +802,6 @@ PYEOF
 #   for PKCS#11 operations delegated to HSM-resident keys.
 # Reads:  $CRITERION_HOME/load_*.json  (load tests)
 #         $CRITERION_HOME/criterion.json  (criterion benchmarks)
-#         $CRITERION_HOME/pkcs11_overhead.json  (PKCS#11 overhead breakdown)
 # Writes: $CRITERION_HOME/reports/<version>/  data files + report.md + SVGs
 #         $CRITERION_HOME/reports/<version>/load/       load SVGs
 #         $CRITERION_HOME/reports/<version>/criterion/  criterion SVGs
@@ -849,10 +848,6 @@ bench_generate_report() {
   done
   if [ -f "${crit_home}/criterion.json" ]; then
     cp "${crit_home}/criterion.json" "${report_dir}/${version}/"
-    found=1
-  fi
-  if [ -f "${crit_home}/pkcs11_overhead.json" ]; then
-    cp "${crit_home}/pkcs11_overhead.json" "${report_dir}/${version}/"
     found=1
   fi
 

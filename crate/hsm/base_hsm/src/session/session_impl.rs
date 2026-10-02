@@ -175,7 +175,7 @@ const fn is_encryption_algorithm_supported(_: HsmEncryptionAlgorithm) -> bool {
 }
 
 #[cfg(not(feature = "non-fips"))]
-const fn is_signing_algorithm_supported(algorithm: HsmSigningAlgorithm) -> bool {
+pub(super) const fn is_signing_algorithm_supported(algorithm: HsmSigningAlgorithm) -> bool {
     // Both the hashing mechanism and the pre-hashed `DigestInfo` path must be rejected:
     // otherwise a 20-byte SHA-1 digest signed through raw `CKM_RSA_PKCS` bypasses the gate.
     !matches!(
@@ -188,7 +188,7 @@ const fn is_signing_algorithm_supported(algorithm: HsmSigningAlgorithm) -> bool 
 }
 
 #[cfg(feature = "non-fips")]
-const fn is_signing_algorithm_supported(_: HsmSigningAlgorithm) -> bool {
+pub(super) const fn is_signing_algorithm_supported(_: HsmSigningAlgorithm) -> bool {
     true
 }
 

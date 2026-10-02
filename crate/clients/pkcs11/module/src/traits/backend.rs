@@ -273,6 +273,7 @@ pub trait Backend: Send + Sync {
         remote_id: &str,
         algorithm: &SignatureAlgorithm,
         data: &[u8],
+        key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<Vec<u8>>;
 
     /// Verifies `signature` over `data` for the remote public key identified by `remote_id`,
@@ -286,5 +287,6 @@ pub trait Backend: Send + Sync {
         algorithm: &SignatureAlgorithm,
         data: &[u8],
         signature: &[u8],
+        key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<()>;
 }
