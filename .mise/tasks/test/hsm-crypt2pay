@@ -31,6 +31,14 @@ trap cleanup EXIT
 
 print_header "Running Crypt2Pay HSM tests (${VARIANT_NAME})"
 
+# Local dev convenience: CI injects CRYPT2PAY_PASSWORD/OVPN_CONF as secrets;
+# locally, source them from an optional ~/.cosmian/crypt2pay.sh (same
+# convention as bench_prepare_hsm in .mise/lib/bench_helpers.sh).
+if [[ -f "${HOME}/.cosmian/crypt2pay.sh" ]]; then
+  # shellcheck source=/dev/null
+  source "${HOME}/.cosmian/crypt2pay.sh"
+fi
+
 # Prepare Crypt2Pay HSM libraries: downloads, extracts, and installs to /lib/.
 bash "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_crypt2pay.sh"
 
