@@ -839,7 +839,9 @@ fn get_attribute_value_buffer_too_small_does_not_overflow() {
         },
         CKR_BUFFER_TOO_SMALL
     );
-    assert_eq!(template[0].ulValueLen, CK_UNAVAILABLE_INFORMATION);
+    // Bind to a local to prevent unaligned reads (packed struct field) — https://github.com/rust-lang/rust/issues/82523
+    let value_len = template[0].ulValueLen;
+    assert_eq!(value_len, CK_UNAVAILABLE_INFORMATION);
     assert!(buffer.iter().all(|b| *b == 0xAA), "buffer was written");
 
     // Size query then a correctly sized buffer still work.
@@ -848,7 +850,9 @@ fn get_attribute_value_buffer_too_small_does_not_overflow() {
         unsafe { C_GetAttributeValue(session_h, key_handle, template.as_mut_ptr(), 1) },
         CKR_OK
     );
-    assert_eq!(template[0].ulValueLen, 13);
+    // Bind to a local to prevent unaligned reads (packed struct field) — https://github.com/rust-lang/rust/issues/82523
+    let value_len = template[0].ulValueLen;
+    assert_eq!(value_len, 13);
     template[0].pValue = buffer.as_mut_ptr().cast::<std::ffi::c_void>();
     assert_eq!(
         unsafe { C_GetAttributeValue(session_h, key_handle, template.as_mut_ptr(), 1) },
