@@ -751,7 +751,8 @@ pub(crate) fn kms_encrypt(
     encrypt_ctx: &EncryptContext,
     data: Vec<u8>,
 ) -> Pkcs11Result<Vec<u8>> {
-    let mut output = RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data))?;
+    let mut output =
+        RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data, false))?;
     if matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
         output.ciphertext.extend_from_slice(&output.tag);
     }
@@ -764,13 +765,14 @@ pub(crate) fn kms_encrypt_message(
     encrypt_ctx: &EncryptContext,
     data: Vec<u8>,
 ) -> Pkcs11Result<MessageEncryptionOutput> {
-    RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data))
+    RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data, true))
 }
 
 async fn kms_encrypt_async(
     kms_rest_client: &KmsClient,
     encrypt_ctx: &EncryptContext,
     data: Vec<u8>,
+    require_generated_nonce: bool,
 ) -> Pkcs11Result<MessageEncryptionOutput> {
     let cryptographic_parameters = match encrypt_ctx.algorithm {
         EncryptionAlgorithm::AesCbcPad => CryptographicParameters {
@@ -811,18 +813,21 @@ async fn kms_encrypt_async(
         Pkcs11Error::ServerError("Encryption response does not contain data".to_owned())
     })?;
     let (iv, tag) = if matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
-        (
-            response.i_v_counter_nonce.ok_or_else(|| {
-                Pkcs11Error::ServerError(
-                    "AES-GCM encryption response does not contain a nonce".to_owned(),
-                )
-            })?,
-            response.authenticated_encryption_tag.ok_or_else(|| {
-                Pkcs11Error::ServerError(
-                    "AES-GCM encryption response does not contain an authentication tag".to_owned(),
-                )
-            })?,
-        )
+        let iv = match response.i_v_counter_nonce {
+            Some(iv) => iv,
+            None if require_generated_nonce => {
+                return Err(Pkcs11Error::ServerError(
+                    "AES-GCM message encryption response does not contain a nonce".to_owned(),
+                ));
+            }
+            None => Vec::new(),
+        };
+        let tag = response.authenticated_encryption_tag.ok_or_else(|| {
+            Pkcs11Error::ServerError(
+                "AES-GCM encryption response does not contain an authentication tag".to_owned(),
+            )
+        })?;
+        (iv, tag)
     } else {
         (Vec::new(), Vec::new())
     };

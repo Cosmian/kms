@@ -13,11 +13,11 @@ use pkcs11_sys::{
     CK_MECHANISM, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE,
     CK_SESSION_HANDLE, CK_SESSION_INFO, CK_SLOT_INFO, CK_TOKEN_INFO, CK_ULONG,
     CK_UNAVAILABLE_INFORMATION, CK_VOID_PTR, CKA_CLASS, CKA_ID, CKA_KEY_TYPE, CKA_LABEL,
-    CKA_VALUE_LEN, CKF_MESSAGE_SIGN, CKF_SERIAL_SESSION, CKG_GENERATE_RANDOM, CKK_AES,
-    CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_DSA, CKM_ECDSA, CKM_EDDSA, CKO_PRIVATE_KEY,
-    CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED,
-    CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL, CKR_MECHANISM_INVALID,
-    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SESSION_HANDLE_INVALID,
+    CKA_VALUE_LEN, CKF_MESSAGE_SIGN, CKF_SERIAL_SESSION, CKG_GENERATE_RANDOM, CKG_NO_GENERATE,
+    CKK_AES, CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_DSA, CKM_ECDSA, CKM_EDDSA,
+    CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
+    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL,
+    CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SESSION_HANDLE_INVALID,
     CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
 };
 use serial_test::serial;
@@ -31,11 +31,12 @@ use crate::{
     },
     objects_store::OBJECTS_STORE,
     pkcs11::{
-        C_CloseSession, C_Encrypt, C_EncryptInit, C_EncryptMessage, C_Finalize, C_FindObjects,
-        C_FindObjectsFinal, C_FindObjectsInit, C_GenerateKey, C_GetAttributeValue,
+        C_CloseSession, C_DecryptMessage, C_Encrypt, C_EncryptInit, C_EncryptMessage, C_Finalize,
+        C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit, C_GenerateKey, C_GetAttributeValue,
         C_GetFunctionStatus, C_GetInfo, C_GetMechanismInfo, C_GetMechanismList, C_GetSessionInfo,
-        C_GetSlotInfo, C_GetSlotList, C_GetTokenInfo, C_Initialize, C_MessageEncryptInit,
-        C_OpenSession, C_SignInit, FUNC_LIST, INITIALIZED, SLOT_ID,
+        C_GetSlotInfo, C_GetSlotList, C_GetTokenInfo, C_Initialize, C_MessageDecryptFinal,
+        C_MessageDecryptInit, C_MessageEncryptFinal, C_MessageEncryptInit, C_OpenSession,
+        C_SignInit, FUNC_LIST, INITIALIZED, SLOT_ID,
     },
     traits::{
         Backend, Certificate, DataObject, DecryptContext, EncryptContext, EncryptionAlgorithm,
@@ -241,9 +242,23 @@ impl Backend for TestBackend {
 
     fn decrypt(
         &self,
-        _decrypt_ctx: &DecryptContext,
-        _data: Vec<u8>,
+        decrypt_ctx: &DecryptContext,
+        data: Vec<u8>,
     ) -> ModuleResult<Zeroizing<Vec<u8>>> {
+        if matches!(decrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
+            if decrypt_ctx.iv.as_deref() != Some(&[0xA1; 12])
+                || decrypt_ctx.aad.as_deref() != Some(b"aad")
+                || !data.ends_with(&[0xB2; 16])
+            {
+                return Err(ModuleError::Cryptography(
+                    "message decryption did not preserve AES-GCM artifacts".to_owned(),
+                ));
+            }
+            let cleartext_len = data.len().checked_sub(16).ok_or_else(|| {
+                ModuleError::Cryptography("message ciphertext omitted its AES-GCM tag".to_owned())
+            })?;
+            return Ok(Zeroizing::new(data[..cleartext_len].to_vec()));
+        }
         Ok(Zeroizing::new(vec![0; 32]))
     }
 
@@ -903,6 +918,43 @@ fn message_encrypt_returns_kms_generated_artifacts() {
     assert_eq!(ciphertext, plaintext);
     assert_eq!(iv, [0xA1; 12]);
     assert_eq!(tag, [0xB2; 16]);
+    assert_eq!(C_MessageEncryptFinal(session), CKR_OK);
+
+    // SAFETY: the mechanism and key handle remain valid through initialization.
+    assert_eq!(
+        unsafe { C_MessageDecryptInit(session, &raw mut mechanism, key) },
+        CKR_OK
+    );
+    let mut decrypt_params = CK_GCM_MESSAGE_PARAMS {
+        pIv: iv.as_mut_ptr(),
+        ulIvLen: iv.len() as CK_ULONG,
+        ulIvFixedBits: 0,
+        ivGenerator: CKG_NO_GENERATE,
+        pTag: tag.as_mut_ptr(),
+        ulTagBits: (tag.len() * 8) as CK_ULONG,
+    };
+    let mut decrypted = vec![0_u8; ciphertext.len()];
+    let mut decrypted_len = decrypted.len() as CK_ULONG;
+    // SAFETY: every pointer addresses a writable or readable buffer matching its declared length.
+    assert_eq!(
+        unsafe {
+            C_DecryptMessage(
+                session,
+                (&raw mut decrypt_params).cast::<std::ffi::c_void>(),
+                std::mem::size_of::<CK_GCM_MESSAGE_PARAMS>() as CK_ULONG,
+                aad.as_mut_ptr(),
+                aad.len() as CK_ULONG,
+                ciphertext.as_mut_ptr(),
+                ciphertext.len() as CK_ULONG,
+                decrypted.as_mut_ptr(),
+                &raw mut decrypted_len,
+            )
+        },
+        CKR_OK
+    );
+    decrypted.truncate(decrypted_len as usize);
+    assert_eq!(decrypted, plaintext);
+    assert_eq!(C_MessageDecryptFinal(session), CKR_OK);
 
     assert_eq!(C_CloseSession(session), CKR_OK);
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);

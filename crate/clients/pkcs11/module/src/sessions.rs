@@ -32,6 +32,7 @@ use pkcs11_sys::{
     CK_ULONG, CK_ULONG_PTR, CKP_AUTHENTICATION_TOKEN, CKP_BASELINE_PROVIDER, CKP_EXTENDED_PROVIDER,
     CKP_PUBLIC_CERTIFICATES_TOKEN,
 };
+use zeroize::Zeroizing;
 
 use crate::{
     MResultHelper, ModuleError, ModuleResult,
@@ -142,6 +143,10 @@ pub(crate) struct Session {
     pub verify_ctx: Option<VerifyContext>,
     pub decrypt_ctx: Option<DecryptContext>,
     pub encrypt_ctx: Option<EncryptContext>,
+    /// Whether the active encrypt context came from `C_MessageEncryptInit`.
+    pub message_encrypt_active: bool,
+    /// Whether the active decrypt context came from `C_MessageDecryptInit`.
+    pub message_decrypt_active: bool,
 }
 
 impl Session {
@@ -875,6 +880,41 @@ impl Session {
             .as_ref()
             .ok_or(ModuleError::OperationNotInitialized(0))?;
         backend()?.encrypt_message(encrypt_ctx, cleartext)
+    }
+
+    /// Decrypt one PKCS#11 v3 AES-GCM message with caller-supplied message artifacts.
+    pub(crate) fn decrypt_message(
+        &self,
+        ciphertext_and_tag: Vec<u8>,
+    ) -> ModuleResult<Zeroizing<Vec<u8>>> {
+        if !self.message_decrypt_active {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        let decrypt_ctx = self
+            .decrypt_ctx
+            .as_ref()
+            .ok_or(ModuleError::OperationNotInitialized(0))?;
+        backend()?.decrypt(decrypt_ctx, ciphertext_and_tag)
+    }
+
+    /// Finish a PKCS#11 v3 message encryption operation.
+    pub(crate) fn finish_message_encrypt(&mut self) -> ModuleResult<()> {
+        if !self.message_encrypt_active {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        self.encrypt_ctx = None;
+        self.message_encrypt_active = false;
+        Ok(())
+    }
+
+    /// Finish a PKCS#11 v3 message decryption operation.
+    pub(crate) fn finish_message_decrypt(&mut self) -> ModuleResult<()> {
+        if !self.message_decrypt_active {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        self.decrypt_ctx = None;
+        self.message_decrypt_active = false;
+        Ok(())
     }
 
     pub(crate) fn generate_key(

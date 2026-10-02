@@ -17,7 +17,7 @@ use pkcs11_sys::{
 
 use super::{
     error::{BenchError, BenchResult},
-    loader::Pkcs11Session,
+    loader::{AesGcmCiphertext, Pkcs11Session},
 };
 use crate::actions::bench::types::{BenchFilter, BenchMode};
 
@@ -156,14 +156,13 @@ fn sign_verify_modes() -> Vec<ConcreteMode> {
 
 /// Expands standard `BenchMode` to concrete PKCS#11 benchmark modes.
 ///
-/// Delegated AES-GCM encryption uses PKCS#11 v3 message encryption so the
-/// KMS/HSM generates the nonce. Decryption remains excluded because the
-/// classic one-shot `CKM_AES_GCM` decrypt API cannot carry that generated nonce.
+/// Delegated AES-GCM operations use PKCS#11 v3 message encryption/decryption,
+/// so the KMS/HSM generates the nonce and the benchmark preserves it for decrypt.
 #[must_use]
 pub(crate) fn expand_bench_mode(
     mode: BenchMode,
     filter: Option<&BenchFilter>,
-    delegated: bool,
+    _delegated: bool,
 ) -> Vec<ConcreteMode> {
     let modes = match mode {
         BenchMode::All => all_modes(),
@@ -182,7 +181,6 @@ pub(crate) fn expand_bench_mode(
 
     modes
         .into_iter()
-        .filter(|m| !(delegated && matches!(m, ConcreteMode::DecryptAesGcm)))
         .filter(|m| filter.is_none_or(|f| f.matches(m.label(), None)))
         .collect()
 }
@@ -454,11 +452,11 @@ pub(crate) fn prepare_ops<'a>(
     } else {
         None
     };
-    let ciphertext_gcm = if modes.contains(&ConcreteMode::DecryptAesGcm) {
+    let ciphertext_gcm: Option<AesGcmCiphertext> = if modes.contains(&ConcreteMode::DecryptAesGcm) {
         let key = secret_key.ok_or_else(|| {
             BenchError::Setup("DecryptAesGcm requires a provisioned secret key".to_owned())
         })?;
-        Some(setup_session.encrypt_gcm(key, &plaintext)?)
+        Some(setup_session.encrypt_gcm_for_decryption(key, &plaintext)?)
     } else {
         None
     };
@@ -825,10 +823,10 @@ mod tests {
     use crate::actions::bench::types::BenchMode;
 
     #[test]
-    fn delegated_encrypt_includes_message_based_aes_gcm() {
+    fn delegated_encrypt_includes_message_based_aes_gcm_round_trip() {
         let modes = expand_bench_mode(BenchMode::Encrypt, None, true);
 
         assert!(modes.contains(&ConcreteMode::EncryptAesGcm));
-        assert!(!modes.contains(&ConcreteMode::DecryptAesGcm));
+        assert!(modes.contains(&ConcreteMode::DecryptAesGcm));
     }
 }

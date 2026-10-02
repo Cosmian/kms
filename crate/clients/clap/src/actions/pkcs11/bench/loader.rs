@@ -12,8 +12,8 @@ use pkcs11_sys::{
     CK_OBJECT_HANDLE, CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CK_TRUE,
     CK_ULONG, CK_USER_TYPE, CK_VERSION, CKA_CLASS, CKA_EC_PARAMS, CKA_EXTRACTABLE, CKA_KEY_TYPE,
     CKA_LABEL, CKA_SENSITIVE, CKA_VALUE_LEN, CKF_RW_SESSION, CKF_SERIAL_SESSION,
-    CKG_GENERATE_RANDOM, CKG_MGF1_SHA256, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN,
-    CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKM_SHA256, CKR_OK, CKU_USER,
+    CKG_GENERATE_RANDOM, CKG_MGF1_SHA256, CKG_NO_GENERATE, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_GCM,
+    CKM_AES_KEY_GEN, CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKM_SHA256, CKR_OK, CKU_USER,
 };
 
 use super::error::{BenchError, BenchResult};
@@ -38,6 +38,22 @@ pub(crate) const SIGN_PROFILE_PHASE_NAMES: [&str; 11] = [
     "kms-client-sign",
     "signature-copy",
 ];
+
+/// AES-GCM ciphertext representation produced by the selected PKCS#11 API.
+#[derive(Clone)]
+pub(crate) enum AesGcmCiphertext {
+    /// Classic `CKM_AES_GCM` output carries its tag in the ciphertext buffer.
+    Classic(Vec<u8>),
+    /// Message-based AES-GCM keeps the nonce and tag detached.
+    Message {
+        /// Ciphertext without the detached authentication tag.
+        ciphertext: Vec<u8>,
+        /// KMS/HSM-generated 96-bit nonce.
+        iv: [u8; 12],
+        /// Detached 128-bit authentication tag.
+        tag: [u8; 16],
+    },
+}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -610,7 +626,12 @@ impl<'lib> Pkcs11Session<'lib> {
         plaintext: &[u8],
     ) -> BenchResult<Vec<u8>> {
         if self.hsm_prefix.is_some() {
-            return self.encrypt_gcm_message(key, plaintext);
+            return match self.encrypt_gcm_message(key, plaintext)? {
+                AesGcmCiphertext::Message { ciphertext, .. } => Ok(ciphertext),
+                AesGcmCiphertext::Classic(_) => Err(BenchError::Setup(
+                    "message AES-GCM encryption returned classic artifacts".to_owned(),
+                )),
+            };
         }
         let f = &self.lib.functions;
         let mut iv = [0_u8; 12];
@@ -651,7 +672,11 @@ impl<'lib> Pkcs11Session<'lib> {
     }
 
     /// Encrypt one HSM-resident AES-GCM message with a nonce generated remotely.
-    fn encrypt_gcm_message(&self, key: CK_OBJECT_HANDLE, plaintext: &[u8]) -> BenchResult<Vec<u8>> {
+    fn encrypt_gcm_message(
+        &self,
+        key: CK_OBJECT_HANDLE,
+        plaintext: &[u8],
+    ) -> BenchResult<AesGcmCiphertext> {
         let f = &self.lib.functions;
         let mut mechanism = CK_MECHANISM {
             mechanism: CKM_AES_GCM,
@@ -696,12 +721,54 @@ impl<'lib> Pkcs11Session<'lib> {
                 &raw mut output_len,
             )
         })?;
+        let finalise = f
+            .C_MessageEncryptFinal
+            .ok_or_else(|| missing("C_MessageEncryptFinal"))?;
+        // SAFETY: the initialized message operation belongs to this session.
+        check("C_MessageEncryptFinal(CKM_AES_GCM)", unsafe {
+            finalise(self.handle)
+        })?;
         output.truncate(output_len as usize);
-        Ok(output)
+        Ok(AesGcmCiphertext::Message {
+            ciphertext: output,
+            iv,
+            tag,
+        })
     }
 
-    /// `C_DecryptInit` + `C_Decrypt` with `CKM_AES_GCM` (v3.0).
+    /// Encrypt AES-GCM once, retaining the required decrypt artifacts.
+    pub(crate) fn encrypt_gcm_for_decryption(
+        &self,
+        key: CK_OBJECT_HANDLE,
+        plaintext: &[u8],
+    ) -> BenchResult<AesGcmCiphertext> {
+        if self.hsm_prefix.is_some() {
+            self.encrypt_gcm_message(key, plaintext)
+        } else {
+            Ok(AesGcmCiphertext::Classic(self.encrypt_gcm(key, plaintext)?))
+        }
+    }
+
+    /// Decrypt AES-GCM using the matching classic or message API artifacts.
     pub(crate) fn decrypt_gcm(
+        &self,
+        key: CK_OBJECT_HANDLE,
+        encrypted: &AesGcmCiphertext,
+    ) -> BenchResult<Vec<u8>> {
+        match encrypted {
+            AesGcmCiphertext::Classic(ciphertext_and_tag) => {
+                self.decrypt_gcm_classic(key, ciphertext_and_tag)
+            }
+            AesGcmCiphertext::Message {
+                ciphertext,
+                iv,
+                tag,
+            } => self.decrypt_gcm_message(key, ciphertext, iv, tag),
+        }
+    }
+
+    /// `C_DecryptInit` + `C_Decrypt` with classic `CKM_AES_GCM`.
+    fn decrypt_gcm_classic(
         &self,
         key: CK_OBJECT_HANDLE,
         ciphertext_and_tag: &[u8],
@@ -739,6 +806,68 @@ impl<'lib> Pkcs11Session<'lib> {
                 output.as_mut_ptr(),
                 &raw mut output_len,
             )
+        })?;
+        output.truncate(output_len as usize);
+        Ok(output)
+    }
+
+    /// Decrypt one HSM-resident AES-GCM message using its detached nonce and tag.
+    fn decrypt_gcm_message(
+        &self,
+        key: CK_OBJECT_HANDLE,
+        ciphertext: &[u8],
+        iv: &[u8; 12],
+        tag: &[u8; 16],
+    ) -> BenchResult<Vec<u8>> {
+        let f = &self.lib.functions;
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_GCM,
+            pParameter: ptr::null_mut(),
+            ulParameterLen: 0,
+        };
+        let init = f
+            .C_MessageDecryptInit
+            .ok_or_else(|| missing("C_MessageDecryptInit"))?;
+        // SAFETY: `mechanism` is fully initialized and valid for this call.
+        check("C_MessageDecryptInit(CKM_AES_GCM)", unsafe {
+            init(self.handle, &raw mut mechanism, key)
+        })?;
+        let mut iv = *iv;
+        let mut tag = *tag;
+        let mut params = CK_GCM_MESSAGE_PARAMS {
+            pIv: iv.as_mut_ptr(),
+            ulIvLen: iv.len() as CK_ULONG,
+            ulIvFixedBits: 0,
+            ivGenerator: CKG_NO_GENERATE,
+            pTag: tag.as_mut_ptr(),
+            ulTagBits: (tag.len() * 8) as CK_ULONG,
+        };
+        let decrypt = f
+            .C_DecryptMessage
+            .ok_or_else(|| missing("C_DecryptMessage"))?;
+        let mut input = ciphertext.to_vec();
+        let mut output = vec![0_u8; ciphertext.len()];
+        let mut output_len = output.len() as CK_ULONG;
+        // SAFETY: all parameter, input, and output buffers remain valid for the call.
+        check("C_DecryptMessage(CKM_AES_GCM)", unsafe {
+            decrypt(
+                self.handle,
+                (&raw mut params).cast::<std::ffi::c_void>(),
+                size_of::<CK_GCM_MESSAGE_PARAMS>() as CK_ULONG,
+                ptr::null_mut(),
+                0,
+                input.as_mut_ptr(),
+                input.len() as CK_ULONG,
+                output.as_mut_ptr(),
+                &raw mut output_len,
+            )
+        })?;
+        let finalise = f
+            .C_MessageDecryptFinal
+            .ok_or_else(|| missing("C_MessageDecryptFinal"))?;
+        // SAFETY: the initialized message operation belongs to this session.
+        check("C_MessageDecryptFinal(CKM_AES_GCM)", unsafe {
+            finalise(self.handle)
         })?;
         output.truncate(output_len as usize);
         Ok(output)
