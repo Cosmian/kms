@@ -23,11 +23,12 @@ use std::slice;
 
 use cosmian_logger::{debug, error};
 use pkcs11_sys::{
-    CK_GCM_PARAMS, CK_MECHANISM, CK_MECHANISM_TYPE, CK_RSA_PKCS_PSS_PARAMS, CKG_MGF1_SHA1,
-    CKG_MGF1_SHA224, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKM_AES_CBC,
-    CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_ECDSA, CKM_EDDSA, CKM_RSA_PKCS,
-    CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA224, CKM_SHA256, CKM_SHA256_RSA_PKCS,
-    CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA512, CKM_SHA512_RSA_PKCS,
+    CK_GCM_PARAMS, CK_MECHANISM, CK_MECHANISM_TYPE, CK_RSA_PKCS_OAEP_PARAMS,
+    CK_RSA_PKCS_PSS_PARAMS, CKG_MGF1_SHA1, CKG_MGF1_SHA224, CKG_MGF1_SHA256, CKG_MGF1_SHA384,
+    CKG_MGF1_SHA512, CKM_AES_CBC, CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_ECDSA,
+    CKM_EDDSA, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA1_RSA_PKCS,
+    CKM_SHA224, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA512,
+    CKM_SHA512_RSA_PKCS, CKZ_DATA_SPECIFIED,
 };
 
 use crate::{
@@ -96,6 +97,11 @@ pub enum Mechanism {
         mask_generation_function: DigestType,
         salt_length: u64,
     },
+    /// `CKM_RSA_PKCS_OAEP` (SHA-256 hash / MGF1-SHA256 mask), matching the KMS
+    /// server's `HsmEncryptionAlgorithm::RsaOaepSha256`. Other hash/MGF
+    /// combinations are rejected as `MechanismInvalid`, mirroring the fact
+    /// that the KMS backend only exposes the SHA-256 OAEP variant here.
+    RsaOaep,
 }
 
 #[expect(clippy::missing_safety_doc)]
@@ -258,6 +264,50 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
                 salt_length: u64::from(salt_len),
             })
         }
+        CKM_RSA_PKCS_OAEP => {
+            let mechanism_type = mechanism.mechanism;
+            let parameter_ptr = mechanism.pParameter;
+            let parameter_len = mechanism.ulParameterLen;
+            not_null!(
+                parameter_ptr,
+                "parse_mechanism: CKM_RSA_PKCS_OAEP pParameter"
+            );
+            if (usize::try_from(parameter_len)?) != std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() {
+                error!(
+                    "CKM_RSA_PKCS_OAEP pParameter incorrect size: {} != {}",
+                    parameter_len,
+                    std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>()
+                );
+                return Err(ModuleError::MechanismInvalid(mechanism_type));
+            }
+            // SAFETY: `parameter_ptr` was just checked non-null and the pointed-to buffer was
+            // checked above to be exactly `size_of::<CK_RSA_PKCS_OAEP_PARAMS>()` bytes, as
+            // required by the PKCS#11 spec for `CKM_RSA_PKCS_OAEP`. `read_unaligned` is used
+            // (rather than `read`) because PKCS#11 callers are C code and may pass a pointer
+            // with no alignment guarantee.
+            let params: CK_RSA_PKCS_OAEP_PARAMS = unsafe {
+                parameter_ptr
+                    .cast::<CK_RSA_PKCS_OAEP_PARAMS>()
+                    .read_unaligned()
+            };
+            let hash_alg = params.hashAlg;
+            let mgf = params.mgf;
+            let source = params.source;
+            let source_data_len = params.ulSourceDataLen;
+            if hash_alg != CKM_SHA256 || mgf != CKG_MGF1_SHA256 {
+                error!(
+                    "CKM_RSA_PKCS_OAEP: unsupported hashAlg/mgf combination {hash_alg}/{mgf} \
+                     (only SHA-256/MGF1-SHA256 is supported)"
+                );
+                return Err(ModuleError::MechanismInvalid(mechanism_type));
+            }
+            if source != CKZ_DATA_SPECIFIED || source_data_len != 0 {
+                return Err(ModuleError::BadArguments(
+                    "CKM_RSA_PKCS_OAEP: a non-empty source/label is not supported".to_owned(),
+                ));
+            }
+            Ok(Mechanism::RsaOaep)
+        }
         _ => Err(ModuleError::MechanismInvalid(mechanism.mechanism)),
     }
 }
@@ -276,6 +326,7 @@ impl From<&Mechanism> for CK_MECHANISM_TYPE {
             Mechanism::RsaPkcsSha256 => CKM_SHA256_RSA_PKCS,
             Mechanism::RsaPkcsSha384 => CKM_SHA384_RSA_PKCS,
             Mechanism::RsaPkcsSha512 => CKM_SHA512_RSA_PKCS,
+            Mechanism::RsaOaep => CKM_RSA_PKCS_OAEP,
             Mechanism::RsaPss { .. } => CKM_RSA_PKCS_PSS,
         }
     }
@@ -313,6 +364,7 @@ impl TryFrom<Mechanism> for EncryptionAlgorithm {
     fn try_from(mechanism: Mechanism) -> ModuleResult<Self> {
         match mechanism {
             Mechanism::RsaPkcs => Ok(Self::RsaPkcs1v15),
+            Mechanism::RsaOaep => Ok(Self::RsaOaepSha256),
             Mechanism::AesCbcPad { .. } => Ok(Self::AesCbcPad),
             Mechanism::AesCbc { .. } => Ok(Self::AesCbc),
             Mechanism::AesGcm { .. } => Ok(Self::AesGcm),

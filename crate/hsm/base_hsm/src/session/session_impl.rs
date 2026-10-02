@@ -989,11 +989,19 @@ impl Session {
                 }
             }
             HsmEncryptionAlgorithm::RsaOaepSha256 => {
+                // Empty OAEP label: SoftHSM2 requires a non-null source pointer, AWS
+                // CloudHSM requires NULL (see `rsa_oaep_requires_source_data_ptr`).
+                let mut oaep_label = 0_u8;
+                let source_data = if self.hsm_capabilities().rsa_oaep_requires_source_data_ptr {
+                    (&raw mut oaep_label).cast::<std::ffi::c_void>()
+                } else {
+                    std::ptr::null_mut()
+                };
                 let mut params = CK_RSA_PKCS_OAEP_PARAMS {
                     hashAlg: CKM_SHA256,
                     mgf: CKG_MGF1_SHA256,
                     source: CKZ_DATA_SPECIFIED,
-                    pSourceData: std::ptr::null_mut(),
+                    pSourceData: source_data,
                     ulSourceDataLen: 0,
                 };
                 let mut mechanism = CK_MECHANISM {
@@ -1013,11 +1021,17 @@ impl Session {
                 }
             }
             HsmEncryptionAlgorithm::RsaOaepSha1 => {
+                let mut oaep_label = 0_u8;
+                let source_data = if self.hsm_capabilities().rsa_oaep_requires_source_data_ptr {
+                    (&raw mut oaep_label).cast::<std::ffi::c_void>()
+                } else {
+                    ptr::null_mut()
+                };
                 let mut params = CK_RSA_PKCS_OAEP_PARAMS {
                     hashAlg: CKM_SHA_1,
                     mgf: CKG_MGF1_SHA1,
                     source: CKZ_DATA_SPECIFIED,
-                    pSourceData: ptr::null_mut(),
+                    pSourceData: source_data,
                     ulSourceDataLen: 0,
                 };
                 let mut mechanism = CK_MECHANISM {
@@ -1152,11 +1166,17 @@ impl Session {
                 self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
             }
             HsmEncryptionAlgorithm::RsaOaepSha256 => {
+                let mut oaep_label = 0_u8;
+                let source_data = if self.hsm_capabilities().rsa_oaep_requires_source_data_ptr {
+                    (&raw mut oaep_label).cast::<std::ffi::c_void>()
+                } else {
+                    std::ptr::null_mut()
+                };
                 let mut params = CK_RSA_PKCS_OAEP_PARAMS {
                     hashAlg: CKM_SHA256,
                     mgf: CKG_MGF1_SHA256,
                     source: CKZ_DATA_SPECIFIED,
-                    pSourceData: std::ptr::null_mut(),
+                    pSourceData: source_data,
                     ulSourceDataLen: 0,
                 };
                 let mut mechanism = CK_MECHANISM {
@@ -1169,11 +1189,17 @@ impl Session {
                 self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
             }
             HsmEncryptionAlgorithm::RsaOaepSha1 => {
+                let mut oaep_label = 0_u8;
+                let source_data = if self.hsm_capabilities().rsa_oaep_requires_source_data_ptr {
+                    (&raw mut oaep_label).cast::<std::ffi::c_void>()
+                } else {
+                    std::ptr::null_mut()
+                };
                 let mut params = CK_RSA_PKCS_OAEP_PARAMS {
                     hashAlg: CKM_SHA_1,
                     mgf: CKG_MGF1_SHA1,
                     source: CKZ_DATA_SPECIFIED,
-                    pSourceData: std::ptr::null_mut(),
+                    pSourceData: source_data,
                     ulSourceDataLen: 0,
                 };
                 let mut mechanism = CK_MECHANISM {

@@ -797,6 +797,12 @@ async fn kms_encrypt_async(
             padding_method: Some(PaddingMethod::PKCS1v15),
             ..Default::default()
         },
+        EncryptionAlgorithm::RsaOaepSha256 => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
     };
     let encryption_request = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(
@@ -876,6 +882,12 @@ pub(crate) async fn kms_decrypt_async(
         EncryptionAlgorithm::RsaPkcs1v15 => CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             padding_method: Some(PaddingMethod::PKCS1v15),
+            ..Default::default()
+        },
+        EncryptionAlgorithm::RsaOaepSha256 => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },
     };

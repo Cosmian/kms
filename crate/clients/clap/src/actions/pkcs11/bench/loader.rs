@@ -9,11 +9,12 @@ use std::{ptr, sync::Arc};
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_FLAGS, CK_FUNCTION_LIST_3_0, CK_GCM_MESSAGE_PARAMS, CK_GCM_PARAMS,
     CK_INTERFACE_PTR, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS,
-    CK_OBJECT_HANDLE, CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CK_TRUE,
-    CK_ULONG, CK_USER_TYPE, CK_VERSION, CKA_CLASS, CKA_EC_PARAMS, CKA_EXTRACTABLE, CKA_ID,
-    CKA_KEY_TYPE, CKA_LABEL, CKA_SENSITIVE, CKA_VALUE_LEN, CKF_RW_SESSION, CKF_SERIAL_SESSION,
-    CKG_GENERATE_RANDOM, CKG_MGF1_SHA256, CKG_NO_GENERATE, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_GCM,
-    CKM_AES_KEY_GEN, CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKM_SHA256, CKR_OK, CKU_USER,
+    CK_OBJECT_HANDLE, CK_RSA_PKCS_OAEP_PARAMS, CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE,
+    CK_SLOT_ID, CK_TRUE, CK_ULONG, CK_USER_TYPE, CK_VERSION, CKA_CLASS, CKA_EC_PARAMS,
+    CKA_EXTRACTABLE, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_SENSITIVE, CKA_VALUE_LEN, CKF_RW_SESSION,
+    CKF_SERIAL_SESSION, CKG_GENERATE_RANDOM, CKG_MGF1_SHA256, CKG_NO_GENERATE, CKK_AES,
+    CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
+    CKM_RSA_PKCS_PSS, CKM_SHA256, CKR_OK, CKU_USER, CKZ_DATA_SPECIFIED,
 };
 
 use super::error::{BenchError, BenchResult};
@@ -922,6 +923,92 @@ impl<'lib> Pkcs11Session<'lib> {
         let mut output_len = output.len() as CK_ULONG;
         // SAFETY: `output` is sized to at least the ciphertext length.
         check("C_Decrypt(CKM_RSA_PKCS)", unsafe {
+            c_decrypt(
+                self.handle,
+                input.as_mut_ptr(),
+                input.len() as CK_ULONG,
+                output.as_mut_ptr(),
+                &raw mut output_len,
+            )
+        })?;
+        output.truncate(output_len as usize);
+        Ok(output)
+    }
+
+    /// `C_EncryptInit` + `C_Encrypt` with `CKM_RSA_PKCS_OAEP` (SHA-256 MGF1), matching
+    /// the KMS server's own OAEP parameter choice (`HsmEncryptionAlgorithm::RsaOaepSha256`
+    /// in `crate/hsm/base_hsm`).
+    pub(crate) fn encrypt_rsa_oaep(
+        &self,
+        public_key: CK_OBJECT_HANDLE,
+        plaintext: &[u8],
+    ) -> BenchResult<Vec<u8>> {
+        let f = &self.lib.functions;
+        let mut params = CK_RSA_PKCS_OAEP_PARAMS {
+            hashAlg: CKM_SHA256,
+            mgf: CKG_MGF1_SHA256,
+            source: CKZ_DATA_SPECIFIED,
+            pSourceData: ptr::null_mut(),
+            ulSourceDataLen: 0,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_RSA_PKCS_OAEP,
+            pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+            ulParameterLen: size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
+        };
+        let c_encrypt_init = f.C_EncryptInit.ok_or_else(|| missing("C_EncryptInit"))?;
+        // SAFETY: `mechanism` and `params` are stack-allocated and valid for the duration of this call.
+        check("C_EncryptInit(CKM_RSA_PKCS_OAEP)", unsafe {
+            c_encrypt_init(self.handle, &raw mut mechanism, public_key)
+        })?;
+        let c_encrypt = f.C_Encrypt.ok_or_else(|| missing("C_Encrypt"))?;
+        let mut input = plaintext.to_vec();
+        let mut output = vec![0_u8; 512];
+        let mut output_len = output.len() as CK_ULONG;
+        // SAFETY: `output` is pre-allocated with 512 bytes (sufficient for RSA-4096).
+        check("C_Encrypt(CKM_RSA_PKCS_OAEP)", unsafe {
+            c_encrypt(
+                self.handle,
+                input.as_mut_ptr(),
+                input.len() as CK_ULONG,
+                output.as_mut_ptr(),
+                &raw mut output_len,
+            )
+        })?;
+        output.truncate(output_len as usize);
+        Ok(output)
+    }
+
+    /// `C_DecryptInit` + `C_Decrypt` with `CKM_RSA_PKCS_OAEP` (SHA-256 MGF1).
+    pub(crate) fn decrypt_rsa_oaep(
+        &self,
+        private_key: CK_OBJECT_HANDLE,
+        ciphertext: &[u8],
+    ) -> BenchResult<Vec<u8>> {
+        let f = &self.lib.functions;
+        let mut params = CK_RSA_PKCS_OAEP_PARAMS {
+            hashAlg: CKM_SHA256,
+            mgf: CKG_MGF1_SHA256,
+            source: CKZ_DATA_SPECIFIED,
+            pSourceData: ptr::null_mut(),
+            ulSourceDataLen: 0,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_RSA_PKCS_OAEP,
+            pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+            ulParameterLen: size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
+        };
+        let c_decrypt_init = f.C_DecryptInit.ok_or_else(|| missing("C_DecryptInit"))?;
+        // SAFETY: `mechanism` and `params` are stack-allocated and valid for the duration of this call.
+        check("C_DecryptInit(CKM_RSA_PKCS_OAEP)", unsafe {
+            c_decrypt_init(self.handle, &raw mut mechanism, private_key)
+        })?;
+        let c_decrypt = f.C_Decrypt.ok_or_else(|| missing("C_Decrypt"))?;
+        let mut input = ciphertext.to_vec();
+        let mut output = vec![0_u8; ciphertext.len()];
+        let mut output_len = output.len() as CK_ULONG;
+        // SAFETY: `output` is sized to at least the ciphertext length.
+        check("C_Decrypt(CKM_RSA_PKCS_OAEP)", unsafe {
             c_decrypt(
                 self.handle,
                 input.as_mut_ptr(),
