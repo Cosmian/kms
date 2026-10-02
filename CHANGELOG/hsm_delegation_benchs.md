@@ -51,8 +51,9 @@
 
 ### HSM-delegated PKCS#11 benchmark compatibility
 
-- Fixed PKCS#11 decryption to avoid the Cryptoki null-output size query rejected by
-  Crypt2Pay, using a single call with a caller-sized plaintext buffer.
+- Added defensive PKCS#11 decryption compatibility for providers that reject a
+  null-output size query, using a single caller-sized plaintext buffer. This is
+  independent of the benchmark key-selection fix below.
 - Bind benchmark object discovery to the identifiers returned by the current key
   provisioning run, preventing stale HSM objects from pairing mismatched RSA/EC keys.
 - Removed the global delegated-mode algorithm exclusions. Requested operations are

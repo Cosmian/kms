@@ -1436,10 +1436,10 @@ impl Session {
             key_handle
         );
 
-        // Every supported decryption mechanism returns no more bytes than its input:
-        // AES-GCM removes its tag, CBC removes padding, and RSA plaintext is bounded by
-        // the modulus-sized ciphertext. Allocating this upper bound avoids a preliminary
-        // null-output C_Decrypt query, which Crypt2Pay rejects with CKR_ENCRYPTED_DATA_INVALID.
+        // Allocate the maximum plaintext size for the supported mechanisms instead of
+        // issuing a second, null-output query. Some PKCS#11 providers treat that query
+        // as an operation and return provider-specific errors; the real operation still
+        // performs the mechanism's authentication or padding validation.
         let mut decrypted_data = vec![0_u8; encrypted_data.len()];
         let mut decrypted_data_len = CK_ULONG::try_from(decrypted_data.len())?;
         hsm_call!(
