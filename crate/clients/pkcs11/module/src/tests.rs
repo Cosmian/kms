@@ -242,22 +242,22 @@ impl Backend for TestBackend {
 
     fn decrypt(
         &self,
-        decrypt_ctx: &DecryptContext,
-        data: Vec<u8>,
+        ctx: &DecryptContext,
+        ciphertext: Vec<u8>,
     ) -> ModuleResult<Zeroizing<Vec<u8>>> {
-        if matches!(decrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
-            if decrypt_ctx.iv.as_deref() != Some(&[0xA1; 12])
-                || decrypt_ctx.aad.as_deref() != Some(b"aad")
-                || !data.ends_with(&[0xB2; 16])
+        if matches!(ctx.algorithm, EncryptionAlgorithm::AesGcm) {
+            if ctx.iv.as_deref() != Some(&[0xA1; 12])
+                || ctx.aad.as_deref() != Some(b"aad")
+                || !ciphertext.ends_with(&[0xB2; 16])
             {
                 return Err(ModuleError::Cryptography(
                     "message decryption did not preserve AES-GCM artifacts".to_owned(),
                 ));
             }
-            let cleartext_len = data.len().checked_sub(16).ok_or_else(|| {
+            let cleartext_len = ciphertext.len().checked_sub(16).ok_or_else(|| {
                 ModuleError::Cryptography("message ciphertext omitted its AES-GCM tag".to_owned())
             })?;
-            return Ok(Zeroizing::new(data[..cleartext_len].to_vec()));
+            return Ok(Zeroizing::new(ciphertext[..cleartext_len].to_vec()));
         }
         Ok(Zeroizing::new(vec![0; 32]))
     }

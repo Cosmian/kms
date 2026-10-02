@@ -55,6 +55,14 @@ const BENCH_TAG: &str = "pkcs11-bench";
 /// it.
 const DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 
+/// The (private, public) unique identifiers of the optional Ed25519 and
+/// secp256k1 key pairs `provision_optional_keys` may create, each absent when
+/// its corresponding `provision_*` flag is `false` (or always, in FIPS mode).
+type OptionalKeyPairIds = (
+    Option<(UniqueIdentifier, UniqueIdentifier)>,
+    Option<(UniqueIdentifier, UniqueIdentifier)>,
+);
+
 #[cfg(feature = "non-fips")]
 async fn provision_optional_keys(
     client: &KmsClient,
@@ -63,10 +71,7 @@ async fn provision_optional_keys(
     delegated: bool,
     hsm_slot: usize,
     disk_encryption_tag: &str,
-) -> BenchResult<(
-    Option<(UniqueIdentifier, UniqueIdentifier)>,
-    Option<(UniqueIdentifier, UniqueIdentifier)>,
-)> {
+) -> BenchResult<OptionalKeyPairIds> {
     let ed25519_key_pair = if provision_ed25519 {
         let request = create_ec_key_pair_request(
             VENDOR_ID_COSMIAN,
@@ -124,12 +129,7 @@ fn provision_optional_keys(
     delegated: bool,
     hsm_slot: usize,
     disk_encryption_tag: &str,
-) -> impl Future<
-    Output = BenchResult<(
-        Option<(UniqueIdentifier, UniqueIdentifier)>,
-        Option<(UniqueIdentifier, UniqueIdentifier)>,
-    )>,
-> {
+) -> impl Future<Output = BenchResult<OptionalKeyPairIds>> {
     let _ = (
         client,
         provision_ed25519,
