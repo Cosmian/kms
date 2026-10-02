@@ -15,7 +15,7 @@
 #USAGE flag "-d --delegated"        env="BENCH_DELEGATED"                               help="Benchmark crypto operations executed DIRECTLY on the HSM (CryptoOracle), instead of a software KEK-wrap. See task docs below for the difference."
 #USAGE flag "--criterion"           env="BENCH_CRITERION"                               help="Also run Criterion micro-benchmarks before/alongside the load sweep"
 #USAGE flag "--speed <speed>"       env="BENCH_SPEED"         default="quick"           help="Criterion speed preset (with --criterion)" { choices "quick" "normal" "sanity" }
-#USAGE flag "--hsm-model <m>"        env="BENCH_HSM_MODEL"     default="softhsm2"        help="HSM model for delegated benchmarking (KEK-wrap mode is SoftHSM2-only)" { choices "softhsm2" "kryoptic" "proteccio" "crypt2pay" "utimaco" "aws_cloudhsm" }
+#USAGE flag "--hsm-model <m>"        env="BENCH_HSM_MODEL"     default="softhsm2"        help="HSM model for this benchmark; KEK-wrap and --delegated both support every model" { choices "softhsm2" "kryoptic" "proteccio" "crypt2pay" "utimaco" "aws_cloudhsm" }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
@@ -68,17 +68,10 @@ if [ "${BENCH_DELEGATED}" = "true" ]; then
 else
   print_header "Running load benchmark with HSM-backed KEK (${VARIANT_NAME})"
 fi
-if [ "${BENCH_DELEGATED}" != "true" ] && [ "${BENCH_HSM_MODEL}" != "softhsm2" ]; then
-  echo "ERROR: --hsm-model ${BENCH_HSM_MODEL} requires --delegated." >&2
-  echo "       The KEK-wrap mode (no --delegated) is SoftHSM2-only: it creates a" >&2
-  echo "       local SoftHSM2 token and key_encryption_key. Use --delegated to" >&2
-  echo "       benchmark crypto operations directly on ${BENCH_HSM_MODEL}." >&2
-  exit 1
-fi
 
 if [ -n "${BENCH_SERVER_URL}" ]; then
   echo "ERROR: --server-url is not supported by bench:hsm." >&2
-  echo "       This task always creates and owns its own local SoftHSM2 token, KEK," >&2
+  echo "       This task always creates and owns its own local HSM token, KEK," >&2
   echo "       and hsm_slot for the duration of the run — it cannot attach those to" >&2
   echo "       an unmanaged external KMS server. Use bench:pkcs11 or bench:load" >&2
   echo "       to benchmark against an external server instead." >&2
@@ -104,6 +97,18 @@ fi
 
 bench_register_cleanup
 
+# Prepare the host for the selected --hsm-model. SoftHSM2 token setup is
+# handled per-server by bench_start_server_hsm/bench_start_server_hsm_resident,
+# but non-SoftHSM2 models (Proteccio, Crypt2Pay, Utimaco, AWS CloudHSM) need
+# their PKCS#11 library installed and, for some, a VPN tunnel opened first —
+# via .github/reusable_scripts/prepare_*.sh and ~/.cosmian/<model>.sh. Must run
+# after bench_register_cleanup so any VPN it opens is torn down on exit.
+# Applies to both the default KEK-wrap mode and --delegated: neither is
+# restricted to a subset of HSM models.
+export WITH_HSM=1
+ensure_nix_shell
+bench_prepare_hsm "${BENCH_HSM_MODEL}"
+
 # Build both server and ckms.
 bench_build_binaries "${BUILD_MODE}"
 
@@ -118,8 +123,8 @@ if [ "${BENCH_DELEGATED}" != "true" ]; then
   # ── KEK-wrap mode (default): one server, software crypto ──────────────────
   BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
 
-  # Start the server with SoftHSM2 HSM + key_encryption_key, then create the KEK.
-  bench_start_server_hsm "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}"
+  # Start the server with the selected --hsm-model + key_encryption_key, then create the KEK.
+  bench_start_server_hsm "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}" "${BENCH_HSM_SLOT}" "${BENCH_HSM_PASSWORD}"
 
   # Pass HSM env vars to ckms for the benchmark requests (server handles HSM internally,
   # but ckms itself does not need PKCS#11 — plain HTTP to the KMS).
@@ -173,13 +178,6 @@ fi
 # afterward (the load JSON format is one-object-per-line, so concatenation is
 # a valid merge). Single-mode runs (`--mode encrypt`, etc.) already only ever
 # touch one fresh token and need no such isolation.
-# Prepare the host for the selected HSM model: SoftHSM2 token setup, or for
-# proteccio/crypt2pay the library install + VPN/credentials (via
-# .github/reusable_scripts/prepare_*.sh and ~/.cosmian/<model>.sh). Must run
-# after bench_register_cleanup so any VPN it opens is torn down on exit.
-export WITH_HSM=1
-ensure_nix_shell
-bench_prepare_hsm "${BENCH_HSM_MODEL}"
 
 run_hsm_load() {
   local port="$1" sub_mode="$2" concurrency="$3"
