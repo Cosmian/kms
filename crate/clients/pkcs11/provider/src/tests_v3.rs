@@ -55,7 +55,7 @@ use crate::{
     C_GetInterface, C_GetInterfaceList,
     backend::CliBackend,
     error::{Pkcs11Error, result::Pkcs11Result},
-    kms_object::key_algorithm_from_attributes,
+    kms_object::{ecdsa_raw_to_der, key_algorithm_from_attributes},
     tests::{
         create_ec_ssh_keypair, create_rsa_ssh_keypair, initialize_backend,
         save_pkcs11_client_config, test_init,
@@ -127,6 +127,11 @@ fn test_hsm_kek_ecdsa_p256_sign() -> Pkcs11Result<()> {
         "ECDSA P-256 signature must not be empty"
     );
 
+    // `remote_sign` returns the raw PKCS#11 r||s format (matching real C_Sign output);
+    // convert back to DER since the KMIP `SignatureVerify` operation below is a raw,
+    // backend-bypassing server call that expects the KMS's native DER encoding.
+    let der_signature = ecdsa_raw_to_der(&signature, 32)?;
+
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(assert_signature_valid(
         &kms_rest_client,
@@ -137,7 +142,7 @@ fn test_hsm_kek_ecdsa_p256_sign() -> Pkcs11Result<()> {
         }),
         None,
         Some(prehash.to_vec()),
-        signature,
+        der_signature,
     ));
     Ok(())
 }
@@ -172,6 +177,10 @@ fn test_hsm_kek_ecdsa_secp256k1_sign() -> Pkcs11Result<()> {
         !signature.is_empty(),
         "ECDSA secp256k1 signature must not be empty"
     );
+    // `remote_sign` returns the raw PKCS#11 r||s format (matching real C_Sign output);
+    // convert back to DER since the KMIP `SignatureVerify` operation below is a raw,
+    // backend-bypassing server call that expects the KMS's native DER encoding.
+    let der_signature = ecdsa_raw_to_der(&signature, 32)?;
 
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(assert_signature_valid(
@@ -183,7 +192,7 @@ fn test_hsm_kek_ecdsa_secp256k1_sign() -> Pkcs11Result<()> {
         }),
         None,
         Some(prehash.to_vec()),
-        signature,
+        der_signature,
     ));
     Ok(())
 }

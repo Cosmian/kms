@@ -1109,7 +1109,7 @@ fn ecdsa_der_to_raw(der: &[u8], byte_size: usize) -> Pkcs11Result<Vec<u8>> {
 
 /// Convert raw PKCS#11 ECDSA signature (r || s) to DER-encoded format.
 /// Each component is expected to be exactly `byte_size` bytes, zero-padded.
-fn ecdsa_raw_to_der(raw: &[u8], byte_size: usize) -> Pkcs11Result<Vec<u8>> {
+pub(crate) fn ecdsa_raw_to_der(raw: &[u8], byte_size: usize) -> Pkcs11Result<Vec<u8>> {
     if raw.len() != 2 * byte_size {
         return Err(Pkcs11Error::Default(format!(
             "ECDSA raw: expected {} bytes, got {}",
