@@ -158,6 +158,9 @@ pkgs.mkShell {
         softhsmDrv
         pkgs.openvpn
         pkgs.wget
+        # Kryoptic's standard feature includes its SQLite-backed object store;
+        # provide the native library explicitly for its final link step.
+        pkgs.sqlite
         # kryoptic-lib's build.rs uses bindgen to generate PKCS#11 header bindings,
         # which needs libclang. Without this, bindgen falls back to scanning the host
         # system and can find a broken/incomplete install there (e.g. Ubuntu's

@@ -111,13 +111,13 @@ if not already built"
 build layout may have changed (see crate/crypto/build.rs)"
   fi
 
-  # Our OpenSSL is built `no-shared` (static only, see crate/crypto/build.rs), so
-  # request static linking explicitly — the `pkg-config` crate honors
-  # `OPENSSL_STATIC` the same way `openssl-sys` does.
+  # Our OpenSSL is built `no-shared` (static only, see crate/crypto/build.rs). Set both
+  # pkg-config paths and ossl-sys' explicit source override: Nix's target-specific
+  # pkg-config path otherwise puts its OpenSSL 3.1.2 ahead of this workspace's 3.6.2.
   PKG_CONFIG_PATH="${prefix}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
-  export PKG_CONFIG_PATH
+  PKG_CONFIG_PATH_FOR_TARGET="${prefix}/lib/pkgconfig${PKG_CONFIG_PATH_FOR_TARGET:+:${PKG_CONFIG_PATH_FOR_TARGET}}"
+  KRYOPTIC_OPENSSL_SOURCES="${prefix}"
   OPENSSL_STATIC=1
-  export OPENSSL_STATIC
   print_status "kryoptic will build against this workspace's OpenSSL at ${prefix}"
 }
 
@@ -153,12 +153,21 @@ kryoptic_build_cdylib() {
   # (incl. hkdf) + rsa + hotp — i.e. every v3.0 mechanism family exercised by
   # the conformance tests. This build is fully isolated (its own Cargo.lock),
   # so the `rusqlite` conflict that blocks a normal workspace dependency does
-  # not apply here. `PKG_CONFIG_PATH`/`OPENSSL_STATIC` (set by
-  # `_kryoptic_ensure_repo_openssl` above) steer `ossl/dynamic`'s pkg-config
-  # probe at this workspace's own OpenSSL 3.6.2 instead of the ambient system
-  # one.
+  # not apply here. Pass the overrides explicitly at the Cargo boundary. This avoids
+  # relying on shell function/subshell export behavior when `env -u CARGO_TARGET_DIR`
+  # launches the isolated Kryoptic workspace build.
+  # `KRYOPTIC_OPENSSL_SOURCES` is consumed by ossl-sys; the other two steer pkg-config
+  # and static-link selection for any auxiliary OpenSSL probes.
   print_status "Building kryoptic cdylib (cargo build --release --features standard)"
-  (cd "$src_dir" && env -u CARGO_TARGET_DIR cargo build --release --features standard)
+  (
+    cd "$src_dir" || exit
+    env -u CARGO_TARGET_DIR \
+      PKG_CONFIG_PATH="$PKG_CONFIG_PATH" \
+      PKG_CONFIG_PATH_FOR_TARGET="$PKG_CONFIG_PATH_FOR_TARGET" \
+      KRYOPTIC_OPENSSL_SOURCES="$KRYOPTIC_OPENSSL_SOURCES" \
+      OPENSSL_STATIC="$OPENSSL_STATIC" \
+      cargo build --release --features standard
+  )
 
   local cdylib_name artifact
   cdylib_name="$(_kryoptic_cdylib_filename)"
