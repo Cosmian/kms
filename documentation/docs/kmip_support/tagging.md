@@ -12,6 +12,7 @@ In addition, the KMS server will automatically add a system tag to objects based
 - `_cert`: for a X509 certificate
 - `_sd`: for a secret data
 - `_oo`: for an opaque object
+- `_pgp`: for an OpenPGP key
 
 Since there is no provision in the KMIP 2.1 specification for tagging. The Eviden KMS server implements tagging using the following KMIP 2.1 extensions:
 

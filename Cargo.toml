@@ -237,6 +237,7 @@ opentelemetry = "0.32"
 opentelemetry-otlp = { version = "0.32", features = ["metrics", "grpc-tonic"] }
 opentelemetry_sdk = { version = "0.32", features = ["metrics"] }
 pem = "3.0"
+pgp = { version = "0.20", default-features = false }
 prost = "0.13"
 pkcs11-sys = "0.2"
 rand = "0.10"

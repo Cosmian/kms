@@ -30,6 +30,8 @@ pub enum ExportKeyFormat {
     Pkcs8Der,
     Base64,
     Raw,
+    PgpSecret,
+    PgpPublic,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumString, ValueEnum)]
@@ -133,6 +135,8 @@ pub const fn get_export_key_format_type(
         ExportKeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
         ExportKeyFormat::Pkcs8Pem => (Some(KeyFormatType::PKCS8), true),
         ExportKeyFormat::Pkcs8Der => (Some(KeyFormatType::PKCS8), false),
+        ExportKeyFormat::PgpSecret => (Some(KeyFormatType::OpenPgpSecretKey), false),
+        ExportKeyFormat::PgpPublic => (Some(KeyFormatType::OpenPgpPublicKey), false),
     };
     (key_format_type, encode_to_pem)
 }

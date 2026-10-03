@@ -755,6 +755,7 @@ Crate path: `crate/server`
 | `warn` | `{:?} {} 401 unauthorized: {error}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error` | - |
 | `debug` | `CRL cache entry stale, refetching: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
 | `debug` | `vault transit: key '{name}' already exists, not re-creating` | `src/routes/spire/transit.rs` | `name` | - |
+| `trace` | `import pgp_key: uid={}` | `src/core/operations/import.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -1420,6 +1421,7 @@ Crate path: `ui/src/`
 | `debug` | `RsaSign: signature length`                              | `actions/RSA/RsaSign.tsx`                         | —                                                             | —               |
 | `debug` | `RsaVerify: dataBuf len`                                 | `actions/RSA/RsaVerify.tsx`                       | —                                                             | —               |
 | `error` | `Auth Verifier login failed:` | `pages/LoginPage.tsx` | - | - |
+| `error` | `Error loading OpenPGP algorithms from WASM:` | `actions/Pgp/PgpKeysCreate.tsx` | - | - |
 
 ---
 

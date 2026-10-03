@@ -80,6 +80,8 @@ pub(crate) fn export_key(params: ExportKeyParams) -> CosmianResult<()> {
             ExportKeyFormat::Pkcs8Der => "pkcs8-der",
             ExportKeyFormat::Base64 => "base64",
             ExportKeyFormat::Raw => "raw",
+            ExportKeyFormat::PgpSecret => "pgp-secret",
+            ExportKeyFormat::PgpPublic => "pgp-public",
         };
         args.push(arg_value.to_owned());
     }

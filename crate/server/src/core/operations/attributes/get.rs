@@ -5,7 +5,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         extra::tagging::VENDOR_ATTR_TAG,
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyMaterial, KeyValue},
-        kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey},
+        kmip_objects::{Object, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey},
         kmip_operations::{GetAttributes, GetAttributesResponse},
         kmip_types::{
             AttributeReference, CryptographicAlgorithm, KeyFormatType, LinkType,
@@ -128,6 +128,7 @@ pub(crate) async fn get_attributes(
         Object::PrivateKey(PrivateKey { key_block })
         | Object::PublicKey(PublicKey { key_block })
         | Object::SymmetricKey(SymmetricKey { key_block })
+        | Object::PGPKey(PGPKey { key_block, .. })
         | Object::SecretData(SecretData { key_block, .. }) => {
             if let Some(KeyValue::Structure {
                 attributes: Some(attributes),
@@ -191,7 +192,7 @@ pub(crate) async fn get_attributes(
             }
             a
         }
-        Object::CertificateRequest { .. } | Object::PGPKey { .. } => {
+        Object::CertificateRequest { .. } => {
             return Err(KmsError::InvalidRequest(format!(
                 "get: unsupported object type for {object_handle}"
             )));

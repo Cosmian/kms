@@ -21,6 +21,8 @@ pub mod fpe;
 pub mod kdf;
 #[cfg(feature = "non-fips")]
 pub mod kem;
+#[cfg(feature = "non-fips")]
+pub mod openpgp;
 pub mod password_derivation;
 #[cfg(feature = "non-fips")]
 pub mod pqc;

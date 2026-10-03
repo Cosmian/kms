@@ -8,7 +8,7 @@ import { import_ttlv_request, parse_import_ttlv_response } from "../../wasm/pkg"
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
 
-type ImportKeyFormat = "json-ttlv" | "pem" | "sec1" | "pkcs1-priv" | "pkcs1-pub" | "pkcs8-pub" | "pkcs8-priv" | "aes" | "chacha20";
+type ImportKeyFormat = "json-ttlv" | "pem" | "sec1" | "pkcs1-priv" | "pkcs1-pub" | "pkcs8-pub" | "pkcs8-priv" | "aes" | "chacha20" | "pgp";
 
 type KeyUsage = "Sign" | "Verify" | "Encrypt" | "Decrypt" | "WrapKey" | "UnwrapKey";
 
@@ -27,7 +27,7 @@ interface ImportKeyFormData {
     wrappingKeyId?: string;
 }
 
-type KeyType = "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "secret-data" | "opaque-object";
+type KeyType = "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "pgp" | "secret-data" | "opaque-object";
 
 interface KeyImportFormProps {
     key_type: KeyType;
@@ -112,6 +112,17 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
             { label: t("keysImport.usageDecrypt"), value: "Decrypt" },
             { label: t("keysImport.usageWrap"), value: "WrapKey" },
             { label: t("keysImport.usageUnwrap"), value: "UnwrapKey" },
+        ];
+    } else if (key_type === "pgp") {
+        key_formats = [
+            { label: t("keysImport.formatJsonTtlv"), value: "json-ttlv" },
+            { label: t("keysImport.formatPgp", { defaultValue: "OpenPGP (.asc or binary)" }), value: "pgp" },
+        ];
+        key_usages = [
+            { label: t("keysImport.usageSign"), value: "Sign" },
+            { label: t("keysImport.usageVerify"), value: "Verify" },
+            { label: t("keysImport.usageEncrypt"), value: "Encrypt" },
+            { label: t("keysImport.usageDecrypt"), value: "Decrypt" },
         ];
     } else if (key_type === "secret-data" || key_type === "opaque-object") {
         key_formats = [{ label: t("keysImport.formatJsonTtlv"), value: "json-ttlv" }];

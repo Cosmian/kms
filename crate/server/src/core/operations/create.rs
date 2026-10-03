@@ -9,7 +9,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::{info, trace};
 use uuid::Uuid;
 
-use super::key_ops::ObjectLifecycleExt;
+use super::{key_ops::ObjectLifecycleExt, pgp_ops};
 use crate::{
     core::{KMS, uid_utils::ObjectHandle, wrapping::wrap_and_cache},
     error::KmsError,
@@ -27,6 +27,7 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResul
         ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(kms.vendor_id(), &request)?,
         ObjectType::PrivateKey => kms.create_private_key_and_tags(&request, owner).await?,
         ObjectType::SecretData => KMS::create_secret_data_and_tags(kms.vendor_id(), &request)?,
+        ObjectType::PGPKey => pgp_ops::create_pgp_key_and_tags(kms.vendor_id(), &request)?,
         _ => {
             kms_bail!(KmsError::NotSupported(format!(
                 "This server does not yet support creation of: {}",

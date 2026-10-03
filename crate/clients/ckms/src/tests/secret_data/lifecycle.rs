@@ -82,6 +82,8 @@ fn export_secret_data(
             ExportKeyFormat::Pkcs8Der => "pkcs8-der",
             ExportKeyFormat::Base64 => "base64",
             ExportKeyFormat::Raw => "raw",
+            ExportKeyFormat::PgpSecret => "pgp-secret",
+            ExportKeyFormat::PgpPublic => "pgp-public",
         };
         args.push(arg_value.to_owned());
     }
