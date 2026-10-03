@@ -82,7 +82,13 @@ const PgpEncryptForm: React.FC = () => {
                     </Card>
 
                     <Card>
-                        <KeyIdInput form={form} objectType="PGPKey" />
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            placeholder={t("common:enterKeyId")}
+                            objectType="PGPKey"
+                        />
                     </Card>
 
                     <Form.Item>
