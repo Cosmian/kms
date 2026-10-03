@@ -211,26 +211,23 @@ pub fn openpgp_encrypt(armored_cert: &[u8], plaintext: &[u8]) -> Result<Vec<u8>,
         (None, None) => crypto_bail!("no OpenPGP key parsed"),
     };
 
-    // Find encryption key: first subkey that allows encryption, else primary key if allowed
-    let mut enc_subkey: Option<&pgp::packet::PublicSubkey> = None;
-    for subkey in &public.public_subkeys {
-        let is_enc = subkey.signatures.iter().any(|sig| {
-            let kf: KeyFlags = sig.key_flags();
-            kf.encrypt_comms() || kf.encrypt_storage()
-        });
-        if is_enc {
-            enc_subkey = Some(&subkey.key);
-            break;
-        }
-    }
+    // Keep the signed subkey wrapper as the recipient. Its key identity and
+    // binding signature must remain coupled to the public-key material used
+    // in the PKESK packet.
+    let encryption_subkey = public.public_subkeys.iter().find(|subkey| {
+        subkey.signatures.iter().any(|sig| {
+            let key_flags: KeyFlags = sig.key_flags();
+            key_flags.encrypt_comms() || key_flags.encrypt_storage()
+        })
+    });
 
     let mut rng = rand_08::rngs::OsRng;
     let mut msg_builder = MessageBuilder::from_bytes("", plaintext.to_vec())
         .seipd_v1(&mut rng, SymmetricKeyAlgorithm::AES256);
 
-    if let Some(sub) = enc_subkey {
+    if let Some(subkey) = encryption_subkey {
         msg_builder
-            .encrypt_to_key(&mut rng, sub)
+            .encrypt_to_key(&mut rng, subkey)
             .map_err(|e| crypto_error!("failed to encrypt to subkey: {e}"))?;
     } else {
         // Check primary key capability in direct signatures or user binding signatures
