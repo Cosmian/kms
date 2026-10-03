@@ -395,15 +395,15 @@ mod tests {
         ModuleResult, parse_mechanism,
     };
 
-    /// Build a `CK_MECHANISM`/`CK_GCM_PARAMS` pair for `CKM_AES_GCM` from the given raw
-    /// `(iv, aad, tag_bits)` fields, keeping the backing buffers alive in the returned tuple so
-    /// the pointers stashed in the mechanism remain valid for the caller's use.
-    fn gcm_mechanism(
+    /// Build a `CK_GCM_PARAMS` for `CKM_AES_GCM` from the given raw `(iv, aad, tag_bits)`
+    /// fields. The caller must keep the returned value (and the `iv`/`aad` slices it borrows)
+    /// alive for as long as a `CK_MECHANISM` built from it (via `gcm_mechanism`) is in use.
+    fn build_gcm_params(
         iv: &mut [u8],
         aad: &mut [u8],
         tag_bits: pkcs11_sys::CK_ULONG,
-    ) -> ModuleResult<(CK_MECHANISM, CK_GCM_PARAMS)> {
-        let params = CK_GCM_PARAMS {
+    ) -> ModuleResult<CK_GCM_PARAMS> {
+        Ok(CK_GCM_PARAMS {
             pIv: iv.as_mut_ptr(),
             ulIvLen: pkcs11_sys::CK_ULONG::try_from(iv.len())?,
             ulIvBits: 0,
@@ -414,22 +414,30 @@ mod tests {
             },
             ulAADLen: pkcs11_sys::CK_ULONG::try_from(aad.len())?,
             ulTagBits: tag_bits,
-        };
-        let mechanism = CK_MECHANISM {
+        })
+    }
+
+    /// Build a `CK_MECHANISM` for `CKM_AES_GCM` pointing at the caller-owned `params`.
+    /// `params` MUST be a local variable in the caller's own stack frame (not a temporary
+    /// or a value moved out of a called function): the returned `CK_MECHANISM` borrows its
+    /// address, and a `CK_GCM_PARAMS` returned by value from a helper function is not
+    /// guaranteed to keep that same address after the move back to the caller.
+    fn gcm_mechanism(params: &CK_GCM_PARAMS) -> ModuleResult<CK_MECHANISM> {
+        Ok(CK_MECHANISM {
             mechanism: CKM_AES_GCM,
-            // SAFETY: `&params` outlives this function call site since the caller receives
-            // `params` back and must keep it (and `iv`/`aad`) alive while using `mechanism`.
-            pParameter: (&raw const params).cast::<std::ffi::c_void>().cast_mut(),
+            pParameter: (std::ptr::from_ref(params))
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
             ulParameterLen: pkcs11_sys::CK_ULONG::try_from(std::mem::size_of::<CK_GCM_PARAMS>())?,
-        };
-        Ok((mechanism, params))
+        })
     }
 
     #[test]
     fn ckm_aes_gcm_valid_iv_and_aad_are_parsed() -> ModuleResult<()> {
         let mut iv = [0x42_u8; 12];
         let mut aad = [0x24_u8; 8];
-        let (mechanism, _params) = gcm_mechanism(&mut iv, &mut aad, 128)?;
+        let params = build_gcm_params(&mut iv, &mut aad, 128)?;
+        let mechanism = gcm_mechanism(&params)?;
         let parsed = unsafe { parse_mechanism(mechanism) }?;
         let Mechanism::AesGcm {
             iv: parsed_iv,
@@ -452,7 +460,8 @@ mod tests {
     fn ckm_aes_gcm_empty_aad_is_parsed_as_empty_vec() -> ModuleResult<()> {
         let mut iv = [0x01_u8; 12];
         let mut aad: [u8; 0] = [];
-        let (mechanism, _params) = gcm_mechanism(&mut iv, &mut aad, 128)?;
+        let params = build_gcm_params(&mut iv, &mut aad, 128)?;
+        let mechanism = gcm_mechanism(&params)?;
         let parsed = unsafe { parse_mechanism(mechanism) }?;
         let Mechanism::AesGcm { aad, .. } = parsed else {
             return Err(super::ModuleError::BadArguments(
@@ -472,7 +481,8 @@ mod tests {
         let mut iv = [0x01_u8; 12];
         let mut aad: [u8; 0] = [];
         for tag_bits in [0, 64, 96, 120, 127, 129, 256] {
-            let (mechanism, _params) = gcm_mechanism(&mut iv, &mut aad, tag_bits)?;
+            let params = build_gcm_params(&mut iv, &mut aad, tag_bits)?;
+            let mechanism = gcm_mechanism(&params)?;
             unsafe { parse_mechanism(mechanism) }.unwrap_err();
         }
         Ok(())
@@ -482,7 +492,8 @@ mod tests {
     fn ckm_aes_gcm_rejects_zero_length_iv() -> ModuleResult<()> {
         let mut iv: [u8; 0] = [];
         let mut aad: [u8; 0] = [];
-        let (mechanism, _params) = gcm_mechanism(&mut iv, &mut aad, 128)?;
+        let params = build_gcm_params(&mut iv, &mut aad, 128)?;
+        let mechanism = gcm_mechanism(&params)?;
         unsafe { parse_mechanism(mechanism) }.unwrap_err();
         Ok(())
     }
@@ -491,7 +502,8 @@ mod tests {
     fn ckm_aes_gcm_rejects_oversized_iv() -> ModuleResult<()> {
         let mut iv = vec![0_u8; AES_GCM_MAX_IV_SIZE + 1];
         let mut aad: [u8; 0] = [];
-        let (mechanism, _params) = gcm_mechanism(&mut iv, &mut aad, 128)?;
+        let params = build_gcm_params(&mut iv, &mut aad, 128)?;
+        let mechanism = gcm_mechanism(&params)?;
         unsafe { parse_mechanism(mechanism) }.unwrap_err();
         Ok(())
     }
@@ -501,7 +513,8 @@ mod tests {
         let mut iv = [0x01_u8; 12];
         // AES_GCM_MAX_AAD_SIZE is 1 MiB; allocate one byte over that bound.
         let mut aad = vec![0_u8; AES_GCM_MAX_AAD_SIZE + 1];
-        let (mechanism, _params) = gcm_mechanism(&mut iv, &mut aad, 128)?;
+        let params = build_gcm_params(&mut iv, &mut aad, 128)?;
+        let mechanism = gcm_mechanism(&params)?;
         unsafe { parse_mechanism(mechanism) }.unwrap_err();
         Ok(())
     }
