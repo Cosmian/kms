@@ -637,7 +637,6 @@ impl Backend for CliBackend {
         debug!("decrypt: decrypt_ctx: {ctx:?}");
         kms_decrypt(&self.kms_rest_client, ctx, ciphertext).map_err(Into::into)
     }
-
     fn remote_sign(
         &self,
         remote_id: &str,

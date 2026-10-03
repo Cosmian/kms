@@ -1531,7 +1531,6 @@ impl Backend for FallbackBackend {
     ) -> ModuleResult<Zeroizing<Vec<u8>>> {
         Ok(Zeroizing::new(vec![0; 32]))
     }
-
     fn remote_sign(
         &self,
         _remote_id: &str,
