@@ -158,29 +158,41 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         tags: &'a HashSet<String>,
     ) -> InterfaceResult<()> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
+        let id = id.to_vec();
+        let tags = tags.clone();
+        tokio::task::spawn_blocking(move || {
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
 
-        if session.get_object_handle(id).is_ok() {
-            return Err(InterfaceError::Default(
-                "A secret key with this id already exists".to_owned(),
-            ));
-        }
-
-        match algorithm {
-            HsmKeyAlgorithm::AES => {
-                let key_size = match key_length_in_bits {
-                    128 => AesKeySize::Aes128,
-                    256 => AesKeySize::Aes256,
-                    x => {
-                        return Err(InterfaceError::Default(format!(
-                            "Invalid key length: {x} bits, for and HSM AES key"
-                        )));
-                    }
-                };
-                let _ = session.generate_aes_key(id, key_size, sensitive, Some(tags))?;
-                Ok(())
+            if session.session()?.get_object_handle(&id).is_ok() {
+                return Err(InterfaceError::Default(
+                    "A secret key with this id already exists".to_owned(),
+                ));
             }
-        }
+
+            match algorithm {
+                HsmKeyAlgorithm::AES => {
+                    let key_size = match key_length_in_bits {
+                        128 => AesKeySize::Aes128,
+                        256 => AesKeySize::Aes256,
+                        x => {
+                            return Err(InterfaceError::Default(format!(
+                                "Invalid key length: {x} bits, for and HSM AES key"
+                            )));
+                        }
+                    };
+                    let _ = session.session()?.generate_aes_key(
+                        &id,
+                        key_size,
+                        sensitive,
+                        Some(&tags),
+                    )?;
+                }
+            }
+            session.checkin();
+            Ok(())
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn create_keypair<'a>(
@@ -197,28 +209,37 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
             public: pk_id,
         } = ids;
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
+        let sk_id = sk_id.to_vec();
+        let pk_id = pk_id.to_vec();
+        let tags = tags.clone();
+        tokio::task::spawn_blocking(move || {
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
 
-        if session.get_object_handle(sk_id).is_ok() {
-            return Err(InterfaceError::Default(
-                "A private key with this ID already exists".to_owned(),
-            ));
-        }
-        if session.get_object_handle(pk_id).is_ok() {
-            return Err(InterfaceError::Default(
-                "A public key with this ID and the '_pk' suffix already exists".to_owned(),
-            ));
-        }
+            if session.session()?.get_object_handle(&sk_id).is_ok() {
+                return Err(InterfaceError::Default(
+                    "A private key with this ID already exists".to_owned(),
+                ));
+            }
+            if session.session()?.get_object_handle(&pk_id).is_ok() {
+                return Err(InterfaceError::Default(
+                    "A public key with this ID and the '_pk' suffix already exists".to_owned(),
+                ));
+            }
 
-        generate_hsm_keypair(
-            &session,
-            sk_id,
-            pk_id,
-            algorithm,
-            key_length_in_bits,
-            sensitive,
-            tags,
-        )
+            generate_hsm_keypair(
+                session.session()?,
+                &sk_id,
+                &pk_id,
+                algorithm,
+                key_length_in_bits,
+                sensitive,
+                &tags,
+            )?;
+            session.checkin();
+            Ok(())
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn export(&self, slot_id: usize, object_id: &[u8]) -> InterfaceResult<Option<HsmObject>> {
