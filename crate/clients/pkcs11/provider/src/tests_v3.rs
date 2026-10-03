@@ -121,7 +121,12 @@ fn test_hsm_kek_ecdsa_p256_sign() -> Pkcs11Result<()> {
     let backend = CliBackend::instantiate(kms_rest_client.clone());
     // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
     let prehash = [0x42_u8; 32];
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash, KeyAlgorithm::EccP256)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::Ecdsa,
+        &prehash,
+        KeyAlgorithm::EccP256,
+    )?;
     assert!(
         !signature.is_empty(),
         "ECDSA P-256 signature must not be empty"
@@ -172,7 +177,12 @@ fn test_hsm_kek_ecdsa_secp256k1_sign() -> Pkcs11Result<()> {
     let backend = CliBackend::instantiate(kms_rest_client.clone());
     // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
     let prehash = [0x24_u8; 32];
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash, KeyAlgorithm::Secp256k1)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::Ecdsa,
+        &prehash,
+        KeyAlgorithm::Secp256k1,
+    )?;
     assert!(
         !signature.is_empty(),
         "ECDSA secp256k1 signature must not be empty"
@@ -219,7 +229,12 @@ fn test_hsm_kek_eddsa_ed25519_sign() -> Pkcs11Result<()> {
     let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
     let backend = CliBackend::instantiate(kms_rest_client.clone());
     let data = b"hello HSM-KEK world, this is a test message for Ed25519 signing".to_vec();
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::EdDsa, &data, KeyAlgorithm::Ed25519)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::EdDsa,
+        &data,
+        KeyAlgorithm::Ed25519,
+    )?;
     assert_eq!(signature.len(), 64, "Ed25519 signature must be 64 bytes");
 
     let rt = tokio::runtime::Runtime::new()?;
@@ -1148,7 +1163,12 @@ fn test_hsm_kek_c_verify_round_trip() -> Pkcs11Result<()> {
     let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
     let backend = CliBackend::instantiate(kms_rest_client);
     let prehash = [0x77_u8; 32];
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash, KeyAlgorithm::EccP256)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::Ecdsa,
+        &prehash,
+        KeyAlgorithm::EccP256,
+    )?;
 
     // Positive case: a genuine signature must verify successfully through the same
     // `Backend::remote_verify` path used by the real `C_VerifyInit`/`C_Verify` functions.

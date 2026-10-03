@@ -1471,7 +1471,11 @@ mod tests {
         ];
         let raw = ecdsa_der_to_raw(&der_sig, 32)?;
         if raw.len() != 64 {
-            return Err(format!("raw signature should be 64 bytes for P-256, got {}", raw.len()).into());
+            return Err(format!(
+                "raw signature should be 64 bytes for P-256, got {}",
+                raw.len()
+            )
+            .into());
         }
         let r_expected = vec![
             0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
