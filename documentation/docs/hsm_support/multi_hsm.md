@@ -130,3 +130,4 @@ HSM support is available on:
 - [Proteccio setup](proteccio.md)
 - [AWS CloudHSM setup](aws_cloudhsm.md)
 - [HSM operations](hsm_operations.md)
+- [Algorithm support by model](algorithm_support.md)

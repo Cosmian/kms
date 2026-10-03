@@ -2,6 +2,9 @@
 
 In addition to managing its keys, Eviden KMS can act as a proxy to an HSM, storing and managing keys within the HSM.
 
+See [Algorithm support by model](algorithm_support.md) for a per-vendor PKCS#11 algorithm and
+capability comparison.
+
 ## HSM keys
 
 HSM keys are prefixed keys. They are created with a unique identifier that is prefixed by the `hsm` keyword and the
