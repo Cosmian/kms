@@ -110,8 +110,8 @@ fn check_ecc_mask_algorithm_compliance(
 #[must_use]
 pub(crate) const fn curve_bits(curve: RecommendedCurve) -> u32 {
     match curve {
-        RecommendedCurve::P192 => 192,
         RecommendedCurve::P224 | RecommendedCurve::SECP224K1 => 224,
+        RecommendedCurve::P192 | RecommendedCurve::SECP192K1 => 192,
         RecommendedCurve::P384 => 384,
         RecommendedCurve::P521 => 521,
         RecommendedCurve::CURVE448 => 448,
@@ -423,6 +423,7 @@ pub fn create_secp_key_pair(
     let curve_nid = match curve {
         RecommendedCurve::SECP224K1 => Nid::SECP224K1,
         RecommendedCurve::SECP256K1 => Nid::SECP256K1,
+        RecommendedCurve::SECP192K1 => Nid::SECP192K1,
 
         other => crypto_bail!("Curve {:?} not supported by secp_key key generation", other),
     };
@@ -638,6 +639,8 @@ pub fn create_approved_ecc_key_pair(
         RecommendedCurve::SECP256K1 => Nid::SECP256K1,
         #[cfg(feature = "non-fips")]
         RecommendedCurve::SECP224K1 => Nid::SECP224K1,
+        #[cfg(feature = "non-fips")]
+        RecommendedCurve::SECP192K1 => Nid::SECP192K1,
         other => crypto_bail!("Curve Nid {:?} not supported by KMS", other),
     };
 

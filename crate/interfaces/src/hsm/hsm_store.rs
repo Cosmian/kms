@@ -42,6 +42,8 @@ const fn ec_curve_to_recommended_curve(curve: EcCurve) -> RecommendedCurve {
         #[cfg(feature = "non-fips")]
         EcCurve::Secp256k1 => RecommendedCurve::SECP256K1,
         #[cfg(feature = "non-fips")]
+        EcCurve::Secp192k1 => RecommendedCurve::SECP192K1,
+        #[cfg(feature = "non-fips")]
         EcCurve::Ed25519 => RecommendedCurve::CURVEED25519,
         #[cfg(feature = "non-fips")]
         EcCurve::Ed448 => RecommendedCurve::CURVEED448,
@@ -55,6 +57,8 @@ const fn ec_curve_to_algorithm(curve: EcCurve) -> CryptographicAlgorithm {
         EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 => CryptographicAlgorithm::EC,
         #[cfg(feature = "non-fips")]
         EcCurve::Secp256k1 => CryptographicAlgorithm::EC,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Secp192k1 => CryptographicAlgorithm::EC,
         #[cfg(feature = "non-fips")]
         EcCurve::Ed25519 => CryptographicAlgorithm::Ed25519,
         #[cfg(feature = "non-fips")]
@@ -334,6 +338,8 @@ impl ObjectsStore for HsmStore {
                 HsmKeypairAlgorithm::Secp256k1
                 | HsmKeypairAlgorithm::Ed25519
                 | HsmKeypairAlgorithm::X25519 => 256,
+                #[cfg(feature = "non-fips")]
+                HsmKeypairAlgorithm::Secp192k1 => 192,
                 #[cfg(feature = "non-fips")]
                 HsmKeypairAlgorithm::Ed448 => 456,
             };
@@ -1411,6 +1417,20 @@ fn hsm_keypair_algorithm(attributes: &Attributes) -> Option<HsmKeypairAlgorithm>
         ) =>
         {
             Some(HsmKeypairAlgorithm::Secp256k1)
+        }
+        Some(
+            CryptographicAlgorithm::EC
+            | CryptographicAlgorithm::ECDH
+            | CryptographicAlgorithm::ECDSA,
+        ) if matches!(
+            attributes
+                .cryptographic_domain_parameters
+                .as_ref()
+                .and_then(|parameters| parameters.recommended_curve),
+            Some(RecommendedCurve::SECP192K1)
+        ) =>
+        {
+            Some(HsmKeypairAlgorithm::Secp192k1)
         }
         Some(
             CryptographicAlgorithm::EC

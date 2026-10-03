@@ -179,6 +179,7 @@ fn test_hsm_kryoptic_all() -> HResult<()> {
     shared::destroy_all(&slot)?;
     shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
+    shared::generate_ec_keypair(&slot)?;
     shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
     shared::rsa_pkcs_encrypt(&slot)?;
     shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
@@ -188,6 +189,10 @@ fn test_hsm_kryoptic_all() -> HResult<()> {
     shared::rsa_pkcs_v15_sign(&slot)?;
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
+    shared::rsa_pss_sign_all_algorithms(&slot)?;
+    shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
+    #[cfg(feature = "non-fips")]
+    shared::eddsa_sign_all_curves(&slot)?;
     shared::multi_threaded_rsa(&slot, shared::TEST_RSA_OAEP_DIGEST, test_cfg.threads)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;

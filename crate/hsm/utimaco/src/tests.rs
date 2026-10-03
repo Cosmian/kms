@@ -42,13 +42,18 @@ fn test_hsm_utimaco_all() -> HResult<()> {
     shared::destroy_all(&slot)?;
     shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
+    shared::generate_ec_keypair(&slot)?;
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)?;
     shared::rsa_pkcs_encrypt(&slot)?;
     shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA256)?;
     shared::aes_gcm_encrypt(&slot)?;
+    shared::aes_cbc_encrypt(&slot)?;
+    shared::aes_cbc_multi_round(&slot)?;
     shared::rsa_pkcs_v15_sign(&slot)?;
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
+    shared::rsa_pss_sign_all_algorithms(&slot)?;
+    shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
@@ -94,6 +99,13 @@ fn test_hsm_utimaco_generate_rsa_keypair() -> HResult<()> {
 
 #[test]
 #[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
+fn test_hsm_utimaco_generate_ec_keypair() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<UtimacoCapabilityProvider>(&cfg()?)?;
+    shared::generate_ec_keypair(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
 fn test_hsm_utimaco_rsa_key_wrap() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<UtimacoCapabilityProvider>(&cfg()?)?;
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)
@@ -122,6 +134,20 @@ fn test_hsm_utimaco_aes_gcm_encrypt() -> HResult<()> {
 
 #[test]
 #[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
+fn test_hsm_utimaco_aes_cbc_encrypt() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<UtimacoCapabilityProvider>(&cfg()?)?;
+    shared::aes_cbc_encrypt(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
+fn test_hsm_utimaco_aes_cbc_multi_round_encrypt() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<UtimacoCapabilityProvider>(&cfg()?)?;
+    shared::aes_cbc_multi_round(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
 fn test_hsm_utimaco_rsa_pkcs_v15_sign() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<UtimacoCapabilityProvider>(&cfg()?)?;
     shared::rsa_pkcs_v15_sign(&slot)
@@ -139,6 +165,20 @@ fn test_hsm_utimaco_rsa_sha256_sign() -> HResult<()> {
 fn test_hsm_utimaco_rsa_sign_all_algorithms() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<UtimacoCapabilityProvider>(&cfg()?)?;
     shared::rsa_sign_all_algorithms(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
+fn test_hsm_utimaco_rsa_pss_sign_all_algorithms() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<UtimacoCapabilityProvider>(&cfg()?)?;
+    shared::rsa_pss_sign_all_algorithms(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
+fn test_hsm_utimaco_ecdsa_sign_all_curves_and_hashes() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<UtimacoCapabilityProvider>(&cfg()?)?;
+    shared::ecdsa_sign_all_curves_and_hashes(&slot)
 }
 
 #[test]

@@ -119,6 +119,15 @@ fn generate_hsm_keypair(
                 Some(tags),
             )?;
         }
+        HsmKeypairAlgorithm::Secp192k1 => {
+            session.generate_ec_key_pair(
+                sk_id,
+                pk_id,
+                EcCurve::Secp192k1,
+                sensitive,
+                Some(tags),
+            )?;
+        }
         HsmKeypairAlgorithm::Ed25519 => {
             session.generate_ec_key_pair(sk_id, pk_id, EcCurve::Ed25519, sensitive, Some(tags))?;
         }

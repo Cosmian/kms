@@ -411,6 +411,11 @@ impl SigningAlgorithm {
                     hashing_algorithm: HashingAlgorithm::SHA256,
                     prehashed: input_is_digest,
                 }),
+                #[cfg(feature = "non-fips")]
+                Some(crate::EcCurve::Secp192k1) => Ok(Self::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: input_is_digest,
+                }),
                 Some(crate::EcCurve::P224 | crate::EcCurve::P256) | None => Ok(Self::Ecdsa {
                     hashing_algorithm: HashingAlgorithm::SHA256,
                     prehashed: input_is_digest,

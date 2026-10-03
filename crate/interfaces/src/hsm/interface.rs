@@ -29,6 +29,9 @@ pub enum HsmKeypairAlgorithm {
     /// secp256k1 (`CKM_EC_KEY_PAIR_GEN`) for non-FIPS ECDSA signing.
     #[cfg(feature = "non-fips")]
     Secp256k1,
+    /// secp192k1 (`CKM_EC_KEY_PAIR_GEN`) for non-FIPS ECDSA signing.
+    #[cfg(feature = "non-fips")]
+    Secp192k1,
     /// Ed25519 (`CKM_EC_EDWARDS_KEY_PAIR_GEN`) for `EdDSA` signing.
     #[cfg(feature = "non-fips")]
     Ed25519,
@@ -50,6 +53,9 @@ pub enum EcCurve {
     /// secp256k1, used for non-FIPS ECDSA signing.
     #[cfg(feature = "non-fips")]
     Secp256k1,
+    /// secp192k1, used for non-FIPS ECDSA signing.
+    #[cfg(feature = "non-fips")]
+    Secp192k1,
     /// Edwards curve used for `EdDSA` signing.
     #[cfg(feature = "non-fips")]
     Ed25519,
@@ -84,6 +90,8 @@ impl EcCurve {
             Self::P521 => 521,
             #[cfg(feature = "non-fips")]
             Self::Secp256k1 | Self::Ed25519 | Self::X25519 => 256,
+            #[cfg(feature = "non-fips")]
+            Self::Secp192k1 => 192,
             #[cfg(feature = "non-fips")]
             Self::Ed448 => 456,
         }

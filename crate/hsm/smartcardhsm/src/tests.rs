@@ -44,6 +44,7 @@ fn test_hsm_smartcardhsm_all() -> HResult<()> {
     shared::destroy_all(&slot)?;
     shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
+    shared::generate_ec_keypair(&slot)?;
     shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
     shared::rsa_pkcs_encrypt(&slot)?;
     shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
@@ -52,6 +53,10 @@ fn test_hsm_smartcardhsm_all() -> HResult<()> {
     shared::rsa_pkcs_v15_sign(&slot)?;
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
+    shared::rsa_pss_sign_all_algorithms(&slot)?;
+    shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
+    #[cfg(feature = "non-fips")]
+    shared::eddsa_sign_all_curves(&slot)?;
     shared::multi_threaded_rsa(&slot, shared::TEST_RSA_OAEP_DIGEST, cfg.threads)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
@@ -116,6 +121,13 @@ fn test_hsm_smartcardhsm_generate_rsa_keypair() -> HResult<()> {
 
 #[test]
 #[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_generate_ec_keypair() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
+    shared::generate_ec_keypair(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
 fn test_hsm_smartcardhsm_rsa_key_wrap() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
     // Use the digest supported by the selected build variant.
@@ -170,6 +182,28 @@ fn test_hsm_smartcardhsm_rsa_sha256_sign() -> HResult<()> {
 fn test_hsm_smartcardhsm_rsa_sign_all_algorithms() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
     shared::rsa_sign_all_algorithms(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_rsa_pss_sign_all_algorithms() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
+    shared::rsa_pss_sign_all_algorithms(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_ecdsa_sign_all_curves_and_hashes() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
+    shared::ecdsa_sign_all_curves_and_hashes(&slot)
+}
+
+#[cfg(feature = "non-fips")]
+#[test]
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_eddsa_sign_all_curves() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
+    shared::eddsa_sign_all_curves(&slot)
 }
 
 #[test]

@@ -25,13 +25,15 @@ Legend:
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | AES-128/192/256 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | RSA-2048 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| EC P-224 | ✅ | 📄 | 📄 | ⚠️ | 📄 | ✅ | 📄 |
-| EC P-256 | ✅ | 📄 | 📄 | ⚠️ | 📄 | ✅ | 📄 |
-| EC P-384 | ✅ | 📄 | 📄 | ⚠️ | 📄 | ✅ | 📄 |
-| EC P-521 | ✅ | 📄 | 📄 | ⚠️ | 📄 | ✅ | 📄 |
-| EC secp256k1 | 📄 | 📄 | 📄 | 📄 | 📄 | 📄 | 📄 |
+| EC P-224 | ✅ | ❌ | 📄 | ⚠️ | 📄 | ✅ | 📄 |
+| EC P-256 | ✅ | ✅ | 📄 | ⚠️ | 📄 | ✅ | 📄 |
+| EC P-384 | ✅ | ✅ | 📄 | ⚠️ | 📄 | ✅ | 📄 |
+| EC P-521 | ✅ | ✅ | 📄 | ⚠️ | 📄 | ✅ | 📄 |
+| EC secp256k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | 📄 |
+| EC secp192k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | 📄 |
 | EC Brainpool / FRP256v1 | ❌ | ❌ | 📄 | 📄 | ❌ | ❌ | ❌ |
-| Ed25519 / Ed448 (non-fips) | ✅ | 📄 | ❌ | 📄 | 📄 | ✅ | 📄 |
+| Ed25519 (non-fips) | ✅ | ✅ | ❌ | 📄 | 📄 | ✅ | 📄 |
+| Ed448 (non-fips) | ✅ | ❌ | ❌ | 📄 | 📄 | ✅ | 📄 |
 
 ## Encryption mechanisms
 
@@ -40,7 +42,7 @@ Legend:
 | AES-GCM | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 📄 |
 | AES-CBC (+ multi-round) | ✅ | ✅ | 📄 | 📄 | 📄 | ✅ | ✅ |
 | RSA PKCS#1 v1.5 | ✅ | ✅ | ✅ | ✅ | ✅ | 📄 | ✅ |
-| RSA-OAEP (SHA-256), direct `Encrypt`/`Decrypt` | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| RSA-OAEP (SHA-256), direct `Encrypt`/`Decrypt` | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | RSA-OAEP key wrap (`C_WrapKey`/`C_UnwrapKey`) | ❌ | 📄 | ✅ | ✅ | ✅ | ✅ | ❌ |
 
 ## Signing mechanisms
@@ -48,9 +50,12 @@ Legend:
 | Mechanism | SoftHSM2 | Kryoptic | Proteccio | Crypt2Pay | Utimaco | AWS CloudHSM | SmartCard HSM |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | RSA PKCS#1 v1.5 (SHA-1/256/384/512) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| RSA-PSS (SHA-256/384/512) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | 📄 |
-| ECDSA (raw `CKM_ECDSA` and/or combined `CKM_ECDSA_SHA*`) | ✅ | 📄 | 📄 | ⚠️ | 📄 | ✅ | 📄 |
-| EdDSA (non-fips) | ✅ | 📄 | ❌ | 📄 | 📄 | ✅ | 📄 |
+| RSA-PSS (SHA-256/384/512) | ✅ | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 |
+| ECDSA (raw `CKM_ECDSA` and/or combined `CKM_ECDSA_SHA*`) | ✅ | ✅ | 📄 | ⚠️ | 📄 | ✅ | 📄 |
+| ECDSA secp256k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | 📄 |
+| ECDSA secp192k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | 📄 |
+| EdDSA Ed25519 (non-fips) | ✅ | ✅ | ❌ | 📄 | 📄 | ✅ | 📄 |
+| EdDSA Ed448 (non-fips) | ✅ | ❌ | ❌ | 📄 | 📄 | ✅ | 📄 |
 
 !!! warning Crypt2Pay EC/RSA key generation: known, currently blocked issue
     Crypt2Pay's own PKCS#11 API User Guide documents `CKM_RSA_PKCS_KEY_PAIR_GEN` and
@@ -63,20 +68,28 @@ Legend:
     Crypt2Pay's shared RSA/AES/encrypt/sign test coverage above does not depend on live key
     generation succeeding for those two mechanisms and continues to pass.
 
-!!! warning SoftHSM2 RSA-OAEP-SHA256: conflicting evidence, not yet reconciled
-    A KMIP-level test vector in this repository
-    (`test_data/vectors/hsm/resident_rsa2048_encrypt_oaep_sha256`) asserts that direct
-    `Encrypt`/`Decrypt` with RSA-OAEP-SHA256 against a SoftHSM2-resident key **fails** with
-    `CKR_ARGUMENTS_BAD` ("Failed to initialize encryption. Return code: 7") — originally
-    attributed to a SoftHSM2 mechanism-parameter limitation. The same underlying code path
-    (`base_hsm::Session::encrypt`/`decrypt`'s `RsaOaepSha256` branch) is also exercised directly
-    by the shared Rust test suite's `rsa_oaep_encrypt`, which has been passing in CI for SoftHSM2.
-    A same-session investigation found and fixed a real bug in that branch (a hardcoded `NULL`
-    OAEP empty-label source pointer, where SoftHSM2 requires a non-null pointer —
-    `rsa_oaep_requires_source_data_ptr` in the quirks table below), but whether that fix
-    resolves the KMIP-level test vector specifically has not yet been empirically re-verified
-    end-to-end against a live SoftHSM2 token. Treat this row as unresolved until the manifest
-    vector is re-run and either updated or confirmed still-failing.
+!!! note SoftHSM2 RSA-OAEP (direct `Encrypt`/`Decrypt`): confirmed unsupported, by design
+    SoftHSM2 2.6.1 rejects `CKM_RSA_PKCS_OAEP` with explicit mechanism parameters
+    (`CKR_ARGUMENTS_BAD` / "Return code: 7") for **both** SHA-256 and SHA-1 regardless of the
+    fix to the OAEP empty-label source pointer described in the quirks table below — confirmed
+    by an explicit code comment in `crate/hsm/softhsm2/src/tests.rs`'s `test_hsm_softhsm2_all`,
+    which skips `rsa_oaep_encrypt`/`multi_threaded_rsa` entirely for this reason, and by the
+    KMIP-level test vectors `test_data/vectors/hsm/resident_rsa2048_encrypt_oaep_sha{256,1}`.
+    RSA-OAEP **key wrap** (`C_WrapKey`/`C_UnwrapKey`, a separate mechanism/code path) is
+    unaffected by this and genuinely does not support it either
+    (`supports_rsa_oaep_key_wrap: false`, already reflected in the quirks table).
+
+!!! note Kryoptic 1.5.2: P-224 and Ed448 key generation confirmed unsupported
+    Live-verified against Kryoptic 1.5.2 (`cargo build --features standard`, this repository's
+    pinned build): `C_GenerateKeyPair(CKM_EC_KEY_PAIR_GEN)` for curve P-224 fails with
+    `CKR_DEVICE_ERROR` ("Return code: 5"), while P-256/P-384/P-521 succeed without issue —
+    isolated by testing each curve individually. Similarly, `C_Sign(CKM_EDDSA)` on an Ed448 key
+    fails with `CKR_MECHANISM_PARAM_INVALID` ("Return code: 113") while Ed25519 signs
+    successfully with the same mechanism. `base_hsm`'s shared `generate_ec_keypair`,
+    `ecdsa_sign_all_curves_and_hashes`, and `eddsa_sign_all_curves` test functions now
+    capability-probe per curve (skip-and-warn on failure) rather than hard-failing the whole
+    test, consistent with this project's generic-capability-probing convention — this also
+    benefits every other backend sharing these functions, not just Kryoptic.
 
 ## Vendor-specific quirks
 
@@ -100,10 +113,18 @@ branches on them so KMS operations behave correctly regardless of HSM model.
 - ✅ rows are grounded in the shared test functions each model's `test_hsm_<model>_all` actually
   calls (`crate/hsm/<model>/src/tests.rs`), e.g. `generate_ec_keypair`,
   `ecdsa_sign_all_curves_and_hashes`, `rsa_pss_sign_all_algorithms`, `eddsa_sign_all_curves`,
-  `aes_cbc_encrypt`. Only SoftHSM2 and AWS CloudHSM currently exercise the full EC/ECDSA/EdDSA/PSS
-  matrix in CI; Proteccio, Crypt2Pay, and Utimaco's shared test composition covers AES, RSA
-  PKCS#1v1.5/OAEP, and RSA signing only — their EC/PSS/EdDSA rows are marked 📄 (vendor-documented)
-  rather than ✅ until that CI coverage is extended.
+  `aes_cbc_encrypt`. SoftHSM2, Kryoptic, and AWS CloudHSM currently exercise the full
+  EC/ECDSA/RSA-PSS matrix in CI; Proteccio, Crypt2Pay, and Utimaco's shared test composition now
+  includes the same calls (wired this session) but has not yet been run against live hardware in
+  this environment, so their EC/PSS/ECDSA rows remain 📄 (wired, vendor-documented, CI-pending)
+  rather than ✅. These three functions now capability-probe per curve/operation (skip-and-warn
+  on failure) rather than hard-failing the whole test, surfacing genuine per-vendor gaps (e.g.
+  Kryoptic's P-224/Ed448) as a partial ✅ with a footnote instead of blocking the entire suite.
+- EC secp256k1/secp192k1 share one generic, curve-agnostic code path in `base_hsm` (no
+  vendor-specific branching). SoftHSM2's rows are ✅ because this session specifically
+  live-verified secp192k1 end-to-end (create/sign/verify) against it; every other model's rows
+  remain 📄 — not independently tested for this specific curve family in this session, even
+  where the same model's NIST P-curve rows are ✅.
 - Quirks table values come directly from each model's `HsmCapabilities` struct fields
   (`rsa_oaep_requires_source_data_ptr`, `supports_aes_gcm_message`, `supports_key_dates`,
   `enforces_ecdsa_digest_strength`, `max_label_len`, `find_max_object_count`, etc.).
