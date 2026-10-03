@@ -111,13 +111,14 @@ if not already built"
 build layout may have changed (see crate/crypto/build.rs)"
   fi
 
-  # Our OpenSSL is built `no-shared` (static only, see crate/crypto/build.rs). Set both
-  # pkg-config paths and ossl-sys' explicit source override: Nix's target-specific
-  # pkg-config path otherwise puts its OpenSSL 3.1.2 ahead of this workspace's 3.6.2.
-  PKG_CONFIG_PATH="${prefix}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
-  PKG_CONFIG_PATH_FOR_TARGET="${prefix}/lib/pkgconfig${PKG_CONFIG_PATH_FOR_TARGET:+:${PKG_CONFIG_PATH_FOR_TARGET}}"
-  KRYOPTIC_OPENSSL_SOURCES="${prefix}"
-  OPENSSL_STATIC=1
+  # Our OpenSSL is built `no-shared` (static only, see crate/crypto/build.rs). Keep
+  # these values in private helper variables: shellHook exports such as PKG_CONFIG_PATH
+  # and OPENSSL_STATIC must not be mutated, or later workspace builds inherit Kryoptic's
+  # static-prefix settings and fail to link libssl/libcrypto.
+  KRYOPTIC_BUILD_PKG_CONFIG_PATH="${prefix}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+  KRYOPTIC_BUILD_PKG_CONFIG_PATH_FOR_TARGET="${prefix}/lib/pkgconfig${PKG_CONFIG_PATH_FOR_TARGET:+:${PKG_CONFIG_PATH_FOR_TARGET}}"
+  KRYOPTIC_BUILD_OPENSSL_SOURCES="${prefix}"
+  KRYOPTIC_BUILD_OPENSSL_STATIC=1
   print_status "kryoptic will build against this workspace's OpenSSL at ${prefix}"
 }
 
@@ -162,10 +163,10 @@ kryoptic_build_cdylib() {
   (
     cd "$src_dir" || exit
     env -u CARGO_TARGET_DIR \
-      PKG_CONFIG_PATH="$PKG_CONFIG_PATH" \
-      PKG_CONFIG_PATH_FOR_TARGET="$PKG_CONFIG_PATH_FOR_TARGET" \
-      KRYOPTIC_OPENSSL_SOURCES="$KRYOPTIC_OPENSSL_SOURCES" \
-      OPENSSL_STATIC="$OPENSSL_STATIC" \
+      PKG_CONFIG_PATH="$KRYOPTIC_BUILD_PKG_CONFIG_PATH" \
+      PKG_CONFIG_PATH_FOR_TARGET="$KRYOPTIC_BUILD_PKG_CONFIG_PATH_FOR_TARGET" \
+      KRYOPTIC_OPENSSL_SOURCES="$KRYOPTIC_BUILD_OPENSSL_SOURCES" \
+      OPENSSL_STATIC="$KRYOPTIC_BUILD_OPENSSL_STATIC" \
       cargo build --release --features standard
   )
 
