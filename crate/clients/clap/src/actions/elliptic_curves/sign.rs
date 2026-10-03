@@ -86,6 +86,12 @@ impl SignAction {
                 ..CryptographicParameters::default()
             },
             #[cfg(feature = "non-fips")]
+            Curve::Secp192k1 => CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..CryptographicParameters::default()
+            },
+            #[cfg(feature = "non-fips")]
             Curve::Secp224k1 => CryptographicParameters {
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                 hashing_algorithm: Some(HashingAlgorithm::SHA256),

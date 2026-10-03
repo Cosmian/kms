@@ -19,10 +19,10 @@ use std::ptr;
 
 use cosmian_kms_interfaces::EncryptedContent;
 use pkcs11_sys::{
-    CK_GCM_MESSAGE_PARAMS, CK_MECHANISM, CK_OBJECT_HANDLE, CK_ULONG, CKG_NO_GENERATE, CKM_AES_GCM,
-    CKR_BUFFER_TOO_SMALL, CKR_OK,
+    CK_GCM_MESSAGE_PARAMS, CK_MECHANISM, CK_OBJECT_HANDLE, CK_ULONG, CKG_GENERATE_RANDOM,
+    CKG_NO_GENERATE, CKM_AES_GCM, CKR_BUFFER_TOO_SMALL, CKR_OK,
 };
-use rand::{TryRng, rngs::SysRng};
+
 use zeroize::Zeroizing;
 
 use crate::{HError, HResult, session::Session};
@@ -34,9 +34,9 @@ impl Session {
     /// Encrypt `plaintext` under `key_handle` using AES-GCM as a PKCS#11 v3.0
     /// "message" operation (`C_MessageEncryptInit`/`C_EncryptMessage`/`C_MessageEncryptFinal`).
     ///
-    /// A fresh random 96-bit IV is generated client-side for every call (`ivGenerator`
-    /// is set to `CKG_NO_GENERATE`, i.e. the caller supplies the IV), matching the
-    /// existing classic `Session::encrypt` `AesGcm` behavior. Exactly one
+    /// The HSM/KMS generates a fresh random 96-bit IV for every call (`ivGenerator`
+    /// is set to `CKG_GENERATE_RANDOM`), and the IV is returned in the output buffer.
+    /// Exactly one
     /// `C_EncryptMessage` call is issued per invocation, so the token never sees the
     /// same IV twice within a message-encryption operation — see the call site for why
     /// that matters.
@@ -61,16 +61,15 @@ impl Session {
             ));
         }
 
+        // Let the HSM/KMS generate the IV with CKG_GENERATE_RANDOM
+        // pIv will be filled by C_EncryptMessage as output
         let mut nonce = [0_u8; AES_GCM_MESSAGE_IV_LENGTH];
-        SysRng
-            .try_fill_bytes(&mut nonce)
-            .map_err(|e| HError::Default(format!("Error generating random nonce: {e}")))?;
         let mut tag = vec![0_u8; AES_GCM_MESSAGE_TAG_LENGTH];
         let mut params = CK_GCM_MESSAGE_PARAMS {
             pIv: nonce.as_mut_ptr(),
             ulIvLen: CK_ULONG::try_from(AES_GCM_MESSAGE_IV_LENGTH)?,
             ulIvFixedBits: 0,
-            ivGenerator: CKG_NO_GENERATE,
+            ivGenerator: CKG_GENERATE_RANDOM,
             pTag: tag.as_mut_ptr(),
             ulTagBits: CK_ULONG::try_from(AES_GCM_MESSAGE_TAG_LENGTH * 8)?,
         };
@@ -104,27 +103,15 @@ impl Session {
             let mut plaintext = plaintext.to_vec();
 
             // Deliberately a *single* call, not the two-call "NULL output buffer first to
-            // learn the size" idiom used elsewhere in this crate for `C_Encrypt` and
-            // friends. Per OASIS Cryptoki v3.0 base §5.9.2, "a call to `C_EncryptMessage`
-            // begins and terminates a message encryption operation" — so a size probe
-            // followed by the real call presents the token with *two* messages, both
-            // carrying the same IV in `params`. Base §5.2 says a NULL output buffer only
-            // computes a length and produces no cryptographic output, and with
-            // `ivGenerator = CKG_NO_GENERATE` the IV is ours rather than token-generated,
-            // so no nonce is actually reused. But the current-mechanisms document states,
-            // in its `ivGenerator` field description (§2.13.5), that "each IV must be
-            // unique for a given session", and a token that enforces this with a
-            // per-message uniqueness check — or that simply considers the operation
-            // terminated by the probe — is entitled to reject the second call. Since we
-            // would only be asking the token for a size we already know, the probe is
-            // pure risk.
-            //
-            // The size is known because current-mechanisms §2.13.2 specifies that "in
-            // MessageEncrypt the tag is returned in the `pTag` field of
-            // CK_GCM_MESSAGE_PARAMS" rather than appended to the ciphertext as it is for
-            // `C_Encrypt`; with the tag detached and `CKM_AES_GCM` being CTR-based, the
-            // ciphertext is exactly as long as the plaintext. This is also the flow that
-            // document prescribes for MessageEncrypt: init, one `C_EncryptMessage`, final.
+            // learn the size" idiom used elsewhere in this crate. Per OASIS Cryptoki v3.0
+            // base §5.9.2, "a call to `C_EncryptMessage` begins and terminates a message
+            // encryption operation" — so a size probe followed by the real call would present
+            // the token with two distinct messages, each with a different IV (since
+            // `ivGenerator = CKG_GENERATE_RANDOM` lets the HSM generate fresh IVs).
+            // This single-call constraint also means ciphertext and tag lengths are
+            // known upfront per current-mechanisms §2.13.2 (tag in `pTag` field,
+            // ciphertext size = plaintext size), so no length probe is needed.
+
             //
             // `Vec::as_mut_ptr` never yields NULL (an unallocated `Vec` returns a
             // dangling-but-non-null pointer), so a zero-length plaintext — a legitimate

@@ -4,6 +4,8 @@
 //! Once implemented, a crypto oracle must be registered on the KMS instance for that prefix.
 //! HSMs that implement the `HSM` interface have a blanket implementation of this interface called
 //! `HsmCryptoOracle`.
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
@@ -21,6 +23,8 @@ pub struct KeyMetadata {
     pub key_length_in_bits: usize,
     pub sensitive: bool,
     pub id: String,
+    /// Application tags persisted with the key.
+    pub tags: HashSet<String>,
     /// Curve metadata for EC-family keys, including Edwards/Montgomery curves when enabled.
     pub curve: Option<crate::EcCurve>,
     /// PKCS#11 `CKA_START_DATE` — when the key became active.
@@ -271,6 +275,27 @@ impl SigningAlgorithm {
             }
         }
 
+        // Same up-front key-family guard as for an explicit `digital_signature_algorithm`
+        // above: an RSA key requested with `EC`/`ECDSA` (or an EC key with `RSA`) must fail
+        // with a clear KMIP error rather than an opaque PKCS#11 mechanism error from the HSM.
+        let is_rsa_key = matches!(key_type, KeyType::RsaPrivateKey | KeyType::RsaPublicKey);
+        let is_ec_key = matches!(key_type, KeyType::EcPrivateKey | KeyType::EcPublicKey);
+        match params.cryptographic_algorithm {
+            Some(algorithm @ (CryptographicAlgorithm::EC | CryptographicAlgorithm::ECDSA))
+                if !is_ec_key =>
+            {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "Cryptographic algorithm {algorithm:?} does not match the {key_type:?} key"
+                )));
+            }
+            Some(algorithm @ CryptographicAlgorithm::RSA) if !is_rsa_key => {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "Cryptographic algorithm {algorithm:?} does not match the {key_type:?} key"
+                )));
+            }
+            _ => {}
+        }
+
         // 3. cryptographic_algorithm + hashing_algorithm (EC/ECDSA)
         if matches!(
             params.cryptographic_algorithm,
@@ -309,13 +334,13 @@ impl SigningAlgorithm {
                 Some(HashingAlgorithm::SHA1) => {
                     Self::rsa_pkcs1_from_hash(HashingAlgorithm::SHA1, input_is_digest)
                 }
-                Some(HashingAlgorithm::SHA256) | None => {
-                    let hash = params
-                        .hashing_algorithm
-                        .or_else(|| Self::infer_hash_from_digest_len(input_len))
-                        .unwrap_or(HashingAlgorithm::SHA256);
-                    Self::rsa_pkcs1_from_hash(hash, input_is_digest)
+                Some(HashingAlgorithm::SHA256) => {
+                    Self::rsa_pkcs1_from_hash(HashingAlgorithm::SHA256, input_is_digest)
                 }
+                None => Self::rsa_pkcs1_from_hash(
+                    Self::default_rsa_hash(input_is_digest, input_len),
+                    input_is_digest,
+                ),
                 Some(HashingAlgorithm::SHA384) => {
                     Self::rsa_pkcs1_from_hash(HashingAlgorithm::SHA384, input_is_digest)
                 }
@@ -342,11 +367,10 @@ impl SigningAlgorithm {
             // default mechanism selection: `signature_verify` has no `input_is_digest`
             // parameter of its own, so this also covers the `SignatureVerify` KMIP operation
             // delegating to a public/private key with no explicit algorithm requested.
-            KeyType::RsaPrivateKey | KeyType::RsaPublicKey => {
-                let hash =
-                    Self::infer_hash_from_digest_len(input_len).unwrap_or(HashingAlgorithm::SHA256);
-                Self::rsa_pkcs1_from_hash(hash, input_is_digest)
-            }
+            KeyType::RsaPrivateKey | KeyType::RsaPublicKey => Self::rsa_pkcs1_from_hash(
+                Self::default_rsa_hash(input_is_digest, input_len),
+                input_is_digest,
+            ),
             KeyType::EcPrivateKey | KeyType::EcPublicKey => match curve {
                 Some(crate::EcCurve::P384) => Ok(Self::Ecdsa {
                     hashing_algorithm: HashingAlgorithm::SHA384,
@@ -382,6 +406,16 @@ impl SigningAlgorithm {
                 Some(crate::EcCurve::X25519) => Err(InterfaceError::InvalidRequest(
                     "X25519 keys support key agreement, not signing".to_owned(),
                 )),
+                #[cfg(feature = "non-fips")]
+                Some(crate::EcCurve::Secp256k1) => Ok(Self::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: input_is_digest,
+                }),
+                #[cfg(feature = "non-fips")]
+                Some(crate::EcCurve::Secp192k1) => Ok(Self::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: input_is_digest,
+                }),
                 Some(crate::EcCurve::P224 | crate::EcCurve::P256) | None => Ok(Self::Ecdsa {
                     hashing_algorithm: HashingAlgorithm::SHA256,
                     prehashed: input_is_digest,
@@ -393,10 +427,54 @@ impl SigningAlgorithm {
         }
     }
 
+    /// Default hash for RSA PKCS#1 v1.5 when the request does not name one.
+    ///
+    /// The digest length is only meaningful when the caller supplied a digest
+    /// (`digested_data`): for a raw message the length says nothing about the hash, so the
+    /// default is always SHA-256 (the software RSA signing default). Inferring from a raw
+    /// message length would silently pick SHA-1 for a 20-byte message, or SHA-384/SHA-512 for
+    /// a 48/64-byte one, producing signatures no default-configured verifier accepts.
+    const fn default_rsa_hash(input_is_digest: bool, input_len: usize) -> HashingAlgorithm {
+        if input_is_digest {
+            if let Some(hash) = Self::infer_hash_from_digest_len(input_len) {
+                return hash;
+            }
+        }
+        HashingAlgorithm::SHA256
+    }
+
+    /// FIPS: SHA-1 RSA signatures are not approved (SP 800-131A). Checked for both the
+    /// hashing mechanism (`CKM_SHA1_RSA_PKCS`) and the pre-hashed `DigestInfo` variant, so a
+    /// 20-byte `digested_data` cannot bypass the gate by going through raw `CKM_RSA_PKCS`.
+    #[cfg(not(feature = "non-fips"))]
+    fn check_rsa_signature_hash_allowed(
+        hashing_algorithm: HashingAlgorithm,
+    ) -> Result<(), InterfaceError> {
+        if hashing_algorithm == HashingAlgorithm::SHA1 {
+            return Err(InterfaceError::InvalidRequest(
+                "RSA signatures with SHA-1 are unavailable in FIPS mode".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Non-FIPS: every hash `rsa_pkcs1_from_hash` otherwise supports is allowed.
+    #[cfg(feature = "non-fips")]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "signature must match the FIPS variant of this function"
+    )]
+    const fn check_rsa_signature_hash_allowed(
+        _hashing_algorithm: HashingAlgorithm,
+    ) -> Result<(), InterfaceError> {
+        Ok(())
+    }
+
     fn rsa_pkcs1_from_hash(
         hashing_algorithm: HashingAlgorithm,
         input_is_digest: bool,
     ) -> Result<Self, InterfaceError> {
+        Self::check_rsa_signature_hash_allowed(hashing_algorithm)?;
         if input_is_digest {
             return match hashing_algorithm {
                 HashingAlgorithm::SHA1
@@ -490,6 +568,7 @@ pub trait CryptoOracle: Send + Sync {
     /// * `data` - the data to encrypt.
     /// * `cryptographic_algorithm` - the cryptographic algorithm to use for encryption.
     /// * `authenticated_encryption_additional_data` - the additional data to use for authenticated encryption.
+    /// * `iv_counter_nonce` - caller-supplied IV or nonce, when required by the protocol.
     /// # Returns
     /// * `Vec<u8>` - the encrypted data
     async fn encrypt(
@@ -498,6 +577,7 @@ pub trait CryptoOracle: Send + Sync {
         data: &[u8],
         cryptographic_algorithm: Option<CryptoAlgorithm>,
         authenticated_encryption_additional_data: Option<&[u8]>,
+        iv_counter_nonce: Option<&[u8]>,
     ) -> InterfaceResult<EncryptedContent>;
 
     /// Decrypt data
@@ -555,6 +635,7 @@ pub trait CryptoOracle: Send + Sync {
     /// * `data` - the data that was signed
     /// * `signature` - the signature to verify
     /// * `cryptographic_parameters` - optional cryptographic parameters (algorithm, padding, …)
+    /// * `input_is_digest` - whether `data` is already a message digest.
     /// # Returns
     /// * `InterfaceResult<bool>` - `true` if the signature is valid
     async fn signature_verify(
@@ -563,6 +644,7 @@ pub trait CryptoOracle: Send + Sync {
         data: &[u8],
         signature: &[u8],
         cryptographic_parameters: Option<&CryptographicParameters>,
+        input_is_digest: bool,
     ) -> InterfaceResult<bool>;
 
     /// Compute a MAC (Message Authentication Code) using the key identified by `uid`.
@@ -984,5 +1066,95 @@ mod tests {
             .expect("should resolve"),
             SigningAlgorithm::Ed25519
         );
+    }
+
+    #[test]
+    fn from_kmip_raw_message_length_never_selects_the_rsa_hash() {
+        // A raw (non-digest) message of a digest-like length must still default to SHA-256:
+        // the length of a message says nothing about the hash to use.
+        let rsa_params = params_with(None, Some(CryptographicAlgorithm::RSA), None, None, None);
+        for len in [20, 32, 48, 64] {
+            for params in [None, Some(&rsa_params)] {
+                assert_eq!(
+                    SigningAlgorithm::from_kmip(params, KeyType::RsaPrivateKey, None, false, len)
+                        .expect("should resolve"),
+                    SigningAlgorithm::Sha256WithRsa,
+                    "len: {len}, params: {params:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn from_kmip_digest_length_selects_the_rsa_digest_info_hash() {
+        for (len, hashing_algorithm) in [
+            (32, HashingAlgorithm::SHA256),
+            (48, HashingAlgorithm::SHA384),
+            (64, HashingAlgorithm::SHA512),
+        ] {
+            assert_eq!(
+                SigningAlgorithm::from_kmip(None, KeyType::RsaPrivateKey, None, true, len)
+                    .expect("should resolve"),
+                SigningAlgorithm::RsaPkcsV15Digest { hashing_algorithm },
+                "len: {len}"
+            );
+        }
+    }
+
+    #[cfg(not(feature = "non-fips"))]
+    #[test]
+    fn from_kmip_fips_rejects_sha1_rsa_signatures() {
+        // Pre-hashed 20-byte digest: must not bypass the FIPS gate via raw `CKM_RSA_PKCS`.
+        SigningAlgorithm::from_kmip(None, KeyType::RsaPrivateKey, None, true, 20)
+            .expect_err("SHA-1 digest must be rejected in FIPS mode");
+        let params = params_with(
+            Some(DigitalSignatureAlgorithm::SHA1WithRSAEncryption),
+            None,
+            None,
+            None,
+            None,
+        );
+        for input_is_digest in [false, true] {
+            SigningAlgorithm::from_kmip(
+                Some(&params),
+                KeyType::RsaPrivateKey,
+                None,
+                input_is_digest,
+                20,
+            )
+            .expect_err("SHA1WithRSAEncryption must be rejected in FIPS mode");
+        }
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn from_kmip_non_fips_accepts_sha1_rsa_digest() {
+        assert_eq!(
+            SigningAlgorithm::from_kmip(None, KeyType::RsaPrivateKey, None, true, 20)
+                .expect("should resolve"),
+            SigningAlgorithm::RsaPkcsV15Digest {
+                hashing_algorithm: HashingAlgorithm::SHA1,
+            }
+        );
+    }
+
+    #[test]
+    fn from_kmip_rejects_cryptographic_algorithm_key_family_mismatch() {
+        let ec_params = params_with(None, Some(CryptographicAlgorithm::ECDSA), None, None, None);
+        let err =
+            SigningAlgorithm::from_kmip(Some(&ec_params), KeyType::RsaPrivateKey, None, false, 0)
+                .expect_err("ECDSA on an RSA key must be rejected");
+        assert!(matches!(err, InterfaceError::InvalidRequest(_)));
+
+        let rsa_params = params_with(None, Some(CryptographicAlgorithm::RSA), None, None, None);
+        let err = SigningAlgorithm::from_kmip(
+            Some(&rsa_params),
+            KeyType::EcPublicKey,
+            Some(crate::EcCurve::P256),
+            false,
+            0,
+        )
+        .expect_err("RSA on an EC key must be rejected");
+        assert!(matches!(err, InterfaceError::InvalidRequest(_)));
     }
 }

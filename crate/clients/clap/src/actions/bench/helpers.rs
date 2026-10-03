@@ -12,7 +12,8 @@ use cosmian_kms_client::{
         },
         kmip_operations::{CreateKeyPair, Destroy, Encrypt},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, RecommendedCurve, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
+            RecommendedCurve, UniqueIdentifier,
         },
         requests::{
             create_ec_key_pair_request, create_rsa_key_pair_request, symmetric_key_create_request,
@@ -20,6 +21,7 @@ use cosmian_kms_client::{
     },
 };
 use tokio::runtime::Runtime;
+use uuid::Uuid;
 use zeroize::Zeroizing;
 
 /// Send lightweight requests to the KMS server for `warmup_secs` seconds to
@@ -104,6 +106,18 @@ pub(super) fn aes_gcm_params() -> CryptographicParameters {
     }
 }
 
+/// AES-CBC parameters. Used by the HSM-resident encrypt bench (`--hsm`) —
+/// the oracle supports `CryptoAlgorithm::AesCbc` alongside `AesGcm`, unlike
+/// the software `bench_encrypt` group, which does not have a dedicated
+/// AES-CBC category (only GCM/GCM-SIV/XTS/ChaCha20).
+pub(super) fn aes_cbc_params() -> CryptographicParameters {
+    CryptographicParameters {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        block_cipher_mode: Some(BlockCipherMode::CBC),
+        ..Default::default()
+    }
+}
+
 #[cfg(feature = "non-fips")]
 pub(super) fn chacha20_params() -> CryptographicParameters {
     CryptographicParameters {
@@ -117,6 +131,49 @@ pub(super) fn rsa_oaep_params() -> CryptographicParameters {
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
         padding_method: Some(PaddingMethod::OAEP),
         hashing_algorithm: Some(HashingAlgorithm::SHA256),
+        ..Default::default()
+    }
+}
+
+/// RSA-OAEP with SHA-1 (`CryptoAlgorithm::RsaOaepSha1` on the HSM oracle).
+/// Distinct from `rsa_oaep_params()` (SHA-256): the oracle selects the OAEP
+/// hash/MGF1 variant from `hashing_algorithm`, so both are separate
+/// HSM-delegated operations worth benchmarking individually. Not gated by
+/// `non-fips`: confirmed supported by the oracle unconditionally (see
+/// `test_data/vectors/hsm/resident_rsa2048_encrypt_oaep_sha1`).
+pub(super) fn rsa_oaep_sha1_params() -> CryptographicParameters {
+    CryptographicParameters {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+        padding_method: Some(PaddingMethod::OAEP),
+        hashing_algorithm: Some(HashingAlgorithm::SHA1),
+        ..Default::default()
+    }
+}
+
+/// RSA PKCS#1 v1.5 encrypt (`CryptoAlgorithm::RsaPkcsV15` on the HSM oracle).
+/// Not gated by `non-fips` like the software `rsa_pkcs15_params()` below: the
+/// HSM oracle exposes `CKM_RSA_PKCS` encrypt unconditionally (see
+/// `test_data/vectors/hsm/resident_rsa2048_encrypt_pkcs1v15`), independent of
+/// the software crypto module's own FIPS restriction on this legacy padding.
+pub(super) fn hsm_rsa_pkcs1v15_encrypt_params() -> CryptographicParameters {
+    CryptographicParameters {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+        padding_method: Some(PaddingMethod::PKCS1v15),
+        ..Default::default()
+    }
+}
+
+/// RSA PKCS#1 v1.5 sign, hash-and-sign in one HSM call
+/// (`SigningAlgorithm::Sha1WithRsa`/`Sha256WithRsa`/`Sha384WithRsa`/
+/// `Sha512WithRsa` on the oracle, selected via the explicit
+/// `DigitalSignatureAlgorithm::SHA*WithRSAEncryption`, non-digested input —
+/// see `test_data/vectors/hsm/resident_rsa2048_sign_sha{1,256,384,512}`).
+/// Not gated by `non-fips`: confirmed supported unconditionally by the oracle.
+pub(super) fn hsm_rsa_pkcs1v15_sign_params(
+    dsa: DigitalSignatureAlgorithm,
+) -> CryptographicParameters {
+    CryptographicParameters {
+        digital_signature_algorithm: Some(dsa),
         ..Default::default()
     }
 }
@@ -304,6 +361,114 @@ pub(super) fn try_create_pqc_kp(
         let req =
             create_pqc_key_pair_request(&client.config.vendor_id, ["bench"], algorithm, false)
                 .ok()?;
+        let resp = client.create_key_pair(req).await.ok()?;
+        Some((
+            resp.public_key_unique_identifier,
+            resp.private_key_unique_identifier,
+        ))
+    })
+}
+
+// =============================================================================
+// HSM-RESIDENT KEY HELPERS
+// =============================================================================
+//
+// Creating a key whose `unique_identifier` carries an `hsm::<slot>::` prefix
+// (the legacy flat single-HSM UID format — see
+// `crate/server/src/config/params/server_params.rs::build_hsm_instances`)
+// causes the server to generate the key material directly ON the HSM (via the
+// registered `HsmStore`/`CryptoOracle`), and any subsequent Encrypt/Sign
+// against that key executes on the HSM itself (PKCS#11) instead of in KMS
+// software. See `crate/interfaces/src/hsm/hsm_store.rs` and
+// `crate/server/src/core/operations/key_ops/crypto_op.rs` ("Oracle routing").
+//
+// `hsm_prefix` is expected to already contain `hsm::<slot>` (built by the
+// `--hsm-slot` CLI flag); a random UUID suffix is appended here to keep
+// unique identifiers distinct across runs.
+
+/// Build a fresh HSM-resident unique identifier: `<hsm_prefix>::<label>_<uuid>`.
+pub(super) fn hsm_uid(hsm_prefix: &str, label: &str) -> String {
+    format!("{hsm_prefix}::{label}_{}", Uuid::new_v4())
+}
+
+/// Create an HSM-resident symmetric key (e.g. AES). Key generation happens on
+/// the HSM itself via `HsmKeyAlgorithm::AES`.
+pub(super) fn try_create_hsm_sym_key(
+    rt: &Runtime,
+    client: &KmsClient,
+    hsm_prefix: &str,
+    bits: usize,
+    algo: CryptographicAlgorithm,
+) -> Option<UniqueIdentifier> {
+    rt.block_on(async {
+        let uid = hsm_uid(hsm_prefix, "sym");
+        let req = symmetric_key_create_request(
+            &client.config.vendor_id,
+            Some(UniqueIdentifier::TextString(uid)),
+            bits,
+            algo,
+            ["bench"],
+            false,
+            None,
+        )
+        .ok()?;
+        client.create(req).await.ok().map(|r| r.unique_identifier)
+    })
+}
+
+/// Create an HSM-resident RSA key pair. Key generation happens on the HSM
+/// itself via `HsmKeypairAlgorithm::RSA`.
+pub(super) fn try_create_hsm_rsa_kp(
+    rt: &Runtime,
+    client: &KmsClient,
+    hsm_prefix: &str,
+    bits: usize,
+) -> Option<(UniqueIdentifier, UniqueIdentifier)> {
+    rt.block_on(async {
+        let uid = hsm_uid(hsm_prefix, "rsa");
+        let req = create_rsa_key_pair_request(
+            &client.config.vendor_id,
+            Some(UniqueIdentifier::TextString(uid)),
+            ["bench"],
+            bits,
+            false,
+            None,
+        )
+        .ok()?;
+        let resp = client.create_key_pair(req).await.ok()?;
+        Some((
+            resp.public_key_unique_identifier,
+            resp.private_key_unique_identifier,
+        ))
+    })
+}
+
+/// Create an HSM-resident EC/EdDSA key pair for the given curve. Key
+/// generation happens on the HSM itself via `HsmKeypairAlgorithm::EC` (NIST
+/// curves) or `HsmKeypairAlgorithm::Ed25519`/`Ed448` (non-FIPS only).
+///
+/// Curve support on the HSM oracle: P-224/256/384/521 (FIPS), Ed25519/Ed448
+/// (non-FIPS). Note: as of this writing, Ed25519/Ed448 keys can be created on
+/// the HSM but `Sign` against them fails on `SoftHSM2` (`CKR_MECHANISM_INVALID`)
+/// — this helper is still useful for HSM key-*creation* timing, but callers
+/// must not use its output for HSM sign benchmarks.
+pub(super) fn try_create_hsm_ec_kp(
+    rt: &Runtime,
+    client: &KmsClient,
+    hsm_prefix: &str,
+    curve: RecommendedCurve,
+) -> Option<(UniqueIdentifier, UniqueIdentifier)> {
+    rt.block_on(async {
+        let uid = hsm_uid(hsm_prefix, "ec");
+        let req = create_ec_key_pair_request(
+            &client.config.vendor_id,
+            Some(UniqueIdentifier::TextString(uid)),
+            ["bench"],
+            curve,
+            false,
+            None,
+        )
+        .ok()?;
         let resp = client.create_key_pair(req).await.ok()?;
         Some((
             resp.public_key_unique_identifier,

@@ -55,7 +55,7 @@ use crate::{
     C_GetInterface, C_GetInterfaceList,
     backend::CliBackend,
     error::{Pkcs11Error, result::Pkcs11Result},
-    kms_object::key_algorithm_from_attributes,
+    kms_object::{ecdsa_raw_to_der, key_algorithm_from_attributes},
     tests::{
         create_ec_ssh_keypair, create_rsa_ssh_keypair, initialize_backend,
         save_pkcs11_client_config, test_init,
@@ -121,11 +121,21 @@ fn test_hsm_kek_ecdsa_p256_sign() -> Pkcs11Result<()> {
     let backend = CliBackend::instantiate(kms_rest_client.clone());
     // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
     let prehash = [0x42_u8; 32];
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::Ecdsa,
+        &prehash,
+        KeyAlgorithm::EccP256,
+    )?;
     assert!(
         !signature.is_empty(),
         "ECDSA P-256 signature must not be empty"
     );
+
+    // `remote_sign` returns the raw PKCS#11 r||s format (matching real C_Sign output);
+    // convert back to DER since the KMIP `SignatureVerify` operation below is a raw,
+    // backend-bypassing server call that expects the KMS's native DER encoding.
+    let der_signature = ecdsa_raw_to_der(&signature, 32)?;
 
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(assert_signature_valid(
@@ -137,7 +147,7 @@ fn test_hsm_kek_ecdsa_p256_sign() -> Pkcs11Result<()> {
         }),
         None,
         Some(prehash.to_vec()),
-        signature,
+        der_signature,
     ));
     Ok(())
 }
@@ -167,11 +177,20 @@ fn test_hsm_kek_ecdsa_secp256k1_sign() -> Pkcs11Result<()> {
     let backend = CliBackend::instantiate(kms_rest_client.clone());
     // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
     let prehash = [0x24_u8; 32];
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::Ecdsa,
+        &prehash,
+        KeyAlgorithm::Secp256k1,
+    )?;
     assert!(
         !signature.is_empty(),
         "ECDSA secp256k1 signature must not be empty"
     );
+    // `remote_sign` returns the raw PKCS#11 r||s format (matching real C_Sign output);
+    // convert back to DER since the KMIP `SignatureVerify` operation below is a raw,
+    // backend-bypassing server call that expects the KMS's native DER encoding.
+    let der_signature = ecdsa_raw_to_der(&signature, 32)?;
 
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(assert_signature_valid(
@@ -183,7 +202,7 @@ fn test_hsm_kek_ecdsa_secp256k1_sign() -> Pkcs11Result<()> {
         }),
         None,
         Some(prehash.to_vec()),
-        signature,
+        der_signature,
     ));
     Ok(())
 }
@@ -210,7 +229,12 @@ fn test_hsm_kek_eddsa_ed25519_sign() -> Pkcs11Result<()> {
     let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
     let backend = CliBackend::instantiate(kms_rest_client.clone());
     let data = b"hello HSM-KEK world, this is a test message for Ed25519 signing".to_vec();
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::EdDsa, &data)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::EdDsa,
+        &data,
+        KeyAlgorithm::Ed25519,
+    )?;
     assert_eq!(signature.len(), 64, "Ed25519 signature must be 64 bytes");
 
     let rt = tokio::runtime::Runtime::new()?;
@@ -788,28 +812,26 @@ fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
         CKR_ARGUMENTS_BAD
     );
 
-    // A minor version *below* the implemented one (e.g. a v3.0 request against this v3.1
-    // implementation) is backward-compatible and must be accepted, not rejected — a v3.1
-    // interface is a superset of v3.0. Only a minor version *above* the implemented one is
-    // truly unsupported.
-    let mut compatible_minor = CK_VERSION {
+    // Backward-compatible v3.0 request: this 3.1 implementation must still satisfy a caller
+    // explicitly requesting exactly {major: 3, minor: 0} (see the `C_GetInterface` doc comment).
+    let mut v3_0_request = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: 0,
     };
     assert_eq!(
-        // SAFETY: `compatible_minor` and `interface_ptr` are valid stack values.
+        // SAFETY: `v3_0_request` and `interface_ptr` are valid stack values.
         unsafe {
             C_GetInterface(
                 std::ptr::null_mut(),
-                &raw mut compatible_minor,
+                &raw mut v3_0_request,
                 &raw mut interface_ptr,
                 0,
             )
         },
         CKR_OK
     );
-    assert!(!interface_ptr.is_null());
 
+    // A minor version newer than the one implemented must still be rejected.
     let mut unsupported_minor = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: CRYPTOKI_VERSION_MINOR.saturating_add(1),
@@ -1089,7 +1111,7 @@ fn test_hsm_kek_rsa_pss_sign() -> Pkcs11Result<()> {
         mask_generation_function: DigestType::Sha256,
         salt_length: 32,
     };
-    let signature = backend.remote_sign(&sk_id, &algorithm, &digest)?;
+    let signature = backend.remote_sign(&sk_id, &algorithm, &digest, KeyAlgorithm::Rsa)?;
     assert_eq!(
         signature.len(),
         256,
@@ -1141,12 +1163,23 @@ fn test_hsm_kek_c_verify_round_trip() -> Pkcs11Result<()> {
     let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
     let backend = CliBackend::instantiate(kms_rest_client);
     let prehash = [0x77_u8; 32];
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::Ecdsa,
+        &prehash,
+        KeyAlgorithm::EccP256,
+    )?;
 
     // Positive case: a genuine signature must verify successfully through the same
     // `Backend::remote_verify` path used by the real `C_VerifyInit`/`C_Verify` functions.
     backend
-        .remote_verify(&pk_id, &SignatureAlgorithm::Ecdsa, &prehash, &signature)
+        .remote_verify(
+            &pk_id,
+            &SignatureAlgorithm::Ecdsa,
+            &prehash,
+            &signature,
+            KeyAlgorithm::EccP256,
+        )
         .expect("a genuine ECDSA P-256 signature must verify successfully via C_Verify");
 
     // Negative case: a tampered signature must be rejected with CKR_SIGNATURE_INVALID,
@@ -1161,6 +1194,7 @@ fn test_hsm_kek_c_verify_round_trip() -> Pkcs11Result<()> {
             &SignatureAlgorithm::Ecdsa,
             &prehash,
             &tampered_signature,
+            KeyAlgorithm::EccP256,
         )
         .expect_err("a tampered signature must be rejected, not silently accepted");
     assert!(

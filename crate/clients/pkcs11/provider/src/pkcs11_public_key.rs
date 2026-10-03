@@ -109,7 +109,7 @@ impl PublicKey for Pkcs11PublicKey {
         signature: &[u8],
     ) -> ModuleResult<()> {
         backend()?
-            .remote_verify(&self.remote_id, algorithm, data, signature)
+            .remote_verify(&self.remote_id, algorithm, data, signature, self.algorithm)
             .map_err(|e| {
                 error!(
                     "remote_verify failed for Pkcs11PublicKey with remote_id {}: {e}",

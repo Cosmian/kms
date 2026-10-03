@@ -28,8 +28,16 @@ tme = "tme"
 PNGs = "PNGs"
 # Base64url fragment inside an example JWK "y" coordinate in openapi.yaml.
 Stik = "Stik"
+# Matches the "hsm_delegation_benchs" branch name, required verbatim as the
+# CHANGELOG/<branch-name>.md filename convention.
+benchs = "benchs"
 # Security Information and Event Management
 SIEM = "SIEM"
 SIEMs = "SIEMs"
 SIE = "SIE"
 sie = "sie"
+# Real pkcs11-sys constant names (PKCS#11 spec), not typos: EDE (Encrypt-Decrypt-
+# Encrypt) triple-DES naming, and PROBABLISTIC is a legacy spec misspelling kept
+# verbatim in pkcs11-sys as a distinct compat-alias constant.
+EDE = "EDE"
+PROBABLISTIC = "PROBABLISTIC"

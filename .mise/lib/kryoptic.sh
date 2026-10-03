@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # .mise/lib/kryoptic.sh — Out-of-tree build helper for the published `kryoptic`
 # PKCS#11 v3.0 software token (https://github.com/latchset/kryoptic), used
-# exclusively as a v3.0 conformance-test oracle by
-# crate/hsm/base_hsm/tests/kryoptic_conformance.rs.
+# as the PKCS#11 v3.0 test token by crate/hsm/kryoptic
+# (`mise run test:hsm-kryoptic`).
 #
 # `kryoptic` is deliberately NOT a [dev-dependencies] entry in
 # crate/hsm/base_hsm/Cargo.toml: its `kryoptic-lib` dependency requires
@@ -158,11 +158,14 @@ kryoptic_build_cdylib() {
   # probe at this workspace's own OpenSSL 3.6.2 instead of the ambient system
   # one.
   print_status "Building kryoptic cdylib (cargo build --release --features standard)"
-  (cd "$src_dir" && cargo build --release --features standard)
+  (cd "$src_dir" && env -u CARGO_TARGET_DIR cargo build --release --features standard)
 
   local cdylib_name artifact
   cdylib_name="$(_kryoptic_cdylib_filename)"
   artifact="${src_dir}/target/release/${cdylib_name}"
+  if [ ! -f "$artifact" ] && [ -n "${CARGO_TARGET_DIR:-}" ] && [ -f "${CARGO_TARGET_DIR}/release/${cdylib_name}" ]; then
+    artifact="${CARGO_TARGET_DIR}/release/${cdylib_name}"
+  fi
   if [ ! -f "$artifact" ]; then
     print_error "kryoptic cdylib artifact not found at expected path ${artifact} after build"
   fi
