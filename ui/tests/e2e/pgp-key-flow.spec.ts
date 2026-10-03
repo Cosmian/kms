@@ -19,7 +19,10 @@ import {
     submitAndWaitForResponse,
 } from "./helpers";
 
+const FIPS_MODE = process.env.PLAYWRIGHT_FIPS_MODE === "true";
+
 test.describe("OpenPGP key", () => {
+    test.skip(FIPS_MODE, "OpenPGP is not available in FIPS mode");
     test("create Ed25519 key with default settings", async ({ page }) => {
         await gotoAndWait(page, "/ui/pgp/keys/create");
         await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: UI_READY_TIMEOUT });
