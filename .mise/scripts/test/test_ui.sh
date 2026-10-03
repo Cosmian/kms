@@ -399,12 +399,12 @@ for i in $(seq 1 60); do
 done
 
 # ── 8. Run Playwright E2E tests ─────────────────────────────────────────────
-echo "==> Running Playwright E2E tests (workers=${PLAYWRIGHT_WORKERS:-10}) …"
+echo "==> Running Playwright E2E tests (workers=${PLAYWRIGHT_WORKERS:-4}) …"
 TEST_EXIT=0
 PW_ENV=(
   CI=true
   PLAYWRIGHT_BASE_URL="http://127.0.0.1:${VITE_PORT}"
-  PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-10}"
+  PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-4}"
   PLAYWRIGHT_HSM_KEY_COUNT=3
   PLAYWRIGHT_HSM_SLOT_ID_1="${SOFTHSM2_HSM_SLOT_ID}"
   PLAYWRIGHT_HSM_SLOT_ID_2="${SOFTHSM2_HSM_SLOT_ID_2}"

@@ -8,13 +8,14 @@
 use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::time_normalize,
-    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_0::kmip_types::{CryptographicUsageMask, RevocationReason, RevocationReasonCode},
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PGPKey},
         kmip_operations::{
-            Create, Decrypt, Destroy, Encrypt, Export, GetAttributes, Import, Sign, SignatureVerify,
+            Create, Decrypt, Destroy, Encrypt, Export, GetAttributes, Import, Revoke, Sign,
+            SignatureVerify,
         },
         kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier, ValidityIndicator},
     },
@@ -82,6 +83,43 @@ async fn test_pgp_create_and_get_attributes() {
     assert_eq!(attrs.key_format_type, Some(KeyFormatType::OpenPgpSecretKey));
 
     destroy_key(&client, &uid).await;
+}
+
+#[tokio::test]
+async fn test_pgp_revoke_then_destroy() {
+    init_test_logging();
+    let ctx = start_default_test_kms_server().await;
+    let client = ctx.get_owner_client();
+
+    let create_resp = client
+        .create(pgp_create_request(CryptographicAlgorithm::Ed25519, None))
+        .await
+        .expect("create OpenPGP key");
+    let uid = create_resp.unique_identifier.to_string();
+
+    let revoke_resp = client
+        .revoke(Revoke {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+            revocation_reason: RevocationReason {
+                revocation_reason_code: RevocationReasonCode::CessationOfOperation,
+                revocation_message: None,
+            },
+            compromise_occurrence_date: None,
+            cascade: true,
+        })
+        .await
+        .expect("revoke OpenPGP key");
+    assert_eq!(revoke_resp.unique_identifier.to_string(), uid);
+
+    client
+        .destroy(Destroy {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+            remove: true,
+            cascade: true,
+            ..Destroy::default()
+        })
+        .await
+        .expect("destroy revoked OpenPGP key");
 }
 
 #[tokio::test]
