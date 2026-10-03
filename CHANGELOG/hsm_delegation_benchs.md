@@ -139,6 +139,30 @@
   code defect); the fix itself is grounded in a real, raw PKCS#11 return code observed from that
   same HSM and an established in-tree precedent for handling it.
 
+### Utimaco CI simulator: scoped the new composite coverage back out, regression pre-dates this fix
+
+- `test_hsm_utimaco_all` (added in the earlier "cross-backend shared test coverage" commit on
+  this branch) started failing CI with `CKR_DEVICE_REMOVED` (`Error: Default("Failed to
+  initialize signing"/"Failed to get signature length". Return code: 50")`, ~9s in, at the
+  first signing call reached after the new `aes_cbc_multi_round` step (confirmed pre-existing:
+  it already failed identically on the CI run before this branch's ECDSA/RSA-PSS fix above, i.e.
+  it is not caused by that fix). Both `fips` and `non-fips` variants fail at a *different* call
+  site inside the same `sign_with_mechanism` function, which rules out a fixed mechanism/key
+  incompatibility (that would fail at the same place every time, like the Crypt2Pay case above)
+  and points instead at the bundled `bl_sim5` CI simulator losing its device/session state
+  partway through — plausibly from `aes_cbc_multi_round`'s ~460 rapid sequential
+  `C_EncryptInit`/`C_DecryptInit` cycles on one session, a volume of traffic none of the other
+  composites exercised before.
+- No local Utimaco simulator access in this environment to reproduce, instrument, and verify a
+  fix the way the Crypt2Pay issue above was diagnosed and confirmed. Per explicit direction,
+  removed `generate_ec_keypair`, `aes_cbc_encrypt`, `aes_cbc_multi_round`,
+  `rsa_pss_sign_all_algorithms`, and `ecdsa_sign_all_curves_and_hashes` from
+  `test_hsm_utimaco_all` only (`crate/hsm/utimaco/src/tests.rs`), restoring exactly the
+  composite that was last green. Each omitted function keeps its own standalone `#[ignore]`
+  test for targeted investigation by whoever has simulator access; a comment at the omission
+  site documents the symptom and return code for that follow-up. No other backend's composite
+  (Crypt2Pay, Proteccio, SoftHSM2, Kryoptic, SmartCard HSM) is affected.
+
 ## Testing
 
 ### HSM-resident crypto benchmarking (`--hsm`)
