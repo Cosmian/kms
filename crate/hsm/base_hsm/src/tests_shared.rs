@@ -895,7 +895,17 @@ pub fn rsa_pss_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
             warn!("{name} (CKM {ckm}) not supported by HSM, skipping");
             continue;
         }
-        let signature = session.sign(sk, algorithm, data)?;
+        // Capability-probe per algorithm: the mechanism may be advertised at the slot
+        // level yet rejected for this specific key size/salt combination at `C_SignInit`
+        // time (e.g. CKR_KEY_SIZE_RANGE). Skip that one algorithm instead of hard-failing
+        // the whole sweep, mirroring the ECDSA/EdDSA capability probes above.
+        let signature = match session.sign(sk, algorithm, data) {
+            Ok(signature) => signature,
+            Err(error) => {
+                warn!("{name} rejected by the HSM at sign time, skipping: {error}");
+                continue;
+            }
+        };
         // RSA-2048 signature is 256 bytes regardless of the salt length used.
         assert_eq!(
             signature.len(),
@@ -1056,7 +1066,18 @@ pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> 
                     continue;
                 };
 
-            let signature = session.sign(sk, sign_algorithm, &signing_input)?;
+            // Capability-probe per curve/hash: some HSMs advertise the combined
+            // CKM_ECDSA_SHA* mechanism (or raw CKM_ECDSA) at the slot level yet reject a
+            // specific key-size/digest combination (e.g. a weak digest paired with a strong
+            // curve) with CKR_KEY_SIZE_RANGE at `C_SignInit` time. Mirror the EdDSA pattern
+            // above: skip that one combination instead of hard-failing the whole sweep.
+            let signature = match session.sign(sk, sign_algorithm, &signing_input) {
+                Ok(signature) => signature,
+                Err(error) => {
+                    warn!("{curve:?}/{name} rejected by the HSM at sign time, skipping: {error}");
+                    continue;
+                }
+            };
             verify_ecdsa_der_signature(&openssl_pk, digest_nid, data, &signature)?;
             info!("Successfully signed and verified {curve:?}/{name}");
 

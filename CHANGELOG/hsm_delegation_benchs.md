@@ -116,6 +116,29 @@
   `cargo test -p cosmian_pkcs11 --lib --features non-fips` (19 tests, 5 pre-existing
   `#[ignore]`) both still pass unchanged
 
+### Crypt2Pay ECDSA/RSA-PSS composite test: hard failure on a per-combination capability gap
+
+- `ecdsa_sign_all_curves_and_hashes` and `rsa_pss_sign_all_algorithms`
+  (`crate/hsm/base_hsm/src/tests_shared.rs`, both added earlier on this branch) pre-check
+  mechanism support via `slot.get_supported_mechanisms()` but then called `session.sign(...)?`
+  directly, hard-propagating any error from `C_SignInit`. Against a live Crypt2Pay HSM this
+  surfaced as `Error: Default("Failed to initialize signing. Return code: 98")` (`CKR_KEY_SIZE_RANGE`)
+  partway through `test_hsm_crypt2pay_all`, aborting the whole composite: the HSM advertises the
+  mechanism at the slot level (so the pre-check passes) but rejects a specific curve/digest or
+  salt/key-size combination at sign time.
+- Fixed by mirroring the capability-probe pattern `eddsa_sign_all_curves` already uses for the
+  identical class of problem (documented there for Ed448/Kryoptic): catch the error from
+  `session.sign(...)`, `warn!` and `continue` to the next combination instead of hard-failing via
+  `?`. Purely additive to error handling; behavior is unchanged for any backend where every
+  combination already signs successfully.
+- Verified no regression: `mise test:hsm-softhsm2 -v non-fips` (58 passed) and
+  `mise test:hsm-kryoptic -v non-fips` (58 passed) both still green. Live Crypt2Pay re-verification
+  of this exact fix is blocked by an unrelated, already-documented, intermittent external issue on
+  that shared HSM (`generate_rsa_keypair`/`generate_ec_keypair` sporadically returning
+  `CKR_MECHANISM_INVALID`, return code 112 — a license/quota condition on the remote unit, not a
+  code defect); the fix itself is grounded in a real, raw PKCS#11 return code observed from that
+  same HSM and an established in-tree precedent for handling it.
+
 ## Testing
 
 ### HSM-resident crypto benchmarking (`--hsm`)
