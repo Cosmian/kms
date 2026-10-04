@@ -13,11 +13,14 @@ nav:
   - HSM Support:
       - Introduction: hsm_support/introduction/index.md
       - HSM keys & operations: hsm_support/hsm_operations.md
+      - HSM key labeling & tagging: hsm_support/tagging.md
       - Multi-HSM support: hsm_support/multi_hsm.md
+      - Algorithm support by model: hsm_support/algorithm_support.md
       - Trustway Crypt2pay: hsm_support/crypt2pay.md
       - Trustway Proteccio: hsm_support/proteccio.md
       - Utimaco General Purpose: hsm_support/utimaco.md
       - Smart card HSM / Nitrokey HSM 2: hsm_support/sc_hsm.md
+      - AWS CloudHSM: hsm_support/aws_cloudhsm.md
       - SoftHSMv2: hsm_support/softhsm2.md
       - Other HSMs: hsm_support/other_hsms.md
   - KMIP Support:
@@ -174,7 +177,11 @@ nav:
           - Security Audit (OWASP): certifications_and_compliance/audit/owasp_security_audit.md
           - Multi-Framework Security Audit: certifications_and_compliance/audit/multi_framework_security_audit.md
   - Benchmarks:
-      - Reports: benchmarks/ckms_bench/report.md
+      - Software: benchmarks/ckms_bench/report.md
+      - PKCS#11: benchmarks/ckms_bench_pkcs11/report.md
+      - PKCS#11 HSM Delegated: benchmarks/ckms_bench_pkcs11_delegated/report.md
+      - HSM KEK-Wrap: benchmarks/ckms_bench_hsm_kek/report.md
+      - HSM Delegated Crypto: benchmarks/ckms_bench_delegated_crypto_operations/report.md
       - CPU Scaling & Flamegraphs: benchmarks/cpu_scaling.md
   - KMS Clients:
       - Getting started: kms_clients/index.md

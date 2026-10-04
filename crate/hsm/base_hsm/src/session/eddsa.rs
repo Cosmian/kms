@@ -32,6 +32,13 @@ impl Session {
         sensitive: bool,
     ) -> HResult<(CK_OBJECT_HANDLE, CK_OBJECT_HANDLE)> {
         let sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
+        // A sensitive private key must not be extractable: derive CKA_EXTRACTABLE
+        // from the `sensitive` flag instead of hard-coding it to CK_TRUE.
+        let extractable = if sensitive == CK_TRUE {
+            CK_FALSE
+        } else {
+            CK_TRUE
+        };
         let mut ec_params = ED25519_OID_DER;
 
         let mut pub_key_template = [
@@ -123,7 +130,7 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_EXTRACTABLE,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: (&raw const extractable)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,

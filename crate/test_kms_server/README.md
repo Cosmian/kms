@@ -303,7 +303,7 @@ replays the steps sequentially.
 | HSM / Resident Keyset | `hsm/resident_keyset_set_rotate_name` | Creates an AES-256 key directly on the HSM, assigns a rotate_name via SetAttribute | 6 |
 | HSM / Resident Negative | `hsm/resident_non_aes_rejected` | Attempts to create a 3DES symmetric key directly on the HSM. | 1 |
 | HSM / Resident Negative | `hsm/resident_rsa1024_rejected` | Attempts to create an RSA-1024 keypair with an HSM-resident UID. | 1 |
-| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha1` | Creates an RSA-2048 keypair on the HSM, then encrypts with RSA-OAEP-SHA1 | 7 |
+| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha1` | Creates an RSA-2048 keypair on the HSM, then attempts to encrypt with RSA-OAEP-SHA1. | 6 |
 | HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha256` | Creates an RSA-2048 keypair on the HSM, then attempts to encrypt with RSA-OAEP-SHA256. | 6 |
 | HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_pkcs1v15` | Creates an RSA-2048 keypair on the HSM, then encrypts with RSA-PKCS#1v1.5 | 7 |
 | HSM / Resident Negative | `hsm/resident_rsa2048_sign_dsa_rejected` | Creates an RSA-2048 keypair on the HSM then attempts to sign using DSAWithSHA256. | 6 |
