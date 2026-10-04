@@ -171,14 +171,15 @@
   `libclang` and could not load `libffi.so.8`, followed by the final-link failure for
   `-lsqlite3`.
 - `.mise/lib/kryoptic.sh` now prepends the workspace OpenSSL 3.6.2 prefix to both
-  `PKG_CONFIG_PATH` and `PKG_CONFIG_PATH_FOR_TARGET`, and passes those paths plus
-  `KRYOPTIC_OPENSSL_SOURCES`/`OPENSSL_STATIC` explicitly at the isolated Cargo boundary.
-  The overrides remain private to that build, so later workspace KMS builds retain the
-  shell's normal OpenSSL environment. Nix's target pkg-config path previously selected
-  OpenSSL 3.1.2 even though the helper had located the correct workspace prefix, causing
-  Kryoptic's OpenSSL >=3.2 requirement to fail. Local `mise run bench:pkcs11 --delegated
-  --hsm-model kryoptic --variant non-fips -s` now completes all three delegated submodes
-  successfully.
+  `PKG_CONFIG_PATH` and `PKG_CONFIG_PATH_FOR_TARGET`, passes those paths plus
+  `KRYOPTIC_OPENSSL_SOURCES`/`OPENSSL_STATIC` explicitly at the isolated Cargo boundary,
+  and supplies `OSSL_BINDGEN_CLANG_ARGS=-isystem <workspace>/include` so ossl-sys bindgen
+  resolves the matching OpenSSL headers rather than Nix's defaults. The overrides remain
+  private to that build, so later workspace KMS builds retain the shell's normal OpenSSL
+  environment. Nix's target pkg-config path previously selected OpenSSL 3.1.2 even though
+  the helper had located the correct workspace prefix, causing Kryoptic's OpenSSL >=3.2
+  requirement to fail. Local `mise run bench:pkcs11 --delegated --hsm-model kryoptic
+  --variant non-fips -s` now completes all three delegated submodes successfully.
 
 ## Testing
 

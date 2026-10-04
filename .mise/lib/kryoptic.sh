@@ -157,8 +157,9 @@ kryoptic_build_cdylib() {
   # not apply here. Pass the overrides explicitly at the Cargo boundary. This avoids
   # relying on shell function/subshell export behavior when `env -u CARGO_TARGET_DIR`
   # launches the isolated Kryoptic workspace build.
-  # `KRYOPTIC_OPENSSL_SOURCES` is consumed by ossl-sys; the other two steer pkg-config
-  # and static-link selection for any auxiliary OpenSSL probes.
+  # `KRYOPTIC_OPENSSL_SOURCES` is consumed by ossl-sys; the pkg-config variables steer
+  # both host and target discovery, and the bindgen override keeps workspace headers
+  # ahead of Nix's system include defaults.
   print_status "Building kryoptic cdylib (cargo build --release --features standard)"
   (
     cd "$src_dir" || exit
@@ -166,6 +167,7 @@ kryoptic_build_cdylib() {
       PKG_CONFIG_PATH="$KRYOPTIC_BUILD_PKG_CONFIG_PATH" \
       PKG_CONFIG_PATH_FOR_TARGET="$KRYOPTIC_BUILD_PKG_CONFIG_PATH_FOR_TARGET" \
       KRYOPTIC_OPENSSL_SOURCES="$KRYOPTIC_BUILD_OPENSSL_SOURCES" \
+      OSSL_BINDGEN_CLANG_ARGS="-isystem ${KRYOPTIC_BUILD_OPENSSL_SOURCES}/include" \
       OPENSSL_STATIC="$KRYOPTIC_BUILD_OPENSSL_STATIC" \
       cargo build --release --features standard
   )
