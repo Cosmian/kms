@@ -25,10 +25,7 @@ use pkcs11_sys::{
     CKR_FUNCTION_FAILED, CKR_OK, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 
-use crate::{
-    kms_object::{RUNTIME, get_kms_config},
-    logging::initialize_logging,
-};
+use crate::{kms_object::get_kms_config, logging::initialize_logging};
 
 /// Number of `CK_INTERFACE` entries `C_GetInterfaceList` publishes: the same "PKCS 11" function
 /// table under both the implemented Cryptoki version and `{3, 0}`. See `C_GetInterface` for why
@@ -195,10 +192,6 @@ fn ensure_backend_registered(registration: BackendRegistration) -> Result<(), CK
     };
 
     let use_pin = config.pkcs11_use_pin_as_access_token.unwrap_or(false);
-    // `C_GetFunctionList` is called directly by the PKCS#11 consumer (e.g. SAP ASE) with
-    // no Tokio runtime active. `KmsClient::new_with_config` builds a `hyper` client that
-    // requires one, so enter the shared runtime's context for the duration of construction.
-    let _rt_guard = RUNTIME.enter();
     if use_pin {
         // Mode 2 — OIDC pin: register a pre-auth backend so metadata calls
         // (C_GetTokenInfo etc.) work before C_Login, then register the login
@@ -218,9 +211,6 @@ fn ensure_backend_registered(registration: BackendRegistration) -> Result<(), CK
         register_login_fn(Box::new(move |token: &str| {
             let mut cfg = config.clone();
             cfg.http_config.access_token = Some(token.to_owned());
-            // C_Login is also called directly by the PKCS#11 consumer, outside the
-            // C_GetFunctionList call frame, so it needs its own runtime-context guard.
-            let _rt_guard = RUNTIME.enter();
             let kms_client =
                 KmsClient::new_with_config(cfg).map_err(|e| ModuleError::Backend(Box::new(e)))?;
             register_backend(Box::new(backend::CliBackend::instantiate(kms_client)));
@@ -367,7 +357,11 @@ pub unsafe extern "C" fn C_GetInterface(
         // SAFETY: caller guarantees p_version points to a valid CK_VERSION per this function's
         // safety contract.
         let version = unsafe { *p_version };
-        if version.major != CRYPTOKI_VERSION_MAJOR {
+        // Same major version required; minor version must not exceed what this module
+        // implements (3.1) — a v3.1 implementation must still satisfy a backward-compatible
+        // caller explicitly requesting {major: 3, minor: 0}, per this function's own doc
+        // comment above. An exact-match check here would reject that valid request.
+        if version.major != CRYPTOKI_VERSION_MAJOR || version.minor > CRYPTOKI_VERSION_MINOR {
             return CKR_ARGUMENTS_BAD;
         }
         if version.minor == CRYPTOKI_VERSION_MINOR {

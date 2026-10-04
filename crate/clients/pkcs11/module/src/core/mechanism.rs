@@ -23,11 +23,12 @@ use std::slice;
 
 use cosmian_logger::{debug, error};
 use pkcs11_sys::{
-    CK_GCM_PARAMS, CK_MECHANISM, CK_MECHANISM_TYPE, CK_RSA_PKCS_PSS_PARAMS, CKG_MGF1_SHA1,
-    CKG_MGF1_SHA224, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKM_AES_CBC,
-    CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_ECDSA, CKM_EDDSA, CKM_RSA_PKCS,
-    CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA224, CKM_SHA256, CKM_SHA256_RSA_PKCS,
-    CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA512, CKM_SHA512_RSA_PKCS,
+    CK_GCM_PARAMS, CK_MECHANISM, CK_MECHANISM_TYPE, CK_RSA_PKCS_OAEP_PARAMS,
+    CK_RSA_PKCS_PSS_PARAMS, CKG_MGF1_SHA1, CKG_MGF1_SHA224, CKG_MGF1_SHA256, CKG_MGF1_SHA384,
+    CKG_MGF1_SHA512, CKM_AES_CBC, CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_ECDSA,
+    CKM_EDDSA, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA1_RSA_PKCS,
+    CKM_SHA224, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA512,
+    CKM_SHA512_RSA_PKCS, CKZ_DATA_SPECIFIED,
 };
 
 use crate::{
@@ -96,6 +97,11 @@ pub enum Mechanism {
         mask_generation_function: DigestType,
         salt_length: u64,
     },
+    /// `CKM_RSA_PKCS_OAEP` (SHA-256 hash / MGF1-SHA256 mask), matching the KMS
+    /// server's `HsmEncryptionAlgorithm::RsaOaepSha256`. Other hash/MGF
+    /// combinations are rejected as `MechanismInvalid`, mirroring the fact
+    /// that the KMS backend only exposes the SHA-256 OAEP variant here.
+    RsaOaep,
 }
 
 #[expect(clippy::missing_safety_doc)]
@@ -258,6 +264,50 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
                 salt_length: u64::from(salt_len),
             })
         }
+        CKM_RSA_PKCS_OAEP => {
+            let mechanism_type = mechanism.mechanism;
+            let parameter_ptr = mechanism.pParameter;
+            let parameter_len = mechanism.ulParameterLen;
+            not_null!(
+                parameter_ptr,
+                "parse_mechanism: CKM_RSA_PKCS_OAEP pParameter"
+            );
+            if (usize::try_from(parameter_len)?) != std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() {
+                error!(
+                    "CKM_RSA_PKCS_OAEP pParameter incorrect size: {} != {}",
+                    parameter_len,
+                    std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>()
+                );
+                return Err(ModuleError::MechanismInvalid(mechanism_type));
+            }
+            // SAFETY: `parameter_ptr` was just checked non-null and the pointed-to buffer was
+            // checked above to be exactly `size_of::<CK_RSA_PKCS_OAEP_PARAMS>()` bytes, as
+            // required by the PKCS#11 spec for `CKM_RSA_PKCS_OAEP`. `read_unaligned` is used
+            // (rather than `read`) because PKCS#11 callers are C code and may pass a pointer
+            // with no alignment guarantee.
+            let params: CK_RSA_PKCS_OAEP_PARAMS = unsafe {
+                parameter_ptr
+                    .cast::<CK_RSA_PKCS_OAEP_PARAMS>()
+                    .read_unaligned()
+            };
+            let hash_alg = params.hashAlg;
+            let mgf = params.mgf;
+            let source = params.source;
+            let source_data_len = params.ulSourceDataLen;
+            if hash_alg != CKM_SHA256 || mgf != CKG_MGF1_SHA256 {
+                error!(
+                    "CKM_RSA_PKCS_OAEP: unsupported hashAlg/mgf combination {hash_alg}/{mgf} \
+                     (only SHA-256/MGF1-SHA256 is supported)"
+                );
+                return Err(ModuleError::MechanismInvalid(mechanism_type));
+            }
+            if source != CKZ_DATA_SPECIFIED || source_data_len != 0 {
+                return Err(ModuleError::BadArguments(
+                    "CKM_RSA_PKCS_OAEP: a non-empty source/label is not supported".to_owned(),
+                ));
+            }
+            Ok(Mechanism::RsaOaep)
+        }
         _ => Err(ModuleError::MechanismInvalid(mechanism.mechanism)),
     }
 }
@@ -276,6 +326,7 @@ impl From<&Mechanism> for CK_MECHANISM_TYPE {
             Mechanism::RsaPkcsSha256 => CKM_SHA256_RSA_PKCS,
             Mechanism::RsaPkcsSha384 => CKM_SHA384_RSA_PKCS,
             Mechanism::RsaPkcsSha512 => CKM_SHA512_RSA_PKCS,
+            Mechanism::RsaOaep => CKM_RSA_PKCS_OAEP,
             Mechanism::RsaPss { .. } => CKM_RSA_PKCS_PSS,
         }
     }
@@ -313,6 +364,7 @@ impl TryFrom<Mechanism> for EncryptionAlgorithm {
     fn try_from(mechanism: Mechanism) -> ModuleResult<Self> {
         match mechanism {
             Mechanism::RsaPkcs => Ok(Self::RsaPkcs1v15),
+            Mechanism::RsaOaep => Ok(Self::RsaOaepSha256),
             Mechanism::AesCbcPad { .. } => Ok(Self::AesCbcPad),
             Mechanism::AesCbc { .. } => Ok(Self::AesCbc),
             Mechanism::AesGcm { .. } => Ok(Self::AesGcm),
@@ -343,15 +395,15 @@ mod tests {
         ModuleResult, parse_mechanism,
     };
 
-    /// Build a `CK_MECHANISM`/`CK_GCM_PARAMS` pair for `CKM_AES_GCM` from the given raw
-    /// `(iv, aad, tag_bits)` fields, keeping the backing buffers alive in the returned tuple so
-    /// the pointers stashed in the mechanism remain valid for the caller's use.
-    fn gcm_mechanism(
+    /// Build a `CK_GCM_PARAMS` for `CKM_AES_GCM` from the given raw `(iv, aad, tag_bits)`
+    /// fields. The caller must keep the returned value (and the `iv`/`aad` slices it borrows)
+    /// alive for as long as a `CK_MECHANISM` built from it (via `gcm_mechanism`) is in use.
+    fn build_gcm_params(
         iv: &mut [u8],
         aad: &mut [u8],
         tag_bits: pkcs11_sys::CK_ULONG,
-    ) -> ModuleResult<(CK_MECHANISM, CK_GCM_PARAMS)> {
-        let params = CK_GCM_PARAMS {
+    ) -> ModuleResult<CK_GCM_PARAMS> {
+        Ok(CK_GCM_PARAMS {
             pIv: iv.as_mut_ptr(),
             ulIvLen: pkcs11_sys::CK_ULONG::try_from(iv.len())?,
             ulIvBits: 0,
@@ -362,22 +414,30 @@ mod tests {
             },
             ulAADLen: pkcs11_sys::CK_ULONG::try_from(aad.len())?,
             ulTagBits: tag_bits,
-        };
-        let mechanism = CK_MECHANISM {
+        })
+    }
+
+    /// Build a `CK_MECHANISM` for `CKM_AES_GCM` pointing at the caller-owned `params`.
+    /// `params` MUST be a local variable in the caller's own stack frame (not a temporary
+    /// or a value moved out of a called function): the returned `CK_MECHANISM` borrows its
+    /// address, and a `CK_GCM_PARAMS` returned by value from a helper function is not
+    /// guaranteed to keep that same address after the move back to the caller.
+    fn gcm_mechanism(params: &CK_GCM_PARAMS) -> ModuleResult<CK_MECHANISM> {
+        Ok(CK_MECHANISM {
             mechanism: CKM_AES_GCM,
-            // SAFETY: `&params` outlives this function call site since the caller receives
-            // `params` back and must keep it (and `iv`/`aad`) alive while using `mechanism`.
-            pParameter: (&raw const params).cast::<std::ffi::c_void>().cast_mut(),
+            pParameter: (std::ptr::from_ref(params))
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
             ulParameterLen: pkcs11_sys::CK_ULONG::try_from(std::mem::size_of::<CK_GCM_PARAMS>())?,
-        };
-        Ok((mechanism, params))
+        })
     }
 
     #[test]
     fn ckm_aes_gcm_valid_iv_and_aad_are_parsed() -> ModuleResult<()> {
         let mut iv = [0x42_u8; 12];
         let mut aad = [0x24_u8; 8];
-        let (mechanism, _params) = gcm_mechanism(&mut iv, &mut aad, 128)?;
+        let params = build_gcm_params(&mut iv, &mut aad, 128)?;
+        let mechanism = gcm_mechanism(&params)?;
         let parsed = unsafe { parse_mechanism(mechanism) }?;
         let Mechanism::AesGcm {
             iv: parsed_iv,
@@ -400,7 +460,8 @@ mod tests {
     fn ckm_aes_gcm_empty_aad_is_parsed_as_empty_vec() -> ModuleResult<()> {
         let mut iv = [0x01_u8; 12];
         let mut aad: [u8; 0] = [];
-        let (mechanism, _params) = gcm_mechanism(&mut iv, &mut aad, 128)?;
+        let params = build_gcm_params(&mut iv, &mut aad, 128)?;
+        let mechanism = gcm_mechanism(&params)?;
         let parsed = unsafe { parse_mechanism(mechanism) }?;
         let Mechanism::AesGcm { aad, .. } = parsed else {
             return Err(super::ModuleError::BadArguments(
@@ -420,7 +481,8 @@ mod tests {
         let mut iv = [0x01_u8; 12];
         let mut aad: [u8; 0] = [];
         for tag_bits in [0, 64, 96, 120, 127, 129, 256] {
-            let (mechanism, _params) = gcm_mechanism(&mut iv, &mut aad, tag_bits)?;
+            let params = build_gcm_params(&mut iv, &mut aad, tag_bits)?;
+            let mechanism = gcm_mechanism(&params)?;
             unsafe { parse_mechanism(mechanism) }.unwrap_err();
         }
         Ok(())
@@ -430,7 +492,8 @@ mod tests {
     fn ckm_aes_gcm_rejects_zero_length_iv() -> ModuleResult<()> {
         let mut iv: [u8; 0] = [];
         let mut aad: [u8; 0] = [];
-        let (mechanism, _params) = gcm_mechanism(&mut iv, &mut aad, 128)?;
+        let params = build_gcm_params(&mut iv, &mut aad, 128)?;
+        let mechanism = gcm_mechanism(&params)?;
         unsafe { parse_mechanism(mechanism) }.unwrap_err();
         Ok(())
     }
@@ -439,7 +502,8 @@ mod tests {
     fn ckm_aes_gcm_rejects_oversized_iv() -> ModuleResult<()> {
         let mut iv = vec![0_u8; AES_GCM_MAX_IV_SIZE + 1];
         let mut aad: [u8; 0] = [];
-        let (mechanism, _params) = gcm_mechanism(&mut iv, &mut aad, 128)?;
+        let params = build_gcm_params(&mut iv, &mut aad, 128)?;
+        let mechanism = gcm_mechanism(&params)?;
         unsafe { parse_mechanism(mechanism) }.unwrap_err();
         Ok(())
     }
@@ -449,7 +513,8 @@ mod tests {
         let mut iv = [0x01_u8; 12];
         // AES_GCM_MAX_AAD_SIZE is 1 MiB; allocate one byte over that bound.
         let mut aad = vec![0_u8; AES_GCM_MAX_AAD_SIZE + 1];
-        let (mechanism, _params) = gcm_mechanism(&mut iv, &mut aad, 128)?;
+        let params = build_gcm_params(&mut iv, &mut aad, 128)?;
+        let mechanism = gcm_mechanism(&params)?;
         unsafe { parse_mechanism(mechanism) }.unwrap_err();
         Ok(())
     }

@@ -23,7 +23,7 @@ default_username = "admin"
 #   Configure with [[hsm_instances]] sections (one per device):
 #
 ## [[hsm_instances]]
-## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other
+## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | aws_cloudhsm | other
 ## hsm_admin    = ["tech@example.com"] # KMS users with admin rights on this HSM
 ## hsm_slot     = [0]                  # PKCS#11 slot indices
 ## hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
