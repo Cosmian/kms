@@ -314,9 +314,11 @@ jobs:
           HSM_MODEL="${{ matrix.hsm-type }}"
           mise run bench:hsm --delegated --hsm-model "$HSM_MODEL" --variant ${{ matrix.features }} -s
 
-      - name: Test (PKCS#11 v3 conformance via pkcs11-tool)
+      # The comprehensive provider suite and pkcs11-check require non-FIPS.
+      - name: Test (PKCS#11 v3 conformance via pkcs11-tool and pkcs11-check)
+        if: matrix.features == 'non-fips'
         run: |
-          mise run test:hsm-pkcs11-tool --variant ${{ matrix.features }}
+          mise run test:hsm-pkcs11-tool --variant non-fips --marker smoke
 
   # Hardware HSMs reachable only with upstream-only secrets and infrastructure (Proteccio
   # network HSM, Crypt2Pay over OpenVPN, the AWS CloudHSM CI cluster). They live in their

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-#MISE description="Run external OpenSC pkcs11-tool conformance tests against an HSM-KEK KMS server"
+#MISE description="Run HSM-KEK pkcs11-tool tests and pkcs11-check against a plain KMS"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
+#USAGE flag "--marker <marker>" env="PKCS11_CHECK_MARKER" help="pkcs11-check marker (empty runs the full available corpus)" default="smoke"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
@@ -17,8 +18,15 @@ ensure_nix_shell
 
 print_header "Running HSM-KEK pkcs11-tool conformance tests"
 
+# shellcheck disable=SC2119  # get_repo_root intentionally receives no task arguments
 REPO_ROOT="$(get_repo_root)"
-bash "${REPO_ROOT}/.mise/scripts/test/test_hsm_kek_pkcs11_sign.sh" \
+bash "${REPO_ROOT}/.mise/scripts/test/test_hsm_kek_pkcs11_comprehensive.sh" \
   --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}"
 
 print_success "HSM-KEK pkcs11-tool conformance tests completed"
+print_header "Running pkcs11-check after HSM-KEK tests"
+bash "${REPO_ROOT}/.mise/scripts/test/test_pkcs11_check.sh" \
+  --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}" \
+  --marker "${usage_marker:-smoke}"
+
+print_success "HSM-KEK and pkcs11-check conformance tests completed"
