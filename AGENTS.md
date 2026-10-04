@@ -258,6 +258,13 @@ For full Rust design patterns, naming, function-length rules, and idiomatic Rust
 For TypeScript/React/Tailwind/WASM conventions → run `/react-ant-patterns`.
 For FIPS feature-flag gating discipline, multi-standard algorithm compliance, and key lifecycle → run `/cryptography-review`.
 
+### Credit Efficiency
+
+- Run `/kms-caveman` once as mechanical triage before deeper Rust audits; reuse findings instead of repeating the same scan.
+- Select deeper skills from inspected changed code and affected callers. A negative regex result cannot rule out semantic, security, cryptographic, or protocol risk.
+- Keep full, release, and pre-release gates complete; use skips only for confirmed inapplicable scope and record the reason.
+- Do not claim model selection, latency targets, percentages, or token savings unless the platform supports the measurement and actual usage data was observed.
+
 ### Feature rollout order & PR cascade
 
 For any feature broad enough to touch both the server and its clients (CLI and/or Web UI),

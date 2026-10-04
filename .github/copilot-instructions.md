@@ -112,10 +112,11 @@ branch again; never rewrite shared history. Applies to every branch.
 | Command | When to use |
 |---------|-------------|
 | `/kms-sync-rules` | After every code change — auto-detects changed files |
-| `/rust-review-all` | **Full Rust quality gate** — all review skills + reports in `./review/` |
+| `/rust-review-all` | **Full Rust quality gate** — KMS Caveman first, then applicable reviews and reports in `./review/` |
+| `/kms-caveman` | One read-only mechanical Rust triage pass before deeper Rust reviews; not a substitute for semantic or security review |
 | `/rust-panic-audit` | Scan for panics, `.unwrap()`, `process::exit`, brutal exits |
 | `/meta-security` | **Comprehensive security audit** — orchestrates all 4 security skills |
-| `/security-review` | Before any PR |
+| `/security-review` | Before PRs affecting security-sensitive flows; only verified static UI/assets or documentation may use the incremental skip gate |
 | `/cryptography-review` | When touching `crate/crypto/` or algorithm selection |
 | `/standards-review` | Verify code against exact text of applicable standards |
 | `/kmip-compliance` | When adding/modifying a KMIP operation |
@@ -126,3 +127,10 @@ branch again; never rewrite shared history. Applies to every branch.
 | `/ckms-subcommand-test` | **After adding a `ckms` subcommand or flag** — write + run integration tests |
 | `/kms-changelog` | Writing the branch CHANGELOG entry |
 | `/threat-model` | STRIDE-A threat model |
+
+## Credit-Saving Strategies
+
+- Run `/kms-caveman` once before deeper Rust audits and reuse its findings; do not repeat overlapping mechanical scans.
+- Gate specialized reviews on inspected diff scope and affected callers. A clean mechanical scan does not justify skipping security, crypto, or protocol reasoning.
+- Full, release, and pre-release gates override focused-scope skips. State why any skill was inapplicable.
+- Skills cannot select a model or guarantee latency. Do not claim token/percentage savings without observed usage data.

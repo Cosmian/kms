@@ -1,6 +1,6 @@
 ---
 name: rust-panic-audit
-description: 'Scan Rust code for every form of panic or brutal process exit: panic!, todo!, unimplemented!, unreachable!, .unwrap(), .expect() in production, process::exit/abort, integer overflow, and out-of-bounds indexing. Produces a ranked report with patches. Use when reviewing Rust code quality, before any PR, or when adding new Rust code.'
+description: 'Standalone Rust audit for panic and brutal-exit hazards, including panic macros, production `.unwrap()` / `.expect()`, process exits, overflow, and indexing. Use for a dedicated panic check; `/rust-review-all` uses KMS Caveman and does not invoke this skill again.'
 ---
 
 # Rust Panic & Brutal-Exit Audit
@@ -103,10 +103,9 @@ For each finding, assign a severity:
 
 | Severity | Criteria |
 |----------|----------|
-| **CRITICAL** | `panic!`, `process::exit`, `process::abort`, `todo!`, `unimplemented!` in hot paths |
-| **HIGH** | `.unwrap()` or `.expect()` on `Result`/`Option` in request handler, DB, or crypto code |
+| **CRITICAL** | `panic!`, `todo!`, `unimplemented!`, `process::exit`, or `process::abort` in production code outside the documented `fn main()` exception |
+| **HIGH** | Any `.unwrap()` or `.expect()` confirmed in production code; this repository forbids both |
 | **MEDIUM** | `unreachable!` outside debug guards, unchecked slice indexing on untrusted input |
-| **LOW** | `.unwrap()` in one-time initialisation (`OnceLock`, `lazy_static`, known-safe) |
 | **INFO** | `.expect()` in test code (allowed but must have a meaningful message) |
 
 ---
@@ -116,7 +115,6 @@ For each finding, assign a severity:
 The following are **allowed** and should be marked `[OK]`:
 
 - Any line inside a `#[cfg(test)]` module.
-- `OnceLock::set(...).expect("OnceLock already set")` — deterministic.
 - `unreachable!()` inside a `#[cfg(debug_assertions)]` block with a `// PANIC:` comment.
 - `process::exit(0)` inside `fn main()` only, with a `// PANIC:` comment.
 

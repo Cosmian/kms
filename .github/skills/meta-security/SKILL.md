@@ -1,6 +1,6 @@
 ---
 name: meta-security
-description: 'Comprehensive security audit orchestrator: invokes /security-review, /cryptography-review, /threat-model, and /standards-review in sequence. Produces a unified go/no-go report. Use for full security audit before release or after significant changes.'
+description: 'Full security-audit orchestrator that runs /security-review, /cryptography-review, /threat-model, and /standards-review. Use before release or after significant changes; use incremental skip gates only when explicitly requested for a follow-up.'
 ---
 
 # Meta-Security — Comprehensive Security Audit
@@ -19,12 +19,33 @@ that file are mandatory for every sub-skill invoked below. Do not proceed until 
 
 ## Step 1 — Determine Scope
 
+Collect the union of branch changes, staged and unstaged changes, and untracked files. For example:
+
 ```bash
-git diff --name-only origin/develop...HEAD 2>/dev/null || git diff --name-only HEAD~5
+git diff --name-only origin/develop...HEAD
+git diff --name-only HEAD
+git diff --name-only --cached
+git ls-files --others --exclude-standard
 ```
+
+If `origin/develop` is unavailable, state that and use a known base or the supplied path; never treat an empty or failed diff as a clean scope.
 
 If a path was provided (e.g. `/meta-security crate/server/`), restrict all sub-skills to that path.
 Otherwise, use the full workspace.
+
+### Full and incremental gates
+
+- Full/comprehensive or release-oriented requests run all four sub-skills. A supplied path narrows their scope; it does not itself authorize skipping a review.
+- Apply relevance skips only when the user explicitly requests an incremental follow-up. If scope or applicability is uncertain, run the review.
+- In incremental mode, run `/security-review` for changed attack surfaces, user-controlled flows, auth/session, FFI, or security-sensitive code.
+  Skip only verified documentation/format-only changes or static UI with no dynamic data, auth/session, API, or sensitive-data behavior.
+  A clean mechanical scan is not a security skip condition.
+- Run `/cryptography-review` when crypto primitives/call sites, algorithm selection, key lifecycle/policy, provider setup, or FIPS gates changed.
+  In incremental mode only, skip when the diff and affected callers are confirmed unrelated to all of them.
+- Run `/threat-model` when a trust boundary or security-relevant data flow changed (auth, routes, middleware, config/TLS, DB/HSM, crypto, external integrations).
+  In incremental mode only, skip after confirming none changed.
+- Run `/standards-review` when protocol or standards-constrained behavior changed. In incremental mode only, skip after confirming no such behavior changed.
+- Full or release gates never skip a sub-skill based on mechanical scan results. Record every incremental skip and its evidence.
 
 Record which areas changed:
 
@@ -42,7 +63,7 @@ Record which areas changed:
 
 ## Step 2 — Security Review
 
-Invoke `/security-review` on the scoped path.
+In full/comprehensive mode, always invoke `/security-review` on the scoped path. In an explicitly incremental review, apply the gate above and record any skip.
 
 This covers:
 
@@ -65,7 +86,8 @@ Collect all findings. Record the severity summary.
 
 ## Step 3 — Cryptographic Review
 
-Invoke `/cryptography-review` on the scoped path.
+In full/comprehensive mode, invoke `/cryptography-review` on the scoped path. In incremental mode, invoke it for crypto primitives/call sites,
+algorithm selection, key lifecycle/policy, provider initialization, or FIPS gates. Skip only after confirming none apply.
 
 This covers:
 
@@ -79,28 +101,19 @@ This covers:
 - Multi-standard compliance matrix
 - Academic research flags (known cryptanalytic attacks)
 
-Collect all findings. Record the compliance matrix.
+Collect all findings. If skipped in incremental mode, record the checked areas and reason.
 
 ## Step 4 — Threat Model
 
-Invoke `/threat-model`:
+In full/comprehensive mode, invoke `/threat-model`. If a prior threat model exists, use incremental mode; otherwise use single analysis mode.
+For an explicitly incremental review, skip only after confirming no trust boundary or security-relevant data flow changed.
+Relevant boundaries include authentication, routes, middleware, config/TLS, DB/HSM, crypto, and external integrations.
 
-- If a prior threat model exists (`threat-model-*/` directory): use **incremental mode**
-- If no prior threat model exists: use **single analysis mode**
-
-Focus on areas identified in Step 1 that affect trust boundaries:
-
-- New or modified authentication methods
-- New or modified endpoints (especially unauthenticated ones)
-- New outbound calls (cloud provider integrations)
-- New HSM / database backend integrations
-- Changes to TLS configuration
-
-Collect all findings. Record new/changed threats.
+Collect all findings or record the evidence for an incremental skip.
 
 ## Step 5 — Standards Compliance Review
 
-Invoke `/standards-review` on the scoped path.
+In full/comprehensive mode, invoke `/standards-review` on the scoped path. In an explicitly incremental review, run it when protocol or standards-constrained behavior changed; otherwise record why it is not applicable.
 
 This covers:
 
@@ -110,7 +123,7 @@ This covers:
 - BSI / ANSSI guideline conformance
 - Per-algorithm compliance checklist cross-reference
 
-Collect all findings. Record the applicability matrix and conformance gaps.
+Collect all findings. Record applicability and conformance gaps.
 
 ## Step 6 — Unified Report
 
@@ -123,10 +136,10 @@ Produce this exact report structure:
 
 | Skill | Status | Critical | High | Medium | Low |
 |-------|--------|----------|------|--------|-----|
-| Security Review | ✅ PASS / ❌ BLOCK | N | N | N | N |
-| Cryptographic Review | ✅ PASS / ❌ BLOCK | N | N | N | N |
+| Security Review | ✅ PASS / ⏭ SKIPPED / ❌ BLOCK | N | N | N | N |
+| Cryptographic Review | ✅ PASS / ⏭ SKIPPED / ❌ BLOCK | N | N | N | N |
 | Threat Model | ✅ PASS / ⏭ SKIPPED / ❌ BLOCK | N | N | N | N |
-| Standards Review | ✅ PASS / ❌ BLOCK | N | N | N | N |
+| Standards Review | ✅ PASS / ⏭ SKIPPED / ❌ BLOCK | N | N | N | N |
 
 ### Blocking Findings (CRITICAL + HIGH)
 
@@ -152,8 +165,7 @@ Produce this exact report structure:
 
 ### Verdict
 
-**PASS** — no CRITICAL or HIGH findings across all four skills.
-Proceed with release / merge.
+**PASS** — no CRITICAL or HIGH findings across all required reviews; full-mode reviews all ran, or incremental skips were confirmed and reported.
 
 — or —
 
@@ -167,7 +179,7 @@ Proceed with release / merge.
 - Any 🟠 HIGH finding from security-review or cryptography-review → **BLOCK**
 - Any 🔴 Violation from standards-review → **BLOCK**
 - Unmitigated CRITICAL/HIGH threats from threat-model → **BLOCK**
-- ⏭ SKIPPED skills are acceptable when skip condition is confirmed
+- ⏭ SKIPPED is acceptable only in an explicitly requested incremental review with confirmed inapplicability; never skip in full/comprehensive or release mode.
 
 ## Output Rules
 
@@ -176,3 +188,5 @@ Proceed with release / merge.
 - **Always** deduplicate findings that appear in multiple skills (keep the most detailed version, note the overlap)
 - **Group** blocking findings at the top for immediate visibility
 - If all skills pass cleanly, say so clearly with a summary of what was scanned
+
+An incremental PASS is not a release go/no-go; use the full `/pre-release` gate before release.

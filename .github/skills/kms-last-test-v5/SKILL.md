@@ -53,6 +53,21 @@ Full command tree, roundtrip examples → **`reference/cli-commands.md`**
 
 Full endpoint map, curl examples, JOSE algorithm table, JWKS eligibility rules → **`reference/endpoints.md`**
 
+### 1.2.1 — AI token consumption
+
+Token names and billing vary by provider. Use provider telemetry; token counts are not word or character counts.
+
+|Type|What is counted|Usage control|
+|---|---|---|
+|Input|Instructions, history, files, tool results included in a model request|Scope reads; avoid repeated large context/logs|
+|Cached input|Reused prompt prefix when provider caching applies|Eligibility and pricing vary by provider|
+|Output|Generated response text and tool-call arguments|Keep responses concise; avoid duplicate reports|
+|Reasoning|Internal reasoning usage when separately exposed|Provider-specific; use controls only when suitable for task risk|
+|Multimodal input|Screenshots, images, audio/video sent to capable models|Capture only relevant frames/regions; avoid repeated full-screen payloads|
+|Tool execution/results|Runtime may be billed separately; returned text may re-enter a later prompt as input|Request only relevant files/logs; preserve necessary error context|
+
+Context-window size is capacity, not a separate free-token category.
+
 ### 1.3 — Web UI (Chrome DevTools MCP)
 
 **When**: PR touches `ui/src/`, `crate/clients/wasm/`, or UI-facing server behavior.
